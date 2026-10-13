@@ -1,0 +1,151 @@
+{
+  "count": 11,
+  "screens": [
+    {
+      "key": "M01",
+      "id": "37:3614",
+      "name": "M01 · 现在",
+      "width": 1240,
+      "height": 850,
+      "text": 52,
+      "instances": 12,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M02",
+      "id": "37:3616",
+      "name": "M02 · 账本",
+      "width": 1240,
+      "height": 850,
+      "text": 49,
+      "instances": 14,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M03",
+      "id": "37:3618",
+      "name": "M03 · 资金安排",
+      "width": 1240,
+      "height": 850,
+      "text": 54,
+      "instances": 12,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M04",
+      "id": "37:3620",
+      "name": "M04 · 洞察",
+      "width": 1240,
+      "height": 850,
+      "text": 53,
+      "instances": 13,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M05",
+      "id": "37:3622",
+      "name": "M05 · 我的余白",
+      "width": 1240,
+      "height": 850,
+      "text": 48,
+      "instances": 17,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M06",
+      "id": "37:3624",
+      "name": "M06 · 记一笔",
+      "width": 1240,
+      "height": 850,
+      "text": 71,
+      "instances": 23,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M07",
+      "id": "37:3626",
+      "name": "M07 · 导入预览",
+      "width": 1240,
+      "height": 850,
+      "text": 81,
+      "instances": 25,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M08",
+      "id": "37:3628",
+      "name": "M08 · 新增安排",
+      "width": 1240,
+      "height": 850,
+      "text": 76,
+      "instances": 23,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M09",
+      "id": "37:3630",
+      "name": "M09 · 房租收款",
+      "width": 1240,
+      "height": 850,
+      "text": 67,
+      "instances": 15,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M10",
+      "id": "37:3632",
+      "name": "M10 · 购买前想一想",
+      "width": 1240,
+      "height": 850,
+      "text": 65,
+      "instances": 17,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    },
+    {
+      "key": "M11",
+      "id": "37:3634",
+      "name": "M11 · 备份与恢复",
+      "width": 1240,
+      "height": 850,
+      "text": 68,
+      "instances": 25,
+      "fonts": [
+        "Noto Sans SC"
+      ],
+      "missingFont": false
+    }
+  ],
+  "edges": 93,
+  "badTargets": [],
+  "imageNodes": []
+}

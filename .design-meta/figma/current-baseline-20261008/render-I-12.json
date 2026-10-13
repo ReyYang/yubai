@@ -1,0 +1,85 @@
+{
+  "flow": "I",
+  "createdNodeIds": [
+    "35:6741",
+    "35:6742",
+    "35:6743",
+    "35:6749",
+    "35:6756",
+    "35:6757",
+    "35:6758",
+    "35:6759",
+    "35:6760",
+    "35:6761",
+    "35:6762",
+    "35:6763",
+    "35:6764",
+    "35:6767",
+    "35:6769",
+    "35:6771",
+    "35:6774",
+    "35:6775"
+  ],
+  "mutatedNodeIds": [
+    "26:3869",
+    "26:3867",
+    "26:3799"
+  ],
+  "screenEvidence": [
+    {
+      "id": "I13",
+      "nodeId": "26:3869",
+      "size": [
+        430,
+        932
+      ],
+      "contentHeight": 354,
+      "viewportHeight": 794,
+      "counts": {
+        "FRAME": 9,
+        "TEXT": 10,
+        "INSTANCE": 6,
+        "VECTOR": 9,
+        "RECTANGLE": 1
+      },
+      "imageNodeIds": [],
+      "fonts": [
+        "SF Pro",
+        "Noto Sans SC"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "nodeId": "35:6757",
+      "target": "I01",
+      "source": "I13",
+      "label": "‹ 返回"
+    },
+    {
+      "nodeId": "35:6760",
+      "target": "I01",
+      "source": "I13",
+      "label": "完成"
+    },
+    {
+      "nodeId": "35:6767",
+      "target": "I10",
+      "source": "I13",
+      "label": "重新选择截图"
+    },
+    {
+      "nodeId": "35:6769",
+      "target": "L06",
+      "source": "I13",
+      "label": "手动记一笔"
+    }
+  ],
+  "screenCount": 1,
+  "edgeCount": 4,
+  "wrapper": {
+    "id": "26:3799",
+    "width": 1930,
+    "height": 4920
+  }
+}

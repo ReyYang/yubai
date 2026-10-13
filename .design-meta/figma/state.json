@@ -1,0 +1,45 @@
+{
+  "fileKey": "vIJH4tq6ZMNOJeRzUsI2Z7",
+  "url": "https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7",
+  "pageId": "0:1",
+  "scope": "Source-derived full-action UI/UX atlas with editable components and prototype navigation",
+  "source": "Sources/YubaiApp, native verified screenshots",
+  "discovery": {
+    "codeConnect": "No FigmaConnect files in Sources",
+    "existingScreens": "new file empty",
+    "libraries": "Apple iOS and iPadOS 26 inspected; import rejected Not permitted to upsert from library; whoami rechecked Full admin student",
+    "font": "Figma: Noto Sans SC for body and money, Noto Serif SC for welcome. System Chinese and SF Pro Rounded in app remain unchanged. Figma font import could not render SF Pro Rounded reliably."
+  },
+  "steps": [
+    "source-discovery",
+    "library-discovery",
+    "local-components-and-variables",
+    "111-iphone-screens",
+    "11-mac-screens",
+    "prototype-links",
+    "representative-visual-qa",
+    "full-structure-readback",
+    "reference-and-action-index"
+  ],
+  "created": {
+    "cover": "13:3367",
+    "preview": "13:3430",
+    "componentPage": "3:2",
+    "showcase": "14:3613",
+    "references": "14:3816",
+    "macPage": "10:3367"
+  },
+  "verification": {
+    "iphone": 111,
+    "mac": 11,
+    "uiComponents": 14,
+    "iconComponents": 28,
+    "variables": 43,
+    "textStyles": 8,
+    "missingFonts": 0,
+    "horizontalOverflow": 0,
+    "invalidPrototypeTargets": 0,
+    "wholeUIScreenshotFills": 0,
+    "prototypeClickVerification": "not completed: embedded Figma player controls obscured"
+  }
+}

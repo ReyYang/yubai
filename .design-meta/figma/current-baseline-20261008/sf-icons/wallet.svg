@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24pt" height="24pt" viewBox="0 0 24 24">
+<defs>
+<filter id="filter-remove-color" x="0%" y="0%" width="100%" height="100%">
+<feColorMatrix color-interpolation-filters="sRGB" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0" />
+</filter>
+<filter id="filter-color-to-alpha" x="0%" y="0%" width="100%" height="100%">
+<feColorMatrix color-interpolation-filters="sRGB" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.2126 0.7152 0.0722 0 0"/>
+</filter>
+<image id="source-9" x="0" y="0" width="16" height="18" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAASCAAAAAB3UAG2AAAAAmJLR0QA/4ePzL8AAAC8SURBVBiVY2RgYGAQjvdV/Hd346JPDBAQ+eb//z/zT/9/7gfhF/z/////DwYGzd1/kxgYGBic/0IFGJhm/zJjYGC+/R8mwMBy9CwDQ8h/hACD2X8XJn8GJHDqgh+TBbIAwz5LJgkUgccSTEwoAv+YmF6gCMi8YDqFIuBwiiEa2Vq9f94MrA8RAoy7rzIyMPghBLr/OjAwMDA0QgWkV/8vhJiU/eX//9+9O39/iIOZLdty8dOHc3XiDAwMDABlhGR1SKi36wAAAABJRU5ErkJggg=="/>
+<mask id="mask-0">
+<g filter="url(#filter-remove-color)">
+<use xlink:href="#source-9" filter="url(#filter-color-to-alpha)" transform="matrix(1, 0, 0, 1, 0, -0.000000000000003553)"/>
+</g>
+</mask>
+<image id="source-8" x="0" y="0" width="16" height="18" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAASCAIAAADdWck9AAAABmJLR0QA/wD/AP+gvaeTAAAAEUlEQVQokWNgGAWjYBTQDwAAA3IAAY5Kra8AAAAASUVORK5CYII="/>
+<clipPath id="clip-0">
+<path clip-rule="nonzero" d="M 0 0 L 16 0 L 16 18 L 0 18 Z M 0 0 "/>
+</clipPath>
+<clipPath id="clip-1">
+<rect x="0" y="0" width="16" height="18"/>
+</clipPath>
+<g id="source-12" clip-path="url(#clip-1)">
+<g mask="url(#mask-0)">
+<use xlink:href="#source-8" transform="matrix(1, 0, 0, 1, 0, -0.000000000000003553)"/>
+</g>
+<g clip-path="url(#clip-0)">
+<rect x="-12.736" y="-11.736" width="41.472" height="41.472" fill="rgb(0%, 0%, 0%)" fill-opacity="1"/>
+</g>
+</g>
+<clipPath id="clip-2">
+<rect x="0" y="0" width="16" height="18"/>
+</clipPath>
+<g id="source-14" clip-path="url(#clip-2)">
+<use xlink:href="#source-12"/>
+</g>
+</defs>
+<use xlink:href="#source-14" transform="matrix(1, 0, 0, 1, 4, 3)"/>
+</svg>

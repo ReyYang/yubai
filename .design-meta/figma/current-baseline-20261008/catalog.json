@@ -1,0 +1,6599 @@
+{
+  "flows": [
+    {
+      "key": "A",
+      "title": "01 · 开始使用与账户",
+      "summary": "建立真实余额起点 → 查看账户 → 核对差额 → 归档保留历史",
+      "source": "DesignSystem.swift · Editors.swift",
+      "screens": [
+        "A01",
+        "A02",
+        "A03",
+        "A04",
+        "A05",
+        "A06",
+        "A07",
+        "A08"
+      ]
+    },
+    {
+      "key": "O",
+      "title": "02 · 现在与资金依据",
+      "summary": "从保守可动用出发，展开公式、隐藏金额、查看未来安排",
+      "source": "OverviewView.swift",
+      "screens": [
+        "O01",
+        "O02",
+        "O03",
+        "O04",
+        "O05"
+      ]
+    },
+    {
+      "key": "L",
+      "title": "03 · 账本、记账与纠正",
+      "summary": "检索 → 明细 → 编辑；批量分类、回收站、退款与双边转账",
+      "source": "LedgerView.swift · Editors.swift",
+      "screens": [
+        "L01",
+        "L02",
+        "L03",
+        "L04",
+        "L05",
+        "L06",
+        "L07",
+        "L08",
+        "L09",
+        "L10",
+        "L11",
+        "L12",
+        "L13",
+        "L14",
+        "L15",
+        "L16",
+        "L17",
+        "L18",
+        "L19",
+        "L20"
+      ]
+    },
+    {
+      "key": "I",
+      "title": "04 · 文件导入与截图补记",
+      "summary": "选择 → 读取 → 账户对应 → 少量例外 → 保存 → 再导入防重",
+      "source": "ImportView.swift",
+      "screens": [
+        "I01",
+        "I02",
+        "I03",
+        "I04",
+        "I05",
+        "I06",
+        "I07",
+        "I08",
+        "I09",
+        "I10",
+        "I11",
+        "I12",
+        "I13"
+      ]
+    },
+    {
+      "key": "P",
+      "title": "05 · 资金安排与目标",
+      "summary": "按日期管理义务 → 登记真实发生 → 关联既有记录；目标预留可释放",
+      "source": "PlansView.swift · Editors.swift",
+      "screens": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11",
+        "P12"
+      ]
+    },
+    {
+      "key": "R",
+      "title": "06 · 月收季付的房租分摊",
+      "summary": "建立约定 → 月度核对 → 部分收款 / 关联流入 → 向房东付款",
+      "source": "PlansView.swift · RentEditor",
+      "screens": [
+        "R01",
+        "R02",
+        "R03",
+        "R04",
+        "R05",
+        "R06",
+        "R07",
+        "R08",
+        "R09",
+        "R10"
+      ]
+    },
+    {
+      "key": "N",
+      "title": "07 · 洞察与购买前思考",
+      "summary": "回顾真实消费 → 计算购买影响 → 展开依据 → 可选本机 AI → 保存思考",
+      "source": "InsightsView.swift",
+      "screens": [
+        "N01",
+        "N02",
+        "N03",
+        "N04",
+        "N05",
+        "N06",
+        "N07",
+        "N08",
+        "N09",
+        "N10",
+        "N11",
+        "N12"
+      ]
+    },
+    {
+      "key": "S",
+      "title": "08 · 我的、分类、备份与保护",
+      "summary": "偏好 → 分类规则 → 导出 / 恢复 → 历史撤销 → 解锁与异常恢复",
+      "source": "SettingsView.swift · YubaiApp.swift",
+      "screens": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S06",
+        "S07",
+        "S08",
+        "S09",
+        "S10",
+        "S11",
+        "S12",
+        "S13",
+        "S14",
+        "S15",
+        "S16",
+        "S17",
+        "S18",
+        "S19",
+        "S20"
+      ]
+    },
+    {
+      "key": "X",
+      "title": "09 · 共用控件与跨页面反馈",
+      "summary": "输入、菜单、日期、保存反馈和取消路径在各业务页复用",
+      "source": "SwiftUI 原生控件 · DesignSystem.swift",
+      "screens": [
+        "X01",
+        "X02",
+        "X03",
+        "X04",
+        "X05",
+        "X06",
+        "X07",
+        "X08"
+      ]
+    },
+    {
+      "key": "D",
+      "title": "10 · 深色与大字号适配",
+      "summary": "同一结构在深色、辅助字号与 Mac 空间下保持可读",
+      "source": "DesignSystem.swift · RootView",
+      "screens": [
+        "D01",
+        "D02",
+        "D03"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "A01",
+      "title": "欢迎使用余白",
+      "body": [
+        {
+          "type": "text",
+          "text": "余白  Y U B A I",
+          "style": "Headline"
+        },
+        {
+          "type": "text",
+          "text": "把钱理清，\n把生活留给自己。",
+          "style": "Welcome"
+        },
+        {
+          "type": "text",
+          "text": "余额不等于可花的钱。把散落的账单、未来要付的钱和真正想做的事，放在同一处。",
+          "style": "Body"
+        },
+        {
+          "type": "card",
+          "title": "开始更轻的整理",
+          "items": [
+            {
+              "type": "row",
+              "label": "一份可信的账本",
+              "value": "导入 · 纠正",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "从今天安排未来",
+              "value": "房租 · 还款",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "数据留在你手里",
+              "value": "本机 · 备份",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "开始我的账本",
+          "to": "A02",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "先看看示例账本",
+          "to": "O01",
+          "style": "Secondary"
+        },
+        {
+          "type": "row",
+          "label": "恢复备份",
+          "value": "›",
+          "to": "S07"
+        },
+        {
+          "type": "note",
+          "title": "示例数据独立",
+          "body": "不会写入你的真实账本。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": null,
+      "save": null,
+      "caption": "首次打开。创建账本、体验示例、恢复备份三个入口。示例金额全部虚构。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "A02",
+      "title": "添加账户",
+      "body": [
+        {
+          "type": "field",
+          "label": "名称",
+          "value": "工资卡",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "账户类型",
+          "value": "银行账户",
+          "to": "X02"
+        },
+        {
+          "type": "field",
+          "label": "核对余额",
+          "value": "25,000.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "核对时刻",
+          "value": "2026年10月2日 09:41",
+          "to": "X03"
+        },
+        {
+          "type": "toggle",
+          "label": "已与真实账户核对",
+          "on": true,
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "备注（可选）",
+          "value": "日常收支账户",
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "此刻的余额是计算起点",
+          "body": "导入这个时刻之前的记录，只补全账本，不会重复增加余额。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "A01",
+      "save": [
+        "保存",
+        "A03"
+      ],
+      "caption": "首次开户与其他位置的“添加账户”共用此表单。类型在创建后锁定。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "A03",
+      "title": "现在",
+      "body": [
+        {
+          "type": "note",
+          "title": "账户已建立",
+          "body": "下一步可以设置预留、添加安排，或导入历史账单。",
+          "mood": "Success"
+        },
+        {
+          "type": "hero",
+          "amount": "¥25,000.00",
+          "hidden": false,
+          "first": true
+        },
+        {
+          "type": "button",
+          "label": "整理账单",
+          "to": "I01",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "设置资金偏好",
+          "to": "S02",
+          "style": "Secondary"
+        },
+        {
+          "type": "row",
+          "label": "添加收入或付款",
+          "value": "›",
+          "to": "P03"
+        },
+        {
+          "type": "row",
+          "label": "管理账户",
+          "value": "›",
+          "to": "A04"
+        }
+      ],
+      "subtitle": "",
+      "nav": "现在",
+      "back": null,
+      "save": null,
+      "caption": "空白账本完成第一次开户后的状态。此场景与完整示例账本分开。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "A04",
+      "title": "我的账户",
+      "body": [
+        {
+          "type": "note",
+          "title": "核对真实余额",
+          "body": "账户归档后仍保留资产负债及历史，不会清零。",
+          "mood": "Info"
+        },
+        {
+          "type": "card",
+          "title": "现金与银行卡",
+          "items": [
+            {
+              "type": "row",
+              "label": "工资卡",
+              "value": "¥25,000.00",
+              "to": "A05"
+            },
+            {
+              "type": "row",
+              "label": "微信零钱",
+              "value": "¥1,280.00",
+              "to": "A05"
+            },
+            {
+              "type": "row",
+              "label": "支付宝余额",
+              "value": "¥385.30",
+              "to": "A05"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "信用与其他资产",
+          "items": [
+            {
+              "type": "row",
+              "label": "信用卡",
+              "value": "−¥2,386.00",
+              "to": "A08"
+            },
+            {
+              "type": "row",
+              "label": "基金账户",
+              "value": "¥12,600.00",
+              "to": "A05"
+            },
+            {
+              "type": "row",
+              "label": "借出待收",
+              "value": "¥1,000.00",
+              "to": "A05"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "添加账户",
+          "to": "A02",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "O01",
+      "save": null,
+      "caption": "同一账户入口位于“现在”和“我的”。现金、信用、投资、应收分别表达。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "A05",
+      "title": "工资卡",
+      "body": [
+        {
+          "type": "money",
+          "label": "当前计算余额",
+          "value": "¥25,000.00"
+        },
+        {
+          "type": "card",
+          "title": "账户信息",
+          "items": [
+            {
+              "type": "row",
+              "label": "类型",
+              "value": "银行账户",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "余额锚点",
+              "value": "10月2日 09:41",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "重新核对 / 编辑",
+          "to": "A06",
+          "style": "Secondary"
+        },
+        {
+          "type": "card",
+          "title": "关联记录",
+          "items": [
+            {
+              "type": "entry",
+              "title": "工资",
+              "subtitle": "工资 · 工资卡",
+              "amount": "+¥18,000.00",
+              "date": "9月30日",
+              "to": "L05"
+            },
+            {
+              "type": "entry",
+              "title": "转入零钱",
+              "subtitle": "内部转账 · 工资卡",
+              "amount": "−¥600.00",
+              "date": "10月1日",
+              "to": "L05"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "label": "归档账户",
+          "value": "›",
+          "to": "A07"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "A04",
+      "save": null,
+      "caption": "账户详情连接关联交易；查看不会修改余额锚点。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "A06",
+      "title": "核对与编辑账户",
+      "body": [
+        {
+          "type": "field",
+          "label": "名称",
+          "value": "工资卡",
+          "to": null
+        },
+        {
+          "type": "row",
+          "label": "账户类型",
+          "value": "银行账户 · 已固定",
+          "to": null
+        },
+        {
+          "type": "toggle",
+          "label": "本次重新核对真实余额",
+          "on": true,
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "真实余额",
+          "value": "25,080.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "核对时刻",
+          "value": "2026年10月2日 09:41",
+          "to": "X03"
+        },
+        {
+          "type": "toggle",
+          "label": "已与真实账户核对",
+          "on": true,
+          "to": null
+        },
+        {
+          "type": "money",
+          "label": "与账本计算余额的差额",
+          "value": "+¥80.00"
+        },
+        {
+          "type": "field",
+          "label": "备注",
+          "value": "余额已核对",
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "建立新的余额起点",
+          "body": "不会伪造历史收入。修改前版本保留在本地恢复历史。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "A05",
+      "save": [
+        "保存",
+        "A05"
+      ],
+      "caption": "仅修改名称时不开启核对开关；打开后显示差额并更新锚点。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "A07",
+      "title": "工资卡 · 已归档",
+      "body": [
+        {
+          "type": "note",
+          "title": "账户已归档",
+          "body": "历史与资产负债仍保留；新记录的默认选择不再展示它。",
+          "mood": "Success"
+        },
+        {
+          "type": "money",
+          "label": "保留的账面余额",
+          "value": "¥25,000.00"
+        },
+        {
+          "type": "row",
+          "label": "取消归档",
+          "value": "›",
+          "to": "A05"
+        },
+        {
+          "type": "card",
+          "title": "关联记录仍可查看",
+          "items": [
+            {
+              "type": "entry",
+              "title": "工资",
+              "subtitle": "工资 · 工资卡",
+              "amount": "+¥18,000.00",
+              "date": "9月30日",
+              "to": "L05"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "返回账户列表",
+          "to": "A04",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "A04",
+      "save": null,
+      "caption": "归档可逆。取消归档恢复可选状态，不创建收支。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "A08",
+      "title": "信用账户",
+      "body": [
+        {
+          "type": "field",
+          "label": "名称",
+          "value": "信用卡",
+          "to": null
+        },
+        {
+          "type": "row",
+          "label": "账户类型",
+          "value": "信用与借款",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "信用额度（可选）",
+          "value": "30,000.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "当前待还总额，填正数",
+          "value": "2,386.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "核对时刻",
+          "value": "2026年10月2日 09:41",
+          "to": "X03"
+        },
+        {
+          "type": "note",
+          "title": "信用额度不增加可动用",
+          "body": "填实际欠款。投资账户填市值，借出待收账户填未收本金。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "A04",
+      "save": [
+        "保存",
+        "A04"
+      ],
+      "caption": "账户类型的专用字段状态：信用额度、待还款；投资为市值。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "O01",
+      "title": "现在",
+      "body": [
+        {
+          "type": "text",
+          "text": "10月8日 星期四",
+          "style": "Caption"
+        },
+        {
+          "type": "text",
+          "text": "给生活，留一点余白",
+          "style": "Title"
+        },
+        {
+          "type": "hero",
+          "amount": "¥11,808.30",
+          "hidden": false,
+          "first": false
+        },
+        {
+          "type": "chart",
+          "kind": "funds"
+        },
+        {
+          "type": "card",
+          "title": "最近的安排",
+          "items": [
+            {
+              "type": "upcomingRow",
+              "title": "合租房租 · 应收分摊",
+              "date": "2026-09-08 · 已到期",
+              "amount": "+¥2,400.00",
+              "to": "P01"
+            },
+            {
+              "type": "upcomingRow",
+              "title": "合租房租 · 应收分摊",
+              "date": "2026-10-01 · 已到期",
+              "amount": "+¥2,400.00",
+              "to": "P01"
+            },
+            {
+              "type": "upcomingRow",
+              "title": "宽带与通信",
+              "date": "2026-10-14",
+              "amount": "¥129.00",
+              "to": "P01"
+            },
+            {
+              "type": "upcomingRow",
+              "title": "云服务订阅",
+              "date": "2026-10-20",
+              "amount": "¥68.00",
+              "to": "P01"
+            }
+          ]
+        },
+        {
+          "type": "quickActions"
+        },
+        {
+          "type": "card",
+          "title": "钱在哪里",
+          "items": [
+            {
+              "type": "row",
+              "label": "管理账户",
+              "value": "›",
+              "to": "A04"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "最近记下的",
+          "items": [
+            {
+              "type": "entry",
+              "title": "午餐",
+              "subtitle": "餐饮 · 工资卡",
+              "amount": "−¥28.50",
+              "date": "10月2日",
+              "to": "L05"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "label": "隐藏总览金额",
+          "value": "›",
+          "to": "O03"
+        }
+      ],
+      "subtitle": "",
+      "nav": "现在",
+      "back": null,
+      "save": null,
+      "caption": "完整示例账本。图表可纵向滚动，首页捷径与工具栏进入相同操作。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "O02",
+      "title": "现在 · 计算依据",
+      "body": [
+        {
+          "type": "hero",
+          "amount": "¥11,808.30",
+          "hidden": false,
+          "first": false
+        },
+        {
+          "type": "card",
+          "title": "这笔数怎样算出来",
+          "items": [
+            {
+              "type": "row",
+              "label": "可支配现金",
+              "value": "¥39,585.30",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "减：全部信用待还",
+              "value": "−¥2,386.00",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "减：已知付款",
+              "value": "−¥14,991.00",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "减：目标预留",
+              "value": "−¥3,000.00",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "减：应急底线",
+              "value": "−¥2,000.00",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "减：日常生活预留",
+              "value": "−¥5,400.00",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "未来收入与投资单列",
+          "body": "未到账收入、投资市值及借出待收不提前当成现金。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "收起计算依据",
+          "to": "O01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "现在",
+      "back": null,
+      "save": null,
+      "caption": "点击主卡“这笔数怎样算出来”展开；再次点击收起。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "O03",
+      "title": "现在 · 隐藏金额",
+      "body": [
+        {
+          "type": "text",
+          "text": "给生活，留一点余白",
+          "style": "Title"
+        },
+        {
+          "type": "hero",
+          "amount": "••••••",
+          "hidden": true,
+          "first": false
+        },
+        {
+          "type": "card",
+          "title": "接下来的余地",
+          "items": [
+            {
+              "type": "note",
+              "title": "金额已隐藏",
+              "body": "资金曲线也已收起。",
+              "mood": "Info"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "最近的安排",
+          "items": [
+            {
+              "type": "upcomingRow",
+              "title": "合租房租 · 应收分摊",
+              "date": "2026-09-08 · 已到期",
+              "amount": "+¥2,400.00",
+              "to": "P01"
+            },
+            {
+              "type": "upcomingRow",
+              "title": "合租房租 · 应收分摊",
+              "date": "2026-10-01 · 已到期",
+              "amount": "+¥2,400.00",
+              "to": "P01"
+            },
+            {
+              "type": "upcomingRow",
+              "title": "宽带与通信",
+              "date": "2026-10-14",
+              "amount": "¥129.00",
+              "to": "P01"
+            },
+            {
+              "type": "upcomingRow",
+              "title": "云服务订阅",
+              "date": "2026-10-20",
+              "amount": "¥68.00",
+              "to": "P01"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "最近记下的",
+          "items": [
+            {
+              "type": "entry",
+              "title": "午餐",
+              "subtitle": "餐饮 · 工资卡",
+              "amount": "••••••",
+              "date": "10月2日",
+              "to": "L05"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "显示总览金额",
+          "to": "O01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "现在",
+      "back": null,
+      "save": null,
+      "caption": "隐藏覆盖首页主卡、曲线、近期安排、账户及近期记录；不代表应用全局脱敏。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "O04",
+      "title": "现在 · 空账本",
+      "body": [
+        {
+          "type": "text",
+          "text": "给生活，留一点余白",
+          "style": "Title"
+        },
+        {
+          "type": "card",
+          "title": "从真实余额开始",
+          "items": [
+            {
+              "type": "text",
+              "text": "添加微信、支付宝和银行卡，再导入历史账单。",
+              "style": "Body"
+            },
+            {
+              "type": "button",
+              "label": "添加第一个账户",
+              "to": "A02",
+              "style": "Primary"
+            }
+          ]
+        },
+        {
+          "type": "quickActions"
+        }
+      ],
+      "subtitle": "",
+      "nav": "现在",
+      "back": null,
+      "save": null,
+      "caption": "尚无账户时提示建立真实余额起点。导入前也可嵌套添加账户。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "O05",
+      "title": "现在 · 依据提醒",
+      "body": [
+        {
+          "type": "hero",
+          "amount": "¥11,808.30",
+          "hidden": false,
+          "first": false
+        },
+        {
+          "type": "card",
+          "title": "判断依据，需要保持新鲜",
+          "items": [
+            {
+              "type": "note",
+              "title": "账户尚未核对",
+              "body": "工资卡最近核对已超过 30 天。",
+              "mood": "Warning"
+            },
+            {
+              "type": "note",
+              "title": "有待明确流入",
+              "body": "性质不明的流入暂不计为可自由支配的钱。",
+              "mood": "Warning"
+            },
+            {
+              "type": "button",
+              "label": "核对账户与预留",
+              "to": "A04",
+              "style": "Primary"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "查看待明确记录",
+          "to": "L02",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "现在",
+      "back": null,
+      "save": null,
+      "caption": "不把过期或不完整记录包装成确定建议。提醒连接实际修正入口。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L01",
+      "title": "账本",
+      "body": [
+        {
+          "type": "field",
+          "label": "搜索用途、商户、分类或单号",
+          "value": "",
+          "to": "L03"
+        },
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "全部",
+              "to": "L01"
+            },
+            {
+              "label": "支出",
+              "to": "L02"
+            },
+            {
+              "label": "收入",
+              "to": "L02"
+            },
+            {
+              "label": "待明确",
+              "to": "L02"
+            },
+            {
+              "label": "内部移动",
+              "to": "L02"
+            }
+          ],
+          "selected": 0
+        },
+        {
+          "type": "row",
+          "label": "全部时间 · 全部分类",
+          "value": "筛选",
+          "to": "L02"
+        },
+        {
+          "type": "row",
+          "label": "全部账户",
+          "value": "›",
+          "to": "L02"
+        },
+        {
+          "type": "text",
+          "text": "74 笔记录",
+          "style": "Caption"
+        },
+        {
+          "type": "entry",
+          "title": "工作日午餐",
+          "subtitle": "餐饮 · 工资卡",
+          "amount": "−¥28.00",
+          "date": "10月8日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "咖啡与阅读",
+          "subtitle": "餐饮 · 微信零钱",
+          "amount": "−¥22.00",
+          "date": "10月8日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "地铁出行",
+          "subtitle": "交通 · 微信零钱",
+          "amount": "−¥6.00",
+          "date": "10月6日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "周末采购",
+          "subtitle": "日用购物 · 工资卡",
+          "amount": "−¥186.50",
+          "date": "10月6日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "订阅工具",
+          "subtitle": "学习工作 · 微信零钱",
+          "amount": "−¥138.00",
+          "date": "10月5日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "电影之夜",
+          "subtitle": "娱乐旅行 · 微信零钱",
+          "amount": "−¥78.00",
+          "date": "10月5日",
+          "to": "L05"
+        }
+      ],
+      "subtitle": "",
+      "nav": "账本",
+      "back": null,
+      "save": null,
+      "caption": "点击行看详情，长按可查看或编辑。筛选变化会清空旧选择。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L02",
+      "title": "账本 · 筛选",
+      "body": [
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "全部",
+              "to": "L01"
+            },
+            {
+              "label": "支出",
+              "to": "L02"
+            },
+            {
+              "label": "收入",
+              "to": "L02"
+            },
+            {
+              "label": "待明确",
+              "to": "L02"
+            }
+          ],
+          "selected": 1
+        },
+        {
+          "type": "card",
+          "title": "时间范围",
+          "items": [
+            {
+              "type": "row",
+              "label": "全部时间",
+              "value": "›",
+              "to": "L01"
+            },
+            {
+              "type": "row",
+              "label": "近 7 天",
+              "value": "›",
+              "to": "L02"
+            },
+            {
+              "type": "row",
+              "label": "近 30 天",
+              "value": "›",
+              "to": "L02"
+            },
+            {
+              "type": "row",
+              "label": "本月",
+              "value": "›",
+              "to": "L02"
+            },
+            {
+              "type": "row",
+              "label": "上月",
+              "value": "›",
+              "to": "L02"
+            },
+            {
+              "type": "row",
+              "label": "自定义",
+              "value": "›",
+              "to": "L04"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "分类与账户",
+          "items": [
+            {
+              "type": "row",
+              "label": "餐饮",
+              "value": "›",
+              "to": "L02"
+            },
+            {
+              "type": "row",
+              "label": "全部分类",
+              "value": "›",
+              "to": "L01"
+            },
+            {
+              "type": "row",
+              "label": "工资卡",
+              "value": "›",
+              "to": "L02"
+            },
+            {
+              "type": "row",
+              "label": "全部账户",
+              "value": "›",
+              "to": "L01"
+            }
+          ]
+        },
+        {
+          "type": "entry",
+          "title": "午餐",
+          "subtitle": "餐饮 · 工资卡",
+          "amount": "−¥28.50",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "row",
+          "label": "清除筛选",
+          "value": "›",
+          "to": "L01"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L01",
+      "save": null,
+      "caption": "类型、时间、分类、账户联合筛选。大字号时同一组条件收进菜单。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L03",
+      "title": "账本 · 没有匹配记录",
+      "body": [
+        {
+          "type": "field",
+          "label": "搜索",
+          "value": "不存在的商户",
+          "to": null
+        },
+        {
+          "type": "text",
+          "text": "没有找到匹配记录",
+          "style": "Headline"
+        },
+        {
+          "type": "text",
+          "text": "可以更换筛选条件，或导入一份账单。",
+          "style": "Body"
+        },
+        {
+          "type": "button",
+          "label": "导入账单",
+          "to": "I01",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "清空搜索",
+          "to": "L01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "账本",
+      "back": null,
+      "save": null,
+      "caption": "搜索空状态与空账本区分；不给不存在的数据凑汇总。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L04",
+      "title": "账本 · 自定义日期",
+      "body": [
+        {
+          "type": "field",
+          "label": "从",
+          "value": "2026年9月1日",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "至",
+          "value": "2026年9月30日",
+          "to": "X03"
+        },
+        {
+          "type": "row",
+          "label": "分类",
+          "value": "全部分类",
+          "to": "X04"
+        },
+        {
+          "type": "row",
+          "label": "账户",
+          "value": "全部账户",
+          "to": "X05"
+        },
+        {
+          "type": "text",
+          "text": "筛选范围：9月1日—9月30日",
+          "style": "Caption"
+        },
+        {
+          "type": "entry",
+          "title": "工资",
+          "subtitle": "工资 · 工资卡",
+          "amount": "+¥18,000.00",
+          "date": "9月30日",
+          "to": "L05"
+        },
+        {
+          "type": "button",
+          "label": "返回完整账本",
+          "to": "L01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "账本",
+      "back": null,
+      "save": null,
+      "caption": "结束日包含整天；起始日变化时自动保证结束日不早于起始日。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L05",
+      "title": "记录详情",
+      "body": [
+        {
+          "type": "money",
+          "label": "午餐 · 支出",
+          "value": "¥28.50"
+        },
+        {
+          "type": "card",
+          "title": "账本信息",
+          "items": [
+            {
+              "type": "row",
+              "label": "时间",
+              "value": "10月2日 12:30",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "账户",
+              "value": "工资卡",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "分类",
+              "value": "餐饮",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "来源与依据",
+          "items": [
+            {
+              "type": "row",
+              "label": "来源",
+              "value": "微信账单",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "原文件行号",
+              "value": "18",
+              "to": null
+            },
+            {
+              "type": "text",
+              "text": "交易单号：示例 202610020018",
+              "style": "Caption"
+            },
+            {
+              "type": "text",
+              "text": "依据：用途关键词；你的修改优先于重新导入。",
+              "style": "Caption"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "label": "关联另一账户的转账记录",
+          "value": "›",
+          "to": "L16"
+        },
+        {
+          "type": "button",
+          "label": "编辑记录",
+          "to": "L06",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "移至回收站",
+          "to": "L13",
+          "style": "Danger"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L01",
+      "save": null,
+      "caption": "明细保留来源、原始行、单号与分类原因；数字可追溯。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L06",
+      "title": "记一笔 / 编辑记录",
+      "body": [
+        {
+          "type": "money",
+          "label": "金额",
+          "value": "¥28.50"
+        },
+        {
+          "type": "field",
+          "label": "这笔钱，用来做什么",
+          "value": "午餐",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "性质",
+          "value": "支出",
+          "to": "L07"
+        },
+        {
+          "type": "field",
+          "label": "付款账户",
+          "value": "工资卡",
+          "to": "X05"
+        },
+        {
+          "type": "row",
+          "label": "添加账户",
+          "value": "›",
+          "to": "A02"
+        },
+        {
+          "type": "field",
+          "label": "发生时间",
+          "value": "10月2日 12:30",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "分类",
+          "value": "餐饮",
+          "to": "X04"
+        },
+        {
+          "type": "field",
+          "label": "备注（可选）",
+          "value": "工作日午餐",
+          "to": null
+        },
+        {
+          "type": "toggle",
+          "label": "以后类似用途使用这个分类",
+          "on": true,
+          "to": "L10"
+        },
+        {
+          "type": "field",
+          "label": "匹配关键词",
+          "value": "午餐",
+          "to": null
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L05",
+      "save": [
+        "保存",
+        "X06"
+      ],
+      "caption": "新建与编辑共用表单；取消不保存。金额、名称、账户缺失时保留输入并提示。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L07",
+      "title": "选择资金性质",
+      "body": [
+        {
+          "type": "card",
+          "title": "性质",
+          "items": [
+            {
+              "type": "row",
+              "label": "支出 / 收入",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "退款",
+              "value": "›",
+              "to": "L09"
+            },
+            {
+              "type": "row",
+              "label": "内部转账",
+              "value": "›",
+              "to": "L08"
+            },
+            {
+              "type": "row",
+              "label": "信用还款 / 借入借款",
+              "value": "›",
+              "to": "L08"
+            },
+            {
+              "type": "row",
+              "label": "归还借款 / 借出本金",
+              "value": "›",
+              "to": "L08"
+            },
+            {
+              "type": "row",
+              "label": "收回借出 / 投资申购赎回",
+              "value": "›",
+              "to": "L08"
+            },
+            {
+              "type": "row",
+              "label": "投资收益 / 手续费",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "房租分摊 / 待明确流入流出",
+              "value": "›",
+              "to": "L06"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "本金和内部移动",
+          "body": "不计为日常收入或消费；需要正确的两边账户。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L06",
+      "save": null,
+      "caption": "性质决定账户方向与是否显示另一账户。此页归纳同类选项，不修改金额。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L08",
+      "title": "内部移动",
+      "body": [
+        {
+          "type": "money",
+          "label": "转出金额",
+          "value": "¥600.00"
+        },
+        {
+          "type": "field",
+          "label": "用途",
+          "value": "转入微信零钱",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "性质",
+          "value": "内部转账",
+          "to": "L07"
+        },
+        {
+          "type": "field",
+          "label": "付款账户",
+          "value": "工资卡",
+          "to": "X05"
+        },
+        {
+          "type": "field",
+          "label": "转入账户",
+          "value": "微信零钱",
+          "to": "X05"
+        },
+        {
+          "type": "field",
+          "label": "发生时间",
+          "value": "10月1日 18:30",
+          "to": "X03"
+        },
+        {
+          "type": "note",
+          "title": "一笔双边记录",
+          "body": "两边余额各变动一次。已经导入两边时，使用详情中的合并关联。",
+          "mood": "Info"
+        },
+        {
+          "type": "field",
+          "label": "备注",
+          "value": "本金与内部移动不算消费",
+          "to": null
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L06",
+      "save": [
+        "保存",
+        "X06"
+      ],
+      "caption": "还款、借还本金、投资申赎复用此结构，对应账户类型由核心规则校验。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L09",
+      "title": "记录退款",
+      "body": [
+        {
+          "type": "money",
+          "label": "退款金额",
+          "value": "¥58.00"
+        },
+        {
+          "type": "field",
+          "label": "用途",
+          "value": "退货退款",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "性质",
+          "value": "退款",
+          "to": "L07"
+        },
+        {
+          "type": "field",
+          "label": "入账账户",
+          "value": "工资卡",
+          "to": "X05"
+        },
+        {
+          "type": "field",
+          "label": "关联原支出",
+          "value": "日用品 · ¥128.00",
+          "to": "L05"
+        },
+        {
+          "type": "field",
+          "label": "发生时间",
+          "value": "10月2日 16:20",
+          "to": "X03"
+        },
+        {
+          "type": "note",
+          "title": "退款沿用原分类",
+          "body": "累计退款不能超过原支出剩余可退金额。共享支出按历史个人承担比例冲减。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L06",
+      "save": [
+        "保存",
+        "X06"
+      ],
+      "caption": "可以暂不关联；关联时保留原支出关系，防止误当收入或重复导入。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L10",
+      "title": "输入校验 · 保留表单",
+      "body": [
+        {
+          "type": "field",
+          "label": "金额",
+          "value": "0.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "用途",
+          "value": "午餐",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "付款账户",
+          "value": "工资卡",
+          "to": null
+        },
+        {
+          "type": "dialog",
+          "title": "需要留意",
+          "message": "金额需要大于零。",
+          "actions": [
+            {
+              "label": "知道了",
+              "to": "L06",
+              "style": "Primary"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L06",
+      "save": null,
+      "caption": "校验在当前编辑页弹出；关闭提示后保留已填内容，不退回账本。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L11",
+      "title": "账本 · 已选 3 笔",
+      "body": [
+        {
+          "type": "row",
+          "label": "全选 / 取消全选",
+          "value": "3 / 128",
+          "to": null
+        },
+        {
+          "type": "entry",
+          "title": "✓ 午餐",
+          "subtitle": "餐饮 · 工资卡",
+          "amount": "−¥28.50",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "✓ 咖啡",
+          "subtitle": "餐饮 · 微信零钱",
+          "amount": "−¥18.00",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "✓ 早餐",
+          "subtitle": "其他支出 · 微信零钱",
+          "amount": "−¥12.00",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "button",
+          "label": "整理",
+          "to": "L12",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "删除",
+          "to": "L13",
+          "style": "Danger"
+        },
+        {
+          "type": "button",
+          "label": "完成选择",
+          "to": "L01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "账本",
+      "back": null,
+      "save": null,
+      "caption": "选择模式支持全选与取消；无选择时整理和删除禁用。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L12",
+      "title": "批量整理",
+      "body": [
+        {
+          "type": "text",
+          "text": "已选 3 笔",
+          "style": "Headline"
+        },
+        {
+          "type": "field",
+          "label": "分类",
+          "value": "餐饮",
+          "to": "X04"
+        },
+        {
+          "type": "field",
+          "label": "资金性质",
+          "value": "保持不变",
+          "to": "L07"
+        },
+        {
+          "type": "note",
+          "title": "金额与账户保持原样",
+          "body": "修改性质要求所选记录同方向、未关联安排或其他交易。内部移动需要逐笔关联。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "应用",
+          "to": "X06",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "查看不兼容选择提示",
+          "to": "L19",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L11",
+      "save": null,
+      "caption": "可以只改分类、只改性质或都修改。混合方向失败时整批不部分提交。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L13",
+      "title": "移至回收站",
+      "body": [
+        {
+          "type": "entry",
+          "title": "午餐",
+          "subtitle": "餐饮 · 工资卡",
+          "amount": "−¥28.50",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "dialog",
+          "title": "移至回收站？",
+          "message": "删除后不计入汇总；可以在回收站恢复。",
+          "actions": [
+            {
+              "label": "移至回收站",
+              "to": "L14",
+              "style": "Danger"
+            },
+            {
+              "label": "取消",
+              "to": "L01",
+              "style": "Secondary"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L01",
+      "save": null,
+      "caption": "逐笔和批量删除均确认；之后重导同一条原始记录不会自动复活。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L14",
+      "title": "回收站",
+      "body": [
+        {
+          "type": "note",
+          "title": "删除记录保留来源",
+          "body": "重新导入不会复活已删除记录。合并来源不能单独恢复。",
+          "mood": "Info"
+        },
+        {
+          "type": "entry",
+          "title": "午餐 · 已删除",
+          "subtitle": "餐饮 · 工资卡",
+          "amount": "−¥28.50",
+          "date": "10月2日",
+          "to": "L15"
+        },
+        {
+          "type": "button",
+          "label": "批量选择并恢复",
+          "to": "L15",
+          "style": "Secondary"
+        },
+        {
+          "type": "row",
+          "label": "返回账本",
+          "value": "›",
+          "to": "L01"
+        },
+        {
+          "type": "row",
+          "label": "分类与规则",
+          "value": "›",
+          "to": "S05"
+        }
+      ],
+      "subtitle": "",
+      "nav": "账本",
+      "back": null,
+      "save": null,
+      "caption": "从账本更多菜单进入；恢复后重新纳入汇总。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L15",
+      "title": "恢复记录",
+      "body": [
+        {
+          "type": "money",
+          "label": "午餐 · 已在回收站",
+          "value": "¥28.50"
+        },
+        {
+          "type": "text",
+          "text": "当前不计入任何汇总。",
+          "style": "Body"
+        },
+        {
+          "type": "button",
+          "label": "恢复记录",
+          "to": "X06",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "返回回收站",
+          "to": "L14",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L14",
+      "save": null,
+      "caption": "恢复操作可撤销；合并的原始证据使用撤销合并或本地历史恢复。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L16",
+      "title": "关联资金移动",
+      "body": [
+        {
+          "type": "note",
+          "title": "金额相同只是线索",
+          "body": "请核对用途、日期及两边账户。原始来源合并后仍保留。",
+          "mood": "Info"
+        },
+        {
+          "type": "field",
+          "label": "这笔钱的性质",
+          "value": "内部转账",
+          "to": "L07"
+        },
+        {
+          "type": "card",
+          "title": "同金额、反方向的候选",
+          "items": [
+            {
+              "type": "entry",
+              "title": "微信零钱到账",
+              "subtitle": "待明确流入 · 微信零钱",
+              "amount": "+¥600.00",
+              "date": "10月1日",
+              "to": "L17"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "没有候选时",
+          "body": "可编辑指定另一账户，但不要同时保留另一笔独立记录。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L05",
+      "save": null,
+      "caption": "只列另一账户、同金额、反方向且未关联的记录；排序按日期接近程度。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L17",
+      "title": "确认两侧记录",
+      "body": [
+        {
+          "type": "entry",
+          "title": "银行卡转出",
+          "subtitle": "工资卡 · 10月1日 23:58",
+          "amount": "−¥600.00",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "微信零钱到账",
+          "subtitle": "微信零钱 · 10月2日 00:01",
+          "amount": "+¥600.00",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "dialog",
+          "title": "确认是同一笔资金移动？",
+          "message": "合并后保留各自实际入账日期，两个账户分别只变化一次。",
+          "actions": [
+            {
+              "label": "确认关联",
+              "to": "L18",
+              "style": "Primary"
+            },
+            {
+              "label": "取消",
+              "to": "L16",
+              "style": "Secondary"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L16",
+      "save": null,
+      "caption": "跨日到账不强行改成同一天；合并只更改账本表达。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L18",
+      "title": "完整转账记录",
+      "body": [
+        {
+          "type": "note",
+          "title": "两侧已关联",
+          "body": "原始来源仍保留，避免重复计入。",
+          "mood": "Success"
+        },
+        {
+          "type": "money",
+          "label": "内部转账",
+          "value": "¥600.00"
+        },
+        {
+          "type": "row",
+          "label": "转出账户",
+          "value": "工资卡",
+          "to": null
+        },
+        {
+          "type": "row",
+          "label": "转入账户",
+          "value": "微信零钱",
+          "to": null
+        },
+        {
+          "type": "row",
+          "label": "转出 / 到账",
+          "value": "10月1日 / 10月2日",
+          "to": null
+        },
+        {
+          "type": "row",
+          "label": "查看原始来源",
+          "value": "2 份",
+          "to": null
+        },
+        {
+          "type": "button",
+          "label": "撤销合并",
+          "to": "L16",
+          "style": "Secondary"
+        },
+        {
+          "type": "row",
+          "label": "本地恢复历史",
+          "value": "›",
+          "to": "S12"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L01",
+      "save": null,
+      "caption": "合并来源在回收站保留证据；本页展示合并后的语义与可恢复路径。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L19",
+      "title": "批量整理失败",
+      "body": [
+        {
+          "type": "text",
+          "text": "已选 3 笔",
+          "style": "Headline"
+        },
+        {
+          "type": "dialog",
+          "title": "需要留意",
+          "message": "所选记录方向不一致，或已经关联安排。请缩小选择范围后再修改性质。",
+          "actions": [
+            {
+              "label": "知道了",
+              "to": "L11",
+              "style": "Primary"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "未发生部分修改",
+          "body": "金额、账户、性质仍保持原值。",
+          "mood": "Warning"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L11",
+      "save": null,
+      "caption": "批量动作原子提交；失败不产生一半成功、一半失败的账本。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "L20",
+      "title": "解除安排关联",
+      "body": [
+        {
+          "type": "money",
+          "label": "房租 · 季付",
+          "value": "¥10,800.00"
+        },
+        {
+          "type": "row",
+          "label": "已关联",
+          "value": "合租房租 · 10月期次",
+          "to": null
+        },
+        {
+          "type": "dialog",
+          "title": "确认解除关联？",
+          "message": "原来的安排会重新显示待完成。租金付款按全额计为个人消费，实际余额不变。",
+          "actions": [
+            {
+              "label": "解除关联",
+              "to": "X06",
+              "style": "Danger"
+            },
+            {
+              "label": "取消",
+              "to": "R03",
+              "style": "Secondary"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R03",
+      "save": null,
+      "caption": "只解除业务关联，不删除或重复资金流水。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I01",
+      "title": "整理账单",
+      "body": [
+        {
+          "type": "text",
+          "text": "一次整理，安心继续生活",
+          "style": "Title"
+        },
+        {
+          "type": "text",
+          "text": "支持微信、支付宝与标准银行账单；普通细类不明确时可以先归入其他。",
+          "style": "Body"
+        },
+        {
+          "type": "field",
+          "label": "默认收付款账户",
+          "value": "工资卡",
+          "to": "X05"
+        },
+        {
+          "type": "row",
+          "label": "添加账户",
+          "value": "›",
+          "to": "A02"
+        },
+        {
+          "type": "button",
+          "label": "选择账单文件",
+          "to": "I02",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "从照片选一张账单截图",
+          "to": "I10",
+          "style": "Secondary"
+        },
+        {
+          "type": "note",
+          "title": "CSV · TSV · XLSX",
+          "body": "原始文件保留在本地。账单有银行卡、零钱时，下一步分别对应真实账户。",
+          "mood": "Info"
+        },
+        {
+          "type": "row",
+          "label": "导出账单的方法",
+          "value": "›",
+          "to": "S18"
+        },
+        {
+          "type": "row",
+          "label": "下载导入模板",
+          "value": "›",
+          "to": "S08"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "O01",
+      "save": null,
+      "caption": "文件和照片共用导入闭环；未选账户时选择按钮禁用。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I02",
+      "title": "文件 · 系统选择器",
+      "body": [
+        {
+          "type": "field",
+          "label": "搜索",
+          "value": "",
+          "to": null
+        },
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "最近项目",
+              "to": "I02"
+            },
+            {
+              "label": "浏览",
+              "to": "I02"
+            }
+          ],
+          "selected": 1
+        },
+        {
+          "type": "card",
+          "title": "我的 iPhone / 余白",
+          "items": [
+            {
+              "type": "row",
+              "label": "微信账单.csv",
+              "value": "429 KB",
+              "to": "I03"
+            },
+            {
+              "type": "row",
+              "label": "支付宝账单.xlsx",
+              "value": "286 KB",
+              "to": "I03"
+            },
+            {
+              "type": "row",
+              "label": "银行明细.tsv",
+              "value": "105 KB",
+              "to": "I03"
+            },
+            {
+              "type": "row",
+              "label": "收据截图.png",
+              "value": "1.2 MB",
+              "to": "I11"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "支持一次多选",
+          "body": "按文件逐一预览、确认和保存。加密压缩包需先在系统中解压。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "打开选中的文件",
+          "to": "I03",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "取消",
+          "to": "I01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "系统 Files 界面示意，实际外观和目录由系统决定；不会在原型访问真实文件。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I03",
+      "title": "正在整理",
+      "body": [
+        {
+          "type": "progress",
+          "label": "正在本机读取与整理…",
+          "value": 0.42
+        },
+        {
+          "type": "text",
+          "text": "文件不会上传。请保留这个窗口。",
+          "style": "Caption"
+        },
+        {
+          "type": "note",
+          "title": "规则先归类",
+          "body": "设备端 AI 可用时补充未匹配用途；不可用时保留规则结果。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "加载期间可关闭；后台解析结果通过请求标识避免覆盖新文件。进度为设计演示。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null,
+      "autoNext": "I04"
+    },
+    {
+      "id": "I04",
+      "title": "对应实际资金账户",
+      "body": [
+        {
+          "type": "text",
+          "text": "微信账单.csv",
+          "style": "Headline"
+        },
+        {
+          "type": "card",
+          "title": "本份文件",
+          "items": [
+            {
+              "type": "row",
+              "label": "待导入",
+              "value": "0",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "已重复",
+              "value": "2",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "需留意",
+              "value": "2",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "field",
+          "label": "银行卡",
+          "value": "请选择对应账户",
+          "to": "I05"
+        },
+        {
+          "type": "field",
+          "label": "零钱",
+          "value": "请选择对应账户",
+          "to": "I05"
+        },
+        {
+          "type": "button",
+          "label": "全部对应到“工资卡”",
+          "to": "I05",
+          "style": "Secondary"
+        },
+        {
+          "type": "row",
+          "label": "添加缺少的账户",
+          "value": "›",
+          "to": "A02"
+        },
+        {
+          "type": "note",
+          "title": "支付渠道不等于资金账户",
+          "body": "银行卡支付记到实际银行卡；未对应的行不会保存。",
+          "mood": "Warning"
+        },
+        {
+          "type": "button",
+          "label": "保存 0 笔",
+          "to": "I04",
+          "style": "Disabled"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "逐付款方式映射。选择账户后重新解析，去重与余额影响随实际账户更新。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I05",
+      "title": "导入预览",
+      "body": [
+        {
+          "type": "text",
+          "text": "微信账单.csv",
+          "style": "Headline"
+        },
+        {
+          "type": "field",
+          "label": "默认账户",
+          "value": "工资卡",
+          "to": "X05"
+        },
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "全部",
+              "to": "I05"
+            },
+            {
+              "label": "将导入",
+              "to": "I05"
+            },
+            {
+              "label": "需留意",
+              "to": "I06"
+            }
+          ],
+          "selected": 0
+        },
+        {
+          "type": "card",
+          "title": "本次整理",
+          "items": [
+            {
+              "type": "row",
+              "label": "待导入",
+              "value": "126",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "已重复",
+              "value": "2",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "需留意",
+              "value": "3",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "field",
+          "label": "银行卡 → 工资卡",
+          "value": "已对应",
+          "to": "I04"
+        },
+        {
+          "type": "field",
+          "label": "零钱 → 微信零钱",
+          "value": "已对应",
+          "to": "I04"
+        },
+        {
+          "type": "entry",
+          "title": "✓ 午餐",
+          "subtitle": "餐饮 · 工资卡",
+          "amount": "−¥28.50",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "✓ 咖啡",
+          "subtitle": "餐饮 · 微信零钱",
+          "amount": "−¥18.00",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "row",
+          "label": "取消导入这一行",
+          "value": "点击左侧勾选",
+          "to": "I06"
+        },
+        {
+          "type": "button",
+          "label": "保存 126 笔",
+          "to": "I08",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "重新选文件",
+          "to": "I02",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "可切换全部/将导入/需留意。只有有效且被选中的记录进入账本。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I06",
+      "title": "导入 · 需留意",
+      "body": [
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "全部",
+              "to": "I05"
+            },
+            {
+              "label": "将导入",
+              "to": "I05"
+            },
+            {
+              "label": "需留意",
+              "to": "I06"
+            }
+          ],
+          "selected": 2
+        },
+        {
+          "type": "note",
+          "title": "第 42 行 · 疑似重复",
+          "body": "同时间同金额可能是两笔真实消费。默认不纳入，可主动勾选。",
+          "mood": "Warning"
+        },
+        {
+          "type": "row",
+          "label": "纳入这笔疑似重复",
+          "value": "未选 → 选中",
+          "to": "I05"
+        },
+        {
+          "type": "note",
+          "title": "第 67 行 · 数据冲突",
+          "body": "相同交易单号的金额有差异，保留现有记录；本行不保存。",
+          "mood": "Warning"
+        },
+        {
+          "type": "note",
+          "title": "第 93 行 · 无法解析",
+          "body": "金额或日期不明确。请核对源文件，或之后手动补记。",
+          "mood": "Warning"
+        },
+        {
+          "type": "button",
+          "label": "保存其他有效记录",
+          "to": "I08",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "重新选文件",
+          "to": "I02",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I05",
+      "save": null,
+      "caption": "无效、冲突、待账户行不能勾选保存；弱重复由用户决定，不能静默吞记录。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I07",
+      "title": "这份文件已经导入",
+      "body": [
+        {
+          "type": "text",
+          "text": "微信账单.csv",
+          "style": "Headline"
+        },
+        {
+          "type": "card",
+          "title": "重新核对结果",
+          "items": [
+            {
+              "type": "row",
+              "label": "待导入",
+              "value": "0",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "已重复",
+              "value": "128",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "需留意",
+              "value": "0",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "没有新增记录",
+          "body": "已保存、已修改或已删除的原记录都不会重复写入。",
+          "mood": "Success"
+        },
+        {
+          "type": "button",
+          "label": "保存 0 笔",
+          "to": "I07",
+          "style": "Disabled"
+        },
+        {
+          "type": "button",
+          "label": "重新选文件",
+          "to": "I02",
+          "style": "Secondary"
+        },
+        {
+          "type": "button",
+          "label": "回到账本",
+          "to": "L01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "保存后再查看导入明细会重新去重；保存按钮禁用，避免重复提交旧预览。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I08",
+      "title": "这一份，整理好了",
+      "body": [
+        {
+          "type": "text",
+          "text": "✓",
+          "style": "Money"
+        },
+        {
+          "type": "text",
+          "text": "这一份，整理好了",
+          "style": "Title"
+        },
+        {
+          "type": "text",
+          "text": "已保存 126 笔，跳过 2 笔重复。另有 3 行未导入，可返回查看。",
+          "style": "Body"
+        },
+        {
+          "type": "card",
+          "title": "整理结果",
+          "items": [
+            {
+              "type": "row",
+              "label": "原始文件已保留",
+              "value": "本机",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "分类可以之后批量纠正",
+              "value": "可撤销",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "整批撤销与恢复",
+              "value": "一直保留",
+              "to": "S12"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "回到账本",
+          "to": "L01",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "查看导入明细",
+          "to": "I07",
+          "style": "Secondary"
+        },
+        {
+          "type": "button",
+          "label": "继续下一份（1/2）",
+          "to": "I04",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "O01",
+      "save": null,
+      "caption": "结果按保存、重复、未导入分开统计。无需逐笔确认普通分类即可离开。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I09",
+      "title": "文件读取失败",
+      "body": [
+        {
+          "type": "note",
+          "title": "这份文件尚未导入",
+          "body": "未找到可识别的交易表头，或文件格式/体积不符合要求。",
+          "mood": "Warning"
+        },
+        {
+          "type": "text",
+          "text": "请使用 CSV、TSV、XLSX 明细；单个文件小于 50 MB。加密压缩包需先解压。",
+          "style": "Body"
+        },
+        {
+          "type": "button",
+          "label": "重新选择文件",
+          "to": "I02",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "下载标准模板",
+          "to": "S08",
+          "style": "Secondary"
+        },
+        {
+          "type": "button",
+          "label": "改为手动记一笔",
+          "to": "L06",
+          "style": "Secondary"
+        },
+        {
+          "type": "row",
+          "label": "继续下一份文件",
+          "value": "›",
+          "to": "I04"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "读取失败不写账本；多文件队列可以继续处理下一份。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I10",
+      "title": "照片 · 系统选择器",
+      "body": [
+        {
+          "type": "text",
+          "text": "选择一张清晰、完整的账单截图",
+          "style": "Headline"
+        },
+        {
+          "type": "card",
+          "title": "最近项目",
+          "items": [
+            {
+              "type": "row",
+              "label": "合成收据 · ¥28.50",
+              "value": "示意",
+              "to": "I11"
+            },
+            {
+              "type": "row",
+              "label": "付款详情 · 多个金额",
+              "value": "示意",
+              "to": "I11"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "由系统控制照片访问",
+          "body": "取消选择不会创建记录。该画面是系统交互示意。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "选择这张截图",
+          "to": "I11",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "取消",
+          "to": "I01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "PhotosPicker 单张选择；也可从 Files 打开图片。没有独立照片分享扩展。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I11",
+      "title": "确认截图内容",
+      "body": [
+        {
+          "type": "note",
+          "title": "识别完成，请确认金额",
+          "body": "确认后才记入账本，识别结果不会自行修正金额。",
+          "mood": "Info"
+        },
+        {
+          "type": "field",
+          "label": "用途",
+          "value": "午餐",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "确认金额",
+          "value": "28.50",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "截图中的金额",
+          "value": "¥28.50 / ¥30.00",
+          "to": "I11"
+        },
+        {
+          "type": "toggle",
+          "label": "这是一笔收入",
+          "on": false,
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "默认收付款账户",
+          "value": "工资卡",
+          "to": "X05"
+        },
+        {
+          "type": "field",
+          "label": "发生时间",
+          "value": "10月2日 12:30",
+          "to": "X03"
+        },
+        {
+          "type": "row",
+          "label": "查看识别到的原文",
+          "value": "›",
+          "to": "I12"
+        },
+        {
+          "type": "button",
+          "label": "确认并保存",
+          "to": "I08",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "放弃这张截图",
+          "to": "I01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "多个候选金额时不擅自选定；手动核对用途、收支、账户与时间。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I12",
+      "title": "识别到的原文",
+      "body": [
+        {
+          "type": "card",
+          "title": "截图识别原文",
+          "items": [
+            {
+              "type": "text",
+              "text": "合成验证收据\n午餐\n实付金额 ¥28.50\n优惠前 ¥30.00\n2026-10-02 12:30:00",
+              "style": "Body"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "以真实账单为准",
+          "body": "原文可以选择复制；识别文字不是余额证明。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "返回确认金额",
+          "to": "I11",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I11",
+      "save": null,
+      "caption": "原文展开状态；OCR 输出与用户确认后的账本记录分开保留。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "I13",
+      "title": "截图识别未完成",
+      "body": [
+        {
+          "type": "note",
+          "title": "没有识别到清晰文字",
+          "body": "请使用清晰、完整截图，或改为手动记一笔。",
+          "mood": "Warning"
+        },
+        {
+          "type": "button",
+          "label": "重新选择截图",
+          "to": "I10",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "手动记一笔",
+          "to": "L06",
+          "style": "Secondary"
+        },
+        {
+          "type": "note",
+          "title": "同时间同金额重复时",
+          "body": "会提示先核对账本，避免重复补记；已填内容仍保留。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "I01",
+      "save": null,
+      "caption": "识别失败与重复补记错误均保留当前工作，不伪造成功结果。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P01",
+      "title": "资金安排",
+      "body": [
+        {
+          "type": "text",
+          "text": "先照顾必须的，\n再留给想要的。",
+          "style": "Title"
+        },
+        {
+          "type": "text",
+          "text": "安排跟随日期和实际发生的收支，不按月清零。",
+          "style": "Caption"
+        },
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "接下来",
+              "to": "P01"
+            },
+            {
+              "label": "房租分摊",
+              "to": "R01"
+            },
+            {
+              "label": "我的目标",
+              "to": "P10"
+            },
+            {
+              "label": "全部约定",
+              "to": "P07"
+            }
+          ],
+          "selected": 0
+        },
+        {
+          "type": "occurrence",
+          "title": "合租房租 · 应收分摊",
+          "date": "2026-09-08 · 已到期",
+          "amount": "+¥2,400.00",
+          "inflow": true,
+          "to": "P04"
+        },
+        {
+          "type": "occurrence",
+          "title": "合租房租 · 应收分摊",
+          "date": "2026-10-01 · 已到期",
+          "amount": "+¥2,400.00",
+          "inflow": true,
+          "to": "P04"
+        },
+        {
+          "type": "occurrence",
+          "title": "宽带与通信",
+          "date": "2026-10-14",
+          "amount": "−¥129.00",
+          "inflow": false,
+          "to": "P04"
+        },
+        {
+          "type": "occurrence",
+          "title": "云服务订阅",
+          "date": "2026-10-20",
+          "amount": "−¥68.00",
+          "inflow": false,
+          "to": "P04"
+        },
+        {
+          "type": "occurrence",
+          "title": "信用卡还款",
+          "date": "2026-10-23",
+          "amount": "−¥2,386.00",
+          "inflow": false,
+          "to": "P04"
+        },
+        {
+          "type": "occurrence",
+          "title": "工资到账",
+          "date": "2026-10-28",
+          "amount": "+¥18,500.00",
+          "inflow": true,
+          "to": "P04"
+        },
+        {
+          "type": "occurrence",
+          "title": "合租房租 · 季付",
+          "date": "2026-11-19",
+          "amount": "−¥14,400.00",
+          "inflow": false,
+          "to": "P04"
+        }
+      ],
+      "subtitle": "",
+      "nav": "安排",
+      "back": null,
+      "save": null,
+      "caption": "安排不会自动扣钱。逾期未登记继续显示，实际收付后冲减该期。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P02",
+      "title": "添加安排",
+      "body": [
+        {
+          "type": "card",
+          "title": "为哪一件事留位置",
+          "items": [
+            {
+              "type": "row",
+              "label": "收入或付款",
+              "value": "›",
+              "to": "P03"
+            },
+            {
+              "type": "row",
+              "label": "房租分摊",
+              "value": "›",
+              "to": "R02"
+            },
+            {
+              "type": "row",
+              "label": "储蓄目标",
+              "value": "›",
+              "to": "P11"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P01",
+      "save": null,
+      "caption": "工具栏加号菜单；对应三类业务表单。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P03",
+      "title": "添加资金安排",
+      "body": [
+        {
+          "type": "field",
+          "label": "安排名称",
+          "value": "信用卡还款",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "金额",
+          "value": "2,386.00",
+          "to": null
+        },
+        {
+          "type": "toggle",
+          "label": "这是预计收入",
+          "on": false,
+          "to": null
+        },
+        {
+          "type": "toggle",
+          "label": "信用本金还款",
+          "on": true,
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "首次到期日",
+          "value": "2026年10月10日",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "重复",
+          "value": "每月",
+          "to": "X07"
+        },
+        {
+          "type": "toggle",
+          "label": "设定结束日期",
+          "on": false,
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "待还信用账户",
+          "value": "信用卡",
+          "to": "X05"
+        },
+        {
+          "type": "field",
+          "label": "分类",
+          "value": "还款",
+          "to": "X04"
+        },
+        {
+          "type": "field",
+          "label": "备注",
+          "value": "每月10日",
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "预计收入不提前算现金",
+          "body": "信用本金已按待还负债预留，不再扣一次。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P01",
+      "save": [
+        "保存",
+        "P01"
+      ],
+      "caption": "周期支持单次与重复。还款必须指定信用账户；无效输入留在表单。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P04",
+      "title": "登记真实发生",
+      "body": [
+        {
+          "type": "money",
+          "label": "本期剩余 · 合租房租",
+          "value": "¥10,800.00"
+        },
+        {
+          "type": "card",
+          "title": "如何登记这次付款",
+          "items": [
+            {
+              "type": "row",
+              "label": "新建一笔真实记录",
+              "value": "›",
+              "to": "R07"
+            },
+            {
+              "type": "row",
+              "label": "关联已有记录",
+              "value": "›",
+              "to": "P05"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "已经导入过就选关联",
+          "body": "不会创建第二笔记录或再次扣款。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P01",
+      "save": null,
+      "caption": "付款/到账菜单分流：新建进入预填记录，已有流水直接关联。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P05",
+      "title": "关联已有记录",
+      "body": [
+        {
+          "type": "text",
+          "text": "把真实记录关联到“合租房租”。",
+          "style": "Headline"
+        },
+        {
+          "type": "field",
+          "label": "搜索记录",
+          "value": "房租",
+          "to": null
+        },
+        {
+          "type": "entry",
+          "title": "房租转账",
+          "subtitle": "居住 · 工资卡",
+          "amount": "−¥10,800.00",
+          "date": "10月5日",
+          "to": "P06"
+        },
+        {
+          "type": "note",
+          "title": "核对本期剩余金额",
+          "body": "超过本期剩余时要求先核对；信用还款只接受对应账户的还款记录。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P04",
+      "save": null,
+      "caption": "关联后原记录仍是一笔。分类与性质按对应计划语义校验。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P06",
+      "title": "这一期已登记",
+      "body": [
+        {
+          "type": "note",
+          "title": "真实记录已关联",
+          "body": "本期应付已完成，不再重复预留。",
+          "mood": "Success"
+        },
+        {
+          "type": "entry",
+          "title": "房租转账",
+          "subtitle": "居住 · 工资卡",
+          "amount": "−¥10,800.00",
+          "date": "10月5日",
+          "to": "L05"
+        },
+        {
+          "type": "row",
+          "label": "查看关联记录",
+          "value": "›",
+          "to": "L05"
+        },
+        {
+          "type": "row",
+          "label": "解除与安排的关联",
+          "value": "›",
+          "to": "L20"
+        },
+        {
+          "type": "button",
+          "label": "回到资金安排",
+          "to": "P01",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P01",
+      "save": null,
+      "caption": "部分付款仅抵扣实付额；尚未付完的余额仍出现在安排中。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P07",
+      "title": "全部约定",
+      "body": [
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "接下来",
+              "to": "P01"
+            },
+            {
+              "label": "房租分摊",
+              "to": "R01"
+            },
+            {
+              "label": "我的目标",
+              "to": "P10"
+            },
+            {
+              "label": "全部约定",
+              "to": "P07"
+            }
+          ],
+          "selected": 3
+        },
+        {
+          "type": "card",
+          "title": "信用卡还款",
+          "items": [
+            {
+              "type": "row",
+              "label": "每月 · ¥2,386",
+              "value": "编辑",
+              "to": "P03"
+            },
+            {
+              "type": "row",
+              "label": "停止跟踪并解除预留",
+              "value": "›",
+              "to": "P08"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "视频订阅",
+          "items": [
+            {
+              "type": "row",
+              "label": "每月 · ¥25",
+              "value": "编辑",
+              "to": "P03"
+            },
+            {
+              "type": "row",
+              "label": "已有关联记录",
+              "value": "修改期限",
+              "to": "P09"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "添加收入或付款",
+          "to": "P03",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "安排",
+      "back": null,
+      "save": null,
+      "caption": "真实流水始终保留；停止跟踪改变预留，必须直述其影响。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P08",
+      "title": "约定 · 已停止跟踪",
+      "body": [
+        {
+          "type": "note",
+          "title": "已停止跟踪并解除预留",
+          "body": "该约定不再参与资金安排；关联的真实记录保留。",
+          "mood": "Warning"
+        },
+        {
+          "type": "row",
+          "label": "继续跟踪约定",
+          "value": "›",
+          "to": "P07"
+        },
+        {
+          "type": "button",
+          "label": "回到全部约定",
+          "to": "P07",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P07",
+      "save": null,
+      "caption": "状态切换即时保存，可撤销。继续跟踪会重新计算未完成期次。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P09",
+      "title": "编辑已有历史的约定",
+      "body": [
+        {
+          "type": "field",
+          "label": "金额与周期",
+          "value": "¥25.00 · 每月 · 已固定",
+          "to": null
+        },
+        {
+          "type": "toggle",
+          "label": "设定结束日期",
+          "on": true,
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "结束日期",
+          "value": "2026年10月31日",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "备注",
+          "value": "11月起调整订阅金额",
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "保留原约定历史",
+          "body": "已有真实记录后，金额与周期固定。结束旧约定，再新建下一段约定。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "保存结束日期",
+          "to": "P07",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "新建接续约定",
+          "to": "P03",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P07",
+      "save": null,
+      "caption": "历史不得因修改未来金额而重新打开已付账单。相同规则适用于房租。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P10",
+      "title": "我的目标",
+      "body": [
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "接下来",
+              "to": "P01"
+            },
+            {
+              "label": "房租分摊",
+              "to": "R01"
+            },
+            {
+              "label": "我的目标",
+              "to": "P10"
+            },
+            {
+              "label": "全部约定",
+              "to": "P07"
+            }
+          ],
+          "selected": 2
+        },
+        {
+          "type": "card",
+          "title": "留给旅行",
+          "items": [
+            {
+              "type": "money",
+              "label": "现在为它保留",
+              "value": "¥3,000 / ¥8,000"
+            },
+            {
+              "type": "progress",
+              "label": "37% · 期待在 2027年5月",
+              "value": 0.375
+            },
+            {
+              "type": "row",
+              "label": "调整目标",
+              "value": "›",
+              "to": "P11"
+            },
+            {
+              "type": "row",
+              "label": "释放预留并移除",
+              "value": "›",
+              "to": "P12"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "添加目标",
+          "to": "P11",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "安排",
+      "back": null,
+      "save": null,
+      "caption": "目标预留不创建收支或真实转账；移除目标释放可动用金额。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P11",
+      "title": "留给重要的事",
+      "body": [
+        {
+          "type": "field",
+          "label": "真正想做的事",
+          "value": "一次慢旅行",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "目标金额",
+          "value": "8,000.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "现在为它保留多少",
+          "value": "3,000.00",
+          "to": null
+        },
+        {
+          "type": "toggle",
+          "label": "设定期待日期",
+          "on": true,
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "期待日期",
+          "value": "2027年5月1日",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "为什么重要",
+          "value": "给自己一段不赶时间的日子",
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "预留是一种资金用途",
+          "body": "不创建收入、支出或转账。预留不能超过目标总额。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P10",
+      "save": [
+        "保存",
+        "P10"
+      ],
+      "caption": "新增与调整共用；预留为空视为零。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "P12",
+      "title": "目标预留已释放",
+      "body": [
+        {
+          "type": "note",
+          "title": "目标已移除",
+          "body": "¥3,000 的用途预留已释放；真实账户余额不变。",
+          "mood": "Success"
+        },
+        {
+          "type": "button",
+          "label": "撤销移除",
+          "to": "P10",
+          "style": "Secondary"
+        },
+        {
+          "type": "button",
+          "label": "返回目标列表",
+          "to": "P10",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P10",
+      "save": null,
+      "caption": "当前实现即时移除并提供撤销，无额外确认弹窗。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R01",
+      "title": "房租分摊",
+      "body": [
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "接下来",
+              "to": "P01"
+            },
+            {
+              "label": "房租分摊",
+              "to": "R01"
+            },
+            {
+              "label": "我的目标",
+              "to": "P10"
+            },
+            {
+              "label": "全部约定",
+              "to": "P07"
+            }
+          ],
+          "selected": 1
+        },
+        {
+          "type": "card",
+          "title": "合租房租",
+          "items": [
+            {
+              "type": "money",
+              "label": "每月总额",
+              "value": "¥3,600.00"
+            },
+            {
+              "type": "row",
+              "label": "我每月承担",
+              "value": "¥1,800.00",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "每 3 个月付一次",
+              "value": "持续跟踪",
+              "to": "R03"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "添加房租约定",
+          "to": "R02",
+          "style": "Primary"
+        },
+        {
+          "type": "note",
+          "title": "分开看实收与待付",
+          "body": "月度应收不提前计入现金，季度付款预留给房东的全额。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": "安排",
+      "back": null,
+      "save": null,
+      "caption": "房租列表显示合同摘要，点击进入每月核对。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R02",
+      "title": "建立房租分摊",
+      "body": [
+        {
+          "type": "field",
+          "label": "名称",
+          "value": "合租房租",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "每月房租总额",
+          "value": "3,600.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "其中我每月承担",
+          "value": "1,800.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "从哪天开始记分摊",
+          "value": "2026年9月1日",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "下一笔租金付款日",
+          "value": "2026年10月5日",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "每几个月付一次",
+          "value": "3 个月",
+          "to": "X07"
+        },
+        {
+          "type": "field",
+          "label": "每月几日收分摊",
+          "value": "1 日",
+          "to": "X07"
+        },
+        {
+          "type": "toggle",
+          "label": "设定结束日期",
+          "on": false,
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "房东全额优先预留",
+          "body": "未收到的室友分摊不算现有现金；消费仅计个人承担比例。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R01",
+      "save": [
+        "保存",
+        "R03"
+      ],
+      "caption": "1—12个月付款周期、1—28日分摊日。金额与日期校验失败仍在表单。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R03",
+      "title": "合租房租",
+      "body": [
+        {
+          "type": "money",
+          "label": "每月应收分摊",
+          "value": "¥1,800.00"
+        },
+        {
+          "type": "card",
+          "title": "真实约定",
+          "items": [
+            {
+              "type": "row",
+              "label": "每月总租金",
+              "value": "¥3,600",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "我每月承担",
+              "value": "¥1,800",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "每 3 个月付款",
+              "value": "¥10,800",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "按月份核对",
+          "items": [
+            {
+              "type": "row",
+              "label": "2026年10月 · 待收 ¥900",
+              "value": "登记",
+              "to": "R05"
+            },
+            {
+              "type": "row",
+              "label": "已收 ¥900 / ¥1,800",
+              "value": "部分到账",
+              "to": "R04"
+            },
+            {
+              "type": "row",
+              "label": "2026年9月 · 已收齐",
+              "value": "¥1,800",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "label": "查看关联记录",
+          "value": "›",
+          "to": "L05"
+        },
+        {
+          "type": "row",
+          "label": "编辑房租约定",
+          "value": "›",
+          "to": "R08"
+        },
+        {
+          "type": "row",
+          "label": "停止跟踪并解除租金预留",
+          "value": "›",
+          "to": "R09"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R01",
+      "save": null,
+      "caption": "月度分摊允许漏收、部分收款；付款与个人消费按不同金额表达。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R04",
+      "title": "部分收款记录",
+      "body": [
+        {
+          "type": "money",
+          "label": "10月 · 尚待收到",
+          "value": "¥900.00"
+        },
+        {
+          "type": "progress",
+          "label": "已收 ¥900 / 应收 ¥1,800",
+          "value": 0.5
+        },
+        {
+          "type": "entry",
+          "title": "室友房租分摊",
+          "subtitle": "分摊 · 微信零钱",
+          "amount": "+¥900.00",
+          "date": "10月1日",
+          "to": "L05"
+        },
+        {
+          "type": "button",
+          "label": "登记剩余分摊",
+          "to": "R05",
+          "style": "Primary"
+        },
+        {
+          "type": "row",
+          "label": "查看这笔收款",
+          "value": "›",
+          "to": "L05"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R03",
+      "save": null,
+      "caption": "允许本月多次到账。只把已经收到的金额计入现金，不将分摊当工资收入。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R05",
+      "title": "登记分摊收款",
+      "body": [
+        {
+          "type": "card",
+          "title": "10月 · 尚待收到 ¥900",
+          "items": [
+            {
+              "type": "row",
+              "label": "新建收款记录",
+              "value": "›",
+              "to": "R10"
+            },
+            {
+              "type": "row",
+              "label": "关联已有流入",
+              "value": "›",
+              "to": "R06"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "原流水已导入时",
+          "body": "直接关联，避免再次增加现金。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R03",
+      "save": null,
+      "caption": "登记菜单位于每个月份，月份关系随真实记录保留。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R06",
+      "title": "关联分摊收款",
+      "body": [
+        {
+          "type": "text",
+          "text": "选择已经收到的转账，记为本月房租分摊。",
+          "style": "Body"
+        },
+        {
+          "type": "entry",
+          "title": "室友转账",
+          "subtitle": "待明确流入 · 微信零钱",
+          "amount": "+¥900.00",
+          "date": "10月2日",
+          "to": "R03"
+        },
+        {
+          "type": "note",
+          "title": "只更正用途与关联",
+          "body": "不会再增加一次现金。原来的收入性质更正为房租分摊。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R03",
+      "save": null,
+      "caption": "候选必须是未关联的非双边流入；支持之后从详情解除关联。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R07",
+      "title": "登记租金付款",
+      "body": [
+        {
+          "type": "money",
+          "label": "向房东实际支付",
+          "value": "¥10,800.00"
+        },
+        {
+          "type": "field",
+          "label": "用途",
+          "value": "合租房租 · 季付",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "性质",
+          "value": "支出",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "付款账户",
+          "value": "工资卡",
+          "to": "X05"
+        },
+        {
+          "type": "field",
+          "label": "实际付款时间",
+          "value": "2026年10月5日",
+          "to": "X03"
+        },
+        {
+          "type": "note",
+          "title": "已连接到本期租金",
+          "body": "账户按全额流出；个人消费按已记录的承担比例计算。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "保存真实付款",
+          "to": "P06",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P04",
+      "save": null,
+      "caption": "由到期安排预填关联信息；保存前仍可核对金额、账户与实际日期。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R08",
+      "title": "编辑房租约定",
+      "body": [
+        {
+          "type": "field",
+          "label": "租金与承担比例",
+          "value": "¥3,600 / ¥1,800 · 已固定",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "付款周期",
+          "value": "每 3 个月 · 已固定",
+          "to": null
+        },
+        {
+          "type": "toggle",
+          "label": "设定结束日期",
+          "on": true,
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "结束日期",
+          "value": "2026年12月31日",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "备注",
+          "value": "明年重新约定",
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "已有历史按原约定保留",
+          "body": "新金额、承担比例或周期使用接续约定。已到期欠款继续显示。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "保存期限",
+          "to": "R03",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "建立接续约定",
+          "to": "R02",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R03",
+      "save": null,
+      "caption": "有真实记录后锁定历史参数；没有关联记录时可正常编辑全部字段。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R09",
+      "title": "房租 · 已停止跟踪",
+      "body": [
+        {
+          "type": "note",
+          "title": "租金预留已解除",
+          "body": "真实收付款与分摊记录保留；停止的约定不再参与资金安排。",
+          "mood": "Warning"
+        },
+        {
+          "type": "row",
+          "label": "继续跟踪租金",
+          "value": "›",
+          "to": "R03"
+        },
+        {
+          "type": "button",
+          "label": "返回房租列表",
+          "to": "R01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R01",
+      "save": null,
+      "caption": "即时可逆状态切换。记录和账户余额不随状态清空。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "R10",
+      "title": "新建分摊收款",
+      "body": [
+        {
+          "type": "money",
+          "label": "本次实际收到",
+          "value": "¥900.00"
+        },
+        {
+          "type": "field",
+          "label": "用途",
+          "value": "合租房租 · 分摊收款",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "性质",
+          "value": "房租分摊",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "入账账户",
+          "value": "微信零钱",
+          "to": "X05"
+        },
+        {
+          "type": "field",
+          "label": "发生时间",
+          "value": "2026年10月2日",
+          "to": "X03"
+        },
+        {
+          "type": "field",
+          "label": "备注",
+          "value": "对应 2026年10月，不计作收入",
+          "to": null
+        },
+        {
+          "type": "button",
+          "label": "保存收款",
+          "to": "R03",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "R05",
+      "save": null,
+      "caption": "只登记真实已收；部分金额保留该月剩余应收。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N01",
+      "title": "洞察",
+      "body": [
+        {
+          "type": "text",
+          "text": "看懂花费，也看见自己。",
+          "style": "Title"
+        },
+        {
+          "type": "text",
+          "text": "从真实记录中找线索，不为每一笔小快乐打分。",
+          "style": "Caption"
+        },
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "近 30 天",
+              "to": "N01"
+            },
+            {
+              "label": "近 90 天",
+              "to": "N02"
+            },
+            {
+              "label": "近一年",
+              "to": "N02"
+            }
+          ],
+          "selected": 0
+        },
+        {
+          "type": "stats"
+        },
+        {
+          "type": "chart",
+          "kind": "categories"
+        },
+        {
+          "type": "chart",
+          "kind": "spending"
+        },
+        {
+          "type": "card",
+          "title": "值得看一眼的线索",
+          "items": [
+            {
+              "type": "text",
+              "text": "餐饮是这段时间最大的消费去向，共 ¥1,492.00。它是否符合你最近的重心？",
+              "style": "Body"
+            },
+            {
+              "type": "text",
+              "text": "比前一段同样长的时间多 ¥3,405.00。先确认两个区间的账单都完整，再判断变化。",
+              "style": "Body"
+            },
+            {
+              "type": "text",
+              "text": "你有 2 项持续付款约定。可以在安排中核对仍然需要的服务。",
+              "style": "Body"
+            },
+            {
+              "type": "text",
+              "text": "这些线索来自本地计算，不是 AI 推断，也不代表必须削减消费。",
+              "style": "Caption"
+            }
+          ]
+        },
+        {
+          "type": "quickAdvice"
+        }
+      ],
+      "subtitle": "",
+      "nav": "洞察",
+      "back": null,
+      "save": null,
+      "caption": "统计把日常收支与本金/内部移动分开。退款按关联比例冲减个人消费。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N02",
+      "title": "洞察 · 不同时间范围",
+      "body": [
+        {
+          "type": "segments",
+          "items": [
+            {
+              "label": "近 30 天",
+              "to": "N01"
+            },
+            {
+              "label": "近 90 天",
+              "to": "N02"
+            },
+            {
+              "label": "近一年",
+              "to": "N02"
+            }
+          ],
+          "selected": 1
+        },
+        {
+          "type": "card",
+          "title": "近 90 天",
+          "items": [
+            {
+              "type": "money",
+              "label": "个人消费",
+              "value": "¥16,720.00"
+            },
+            {
+              "type": "chart",
+              "kind": "spending"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "分类与趋势",
+          "items": [
+            {
+              "type": "row",
+              "label": "居住",
+              "value": "¥5,400.00",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "餐饮",
+              "value": "¥4,268.00",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "交通",
+              "value": "¥980.00",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "购买前想一想",
+          "to": "N04",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "洞察",
+      "back": null,
+      "save": null,
+      "caption": "同一页切换回顾范围。金额是固定合成示例，不代表用户真实财务数据。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N03",
+      "title": "消费分类区 · 同页滚动",
+      "body": [
+        {
+          "type": "chart",
+          "kind": "categories"
+        }
+      ],
+      "subtitle": "",
+      "nav": "洞察",
+      "back": null,
+      "save": null,
+      "caption": "洞察页内“钱花在了哪里”的滚动阅读状态。当前应用没有独立可点击的分类明细页；该能力留待改版讨论，未擅自补上。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N04",
+      "title": "购买前想一想",
+      "body": [
+        {
+          "type": "text",
+          "text": "它值得，\n占用这份余白吗？",
+          "style": "Title"
+        },
+        {
+          "type": "text",
+          "text": "先算资金承受能力，再想使用价值。最终决定由你做。",
+          "style": "Body"
+        },
+        {
+          "type": "field",
+          "label": "想买什么",
+          "value": "降噪耳机",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "金额",
+          "value": "2,980.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "它能解决什么问题（可选）",
+          "value": "减少通勤和办公噪声",
+          "to": null
+        },
+        {
+          "type": "button",
+          "label": "看看对资金的影响",
+          "to": "N05",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "O01",
+      "save": null,
+      "caption": "使用当前资金快照计算。输入变化或账本变化会使旧结果失效。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N05",
+      "title": "购买影响 · 有余量",
+      "body": [
+        {
+          "type": "note",
+          "title": "从已知安排看，有空间",
+          "body": "这笔购买之后，已知付款和你的预留仍有覆盖。",
+          "mood": "Success"
+        },
+        {
+          "type": "money",
+          "label": "购买后的保守余量",
+          "value": "¥8,828.30"
+        },
+        {
+          "type": "row",
+          "label": "查看计算与完整度依据",
+          "value": "›",
+          "to": "N07"
+        },
+        {
+          "type": "card",
+          "title": "除了金额，还可以想想",
+          "items": [
+            {
+              "type": "text",
+              "text": "· 会经常使用，还是只解决一时冲动？\n· 是否已经拥有能完成同样事情的物品？\n· 这笔钱符合你更重视的生活吗？",
+              "style": "Body"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "label": "设备端 AI 补充想法",
+          "value": "›",
+          "to": "N08"
+        },
+        {
+          "type": "button",
+          "label": "保存这次思考",
+          "to": "N12",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "修改购买金额",
+          "to": "N04",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "N04",
+      "save": null,
+      "caption": "数值由确定性规则计算；不是自动推荐购买，更不执行交易。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N06",
+      "title": "购买影响 · 超出余量",
+      "body": [
+        {
+          "type": "note",
+          "title": "先留出必须支付的钱",
+          "body": "这笔 ¥19,999 的购买超过当前保守可动用金额。",
+          "mood": "Warning"
+        },
+        {
+          "type": "money",
+          "label": "购买后的保守余量",
+          "value": "−¥8,190.70"
+        },
+        {
+          "type": "row",
+          "label": "查看计算与完整度依据",
+          "value": "›",
+          "to": "N07"
+        },
+        {
+          "type": "card",
+          "title": "先核对这几件事",
+          "items": [
+            {
+              "type": "row",
+              "label": "近期必须支付",
+              "value": "查看安排",
+              "to": "P01"
+            },
+            {
+              "type": "row",
+              "label": "余额是否新鲜",
+              "value": "核对账户",
+              "to": "A04"
+            },
+            {
+              "type": "text",
+              "text": "可以降低支出、等待真实收入到账，或调整自己的预留。",
+              "style": "Body"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "修改金额再看",
+          "to": "N04",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "仍然保存这次思考",
+          "to": "N12",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "N04",
+      "save": null,
+      "caption": "负值明确显示；不给“未来可能入账”提前授信。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N07",
+      "title": "购买判断 · 依据",
+      "body": [
+        {
+          "type": "card",
+          "title": "本次确定性计算",
+          "items": [
+            {
+              "type": "row",
+              "label": "购买前保守可动用",
+              "value": "¥11,808.30",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "本次购买",
+              "value": "−¥2,980.00",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "购买后保守余量",
+              "value": "¥8,828.30",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "完整度与前提",
+          "items": [
+            {
+              "type": "text",
+              "text": "· 按当前余额与未来 90 天已知安排。\n· 信用负债、目标、应急和生活预留已扣除。\n· 未到账收入与投资市值没有当现金。\n· 未录入的义务仍可能改变判断。",
+              "style": "Body"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "核对账户与预留",
+          "to": "A04",
+          "style": "Secondary"
+        },
+        {
+          "type": "button",
+          "label": "返回购买影响",
+          "to": "N05",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "N05",
+      "save": null,
+      "caption": "展开说明依赖哪些账本事实；旧数据和缺失计划必须可见。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N08",
+      "title": "设备端 AI · 思考中",
+      "body": [
+        {
+          "type": "money",
+          "label": "规则计算的购买后余量",
+          "value": "¥8,828.30"
+        },
+        {
+          "type": "progress",
+          "label": "正在本机思考…",
+          "value": 0.55
+        },
+        {
+          "type": "note",
+          "title": "金额仍以规则为准",
+          "body": "模型只补充使用价值思考，不能修改金额、账户或资金性质。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "N05",
+      "save": null,
+      "caption": "此进度是界面演示；关闭页面会取消任务，不表示本轮调用了实际模型。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null,
+      "autoNext": "N09"
+    },
+    {
+      "id": "N09",
+      "title": "设备端 AI · 补充想法",
+      "body": [
+        {
+          "type": "money",
+          "label": "购买后的保守余量",
+          "value": "¥8,828.30"
+        },
+        {
+          "type": "card",
+          "title": "使用价值思考",
+          "items": [
+            {
+              "type": "text",
+              "text": "如果降噪能改善每天的通勤和专注，可以先明确一周实际使用几次。也可以试戴后再决定，避免为不合适的佩戴体验买单。",
+              "style": "Body"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "AI 文案示意",
+          "body": "可能不准确。上方金额始终来自确定性计算；画布文字不是一次真实模型输出。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "保存这次思考",
+          "to": "N12",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "重新补充想法",
+          "to": "N08",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "N05",
+      "save": null,
+      "caption": "生成成功的 UI 状态设计。真实设备可用性和输出质量尚待验收。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N10",
+      "title": "设备端 AI · 不可用",
+      "body": [
+        {
+          "type": "money",
+          "label": "购买后的保守余量",
+          "value": "¥8,828.30"
+        },
+        {
+          "type": "note",
+          "title": "当前设备无法使用本机模型",
+          "body": "设备、系统、地区、模型下载或设置开关会影响可用性。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "让本机 AI 补充想法",
+          "to": "N10",
+          "style": "Disabled"
+        },
+        {
+          "type": "row",
+          "label": "前往我的 · 本机智能",
+          "value": "›",
+          "to": "S17"
+        },
+        {
+          "type": "button",
+          "label": "保存规则计算与思考",
+          "to": "N12",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "N05",
+      "save": null,
+      "caption": "本机模型不可用时，账本、分类规则、金额计算和保存功能仍然可用。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N11",
+      "title": "设备端 AI · 未完成",
+      "body": [
+        {
+          "type": "money",
+          "label": "规则计算结果保留",
+          "value": "¥8,828.30"
+        },
+        {
+          "type": "note",
+          "title": "这次本机思考没有完成",
+          "body": "资金计算已保留，可以稍后重试。",
+          "mood": "Warning"
+        },
+        {
+          "type": "button",
+          "label": "重试补充想法",
+          "to": "N08",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "直接保存这次思考",
+          "to": "N12",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "N05",
+      "save": null,
+      "caption": "失败不抹除规则结果，避免把模型失败误写为资金计算失败。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "N12",
+      "title": "已保存这次思考",
+      "body": [
+        {
+          "type": "note",
+          "title": "已经记下这次思考",
+          "body": "保存购买名称、金额、规则结论和你的用途说明。",
+          "mood": "Success"
+        },
+        {
+          "type": "card",
+          "title": "降噪耳机",
+          "items": [
+            {
+              "type": "money",
+              "label": "考虑的购买金额",
+              "value": "¥2,980.00"
+            },
+            {
+              "type": "text",
+              "text": "从已知安排看，有空间。减少通勤和办公噪声。",
+              "style": "Body"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "已经记下这次思考",
+          "to": "N12",
+          "style": "Disabled"
+        },
+        {
+          "type": "button",
+          "label": "回到洞察",
+          "to": "N01",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "N01",
+      "save": null,
+      "caption": "保存不产生支出记录，也不执行购买；实际买下后另记真实流水。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S01",
+      "title": "我的余白",
+      "body": [
+        {
+          "type": "brand"
+        },
+        {
+          "type": "text",
+          "text": "资金偏好",
+          "style": "Caption"
+        },
+        {
+          "type": "card",
+          "title": "",
+          "items": [
+            {
+              "type": "row",
+              "label": "从今天向前看",
+              "value": "90 天",
+              "to": "X07"
+            },
+            {
+              "type": "plainField",
+              "value": "5000"
+            },
+            {
+              "type": "plainField",
+              "value": "40"
+            },
+            {
+              "type": "plainField",
+              "value": "为长期有用和真正喜欢的事物花钱"
+            },
+            {
+              "type": "button",
+              "label": "保存资金偏好",
+              "to": "X06",
+              "style": "Secondary"
+            },
+            {
+              "type": "text",
+              "text": "日常生活预留用于未逐项列出的零碎开销。不要把同一笔固定付款既列为安排又放进日常预留。调整不会改动真实账单。",
+              "style": "Caption"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "整理与保护",
+          "style": "Caption"
+        },
+        {
+          "type": "card",
+          "title": "",
+          "items": [
+            {
+              "type": "row",
+              "label": "收支分类",
+              "value": "›",
+              "to": "S03"
+            },
+            {
+              "type": "row",
+              "label": "自动分类规则",
+              "value": "›",
+              "to": "S05"
+            },
+            {
+              "type": "row",
+              "label": "备份、恢复与导出",
+              "value": "›",
+              "to": "S07"
+            },
+            {
+              "type": "row",
+              "label": "导入批次与本地恢复",
+              "value": "›",
+              "to": "S12"
+            },
+            {
+              "type": "toggle",
+              "label": "使用设备解锁保护账本",
+              "on": false,
+              "to": "S15"
+            },
+            {
+              "type": "text",
+              "text": "使用设备现有的 Face ID、Touch ID 或密码。原始账单和本地账本不会上传。请另存一份加密备份，防止设备丢失。",
+              "style": "Caption"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "界面与本机智能",
+          "style": "Caption"
+        },
+        {
+          "type": "card",
+          "title": "",
+          "items": [
+            {
+              "type": "row",
+              "label": "外观",
+              "value": "跟随系统",
+              "to": "S17"
+            },
+            {
+              "type": "toggle",
+              "label": "允许使用设备端 AI",
+              "on": true,
+              "to": "S17"
+            },
+            {
+              "type": "text",
+              "text": "此设备不支持 Apple Intelligence；资金计算与本地规则正常可用",
+              "style": "Caption"
+            },
+            {
+              "type": "text",
+              "text": "本机规则先归类，设备端 AI 可补充未匹配用途并回答购买价值问题；金额与资金性质不交给 AI 修改。当前版本不会连接云端模型。",
+              "style": "Caption"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "了解余白",
+          "style": "Caption"
+        },
+        {
+          "type": "card",
+          "title": "",
+          "items": [
+            {
+              "type": "row",
+              "label": "使用指南与计算口径",
+              "value": "›",
+              "to": "S18"
+            },
+            {
+              "type": "row",
+              "label": "退出示例账本",
+              "value": "›",
+              "to": "A01"
+            },
+            {
+              "type": "text",
+              "text": "余白 1.0.0\n把钱理清，把生活留给自己。\n不执行转账，不连接银行，不自动交易。",
+              "style": "Caption"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": "我的",
+      "back": null,
+      "save": null,
+      "caption": "当前设置是同页表单，资金偏好没有被移到二级页。5000和40输入值显示后缺少标签，是现有缺陷，保持现状供讨论。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S02",
+      "title": "资金偏好",
+      "body": [
+        {
+          "type": "field",
+          "label": "从今天向前看",
+          "value": "90 天",
+          "to": "X07"
+        },
+        {
+          "type": "field",
+          "label": "应急底线金额",
+          "value": "2,000.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "每天的日常生活预留",
+          "value": "60.00",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "我希望把钱花在什么上",
+          "value": "健康、学习、重要的人和长期体验",
+          "to": null
+        },
+        {
+          "type": "button",
+          "label": "保存资金偏好",
+          "to": "X06",
+          "style": "Primary"
+        },
+        {
+          "type": "note",
+          "title": "不重复预留同一项支出",
+          "body": "固定付款已在安排里时，不要再把它计入日常生活预留。调整不改真实账单。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S01",
+      "save": null,
+      "caption": "观察期支持30/60/90/180/365天。金额非法时保留输入并报错。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S03",
+      "title": "收支分类",
+      "body": [
+        {
+          "type": "field",
+          "label": "分类名称",
+          "value": "运动健康",
+          "to": null
+        },
+        {
+          "type": "toggle",
+          "label": "用于收入",
+          "on": false,
+          "to": null
+        },
+        {
+          "type": "button",
+          "label": "添加",
+          "to": "S03",
+          "style": "Secondary"
+        },
+        {
+          "type": "card",
+          "title": "已有分类 · 点击重命名",
+          "items": [
+            {
+              "type": "row",
+              "label": "餐饮",
+              "value": "支出",
+              "to": "S04"
+            },
+            {
+              "type": "row",
+              "label": "居住",
+              "value": "支出",
+              "to": "S04"
+            },
+            {
+              "type": "row",
+              "label": "交通",
+              "value": "支出",
+              "to": "S04"
+            },
+            {
+              "type": "row",
+              "label": "工资",
+              "value": "收入",
+              "to": "S04"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "重命名可撤销",
+          "body": "同步更新记录、规则、安排与分类别名；初始分类保留兜底用途。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S01",
+      "save": null,
+      "caption": "空名称不提交，同名分类报错。用户分类不会被自动分类抹除。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S04",
+      "title": "重命名分类",
+      "body": [
+        {
+          "type": "dialog",
+          "title": "重命名分类",
+          "message": "相关记录、规则与安排会一起更新。",
+          "actions": [
+            {
+              "label": "保存",
+              "to": "X06",
+              "style": "Primary"
+            },
+            {
+              "label": "取消",
+              "to": "S03",
+              "style": "Secondary"
+            }
+          ]
+        },
+        {
+          "type": "field",
+          "label": "名称",
+          "value": "餐饮与饮品",
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "原始分类别名保留",
+          "body": "之后重新导入仍对应到新的分类名称。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S03",
+      "save": null,
+      "caption": "重命名弹窗含输入框；空白或重复名称阻止保存。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S05",
+      "title": "自动分类规则",
+      "body": [
+        {
+          "type": "field",
+          "label": "用途或商户关键词",
+          "value": "瑞幸",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "归入分类",
+          "value": "餐饮",
+          "to": "X04"
+        },
+        {
+          "type": "toggle",
+          "label": "同时纠正已有 12 笔记录",
+          "on": true,
+          "to": null
+        },
+        {
+          "type": "button",
+          "label": "保存规则",
+          "to": "S06",
+          "style": "Primary"
+        },
+        {
+          "type": "card",
+          "title": "已学会的规则",
+          "items": [
+            {
+              "type": "toggle",
+              "label": "瑞幸 → 餐饮",
+              "on": true,
+              "to": "S06"
+            },
+            {
+              "type": "row",
+              "label": "删除规则",
+              "value": "可撤销",
+              "to": "X06"
+            },
+            {
+              "type": "toggle",
+              "label": "地铁 → 交通",
+              "on": true,
+              "to": "S06"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "新规则优先",
+          "body": "只改分类，不修改金额、账户或性质。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S01",
+      "save": null,
+      "caption": "新增、启停、删除规则共用即时保存与撤销；可选同时应用历史匹配记录。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S06",
+      "title": "分类规则已保存",
+      "body": [
+        {
+          "type": "note",
+          "title": "规则已学会",
+          "body": "“瑞幸”归入餐饮，已有 12 笔普通收支已同步纠正。",
+          "mood": "Success"
+        },
+        {
+          "type": "toggle",
+          "label": "启用这条规则",
+          "on": true,
+          "to": "S05"
+        },
+        {
+          "type": "button",
+          "label": "撤销这次修改",
+          "to": "S05",
+          "style": "Secondary"
+        },
+        {
+          "type": "button",
+          "label": "回到规则列表",
+          "to": "S05",
+          "style": "Primary"
+        },
+        {
+          "type": "row",
+          "label": "查看相关账本记录",
+          "value": "›",
+          "to": "L02"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S05",
+      "save": null,
+      "caption": "本金、转账、退款等不因普通分类规则改变资金性质。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S07",
+      "title": "备份、恢复与导出",
+      "body": [
+        {
+          "type": "card",
+          "title": "完整备份",
+          "items": [
+            {
+              "type": "text",
+              "text": "含账户、记录、规则、安排、目标和原始附件。",
+              "style": "Body"
+            },
+            {
+              "type": "field",
+              "label": "备份密码（推荐，至少 8 位）",
+              "value": "••••••••••",
+              "to": null
+            },
+            {
+              "type": "button",
+              "label": "导出完整备份",
+              "to": "S08",
+              "style": "Primary"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "密码无法找回",
+          "body": "不填密码导出未加密备份；只保存到你选择的位置。",
+          "mood": "Info"
+        },
+        {
+          "type": "card",
+          "title": "恢复到这台设备",
+          "items": [
+            {
+              "type": "field",
+              "label": "加密备份密码",
+              "value": "••••••••••",
+              "to": null
+            },
+            {
+              "type": "button",
+              "label": "选择备份文件",
+              "to": "S09",
+              "style": "Secondary"
+            },
+            {
+              "type": "row",
+              "label": "使用当前密码重新读取",
+              "value": "›",
+              "to": "S09"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "label": "导出全部记录为 CSV",
+          "value": "›",
+          "to": "S08"
+        },
+        {
+          "type": "row",
+          "label": "下载导入模板",
+          "value": "›",
+          "to": "S08"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S01",
+      "save": null,
+      "caption": "完整备份用于迁移恢复；CSV仅含记录，无附件、安排或余额锚点。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S08",
+      "title": "保存到文件",
+      "body": [
+        {
+          "type": "field",
+          "label": "文件名",
+          "value": "余白备份-2026-10-02.yubaibackup",
+          "to": null
+        },
+        {
+          "type": "card",
+          "title": "选择保存位置",
+          "items": [
+            {
+              "type": "row",
+              "label": "我的 iPhone / 余白",
+              "value": "›",
+              "to": "S11"
+            },
+            {
+              "type": "row",
+              "label": "iCloud Drive（由系统管理）",
+              "value": "›",
+              "to": "S11"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "存储",
+          "to": "S11",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "取消",
+          "to": "S07",
+          "style": "Secondary"
+        },
+        {
+          "type": "note",
+          "title": "由你选择的目的地",
+          "body": "应用不自动上传或同步。CSV、模板、原文件导出共用系统保存界面。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S07",
+      "save": null,
+      "caption": "实际系统文件位置由用户控制；原型不写入文件、不连接云存储。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S09",
+      "title": "已验证的备份",
+      "body": [
+        {
+          "type": "note",
+          "title": "备份已读取并验证",
+          "body": "先检查数量与最后修改时间，再决定恢复。",
+          "mood": "Success"
+        },
+        {
+          "type": "card",
+          "title": "将恢复的完整账本",
+          "items": [
+            {
+              "type": "row",
+              "label": "账户",
+              "value": "5 个",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "有效记录",
+              "value": "128 笔",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "原始附件",
+              "value": "3 份",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "最后修改",
+              "value": "10月2日 09:20",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "确认恢复这份账本",
+          "to": "S11",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "取消恢复",
+          "to": "S07",
+          "style": "Secondary"
+        },
+        {
+          "type": "note",
+          "title": "切换完整账本，不合并",
+          "body": "恢复前保留当前版本到本地历史。两台设备请交接同一完整备份。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S07",
+      "save": null,
+      "caption": "选择并读取文件后才出现确认；加密、完整性、版本不通过则停在错误状态。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S10",
+      "title": "备份读取失败",
+      "body": [
+        {
+          "type": "note",
+          "title": "密码错误或文件损坏",
+          "body": "尚未切换账本。请核对密码及备份文件。",
+          "mood": "Warning"
+        },
+        {
+          "type": "field",
+          "label": "重新填写备份密码",
+          "value": "••••••••••",
+          "to": null
+        },
+        {
+          "type": "button",
+          "label": "使用当前密码重新读取",
+          "to": "S09",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "选择另一份备份",
+          "to": "S07",
+          "style": "Secondary"
+        },
+        {
+          "type": "note",
+          "title": "原账本仍然保留",
+          "body": "不因读取失败创建空账本；示例备份也不能覆盖真实账本。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S07",
+      "save": null,
+      "caption": "密码错误、文件损坏、版本不兼容、示例备份等均明确阻止恢复。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S11",
+      "title": "备份操作完成",
+      "body": [
+        {
+          "type": "note",
+          "title": "操作已完成",
+          "body": "导出时文件保存到你选择的位置；恢复时原账本保留在本地历史。",
+          "mood": "Success"
+        },
+        {
+          "type": "button",
+          "label": "回到账本核对",
+          "to": "L01",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "查看本地恢复历史",
+          "to": "S12",
+          "style": "Secondary"
+        },
+        {
+          "type": "row",
+          "label": "回到备份与导出",
+          "value": "›",
+          "to": "S07"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S07",
+      "save": null,
+      "caption": "此为两个成功反馈的合并说明页；实际应用按动作分别显示“文件已保存”或“恢复已完成”。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S12",
+      "title": "导入与恢复历史",
+      "body": [
+        {
+          "type": "card",
+          "title": "微信账单.csv",
+          "items": [
+            {
+              "type": "text",
+              "text": "10月2日 09:20 · 126 笔",
+              "style": "Caption"
+            },
+            {
+              "type": "row",
+              "label": "导出原文件",
+              "value": "›",
+              "to": "S08"
+            },
+            {
+              "type": "row",
+              "label": "撤销整批",
+              "value": "›",
+              "to": "S13"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "修改前的完整版本",
+          "items": [
+            {
+              "type": "row",
+              "label": "10月2日 09:18",
+              "value": "恢复",
+              "to": "S14"
+            },
+            {
+              "type": "row",
+              "label": "10月1日 21:06",
+              "value": "恢复",
+              "to": "S14"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "最多保留 20 份",
+          "body": "示例操作只在内存，不生成真实账本历史。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S01",
+      "save": null,
+      "caption": "导入批次保留原始文件；恢复历史是修改前的完整账本版本。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S13",
+      "title": "撤销整批导入",
+      "body": [
+        {
+          "type": "dialog",
+          "title": "撤销本批次全部 126 笔？",
+          "message": "包括之后编辑过的记录，将移入回收站。原始账单仍保留。",
+          "actions": [
+            {
+              "label": "撤销这一批",
+              "to": "L14",
+              "style": "Danger"
+            },
+            {
+              "label": "取消",
+              "to": "S12",
+              "style": "Secondary"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S12",
+      "save": null,
+      "caption": "影响范围明确到批次和记录数；之后可从回收站或完整历史恢复。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S14",
+      "title": "恢复旧版本",
+      "body": [
+        {
+          "type": "card",
+          "title": "即将恢复",
+          "items": [
+            {
+              "type": "row",
+              "label": "时间",
+              "value": "10月1日 21:06",
+              "to": null
+            },
+            {
+              "type": "row",
+              "label": "类型",
+              "value": "修改前完整账本",
+              "to": null
+            }
+          ]
+        },
+        {
+          "type": "dialog",
+          "title": "恢复到这个版本？",
+          "message": "当前账本会先保留，再切换到所选版本。",
+          "actions": [
+            {
+              "label": "恢复所选版本",
+              "to": "S11",
+              "style": "Primary"
+            },
+            {
+              "label": "取消",
+              "to": "S12",
+              "style": "Secondary"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S12",
+      "save": null,
+      "caption": "可恢复到恢复之前的账本。失败不会显示恢复成功。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S15",
+      "title": "你的账本，只属于你",
+      "body": [
+        {
+          "type": "text",
+          "text": "余白",
+          "style": "Title"
+        },
+        {
+          "type": "text",
+          "text": "设备解锁保护账本",
+          "style": "Headline"
+        },
+        {
+          "type": "note",
+          "title": "使用现有设备认证",
+          "body": "Face ID、Touch ID 或设备密码。离开应用后遮住内容。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "解锁余白",
+          "to": "O01",
+          "style": "Primary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": null,
+      "save": null,
+      "caption": "开启保护前先由系统验证；返回前台需要解锁。原型按钮只演示状态。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S16",
+      "title": "验证未完成",
+      "body": [
+        {
+          "type": "note",
+          "title": "尚未解锁",
+          "body": "可以重试设备认证。账本内容保持隐藏。",
+          "mood": "Warning"
+        },
+        {
+          "type": "button",
+          "label": "重试解锁",
+          "to": "S15",
+          "style": "Primary"
+        },
+        {
+          "type": "note",
+          "title": "开启保护时认证失败",
+          "body": "提示“验证未完成，账本锁尚未开启”；设备没有密码时先设置系统密码。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": null,
+      "save": null,
+      "caption": "取消或失败不暴露账本。原型不调用真实 Face ID / Touch ID。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S17",
+      "title": "外观与本机智能",
+      "body": [
+        {
+          "type": "field",
+          "label": "外观",
+          "value": "跟随系统",
+          "to": "X08"
+        },
+        {
+          "type": "toggle",
+          "label": "允许使用设备端 AI",
+          "on": true,
+          "to": "N10"
+        },
+        {
+          "type": "note",
+          "title": "条件可用的设备端模型",
+          "body": "规则先归类，模型补充未匹配用途和购买思考；不连接云端模型。",
+          "mood": "Info"
+        },
+        {
+          "type": "row",
+          "label": "使用设备解锁保护账本",
+          "value": "›",
+          "to": "S15"
+        },
+        {
+          "type": "row",
+          "label": "退出示例账本",
+          "value": "›",
+          "to": "A01"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S01",
+      "save": null,
+      "caption": "跟随系统/浅色/深色均即时保存；本机 AI 开关不影响核心账务。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S18",
+      "title": "使用指南",
+      "body": [
+        {
+          "type": "card",
+          "title": "第一次使用",
+          "items": [
+            {
+              "type": "text",
+              "text": "1 添加账户与真实余额\n2 设置底线、生活预留\n3 添加房租与还款\n4 导入账单，核对例外\n5 导出一份加密备份",
+              "style": "Body"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "常用计算口径",
+          "items": [
+            {
+              "type": "row",
+              "label": "余额与保守可动用",
+              "value": "›",
+              "to": "O02"
+            },
+            {
+              "type": "row",
+              "label": "信用、借款与投资",
+              "value": "›",
+              "to": "L08"
+            },
+            {
+              "type": "row",
+              "label": "导入与重复",
+              "value": "›",
+              "to": "I06"
+            },
+            {
+              "type": "row",
+              "label": "房租分摊",
+              "value": "›",
+              "to": "R03"
+            },
+            {
+              "type": "row",
+              "label": "隐私与设备端 AI",
+              "value": "›",
+              "to": "N10"
+            },
+            {
+              "type": "row",
+              "label": "跨设备与恢复",
+              "value": "›",
+              "to": "S07"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "人民币 · 本地优先",
+          "body": "不执行银行转账、不自动交易；当前使用备份交接，无自动双向同步。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S01",
+      "save": null,
+      "caption": "指南是应用内真实内容的可阅读派生版；机构账单入口可能随版本变化。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S19",
+      "title": "账本需要恢复",
+      "body": [
+        {
+          "type": "text",
+          "text": "账本需要恢复",
+          "style": "Title"
+        },
+        {
+          "type": "note",
+          "title": "原文件已保留",
+          "body": "余白不会用空账本覆盖它。请选择本地完整历史或备份。",
+          "mood": "Warning"
+        },
+        {
+          "type": "button",
+          "label": "查看本地恢复记录",
+          "to": "S12",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "从备份恢复",
+          "to": "S07",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": null,
+      "save": null,
+      "caption": "启动时数据无法解码或校验失败的保护状态；不可继续写入空账本。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "S20",
+      "title": "示例账本 · 恢复受限",
+      "body": [
+        {
+          "type": "note",
+          "title": "示例模式不能覆盖真实账本",
+          "body": "请先退出示例，再选择真实备份。",
+          "mood": "Info"
+        },
+        {
+          "type": "button",
+          "label": "选择备份文件",
+          "to": "S20",
+          "style": "Disabled"
+        },
+        {
+          "type": "button",
+          "label": "退出示例",
+          "to": "A01",
+          "style": "Primary"
+        },
+        {
+          "type": "row",
+          "label": "继续查看示例",
+          "value": "›",
+          "to": "O01"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S07",
+      "save": null,
+      "caption": "示例内操作留在内存，示例导出的备份也不允许覆盖正式账本。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "X01",
+      "title": "输入中",
+      "body": [
+        {
+          "type": "field",
+          "label": "这笔钱，用来做什么",
+          "value": "午餐",
+          "to": null
+        },
+        {
+          "type": "field",
+          "label": "金额",
+          "value": "28.50",
+          "to": null
+        },
+        {
+          "type": "note",
+          "title": "当前表单保留",
+          "body": "关闭校验提示不丢输入；滚动可收起键盘。",
+          "mood": "Info"
+        },
+        {
+          "type": "keyboard"
+        },
+        {
+          "type": "button",
+          "label": "收起键盘，继续填写",
+          "to": "L06",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L06",
+      "save": null,
+      "caption": "文本/金额键盘示意；画布字段为固定演示值，可在设计模式编辑文字。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "X02",
+      "title": "账户类型",
+      "body": [
+        {
+          "type": "card",
+          "title": "选择账户类型",
+          "items": [
+            {
+              "type": "row",
+              "label": "现金 / 钱包",
+              "value": "›",
+              "to": "A02"
+            },
+            {
+              "type": "row",
+              "label": "银行账户",
+              "value": "›",
+              "to": "A02"
+            },
+            {
+              "type": "row",
+              "label": "信用与借款",
+              "value": "›",
+              "to": "A08"
+            },
+            {
+              "type": "row",
+              "label": "投资账户",
+              "value": "›",
+              "to": "A08"
+            },
+            {
+              "type": "row",
+              "label": "借出待收",
+              "value": "›",
+              "to": "A08"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "A02",
+      "save": null,
+      "caption": "不同类型影响余额语义；已经建立的账户不可直接切换类型。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "X03",
+      "title": "选择日期",
+      "body": [
+        {
+          "type": "text",
+          "text": "2026 年 10 月",
+          "style": "Headline"
+        },
+        {
+          "type": "calendar"
+        },
+        {
+          "type": "field",
+          "label": "时间",
+          "value": "09:41",
+          "to": null
+        },
+        {
+          "type": "button",
+          "label": "完成日期选择",
+          "to": "L06",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "取消",
+          "to": "L06",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L06",
+      "save": null,
+      "caption": "发生时间与余额核对不可在未来；安排和目标日期允许未来；结束日期不早于起始。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "X04",
+      "title": "选择分类",
+      "body": [
+        {
+          "type": "field",
+          "label": "当前分类",
+          "value": "餐饮",
+          "to": null
+        },
+        {
+          "type": "card",
+          "title": "支出 / 收入分类",
+          "items": [
+            {
+              "type": "row",
+              "label": "自动分类 / 保持不变",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "餐饮",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "居住",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "交通",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "日用品",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "工资",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "其他支出 / 其他收入",
+              "value": "›",
+              "to": "L06"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L06",
+      "save": null,
+      "caption": "不同入口提供自动分类或保持不变选项。主动作仍保留在调用表单中。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "X05",
+      "title": "选择实际账户",
+      "body": [
+        {
+          "type": "card",
+          "title": "账户",
+          "items": [
+            {
+              "type": "row",
+              "label": "工资卡",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "微信零钱",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "支付宝余额",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "信用卡",
+              "value": "›",
+              "to": "L06"
+            },
+            {
+              "type": "row",
+              "label": "基金账户",
+              "value": "›",
+              "to": "L06"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "label": "添加账户",
+          "value": "›",
+          "to": "A02"
+        },
+        {
+          "type": "note",
+          "title": "选择实际持有资金的账户",
+          "body": "支付渠道不是账户；双边移动不能选择同一个账户作为两侧。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L06",
+      "save": null,
+      "caption": "调用点不同，选择后回到相应表单。图中以记账入口演示。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "X06",
+      "title": "修改已保存",
+      "body": [
+        {
+          "type": "note",
+          "title": "修改已保存",
+          "body": "本次变化已写入本地账本。",
+          "mood": "Success"
+        },
+        {
+          "type": "button",
+          "label": "撤销上一项修改",
+          "to": "L01",
+          "style": "Secondary"
+        },
+        {
+          "type": "button",
+          "label": "关闭提示并继续",
+          "to": "L01",
+          "style": "Primary"
+        },
+        {
+          "type": "note",
+          "title": "撤销的边界",
+          "body": "只撤销最近一次内存快照；较早版本从本地恢复历史选择。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "L01",
+      "save": null,
+      "caption": "通用底部成功提示含撤销与关闭。Mac 同时支持 ⌘Z；不伪造无限多步撤销。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "X07",
+      "title": "周期与观察范围",
+      "body": [
+        {
+          "type": "card",
+          "title": "重复周期",
+          "items": [
+            {
+              "type": "row",
+              "label": "不重复",
+              "value": "›",
+              "to": "P03"
+            },
+            {
+              "type": "row",
+              "label": "每周",
+              "value": "›",
+              "to": "P03"
+            },
+            {
+              "type": "row",
+              "label": "每月",
+              "value": "›",
+              "to": "P03"
+            },
+            {
+              "type": "row",
+              "label": "每季度",
+              "value": "›",
+              "to": "P03"
+            },
+            {
+              "type": "row",
+              "label": "每年",
+              "value": "›",
+              "to": "P03"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "从今天向前看",
+          "items": [
+            {
+              "type": "row",
+              "label": "30 / 60 / 90 天",
+              "value": "›",
+              "to": "S02"
+            },
+            {
+              "type": "row",
+              "label": "180 / 365 天",
+              "value": "›",
+              "to": "S02"
+            }
+          ]
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "P03",
+      "save": null,
+      "caption": "各调用点显示自己的选择项；月末递推保持最初约定日，不逐月漂移。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "X08",
+      "title": "选择外观",
+      "body": [
+        {
+          "type": "card",
+          "title": "外观",
+          "items": [
+            {
+              "type": "row",
+              "label": "跟随系统",
+              "value": "›",
+              "to": "S17"
+            },
+            {
+              "type": "row",
+              "label": "浅色",
+              "value": "›",
+              "to": "O01"
+            },
+            {
+              "type": "row",
+              "label": "深色",
+              "value": "›",
+              "to": "D01"
+            }
+          ]
+        },
+        {
+          "type": "note",
+          "title": "遵循系统设置",
+          "body": "颜色与字号分别适配；金额和异常不只用颜色传达。",
+          "mood": "Info"
+        }
+      ],
+      "subtitle": "",
+      "nav": null,
+      "back": "S17",
+      "save": null,
+      "caption": "外观修改即时保存；深色与大字号示例见适配画板。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "D01",
+      "title": "现在 · 深色",
+      "body": [
+        {
+          "type": "text",
+          "text": "给生活，留一点余白",
+          "style": "Title"
+        },
+        {
+          "type": "hero",
+          "amount": "¥11,808.30",
+          "hidden": false,
+          "first": false
+        },
+        {
+          "type": "chart",
+          "kind": "funds"
+        },
+        {
+          "type": "button",
+          "label": "整理账单",
+          "to": "I01",
+          "style": "Primary"
+        },
+        {
+          "type": "button",
+          "label": "购买前想一想",
+          "to": "N04",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "现在",
+      "back": null,
+      "save": null,
+      "caption": "深色保留深绿主卡，其他强调色变为亮薄荷。当前画布以语义变量切换。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "dark",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "D02",
+      "title": "账本 · 辅助字号",
+      "body": [
+        {
+          "type": "button",
+          "label": "筛选：全部",
+          "to": "L02",
+          "style": "Secondary"
+        },
+        {
+          "type": "entry",
+          "title": "午餐与下午的咖啡",
+          "subtitle": "餐饮 · 工资卡",
+          "amount": "−¥46.50",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "entry",
+          "title": "房租分摊实际收款",
+          "subtitle": "分摊 · 微信零钱",
+          "amount": "+¥900.00",
+          "date": "10月2日",
+          "to": "L05"
+        },
+        {
+          "type": "button",
+          "label": "批量整理",
+          "to": "L11",
+          "style": "Secondary"
+        }
+      ],
+      "subtitle": "",
+      "nav": "账本",
+      "back": null,
+      "save": null,
+      "caption": "辅助字号下，筛选合并到菜单，交易信息纵排，金额不与标题挤占同一行。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "large",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    },
+    {
+      "id": "D03",
+      "title": "我的 · 辅助字号",
+      "body": [
+        {
+          "type": "text",
+          "text": "余白",
+          "style": "Title"
+        },
+        {
+          "type": "text",
+          "text": "个人资金管理\n1.0.0 · 本地优先",
+          "style": "Body"
+        },
+        {
+          "type": "row",
+          "label": "账户与余额核对",
+          "value": "›",
+          "to": "A04"
+        },
+        {
+          "type": "row",
+          "label": "备份、恢复与导出",
+          "value": "›",
+          "to": "S07"
+        },
+        {
+          "type": "row",
+          "label": "导入批次与本地恢复",
+          "value": "›",
+          "to": "S12"
+        },
+        {
+          "type": "row",
+          "label": "使用指南与计算口径",
+          "value": "›",
+          "to": "S18"
+        }
+      ],
+      "subtitle": "",
+      "nav": "我的",
+      "back": null,
+      "save": null,
+      "caption": "品牌与说明改成纵向排布；功能保持可达，不通过缩小字体强塞。；本次按原生源码校准。系统菜单、键盘、认证和模型状态为静态表达。",
+      "variant": "large",
+      "status": "当前实现映射 · 可编辑图层 · 合成数据",
+      "footer": null
+    }
+  ]
+}

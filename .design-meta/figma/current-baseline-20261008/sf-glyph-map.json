@@ -1,0 +1,114 @@
+{
+  "search": {
+    "name": "magnifyingglass",
+    "glyph": "􀊫"
+  },
+  "house": {
+    "name": "house",
+    "glyph": "􀎞"
+  },
+  "circle-user-round": {
+    "name": "person.crop.circle",
+    "glyph": "􀉭"
+  },
+  "sparkles": {
+    "name": "sparkle",
+    "glyph": "􀫸"
+  },
+  "lock-keyhole": {
+    "name": "lock",
+    "glyph": "􀎠"
+  },
+  "undo-2": {
+    "name": "arrow.uturn.backward",
+    "glyph": "􀱍"
+  },
+  "arrow-down-left": {
+    "name": "arrow.down.left",
+    "glyph": "􀄰"
+  },
+  "file-text": {
+    "name": "doc.text",
+    "glyph": "􀈿"
+  },
+  "x": {
+    "name": "xmark",
+    "glyph": "􀆄"
+  },
+  "chevron-right": {
+    "name": "chevron.right",
+    "glyph": "􀆊"
+  },
+  "download": {
+    "name": "square.and.arrow.down",
+    "glyph": "􀈄"
+  },
+  "book-open": {
+    "name": "text.book.closed",
+    "glyph": "􀫗"
+  },
+  "wallet": {
+    "name": "circle.lefthalf.filled",
+    "glyph": "􀀂"
+  },
+  "eye-off": {
+    "name": "eye.slash",
+    "glyph": "􀋯"
+  },
+  "battery-full": {
+    "name": "battery.100",
+    "glyph": "􀛨"
+  },
+  "plus": {
+    "name": "plus",
+    "glyph": "􀅼"
+  },
+  "check": {
+    "name": "checkmark",
+    "glyph": "􀆅"
+  },
+  "wifi": {
+    "name": "wifi",
+    "glyph": "􀙇"
+  },
+  "chart-no-axes-combined": {
+    "name": "chart.xyaxis.line",
+    "glyph": "􁂥"
+  },
+  "image": {
+    "name": "photo",
+    "glyph": "􀏅"
+  },
+  "arrow-up-right": {
+    "name": "arrow.up.right",
+    "glyph": "􀄯"
+  },
+  "circle-gauge": {
+    "name": "circle.lefthalf.filled",
+    "glyph": "􀀂"
+  },
+  "eye": {
+    "name": "eye",
+    "glyph": "􀋭"
+  },
+  "ellipsis": {
+    "name": "ellipsis",
+    "glyph": "􀍠"
+  },
+  "upload": {
+    "name": "square.and.arrow.up",
+    "glyph": "􀈂"
+  },
+  "shield-check": {
+    "name": "lock.shield",
+    "glyph": "􀞙"
+  },
+  "chevron-left": {
+    "name": "chevron.left",
+    "glyph": "􀆉"
+  },
+  "calendar-days": {
+    "name": "calendar",
+    "glyph": "􀉉"
+  }
+}

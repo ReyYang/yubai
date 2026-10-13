@@ -1,0 +1,605 @@
+{
+  "ok": true,
+  "result": {
+    "count": 33,
+    "elements": [
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 36,
+          "width": 36,
+          "x": 370,
+          "y": 63
+        },
+        "identifier": "",
+        "label": "添加",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 388,
+        "y": 81
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 43,
+          "width": 136.66666666666669,
+          "x": 20.000000000000014,
+          "y": 114.66666666666666
+        },
+        "identifier": "",
+        "label": "资金安排",
+        "role": "element",
+        "traits": 8590000128,
+        "value": "",
+        "visible": 1,
+        "x": 88.33333333333336,
+        "y": 136.16666666666666
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 180.66666666666666,
+          "x": 20,
+          "y": 173
+        },
+        "identifier": "",
+        "label": "示例账本，不含你的真实数据",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 110.33333333333333,
+        "y": 181.5
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 55.666666666666686,
+          "x": 354.3333333333333,
+          "y": 173
+        },
+        "identifier": "",
+        "label": "退出示例",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 382.16666666666663,
+        "y": 181.5
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 72,
+          "width": 199.66666666666666,
+          "x": 22,
+          "y": 222
+        },
+        "identifier": "",
+        "label": "先照顾必须的，\n再留给想要的。",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 121.83333333333333,
+        "y": 258
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 21.66666666666663,
+          "width": 375,
+          "x": 22,
+          "y": 302
+        },
+        "identifier": "",
+        "label": "安排跟随日期和实际发生的收支，不按月清零。",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 209.5,
+        "y": 312.8333333333333
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 32,
+          "width": 96,
+          "x": 22,
+          "y": 345.66666666666663
+        },
+        "identifier": "",
+        "label": "接下来",
+        "role": "button",
+        "traits": 8589934601,
+        "value": "",
+        "visible": 1,
+        "x": 70,
+        "y": 361.66666666666663
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 32,
+          "width": 97,
+          "x": 118,
+          "y": 345.66666666666663
+        },
+        "identifier": "",
+        "label": "房租分摊",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 166.5,
+        "y": 361.66666666666663
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 32,
+          "width": 96,
+          "x": 215,
+          "y": 345.66666666666663
+        },
+        "identifier": "",
+        "label": "我的目标",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 263,
+        "y": 361.66666666666663
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 32,
+          "width": 97,
+          "x": 311,
+          "y": 345.66666666666663
+        },
+        "identifier": "",
+        "label": "全部约定",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 359.5,
+        "y": 361.66666666666663
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 18.666667938232422,
+          "width": 21.33333396911621,
+          "x": 52.33333333333333,
+          "y": 444
+        },
+        "identifier": "house",
+        "label": "主页",
+        "role": "element",
+        "traits": 8589934596,
+        "value": "",
+        "visible": 1,
+        "x": 63.000000317891434,
+        "y": 453.3333339691162
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 47,
+          "width": 130.66666666666666,
+          "x": 97,
+          "y": 418.66666666666663
+        },
+        "identifier": "",
+        "label": "合租房租 · 应收分摊",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 162.33333333333331,
+        "y": 442.16666666666663
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 141.33333333333331,
+          "x": 97,
+          "y": 470.66666666666663
+        },
+        "identifier": "",
+        "label": "2026-09-08 · 已到期",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 167.66666666666666,
+        "y": 479.16666666666663
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 54.333333333333314,
+          "width": 99.66666666666663,
+          "x": 288.33333333333337,
+          "y": 426
+        },
+        "identifier": "",
+        "label": "+¥2,400.00",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 338.1666666666667,
+        "y": 453.16666666666663
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 194.66666666666666,
+          "x": 42,
+          "y": 506.66666666666663
+        },
+        "identifier": "",
+        "label": "预计到账，尚未计入可动用资金",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 139.33333333333331,
+        "y": 515.1666666666666
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 23,
+          "width": 75.66666666666669,
+          "x": 312.3333333333333,
+          "y": 503.66666666666663
+        },
+        "identifier": "",
+        "label": "登记到账",
+        "role": "button",
+        "traits": 1108101562369,
+        "value": "",
+        "visible": 1,
+        "x": 350.16666666666663,
+        "y": 515.1666666666666
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 18.666667938232422,
+          "width": 21.33333396911621,
+          "x": 52.33333333333333,
+          "y": 610
+        },
+        "identifier": "house",
+        "label": "主页",
+        "role": "element",
+        "traits": 8589934596,
+        "value": "",
+        "visible": 1,
+        "x": 63.000000317891434,
+        "y": 619.3333339691162
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 47,
+          "width": 130.66666666666666,
+          "x": 97,
+          "y": 584.6666666666666
+        },
+        "identifier": "",
+        "label": "合租房租 · 应收分摊",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 162.33333333333331,
+        "y": 608.1666666666666
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 136.33333333333331,
+          "x": 97,
+          "y": 636.6666666666666
+        },
+        "identifier": "",
+        "label": "2026-10-01 · 已到期",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 165.16666666666666,
+        "y": 645.1666666666666
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 54.33333333333326,
+          "width": 99.66666666666663,
+          "x": 288.33333333333337,
+          "y": 592
+        },
+        "identifier": "",
+        "label": "+¥2,400.00",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 338.1666666666667,
+        "y": 619.1666666666666
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 194.66666666666666,
+          "x": 42,
+          "y": 672.6666666666666
+        },
+        "identifier": "",
+        "label": "预计到账，尚未计入可动用资金",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 139.33333333333331,
+        "y": 681.1666666666666
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 23,
+          "width": 75.66666666666669,
+          "x": 312.3333333333333,
+          "y": 669.6666666666666
+        },
+        "identifier": "",
+        "label": "登记到账",
+        "role": "button",
+        "traits": 1108101562369,
+        "value": "",
+        "visible": 1,
+        "x": 350.16666666666663,
+        "y": 681.1666666666666
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 16,
+          "width": 17.666667938232422,
+          "x": 54.33333333333333,
+          "y": 765
+        },
+        "identifier": "calendar",
+        "label": "日历",
+        "role": "element",
+        "traits": 8589934596,
+        "value": "",
+        "visible": 1,
+        "x": 63.16666730244954,
+        "y": 773
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 23,
+          "width": 94.33333333333331,
+          "x": 97,
+          "y": 750.6666666666666
+        },
+        "identifier": "",
+        "label": "宽带与通信",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 144.16666666666666,
+        "y": 762.1666666666666
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 26.33333333333337,
+          "width": 103.33333333333331,
+          "x": 284.6666666666667,
+          "y": 760
+        },
+        "identifier": "",
+        "label": "−¥129.00",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 336.33333333333337,
+        "y": 773.1666666666667
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 81,
+          "x": 97,
+          "y": 778.6666666666666
+        },
+        "identifier": "",
+        "label": "2026-10-14",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 137.5,
+        "y": 787.1666666666666
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 97.33333333333331,
+          "x": 42,
+          "y": 814.6666666666666
+        },
+        "identifier": "",
+        "label": "已纳入资金安排",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 90.66666666666666,
+        "y": 823.1666666666666
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 23,
+          "width": 75.66666666666669,
+          "x": 312.3333333333333,
+          "y": 811.6666666666666
+        },
+        "identifier": "",
+        "label": "登记付款",
+        "role": "button",
+        "traits": 1108101562369,
+        "value": "",
+        "visible": 1,
+        "x": 350.16666666666663,
+        "y": 823.1666666666666
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.6,
+          "x": 25,
+          "y": 853
+        },
+        "identifier": "circle.lefthalf.filled",
+        "label": "现在",
+        "role": "button",
+        "traits": 8858370049,
+        "value": "",
+        "visible": 1,
+        "x": 66.3,
+        "y": 880
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.6,
+          "x": 99.35,
+          "y": 853
+        },
+        "identifier": "text.book.closed",
+        "label": "账本",
+        "role": "button",
+        "traits": 8858370049,
+        "value": "",
+        "visible": 1,
+        "x": 140.64999999999998,
+        "y": 880
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.59999999999997,
+          "x": 173.7,
+          "y": 853
+        },
+        "identifier": "calendar",
+        "label": "安排",
+        "role": "button",
+        "traits": 8858370057,
+        "value": "",
+        "visible": 1,
+        "x": 214.99999999999997,
+        "y": 880
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.60000000000002,
+          "x": 248.04999999999995,
+          "y": 853
+        },
+        "identifier": "chart.xyaxis.line",
+        "label": "洞察",
+        "role": "button",
+        "traits": 8858370049,
+        "value": "",
+        "visible": 1,
+        "x": 289.34999999999997,
+        "y": 880
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.60000000000002,
+          "x": 322.4,
+          "y": 853
+        },
+        "identifier": "person.crop.circle",
+        "label": "我的",
+        "role": "button",
+        "traits": 8858370049,
+        "value": "",
+        "visible": 1,
+        "x": 363.7,
+        "y": 880
+      }
+    ],
+    "pid": 385,
+    "source": "ax",
+    "truncated": false
+  }
+}

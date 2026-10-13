@@ -1,0 +1,461 @@
+{
+  "ok": true,
+  "result": {
+    "count": 25,
+    "elements": [
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 180.66666666666666,
+          "x": 20,
+          "y": 121
+        },
+        "identifier": "",
+        "label": "示例账本，不含你的真实数据",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 110.33333333333333,
+        "y": 129.5
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 55.666666666666686,
+          "x": 354.3333333333333,
+          "y": 121
+        },
+        "identifier": "",
+        "label": "退出示例",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 382.16666666666663,
+        "y": 129.5
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 16.666667938232422,
+          "width": 18.999999999999993,
+          "x": 53.666666666666664,
+          "y": 167.99999999999977
+        },
+        "identifier": "chart.line.uptrend.xyaxis",
+        "label": "图表线条",
+        "role": "element",
+        "traits": 8589934596,
+        "value": "",
+        "visible": 1,
+        "x": 63.16666666666666,
+        "y": 176.33333396911598
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 21.666666666666742,
+          "width": 71.66666666666666,
+          "x": 96,
+          "y": 154.98653157552098
+        },
+        "identifier": "",
+        "label": "长期基金",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 131.83333333333331,
+        "y": 165.81986490885436
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 23,
+          "width": 116.66666666666663,
+          "x": 271.33333333333337,
+          "y": 164.81986490885424
+        },
+        "identifier": "",
+        "label": "¥12,850.30",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 329.6666666666667,
+        "y": 176.31986490885424
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 28,
+          "x": 96,
+          "y": 180.65319824218773
+        },
+        "identifier": "",
+        "label": "投资",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 110,
+        "y": 189.15319824218773
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 17,
+          "width": 139,
+          "x": 42,
+          "y": 236.98653157552098
+        },
+        "identifier": "",
+        "label": "净资产 · 包含投资市值",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 111.5,
+        "y": 245.48653157552098
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 23,
+          "width": 116.66666666666663,
+          "x": 271.33333333333337,
+          "y": 233.98653157552098
+        },
+        "identifier": "",
+        "label": "¥50,049.60",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 329.6666666666667,
+        "y": 245.48653157552098
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 26.333333333333258,
+          "width": 105,
+          "x": 42,
+          "y": 318.98653157552076
+        },
+        "identifier": "",
+        "label": "最近记下的",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 94.5,
+        "y": 332.1531982421874
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 21.666666666666742,
+          "width": 36,
+          "x": 352,
+          "y": 321.33333333333326
+        },
+        "identifier": "",
+        "label": "全部",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 370,
+        "y": 332.16666666666663
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 55,
+          "width": 346,
+          "x": 42,
+          "y": 361.33333333333326
+        },
+        "identifier": "",
+        "label": "工作日午餐, 餐饮 · 工资卡, −¥28.00, 2026-10-08",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 215,
+        "y": 388.83333333333326
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 55,
+          "width": 346,
+          "x": 42,
+          "y": 432.33333333333326
+        },
+        "identifier": "",
+        "label": "咖啡与阅读, 餐饮 · 微信零钱, −¥22.00, 2026-10-08",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 215,
+        "y": 459.83333333333326
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 55,
+          "width": 346,
+          "x": 42,
+          "y": 503.33333333333326
+        },
+        "identifier": "",
+        "label": "地铁出行, 交通 · 微信零钱, −¥6.00, 2026-10-06",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 215,
+        "y": 530.8333333333333
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 55,
+          "width": 346,
+          "x": 42,
+          "y": 574.3333333333333
+        },
+        "identifier": "",
+        "label": "周末采购, 日用购物 · 工资卡, −¥186.50, 2026-10-06",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 215,
+        "y": 601.8333333333333
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 23,
+          "width": 236.99998474121094,
+          "x": 43.66666793823242,
+          "y": 691.6801147460938
+        },
+        "identifier": "",
+        "label": "判断依据，需要保持新鲜",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 162.1666603088379,
+        "y": 703.1801147460938
+      },
+      {
+        "clickable": false,
+        "enabled": true,
+        "frame": {
+          "height": 44.666666666666515,
+          "width": 316.66666666666663,
+          "x": 42,
+          "y": 726.6801350911458
+        },
+        "identifier": "",
+        "label": "· 有已到期但未登记完成的安排，仍计入预留。",
+        "role": "text",
+        "traits": 8589934656,
+        "value": "",
+        "visible": 1,
+        "x": 200.33333333333331,
+        "y": 749.013468424479
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 21.666666666666515,
+          "width": 125,
+          "x": 42,
+          "y": 783.3333333333333
+        },
+        "identifier": "",
+        "label": "核对账户与预留",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 104.5,
+        "y": 794.1666666666665
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 23.33333333333333,
+          "width": 38,
+          "x": 196,
+          "y": 69.33333333333334
+        },
+        "identifier": "",
+        "label": "现在",
+        "role": "element",
+        "traits": 8590000128,
+        "value": "",
+        "visible": 1,
+        "x": 215,
+        "y": 81
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 36,
+          "width": 43,
+          "x": 305.6666666666667,
+          "y": 63
+        },
+        "identifier": "",
+        "label": "导入",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 327.1666666666667,
+        "y": 81
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 36,
+          "width": 41.333333333333314,
+          "x": 364.6666666666667,
+          "y": 63
+        },
+        "identifier": "addEntry",
+        "label": "记一笔",
+        "role": "button",
+        "traits": 8589934593,
+        "value": "",
+        "visible": 1,
+        "x": 385.33333333333337,
+        "y": 81
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.6,
+          "x": 25,
+          "y": 853
+        },
+        "identifier": "circle.lefthalf.filled",
+        "label": "现在",
+        "role": "button",
+        "traits": 8858370057,
+        "value": "",
+        "visible": 1,
+        "x": 66.3,
+        "y": 880
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.6,
+          "x": 99.35,
+          "y": 853
+        },
+        "identifier": "text.book.closed",
+        "label": "账本",
+        "role": "button",
+        "traits": 8858370049,
+        "value": "",
+        "visible": 1,
+        "x": 140.64999999999998,
+        "y": 880
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.59999999999997,
+          "x": 173.7,
+          "y": 853
+        },
+        "identifier": "calendar",
+        "label": "安排",
+        "role": "button",
+        "traits": 8858370049,
+        "value": "",
+        "visible": 1,
+        "x": 214.99999999999997,
+        "y": 880
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.60000000000002,
+          "x": 248.04999999999995,
+          "y": 853
+        },
+        "identifier": "chart.xyaxis.line",
+        "label": "洞察",
+        "role": "button",
+        "traits": 8858370049,
+        "value": "",
+        "visible": 1,
+        "x": 289.34999999999997,
+        "y": 880
+      },
+      {
+        "clickable": true,
+        "enabled": true,
+        "frame": {
+          "height": 54,
+          "width": 82.60000000000002,
+          "x": 322.4,
+          "y": 853
+        },
+        "identifier": "person.crop.circle",
+        "label": "我的",
+        "role": "button",
+        "traits": 8858370049,
+        "value": "",
+        "visible": 1,
+        "x": 363.7,
+        "y": 880
+      }
+    ],
+    "pid": 385,
+    "source": "ax",
+    "truncated": false
+  }
+}

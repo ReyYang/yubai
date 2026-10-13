@@ -1,0 +1,21 @@
+{
+  "fileKey": "vIJH4tq6ZMNOJeRzUsI2Z7",
+  "directoryId": "40:6983",
+  "overviewId": "47:3613",
+  "guideId": "41:3613",
+  "phonePage": "24:3614",
+  "macPage": "24:3615",
+  "phoneStates": 111,
+  "macFrames": 11,
+  "phoneConnections": 747,
+  "macConnections": 95,
+  "sourceHashReadback": "source-readback.json",
+  "nativeFontExact": false,
+  "compatibility": "Noto/Lucide; discrete native BrandMark PNG",
+  "prototypeClickVerification": "blocked by browser not logged in; no sign-in performed",
+  "oldPagesPreserved": [
+    "0:1",
+    "3:2",
+    "10:3367"
+  ]
+}

@@ -1,0 +1,30 @@
+# Build output and dependencies
+.build/
+build/
+dist/
+.swiftpm/
+node_modules/
+DerivedData/
+*.xcresult/
+
+# Local verification output and logs
+/.verification/
+*.log
+test-results/
+playwright-report/
+__pycache__/
+*.pyc
+
+# User-specific IDE and OS state
+.DS_Store
+*.xcuserstate
+xcuserdata/
+
+# Private local data and signing material
+*.yubai
+*.yubaibackup
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
