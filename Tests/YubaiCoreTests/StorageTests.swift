@@ -3,6 +3,26 @@ import XCTest
 
 final class StorageTests: XCTestCase {
     func sample() -> Ledger { var l = SampleData.ledger(now: Dates.parse("2026-10-01")!); l.attachments = [Attachment(name: "账单原件.csv", data: Data([0, 1, 2, 0xFF]))]; return l }
+    func testLegacyLedgerDefaultsToVividThemeWithoutChangingPreferences() throws {
+        var ledger = sample()
+        ledger.preferences.appearance = "dark"
+        ledger.preferences.hideAmounts = true
+        ledger.preferences.localAIEnabled = false
+        var json = try JSONSerialization.jsonObject(with: LedgerCodec.encode(ledger)) as! [String: Any]
+        var preferences = json["preferences"] as! [String: Any]
+        preferences.removeValue(forKey: "colorTheme")
+        json["preferences"] = preferences
+        let restored = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(restored.preferences.colorTheme, "jade-vivid")
+        XCTAssertEqual(restored, ledger)
+    }
+    func testColorThemesSurviveLedgerRoundTrip() throws {
+        for theme in ["jade-vivid", "jade-current", "ocean"] {
+            var ledger = sample()
+            ledger.preferences.colorTheme = theme
+            XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)), ledger)
+        }
+    }
     func testEncryptedBackupRoundTripPreservesAllRelationshipsAndAttachments() throws {
         let l = sample(); let bytes = try Backup.export(l, password: "a strong password 123")
         XCTAssertFalse(String(data: bytes, encoding: .utf8)!.contains("工资卡"))

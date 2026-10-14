@@ -32,6 +32,9 @@ struct SettingsView: View {
             }
             Section("界面与本机智能") {
                 Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in store.update("保存外观") { $0.preferences.appearance = value } })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }
+                Picker("主题", selection: Binding(get: { YubaiColorTheme(preference: store.current.preferences.colorTheme).rawValue }, set: { value in store.update("保存主题") { $0.preferences.colorTheme = value } })) {
+                    ForEach(YubaiColorTheme.allCases) { theme in Text(theme.title).tag(theme.rawValue) }
+                }
                 Toggle("允许使用设备端 AI", isOn: Binding(get: { store.current.preferences.localAIEnabled }, set: { value in store.update("保存本机 AI 偏好") { $0.preferences.localAIEnabled = value } }))
                 Text(LocalIntelligence.availabilityText).font(.caption).foregroundStyle(.secondary)
                 Text("本机规则先归类，设备端 AI 可补充未匹配用途并回答购买价值问题；金额与资金性质不交给 AI 修改。设备不支持时，规则与全部账务功能照常可用。当前版本不会连接云端模型。").font(.caption).foregroundStyle(.secondary)

@@ -177,8 +177,27 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var horizonDays = 90; public var emergencyReserve: Int64 = 0
     public var dailyLiving: Int64 = 0; public var hideAmounts = false; public var lockEnabled = false
     public var appearance = "system"; public var purchaseValues = "为长期有用和真正喜欢的事物花钱"
+    public var colorTheme = "jade-vivid"
     public var localAIEnabled = true; public var onboardingComplete = false
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
+        case appearance, purchaseValues, colorTheme, localAIEnabled, onboardingComplete
+    }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        horizonDays = try values.decode(Int.self, forKey: .horizonDays)
+        emergencyReserve = try values.decode(Int64.self, forKey: .emergencyReserve)
+        dailyLiving = try values.decode(Int64.self, forKey: .dailyLiving)
+        hideAmounts = try values.decode(Bool.self, forKey: .hideAmounts)
+        lockEnabled = try values.decode(Bool.self, forKey: .lockEnabled)
+        appearance = try values.decode(String.self, forKey: .appearance)
+        purchaseValues = try values.decode(String.self, forKey: .purchaseValues)
+        colorTheme = try values.decodeIfPresent(String.self, forKey: .colorTheme) ?? "jade-vivid"
+        localAIEnabled = try values.decode(Bool.self, forKey: .localAIEnabled)
+        onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
+    }
 }
 public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var createdAt = Date(); public var title: String; public var amount: Int64

@@ -1,21 +1,88 @@
 import SwiftUI
 import YubaiCore
 
+enum YubaiColorTheme: String, CaseIterable, Identifiable {
+    case jadeVivid = "jade-vivid", jadeCurrent = "jade-current", ocean
+    var id: String { rawValue }
+    init(preference: String) { self = Self(rawValue: preference) ?? .jadeVivid }
+    var title: String { switch self { case .jadeVivid: "鲜青绿"; case .jadeCurrent: "深青绿"; case .ocean: "晴空蓝" } }
+}
+
+private struct ColorThemeKey: EnvironmentKey {
+    static let defaultValue = YubaiColorTheme.jadeVivid
+}
+extension EnvironmentValues {
+    var yubaiColorTheme: YubaiColorTheme {
+        get { self[ColorThemeKey.self] }
+        set { self[ColorThemeKey.self] = newValue }
+    }
+}
+
 enum YubaiTheme {
-    static let deepJade = Color(red: 0.12, green: 0.40, blue: 0.34)
-    #if os(macOS)
-    static let jade = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(red: 0.46, green: 0.78, blue: 0.65, alpha: 1) : NSColor(red: 0.12, green: 0.40, blue: 0.34, alpha: 1)
-    })
-    #else
-    static let jade = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor(red: 0.46, green: 0.78, blue: 0.65, alpha: 1) : UIColor(red: 0.12, green: 0.40, blue: 0.34, alpha: 1)
-    })
-    #endif
-    static let mint = Color(red: 0.72, green: 0.88, blue: 0.79)
-    static let amber = Color(red: 0.68, green: 0.40, blue: 0.10)
-    static let ink = Color(red: 0.12, green: 0.19, blue: 0.17)
-    static let palette: [Color] = [jade, .blue, .orange, .purple, .teal, .pink, .indigo, .brown, .gray]
+    struct Colors {
+        var jade: Color; var deepJade: Color; var heroShadow: Color
+        var mint: Color; var amber: Color; var ink: Color
+        var palette: [Color] { [jade, .blue, .orange, .purple, .teal, .pink, .indigo, .brown, .gray] }
+        var canvas: Color { YubaiTheme.canvas }
+        var card: Color { YubaiTheme.card }
+    }
+
+    static func colors(for preferences: Preferences, colorScheme: ColorScheme) -> Colors {
+        colors(for: YubaiColorTheme(preference: preferences.colorTheme), colorScheme: colorScheme)
+    }
+    static func colors(for theme: YubaiColorTheme, colorScheme: ColorScheme) -> Colors {
+        let dark = colorScheme == .dark
+        switch theme {
+        case .jadeVivid:
+            return Colors(
+                jade: dark ? Color(red: 0.43, green: 0.85, blue: 0.67) : Color(red: 0.122, green: 0.608, blue: 0.447),
+                deepJade: Color(red: 0.055, green: 0.46, blue: 0.34), heroShadow: Color(red: 0.025, green: 0.32, blue: 0.24),
+                mint: dark ? Color(red: 0.50, green: 0.87, blue: 0.72) : Color(red: 0.71, green: 0.91, blue: 0.81),
+                amber: dark ? Color(red: 0.94, green: 0.71, blue: 0.36) : Color(red: 0.68, green: 0.40, blue: 0.10),
+                ink: dark ? Color(red: 0.86, green: 0.94, blue: 0.90) : Color(red: 0.08, green: 0.21, blue: 0.16))
+        case .jadeCurrent:
+            return Colors(
+                jade: dark ? Color(red: 0.46, green: 0.78, blue: 0.65) : Color(red: 0.12, green: 0.40, blue: 0.34),
+                deepJade: Color(red: 0.12, green: 0.40, blue: 0.34), heroShadow: Color(red: 0.08, green: 0.29, blue: 0.25),
+                mint: Color(red: 0.72, green: 0.88, blue: 0.79), amber: Color(red: 0.68, green: 0.40, blue: 0.10),
+                ink: Color(red: 0.12, green: 0.19, blue: 0.17))
+        case .ocean:
+            return Colors(
+                jade: dark ? Color(red: 0.48, green: 0.77, blue: 0.98) : Color(red: 0.169, green: 0.424, blue: 0.690),
+                deepJade: Color(red: 0.13, green: 0.35, blue: 0.57), heroShadow: Color(red: 0.09, green: 0.25, blue: 0.41),
+                mint: dark ? Color(red: 0.57, green: 0.80, blue: 0.97) : Color(red: 0.75, green: 0.88, blue: 0.97),
+                amber: dark ? Color(red: 0.94, green: 0.73, blue: 0.39) : Color(red: 0.68, green: 0.40, blue: 0.10),
+                ink: dark ? Color(red: 0.88, green: 0.94, blue: 0.99) : Color(red: 0.10, green: 0.17, blue: 0.25))
+        }
+    }
+
+    // Resolve semantic styles in the consuming view's environment, including Charts.
+    struct ThemeColor: ShapeStyle {
+        fileprivate enum Role { case jade, deepJade, mint, amber, ink, chart(Int), primary, secondary }
+        fileprivate var role: Role
+        func resolve(in environment: EnvironmentValues) -> Color {
+            let colors = YubaiTheme.colors(for: environment.yubaiColorTheme, colorScheme: environment.colorScheme)
+            switch role {
+            case .jade: return colors.jade
+            case .deepJade: return colors.deepJade
+            case .mint: return colors.mint
+            case .amber: return colors.amber
+            case .ink: return colors.ink
+            case .chart(let index): return colors.palette[index]
+            case .primary: return .primary
+            case .secondary: return .secondary
+            }
+        }
+        // Preserve contextual Color-style ternaries at existing call sites.
+        static let primary = ThemeColor(role: .primary)
+        static let secondary = ThemeColor(role: .secondary)
+    }
+    static let jade = ThemeColor(role: .jade)
+    static let deepJade = ThemeColor(role: .deepJade)
+    static let mint = ThemeColor(role: .mint)
+    static let amber = ThemeColor(role: .amber)
+    static let ink = ThemeColor(role: .ink)
+    static let palette = (0..<9).map { ThemeColor(role: .chart($0)) }
     #if os(macOS)
     static let canvas = Color(nsColor: .windowBackgroundColor)
     static let card = Color(nsColor: .controlBackgroundColor)
@@ -23,6 +90,18 @@ enum YubaiTheme {
     static let canvas = Color(uiColor: .systemGroupedBackground)
     static let card = Color(uiColor: .secondarySystemGroupedBackground)
     #endif
+}
+
+private struct ThemeTint: ViewModifier {
+    @Environment(\.self) private var environment
+    let color: YubaiTheme.ThemeColor
+    func body(content: Content) -> some View { content.tint(color.resolve(in: environment)) }
+}
+extension View {
+    func tint(_ color: YubaiTheme.ThemeColor) -> some View { modifier(ThemeTint(color: color)) }
+    func yubaiColorTheme(_ preference: String) -> some View {
+        environment(\.yubaiColorTheme, YubaiColorTheme(preference: preference))
+    }
 }
 struct BrandMark: View {
     var body: some View { HStack(spacing: 11) { ZStack { RoundedRectangle(cornerRadius: 13).fill(YubaiTheme.deepJade).frame(width: 43, height: 43); Image(systemName: "circle.lefthalf.filled").font(.system(size: 25, weight: .light)).foregroundStyle(.white) }; VStack(alignment: .leading, spacing: 1) { Text("余白").font(.system(size: 23, weight: .semibold, design: .serif)); Text("Y U B A I").font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary) } } }
