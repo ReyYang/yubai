@@ -114,7 +114,7 @@ struct ImportView: View {
             HStack { Button("重新选文件") { preview = nil; data = nil; filePicker = true }; Spacer(); Button("保存 \(p.selectedEntries.count) 笔", action: commit).buttonStyle(PrimaryButtonStyle()).disabled(p.selectedEntries.isEmpty).accessibilityIdentifier("commitImport") }.padding(18).background(.regularMaterial)
         }
     }
-    func countPill(_ label: String, _ count: Int, _ color: Color) -> some View { VStack(alignment: .leading, spacing: 5) { Text("\(count)").font(.title2.monospacedDigit().weight(.semibold)).foregroundStyle(color); Text(label).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading) }
+    func countPill(_ label: String, _ count: Int, _ color: YubaiTheme.ThemeColor) -> some View { VStack(alignment: .leading, spacing: 5) { Text("\(count)").font(.title2.monospacedDigit().weight(.semibold)).foregroundStyle(color); Text(label).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading) }
     func resultView(_ batch: ImportBatch) -> some View {
         Page {
             EmptyState("checkmark.seal", "这一份，整理好了", "已保存 \(batch.importedCount) 笔，跳过 \(batch.duplicateCount) 笔重复。\(batch.skippedCount > 0 ? "另有 \(batch.skippedCount) 行未导入，可返回查看。" : "")")

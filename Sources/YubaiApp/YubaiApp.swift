@@ -10,7 +10,7 @@ enum Destination: String, CaseIterable, Identifiable {
     var symbol: String { switch self { case .overview: "circle.lefthalf.filled"; case .ledger: "text.book.closed"; case .plans: "calendar"; case .insights: "chart.xyaxis.line"; case .settings: "person.crop.circle" } }
 }
 enum AppSheet: Identifiable {
-    case entry(Entry?), account(Account?), plan(Plan?), goal(Goal?), rent(Rent?), imports, accounts, advice, categories, rules, backup, history, rentDetail(UUID), entryDetail(UUID), guide
+    case entry(Entry?), account(Account?), plan(Plan?), goal(Goal?), rent(Rent?), imports, accounts, advice, categories, rules, backup, history, rentDetail(UUID), entryDetail(UUID), guide, fundsCalculation
     var id: String { String(describing: self) }
 }
 
@@ -93,6 +93,7 @@ enum AppSheet: Identifiable {
     var body: some Scene {
         WindowGroup {
             RootView().environment(store).tint(YubaiTheme.jade)
+                .yubaiColorTheme(store.current.preferences.colorTheme)
                 .preferredColorScheme(store.current.preferences.appearance == "dark" ? .dark : (store.current.preferences.appearance == "light" ? .light : nil))
                 #if os(macOS)
                 .frame(minWidth: 920, minHeight: 680)
@@ -126,6 +127,7 @@ struct RootView: View {
         }
         .sheet(item: $store.sheet) { sheet in
             NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiTheme.jade)
+                .yubaiColorTheme(store.current.preferences.colorTheme)
                 .appErrors()
                 .overlay { privacyCover }
                 #if os(macOS)
@@ -184,6 +186,7 @@ struct RootView: View {
         case .rentDetail(let id): RentDetailView(rentID: id)
         case .entryDetail(let id): EntryDetailView(entryID: id)
         case .guide: GuideView()
+        case .fundsCalculation: FundsCalculationView()
         }
     }
     var lockedView: some View {
