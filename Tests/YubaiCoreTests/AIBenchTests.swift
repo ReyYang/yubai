@@ -67,8 +67,7 @@ final class AIBenchTests: XCTestCase {
     }
 
     func testBenchRulesMockLocalAndMockCloud() async throws {
-        let url = try XCTUnwrap(Bundle.module.url(forResource: "ai-bench-samples", withExtension: "json"))
-        let fixture = try AIBenchRunner.loadFixture(from: url)
+        let fixture = try AIBenchRunner.loadBundledFixture(bundle: .module)
 
         let rules = await AIBenchRunner.run(fixture: fixture, backend: RulesOnlyBackend())
         let mockLocal = await AIBenchRunner.run(fixture: fixture, backend: MockLocalBackend())

@@ -79,8 +79,12 @@ public enum AIBenchRunner {
         return try JSONDecoder().decode(AIBenchFixture.self, from: data)
     }
 
-    public static func loadBundledFixture(named name: String = "ai-bench-samples", bundle: Bundle = .module) throws -> AIBenchFixture {
-        guard let url = bundle.url(forResource: name, withExtension: "json") else {
+    /// Load a fixture from a caller-provided bundle (e.g. test target `Bundle.module` + Fixtures).
+    public static func loadBundledFixture(named name: String = "ai-bench-samples", bundle: Bundle) throws -> AIBenchFixture {
+        let url =
+            bundle.url(forResource: name, withExtension: "json", subdirectory: "Fixtures")
+            ?? bundle.url(forResource: name, withExtension: "json")
+        guard let url else {
             throw YubaiError.invalid("找不到评测夹具 \(name).json")
         }
         return try loadFixture(from: url)
@@ -124,7 +128,7 @@ public enum AIBenchRunner {
         for sample in fixture.insight {
             do {
                 let text = try await backend.narrateInsights(
-                    InsightFactPack(
+                    facts: InsightFactPack(
                         factLines: sample.factLines,
                         protectedAmountTexts: sample.protectedAmountTexts,
                         valuesHint: sample.valuesHint
