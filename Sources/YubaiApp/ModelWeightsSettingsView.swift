@@ -10,12 +10,17 @@ struct ModelWeightsSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Text("权重按需下载到本机应用支持目录，不打进主包。删除后自动回到规则 / 模板路径。当前下载 URL 为占位配置，正式 CDN 就绪前不会发起真实网络请求。").font(.callout).foregroundStyle(.secondary)
+                Text("权重按需从 Hugging Face 下载到本机应用支持目录，不打进主包与 git。删除后自动回到规则 / 模板路径。推荐约 8 GB RAM 机型使用 1.5B；约 6 GB 可用 0.5B。").font(.callout).foregroundStyle(.secondary)
             }
             Section("可选模型") {
                 ForEach(ModelWeightCatalog.defaults) { spec in
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(spec.displayName).font(.headline)
+                        HStack {
+                            Text(spec.displayName).font(.headline)
+                            if spec.id == ModelWeightCatalog.recommendedSpecID {
+                                Text("推荐").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
                         Text(sizeLabel(spec)).font(.caption).foregroundStyle(.secondary)
                         if let status = statuses[spec.id] {
                             Text(status.installed ? (status.verified ? "已安装 · 已校验" : "已安装 · 校验未通过") : "未下载")
@@ -26,7 +31,7 @@ struct ModelWeightsSettingsView: View {
                         }
                         HStack {
                             Button("下载") { download(spec) }
-                                .disabled(busyID != nil || (statuses[spec.id]?.installed == true))
+                                .disabled(busyID != nil || (statuses[spec.id]?.installed == true && statuses[spec.id]?.verified == true))
                             Button("删除", role: .destructive) { delete(spec) }
                                 .disabled(busyID != nil || statuses[spec.id]?.installed != true)
                         }
@@ -39,7 +44,7 @@ struct ModelWeightsSettingsView: View {
                 Section { Text(message).font(.callout).foregroundStyle(YubaiTheme.amber) }
             }
             Section("说明") {
-                Text("推荐约 8 GB RAM 机型使用 1.5B；约 6 GB 可尝试 0.5B 或仅规则。真机 llama.cpp 推理尚未接入本版本。").font(.caption).foregroundStyle(.secondary)
+                Text("推理：llama.cpp XCFramework（Metal）。模拟器 / vphone 仅作冒烟；延迟与内存以真机为准。金额计算永不交模型修改。").font(.caption).foregroundStyle(.secondary)
             }
         }
         .editorForm()
@@ -66,7 +71,7 @@ struct ModelWeightsSettingsView: View {
         Task {
             do {
                 try await IntelligenceRuntime.weights.download(spec: spec)
-                message = "下载完成。"
+                message = "下载完成并已校验。"
             } catch {
                 message = error.localizedDescription
             }
@@ -79,8 +84,9 @@ struct ModelWeightsSettingsView: View {
         busyID = spec.id
         message = nil
         do {
+            IntelligenceRuntime.unloadLocalModel()
             try IntelligenceRuntime.weights.delete(spec: spec)
-            message = "已删除本机权重。"
+            message = "已删除本机权重；已回到规则 / 模板路径。"
         } catch {
             message = error.localizedDescription
         }

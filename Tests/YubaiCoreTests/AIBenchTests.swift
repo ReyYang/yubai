@@ -36,10 +36,18 @@ final class AIBenchTests: XCTestCase {
 
     func testWeightStoreBlocksPlaceholderDownload() async {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let store = ModelWeightStore(directory: dir, blockPlaceholderDownloads: true)
-        let spec = ModelWeightCatalog.defaults[0]
+        let placeholder = ModelWeightSpec(
+            id: "placeholder",
+            displayName: "placeholder",
+            filename: "placeholder.gguf",
+            downloadURL: "https://example.invalid/yubai/models/placeholder.gguf",
+            expectedSHA256: String(repeating: "0", count: 64),
+            approximateBytes: 1,
+            recommendedMinRAMGB: 6
+        )
+        let store = ModelWeightStore(directory: dir, catalog: [placeholder], blockPlaceholderDownloads: true)
         do {
-            try await store.download(spec: spec)
+            try await store.download(spec: placeholder)
             XCTFail("placeholder download should be blocked")
         } catch ModelWeightError.placeholderBlocked {
             // expected
@@ -52,13 +60,58 @@ final class AIBenchTests: XCTestCase {
     func testWeightInstallFixtureAndReadyFlag() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let store = ModelWeightStore(directory: dir)
-        let spec = ModelWeightCatalog.defaults[0]
+        let spec = ModelWeightSpec(
+            id: "fixture",
+            displayName: "fixture",
+            filename: "fixture.gguf",
+            downloadURL: "https://example.invalid/fixture.gguf",
+            expectedSHA256: String(repeating: "0", count: 64),
+            approximateBytes: 12,
+            recommendedMinRAMGB: 6
+        )
+        let store = ModelWeightStore(directory: dir, catalog: [spec])
         XCTAssertFalse(store.hasReadyWeight)
         try store.installFixture(spec: spec, data: Data("gguf-fixture".utf8))
         XCTAssertTrue(store.hasReadyWeight)
         try store.delete(spec: spec)
         XCTAssertFalse(store.hasReadyWeight)
+    }
+
+    func testCatalogPointsAtHuggingFaceQwenNotGit() {
+        for spec in ModelWeightCatalog.defaults {
+            XCTAssertTrue(spec.downloadURL.contains("huggingface.co"))
+            XCTAssertTrue(spec.filename.hasSuffix(".gguf"))
+            XCTAssertEqual(spec.expectedSHA256.count, 64)
+            XCTAssertFalse(spec.expectedSHA256.allSatisfy { $0 == "0" })
+        }
+        XCTAssertEqual(ModelWeightCatalog.recommendedSpecID, "qwen25-15b-q4")
+    }
+
+    func testLocalDownloadedBackendFallsBackWithoutInference() async throws {
+        let backend = LocalDownloadedBackend(ready: false, fallBackToRules: true)
+        let suggestions = try await backend.categorize(
+            batch: [CategorizeItem(index: 0, purpose: "午饭", direction: "支出")],
+            allowedCategories: ["餐饮", "其他支出"]
+        )
+        XCTAssertFalse(suggestions.isEmpty)
+        let narration = try await backend.narrateInsights(
+            facts: InsightFactPack(factLines: ["餐饮共 ¥10.00"], protectedAmountTexts: ["¥10.00"])
+        )
+        XCTAssertTrue(narration.contains("¥10.00"))
+    }
+
+    func testLocalDownloadedBackendUsesInjectedInference() async throws {
+        struct StubInference: LocalGGUFInference {
+            func complete(system: String, user: String, temperature: Float, maxTokens: Int) async throws -> String {
+                #"[{"index":0,"category":"餐饮"}]"#
+            }
+        }
+        let backend = LocalDownloadedBackend(ready: true, inference: StubInference(), fallBackToRules: false)
+        let suggestions = try await backend.categorize(
+            batch: [CategorizeItem(index: 0, purpose: "瑞幸咖啡", direction: "支出")],
+            allowedCategories: ["餐饮", "其他支出"]
+        )
+        XCTAssertEqual(suggestions.first?.category, "餐饮")
     }
 
     func testInsightGuardRejectsMissingProtectedAmount() {
