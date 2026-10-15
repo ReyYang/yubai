@@ -10,20 +10,20 @@ struct ModelWeightsSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Text("权重按需从 Hugging Face 下载到本机应用支持目录，不打进主包与 git。删除后自动回到规则 / 模板路径。推荐约 8 GB RAM 机型使用 1.5B；约 6 GB 可用 0.5B。").font(.callout).foregroundStyle(.secondary)
+                Text("开发者选项。日常使用请在设置中开启「增强智能（云端）」。本机模型默认关闭，以避免真机加载导致卡顿或退出。").font(.callout).foregroundStyle(.secondary)
             }
             Section("可选模型") {
                 ForEach(ModelWeightCatalog.defaults) { spec in
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text(spec.displayName).font(.headline)
+                            Text(simpleName(spec)).font(.headline)
                             if spec.id == ModelWeightCatalog.recommendedSpecID {
                                 Text("推荐").font(.caption2).foregroundStyle(.secondary)
                             }
                         }
                         Text(sizeLabel(spec)).font(.caption).foregroundStyle(.secondary)
                         if let status = statuses[spec.id] {
-                            Text(status.installed ? (status.verified ? "已安装 · 已校验" : "已安装 · 校验未通过") : "未下载")
+                            Text(status.installed ? (status.verified ? "已就绪" : "文件异常，建议删除后重下") : "未下载")
                                 .font(.caption)
                             if status.installed {
                                 Text("占用 \(ByteCountFormatter.string(fromByteCount: status.bytesOnDisk, countStyle: .file))").font(.caption2).foregroundStyle(.secondary)
@@ -43,18 +43,30 @@ struct ModelWeightsSettingsView: View {
             if let message {
                 Section { Text(message).font(.callout).foregroundStyle(YubaiTheme.amber) }
             }
+            Section {
+                Button("重置本机模型保护开关") {
+                    IntelligenceRuntime.resetLocalInferenceGate()
+                    message = "已重置；仍需在「高级选项」中启用本机模型才会尝试加载。"
+                }
+            }
             Section("说明") {
-                Text("推理：llama.cpp XCFramework（Metal）。模拟器 / vphone 仅作冒烟；延迟与内存以真机为准。金额计算永不交模型修改。").font(.caption).foregroundStyle(.secondary)
+                Text("权重保存在本机应用目录，不打进安装包。金额计算永不交模型修改。").font(.caption).foregroundStyle(.secondary)
             }
         }
         .editorForm()
-        .navigationTitle("本机模型权重")
+        .navigationTitle("本机模型（开发者）")
         .onAppear { reload() }
+    }
+
+    func simpleName(_ spec: ModelWeightSpec) -> String {
+        if spec.id.contains("05b") { return "小模型（省内存）" }
+        if spec.id.contains("15b") { return "标准模型" }
+        return spec.displayName
     }
 
     func sizeLabel(_ spec: ModelWeightSpec) -> String {
         let size = ByteCountFormatter.string(fromByteCount: spec.approximateBytes, countStyle: .file)
-        return "约 \(size) · 建议 ≥\(spec.recommendedMinRAMGB) GB RAM · \(spec.filename)"
+        return "约 \(size) · 建议内存 ≥\(spec.recommendedMinRAMGB) GB"
     }
 
     func reload() {

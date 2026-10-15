@@ -16,7 +16,7 @@ enum LocalIntelligence {
         let allowed = ledger.categories.map(\.name)
         for start in stride(from: 0, to: entries.count, by: 24) {
             guard !Task.isCancelled else { return result }
-            if Date().timeIntervalSince(started) >= 90 { result.warnings.append("本机智能已完成一部分归类；余下记录保留本地规则结果或其他分类，可直接保存。"); break }
+            if Date().timeIntervalSince(started) >= 90 { result.warnings.append("智能辅助已完成一部分归类；余下记录保留本地规则结果或其他分类，可直接保存。"); break }
             let batch = Array(entries[start..<min(entries.count, start + 24)])
             progress(start, entries.count)
             let items = batch.enumerated().map { CategorizeItem(index: $0.offset, purpose: String($0.element.title.prefix(80)), direction: $0.element.nature.inflow ? "收入" : "支出") }
@@ -37,16 +37,20 @@ enum LocalIntelligence {
         let route = IntelligenceRuntime.routing(for: preferences)
         switch route.kind {
         case .rulesOnly: return false
-        case .localDownloaded: return IntelligenceRuntime.weights.hasReadyWeight || preferences.experimentalMockLocalAI
+        case .localDownloaded:
+            return preferences.experimentalMockLocalAI
+                || (IntelligenceRuntime.weights.hasReadyWeight && IntelligenceRuntime.localInferenceHealthy(for: preferences))
         case .cloudOptional:
             // UI may offer cloud assist when switch is on; missing key degrades inside CloudOptionalBackend.
             return preferences.cloudAIEnabled
         case .appleFMOptional: return IntelligenceRuntime.appleFMAvailable
         }
     }
-    /// Legacy alias: Apple FM or downloaded / mock path may assist.
+    /// Legacy alias: any non-rules assist path may be available.
     @MainActor static var available: Bool {
-        IntelligenceRuntime.appleFMAvailable || IntelligenceRuntime.weights.hasReadyWeight
+        IntelligenceRuntime.appleFMAvailable
+            || (IntelligenceRuntime.weights.hasReadyWeight && IntelligenceRuntime.localGateHealthy)
+            || DeepSeekConfiguration.fromEnvironment() != nil
     }
     @MainActor static func reflect(title: String, purpose: String, values: String, assessment: PurchaseAssessment, preferences: Preferences) async throws -> String {
         guard preferences.localAIEnabled else { throw YubaiError.invalid(availabilityText(for: preferences)) }
@@ -123,7 +127,7 @@ struct InsightsView: View {
             if !insightPolish.isEmpty { Text(insightPolish).font(.callout).foregroundStyle(.secondary) }
             Text("这些线索来自本地计算，不是 AI 推断，也不代表必须削减消费。").font(.caption).foregroundStyle(.secondary)
             if LocalIntelligence.canAssist(preferences: store.current.preferences) {
-                Button(insightBusy ? "本机润色中…" : "用本机模型说说") { polishInsights() }
+                Button(insightBusy ? "智能润色中…" : "用智能说说") { polishInsights() }
                     .disabled(insightBusy)
                     .font(.caption)
             }
@@ -193,14 +197,14 @@ struct AdviceView: View {
             Card { VStack(alignment: .leading, spacing: 18) { Label(a.title, systemImage: a.severity == 2 ? "exclamationmark.circle" : "checkmark.circle").font(.headline).foregroundStyle(a.severity == 2 ? YubaiTheme.amber : YubaiTheme.jade); Text(a.explanation).font(.callout).lineSpacing(4); Divider(); Text("购买后的保守余量").font(.caption).foregroundStyle(.secondary); AmountLabel(cents: a.afterPurchase, large: true); DisclosureGroup("查看计算与完整度依据") { VStack(alignment: .leading, spacing: 10) { ForEach(a.facts, id: \.self) { Text("· " + $0).font(.caption).foregroundStyle(.secondary) } }.padding(.top, 10) } } }
             Card { VStack(alignment: .leading, spacing: 16) { SectionHeading(title: "除了金额，还可以想想"); ForEach(a.questions, id: \.self) { Text("· " + $0).font(.callout) }; Text("你重视：" + store.current.preferences.purchaseValues).font(.caption).foregroundStyle(.secondary) } }
             Card { VStack(alignment: .leading, spacing: 14) {
-                Label("本机 AI · 补充使用价值思考", systemImage: "sparkles").font(.headline)
+                Label("智能辅助 · 补充使用价值思考", systemImage: "sparkles").font(.headline)
                 Text(LocalIntelligence.availabilityText(for: store.current.preferences)).font(.caption).foregroundStyle(.secondary)
-                if busy { ProgressView("正在本机思考…") }
+                if busy { ProgressView("正在思考…") }
                 else if !reflection.isEmpty { Text(reflection).font(.callout).lineSpacing(5).textSelection(.enabled); InlineNote(text: "AI 补充可能不准确；上方金额始终来自确定性计算。") }
                 if let aiError { Text(aiError).font(.caption).foregroundStyle(YubaiTheme.amber) }
-                Button("让本机 AI 补充想法") { reflect(a) }.disabled(!LocalIntelligence.canAssist(preferences: store.current.preferences) || busy)
-                if !store.current.preferences.localAIEnabled { Text("本机 AI 已在设置中关闭。").font(.caption).foregroundStyle(.secondary) }
-                else if !LocalIntelligence.canAssist(preferences: store.current.preferences) { Text("当前为规则路径：可下载本机模型，或在设置中开启可选云端 / 系统模型。").font(.caption).foregroundStyle(.secondary) }
+                Button("让智能补充想法") { reflect(a) }.disabled(!LocalIntelligence.canAssist(preferences: store.current.preferences) || busy)
+                if !store.current.preferences.localAIEnabled { Text("智能辅助已在设置中关闭。").font(.caption).foregroundStyle(.secondary) }
+                else if !LocalIntelligence.canAssist(preferences: store.current.preferences) { Text("当前为规则路径：可在设置中开启「增强智能（云端）」。").font(.caption).foregroundStyle(.secondary) }
             } }
             Button(saved ? "已经记下这次思考" : "保存这次思考") { saved = true; if !store.update("保存购买思考", { $0.advice.append(AdviceRecord(title: title, amount: assessedAmount, result: a.title + "。" + a.explanation, note: purpose)) }) { saved = false } }.disabled(saved)
         }
@@ -209,7 +213,7 @@ struct AdviceView: View {
     func reflect(_ a: PurchaseAssessment) {
         task?.cancel(); busy = true; aiError = nil
         let preferences = store.current.preferences
-        task = Task { do { let text = try await LocalIntelligence.reflect(title: title, purpose: purpose, values: preferences.purchaseValues, assessment: a, preferences: preferences); guard !Task.isCancelled else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次本机思考没有完成。资金计算已保留，你可以稍后重试。"; busy = false } }
+        task = Task { do { let text = try await LocalIntelligence.reflect(title: title, purpose: purpose, values: preferences.purchaseValues, assessment: a, preferences: preferences); guard !Task.isCancelled else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次智能补充没有完成。资金计算已保留，你可以稍后重试或改用规则路径。"; busy = false } }
     }
     func invalidate() { task?.cancel(); assessment = nil; reflection = ""; busy = false; saved = false }
 }

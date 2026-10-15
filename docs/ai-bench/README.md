@@ -40,9 +40,9 @@ swift test --filter AIBenchTests
 |---|---|
 | `RulesOnlyBackend` | 规则 / 模板 / 无扩词；购买短答会失败（预期） |
 | `MockLocalBackend` | 无权重时的启发式 mock（设置里「实验性 mock」） |
-| `LocalDownloadedBackend` + `YubaiLocalLLM` | **主路径**：`mattt/llama.swift` → 官方 `llama.xcframework`（Metal）+ 本机 Qwen GGUF |
+| `LocalDownloadedBackend` + `YubaiLocalLLM` | 本机路径（**默认关闭**；高级选项显式开启 + 健康门控） |
 | `MockCloudBackend` | 可选云 mock（默认产品开关关闭） |
-| `CloudOptionalBackend` + DeepSeek | 真实云端：读 `DEEPSEEK_API_KEY`；仅当 `cloudAIEnabled`；无密钥降级 |
+| `CloudOptionalBackend` + DeepSeek | **现阶段实用路径**：读 `DEEPSEEK_API_KEY`；仅当 `cloudAIEnabled`；无密钥降级 |
 
 ### 默认模型选型
 
@@ -51,9 +51,9 @@ swift test --filter AIBenchTests
 | **推荐（≈8 GB RAM）** | `qwen25-15b-q4` | `qwen2.5-1.5b-instruct-q4_k_m.gguf` | Hugging Face `Qwen/Qwen2.5-1.5B-Instruct-GGUF` |
 | 覆盖（≈6 GB） | `qwen25-05b-q4` | `qwen2.5-0.5b-instruct-q4_k_m.gguf` | Hugging Face `Qwen/Qwen2.5-0.5B-Instruct-GGUF` |
 
-URL 与 SHA-256 写在 `ModelWeightCatalog`；**勿把 GGUF 提交进 git**。设置 →「本机模型权重」下载 / 校验 / 删除。
+URL 与 SHA-256 写在 `ModelWeightCatalog`；**勿把 GGUF 提交进 git**。设置 → 高级选项 →「本机模型（开发者）」下载 / 删除。
 
-路由仍：本地已下载权重 → 可选云 → 可选 Apple FM → 规则。未下载或加载失败 → `RulesOnly` 降级。金额永不交模型修改。
+**可靠性路由（2026-10 真机冒烟失败后）：** 健康本机（显式开启）→ 云端增强 → Apple FM → 规则。本机默认关；不健康 / 未就绪时若云端已开则走云，否则规则。金额永不交模型修改。
 
 ## 可选：本机 GGUF 实网冒烟
 

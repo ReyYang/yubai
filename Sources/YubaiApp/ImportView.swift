@@ -151,7 +151,7 @@ struct ImportView: View {
         parsingTask = Task { do {
             let parsed = try await Task.detached(priority: .userInitiated) { try BillImporter.preview(data: bytes, filename: name, accountID: accountID, ledger: ledger, accountMappings: mappings, requireAccountMapping: true) }.value
             guard parseID == requestID, !Task.isCancelled else { return }
-            let assisted = await LocalIntelligence.categorize(parsed, ledger: ledger) { done, total in activity = "本机智能正在整理用途 · \(done)/\(total)" }
+            let assisted = await LocalIntelligence.categorize(parsed, ledger: ledger) { done, total in activity = "智能辅助正在整理用途 · \(done)/\(total)" }
             guard parseID == requestID, !Task.isCancelled else { return }; preview = assisted; busy = false
         } catch { guard parseID == requestID, !Task.isCancelled else { return }; localError = error.localizedDescription; preview = nil; busy = false } }
     }

@@ -4,6 +4,7 @@ import YubaiCore
 import YubaiLocalLLM
 
 /// App-side registry: resolves backend from preferences + weight store + optional Apple FM.
+/// Local GGUF is soft-gated: never sync-loads on MainActor; unhealthy → cloud / rules.
 @MainActor
 enum IntelligenceRuntime {
     static let weights = ModelWeightStore()
@@ -12,8 +13,17 @@ enum IntelligenceRuntime {
         IntelligenceRouting.resolve(
             preferences: preferences,
             localWeightReady: weights.hasReadyWeight || preferences.experimentalMockLocalAI,
-            appleFMAvailable: appleFMAvailable
+            appleFMAvailable: appleFMAvailable,
+            localInferenceHealthy: localInferenceHealthy(for: preferences)
         )
+    }
+
+    /// Runtime gate: circuit breaker + RAM vs catalog recommendation. Mock path skips hardware checks.
+    static func localInferenceHealthy(for preferences: Preferences) -> Bool {
+        if preferences.experimentalMockLocalAI, !weights.hasReadyWeight { return true }
+        guard LocalInferenceSafety.isHealthy else { return false }
+        guard let spec = weights.anyReadyWeight() else { return false }
+        return LocalInferenceSafety.deviceMeetsRAM(recommendedMinRAMGB: spec.recommendedMinRAMGB)
     }
 
     static var appleFMAvailable: Bool {
@@ -30,7 +40,7 @@ enum IntelligenceRuntime {
             if preferences.experimentalMockLocalAI, !weights.hasReadyWeight {
                 return MockLocalBackend()
             }
-            return localDownloadedBackend()
+            return safeLocalDownloadedBackend()
         case .cloudOptional:
             // Experimental mock stays offline; production cloud path uses DeepSeek when key is present.
             if preferences.experimentalMockLocalAI {
@@ -44,33 +54,50 @@ enum IntelligenceRuntime {
         }
     }
 
-    /// Builds local backend with llama.cpp when a verified GGUF is present; otherwise ready=false → rules.
-    static func localDownloadedBackend() -> LocalDownloadedBackend {
+    /// Never sync-loads GGUF here. Returns ready=false (→ rules) when gate fails; otherwise lazy adapter.
+    static func safeLocalDownloadedBackend() -> LocalDownloadedBackend {
+        guard LocalInferenceSafety.isHealthy else {
+            return LocalDownloadedBackend(ready: false, fallBackToRules: true)
+        }
         guard let spec = weights.anyReadyWeight() else {
             return LocalDownloadedBackend(ready: false, fallBackToRules: true)
         }
-        let path = weights.fileURL(for: spec).path
-        // First load can take seconds; only happens when downloadedModelEnabled + verified weight.
-        do {
-            let inference = try LocalLlamaRegistry.inference(at: path)
-            return LocalDownloadedBackend(ready: true, inference: inference, fallBackToRules: true)
-        } catch {
+        guard LocalInferenceSafety.deviceMeetsRAM(recommendedMinRAMGB: spec.recommendedMinRAMGB) else {
+            LocalInferenceSafety.markUnhealthy("设备内存低于本机模型建议值（约 \(spec.recommendedMinRAMGB) GB）")
             return LocalDownloadedBackend(ready: false, fallBackToRules: true)
         }
+        let path = weights.fileURL(for: spec).path
+        let lazy = LazyLocalGGUFInference(modelPath: path, recommendedMinRAMGB: spec.recommendedMinRAMGB)
+        return LocalDownloadedBackend(ready: true, inference: lazy, fallBackToRules: true)
+    }
+
+    /// Legacy name — prefer `safeLocalDownloadedBackend`.
+    static func localDownloadedBackend() -> LocalDownloadedBackend {
+        safeLocalDownloadedBackend()
     }
 
     static func unloadLocalModel() {
         LocalLlamaRegistry.unload()
     }
 
+    static func resetLocalInferenceGate() {
+        LocalInferenceSafety.reset()
+        LocalLlamaRegistry.unload()
+    }
+
+    static var localGateHealthy: Bool { LocalInferenceSafety.isHealthy }
+
     static var availabilityText: String {
+        if !LocalInferenceSafety.isHealthy {
+            return "本机模型暂不可用（已保护应用稳定）· 可开启云端增强或使用规则"
+        }
         if weights.hasReadyWeight {
-            return "本机模型权重已就绪 · llama.cpp + Metal GGUF"
+            return "本机模型权重已下载（默认不自动加载；需在高级选项中启用）"
         }
         if appleFMAvailable {
             return "系统 Apple 模型可用（可选旁路，非主路径）"
         }
-        return "未下载本机模型；规则与资金计算照常可用"
+        return "规则与资金计算照常可用；可开启云端增强"
     }
 
     static func availabilityText(for preferences: Preferences) -> String {
@@ -79,10 +106,10 @@ enum IntelligenceRuntime {
         case .localDownloaded:
             return preferences.experimentalMockLocalAI && !weights.hasReadyWeight
                 ? "实验性 mock 本机路径 · \(route.reason)"
-                : "本机下载模型路径 · \(route.reason)"
+                : "本机模型路径 · \(route.reason)"
         case .cloudOptional:
             if DeepSeekConfiguration.fromEnvironment() != nil {
-                return "云端增强 DeepSeek（可选）· \(route.reason)"
+                return "云端增强 DeepSeek · \(route.reason)"
             }
             return "云端增强已开但未配置密钥 · 将降级规则 / 模板 · \(route.reason)"
         case .appleFMOptional:

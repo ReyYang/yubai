@@ -4,6 +4,20 @@ import YubaiLocalLLM
 
 /// Offline unit coverage for local GGUF wiring. Live Metal inference is opt-in (needs downloaded weights).
 final class LocalGGUFTests: XCTestCase {
+    override func tearDown() {
+        LocalInferenceSafety.reset()
+        LocalLlamaRegistry.unload()
+        super.tearDown()
+    }
+
+    func testLocalInferenceSafetyCircuitBreaker() {
+        XCTAssertTrue(LocalInferenceSafety.isHealthy)
+        LocalInferenceSafety.markUnhealthy("unit-test")
+        XCTAssertFalse(LocalInferenceSafety.isHealthy)
+        LocalInferenceSafety.reset()
+        XCTAssertTrue(LocalInferenceSafety.isHealthy)
+    }
+
     func testAmountGuardStillBlocksLocalReflectPath() async throws {
         struct AmountyInference: LocalGGUFInference {
             func complete(system: String, user: String, temperature: Float, maxTokens: Int) async throws -> String {

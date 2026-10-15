@@ -12,15 +12,30 @@ final class AIBenchTests: XCTestCase {
         XCTAssertEqual(route.kind, .rulesOnly)
     }
 
-    func testRoutingPrefersLocalWeightThenCloudThenAppleFM() {
+    func testRoutingPrefersHealthyLocalThenCloudThenAppleFM() {
         var prefs = Preferences()
         prefs.localAIEnabled = true
         prefs.downloadedModelEnabled = true
         prefs.cloudAIEnabled = true
         prefs.appleSystemModelEnabled = true
         XCTAssertEqual(
-            IntelligenceRouting.resolve(preferences: prefs, localWeightReady: true, appleFMAvailable: true).kind,
+            IntelligenceRouting.resolve(
+                preferences: prefs,
+                localWeightReady: true,
+                appleFMAvailable: true,
+                localInferenceHealthy: true
+            ).kind,
             .localDownloaded
+        )
+        // Unhealthy local must not block cloud when cloud is on.
+        XCTAssertEqual(
+            IntelligenceRouting.resolve(
+                preferences: prefs,
+                localWeightReady: true,
+                appleFMAvailable: true,
+                localInferenceHealthy: false
+            ).kind,
+            .cloudOptional
         )
         prefs.downloadedModelEnabled = false
         XCTAssertEqual(
@@ -32,6 +47,28 @@ final class AIBenchTests: XCTestCase {
             IntelligenceRouting.resolve(preferences: prefs, localWeightReady: false, appleFMAvailable: true).kind,
             .appleFMOptional
         )
+    }
+
+    func testRoutingSkipsUnhealthyLocalToRulesWhenCloudOff() {
+        var prefs = Preferences()
+        prefs.localAIEnabled = true
+        prefs.downloadedModelEnabled = true
+        prefs.cloudAIEnabled = false
+        prefs.appleSystemModelEnabled = false
+        let route = IntelligenceRouting.resolve(
+            preferences: prefs,
+            localWeightReady: true,
+            appleFMAvailable: false,
+            localInferenceHealthy: false
+        )
+        XCTAssertEqual(route.kind, .rulesOnly)
+    }
+
+    func testNewPreferencesDefaultLocalModelOff() {
+        let prefs = Preferences()
+        XCTAssertFalse(prefs.downloadedModelEnabled)
+        XCTAssertFalse(prefs.cloudAIEnabled)
+        XCTAssertTrue(prefs.localAIEnabled)
     }
 
     func testWeightStoreBlocksPlaceholderDownload() async {
@@ -169,7 +206,8 @@ final class AIBenchTests: XCTestCase {
         let restored = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
         XCTAssertTrue(restored.preferences.appleSystemModelEnabled)
         XCTAssertFalse(restored.preferences.cloudAIEnabled)
-        XCTAssertTrue(restored.preferences.downloadedModelEnabled)
+        // Missing key → soft-disable local GGUF (reliability default).
+        XCTAssertFalse(restored.preferences.downloadedModelEnabled)
         XCTAssertFalse(restored.preferences.experimentalMockLocalAI)
     }
 }
