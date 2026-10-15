@@ -12,7 +12,8 @@
 | 账本与编辑 | `LedgerView.swift` / `Editors.swift`；检索、分类/时间/账户筛选、批量修改、明细关联、回收站、余额差额 |
 | 整理 | `ImportView.swift`；文件/截图入口 → 账户对应 → 自动归类与少量例外 → 保存结果 → 可直接离开；不强迫逐笔审核 |
 | 安排与洞察 | `PlansView.swift` / `InsightsView.swift`；已知义务、目标、房租实际收付、购买判断与按需本机模型 |
-| 持续维护 | `SettingsView.swift`；分类规则、完整备份、恢复预览、历史、设备保护、外观及计算口径 |
+| 持续维护 | `SettingsView.swift`；分类规则、完整备份、恢复预览、历史、设备保护、外观、本机模型权重与可选云/系统模型开关及计算口径 |
+| 本机智能（一期骨架） | `IntelligenceRuntime.swift` / `YubaiCore` `Intelligence*` + `ModelWeightStore`；台架见 `docs/ai-bench/`；真机 GGUF 尚未接入；方案见 Agent Store `docs/ai-local-first-plan.md` |
 | 图标 | `Assets.xcassets/AppIcon.appiconset`；本项目生成的深青绿余白符号，不依赖远端素材 |
 
 基础组件包括 `Page`、`Card`、`AmountLabel`、`EntryRow`、`InlineNote`、`EmptyState` 和主按钮；全部已有实际调用。使用 SwiftUI 原生表单、导航、选择器、sheet、文件选择、SF Symbols 和 Swift Charts，不建立第二套未使用的 token 或组件库。
