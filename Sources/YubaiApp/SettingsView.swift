@@ -42,7 +42,7 @@ struct SettingsView: View {
                 Toggle("允许云端增强（默认关）", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value } }))
                 Toggle("允许系统 Apple 模型（可选旁路）", isOn: Binding(get: { store.current.preferences.appleSystemModelEnabled }, set: { value in store.update("保存系统模型偏好") { $0.preferences.appleSystemModelEnabled = value } }))
                 Text(LocalIntelligence.availabilityText(for: store.current.preferences)).font(.caption).foregroundStyle(.secondary)
-                Text("默认本机处理：规则始终可用；你可下载本机模型，或按需开启云端增强。开启云端前会说明发送范围（当前为接口预留，默认关闭）。金额、账户与资金性质从不交给模型修改。系统 Apple 模型不是主路径，可用性受系统与地区限制。").font(.caption).foregroundStyle(.secondary)
+                Text("默认本机处理：规则始终可用；你可下载本机模型，或按需开启云端增强（DeepSeek，需进程环境变量 DEEPSEEK_API_KEY；默认关闭）。开启后可能发送用途摘要 / 偏好短文，金额、账户与资金性质从不交给模型修改。无密钥时自动降级规则 / 模板。系统 Apple 模型不是主路径，可用性受系统与地区限制。").font(.caption).foregroundStyle(.secondary)
                 NavigationLink { ModelWeightsSettingsView() } label: { Label("本机模型权重", systemImage: "externaldrive.badge.icloud") }
                 Toggle("实验性 mock 本机路径（不接生产写回承诺）", isOn: Binding(get: { store.current.preferences.experimentalMockLocalAI }, set: { value in store.update("保存实验 AI 开关") { $0.preferences.experimentalMockLocalAI = value } }))
                 Text("实验开关仅用于台架与骨架联调；真机 GGUF / llama.cpp 推理尚未接入。").font(.caption2).foregroundStyle(.secondary)

@@ -31,10 +31,11 @@ enum IntelligenceRuntime {
             }
             return LocalDownloadedBackend(ready: weights.hasReadyWeight, delegate: nil)
         case .cloudOptional:
+            // Experimental mock stays offline; production cloud path uses DeepSeek when key is present.
             if preferences.experimentalMockLocalAI {
                 return MockCloudBackend()
             }
-            return CloudOptionalBackend(enabled: preferences.cloudAIEnabled, endpoint: nil, delegate: nil)
+            return CloudOptionalBackend.fromEnvironment(enabled: preferences.cloudAIEnabled)
         case .appleFMOptional:
             return AppleFMBackend()
         case .rulesOnly:
@@ -61,7 +62,10 @@ enum IntelligenceRuntime {
                 ? "实验性 mock 本机路径 · \(route.reason)"
                 : "本机下载模型路径 · \(route.reason)"
         case .cloudOptional:
-            return "云端增强（可选）· \(route.reason)"
+            if DeepSeekConfiguration.fromEnvironment() != nil {
+                return "云端增强 DeepSeek（可选）· \(route.reason)"
+            }
+            return "云端增强已开但未配置密钥 · 将降级规则 / 模板 · \(route.reason)"
         case .appleFMOptional:
             return "系统 Apple 模型（可选）· \(route.reason)"
         case .rulesOnly:

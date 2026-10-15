@@ -38,7 +38,9 @@ enum LocalIntelligence {
         switch route.kind {
         case .rulesOnly: return false
         case .localDownloaded: return IntelligenceRuntime.weights.hasReadyWeight || preferences.experimentalMockLocalAI
-        case .cloudOptional: return preferences.cloudAIEnabled
+        case .cloudOptional:
+            // UI may offer cloud assist when switch is on; missing key degrades inside CloudOptionalBackend.
+            return preferences.cloudAIEnabled
         case .appleFMOptional: return IntelligenceRuntime.appleFMAvailable
         }
     }
