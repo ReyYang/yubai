@@ -7,10 +7,12 @@
 - `Sources/YubaiCore`：模型、整数金额、财务计算、来源导入、批量操作、加密备份和原子持久化。
 - `Sources/YubaiApp`：SwiftUI 页面、Apple Vision OCR、Foundation Models、系统文件交互和设备认证。
 - `Sources/CArchive`：系统 zlib 与 CommonCrypto 的小型桥接，不联网下载库。
-- `Tests/YubaiCoreTests`：计算与存档 contract；Fixtures 为明确合成资料。
+- `Tests/YubaiCoreTests`：计算与存档 contract；Fixtures 为明确合成资料（含 `ai-bench-samples.json`）。
 - `Tests/YubaiUITests`：iPhone 原生交互测试，使用独立 UUID 账本；测试夹具入口仅编译进 Debug simulator。
+- `docs/ai-bench/`：本地优先 AI 台架说明；跑 `swift test --filter AIBenchTests`。
 - `scripts/generate-project.py`：从 app 源文件生成 Xcode 工程；增加 app 源文件后运行。
 - `.design-meta` / `.scratch/yubai-product`：长期产品和设计资料。
+- AI 抽象：`YubaiCore` 的 `IntelligenceBackend`（RulesOnly / LocalDownloaded / CloudOptional）与 App 侧 `AppleFMOptional`；权重见 `ModelWeightStore`。真机 llama.cpp 未链。
 
 ## 本地验证
 

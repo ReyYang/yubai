@@ -8,11 +8,17 @@ struct LedgerView: View {
     @State private var selected = Set<UUID>(); @State private var selecting = false; @State private var bulkCategory = "餐饮"
     @State private var showBulk = false; @State private var showDeleted = false; @State private var confirmDelete = false
     @State private var period = "全部时间"; @State private var from = Dates.addDays(-30, to: Date()); @State private var through = Date(); @State private var categoryFilter = "全部分类"
+    @State private var searchExpanded: [String] = []
+    private var searchTerms: [String] {
+        let q = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return [] }
+        return [q] + searchExpanded
+    }
     private var rows: [Entry] {
         store.current.entries.filter { e in
             (showDeleted ? e.deletedAt != nil : e.deletedAt == nil) && (accountFilter == nil || e.accountID == accountFilter || e.otherAccountID == accountFilter) &&
             matchesPeriod(e.date) && (categoryFilter == "全部分类" || e.category == categoryFilter) &&
-            (search.isEmpty || [e.title, e.note, e.category, e.externalID].contains { $0.localizedCaseInsensitiveContains(search) }) &&
+            (searchTerms.isEmpty || searchTerms.contains { term in [e.title, e.note, e.category, e.externalID].contains { $0.localizedCaseInsensitiveContains(term) } }) &&
             (kind == "全部" || (kind == "支出" && e.nature == .expense) || (kind == "收入" && e.nature == .income) || (kind == "待明确" && e.nature.uncertain) || (kind == "内部移动" && e.nature.paired))
         }.sorted { $0.date > $1.date }
     }
@@ -48,6 +54,7 @@ struct LedgerView: View {
             if selecting { bulkBar }
         }.background(YubaiTheme.canvas).navigationTitle(showDeleted ? "回收站" : "账本")
             .searchable(text: $search, prompt: "搜索用途、商户、分类或单号")
+            .onChange(of: search) { _, value in Task { await refreshSearchExpansion(value) } }
             .toolbar {
                 ToolbarItemGroup {
                     Button(selecting ? "完成选择" : "批量") { selecting.toggle(); selected.removeAll() }.disabled(rows.isEmpty && !selecting)
@@ -82,6 +89,23 @@ struct LedgerView: View {
     }
     var bulkBar: some View {
         HStack(spacing: 16) { Button(selected.count == rows.count ? "取消全选" : "全选") { selected = selected.count == rows.count ? [] : Set(rows.map(\.id)) }; Spacer(); if showDeleted { Button("恢复所选") { store.update("恢复记录") { l in for i in l.entries.indices where selected.contains(l.entries[i].id) { l.entries[i].deletedAt = nil } }; selected.removeAll(); selecting = false }.disabled(selected.isEmpty) } else { Button("整理") { showBulk = true }.disabled(selected.isEmpty); Button("删除", role: .destructive) { confirmDelete = true }.disabled(selected.isEmpty) } }.font(.callout).padding(18).background(.regularMaterial)
+    }
+    @MainActor func refreshSearchExpansion(_ query: String) async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, LocalIntelligence.canAssist(preferences: store.current.preferences) else {
+            searchExpanded = []
+            return
+        }
+        let backend = IntelligenceRuntime.backend(for: store.current.preferences)
+        guard backend.capabilities.expandSearch else {
+            searchExpanded = []
+            return
+        }
+        do {
+            searchExpanded = try await backend.expandSearchQuery(trimmed)
+        } catch {
+            searchExpanded = []
+        }
     }
 }
 

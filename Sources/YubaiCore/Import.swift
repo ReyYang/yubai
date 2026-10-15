@@ -56,7 +56,7 @@ public struct ImportPreview: Sendable {
             guard rows[i].status == .ready, var e = rows[i].entry,
                   [.expense, .income].contains(e.nature), e.classificationReason.hasPrefix("未命中规则"),
                   let category = suggestions[e.id], categories.contains(where: { $0.name == category && $0.income == (e.nature == .income) }) else { continue }
-            e.category = category; e.classificationReason = "设备端 AI 归类，可随时纠正"
+            e.category = category; e.classificationReason = "智能归类，可随时纠正"
             rows[i].entry = e; rows[i].message = e.classificationReason
         }
     }

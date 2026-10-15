@@ -1,0 +1,315 @@
+{
+  "categorize": [
+    { "id": "c01", "purpose": "星巴克拿铁", "direction": "支出", "expectedCategory": "餐饮" },
+    { "id": "c02", "purpose": "瑞幸咖啡门店", "direction": "支出", "expectedCategory": "餐饮" },
+    { "id": "c03", "purpose": "美团外卖午餐", "direction": "支出", "expectedCategory": "餐饮" },
+    { "id": "c04", "purpose": "地铁通勤充值", "direction": "支出", "expectedCategory": "交通" },
+    { "id": "c05", "purpose": "滴滴出行到公司", "direction": "支出", "expectedCategory": "交通" },
+    { "id": "c06", "purpose": "十月房租转账备注", "direction": "支出", "expectedCategory": "居住" },
+    { "id": "c07", "purpose": "电费自动扣款", "direction": "支出", "expectedCategory": "居住" },
+    { "id": "c08", "purpose": "京东日用品纸巾", "direction": "支出", "expectedCategory": "日用购物" },
+    { "id": "c09", "purpose": "盒马鲜生采购", "direction": "支出", "expectedCategory": "日用购物" },
+    { "id": "c10", "purpose": "电影院晚场票", "direction": "支出", "expectedCategory": "娱乐旅行" },
+    { "id": "c11", "purpose": "在线课程年费", "direction": "支出", "expectedCategory": "学习工作" },
+    { "id": "c12", "purpose": "社区医院挂号", "direction": "支出", "expectedCategory": "医疗健康" },
+    { "id": "c13", "purpose": "给家人买礼物", "direction": "支出", "expectedCategory": "人情家庭" },
+    { "id": "c14", "purpose": "十月份工资入账", "direction": "收入", "expectedCategory": "工资奖金" },
+    { "id": "c15", "purpose": "兼职稿费结算", "direction": "收入", "expectedCategory": "兼职劳务" },
+    { "id": "c16", "purpose": "未知商户XYZ987", "direction": "支出", "expectedCategory": "其他支出" }
+  ],
+  "purchase": [
+    {
+      "id": "p01",
+      "title": "无线降噪耳机",
+      "purpose": "通勤降噪，已有入门款但续航不足",
+      "values": "长期有用",
+      "assessmentTitle": "购买后仍有余量",
+      "mustContain": ["替代", "程序判断"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p02",
+      "title": "机械键盘",
+      "purpose": "提高长时间写作舒适度",
+      "values": "真正喜欢的事物",
+      "assessmentTitle": "购买后余量偏紧",
+      "mustContain": ["使用价值", "程序判断"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p03",
+      "title": "会员年费",
+      "purpose": "偶尔看纪录片",
+      "values": "克制订阅",
+      "assessmentTitle": "资金上可以负担",
+      "mustContain": ["替代", "决定"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p04",
+      "title": "登山鞋",
+      "purpose": "季度徒步两次",
+      "values": "健康与户外",
+      "assessmentTitle": "购买后仍有余量",
+      "mustContain": ["程序判断"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p05",
+      "title": "二手显示器",
+      "purpose": "双屏办公",
+      "values": "长期有用",
+      "assessmentTitle": "建议延后或降低金额",
+      "mustContain": ["程序判断"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p06",
+      "title": "咖啡机",
+      "purpose": "减少外卖咖啡",
+      "values": "长期有用",
+      "assessmentTitle": "购买后仍有余量",
+      "mustContain": ["替代"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p07",
+      "title": "画展票",
+      "purpose": "周末放松",
+      "values": "真正喜欢",
+      "assessmentTitle": "资金上可以负担",
+      "mustContain": ["决定"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p08",
+      "title": "编程书",
+      "purpose": "系统复习算法",
+      "values": "学习成长",
+      "assessmentTitle": "购买后仍有余量",
+      "mustContain": ["程序判断"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p09",
+      "title": "行李箱",
+      "purpose": "旧箱轮子坏了",
+      "values": "必要替换",
+      "assessmentTitle": "购买后仍有余量",
+      "mustContain": ["替代"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p10",
+      "title": "游戏主机",
+      "purpose": "娱乐但已有 Switch",
+      "values": "克制娱乐大件",
+      "assessmentTitle": "购买后余量偏紧",
+      "mustContain": ["程序判断"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p11",
+      "title": "电动牙刷",
+      "purpose": "牙医建议更换",
+      "values": "健康",
+      "assessmentTitle": "资金上可以负担",
+      "mustContain": ["使用价值"],
+      "mustNotMatchAmountPattern": true
+    },
+    {
+      "id": "p12",
+      "title": "共享单车月卡",
+      "purpose": "最后一公里",
+      "values": "交通便利",
+      "assessmentTitle": "资金上可以负担",
+      "mustContain": ["决定"],
+      "mustNotMatchAmountPattern": true
+    }
+  ],
+  "insight": [
+    {
+      "id": "i01",
+      "factLines": ["餐饮是这段时间最大的消费去向，共 ¥1,280.50。"],
+      "protectedAmountTexts": ["¥1,280.50"],
+      "valuesHint": "少外食"
+    },
+    {
+      "id": "i02",
+      "factLines": ["比前一段同样长的时间多 ¥320.00。"],
+      "protectedAmountTexts": ["¥320.00"],
+      "valuesHint": ""
+    },
+    {
+      "id": "i03",
+      "factLines": ["你有 3 项持续付款约定。", "交通共 ¥210.00。"],
+      "protectedAmountTexts": ["¥210.00"],
+      "valuesHint": "核对订阅"
+    },
+    {
+      "id": "i04",
+      "factLines": ["日用购物是最大去向，共 ¥890.00。"],
+      "protectedAmountTexts": ["¥890.00"],
+      "valuesHint": ""
+    },
+    {
+      "id": "i05",
+      "factLines": ["比前一段少 ¥45.50。"],
+      "protectedAmountTexts": ["¥45.50"],
+      "valuesHint": ""
+    },
+    {
+      "id": "i06",
+      "factLines": ["娱乐旅行共 ¥600.00。", "你有 2 项持续付款约定。"],
+      "protectedAmountTexts": ["¥600.00"],
+      "valuesHint": "旅行预算"
+    },
+    {
+      "id": "i07",
+      "factLines": ["居住是最大去向，共 ¥3,200.00。"],
+      "protectedAmountTexts": ["¥3,200.00"],
+      "valuesHint": ""
+    },
+    {
+      "id": "i08",
+      "factLines": ["学习工作共 ¥199.00。"],
+      "protectedAmountTexts": ["¥199.00"],
+      "valuesHint": "课程"
+    },
+    {
+      "id": "i09",
+      "factLines": ["人情家庭共 ¥500.00。", "比前一段多 ¥100.00。"],
+      "protectedAmountTexts": ["¥500.00", "¥100.00"],
+      "valuesHint": ""
+    },
+    {
+      "id": "i10",
+      "factLines": ["医疗健康共 ¥76.30。"],
+      "protectedAmountTexts": ["¥76.30"],
+      "valuesHint": ""
+    },
+    {
+      "id": "i11",
+      "factLines": ["餐饮共 ¥2,010.00。", "你有 1 项持续付款约定。"],
+      "protectedAmountTexts": ["¥2,010.00"],
+      "valuesHint": "外食"
+    },
+    {
+      "id": "i12",
+      "factLines": ["比前一段同样长的时间少 ¥12.00。"],
+      "protectedAmountTexts": ["¥12.00"],
+      "valuesHint": ""
+    }
+  ],
+  "search": [
+    {
+      "id": "s01",
+      "query": "咖啡",
+      "corpus": [
+        { "title": "星巴克拿铁", "note": "午后", "category": "餐饮" },
+        { "title": "地铁通勤", "note": "", "category": "交通" }
+      ],
+      "expectedTitleSubstrings": ["星巴克"]
+    },
+    {
+      "id": "s02",
+      "query": "瑞幸",
+      "corpus": [
+        { "title": "瑞幸咖啡门店", "note": "", "category": "餐饮" },
+        { "title": "盒马采购", "note": "", "category": "日用购物" }
+      ],
+      "expectedTitleSubstrings": ["瑞幸"]
+    },
+    {
+      "id": "s03",
+      "query": "外卖",
+      "corpus": [
+        { "title": "美团外卖午餐", "note": "工作日", "category": "餐饮" },
+        { "title": "工资入账", "note": "", "category": "工资奖金" }
+      ],
+      "expectedTitleSubstrings": ["美团"]
+    },
+    {
+      "id": "s04",
+      "query": "打车",
+      "corpus": [
+        { "title": "滴滴出行到公司", "note": "雨天", "category": "交通" },
+        { "title": "电影票", "note": "", "category": "娱乐旅行" }
+      ],
+      "expectedTitleSubstrings": ["滴滴"]
+    },
+    {
+      "id": "s05",
+      "query": "房租",
+      "corpus": [
+        { "title": "十月租金", "note": "房东", "category": "居住" },
+        { "title": "电费", "note": "", "category": "居住" }
+      ],
+      "expectedTitleSubstrings": ["租金"]
+    },
+    {
+      "id": "s06",
+      "query": "超市",
+      "corpus": [
+        { "title": "盒马鲜生", "note": "周末采购", "category": "日用购物" },
+        { "title": "药店", "note": "", "category": "医疗健康" }
+      ],
+      "expectedTitleSubstrings": ["盒马"]
+    },
+    {
+      "id": "s07",
+      "query": "电影",
+      "corpus": [
+        { "title": "万达影城晚场", "note": "", "category": "娱乐旅行" },
+        { "title": "地铁", "note": "", "category": "交通" }
+      ],
+      "expectedTitleSubstrings": ["影城"]
+    },
+    {
+      "id": "s08",
+      "query": "地铁",
+      "corpus": [
+        { "title": "轨道交通充值", "note": "一卡通", "category": "交通" },
+        { "title": "咖啡", "note": "", "category": "餐饮" }
+      ],
+      "expectedTitleSubstrings": ["轨道"]
+    },
+    {
+      "id": "s09",
+      "query": "课程",
+      "corpus": [
+        { "title": "在线课程年费", "note": "算法", "category": "学习工作" },
+        { "title": "游戏点卡", "note": "", "category": "娱乐旅行" }
+      ],
+      "expectedTitleSubstrings": ["课程"]
+    },
+    {
+      "id": "s10",
+      "query": "医院",
+      "corpus": [
+        { "title": "社区医院挂号", "note": "", "category": "医疗健康" },
+        { "title": "礼物", "note": "", "category": "人情家庭" }
+      ],
+      "expectedTitleSubstrings": ["医院"]
+    },
+    {
+      "id": "s11",
+      "query": "咖啡店消费",
+      "corpus": [
+        { "title": "星巴克拿铁", "note": "", "category": "餐饮" },
+        { "title": "瑞幸咖啡门店", "note": "", "category": "餐饮" },
+        { "title": "地铁", "note": "", "category": "交通" }
+      ],
+      "expectedTitleSubstrings": ["星巴克", "瑞幸"]
+    },
+    {
+      "id": "s12",
+      "query": "网约车",
+      "corpus": [
+        { "title": "滴滴出行", "note": "加班", "category": "交通" },
+        { "title": "高铁票", "note": "", "category": "交通" }
+      ],
+      "expectedTitleSubstrings": ["滴滴"]
+    }
+  ]
+}

@@ -30,14 +30,22 @@ struct SettingsView: View {
                 Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock))
                 Text("使用设备现有的 Face ID、Touch ID 或密码。原始账单和本地账本不会上传。请另存一份加密备份，防止设备丢失。").font(.caption).foregroundStyle(.secondary)
             }
-            Section("界面与本机智能") {
+            Section("界面与外观") {
                 Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in store.update("保存外观") { $0.preferences.appearance = value } })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }
                 Picker("主题", selection: Binding(get: { YubaiColorTheme(preference: store.current.preferences.colorTheme).rawValue }, set: { value in store.update("保存主题") { $0.preferences.colorTheme = value } })) {
                     ForEach(YubaiColorTheme.allCases) { theme in Text(theme.title).tag(theme.rawValue) }
                 }
-                Toggle("允许使用设备端 AI", isOn: Binding(get: { store.current.preferences.localAIEnabled }, set: { value in store.update("保存本机 AI 偏好") { $0.preferences.localAIEnabled = value } }))
-                Text(LocalIntelligence.availabilityText).font(.caption).foregroundStyle(.secondary)
-                Text("本机规则先归类，设备端 AI 可补充未匹配用途并回答购买价值问题；金额与资金性质不交给 AI 修改。设备不支持时，规则与全部账务功能照常可用。当前版本不会连接云端模型。").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("本机智能与可选增强") {
+                Toggle("允许使用本机 AI 能力", isOn: Binding(get: { store.current.preferences.localAIEnabled }, set: { value in store.update("保存本机 AI 总开关") { $0.preferences.localAIEnabled = value } }))
+                Toggle("优先使用已下载的本机模型", isOn: Binding(get: { store.current.preferences.downloadedModelEnabled }, set: { value in store.update("保存本机模型偏好") { $0.preferences.downloadedModelEnabled = value } }))
+                Toggle("允许云端增强（默认关）", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value } }))
+                Toggle("允许系统 Apple 模型（可选旁路）", isOn: Binding(get: { store.current.preferences.appleSystemModelEnabled }, set: { value in store.update("保存系统模型偏好") { $0.preferences.appleSystemModelEnabled = value } }))
+                Text(LocalIntelligence.availabilityText(for: store.current.preferences)).font(.caption).foregroundStyle(.secondary)
+                Text("默认本机处理：规则始终可用；你可下载本机模型，或按需开启云端增强。开启云端前会说明发送范围（当前为接口预留，默认关闭）。金额、账户与资金性质从不交给模型修改。系统 Apple 模型不是主路径，可用性受系统与地区限制。").font(.caption).foregroundStyle(.secondary)
+                NavigationLink { ModelWeightsSettingsView() } label: { Label("本机模型权重", systemImage: "externaldrive.badge.icloud") }
+                Toggle("实验性 mock 本机路径（不接生产写回承诺）", isOn: Binding(get: { store.current.preferences.experimentalMockLocalAI }, set: { value in store.update("保存实验 AI 开关") { $0.preferences.experimentalMockLocalAI = value } }))
+                Text("实验开关仅用于台架与骨架联调；真机 GGUF / llama.cpp 推理尚未接入。").font(.caption2).foregroundStyle(.secondary)
             }
             Section("了解余白") {
                 Button { store.sheet = .guide } label: { Label("使用指南与计算口径", systemImage: "book.closed") }
@@ -193,7 +201,7 @@ struct GuideView: View {
             Section("信用、借款与投资") { Text("信用消费记在信用账户，消费时增加欠款；还款使用双边记录关联现金账户与信用账户，不再次计作消费。借入/归还借款关联信用与借款账户；借出/收回本金关联借出待收账户。投资申赎关联现金与投资账户；市值变化在账户核对中更新，已实现收益单独记作投资收益。信用额度不是资产。") }
             Section("导入与重复") { Text("微信或支付宝里的银行卡支付应记入实际银行卡，渠道不自动等于资金账户。交易单号优先去重，缺失时按同来源、账户、时间、金额和用途识别。跨来源同时间同金额只提示疑似重复，由你确认。被删除的原记录重新导入不会复活，用户修改也不会被覆盖。未识别行保留在预览；批次原文件可随时导出。") }
             Section("房租分摊") { Text("月度分摊按月登记，允许部分收款和漏收。季度付款按与房东的真实约定预留全额；未收分摊不算现金。消费统计按付款发生日计入本人承担比例，现金流显示实际全额付款。房租已导入时关联已有记录，避免重复记一笔。") }
-            Section("隐私与 AI") { Text("CSV/XLSX、截图 OCR、去重、规则分类和资金计算都在本机完成。Apple Intelligence 可用且设置允许时，设备端 AI 为未匹配的普通收支补充分类；购买价值思考由用户主动点击。地区、系统和设备可能限制其可用性。应用不连接云端模型，也不会上传账单。账本锁使用系统认证；备份可用密码加密，密码无法找回。") }
+            Section("隐私与 AI") { Text("CSV/XLSX、截图 OCR、去重、规则分类和资金计算都在本机完成。默认本机处理：规则底座 +（可选）下载的本机开源模型。系统 Apple 模型为可选旁路，不作可用性承诺。云端增强默认关闭；开启后仅对所选短任务发送说明范围内的摘要，金额计算仍在本机，且金额/账户/资金性质从不交模型修改。账本锁使用系统认证；备份可用密码加密，密码无法找回。") }
             Section("跨设备与恢复") { Text("iPhone 与 Mac 共用同一备份格式。导出完整备份，再在另一台设备恢复；恢复是切换到所选完整账本，不是自动双向合并。请一次只在一台设备编辑，再交接备份。恢复前会保留原账本，修改前自动保留最近 20 个完整版本。示例账本不会写入真实账本。") }
             Section("金额与范围") { Text("当前版本统一使用人民币，不自动换汇；金额按整数分计算。消费退款冲减消费，本金和内部移动不计日常收支。余白不连接银行、不执行转账、授信或投资交易。原始账单应与你的机构账单一起核对。") }
         }.font(.callout).navigationTitle("使用指南").toolbar { CloseButton() }
