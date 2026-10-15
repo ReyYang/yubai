@@ -67,6 +67,11 @@ public protocol IntelligenceBackend: Sendable {
     func expandSearchQuery(_ query: String) async throws -> [String]
 }
 
+/// On-device GGUF completion (implemented by `YubaiLocalLLM` / llama.cpp). Core stays free of the XCFramework link.
+public protocol LocalGGUFInference: Sendable {
+    func complete(system: String, user: String, temperature: Float, maxTokens: Int) async throws -> String
+}
+
 /// Resolves which backend to use. Priority: local downloaded → optional cloud → optional Apple FM → rules.
 public struct IntelligenceRouting: Equatable, Sendable {
     public var kind: IntelligenceBackendKind

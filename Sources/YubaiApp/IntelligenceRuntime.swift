@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import YubaiCore
+import YubaiLocalLLM
 
 /// App-side registry: resolves backend from preferences + weight store + optional Apple FM.
 @MainActor
@@ -29,7 +30,7 @@ enum IntelligenceRuntime {
             if preferences.experimentalMockLocalAI, !weights.hasReadyWeight {
                 return MockLocalBackend()
             }
-            return LocalDownloadedBackend(ready: weights.hasReadyWeight, delegate: nil)
+            return localDownloadedBackend()
         case .cloudOptional:
             // Experimental mock stays offline; production cloud path uses DeepSeek when key is present.
             if preferences.experimentalMockLocalAI {
@@ -43,10 +44,28 @@ enum IntelligenceRuntime {
         }
     }
 
+    /// Builds local backend with llama.cpp when a verified GGUF is present; otherwise ready=false → rules.
+    static func localDownloadedBackend() -> LocalDownloadedBackend {
+        guard let spec = weights.anyReadyWeight() else {
+            return LocalDownloadedBackend(ready: false, fallBackToRules: true)
+        }
+        let path = weights.fileURL(for: spec).path
+        // First load can take seconds; only happens when downloadedModelEnabled + verified weight.
+        do {
+            let inference = try LocalLlamaRegistry.inference(at: path)
+            return LocalDownloadedBackend(ready: true, inference: inference, fallBackToRules: true)
+        } catch {
+            return LocalDownloadedBackend(ready: false, fallBackToRules: true)
+        }
+    }
+
+    static func unloadLocalModel() {
+        LocalLlamaRegistry.unload()
+    }
+
     static var availabilityText: String {
-        // Caller should pass preferences when possible; Settings uses this as a short status line.
         if weights.hasReadyWeight {
-            return "本机模型权重已就绪 · 推理骨架待接真机 GGUF"
+            return "本机模型权重已就绪 · llama.cpp + Metal GGUF"
         }
         if appleFMAvailable {
             return "系统 Apple 模型可用（可选旁路，非主路径）"

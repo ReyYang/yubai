@@ -31,27 +31,31 @@ public struct ModelWeightSpec: Codable, Equatable, Identifiable, Sendable {
 }
 
 public enum ModelWeightCatalog {
-    /// Placeholder HTTPS URLs — replace before enabling real download in production.
+    /// Official Qwen2.5 Instruct GGUF (Q4_K_M) on Hugging Face. Weights are **not** in git; download on demand.
+    /// SHA-256 from Hugging Face file cards (main branch pointers). Prefer 1.5B on ≈8 GB RAM devices.
     public static let defaults: [ModelWeightSpec] = [
         ModelWeightSpec(
             id: "qwen25-05b-q4",
             displayName: "Qwen2.5 Instruct 0.5B Q4（覆盖档）",
-            filename: "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf",
-            downloadURL: "https://example.invalid/yubai/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf",
-            expectedSHA256: "0000000000000000000000000000000000000000000000000000000000000000",
-            approximateBytes: 400_000_000,
+            filename: "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            downloadURL: "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            expectedSHA256: "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+            approximateBytes: 491_000_000,
             recommendedMinRAMGB: 6
         ),
         ModelWeightSpec(
             id: "qwen25-15b-q4",
             displayName: "Qwen2.5 Instruct 1.5B Q4（推荐档）",
-            filename: "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
-            downloadURL: "https://example.invalid/yubai/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
-            expectedSHA256: "1111111111111111111111111111111111111111111111111111111111111111",
-            approximateBytes: 1_000_000_000,
+            filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            downloadURL: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            expectedSHA256: "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+            approximateBytes: 1_120_000_000,
             recommendedMinRAMGB: 8
         )
     ]
+
+    /// Default product pick when recommending a download (8 GB class).
+    public static var recommendedSpecID: String { "qwen25-15b-q4" }
 
     public static func spec(id: String) -> ModelWeightSpec? {
         defaults.first { $0.id == id }
@@ -142,14 +146,21 @@ public final class ModelWeightStore: @unchecked Sendable {
     public func verify(spec: ModelWeightSpec) throws -> Bool {
         let url = fileURL(for: spec)
         guard FileManager.default.fileExists(atPath: url.path) else { return false }
-        // Placeholder zero/ones hashes: treat non-empty file as "present" only when hash is placeholder;
-        // real hashes must match SHA-256.
-        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-        let digest = SHA256.hash(data: data)
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        let size = values.fileSize ?? 0
         if isPlaceholderHash(spec.expectedSHA256) {
-            return !data.isEmpty
+            return size > 0
         }
+        // Stream hash so 0.5B–1.5B GGUF files are not fully loaded into RAM.
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while true {
+            let chunk = try handle.read(upToCount: 1024 * 1024) ?? Data()
+            if chunk.isEmpty { break }
+            hasher.update(data: chunk)
+        }
+        let hex = hasher.finalize().map { String(format: "%02x", $0) }.joined()
         return hex.caseInsensitiveCompare(spec.expectedSHA256) == .orderedSame
     }
 
@@ -189,13 +200,21 @@ public final class ModelWeightStore: @unchecked Sendable {
         }
     }
 
-    /// Test helper: write bytes as if downloaded so routing can see a ready weight.
-    public func installFixture(spec: ModelWeightSpec, data: Data) throws {
+    /// Test helper: write bytes as if downloaded. Skips SHA check so tiny fixtures can mark `installed`.
+    /// Production readiness still requires `verify` / real hashes via `download` or a matching file.
+    public func installFixture(spec: ModelWeightSpec, data: Data, treatAsVerified: Bool = false) throws {
         try ensureDirectory()
         try data.write(to: fileURL(for: spec), options: .atomic)
-        if !isPlaceholderHash(spec.expectedSHA256) {
+        if treatAsVerified, !isPlaceholderHash(spec.expectedSHA256) {
+            // Only when caller intentionally opts in with real matching bytes.
             guard try verify(spec: spec) else { throw ModelWeightError.checksumMismatch }
         }
+    }
+
+    /// Ready for routing when installed and checksum passes (or placeholder-hash present file).
+    public func isReady(_ spec: ModelWeightSpec) -> Bool {
+        let st = status(for: spec)
+        return st.installed && st.verified
     }
 
     private func isPlaceholderHost(_ url: URL) -> Bool {

@@ -12,7 +12,7 @@
 - `docs/ai-bench/`：本地优先 AI 台架说明；跑 `swift test --filter AIBenchTests`。
 - `scripts/generate-project.py`：从 app 源文件生成 Xcode 工程；增加 app 源文件后运行。
 - `.design-meta` / `.scratch/yubai-product`：长期产品和设计资料。
-- AI 抽象：`YubaiCore` 的 `IntelligenceBackend`（RulesOnly / LocalDownloaded / CloudOptional→DeepSeek）与 App 侧 `AppleFMOptional`；权重见 `ModelWeightStore`。云端需 `DEEPSEEK_API_KEY` 且设置里开启「允许云端增强」（默认关）。真机 llama.cpp 未链。
+- AI 抽象：`YubaiCore` 的 `IntelligenceBackend`（RulesOnly / LocalDownloaded / CloudOptional→DeepSeek）与 App 侧 `AppleFMOptional`；权重见 `ModelWeightStore`（Hugging Face Qwen2.5 Q4 GGUF）。本机推理：`YubaiLocalLLM` → `mattt/llama.swift` / 官方 llama XCFramework（Metal）。云端需 `DEEPSEEK_API_KEY` 且设置里开启「允许云端增强」（默认关）。台架与 filter：`docs/ai-bench/README.md`。
 
 ## 本地验证
 

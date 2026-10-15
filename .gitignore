@@ -28,3 +28,7 @@ xcuserdata/
 !.env.example
 *.p12
 *.mobileprovision
+
+# Local LLM weights (download on demand; never commit)
+*.gguf
+Models/
