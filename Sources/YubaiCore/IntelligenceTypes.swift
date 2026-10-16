@@ -72,7 +72,9 @@ public protocol LocalGGUFInference: Sendable {
     func complete(system: String, user: String, temperature: Float, maxTokens: Int) async throws -> String
 }
 
-/// Resolves which backend to use. Priority: local downloaded → optional cloud → optional Apple FM → rules.
+/// Resolves which backend to use.
+/// Interim reliability order: **healthy local only when explicitly enabled** → optional cloud → optional Apple FM → rules.
+/// Unhealthy / disabled local never blocks cloud when cloud is on (Working AI > local-first purity).
 public struct IntelligenceRouting: Equatable, Sendable {
     public var kind: IntelligenceBackendKind
     public var reason: String
@@ -84,22 +86,33 @@ public struct IntelligenceRouting: Equatable, Sendable {
     public static func resolve(
         preferences: Preferences,
         localWeightReady: Bool,
-        appleFMAvailable: Bool
+        appleFMAvailable: Bool,
+        localInferenceHealthy: Bool = true
     ) -> IntelligenceRouting {
         guard preferences.localAIEnabled else {
-            return IntelligenceRouting(kind: .rulesOnly, reason: "本机 AI 总开关已关闭；使用规则与模板。")
+            return IntelligenceRouting(kind: .rulesOnly, reason: "智能辅助已关闭；使用规则与模板。")
         }
-        if preferences.downloadedModelEnabled, localWeightReady {
-            return IntelligenceRouting(kind: .localDownloaded, reason: "本机已下载权重可用。")
+        // Local only when user opted in, weights verified, and runtime gate says safe.
+        if preferences.downloadedModelEnabled, localWeightReady, localInferenceHealthy {
+            return IntelligenceRouting(kind: .localDownloaded, reason: "本机模型已就绪且运行门控通过。")
         }
         if preferences.cloudAIEnabled {
-            return IntelligenceRouting(kind: .cloudOptional, reason: "云端增强已开启（默认应关闭；生产需脱敏）。")
+            if preferences.downloadedModelEnabled, localWeightReady, !localInferenceHealthy {
+                return IntelligenceRouting(kind: .cloudOptional, reason: "本机模型不安全可用；改走云端增强。")
+            }
+            if preferences.downloadedModelEnabled, !localWeightReady {
+                return IntelligenceRouting(kind: .cloudOptional, reason: "本机模型未就绪；改走云端增强。")
+            }
+            return IntelligenceRouting(kind: .cloudOptional, reason: "云端增强已开启。")
         }
         if preferences.appleSystemModelEnabled, appleFMAvailable {
             return IntelligenceRouting(kind: .appleFMOptional, reason: "系统 Apple 模型可用且用户已允许（非主路径）。")
         }
+        if preferences.downloadedModelEnabled, localWeightReady, !localInferenceHealthy {
+            return IntelligenceRouting(kind: .rulesOnly, reason: "本机模型不可靠；已降级为规则 / 模板（可开启云端增强）。")
+        }
         if preferences.downloadedModelEnabled, !localWeightReady {
-            return IntelligenceRouting(kind: .rulesOnly, reason: "未下载本机模型；降级为规则 / 模板 / 子串搜索。")
+            return IntelligenceRouting(kind: .rulesOnly, reason: "未启用可用模型；降级为规则 / 模板 / 子串搜索。")
         }
         return IntelligenceRouting(kind: .rulesOnly, reason: "无可用增强后端；使用规则 / 模板。")
     }

@@ -180,9 +180,10 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var colorTheme = "jade-vivid"
     /// Master kill switch for any AI assistance (rules always remain).
     public var localAIEnabled = true
-    /// Prefer optional downloaded on-device weights when present (phase-1 main path).
-    public var downloadedModelEnabled = true
-    /// Optional cloud enhancement; **default off**.
+    /// Prefer optional downloaded on-device weights when present.
+    /// **Default off (2026-10 soft-disable):** real-device GGUF load can jetsam/crash; cloud or rules are the reliable path until local is hardened.
+    public var downloadedModelEnabled = false
+    /// Optional cloud enhancement; **default off**. Enable to use DeepSeek when `DEEPSEEK_API_KEY` is set.
     public var cloudAIEnabled = false
     /// Optional Apple Foundation Models bypass; **default off** (not the product main path).
     public var appleSystemModelEnabled = false
@@ -207,7 +208,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         purchaseValues = try values.decode(String.self, forKey: .purchaseValues)
         colorTheme = try values.decodeIfPresent(String.self, forKey: .colorTheme) ?? "jade-vivid"
         localAIEnabled = try values.decode(Bool.self, forKey: .localAIEnabled)
-        downloadedModelEnabled = try values.decodeIfPresent(Bool.self, forKey: .downloadedModelEnabled) ?? true
+        downloadedModelEnabled = try values.decodeIfPresent(Bool.self, forKey: .downloadedModelEnabled) ?? false
         cloudAIEnabled = try values.decodeIfPresent(Bool.self, forKey: .cloudAIEnabled) ?? false
         // New installs default FM off. Older ledgers that only had localAIEnabled keep FM usable via migration below.
         if let explicit = try values.decodeIfPresent(Bool.self, forKey: .appleSystemModelEnabled) {

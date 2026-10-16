@@ -198,19 +198,63 @@ public final class LocalLlamaEngine: @unchecked Sendable {
     }
 }
 
-/// Process-wide loaded GGUF session. Sync API avoids MainActor + semaphore deadlocks in UI routing.
+/// Soft gate so UI never sync-loads multi-GB GGUF on the main thread / under low RAM.
+public enum LocalInferenceSafety {
+    private static let lock = NSLock()
+    private static var markedUnhealthy = false
+    private static var lastReason: String?
+
+    public static var isHealthy: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !markedUnhealthy
+    }
+
+    public static var unhealthyReason: String? {
+        lock.lock(); defer { lock.unlock() }
+        return lastReason
+    }
+
+    public static func markUnhealthy(_ reason: String) {
+        lock.lock()
+        markedUnhealthy = true
+        lastReason = reason
+        lock.unlock()
+        LocalLlamaRegistry.unload()
+    }
+
+    /// Reset circuit breaker (tests / Settings “重试本机”).
+    public static func reset() {
+        lock.lock()
+        markedUnhealthy = false
+        lastReason = nil
+        lock.unlock()
+    }
+
+    /// Conservative physical-RAM check before attempting llama.cpp load.
+    public static func deviceMeetsRAM(recommendedMinRAMGB: Int) -> Bool {
+        let bytes = ProcessInfo.processInfo.physicalMemory
+        let gb = Double(bytes) / 1_073_741_824.0
+        return gb + 0.25 >= Double(recommendedMinRAMGB)
+    }
+}
+
+/// Process-wide loaded GGUF session. Never call `inference(at:)` from the main actor / UI path —
+/// use `LazyLocalGGUFInference` so load happens on a background queue.
 public enum LocalLlamaRegistry {
     private static let lock = NSLock()
     private static var engine: LocalLlamaEngine?
     private static var loadedPath: String?
 
-    /// Load (or reuse) a Metal-backed engine for `modelPath`.
+    /// Load (or reuse) a Metal-backed engine for `modelPath`. Caller must not hold MainActor.
     public static func inference(at modelPath: String) throws -> LocalLlamaInferenceAdapter {
         lock.lock()
         defer { lock.unlock() }
         if loadedPath == modelPath, let engine {
             return LocalLlamaInferenceAdapter(engine: engine)
         }
+        // Drop previous model before loading another to reduce peak RSS.
+        engine = nil
+        loadedPath = nil
         let next = try LocalLlamaEngine(modelPath: modelPath)
         engine = next
         loadedPath = modelPath
@@ -236,6 +280,59 @@ public struct LocalLlamaInferenceAdapter: LocalGGUFInference {
     public func complete(system: String, user: String, temperature: Float, maxTokens: Int) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             try engine.complete(system: system, user: user, temperature: temperature, maxTokens: maxTokens)
+        }.value
+    }
+}
+
+/// Loads GGUF only on first `complete`, always off the caller's actor (never MainActor sync).
+/// Failures trip `LocalInferenceSafety` so routing can fall through to cloud / rules.
+public final class LazyLocalGGUFInference: LocalGGUFInference, @unchecked Sendable {
+    private let modelPath: String
+    private let recommendedMinRAMGB: Int
+    private let lock = NSLock()
+    private var adapter: LocalLlamaInferenceAdapter?
+    private var loadFailed = false
+
+    public init(modelPath: String, recommendedMinRAMGB: Int) {
+        self.modelPath = modelPath
+        self.recommendedMinRAMGB = recommendedMinRAMGB
+    }
+
+    public func complete(system: String, user: String, temperature: Float, maxTokens: Int) async throws -> String {
+        let ready = try await ensureLoaded()
+        do {
+            return try await ready.complete(system: system, user: user, temperature: temperature, maxTokens: maxTokens)
+        } catch {
+            LocalInferenceSafety.markUnhealthy("推理失败：\(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    private func ensureLoaded() async throws -> LocalLlamaInferenceAdapter {
+        try await Task.detached(priority: .utility) { [modelPath, recommendedMinRAMGB] in
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            if let adapter = self.adapter { return adapter }
+            if self.loadFailed {
+                throw LocalLlamaEngine.EngineError.modelLoadFailed(modelPath)
+            }
+            guard LocalInferenceSafety.isHealthy else {
+                throw LocalLlamaEngine.EngineError.modelLoadFailed(modelPath)
+            }
+            guard LocalInferenceSafety.deviceMeetsRAM(recommendedMinRAMGB: recommendedMinRAMGB) else {
+                self.loadFailed = true
+                LocalInferenceSafety.markUnhealthy("设备内存低于本机模型建议值（约 \(recommendedMinRAMGB) GB）")
+                throw LocalLlamaEngine.EngineError.modelLoadFailed(modelPath)
+            }
+            do {
+                let next = try LocalLlamaRegistry.inference(at: modelPath)
+                self.adapter = next
+                return next
+            } catch {
+                self.loadFailed = true
+                LocalInferenceSafety.markUnhealthy("本机模型加载失败：\(error.localizedDescription)")
+                throw error
+            }
         }.value
     }
 }

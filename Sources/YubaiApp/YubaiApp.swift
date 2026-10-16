@@ -43,9 +43,31 @@ enum AppSheet: Identifiable {
             }
         }
         #endif
-        do { ledger = try repository.load(); locked = ledger.preferences.lockEnabled }
-        catch { loadFailure = error.localizedDescription }
+        do {
+            ledger = try repository.load()
+            locked = ledger.preferences.lockEnabled
+            applyLocalGGUFSoftDisableMigrationIfNeeded()
+        } catch { loadFailure = error.localizedDescription }
         if args.contains("--demo") { demo = SampleData.ledger(); locked = false }
+    }
+
+    /// One-shot: old default had `downloadedModelEnabled = true`, which eager-loaded GGUF and crashed devices.
+    /// Turn it off once so cloud / rules become the safe path; users can re-enable under 高级选项.
+    private func applyLocalGGUFSoftDisableMigrationIfNeeded() {
+        let key = "yubai.migrated.localGGUFSoftDisable.v1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        guard ledger.preferences.downloadedModelEnabled else { return }
+        do {
+            var next = ledger
+            next.preferences.downloadedModelEnabled = false
+            next.updatedAt = Date()
+            try repository.save(next, reason: "本机模型默认关闭（稳定性）")
+            ledger = next
+            IntelligenceRuntime.resetLocalInferenceGate()
+        } catch {
+            // Non-fatal: routing still gates load; preference may stay true until next save.
+        }
     }
     @discardableResult func update(_ reason: String, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard !locked || isDemo else { error = "请先解锁账本。"; return false }
