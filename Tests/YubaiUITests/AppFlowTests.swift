@@ -166,6 +166,24 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(fresh.staticTexts["Backup Bank"].waitForExistence(timeout: 5))
         attach(fresh, "iPhone-15-restored-account")
     }
+    func testFilledFundingPreferencesKeepLabels() throws {
+        continueAfterFailure = false
+        for size in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            let app = application(demo: true)
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", size]; app.launch()
+            XCTAssertTrue(app.tabBars.buttons["我的"].waitForExistence(timeout: 10)); app.tabBars.buttons["我的"].tap()
+            for (label, value) in [("应急底线金额", "5000"), ("每天的日常生活预留", "40")] {
+                let field = app.textFields.matching(NSPredicate(format: "label == %@", label)).firstMatch
+                for _ in 0..<16 { if field.exists && field.isHittable { break }; app.swipeUp() }
+                XCTAssertTrue(field.isHittable); XCTAssertEqual(field.label, label); XCTAssertEqual(field.value as? String, value)
+                XCTAssertTrue(app.staticTexts[label].exists)
+            }
+            let valuesLabel = app.staticTexts["我希望把钱花在什么上"]
+            for _ in 0..<16 { if valuesLabel.exists && valuesLabel.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(valuesLabel.isHittable)
+            app.terminate()
+        }
+    }
     func testDarkAppearanceAndAccessibilityText() throws {
         continueAfterFailure = false
         let app = application(demo: true)

@@ -27,6 +27,7 @@ enum ReceiptReader {
 
 struct ImportView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var accountID: UUID?; @State private var filePicker = false; @State private var photo: PhotosPickerItem?
     @State private var data: Data?; @State private var filename = ""; @State private var preview: ImportPreview?
     @State private var busy = false; @State private var result: ImportBatch?; @State private var filter = "全部"
@@ -37,88 +38,129 @@ struct ImportView: View {
     @State private var accountMappings: [String: UUID] = [:]
     @State private var parseID = UUID()
     @State private var activity = "正在本机读取与整理…"
+    @State private var readingProgress: Double?
     @State private var parsingTask: Task<Void, Never>?
     var body: some View {
         VStack(spacing: 0) {
             if let result { resultView(result) }
-            else if busy { VStack(spacing: 20) { ProgressView(); Text(activity).font(.headline); Text("文件不会上传。请保留这个窗口。").font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, maxHeight: .infinity) }
+            else if busy { readingView }
             else if let receipt { receiptView(receipt) }
             else if let preview { previewView(preview) }
             else { intake }
-            if let localError { Text(localError).font(.callout).foregroundStyle(.red).padding(18).textSelection(.enabled) }
-        }.navigationTitle("整理账单").toolbar { CloseButton() }
+            if let localError { InlineNote(text: localError, style: .attention).padding(YubaiSpace.space18).textSelection(.enabled) }
+        }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas).navigationTitle("整理账单").yubaiNavigation().toolbar { CloseButton() }
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .image, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: true) { result in
                 switch result { case .success(let urls): queue = urls; queueTotal = urls.count; processed = 0; readNext(); case .failure(let e): localError = e.localizedDescription }
             }
-            .onChange(of: photo) { _, value in guard let value else { return }; busy = true; localError = nil; Task { do { guard let bytes = try await value.loadTransferable(type: Data.self) else { throw YubaiError.invalid("图片读取失败。") }; data = bytes; filename = "账单截图-\(Dates.text(Date())).jpg"; await recognize(bytes) } catch { localError = error.localizedDescription; busy = false } } }
+            .onChange(of: photo) { _, value in guard let value else { return }; busy = true; readingProgress = nil; localError = nil; Task { do { guard let bytes = try await value.loadTransferable(type: Data.self) else { throw YubaiError.invalid("图片读取失败。") }; data = bytes; filename = "账单截图-\(Dates.text(Date())).jpg"; await recognize(bytes) } catch { localError = error.localizedDescription; busy = false } } }
             .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().frame(minWidth: 340, minHeight: 520) }
             .onChange(of: store.current.accounts.count) { _, _ in if accountID == nil { accountID = store.current.accounts.last?.id } }
             .onChange(of: accountMappings) { _, _ in if preview != nil, let data { parse(data) } }
             .onDisappear { parsingTask?.cancel() }
             .onAppear { if accountID == nil { accountID = store.current.accounts.first { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }?.id }; if let url = store.importedURL { store.importedURL = nil; queue = [url]; queueTotal = 1; readNext() } }
     }
+    private var readingView: some View {
+        VStack(spacing: YubaiSpace.space20) {
+            if let readingProgress {
+                WaterLevelView(progress: readingProgress)
+                Text("\(Int(readingProgress * 100))%").yubaiFont(YubaiFont.amountDisplay).foregroundStyle(YubaiColor.label).numberCrossfade(value: Int(readingProgress * 100))
+            } else { WaterLevelView(filledBands: 6) }
+            Text(activity).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+            Text("文件不会上传。请保留这个窗口。").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+        }.padding(YubaiSpace.space18).frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
     var accountPicker: some View {
         Picker("默认收付款账户", selection: $accountID) { Text("请选择账户").tag(UUID?.none); ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) } }.onChange(of: accountID) { _, _ in if preview != nil, let data { parse(data) } }
     }
     var intake: some View {
         Form {
-            Section { EmptyState("tray.and.arrow.down", "一次整理，安心继续生活", "支持微信、支付宝与标准银行账单。系统自动分类，只把真正不确定的地方留给你。") }
-            Section("1 · 选择账户") { accountPicker; Button("添加账户") { showAccount = true }; InlineNote(text: "文件里有支付方式时，下一步可把零钱、银行卡分别对应到账户。没有标注支付方式的记录使用这里的默认账户。") }
+            Section { EmptyState("tray.and.arrow.down", "一次整理，安心继续生活", "支持微信、支付宝与标准银行账单。系统自动分类，只把真正不确定的地方留给你。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+            Section("1 · 选择账户") { accountPicker; Button("添加账户") { showAccount = true }; InlineNote(text: "文件里有支付方式时，下一步可把零钱、银行卡分别对应到账户。没有标注支付方式的记录使用这里的默认账户。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             Section("2 · 选择文件或截图") {
                 Button { filePicker = true } label: { Label("选择账单文件", systemImage: "doc.badge.plus") }.disabled(accountID == nil).accessibilityIdentifier("chooseBillFile")
                 PhotosPicker(selection: $photo, matching: .images) { Label("从照片选一张账单截图", systemImage: "photo") }.disabled(accountID == nil)
-                Text("文件支持 CSV、TSV、XLSX；截图在本机识别，金额由你确认。原始文件留在本地账本中。").font(.caption).foregroundStyle(.secondary)
-            }
+                Text("文件支持 CSV、TSV、XLSX；截图在本机识别，金额由你确认。原始文件留在本地账本中。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             Section("导出账单的方法") {
-                Text("微信：我 → 服务 → 钱包 → 账单 → 常见问题 → 下载账单。\n支付宝：我的 → 账单 → 更多 → 开具交易流水证明 / 导出账单。\n银行：导出带日期、金额和收支方向的明细；不匹配时可使用余白 CSV 模板。") .font(.callout).foregroundStyle(.secondary)
-                Text("各应用入口可能随版本调整。加密压缩包请先使用账单邮件提供的密码解压。").font(.caption).foregroundStyle(.secondary)
-            }
-            if !queue.isEmpty { Section { Button("继续下一份文件") { readNext() } } }
+                Text("微信：我 → 服务 → 钱包 → 账单 → 常见问题 → 下载账单。\n支付宝：我的 → 账单 → 更多 → 开具交易流水证明 / 导出账单。\n银行：导出带日期、金额和收支方向的明细；不匹配时可使用余白 CSV 模板。") .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                Text("各应用入口可能随版本调整。加密压缩包请先使用账单邮件提供的密码解压。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+            if !queue.isEmpty { Section { Button("继续下一份文件") { readNext() } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
         }.editorForm()
     }
     func previewView(_ p: ImportPreview) -> some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text(p.filename).font(.headline).lineLimit(1)
-                accountPicker
-                HStack { countPill("待导入", p.selectedEntries.count, YubaiTheme.jade); countPill("已重复", p.duplicateCount, .secondary); countPill("需留意", p.issueCount, YubaiTheme.amber) }
-                Picker("显示", selection: $filter) { Text("全部").tag("全部"); Text("将导入").tag("将导入"); Text("需留意").tag("需留意") }.pickerStyle(.segmented)
-                Text("\(p.source) · 金额保持原样。普通细类不清楚时归入其他，不要求逐笔审核。").font(.caption).foregroundStyle(.secondary)
-            }.padding(18)
-            List {
-                if !p.paymentMethods.isEmpty {
-                    Section("对应实际资金账户") {
-                        ForEach(p.paymentMethods, id: \.self) { method in
-                            Picker(method, selection: Binding<UUID?>(get: { accountMappings[method] }, set: { accountMappings[method] = $0 })) {
-                                Text("请选择对应账户").tag(UUID?.none)
-                                ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
-                            }.accessibilityIdentifier("mapping_" + method)
-                        }
-                        if let accountID { Button("全部对应到“\(store.current.accountName(accountID))”") { accountMappings = Dictionary(uniqueKeysWithValues: p.paymentMethods.map { ($0, accountID) }) } }
-                        Button("添加缺少的账户") { showAccount = true }
-                    }
-                }
-                ForEach(p.warnings, id: \.self) { InlineNote(text: $0) }
-                ForEach(p.rows.filter { filter == "全部" || (filter == "将导入" && $0.included) || (filter == "需留意" && [.invalid, .conflict, .possibleDuplicate, .needsAccount].contains($0.status)) }) { row in
-                    HStack(alignment: .top, spacing: 10) {
-                        if row.entry != nil && [.ready, .possibleDuplicate].contains(row.status) { Button { toggle(row.id) } label: { Image(systemName: row.included ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(YubaiTheme.jade) }.buttonStyle(.plain).accessibilityLabel(row.included ? "不导入这一行" : "导入这一行") }
-                        else { Image(systemName: row.status == .duplicate ? "arrow.triangle.2.circlepath" : "exclamationmark.circle").foregroundStyle(.secondary).frame(width: 24) }
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack { Text(row.entry?.title ?? "第 \(row.line) 行").font(.callout.weight(.medium)).lineLimit(2); Spacer(); if let e = row.entry { Text((e.nature.inflow ? "+" : "−") + Money.text(e.amount)).font(.callout.monospacedDigit()) } }
-                            if let e = row.entry, row.status != .needsAccount { Text("\(Dates.text(e.date)) · \(store.current.accountName(e.accountID))").font(.caption2).foregroundStyle(.secondary) }
-                            Text("第 \(row.line) 行 · " + row.message).font(.caption).foregroundStyle([.invalid, .conflict, .needsAccount].contains(row.status) ? YubaiTheme.amber : .secondary)
-                        }
-                    }.padding(.vertical, 4)
-                }
-            }.listStyle(.plain)
-            HStack { Button("重新选文件") { preview = nil; data = nil; filePicker = true }; Spacer(); Button("保存 \(p.selectedEntries.count) 笔", action: commit).buttonStyle(PrimaryButtonStyle()).disabled(p.selectedEntries.isEmpty).accessibilityIdentifier("commitImport") }.padding(18).background(.regularMaterial)
+            previewHeader(p)
+            ScrollView {
+                VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+                    if !p.paymentMethods.isEmpty { mappingCard(p) }
+                    ForEach(p.warnings, id: \.self) { InlineNote(text: $0, style: .attention) }
+                    CardRows(p.rows.filter { filter == "全部" || (filter == "将导入" && $0.included) || (filter == "需留意" && [.invalid, .conflict, .possibleDuplicate, .needsAccount].contains($0.status)) }) { row in previewRow(row) }
+                }.padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSpace.space12)
+            }
+            previewActions(p)
         }
     }
-    func countPill(_ label: String, _ count: Int, _ color: YubaiTheme.ThemeColor) -> some View { VStack(alignment: .leading, spacing: 5) { Text("\(count)").font(.title2.monospacedDigit().weight(.semibold)).foregroundStyle(color); Text(label).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading) }
+    private func previewHeader(_ p: ImportPreview) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+            Text(p.filename).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+            accountPicker
+            HStack { countPill("待导入", p.selectedEntries.count, .brand); countPill("已重复", p.duplicateCount, .neutral); countPill("需留意", p.issueCount, .amber) }
+            Picker("显示", selection: $filter) { Text("全部").tag("全部"); Text("将导入").tag("将导入"); Text("需留意").tag("需留意") }.pickerStyle(.segmented)
+            Text("\(p.source) · 金额保持原样。普通细类不清楚时归入其他，不要求逐笔审核。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+        }.padding(YubaiSpace.space18)
+    }
+    private func mappingCard(_ p: ImportPreview) -> some View {
+        Card(style: .list) { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            SectionHeading(title: "对应实际资金账户")
+            ForEach(p.paymentMethods, id: \.self) { method in
+                Picker(method, selection: Binding<UUID?>(get: { accountMappings[method] }, set: { accountMappings[method] = $0 })) {
+                    Text("请选择对应账户").tag(UUID?.none)
+                    ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
+                }.frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("mapping_" + method)
+                Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+            }
+            if let accountID { Button("全部对应到“\(store.current.accountName(accountID))”") { accountMappings = Dictionary(uniqueKeysWithValues: p.paymentMethods.map { ($0, accountID) }) }.frame(minHeight: YubaiSize.tapMin) }
+            Button("添加缺少的账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin)
+        } }
+    }
+    private func previewRow(_ row: ImportRow) -> some View {
+        HStack(alignment: .top, spacing: YubaiSpace.space10) {
+            if row.entry != nil && [.ready, .possibleDuplicate].contains(row.status) {
+                Button { toggle(row.id) } label: { Image(systemName: row.included ? "checkmark.circle.fill" : "circle").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.brand).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.buttonStyle(PressButtonStyle()).accessibilityLabel(row.included ? "不导入这一行" : "导入这一行")
+            } else { Image(systemName: row.status == .duplicate ? "arrow.triangle.2.circlepath" : "exclamationmark.circle").foregroundStyle(YubaiColor.labelSecondary).frame(width: YubaiSize.barMax) }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space6)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space10))
+                layout {
+                    Text(row.entry?.title ?? "第 \(row.line) 行").yubaiFont(YubaiFont.rowTitle).lineLimit(textSize.isAccessibilitySize ? nil : 2)
+                    if !textSize.isAccessibilitySize { Spacer() }
+                    if let e = row.entry { AmountLabel(cents: e.amount, sign: e.nature.inflow ? .inflow : .outflow) }
+                }
+                if let e = row.entry, row.status != .needsAccount { Text("\(Dates.text(e.date)) · \(store.current.accountName(e.accountID))").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+                Text("第 \(row.line) 行 · " + row.message).yubaiFont(YubaiFont.caption).foregroundStyle([.invalid, .conflict, .needsAccount].contains(row.status) ? YubaiColor.amberInk : YubaiColor.labelSecondary)
+            }
+        }.padding(.vertical, YubaiSpace.space4)
+    }
+    private func previewActions(_ p: ImportPreview) -> some View {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space10)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space10))
+        return layout {
+            Button("重新选文件") { preview = nil; data = nil; filePicker = true }.frame(minHeight: YubaiSize.tapMin)
+            if !textSize.isAccessibilitySize { Spacer() }
+            Button("保存 \(p.selectedEntries.count) 笔", action: commit).buttonStyle(PrimaryButtonStyle()).disabled(p.selectedEntries.isEmpty).accessibilityIdentifier("commitImport")
+        }.padding(YubaiSpace.space18).background(YubaiColor.raised)
+    }
+    func countPill(_ label: String, _ count: Int, _ variant: Pill.Variant) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+            Text("\(count)").yubaiFont(YubaiFont.amountLarge).foregroundStyle(YubaiColor.label)
+            Pill(text: label, variant: variant, showsDot: false)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
     func resultView(_ batch: ImportBatch) -> some View {
-        Page {
-            EmptyState("checkmark.seal", "这一份，整理好了", "已保存 \(batch.importedCount) 笔，跳过 \(batch.duplicateCount) 笔重复。\(batch.skippedCount > 0 ? "另有 \(batch.skippedCount) 行未导入，可返回查看。" : "")")
-            Card { VStack(alignment: .leading, spacing: 14) { Label("原始文件已保留在本地", systemImage: "doc.text"); Label("可在账本中批量纠正", systemImage: "slider.horizontal.3"); Label("整批撤销与恢复入口一直在", systemImage: "arrow.uturn.backward"); Text("你可以直接离开，普通分类不需要逐笔确认。").font(.caption).foregroundStyle(.secondary) } }
+        let skippedText = batch.skippedCount > 0 ? "另有 \(batch.skippedCount) 行未导入，可返回查看。" : ""
+        let summary = "已保存 \(batch.importedCount) 笔，跳过 \(batch.duplicateCount) 笔重复。" + skippedText
+        return Page {
+            EmptyState("checkmark.seal", "这一份，整理好了", summary)
+            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { Label("原始文件已保留在本地", systemImage: "doc.text"); Label("可在账本中批量纠正", systemImage: "slider.horizontal.3"); Label("整批撤销与恢复入口一直在", systemImage: "arrow.uturn.backward"); Text("你可以直接离开，普通分类不需要逐笔确认。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) } }
             if !queue.isEmpty { Button("继续下一份（\(processed)/\(queueTotal)）") { result = nil; preview = nil; receipt = nil; readNext() }.buttonStyle(PrimaryButtonStyle()) }
             Button("回到账本") { store.destination = .ledger; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
             Button("查看导入明细") { result = nil; if let data { parse(data) } }
@@ -126,10 +168,10 @@ struct ImportView: View {
     }
     func receiptView(_ candidate: ReceiptCandidate) -> some View {
         Form {
-            Section { Label("识别完成，请确认金额", systemImage: "text.viewfinder").font(.headline); Text("截图识别可能出错。确认后才会记入账本，余白不会自动修正金额。").font(.caption).foregroundStyle(.secondary) }
-            Section { TextField("用途", text: $receiptTitle); TextField("确认金额", text: $receiptAmount).numericInput(); if candidate.amounts.count > 1 { Picker("截图中的金额", selection: $receiptAmount) { Text("手动填写").tag(receiptAmount); ForEach(candidate.amounts, id: \.self) { Text("¥" + $0).tag($0) } } }; Toggle("这是一笔收入", isOn: $receiptInflow); accountPicker; DatePicker("发生时间", selection: $receiptDate, in: ...Date(), displayedComponents: [.date, .hourAndMinute]) }
-            Section { DisclosureGroup("查看识别到的原文") { Text(candidate.text).font(.caption).textSelection(.enabled) } }
-            Section { Button("确认并保存", action: saveReceipt).buttonStyle(PrimaryButtonStyle()); Button("放弃这张截图") { receipt = nil; data = nil; photo = nil } }
+            Section { Label("识别完成，请确认金额", systemImage: "text.viewfinder").yubaiFont(YubaiFont.rowTitle); Text("截图识别可能出错。确认后才会记入账本，余白不会自动修正金额。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+            Section { TextField("用途", text: $receiptTitle); TextField("确认金额", text: $receiptAmount).numericInput().yubaiFont(YubaiFont.amountInput); if candidate.amounts.count > 1 { Picker("截图中的金额", selection: $receiptAmount) { Text("手动填写").tag(receiptAmount); ForEach(candidate.amounts, id: \.self) { Text("¥" + $0).tag($0) } } }; Toggle("这是一笔收入", isOn: $receiptInflow).tint(YubaiColor.toggleOn); accountPicker; DatePicker("发生时间", selection: $receiptDate, in: ...Date(), displayedComponents: [.date, .hourAndMinute]) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+            Section { DisclosureGroup("查看识别到的原文") { Text(candidate.text).yubaiFont(YubaiFont.caption).textSelection(.enabled) } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+            Section { Button("确认并保存", action: saveReceipt); Button("放弃这张截图") { receipt = nil; data = nil; photo = nil } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
         }.editorForm()
     }
     func toggle(_ id: UUID) { guard let i = preview?.rows.firstIndex(where: { $0.id == id }) else { return }; preview?.rows[i].included.toggle() }
@@ -146,16 +188,17 @@ struct ImportView: View {
     }
     func parse(_ bytes: Data) {
         guard let accountID else { localError = "请先选择实际收付款账户。"; return }
-        let ledger = store.current; let name = filename; let mappings = accountMappings; let requestID = UUID(); parseID = requestID; busy = true; localError = nil
+        let ledger = store.current; let name = filename; let mappings = accountMappings; let requestID = UUID(); parseID = requestID; busy = true; readingProgress = nil; localError = nil
         parsingTask?.cancel(); activity = "正在本机读取与整理…"
         parsingTask = Task { do {
             let parsed = try await Task.detached(priority: .userInitiated) { try BillImporter.preview(data: bytes, filename: name, accountID: accountID, ledger: ledger, accountMappings: mappings, requireAccountMapping: true) }.value
             guard parseID == requestID, !Task.isCancelled else { return }
-            let assisted = await LocalIntelligence.categorize(parsed, ledger: ledger) { done, total in activity = "智能辅助正在整理用途 · \(done)/\(total)" }
+            let assisted = await LocalIntelligence.categorize(parsed, ledger: ledger) { done, total in activity = "智能辅助正在整理用途 · \(done)/\(total)"; readingProgress = total > 0 ? Double(done) / Double(total) : nil }
             guard parseID == requestID, !Task.isCancelled else { return }; preview = assisted; busy = false
         } catch { guard parseID == requestID, !Task.isCancelled else { return }; localError = error.localizedDescription; preview = nil; busy = false } }
     }
     func recognize(_ bytes: Data) async {
+        readingProgress = nil
         do { let recognized = try await Task.detached(priority: .userInitiated) { try ReceiptReader.recognize(bytes) }.value; receipt = recognized; receiptAmount = recognized.amounts.count == 1 ? recognized.amounts[0] : ""; receiptTitle = recognized.title; receiptDate = min(recognized.date ?? Date(), Date()); busy = false }
         catch { localError = error.localizedDescription; busy = false }
     }

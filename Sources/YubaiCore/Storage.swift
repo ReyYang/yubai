@@ -19,6 +19,10 @@ public struct Recovery: Identifiable, Sendable {
     public var id: URL { url }; public var url: URL; public var date: Date; public var name: String
 }
 public struct LedgerRepository: Sendable {
+    private final class State: @unchecked Sendable {
+        let lock = NSRecursiveLock(); var digest: SHA256.Digest?
+    }
+    private let state = State() // Copies serialize repository operations and share the last verified bytes.
     public let directory: URL
     public var file: URL { directory.appendingPathComponent("ledger.json") }
     public init(directory: URL) { self.directory = directory }
@@ -30,44 +34,70 @@ public struct LedgerRepository: Sendable {
         let temporary = destination.deletingLastPathComponent().appendingPathComponent(".writing-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: temporary) }
         try data.write(to: temporary, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
-        #if os(iOS)
-        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: temporary.path)
-        #endif
+        try protect(temporary)
         guard Darwin.rename(temporary.path, destination.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    }
+    private func protect(_ url: URL) throws {
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        #if os(iOS)
+        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: url.path)
+        #endif
+    }
+    private func preserveCurrent(reason: String, verify: Bool) throws {
+        let manager = FileManager.default; let history = directory.appendingPathComponent("Recovery", isDirectory: true)
+        try prepare(history)
+        let latest = try recoveries().first.map { Int64(($0.date.timeIntervalSince1970 * 1000).rounded()) } ?? 0
+        let stamp = max(Int64(Date().timeIntervalSince1970 * 1000), latest + 1)
+        let safeReason = reason.replacingOccurrences(of: "/", with: "-").prefix(40)
+        let destination = history.appendingPathComponent("\(stamp)-\(UUID().uuidString.prefix(8))-\(safeReason).json")
+        var complete = false
+        defer { if !complete { try? manager.removeItem(at: destination) } }
+        // Atomic replacement leaves the linked prior inode intact; copying handles filesystems without links.
+        if Darwin.link(file.path, destination.path) != 0 { try manager.copyItem(at: file, to: destination) }
+        try protect(destination)
+        if verify {
+            let bytes = try Data(contentsOf: destination); let digest = SHA256.hash(data: bytes)
+            if state.digest != digest {
+                _ = try LedgerCodec.decode(bytes) // Unrecognized bytes must still pass full corruption checks.
+            }
+        }
+        complete = true
     }
     private func pruneHistory() {
         if let history = try? recoveries() { for recovery in history.dropFirst(20) { try? FileManager.default.removeItem(at: recovery.url) } }
     }
     public func load() throws -> Ledger {
-        guard FileManager.default.fileExists(atPath: file.path) else { return Ledger() }
-        return try LedgerCodec.decode(Data(contentsOf: file))
+        state.lock.lock(); defer { state.lock.unlock() }
+        guard FileManager.default.fileExists(atPath: file.path) else { state.digest = nil; return Ledger() }
+        let bytes = try Data(contentsOf: file); let ledger = try LedgerCodec.decode(bytes)
+        state.digest = SHA256.hash(data: bytes); return ledger
     }
     public func save(_ ledger: Ledger, reason: String = "修改") throws {
+        state.lock.lock(); defer { state.lock.unlock() }
         let encoded = try LedgerCodec.encode(ledger)
         let manager = FileManager.default
         try prepare(directory)
         if manager.fileExists(atPath: file.path) {
-            let old = try Data(contentsOf: file)
-            _ = try LedgerCodec.decode(old) // A corrupt current file is never silently overwritten.
-            let history = directory.appendingPathComponent("Recovery", isDirectory: true)
-            try prepare(history)
-            let safeReason = reason.replacingOccurrences(of: "/", with: "-").prefix(40)
-            let name = "\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString.prefix(8))-\(safeReason).json"
-            try writePrivate(old, to: history.appendingPathComponent(name))
+            try preserveCurrent(reason: reason, verify: true)
         }
         try writePrivate(encoded, to: file)
+        state.digest = SHA256.hash(data: encoded)
         // History belongs solely to this ledger. Retain the latest 20 complete prior revisions.
         pruneHistory()
     }
     public func recoveries() throws -> [Recovery] {
+        state.lock.lock(); defer { state.lock.unlock() }
         let path = directory.appendingPathComponent("Recovery")
         guard FileManager.default.fileExists(atPath: path.path) else { return [] }
         return try FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: [.contentModificationDateKey]).filter { $0.pathExtension == "json" }.map { url in
-            Recovery(url: url, date: (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast, name: url.deletingPathExtension().lastPathComponent)
+            let name = url.deletingPathExtension().lastPathComponent
+            let stamp = name.split(separator: "-").first.flatMap { Int64($0) }.flatMap { (0..<10_000_000_000_000).contains($0) ? $0 : nil }
+            let date = stamp.map { Date(timeIntervalSince1970: Double($0) / 1000) } ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return Recovery(url: url, date: date, name: name)
         }.sorted { $0.date > $1.date }
     }
     public func recover(_ recovery: Recovery) throws -> Ledger {
+        state.lock.lock(); defer { state.lock.unlock() }
         guard recovery.url.deletingLastPathComponent().standardizedFileURL == directory.appendingPathComponent("Recovery").standardizedFileURL else { throw YubaiError.invalid("恢复文件不属于当前账本。") }
         let restored = try LedgerCodec.decode(Data(contentsOf: recovery.url))
         // Use the same visible recovery history as an imported backup, so the user
@@ -76,14 +106,14 @@ public struct LedgerRepository: Sendable {
         return restored
     }
     public func restoreBackup(_ restored: Ledger) throws {
+        state.lock.lock(); defer { state.lock.unlock() }
         let bytes = try LedgerCodec.encode(restored)
         try prepare(directory)
         if FileManager.default.fileExists(atPath: file.path) {
-            let history = directory.appendingPathComponent("Recovery", isDirectory: true)
-            try prepare(history)
-            try writePrivate(Data(contentsOf: file), to: history.appendingPathComponent("\(Int(Date().timeIntervalSince1970 * 1000))-恢复前-\(UUID().uuidString.prefix(8)).json"))
+            try preserveCurrent(reason: "恢复前", verify: false)
         }
         try writePrivate(bytes, to: file)
+        state.digest = SHA256.hash(data: bytes)
         pruneHistory()
     }
 }

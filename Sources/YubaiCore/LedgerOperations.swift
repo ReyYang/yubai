@@ -1,6 +1,18 @@
 import Foundation
 
 public enum LedgerOperations {
+    /// Keep stored refund categories aligned with their original expenses.
+    public static func syncLinkedRefundCategories(in ledger: inout Ledger) {
+        var expenseCategories: [UUID: String] = [:]
+        for entry in ledger.entries where entry.nature == .expense {
+            expenseCategories[entry.id] = entry.category
+        }
+        for i in ledger.entries.indices where ledger.entries[i].nature == .refund {
+            guard let id = ledger.entries[i].relatedEntryID, let category = expenseCategories[id],
+                  ledger.entries[i].category != category else { continue }
+            ledger.entries[i].category = category
+        }
+    }
     public static func bulkEdit(_ ids: Set<UUID>, category: String?, nature: Nature?, in ledger: inout Ledger) throws {
         guard category != nil || nature != nil else { throw YubaiError.invalid("请选择要修改的分类或性质。") }
         var candidate = ledger
@@ -16,6 +28,7 @@ public enum LedgerOperations {
             if let category { candidate.entries[i].category = category }
             candidate.entries[i].userEdited = true; candidate.entries[i].classificationReason = "用户批量纠正"
         }
+        syncLinkedRefundCategories(in: &candidate)
         try candidate.validate(); ledger = candidate
     }
     @discardableResult public static func mergeTransfer(_ first: UUID, _ second: UUID, nature: Nature = .transfer, in ledger: inout Ledger, now: Date = Date()) throws -> UUID {

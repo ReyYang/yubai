@@ -7,7 +7,7 @@ enum Destination: String, CaseIterable, Identifiable {
     case overview, ledger, plans, insights, settings
     var id: Self { self }
     var title: String { switch self { case .overview: "现在"; case .ledger: "账本"; case .plans: "安排"; case .insights: "洞察"; case .settings: "我的" } }
-    var symbol: String { switch self { case .overview: "circle.lefthalf.filled"; case .ledger: "text.book.closed"; case .plans: "calendar"; case .insights: "chart.xyaxis.line"; case .settings: "person.crop.circle" } }
+    var symbol: String { switch self { case .overview: "water.waves"; case .ledger: "text.book.closed"; case .plans: "calendar"; case .insights: "chart.xyaxis.line"; case .settings: "person.crop.circle" } }
 }
 enum AppSheet: Identifiable {
     case entry(Entry?), account(Account?), plan(Plan?), goal(Goal?), rent(Rent?), imports, accounts, advice, categories, rules, backup, history, rentDetail(UUID), entryDetail(UUID), guide, fundsCalculation
@@ -15,8 +15,47 @@ enum AppSheet: Identifiable {
 }
 
 @MainActor @Observable final class AppStore {
-    private(set) var ledger = Ledger(); private(set) var demo: Ledger?
+    private(set) var ledger = Ledger() { didSet { invalidateDerived() } }
+    private(set) var demo: Ledger? { didSet { invalidateDerived() } }
     var current: Ledger { demo ?? ledger }; var isDemo: Bool { demo != nil }
+    private var derivedRevision = 0
+    private struct ReviewInterval: Hashable { var from: Date; var through: Date }
+    // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
+    @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
+    @ObservationIgnored private var cachedEntries: (rows: [Entry], categories: [String])?
+    @ObservationIgnored private var cachedReviews: [ReviewInterval: Review] = [:]
+    var funds: Funds {
+        _ = derivedRevision
+        let now = Date(); let zone = TimeZone.current
+        if let cached = cachedFunds, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
+        let ledger = current; var expires = Dates.addDays(1, to: Dates.day(now))
+        for entry in ledger.entries where entry.deletedAt == nil {
+            if entry.date > now { expires = min(expires, entry.date) }
+            if let date = entry.otherDate, date > now { expires = min(expires, date) }
+        }
+        for account in ledger.accounts {
+            let stale = account.anchorDate.addingTimeInterval(14 * 86400)
+            if stale >= now { expires = min(expires, stale) }
+        }
+        let value = Finance.funds(ledger, now: now)
+        cachedFunds = (value, now, expires, zone); return value
+    }
+    private var entrySnapshot: (rows: [Entry], categories: [String]) {
+        _ = derivedRevision
+        if let cached = cachedEntries { return cached }
+        let entries = current.entries
+        let value = (rows: entries.sorted { $0.date > $1.date }, categories: Set(entries.map(\.category)).sorted())
+        cachedEntries = value; return value
+    }
+    var sortedEntries: [Entry] { entrySnapshot.rows }; var entryCategories: [String] { entrySnapshot.categories }
+    func review(from: Date, through: Date) -> Review {
+        _ = derivedRevision
+        let key = ReviewInterval(from: from, through: through)
+        if let cached = cachedReviews[key] { return cached }
+        let value = Finance.review(current, from: from, through: through); cachedReviews[key] = value; return value
+    }
+    private func invalidateDerived() { cachedEntries = nil; cachedReviews.removeAll(); refreshTimeDerived() }
+    func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1 }
     let repository: LedgerRepository
     var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
     var loadFailure: String?; var locked = false; var importedURL: URL?
@@ -74,8 +113,8 @@ enum AppSheet: Identifiable {
         guard loadFailure == nil || isDemo else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
         do {
-            try change(&next); next.updatedAt = Date(); try next.validate()
-            if isDemo { demo = next } else { try repository.save(next, reason: reason); ledger = next }
+            try change(&next); next.updatedAt = Date()
+            if isDemo { try next.validate(); demo = next } else { try repository.save(next, reason: reason); ledger = next }
             undoLedger = before; undoLabel = reason; toast = reason + "完成"; return true
         } catch { self.error = error.localizedDescription; return false }
     }
@@ -112,11 +151,17 @@ enum AppSheet: Identifiable {
 
 @main struct YubaiApp: App {
     @State private var store = AppStore()
+    private var colorScheme: ColorScheme? {
+        switch store.current.preferences.appearance {
+        case "dark": .dark
+        case "light": .light
+        default: nil
+        }
+    }
     var body: some Scene {
         WindowGroup {
-            RootView().environment(store).tint(YubaiTheme.jade)
-                .yubaiColorTheme(store.current.preferences.colorTheme)
-                .preferredColorScheme(store.current.preferences.appearance == "dark" ? .dark : (store.current.preferences.appearance == "light" ? .light : nil))
+            RootView().environment(store).tint(YubaiColor.brandInk)
+                .preferredColorScheme(colorScheme)
                 #if os(macOS)
                 .frame(minWidth: 920, minHeight: 680)
                 #endif
@@ -139,6 +184,7 @@ struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var phase
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         @Bindable var store = store
         Group {
@@ -148,23 +194,26 @@ struct RootView: View {
             else { mainContent }
         }
         .sheet(item: $store.sheet) { sheet in
-            NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiTheme.jade)
-                .yubaiColorTheme(store.current.preferences.colorTheme)
+            NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brandInk)
                 .appErrors()
                 .overlay { privacyCover }
                 #if os(macOS)
                 .frame(minWidth: 540, idealWidth: 620, minHeight: 600, idealHeight: 720)
                 #endif
         }
+        .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas.ignoresSafeArea())
         .appErrors()
         .overlay(alignment: .bottom) {
             if let toast = store.toast {
-                HStack(spacing: 12) { Image(systemName: "checkmark.circle.fill").foregroundStyle(YubaiTheme.jade); Text(toast).font(.callout); if store.undoLabel != nil { Button("撤销") { store.undo() } }; Button { store.toast = nil } label: { Image(systemName: "xmark").font(.caption) }.buttonStyle(.plain).accessibilityLabel("关闭提示") }
-                    .padding(14).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16)).shadow(color: .black.opacity(0.08), radius: 12, y: 5).padding(.horizontal, 20).padding(.bottom, 76)
-                    .task(id: toast) { try? await Task.sleep(for: .seconds(6)); if store.toast == toast { store.toast = nil } }
+                Toast(text: toast, onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
+                    .id(toast)
+                    #if os(iOS)
+                    .padding(.bottom, YubaiSize.tabbarHeight + YubaiSpace.space2)
+                    #endif
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(YubaiMotion.toastOut(reduceMotion: reduceMotion))))
             }
         }
-        .onChange(of: phase) { _, newValue in if newValue == .background && store.current.preferences.lockEnabled && !store.isDemo { store.sheet = nil; store.toast = nil; store.locked = true } }
+        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived() }; if newValue == .background && store.current.preferences.lockEnabled && !store.isDemo { store.sheet = nil; store.toast = nil; store.locked = true } }
         .overlay { privacyCover }
         .onOpenURL { url in guard url.isFileURL else { return }; store.importedURL = url; if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
         .onChange(of: store.locked) { _, value in if !value, let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
@@ -173,22 +222,22 @@ struct RootView: View {
         @Bindable var store = store
         #if os(macOS)
         NavigationSplitView {
-            VStack(alignment: .leading, spacing: 28) {
-                BrandMark().padding(.top, 26).padding(.horizontal, 20)
-                List(Destination.allCases, selection: $store.destination) { d in Label(d.title, systemImage: d.symbol).font(.system(size: 15, weight: .medium)).padding(.vertical, 8).tag(d) }.listStyle(.sidebar)
-                VStack(alignment: .leading, spacing: 10) { Label("留白，给真正重要的事", systemImage: "leaf").font(.caption); Text("本地账本 · 由你掌握").font(.caption2).foregroundStyle(.secondary) }.padding(20)
-            }.navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 250)
+            VStack(alignment: .leading, spacing: YubaiSpace.space24) {
+                BrandMark(variant: .mark).padding(.top, YubaiSpace.space24).padding(.horizontal, YubaiSpace.space20)
+                List(Destination.allCases, selection: $store.destination) { d in Label(d.title, systemImage: d.symbol).yubaiFont(YubaiFont.rowTitle).padding(.vertical, YubaiSpace.space8).tag(d) }.listStyle(.sidebar).scrollContentBackground(.hidden).background(YubaiColor.canvas)
+                VStack(alignment: .leading, spacing: YubaiSpace.space10) { Label("留白，给真正重要的事", systemImage: "leaf").yubaiFont(YubaiFont.caption); Text("本地账本 · 由你掌握").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }.padding(YubaiSpace.space20)
+            }.background(YubaiColor.canvas).navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 250)
         } detail: { NavigationStack { destination(store.destination) } }
         #else
         TabView(selection: $store.destination) {
-            ForEach(Destination.allCases) { d in NavigationStack { destination(d) }.tabItem { Label(d.title, systemImage: d.symbol) }.tag(d) }
-        }
+            ForEach(Destination.allCases) { d in NavigationStack { destination(d) }.toolbarBackground(YubaiColor.raised, for: .tabBar).toolbarBackground(.visible, for: .tabBar).tabItem { Label(d.title, systemImage: d.symbol) }.tag(d) }
+        }.tint(YubaiColor.label)
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
         Group { switch d { case .overview: OverviewView(); case .ledger: LedgerView(); case .plans: PlansView(); case .insights: InsightsView(); case .settings: SettingsView() } }
             .safeAreaInset(edge: .top, spacing: 0) {
-                if store.isDemo { HStack { Text(textSize.isAccessibilitySize ? "示例账本" : "示例账本 · 不含你的真实数据").accessibilityLabel("示例账本，不含你的真实数据"); Spacer(); Button(textSize.isAccessibilitySize ? "退出" : "退出示例") { store.endDemo() } }.font(.caption).padding(.horizontal, 20).padding(.vertical, 8).background(YubaiTheme.jade.opacity(0.12)) }
+                if store.isDemo { HStack { Text(textSize.isAccessibilitySize ? "示例账本" : "示例账本 · 不含你的真实数据").accessibilityLabel("示例账本，不含你的真实数据"); Spacer(); Button(textSize.isAccessibilitySize ? "退出" : "退出示例") { store.endDemo() } }.yubaiFont(YubaiFont.caption).padding(.horizontal, YubaiSpace.space20).padding(.vertical, YubaiSpace.space8).foregroundStyle(YubaiColor.labelMuted).background(YubaiColor.card) }
             }
     }
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
@@ -212,14 +261,14 @@ struct RootView: View {
         }
     }
     var lockedView: some View {
-        VStack(spacing: 24) { BrandMark(); Image(systemName: "lock.shield").font(.system(size: 52)).foregroundStyle(YubaiTheme.jade); Text("你的账本，只属于你").font(.title2.weight(.semibold)); Button("解锁余白") { Task { await store.unlock() } }.buttonStyle(PrimaryButtonStyle()) }.padding(32)
+        VStack(spacing: YubaiSpace.space24) { BrandMark(); Image(systemName: "lock.shield").yubaiFont(YubaiFont.amountDisplay).foregroundStyle(YubaiColor.labelSecondary); Text("你的账本，只属于你").yubaiFont(YubaiFont.lead); Button("解锁余白") { Task { await store.unlock() } }.buttonStyle(PrimaryButtonStyle()) }.padding(YubaiSpace.space24)
     }
     @ViewBuilder var privacyCover: some View {
         if (phase != .active || store.locked) && store.current.preferences.lockEnabled && !store.isDemo {
-            if phase != .active { ZStack { YubaiTheme.canvas.ignoresSafeArea(); VStack(spacing: 18) { BrandMark(); Label("个人账本已保护", systemImage: "lock.shield").foregroundStyle(.secondary) } } }
+            if phase != .active { ZStack { YubaiColor.canvas.ignoresSafeArea(); VStack(spacing: YubaiSpace.space18) { BrandMark(); Label("个人账本已保护", systemImage: "lock.shield").foregroundStyle(YubaiColor.labelSecondary) } } }
         }
     }
     func recoveryView(_ message: String) -> some View {
-        VStack(spacing: 20) { Image(systemName: "externaldrive.badge.exclamationmark").font(.largeTitle); Text("账本需要恢复").font(.title2.bold()); Text(message).foregroundStyle(.secondary); Text("原文件已保留，余白不会用空账本覆盖它。").font(.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(40).frame(maxWidth: 540)
+        VStack(spacing: YubaiSpace.space20) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Text("原文件已保留，余白不会用空账本覆盖它。").yubaiFont(YubaiFont.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.space24).frame(maxWidth: 540)
     }
 }

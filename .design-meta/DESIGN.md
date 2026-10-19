@@ -1,12 +1,22 @@
 # 余白 · 设计约定与资源登记
 
-更新：2026-10-02。用户明确委托自主主导完整产品后，本轮采用下列原生设计。采用不等于用户已经完成个人体验验收。
+更新：2026-10-19。用户明确委托自主主导完整产品后采用原生设计；本次按用户指定的暖纸设计系统迁移全部已有页面。采用不等于用户已经完成个人体验验收。
+
+## 2026-10-19 · 设计系统迁移
+
+- 本次采用的视觉依据是[暖纸设计系统](https://claude.ai/artifact/Pz2z4mQNoCqTNLGRafY9v5)与[390pt 页面设计稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)；生产样式的长期权威仍是 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift)。
+- 已将 `Sources/YubaiApp` 的现有页面、编辑器与子页面迁移到 `YubaiColor` / `YubaiFont` / 间距与尺寸 token；移除兼容主题与图标方块。首页采用 `HeroCard`，分类占比改横条，现金预测采用台阶线，导入与购买结果使用水位记号，反馈使用 `Toast`。长列表用带分隔线的惰性列表卡；编辑器保留系统 Form。
+- 已采用：按设计系统 SwiftUI 对照移除三套颜色主题，`Preferences.colorTheme` 仅为旧存储兼容保留，界面忽略其值；不打包字体，数字用系统 rounded 等宽数字、衬线用系统 serif、正文用系统字体。助手页面尚未实现，因此保留五项原生 `TabView` 与 Mac 侧栏；原有操作和数据流程不变，聊天、语音、自动备份不纳入本次迁移。
+- Step 3 修复按钮样式作用域、购买水位映射、待明确记录元信息、金额精度与 Mac 底部留白；拆分图表表达式，洞察汇总每次渲染只计算一次。预计收入仍以虚线预测路径与直接文字标签显示。
+- 已做 Swift 语法树解析、旧样式残留扫描，以及标识符、快捷键、store 更新动作与说明文案的静态对照。当前环境没有 Swift / Apple SDK；iOS 与 macOS 编译、390pt 真机布局、深色、大字号、辅助功能与长账本性能均未执行验证。
+- 现有 Figma 画布、旧截图、历史原型和既有验证报告未同步，不代表这次迁移的视觉或运行验收。
+- 合并 E10 / E14 / E18 修复时保留上述设计：资金偏好三项显示持久标签并保留相同的 accessibility label；导入历史的导出 / 撤销、本机模型的下载 / 删除使用独立按钮样式。保留退款分类跟随原支出的存储同步与跨统计区间查找；复核 AppStore 更新、撤销、恢复和示例切换均清空相关缓存，单次遍历资金计算保持原逻辑。此次仅完成差异与源码静态复核，未运行 Swift 构建或 UI / Core 测试；外部设计资源未同步。
 
 ## 当前应用设计
 
 | 资源 | 权威位置与用途 |
 |---|---|
-| 颜色、字体、基础视图 | `Sources/YubaiApp/DesignSystem.swift`；深青绿主动作、深色模式亮薄荷强调、系统语义背景和文字；系统中文字体、金额等宽数字 |
+| 颜色、字体、基础视图 | `Sources/YubaiApp/DesignSystem.swift`；暖纸浅/深色语义 token、衬线标题、系统中文正文与 rounded 等宽金额；品牌绿只强调动作和图表 |
 | 应用信息架构 | `YubaiApp.swift`；iPhone 五个 tab、Mac 侧栏；根视图处理示例隔离、账本锁、文件打开和错误 |
 | 现在 | `OverviewView.swift`；保守金额优先，依据可展开，图表和近期义务同屏衔接，不展示无依据的「可放心花」承诺 |
 | 账本与编辑 | `LedgerView.swift` / `Editors.swift`；检索、分类/时间/账户筛选、批量修改、明细关联、回收站、余额差额 |
@@ -16,7 +26,7 @@
 | 本机智能（一期） | `IntelligenceRuntime` + `YubaiLocalLLM`（llama.cpp Metal）+ `ModelWeightStore`（HF Qwen GGUF）；台架见 `docs/ai-bench/`；方案见 Agent Store `docs/ai-local-first-plan.md` |
 | 图标 | `Assets.xcassets/AppIcon.appiconset`；本项目生成的深青绿余白符号，不依赖远端素材 |
 
-基础组件包括 `Page`、`Card`、`AmountLabel`、`EntryRow`、`InlineNote`、`EmptyState` 和主按钮；全部已有实际调用。使用 SwiftUI 原生表单、导航、选择器、sheet、文件选择、SF Symbols 和 Swift Charts，不建立第二套未使用的 token 或组件库。
+基础组件包括 `Page`、`Card` / `CardRows`、`AmountLabel`、`HeroCard`、`EntryRow`、`Pill`、`InlineNote`、`EmptyState`、`Toast`、`BrandMark`、`AssistantMark`、`WaterLevelView`、`ChartGrow` 和主次按钮；均有实际调用。使用 SwiftUI 原生表单、导航、选择器、sheet、文件选择、SF Symbols 和 Swift Charts；卡片无描边、阴影和渐变。
 
 大字号下，账本筛选合并到菜单、交易信息纵向排布、示例标记缩短，避免固定提示占满屏幕。金额不只靠颜色说明；入/出、性质、未知和异常均有文字。输入错误留在当前编辑页，不丢弃表单。触控、VoiceOver、设备认证与所有尺寸并未穷尽验收，已执行范围见 [验证记录](../docs/VALIDATION.md)。
 
