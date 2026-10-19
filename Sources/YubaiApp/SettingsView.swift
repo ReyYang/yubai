@@ -32,9 +32,6 @@ struct SettingsView: View {
             }
             Section("界面与外观") {
                 Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in store.update("保存外观") { $0.preferences.appearance = value } })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }
-                Picker("主题", selection: Binding(get: { YubaiColorTheme(preference: store.current.preferences.colorTheme).rawValue }, set: { value in store.update("保存主题") { $0.preferences.colorTheme = value } })) {
-                    ForEach(YubaiColorTheme.allCases) { theme in Text(theme.title).tag(theme.rawValue) }
-                }
             }
             Section("智能辅助") {
                 Toggle("允许智能辅助", isOn: Binding(get: { store.current.preferences.localAIEnabled }, set: { value in store.update("保存智能辅助总开关") { $0.preferences.localAIEnabled = value } }))

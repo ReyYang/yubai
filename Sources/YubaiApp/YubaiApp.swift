@@ -114,8 +114,7 @@ enum AppSheet: Identifiable {
     @State private var store = AppStore()
     var body: some Scene {
         WindowGroup {
-            RootView().environment(store).tint(YubaiTheme.jade)
-                .yubaiColorTheme(store.current.preferences.colorTheme)
+            RootView().environment(store).tint(YubaiColor.brand)
                 .preferredColorScheme(store.current.preferences.appearance == "dark" ? .dark : (store.current.preferences.appearance == "light" ? .light : nil))
                 #if os(macOS)
                 .frame(minWidth: 920, minHeight: 680)
@@ -148,8 +147,7 @@ struct RootView: View {
             else { mainContent }
         }
         .sheet(item: $store.sheet) { sheet in
-            NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiTheme.jade)
-                .yubaiColorTheme(store.current.preferences.colorTheme)
+            NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brand)
                 .appErrors()
                 .overlay { privacyCover }
                 #if os(macOS)

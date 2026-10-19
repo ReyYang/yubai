@@ -10,8 +10,6 @@ struct OverviewView: View {
 private struct OverviewContent: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.yubaiColorTheme) private var colorTheme
-    @Environment(\.colorScheme) private var colorScheme
     let funds: Funds
     var body: some View {
         Page {
@@ -45,7 +43,6 @@ private struct OverviewContent: View {
         }.navigationTitle("现在").toolbar { ToolbarItemGroup { Button { store.sheet = .imports } label: { Label("导入", systemImage: "square.and.arrow.down") }; Button { store.sheet = .entry(nil) } label: { Label("记一笔", systemImage: "plus") }.accessibilityIdentifier("addEntry") } }
     }
     var hero: some View {
-        let colors = YubaiTheme.colors(for: colorTheme, colorScheme: colorScheme)
         return VStack(alignment: .leading, spacing: 18) {
             let titleLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout())
             titleLayout { Label("保守可动用", systemImage: "circle.lefthalf.filled").font(.callout.weight(.medium)); if !textSize.isAccessibilitySize { Spacer() }; Text("未来 \(store.current.preferences.horizonDays) 天").font(.caption).padding(.horizontal, 11).padding(.vertical, 6).background(.white.opacity(0.12), in: Capsule()) }
@@ -54,7 +51,7 @@ private struct OverviewContent: View {
             Button { store.sheet = .fundsCalculation } label: {
                 HStack { Text("看看这笔数怎样算出来"); Spacer(); Image(systemName: "chevron.right") }.foregroundStyle(.white).frame(minHeight: 44).contentShape(Rectangle())
             }.font(.caption).buttonStyle(.plain).accessibilityIdentifier("fundsFormula").accessibilityHint("打开计算依据")
-        }.padding(26).foregroundStyle(.white).background(LinearGradient(colors: [colors.deepJade, colors.heroShadow], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
+        }.padding(26).foregroundStyle(.white).background(YubaiColor.brand, in: RoundedRectangle(cornerRadius: 26))
     }
     var forecast: some View {
         Card {
