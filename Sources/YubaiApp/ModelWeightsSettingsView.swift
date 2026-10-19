@@ -95,8 +95,10 @@ struct ModelWeightsSettingsView: View {
                     }
                     HStack {
                         Button("下载") { download(spec) }
+                            .buttonStyle(.borderless)
                             .disabled(busyID != nil || (statuses[spec.id]?.installed == true && statuses[spec.id]?.verified == true))
                         Button("删除", role: .destructive) { delete(spec) }
+                            .buttonStyle(.borderless)
                             .disabled(busyID != nil || statuses[spec.id]?.installed != true)
                     }
                     if busyID == spec.id { ProgressView("处理中…") }

@@ -38,9 +38,9 @@ struct SettingsView: View {
     private var fundsSection: some View {
         Section("资金偏好") {
             Picker("从今天向前看", selection: $horizon) { Text("30 天").tag(30); Text("60 天").tag(60); Text("90 天").tag(90); Text("180 天").tag(180); Text("365 天").tag(365) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("应急底线金额").yubaiFont(YubaiFont.row); TextField("应急底线金额", text: $reserve).numericInput().yubaiFont(YubaiFont.amountInput) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("每天的日常生活预留").yubaiFont(YubaiFont.row); TextField("每天的日常生活预留", text: $living).numericInput().yubaiFont(YubaiFont.amountInput) }
-            TextField("我希望把钱花在什么上", text: $values, axis: .vertical).lineLimit(2...5)
+            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("应急底线金额").yubaiFont(YubaiFont.row); TextField("应急底线金额", text: $reserve).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("应急底线金额") }
+            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("每天的日常生活预留").yubaiFont(YubaiFont.row); TextField("每天的日常生活预留", text: $living).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("每天的日常生活预留") }
+            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("我希望把钱花在什么上").yubaiFont(YubaiFont.row); TextField("我希望把钱花在什么上", text: $values, axis: .vertical).lineLimit(2...5).accessibilityLabel("我希望把钱花在什么上") }
             Button("保存资金偏好", action: savePreferences)
             Text("日常生活预留用于未逐项列出的零碎开销。不要把同一笔固定付款既列为安排又放进日常预留。调整不会改动真实账单。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
@@ -143,7 +143,13 @@ struct RulesView: View {
     }
     func saveRule() {
         let clean = keyword.trimmingCharacters(in: .whitespacesAndNewlines); guard !clean.isEmpty else { store.error = "请填写一个关键词。"; return }; let ids = Set(matches.map(\.id))
-        if store.update("保存分类规则", { l in l.rules.insert(Rule(keyword: clean, category: category), at: 0); if applyExisting { for i in l.entries.indices where ids.contains(l.entries[i].id) { l.entries[i].category = category; l.entries[i].userEdited = true; l.entries[i].classificationReason = "用户应用规则：\(clean)" } } }) { keyword = ""; applyExisting = false }
+        if store.update("保存分类规则", { l in
+            l.rules.insert(Rule(keyword: clean, category: category), at: 0)
+            if applyExisting {
+                for i in l.entries.indices where ids.contains(l.entries[i].id) { l.entries[i].category = category; l.entries[i].userEdited = true; l.entries[i].classificationReason = "用户应用规则：\(clean)" }
+                LedgerOperations.syncLinkedRefundCategories(in: &l)
+            }
+        }) { keyword = ""; applyExisting = false }
     }
 
     private var newRuleSection: some View {
@@ -261,9 +267,9 @@ struct HistoryView: View {
                     Text(batch.filename).yubaiFont(YubaiFont.rowTitle)
                     Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销")).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     HStack {
-                        if let attachment = store.current.attachments.first(where: { $0.id == batch.attachmentID }) { Button("导出原文件") { document = ExportDocument(data: attachment.data); filename = attachment.name; exporting = true }.frame(minHeight: YubaiSize.tapMin) }
+                        if let attachment = store.current.attachments.first(where: { $0.id == batch.attachmentID }) { Button("导出原文件") { document = ExportDocument(data: attachment.data); filename = attachment.name; exporting = true }.buttonStyle(.borderless).frame(minHeight: YubaiSize.tapMin) }
                         Spacer()
-                        if batch.undoneAt == nil { Button("撤销整批", role: .destructive) { undoBatch = batch }.frame(minHeight: YubaiSize.tapMin) }
+                        if batch.undoneAt == nil { Button("撤销整批", role: .destructive) { undoBatch = batch }.buttonStyle(.borderless).frame(minHeight: YubaiSize.tapMin) }
                     }.yubaiFont(YubaiFont.row)
                 }.padding(.vertical, YubaiSpace.space8)
             }

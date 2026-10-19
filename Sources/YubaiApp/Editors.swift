@@ -46,6 +46,7 @@ struct EntryEditor: View {
             if entry?.amount != e.amount || entry?.relatedEntryID != e.relatedEntryID || entry?.nature != e.nature || e.personalExpense == nil { LedgerOperations.recordPersonalShare(&e, ledger: store.current) }
             if store.update("保存记录", { l in
                 if let i = l.entries.firstIndex(where: { $0.id == e.id }) { e.userEdited = true; l.entries[i] = e } else { l.entries.append(e) }
+                LedgerOperations.syncLinkedRefundCategories(in: &l)
                 if learn { l.rules.insert(Rule(keyword: keyword.trimmingCharacters(in: .whitespacesAndNewlines), category: e.category), at: 0) }
             }) { dismiss() }
         } catch { store.error = error.localizedDescription }
