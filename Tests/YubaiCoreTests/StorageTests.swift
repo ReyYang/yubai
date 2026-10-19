@@ -62,6 +62,66 @@ final class StorageTests: XCTestCase {
         XCTAssertTrue(try repo.recoveries().contains { try LedgerCodec.decode(Data(contentsOf: $0.url)).accounts[0].name == "新名称" })
         let another = Ledger(); try repo.restoreBackup(another); XCTAssertEqual(try repo.load(), another); XCTAssertFalse(try repo.recoveries().isEmpty)
     }
+    func testRepeatedSavesKeepExactPreviousBytesAndLatestTwentyRevisions() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-history-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }
+        let repo = LedgerRepository(directory: root); let copy = repo; var ledger = sample(); try repo.save(ledger)
+        var previous: [Data] = []
+        for index in 0..<26 {
+            previous.append(try Data(contentsOf: repo.file))
+            ledger.accounts[0].name = "Revision \(index / 2)"
+            try copy.save(ledger, reason: "Repeated/save")
+        }
+        let history = try repo.recoveries(); XCTAssertEqual(history.count, 20)
+        XCTAssertEqual(try history.map { try Data(contentsOf: $0.url) }, Array(previous.suffix(20).reversed()))
+        for revision in history { XCTAssertNoThrow(try LedgerCodec.decode(Data(contentsOf: revision.url))) }
+        XCTAssertEqual(try repo.load(), ledger)
+        let reopened = LedgerRepository(directory: root); _ = try reopened.load()
+        let last = try Data(contentsOf: repo.file); try reopened.save(ledger)
+        XCTAssertEqual(try reopened.recoveries().count, 20)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(reopened.recoveries().first).url), last)
+    }
+    func testLoadedRepositoryVerifiesAndPreservesValidExternalChangesBeforeSaving() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-external-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }
+        let writer = LedgerRepository(directory: root); let ledger = sample(); try writer.save(ledger); try writer.save(ledger)
+        let repo = LedgerRepository(directory: root); XCTAssertEqual(try repo.load(), ledger); let copy = repo
+        let previous = try XCTUnwrap(repo.recoveries().first)
+        var externalLedger = ledger; externalLedger.accounts[0].name = "External edit"
+        let external = Data(" \n".utf8) + (try LedgerCodec.encode(externalLedger))
+        try external.write(to: repo.file, options: .atomic)
+        try copy.save(ledger)
+        let history = try repo.recoveries(); XCTAssertEqual(history.count, 2)
+        let newest = try XCTUnwrap(history.first); XCTAssertGreaterThan(newest.date, previous.date)
+        let preserved = try Data(contentsOf: newest.url)
+        XCTAssertEqual(preserved, external); XCTAssertEqual(try LedgerCodec.decode(preserved), externalLedger)
+        XCTAssertEqual(try Data(contentsOf: repo.file), try LedgerCodec.encode(ledger)); XCTAssertEqual(try repo.load(), ledger)
+    }
+    func testFirstSaveVerifiesUnrecognizedCurrentFile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-unrecognized-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }
+        let writer = LedgerRepository(directory: root); var ledger = sample(); try writer.save(ledger)
+        let original = try Data(contentsOf: writer.file); let repo = LedgerRepository(directory: root); try repo.save(ledger)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(repo.recoveries().first).url), original)
+        ledger.schema = 99; let invalid = try JSONEncoder().encode(ledger); try invalid.write(to: repo.file, options: .atomic)
+        XCTAssertThrowsError(try LedgerRepository(directory: root).save(sample()))
+        XCTAssertEqual(try Data(contentsOf: repo.file), invalid); XCTAssertEqual(try repo.recoveries().count, 1)
+    }
+    func testCachedDigestRejectsSameSizeCorruptionAndAllowsSavingAfterRemoval() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-digest-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }
+        let repo = LedgerRepository(directory: root); let ledger = sample(); try repo.save(ledger)
+        let original = try Data(contentsOf: repo.file); let corrupt = Data(repeating: 0x78, count: original.count)
+        let modified = try FileManager.default.attributesOfItem(atPath: repo.file.path)[.modificationDate] as! Date
+        try corrupt.write(to: repo.file); try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: repo.file.path)
+        XCTAssertThrowsError(try repo.save(ledger)); XCTAssertEqual(try Data(contentsOf: repo.file), corrupt)
+        XCTAssertThrowsError(try LedgerRepository(directory: root).save(ledger)); XCTAssertTrue(try repo.recoveries().isEmpty)
+        try FileManager.default.removeItem(at: repo.file); try repo.save(ledger)
+        XCTAssertEqual(try Data(contentsOf: repo.file), original); XCTAssertEqual(try repo.load(), ledger)
+        XCTAssertTrue(try repo.recoveries().isEmpty)
+    }
+    func testInvalidSaveLeavesCurrentRevisionAndHistoryUnchanged() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-invalid-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }
+        let repo = LedgerRepository(directory: root); var ledger = sample(); try repo.save(ledger)
+        let bytes = try Data(contentsOf: repo.file); ledger.entries[0].amount = -1
+        XCTAssertThrowsError(try repo.save(ledger)); XCTAssertEqual(try Data(contentsOf: repo.file), bytes); XCTAssertTrue(try repo.recoveries().isEmpty)
+    }
     func testInvalidReferencesAndNegativeAmountsCannotPersist() throws {
         var l = Ledger(); l.entries = [Entry(amount: 100, accountID: UUID(), title: "无账户")]; XCTAssertThrowsError(try LedgerCodec.encode(l))
         l.accounts = [Account(name: "现金")]; l.entries = [Entry(amount: -1, accountID: l.accounts[0].id, title: "负值")]; XCTAssertThrowsError(try LedgerCodec.encode(l))
@@ -77,5 +137,6 @@ final class StorageTests: XCTestCase {
             XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
         }
         XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber)?.intValue, 0o700)
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: root.appendingPathComponent("Recovery").path)[.posixPermissions] as? NSNumber)?.intValue, 0o700)
     }
 }

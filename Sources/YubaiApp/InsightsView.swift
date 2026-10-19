@@ -67,7 +67,7 @@ struct InsightsView: View {
     @State private var insightBusy = false
     private var from: Date { Dates.addDays(-days + 1, to: Dates.day(Date())) }
     private var through: Date { Dates.addDays(1, to: Dates.day(Date())) }
-    private var review: Review { Finance.review(store.current, from: from, through: through) }
+    private var review: Review { store.review(from: from, through: through) }
     var body: some View {
         Page {
             VStack(alignment: .leading, spacing: 8) { Text("看懂花费，也看见自己。").font(.system(.title, design: .serif).weight(.medium)); Text("从真实记录中找线索，不为每一笔小快乐打分。").font(.callout).foregroundStyle(.secondary) }

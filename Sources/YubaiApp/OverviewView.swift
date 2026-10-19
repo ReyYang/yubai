@@ -4,7 +4,7 @@ import YubaiCore
 
 struct OverviewView: View {
     @Environment(AppStore.self) private var store
-    var body: some View { OverviewContent(funds: Finance.funds(store.current)) }
+    var body: some View { OverviewContent(funds: store.funds) }
 }
 
 private struct OverviewContent: View {
@@ -106,7 +106,7 @@ struct FundsCalculationView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     var body: some View {
-        let funds = Finance.funds(store.current)
+        let funds = store.funds
         Page {
             SectionHeading(title: "从现在的现金里，留出已经有用途的钱", subtitle: "未来 \(store.current.preferences.horizonDays) 天")
             Card {
