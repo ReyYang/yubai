@@ -5,7 +5,7 @@ struct PlansView: View {
     @Environment(AppStore.self) private var store
     @State private var filter = "接下来"; @State private var occurrenceToLink: Occurrence?
     @State private var shownGoalCharts = Set<UUID>()
-    var occurrences: [Occurrence] { Finance.occurrences(in: store.current) }
+    var occurrences: [Occurrence] { store.funds.occurrences }
     var body: some View {
         Page(hasTabBar: true) {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) { Text("先照顾必须的，\n再留给想要的。").yubaiFont(YubaiFont.lead); Text("安排跟随日期和实际发生的收支，不按月清零。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }

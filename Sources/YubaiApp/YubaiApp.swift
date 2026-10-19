@@ -15,8 +15,47 @@ enum AppSheet: Identifiable {
 }
 
 @MainActor @Observable final class AppStore {
-    private(set) var ledger = Ledger(); private(set) var demo: Ledger?
+    private(set) var ledger = Ledger() { didSet { invalidateDerived() } }
+    private(set) var demo: Ledger? { didSet { invalidateDerived() } }
     var current: Ledger { demo ?? ledger }; var isDemo: Bool { demo != nil }
+    private var derivedRevision = 0
+    private struct ReviewInterval: Hashable { var from: Date; var through: Date }
+    // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
+    @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
+    @ObservationIgnored private var cachedEntries: (rows: [Entry], categories: [String])?
+    @ObservationIgnored private var cachedReviews: [ReviewInterval: Review] = [:]
+    var funds: Funds {
+        _ = derivedRevision
+        let now = Date(); let zone = TimeZone.current
+        if let cached = cachedFunds, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
+        let ledger = current; var expires = Dates.addDays(1, to: Dates.day(now))
+        for entry in ledger.entries where entry.deletedAt == nil {
+            if entry.date > now { expires = min(expires, entry.date) }
+            if let date = entry.otherDate, date > now { expires = min(expires, date) }
+        }
+        for account in ledger.accounts {
+            let stale = account.anchorDate.addingTimeInterval(14 * 86400)
+            if stale >= now { expires = min(expires, stale) }
+        }
+        let value = Finance.funds(ledger, now: now)
+        cachedFunds = (value, now, expires, zone); return value
+    }
+    private var entrySnapshot: (rows: [Entry], categories: [String]) {
+        _ = derivedRevision
+        if let cached = cachedEntries { return cached }
+        let entries = current.entries
+        let value = (rows: entries.sorted { $0.date > $1.date }, categories: Set(entries.map(\.category)).sorted())
+        cachedEntries = value; return value
+    }
+    var sortedEntries: [Entry] { entrySnapshot.rows }; var entryCategories: [String] { entrySnapshot.categories }
+    func review(from: Date, through: Date) -> Review {
+        _ = derivedRevision
+        let key = ReviewInterval(from: from, through: through)
+        if let cached = cachedReviews[key] { return cached }
+        let value = Finance.review(current, from: from, through: through); cachedReviews[key] = value; return value
+    }
+    private func invalidateDerived() { cachedEntries = nil; cachedReviews.removeAll(); refreshTimeDerived() }
+    func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1 }
     let repository: LedgerRepository
     var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
     var loadFailure: String?; var locked = false; var importedURL: URL?
@@ -74,8 +113,8 @@ enum AppSheet: Identifiable {
         guard loadFailure == nil || isDemo else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
         do {
-            try change(&next); next.updatedAt = Date(); try next.validate()
-            if isDemo { demo = next } else { try repository.save(next, reason: reason); ledger = next }
+            try change(&next); next.updatedAt = Date()
+            if isDemo { try next.validate(); demo = next } else { try repository.save(next, reason: reason); ledger = next }
             undoLedger = before; undoLabel = reason; toast = reason + "完成"; return true
         } catch { self.error = error.localizedDescription; return false }
     }
@@ -174,7 +213,7 @@ struct RootView: View {
                     .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(YubaiMotion.toastOut(reduceMotion: reduceMotion))))
             }
         }
-        .onChange(of: phase) { _, newValue in if newValue == .background && store.current.preferences.lockEnabled && !store.isDemo { store.sheet = nil; store.toast = nil; store.locked = true } }
+        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived() }; if newValue == .background && store.current.preferences.lockEnabled && !store.isDemo { store.sheet = nil; store.toast = nil; store.locked = true } }
         .overlay { privacyCover }
         .onOpenURL { url in guard url.isFileURL else { return }; store.importedURL = url; if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
         .onChange(of: store.locked) { _, value in if !value, let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }

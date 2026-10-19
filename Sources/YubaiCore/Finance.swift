@@ -27,61 +27,92 @@ public struct PurchaseAssessment: Sendable {
 }
 
 public enum Finance {
+    private struct PaymentKey: Hashable { var id: UUID; var period: Date }
     public static func balance(_ account: Account, in ledger: Ledger, at: Date = Date()) -> Int64 {
         account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && $0.postingDate(for: account.id) > account.anchorDate && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
     }
     public static func occurrences(in ledger: Ledger, now: Date = Date(), days: Int? = nil) -> [Occurrence] {
         let start = Dates.day(now); let end = Dates.addDays(days ?? ledger.preferences.horizonDays, to: start)
-        let entries = ledger.activeEntries
+        let calendar = Dates.calendar
+        func month(_ date: Date) -> Date { calendar.date(from: calendar.dateComponents([.year, .month], from: date))! }
+        var planPaid: [PaymentKey: Int64] = [:]; var rentPaid: [PaymentKey: Int64] = [:]; var rentReceived: [PaymentKey: Int64] = [:]
+        for entry in ledger.entries where entry.deletedAt == nil {
+            if let id = entry.planID, let date = entry.occurrence { planPaid[PaymentKey(id: id, period: calendar.startOfDay(for: date)), default: 0] += entry.amount }
+            if let id = entry.rentID, let date = entry.rentPeriod {
+                if entry.nature == .expense { rentPaid[PaymentKey(id: id, period: calendar.startOfDay(for: date)), default: 0] += entry.amount }
+                if entry.nature == .contribution { rentReceived[PaymentKey(id: id, period: month(date)), default: 0] += entry.amount }
+            }
+        }
         var result: [Occurrence] = []
         for p in ledger.plans where p.active {
             // Always derive from the original day (Jan 31 → Feb 28 → Mar 31), never chained dates.
             for index in 0..<2400 {
                 let date = p.frequency.advance(p.dueDate, by: index)
                 if date > end || (p.endDate != nil && date > p.endDate!) { break }
-                let paid = entries.filter { $0.planID == p.id && $0.occurrence.map(Dates.day) == Dates.day(date) }.reduce(Int64(0)) { $0 + $1.amount }
+                let day = calendar.startOfDay(for: date); let paid = planPaid[PaymentKey(id: p.id, period: day), default: 0]
                 if paid < p.amount {
-                    result.append(Occurrence(id: "\(p.id)-\(date.timeIntervalSince1970)", title: p.title, date: date, amount: p.amount - paid, inflow: p.inflow, planID: p.id, overdue: Dates.day(date) < start))
+                    result.append(Occurrence(id: "\(p.id)-\(date.timeIntervalSince1970)", title: p.title, date: date, amount: p.amount - paid, inflow: p.inflow, planID: p.id, overdue: day < start))
                 }
                 if p.frequency == .once { break }
             }
         }
         for r in ledger.rents where r.active {
+            let endDay = r.endDate.map { calendar.startOfDay(for: $0) }
             for index in 0..<240 {
                 let due = Dates.addMonths(index * r.monthsPerPayment, to: r.nextDueDate)
-                if due > end || (r.endDate != nil && Dates.day(due) > Dates.day(r.endDate!)) { break }
-                let paid = entries.filter { $0.rentID == r.id && $0.nature == .expense && $0.rentPeriod.map(Dates.day) == Dates.day(due) }.reduce(Int64(0)) { $0 + $1.amount }
+                let day = calendar.startOfDay(for: due)
+                if due > end || (endDay != nil && day > endDay!) { break }
+                let paid = rentPaid[PaymentKey(id: r.id, period: day), default: 0]
                 let dueAmount = r.monthlyTotal * Int64(r.monthsPerPayment)
-                if paid < dueAmount { result.append(Occurrence(id: "rent-\(r.id)-\(due.timeIntervalSince1970)", title: r.title, date: due, amount: dueAmount - paid, inflow: false, rentID: r.id, overdue: Dates.day(due) < start)) }
+                if paid < dueAmount { result.append(Occurrence(id: "rent-\(r.id)-\(due.timeIntervalSince1970)", title: r.title, date: due, amount: dueAmount - paid, inflow: false, rentID: r.id, overdue: day < start)) }
             }
-            let firstMonth = Dates.calendar.date(from: Dates.calendar.dateComponents([.year, .month], from: r.startDate))!
+            let firstMonth = month(r.startDate)
             for index in 0..<1200 {
                 let month = Dates.addMonths(index, to: firstMonth)
                 let receiveDate = max(Dates.addDays(r.receiveDay - 1, to: month), r.startDate)
-                if receiveDate > end || (r.endDate != nil && Dates.day(receiveDate) > Dates.day(r.endDate!)) { break }
-                let paid = entries.filter { $0.rentID == r.id && $0.nature == .contribution && $0.rentPeriod.map { Dates.calendar.isDate($0, equalTo: month, toGranularity: .month) } == true }.reduce(Int64(0)) { $0 + $1.amount }
+                let day = calendar.startOfDay(for: receiveDate)
+                if receiveDate > end || (endDay != nil && day > endDay!) { break }
+                let paid = rentReceived[PaymentKey(id: r.id, period: month), default: 0]
                 let amount = r.monthlyTotal - r.personalShare - paid
-                if amount > 0 { result.append(Occurrence(id: "share-\(r.id)-\(month.timeIntervalSince1970)", title: r.title + " · 应收分摊", date: receiveDate, amount: amount, inflow: true, rentID: r.id, overdue: Dates.day(receiveDate) < start, rentMonth: month)) }
+                if amount > 0 { result.append(Occurrence(id: "share-\(r.id)-\(month.timeIntervalSince1970)", title: r.title + " · 应收分摊", date: receiveDate, amount: amount, inflow: true, rentID: r.id, overdue: day < start, rentMonth: month)) }
             }
         }
         return result.sorted { $0.date < $1.date }
     }
     public static func funds(_ ledger: Ledger, now: Date = Date()) -> Funds {
         let accounts = ledger.accounts // Archived accounts still own money and obligations.
-        let cash = accounts.filter { $0.kind == .cash || $0.kind == .bank }.reduce(Int64(0)) { $0 + balance($1, in: ledger, at: now) }
-        let creditNet = accounts.filter { $0.kind == .credit }.reduce(Int64(0)) { $0 + balance($1, in: ledger, at: now) }
-        let debt = accounts.filter { $0.kind == .credit }.reduce(Int64(0)) { $0 + max(0, -balance($1, in: ledger, at: now)) }
-        let investment = accounts.filter { $0.kind == .investment }.reduce(Int64(0)) { $0 + balance($1, in: ledger, at: now) }
-        let receivables = accounts.filter { $0.kind == .receivable }.reduce(Int64(0)) { $0 + balance($1, in: ledger, at: now) }
+        let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }); let entries = ledger.activeEntries
+        var deltas: [UUID: Int64] = [:]
+        for entry in entries {
+            if let account = accountsByID[entry.accountID] {
+                let date = entry.postingDate(for: account.id)
+                if date > account.anchorDate && date <= now { deltas[account.id, default: 0] += entry.delta(for: account.id) }
+            }
+            if entry.nature.paired, let other = entry.otherAccountID, other != entry.accountID, let account = accountsByID[other] {
+                let date = entry.postingDate(for: other)
+                if date > account.anchorDate && date <= now { deltas[other, default: 0] += entry.delta(for: other) }
+            }
+        }
+        var cash: Int64 = 0; var creditNet: Int64 = 0; var debt: Int64 = 0; var investment: Int64 = 0; var receivables: Int64 = 0
+        for account in accounts {
+            let value = account.anchorBalance + deltas[account.id, default: 0]
+            switch account.kind {
+            case .cash, .bank: cash += value
+            case .credit: creditNet += value; debt += max(0, -value)
+            case .investment: investment += value
+            case .receivable: receivables += value
+            }
+        }
         let occurrences = occurrences(in: ledger, now: now)
         // Credit principal is reserved once as debt. A credit-repayment plan only changes its payment date.
-        let commitments = occurrences.filter { !$0.inflow && !($0.planID.flatMap { id in ledger.plans.first { $0.id == id } }.map { $0.nature == .repayment } ?? false) }
+        let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
+        let commitments = occurrences.filter { !$0.inflow && !($0.planID.map { repayments.contains($0) } ?? false) }
         let committed = commitments.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
         let living = ledger.preferences.dailyLiving * Int64(ledger.preferences.horizonDays)
         // An unresolved inflow after the most recent reconciliation is withheld until its nature is known.
-        let uncertain = ledger.activeEntries.filter { e in
-            e.nature == .unknownIn && e.date <= now && accounts.contains { $0.id == e.accountID && e.date > $0.anchorDate && ($0.kind == .cash || $0.kind == .bank) }
+        let uncertain = entries.filter { e in
+            e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { e.date > $0.anchorDate && ($0.kind == .cash || $0.kind == .bank) } == true
         }.reduce(Int64(0)) { $0 + $1.amount }
         let available = cash - debt - committed - goals - ledger.preferences.emergencyReserve - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
@@ -89,16 +120,22 @@ public enum Finance {
         if accounts.isEmpty { warnings.append("先添加账户并核对余额，才能判断可动用资金。") }
         if accounts.contains(where: { !$0.reconciled }) { warnings.append("有账户尚未核对余额，资金判断仅供参考。") }
         if accounts.contains(where: { now.timeIntervalSince($0.anchorDate) > 14 * 86400 }) { warnings.append("部分余额已超过 14 天未核对；请确认没有遗漏账单。") }
-        if ledger.activeEntries.contains(where: { $0.nature.uncertain }) { warnings.append("有资金性质待明确；余额核对后新增的未知流入已保守扣除，历史未知仍需核对用途。") }
+        if entries.contains(where: { $0.nature.uncertain }) { warnings.append("有资金性质待明确；余额核对后新增的未知流入已保守扣除，历史未知仍需核对用途。") }
         if occurrences.contains(where: \.overdue) { warnings.append("有已到期但未登记完成的安排，仍计入预留。") }
         if ledger.preferences.dailyLiving == 0 { warnings.append("尚未设置日常生活预留，未来零碎开销没有计入。") }
-        if ledger.activeEntries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有内部移动尚未关联另一账户，请在账本中补全，避免重复计算。") }
+        if entries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有内部移动尚未关联另一账户，请在账本中补全，避免重复计算。") }
         let baseline = cash - debt - goals - ledger.preferences.emergencyReserve - uncertain
         var points: [ForecastPoint] = []
+        let start = Dates.day(now); let days = occurrences.map { Dates.day($0.date) }
+        var cursor = 0; var out: Int64 = 0; var incoming: Int64 = 0
         for offset in 0...ledger.preferences.horizonDays {
-            let date = Dates.addDays(offset, to: Dates.day(now))
-            let out = commitments.filter { Dates.day($0.date) <= date }.reduce(Int64(0)) { $0 + $1.amount }
-            let incoming = occurrences.filter { $0.inflow && Dates.day($0.date) <= date }.reduce(Int64(0)) { $0 + $1.amount }
+            let date = Dates.addDays(offset, to: start)
+            while cursor < occurrences.count && days[cursor] <= date {
+                let item = occurrences[cursor]
+                if item.inflow { incoming += item.amount }
+                else if !(item.planID.map { repayments.contains($0) } ?? false) { out += item.amount }
+                cursor += 1
+            }
             let conservative = baseline - out - Int64(offset) * ledger.preferences.dailyLiving
             points.append(ForecastPoint(date: date, conservative: conservative, expected: conservative + incoming))
         }

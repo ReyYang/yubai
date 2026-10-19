@@ -69,7 +69,7 @@ struct InsightsView: View {
     private var from: Date { Dates.addDays(-days + 1, to: Dates.day(Date())) }
     private var through: Date { Dates.addDays(1, to: Dates.day(Date())) }
     var body: some View {
-        let review = Finance.review(store.current, from: from, through: through)
+        let review = store.review(from: from, through: through)
         Page(hasTabBar: true) {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) { Text("看懂花费，也看见自己。").yubaiFont(YubaiFont.lead); Text("从真实记录中找线索，不为每一笔小快乐打分。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             Picker("回顾范围", selection: $days) { Text("近 30 天").tag(30); Text("近 90 天").tag(90); Text("近一年").tag(365) }.pickerStyle(.segmented)

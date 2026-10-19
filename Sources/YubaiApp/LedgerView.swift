@@ -14,23 +14,24 @@ struct LedgerView: View {
         guard !q.isEmpty else { return [] }
         return [q] + searchExpanded
     }
-    private var rows: [Entry] {
-        store.current.entries.filter { e in
+    private func filteredRows() -> [Entry] {
+        let bounds = periodBounds; let terms = searchTerms
+        return store.sortedEntries.filter { e in
             (showDeleted ? e.deletedAt != nil : e.deletedAt == nil) && (accountFilter == nil || e.accountID == accountFilter || e.otherAccountID == accountFilter) &&
-            matchesPeriod(e.date) && (categoryFilter == "全部分类" || e.category == categoryFilter) &&
-            (searchTerms.isEmpty || searchTerms.contains { term in [e.title, e.note, e.category, e.externalID].contains { $0.localizedCaseInsensitiveContains(term) } }) &&
+            (bounds.map { e.date >= $0.from && e.date < $0.through } ?? true) && (categoryFilter == "全部分类" || e.category == categoryFilter) &&
+            (terms.isEmpty || terms.contains { term in [e.title, e.note, e.category, e.externalID].contains { $0.localizedCaseInsensitiveContains(term) } }) &&
             (kind == "全部" || (kind == "支出" && e.nature == .expense) || (kind == "收入" && e.nature == .income) || (kind == "待明确" && e.nature.uncertain) || (kind == "内部移动" && e.nature.paired))
-        }.sorted { $0.date > $1.date }
+        }
     }
-    func matchesPeriod(_ date: Date) -> Bool {
+    private var periodBounds: (from: Date, through: Date)? {
         let today = Dates.day(Date()); let month = Dates.calendar.date(from: Dates.calendar.dateComponents([.year, .month], from: today))!
         switch period {
-        case "近 7 天": return date >= Dates.addDays(-6, to: today) && date < Dates.addDays(1, to: today)
-        case "近 30 天": return date >= Dates.addDays(-29, to: today) && date < Dates.addDays(1, to: today)
-        case "本月": return date >= month && date < Dates.addMonths(1, to: month)
-        case "上月": return date >= Dates.addMonths(-1, to: month) && date < month
-        case "自定义": return date >= Dates.day(from) && date < Dates.addDays(1, to: Dates.day(through))
-        default: return true
+        case "近 7 天": return (Dates.addDays(-6, to: today), Dates.addDays(1, to: today))
+        case "近 30 天": return (Dates.addDays(-29, to: today), Dates.addDays(1, to: today))
+        case "本月": return (month, Dates.addMonths(1, to: month))
+        case "上月": return (Dates.addMonths(-1, to: month), month)
+        case "自定义": return (Dates.day(from), Dates.addDays(1, to: Dates.day(through)))
+        default: return nil
         }
     }
     private var emptyTitle: String {
@@ -38,6 +39,7 @@ struct LedgerView: View {
         return showDeleted ? "回收站是空的" : "这一页，还没有记录"
     }
     var body: some View {
+        let rows = filteredRows()
         VStack(spacing: 0) {
             controls
             if rows.isEmpty { EmptyState(showDeleted ? "trash" : "text.book.closed", emptyTitle, "可以更换筛选条件，或导入一份账单。", action: showDeleted ? nil : "导入账单") { store.sheet = .imports }.frame(maxHeight: .infinity) }
@@ -60,7 +62,7 @@ struct LedgerView: View {
                     }.padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSpace.space24)
                 }
             }
-            if selecting { bulkBar }
+            if selecting { bulkBar(rows) }
         }.background(YubaiColor.canvas).navigationTitle(showDeleted ? "回收站" : "账本").yubaiNavigation()
             .searchable(text: $search, prompt: "搜索用途、商户、分类或单号")
             .onChange(of: search) { _, value in Task { await refreshSearchExpansion(value) } }
@@ -80,7 +82,7 @@ struct LedgerView: View {
                 Menu {
                     Picker("交易类型", selection: $kind) { ForEach(["全部", "支出", "收入", "待明确", "内部移动"], id: \.self) { Text($0) } }
                     Picker("时间", selection: $period) { ForEach(["全部时间", "近 7 天", "近 30 天", "本月", "上月", "自定义"], id: \.self) { Text($0) } }
-                    Picker("分类", selection: $categoryFilter) { Text("全部分类").tag("全部分类"); ForEach(Array(Set(store.current.entries.map(\.category))).sorted(), id: \.self) { Text($0) } }
+                    Picker("分类", selection: $categoryFilter) { Text("全部分类").tag("全部分类"); ForEach(store.entryCategories, id: \.self) { Text($0) } }
                     Picker("账户", selection: $accountFilter) { Text("全部账户").tag(Optional<UUID>.none); ForEach(store.current.accounts) { Text($0.name).tag(Optional($0.id)) } }
                 } label: { Label("筛选：" + kind, systemImage: "line.3.horizontal.decrease").frame(maxWidth: .infinity, alignment: .leading) }
                 if period == "自定义" { DatePicker("从", selection: $from, displayedComponents: .date); DatePicker("至", selection: $through, in: from..., displayedComponents: .date) }
@@ -89,14 +91,14 @@ struct LedgerView: View {
             HStack {
                 Menu { ForEach(["全部时间", "近 7 天", "近 30 天", "本月", "上月", "自定义"], id: \.self) { item in Button(item) { period = item } } } label: { Label(period, systemImage: "calendar") }
                 Spacer()
-                Menu { Button("全部分类") { categoryFilter = "全部分类" }; ForEach(Array(Set(store.current.entries.map(\.category))).sorted(), id: \.self) { item in Button(item) { categoryFilter = item } } } label: { Text(categoryFilter) }
+                Menu { Button("全部分类") { categoryFilter = "全部分类" }; ForEach(store.entryCategories, id: \.self) { item in Button(item) { categoryFilter = item } } } label: { Text(categoryFilter) }
             }.yubaiFont(YubaiFont.callout)
             if period == "自定义" { HStack { DatePicker("从", selection: $from, displayedComponents: .date); DatePicker("至", selection: $through, in: from..., displayedComponents: .date) }.yubaiFont(YubaiFont.caption) }
             HStack { Menu { Button("全部账户") { accountFilter = nil }; ForEach(store.current.accounts) { a in Button(a.name) { accountFilter = a.id } } } label: { Label(accountFilter == nil ? "全部账户" : store.current.accountName(accountFilter), systemImage: "line.3.horizontal.decrease") }; Spacer(); if showDeleted { Text("删除记录不会因重新导入而复活").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) } else { Text("支持逐笔编辑与批量纠正").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) } }
             }
         }.padding(YubaiSpace.space16).onChange(of: kind) { _, _ in selected.removeAll() }.onChange(of: accountFilter) { _, _ in selected.removeAll() }.onChange(of: search) { _, _ in selected.removeAll() }.onChange(of: period) { _, _ in selected.removeAll() }.onChange(of: categoryFilter) { _, _ in selected.removeAll() }.onChange(of: from) { _, value in if through < value { through = value }; selected.removeAll() }.onChange(of: through) { _, _ in selected.removeAll() }
     }
-    var bulkBar: some View {
+    func bulkBar(_ rows: [Entry]) -> some View {
         HStack(spacing: YubaiSpace.space16) { Button(selected.count == rows.count ? "取消全选" : "全选") { selected = selected.count == rows.count ? [] : Set(rows.map(\.id)) }; Spacer(); if showDeleted { Button("恢复所选") { store.update("恢复记录") { l in for i in l.entries.indices where selected.contains(l.entries[i].id) { l.entries[i].deletedAt = nil } }; selected.removeAll(); selecting = false }.disabled(selected.isEmpty) } else { Button("整理") { showBulk = true }.disabled(selected.isEmpty); Button("删除", role: .destructive) { confirmDelete = true }.disabled(selected.isEmpty) } }.yubaiFont(YubaiFont.callout).padding(YubaiSpace.space18).background(YubaiColor.raised).yubaiShadow(YubaiShadow.float)
     }
     @MainActor func refreshSearchExpansion(_ query: String) async {
