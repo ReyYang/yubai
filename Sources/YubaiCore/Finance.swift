@@ -118,10 +118,16 @@ public enum Finance {
         if entry.nature == .refund { return -(entry.personalExpense ?? entry.amount) }
         return 0
     }
+    /// Reuse a full-ledger lookup so refunds follow expenses outside the review period too.
+    public static func spendingCategory(_ entry: Entry, entriesByID: [UUID: Entry]) -> String {
+        guard entry.nature == .refund, let id = entry.relatedEntryID, let original = entriesByID[id], original.nature == .expense else { return entry.category }
+        return original.category
+    }
     public static func review(_ ledger: Ledger, from: Date, through end: Date) -> Review {
         let rows = ledger.activeEntries.filter { $0.date >= from && $0.date < end }
         let prior = ledger.activeEntries.filter { $0.date >= from.addingTimeInterval(-end.timeIntervalSince(from)) && $0.date < from }
-        let categories = Dictionary(grouping: rows.filter { $0.nature == .expense || $0.nature == .refund }, by: \.category)
+        let entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        let categories = Dictionary(grouping: rows.filter { $0.nature == .expense || $0.nature == .refund }, by: { spendingCategory($0, entriesByID: entriesByID) })
         let byCategory = categories.map { name, entries in Breakdown(category: name, amount: entries.reduce(0) { $0 + spendingAmount($1, ledger: ledger) }, count: entries.count) }.sorted { $0.amount > $1.amount }
         return Review(spending: byCategory.reduce(0) { $0 + $1.amount }, income: rows.filter { $0.nature == .income }.reduce(0) { $0 + $1.amount },
                       refunds: rows.filter { $0.nature == .refund }.reduce(0) { $0 + $1.amount }, byCategory: byCategory,

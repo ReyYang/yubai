@@ -73,6 +73,40 @@ final class FinanceTests: XCTestCase {
         var l = basic(); l.entries = [Entry(date: now, amount: 10000, accountID: l.accounts[0].id, title: "购物", category: "日用购物"), Entry(date: now, amount: 3000, nature: .refund, accountID: l.accounts[0].id, title: "部分退款", category: "日用购物")]
         let r = Finance.review(l, from: Dates.day(now), through: Dates.addDays(1, to: now)); XCTAssertEqual(r.spending, 7000); XCTAssertEqual(r.income, 0); XCTAssertEqual(r.refunds, 3000)
     }
+    func testLinkedRefundFollowsRecategorizedExpense() {
+        var l = basic(); let expense = Entry(date: now, amount: 161950, accountID: l.accounts[0].id, title: "聚餐", category: "餐饮")
+        var refund = Entry(date: now, amount: 2550, nature: .refund, accountID: l.accounts[0].id, title: "部分退款", category: "餐饮"); refund.relatedEntryID = expense.id
+        l.entries = [expense, Entry(date: now, amount: 3200, accountID: l.accounts[0].id, title: "午餐", category: "餐饮"), Entry(date: now, amount: 100000, accountID: l.accounts[0].id, title: "购物", category: "日用购物"), refund]
+        let before = Finance.review(l, from: Dates.day(now), through: Dates.addDays(1, to: now)); XCTAssertEqual(before.spending, 262600)
+        l.entries[0].category = "人情家庭"
+        LedgerOperations.syncLinkedRefundCategories(in: &l)
+        let r = Finance.review(l, from: Dates.day(now), through: Dates.addDays(1, to: now))
+        XCTAssertEqual(r.byCategory.first { $0.category == "人情家庭" }?.amount, 159400); XCTAssertEqual(r.byCategory.first { $0.category == "餐饮" }?.amount, 3200)
+        XCTAssertEqual(r.spending, before.spending); XCTAssertEqual(r.refunds, 2550); XCTAssertEqual(r.income, 0); XCTAssertEqual(l.entries[3].category, "人情家庭")
+    }
+    func testLinkedRefundFollowsBulkRecategorizedExpense() throws {
+        var l = basic(); let expense = Entry(date: now, amount: 161950, accountID: l.accounts[0].id, title: "聚餐", category: "餐饮")
+        var refund = Entry(date: now, amount: 2550, nature: .refund, accountID: l.accounts[0].id, title: "部分退款", category: "餐饮"); refund.relatedEntryID = expense.id
+        l.entries = [expense, Entry(date: now, amount: 3200, accountID: l.accounts[0].id, title: "午餐", category: "餐饮"), Entry(date: now, amount: 100000, accountID: l.accounts[0].id, title: "购物", category: "日用购物"), refund]
+        let before = Finance.review(l, from: Dates.day(now), through: Dates.addDays(1, to: now)); XCTAssertEqual(before.spending, 262600)
+        try LedgerOperations.bulkEdit([expense.id], category: "人情家庭", nature: nil, in: &l)
+        let r = Finance.review(l, from: Dates.day(now), through: Dates.addDays(1, to: now))
+        XCTAssertEqual(r.byCategory.first { $0.category == "人情家庭" }?.amount, 159400); XCTAssertEqual(r.byCategory.first { $0.category == "餐饮" }?.amount, 3200)
+        XCTAssertEqual(r.spending, before.spending); XCTAssertEqual(r.refunds, 2550); XCTAssertEqual(r.income, 0); XCTAssertEqual(l.entries[3].category, "人情家庭")
+    }
+    func testUnlinkedRefundKeepsOwnSpendingCategory() {
+        var l = basic(); l.entries = [Entry(date: now, amount: 161950, accountID: l.accounts[0].id, title: "聚餐", category: "人情家庭"), Entry(date: now, amount: 3200, accountID: l.accounts[0].id, title: "午餐", category: "餐饮"), Entry(date: now, amount: 2550, nature: .refund, accountID: l.accounts[0].id, title: "未关联退款", category: "餐饮")]
+        LedgerOperations.syncLinkedRefundCategories(in: &l); XCTAssertEqual(l.entries[2].category, "餐饮")
+        let r = Finance.review(l, from: Dates.day(now), through: Dates.addDays(1, to: now))
+        XCTAssertEqual(r.byCategory.first { $0.category == "人情家庭" }?.amount, 161950); XCTAssertEqual(r.byCategory.first { $0.category == "餐饮" }?.amount, 650)
+        XCTAssertEqual(r.spending, 162600); XCTAssertEqual(r.refunds, 2550); XCTAssertEqual(r.income, 0)
+    }
+    func testLinkedRefundUsesExpenseCategoryOutsideReviewPeriod() {
+        var l = basic(); let expense = Entry(date: Dates.addDays(-40, to: now), amount: 161950, accountID: l.accounts[0].id, title: "旧支出", category: "人情家庭")
+        var refund = Entry(date: now, amount: 2550, nature: .refund, accountID: l.accounts[0].id, title: "部分退款", category: "餐饮"); refund.relatedEntryID = expense.id; l.entries = [expense, refund]
+        let r = Finance.review(l, from: Dates.day(now), through: Dates.addDays(1, to: now))
+        XCTAssertEqual(r.byCategory.count, 1); XCTAssertEqual(r.byCategory.first?.category, "人情家庭"); XCTAssertEqual(r.byCategory.first?.amount, -2550); XCTAssertEqual(r.spending, -2550)
+    }
     func testTransferMergeRetainsDifferentPostingDatesAndSourceEvidence() throws {
         var l = basic(); let debitDate = now, creditDate = Dates.addDays(1, to: now)
         let out = Entry(date: debitDate, amount: 10000, nature: .unknownOut, accountID: l.accounts[0].id, title: "转出")
