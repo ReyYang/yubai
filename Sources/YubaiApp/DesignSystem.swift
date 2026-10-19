@@ -168,19 +168,6 @@ extension View {
     func yubaiShadow(_ token: YubaiShadow.Token) -> some View { shadow(color: token.color, radius: token.radius, x: token.x, y: token.y) }
 }
 
-// TODO(step2): Remove compatibility names after the screen migration.
-@available(*, deprecated, message: "Use YubaiColor tokens.")
-enum YubaiTheme {
-    static let jade = YubaiColor.brand
-    static let deepJade = YubaiColor.brand
-    static let mint = YubaiColor.brandTint
-    static let amber = YubaiColor.amberInk
-    static let ink = YubaiColor.label
-    static let card = YubaiColor.card
-    static let canvas = YubaiColor.canvas
-    static let palette = [YubaiColor.brand, YubaiColor.series2, YubaiColor.series3, YubaiColor.seriesSoft, YubaiColor.neutralStrong, YubaiColor.outflow, YubaiColor.neutralSoft, YubaiColor.amberMark, YubaiColor.chartGuide]
-}
-
 enum YubaiMotion {
     static let durationInstant = 0.100
     static let durationQuick = 0.160
@@ -194,16 +181,16 @@ enum YubaiMotion {
     static func easeInOut(duration: Double) -> Animation { .timingCurve(0.4, 0, 0.2, 1, duration: duration) }
     static let instant = easeInOut(duration: durationInstant)
     static let quick = easeInOut(duration: durationQuick)
-    static let standard = easeOut(duration: durationStandard)
-    static let water = easeOut(duration: durationWater)
+    static let chartGrowth = easeOut(duration: durationStandard)
+    static let waterRise = easeOut(duration: durationWater)
     static let stagger = easeOut(duration: durationStagger)
-    static let think = easeInOut(duration: durationThink)
+    static let thinkCycle = easeInOut(duration: durationThink)
 
     static func number(reduceMotion: Bool) -> Animation { quick }
-    static func chart(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : standard }
-    static func water(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : water }
-    static func think(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : think }
-    static func toastIn(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : standard }
+    static func chart(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : chartGrowth }
+    static func water(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : waterRise }
+    static func think(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : thinkCycle }
+    static func toastIn(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : chartGrowth }
     static func toastOut(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : easeIn(duration: durationQuick) }
     static func toastTransition(reduceMotion: Bool) -> AnyTransition {
         if reduceMotion { return .identity }
@@ -234,14 +221,19 @@ struct ChartGrow<Content: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var progress: Double = 0
     @State private var appeared = false
+    private let appearance: Binding<Bool>?
     let content: (Double) -> Content
-    init(@ViewBuilder content: @escaping (Double) -> Content) { self.content = content }
+    init(appeared: Binding<Bool>? = nil, @ViewBuilder content: @escaping (Double) -> Content) {
+        self.appearance = appeared; self.content = content
+        _progress = State(initialValue: appeared?.wrappedValue == true ? 1 : 0)
+    }
     var body: some View {
         content(reduceMotion ? 1 : progress)
             .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
             .onAppear {
-                guard !appeared else { return }
+                guard !appeared && appearance?.wrappedValue != true else { finish(); return }
                 appeared = true
+                if let appearance { appearance.wrappedValue = true }
                 withAnimation(YubaiMotion.chart(reduceMotion: reduceMotion)) { progress = 1 }
             }
             .onDisappear { finish() }
@@ -284,13 +276,19 @@ struct Page<Content: View>: View {
     init(spacing: CGFloat = YubaiSpace.space12, hasTabBar: Bool = false, @ViewBuilder content: () -> Content) {
         self.content = content(); self.spacing = spacing; self.hasTabBar = hasTabBar
     }
+    private var bottomPadding: CGFloat {
+        #if os(iOS)
+        if hasTabBar { return 106 }
+        #endif
+        return YubaiSpace.space24
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: spacing) { content }
                 .padding(.horizontal, YubaiSpace.space18).padding(.top, YubaiSpace.space20)
-                .padding(.bottom, hasTabBar ? 106 : YubaiSpace.space24)
+                .padding(.bottom, bottomPadding)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
-        }.scrollDismissesKeyboard(.interactively).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas)
+        }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas)
     }
 }
 
@@ -304,9 +302,33 @@ struct Card<Content: View>: View {
     }
     var body: some View {
         content.padding(.horizontal, style == .compact ? YubaiSpace.space16 : YubaiSpace.space18)
-            .padding(.vertical, style == .list ? YubaiSpace.space4 : (style == .compact ? YubaiSpace.space16 : YubaiSpace.space18))
+            .padding(.vertical, verticalPadding)
             .frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(YubaiColor.label)
             .background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+    }
+    private var verticalPadding: CGFloat {
+        switch style {
+        case .standard: YubaiSpace.space18
+        case .list: YubaiSpace.space4
+        case .compact: YubaiSpace.space16
+        }
+    }
+}
+
+/// A single list surface with lazy rows, including large ledgers and matching candidates.
+struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Element: Identifiable {
+    let rows: Data
+    let content: (Data.Element) -> Row
+    init(_ rows: Data, @ViewBuilder content: @escaping (Data.Element) -> Row) { self.rows = rows; self.content = content }
+    var body: some View {
+        Card(style: .list) {
+            LazyVStack(spacing: 0) {
+                ForEach(rows) { row in
+                    content(row).frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight, alignment: .leading)
+                    if row.id != rows.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
+                }
+            }
+        }
     }
 }
 
@@ -357,7 +379,10 @@ struct AmountLabel: View {
     var currency: Bool? = nil
     var fractionDigits: Int? = nil
     private var resolvedRole: Role { role ?? (large ? .display : .amount) }
-    private var decimals: Int { fractionDigits == nil ? ((resolvedRole == .amount || resolvedRole == .input) ? 2 : 0) : (fractionDigits == 0 ? 0 : 2) }
+    private var decimals: Int {
+        if let fractionDigits { return fractionDigits == 0 ? 0 : 2 }
+        return resolvedRole == .amount || resolvedRole == .input ? 2 : 0
+    }
     private var text: String { Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: decimals) }
     var body: some View {
         let font = textSize.isAccessibilitySize && (resolvedRole == .hero || resolvedRole == .display) ? YubaiFont.amountLarge : resolvedRole.font
@@ -374,7 +399,10 @@ struct AmountLabel: View {
         let prefix: String
         switch sign { case .automatic: prefix = cents < 0 ? "−" : ""; case .inflow: prefix = "+"; case .outflow: prefix = "−"; case .none: prefix = "" }
         let fraction = magnitude % 100
-        return prefix + (currency ? "¥" : "") + grouped + (decimals == 0 ? "" : "." + (fraction < 10 ? "0" : "") + String(fraction))
+        let currencyText = currency ? "¥" : ""
+        let fractionText = fraction < 10 ? "0" + String(fraction) : String(fraction)
+        let suffix = decimals == 0 ? "" : "." + fractionText
+        return prefix + currencyText + grouped + suffix
     }
 }
 
@@ -391,7 +419,7 @@ struct Pill: View {
         HStack(spacing: YubaiSpace.space6) {
             if showsDot { Circle().fill(variant == .amber ? YubaiColor.amberDot : YubaiColor.brandMark).frame(width: 6, height: 6).accessibilityHidden(true) }
             Text(text).yubaiFont(height < YubaiSize.pillHeight ? YubaiFont.meta : YubaiFont.caption)
-            if showsChevron { Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).accessibilityHidden(true) }
+            if showsChevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta, weight: .medium).accessibilityHidden(true) }
         }.padding(.horizontal, height < YubaiSize.pillHeight ? YubaiSpace.space8 : YubaiSpace.space12)
             .padding(.vertical, YubaiSpace.space2).frame(minHeight: height).foregroundStyle(ink).background(background, in: Capsule())
     }
@@ -402,17 +430,18 @@ struct EntryRow: View {
     @Environment(\.dynamicTypeSize) private var textSize
     var entry: Entry
     var hideAmount = false
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.dateFormat = "M月d日"
+        return formatter
+    }()
     var body: some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space12))
         layout {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                 Text(entry.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
-                if entry.nature.uncertain {
-                    Pill(text: "待明确", variant: .amber, height: 20)
-                } else {
-                    Text("\(dateText) · \(entry.category) · \(store.current.accountName(entry.accountID))")
-                        .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(textSize.isAccessibilitySize ? nil : 1)
-                }
+                Text("\(dateText) · \(entry.category) · \(store.current.accountName(entry.accountID))")
+                    .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(textSize.isAccessibilitySize ? nil : 1)
+                if entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20) }
             }
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space6) }
             AmountLabel(cents: entry.amount, hide: hideAmount, sign: entry.nature.inflow ? .inflow : .outflow)
@@ -423,25 +452,13 @@ struct EntryRow: View {
         let calendar = Calendar.current
         if calendar.isDateInToday(entry.date) { return "今天 " + entry.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))) }
         if calendar.isDateInYesterday(entry.date) { return "昨天" }
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.dateFormat = "M月d日"
-        return formatter.string(from: entry.date)
-    }
-}
-
-// TODO(step2): Remove this shim when the screens stop using icon tiles.
-@available(*, deprecated, message: "Use text rows or BrandMark / AssistantMark.")
-struct IconTile: View {
-    var symbol: String
-    var color = YubaiColor.label
-    var body: some View {
-        Image(systemName: symbol).font(.system(size: 17, weight: .medium)).foregroundStyle(color)
-            .frame(width: 42, height: 42).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+        return Self.dateFormatter.string(from: entry.date)
     }
 }
 
 struct CloseButton: View {
     @Environment(\.dismiss) private var dismiss
-    var body: some View { Button("完成") { dismiss() }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle()).accessibilityIdentifier("closeSheet") }
+    var body: some View { Button("完成") { dismiss() }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("closeSheet") }
 }
 
 struct BrandMark: View {
@@ -467,11 +484,26 @@ private struct WaterGeometry {
     let size: CGFloat
     let variant: BrandMark.Variant
     let bands: Int
-    var count: Int { max(0, min(bands, size <= 16 ? 1 : (size <= 32 ? 2 : 6))) }
+    var maxBands: Int {
+        if size <= 16 { return 1 }
+        if size <= 32 { return 2 }
+        return 6
+    }
+    var count: Int { max(0, min(bands, maxBands)) }
     var ringRadius: CGFloat { variant == .tile ? 34 : 44 }
-    var clipRadius: CGFloat { variant == .mark ? 36 : (size <= 16 ? 25 : (size <= 32 ? 27 : 30)) }
-    var stroke: CGFloat { size <= 16 ? 11 : (size <= 32 || variant == .mark ? 8 : 4) }
-    var bandHeight: CGFloat { size <= 16 ? 20 : (size <= 32 || variant == .mark ? 9 : 5) }
+    var clipRadius: CGFloat {
+        if variant == .mark { return 36 }
+        if size <= 16 { return 25 }
+        return size <= 32 ? 27 : 30
+    }
+    var stroke: CGFloat {
+        if size <= 16 { return 11 }
+        return size <= 32 || variant == .mark ? 8 : 4
+    }
+    var bandHeight: CGFloat {
+        if size <= 16 { return 20 }
+        return size <= 32 || variant == .mark ? 9 : 5
+    }
     func bandY(_ index: Int) -> CGFloat {
         if size <= 16 { return 56 }
         if size <= 32 { return 70 - CGFloat(index) * 16 }
@@ -511,8 +543,11 @@ struct WaterLevelView: View {
         self.filledBands = filledBands; self.totalBands = totalBands; self.size = size; self.showsTile = showsTile
     }
     init(progress: Double, totalBands: Int = 6, size: CGFloat = 168, showsTile: Bool = false) {
-        let count = max(1, min(size <= 16 ? 1 : (size <= 32 ? 2 : 6), totalBands))
-        self.init(filledBands: Int(((progress.isFinite ? min(1, max(0, progress)) : 0) * Double(count)).rounded(.down)), totalBands: count, size: size, showsTile: showsTile)
+        let geometry = WaterGeometry(size: size, variant: .tile, bands: totalBands)
+        let count = max(1, geometry.count)
+        let clampedProgress: Double = progress.isFinite ? min(1, max(0, progress)) : 0
+        let filledBands = Int((clampedProgress * Double(count)).rounded(.down))
+        self.init(filledBands: filledBands, totalBands: count, size: size, showsTile: showsTile)
     }
     private var geometry: WaterGeometry { WaterGeometry(size: size, variant: .tile, bands: max(1, min(6, totalBands))) }
     private var target: Int { max(0, min(geometry.count, filledBands)) }
@@ -547,7 +582,14 @@ struct AssistantMark: View {
     var size: CGFloat = 26
     var color = YubaiColor.brandGlyph
     var thinking = false
-    private var stroke: CGFloat { (size <= 16 ? 11 : (size <= 24 ? 9 : (size <= 32 ? 8 : 7))) * size / 100 }
+    private var stroke: CGFloat {
+        let weight: CGFloat
+        if size <= 16 { weight = 11 }
+        else if size <= 24 { weight = 9 }
+        else if size <= 32 { weight = 8 }
+        else { weight = 7 }
+        return weight * size / 100
+    }
     private var wave: some View { AssistantWave().stroke(color, style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round)) }
     var body: some View {
         ZStack {
@@ -585,21 +627,21 @@ struct HeroCard: View {
     var onDetails: (() -> Void)? = nil
     var onAttention: (() -> Void)? = nil
     var body: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space16) {
-            if let onDetails { Button(action: onDetails) { amounts }.buttonStyle(PressButtonStyle()).accessibilityHint("查看计算依据") }
-            else { amounts }
+        ChartGrow { progress in VStack(alignment: .leading, spacing: YubaiSpace.space16) {
+            if let onDetails { Button(action: onDetails) { amounts(progress) }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fundsFormula").accessibilityHint("打开计算依据") }
+            else { amounts(progress) }
             if attentionCount > 0 {
                 if let onAttention {
                     Button(action: onAttention) { attention }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
                 } else { attention }
             }
-        }.foregroundStyle(YubaiColor.label).animation(nil, value: hideAmount)
+        }.foregroundStyle(YubaiColor.label).animation(nil, value: hideAmount) }
     }
-    private var amounts: some View {
+    private func amounts(_ progress: Double) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space10) {
             summary
             if !hideAmount {
-                composition.padding(.top, YubaiSpace.space8)
+                composition(progress).padding(.top, YubaiSpace.space8)
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: YubaiSpace.space10) { legends }
                     VStack(alignment: .leading, spacing: YubaiSpace.space6) { legends }
@@ -623,7 +665,7 @@ struct HeroCard: View {
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
-    private var composition: some View {
+    private func composition(_ progress: Double) -> some View {
         let values = [max(0, Double(available)), max(0, Double(payable)), max(0, Double(reserved))]
         let total = values.reduce(0, +)
         let colors = [YubaiColor.brand, YubaiColor.neutralStrong, YubaiColor.neutralSoft]
@@ -631,9 +673,13 @@ struct HeroCard: View {
         return GeometryReader { geometry in
             let width = max(0, geometry.size.width - CGFloat(max(0, indices.count - 1)) * YubaiSpace.space2)
             HStack(spacing: YubaiSpace.space2) {
-                ForEach(indices, id: \.self) { index in colors[index].frame(width: total > 0 ? width * CGFloat(values[index] / total) : 0) }
+                ForEach(indices, id: \.self) { index in
+                    let ratio: Double = total > 0 ? values[index] / total : 0
+                    let animatedRatio: Double = ratio * progress
+                    colors[index].frame(width: width * CGFloat(animatedRatio))
+                }
             }.frame(maxWidth: .infinity, alignment: .leading).background(total == 0 ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
-        }.frame(height: 14).accessibilityElement(children: .ignore)
+        }.frame(height: YubaiSpace.space12 + YubaiSpace.space2).accessibilityElement(children: .ignore)
             .accessibilityLabel("余白 \(AmountLabel.text(available))，要付 \(AmountLabel.text(payable))，预留 \(AmountLabel.text(reserved))")
     }
     private func legend(_ title: String, _ cents: Int64, _ color: Color) -> some View {
@@ -648,7 +694,6 @@ struct HeroCard: View {
 struct InlineNote: View {
     enum Style { case footnote, explanation, attention, reminder, inline }
     var text: String
-    var symbol = "info.circle"
     var style: Style = .footnote
     var detail: String? = nil
     var action: String? = nil
@@ -745,6 +790,11 @@ struct Toast: View {
                 Button(undoTitle, action: onUndo).yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.brandInk)
                     .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
             }
+            if let onDismiss {
+                Button { withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss() } } label: {
+                    Image(systemName: "xmark").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel("关闭提示")
+            }
         }.padding(.leading, YubaiSpace.space18).padding(.trailing, YubaiSpace.space8).padding(.vertical, YubaiSpace.space4)
             .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: Capsule()).yubaiShadow(YubaiShadow.float)
             .padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSpace.space12)
@@ -761,7 +811,20 @@ extension View {
         self
         #endif
     }
-    func editorForm() -> some View { self.formStyle(.grouped).scrollDismissesKeyboard(.interactively) }
+    func editorForm() -> some View {
+        self.formStyle(.grouped).scrollContentBackground(.hidden).background(YubaiColor.canvas)
+            .environment(\.defaultMinListRowHeight, YubaiSize.buttonHeight).scrollDismissesKeyboard(.interactively)
+            .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).tint(YubaiColor.brand).buttonStyle(.automatic)
+    }
+    func yubaiNavigation() -> some View {
+        self.background(YubaiColor.canvas).tint(YubaiColor.brandInk)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(YubaiColor.canvas, for: .navigationBar).toolbarBackground(.visible, for: .navigationBar)
+            #elseif os(macOS)
+            .toolbarBackground(YubaiColor.canvas, for: .windowToolbar).toolbarBackground(.visible, for: .windowToolbar)
+            #endif
+    }
 }
 
 private struct AppErrorPresenter: ViewModifier {
@@ -781,20 +844,21 @@ struct WelcomeView: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         Page {
-            VStack(alignment: .leading, spacing: 30) {
-                BrandMark().padding(.top, 32)
-                Text("把钱理清，\n把生活留给自己。").font(.system(size: 38, weight: .medium, design: .serif)).lineSpacing(8).fixedSize(horizontal: false, vertical: true)
-                Text("余额不等于可花的钱。余白把散落的账单、未来要付的钱和真正想做的事，放在同一处。") .font(.body).foregroundStyle(.secondary).lineSpacing(6)
-                VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space24) {
+                BrandMark(size: 88).padding(.top, YubaiSpace.space24)
+                Text("余白").yubaiFont(YubaiFont.welcome)
+                Text("把钱理清，\n把生活留给自己。").yubaiFont(YubaiFont.lead).fixedSize(horizontal: false, vertical: true)
+                Text("余额不等于可花的钱。余白把散落的账单、未来要付的钱和真正想做的事，放在同一处。") .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted)
+                VStack(alignment: .leading, spacing: YubaiSpace.space16) {
                     feature("wallet.bifold", "一份可信的账本", "导入微信、支付宝与银行卡账单，自动整理，随时纠正。")
                     feature("calendar", "从今天安排未来", "先留出房租、还款和目标，再看此刻有多少余地。")
                     feature("lock.shield", "数据留在你手里", "无需注册，离线可用，可导出和加密备份。")
-                }.padding(.vertical, 10)
+                }.padding(.vertical, YubaiSpace.space10)
                 Button("开始我的账本") { store.update("建立账本") { $0.preferences.onboardingComplete = true }; store.sheet = .account(nil) }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("startLedger")
-                Button("先看看示例账本") { store.startDemo() }.font(.callout).accessibilityIdentifier("openDemo")
-                Text("示例数据与你的账本完全分开。所有示例金额都是虚构的。") .font(.caption).foregroundStyle(.secondary)
-            }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity).padding(.bottom, 40)
-        }.toolbar { Button("恢复备份") { store.sheet = .backup } }
+                Button("先看看示例账本") { store.startDemo() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("openDemo")
+                Text("示例数据与你的账本完全分开。所有示例金额都是虚构的。") .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+            }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity).padding(.bottom, YubaiSpace.space24)
+        }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
     }
-    func feature(_ symbol: String, _ title: String, _ text: String) -> some View { HStack(alignment: .top, spacing: 15) { IconTile(symbol: symbol); VStack(alignment: .leading, spacing: 5) { Text(title).font(.headline); Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) } } }
+    func feature(_ symbol: String, _ title: String, _ text: String) -> some View { HStack(alignment: .top, spacing: YubaiSpace.space12) { Circle().fill(YubaiColor.brandMark).frame(width: YubaiSize.marker, height: YubaiSize.marker).padding(.top, YubaiSpace.space6).accessibilityHidden(true); VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(title).yubaiFont(YubaiFont.rowTitle); Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted).fixedSize(horizontal: false, vertical: true) } } }
 }
