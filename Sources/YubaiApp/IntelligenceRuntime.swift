@@ -4,7 +4,11 @@ import YubaiCore
 @MainActor
 enum IntelligenceRuntime {
     static func backend(for preferences: Preferences) -> CloudBackend? {
-        CloudBackend.fromEnvironment(enabled: preferences.cloudAIEnabled)
+        CloudBackend.configured(enabled: preferences.cloudAIEnabled)
+    }
+
+    static func backend(for ledger: Ledger) -> CloudBackend? {
+        CloudBackend.configured(enabled: ledger.preferences.cloudAIEnabled, redactor: Redactor(ledger: ledger))
     }
 
     static func availabilityText(for preferences: Preferences) -> String {

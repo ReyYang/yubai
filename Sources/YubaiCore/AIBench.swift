@@ -171,3 +171,46 @@ public enum AIBenchRunner {
         )
     }
 }
+
+/// Seed cases for the shared financial assistant; scripted calls support offline regression.
+public struct AssistantEvalCase: Codable, Sendable {
+    public struct ScriptedCall: Codable, Sendable {
+        public var name: String
+        public var args: JSONValue
+    }
+    public var id: String
+    public var question: String
+    public var expectedTools: [String]
+    public var expectedNumbers: [String]
+    public var scriptedCalls: [ScriptedCall]
+    private enum CodingKeys: String, CodingKey {
+        case id, question
+        case expectedTools = "expected_tools", expectedNumbers = "expected_numbers", scriptedCalls = "scripted_calls"
+    }
+}
+
+public struct AssistantEvalResult: Sendable {
+    public let id: String
+    public let reply: AssistantReply
+    public let passed: Bool
+}
+
+extension AIBenchRunner {
+    public static func loadAssistantEval(bundle: Bundle) throws -> [AssistantEvalCase] {
+        let url = bundle.url(forResource: "assistant-eval", withExtension: "json", subdirectory: "Fixtures")
+            ?? bundle.url(forResource: "assistant-eval", withExtension: "json")
+        guard let url else { throw YubaiError.invalid("找不到assistant-eval.json。") }
+        return try JSONDecoder().decode([AssistantEvalCase].self, from: Data(contentsOf: url))
+    }
+
+    public static func runAssistantCase(_ sample: AssistantEvalCase, transport: any ChatTransport,
+                                        context: ToolContext) async throws -> AssistantEvalResult {
+        let reply = try await AssistantAgent(transport: transport, context: context).run(
+            system: "你是余白，一位克制的个人财务管家。先用工具查证，金额只能引用工具结果，不自行计算。用简体中文简短回答。今天是\(Dates.text(context.now))。",
+            messages: [ChatMessage(role: .user, content: sample.question)], tools: ReadOnlyTool.all)
+        let names = Set(reply.toolTrace.map(\.name))
+        return AssistantEvalResult(id: sample.id, reply: reply,
+            passed: sample.expectedTools.allSatisfy { names.contains($0) }
+                && sample.expectedNumbers.allSatisfy { reply.text.contains($0) } && reply.unverifiedAmounts.isEmpty)
+    }
+}

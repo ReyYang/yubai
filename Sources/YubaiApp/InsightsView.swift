@@ -5,7 +5,7 @@ import YubaiCore
 /// Cloud task helpers. Amount / account / nature are never model-writable.
 enum CloudIntelligence {
     @MainActor static func categorize(_ preview: ImportPreview, ledger: Ledger, progress: (Int, Int) -> Void) async -> ImportPreview {
-        guard let backend = IntelligenceRuntime.backend(for: ledger.preferences) else { return preview }
+        guard let backend = IntelligenceRuntime.backend(for: ledger) else { return preview }
         let entries = preview.rows.filter { $0.status == .ready }.compactMap(\.entry).filter { [.expense, .income].contains($0.nature) && $0.classificationReason.hasPrefix("未命中规则") }
         guard !entries.isEmpty else { return preview }
         var result = preview; let started = Date()
@@ -30,9 +30,9 @@ enum CloudIntelligence {
     @MainActor static func canAssist(preferences: Preferences) -> Bool {
         IntelligenceRuntime.backend(for: preferences) != nil
     }
-    @MainActor static func reflect(title: String, purpose: String, values: String, assessment: PurchaseAssessment, preferences: Preferences) async throws -> String {
-        guard let backend = IntelligenceRuntime.backend(for: preferences) else {
-            throw YubaiError.invalid(availabilityText(for: preferences))
+    @MainActor static func reflect(title: String, purpose: String, values: String, assessment: PurchaseAssessment, ledger: Ledger) async throws -> String {
+        guard let backend = IntelligenceRuntime.backend(for: ledger) else {
+            throw YubaiError.invalid(availabilityText(for: ledger.preferences))
         }
         return try await backend.reflectPurchase(title: title, purpose: purpose, values: values, assessmentTitle: assessment.title)
     }
@@ -123,11 +123,11 @@ struct InsightsView: View {
     private func polishInsights(_ review: Review) {
         insightBusy = true
         let facts = insightFactPack(review)
-        let preferences = store.current.preferences
+        let ledger = store.current
         Task {
             defer { insightBusy = false }
             do {
-                guard let backend = IntelligenceRuntime.backend(for: preferences) else { return }
+                guard let backend = IntelligenceRuntime.backend(for: ledger) else { return }
                 let text = try await backend.narrateInsights(facts: facts)
                 if let ok = InsightNarrationGuard.accept(text, protecting: facts.protectedAmountTexts) {
                     // Keep template facts on screen; show only the model polish delta when possible.
@@ -300,8 +300,8 @@ struct AdviceView: View {
     func assess() { do { let cents = try Money.parse(amount); guard cents > 0, !title.trimmingCharacters(in: .whitespaces).isEmpty else { throw YubaiError.invalid("请填写想买的东西和金额。") }; focusedField = nil; assessedAmount = cents; assessment = Finance.assessPurchase(store.current, amount: cents); reflection = ""; saved = false } catch { store.error = error.localizedDescription } }
     func reflect(_ a: PurchaseAssessment) {
         task?.cancel(); busy = true; aiError = nil
-        let preferences = store.current.preferences
-        task = Task { do { let text = try await CloudIntelligence.reflect(title: title, purpose: purpose, values: preferences.purchaseValues, assessment: a, preferences: preferences); guard !Task.isCancelled else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次云端补充没有完成。本机资金计算已保留，你可以稍后重试。"; busy = false } }
+        let ledger = store.current
+        task = Task { do { let text = try await CloudIntelligence.reflect(title: title, purpose: purpose, values: ledger.preferences.purchaseValues, assessment: a, ledger: ledger); guard !Task.isCancelled else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次云端补充没有完成。本机资金计算已保留，你可以稍后重试。"; busy = false } }
     }
     func invalidate() { task?.cancel(); assessment = nil; reflection = ""; busy = false; saved = false }
 }

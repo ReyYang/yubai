@@ -23,7 +23,7 @@ swift test --filter StorageTests
 
 ## 云端配置与实网检查
 
-应用设置中的「使用云端智能（DeepSeek）」默认关闭。仅在开关开启且存在 DeepSeek 配置时创建后端。暂时从启动进程的环境读取密钥；应用内密钥输入留待后续步骤。Xcode 启动应用时在 Scheme → Run → Arguments → Environment Variables 设置：
+应用设置中的「使用云端智能（DeepSeek）」默认关闭。仅在开关开启且存在 DeepSeek 配置时创建后端。密钥优先从设置保存的本机钥匙串读取；启动进程环境用于开发回退。Xcode 启动应用时在 Scheme → Run → Arguments → Environment Variables 设置：
 
 ```sh
 export DEEPSEEK_API_KEY='your-key'
@@ -37,16 +37,29 @@ export DEEPSEEK_MODEL='deepseek-flash'
 只做一次搜索扩词冒烟：
 
 ```sh
-YUBAI_RUN_DEEPSEEK_LIVE=1 swift test --filter DeepSeekCloudTests/testLiveDeepSeekSmokeWhenExplicitlyEnabled
+YUBAI_LIVE_EVAL=1 swift test --filter DeepSeekCloudTests/testLiveDeepSeekSmokeWhenExplicitlyEnabled
 ```
 
 运行全部 52 例（会产生多次 API 请求及相应费用）：
 
 ```sh
-YUBAI_RUN_DEEPSEEK_EVAL=1 swift test --filter AIBenchTests/testLiveCloudFixtureWhenExplicitlyEnabled
+YUBAI_LIVE_EVAL=1 swift test --filter AIBenchTests/testLiveCloudFixtureWhenExplicitlyEnabled
 ```
 
 摘要示例：`[DeepSeek(api.deepseek.com/deepseek-flash)] 通过 …/52（…%）· 归类 … · 购买 … · 洞察 … · 搜索 …`。实网测试打印分项结果，不把当前通过率当作已确定的产品验收阈值。
+
+## 共享助手评测种子
+
+`Fixtures/assistant-eval.json` 有6例：资金、预测/购买缺口、记录查询、消费汇总、习惯对照与偏好。`AIBenchRunner.runAssistantCase(_:transport:context:)` 复用 agent，检查调用工具、必含金额及金额护栏结果。离线脚本会先确认真实工具结果含有预期金额，再生成最终回答；这验证接口与数字链路，不代表模型工具选择能力已验证。
+
+在具备 Swift / Apple SDK 的环境：
+
+```sh
+swift test --filter Assistant
+YUBAI_LIVE_EVAL=1 swift test --filter AssistantEvalTests/testLiveAssistantEvalOnlyWhenExplicitlyEnabled
+```
+
+所有实网测试都要求 `YUBAI_LIVE_EVAL=1` 且已配置密钥，且只用合成资料。本环境没有执行上述命令。
 
 ## 产品回退与边界
 

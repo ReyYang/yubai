@@ -1,0 +1,257 @@
+import Foundation
+
+public struct ToolContext: Sendable {
+    public let ledger: Ledger
+    public let now: Date
+    public let redactor: Redactor
+    let entriesByID: [UUID: Entry]
+    public init(ledger: Ledger, now: Date = Date()) {
+        self.ledger = ledger; self.now = now; self.redactor = Redactor(ledger: ledger)
+        self.entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+    }
+}
+
+public protocol AssistantTool: Sendable {
+    var name: String { get }
+    var description: String { get }
+    var parameters: JSONValue { get }
+    func run(_ args: JSONValue, _ ctx: ToolContext) throws -> JSONValue
+}
+
+/// All results are explicit field allowlists; no Entry / Ledger encoding goes to the cloud.
+public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
+    case getFunds = "get_funds", forecast, queryEntries = "query_entries", summarize
+    case compareToHabit = "compare_to_habit", getProfile = "get_profile"
+    public static var all: [any AssistantTool] { allCases.map { $0 as any AssistantTool } }
+    public var name: String { rawValue }
+    public var description: String {
+        switch self {
+        case .getFunds: return "本机计算的保守可动用与各项预留、预计收入和警示。"
+        case .forecast: return "从今天预测指定日期的保守/预计余额及此前已知付款；可比较一笔金额。最远365天，预计收入不算保守资金。"
+        case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，最多50条。日期边界均包含当天，金额过滤用原始金额。"
+        case .summarize: return "按日/周(周一开始)/月/分类汇总匹配记录；默认全部，不受查询默认条数限制。消费退款抵扣，房租只计个人承担。"
+        case .compareToHabit: return "近90个自然日同类实际消费的均值、中位数、每周频次和最近记录；不含未来记录或退款，可比较金额位置。"
+        case .getProfile: return "用户当前消费偏好原文。"
+        }
+    }
+    private static func field(_ type: String, _ description: String) -> JSONValue {
+        .object(["type": .string(type), "description": .string(description)])
+    }
+    private static let amountSchema: JSONValue = .object([
+        "anyOf": .array([.object(["type": .string("string")]), .object(["type": .string("number")])]),
+        "description": .string("人民币元，最多两位小数，不是分。优先传字符串。")])
+    private static var filters: [String: JSONValue] {
+        ["start_date": field("string", "起始日 yyyy-MM-dd（包含）"),
+         "end_date": field("string", "结束日 yyyy-MM-dd（包含）"),
+         "category": field("string", "分类全名，退款跟随原支出分类"),
+         "nature": .object(["type": .string("string"), "enum": .strings(["spending", "income", "transfer"])]),
+         "keyword": field("string", "标题或备注子串"), "min_amount": amountSchema, "max_amount": amountSchema,
+         "limit": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(50)])]
+    }
+    public var parameters: JSONValue {
+        var fields: [String: JSONValue] = [:]
+        switch self {
+        case .getFunds, .getProfile: break
+        case .forecast:
+            fields = ["date": Self.field("string", "yyyy-MM-dd，与days二选一"),
+                      "days": .object(["type": .string("integer"), "minimum": .number(0), "maximum": .number(365)]),
+                      "amount": Self.amountSchema]
+        case .queryEntries: fields = Self.filters
+        case .summarize:
+            fields = Self.filters
+            fields["group_by"] = .object(["type": .string("string"), "enum": .strings(["day", "week", "month", "category"])])
+        case .compareToHabit:
+            fields = ["category": Self.field("string", "分类，与keyword至少提供一项；两项同时给出取交集"),
+                      "keyword": Self.field("string", "标题或备注子串"), "amount": Self.amountSchema]
+        }
+        return .object(["type": .string("object"), "properties": .object(fields), "additionalProperties": .bool(false)])
+    }
+
+    public func run(_ args: JSONValue, _ ctx: ToolContext) throws -> JSONValue {
+        let allowedFields = Set(parameters["properties"]?.objectValue?.keys.map { $0 } ?? [])
+        guard let fields = args.objectValue, Set(fields.keys).isSubset(of: allowedFields) else {
+            throw YubaiError.invalid("参数必须是对象，且只能包含工具声明的字段。")
+        }
+        let result: JSONValue
+        switch self {
+        case .getFunds:
+            let f = Finance.funds(ctx.ledger, now: ctx.now)
+            result = .object(["available": .money(f.available), "cash": .money(f.cash), "debt": .money(f.debt),
+                "committed": .money(f.committed), "goals": .money(f.goals), "emergency": .money(f.emergency),
+                "living": .money(f.living), "uncertain": .money(f.uncertainInflow), "expected_income": .money(f.expectedIncome),
+                "horizon_days": .number(Double(ctx.ledger.preferences.horizonDays)), "warnings": .strings(f.warnings)])
+        case .forecast: result = try forecast(fields, ctx)
+        case .queryEntries:
+            let filter = try Filter(fields)
+            let all = filter.entries(ctx)
+            let rows = Array(all.prefix(filter.limit ?? 20))
+            result = .object(["entries": .array(rows.map { summary($0, ctx) }),
+                "entry_ids": .strings(rows.map { $0.id.uuidString }), "matched_count": .number(Double(all.count)),
+                "truncated": .bool(rows.count < all.count)])
+        case .summarize: result = try summarize(fields, ctx)
+        case .compareToHabit: result = try habit(fields, ctx)
+        case .getProfile: result = .object(["purchaseValues": .string(ctx.ledger.preferences.purchaseValues)])
+        }
+        return ctx.redactor.value(result)
+    }
+
+    private func forecast(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {
+        guard (fields["date"] != nil) != (fields["days"] != nil) else { throw YubaiError.invalid("请提供date或days其中一项。") }
+        let days: Int
+        if let value = fields["date"] {
+            let date = try Self.date(value)
+            days = Dates.calendar.dateComponents([.day], from: Dates.day(ctx.now), to: date).day ?? -1
+        } else { days = try Self.integer(fields["days"], range: 0...365) }
+        guard (0...365).contains(days) else { throw YubaiError.invalid("只能预测今天至365天内的日期。") }
+        // Finance's occurrence horizon ends at midnight. Calculate one extra day so
+        // payments later on the requested calendar day reach that day's forecast point.
+        let target = Dates.addDays(days, to: Dates.day(ctx.now))
+        var snapshot = ctx.ledger; snapshot.preferences.horizonDays = days + 1
+        let funds = Finance.funds(snapshot, now: ctx.now)
+        guard let point = funds.points.first(where: { $0.date == target }) else { throw YubaiError.invalid("没有可用的预测。") }
+        let payments = funds.occurrences.filter { !$0.inflow && Dates.day($0.date) <= point.date }
+        var result: [String: JSONValue] = ["date": .string(Dates.text(point.date)),
+            "conservative": .money(point.conservative), "expected": .money(point.expected), "warnings": .strings(funds.warnings),
+            "known_payments": .array(payments.map { .object(["title": .string($0.title), "date": .string(Dates.text($0.date)),
+                "amount": .money($0.amount), "overdue": .bool($0.overdue)]) })]
+        if let value = fields["amount"] {
+            let amount = try Self.amount(value)
+            let after = point.conservative - amount
+            result["amount"] = .money(amount); result["enough"] = .bool(after >= 0)
+            result["after_purchase"] = .money(after); result["short_by"] = .money(max(0, -after))
+        }
+        return .object(result)
+    }
+
+    private func summarize(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {
+        let filter = try Filter(fields)
+        let group = try Self.optionalString(fields["group_by"]) ?? "category"
+        guard ["day", "week", "month", "category"].contains(group) else { throw YubaiError.invalid("group_by必须是day/week/month/category。") }
+        let all = filter.entries(ctx)
+        let rows = filter.limit.map { Array(all.prefix($0)) } ?? all
+        let byID = ctx.entriesByID
+        let grouped = Dictionary(grouping: rows) { entry -> String in
+            switch group {
+            case "day": return Dates.text(entry.date)
+            case "month": return String(Dates.text(entry.date).prefix(7))
+            case "week":
+                var calendar = Dates.calendar; calendar.firstWeekday = 2; calendar.minimumDaysInFirstWeek = 4
+                return Dates.text(calendar.dateInterval(of: .weekOfYear, for: entry.date)?.start ?? Dates.day(entry.date))
+            default: return ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: byID))
+            }
+        }
+        func totals(_ entries: [Entry]) -> [String: JSONValue] {
+            ["count": .number(Double(entries.count)),
+             "spending": .money(entries.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ctx.ledger) }),
+             "income": .money(entries.filter { $0.nature == .income }.reduce(Int64(0)) { $0 + $1.amount }),
+             "transfer_volume": .money(entries.filter { $0.nature.paired }.reduce(Int64(0)) { $0 + $1.amount })]
+        }
+        var result = totals(rows)
+        result["group_by"] = .string(group)
+        result["groups"] = .array(grouped.keys.sorted().map { key in
+            var values = totals(grouped[key] ?? []); values["group"] = .string(key); return .object(values)
+        })
+        result["matched_count"] = .number(Double(all.count)); result["truncated"] = .bool(rows.count < all.count)
+        // Keep payloads bounded; totals cover every row, evidence is a representative recent sample.
+        result["entry_ids"] = .strings(rows.prefix(50).map { $0.id.uuidString })
+        result["evidence_truncated"] = .bool(rows.count > 50)
+        return .object(result)
+    }
+
+    private func habit(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {
+        let category = try Self.optionalString(fields["category"])
+        let keyword = try Self.optionalString(fields["keyword"])
+        guard category != nil || keyword != nil else { throw YubaiError.invalid("请提供category或keyword。") }
+        var filters = fields; filters.removeValue(forKey: "amount"); filters["nature"] = .string("spending")
+        let start = Dates.addDays(-89, to: Dates.day(ctx.now))
+        let rows = try Filter(filters).entries(ctx).filter { $0.nature == .expense && $0.date >= start && $0.date <= ctx.now }
+        let amounts = rows.map { Finance.spendingAmount($0, ledger: ctx.ledger) }.sorted()
+        var result: [String: JSONValue] = ["window_days": .number(90), "count": .number(Double(rows.count)),
+            "count_per_week": .number(Double(rows.count) * 7 / 90),
+            "recent": .array(rows.prefix(5).map { summary($0, ctx) }), "entry_ids": .strings(rows.prefix(5).map { $0.id.uuidString })]
+        if amounts.isEmpty {
+            result["average"] = .null; result["median"] = .null
+            if let value = fields["amount"] { result["amount"] = .money(try Self.amount(value)); result["percentile"] = .null }
+        } else {
+            let total = amounts.reduce(Int64(0), +)
+            let middle = amounts.count / 2
+            let median = amounts.count % 2 == 0 ? amounts[middle - 1] + (amounts[middle] - amounts[middle - 1]) / 2 : amounts[middle]
+            result["average"] = .money(total / Int64(amounts.count)); result["median"] = .money(median)
+            result["rounding"] = .string("均值和中位数不足一分的部分舍去。")
+            if let value = fields["amount"] {
+                let amount = try Self.amount(value)
+                result["amount"] = .money(amount)
+                result["percentile"] = .number(Double(amounts.filter { $0 <= amount }.count) / Double(amounts.count) * 100)
+                result["percentile_meaning"] = .string("历史同类消费中，金额小于或等于本次金额的百分比。")
+            }
+        }
+        return .object(result)
+    }
+
+    private func summary(_ entry: Entry, _ ctx: ToolContext) -> JSONValue {
+        .object(["id": .string(entry.id.uuidString), "date": .string(Dates.text(entry.date)),
+            "amount": .money(entry.amount), "spending_amount": .money(Finance.spendingAmount(entry, ledger: ctx.ledger)),
+            "direction": .string(entry.nature.paired ? "transfer" : (entry.nature.inflow ? "income" : "spending")),
+            "nature": .string(entry.nature.rawValue), "title": .string(entry.title), "category": .string(ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: ctx.entriesByID))),
+            "account_kind": .string(ctx.ledger.accounts.first { $0.id == entry.accountID }?.kind.rawValue ?? "unknown")])
+    }
+
+    private struct Filter {
+        var start: Date?; var end: Date?; var category: String?; var nature: String?; var keyword: String?
+        var minimum: Int64?; var maximum: Int64?; var limit: Int?
+        init(_ fields: [String: JSONValue]) throws {
+            start = try fields["start_date"].map { try ReadOnlyTool.date($0) }
+            end = try fields["end_date"].map { Dates.addDays(1, to: try ReadOnlyTool.date($0)) }
+            category = try ReadOnlyTool.optionalString(fields["category"])
+            nature = try ReadOnlyTool.optionalString(fields["nature"])
+            keyword = try ReadOnlyTool.optionalString(fields["keyword"])
+            minimum = try fields["min_amount"].map { try ReadOnlyTool.amount($0) }
+            maximum = try fields["max_amount"].map { try ReadOnlyTool.amount($0) }
+            limit = try fields["limit"].map { try ReadOnlyTool.integer($0, range: 1...50) }
+            if let start, let end, start >= end { throw YubaiError.invalid("日期范围颠倒。") }
+            if let minimum, let maximum, minimum > maximum { throw YubaiError.invalid("金额范围颠倒。") }
+            if let nature, !["spending", "income", "transfer"].contains(nature) { throw YubaiError.invalid("nature必须是spending/income/transfer。") }
+        }
+        func entries(_ ctx: ToolContext) -> [Entry] {
+            let byID = ctx.entriesByID
+            return ctx.ledger.activeEntries.filter { e in
+                if let start, e.date < start { return false }
+                if let end, e.date >= end { return false }
+                if let category, ctx.ledger.resolveCategory(Finance.spendingCategory(e, entriesByID: byID)) != ctx.ledger.resolveCategory(category) { return false }
+                if let keyword {
+                    let text = e.title + " " + e.note
+                    if !text.localizedCaseInsensitiveContains(keyword) && !ctx.redactor.text(text).localizedCaseInsensitiveContains(keyword) { return false }
+                }
+                if let minimum, e.amount < minimum { return false }
+                if let maximum, e.amount > maximum { return false }
+                switch nature {
+                case "spending": return e.nature == .expense || e.nature == .refund
+                case "income": return e.nature == .income
+                case "transfer": return e.nature.paired
+                default: return true
+                }
+            }.sorted { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date > $1.date }
+        }
+    }
+    private static func optionalString(_ value: JSONValue?) throws -> String? {
+        guard let value else { return nil }
+        guard let text = value.stringValue, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw YubaiError.invalid("文本参数不能为空。") }
+        return text
+    }
+    private static func date(_ value: JSONValue) throws -> Date {
+        guard let text = value.stringValue, text.count == 10, let date = Dates.parse(text), Dates.text(date) == text else {
+            throw YubaiError.invalid("日期请用yyyy-MM-dd格式。")
+        }
+        return Dates.day(date)
+    }
+    private static func amount(_ value: JSONValue) throws -> Int64 {
+        if let text = value.stringValue { return try Money.parse(text) }
+        if case .number(let n) = value, n.isFinite { return try Money.parse(NSDecimalNumber(value: n).stringValue) }
+        throw YubaiError.invalid("金额请用人民币元，最多两位小数。")
+    }
+    private static func integer(_ value: JSONValue?, range: ClosedRange<Int>) throws -> Int {
+        guard let value, case .number(let n) = value, n.isFinite, n.rounded() == n,
+              n >= Double(range.lowerBound), n <= Double(range.upperBound) else { throw YubaiError.invalid("整数参数超出范围。") }
+        return Int(n)
+    }
+}

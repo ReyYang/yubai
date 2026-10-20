@@ -89,9 +89,9 @@ final class AIBenchTests: XCTestCase {
     /// Full cloud evaluation is opt-in and uses only the bundled synthetic fixture.
     func testLiveCloudFixtureWhenExplicitlyEnabled() async throws {
         let environment = ProcessInfo.processInfo.environment
-        guard environment["YUBAI_RUN_DEEPSEEK_EVAL"] == "1",
-              let backend = CloudBackend.fromEnvironment(enabled: true, environment: environment)
-        else { throw XCTSkip("Set YUBAI_RUN_DEEPSEEK_EVAL=1 and DEEPSEEK_API_KEY to run the cloud fixture.") }
+        guard environment["YUBAI_LIVE_EVAL"] == "1",
+              let backend = CloudBackend.configured(enabled: true, environment: environment)
+        else { throw XCTSkip("Set YUBAI_LIVE_EVAL=1 and a configured key to run the cloud fixture.") }
         let fixture = try AIBenchRunner.loadBundledFixture(bundle: .module)
         let score = await AIBenchRunner.run(fixture: fixture, backend: backend)
         print(score.summary)

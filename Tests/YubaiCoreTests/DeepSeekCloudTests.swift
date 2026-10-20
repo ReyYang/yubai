@@ -139,16 +139,16 @@ final class DeepSeekCloudTests: XCTestCase {
         XCTAssertTrue(allowed.contains(suggestions.first(where: { $0.index == 1 })!.category))
     }
 
-    /// Live DeepSeek call — skipped unless `DEEPSEEK_API_KEY` is set and `YUBAI_RUN_DEEPSEEK_LIVE=1`.
+    /// Live DeepSeek call — skipped unless a key is configured and `YUBAI_LIVE_EVAL=1`.
     /// CI without secrets must not fail; Cloud Agent may enable manually.
     func testLiveDeepSeekSmokeWhenExplicitlyEnabled() async throws {
         let env = ProcessInfo.processInfo.environment
-        guard env["YUBAI_RUN_DEEPSEEK_LIVE"] == "1",
-              DeepSeekConfiguration.fromEnvironment(environment: env) != nil
+        guard env["YUBAI_LIVE_EVAL"] == "1",
+              APIKeyStore.shared.configuration(environment: env) != nil
         else {
-            throw XCTSkip("Set YUBAI_RUN_DEEPSEEK_LIVE=1 with DEEPSEEK_API_KEY to run live DeepSeek smoke.")
+            throw XCTSkip("Set YUBAI_LIVE_EVAL=1 with a configured key to run live DeepSeek smoke.")
         }
-        let backend = try XCTUnwrap(CloudBackend.fromEnvironment(enabled: true, environment: env))
+        let backend = try XCTUnwrap(CloudBackend.configured(enabled: true, environment: env))
         let terms = try await backend.expandSearchQuery("咖啡")
         XCTAssertFalse(terms.isEmpty, "live expand should return synonyms")
         XCTAssertFalse(terms.contains(where: ModelAmountGuard.containsInventedAmount))

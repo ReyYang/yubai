@@ -42,11 +42,11 @@ xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
 
 ## DeepSeek 配置
 
-设置中的「使用云端智能（DeepSeek）」是唯一 AI 开关，默认关闭。目前从启动进程环境读取 `DEEPSEEK_API_KEY`；Xcode 启动时在 Scheme → Run → Arguments → Environment Variables 添加。可选 `DEEPSEEK_BASE_URL` 指定 API 根地址，`DEEPSEEK_MODEL` 覆盖模型，默认值见 `DeepSeekConfiguration`。密钥不写入账本或日志；应用内密钥设置属于后续步骤。
+设置中的「使用云端智能（DeepSeek）」是唯一 AI 开关，默认关闭。在应用内保存的密钥仅写入本机钥匙串（generic password，service `app.yubai.deepseek`），配置优先读取钥匙串，缺少时回退到启动进程环境的 `DEEPSEEK_API_KEY`；Xcode 开发时可在 Scheme → Run → Arguments → Environment Variables 添加。可选 `DEEPSEEK_BASE_URL` 指定 API 根地址，`DEEPSEEK_MODEL` 覆盖模型，默认值见 `DeepSeekConfiguration`。密钥不写入账本、备份或日志。设置内可保存/替换/删除密钥、测试连接、查看最近50条脱敏发送记录，以及打开临时问答页。连接测试是用户主动发起的无账本请求，不依赖云端开关；财务问答和既有AI功能需要开关开启。
 
 未开启或没有配置时不创建后端。离线 / 请求失败时，导入保留规则分类，洞察保留本机模板，购买咨询保留确定性资金判断和固定问题，搜索保留普通子串匹配。仅在启用后发送任务所需的用途等摘要：分类包含用途与方向；购买思考包含物品、用途、偏好及程序结论；洞察包含本机事实与金额原文；搜索仅发送查询词。金额、账户、资金性质不交模型修改。各任务的系统提示词保留对用户文字中指令的防护。
 
-默认测试用测试专用网络响应桩，不访问 DeepSeek。显式实网冒烟和合成夹具评测的环境变量见 [云端台架说明](ai-bench/README.md)。
+共享助手与只读工具接口见 [ASSISTANT.md](ASSISTANT.md)。默认测试用测试专用网络响应桩，不访问 DeepSeek。显式实网冒烟和合成夹具评测的环境变量见 [云端台架说明](ai-bench/README.md)。
 
 ## 数据与兼容性
 

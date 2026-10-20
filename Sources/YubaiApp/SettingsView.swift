@@ -60,12 +60,7 @@ struct SettingsView: View {
             Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in store.update("保存外观") { $0.preferences.appearance = value } })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
-    private var intelligenceSection: some View {
-        Section("智能辅助") {
-            Toggle("使用云端智能（DeepSeek）", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value } })).tint(YubaiColor.toggleOn)
-            Text("金额、账户、资金性质由本机计算，模型不修改；开启后会把记录用途等摘要发送到 DeepSeek；未配置密钥或离线时只显示本机计算结果。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
+    private var intelligenceSection: some View { CloudAISettingsSection() }
     private var aboutSection: some View {
         Section("了解余白") {
             Button { store.sheet = .guide } label: { Label("使用指南与计算口径", systemImage: "book.closed") }

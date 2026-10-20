@@ -7,9 +7,13 @@ final class CloudTestStub {
     private let session: URLSession
     private let host: String
 
-    init(reply: @escaping (URLRequest) throws -> String) {
+    init(rawResponse: Bool = false, reply: @escaping (URLRequest) throws -> String) {
         let host = UUID().uuidString.lowercased() + ".yubai.test"
-        CloudTestURLProtocol.register(reply, for: host)
+        CloudTestURLProtocol.register({ request in
+            let content = try reply(request)
+            if rawResponse { return Data(content.utf8) }
+            return try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]])
+        }, for: host)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CloudTestURLProtocol.self]
         let session = URLSession(configuration: configuration)
@@ -28,7 +32,16 @@ final class CloudTestStub {
         CloudTestURLProtocol.unregister(host)
     }
 
+    func send(_ request: ChatRequest) async throws -> ChatMessage {
+        try await backend.client.send(request, session: session)
+    }
+
     static func messages(in request: URLRequest) throws -> [[String: String]] {
+        guard let messages = try payload(in: request)["messages"] as? [[String: String]] else { throw URLError(.cannotDecodeContentData) }
+        return messages
+    }
+
+    static func payload(in request: URLRequest) throws -> [String: Any] {
         var data = request.httpBody ?? Data()
         if data.isEmpty, let stream = request.httpBodyStream {
             stream.open()
@@ -42,18 +55,17 @@ final class CloudTestStub {
                 data.append(contentsOf: buffer.prefix(count))
             }
         }
-        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let messages = payload["messages"] as? [[String: String]]
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { throw URLError(.cannotDecodeContentData) }
-        return messages
+        return payload
     }
 }
 
 private final class CloudTestURLProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
-    private static var replies: [String: (URLRequest) throws -> String] = [:]
+    private static var replies: [String: (URLRequest) throws -> Data] = [:]
 
-    static func register(_ reply: @escaping (URLRequest) throws -> String, for host: String) {
+    static func register(_ reply: @escaping (URLRequest) throws -> Data, for host: String) {
         lock.lock(); defer { lock.unlock() }
         replies[host] = reply
     }
@@ -72,10 +84,7 @@ private final class CloudTestURLProtocol: URLProtocol, @unchecked Sendable {
         Self.lock.unlock()
         do {
             guard let reply, let url = request.url else { throw URLError(.unsupportedURL) }
-            let content = try reply(request)
-            let data = try JSONSerialization.data(withJSONObject: [
-                "choices": [["message": ["content": content]]]
-            ])
+            let data = try reply(request)
             let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
