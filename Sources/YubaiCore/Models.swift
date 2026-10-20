@@ -161,10 +161,6 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
         .init("兼职劳务", "hammer", income: true), .init("礼金赠与", "gift", income: true), .init("投资收益", "chart.line.uptrend.xyaxis", income: true), .init("其他收入", "ellipsis", income: true)
     ]
 }
-public struct Rule: Codable, Identifiable, Equatable, Sendable {
-    public var id = UUID(); public var keyword: String; public var category: String; public var nature: Nature?; public var enabled = true
-    public init(keyword: String, category: String, nature: Nature? = nil) { self.keyword = keyword; self.category = category; self.nature = nature }
-}
 public struct Attachment: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var name: String; public var data: Data; public var createdAt = Date()
     public init(name: String, data: Data) { self.name = name; self.data = data }
@@ -173,6 +169,9 @@ public struct ImportBatch: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var filename: String; public var importedAt = Date()
     public var importedCount: Int; public var duplicateCount: Int; public var skippedCount: Int
     public var attachmentID: UUID?; public var undoneAt: Date?
+    public var needsOrganization: Bool?
+    public var organization: ImportOrganization?
+    public var undo: ImportUndo?
     public init(filename: String, importedCount: Int, duplicateCount: Int, skippedCount: Int) { self.filename = filename; self.importedCount = importedCount; self.duplicateCount = duplicateCount; self.skippedCount = skippedCount }
 }
 public struct Preferences: Codable, Equatable, Sendable {
@@ -235,7 +234,7 @@ public struct SpendingProfile: Codable, Equatable, Sendable {
     public init() {}
 }
 public enum CardKind: String, Codable, CaseIterable, Sendable {
-    case restrain, shortfall, unknownInflow, staleBalance, recurring, duplicate, offCharacter, followUp, weeklyLetter
+    case answerQuestion, restrain, shortfall, unknownInflow, staleBalance, recurring, duplicate, offCharacter, followUp, weeklyLetter
 }
 public enum CardAction: Codable, Equatable, Sendable {
     case openEvidence, confirmChangeSet(UUID), reconcileAccount(UUID), answerQuestion, openWish(UUID)
@@ -245,6 +244,7 @@ public struct ButlerCard: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var kind: CardKind; public var title: String; public var body: String
     public var evidence: [UUID]; public var action: CardAction?; public var dedupeKey: String
     public var createdAt = Date(); public var dismissedAt: Date?; public var feedback: CardFeedback?
+    public var importQuestion: ImportQuestion?
     public init(kind: CardKind, title: String, body: String, evidence: [UUID] = [], action: CardAction? = nil, dedupeKey: String) {
         self.kind = kind; self.title = title; self.body = body; self.evidence = evidence; self.action = action; self.dedupeKey = dedupeKey
     }
@@ -266,7 +266,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var schema = 2; public var id = UUID(); public var updatedAt = Date()
     public var isSample = false
     public var accounts: [Account] = []; public var entries: [Entry] = []; public var plans: [Plan] = []
-    public var goals: [Goal] = []; public var rents: [Rent] = []; public var rules: [Rule] = []
+    public var goals: [Goal] = []; public var rents: [Rent] = []
     public var categories = Category.defaults; public var imports: [ImportBatch] = []; public var attachments: [Attachment] = []
     public var categoryAliases: [String: String] = [:]
     public var preferences = Preferences()
@@ -288,7 +288,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, rules, categories, imports, attachments, categoryAliases, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -304,7 +304,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         plans = try c.decode([Plan].self, forKey: .plans)
         goals = try c.decode([Goal].self, forKey: .goals)
         rents = try c.decode([Rent].self, forKey: .rents)
-        rules = try c.decode([Rule].self, forKey: .rules)
+        // Legacy `rules` JSON is intentionally ignored and omitted on the next save.
         categories = try c.decode([Category].self, forKey: .categories)
         imports = try c.decode([ImportBatch].self, forKey: .imports)
         attachments = try c.decode([Attachment].self, forKey: .attachments)
@@ -337,7 +337,6 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(plans, forKey: .plans)
         try c.encode(goals, forKey: .goals)
         try c.encode(rents, forKey: .rents)
-        try c.encode(rules, forKey: .rules)
         try c.encode(categories, forKey: .categories)
         try c.encode(imports, forKey: .imports)
         try c.encode(attachments, forKey: .attachments)
@@ -359,7 +358,6 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.plans == rhs.plans &&
         lhs.goals == rhs.goals &&
         lhs.rents == rhs.rents &&
-        lhs.rules == rhs.rules &&
         lhs.categories == rhs.categories &&
         lhs.imports == rhs.imports &&
         lhs.attachments == rhs.attachments &&
@@ -381,7 +379,7 @@ public struct Ledger: Codable, Equatable, Sendable {
               pendingChanges.count <= 100, wishlist.count <= 5000, mutedTopics.count <= 5000 else { throw YubaiError.invalid("账本超出安全容量，请分卷备份。") }
         guard Set(accounts.map(\.id)).count == accounts.count, Set(entries.map(\.id)).count == entries.count,
               Set(plans.map(\.id)).count == plans.count, Set(rents.map(\.id)).count == rents.count,
-              Set(goals.map(\.id)).count == goals.count, Set(rules.map(\.id)).count == rules.count,
+              Set(goals.map(\.id)).count == goals.count,
               Set(imports.map(\.id)).count == imports.count,
               Set(attachments.map(\.id)).count == attachments.count else { throw YubaiError.invalid("账本包含重复标识，无法安全读取。") }
         guard Set(cards.map(\.id)).count == cards.count, Set(wishlist.map(\.id)).count == wishlist.count,

@@ -96,7 +96,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["commitImport"].waitForExistence(timeout: 10))
         attach(app, "iPhone-09-import-preview")
         XCTAssertTrue(app.buttons["commitImport"].isEnabled); app.buttons["commitImport"].tap()
-        XCTAssertTrue(app.staticTexts["这一份，整理好了"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["账单已保存"].waitForExistence(timeout: 8))
         attach(app, "iPhone-10-import-result")
         app.buttons["查看导入明细"].tap()
         XCTAssertTrue(app.buttons["commitImport"].waitForExistence(timeout: 10)); XCTAssertFalse(app.buttons["commitImport"].isEnabled)
@@ -123,7 +123,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(app.textFields["确认金额"].value as? String, "28.5")
         attach(app, "iPhone-12-OCR-confirmation")
         app.buttons["确认并保存"].tap()
-        XCTAssertTrue(app.staticTexts["这一份，整理好了"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["账单已保存"].waitForExistence(timeout: 10))
         attach(app, "iPhone-13-OCR-result")
     }
     func testEncryptedBackupExportAndRestoreIntoEmptyLedger() throws {

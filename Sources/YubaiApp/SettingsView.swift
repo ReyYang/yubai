@@ -39,7 +39,7 @@ struct SettingsView: View {
         Section("资金偏好") {
             Picker("从今天向前看", selection: $horizon) { Text("30 天").tag(30); Text("60 天").tag(60); Text("90 天").tag(90); Text("180 天").tag(180); Text("365 天").tag(365) }
             VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("应急底线金额").yubaiFont(YubaiFont.row); TextField("应急底线金额", text: $reserve).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("应急底线金额") }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("每天的日常生活预留").yubaiFont(YubaiFont.row); TextField("每天的日常生活预留", text: $living).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("每天的日常生活预留") }
+            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("每天的日常生活预留（0 为自动估算）").yubaiFont(YubaiFont.row); TextField("每天的日常生活预留", text: $living).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("每天的日常生活预留") }
             VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("我希望把钱花在什么上").yubaiFont(YubaiFont.row); TextField("我希望把钱花在什么上", text: $values, axis: .vertical).lineLimit(2...5).accessibilityLabel("我希望把钱花在什么上") }
             Button("保存资金偏好", action: savePreferences)
             Text("日常生活预留用于未逐项列出的零碎开销。不要把同一笔固定付款既列为安排又放进日常预留。调整不会改动真实账单。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -48,7 +48,6 @@ struct SettingsView: View {
     private var protectionSection: some View {
         Section("整理与保护") {
             Button { store.sheet = .categories } label: { Label("收支分类", systemImage: "square.grid.2x2") }
-            Button { store.sheet = .rules } label: { Label("自动分类规则", systemImage: "line.3.horizontal.decrease") }
             Button { store.sheet = .backup } label: { Label("备份、恢复与导出", systemImage: "externaldrive") }
             Button { store.sheet = .history } label: { Label("导入批次与本地恢复", systemImage: "clock.arrow.circlepath") }
             Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn)
@@ -88,7 +87,6 @@ struct CategoriesView: View {
             if let i = l.categories.firstIndex(where: { $0.name == old }) { l.categories[i].name = new }
             for key in l.categoryAliases.keys where l.categoryAliases[key] == old { l.categoryAliases[key] = new }; l.categoryAliases[old] = new
             for i in l.entries.indices where l.entries[i].category == old { l.entries[i].category = new }
-            for i in l.rules.indices where l.rules[i].category == old { l.rules[i].category = new }
             for i in l.plans.indices where l.plans[i].category == old { l.plans[i].category = new }
         }) { selected = nil }
     }
@@ -110,59 +108,7 @@ struct CategoriesView: View {
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var categoryNoteSection: some View {
-        Section { InlineNote(text: "重命名会同步更新记录、规则与安排中的分类，可以撤销。系统初始分类保留兜底用途。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-}
-
-struct RulesView: View {
-    @Environment(AppStore.self) private var store
-    @State private var keyword = ""; @State private var category = "餐饮"; @State private var applyExisting = false
-    private var matches: [Entry] { guard !keyword.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }; return store.current.activeEntries.filter { [.expense, .income].contains($0.nature) && ($0.title + " " + $0.note).localizedCaseInsensitiveContains(keyword) } }
-    var body: some View {
-        Form {
-            newRuleSection
-            rulesSection
-        }.editorForm().navigationTitle("自动分类规则").yubaiNavigation().toolbar { CloseButton() }
-    }
-    func saveRule() {
-        let clean = keyword.trimmingCharacters(in: .whitespacesAndNewlines); guard !clean.isEmpty else { store.error = "请填写一个关键词。"; return }; let ids = Set(matches.map(\.id))
-        if store.update("保存分类规则", { l in
-            l.rules.insert(Rule(keyword: clean, category: category), at: 0)
-            if applyExisting {
-                for i in l.entries.indices where ids.contains(l.entries[i].id) { l.entries[i].category = category; l.entries[i].userEdited = true; l.entries[i].classificationReason = "用户应用规则：\(clean)" }
-                LedgerOperations.syncLinkedRefundCategories(in: &l)
-            }
-        }) { keyword = ""; applyExisting = false }
-    }
-
-    private var newRuleSection: some View {
-        Section("建立可重复使用的规则") { TextField("用途或商户关键词", text: $keyword); Picker("归入分类", selection: $category) { ForEach(store.current.categories) { Text($0.name).tag($0.name) } }; Toggle("同时纠正已有 \(matches.count) 笔匹配记录", isOn: $applyExisting).tint(YubaiColor.toggleOn); Button("保存规则") { saveRule() }; Text("新规则优先匹配。只改分类，不更改交易金额、账户或性质；任何批量纠正都可撤销。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var rulesSection: some View {
-        Section("已学会的规则") {
-            if store.current.rules.isEmpty { Text("还没有规则。纠正一次，之后就能少做一些。").foregroundStyle(YubaiColor.labelSecondary) }
-            ForEach(store.current.rules) { rule in ruleRow(rule) }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private func ruleRow(_ rule: Rule) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
-                Text(rule.keyword).yubaiFont(YubaiFont.rowTitle)
-                Text("归入：" + rule.category).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            }
-            Spacer()
-            Toggle("启用", isOn: ruleEnabled(rule)).tint(YubaiColor.toggleOn).labelsHidden()
-            Button { store.update("移除分类规则") { $0.rules.removeAll { $0.id == rule.id } } } label: {
-                Image(systemName: "trash")
-            }.buttonStyle(.borderless).accessibilityLabel("删除规则 " + rule.keyword)
-        }
-    }
-    private func ruleEnabled(_ rule: Rule) -> Binding<Bool> {
-        Binding(get: { store.current.rules.first { $0.id == rule.id }?.enabled ?? false }, set: { value in
-            store.update("调整分类规则") { ledger in
-                if let index = ledger.rules.firstIndex(where: { $0.id == rule.id }) { ledger.rules[index].enabled = value }
-            }
-        })
+        Section { InlineNote(text: "重命名会同步更新记录与安排中的分类，可以撤销。系统初始分类保留兜底用途。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
 }
 
@@ -218,7 +164,7 @@ struct BackupView: View {
 
     private var exportSection: some View {
         Section("完整备份") {
-            Text("包括账户、记录、规则、安排、目标和原始账单附件。设备之间可通过系统分享或文件传递备份；当前没有自动云同步。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            Text("包括账户、记录、安排、目标和原始账单附件。设备之间可通过系统分享或文件传递备份；当前没有自动云同步。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             SecureField("备份密码（推荐，至少 8 位）", text: $password).focused($passwordFocus, equals: .export)
             Button("导出完整备份", action: exportBackup).disabled(busy)
             Text("不填密码将导出未加密备份。密码无法找回，请妥善保存。备份只写到你选择的位置。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -266,7 +212,7 @@ struct HistoryView: View {
         }.navigationTitle("导入与恢复历史").yubaiNavigation().toolbar { CloseButton() }
             .onAppear { reload() }
             .confirmationDialog("恢复到这个版本？当前账本会先保留。", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } })) { Button("恢复所选版本") { if let target { store.recover(target) }; self.target = nil }; Button("取消", role: .cancel) { target = nil } }
-            .confirmationDialog("撤销本批次全部 \(undoBatch?.importedCount ?? 0) 笔？包括之后编辑过的记录，将移入回收站。", isPresented: Binding(get: { undoBatch != nil }, set: { if !$0 { undoBatch = nil } })) { Button("撤销这一批", role: .destructive) { if let batch = undoBatch { store.update("撤销导入批次") { BillImporter.undo(batchID: batch.id, in: &$0) }; reload() }; undoBatch = nil } }
+            .confirmationDialog("撤销本批次全部 \(undoBatch?.importedCount ?? 0) 笔？同时还原整理产生的关联和安排。", isPresented: Binding(get: { undoBatch != nil }, set: { if !$0 { undoBatch = nil } })) { Button("撤销这一批", role: .destructive) { if let batch = undoBatch { store.undoImport(batch.id); reload() }; undoBatch = nil } }
             .fileExporter(isPresented: $exporting, document: document, contentType: .data, defaultFilename: filename) { result in if case .failure(let e) = result { store.error = e.localizedDescription } }
     }
     func reload() { do { recoveries = try store.repository.recoveries() } catch { store.error = error.localizedDescription } }
@@ -280,7 +226,7 @@ struct GuideView: View {
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "信用、借款与投资"); Text("信用消费记在信用账户，消费时增加欠款；还款使用双边记录关联现金账户与信用账户，不再次计作消费。借入/归还借款关联信用与借款账户；借出/收回本金关联借出待收账户。投资申赎关联现金与投资账户；市值变化在账户核对中更新，已实现收益单独记作投资收益。信用额度不是资产。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "导入与重复"); Text("微信或支付宝里的银行卡支付应记入实际银行卡，渠道不自动等于资金账户。交易单号优先去重，缺失时按同来源、账户、时间、金额和用途识别。跨来源同时间同金额只提示疑似重复，由你确认。被删除的原记录重新导入不会复活，用户修改也不会被覆盖。未识别行保留在预览；批次原文件可随时导出。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "房租分摊"); Text("月度分摊按月登记，允许部分收款和漏收。季度付款按与房东的真实约定预留全额；未收分摊不算现金。消费统计按付款发生日计入本人承担比例，现金流显示实际全额付款。房租已导入时关联已有记录，避免重复记一笔。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "隐私与 AI"); Text("CSV/XLSX、截图 OCR、去重、规则分类和资金计算都在本机完成。「使用云端智能（DeepSeek）」默认关闭，开启后会把记录用途等任务摘要发送到 DeepSeek，补充归类、购买思考、洞察文字或搜索词。金额、账户和资金性质不交模型修改；未配置密钥、离线或请求失败时保留本机计算结果。账本锁使用系统认证；备份可用密码加密，密码无法找回。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
+            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "隐私与 AI"); Text("CSV/XLSX、截图 OCR、去重和资金计算都在本机完成。「使用云端智能（DeepSeek）」默认关闭，开启后会把记录用途等任务摘要发送到 DeepSeek，整理分类、性质与关联，补充购买思考、洞察文字或搜索词。金额、主账户和原始日期由本机保留；未配置密钥、离线或请求失败时保留本机计算结果。账本锁使用系统认证；备份可用密码加密，密码无法找回。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "跨设备与恢复"); Text("iPhone 与 Mac 共用同一备份格式。导出完整备份，再在另一台设备恢复；恢复是切换到所选完整账本，不是自动双向合并。请一次只在一台设备编辑，再交接备份。恢复前会保留原账本，修改前自动保留最近 20 个完整版本。示例账本不会写入真实账本。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "金额与范围"); Text("当前版本统一使用人民币，不自动换汇；金额按整数分计算。消费退款冲减消费，本金和内部移动不计日常收支。余白不连接银行、不执行转账、授信或投资交易。原始账单应与你的机构账单一起核对。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
         }.yubaiFont(YubaiFont.callout).navigationTitle("使用指南").yubaiNavigation().toolbar { CloseButton() }

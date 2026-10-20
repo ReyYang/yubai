@@ -4,28 +4,6 @@ import YubaiCore
 
 /// Cloud task helpers. Amount / account / nature are never model-writable.
 enum CloudIntelligence {
-    @MainActor static func categorize(_ preview: ImportPreview, ledger: Ledger, progress: (Int, Int) -> Void) async -> ImportPreview {
-        guard let backend = IntelligenceRuntime.backend(for: ledger) else { return preview }
-        let entries = preview.rows.filter { $0.status == .ready }.compactMap(\.entry).filter { [.expense, .income].contains($0.nature) && $0.classificationReason.hasPrefix("未命中规则") }
-        guard !entries.isEmpty else { return preview }
-        var result = preview; let started = Date()
-        let allowed = ledger.categories.map(\.name)
-        for start in stride(from: 0, to: entries.count, by: 24) {
-            guard !Task.isCancelled else { return result }
-            if Date().timeIntervalSince(started) >= 90 { result.warnings.append("智能辅助已完成一部分归类；余下记录保留本地规则结果或其他分类，可直接保存。"); break }
-            let batch = Array(entries[start..<min(entries.count, start + 24)])
-            progress(start, entries.count)
-            let items = batch.enumerated().map { CategorizeItem(index: $0.offset, purpose: String($0.element.title.prefix(80)), direction: $0.element.nature.inflow ? "收入" : "支出") }
-            do {
-                let suggestions = try await backend.categorize(batch: items, allowedCategories: allowed)
-                guard !Task.isCancelled else { return result }
-                var mapped: [UUID: String] = [:]
-                for item in suggestions where batch.indices.contains(item.index) { mapped[batch[item.index].id] = item.category }
-                result.applyCategorySuggestions(mapped, categories: ledger.categories)
-            } catch { result.warnings.append("这次智能归类未全部完成，本地规则结果已保留。可以直接保存，稍后按需纠正。"); break }
-        }
-        return result
-    }
     @MainActor static func availabilityText(for preferences: Preferences) -> String { IntelligenceRuntime.availabilityText(for: preferences) }
     @MainActor static func canAssist(preferences: Preferences) -> Bool {
         IntelligenceRuntime.backend(for: preferences) != nil

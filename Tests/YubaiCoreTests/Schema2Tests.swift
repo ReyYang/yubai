@@ -9,7 +9,6 @@ final class Schema2Tests: XCTestCase {
     func testMigrationAndStableSchema2RoundTrip() throws {
         let old = try fixture(); let ledger = try LedgerCodec.decode(old)
         XCTAssertEqual(ledger.schema, 2)
-        XCTAssertEqual(ledger.rules.first?.keyword, "美团")
         XCTAssertEqual(ledger.goals.first?.reserved, 180000)
         XCTAssertEqual(ledger.rents.first?.monthlyTotal, 480000)
         XCTAssertEqual(ledger.profile.principles, ["超过 2,000 的东西等 48 小时"])
@@ -22,7 +21,7 @@ final class Schema2Tests: XCTestCase {
         XCTAssertEqual(ledger.advice.first?.result, wish.judgment)
         let bytes = try LedgerCodec.encode(ledger)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
-        XCTAssertEqual(json["schema"] as? Int, 2); XCTAssertNil(json["advice"])
+        XCTAssertEqual(json["schema"] as? Int, 2); XCTAssertNil(json["advice"]); XCTAssertNil(json["rules"])
         let again = try LedgerCodec.decode(bytes)
         XCTAssertEqual(again, ledger); XCTAssertEqual(try LedgerCodec.encode(again), bytes)
         // Old purchase UI writes through the compatibility property into persistent wishes.

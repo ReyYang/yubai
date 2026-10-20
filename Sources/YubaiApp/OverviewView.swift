@@ -144,6 +144,7 @@ struct FundsCalculationView: View {
                 VStack(spacing: 0) {
                     formula("可支配现金", funds.cash); formula("减：全部信用待还", -funds.debt); formula("减：已知付款", -funds.committed)
                     formula("减：目标预留", -funds.goals); formula("减：应急底线", -funds.emergency); formula("减：日常生活预留", -funds.living)
+                    if funds.livingEstimated { Text("按近 90 天小额日常支出估算；可在资金偏好中填写每日金额。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                     if funds.uncertainInflow > 0 { formula("减：性质待明确流入", -funds.uncertainInflow) }
                     formula("保守可动用", funds.available)
                 }

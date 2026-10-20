@@ -23,7 +23,6 @@ public enum SampleData {
         var repay = Plan(title: "信用卡还款", amount: 238_600, dueDate: Dates.addDays(15, to: now), nature: .repayment); repay.accountID = credit.id; l.plans.append(repay)
         l.rents = [Rent(monthlyTotal: 480_000, personalShare: 240_000, startDate: Dates.addDays(-30, to: now), nextDueDate: Dates.addDays(42, to: now))]
         l.goals = [Goal(title: "下一次远行", target: 800_000, reserved: 180_000, dueDate: Dates.addDays(150, to: now))]
-        l.rules = [Rule(keyword: "咖啡", category: "餐饮")]
         return l
     }
 }

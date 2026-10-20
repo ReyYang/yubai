@@ -10,6 +10,7 @@ public struct ForecastPoint: Identifiable, Sendable {
 }
 public struct Funds: Sendable {
     public var cash: Int64; public var debt: Int64; public var investments: Int64; public var receivables: Int64; public var netWorth: Int64
+    public var livingEstimated: Bool = false
     public var committed: Int64; public var goals: Int64; public var emergency: Int64; public var living: Int64
     public var uncertainInflow: Int64; public var available: Int64; public var expectedIncome: Int64
     public var occurrences: [Occurrence]; public var points: [ForecastPoint]; public var warnings: [String]
@@ -27,6 +28,29 @@ public struct PurchaseAssessment: Sendable {
 }
 
 public enum Finance {
+    /// Median of nine 10-day spending totals / 10 over the last 90 calendar days.
+    /// Includes zero-spend days; excludes single bills above ¥500 and plan/rent-linked
+    /// expenses. Linked refunds offset their original; unlinked refunds offset their
+    /// own 10-day window. The median resists a few unusually expensive windows.
+    public static func estimatedDailyLiving(_ ledger: Ledger, now: Date) -> Int64 {
+        let start = Dates.addDays(-89, to: Dates.day(now))
+        let entries = ledger.activeEntries.filter { $0.date <= now }
+        var refunds: [UUID: Int64] = [:]
+        for e in entries where e.nature == .refund {
+            if let id = e.relatedEntryID { refunds[id, default: 0] += e.amount }
+        }
+        var windows = Array(repeating: Int64(0), count: 9)
+        for e in entries where e.date >= start {
+            let day = Dates.calendar.dateComponents([.day], from: start, to: Dates.day(e.date)).day ?? -1
+            guard (0..<90).contains(day) else { continue }
+            if e.nature == .expense, e.planID == nil, e.rentID == nil, e.amount <= 50_000 {
+                windows[day / 10] += max(0, e.amount - refunds[e.id, default: 0])
+            } else if e.nature == .refund, e.relatedEntryID == nil {
+                windows[day / 10] -= e.amount
+            }
+        }
+        return min(Money.limit / 366, max(0, windows.sorted()[4]) / 10)
+    }
     private struct PaymentKey: Hashable { var id: UUID; var period: Date }
     public static func balance(_ account: Account, in ledger: Ledger, at: Date = Date()) -> Int64 {
         account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && $0.postingDate(for: account.id) > account.anchorDate && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
@@ -109,7 +133,9 @@ public enum Finance {
         let commitments = occurrences.filter { !$0.inflow && !($0.planID.map { repayments.contains($0) } ?? false) }
         let committed = commitments.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
-        let living = ledger.preferences.dailyLiving * Int64(ledger.preferences.horizonDays)
+        let livingEstimated = ledger.preferences.dailyLiving == 0
+        let daily = livingEstimated ? estimatedDailyLiving(ledger, now: now) : ledger.preferences.dailyLiving
+        let living = daily * Int64(ledger.preferences.horizonDays)
         // An unresolved inflow after the most recent reconciliation is withheld until its nature is known.
         let uncertain = entries.filter { e in
             e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { e.date > $0.anchorDate && ($0.kind == .cash || $0.kind == .bank) } == true
@@ -123,7 +149,6 @@ public enum Finance {
         if accounts.contains(where: { now.timeIntervalSince($0.anchorDate) > 14 * 86400 }) { warnings.append("部分余额已超过 14 天未核对；请确认没有遗漏账单。") }
         if entries.contains(where: { $0.nature.uncertain }) { warnings.append("有资金性质待明确；余额核对后新增的未知流入已保守扣除，历史未知仍需核对用途。") }
         if occurrences.contains(where: \.overdue) { warnings.append("有已到期但未登记完成的安排，仍计入预留。") }
-        if ledger.preferences.dailyLiving == 0 { warnings.append("尚未设置日常生活预留，未来零碎开销没有计入。") }
         if entries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有内部移动尚未关联另一账户，请在账本中补全，避免重复计算。") }
         let baseline = cash - debt - goals - emergency - uncertain
         var points: [ForecastPoint] = []
@@ -137,11 +162,11 @@ public enum Finance {
                 else if !(item.planID.map { repayments.contains($0) } ?? false) { out += item.amount }
                 cursor += 1
             }
-            let conservative = baseline - out - Int64(offset) * ledger.preferences.dailyLiving
+            let conservative = baseline - out - Int64(offset) * daily
             points.append(ForecastPoint(date: date, conservative: conservative, expected: conservative + incoming))
         }
         return Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
-                     committed: committed, goals: goals, emergency: emergency, living: living,
+                     livingEstimated: livingEstimated, committed: committed, goals: goals, emergency: emergency, living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
                      occurrences: occurrences, points: points, warnings: warnings)
     }

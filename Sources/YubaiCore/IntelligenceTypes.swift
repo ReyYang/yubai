@@ -1,26 +1,5 @@
 import Foundation
 
-/// One categorization suggestion. Amount / nature / account must never be changed by backends.
-public struct CategorySuggestion: Equatable, Sendable {
-    public var index: Int
-    public var category: String
-    public init(index: Int, category: String) {
-        self.index = index
-        self.category = category
-    }
-}
-
-public struct CategorizeItem: Equatable, Sendable {
-    public var index: Int
-    public var purpose: String
-    public var direction: String
-    public init(index: Int, purpose: String, direction: String) {
-        self.index = index
-        self.purpose = purpose
-        self.direction = direction
-    }
-}
-
 public struct InsightFactPack: Equatable, Sendable {
     /// Pre-formatted fact sentences from local Finance.review / templates. Models may polish only.
     public var factLines: [String]

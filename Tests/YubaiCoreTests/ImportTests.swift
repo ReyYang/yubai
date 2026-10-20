@@ -15,7 +15,7 @@ final class ImportTests: XCTestCase {
         XCTAssertEqual(p.rows.filter { $0.status == .skipped }.count, 1)
         XCTAssertEqual(p.rows.filter { $0.status == .invalid }.count, 1)
         XCTAssertEqual(p.selectedEntries.first?.amount, 2800)
-        XCTAssertEqual(p.selectedEntries.first?.category, "餐饮")
+        XCTAssertEqual(p.selectedEntries.first?.category, "待整理")
         XCTAssertEqual(p.selectedEntries.last?.nature, .unknownIn)
     }
     func testReimportKeepsUserEditsAndDeletedTombstones() throws {
@@ -27,7 +27,7 @@ final class ImportTests: XCTestCase {
         let second = try BillImporter.preview(data: bytes, filename: "wechat.csv", accountID: l.accounts[0].id, ledger: l)
         XCTAssertEqual(second.duplicateCount, 3); XCTAssertEqual(second.readyCount, 0); XCTAssertEqual(l.entries[0].amount, 2900)
         BillImporter.undo(batchID: batch.id, in: &l); XCTAssertEqual(l.activeEntries.count, 0)
-        XCTAssertEqual(l.attachments[0].data, bytes)
+        XCTAssertTrue(l.attachments.isEmpty)
     }
     func testSourceIdAmountConflictDoesNotOverwrite() throws {
         var l = ledger(); let bytes = try file("wechat.csv"); let first = try BillImporter.preview(data: bytes, filename: "wechat.csv", accountID: l.accounts[0].id, ledger: l); _ = try BillImporter.commit(first, data: bytes, to: &l)
@@ -113,22 +113,11 @@ final class ImportTests: XCTestCase {
         let l = ledger(); let p = try BillImporter.preview(data: file("bank-1904.xlsx"), filename: "bank-1904.xlsx", accountID: l.accounts[0].id, ledger: l)
         XCTAssertEqual(p.selectedEntries.count, 2); XCTAssertEqual(Dates.text(p.selectedEntries[0].date), "2026-09-20")
     }
-    func testCategoryRulesCannotReclassifyRefundOrUnresolvedTransferAsIncome() throws {
-        let rules = [Rule(keyword: "咖啡", category: "餐饮"), Rule(keyword: "银行", category: "工资奖金")]
-        XCTAssertEqual(Classifier.classify(title: "咖啡退款", inflow: true, rules: rules).nature, .refund)
-        XCTAssertEqual(Classifier.classify(title: "银行转账", inflow: true, rules: rules).nature, .unknownIn)
-        XCTAssertEqual(Classifier.classify(title: "银行信用卡还款", inflow: false, rules: rules).nature, .repayment)
-    }
-    func testModelSuggestionsCannotOverrideRulesMoneyNatureOrCategoryDirection() throws {
-        let l = ledger()
-        let data = Data("时间,收支,金额,名称\n2026-09-20,支出,23.45,未匹配用途\n2026-09-20,支出,28.00,午餐\n2026-09-20,收入,300.00,朋友转账\n2026-09-20,收入,300.00,未匹配收入\n".utf8)
-        var p = try BillImporter.preview(data: data, filename: "test.csv", accountID: l.accounts[0].id, ledger: l)
-        let before = p.selectedEntries
-        p.applyCategorySuggestions(Dictionary(uniqueKeysWithValues: before.map { ($0.id, "学习工作") }), categories: l.categories)
-        XCTAssertEqual(p.selectedEntries.map(\.amount), before.map(\.amount))
-        XCTAssertEqual(p.selectedEntries.map(\.nature), before.map(\.nature))
-        XCTAssertEqual(p.selectedEntries.map(\.accountID), before.map(\.accountID))
-        XCTAssertEqual(p.selectedEntries.map(\.category), ["学习工作", "餐饮", "待明确", "其他收入"])
+    func testOnlyExplicitTypeFieldsSupplyNatureHints() {
+        XCTAssertEqual(Classifier.classify(inflow: true, hint: "退款").nature, .refund)
+        XCTAssertEqual(Classifier.classify(inflow: true, hint: "转账").nature, .unknownIn)
+        XCTAssertEqual(Classifier.classify(inflow: false, hint: "信用卡还款").nature, .repayment)
+        XCTAssertEqual(Classifier.classify(inflow: false).category, "待整理")
     }
     func testCSVResourceLimitsRejectHugeFieldsAndWideSheets() throws {
         XCTAssertThrowsError(try CSV.parse(String(repeating: "字", count: 33_334)))

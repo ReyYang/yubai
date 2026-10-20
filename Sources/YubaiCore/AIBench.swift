@@ -91,14 +91,17 @@ public enum AIBenchRunner {
     }
 
     public static func run(fixture: AIBenchFixture, backend: CloudBackend) async -> AIBenchScore {
-        let allowedNames = Category.defaults.map(\.name)
-
         var catPass = 0
         for sample in fixture.categorize {
-            let batch = [CategorizeItem(index: 0, purpose: sample.purpose, direction: sample.direction)]
+            var ledger = Ledger(); ledger.accounts = [Account(name: "评测账户")]
+            let entry = Entry(date: Dates.parse("2026-10-01")!, amount: 1000,
+                              nature: sample.direction == "收入" ? .income : .expense,
+                              accountID: ledger.accounts[0].id, title: sample.purpose, category: "待整理")
+            ledger.entries = [entry]
             do {
-                let suggestions = try await backend.categorize(batch: batch, allowedCategories: allowedNames)
-                if suggestions.first?.category == sample.expectedCategory { catPass += 1 }
+                let result = try await ImportOrganizer(transport: backend).organize(ledger: ledger, entryIDs: [entry.id])
+                if !result.changeSet.items.isEmpty { try result.changeSet.apply(to: &ledger) }
+                if ledger.entries[0].category == sample.expectedCategory { catPass += 1 }
             } catch {
                 // count as fail
             }

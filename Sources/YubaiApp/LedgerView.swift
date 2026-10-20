@@ -69,7 +69,7 @@ struct LedgerView: View {
             .toolbar {
                 ToolbarItemGroup {
                     Button(selecting ? "完成选择" : "批量") { selecting.toggle(); selected.removeAll() }.disabled(rows.isEmpty && !selecting)
-                    Menu { Button("导入账单") { store.sheet = .imports }; Button(showDeleted ? "返回账本" : "回收站") { showDeleted.toggle(); selected.removeAll() }; Button("分类与规则") { store.sheet = .rules } } label: { Image(systemName: "ellipsis.circle") }
+                    Menu { Button("导入账单") { store.sheet = .imports }; Button(showDeleted ? "返回账本" : "回收站") { showDeleted.toggle(); selected.removeAll() }; Button("分类") { store.sheet = .categories } } label: { Image(systemName: "ellipsis.circle") }
                     Button { store.sheet = .entry(nil) } label: { Image(systemName: "plus") }.accessibilityLabel("记一笔")
                 }
             }

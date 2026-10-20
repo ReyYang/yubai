@@ -46,7 +46,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
     public func validateStructure() throws {
         guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, source.count <= 200,
               !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, reason.count <= 4000,
-              !items.isEmpty, items.count <= 200,
+              !items.isEmpty, items.count <= (["导入整理", "回答整理问题"].contains(source) ? 800_000 : 200),
               (-2_208_988_800...7_258_118_400).contains(createdAt.timeIntervalSince1970) else { throw YubaiError.invalid("提案的来源、依据、时间或项目数量无效。") }
     }
     public func preview(in ledger: Ledger) -> [String] {

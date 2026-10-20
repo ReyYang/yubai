@@ -2,6 +2,11 @@ import XCTest
 @testable import YubaiCore
 
 final class AIBenchTests: XCTestCase {
+    private static func organizedReply(_ messages: [[String: String]], category: String) throws -> String {
+        let payload = try JSONValue.parse(messages[1]["content"]!)
+        let row = try XCTUnwrap(payload["batch"]?.arrayValue?.first)
+        return try JSONValue.object(["rows": .array([.object(["entry": row["id"]!, "category": .string(category), "confident": .bool(true)])])]).jsonText()
+    }
     private func smallFixture() throws -> AIBenchFixture {
         var fixture = try AIBenchRunner.loadBundledFixture(bundle: .module)
         fixture.categorize = Array(fixture.categorize.prefix(1))
@@ -28,7 +33,7 @@ final class AIBenchTests: XCTestCase {
         let stub = CloudTestStub { request in
             let messages = try CloudTestStub.messages(in: request)
             let system = messages[0]["content"]!
-            if system.contains("选择分类") { return #"[{"index":0,"category":"餐饮"}]"# }
+            if system.contains("导入整理助手") { return try Self.organizedReply(messages, category: "餐饮") }
             if system.contains("消费思考助手") { return "可以先考虑替代方案，资金结论以程序判断为准。" }
             if system.contains("资金线索") { return "餐饮共 ¥1,280.50，可以对照近期重心。" }
             return "星巴克、瑞幸"
@@ -56,7 +61,7 @@ final class AIBenchTests: XCTestCase {
     func testRunnerRejectsWrongAnswersAndScoresGuardedInsightFallback() async throws {
         let stub = CloudTestStub { request in
             let messages = try CloudTestStub.messages(in: request)
-            if messages[0]["content"]!.contains("选择分类") { return #"[{"index":0,"category":"交通"}]"# }
+            if messages[0]["content"]!.contains("导入整理助手") { return try Self.organizedReply(messages, category: "交通") }
             return "不相关的答复"
         }
         defer { stub.close() }

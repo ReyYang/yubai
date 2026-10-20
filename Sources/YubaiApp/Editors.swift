@@ -6,8 +6,8 @@ struct EntryEditor: View {
     var entry: Entry?
     @State private var amount = ""; @State private var title = ""; @State private var nature: Nature = .expense
     @State private var date = Date(); @State private var accountID: UUID?; @State private var otherID: UUID?
-    @State private var category = "自动分类"; @State private var note = ""; @State private var relatedID: UUID?
-    @State private var learn = false; @State private var keyword = ""; @State private var showAccount = false
+    @State private var category = "待整理"; @State private var note = ""; @State private var relatedID: UUID?
+    @State private var showAccount = false
     @State private var loaded = false
     var body: some View {
         Form {
@@ -36,18 +36,15 @@ struct EntryEditor: View {
             var e = entry ?? Entry(amount: cents, accountID: accountID, title: cleanTitle)
             e.amount = cents; e.title = cleanTitle; e.accountID = accountID; e.nature = nature; e.date = date; e.note = note
             e.otherAccountID = nature.paired ? otherID : nil; e.relatedEntryID = nature == .refund ? relatedID : nil
-            if category == "自动分类" { let c = Classifier.classify(title: cleanTitle, inflow: nature.inflow, rules: store.current.rules); e.category = store.current.resolveCategory(c.category); e.classificationReason = c.reason }
-            else { e.category = category; e.classificationReason = "手动选择" }
+            e.category = category; e.classificationReason = "手动选择"
             if nature == .refund, let relatedID, let original = store.current.entries.first(where: { $0.id == relatedID }) {
                 let refunded = store.current.activeEntries.filter { $0.nature == .refund && $0.relatedEntryID == relatedID && $0.id != e.id }.reduce(Int64(0)) { $0 + $1.amount }
                 guard cents <= original.amount - refunded else { throw YubaiError.invalid("退款超过这笔支出剩余可退金额。") }; e.category = original.category
             }
-            if learn && keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { throw YubaiError.invalid("请填写要学习的关键词。") }
             if entry?.amount != e.amount || entry?.relatedEntryID != e.relatedEntryID || entry?.nature != e.nature || e.personalExpense == nil { LedgerOperations.recordPersonalShare(&e, ledger: store.current) }
             if store.update("保存记录", { l in
                 if let i = l.entries.firstIndex(where: { $0.id == e.id }) { e.userEdited = true; l.entries[i] = e } else { l.entries.append(e) }
                 LedgerOperations.syncLinkedRefundCategories(in: &l)
-                if learn { l.rules.insert(Rule(keyword: keyword.trimmingCharacters(in: .whitespacesAndNewlines), category: e.category), at: 0) }
             }) { dismiss() }
         } catch { store.error = error.localizedDescription }
     }
@@ -72,15 +69,11 @@ struct EntryEditor: View {
     }
     private var classificationSection: some View {
         Section("整理方式") {
-            Picker("分类", selection: $category) { Text("自动分类").tag("自动分类"); ForEach(store.current.categories) { Text($0.name).tag($0.name) }; if !store.current.categories.contains(where: { $0.name == category }) && category != "自动分类" { Text(category).tag(category) } }
+            Picker("分类", selection: $category) { Text("待整理").tag("待整理"); ForEach(store.current.categories) { Text($0.name).tag($0.name) }; if !store.current.categories.contains(where: { $0.name == category }) && category != "待整理" { Text(category).tag(category) } }
             if nature == .refund {
                 Picker("关联原支出", selection: $relatedID) { Text("暂不关联").tag(UUID?.none); ForEach(store.current.activeEntries.filter { $0.nature == .expense && $0.id != entry?.id }.sorted { $0.date > $1.date }.prefix(200)) { e in Text(e.title + " · " + Money.text(e.amount)).tag(Optional(e.id)) } }
             }
             TextField("备注（可选）", text: $note, axis: .vertical).lineLimit(2...5)
-            if category != "自动分类" && (nature == .expense || nature == .income) {
-                Toggle("以后遇到类似用途，使用这个分类", isOn: $learn).tint(YubaiColor.toggleOn)
-                if learn { TextField("匹配关键词，例如：瑞幸", text: $keyword); InlineNote(text: "只学习分类，不修改历史记录、交易金额或收支方向。") }
-            }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
 }

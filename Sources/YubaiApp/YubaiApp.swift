@@ -10,7 +10,7 @@ enum Destination: String, CaseIterable, Identifiable {
     var symbol: String { switch self { case .overview: "water.waves"; case .ledger: "text.book.closed"; case .plans: "calendar"; case .insights: "chart.xyaxis.line"; case .settings: "person.crop.circle" } }
 }
 enum AppSheet: Identifiable {
-    case entry(Entry?), account(Account?), plan(Plan?), goal(Goal?), rent(Rent?), imports, accounts, advice, categories, rules, backup, history, rentDetail(UUID), entryDetail(UUID), guide, fundsCalculation
+    case entry(Entry?), account(Account?), plan(Plan?), goal(Goal?), rent(Rent?), imports, accounts, advice, categories, backup, history, rentDetail(UUID), entryDetail(UUID), guide, fundsCalculation
     var id: String { String(describing: self) }
 }
 
@@ -60,6 +60,8 @@ enum AppSheet: Identifiable {
     var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
     var loadFailure: String?; var locked = false; var importedURL: URL?
     var errorHosts: [UUID] = []
+    var organizingBatchID: UUID?
+    var organizationErrors: [UUID: String] = [:]
     private var undoLedger: Ledger?; var undoLabel: String?
     init() {
         let args = ProcessInfo.processInfo.arguments
@@ -89,20 +91,22 @@ enum AppSheet: Identifiable {
         if args.contains("--demo") { demo = SampleData.ledger(); locked = false }
     }
 
-    @discardableResult func update(_ reason: String, _ change: (inout Ledger) throws -> Void) -> Bool {
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard !locked || isDemo else { error = "请先解锁账本。"; return false }
         guard loadFailure == nil || isDemo else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
         do {
-            try change(&next); next.updatedAt = Date()
+            try change(&next); if !preservingUpdatedAt { next.updatedAt = Date() }
             if isDemo { try next.validate(); demo = next } else { try repository.save(next, reason: reason); ledger = next }
             undoLedger = before; undoLabel = reason; toast = reason + "完成"; return true
         } catch { self.error = error.localizedDescription; return false }
     }
-    @discardableResult func apply(_ changeSet: ChangeSet, label: String) -> Bool {
+    @discardableResult func apply(_ changeSet: ChangeSet, label: String, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
         var skipped: [String] = []
         let saved = update(label) { ledger in
-            skipped = try changeSet.apply(to: &ledger)
+            if !changeSet.items.isEmpty { skipped = try changeSet.apply(to: &ledger) }
+            else if changeSet.source != "导入整理" { try changeSet.validateStructure() }
+            try finishing(&ledger)
             ledger.pendingChanges.removeAll { $0.id == changeSet.id }
             for i in ledger.cards.indices where ledger.cards[i].action == .confirmChangeSet(changeSet.id) {
                 ledger.cards[i].dismissedAt = Date()
@@ -207,6 +211,7 @@ struct RootView: View {
             }
         }
         .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived() }; if newValue == .background && store.current.preferences.lockEnabled && !store.isDemo { store.sheet = nil; store.toast = nil; store.locked = true } }
+        .task(id: "\(store.current.id)-\(store.isDemo)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)") { if phase == .active { await store.organizePendingImports() } }
         .overlay { privacyCover }
         .onOpenURL { url in guard url.isFileURL else { return }; store.importedURL = url; if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
         .onChange(of: store.locked) { _, value in if !value, let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
@@ -244,7 +249,6 @@ struct RootView: View {
         case .accounts: AccountsView()
         case .advice: AdviceView()
         case .categories: CategoriesView()
-        case .rules: RulesView()
         case .backup: BackupView()
         case .history: HistoryView()
         case .rentDetail(let id): RentDetailView(rentID: id)
