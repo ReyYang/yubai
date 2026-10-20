@@ -62,9 +62,9 @@ final class Schema2Tests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let repo = LedgerRepository(directory: root); let old = try fixture(); try old.write(to: repo.file)
-        var ledger = try repo.load(); XCTAssertTrue(try repo.recoveries().isEmpty)
+        var ledger = try repo.load(); XCTAssertEqual(try repo.recoveries().count, 1)
         ledger.entries[0].category = "日用购物"; try repo.save(ledger, reason: "修改分类")
-        let history = try repo.recoveries(); let before = try XCTUnwrap(history.first)
+        let history = try repo.recoveries(); let before = try XCTUnwrap(history.first { $0.name.hasSuffix("升级前版本") })
         XCTAssertTrue(before.name.hasSuffix("升级前版本")); XCTAssertEqual(try Data(contentsOf: before.url), old)
         try repo.save(ledger)
         XCTAssertEqual(try repo.recoveries().filter { $0.name.hasSuffix("升级前版本") }.count, 1)

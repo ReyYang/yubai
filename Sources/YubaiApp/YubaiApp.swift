@@ -10,7 +10,7 @@ enum Destination: String, CaseIterable, Identifiable {
     var symbol: String { self == .overview ? "water.waves" : "person.crop.circle" }
 }
 enum AppSheet: Identifiable {
-    case account(Account?), imports, accounts, backup, history, fundsCalculation
+    case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions
     case ask(String), capture(Data), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, reconcile(UUID)
     var id: String { String(describing: self) }
@@ -47,7 +47,22 @@ enum AppSheet: Identifiable {
     }
     private func invalidateDerived() { cachedEntries = nil; refreshTimeDerived() }
     func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1 }
-    let repository: LedgerRepository
+    let localRepository: LedgerRepository
+    var locations: LedgerLocations
+    var ledgerLocation: LedgerLocation = .local
+    var repository: LedgerRepository { (try? locations.repository(for: ledgerLocation)) ?? localRepository }
+    let syncAllowed: Bool
+    var syncBusy = false
+    var checkingCloudAvailability = false
+    var syncRefreshRequested = false
+    var syncAvailabilityNeedsRefresh = false
+    var switchingLedgerLocation = false
+    var choosingSyncVersion = false
+    var syncStatus: String?
+    var syncChoice: SyncChoice?
+    var pendingUpload: Ledger?
+    @ObservationIgnored var syncMonitor: CloudLedgerMonitor?
+    var iCloudAvailable: Bool { locations.cloud != nil }
     var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
     var loadFailure: String?; var locked = false; var importedURL: URL?
     var errorHosts: [UUID] = []
@@ -62,18 +77,20 @@ enum AppSheet: Identifiable {
         else if let i = args.firstIndex(of: "--data-directory"), args.indices.contains(i + 1) { directory = URL(fileURLWithPath: args[i+1], isDirectory: true) }
         else if let path = ProcessInfo.processInfo.environment["YUBAI_DATA_DIR"] { directory = URL(fileURLWithPath: path, isDirectory: true) }
         else { directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("app.yubai.personal", isDirectory: true) }
-        repository = LedgerRepository(directory: directory)
+        localRepository = LedgerRepository(directory: directory)
+        locations = LedgerLocations(local: localRepository, cloudDirectory: nil)
+        syncAllowed = !args.contains("--test-ledger") && !args.contains("--data-directory") && ProcessInfo.processInfo.environment["YUBAI_DATA_DIR"] == nil
         #if DEBUG && targetEnvironment(simulator)
-        do { try UITestSupport.prepare(repository) } catch { loadFailure = error.localizedDescription; return }
+        do { try UITestSupport.prepare(localRepository) } catch { loadFailure = error.localizedDescription; return }
         #endif
         do {
-            ledger = try repository.load()
+            ledger = try localRepository.load()
             locked = ledger.preferences.lockEnabled
         } catch { loadFailure = error.localizedDescription }
     }
 
     @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
-        guard !locked else { error = "请先解锁账本。"; return false }
+        guard canEditLedger() else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
         do {
@@ -84,7 +101,7 @@ enum AppSheet: Identifiable {
                 Wishlist.autoLink(&next, addedEntryIDs: addedIDs, now: Date())
             }
             if !preservingUpdatedAt { next.updatedAt = Date() }
-            try repository.save(next, reason: reason); ledger = next
+            try persist(next, reason: reason); ledger = next
             if recordUndo { undoLedger = before; undoLabel = reason; toast = reason + "完成" }; return true
         } catch { self.error = error.localizedDescription; return false }
     }
@@ -103,24 +120,28 @@ enum AppSheet: Identifiable {
         return saved
     }
     func undo() {
-        guard let previous = undoLedger else { return }
+        guard canEditLedger(), let previous = undoLedger else { return }
         do {
-            try repository.save(previous, reason: "撤销"); ledger = previous
+            try persist(previous, reason: "撤销"); ledger = previous
             undoLedger = nil; undoLabel = nil; toast = "已撤销上一项修改"
         } catch { self.error = error.localizedDescription }
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
-        guard !locked else { error = "请先解锁账本。"; return false }
-        do { try repository.restoreBackup(restored); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
+        guard canEditLedger() else { return false }
+        do { try persist(restored, reason: "恢复前", restoring: true); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func recover(_ recovery: Recovery) -> Bool {
-        do { ledger = try repository.recover(recovery); loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
+        guard canEditLedger() else { return false }
+        do { let restored = try localRepository.readRecovery(recovery); try persist(restored, reason: "恢复版本", restoring: true); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
         catch { self.error = error.localizedDescription; return false }
+    }
+    func adoptSyncedLedger(_ next: Ledger) {
+        ledger = next; loadFailure = nil; undoLedger = nil; undoLabel = nil
     }
     func unlock() async {
         let context = LAContext()
-        do { if try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "解锁你的余白账本") { locked = false } }
+        do { if try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "解锁你的余白账本") { locked = false; if syncChoice != nil { sheet = .syncVersions } } }
         catch { self.error = "未能解锁。可以重试 Face ID、Touch ID 或设备密码。" }
     }
 
@@ -189,7 +210,8 @@ struct RootView: View {
                     .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(YubaiMotion.toastOut(reduceMotion: reduceMotion))))
             }
         }
-        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived() }; if newValue == .background && store.current.preferences.lockEnabled { store.sheet = nil; store.toast = nil; store.locked = true } }
+        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync() } }; if newValue == .background && store.current.preferences.lockEnabled { store.sheet = nil; store.toast = nil; store.locked = true } }
+        .task { await store.configureSync() }
         .task(id: "\(store.current.id)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)") {
             if phase == .active { await store.organizePendingImports() }
         }
@@ -197,9 +219,17 @@ struct RootView: View {
             if phase == .active { await store.refreshButler() }
         }
         .task(id: store.ledger.preferences.weeklyLetterPush) { await WeeklyPush.sync(enabled: store.ledger.preferences.weeklyLetterPush) }
+        .overlay(alignment: .top) {
+            if !store.locked, store.syncBusy || store.syncChoice != nil {
+                VStack {
+                    if store.syncBusy { ProgressView(store.syncStatus ?? "正在从 iCloud 读取…") }
+                    if store.syncChoice != nil { Button("选择同步账本版本") { store.sheet = .syncVersions } }
+                }.padding().background(YubaiColor.card)
+            }
+        }
         .overlay { privacyCover }
         .onOpenURL { url in guard url.isFileURL else { return }; store.importedURL = url; if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
-        .onChange(of: store.locked) { _, value in if !value, let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync() }; if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {
         @Bindable var store = store
@@ -242,6 +272,7 @@ struct RootView: View {
         case .wishlist(let id): WishlistView(focusedWishID: id)
         case .backup: BackupView()
         case .history: RecoveryVersionsView()
+        case .syncVersions: SyncVersionsView()
         case .fundsCalculation: FundsCalculationView()
         case .cardEvidence(let id): ButlerEvidenceView(cardID: id)
         case .cardQuestion(let id): ButlerQuestionView(cardID: id)

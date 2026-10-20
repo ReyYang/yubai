@@ -125,7 +125,7 @@ final class StorageTests: XCTestCase {
         let newest = try XCTUnwrap(history.first); XCTAssertGreaterThan(newest.date, previous.date)
         let preserved = try Data(contentsOf: newest.url)
         XCTAssertEqual(preserved, external); XCTAssertEqual(try LedgerCodec.decode(preserved), externalLedger)
-        XCTAssertEqual(try Data(contentsOf: repo.file), try LedgerCodec.encode(ledger)); XCTAssertEqual(try repo.load(), ledger)
+        XCTAssertEqual(try Data(contentsOf: repo.file), try LedgerCodec.encodeMetadata(ledger)); XCTAssertEqual(try repo.load(), ledger)
     }
     func testFirstSaveVerifiesUnrecognizedCurrentFile() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-unrecognized-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }

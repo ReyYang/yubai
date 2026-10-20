@@ -14,7 +14,7 @@ let package = Package(
         .executableTarget(
             name: "YubaiApp",
             dependencies: ["YubaiCore"],
-            exclude: ["Info.plist", "Assets.xcassets", "PrivacyInfo.xcprivacy"]
+            exclude: ["Info.plist", "Assets.xcassets", "PrivacyInfo.xcprivacy", "Yubai-iCloud.entitlements"]
         ),
         .testTarget(
             name: "YubaiCoreTests",

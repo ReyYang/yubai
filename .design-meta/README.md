@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+2026-10-20 同步范围更新：按用户明确要求，构建默认关闭 iCloud（免费 Personal Team 继续本机签名），启用后在「我 → 备份与同步」选择仅本机／iCloud；iPhone 与 Mac 继续共用现在、我、问余白。账本附件拆分为同目录文件，冲突保留各版本并由用户选择，恢复历史与设备锁留本机。采用边界见 [第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md#icloud-账本的采用边界)，开关与存储说明见 [DEVELOPMENT.md](../docs/DEVELOPMENT.md#可选-icloud-账本)。本次完成静态核查，未编译或运行 XCTest／系统同步；Figma、原型、截图与发布包未同步。
+
 2026-10-20 当前源码采用用户在本轮明确批准的 2.0 导航：iPhone 两个 tab「现在／我」，iPhone / Mac 底部常驻「问余白」；Mac 侧栏同样仅有现在与我。旧账本、安排、洞察等独立维护页面和应用内示例入口已删除，原始用户存档字段继续兼容。当前使用说明见 [README](../README.md)，采用边界见 [第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md)。Swift 语法与工程引用仅做静态检查，当前无 Swift 工具链；尚未编译或执行新的五条 UI 测试，Figma、历史原型、截图与发布包尚未同步。以下旧日期记录保留其历史含义。
 
 2026-10-19 续作：按用户指定的[暖纸设计系统](https://claude.ai/artifact/Pz2z4mQNoCqTNLGRafY9v5)与[390pt 页面设计稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)迁移已有页面，并完成 Step 3 评审修复。已采用移除三套颜色主题（`Preferences.colorTheme` 仅保留旧存储兼容、界面忽略）、不打包字体而用系统 rounded / serif 回退，以及因暂无助手页面保留原生 `TabView`。本次仅有静态验证；没有 Swift 工具链，未验证 iOS / Mac 编译与真机效果。采用范围与未同步资源见 [DESIGN.md 的迁移记录](DESIGN.md#2026-10-19--设计系统迁移)。下方安装和测试结果保留原日期，不适用于本次迁移。

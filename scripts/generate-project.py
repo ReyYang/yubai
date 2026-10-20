@@ -24,10 +24,13 @@ refs.append(assets)
 privacy = add("privacy", 'isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>";')
 refs.append(privacy)
 privacy_build = add("privacy-build", f'isa = PBXBuildFile; fileRef = {privacy};')
+entitlements = add("icloud-entitlements", 'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Yubai-iCloud.entitlements; sourceTree = "<group>";')
+refs.append(entitlements)
+config_ref = add("icloud-config", 'isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/iCloud.xcconfig; sourceTree = "<group>";')
 source_group = add("app-group", f'isa = PBXGroup; children = ({",".join(refs)},); path = Sources/YubaiApp; sourceTree = "<group>";')
 product = add("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yubai.app; sourceTree = BUILT_PRODUCTS_DIR;')
 products = add("products", f'isa = PBXGroup; children = ({product},); name = Products; sourceTree = "<group>";')
-group = add("root-group", f'isa = PBXGroup; children = ({source_group},{products},); sourceTree = "<group>";')
+group = add("root-group", f'isa = PBXGroup; children = ({source_group},{config_ref},{products},); sourceTree = "<group>";')
 package = add("package", 'isa = XCLocalSwiftPackageReference; relativePath = .;')
 dependency = add("core-dependency", f'isa = XCSwiftPackageProductDependency; package = {package}; productName = YubaiCore;')
 framework = add("core-link", f'isa = PBXBuildFile; productRef = {dependency};')
@@ -54,7 +57,7 @@ settings = '''ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 configs = []
 for name in ["Debug", "Release"]:
     optimization = '-Onone' if name == 'Debug' else '-O'
-    configs.append(add("target-config:" + name, f'isa = XCBuildConfiguration; buildSettings = {{{settings} ONLY_ACTIVE_ARCH = {"YES" if name == "Debug" else "NO"}; SWIFT_ACTIVE_COMPILATION_CONDITIONS = {quote("DEBUG" if name == "Debug" else "")}; SWIFT_OPTIMIZATION_LEVEL = {quote(optimization)}; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; }}; name = {name};'))
+    configs.append(add("target-config:" + name, f'isa = XCBuildConfiguration; baseConfigurationReference = {config_ref}; buildSettings = {{{settings} ONLY_ACTIVE_ARCH = {"YES" if name == "Debug" else "NO"}; SWIFT_ACTIVE_COMPILATION_CONDITIONS = {quote("$(inherited) DEBUG" if name == "Debug" else "$(inherited)")}; SWIFT_OPTIMIZATION_LEVEL = {quote(optimization)}; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; }}; name = {name};'))
 config_list = add("target-configs", f'isa = XCConfigurationList; buildConfigurations = ({",".join(configs)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
 target = add("target", f'isa = PBXNativeTarget; buildConfigurationList = {config_list}; buildPhases = ({sources},{frameworks},{resources},); buildRules = (); dependencies = (); name = Yubai; packageProductDependencies = ({dependency},); productName = Yubai; productReference = {product}; productType = "com.apple.product-type.application";')
 project_configs = [add("project-config:" + name, f'isa = XCBuildConfiguration; buildSettings = {{CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; ENABLE_USER_SCRIPT_SANDBOXING = YES; ENABLE_TESTABILITY = {"YES" if name == "Debug" else "NO"};}}; name = {name};') for name in ['Debug', 'Release']]
@@ -62,7 +65,7 @@ project_config_list = add("project-configs", f'isa = XCConfigurationList; buildC
 project_id = add("project", f'isa = PBXProject; attributes = {{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 2640; }}; buildConfigurationList = {project_config_list}; compatibilityVersion = "Xcode 16.0"; developmentRegion = "zh-Hans"; hasScannedForEncodings = 0; knownRegions = (en, "zh-Hans", Base,); mainGroup = {group}; packageReferences = ({package},); productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; targets = ({target},);')
 ui_ref = add("ui-test-file", 'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/YubaiUITests/AppFlowTests.swift; sourceTree = "<group>";')
 ui_file_build = add("ui-test-file-build", f'isa = PBXBuildFile; fileRef = {ui_ref};')
-objects[group] = objects[group].replace(f'{source_group},{products},', f'{source_group},{ui_ref},{products},')
+objects[group] = objects[group].replace(f'{source_group},{config_ref},{products},', f'{source_group},{config_ref},{ui_ref},{products},')
 ui_product = add("ui-test-product", 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YubaiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
 objects[products] = objects[products].replace(f'{product},', f'{product},{ui_product},')
 ui_sources = add("ui-test-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({ui_file_build},); runOnlyForDeploymentPostprocessing = 0;')

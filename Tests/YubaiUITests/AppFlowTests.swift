@@ -116,7 +116,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["为每天用得上的东西花钱"].waitForExistence(timeout: 5))
         tap(app.navigationBars.buttons["我"], in: app)
         tap(app.buttons["openBackup"], in: app)
-        XCTAssertTrue(app.navigationBars["备份与恢复"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["备份与同步"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.secureTextFields["备份密码（至少 8 位）"].exists)
         XCTAssertTrue(app.buttons["askYubai"].exists)
     }

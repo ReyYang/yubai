@@ -162,8 +162,40 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
     ]
 }
 public struct Attachment: Codable, Identifiable, Equatable, Sendable {
-    public var id = UUID(); public var name: String; public var data: Data; public var createdAt = Date()
-    public init(name: String, data: Data) { self.name = name; self.data = data }
+    public var id = UUID(); public var name: String; public var createdAt = Date()
+    public var data: Data { didSet { byteCount = data.count; checksum = nil } }
+    public private(set) var byteCount: Int
+    var checksum: String?
+    public init(name: String, data: Data) { self.name = name; self.data = data; byteCount = data.count }
+    private enum CodingKeys: String, CodingKey { case id, name, createdAt, data, byteCount, checksum }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); name = try c.decode(String.self, forKey: .name)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        let embedded = try c.decodeIfPresent(Data.self, forKey: .data)
+        data = embedded ?? Data()
+        byteCount = try c.decodeIfPresent(Int.self, forKey: .byteCount) ?? data.count
+        checksum = try c.decodeIfPresent(String.self, forKey: .checksum)
+        guard byteCount >= 0, byteCount <= LedgerCodec.capacity else { throw YubaiError.invalid("附件大小无效。") }
+        if let embedded {
+            guard byteCount == embedded.count, checksum.map({ $0 == LedgerCodec.checksum(embedded) }) ?? true else { throw YubaiError.invalid("附件内容不完整。") }
+            checksum = nil
+        } else {
+            guard c.contains(.byteCount), let checksum, checksum.count == 64,
+                  checksum.allSatisfy({ "0123456789abcdef".contains($0) }) else { throw YubaiError.invalid("附件缺少大小或校验信息。") }
+        }
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(name, forKey: .name); try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(byteCount, forKey: .byteCount)
+        if encoder.userInfo[.ledgerMetadataOnly] as? Bool == true {
+            try c.encode(checksum ?? LedgerCodec.checksum(data), forKey: .checksum)
+        } else { try c.encode(data, forKey: .data) }
+    }
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.name == rhs.name && lhs.createdAt == rhs.createdAt && lhs.data == rhs.data && lhs.byteCount == rhs.byteCount
+    }
 }
 public struct ImportBatch: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var filename: String; public var importedAt = Date()

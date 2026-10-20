@@ -12,7 +12,7 @@ struct SettingsView: View {
                 NavigationLink { AccountsView() } label: { Label("账户", systemImage: "wallet.bifold") }
                 NavigationLink { ImportHistoryView() } label: { Label("导入记录", systemImage: "clock.arrow.circlepath") }.accessibilityIdentifier("openImportHistory")
                 NavigationLink { IntelligencePrivacyView() } label: { Label("智能与隐私", systemImage: "lock.shield") }
-                NavigationLink { BackupView() } label: { Label("备份与恢复", systemImage: "externaldrive") }.accessibilityIdentifier("openBackup")
+                NavigationLink { BackupView() } label: { Label("备份与同步", systemImage: "externaldrive") }.accessibilityIdentifier("openBackup")
                 NavigationLink { GuideView() } label: { Label("使用指南", systemImage: "book.closed") }
             }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
         }.editorForm().navigationTitle("我").yubaiNavigation()
@@ -70,6 +70,7 @@ struct BackupView: View {
         Form {
             if busy { Section { ProgressView("正在本机处理…") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
             if let message { Section { Text(message).yubaiFont(YubaiFont.callout).textSelection(.enabled) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
+            LedgerSyncSection()
             exportSection
             restoreSection
             if let pendingRestore {
@@ -81,13 +82,14 @@ struct BackupView: View {
                 }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             }
             Section { NavigationLink("恢复版本") { RecoveryVersionsView() } }.listRowBackground(YubaiColor.card)
-        }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().toolbar { CloseButton() }
+        }.editorForm().navigationTitle("备份与同步").yubaiNavigation().toolbar { CloseButton() }
             .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .yubaiBackup, defaultFilename: exportName) { result in switch result { case .success: message = "文件已保存到你选择的位置。"; case .failure(let error): message = error.localizedDescription } }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.yubaiBackup, .json, .data]) { result in do { acceptBackup(try result.get()) } catch { message = error.localizedDescription } }
+            .task { await store.configureSync() }
             .onAppear { if let url = store.importedURL, url.pathExtension.lowercased() == "yubaibackup" { store.importedURL = nil; acceptBackup(url) } }
     }
     func acceptBackup(_ url: URL) {
-        do { let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0; guard size <= 350 * 1024 * 1024 else { throw YubaiError.invalid("备份文件过大。") }; restoreData = try Data(contentsOf: url); readBackup() } catch { message = error.localizedDescription }
+        do { let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0; guard size <= LedgerCodec.backupCapacity else { throw YubaiError.invalid("备份文件过大。") }; restoreData = try Data(contentsOf: url); readBackup() } catch { message = error.localizedDescription }
     }
     func exportBackup() {
         passwordFocus = nil
@@ -102,7 +104,7 @@ struct BackupView: View {
 
     private var exportSection: some View {
         Section("完整备份") {
-            Text("包括账户、记录、安排、目标和原始账单附件。设备之间可通过系统分享或文件传递备份；当前没有自动云同步。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            Text("包括账户、记录、安排、目标和原始账单附件。备份包含所有附件，可通过系统分享或文件传递；可用时可在上方选择 iCloud 同步。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             SecureField("备份密码（至少 8 位）", text: $password).focused($passwordFocus, equals: .export)
             Button("导出完整备份", action: exportBackup).disabled(busy || password.count < 8)
             Text("完整备份使用密码加密。密码无法找回，请妥善保存；文件只写到你选择的位置。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -191,7 +193,7 @@ struct GuideView: View {
             explanation("我的消费观", "在「我」写下愿意多花、想克制的领域和自己的原则，也可以留储蓄目标与始终留着的底线。它们是你的选择，随时能改；「你常花的」只是账本里的习惯。")
             explanation("导入账单", "支持 CSV、TSV 和 XLSX。对应好实际付款账户，保存后自动整理分类、用途和关联，最多问五个问题，稍后答也可以。云端不可用时先保存，下次继续。需要反悔，可在「我 → 导入记录」整批撤销。")
             explanation("智能与隐私", "云端智能默认关闭。开启后，DeepSeek 会收到你的提问、消费观及任务所需的记录摘要：日期、金额、分类、用途和有限关联证据。截图先在本机识别，只发送脱敏文字；不发送原始图片、账单文件、交易单号或来源指纹，账户使用本地标识，长号码遮盖，部分转账姓名替换为别名。商户和备注仍可能出现在摘要里，脱敏不能识别所有姓名。到「我 → 智能与隐私 → 发给云端的内容」查看本次打开期间最近 50 次发送。密钥保存在本机 Keychain，不进入账本或备份。")
-            explanation("备份与恢复", "在「我 → 备份与恢复」设置至少 8 位密码，保存加密的完整备份，包含原始账单附件。密码请自己留好。恢复先验证，再等你确认；修改前的最近 20 份完整版本也能找回。iPhone 和 Mac 用同一格式，通过备份交接，一次在一台设备上编辑。")
+            explanation("备份与同步", "在「我 → 备份与同步」设置至少 8 位密码，保存加密的完整备份，包含原始账单附件。密码请自己留好。恢复先验证，再等你确认；修改前的最近 20 份完整版本也能找回。iPhone 和 Mac 用同一格式；默认仅本机，iCloud 可用时，可在「备份与同步」选择共享账本。同步冲突会保留各版本，由你选择，不自动合并。")
         }.navigationTitle("使用指南").yubaiNavigation().toolbar { CloseButton() }
     }
     private func explanation(_ title: String, _ text: String) -> some View {
