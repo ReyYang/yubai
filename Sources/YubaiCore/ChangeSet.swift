@@ -121,6 +121,10 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard let i = active(id) else { skip(position); continue }
                 guard !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, category.count <= 200 else { throw YubaiError.invalid("分类不能为空或过长。") }
                 guard next.entries[i].nature != .refund || next.entries[i].relatedEntryID == nil else { skip(position); continue }
+                if source != "导入整理" {
+                    var confirmed = next.entries[i]; confirmed.category = category
+                    CategoryMemory.remember(confirmed, in: &next)
+                }
                 if next.entries[i].category == category { skip(position); continue }
                 next.entries[i].category = category; touch(i)
                 if next.entries[i].nature == .expense { changedExpenseCategories[id] = category }
@@ -228,6 +232,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     guard next.profile.principles.contains(text) else { skip(position); continue }; next.profile.principles.removeAll { $0 == text }
                 case .setFloorAmount(let amount): next.profile.floorAmount = amount
                 }
+                next.profile.stamp(changedFrom: ledger.profile, at: createdAt)
                 next.profile.updatedAt = createdAt
             }
         }

@@ -35,10 +35,10 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         switch self {
         case .getFunds: return "本机计算的保守可动用与各项预留、预计收入和警示。"
         case .forecast: return "从今天预测指定日期的保守/预计余额及此前已知付款；可比较一笔金额。最远365天，预计收入不算保守资金。"
-        case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，最多50条。日期边界均包含当天，金额过滤用原始金额。"
+        case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，每页最多50条。offset从0开始，用next_offset继续查询。日期边界均包含当天，金额过滤用原始金额。"
         case .summarize: return "按日/周(周一开始)/月/分类汇总匹配记录；默认全部，不受查询默认条数限制。消费退款抵扣，房租只计个人承担。"
-        case .compareToHabit: return "近90个自然日同类实际消费的均值、中位数、每周频次和最近记录；不含未来记录或退款，可比较金额位置。"
-        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则、底线和储蓄目标。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
+        case .compareToHabit: return "近90个自然日同类实际消费的均值、中位数、每周频次和最近记录；有数据时附last_year去年同期90天均值和次数，以及匹配的想克制领域柔性线soft_limits。不含未来记录或退款，可比较金额位置。"
+        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、底线和储蓄目标。附最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
         }
     }
     private static func field(_ type: String, _ description: String) -> JSONValue {
@@ -63,7 +63,9 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             fields = ["date": Self.field("string", "yyyy-MM-dd，与days二选一"),
                       "days": .object(["type": .string("integer"), "minimum": .number(0), "maximum": .number(365)]),
                       "amount": Self.amountSchema]
-        case .queryEntries: fields = Self.filters
+        case .queryEntries:
+            fields = Self.filters
+            fields["offset"] = .object(["type": .string("integer"), "minimum": .number(0)])
         case .summarize:
             fields = Self.filters
             fields["group_by"] = .object(["type": .string("string"), "enum": .strings(["day", "week", "month", "category"])])
@@ -91,10 +93,13 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         case .queryEntries:
             let filter = try Filter(fields)
             let all = filter.entries(ctx)
-            let rows = Array(all.prefix(filter.limit ?? 20))
-            result = .object(["entries": .array(rows.map { summary($0, ctx) }),
+            let offset = try fields["offset"].map { try Self.integer($0, range: 0...Int.max) } ?? 0
+            let rows = Array(all.dropFirst(min(offset, all.count)).prefix(filter.limit ?? 20))
+            var page: [String: JSONValue] = ["entries": .array(rows.map { summary($0, ctx) }),
                 "entry_ids": .strings(rows.map { $0.id.uuidString }), "matched_count": .number(Double(all.count)),
-                "truncated": .bool(rows.count < all.count)])
+                "truncated": .bool(offset + rows.count < all.count)]
+            if offset + rows.count < all.count { page["next_offset"] = .number(Double(offset + rows.count)) }
+            result = .object(page)
         case .summarize: result = try summarizeWithChart(fields, ctx).result
         case .compareToHabit: result = try habit(fields, ctx)
         case .getProfile: result = profile(ctx)
@@ -107,6 +112,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             var row: [String: JSONValue] = ["id": .string(a.id.uuidString), "title": .string(a.title),
                 "match": .object(["categories": .strings(a.match.categories), "keywords": .strings(a.match.keywords)]),
                 "categories": .strings(a.match.categories), "keywords": .strings(a.match.keywords), "note": .string(a.note),
+                "confirmed_at": a.confirmedAt.map { .string(Dates.text($0)) } ?? .null,
+                "days_since_confirmed": a.confirmedAt.map { .number(Double(Dates.calendar.dateComponents([.day], from: Dates.day($0), to: Dates.day(ctx.now)).day ?? 0)) } ?? .null,
                 "soft_line": .string(a.softLimit?.text ?? "")]
             if let count = a.softLimit?.perWeekCount { row["per_week_count"] = .number(Double(count)) }
             if let amount = a.softLimit?.perMonthAmount { row["per_month_amount"] = .money(amount) }
@@ -116,9 +123,21 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             } ?? .null
             return .object(row)
         }
+        let followups = ctx.ledger.wishlist.filter { $0.followUpAnswer != nil }.sorted {
+            let a = $0.followUpAnsweredAt ?? $0.followUpAt ?? $0.createdAt
+            let b = $1.followUpAnsweredAt ?? $1.followUpAt ?? $1.createdAt
+            return a == b ? $0.id.uuidString < $1.id.uuidString : a > b
+        }
+        let recent: [JSONValue] = followups.prefix(10).map { wish in
+            .object(["title": .string(wish.title), "amount": .money(wish.amount),
+                "judgment": .string(String(wish.judgment.prefix(200))), "answer": wish.followUpAnswer.map { .string($0) } ?? .null,
+                "bought_date": wish.boughtEntryID.flatMap { ctx.entriesByID[$0] }.map { .string(Dates.text($0.date)) } ?? .null])
+        }
         var fields: [String: JSONValue] = [
             "generous": .array(ctx.ledger.profile.generous.map(area)), "restrain": .array(ctx.ledger.profile.restrain.map(area)),
-            "principles": .strings(ctx.ledger.profile.principles),
+            "principles": .array(ctx.ledger.profile.principles.map { text in .object(["text": .string(text),
+                "confirmed_at": ctx.ledger.profile.principleDates[text].map { .string(Dates.text($0)) } ?? .null]) }),
+            "recent_followups": .array(recent),
             "categories": .strings(ctx.ledger.categories.filter { !$0.income }.map(\.name)),
             "floor_amount": ctx.ledger.profile.floorAmount.map { .money($0) } ?? .null,
             "habits": .object(["label": .string("你常花的"), "meaning": .string("这是从账本里看到的，不是你的要求；分类与商户可能重叠，不可相加。"),
@@ -210,11 +229,27 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         guard category != nil || keyword != nil else { throw YubaiError.invalid("请提供category或keyword。") }
         var filters = fields; filters.removeValue(forKey: "amount"); filters["nature"] = .string("spending")
         let start = Dates.addDays(-89, to: Dates.day(ctx.now))
-        let rows = try Filter(filters).entries(ctx).filter { $0.nature == .expense && $0.date >= start && $0.date <= ctx.now }
+        let matching = try Filter(filters).entries(ctx).filter { $0.nature == .expense }
+        let rows = matching.filter { $0.date >= start && $0.date <= ctx.now }
         let amounts = rows.map { Finance.spendingAmount($0, ledger: ctx.ledger) }.sorted()
         var result: [String: JSONValue] = ["window_days": .number(90), "count": .number(Double(rows.count)),
             "count_per_week": .number(Double(rows.count) * 7 / 90),
             "recent": .array(rows.prefix(5).map { summary($0, ctx) }), "entry_ids": .strings(rows.prefix(5).map { $0.id.uuidString })]
+        if let end = Dates.calendar.date(byAdding: .year, value: -1, to: ctx.now) {
+            let priorStart = Dates.addDays(-89, to: Dates.day(end))
+            let prior = matching.filter { $0.date >= priorStart && $0.date <= end }
+            if !prior.isEmpty {
+                result["last_year"] = .object(["window_days": .number(90), "count": .number(Double(prior.count)),
+                    "average": .money(prior.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ctx.ledger) } / Int64(prior.count))])
+            }
+        }
+        let sample = Entry(date: ctx.now, amount: 1, accountID: UUID(), title: keyword ?? "", category: category ?? "")
+        let areas = ctx.ledger.profile.restrain.filter { ButlerCards.matches($0, entry: sample, ledger: ctx.ledger) }
+        if !areas.isEmpty {
+            result["soft_limits"] = .array(areas.map { area in .object(["id": .string(area.id.uuidString), "title": .string(area.title),
+                "per_week_count": area.softLimit?.perWeekCount.map { .number(Double($0)) } ?? .null,
+                "per_month_amount": area.softLimit?.perMonthAmount.map { .money($0) } ?? .null]) })
+        }
         if amounts.isEmpty {
             result["average"] = .null; result["median"] = .null
             if let value = fields["amount"] { result["amount"] = .money(try Self.amount(value)); result["percentile"] = .null }
@@ -297,8 +332,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         throw YubaiError.invalid("金额请用人民币元，最多两位小数。")
     }
     private static func integer(_ value: JSONValue?, range: ClosedRange<Int>) throws -> Int {
-        guard let value, case .number(let n) = value, n.isFinite, n.rounded() == n,
-              n >= Double(range.lowerBound), n <= Double(range.upperBound) else { throw YubaiError.invalid("整数参数超出范围。") }
-        return Int(n)
+        guard let value, case .number(let n) = value, let integer = Int(exactly: n), range.contains(integer) else { throw YubaiError.invalid("整数参数超出范围。") }
+        return integer
     }
 }

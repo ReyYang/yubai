@@ -29,6 +29,9 @@ public enum LedgerOperations {
             candidate.entries[i].userEdited = true; candidate.entries[i].classificationReason = "用户批量纠正"
         }
         syncLinkedRefundCategories(in: &candidate)
+        if category != nil {
+            for entry in candidate.activeEntries where ids.contains(entry.id) { CategoryMemory.remember(entry, in: &candidate) }
+        }
         try candidate.validate(); ledger = candidate
     }
     @discardableResult public static func mergeTransfer(_ first: UUID, _ second: UUID, nature: Nature = .transfer, in ledger: inout Ledger, now: Date = Date()) throws -> UUID {

@@ -258,15 +258,63 @@ public struct SoftLimit: Codable, Equatable, Sendable {
 }
 public struct ProfileArea: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var match: AreaMatch
-    public var note: String; public var softLimit: SoftLimit?
-    public init(title: String, match: AreaMatch = AreaMatch(), note: String = "", softLimit: SoftLimit? = nil) {
-        self.title = title; self.match = match; self.note = note; self.softLimit = softLimit
+    public var note: String; public var softLimit: SoftLimit?; public var confirmedAt: Date?
+    public init(title: String, match: AreaMatch = AreaMatch(), note: String = "", softLimit: SoftLimit? = nil, confirmedAt: Date? = nil) {
+        self.title = title; self.match = match; self.note = note; self.softLimit = softLimit; self.confirmedAt = confirmedAt
+    }
+    private enum CodingKeys: String, CodingKey { case id, title, match, note, softLimit, confirmedAt }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
+        match = try c.decode(AreaMatch.self, forKey: .match); note = try c.decode(String.self, forKey: .note)
+        softLimit = try c.decodeIfPresent(SoftLimit.self, forKey: .softLimit)
+        confirmedAt = try c.decodeIfPresent(Date.self, forKey: .confirmedAt)
     }
 }
 public struct SpendingProfile: Codable, Equatable, Sendable {
     public var generous: [ProfileArea] = []; public var restrain: [ProfileArea] = []
     public var principles: [String] = []; public var floorAmount: Int64?; public var updatedAt = Date()
+    public var principleDates: [String: Date] = [:]
     public init() {}
+    private enum CodingKeys: String, CodingKey { case generous, restrain, principles, floorAmount, updatedAt, principleDates }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        generous = try c.decode([ProfileArea].self, forKey: .generous); restrain = try c.decode([ProfileArea].self, forKey: .restrain)
+        principles = try c.decode([String].self, forKey: .principles); floorAmount = try c.decodeIfPresent(Int64.self, forKey: .floorAmount)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        principleDates = try c.decodeIfPresent([String: Date].self, forKey: .principleDates) ?? [:]
+    }
+    public mutating func stamp(changedFrom old: SpendingProfile, at date: Date) {
+        func stamped(_ areas: [ProfileArea], previous: [ProfileArea]) -> [ProfileArea] {
+            areas.map { area in
+                var next = area
+                let prior = previous.first { $0.id == area.id }
+                next.confirmedAt = prior?.confirmedAt
+                if let prior {
+                    if next != prior { next.confirmedAt = date }
+                } else { next.confirmedAt = date }
+                return next
+            }
+        }
+        generous = stamped(generous, previous: old.generous); restrain = stamped(restrain, previous: old.restrain)
+        principleDates = principleDates.filter { principles.contains($0.key) }
+        for text in principles {
+            if !old.principles.contains(text) { principleDates[text] = date }
+            else { principleDates[text] = old.principleDates[text] }
+        }
+        if self != old { updatedAt = date }
+    }
+}
+public enum CategoryMemory {
+    public static func key(_ title: String) -> String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            .replacingOccurrences(of: #"[\p{N}\p{P}]+"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    public static func remember(_ entry: Entry, in ledger: inout Ledger) {
+        let normalized = key(entry.title)
+        if !normalized.isEmpty { ledger.categoryMemory[normalized] = entry.category }
+    }
 }
 public enum CardKind: String, Codable, CaseIterable, Sendable {
     case answerQuestion, restrain, shortfall, unknownInflow, staleBalance, recurring, duplicate, offCharacter, followUp, weeklyLetter
@@ -295,6 +343,7 @@ public struct WishItem: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var amount: Int64; public var purpose: String
     public var createdAt = Date(); public var status: WishStatus = .thinking; public var judgment: String
     public var boughtEntryID: UUID?; public var followUpAt: Date?; public var followUpAnswer: String?
+    public var followUpAnsweredAt: Date?
     public init(title: String, amount: Int64, purpose: String = "", judgment: String = "") {
         self.title = title; self.amount = amount; self.purpose = purpose; self.judgment = judgment
     }
@@ -310,6 +359,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var goals: [Goal] = []; public var rents: [Rent] = []
     public var categories = Category.defaults; public var imports: [ImportBatch] = []; public var attachments: [Attachment] = []
     public var categoryAliases: [String: String] = [:]
+    public var categoryMemory: [String: String] = [:]
     public var preferences = Preferences()
     public var profile = SpendingProfile(); public var cards: [ButlerCard] = []
     public var pendingChanges: [ChangeSet] = []; public var wishlist: [WishItem] = []; public var mutedTopics: [String] = []
@@ -329,7 +379,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, categoryMemory, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -350,6 +400,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         imports = try c.decode([ImportBatch].self, forKey: .imports)
         attachments = try c.decode([Attachment].self, forKey: .attachments)
         categoryAliases = try c.decodeIfPresent([String: String].self, forKey: .categoryAliases) ?? categoryAliases
+        categoryMemory = try c.decodeIfPresent([String: String].self, forKey: .categoryMemory) ?? [:]
         preferences = try c.decode(Preferences.self, forKey: .preferences)
         profile.updatedAt = updatedAt
         profile = try c.decodeIfPresent(SpendingProfile.self, forKey: .profile) ?? profile
@@ -386,6 +437,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(imports, forKey: .imports)
         try c.encode(attachments, forKey: .attachments)
         try c.encode(categoryAliases, forKey: .categoryAliases)
+        try c.encode(categoryMemory, forKey: .categoryMemory)
         try c.encode(preferences, forKey: .preferences)
         try c.encode(profile, forKey: .profile)
         try c.encode(cards, forKey: .cards)
@@ -407,6 +459,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.imports == rhs.imports &&
         lhs.attachments == rhs.attachments &&
         lhs.categoryAliases == rhs.categoryAliases &&
+        lhs.categoryMemory == rhs.categoryMemory &&
         lhs.preferences == rhs.preferences &&
         lhs.profile == rhs.profile &&
         lhs.cards == rhs.cards &&
@@ -432,6 +485,8 @@ public struct Ledger: Codable, Equatable, Sendable {
               Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或提案包含重复标识。") }
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.name)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
+        guard categoryMemory.allSatisfy({ !$0.key.isEmpty && $0.key.count <= 4000 && CategoryMemory.key($0.key) == $0.key &&
+            !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.value.count <= 200 }) else { throw YubaiError.invalid("分类对照表无效。") }
         guard Set(categoryNames).count == categoryNames.count else { throw YubaiError.invalid("分类名称不能重复。") }
         for a in accounts { guard !a.name.trimmingCharacters(in: .whitespaces).isEmpty, a.anchorBalance >= -Money.limit, a.anchorBalance <= Money.limit, (0...Money.limit).contains(a.creditLimit), dateValid(a.anchorDate) else { throw YubaiError.invalid("账户信息无效。") } }
         for e in entries {
@@ -478,10 +533,12 @@ private extension Ledger {
         guard areas.count <= 200, Set(areas.map(\.id)).count == areas.count,
               profile.principles.count <= 200, profile.principles.allSatisfy(text),
               Set(profile.principles).count == profile.principles.count,
+              profile.principleDates.allSatisfy({ profile.principles.contains($0.key) && date($0.value) }),
               profile.floorAmount.map({ (0...Money.limit).contains($0) }) ?? true,
               date(profile.updatedAt), mutedTopics.allSatisfy(text) else { throw YubaiError.invalid("消费画像或静音主题无效。") }
         for a in areas {
             guard text(a.title), a.note.count <= 4000, a.match.categories.count <= 200, a.match.keywords.count <= 200,
+                  a.confirmedAt.map(date) ?? true,
                   a.match.categories.allSatisfy(text), a.match.keywords.allSatisfy(text),
                   (a.softLimit?.perWeekCount).map({ (0...10_000).contains($0) }) ?? true,
                   (a.softLimit?.perMonthAmount).map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("消费领域或柔性提醒数值无效。") }
@@ -500,6 +557,7 @@ private extension Ledger {
         for w in wishlist {
             guard text(w.title), (0...Money.limit).contains(w.amount), w.purpose.count <= 4000,
                   w.judgment.count <= 16_000, date(w.createdAt), w.followUpAt.map(date) ?? true,
+                  w.followUpAnsweredAt.map(date) ?? true,
                   (w.followUpAnswer?.count ?? 0) <= 4000 else { throw YubaiError.invalid("心愿记录无效。") }
         }
     }

@@ -55,6 +55,7 @@ public enum Wishlist {
               let due = ledger.wishlist[i].followUpAt, due <= now, ledger.wishlist[i].followUpAnswer == nil, text.count <= 3900 else { throw YubaiError.invalid("这条回访已处理或还没到时间。") }
         _ = ButlerCards.refresh(&ledger, now: now)
         ledger.wishlist[i].followUpAnswer = choice.rawValue + (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "：" + text)
+        ledger.wishlist[i].followUpAnsweredAt = now
         if let card = ledger.cards.first(where: { $0.dedupeKey == "follow:\(wishID)" }) {
             if choice != .neutral { ButlerCards.feedback(choice == .worth ? .worth : .regret, cardID: card.id, in: &ledger, now: now) }
             if let index = ledger.cards.firstIndex(where: { $0.id == card.id }) { ledger.cards[index].dismissedAt = now }

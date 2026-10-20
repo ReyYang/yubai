@@ -58,6 +58,7 @@ final class WishlistTests: XCTestCase {
             try Wishlist.answerFollowUp(wish.id, choice: .regret, text: "没有想象中常用", in: &ledger, now: ctx.now)
         }
         XCTAssertEqual(ledger.wishlist[0].followUpAnswer, "有点后悔：没有想象中常用")
+        XCTAssertEqual(ledger.wishlist[0].followUpAnsweredAt, ctx.now)
         let proposal = try XCTUnwrap(ledger.pendingChanges.first { $0.source == "卡片反馈" })
         XCTAssertEqual(ledger.profile.restrain[0].softLimit?.perWeekCount, 4) // proposal, no silent preference edit
         guard case .profile(.upsertArea(let proposed, .restrain)) = proposal.items[0] else { return XCTFail("missing feedback proposal") }

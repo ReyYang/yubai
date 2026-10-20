@@ -86,7 +86,7 @@ final class AssistantToolTests: XCTestCase {
     }
     func testProfileContractAndNoPrivateFieldsInAnyToolOutput() throws {
         XCTAssertNil(try run(.getProfile)["purchaseValues"])
-        XCTAssertEqual(try run(.getProfile)["principles"], .strings(ctx.ledger.profile.principles))
+        XCTAssertEqual(try run(.getProfile)["principles"], .array(ctx.ledger.profile.principles.map { .object(["text": .string($0), "confirmed_at": .null]) }))
         for tool in ReadOnlyTool.allCases {
             let args: String
             switch tool {
@@ -112,4 +112,39 @@ final class AssistantToolTests: XCTestCase {
         let query = try ReadOnlyTool.queryEntries.run(.object(["limit": .number(50)]), context)
         XCTAssertEqual(query["entries"]?.arrayValue?.count, 50)
     }
+    func testEntryPaginationVisitsEveryMatchOnceAndRejectsInvalidOffsets() throws {
+        var ledger = ctx.ledger
+        ledger.entries = (0..<125).map { _ in Entry(date: ctx.now, amount: 100, accountID: ledger.accounts[0].id, title: "饭", category: "餐饮") }
+        let context = ToolContext(ledger: ledger, now: ctx.now)
+        var offset = 0; var ids: [String] = []
+        while true {
+            let page = try ReadOnlyTool.queryEntries.run(.object(["limit": .number(50), "offset": .number(Double(offset))]), context)
+            ids += page["entry_ids"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            guard case .number(let next)? = page["next_offset"] else { XCTAssertEqual(page["truncated"], .bool(false)); break }
+            offset = Int(next)
+        }
+        XCTAssertEqual(ids.count, 125); XCTAssertEqual(Set(ids), Set(ledger.entries.map { $0.id.uuidString }))
+        for offset in [JSONValue.number(-1), .number(1.5), .number(1e30), .string("1")] {
+            XCTAssertThrowsError(try ReadOnlyTool.queryEntries.run(.object(["offset": offset]), context))
+        }
+        let empty = try ReadOnlyTool.queryEntries.run(.object(["offset": .number(999)]), context)
+        XCTAssertEqual(empty["entries"], .array([])); XCTAssertNil(empty["next_offset"])
+    }
+    func testHabitIncludesLastYearWindowAndMatchingSoftLine() throws {
+        var ledger = ctx.ledger
+        let end = Dates.calendar.date(byAdding: .year, value: -1, to: ctx.now)!
+        let start = Dates.addDays(-89, to: Dates.day(end))
+        func entry(_ date: Date, _ amount: Int64, nature: Nature = .expense) -> Entry {
+            Entry(date: date, amount: amount, nature: nature, accountID: ledger.accounts[0].id, title: "咖啡", category: "餐饮")
+        }
+        ledger.entries = [entry(start, 1000), entry(end, 3000), entry(start.addingTimeInterval(-1), 9000), entry(end.addingTimeInterval(1), 9000), entry(end, 9000, nature: .income), entry(ctx.now, 5000)]
+        ledger.profile.restrain = [ProfileArea(title: "咖啡", match: AreaMatch(categories: ["餐饮"]), softLimit: SoftLimit(perWeekCount: 2, perMonthAmount: 50_000))]
+        let output = try ReadOnlyTool.compareToHabit.run(.object(["category": .string("餐饮")]), ToolContext(ledger: ledger, now: ctx.now))
+        XCTAssertEqual(output["count"], .number(1)); XCTAssertEqual(output["average"], .money(5000))
+        XCTAssertEqual(output["last_year"]?["count"], .number(2)); XCTAssertEqual(output["last_year"]?["average"], .money(2000))
+        XCTAssertEqual(output["soft_limits"]?.arrayValue?.first?["per_week_count"], .number(2))
+        XCTAssertEqual(output["soft_limits"]?.arrayValue?.first?["per_month_amount"], .money(50_000))
+        XCTAssertNil(try run(.compareToHabit, #"{"category":"餐饮"}"#)["last_year"])
+    }
+
 }

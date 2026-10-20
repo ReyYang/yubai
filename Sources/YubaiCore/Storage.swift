@@ -317,14 +317,15 @@ public struct LedgerRepository: Sendable {
             try put(restored, at: root); pruneHistory()
         }
     }
-    public func resolve(_ versions: [LedgerVersion], choosing id: String, source: LedgerVersionSource, reason: String = "同步冲突时的另一版本") throws -> Ledger {
+    public func resolve(_ versions: [LedgerVersion], choosing id: String, source: LedgerVersionSource, reason: String = "同步冲突时的另一版本", prepare: (Ledger) -> Ledger = { $0 }) throws -> Ledger {
         guard let chosen = versions.first(where: { $0.id == id }) else { throw YubaiError.invalid("请选择一份账本。") }
-        _ = try LedgerCodec.encodeMetadata(chosen.ledger)
+        let selected = prepare(chosen.ledger)
+        _ = try LedgerCodec.encodeMetadata(selected)
         return try access(writing: true) { root in
             try source.validate()
             for other in versions where other.id != id { try preserveRecovery(other.ledger, reason: reason) }
-            try put(chosen.ledger, at: root)
-            try source.markResolved(); pruneHistory(); return chosen.ledger
+            try put(selected, at: root)
+            try source.markResolved(); pruneHistory(); return selected
         }
     }
 }

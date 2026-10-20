@@ -122,8 +122,9 @@ final class ChangeSetTests: XCTestCase {
         XCTAssertEqual(try apply([.addEntry(draft)], to: &l).count, 1)
     }
     func testAllProfileEditsAndRemovals() throws {
-        var l = ledger(); let area = ProfileArea(title: "外卖", match: AreaMatch(categories: ["餐饮"], keywords: ["美团"]), note: "加班", softLimit: SoftLimit(perWeekCount: 3, perMonthAmount: 100000))
+        var l = ledger(); var area = ProfileArea(title: "外卖", match: AreaMatch(categories: ["餐饮"], keywords: ["美团"]), note: "加班", softLimit: SoftLimit(perWeekCount: 3, perMonthAmount: 100000))
         try apply([.profile(.upsertArea(area, stance: .restrain)), .profile(.addPrinciple("等 48 小时")), .profile(.setFloorAmount(50000))], to: &l)
+        area.confirmedAt = day
         XCTAssertEqual(l.profile.restrain, [area]); XCTAssertEqual(l.profile.floorAmount, 50000)
         var edited = area; edited.title = "工作午餐"
         try apply([.profile(.upsertArea(edited, stance: .generous)), .profile(.editPrinciple(old: "等 48 小时", new: "先借后买"))], to: &l)

@@ -76,4 +76,17 @@ final class AssistantPrivacyTests: XCTestCase {
             XCTAssertGreaterThan(item.byteSize, 4096); XCTAssertFalse(item.requestText.contains("secret-key"))
         }
     }
+    func testSocialNamesShareTransferAliasesAndMerchantsRemainIntact() {
+        let redactor = Redactor()
+        let name = redactor.text("转账给张三").replacingOccurrences(of: "转账给", with: "")
+        for phrase in ["和张三吃饭", "跟张三聚餐", "给张三买书", "请张三一起", "与张三的约定", "陪张三，散步", "和张三。", "跟张三 今天", "给张三"] {
+            XCTAssertTrue(redactor.text(phrase).contains(name), phrase)
+            XCTAssertFalse(redactor.text(phrase).contains("张三"), phrase)
+        }
+        XCTAssertFalse(redactor.text("和王小明吃饭").contains("王小明"))
+        for phrase in ["给王者荣耀充值", "给王者荣耀买皮肤", "和王记咖啡", "和周末一起", "给李宁公司买东西", "请张家餐厅聚餐", "和陌生人吃饭"] {
+            XCTAssertEqual(redactor.text(phrase), phrase)
+        }
+    }
+
 }

@@ -249,3 +249,54 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertLessThanOrEqual(result.questions.count, 5)
     }
 }
+
+final class CategoryMemoryTests: XCTestCase {
+    func testKeysAndConfirmedCategoryEditsPersistButImportDoesNotTeach() throws {
+        XCTAssertEqual(CategoryMemory.key("  美团-订单123，ABC!  "), "美团订单abc")
+        XCTAssertEqual(CategoryMemory.key("123？！"), "")
+        var ledger = AssistantFixtures.context().ledger
+        let entry = ledger.entries[0]
+        var change = ChangeSet(source: "导入整理", reason: "模型分类", items: [.setCategory(entry: entry.id, category: "日用购物")])
+        try change.apply(to: &ledger); XCTAssertTrue(ledger.categoryMemory.isEmpty)
+        change.source = "问余白"; change.items = [.setCategory(entry: entry.id, category: "餐饮")]
+        try change.apply(to: &ledger)
+        XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "餐饮")
+        change.source = "回答整理问题"; change.items = [.setCategory(entry: entry.id, category: "日用购物")]
+        try change.apply(to: &ledger)
+        XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "日用购物")
+        try LedgerOperations.bulkEdit([entry.id], category: "餐饮", nature: nil, in: &ledger)
+        XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "餐饮")
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)).categoryMemory, ledger.categoryMemory)
+    }
+    func testRememberedCategoryIsAcceptedBeforeModelAndConflictsAreIgnored() async throws {
+        let ctx = AssistantFixtures.context(); var ledger = ctx.ledger
+        ledger.entries = [Entry(date: ctx.now, amount: 2000, accountID: ledger.accounts[0].id, title: "美团123!", category: "其他支出")]
+        ledger.categoryMemory[CategoryMemory.key("美团456")] = "餐饮"
+        let entry = ledger.entries[0]
+        let result = JSONValue.object(["rows": .array([.object(["entry": .string(entry.id.uuidString), "category": .string("日用购物"), "nature": .string("expense"), "confident": .bool(true)])]),
+            "items": .array([.object(["kind": .string("set_category"), "entry": .string(entry.id.uuidString), "category": .string("娱乐旅行")])])])
+        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: try result.jsonText()), ChatMessage(role: .assistant, content: "{}")])
+        let organized = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: [entry.id], now: ctx.now)
+        let categories = organized.changeSet.items.compactMap { item -> String? in if case .setCategory(_, let category) = item { return category }; return nil }
+        XCTAssertEqual(categories, ["餐饮"])
+        let requests = await script.recorded()
+        let input = try JSONValue.parse(try XCTUnwrap(requests[0].messages.last?.content))
+        XCTAssertEqual(input["known_categories"], .array([.object(["title": .string(entry.title), "category": .string("餐饮")])]))
+        XCTAssertEqual(input["batch"]?.arrayValue?.first?["category"], .string("餐饮"))
+        XCTAssertTrue(requests[0].messages.first?.content?.contains("known_categories 是用户确认过的分类") == true)
+        let memory = ledger.categoryMemory
+        try organized.changeSet.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries[0].category, "餐饮"); XCTAssertEqual(ledger.categoryMemory, memory)
+    }
+    func testMissingRememberedCategoryFallsBackToModel() async throws {
+        let ctx = AssistantFixtures.context(); var ledger = ctx.ledger
+        ledger.entries = [Entry(date: ctx.now, amount: 100, accountID: ledger.accounts[0].id, title: "普通商户")]
+        ledger.categoryMemory["普通商户"] = "已删除分类"
+        let id = ledger.entries[0].id.uuidString
+        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array([.object(["entry": .string(id), "category": .string("餐饮"), "confident": .bool(true), "nature": .string("expense")])])]).jsonText()), ChatMessage(role: .assistant, content: "{}")])
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: [ledger.entries[0].id], now: ctx.now)
+        XCTAssertTrue(result.changeSet.items.contains(.setCategory(entry: ledger.entries[0].id, category: "餐饮")))
+        let requests = await script.recorded()
+        XCTAssertEqual(try JSONValue.parse(requests[0].messages.last!.content!)["known_categories"], .array([]))
+    }
+}
