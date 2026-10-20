@@ -1,83 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-struct EntryEditor: View {
-    @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
-    var entry: Entry?
-    @State private var amount = ""; @State private var title = ""; @State private var nature: Nature = .expense
-    @State private var date = Date(); @State private var accountID: UUID?; @State private var otherID: UUID?
-    @State private var category = "待整理"; @State private var note = ""; @State private var relatedID: UUID?
-    @State private var showAccount = false
-    @State private var loaded = false
-    var body: some View {
-        Form {
-            amountSection
-            accountSection
-            classificationSection
-            if nature.uncertain { Section { InlineNote(text: "可以先保存，之后再补充性质。待明确流入不会被当作可自由支配的钱。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
-        }.editorForm().navigationTitle(entry == nil ? "记一笔" : "编辑记录").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("保存", action: save).foregroundStyle(YubaiColor.brandInk).fontWeight(.semibold).accessibilityIdentifier("saveEntry") } }
-            .onAppear(perform: load)
-            .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().frame(minWidth: 340, minHeight: 520) }
-            .onChange(of: store.current.accounts.count) { _, _ in if accountID == nil { accountID = store.current.accounts.last?.id } }
-    }
-    func load() {
-        guard !loaded else { return }; loaded = true
-        if let e = entry { amount = Money.input(e.amount); title = e.title; nature = e.nature; date = e.date; accountID = e.accountID; otherID = e.otherAccountID; category = e.category; note = e.note; relatedID = e.relatedEntryID }
-        else { accountID = store.current.accounts.first { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }?.id }
-    }
-    func save() {
-        do {
-            let cents = try Money.parse(amount)
-            guard cents > 0 else { throw YubaiError.invalid("金额需要大于零。") }
-            let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !cleanTitle.isEmpty, let accountID else { throw YubaiError.invalid("请补充用途并选择账户。") }
-            if nature.paired && (otherID == nil || otherID == accountID) { throw YubaiError.invalid("请关联另一账户，内部移动才不会重复计算。") }
-            var e = entry ?? Entry(amount: cents, accountID: accountID, title: cleanTitle)
-            e.amount = cents; e.title = cleanTitle; e.accountID = accountID; e.nature = nature; e.date = date; e.note = note
-            e.otherAccountID = nature.paired ? otherID : nil; e.relatedEntryID = nature == .refund ? relatedID : nil
-            e.category = category; e.classificationReason = "手动选择"
-            if nature == .refund, let relatedID, let original = store.current.entries.first(where: { $0.id == relatedID }) {
-                let refunded = store.current.activeEntries.filter { $0.nature == .refund && $0.relatedEntryID == relatedID && $0.id != e.id }.reduce(Int64(0)) { $0 + $1.amount }
-                guard cents <= original.amount - refunded else { throw YubaiError.invalid("退款超过这笔支出剩余可退金额。") }; e.category = original.category
-            }
-            if entry?.amount != e.amount || entry?.relatedEntryID != e.relatedEntryID || entry?.nature != e.nature || e.personalExpense == nil { LedgerOperations.recordPersonalShare(&e, ledger: store.current) }
-            if store.update("保存记录", { l in
-                if let i = l.entries.firstIndex(where: { $0.id == e.id }) { e.userEdited = true; l.entries[i] = e } else { l.entries.append(e) }
-                LedgerOperations.syncLinkedRefundCategories(in: &l)
-            }) { dismiss() }
-        } catch { store.error = error.localizedDescription }
-    }
-
-    private var amountSection: some View {
-        Section {
-            HStack(alignment: .firstTextBaseline) { Text("¥").yubaiFont(YubaiFont.lead).foregroundStyle(YubaiColor.labelSecondary); TextField("0.00", text: $amount).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityIdentifier("entryAmount") }
-            TextField("这笔钱，用来做什么", text: $title).accessibilityIdentifier("entryTitle")
-            Picker("性质", selection: $nature) { ForEach(Nature.allCases) { Text($0.label).tag($0) } }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var accountSection: some View {
-        Section("记到哪里") {
-            Picker(nature.inflow ? "入账账户" : "付款账户", selection: $accountID) { Text("请选择").tag(UUID?.none); ForEach(store.current.accounts.filter { !$0.archived || $0.id == accountID }) { a in Text(a.name).tag(Optional(a.id)) } }.accessibilityIdentifier("entryAccount")
-            if nature.paired {
-                Picker(nature.inflow ? "资金来源 / 对应债务" : "转入 / 对应资产负债", selection: $otherID) { Text("请选择另一账户").tag(UUID?.none); ForEach(store.current.accounts.filter { $0.id != accountID && !$0.archived }) { a in Text(a.name).tag(Optional(a.id)) } }
-                InlineNote(text: "内部移动只创建一笔双边记录；已导入两边时，请在详情中合并关联，避免重复。")
-            }
-            Button("添加账户") { showAccount = true }
-            DatePicker("发生时间", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var classificationSection: some View {
-        Section("整理方式") {
-            Picker("分类", selection: $category) { Text("待整理").tag("待整理"); ForEach(store.current.categories) { Text($0.name).tag($0.name) }; if !store.current.categories.contains(where: { $0.name == category }) && category != "待整理" { Text(category).tag(category) } }
-            if nature == .refund {
-                Picker("关联原支出", selection: $relatedID) { Text("暂不关联").tag(UUID?.none); ForEach(store.current.activeEntries.filter { $0.nature == .expense && $0.id != entry?.id }.sorted { $0.date > $1.date }.prefix(200)) { e in Text(e.title + " · " + Money.text(e.amount)).tag(Optional(e.id)) } }
-            }
-            TextField("备注（可选）", text: $note, axis: .vertical).lineLimit(2...5)
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-}
-
 struct AccountEditor: View {
     @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
     var account: Account?
@@ -166,50 +89,13 @@ struct AccountsView: View {
                 if a.creditLimit > 0 { Divider().overlay(YubaiColor.separator); LabeledContent("信用额度", value: Money.text(a.creditLimit)).frame(minHeight: YubaiSize.buttonHeight) }
                 if !a.note.isEmpty { Divider().overlay(YubaiColor.separator); Text(a.note).frame(minHeight: YubaiSize.buttonHeight) }
                 Divider().overlay(YubaiColor.separator)
-                NavigationLink("重新核对 / 编辑") { AccountEditor(account: a) }.frame(minHeight: YubaiSize.buttonHeight)
+                NavigationLink("核对余额") { AccountEditor(account: a, startsReconciling: true) }
+                NavigationLink("编辑账户") { AccountEditor(account: a) }.frame(minHeight: YubaiSize.buttonHeight)
             }.yubaiFont(YubaiFont.row) }
             SectionHeading(title: "关联记录")
             CardRows(Array(store.current.activeEntries.filter { $0.accountID == a.id || $0.otherAccountID == a.id }.sorted { $0.date > $1.date }.prefix(100))) { e in NavigationLink { EntryDetailView(entryID: e.id) } label: { EntryRow(entry: e) }.buttonStyle(PressButtonStyle()) }
             Button(a.archived ? "取消归档" : "归档账户") { store.update(a.archived ? "取消归档" : "归档账户") { l in if let i = l.accounts.firstIndex(where: { $0.id == a.id }) { l.accounts[i].archived.toggle() } } }.buttonStyle(SecondaryButtonStyle())
         }.navigationTitle(a.name).yubaiNavigation()
-    }
-}
-
-struct PlanEditor: View {
-    @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
-    var plan: Plan?
-    @State private var title = ""; @State private var amount = ""; @State private var date = Date(); @State private var frequency = Frequency.once
-    @State private var inflow = false; @State private var isRepayment = false; @State private var category = "其他支出"; @State private var accountID: UUID?
-    @State private var note = ""; @State private var hasEnd = false; @State private var endDate = Date(); @State private var loaded = false
-    var historyLocked: Bool { plan.map { p in store.current.entries.contains { $0.planID == p.id } } ?? false }
-    var body: some View {
-        Form {
-            arrangementSection
-            if frequency != .once { Section("约定期限") { Toggle("设定结束日期", isOn: $hasEnd).tint(YubaiColor.toggleOn); if hasEnd { DatePicker("结束日期", selection: $endDate, in: date..., displayedComponents: .date) } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
-            if historyLocked { Section { InlineNote(text: "这个约定已关联真实记录，金额与周期已固定。若下一期发生变化，请设定旧约定结束日期，再添加新约定；已付与未付的历史期次会继续保留。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
-            accountSection
-            calculationSection
-        }.editorForm().navigationTitle(plan == nil ? "添加资金安排" : "编辑资金安排").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("保存", action: save).foregroundStyle(YubaiColor.brandInk) } }
-            .onAppear { guard !loaded else { return }; loaded = true; if let p = plan { title = p.title; amount = Money.input(p.amount); date = p.dueDate; frequency = p.frequency; inflow = p.inflow; isRepayment = p.nature == .repayment; category = p.category; accountID = p.accountID; note = p.note; hasEnd = p.endDate != nil; endDate = p.endDate ?? Date() } }
-    }
-    func save() {
-        do { let cents = try Money.parse(amount); guard cents > 0, !title.trimmingCharacters(in: .whitespaces).isEmpty else { throw YubaiError.invalid("请补充名称和有效金额。") }
-            if isRepayment && !inflow && store.current.accounts.first(where: { $0.id == accountID })?.kind != .credit { throw YubaiError.invalid("信用本金还款需要关联对应信用账户。") }
-            if historyLocked, let original = plan, (cents != original.amount || date != original.dueDate || frequency != original.frequency || inflow != original.inflow || (isRepayment != (original.nature == .repayment))) { throw YubaiError.invalid("这个约定已有真实记录，请结束旧约定并建立新的金额或周期。") }
-            var p = plan ?? Plan(title: title, amount: cents, dueDate: date); p.title = title; p.amount = cents; p.dueDate = date; p.frequency = frequency; p.inflow = inflow; p.category = category; p.accountID = accountID; p.note = note; p.endDate = hasEnd && frequency != .once ? endDate : nil; p.nature = inflow ? .income : (isRepayment ? .repayment : .expense)
-            if store.update("保存安排", { l in if let i = l.plans.firstIndex(where: { $0.id == p.id }) { l.plans[i] = p } else { l.plans.append(p) } }) { dismiss() }
-        } catch { store.error = error.localizedDescription }
-    }
-
-    private var arrangementSection: some View {
-        Section { TextField("安排名称，例如：信用卡还款", text: $title); TextField("金额", text: $amount).numericInput().yubaiFont(YubaiFont.amountInput); Toggle("这是预计收入", isOn: $inflow).tint(YubaiColor.toggleOn); if !inflow { Toggle("信用本金还款", isOn: $isRepayment).tint(YubaiColor.toggleOn) }; DatePicker("首次到期日", selection: $date, displayedComponents: .date); Picker("重复", selection: $frequency) { ForEach(Frequency.allCases) { Text($0.label).tag($0) } } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator).disabled(historyLocked)
-    }
-    private var accountSection: some View {
-        Section { Picker(isRepayment && !inflow ? "待还信用账户" : "关联账户", selection: $accountID) { Text("付款时再选").tag(UUID?.none); ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) } }; Picker("分类", selection: $category) { ForEach(store.current.categories) { Text($0.name).tag($0.name) } }; TextField("备注", text: $note, axis: .vertical) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var calculationSection: some View {
-        Section { InlineNote(text: "预计收入不会提前加入保守可动用金额。安排到期后仍需登记真实发生的交易；不会自动扣钱。信用本金已按待还负债预留，不重复扣除。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
 }
 
@@ -232,41 +118,5 @@ struct GoalEditor: View {
     }
     private var reservationSection: some View {
         Section { InlineNote(text: "预留是一种资金用途，不会创建收入、支出或真实转账。已预留金额从可动用资金中扣除。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-}
-
-struct RentEditor: View {
-    @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
-    var rent: Rent?
-    @State private var title = "合租房租"; @State private var total = ""; @State private var personal = ""; @State private var months = 3
-    @State private var hasEnd = false; @State private var endDate = Date()
-    @State private var start = Date(); @State private var due = Date(); @State private var receiveDay = 1; @State private var note = ""; @State private var loaded = false
-    var historyLocked: Bool { rent.map { r in store.current.entries.contains { $0.rentID == r.id } } ?? false }
-    var body: some View {
-        Form {
-            shareSection
-            scheduleSection
-            termSection
-            if historyLocked { Section { InlineNote(text: "已发生的分摊与付款按原约定保留。租金、承担比例或周期变化时，设定本约定的结束日期，再新建接续约定。结束日期之后不再生成新期次，已到期欠款继续显示。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
-            calculationSection
-        }.editorForm().navigationTitle(rent == nil ? "建立房租分摊" : "编辑房租约定").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("保存", action: save).foregroundStyle(YubaiColor.brandInk) } }
-            .onAppear { guard !loaded else { return }; loaded = true; if let r = rent { title = r.title; total = Money.input(r.monthlyTotal); personal = Money.input(r.personalShare); months = r.monthsPerPayment; start = r.startDate; due = r.nextDueDate; receiveDay = r.receiveDay; note = r.note; hasEnd = r.endDate != nil; endDate = r.endDate ?? Date() } }
-    }
-    func save() {
-        do { let all = try Money.parse(total); let own = try Money.parse(personal); guard all > 0, own <= all, !title.trimmingCharacters(in: .whitespaces).isEmpty else { throw YubaiError.invalid("请核对租金：个人承担不能超过总额。") }; if historyLocked, let original = rent, (all != original.monthlyTotal || own != original.personalShare || start != original.startDate || due != original.nextDueDate || months != original.monthsPerPayment || receiveDay != original.receiveDay) { throw YubaiError.invalid("这个房租约定已有真实记录，请结束旧约定并建立新的金额或周期。") }; var r = rent ?? Rent(monthlyTotal: all, personalShare: own, startDate: start, nextDueDate: due); r.title = title; r.monthlyTotal = all; r.personalShare = own; r.startDate = start; r.nextDueDate = due; r.monthsPerPayment = months; r.receiveDay = receiveDay; r.note = note; r.endDate = hasEnd ? endDate : nil; if store.update("保存房租约定", { l in if let i = l.rents.firstIndex(where: { $0.id == r.id }) { l.rents[i] = r } else { l.rents.append(r) } }) { dismiss() } } catch { store.error = error.localizedDescription }
-    }
-
-    private var shareSection: some View {
-        Section("共同承担") { TextField("名称", text: $title); TextField("每月房租总额", text: $total).numericInput().yubaiFont(YubaiFont.amountInput); TextField("其中我每月承担", text: $personal).numericInput().yubaiFont(YubaiFont.amountInput); Text("其余部分作为应收分摊。无需建立人物档案。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator).disabled(historyLocked)
-    }
-    private var scheduleSection: some View {
-        Section("真实约定") { DatePicker("从哪天开始记分摊", selection: $start, displayedComponents: .date); DatePicker("下一笔租金付款日", selection: $due, displayedComponents: .date); Stepper("每 \(months) 个月付一次", value: $months, in: 1...12); Stepper("每月 \(receiveDay) 日收分摊", value: $receiveDay, in: 1...28) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator).disabled(historyLocked)
-    }
-    private var termSection: some View {
-        Section("约定期限") { Toggle("设定结束日期", isOn: $hasEnd).tint(YubaiColor.toggleOn); if hasEnd { DatePicker("结束日期", selection: $endDate, in: start..., displayedComponents: .date) }; TextField("备注", text: $note, axis: .vertical) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var calculationSection: some View {
-        Section { InlineNote(text: "预留的是向房东支付的全部租金，尚未收到的分摊不会提前算作现金。登记实收后增加现金；消费统计只计你承担的比例。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
 }

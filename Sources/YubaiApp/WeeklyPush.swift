@@ -30,7 +30,6 @@ import YubaiCore
 @MainActor extension AppStore {
     func setWeeklyLetterPush(_ enabled: Bool) async {
         guard !updatingWeeklyPush else { return }
-        if isDemo { update("保存来信提醒") { $0.preferences.weeklyLetterPush = enabled }; return }
         let id = current.id
         updatingWeeklyPush = true
         defer { updatingWeeklyPush = false }
@@ -40,7 +39,7 @@ import YubaiCore
                 guard allowed else { error = "每周来信提醒尚未开启，可以在系统通知设置中允许余白发送通知。"; return }
             } catch { self.error = "暂时无法开启每周来信提醒。"; return }
         }
-        guard !isDemo, current.id == id, !locked else { return }
+        guard current.id == id, !locked else { return }
         if update("保存来信提醒", { $0.preferences.weeklyLetterPush = enabled }) {
             await WeeklyPush.sync(enabled: enabled)
         }

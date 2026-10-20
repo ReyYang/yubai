@@ -54,11 +54,6 @@ final class ImportTests: XCTestCase {
         XCTAssertThrowsError(try XLSX.read(data))
         XCTAssertThrowsError(try XLSX.read(Data("not a zip".utf8)))
     }
-    func testExportEscapesFormulaInjectionAndKeepsDecimalPrecision() throws {
-        var l = ledger(); l.entries = [Entry(amount: 1, accountID: l.accounts[0].id, title: "=HYPERLINK(\"x\")")]
-        let exported = String(data: CSV.export(l), encoding: .utf8)!
-        XCTAssertTrue(exported.contains("'=")); XCTAssertTrue(exported.contains("\"0.01\""))
-    }
     func testBatchOf4000AndSecondImport() throws {
         var l = ledger(); let rows = (0..<4000).map { i in "2026-09-20 12:30:00,支出,\(i + 1).01,午餐\(i),bill\(i)" }
         let data = Data((["时间,收支,金额,名称,交易单号"] + rows).joined(separator: "\n").utf8)

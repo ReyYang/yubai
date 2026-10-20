@@ -24,12 +24,12 @@ struct ButlerCardView: View {
         Card {
             VStack(alignment: .leading, spacing: YubaiSpace.space12) {
                 HStack(alignment: .top) {
-                    Text(store.current.preferences.hideAmounts ? "管家的观察" : card.title).yubaiFont(YubaiFont.cardTitle)
+                    Text(store.current.preferences.hideAmounts ? "管家的观察" : card.title).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("butlerTitle_" + card.kind.rawValue)
                     Spacer(minLength: YubaiSpace.space8)
                     Menu {
                         Button("知道了") { store.dismissCard(card.id) }
                         Button("以后别提") { store.muteCard(card.id) }
-                    } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("卡片选项")
+                    } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("卡片选项").accessibilityIdentifier("butlerOptions_" + card.kind.rawValue)
                 }
                 Text(hidden ? "金额已隐藏。" : card.body).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted)
                 Text(Dates.text(card.createdAt) + " · 按当时记录").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
@@ -77,7 +77,7 @@ struct ButlerEvidenceView: View {
                         }
                         if card.kind == .shortfall {
                             Text("保守路径已扣信用负债、目标、应急底线和待明确流入，再按日期扣付款与日常预留；未计预计收入。同一天的付款一起计算。").yubaiFont(YubaiFont.caption)
-                            Button("查看付款与预留") { store.sheet = nil; store.destination = .plans }
+                            Button("查看付款与预留") { store.sheet = nil; store.destination = .overview }
                         }
                     }
                 }

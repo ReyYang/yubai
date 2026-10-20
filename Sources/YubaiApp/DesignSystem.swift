@@ -273,21 +273,14 @@ struct SecondaryButtonStyle: ButtonStyle {
 struct Page<Content: View>: View {
     let content: Content
     var spacing: CGFloat
-    var hasTabBar: Bool
-    init(spacing: CGFloat = YubaiSpace.space12, hasTabBar: Bool = false, @ViewBuilder content: () -> Content) {
-        self.content = content(); self.spacing = spacing; self.hasTabBar = hasTabBar
-    }
-    private var bottomPadding: CGFloat {
-        #if os(iOS)
-        if hasTabBar { return 106 }
-        #endif
-        return YubaiSpace.space24
+    init(spacing: CGFloat = YubaiSpace.space12, @ViewBuilder content: () -> Content) {
+        self.content = content(); self.spacing = spacing
     }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: spacing) { content }
                 .padding(.horizontal, YubaiSpace.space18).padding(.top, YubaiSpace.space20)
-                .padding(.bottom, bottomPadding)
+                .padding(.bottom, YubaiSpace.space24)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas)
     }
@@ -624,7 +617,7 @@ struct HeroCard: View {
     var reserved: Int64
     var attentionCount = 0
     var hideAmount = false
-    var title = "还能自在支配"
+    var title = "保守可动用"
     var onDetails: (() -> Void)? = nil
     var onAttention: (() -> Void)? = nil
     var body: some View {
@@ -855,9 +848,7 @@ struct WelcomeView: View {
                     feature("calendar", "从今天安排未来", "先留出房租、还款和目标，再看此刻有多少余地。")
                     feature("lock.shield", "数据留在你手里", "无需注册，离线可用，可导出和加密备份。")
                 }.padding(.vertical, YubaiSpace.space10)
-                Button("开始我的账本") { store.update("建立账本") { $0.preferences.onboardingComplete = true }; store.sheet = .account(nil) }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("startLedger")
-                Button("先看看示例账本") { store.startDemo() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("openDemo")
-                Text("示例数据与你的账本完全分开。所有示例金额都是虚构的。") .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                Button("开始我的账本") { store.update("建立账本") { $0.preferences.onboardingComplete = true } }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("startLedger")
             }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity).padding(.bottom, YubaiSpace.space24)
         }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
     }

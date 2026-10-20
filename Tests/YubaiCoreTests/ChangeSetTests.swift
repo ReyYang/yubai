@@ -23,6 +23,32 @@ final class ChangeSetTests: XCTestCase {
         XCTAssertNoThrow(try l.validate(), file: file, line: line)
         return skipped
     }
+    func testEndArrangementCancelsFutureStartAndKeepsPastPaymentsAndData() throws {
+        var l = ledger()
+        let originalEntries = l.entries
+        let future = Plan(title: "尚未开始", amount: 10000, dueDate: Dates.addDays(10, to: day), frequency: .monthly)
+        let started = Plan(title: "旧安排", amount: 20000, dueDate: Dates.addDays(-10, to: day), frequency: .monthly)
+        let rent = Rent(monthlyTotal: 30000, personalShare: 10000, startDate: Dates.addDays(-10, to: day), nextDueDate: Dates.addDays(-10, to: day), monthsPerPayment: 1)
+        l.plans = [future, started]; l.rents = [rent]
+        let before = Finance.occurrences(in: l, now: day)
+        XCTAssertTrue(before.contains { $0.planID == future.id })
+        try apply([.endPlan(future.id, day), .endPlan(started.id, day), .endPlan(rent.id, day)], to: &l)
+        let after = Finance.occurrences(in: l, now: day)
+        XCTAssertFalse(l.plans[0].active); XCTAssertNil(l.plans[0].endDate)
+        XCTAssertFalse(after.contains { $0.planID == future.id })
+        XCTAssertFalse(after.isEmpty); XCTAssertTrue(after.allSatisfy { $0.date <= day })
+        XCTAssertEqual(after, before.filter { $0.date <= day })
+        XCTAssertEqual(l.entries, originalEntries); XCTAssertEqual(l.plans.count, 2); XCTAssertEqual(l.rents.count, 1)
+        XCTAssertEqual(try apply([.endPlan(future.id, day), .endPlan(started.id, day), .endPlan(rent.id, day)], to: &l).count, 3)
+        let decoded = try LedgerCodec.decode(LedgerCodec.encode(l))
+        XCTAssertEqual(decoded, l)
+    }
+    func testInvalidEndDateIsAtomic() throws {
+        var l = ledger(); l.plans = [Plan(title: "付款", amount: 10000, dueDate: day)]
+        let before = l
+        XCTAssertThrowsError(try apply([.endPlan(l.plans[0].id, Date(timeIntervalSince1970: .infinity))], to: &l))
+        XCTAssertEqual(l, before)
+    }
     func testCategoryNaturePurposeAndPreview() throws {
         var l = ledger(); let expense = l.entries[0].id; let inflow = l.entries[1].id
         let change = ChangeSet(source: "问余白", reason: "美团是午餐", items: [.setCategory(entry: expense, category: "餐饮"), .setPurpose(entry: expense, text: "工作日午餐")])

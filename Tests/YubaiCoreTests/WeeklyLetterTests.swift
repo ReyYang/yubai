@@ -6,7 +6,7 @@ final class WeeklyLetterTests: XCTestCase {
     private func seed() -> Ledger {
         var ledger = Ledger()
         ledger.accounts = [Account(name: "合成账户", balance: 500_000, at: Dates.parse("2026-05-01")!)]
-        ledger.preferences.dailyLiving = 1000; ledger.preferences.emergencyReserve = 20_000
+        ledger.profile.floorAmount = 20_000
         let meal = Entry(date: Dates.parse("2026-06-10 12:00")!, amount: 6000, accountID: ledger.accounts[0].id, title: "用餐", category: "餐饮")
         var refund = Entry(date: Dates.parse("2026-06-13 12:00")!, amount: 1000, nature: .refund, accountID: ledger.accounts[0].id, title: "退款")
         refund.relatedEntryID = meal.id
@@ -33,7 +33,7 @@ final class WeeklyLetterTests: XCTestCase {
         ledger.accounts[0].anchorBalance = Finance.balance(ledger.accounts[0], in: ledger, at: end)
         ledger.accounts[0].anchorDate = end
         let earlier = Dates.parse("2026-06-09 23:59")!
-        XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 500_000 - 20_000 - 90_000)
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 500_000 - 20_000)
         XCTAssertEqual(WeeklyLetter.available(ledger, at: end), old)
         let plan = Plan(title: "房租", amount: 30_000, dueDate: Dates.parse("2026-06-11")!)
         ledger.plans = [plan]
@@ -41,7 +41,7 @@ final class WeeklyLetterTests: XCTestCase {
         paid.planID = plan.id; paid.occurrence = plan.dueDate
         ledger.entries.append(paid)
         // Rewind the recorded payment as well as reserve it at the earlier date.
-        XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 500_000 - 20_000 - 90_000)
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 500_000 - 20_000)
     }
     func testRestrainedThirdNumberAndFreshLetterDedupeFallback() async throws {
         var ledger = seed()

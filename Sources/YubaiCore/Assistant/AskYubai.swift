@@ -32,8 +32,7 @@ public struct ShowChartTool: AssistantTool {
         let result = try ReadOnlyTool.forecast.run(input, ctx)
         guard let date = result["date"]?.stringValue.flatMap(Dates.parse) else { throw YubaiError.invalid("预测日期无效。") }
         let days = Dates.calendar.dateComponents([.day], from: Dates.day(ctx.now), to: date).day ?? 0
-        var snapshot = ctx.ledger; snapshot.preferences.horizonDays = days + 1
-        let points = Finance.funds(snapshot, now: ctx.now).points.filter { $0.date <= date }.map {
+        let points = Finance.funds(ctx.ledger, now: ctx.now, days: days + 1).points.filter { $0.date <= date }.map {
             AnswerChart.Point(label: Dates.text($0.date), cents: $0.conservative)
         }
         return (AnswerChart(kind: .line, title: "保守资金预测（元）", points: points), result)
@@ -111,7 +110,7 @@ public enum AskYubai {
     }
     public static func answer(_ question: String, history: [ChatMessage] = [], transport: any ChatTransport, context: ToolContext) async throws -> AssistantReply {
         if isProtectedEdit(question) {
-            return AssistantReply(proposedChangeSets: [], text: "金额、账户和原始日期来自账单与账户，我不能替你改动。可以打开记录详情，核对原始账单后手动修改。", evidenceEntryIDs: [], toolTrace: [], unverifiedAmounts: [])
+            return AssistantReply(proposedChangeSets: [], text: "金额、账户和原始日期来自账单与账户，我不能替你改动。请先核对原始账单；金额、账户或日期有误时，需要由你修正来源后重新导入。", evidenceEntryIDs: [], toolTrace: [], unverifiedAmounts: [])
         }
         return try await AssistantAgent(transport: transport, context: context).run(system: prompt(now: context.now), messages: history + [ChatMessage(role: .user, content: question)], tools: tools)
     }

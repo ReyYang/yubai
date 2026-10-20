@@ -33,7 +33,7 @@ private struct ImportEval: Decodable {
         let before = ledger
         let lines = rows.filter { !old.contains($0.key) }.map { row in
             [row.date, row.nature.inflow ? "收入" : "支出", Money.input(row.amount), row.title,
-             accounts[row.account], row.nature.label, row.key].map(CSV.escape).joined(separator: ",")
+             accounts[row.account], row.nature.label, row.key].map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }.joined(separator: ",")
         }
         let bytes = Data((["时间,收支,金额,名称,账户,性质,交易单号"] + lines).joined(separator: "\n").utf8)
         let mappings = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.name, $0.id) })

@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+2026-10-20 当前源码采用用户在本轮明确批准的 2.0 导航：iPhone 两个 tab「现在／我」，iPhone / Mac 底部常驻「问余白」；Mac 侧栏同样仅有现在与我。旧账本、安排、洞察等独立维护页面和应用内示例入口已删除，原始用户存档字段继续兼容。当前使用说明见 [README](../README.md)，采用边界见 [第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md)。Swift 语法与工程引用仅做静态检查，当前无 Swift 工具链；尚未编译或执行新的五条 UI 测试，Figma、历史原型、截图与发布包尚未同步。以下旧日期记录保留其历史含义。
+
 2026-10-19 续作：按用户指定的[暖纸设计系统](https://claude.ai/artifact/Pz2z4mQNoCqTNLGRafY9v5)与[390pt 页面设计稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)迁移已有页面，并完成 Step 3 评审修复。已采用移除三套颜色主题（`Preferences.colorTheme` 仅保留旧存储兼容、界面忽略）、不打包字体而用系统 rounded / serif 回退，以及因暂无助手页面保留原生 `TabView`。本次仅有静态验证；没有 Swift 工具链，未验证 iOS / Mac 编译与真机效果。采用范围与未同步资源见 [DESIGN.md 的迁移记录](DESIGN.md#2026-10-19--设计系统迁移)。下方安装和测试结果保留原日期，不适用于本次迁移。
 
 更新：2026-10-08。当前阶段：**原生 iPhone / Mac 应用已实现；余白 1.0.0 已签名安装到本人 iPhone，本人完成信任并在 Wi-Fi 下验证后已打开应用，业务实际使用核验尚未完成。**
@@ -8,8 +10,8 @@
 
 用户于 2026-10-01 明确委托自主主导完整个人产品，随后确认「iPhone 优先，Mac 也能用」。本轮采用决定记录在 [13 · 个人完整版本](../.scratch/yubai-product/issues/13-complete-personal-release.md)，属于明确委托下的 Agent 决定，不冒充用户逐项视觉验收。
 
-- 当前实现源：`Sources/YubaiApp` 的原生 SwiftUI 界面；五个入口为现在、账本、安排、洞察、我的。共同财务引擎在 `Sources/YubaiCore`。
-- 当前设计：系统导航与表单、暖纸浅/深色 token、衬线标题与等宽金额、无描边卡片，保留 iPhone 五项原生底部导航与 Mac 侧栏。权威样式在 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift)，详见 [DESIGN.md](DESIGN.md)。
+- 当前实现源：`Sources/YubaiApp` 的原生 SwiftUI 界面；入口为现在、我，以及底部常驻的问余白。共同财务引擎在 `Sources/YubaiCore`。
+- 当前设计：系统导航与表单、暖纸浅/深色 token、衬线标题与等宽金额、无描边卡片，iPhone 两项原生底部导航、Mac 两项侧栏，问余白使用底部常驻按钮。权威样式在 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift)，详见 [DESIGN.md](DESIGN.md)。
 - 交付入口：[安装与使用](../README.md)、[真实验证结果](../docs/VALIDATION.md)、[iPhone 安装前提](../docs/INSTALL-iPhone.md)。未签名归档不能当作可安装 IPA，Mac 编译不代替完整人工体验。
 - 当前验证使用独立合成账本。iPhone 原生文件导入、付款账户映射、OCR 确认、持久化等流程已有执行证据；最终组合、深色与大字号结果以验证报告为准。没有读取用户真实财务资料。
 - 资料依据：[2026-10-01 UI/组件与竞品研究](../.scratch/yubai-product/research/2026-10-01-product-and-ui.md)。采用 SwiftUI、Charts、系统 Vision 与条件可用的 Foundation Models，不添加外部 UI/模型服务。

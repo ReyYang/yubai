@@ -4,126 +4,55 @@ import LocalAuthentication
 import YubaiCore
 
 struct SettingsView: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
-    @State private var horizon = 90; @State private var reserve = ""; @State private var living = ""; @State private var preferencesLoaded = false
     var body: some View {
         Form {
-            identitySection
-            fundsSection
-            protectionSection
-            weeklyLetterSection
-            appearanceSection
-            intelligenceSection
-            aboutSection
-        }.editorForm().navigationTitle("我的余白").yubaiNavigation().onAppear { if !preferencesLoaded { loadPreferences(); preferencesLoaded = true } }.onChange(of: store.isDemo) { _, _ in loadPreferences() }
-    }
-    func loadPreferences() { let p = store.current.preferences; horizon = p.horizonDays; reserve = Money.input(p.emergencyReserve); living = Money.input(p.dailyLiving) }
-    func savePreferences() {
-        do { let emergency = try Money.parse(reserve); let daily = try Money.parse(living); store.update("保存资金偏好") { $0.preferences.horizonDays = horizon; $0.preferences.emergencyReserve = emergency; $0.preferences.dailyLiving = daily } } catch { store.error = error.localizedDescription }
-    }
-    func enableLock(_ enabled: Bool) {
-        guard enabled else { store.update("关闭账本锁") { $0.preferences.lockEnabled = false }; return }
-        let context = LAContext(); var failure: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &failure) else { store.error = "请先为设备设置密码，再开启账本锁。"; return }
-        Task { do { if try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "确认你可以解锁余白账本") { store.update("开启账本锁") { $0.preferences.lockEnabled = true } } } catch { store.error = "验证未完成，账本锁尚未开启。" } }
-    }
-
-    private var identitySection: some View {
-        Section {
-            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space12)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space18))
-            layout { BrandMark(); if !textSize.isAccessibilitySize { Spacer() }; VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("个人资金管理").yubaiFont(YubaiFont.rowTitle); Text("1.0.0 · 本地优先").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) } }.padding(.vertical, YubaiSpace.space16)
-            NavigationLink { ProfileView() } label: { Label("我的消费观", systemImage: "leaf") }
-            Button { store.sheet = .accounts } label: { Label("账户与余额核对", systemImage: "wallet.bifold") }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var fundsSection: some View {
-        Section("资金偏好") {
-            Picker("从今天向前看", selection: $horizon) { Text("30 天").tag(30); Text("60 天").tag(60); Text("90 天").tag(90); Text("180 天").tag(180); Text("365 天").tag(365) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("应急底线金额").yubaiFont(YubaiFont.row); TextField("应急底线金额", text: $reserve).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("应急底线金额") }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("每天的日常生活预留（0 为自动估算）").yubaiFont(YubaiFont.row); TextField("每天的日常生活预留", text: $living).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("每天的日常生活预留") }
-            Button("保存资金偏好", action: savePreferences)
-            Text("日常生活预留用于未逐项列出的零碎开销。不要把同一笔固定付款既列为安排又放进日常预留。调整不会改动真实账单。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var protectionSection: some View {
-        Section("整理与保护") {
-            Button { store.sheet = .categories } label: { Label("收支分类", systemImage: "square.grid.2x2") }
-            Button { store.sheet = .backup } label: { Label("备份、恢复与导出", systemImage: "externaldrive") }
-            Button { store.sheet = .history } label: { Label("导入批次与本地恢复", systemImage: "clock.arrow.circlepath") }
-            Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn)
-            Text("使用设备现有的 Face ID、Touch ID 或密码。原始账单和本地账本不会上传。请另存一份加密备份，防止设备丢失。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var weeklyLetterSection: some View {
-        Section("来信") {
-            Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { enabled in
-                Task { await store.setWeeklyLetterPush(enabled) }
-            })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush)
-            Text("每周一上午 9 点，轻轻提醒一次。通知不含金额，打开余白后再写这周的来信。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var appearanceSection: some View {
-        Section("界面与外观") {
-            Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in store.update("保存外观") { $0.preferences.appearance = value } })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var intelligenceSection: some View { CloudAISettingsSection() }
-    private var aboutSection: some View {
-        Section("了解余白") {
-            Button { store.sheet = .guide } label: { Label("使用指南与计算口径", systemImage: "book.closed") }
-            Button(store.isDemo ? "退出示例账本" : "体验独立示例账本") { if store.isDemo { store.endDemo() } else { store.startDemo() } }
-            Text("余白 1.0.0\n把钱理清，把生活留给自己。\n不执行转账，不连接银行，不自动交易。") .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+            Section {
+                NavigationLink { ProfileView() } label: { Label("我的消费观", systemImage: "leaf") }.accessibilityIdentifier("openProfile")
+                NavigationLink { WishlistView() } label: { Label("心愿单", systemImage: "heart") }
+                NavigationLink { AccountsView() } label: { Label("账户", systemImage: "wallet.bifold") }
+                NavigationLink { ImportHistoryView() } label: { Label("导入记录", systemImage: "clock.arrow.circlepath") }.accessibilityIdentifier("openImportHistory")
+                NavigationLink { IntelligencePrivacyView() } label: { Label("智能与隐私", systemImage: "lock.shield") }
+                NavigationLink { BackupView() } label: { Label("备份与恢复", systemImage: "externaldrive") }.accessibilityIdentifier("openBackup")
+                NavigationLink { GuideView() } label: { Label("使用指南", systemImage: "book.closed") }
+            }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+        }.editorForm().navigationTitle("我").yubaiNavigation()
     }
 }
 
-struct CategoriesView: View {
+struct IntelligencePrivacyView: View {
     @Environment(AppStore.self) private var store
-    @State private var name = ""; @State private var income = false; @State private var selected: String?; @State private var rename = ""
     var body: some View {
         Form {
-            newCategorySection
-            categoriesSection
-            categoryNoteSection
-        }.editorForm().navigationTitle("收支分类").yubaiNavigation().toolbar { CloseButton() }
-            .alert("重命名分类", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) { TextField("名称", text: $rename); Button("取消", role: .cancel) { selected = nil }; Button("保存") { renameCategory() }.foregroundStyle(YubaiColor.brandInk) }
+            CloudAISettingsSection()
+            Section("来信") {
+                Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { enabled in
+                    Task { await store.setWeeklyLetterPush(enabled) }
+                })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush)
+                Text("每周一上午 9 点提醒一次，通知不含金额。打开余白后再写这周的来信。")
+                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            }.listRowBackground(YubaiColor.card)
+            Section("设备与界面") {
+                Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn)
+                Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in
+                    store.update("保存外观") { $0.preferences.appearance = value }
+                })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }
+            }.listRowBackground(YubaiColor.card)
+        }.editorForm().navigationTitle("智能与隐私").yubaiNavigation()
     }
-    func renameCategory() {
-        guard let old = selected else { return }; let new = rename.trimmingCharacters(in: .whitespacesAndNewlines)
-        if store.update("重命名分类", { l in
-            guard !new.isEmpty, !l.categories.contains(where: { $0.name == new && $0.name != old }) else { throw YubaiError.invalid("分类名称为空或已存在。") }
-            if let i = l.categories.firstIndex(where: { $0.name == old }) { l.categories[i].name = new }
-            for key in l.categoryAliases.keys where l.categoryAliases[key] == old { l.categoryAliases[key] = new }; l.categoryAliases[old] = new
-            for i in l.entries.indices where l.entries[i].category == old { l.entries[i].category = new }
-            for i in l.plans.indices where l.plans[i].category == old { l.plans[i].category = new }
-        }) { selected = nil }
-    }
-
-    private var newCategorySection: some View {
-        Section("添加分类") { TextField("分类名称", text: $name); Toggle("用于收入", isOn: $income).tint(YubaiColor.toggleOn); Button("添加") { let clean = name.trimmingCharacters(in: .whitespacesAndNewlines); guard !clean.isEmpty else { return }; if store.update("添加分类", { l in guard !l.categories.contains(where: { $0.name == clean }) else { throw YubaiError.invalid("已有同名分类。") }; l.categories.append(Category(clean, income ? "arrow.down.left" : "square.grid.2x2", income: income)) }) { name = "" } } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var categoriesSection: some View {
-        Section("已有分类 · 点击重命名") {
-            ForEach(store.current.categories) { c in
-                Button { selected = c.name; rename = c.name } label: {
-                    HStack {
-                        Label(c.name, systemImage: c.symbol)
-                        Spacer()
-                        Text(c.income ? "收入" : "支出").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    }
-                }
-            }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var categoryNoteSection: some View {
-        Section { InlineNote(text: "重命名会同步更新记录与安排中的分类，可以撤销。系统初始分类保留兜底用途。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+    private func enableLock(_ enabled: Bool) {
+        guard enabled else { store.update("关闭账本锁") { $0.preferences.lockEnabled = false }; return }
+        let context = LAContext(); var failure: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &failure) else { store.error = "请先为设备设置密码，再开启账本锁。"; return }
+        Task {
+            do { if try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "确认你可以解锁余白账本") { store.update("开启账本锁") { $0.preferences.lockEnabled = true } } }
+            catch { store.error = "验证未完成，账本锁尚未开启。" }
+        }
     }
 }
 
 extension UTType { static let yubaiBackup = UTType(exportedAs: "app.yubai.backup", conformingTo: .data) }
 struct ExportDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.data, .json, .commaSeparatedText, .yubaiBackup] }
+    static var readableContentTypes: [UTType] { [.data, .json, .yubaiBackup] }
     var data: Data
     init(data: Data = Data()) { self.data = data }
     init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
@@ -133,7 +62,7 @@ struct ExportDocument: FileDocument {
 struct BackupView: View {
     @Environment(AppStore.self) private var store
     @State private var password = ""; @State private var restorePassword = ""; @State private var exportDocument = ExportDocument()
-    @State private var exporting = false; @State private var importing = false; @State private var exportType = UTType.yubaiBackup; @State private var exportName = ""
+    @State private var exporting = false; @State private var importing = false; @State private var exportName = ""
     @State private var pendingRestore: Ledger?; @State private var restoreData: Data?; @State private var busy = false; @State private var message: String?
     private enum PasswordField: Hashable { case export, restore }
     @FocusState private var passwordFocus: PasswordField?
@@ -151,9 +80,9 @@ struct BackupView: View {
                     Button("取消恢复", role: .cancel) { self.pendingRestore = nil; restoreData = nil }
                 }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             }
-            csvSection
-        }.editorForm().navigationTitle("备份、恢复与导出").yubaiNavigation().toolbar { CloseButton() }
-            .fileExporter(isPresented: $exporting, document: exportDocument, contentType: exportType, defaultFilename: exportName) { result in switch result { case .success: message = "文件已保存到你选择的位置。"; case .failure(let error): message = error.localizedDescription } }
+            Section { NavigationLink("恢复版本") { RecoveryVersionsView() } }.listRowBackground(YubaiColor.card)
+        }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().toolbar { CloseButton() }
+            .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .yubaiBackup, defaultFilename: exportName) { result in switch result { case .success: message = "文件已保存到你选择的位置。"; case .failure(let error): message = error.localizedDescription } }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.yubaiBackup, .json, .data]) { result in do { acceptBackup(try result.get()) } catch { message = error.localizedDescription } }
             .onAppear { if let url = store.importedURL, url.pathExtension.lowercased() == "yubaibackup" { store.importedURL = nil; acceptBackup(url) } }
     }
@@ -163,81 +92,112 @@ struct BackupView: View {
     func exportBackup() {
         passwordFocus = nil
         let ledger = store.current; let password = password; busy = true; message = nil
-        Task { do { let data = try await Task.detached { try Backup.export(ledger, password: password) }.value; exportDocument = ExportDocument(data: data); exportType = .yubaiBackup; exportName = (store.isDemo ? "余白示例-" : "余白备份-") + Dates.text(Date()) + ".yubaibackup"; exporting = true; busy = false } catch { message = error.localizedDescription; busy = false } }
+        Task { do { let data = try await Task.detached { try Backup.export(ledger, password: password) }.value; exportDocument = ExportDocument(data: data); exportName = "余白备份-" + Dates.text(Date()) + ".yubaibackup"; exporting = true; busy = false } catch { message = error.localizedDescription; busy = false } }
     }
     func readBackup() {
         passwordFocus = nil
         guard let restoreData else { return }; let password = restorePassword; busy = true; pendingRestore = nil; message = nil
-        Task { do { let restored = try await Task.detached { try Backup.restore(restoreData, password: password) }.value; guard !restored.isSample else { throw YubaiError.invalid("这是示例账本备份，不会覆盖你的真实账本。") }; pendingRestore = restored; busy = false } catch { message = error.localizedDescription; busy = false } }
+        Task { do { let restored = try await Task.detached { try Backup.restore(restoreData, password: password) }.value; pendingRestore = restored; busy = false } catch { message = error.localizedDescription; busy = false } }
     }
 
     private var exportSection: some View {
         Section("完整备份") {
             Text("包括账户、记录、安排、目标和原始账单附件。设备之间可通过系统分享或文件传递备份；当前没有自动云同步。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-            SecureField("备份密码（推荐，至少 8 位）", text: $password).focused($passwordFocus, equals: .export)
-            Button("导出完整备份", action: exportBackup).disabled(busy)
-            Text("不填密码将导出未加密备份。密码无法找回，请妥善保存。备份只写到你选择的位置。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            SecureField("备份密码（至少 8 位）", text: $password).focused($passwordFocus, equals: .export)
+            Button("导出完整备份", action: exportBackup).disabled(busy || password.count < 8)
+            Text("完整备份使用密码加密。密码无法找回，请妥善保存；文件只写到你选择的位置。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var restoreSection: some View {
         Section("恢复到这台设备") {
             SecureField("如果备份已加密，填写密码", text: $restorePassword).focused($passwordFocus, equals: .restore)
-            Button("选择备份文件") { passwordFocus = nil; importing = true }.disabled(busy || store.isDemo)
+            Button("选择备份文件") { passwordFocus = nil; importing = true }.disabled(busy)
             if restoreData != nil { Button("使用当前密码重新读取", action: readBackup).disabled(busy) }
-            Text(store.isDemo ? "示例模式不能覆盖真实账本，请先退出示例。" : "先验证备份，再由你确认切换。当前账本会先保留到本地恢复历史，不会合并为两份重复记录。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            Text("先验证备份，再由你确认切换。当前账本会先保留到恢复版本，不会合并为两份重复记录。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var csvSection: some View {
-        Section("通用数据") { Button("导出全部记录为 CSV") { exportDocument = ExportDocument(data: CSV.export(store.current)); exportType = .commaSeparatedText; exportName = "余白记录-\(Dates.text(Date())).csv"; exporting = true }; Button("下载导入模板") { let sample = "时间,收支,金额,名称,分类,备注\n2026-10-01 12:30:00,支出,28.00,午餐,餐饮,示例行请替换\n"; exportDocument = ExportDocument(data: Data(("\u{FEFF}" + sample).utf8)); exportType = .commaSeparatedText; exportName = "余白导入模板.csv"; exporting = true }; Text("CSV 用于查阅和外部整理，不包含附件、安排与账户锚点。迁移或恢复请使用完整备份。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
 }
 
-struct HistoryView: View {
+struct ImportHistoryView: View {
     @Environment(AppStore.self) private var store
-    @State private var recoveries: [Recovery] = []; @State private var target: Recovery?; @State private var undoBatch: ImportBatch?
-    @State private var document = ExportDocument(); @State private var exporting = false; @State private var filename = ""
+    @State private var undoBatch: ImportBatch?
+    @State private var document = ExportDocument()
+    @State private var exporting = false
+    @State private var filename = ""
     var body: some View {
         Page {
-            SectionHeading(title: "导入批次")
-            if store.current.imports.isEmpty { Text("还没有导入记录。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
+            if store.current.imports.isEmpty { Text("还没有导入记录。").yubaiFont(YubaiFont.callout).accessibilityIdentifier("emptyImportHistory") }
             CardRows(Array(store.current.imports.reversed())) { batch in
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text(batch.filename).yubaiFont(YubaiFont.rowTitle)
-                    Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销")).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                    HStack {
-                        if let attachment = store.current.attachments.first(where: { $0.id == batch.attachmentID }) { Button("导出原文件") { document = ExportDocument(data: attachment.data); filename = attachment.name; exporting = true }.buttonStyle(.borderless).frame(minHeight: YubaiSize.tapMin) }
-                        Spacer()
-                        if batch.undoneAt == nil { Button("撤销整批", role: .destructive) { undoBatch = batch }.buttonStyle(.borderless).frame(minHeight: YubaiSize.tapMin) }
-                    }.yubaiFont(YubaiFont.row)
-                }.padding(.vertical, YubaiSpace.space8)
+                    Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销"))
+                        .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                    if batch.undoneAt == nil {
+                        if batch.needsOrganization == true || !(batch.organization?.questions.isEmpty ?? true) {
+                            Button("继续整理") { store.sheet = .imports }.frame(minHeight: YubaiSize.tapMin)
+                        }
+                        Button("整批撤销", role: .destructive) { undoBatch = batch }
+                            .disabled(store.organizingBatchID != nil).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportBatch")
+                    }
+                    if let attachment = store.current.attachments.first(where: { $0.id == batch.attachmentID }) {
+                        Button("导出原文件") { document = ExportDocument(data: attachment.data); filename = attachment.name; exporting = true }
+                            .frame(minHeight: YubaiSize.tapMin)
+                    }
+                }.buttonStyle(.borderless).padding(.vertical, YubaiSpace.space8)
             }
-            SectionHeading(title: "修改前的完整版本 · 最多保留 20 份")
-            if store.isDemo { Text("示例操作只在内存中，不生成真实账本历史。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-            else {
-                CardRows(recoveries) { r in
-                    Button { target = r } label: { VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(Dates.text(r.date, time: true)).yubaiFont(YubaiFont.rowTitle); Text(r.name).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(2) }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space8) }.buttonStyle(PressButtonStyle())
-                }
+        }.navigationTitle("导入记录").yubaiNavigation()
+            .confirmationDialog("撤销这批 \(undoBatch?.importedCount ?? 0) 笔？整理产生的关联和安排也会还原。",
+                                isPresented: Binding(get: { undoBatch != nil }, set: { if !$0 { undoBatch = nil } })) {
+                Button("撤销这一批", role: .destructive) { if let batch = undoBatch { store.undoImport(batch.id) }; undoBatch = nil }
             }
-        }.navigationTitle("导入与恢复历史").yubaiNavigation().toolbar { CloseButton() }
-            .onAppear { reload() }
-            .confirmationDialog("恢复到这个版本？当前账本会先保留。", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } })) { Button("恢复所选版本") { if let target { store.recover(target) }; self.target = nil }; Button("取消", role: .cancel) { target = nil } }
-            .confirmationDialog("撤销本批次全部 \(undoBatch?.importedCount ?? 0) 笔？同时还原整理产生的关联和安排。", isPresented: Binding(get: { undoBatch != nil }, set: { if !$0 { undoBatch = nil } })) { Button("撤销这一批", role: .destructive) { if let batch = undoBatch { store.undoImport(batch.id); reload() }; undoBatch = nil } }
-            .fileExporter(isPresented: $exporting, document: document, contentType: .data, defaultFilename: filename) { result in if case .failure(let e) = result { store.error = e.localizedDescription } }
+            .fileExporter(isPresented: $exporting, document: document, contentType: .data, defaultFilename: filename) { result in
+                if case .failure(let error) = result { store.error = error.localizedDescription }
+            }
     }
-    func reload() { do { recoveries = try store.repository.recoveries() } catch { store.error = error.localizedDescription } }
+}
+
+struct RecoveryVersionsView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var recoveries: [Recovery] = []
+    @State private var target: Recovery?
+    var body: some View {
+        Page {
+            Text("修改前的完整账本，最多保留 20 份。恢复前会再保留当前版本。")
+                .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            CardRows(recoveries) { recovery in
+                Button { target = recovery } label: {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                        Text(Dates.text(recovery.date, time: true)).yubaiFont(YubaiFont.rowTitle)
+                        Text(recovery.name).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space8)
+                }.buttonStyle(PressButtonStyle())
+            }
+        }.navigationTitle("恢复版本").yubaiNavigation().toolbar { CloseButton() }
+            .onAppear { do { recoveries = try store.repository.recoveries() } catch { store.error = error.localizedDescription } }
+            .confirmationDialog("恢复到这个版本？当前账本会先保留。", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } })) {
+                Button("恢复所选版本") { if let target, store.recover(target) { dismiss() }; target = nil }
+            }
+    }
 }
 
 struct GuideView: View {
     var body: some View {
         Page {
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "第一次用"); Text("1. 添加实际持有资金或欠款的账户，填写此刻真实余额。\n2. 在资金偏好里设置应急底线、生活预留和观察天数。\n3. 添加房租、信用还款和已知付款。\n4. 导入历史账单，检查少量例外；完成后可以直接离开。\n5. 导出一份加密备份，保存到你控制的位置。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "余额与可动用资金"); Text("余额从最近一次核对时刻开始，加上此后实际发生的账户流入流出。历史导入用于统计，不重新累加到当前余额。保守可动用 = 现金 − 信用待还 − 已知付款 − 目标预留 − 应急底线 − 日常预留 − 待明确流入。未来收入、投资市值、借出待收不提前当现金。所有判断依赖账单完整度。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "信用、借款与投资"); Text("信用消费记在信用账户，消费时增加欠款；还款使用双边记录关联现金账户与信用账户，不再次计作消费。借入/归还借款关联信用与借款账户；借出/收回本金关联借出待收账户。投资申赎关联现金与投资账户；市值变化在账户核对中更新，已实现收益单独记作投资收益。信用额度不是资产。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "导入与重复"); Text("微信或支付宝里的银行卡支付应记入实际银行卡，渠道不自动等于资金账户。交易单号优先去重，缺失时按同来源、账户、时间、金额和用途识别。跨来源同时间同金额只提示疑似重复，由你确认。被删除的原记录重新导入不会复活，用户修改也不会被覆盖。未识别行保留在预览；批次原文件可随时导出。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "房租分摊"); Text("月度分摊按月登记，允许部分收款和漏收。季度付款按与房东的真实约定预留全额；未收分摊不算现金。消费统计按付款发生日计入本人承担比例，现金流显示实际全额付款。房租已导入时关联已有记录，避免重复记一笔。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "隐私与 AI"); Text("CSV/XLSX、截图 OCR、去重和资金计算都在本机完成。「使用云端智能（DeepSeek）」默认关闭，开启后会把记录用途等任务摘要发送到 DeepSeek，整理分类、性质与关联，补充购买思考、洞察文字或搜索词。金额、主账户和原始日期由本机保留；未配置密钥、离线或请求失败时保留本机计算结果。账本锁使用系统认证；备份可用密码加密，密码无法找回。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "跨设备与恢复"); Text("iPhone 与 Mac 共用同一备份格式。导出完整备份，再在另一台设备恢复；恢复是切换到所选完整账本，不是自动双向合并。请一次只在一台设备编辑，再交接备份。恢复前会保留原账本，修改前自动保留最近 20 个完整版本。示例账本不会写入真实账本。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "金额与范围"); Text("当前版本统一使用人民币，不自动换汇；金额按整数分计算。消费退款冲减消费，本金和内部移动不计日常收支。余白不连接银行、不执行转账、授信或投资交易。原始账单应与你的机构账单一起核对。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-        }.yubaiFont(YubaiFont.callout).navigationTitle("使用指南").yubaiNavigation().toolbar { CloseButton() }
+            explanation("现在", "这里有每周来信、管家卡片、保守可动用和接下来要付的钱。先添加账户并核对真实余额，再导入历史账单。旧账单不会重复增加当前余额。")
+            explanation("保守可动用", "看未来 90 天：现金扣去信用待还、已知付款、储蓄目标、你写下的底线、估算的日常生活费，以及余额核对后待明确的流入。未来收入和投资市值不提前当现金。点金额可看计算依据；记录少或余额过旧时，判断也会有缺口。")
+            explanation("管家什么时候开口", "碰到你想克制的消费，或钱不够覆盖付款时，管家才主动提醒。整理中的疑问、需要核对的余额和心愿回访也会留成卡片。觉得不需要，可以选「知道了」；选「以后别提」，这个话题以后就不再出现。")
+            explanation("问余白", "问数字、看依据，也可以说一句话补记或上传截图。数字来自你的账本；回答中的「依据」能打开原始记录。修改先列出来，等你确认。AI 不会改动已有记录的金额、主账户和原始日期，补记金额也要由你核对。")
+            explanation("我的消费观", "在「我」写下愿意多花、想克制的领域和自己的原则，也可以留储蓄目标与始终留着的底线。它们是你的选择，随时能改；「你常花的」只是账本里的习惯。")
+            explanation("导入账单", "支持 CSV、TSV 和 XLSX。对应好实际付款账户，保存后自动整理分类、用途和关联，最多问五个问题，稍后答也可以。云端不可用时先保存，下次继续。需要反悔，可在「我 → 导入记录」整批撤销。")
+            explanation("智能与隐私", "云端智能默认关闭。开启后，DeepSeek 会收到你的提问、消费观及任务所需的记录摘要：日期、金额、分类、用途和有限关联证据。截图先在本机识别，只发送脱敏文字；不发送原始图片、账单文件、交易单号或来源指纹，账户使用本地标识，长号码遮盖，部分转账姓名替换为别名。商户和备注仍可能出现在摘要里，脱敏不能识别所有姓名。到「我 → 智能与隐私 → 发给云端的内容」查看本次打开期间最近 50 次发送。密钥保存在本机 Keychain，不进入账本或备份。")
+            explanation("备份与恢复", "在「我 → 备份与恢复」设置至少 8 位密码，保存加密的完整备份，包含原始账单附件。密码请自己留好。恢复先验证，再等你确认；修改前的最近 20 份完整版本也能找回。iPhone 和 Mac 用同一格式，通过备份交接，一次在一台设备上编辑。")
+        }.navigationTitle("使用指南").yubaiNavigation().toolbar { CloseButton() }
+    }
+    private func explanation(_ title: String, _ text: String) -> some View {
+        Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+            SectionHeading(title: title)
+            Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted)
+        } }
     }
 }

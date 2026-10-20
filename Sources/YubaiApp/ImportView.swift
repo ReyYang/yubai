@@ -53,7 +53,11 @@ struct ImportView: View {
             .onChange(of: store.current.accounts.count) { _, _ in if accountID == nil { accountID = store.current.accounts.last?.id } }
             .onChange(of: accountMappings) { _, _ in if preview != nil, let data { parse(data) } }
             .onDisappear { parsingTask?.cancel() }
-            .onAppear { if accountID == nil { accountID = store.current.accounts.first { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }?.id }; if let url = store.importedURL { store.importedURL = nil; queue = [url]; queueTotal = 1; readNext() } }
+            .onAppear {
+                #if DEBUG && targetEnvironment(simulator)
+                if preview == nil && result == nil && data == nil, let url = UITestSupport.statementURL { store.importedURL = url }
+                #endif
+                if accountID == nil { accountID = store.current.accounts.first { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }?.id }; if let url = store.importedURL { store.importedURL = nil; queue = [url]; queueTotal = 1; readNext() } }
     }
     private var readingView: some View {
         VStack(spacing: YubaiSpace.space20) {
@@ -75,7 +79,7 @@ struct ImportView: View {
                 Text("文件支持 CSV、TSV、XLSX；截图通过问余白在本机识别，金额由你确认。账单原始文件留在本地。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             Section("导出账单的方法") {
-                Text("微信：我 → 服务 → 钱包 → 账单 → 常见问题 → 下载账单。\n支付宝：我的 → 账单 → 更多 → 开具交易流水证明 / 导出账单。\n银行：导出带日期、金额和收支方向的明细；不匹配时可使用余白 CSV 模板。") .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                Text("微信：我 → 服务 → 钱包 → 账单 → 常见问题 → 下载账单。\n支付宝：我的 → 账单 → 更多 → 开具交易流水证明 / 导出账单。\n银行：导出带日期、金额和收支方向的明细；保留日期、金额和收支方向，表头不匹配时可由云端协助识别。") .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                 Text("各应用入口可能随版本调整。加密压缩包请先使用账单邮件提供的密码解压。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             if !store.current.imports.filter({ $0.needsOrganization == true || !($0.organization?.questions.isEmpty ?? true) }).isEmpty {
@@ -156,7 +160,7 @@ struct ImportView: View {
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     @ViewBuilder func resultView(_ savedBatch: ImportBatch) -> some View {
-        if let batch = store.current.imports.first(where: { $0.id == savedBatch.id }) {
+        if let batch = store.current.imports.first(where: { $0.id == savedBatch.id && $0.undoneAt == nil }) {
             Page {
                 if store.organizingBatchID == batch.id { ProgressView("正在整理…").padding(YubaiSpace.space18) }
                 EmptyState("checkmark.seal", batch.needsOrganization == true ? "账单已保存" : "这一份，整理好了",
@@ -184,16 +188,17 @@ struct ImportView: View {
                     Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
                         Text(store.organizationErrors[batch.id] ?? "记录已按账单保存。云端智能可用时，会继续整理这一批。").yubaiFont(YubaiFont.callout)
                         Button("现在整理") { Task { await store.organizeImport(batch.id) } }
-                            .buttonStyle(SecondaryButtonStyle()).disabled(store.organizingBatchID != nil || IntelligenceRuntime.backend(for: store.current) == nil)
+                            .buttonStyle(SecondaryButtonStyle()).disabled(store.organizingBatchID != nil || store.assistantTransport(for: store.current) == nil)
                     } }
                 }
                 Text("原始文件保留在本地。未回答的问题会留着，待明确的资金继续保守计算。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }.disabled(store.organizingBatchID == batch.id)
+                Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }.disabled(store.organizingBatchID == batch.id).accessibilityIdentifier("undoImportResult")
                 if !queue.isEmpty { Button("继续下一份（\(processed)/\(queueTotal)）") { result = nil; preview = nil; readNext() }.buttonStyle(PrimaryButtonStyle()).disabled(store.organizingBatchID != nil) }
-                Button("回到账本") { store.destination = .ledger; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
+                Button("回到现在") { store.destination = .overview; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
             }
         } else {
             Page { EmptyState("arrow.uturn.backward", "这一批已撤销", "整理产生的关联与安排也已还原。")
+                Text("有效记录 \(store.current.activeEntries.count) 笔").accessibilityIdentifier("activeEntryCount")
                 Button("继续导入") { result = nil; preview = nil; data = nil }
             }
         }
@@ -201,21 +206,21 @@ struct ImportView: View {
     private func questionCard(_ question: ImportQuestion, batchID: UUID) -> some View {
         let covered = Set(question.entryIDs)
         return Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            Text(question.text).yubaiFont(YubaiFont.cardTitle)
+            Text(question.text).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("importQuestion")
             Pill(text: "\(question.entryIDs.count) 笔 · 可以稍后回答", variant: .neutral, showsDot: false)
             DisclosureGroup("看看这几笔") {
                 LazyVStack { ForEach(store.sortedEntries.filter { covered.contains($0.id) }) { EntryRow(entry: $0) } }
             }
             ForEach(question.options.indices, id: \.self) { index in
                 Button(question.options[index].title) { store.answerImportQuestion(question, batchID: batchID, option: index) }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("importAnswer_" + String(index))
             }
             Button("都不是") { freeTextQuestion = question.id }.buttonStyle(SecondaryButtonStyle())
             if freeTextQuestion == question.id {
                 TextField("用自己的话补充用途", text: Binding(get: { questionText[question.id] ?? "" }, set: { questionText[question.id] = $0 }))
                 Button("记下用途") { store.describeImportQuestion(question, batchID: batchID, text: questionText[question.id] ?? "") }
                     .disabled((questionText[question.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Text("先记下你的说明，资金性质仍待明确。可在账本中继续补充。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                Text("先记下你的说明，资金性质仍待明确。也可以问余白继续核对。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
         } }
     }
@@ -235,17 +240,17 @@ struct ImportView: View {
         guard let accountID else { localError = "请先选择实际收付款账户。"; return }
         let ledger = store.current; let name = filename; let mappings = accountMappings; let requestID = UUID(); parseID = requestID; busy = true; localError = nil
         let columnMapping = preview?.columnMapping; let mappedHeader = preview?.mappedHeader ?? 0
+        let transport = store.assistantTransport(for: ledger)
         parsingTask?.cancel()
         parsingTask = Task { do {
-            let client = ledger.preferences.cloudAIEnabled ? DeepSeekClient.configured(redactor: Redactor(ledger: ledger)) : nil
             let parsed = try await Task.detached(priority: .userInitiated) {
                 if let columnMapping {
                     return try BillImporter.preview(data: bytes, filename: name, accountID: accountID, ledger: ledger,
                         accountMappings: mappings, requireAccountMapping: true, mapping: columnMapping, mappedHeader: mappedHeader)
                 }
-                if let client {
+                if let transport {
                     return try await BillImporter.preview(data: bytes, filename: name, accountID: accountID, ledger: ledger,
-                        accountMappings: mappings, requireAccountMapping: true, columnMapper: AIImportColumnMapper(transport: client))
+                        accountMappings: mappings, requireAccountMapping: true, columnMapper: AIImportColumnMapper(transport: transport))
                 }
                 return try BillImporter.preview(data: bytes, filename: name, accountID: accountID, ledger: ledger, accountMappings: mappings, requireAccountMapping: true)
             }.value

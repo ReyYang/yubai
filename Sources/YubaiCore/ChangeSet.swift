@@ -68,9 +68,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .linkRefund(let refund, let original): return "把 \(entry(refund)) 关联为 \(entry(original)) 的退款"
             case .linkPlan(let id, let plan, let date): return "把 \(entry(id)) 关联为 \(Dates.text(date)) \(ledger.plans.first { $0.id == plan }?.title ?? "资金安排")"
             case .linkRent(let id, let rent, let date): return "把 \(entry(id)) 关联为 \(Dates.calendar.component(.month, from: date)) 月\(ledger.rents.first { $0.id == rent }?.title ?? "房租")\(ledger.entries.first { $0.id == id }?.nature.inflow == true ? "分摊" : "付款")"
-            case .markDuplicate(let id, let original): return "把 \(entry(id)) 作为 \(entry(original)) 的重复记录移到回收站"
+            case .markDuplicate(let id, let original): return "把 \(entry(id)) 作为 \(entry(original)) 的重复记录标为已删除"
             case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
-            case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? "资金安排")」的结束日设为 \(Dates.text(date))"
+            case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
             case .addRent(let r): return "新增「\(r.title)」，月租 \(Money.text(r.monthlyTotal))，个人承担 \(Money.text(r.personalShare))，每 \(r.monthsPerPayment) 月支付，从 \(Dates.text(r.startDate)) 起，首付 \(Dates.text(r.nextDueDate))，每月 \(r.receiveDay) 日收分摊" + (r.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .addEntry(let d): return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）"
             case .profile(let change):
@@ -87,7 +87,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 case .addPrinciple(let text): return "新增消费原则「\(text)」"
                 case .editPrinciple(let old, let new): return "将消费原则「\(old)」改为「\(new)」"
                 case .removePrinciple(let text): return "移除消费原则「\(text)」"
-                case .setFloorAmount(let amount): return amount.map { "将始终留着的底线设为 \(Money.text($0))" } ?? "清除画像底线，使用资金偏好的应急预留 \(Money.text(ledger.preferences.emergencyReserve))"
+                case .setFloorAmount(let amount): return amount.map { "将始终留着的底线设为 \(Money.text($0))" } ?? "清除消费观中的底线，不额外预留底线金额"
                 }
             }
         }
@@ -178,8 +178,18 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard validDate(p.dueDate) else { throw YubaiError.invalid("资金安排的日期无效。") }
                 next.plans.append(p)
             case .endPlan(let id, let date):
-                guard let i = next.plans.firstIndex(where: { $0.id == id }), next.plans[i].endDate == nil else { skip(position); continue }
-                next.plans[i].endDate = date
+                guard validDate(date) else { throw YubaiError.invalid("结束日期无效。") }
+                // A not-yet-started arrangement can be cancelled without inventing
+                // an end date before its original start. Keep all stored records.
+                if let i = next.plans.firstIndex(where: { $0.id == id }) {
+                    guard next.plans[i].active, next.plans[i].endDate == nil else { skip(position); continue }
+                    if date < next.plans[i].dueDate { next.plans[i].active = false }
+                    else { next.plans[i].endDate = date }
+                } else if let i = next.rents.firstIndex(where: { $0.id == id }) {
+                    guard next.rents[i].active, next.rents[i].endDate == nil else { skip(position); continue }
+                    if date < next.rents[i].startDate { next.rents[i].active = false }
+                    else { next.rents[i].endDate = date }
+                } else { skip(position); continue }
             case .addRent(let r):
                 guard !next.rents.contains(where: { $0.id == r.id }) else { skip(position); continue }
                 guard r.accountID == nil || next.accounts.contains(where: { $0.id == r.accountID }) else { throw YubaiError.invalid("房租安排的账户不存在。") }

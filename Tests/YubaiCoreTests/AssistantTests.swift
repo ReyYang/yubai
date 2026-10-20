@@ -22,7 +22,7 @@ enum AssistantFixtures {
         let cash = Account(name: "零钱", kind: .cash, at: anchor)
         let credit = Account(name: "合成信用卡", kind: .credit, balance: -5000, at: anchor)
         var ledger = Ledger(); ledger.accounts = [bank, cash, credit]
-        ledger.preferences.horizonDays = 10; ledger.preferences.dailyLiving = 100; ledger.preferences.emergencyReserve = 2000
+        ledger.profile.floorAmount = 2000
         ledger.preferences.purchaseValues = "为长期有用的事物花钱"
         let coffee = Entry(date: Dates.addDays(-2, to: now), amount: 2000, accountID: bank.id, title: "瑞幸咖啡", category: "餐饮")
         var second = Entry(date: Dates.addDays(-1, to: now), amount: 3000, accountID: bank.id, title: "咖啡", category: "餐饮")
@@ -109,7 +109,7 @@ final class AssistantTests: XCTestCase {
         let script = ScriptedChatTransport([
             ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "funds", name: "get_funds")]),
             ChatMessage(role: .assistant, content: "可动用999元。"),
-            ChatMessage(role: .assistant, content: "可动用 ¥775.00。")])
+            ChatMessage(role: .assistant, content: "可动用 ¥785.00。")])
         let reply = try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "", messages: [], tools: ReadOnlyTool.all)
         XCTAssertTrue(reply.unverifiedAmounts.isEmpty)
     }

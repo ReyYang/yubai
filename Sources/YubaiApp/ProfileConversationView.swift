@@ -1,15 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-private struct ActiveProfileTransport: ChatTransport {
-    let client: DeepSeekClient
-    let isCurrent: @MainActor @Sendable () -> Bool
-    func send(_ request: ChatRequest) async throws -> ChatMessage {
-        guard await isCurrent() else { throw CancellationError() }
-        return try await client.send(request)
-    }
-}
-
 struct ProfileConversationView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -57,14 +48,13 @@ struct ProfileConversationView: View {
             .task { if messages.isEmpty && proposalID == nil { ask() } }
             .onDisappear { runningTask?.cancel() }
             .onChange(of: store.current.id) { _, _ in runningTask?.cancel(); dismiss() }
-            .onChange(of: store.isDemo) { _, _ in runningTask?.cancel(); dismiss() }
             .onChange(of: store.locked) { _, locked in if locked { runningTask?.cancel(); dismiss() } }
             .onChange(of: store.current.preferences.cloudAIEnabled) { _, enabled in if !enabled { runningTask?.cancel(); dismiss() } }
     }
     @MainActor private func ask() {
         guard !busy else { return }
-        let before = store.current; let wasDemo = store.isDemo
-        guard !store.locked, before.preferences.cloudAIEnabled, let client = DeepSeekClient.configured(redactor: Redactor(ledger: before)) else {
+        let before = store.current
+        guard !store.locked, before.preferences.cloudAIEnabled, let transport = store.assistantTransport(for: before) else {
             errorText = "请先在设置中填写 DeepSeek 密钥并开启云端智能。"; return
         }
         var turn = messages
@@ -76,15 +66,12 @@ struct ProfileConversationView: View {
         let conversation = turn
         let previousProposal = proposalID
         busy = true; errorText = ""
-        let transport = ActiveProfileTransport(client: client) {
-            store.current == before && store.isDemo == wasDemo && !store.locked && APIKeyStore.shared.configuration() == client.configuration
-        }
         runningTask = Task { @MainActor in
             defer { busy = false }
             do {
                 let reply = try await ProfileColdStart(transport: transport).next(ledger: before, messages: conversation)
                 try Task.checkCancellation()
-                guard store.current == before, store.isDemo == wasDemo, !store.locked else {
+                guard store.current == before, !store.locked else {
                     errorText = "账本刚有变化，请重试这一步。"; return
                 }
                 if let change = reply.proposedChangeSets.first {

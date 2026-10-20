@@ -10,12 +10,12 @@ struct ProfileView: View {
     @Environment(AppStore.self) private var store
     @State private var sheet: ProfileSheet?
     @State private var floor = ""
-    @State private var configured = APIKeyStore.shared.isConfigured
+    @State private var configured = IntelligenceRuntime.isConfigured
     private var profile: SpendingProfile { store.current.profile }
     private var empty: Bool { profile.generous.isEmpty && profile.restrain.isEmpty && profile.principles.isEmpty && profile.floorAmount == nil }
     private var canChat: Bool { configured && store.current.preferences.cloudAIEnabled }
     var body: some View {
-        Page(hasTabBar: true) {
+        Page {
             ForEach(store.current.pendingChanges.filter(\.isProfileOnly)) { change in
                 ProfileProposalCard(change: change, confirm: { store.apply(change, label: "修改消费观") }, secondaryTitle: "不用了") {
                     store.update("修改消费观") { ledger in
@@ -43,7 +43,7 @@ struct ProfileView: View {
             floorSection
             habits
         }.navigationTitle("我的消费观").yubaiNavigation()
-            .onAppear { configured = APIKeyStore.shared.isConfigured; loadFloor() }
+            .onAppear { configured = IntelligenceRuntime.isConfigured; loadFloor() }
             .onChange(of: store.current.profile.floorAmount) { _, _ in loadFloor() }
             .onChange(of: store.current.id) { _, _ in sheet = nil; loadFloor() }
             .sheet(item: $sheet) { item in
@@ -107,7 +107,7 @@ struct ProfileView: View {
                     }
                 }
             }
-            Button("添加原则") { sheet = .principle(nil) }
+            Button("添加原则") { sheet = .principle(nil) }.accessibilityIdentifier("addPrinciple")
         }
     }
     private var goals: some View {
@@ -138,7 +138,7 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: YubaiSpace.space12) {
                     TextField("底线金额（元）", text: $floor).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("始终留着的底线金额")
                     Text("计算可动用时会先留出这笔钱").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    if profile.floorAmount == nil { Text("当前沿用资金偏好的应急预留 " + Money.text(store.current.preferences.emergencyReserve)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+
                     Button("保存底线") {
                         do { let amount = try Money.parse(floor); edit { $0.floorAmount = amount } }
                         catch { store.error = error.localizedDescription }
@@ -161,7 +161,7 @@ struct ProfileView: View {
             }
         }
     }
-    private func loadFloor() { floor = Money.input(profile.floorAmount ?? store.current.preferences.emergencyReserve) }
+    private func loadFloor() { floor = Money.input(profile.floorAmount ?? 0) }
     private func edit(_ change: (inout SpendingProfile) -> Void) {
         store.update("修改消费观") { change(&$0.profile); $0.profile.updatedAt = Date() }
     }
@@ -240,7 +240,7 @@ private struct ProfilePrincipleEditor: View {
     var original: String?
     @State private var text = ""
     var body: some View {
-        Form { Section("给自己的一句提醒") { TextField("例如：超过 2,000 等 48 小时", text: $text, axis: .vertical) } }
+        Form { Section("给自己的一句提醒") { TextField("例如：超过 2,000 等 48 小时", text: $text, axis: .vertical).accessibilityIdentifier("principleText") } }
             .editorForm().navigationTitle("原则").yubaiNavigation()
             .onAppear { text = original ?? "" }
             .toolbar {
@@ -253,7 +253,7 @@ private struct ProfilePrincipleEditor: View {
                         else { ledger.profile.principles.append(clean) }
                         ledger.profile.updatedAt = Date()
                     }) { dismiss() }
-                } }
+                }.accessibilityIdentifier("savePrinciple") }
             }
     }
 }

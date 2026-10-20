@@ -86,7 +86,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             result = .object(["available": .money(f.available), "cash": .money(f.cash), "debt": .money(f.debt),
                 "committed": .money(f.committed), "goals": .money(f.goals), "emergency": .money(f.emergency),
                 "living": .money(f.living), "uncertain": .money(f.uncertainInflow), "expected_income": .money(f.expectedIncome),
-                "horizon_days": .number(Double(ctx.ledger.preferences.horizonDays)), "warnings": .strings(f.warnings)])
+                "horizon_days": .number(Double(Finance.observationDays)), "warnings": .strings(f.warnings)])
         case .forecast: result = try forecast(fields, ctx)
         case .queryEntries:
             let filter = try Filter(fields)
@@ -148,8 +148,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         // Finance's occurrence horizon ends at midnight. Calculate one extra day so
         // payments later on the requested calendar day reach that day's forecast point.
         let target = Dates.addDays(days, to: Dates.day(ctx.now))
-        var snapshot = ctx.ledger; snapshot.preferences.horizonDays = days + 1
-        let funds = Finance.funds(snapshot, now: ctx.now)
+        let funds = Finance.funds(ctx.ledger, now: ctx.now, days: days + 1)
         guard let point = funds.points.first(where: { $0.date == target }) else { throw YubaiError.invalid("没有可用的预测。") }
         let payments = funds.occurrences.filter { !$0.inflow && Dates.day($0.date) <= point.date }
         var result: [String: JSONValue] = ["date": .string(Dates.text(point.date)),

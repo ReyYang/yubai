@@ -19,6 +19,7 @@ let package = Package(
         .testTarget(
             name: "YubaiCoreTests",
             dependencies: ["YubaiCore"],
+            path: "Tests/YubaiCoreTests", // SampleData is a test fixture, never part of the app/core product.
             resources: [.copy("Fixtures")]
         )
     ],

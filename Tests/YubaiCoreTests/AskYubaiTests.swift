@@ -47,8 +47,7 @@ final class AskYubaiTests: XCTestCase {
     func testForecastChartEqualsEnginePath() throws {
         let ctx = AssistantFixtures.context()
         let built = try ShowChartTool().build(.object(["kind": .string("forecast"), "args": .object(["days": .number(5)])]), ctx)
-        var ledger = ctx.ledger; ledger.preferences.horizonDays = 6
-        let expected = Finance.funds(ledger, now: ctx.now).points.filter { $0.date <= Dates.addDays(5, to: Dates.day(ctx.now)) }
+        let expected = Finance.funds(ctx.ledger, now: ctx.now, days: 6).points.filter { $0.date <= Dates.addDays(5, to: Dates.day(ctx.now)) }
         XCTAssertEqual(built.chart.kind, .line)
         XCTAssertEqual(built.chart.points.map(\.cents), expected.map(\.conservative))
     }

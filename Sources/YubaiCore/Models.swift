@@ -175,6 +175,7 @@ public struct ImportBatch: Codable, Identifiable, Equatable, Sendable {
     public init(filename: String, importedCount: Int, duplicateCount: Int, skippedCount: Int) { self.filename = filename; self.importedCount = importedCount; self.duplicateCount = duplicateCount; self.skippedCount = skippedCount }
 }
 public struct Preferences: Codable, Equatable, Sendable {
+    // Legacy funds preferences: retained for archive compatibility, ignored by Finance.
     public var horizonDays = 90; public var emergencyReserve: Int64 = 0
     public var dailyLiving: Int64 = 0; public var hideAmounts = false; public var lockEnabled = false
     public var appearance = "system"; public var purchaseValues = "为长期有用和真正喜欢的事物花钱"
@@ -320,6 +321,10 @@ public struct Ledger: Codable, Equatable, Sendable {
         preferences = try c.decode(Preferences.self, forKey: .preferences)
         profile.updatedAt = updatedAt
         profile = try c.decodeIfPresent(SpendingProfile.self, forKey: .profile) ?? profile
+        // Preserve legacy reserves from both schema 1 and older schema 2 ledgers.
+        if profile.floorAmount == nil && preferences.emergencyReserve > 0 {
+            profile.floorAmount = preferences.emergencyReserve
+        }
         cards = try c.decodeIfPresent([ButlerCard].self, forKey: .cards) ?? cards
         pendingChanges = try c.decodeIfPresent([ChangeSet].self, forKey: .pendingChanges) ?? pendingChanges
         wishlist = try c.decodeIfPresent([WishItem].self, forKey: .wishlist) ?? wishlist

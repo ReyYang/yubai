@@ -1,40 +1,42 @@
 import Foundation
 import YubaiCore
 
-/// Cloud assistance is optional; local calculations remain available without it.
-@MainActor
-enum IntelligenceRuntime {
-    static func backend(for preferences: Preferences) -> CloudBackend? {
-        CloudBackend.configured(enabled: preferences.cloudAIEnabled)
-    }
-
-    static func backend(for ledger: Ledger) -> CloudBackend? {
-        CloudBackend.configured(enabled: ledger.preferences.cloudAIEnabled, redactor: Redactor(ledger: ledger))
-    }
-
-    static func availabilityText(for preferences: Preferences) -> String {
-        guard preferences.cloudAIEnabled else {
-            return "云端智能已关闭；使用本机计算结果。"
-        }
-        guard backend(for: preferences) != nil else {
-            return "未配置 DeepSeek 密钥；使用本机计算结果。"
-        }
-        return "云端智能 · DeepSeek；请求失败时保留本机计算结果。"
+@MainActor enum IntelligenceRuntime {
+    static var isConfigured: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { return true }
+        #endif
+        return APIKeyStore.shared.isConfigured
     }
 }
 
-struct ActiveImportTransport: ChatTransport {
-    let client: DeepSeekClient
+struct ActiveLedgerTransport: ChatTransport {
+    let base: any ChatTransport
     let isCurrent: @MainActor @Sendable () -> Bool
     func send(_ request: ChatRequest) async throws -> ChatMessage {
+        try Task.checkCancellation()
         guard await isCurrent() else { throw CancellationError() }
-        return try await client.send(request)
+        let reply = try await base.send(request)
+        guard await isCurrent() else { throw CancellationError() }
+        return reply
     }
 }
 
 @MainActor extension AppStore {
+    func assistantTransport(for snapshot: Ledger) -> (any ChatTransport)? {
+        guard snapshot.preferences.cloudAIEnabled, !locked else { return nil }
+        #if DEBUG && targetEnvironment(simulator)
+        if let script = UITestSupport.script {
+            return ActiveLedgerTransport(base: UITestTransport(script: script)) { self.current == snapshot && !self.locked }
+        }
+        #endif
+        guard let client = DeepSeekClient.configured(redactor: Redactor(ledger: snapshot)) else { return nil }
+        return ActiveLedgerTransport(base: client) {
+            self.current == snapshot && !self.locked && APIKeyStore.shared.configuration() == client.configuration
+        }
+    }
     func organizePendingImports() async {
-        guard !locked, loadFailure == nil || isDemo, current.preferences.cloudAIEnabled else { return }
+        guard !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
         let ids = current.imports.filter { $0.needsOrganization == true && $0.undoneAt == nil }.map(\.id)
         for id in ids {
             guard !Task.isCancelled else { return }
@@ -45,18 +47,15 @@ struct ActiveImportTransport: ChatTransport {
         guard organizingBatchID == nil, !locked,
               let batch = current.imports.first(where: { $0.id == batchID }), batch.needsOrganization == true,
               batch.undoneAt == nil, current.preferences.cloudAIEnabled,
-              let client = DeepSeekClient.configured(redactor: Redactor(ledger: current)) else { return }
-        let before = current; let wasDemo = isDemo
+              let transport = assistantTransport(for: current) else { return }
+        let before = current
         organizingBatchID = batchID; organizationErrors[batchID] = nil
         defer { organizingBatchID = nil }
         do {
             let ids = before.activeEntries.filter { $0.batchID == batchID && !$0.userEdited }.map(\.id)
-            let transport = ActiveImportTransport(client: client) {
-                self.current == before && self.isDemo == wasDemo && !self.locked && APIKeyStore.shared.configuration() == client.configuration
-            }
             let result = try await ImportOrganizer(transport: transport).organize(ledger: before, entryIDs: ids)
             try Task.checkCancellation()
-            guard current == before, isDemo == wasDemo, !locked else {
+            guard current == before, !locked else {
                 organizationErrors[batchID] = "账本已更新，本次整理未写入。可以点「现在整理」再试。"; return
             }
             if apply(result.changeSet, label: "导入整理", finishing: { ledger in
@@ -92,17 +91,14 @@ struct ActiveImportTransport: ChatTransport {
 
 @MainActor extension AppStore {
     func refreshButler() async {
-        guard !locked, loadFailure == nil || isDemo, organizingBatchID == nil, current.preferences.onboardingComplete else { return }
-        let before = current; let wasDemo = isDemo; let now = Date()
+        guard !locked, loadFailure == nil, organizingBatchID == nil, current.preferences.onboardingComplete else { return }
+        let before = current; let now = Date()
         var candidates = ButlerCards.detect(before, now: now)
         if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
         guard !candidates.isEmpty else { return }
-        let client = before.preferences.cloudAIEnabled ? DeepSeekClient.configured(redactor: Redactor(ledger: before)) : nil
-        let transport: (any ChatTransport)? = client.map { client in ActiveImportTransport(client: client) {
-            self.current == before && self.isDemo == wasDemo && !self.locked && APIKeyStore.shared.configuration() == client.configuration
-        } }
+        let transport = assistantTransport(for: before)
         let worded = await ButlerWording.word(candidates, ledger: before, transport: transport)
-        guard !Task.isCancelled, current == before, isDemo == wasDemo, !locked, organizingBatchID == nil else { return }
+        guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil else { return }
         var next = before
         guard ButlerCards.refresh(&next, candidates: worded, now: now) else { return }
         update("更新管家卡片", recordUndo: false) { $0.cards = next.cards }

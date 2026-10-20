@@ -83,10 +83,9 @@ public enum ButlerCards {
         }
         // Forecast points already subtract emergency. Comparing against zero avoids
         // reserving the floor twice. Include the payment day, after that day's outflows.
-        var forecastLedger = ledger; forecastLedger.preferences.horizonDays = max(30, ledger.preferences.horizonDays)
-        let funds = Finance.funds(forecastLedger, now: now)
+        let funds = Finance.funds(ledger, now: now)
         let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
-        let daily = ledger.preferences.dailyLiving == 0 ? Finance.estimatedDailyLiving(ledger, now: now) : ledger.preferences.dailyLiving
+        let daily = Finance.estimatedDailyLiving(ledger, now: now)
         let end = Dates.addDays(30, to: Dates.day(now))
         for item in funds.occurrences where !item.inflow && Dates.day(item.date) >= Dates.day(now) && Dates.day(item.date) <= end {
             let path = funds.points.filter { $0.date <= Dates.day(item.date) }

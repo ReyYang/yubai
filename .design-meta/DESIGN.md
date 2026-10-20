@@ -15,21 +15,24 @@
 
 ## 当前应用设计
 
+2026-10-20 按用户本轮批准的 2.0 范围采用「现在／我 + 问余白」。两端共用 SwiftUI 导航容器底部 accessory（使用 safeAreaInset，不依赖 iOS 26 专属 accessory API，保持 iOS 18 / macOS 14 的部署范围）；Mac 侧栏仅有现在与我。现在保留来信、管家、保守可动用与计算依据、Finance 待付款列表、导入；移除资金走势图与手工维护页面。记录详情从依据打开，删除只能通过撤销或恢复版本找回。目标编辑器仅由 ProfileView 使用，问余白直接展示自己的补记草稿，不需要旧记录编辑器。导入记录与恢复版本分开，后者在备份页面下。旧偏好和 isSample 不再控制运行界面，存档仍保留。数字默认看 90 天，底线只取消费观，日常生活自动估算。现有 Figma、HTML 原型和历史截图均未同步；无 Swift / Apple SDK，布局、底部安全区、VoiceOver、类型检查与五条离线 UI 测试尚未运行验证。
+
+
 | 资源 | 权威位置与用途 |
 |---|---|
 | 颜色、字体、基础视图 | `Sources/YubaiApp/DesignSystem.swift`；暖纸浅/深色语义 token、衬线标题、系统中文正文与 rounded 等宽金额；品牌绿只强调动作和图表 |
-| 应用信息架构 | `YubaiApp.swift`；iPhone 五个 tab、Mac 侧栏；根视图处理示例隔离、账本锁、文件打开和错误 |
-| 现在 | `OverviewView.swift`；保守金额优先，依据可展开，图表和近期义务同屏衔接，不展示无依据的「可放心花」承诺 |
-| 账本与编辑 | `LedgerView.swift` / `Editors.swift`；检索、分类/时间/账户筛选、批量修改、明细关联、回收站、余额差额 |
+| 应用信息架构 | `YubaiApp.swift`；iPhone 两个 tab、Mac 两项侧栏，问余白底部常驻按钮；根视图处理账本锁、文件打开和错误 |
+| 现在 | `OverviewView.swift`；来信和管家、保守金额与计算依据、只读待付款及结束安排、导入账单，不展示无依据的「可放心花」承诺 |
+| 依据与账户 | `EntryDetailView.swift` / `Editors.swift`；依据打开记录来源，账户编辑和核对保留；不再提供独立账本或关联页面 |
 | 整理 | `ImportView.swift`；文件/截图入口 → 账户对应 → 自动归类与少量例外 → 保存结果 → 可直接离开；不强迫逐笔审核 |
-| 安排与洞察 | `PlansView.swift` / `InsightsView.swift`；已知义务、目标、房租实际收付、购买判断与按需本机模型 |
-| 持续维护 | `SettingsView.swift`；分类规则、完整备份、恢复预览、历史、设备保护、外观、本机模型权重与可选云/系统模型开关及计算口径 |
-| 本机智能（一期） | `IntelligenceRuntime` + `YubaiLocalLLM`（llama.cpp Metal）+ `ModelWeightStore`（HF Qwen GGUF）；台架见 `docs/ai-bench/`；方案见 Agent Store `docs/ai-local-first-plan.md` |
+| 消费观与问答 | `ProfileView.swift` / `AskYubaiView.swift` / `WishlistView.swift`；消费原则、领域、底线和目标，问答数字、依据、提案与心愿 |
+| 我与维护 | `SettingsView.swift`；七个维护入口、导入批次整批撤销、加密备份、恢复版本、智能与隐私和指南 |
+| 云端智能 | `IntelligenceRuntime` + DeepSeek，共用发送前后的快照保护；默认关闭；台架见 `docs/ai-bench/` |
 | 图标 | `Assets.xcassets/AppIcon.appiconset`；本项目生成的深青绿余白符号，不依赖远端素材 |
 
 基础组件包括 `Page`、`Card` / `CardRows`、`AmountLabel`、`HeroCard`、`EntryRow`、`Pill`、`InlineNote`、`EmptyState`、`Toast`、`BrandMark`、`AssistantMark`、`WaterLevelView`、`ChartGrow` 和主次按钮；均有实际调用。使用 SwiftUI 原生表单、导航、选择器、sheet、文件选择、SF Symbols 和 Swift Charts；卡片无描边、阴影和渐变。
 
-大字号下，账本筛选合并到菜单、交易信息纵向排布、示例标记缩短，避免固定提示占满屏幕。金额不只靠颜色说明；入/出、性质、未知和异常均有文字。输入错误留在当前编辑页，不丢弃表单。触控、VoiceOver、设备认证与所有尺寸并未穷尽验收，已执行范围见 [验证记录](../docs/VALIDATION.md)。
+大字号下，金额与待付款行通过纵向排布保持可读；已移除旧筛选与示例提示。金额不只靠颜色说明；入/出、性质、未知和异常均有文字。输入错误留在当前编辑页，不丢弃表单。触控、VoiceOver、设备认证与所有尺寸并未穷尽验收，已执行范围见 [验证记录](../docs/VALIDATION.md)。
 
 2026-10-02 按用户明确要求建立 [Figma 全动作派生稿](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=13-3367)。三页分别为全动作 UI/UX、组件与参考、Mac 与共用流程；包含 111 个手机状态、11 个 Mac 画板、42 个本地组件（含 28 个图标）、43 个变量和 8 个文字样式。
 

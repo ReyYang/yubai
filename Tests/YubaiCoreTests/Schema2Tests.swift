@@ -29,6 +29,24 @@ final class Schema2Tests: XCTestCase {
         edited.advice.insert(AdviceRecord(title: "书", amount: 5000, result: "先借阅", note: "学习"), at: 0)
         XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(edited)), edited)
     }
+    func testLegacyEmergencyReserveMigratesToFloorForBothSchemas() throws {
+        let schema1 = try LedgerCodec.decode(fixture())
+        XCTAssertEqual(schema1.profile.floorAmount, 50000)
+        XCTAssertEqual(Finance.funds(schema1, now: schema1.updatedAt).emergency, 50000)
+        var oldSchema2 = schema1; oldSchema2.profile.floorAmount = nil
+        let schema2 = try LedgerCodec.decode(LedgerCodec.encode(oldSchema2))
+        XCTAssertEqual(schema2.profile.floorAmount, 50000)
+        XCTAssertEqual(Finance.funds(schema2, now: schema2.updatedAt).emergency, 50000)
+    }
+    func testLegacyEmergencyReserveDoesNotOverrideExplicitFloor() throws {
+        var ledger = try LedgerCodec.decode(fixture())
+        for floor in [Int64(150000), 0] {
+            ledger.profile.floorAmount = floor
+            let decoded = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+            XCTAssertEqual(decoded.profile.floorAmount, floor)
+            XCTAssertEqual(Finance.funds(decoded, now: decoded.updatedAt).emergency, floor)
+        }
+    }
     func testDefaultPurchaseValuesDoNotBecomePrincipleAndNewFieldsHaveDefaults() throws {
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: fixture()) as? [String: Any])
         var preferences = try XCTUnwrap(json["preferences"] as? [String: Any])
@@ -106,6 +124,6 @@ final class Schema2Tests: XCTestCase {
             XCTAssertEqual(a.conservative, b.conservative - 100000); XCTAssertEqual(a.expected, b.expected - 100000)
         }
         ledger.profile.floorAmount = 0; XCTAssertEqual(Finance.funds(ledger, now: now).emergency, 0)
-        ledger.profile.floorAmount = nil; XCTAssertEqual(Finance.funds(ledger, now: now).available, before.available)
+        ledger.profile.floorAmount = nil; XCTAssertEqual(Finance.funds(ledger, now: now).available, before.available + before.emergency)
     }
 }

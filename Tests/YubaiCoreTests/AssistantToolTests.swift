@@ -20,16 +20,15 @@ final class AssistantToolTests: XCTestCase {
             XCTAssertEqual(output[key]?["text"]?.stringValue, Money.text(amount), key)
         }
         XCTAssertEqual(output["warnings"], .strings(f.warnings))
-        XCTAssertEqual(f.available, 77500)
+        XCTAssertEqual(f.available, 78500)
     }
     func testForecastMatchesFinanceAndShortfall() throws {
         let output = try run(.forecast, #"{"days":5,"amount":"800"}"#)
-        var snapshot = ctx.ledger; snapshot.preferences.horizonDays = 6
-        let f = Finance.funds(snapshot, now: ctx.now)
+        let f = Finance.funds(ctx.ledger, now: ctx.now, days: 6)
         XCTAssertEqual(cents(output["conservative"]), f.points[5].conservative)
         XCTAssertEqual(cents(output["expected"]), f.points[5].expected)
-        XCTAssertEqual(cents(output["expected"]), 98000) // Income at noon on the target day is included.
-        XCTAssertEqual(cents(output["short_by"]), 2000)
+        XCTAssertEqual(cents(output["expected"]), 98500) // Income at noon on the target day is included.
+        XCTAssertEqual(cents(output["short_by"]), 1500)
         XCTAssertEqual(output["enough"], .bool(false))
         XCTAssertEqual(output["known_payments"]?.arrayValue?.count, f.occurrences.filter { !$0.inflow }.count)
         XCTAssertEqual(try run(.forecast, #"{"date":"2026-06-20","amount":"800"}"#), output)

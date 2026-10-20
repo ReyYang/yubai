@@ -81,18 +81,7 @@ public enum CSV {
         if !cell.isEmpty || !row.isEmpty || endedQuote { try finishCell(); rows.append(row) }
         return rows
     }
-    public static func escape(_ value: String) -> String {
-        // Protect exports from spreadsheet formula injection without altering imported source archives.
-        let safe = ["=", "+", "-", "@", "\t", "\r"].contains(where: value.hasPrefix) ? "'" + value : value
-        return "\"" + safe.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-    }
-    public static func export(_ ledger: Ledger) -> Data {
-        let header = ["时间", "性质", "收支", "金额", "账户", "关联账户", "名称", "分类", "备注", "来源", "交易单号"]
-        let rows = ledger.activeEntries.sorted { $0.date > $1.date }.map { e in
-            [Dates.text(e.date, time: true), e.nature.label, e.nature.inflow ? "收入" : "支出", Money.input(e.amount), ledger.accountName(e.accountID), e.otherAccountID == nil ? "" : ledger.accountName(e.otherAccountID), e.title, e.category, e.note, e.source, e.externalID]
-        }
-        return Data(("\u{FEFF}" + ([header] + rows).map { $0.map(escape).joined(separator: ",") }.joined(separator: "\r\n")).utf8)
-    }
+
 }
 
 public enum BillImporter {

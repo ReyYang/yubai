@@ -8,11 +8,11 @@ struct CloudAISettingsSection: View {
     @State private var status = ""
     @State private var testing = false
     var body: some View {
-        Section("智能辅助") {
+        Section("云端智能") {
             Toggle("使用云端智能（DeepSeek）", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in
                 store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value }
             })).tint(YubaiColor.toggleOn)
-            Text("金额、账户与资金性质由本机计算。开启后，会把脱敏的用途摘要发送到 DeepSeek；离线或请求失败时保留本机结果。")
+            Text("开启后，DeepSeek 会收到提问、消费观和任务所需的脱敏记录摘要，包括日期、金额、用途及有限关联证据。原始文件和图片留在本机；修改需要你确认，AI 不改已有记录的金额。")
                 .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             Text(configured ? "已配置" : "未配置").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
             SecureField("DeepSeek API 密钥", text: $key).autocorrectionDisabled().privacySensitive()
@@ -23,7 +23,6 @@ struct CloudAISettingsSection: View {
             Button(testing ? "正在连接…" : "测试连接") { testConnection() }.disabled(!configured || testing)
             if !status.isEmpty { Text(status).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) }
             NavigationLink("发给云端的内容") { CloudSendLogView() }
-            NavigationLink("问余白") { AskYubaiView() }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             .onAppear { configured = APIKeyStore.shared.isConfigured }
             .onDisappear { key = "" }

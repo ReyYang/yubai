@@ -34,7 +34,7 @@ struct AskYubaiView: View {
     @State private var captureTask: Task<Void, Never>?
     @State private var voiceTask: Task<Void, Never>?
     @State private var appeared = false
-    @State private var configured = APIKeyStore.shared.isConfigured
+    @State private var configured = IntelligenceRuntime.isConfigured
     private var enabled: Bool { store.current.preferences.cloudAIEnabled && configured }
     var body: some View {
         VStack(spacing: 0) {
@@ -84,10 +84,9 @@ struct AskYubaiView: View {
                 }
             }
             .onChange(of: voice.transcript) { _, text in input = voicePrefix + text }
-            .onAppear { configured = APIKeyStore.shared.isConfigured; if !appeared { appeared = true; input = initialText; if let initialImage { recognize(initialImage) } } }
+            .onAppear { configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; input = initialText; if let initialImage { recognize(initialImage) } } }
             .onDisappear { cancel() }
             .onChange(of: store.current.id) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
-            .onChange(of: store.isDemo) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
             .onChange(of: store.current.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
             .onChange(of: store.locked) { _, value in if value { cancel(); messages = []; originalImage = nil; session = AskYubaiSession() } }
     }
@@ -99,7 +98,7 @@ struct AskYubaiView: View {
                     Button("从照片选择截图") { photoPicker = true }
                     Button("选择图片文件") { filePicker = true }
                 } label: { Image(systemName: "plus").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("添加截图")
-                TextField("问一句，或记一笔", text: $input, axis: .vertical).lineLimit(1...5).yubaiFont(YubaiFont.body)
+                TextField("问一句，或记一笔", text: $input, axis: .vertical).lineLimit(1...5).yubaiFont(YubaiFont.body).accessibilityIdentifier("askInput")
                 if voice.available || voice.recording {
                     Button {
                         if voice.recording { voice.stop() }
@@ -107,7 +106,7 @@ struct AskYubaiView: View {
                     } label: { Image(systemName: voice.recording ? "stop.circle" : "mic").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel(voice.recording ? "停止听写" : "语音输入")
                 }
                 Button { send() } label: { Image(systemName: "arrow.up.circle.fill").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
-                    .accessibilityLabel("发送").disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || voice.recording)
+                    .accessibilityLabel("发送").accessibilityIdentifier("sendAsk").disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || voice.recording)
             }.disabled(!enabled || busy || reading)
         }.padding(YubaiSpace.space12).background(YubaiColor.raised)
     }
@@ -116,9 +115,9 @@ struct AskYubaiView: View {
             HStack { Spacer(minLength: YubaiSpace.space24); Text(message.text).yubaiFont(YubaiFont.body).padding(YubaiSpace.space16).background(YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.card)) }
         } else if let reply = message.reply {
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-                Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled)
+                Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
                 if let chart = reply.chart, !store.current.preferences.hideAmounts { AnswerChartView(chart: chart) }
-                NavigationLink("依据：\(reply.evidenceEntryIDs.count) 笔") { AskEvidenceView(ids: reply.evidenceEntryIDs) }.yubaiFont(YubaiFont.caption)
+                NavigationLink("依据：\(reply.evidenceEntryIDs.count) 笔") { AskEvidenceView(ids: reply.evidenceEntryIDs) }.yubaiFont(YubaiFont.caption).accessibilityIdentifier("answerEvidence")
                 if !reply.unverifiedAmounts.isEmpty {
                     InlineNote(text: store.current.preferences.hideAmounts ? "回答中有金额尚未核实，请核对记录。" : "这些金额尚未核实：" + reply.unverifiedAmounts.joined(separator: "、"), style: .attention)
                 }
@@ -133,16 +132,15 @@ struct AskYubaiView: View {
     @MainActor private func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard enabled, !busy, !text.isEmpty else { return }
-        let ledger = store.current; let demo = store.isDemo; let image = originalImage
-        guard let client = DeepSeekClient.configured(redactor: Redactor(ledger: ledger)) else { return }
+        let ledger = store.current; let image = originalImage
+        guard let transport = store.assistantTransport(for: ledger) else { return }
         input = ""; errorText = ""; busy = true; messages.append(AskMessage(text: text, isUser: true))
         task = Task { @MainActor in
             defer { busy = false }
             do {
-                let transport = ActiveImportTransport(client: client) { self.store.current == ledger && self.store.isDemo == demo && !self.store.locked && self.store.current.preferences.cloudAIEnabled && APIKeyStore.shared.configuration() == client.configuration }
                 let reply = try await session.ask(text, ledger: ledger, transport: transport)
                 try Task.checkCancellation()
-                guard store.current == ledger, store.isDemo == demo, !store.locked, enabled else {
+                guard store.current == ledger, !store.locked, enabled else {
                     errorText = "账本已更新，可以再问一次。"; input = text; session = AskYubaiSession(); return
                 }
                 messages.append(AskMessage(text: reply.text, reply: reply, image: image))
@@ -159,13 +157,13 @@ struct AskYubaiView: View {
         captureTask = Task { @MainActor in await readImage(bytes) }
     }
     @MainActor private func readImage(_ bytes: Data) async {
-        let ledgerID = store.current.id; let demo = store.isDemo
+        let ledgerID = store.current.id
         defer { if !Task.isCancelled { reading = false } }
         do {
             guard bytes.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("图片请小于 50 MB。") }
             let receipt = try await Task.detached(priority: .userInitiated) { try ReceiptReader.recognize(bytes) }.value
             try Task.checkCancellation()
-            guard store.current.id == ledgerID, store.isDemo == demo, !store.locked, enabled else { return }
+            guard store.current.id == ledgerID, !store.locked, enabled else { return }
             let source = CGImageSourceCreateWithData(bytes as CFData, nil)
             let type = source.flatMap { CGImageSourceGetType($0) }.map { $0 as String }
             let ext = type.flatMap { UTType($0)?.preferredFilenameExtension } ?? "image"
@@ -185,7 +183,7 @@ struct AskEvidenceView: View {
         Page {
             Text("回答依据生成时的记录；汇总较多时展示最近的部分记录。").yubaiFont(YubaiFont.caption)
             CardRows(rows) { entry in
-                NavigationLink { EntryDetailView(entryID: entry.id) } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }.buttonStyle(PressButtonStyle())
+                NavigationLink { EntryDetailView(entryID: entry.id) } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("evidenceEntry_" + entry.id.uuidString)
             }
             if rows.isEmpty { Text("没有可展示的记录，或原记录已移除。") }
         }.navigationTitle("依据").yubaiNavigation()
