@@ -4,8 +4,9 @@ set -euo pipefail
 task_root="$(cd "$(dirname "$0")/.." && pwd)"
 task_source="$task_root/build/ReleaseMac/Build/Products/Release/Yubai.app"
 task_stage="$task_root/build/package-mac-$(date +%Y%m%d%H%M%S)"
-task_output="$task_root/dist/Yubai-1.0.0-macOS-arm64.dmg"
 test -d "$task_source"
+task_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$task_source/Contents/Info.plist")"
+task_output="$task_root/dist/Yubai-$task_version-macOS-arm64.dmg"
 if test -e "$task_output"; then
   echo "Output already exists. Preserve or rename that release before packaging again." >&2
   exit 1
@@ -19,13 +20,17 @@ if /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.icloud-container-ident
   # Re-signing ad hoc would discard the paid team's iCloud authorization.
   task_signing_note="保留构建时的签名与 iCloud 权限；iCloud 需要付费团队的有效签名及配置。"
 else
-  codesign --force --sign - --options runtime --timestamp=none "$task_stage/余白.app"
+  task_signing_args=(--force --sign - --options runtime --timestamp=none)
+  if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$task_entitlements" >/dev/null 2>&1; then
+    task_signing_args+=(--entitlements "$task_entitlements")
+  fi
+  codesign "${task_signing_args[@]}" "$task_stage/余白.app"
   task_signing_note="本地临时签名，账本默认仅本机。"
 fi
 codesign --verify --deep --strict --verbose=2 "$task_stage/余白.app"
 ln -s /Applications "$task_stage/Applications"
 cat > "$task_stage/安装与开始使用.txt" <<TEXT
-余白 1.0.0 · Apple Silicon / macOS 14+
+余白 $task_version · Apple Silicon / macOS 14+
 
 把「余白.app」拖到 Applications，然后从「应用程序」打开。
 $task_signing_note
@@ -41,5 +46,5 @@ $task_signing_note
 
 计算口径、使用说明及恢复入口都在应用内「我」。
 TEXT
-hdiutil create -volname '余白 1.0.0' -srcfolder "$task_stage" -format UDZO "$task_output"
+hdiutil create -volname "余白 $task_version" -srcfolder "$task_stage" -format UDZO "$task_output"
 printf '%s\n' "$task_output"

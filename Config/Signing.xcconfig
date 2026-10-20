@@ -1,0 +1,2 @@
+// Shared by the app and both test targets. No team is selected in the repository.
+#include? "Local.xcconfig"

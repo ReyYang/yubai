@@ -3,9 +3,13 @@
 <plist version="1.0"><dict>
 <key>CFBundleDisplayName</key><string>余白</string>
 <key>CFBundleName</key><string>Yubai</string>
-<key>CFBundleIdentifier</key><string>app.yubai.personal</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleDevelopmentRegion</key><string>$(DEVELOPMENT_LANGUAGE)</string>
+<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+<key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+<key>ITSAppUsesNonExemptEncryption</key><false/>
+<key>LSApplicationCategoryType</key><string>public.app-category.finance</string>
+<key>NSHumanReadableCopyright</key><string>Copyright © 2026 余白</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleExecutable</key><string>Yubai</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
@@ -22,6 +26,7 @@
 <key>UILaunchScreen</key><dict/>
 <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+<key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 <key>LSSupportsOpeningDocumentsInPlace</key><true/>
 <key>UIFileSharingEnabled</key><true/>
 <key>CFBundleDocumentTypes</key><array><dict><key>CFBundleTypeName</key><string>账单与备份</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>public.comma-separated-values-text</string><string>public.tab-separated-values-text</string><string>org.openxmlformats.spreadsheetml.sheet</string><string>public.image</string><string>app.yubai.backup</string></array></dict></array>

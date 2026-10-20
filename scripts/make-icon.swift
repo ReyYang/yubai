@@ -3,8 +3,9 @@ import Foundation
 let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 let iconset = root.appendingPathComponent("Sources/YubaiApp/Assets.xcassets/AppIcon.appiconset")
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
-func render(_ size: Int) throws -> Data {
-    let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+func render(_ size: Int, opaque: Bool = false) throws -> Data {
+    // The flattened iOS App Store icon must have no alpha channel.
+    let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8, samplesPerPixel: opaque ? 3 : 4, hasAlpha: !opaque, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
     let scale = CGFloat(size) / 1024
@@ -23,7 +24,7 @@ func render(_ size: Int) throws -> Data {
     return bitmap.representation(using: .png, properties: [:])!
 }
 var images: [[String: String]] = []
-try render(1024).write(to: iconset.appendingPathComponent("Icon-1024.png"))
+try render(1024, opaque: true).write(to: iconset.appendingPathComponent("Icon-1024.png"))
 images.append(["filename":"Icon-1024.png", "idiom":"universal", "platform":"ios", "size":"1024x1024"])
 for size in [16, 32, 128, 256, 512] {
     for scale in [1, 2] { let name = "Icon-mac-\(size)@\(scale)x.png"; try render(size * scale).write(to: iconset.appendingPathComponent(name)); images.append(["filename":name,"idiom":"mac","size":"\(size)x\(size)","scale":"\(scale)x"]) }

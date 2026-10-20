@@ -1,9 +1,18 @@
-// The only switch. NO keeps Personal Team signing free of iCloud entitlements.
+// NO keeps Personal Team signing free of iCloud entitlements.
 YUBAI_ICLOUD = NO
+// NO keeps direct Mac installs using the existing non-container ledger location.
+YUBAI_MAC_SANDBOX = NO
+#include "Signing.xcconfig"
 
 YUBAI_ICLOUD_CONDITION_NO =
 YUBAI_ICLOUD_CONDITION_YES = YUBAI_ICLOUD
 YUBAI_ICLOUD_ENTITLEMENTS_NO =
 YUBAI_ICLOUD_ENTITLEMENTS_YES = Sources/YubaiApp/Yubai-iCloud.entitlements
 CODE_SIGN_ENTITLEMENTS = $(YUBAI_ICLOUD_ENTITLEMENTS_$(YUBAI_ICLOUD))
+// macOS selects App Sandbox and iCloud independently. TestFlight requires sandbox.
+YUBAI_MAC_ENTITLEMENTS_NO_NO =
+YUBAI_MAC_ENTITLEMENTS_NO_YES = Sources/YubaiApp/Yubai-iCloud.entitlements
+YUBAI_MAC_ENTITLEMENTS_YES_NO = Sources/YubaiApp/Yubai-macOS.entitlements
+YUBAI_MAC_ENTITLEMENTS_YES_YES = Sources/YubaiApp/Yubai-macOS-iCloud.entitlements
+CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = $(YUBAI_MAC_ENTITLEMENTS_$(YUBAI_MAC_SANDBOX)_$(YUBAI_ICLOUD))
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(YUBAI_ICLOUD_CONDITION_$(YUBAI_ICLOUD))

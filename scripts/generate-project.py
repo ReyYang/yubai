@@ -24,13 +24,17 @@ refs.append(assets)
 privacy = add("privacy", 'isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>";')
 refs.append(privacy)
 privacy_build = add("privacy-build", f'isa = PBXBuildFile; fileRef = {privacy};')
+# iOS and unsandboxed macOS share the iCloud-only file; iCloud.xcconfig selects the sandbox variants.
 entitlements = add("icloud-entitlements", 'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Yubai-iCloud.entitlements; sourceTree = "<group>";')
 refs.append(entitlements)
+for key, filename in [("mac-entitlements", "Yubai-macOS.entitlements"), ("mac-icloud-entitlements", "Yubai-macOS-iCloud.entitlements")]:
+    refs.append(add(key, f'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = {filename}; sourceTree = "<group>";'))
 config_ref = add("icloud-config", 'isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/iCloud.xcconfig; sourceTree = "<group>";')
+signing_ref = add("signing-config", 'isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Signing.xcconfig; sourceTree = "<group>";')
 source_group = add("app-group", f'isa = PBXGroup; children = ({",".join(refs)},); path = Sources/YubaiApp; sourceTree = "<group>";')
 product = add("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yubai.app; sourceTree = BUILT_PRODUCTS_DIR;')
 products = add("products", f'isa = PBXGroup; children = ({product},); name = Products; sourceTree = "<group>";')
-group = add("root-group", f'isa = PBXGroup; children = ({source_group},{config_ref},{products},); sourceTree = "<group>";')
+group = add("root-group", f'isa = PBXGroup; children = ({source_group},{config_ref},{signing_ref},{products},); sourceTree = "<group>";')
 package = add("package", 'isa = XCLocalSwiftPackageReference; relativePath = .;')
 dependency = add("core-dependency", f'isa = XCSwiftPackageProductDependency; package = {package}; productName = YubaiCore;')
 framework = add("core-link", f'isa = PBXBuildFile; productRef = {dependency};')
@@ -44,7 +48,7 @@ settings = '''ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
     INFOPLIST_FILE = Sources/YubaiApp/Info.plist;
     IPHONEOS_DEPLOYMENT_TARGET = 18.0;
     MACOSX_DEPLOYMENT_TARGET = 14.0;
-    MARKETING_VERSION = 1.0.0;
+    MARKETING_VERSION = 2.0.0;
     PRODUCT_BUNDLE_IDENTIFIER = app.yubai.personal;
     PRODUCT_NAME = Yubai;
     SDKROOT = auto;
@@ -65,14 +69,14 @@ project_config_list = add("project-configs", f'isa = XCConfigurationList; buildC
 project_id = add("project", f'isa = PBXProject; attributes = {{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 2640; }}; buildConfigurationList = {project_config_list}; compatibilityVersion = "Xcode 16.0"; developmentRegion = "zh-Hans"; hasScannedForEncodings = 0; knownRegions = (en, "zh-Hans", Base,); mainGroup = {group}; packageReferences = ({package},); productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; targets = ({target},);')
 ui_ref = add("ui-test-file", 'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/YubaiUITests/AppFlowTests.swift; sourceTree = "<group>";')
 ui_file_build = add("ui-test-file-build", f'isa = PBXBuildFile; fileRef = {ui_ref};')
-objects[group] = objects[group].replace(f'{source_group},{config_ref},{products},', f'{source_group},{config_ref},{ui_ref},{products},')
+objects[group] = objects[group].replace(f'{source_group},{config_ref},{signing_ref},{products},', f'{source_group},{config_ref},{signing_ref},{ui_ref},{products},')
 ui_product = add("ui-test-product", 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YubaiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
 objects[products] = objects[products].replace(f'{product},', f'{product},{ui_product},')
 ui_sources = add("ui-test-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({ui_file_build},); runOnlyForDeploymentPostprocessing = 0;')
 ui_frameworks = add("ui-test-frameworks", 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
 ui_proxy = add("ui-test-proxy", f'isa = PBXContainerItemProxy; containerPortal = {project_id}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Yubai;')
 ui_dependency = add("ui-test-dependency", f'isa = PBXTargetDependency; target = {target}; targetProxy = {ui_proxy};')
-ui_configs = [add('ui-config:' + name, f'''isa = XCBuildConfiguration; name = {name}; buildSettings = {{
+ui_configs = [add('ui-config:' + name, f'''isa = XCBuildConfiguration; baseConfigurationReference = {signing_ref}; name = {name}; buildSettings = {{
 CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 PRODUCT_BUNDLE_IDENTIFIER = app.yubai.personal.uitests; PRODUCT_NAME = "$(TARGET_NAME)";
 SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0;
@@ -99,7 +103,7 @@ core_test_dependency = add("core-test-package", f'isa = XCSwiftPackageProductDep
 core_test_link = add("core-test-link", f'isa = PBXBuildFile; productRef = {core_test_dependency};')
 core_test_frameworks = add("core-test-frameworks", f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({core_test_link},); runOnlyForDeploymentPostprocessing = 0;')
 core_test_resources = add("core-test-resources", f'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({fixtures_build},); runOnlyForDeploymentPostprocessing = 0;')
-core_test_configs = [add("core-test-config:" + name, f'''isa = XCBuildConfiguration; name = {name}; buildSettings = {{
+core_test_configs = [add("core-test-config:" + name, f'''isa = XCBuildConfiguration; baseConfigurationReference = {signing_ref}; name = {name}; buildSettings = {{
 CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MACOSX_DEPLOYMENT_TARGET = 14.0;
 PRODUCT_BUNDLE_IDENTIFIER = app.yubai.personal.coretests; PRODUCT_NAME = "$(TARGET_NAME)";
 SDKROOT = auto; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx"; SWIFT_VERSION = 5.0;
