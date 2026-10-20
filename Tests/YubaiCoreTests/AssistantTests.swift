@@ -94,6 +94,14 @@ final class AssistantTests: XCTestCase {
         XCTAssertFalse(AssistantAmountGuard.unverified(in: "1万元", results: [.money(100)]).isEmpty)
         XCTAssertFalse(AssistantAmountGuard.unverified(in: "10元", results: [.object(["count": .number(10)])]).isEmpty)
     }
+    func testAmountGuardExcludesDatesTimesAndUUIDsTouchingChineseText() {
+        for value in ["2026-06-15", "2026-6-5", "2026/06/15", "2026/6/5", "2026年6月15日", "6月15日",
+                      "14:30", "14:30:45", "14：30", "2026-06-15 14:30",
+                      "12345678-1234-4abc-8def-123456789012", "ABCDEF12-ABCD-4ABC-8DEF-ABCDEF123456"] {
+            XCTAssertEqual(AssistantAmountGuard.unverified(in: "截至\(value)共2笔", results: []), [], value)
+            XCTAssertEqual(AssistantAmountGuard.unverified(in: "截至\(value)共2笔，消费999元", results: []), ["999元"], value)
+        }
+    }
     func testAmountGuardRetriesOnceAndReportsRemainingAmounts() async throws {
         let script = ScriptedChatTransport([
             ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "funds", name: "get_funds")]),
