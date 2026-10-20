@@ -189,14 +189,15 @@ struct ButlerQuestionView: View {
 
 struct ButlerProposalView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     let changeID: UUID
     var body: some View {
         Page {
             if let change = store.current.pendingChanges.first(where: { $0.id == changeID }) {
                 ProposalCard(title: store.current.preferences.hideAmounts ? "等你核对的修改" : change.reason, lines: store.current.preferences.hideAmounts ? ["金额已隐藏，请显示金额后核对。"] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: "记下这些修改", canConfirm: !store.current.preferences.hideAmounts, confirm: {
-                    if store.apply(change, label: "确认管家提案") { store.sheet = nil }
+                    if store.apply(change, label: "确认管家提案") { dismiss() }
                 }, cancel: {
-                    store.update("放下提案") { $0.pendingChanges.removeAll { $0.id == change.id } }; store.sheet = nil
+                    if store.update("放下提案", { $0.pendingChanges.removeAll { $0.id == change.id } }) { dismiss() }
                 })
             } else { Text("这份提案已经处理过了。") }
         }.navigationTitle("等你确认").yubaiNavigation().toolbar { CloseButton() }
@@ -226,6 +227,7 @@ struct WeeklyLetterCard: View {
     @Environment(\.dynamicTypeSize) private var textSize
     let card: ButlerCard
     @State private var appeared = false
+    @State private var reviewProposal: ChangeSet?
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let facts = card.letter {
@@ -254,6 +256,36 @@ struct WeeklyLetterCard: View {
             }
             Button("依据：这周 \(card.evidence.count) 笔记录 ›") { store.sheet = .cardEvidence(card.id) }
                 .yubaiFont(YubaiFont.caption).padding(.horizontal, 10).frame(minHeight: 44).background(YubaiColor.raised, in: Capsule())
+            if let learned = card.letter?.learned, !learned.isEmpty {
+                Card(background: YubaiColor.brandTint) {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                        HStack(spacing: YubaiSpace.space6) {
+                            AssistantMark(size: 14).accessibilityHidden(true)
+                            Text("这周我对你多了解了一点").yubaiFont(YubaiFont.caption)
+                        }.foregroundStyle(YubaiColor.brandInk)
+                        ForEach(Array(learned.enumerated()), id: \.offset) { _, line in
+                            HStack(alignment: .top, spacing: YubaiSpace.space8) {
+                                Text(line.text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandTintStrong).frame(maxWidth: .infinity, alignment: .leading)
+                                Button("不对") { store.update("纠正来信记忆") { Memory.reject(lineMemoryID: line.memoryID, in: &$0) } }
+                                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin)
+                                    .buttonStyle(PressButtonStyle()).accessibilityLabel("不对：" + line.text)
+                            }
+                        }
+                    }
+                }
+            }
+            if let review = card.letter?.review, ProfileReview.isCurrent(review, in: store.current) {
+                Card(background: YubaiColor.amberTint) {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+                        Text("这条还算数吗？").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.amberInk)
+                        Text(ProfileReview.summary(review)).yubaiFont(YubaiFont.row)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: YubaiSpace.space8) { reviewActions(review) }
+                            VStack(spacing: YubaiSpace.space8) { reviewActions(review) }
+                        }.padding(.top, YubaiSpace.space6)
+                    }
+                }
+            }
             Text("按当前安排与已记录流水回算；历史设置和遗漏流水可能影响曲线。金额单位：元。")
                 .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             Card(style: .list) {
@@ -261,6 +293,22 @@ struct WeeklyLetterCard: View {
                     Task { await store.setWeeklyLetterPush(value) }
                 })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: 48)
             }
+        }.sheet(item: $reviewProposal) { change in
+            NavigationStack { ButlerProposalView(changeID: change.id) }.appErrors()
+        }
+    }
+    private func reviewActions(_ review: ProfileReviewCandidate) -> some View {
+        Group {
+            Button("还算数") { store.update("确认消费观仍适用") { try ProfileReview.keep(review, in: &$0) } }
+                .buttonStyle(PrimaryButtonStyle(compact: true))
+            NavigationLink("改一下") { ProfileView() }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+            Button("不需要了") {
+                do {
+                    let change = try ProfileReview.remove(review, in: store.current)
+                    if let existing = store.current.pendingChanges.first(where: { $0.source == change.source && $0.items == change.items }) { reviewProposal = existing }
+                    else if store.update("保存消费观删除提案", { $0.pendingChanges.append(change) }) { reviewProposal = change }
+                } catch { store.error = error.localizedDescription }
+            }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
         }
     }
 }

@@ -37,19 +37,22 @@ struct AskYubaiView: View {
     @State private var voiceTask: Task<Void, Never>?
     @State private var appeared = false
     @State private var configured = IntelligenceRuntime.isConfigured
-    private var enabled: Bool { store.current.preferences.cloudAIEnabled && configured }
+    private var enabled: Bool { store.current.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil }
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: YubaiSpace.space16) {
-                        if !enabled {
+                        if let model = IntelligenceRuntime.cloud.unavailableModel {
+                            InlineNote(text: "模型「\(model)」现在用不了，请到智能与隐私换一个模型名字再试。", style: .attention)
+                            NavigationLink("去智能与隐私") { IntelligencePrivacyView() }.buttonStyle(SecondaryButtonStyle())
+                        } else if !enabled {
                             VStack(spacing: 12) {
                                 AssistantMark(size: 56).accessibilityHidden(true)
                                 Text("联网并配好密钥后，\n余白才能回答").yubaiFont(YubaiFont.quote).multilineTextAlignment(.center)
                                 Text("「现在」的数字照常由本机计算，不受影响。整理和提议会等到能联网时再做。")
                                     .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).multilineTextAlignment(.center).frame(maxWidth: 280)
-                                NavigationLink("去配好密钥") { Form { CloudAISettingsSection() }.editorForm().navigationTitle("云端智能") }
+                                NavigationLink("去配好密钥") { IntelligencePrivacyView() }
                                     .buttonStyle(PrimaryButtonStyle()).frame(maxWidth: 240)
                             }.frame(maxWidth: .infinity).padding(.top, 100)
                         } else if messages.isEmpty {
@@ -89,7 +92,8 @@ struct AskYubaiView: View {
                 }
             }
             .onChange(of: voice.transcript) { _, text in input = voicePrefix + text }
-            .onAppear { configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; input = initialText; if let initialImage { recognize(initialImage) } } }
+            .onAppear { IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; input = initialText; if let initialImage { recognize(initialImage) } } }
+            .onChange(of: IntelligenceRuntime.cloud.unavailableModel) { _, model in if model == nil { errorText = "" } }
             .onDisappear { cancel() }
             .onChange(of: store.current.id) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
             .onChange(of: store.current.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
@@ -137,12 +141,13 @@ struct AskYubaiView: View {
                         NavigationLink("核对相关记录 ›") { AskRecordLookupView(ids: message.protectedRecords) }.frame(minHeight: 44).yubaiFont(YubaiFont.caption)
                     }
                 }
+                RememberedRows(notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
             } } }
             ForEach(reply.proposedChangeSets) { change in
                 if case .addEntry(let draft)? = change.items.first { AskEntryDraftCard(change: change, draft: draft, image: message.image) }
                 else { AskChangeCard(change: change) }
             }
-            if let purchase = reply.purchaseJudgment { AskPurchaseCard(purchase: purchase, evidence: reply.evidenceEntryIDs, snapshot: reply.unverifiedAmounts.isEmpty ? reply.text : "这次回答有金额尚未核实，请重新查阅。") }
+            if let purchase = reply.purchaseJudgment { AskPurchaseCard(purchase: purchase, evidence: reply.evidenceEntryIDs, snapshot: reply.unverifiedAmounts.isEmpty ? reply.text : "这次回答有金额尚未核实，请重新查阅。", notes: reply.rememberedNotes + reply.updatedNotes.map(\.note)) }
         }
     }
     @MainActor private func send() {
@@ -165,12 +170,18 @@ struct AskYubaiView: View {
                 let related = ledger.activeEntries.filter { previousIDs.contains($0.id) }
                 let matching = related.filter { amounts.contains($0.amount) }
                 let recordIDs = (matching.isEmpty ? related : matching).map(\.id)
+                if !reply.rememberedNotes.isEmpty || !reply.updatedNotes.isEmpty || !reply.usedMemoryIDs.isEmpty || !reply.proposedChangeSets.isEmpty {
+                    guard store.update("记下问答", recordUndo: false, { ledger in
+                        try Memory.apply(reply, to: &ledger)
+                        ledger.pendingChanges.append(contentsOf: reply.proposedChangeSets)
+                    }) else { input = text; session = AskYubaiSession(); return }
+                }
                 messages.append(AskMessage(text: reply.text, reply: reply, image: image, protectedEdit: protectedEdit, protectedRecords: recordIDs))
                 if reply.proposedChangeSets.contains(where: { $0.items.contains { if case .addEntry = $0 { return true }; return false } }) { originalImage = nil }
             } catch is CancellationError {
                 if !Task.isCancelled { errorText = "账本或智能设置已更新，可以再试一次。"; input = text; session = AskYubaiSession() }
             }
-            catch { errorText = error.localizedDescription; input = text }
+            catch { if IntelligenceRuntime.cloud.unavailableModel == nil { errorText = error.localizedDescription }; input = text }
         }
     }
     @MainActor private func recognize(_ bytes: Data) {
@@ -241,7 +252,9 @@ private struct AskChangeCard: View {
                 if store.apply(change, label: "问余白修改") {
                     status = "已改好，可撤销上一项修改。" + (store.toast?.contains("；") == true ? (store.toast ?? "") : "")
                 }
-            }, cancel: { status = "这次不改了。" })
+            }, cancel: {
+                if store.update("放下提案", { $0.pendingChanges.removeAll { $0.id == change.id } }) { status = "这次不改了。" }
+            })
         }
     }
 }
@@ -275,7 +288,9 @@ private struct AskEntryDraftCard: View {
                         ledger.attachments.append(attachment); ledger.entries[index].attachmentID = attachment.id
                     }
                 }
-            }, cancel: { cancelled = true })
+            }, cancel: {
+                if store.update("放下补记", { $0.pendingChanges.removeAll { $0.id == change.id } }) { cancelled = true }
+            })
         }
     }
     private var confirmed: ChangeSet { var value = change; value.items = [.addEntry(draft)]; return value }
@@ -286,6 +301,7 @@ private struct AskPurchaseCard: View {
     let purchase: PurchaseJudgment
     let evidence: [UUID]
     let snapshot: String
+    let notes: [MemoryNote]
     @State private var wishID: UUID?
     @State private var linking = false
     private func save() -> UUID? {
@@ -313,6 +329,7 @@ private struct AskPurchaseCard: View {
                     VStack(spacing: 8) { actions }
                 }
                 if linking, let wishID { NavigationLink("选择对应的支出记录") { WishEntryPicker(wishID: wishID) }.frame(minHeight: 44) }
+                RememberedRows(notes: notes)
             }
         }
     }
@@ -333,11 +350,21 @@ private struct AskPurchaseCard: View {
         return "过去 90 天，同类消费平均一次 " + average + "。"
     }
     private func quotes(_ values: JSONValue) -> String {
-        var lines = (values["principles"]?.arrayValue?.compactMap(\.stringValue) ?? []).map { "你说过「" + $0 + "」" }
+        func quote(_ text: String, date: JSONValue?) -> String {
+            let at = date?.stringValue.flatMap(Dates.parse)
+            let prefix = at.map { "你 " + String(Dates.calendar.component(.month, from: $0)) + " 月写过" } ?? "你写过（时间未记录）"
+            let old = at.map { Dates.addDays(180, to: $0) < Date() } ?? false
+            return prefix + "「" + text + "」" + (old ? "，这可能已经变了" : "")
+        }
+        var lines = (values["principles"]?.arrayValue ?? []).compactMap { row -> String? in
+            guard let text = row["text"]?.stringValue ?? row.stringValue else { return nil }
+            return quote(text, date: row["confirmed_at"])
+        }
         for (key, label) in [("generous", "愿意多花"), ("restrain", "想克制")] {
             for area in values[key]?.arrayValue ?? [] {
                 if let title = area["title"]?.stringValue {
-                    lines.append(label + "：「" + title + "」" + (area["quote"]?.stringValue.flatMap { $0.isEmpty ? nil : " · 「" + $0 + "」" } ?? ""))
+                    let text = area["quote"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? title
+                    lines.append(label + "：" + quote(text, date: area["confirmed_at"]))
                 }
             }
         }

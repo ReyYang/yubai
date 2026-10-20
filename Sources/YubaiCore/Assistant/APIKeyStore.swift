@@ -13,19 +13,21 @@ public struct APIKeyStore: Sendable {
     private let storage: any APIKeyStorage
     public init(storage: any APIKeyStorage = KeychainAPIKeyStorage()) { self.storage = storage }
     public var isConfigured: Bool { configuration() != nil }
+    public var hasKeychainKey: Bool { (try? storage.read())?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
     public func save(_ key: String) throws {
         let value = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { throw YubaiError.invalid("请输入 DeepSeek 密钥。") }
         try storage.write(value)
     }
     public func delete() throws { try storage.delete() }
-    public func configuration(environment: [String: String] = ProcessInfo.processInfo.environment) -> DeepSeekConfiguration? {
+    public func configuration(environment: [String: String] = ProcessInfo.processInfo.environment,
+                              defaults: UserDefaults = .standard) -> DeepSeekConfiguration? {
         if let key = try? storage.read(), !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             // Retain environment model / endpoint overrides without using the environment key.
             var values = environment; values["DEEPSEEK_API_KEY"] = key
-            return DeepSeekConfiguration.fromEnvironment(environment: values)
+            return DeepSeekConfiguration.fromEnvironment(environment: values, defaults: defaults)
         }
-        return DeepSeekConfiguration.fromEnvironment(environment: environment)
+        return DeepSeekConfiguration.fromEnvironment(environment: environment, defaults: defaults)
     }
 }
 

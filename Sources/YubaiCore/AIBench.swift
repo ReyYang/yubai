@@ -214,7 +214,8 @@ extension AIBenchRunner {
         let reply = try await AskYubai.answer(sample.question, transport: transport, context: context)
         let names = Set(reply.toolTrace.map(\.name))
         let kinds = reply.proposedChangeSets.flatMap(\.items).map { item -> String in
-            if case .setCategory = item { return "set_category" }; return "other"
+            if case .setCategory = item { return "set_category" }
+            if case .profile = item { return "profile" }; return "other"
         }
         let expectedChanges = sample.expectedChangeKinds.map { $0 == kinds } ?? true
         let refused = sample.expectRefusal != true || (reply.proposedChangeSets.isEmpty && reply.text.contains("不能"))

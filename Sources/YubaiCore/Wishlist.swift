@@ -55,6 +55,17 @@ public enum Wishlist {
               let due = ledger.wishlist[i].followUpAt, due <= now, ledger.wishlist[i].followUpAnswer == nil, text.count <= 3900 else { throw YubaiError.invalid("这条回访已处理或还没到时间。") }
         _ = ButlerCards.refresh(&ledger, now: now)
         ledger.wishlist[i].followUpAnswer = choice.rawValue + (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "：" + text)
+        ledger.wishlist[i].followUpAnsweredAt = now
+        let explanation = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explanation.isEmpty {
+            let redactor = Redactor(ledger: ledger)
+            let title = String(redactor.text(ledger.wishlist[i].title).split(whereSeparator: { $0.isNewline }).joined(separator: " ").prefix(40))
+            let words = redactor.text(explanation).split(whereSeparator: { $0.isNewline }).joined(separator: " ")
+            let note = "买了「\(title)」，一个月后觉得\(choice.rawValue)：\(words)"
+            ledger.memories.append(MemoryNote(text: String(note.prefix(200)), kind: .value, source: .followUp,
+                createdAt: now, evidence: ledger.wishlist[i].boughtEntryID.map { [$0] } ?? []))
+            ledger.updatedAt = max(now, ledger.updatedAt)
+        }
         if let card = ledger.cards.first(where: { $0.dedupeKey == "follow:\(wishID)" }) {
             if choice != .neutral { ButlerCards.feedback(choice == .worth ? .worth : .regret, cardID: card.id, in: &ledger, now: now) }
             if let index = ledger.cards.firstIndex(where: { $0.id == card.id }) { ledger.cards[index].dismissedAt = now }

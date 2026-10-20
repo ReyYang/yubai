@@ -1,22 +1,64 @@
 import Foundation
+import Observation
 import YubaiCore
 
 @MainActor enum IntelligenceRuntime {
+    static let cloud = CloudAIStatus()
     static var isConfigured: Bool {
         #if DEBUG && targetEnvironment(simulator)
         if UITestSupport.script != nil { return true }
         #endif
-        return APIKeyStore.shared.isConfigured
+        return cloud.configured
     }
+}
+
+@MainActor @Observable final class CloudAIStatus {
+    private static let unavailableKey = "DeepSeek.unavailableModel"
+    var model = DeepSeekConfiguration.modelName()
+    private(set) var configured = APIKeyStore.shared.isConfigured
+    private(set) var unavailableModel: String? = UserDefaults.standard.string(forKey: CloudAIStatus.unavailableKey)
+    init() { refresh() }
+    func refresh() {
+        model = DeepSeekConfiguration.modelName()
+        configured = APIKeyStore.shared.isConfigured
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { unavailableModel = nil; return }
+        #endif
+        if unavailableModel != model { clear() }
+    }
+    func saveModel(_ name: String) throws {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean.count <= 200, !clean.contains(where: { $0.isNewline }) else { throw YubaiError.invalid("请输入有效的模型名字。") }
+        UserDefaults.standard.set(clean, forKey: DeepSeekConfiguration.modelPreferenceKey)
+        model = DeepSeekConfiguration.modelName(); clear()
+    }
+    func succeeded(model: String) {
+        guard model == DeepSeekConfiguration.modelName() else { return }
+        clear()
+    }
+    func failed(_ error: Error, model: String) {
+        guard model == DeepSeekConfiguration.modelName(), let failure = error as? DeepSeekError,
+              case .modelUnavailable = failure else { return }
+        unavailableModel = model; UserDefaults.standard.set(model, forKey: Self.unavailableKey)
+    }
+    private func clear() { unavailableModel = nil; UserDefaults.standard.removeObject(forKey: Self.unavailableKey) }
 }
 
 struct ActiveLedgerTransport: ChatTransport {
     let base: any ChatTransport
+    var model: String? = nil
     let isCurrent: @MainActor @Sendable () -> Bool
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         try Task.checkCancellation()
         guard await isCurrent() else { throw CancellationError() }
-        let reply = try await base.send(request)
+        let reply: ChatMessage
+        do {
+            reply = try await base.send(request)
+            if let model { await IntelligenceRuntime.cloud.succeeded(model: model) }
+        } catch {
+            if let model { await IntelligenceRuntime.cloud.failed(error, model: model) }
+            throw error
+        }
         guard await isCurrent() else { throw CancellationError() }
         return reply
     }
@@ -24,14 +66,14 @@ struct ActiveLedgerTransport: ChatTransport {
 
 @MainActor extension AppStore {
     func assistantTransport(for snapshot: Ledger) -> (any ChatTransport)? {
-        guard snapshot.preferences.cloudAIEnabled, !locked else { return nil }
+        guard snapshot.preferences.cloudAIEnabled, !locked, IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
         #if DEBUG && targetEnvironment(simulator)
         if let script = UITestSupport.script {
             return ActiveLedgerTransport(base: UITestTransport(script: script)) { self.current == snapshot && !self.locked }
         }
         #endif
         guard let client = DeepSeekClient.configured(redactor: Redactor(ledger: snapshot)) else { return nil }
-        return ActiveLedgerTransport(base: client) {
+        return ActiveLedgerTransport(base: client, model: client.configuration.model) {
             self.current == snapshot && !self.locked && APIKeyStore.shared.configuration() == client.configuration
         }
     }
@@ -76,13 +118,7 @@ struct ActiveLedgerTransport: ChatTransport {
         }
     }
     func describeImportQuestion(_ question: ImportQuestion, batchID: UUID, text: String) {
-        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, clean.count <= 80 else { return }
-        // Free text records the user's purpose. It does not guess the nature of money.
-        let answer = ImportQuestion(text: question.text, entryIDs: question.entryIDs,
-            options: [ImportAnswer(title: "都不是", items: question.entryIDs.map { .setPurpose(entry: $0, text: clean) })])
-        var matched = answer; matched.id = question.id
-        answerImportQuestion(matched, batchID: batchID, option: 0)
+        update("回答整理问题") { try question.describe(text, batchID: batchID, in: &$0) }
     }
     func undoImport(_ batchID: UUID) {
         update("整批撤销", preservingUpdatedAt: true) { ledger in BillImporter.undo(batchID: batchID, in: &ledger) }
@@ -92,6 +128,8 @@ struct ActiveLedgerTransport: ChatTransport {
 @MainActor extension AppStore {
     func refreshButler() async {
         guard !locked, loadFailure == nil, organizingBatchID == nil, current.preferences.onboardingComplete else { return }
+        await reflectMemoriesIfDue()
+        guard !Task.isCancelled, !locked, organizingBatchID == nil else { return }
         let before = current; let now = Date()
         var candidates = ButlerCards.detect(before, now: now)
         if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
@@ -102,6 +140,21 @@ struct ActiveLedgerTransport: ChatTransport {
         var next = before
         guard ButlerCards.refresh(&next, candidates: worded, now: now) else { return }
         update("更新管家卡片", recordUndo: false) { $0.cards = next.cards }
+    }
+    private func reflectMemoriesIfDue() async {
+        guard !reflectingMemories, MemoryReflection.isDue(ledger: current),
+              syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
+              let transport = assistantTransport(for: current) else { return }
+        let before = current
+        reflectingMemories = true
+        defer { reflectingMemories = false }
+        do {
+            let result = try await MemoryReflection.run(ledger: before, transport: transport)
+            try Task.checkCancellation()
+            guard current == before, !locked, organizingBatchID == nil, loadFailure == nil,
+                  syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { return }
+            update("每周回看", recordUndo: false, reportError: false) { try result.apply(to: &$0) }
+        } catch { /* Leave the week pending so a later refresh can retry. */ }
     }
     func dismissCard(_ id: UUID) {
         guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return }

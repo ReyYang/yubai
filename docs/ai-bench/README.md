@@ -50,7 +50,9 @@ YUBAI_LIVE_EVAL=1 swift test --filter AIBenchTests/testLiveCloudFixtureWhenExpli
 
 ## 共享助手评测种子
 
-`Fixtures/assistant-eval.json` 有6例：资金、预测/购买缺口、记录查询、消费汇总、习惯对照与偏好。`AIBenchRunner.runAssistantCase(_:transport:context:)` 复用 agent，检查调用工具、必含金额及金额护栏结果。离线脚本会先确认真实工具结果含有预期金额，再生成最终回答；这验证接口与数字链路，不代表模型工具选择能力已验证。
+`Fixtures/assistant-eval.json` 有10例：资金、预测/购买缺口、记录查询、消费汇总、习惯对照、画像、分类提案、金额修改拒绝、对话长期偏好提案和连续重复提案去重。`AIBenchRunner.runAssistantCase(_:transport:context:)` 复用 agent，检查调用工具、必含金额及金额护栏结果。离线脚本会先确认真实工具结果含有预期金额，再生成最终回答；这验证接口与数字链路，不代表模型工具选择能力已验证。
+
+长工具上下文压缩和会话历史压缩由AssistantTests／AskYubaiTests脚本覆盖（当前eval夹具没有历史消息或预算字段）；另覆盖超过旧轮数／单轮调用上限、规范化重复调用和旧数据兼容。离线脚本只验证调用契约与护栏，不代表模型遵循偏好提案提示词的能力已获验证。
 
 在具备 Swift / Apple SDK 的环境：
 

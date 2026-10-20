@@ -6,6 +6,8 @@ public struct LetterPoint: Codable, Equatable, Identifiable, Sendable {
     public var id: Date { date }
 }
 public struct LetterFacts: Codable, Equatable, Sendable {
+    public var learned: [LearnedLine]? = nil
+    public var review: ProfileReviewCandidate? = nil
     public var weekEnding: Date
     public var series: [LetterPoint]
     public var spending: Int64
@@ -73,7 +75,8 @@ public enum WeeklyLetter {
         let key = "letter:" + ButlerCards.isoWeek(now)
         guard !ledger.accounts.isEmpty, !ButlerCards.isMuted(key, in: ledger), !ledger.cards.contains(where: { $0.dedupeKey == key }) else { return nil }
         let monday = ButlerCards.calendar.dateInterval(of: .weekOfYear, for: now)!.start
-        let facts = facts(ledger, weekEnding: Dates.addDays(-1, to: monday))
+        var facts = facts(ledger, weekEnding: Dates.addDays(-1, to: monday))
+        facts.review = ProfileReview.candidate(ledger: ledger, now: now)
         let direction = facts.availableChange > 0 ? "增加了" : (facts.availableChange < 0 ? "减少了" : "保持原样")
         let body = "这一周消费 \(Money.text(facts.spending))。余白比上周\(direction)。"
         var candidate = CardCandidate(kind: .weeklyLetter, dedupeKey: key, evidence: facts.evidence,

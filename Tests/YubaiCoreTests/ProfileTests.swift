@@ -25,6 +25,9 @@ final class ProfileTests: XCTestCase {
         ledger.goals = [Goal(title: "旅行", target: 800_000, reserved: 120_000, dueDate: now)]
         ledger.entries = [entry(ledger, now, 2000, "午餐")]
         let first = try profile(ledger)
+        XCTAssertEqual(first["generous"]?.arrayValue?.first?["confirmed_at"], .null)
+        XCTAssertEqual(first["generous"]?.arrayValue?.first?["days_since_confirmed"], .null)
+        XCTAssertEqual(first["principles"], .array([.object(["text": .string("超过 2,000 等 48 小时"), "confirmed_at": .null])]))
         XCTAssertEqual(first["generous"]?.arrayValue?.first?["match"]?["categories"], .strings(["学习"]))
         let limit = first["restrain"]?.arrayValue?.first?["soft_limit"]
         XCTAssertEqual(limit?["per_week_count"], .number(3))
@@ -42,7 +45,7 @@ final class ProfileTests: XCTestCase {
             .profile(.removeArea(ledger.profile.restrain[0].id))])
         try change.apply(to: &ledger)
         let next = try profile(ledger)
-        XCTAssertEqual(next["principles"], .strings([])); XCTAssertEqual(next["floor_amount"], .money(600_000))
+        XCTAssertEqual(next["principles"], .array([])); XCTAssertEqual(next["floor_amount"], .money(600_000))
         XCTAssertEqual(next["restrain"], .array([]))
         XCTAssertFalse(try next.jsonText().contains("超过 2,000 等 48 小时"))
         XCTAssertFalse(try next.jsonText().contains("外卖"))
@@ -128,4 +131,79 @@ final class ProfileTests: XCTestCase {
         let last = try XCTUnwrap(requests.last)
         XCTAssertFalse(last.messages.contains { $0.content?.contains("大件先等两天") == true })
     }
+    func testLegacyMemoryFieldsDecodeAndNewFieldsRoundTrip() throws {
+        var ledger = seed()
+        ledger.profile.restrain = [ProfileArea(title: "外卖")]
+        ledger.profile.principles = ["慢慢考虑"]
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encode(ledger)) as? [String: Any])
+        json.removeValue(forKey: "categoryMemory")
+        var profile = try XCTUnwrap(json["profile"] as? [String: Any]); profile.removeValue(forKey: "principleDates")
+        var areas = try XCTUnwrap(profile["restrain"] as? [[String: Any]])
+        areas[0].removeValue(forKey: "confirmedAt"); profile["restrain"] = areas; json["profile"] = profile
+        let legacy = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(legacy.profile.restrain[0].confirmedAt)
+        XCTAssertTrue(legacy.profile.principleDates.isEmpty); XCTAssertTrue(legacy.categoryMemory.isEmpty)
+        ledger.profile.restrain[0].confirmedAt = now; ledger.profile.principleDates["慢慢考虑"] = now
+        ledger.categoryMemory["美团"] = "餐饮"
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)), ledger)
+    }
+    func testProfileStampOnlyTouchesChangedAreasAndNewPrinciples() {
+        var old = SpendingProfile()
+        let date = Dates.addDays(-200, to: now)
+        old.restrain = [ProfileArea(title: "外卖", confirmedAt: date), ProfileArea(title: "咖啡", confirmedAt: date)]
+        old.principles = ["借阅", "先等两天"]; old.principleDates = ["借阅": date, "先等两天": date]
+        var next = old
+        next.restrain[0].note = "工作午餐"
+        next.principles = ["借阅", "先借后买"]
+        next.stamp(changedFrom: old, at: now)
+        XCTAssertEqual(next.restrain.map(\.confirmedAt), [now, date])
+        XCTAssertEqual(next.principleDates, ["借阅": date, "先借后买": now]); XCTAssertEqual(next.updatedAt, now)
+        let unchanged = next; next.stamp(changedFrom: unchanged, at: Dates.addDays(1, to: now))
+        XCTAssertEqual(next, unchanged)
+        let beforeMove = next; next.generous = [next.restrain.removeFirst()]
+        next.stamp(changedFrom: beforeMove, at: Dates.addDays(1, to: now))
+        XCTAssertEqual(next.generous[0].confirmedAt, Dates.addDays(1, to: now))
+    }
+    func testChangeSetStampsAreasAndEditedPrinciplesAndRemovesDates() throws {
+        var ledger = seed(); let area = ProfileArea(title: "外卖")
+        var change = ChangeSet(source: "问余白", reason: "用户确认", items: [.profile(.upsertArea(area, stance: .restrain)), .profile(.addPrinciple("借阅"))])
+        change.createdAt = now; try change.apply(to: &ledger)
+        XCTAssertEqual(ledger.profile.restrain[0].confirmedAt, now); XCTAssertEqual(ledger.profile.principleDates["借阅"], now)
+        let read = try profile(ledger)
+        XCTAssertEqual(read["restrain"]?.arrayValue?.first?["confirmed_at"], .string(Dates.text(now)))
+        XCTAssertEqual(read["restrain"]?.arrayValue?.first?["days_since_confirmed"], .number(0))
+        XCTAssertEqual(read["principles"], .array([.object(["text": .string("借阅"), "confirmed_at": .string(Dates.text(now))])]))
+        change.items = [.profile(.editPrinciple(old: "借阅", new: "先借后买"))]; change.createdAt = Dates.addDays(1, to: now)
+        try change.apply(to: &ledger)
+        XCTAssertNil(ledger.profile.principleDates["借阅"]); XCTAssertEqual(ledger.profile.principleDates["先借后买"], change.createdAt)
+        change.items = [.profile(.removePrinciple("先借后买"))]; try change.apply(to: &ledger)
+        XCTAssertTrue(ledger.profile.principleDates.isEmpty)
+    }
+    func testMemoryValidationRejectsInvalidDatesAndKeys() {
+        var ledger = seed(); ledger.profile.restrain = [ProfileArea(title: "外卖", confirmedAt: Date(timeIntervalSince1970: .infinity))]
+        XCTAssertThrowsError(try ledger.validate())
+        ledger = seed(); ledger.profile.principles = ["借阅"]; ledger.profile.principleDates["已删除"] = now
+        XCTAssertThrowsError(try ledger.validate())
+        ledger.profile.principleDates = ["借阅": Date(timeIntervalSince1970: .nan)]; XCTAssertThrowsError(try ledger.validate())
+        ledger = seed(); ledger.categoryMemory["美团123"] = "餐饮"; XCTAssertThrowsError(try ledger.validate())
+        ledger.categoryMemory = ["": "餐饮"]; XCTAssertThrowsError(try ledger.validate())
+    }
+    func testRecentFollowUpsAreSortedLimitedAndRedacted() throws {
+        var ledger = seed(); let bought = entry(ledger, Dates.addDays(-40, to: now), 5000, "心愿购买")
+        ledger.entries = [bought]
+        ledger.wishlist = (0..<12).map { index in
+            var wish = WishItem(title: "合成心愿\(index)", amount: 5000, judgment: String(repeating: "当时的判断", count: 60))
+            wish.status = .bought; wish.boughtEntryID = bought.id
+            wish.followUpAt = Dates.addDays(-10, to: now); wish.followUpAnsweredAt = Dates.addDays(index - 12, to: now)
+            wish.followUpAnswer = "和张三吃饭，订单1234567890"; return wish
+        }
+        ledger.wishlist.append(WishItem(title: "未回答", amount: 100))
+        let result = try profile(ledger); let rows = try XCTUnwrap(result["recent_followups"]?.arrayValue)
+        XCTAssertEqual(rows.count, 10); XCTAssertEqual(rows.first?["title"], .string("合成心愿11"))
+        XCTAssertEqual(rows.last?["title"], .string("合成心愿2"))
+        XCTAssertEqual(rows.first?["amount"], .money(5000)); XCTAssertEqual(rows.first?["bought_date"], .string(Dates.text(bought.date)))
+        XCTAssertEqual(rows.first?["judgment"]?.stringValue?.count, 200)
+        let text = try result.jsonText(); XCTAssertFalse(text.contains("张三")); XCTAssertFalse(text.contains("1234567890"))
+    }
+
 }

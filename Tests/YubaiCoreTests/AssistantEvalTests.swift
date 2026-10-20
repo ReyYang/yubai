@@ -28,7 +28,7 @@ private actor EvalScriptTransport: ChatTransport {
 final class AssistantEvalTests: XCTestCase {
     func testAssistantEvalSeedWithScriptedResponses() async throws {
         let samples = try AIBenchRunner.loadAssistantEval(bundle: .module)
-        XCTAssertEqual(samples.count, 8)
+        XCTAssertEqual(samples.count, 10)
         let context = AssistantFixtures.context()
         for sample in samples {
             let result = try await AIBenchRunner.runAssistantCase(sample, transport: EvalScriptTransport(sample, context: context), context: context)

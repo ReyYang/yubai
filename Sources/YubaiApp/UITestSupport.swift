@@ -10,7 +10,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              ["empty", "import", "restrain", "ask", "profile"].contains(name) else { return nil }
+              ["empty", "import", "restrain", "ask", "profile", "memory"].contains(name) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -30,7 +30,8 @@ enum UITestSupport {
         let now = Date()
         var ledger = Ledger()
         ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = true
-        ledger.mutedTopics = ["letter"] // Keep these five flows independent of the weekday.
+        ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
+        ledger.mutedTopics = ["letter"] // Keep scripted flows independent of the weekday.
         let account = Account(name: "合成银行卡", balance: 100_000, at: now)
         ledger.accounts = [account]
         if script == "ask" || script == "restrain" {
@@ -48,6 +49,11 @@ enum UITestSupport {
 struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
+        if script == "memory" {
+            if request.messages.last?.role == .tool { return ChatMessage(role: .assistant, content: "记下了这个计划。") }
+            return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "remember-plan", name: "remember",
+                arguments: #"{"text":"年底前想换电脑","kind":"plan"}"#)])
+        }
         if request.purpose == "管家卡片与来信" || request.purpose == "导入短评" {
             return ChatMessage(role: .assistant, content: #"{"cards":[]}"#) // Use the real local templates.
         }

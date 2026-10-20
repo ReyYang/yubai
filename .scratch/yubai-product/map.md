@@ -9,9 +9,13 @@ Status: open
 
 目标是「AI 做事，代码算数，用户决定」：从手工维护账本转向整理、消费观与有依据的判断。当前范围以 owner 的 [2.0 规格](https://claude.ai/code/artifact/9e7ad27e-85a3-478d-911e-aa58843ec4d3)和[产品评审](https://claude.ai/code/artifact/21365038-7478-4933-9c2c-0358b054f5a4)为依据；最新入口为现在／洞察／我及问余白，仅用云端 DeepSeek 轻量 harness，移除本机模型；owner 于 2026-10-20 批准第三轮稿，要求恢复洞察为收支按类型（见第 13 票），图表也保留在来信与回答。商户、备注可发送，人名、卡号、订单号须脱敏；主动消费提醒只针对用户想克制的领域或付款缺口。
 
-`feat/yubai-2-butler` 的步骤 1–9 及 TestFlight 准备已落地源码，尚未编译或运行。用户决定与 Agent 实现选择、当前实现差异统一记录在[第 13 票](issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。Mac 保留；iCloud 已实现且构建默认关闭，可单行配置启用。owner 暂不加入付费开发者计划，先用 Xcode 免费团队直接安装，TestFlight 留待以后；最后仅提交一个到 main 的 PR，由 owner 在 Mac 按[组合清单](../../docs/V2-TEST-CHECKLIST.md)一次验收。本轮步骤 10 只同步记录，不创建提交或推送。以下保留 1.0 历史语境。
+`feat/yubai-2-butler` 的步骤 1–9 及 TestFlight 准备已落地源码，尚未编译或运行。用户决定与 Agent 实现选择、当前实现差异统一记录在[第 13 票](issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。Mac 保留；iCloud 已实现且构建默认关闭，可单行配置启用。owner 暂不加入付费开发者计划，先用 Xcode 免费团队直接安装，TestFlight 留待以后；最后仅提交一个到 main 的 PR，由 owner 在 Mac 按[组合清单](../../docs/V2-TEST-CHECKLIST.md)一次验收。本轮步骤 10 只同步记录，不创建提交或推送。owner 同日补充采用[AI 记忆与画像改进](issues/13-complete-personal-release.md#2026-10-20--ai-记忆与画像改进owner-明确决定)：取消AI次数上限、画像带时间、60天对称反馈、确认分类记忆，以及选定交易版本后的记忆合并；本轮只改非界面代码与文档，未编译或运行。以下保留 1.0 历史语境。
+
+2026-10-20 owner 确认记忆与智能设置八张 V3 画板并授权 App 接线，已写记忆管理、问答撤销、每周回看、来信回顾、导入自由补充及可编辑模型／模型不可用状态，见[第13票续作](issues/13-complete-personal-release.md#2026-10-20--记忆与智能设置界面owner-确认稿)。原稿与源码映射见[设计登记](../../.design-meta/DESIGN.md#2026-10-20--记忆与智能设置选定稿)；只完成静态检查，未编译／运行／提交。
 
 ## Destination
+
+2026-10-20 owner 进一步明确[余白记忆层](issues/13-complete-personal-release.md#2026-10-20--余白记忆层owner-明确决定)：长期生活背景由 AI 直接保存、用户可改删撤销，提醒画像仍确认；本轮仅完成 core、测试源码与文档，每周回看／记忆管理等 App 接线待界面设计确认，尚未编译或运行。
 
 当前目的地为上方的「余白 2.0 · 管家」。历史 1.0 目的地：交付可供用户本人使用的完整余白，iPhone 优先、Mac 可用，覆盖分散账户、导入与纠正、动态资金安排、房租分摊、负债/投资、购买判断、备份与恢复。2026-10-01 的自主实施委托已取代原建图阶段「仅规划、不编码」的范围；采用决定、实际验证及安装缺口见 [第 13 票](issues/13-complete-personal-release.md)。
 

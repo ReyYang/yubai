@@ -1,9 +1,8 @@
 import Foundation
 
 /// Outbound allowlists live in the tools. This is a second pass for free text and JSON.
-/// Name heuristic: a transfer/red-packet prefix followed by a 2–4 Han-character name
-/// with a common surname. Merchant suffixes are excluded. It is deliberately narrow:
-/// free-form names without a transfer prefix are not inferred to be people.
+/// Narrow name heuristics use transfer prefixes or common social phrases and surnames.
+/// Merchant words are excluded; arbitrary free-form names are not inferred to be people.
 public final class Redactor: @unchecked Sendable {
     private final class Aliases: @unchecked Sendable {
         let lock = NSLock()
@@ -58,13 +57,17 @@ public final class Redactor: @unchecked Sendable {
                 }
             }
         }
-        let pattern = #"(?:微信转账|支付宝转账|转账给|红包|转账)[\s\-—:：]*([\p{Han}]{2,4})(?=$|[\s，。；、,:：;\-\"}])"#
-        if (value.contains("转账") || value.contains("红包")), let regex = try? NSRegularExpression(pattern: pattern) {
+        let patterns = [
+            #"(?:微信转账|支付宝转账|转账给|红包|转账)[\s\-—:：]*([\p{Han}]{2,4})(?=$|[\s，。；、,:：;\-\"}])"#,
+            #"(?:和|跟|给|请|与|陪)\s*([\p{Han}]{2,3}?)(?=吃饭|聚餐|合租|买|一起|的|[，。\s]|$)"#
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
             let ns = value as NSString
             for match in regex.matches(in: value, range: NSRange(location: 0, length: ns.length)).reversed() {
                 let name = ns.substring(with: match.range(at: 1))
                 let surnames = "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦许何吕施张孔曹严华金魏陶姜谢邹苏潘葛范彭鲁韦马苗方任袁柳唐罗薛伍余米姚孟顾尹江钟廖赖邓黄梁宋徐高林刘郭曾萧程董叶杜卢丁汪田蔡胡谭陆于戴夏邱石白熊侯邵毛龙万贺龚文欧阳司马上官诸葛"
-                let merchant = ["咖啡", "外卖", "公司", "商店", "超市", "酒店", "餐厅", "商户"].contains { name.contains($0) }
+                let merchant = ["咖啡", "外卖", "公司", "商店", "超市", "酒店", "餐厅", "商户", "银行", "王者", "荣耀", "周末", "周一", "周二", "周三", "周四", "周五", "周六", "周日"].contains { name.contains($0) }
                 if let first = name.first, surnames.contains(first), !merchant {
                     value = (value as NSString).replacingCharacters(in: match.range(at: 1), with: aliases.alias(name))
                 }

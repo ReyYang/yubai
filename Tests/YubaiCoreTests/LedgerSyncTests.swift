@@ -235,4 +235,81 @@ final class LedgerSyncTests: XCTestCase {
             XCTAssertEqual(try local.load(), original)
         }
     }
+    func testMemoryPreparationIsPersistedBeforeResolvingAndOriginalRemainsRecoverable() throws {
+        try withDirectories { _, repository, _ in
+            let chosen = ledger("选定交易")
+            var other = chosen; other.entries[0].title = "另一版本交易"; other.categoryMemory["午饭"] = "餐饮"
+            let source = Versions([chosen, other]); let versions = try source.versions()
+            try repository.save(chosen)
+            source.onResolve = { XCTAssertEqual(try repository.load().categoryMemory["午饭"], "餐饮") }
+            let result = try repository.resolve(versions, choosing: "0", source: source, prepare: { LedgerMemoryMerge.merge(chosen: $0, others: [other]) })
+            XCTAssertEqual(result.entries, chosen.entries); XCTAssertEqual(result.categoryMemory, other.categoryMemory)
+            XCTAssertEqual(try repository.load(), result); XCTAssertTrue(source.resolved)
+            let recovery = try XCTUnwrap(repository.recoveries().first { $0.name.hasSuffix("同步冲突时的另一版本") })
+            XCTAssertEqual(try repository.readRecovery(recovery), other)
+        }
+    }
+
+}
+
+final class LedgerMemoryMergeTests: XCTestCase {
+    private let now = Dates.parse("2026-06-17 12:00")!
+    func testNewestAreaAndStanceWinAndChosenTransactionsAndFloorStay() throws {
+        var chosen = AssistantFixtures.context().ledger
+        chosen.profile.updatedAt = Dates.addDays(-10, to: now)
+        let area = ProfileArea(title: "外卖", note: "原话", confirmedAt: Dates.addDays(-20, to: now))
+        chosen.profile.restrain = [area]
+        var other = chosen; other.profile.updatedAt = now
+        var updated = area; updated.note = "新的取舍"; updated.confirmedAt = now
+        other.profile.restrain = []; other.profile.generous = [updated]
+        other.profile.floorAmount = 50_000; other.entries = []
+        let result = LedgerMemoryMerge.merge(chosen: chosen, others: [other])
+        XCTAssertTrue(result.profile.restrain.isEmpty); XCTAssertEqual(result.profile.generous, [updated])
+        XCTAssertEqual(result.profile.updatedAt, now); XCTAssertEqual(result.profile.floorAmount, chosen.profile.floorAmount)
+        XCTAssertEqual(result.entries, chosen.entries); XCTAssertEqual(result.accounts, chosen.accounts)
+        XCTAssertEqual(LedgerMemoryMerge.merge(chosen: result, others: [other]), result)
+        XCTAssertNoThrow(try result.validate())
+    }
+    func testNewerDeletionDoesNotResurrectAreasOrPrinciplesButNewerAdditionsMerge() throws {
+        var chosen = AssistantFixtures.context().ledger; chosen.profile.updatedAt = Dates.addDays(-5, to: now)
+        chosen.profile.principles = ["保留"]; chosen.profile.principleDates = ["保留": Dates.addDays(-10, to: now)]
+        var old = chosen; old.profile.updatedAt = Dates.addDays(-10, to: now)
+        old.profile.restrain = [ProfileArea(title: "已删除", confirmedAt: old.profile.updatedAt)]
+        old.profile.principles += ["旧原则"]; old.profile.principleDates["旧原则"] = old.profile.updatedAt
+        var newer = old; newer.profile.updatedAt = now
+        newer.profile.generous = [ProfileArea(title: "新领域", confirmedAt: now)]
+        newer.profile.principles += ["新原则"]; newer.profile.principleDates["新原则"] = now
+        newer.profile.principleDates["保留"] = now
+        let result = LedgerMemoryMerge.merge(chosen: chosen, others: [old, newer])
+        XCTAssertEqual(result.profile.generous.map(\.title), ["新领域"]); XCTAssertTrue(result.profile.restrain.isEmpty)
+        XCTAssertEqual(result.profile.principles, ["保留", "新原则"]); XCTAssertNil(result.profile.principleDates["旧原则"])
+        XCTAssertEqual(result.profile.principleDates["保留"], now)
+        let reverse = LedgerMemoryMerge.merge(chosen: chosen, others: [newer, old])
+        XCTAssertEqual(result.profile, reverse.profile)
+        XCTAssertNoThrow(try result.validate())
+    }
+    func testFeedbackEarliestTimeDismissalUnionAndCategoryChosenPriority() throws {
+        var chosen = AssistantFixtures.context().ledger
+        var card = ButlerCard(kind: .restrain, title: "观察", body: "正文", dedupeKey: "test:memory")
+        card.feedback = .regret; card.feedbackAt = now; card.dismissedAt = now
+        chosen.cards = [card]; chosen.categoryMemory = ["咖啡": "餐饮"]; chosen.mutedTopics = ["restrain:a"]
+        var other = chosen
+        other.cards[0].feedback = .worth; other.cards[0].feedbackAt = Dates.addDays(-2, to: now)
+        other.cards[0].dismissedAt = Dates.addDays(-1, to: now)
+        let proposalID = UUID(); other.cards[0].feedbackProposalID = proposalID
+        let second = ButlerCard(kind: .offCharacter, title: "另一观察", body: "", dedupeKey: "test:other")
+        other.cards.append(second); other.mutedTopics += ["off:b"]
+        other.categoryMemory = ["咖啡": "其他支出", "书": "学习"]
+        let result = LedgerMemoryMerge.merge(chosen: chosen, others: [other])
+        XCTAssertEqual(result.cards.count, 2); XCTAssertEqual(result.cards[0].feedback, .worth)
+        XCTAssertEqual(result.cards[0].feedbackAt, Dates.addDays(-2, to: now))
+        XCTAssertEqual(result.cards[0].dismissedAt, Dates.addDays(-1, to: now)); XCTAssertEqual(result.cards[0].feedbackProposalID, proposalID)
+        XCTAssertEqual(Set(result.mutedTopics), Set(["restrain:a", "off:b"]))
+        XCTAssertEqual(result.categoryMemory, ["咖啡": "餐饮", "书": "学习"])
+        var withoutFeedback = chosen; withoutFeedback.cards[0].feedback = nil; withoutFeedback.cards[0].feedbackAt = nil
+        XCTAssertEqual(LedgerMemoryMerge.merge(chosen: withoutFeedback, others: [other]).cards[0].feedback, .worth)
+        XCTAssertNoThrow(try result.validate())
+        var foreign = other; foreign.id = UUID()
+        XCTAssertEqual(LedgerMemoryMerge.merge(chosen: chosen, others: [foreign]), chosen)
+    }
 }

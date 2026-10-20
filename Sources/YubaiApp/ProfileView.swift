@@ -224,7 +224,9 @@ struct ProfileView: View {
     }
     private func loadFloor() { floor = Money.input(profile.floorAmount ?? 0) }
     private func edit(_ change: (inout SpendingProfile) -> Void) {
-        store.update("修改消费观") { change(&$0.profile); $0.profile.updatedAt = Date() }
+        store.update("修改消费观") { ledger in
+            let old = ledger.profile; change(&ledger.profile); ledger.profile.stamp(changedFrom: old, at: Date())
+        }
     }
 }
 
@@ -287,9 +289,10 @@ private struct ProfileAreaEditor: View {
             updated.match = AreaMatch(categories: categories.sorted(), keywords: words)
             updated.softLimit = stance == .restrain && (count != nil || amount != nil) ? SoftLimit(perWeekCount: count, perMonthAmount: amount) : nil
             if store.update("修改消费观", { ledger in
+                let old = ledger.profile
                 ledger.profile.generous.removeAll { $0.id == updated.id }; ledger.profile.restrain.removeAll { $0.id == updated.id }
                 if stance == .generous { ledger.profile.generous.append(updated) } else { ledger.profile.restrain.append(updated) }
-                ledger.profile.updatedAt = Date()
+                ledger.profile.stamp(changedFrom: old, at: Date())
             }) { dismiss() }
         } catch { store.error = error.localizedDescription }
     }
@@ -310,9 +313,10 @@ private struct ProfilePrincipleEditor: View {
                     let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !clean.isEmpty else { return }
                     if store.update("修改消费观", { ledger in
+                        let old = ledger.profile
                         if let original, let i = ledger.profile.principles.firstIndex(of: original) { ledger.profile.principles[i] = clean }
                         else { ledger.profile.principles.append(clean) }
-                        ledger.profile.updatedAt = Date()
+                        ledger.profile.stamp(changedFrom: old, at: Date())
                     }) { dismiss() }
                 }.accessibilityIdentifier("savePrinciple") }
             }

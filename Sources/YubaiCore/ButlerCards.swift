@@ -136,6 +136,13 @@ public enum ButlerCards {
     /// neither change timestamps nor create repository versions.
     @discardableResult public static func refresh(_ ledger: inout Ledger, candidates: [CardCandidate], now: Date) -> Bool {
         var keys = Set(ledger.cards.map(\.dedupeKey)); var changed = false
+        for i in ledger.cards.indices {
+            guard let dismissed = ledger.cards[i].dismissedAt, dismissed < Dates.addDays(-365, to: now) else { continue }
+            let old = ledger.cards[i]
+            ledger.cards[i].body = ""; ledger.cards[i].facts = nil; ledger.cards[i].evidence = []
+            ledger.cards[i].letter = nil; ledger.cards[i].importQuestion = nil
+            if ledger.cards[i] != old { changed = true }
+        }
         for candidate in candidates where ledger.cards.count < 5000 && !isMuted(candidate.dedupeKey, in: ledger) {
             if keys.insert(candidate.dedupeKey).inserted { ledger.cards.append(candidate.card(now: now)); changed = true }
         }
@@ -162,27 +169,38 @@ public enum ButlerCards {
         var area = existing ?? ProfileArea(title: title, match: AreaMatch(categories: [title]))
         let relevant = ledger.cards.filter { other in
             guard other.feedbackProposalID == nil, [.restrain, .offCharacter, .followUp].contains(other.kind) else { return false }
+            let date = other.feedbackAt ?? other.createdAt
+            guard date >= Dates.addDays(-60, to: now), date <= now else { return false }
             if let existing { return other.areaID == existing.id }
             return other.areaID == nil && other.evidence.contains { id in ledger.entries.contains { $0.id == id && ledger.resolveCategory($0.category) == category } }
         }
-        let regrets = relevant.filter { $0.feedback == .regret && ($0.feedbackAt ?? $0.createdAt) >= Dates.addDays(-30, to: now) }
-        let worth = relevant.filter { $0.feedback == .worth && ($0.kind == .restrain || $0.kind == .followUp) }
-        let relax = value == .worth && worth.count >= 3 && ledger.profile.restrain.contains { $0.id == area.id }
+        let regrets = relevant.filter { $0.feedback == .regret }
+        let worth = relevant.filter { $0.feedback == .worth }
+        let relax = value == .worth && worth.count >= 2 && ledger.profile.restrain.contains { $0.id == area.id }
         guard (value == .regret && regrets.count >= 2) || relax, ledger.pendingChanges.count < 100 else { return }
         guard !ledger.pendingChanges.contains(where: { change in
-            change.source == "卡片反馈" && change.items.contains { if case .profile(.upsertArea(let proposed, _)) = $0 { return proposed.id == area.id || proposed.title == area.title }; return false }
+            change.items.contains {
+                if case .profile(.upsertArea(let proposed, _)) = $0 { return proposed.id == area.id || proposed.title == area.title }
+                if case .profile(.removeArea(let id)) = $0 { return id == area.id }
+                return false
+            }
         }) else { return }
-        // A proposal only: repeated regret adds/tightens a soft line; repeated worth
-        // asks whether this area belongs among things the user is happy to spend on.
-        if relax { area.softLimit = nil }
-        else {
+        let hasLine = area.softLimit?.perWeekCount != nil || area.softLimit?.perMonthAmount != nil
+        let move = relax && !hasLine
+        if relax {
+            if hasLine {
+                area.softLimit = SoftLimit(perWeekCount: area.softLimit?.perWeekCount.map { min(10_000, $0 + 1) },
+                    perMonthAmount: area.softLimit?.perMonthAmount.map { min(Money.limit, ($0 * 5 + 2) / 4) })
+            } else { area.softLimit = nil }
+        } else {
             let old = area.softLimit
             let count = old?.perWeekCount.map { max(0, $0 - 1) }
             let amount = old?.perMonthAmount.map { $0 * 4 / 5 }
             area.softLimit = SoftLimit(perWeekCount: count ?? (amount == nil ? max(1, area.usage(in: ledger, now: now).weekCount - 1) : nil), perMonthAmount: amount)
         }
-        var proposal = ChangeSet(source: "卡片反馈", reason: relax ? "你几次觉得「\(title)」值得，要把它记为愿意多花的领域吗？" : "你最近几次对「\(title)」有点后悔，要试着收紧柔性提醒吗？",
-                                 items: [.profile(.upsertArea(area, stance: relax ? .generous : .restrain))])
+        let reason = move ? "最近两次觉得「\(title)」值得，要记为愿意多花吗？" : (relax ? "最近两次觉得「\(title)」值得，要放宽一点柔性提醒吗？" : "最近两次对「\(title)」有点后悔，要收紧一点柔性提醒吗？")
+        var proposal = ChangeSet(source: "卡片反馈", reason: reason,
+                                 items: [.profile(.upsertArea(area, stance: move ? .generous : .restrain))])
         proposal.createdAt = now; ledger.pendingChanges.append(proposal)
         let used = Set((relax ? worth : regrets).map(\.id))
         for i in ledger.cards.indices where used.contains(ledger.cards[i].id) { ledger.cards[i].feedbackProposalID = proposal.id }

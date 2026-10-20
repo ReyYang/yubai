@@ -63,14 +63,54 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(tool.role, .tool); XCTAssertEqual(tool.toolCallID, "call-1")
         XCTAssertTrue(tool.content?.contains(Money.text(2000)) ?? false)
     }
-    func testMaxStepsStops() async throws {
-        let response = ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "repeat", name: "get_funds")])
-        let script = ScriptedChatTransport([response, response])
-        do {
-            _ = try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "", messages: [], tools: ReadOnlyTool.all, maxSteps: 2)
-            XCTFail("must stop")
-        } catch { XCTAssertTrue(error is AssistantAgentError) }
-        let requests = await script.recorded(); XCTAssertEqual(requests.count, 2)
+    func testConsecutiveNormalizedCallsReuseResultsWithoutStopping() async throws {
+        let tool = CountingAssistantTool()
+        let calls = (0..<12).map { index in ChatMessage(role: .assistant, toolCalls: [
+            ChatToolCall(id: "repeat-\(index)", name: tool.name, arguments: index % 2 == 0 ? #"{"a":1,"b":2}"# : #"{ "b":2.0, "a":1 }"#)]) }
+        let script = ScriptedChatTransport(calls + [ChatMessage(role: .assistant, content: "已查到，可以回答。")])
+        let reply = try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "", messages: [], tools: [tool])
+        XCTAssertEqual(tool.executions, 1); XCTAssertEqual(reply.toolTrace.count, 12)
+        let requests = await script.recorded(); XCTAssertEqual(requests.count, 13)
+        let results = requests.last!.messages.filter { $0.role == .tool }
+        XCTAssertEqual(Set(results.compactMap(\.content)).count, 1)
+        XCTAssertEqual(results.map(\.toolCallID), (0..<12).map { "repeat-\($0)" })
+        XCTAssertTrue(requests.last!.messages.contains { $0.role == .system && $0.content == "这个调用刚执行过，结果相同；请换个查询或直接回答" })
+    }
+    func testChangedAndNonconsecutiveCallsExecuteAgainAndLargeBatchIsAllowed() async throws {
+        let tool = CountingAssistantTool()
+        let calls = (0..<20).map { ChatToolCall(id: "batch-\($0)", name: tool.name, arguments: "{\"key\":\($0)}") }
+        let script = ScriptedChatTransport([
+            ChatMessage(role: .assistant, toolCalls: calls),
+            ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "new", name: tool.name, arguments: #"{"key":99}"#)]),
+            ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "again", name: tool.name, arguments: #"{"key":0}"#)]),
+            ChatMessage(role: .assistant, content: "查询完成。")])
+        _ = try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "", messages: [], tools: [tool])
+        XCTAssertEqual(tool.executions, 22)
+    }
+    func testOldToolResultsCompactAndRecentFactsAndTextSurvive() async throws {
+        let tool = CountingAssistantTool(payload: String(repeating: "早期依据", count: 1000))
+        let calls = (0..<3).map { index in ChatMessage(role: .assistant, content: "继续核对", toolCalls: [
+            ChatToolCall(id: "large-\(index)", name: tool.name, arguments: "{\"key\":\(index)}")]) }
+        let script = ScriptedChatTransport(calls + [ChatMessage(role: .assistant, content: "最新查询仍可回答。")])
+        let reply = try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "保留系统要求", messages: [ChatMessage(role: .user, content: "保留用户原文")], tools: [tool], characterBudget: 6000)
+        XCTAssertEqual(reply.text, "最新查询仍可回答。")
+        let requests = await script.recorded(); let messages = requests.last!.messages
+        let results = messages.filter { $0.role == .tool }
+        XCTAssertEqual(results.map(\.toolCallID), ["large-0", "large-1", "large-2"])
+        XCTAssertEqual(results[0].content, AssistantContextBudget.omitted)
+        XCTAssertEqual(results[1].content, AssistantContextBudget.omitted)
+        XCTAssertTrue(results[2].content?.contains("早期依据") == true)
+        XCTAssertEqual(messages.first?.content, "保留系统要求")
+        XCTAssertTrue(messages.contains { $0.content == "保留用户原文" })
+        XCTAssertEqual(messages.filter { $0.content == "继续核对" }.count, 3)
+        XCTAssertLessThanOrEqual(AssistantContextBudget.count(messages), 6000)
+    }
+    func testCancellationStopsEvenWhenTransportReturnsFinalText() async throws {
+        let script = CancellationChatTransport()
+        let task = Task { try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "", messages: [], tools: []) }
+        await script.waitUntilStarted(); task.cancel()
+        do { _ = try await task.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
     }
     func testMalformedAndInvalidArgsBecomeToolErrors() async throws {
         let script = ScriptedChatTransport([
@@ -120,5 +160,34 @@ final class AssistantTests: XCTestCase {
             ChatMessage(role: .assistant, content: "可动用 ¥785.00。")])
         let reply = try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "", messages: [], tools: ReadOnlyTool.all)
         XCTAssertTrue(reply.unverifiedAmounts.isEmpty)
+    }
+}
+
+private final class CountingAssistantTool: AssistantTool, @unchecked Sendable {
+    let name = "counting_tool"
+    let description = "合成测试工具"
+    let parameters = JSONValue.object(["type": .string("object")])
+    private let lock = NSLock()
+    private var count = 0
+    private let payload: String
+    init(payload: String = "相同结果") { self.payload = payload }
+    var executions: Int { lock.lock(); defer { lock.unlock() }; return count }
+    func run(_ args: JSONValue, _ ctx: ToolContext) throws -> JSONValue {
+        lock.lock(); defer { lock.unlock() }; count += 1
+        return .object(["payload": .string(payload)])
+    }
+}
+
+private actor CancellationChatTransport: ChatTransport {
+    private var started = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func waitUntilStarted() async {
+        if started { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func send(_ request: ChatRequest) async throws -> ChatMessage {
+        started = true; for waiter in waiters { waiter.resume() }; waiters = []
+        while !Task.isCancelled { await Task.yield() }
+        return ChatMessage(role: .assistant, content: "已取消的回答不应返回。")
     }
 }

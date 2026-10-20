@@ -2,6 +2,31 @@ import XCTest
 @testable import YubaiCore
 
 final class AssistantTransportTests: XCTestCase {
+    func testModelUnavailableErrorsAreRecognizableWithoutEchoingResponseBodies() async throws {
+        for (status, body) in [(400, #"{"error":{"message":"Invalid model: secret-key"}}"#),
+                               (404, #"{"error":{"message":"MODEL does not exist"}}"#),
+                               (422, #"{"error":{"code":"model_not_found"}}"#)] {
+            let stub = CloudTestStub(rawResponse: true, statusCode: status) { _ in body }
+            defer { stub.close() }
+            do {
+                _ = try await stub.send(ChatRequest(messages: [ChatMessage(role: .user, content: "你好")]))
+                XCTFail("An unavailable model must fail")
+            } catch {
+                XCTAssertEqual(error as? DeepSeekError, .modelUnavailable(DeepSeekConfiguration.defaultModel))
+                XCTAssertFalse(error.localizedDescription.contains("secret-key"))
+            }
+        }
+    }
+    func testOtherHTTPFailuresDoNotBecomeModelErrors() async throws {
+        for (status, body) in [(400, "invalid temperature"), (404, "route not found"), (401, "model access denied"), (500, "model temporarily busy")] {
+            let stub = CloudTestStub(rawResponse: true, statusCode: status) { _ in body }
+            defer { stub.close() }
+            do {
+                _ = try await stub.send(ChatRequest(messages: [ChatMessage(role: .user, content: "你好")]))
+                XCTFail("HTTP failure must throw")
+            } catch { XCTAssertNil(error as? DeepSeekError) }
+        }
+    }
     func testOpenAIEnvelopeAndNullContentToolResponse() async throws {
         let stub = CloudTestStub(rawResponse: true) { request in
             let payload = try CloudTestStub.payload(in: request)

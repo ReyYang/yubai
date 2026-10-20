@@ -127,4 +127,31 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["askYubai"].exists)
         XCTAssertFalse(app.buttons["tab_settings"].exists)
     }
+    func testAskMemoryCanBeOpenedEditedAndDeletedFromMe() {
+        let app = application("memory"); app.launch()
+        tap(app.buttons["askYubai"], in: app)
+        let input = app.descendants(matching: .any).matching(identifier: "askInput").firstMatch
+        tap(input, in: app); input.typeText("年底前想换电脑")
+        tap(app.buttons["sendAsk"], in: app)
+        XCTAssertTrue(app.staticTexts["已记下：年底前想换电脑"].waitForExistence(timeout: 10))
+        tap(app.buttons["closeSheet"], in: app)
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons["openMemories"], in: app)
+        XCTAssertTrue(app.navigationBars["余白记得的"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["askYubai"].exists)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'memory_' ")).firstMatch
+        tap(row, in: app)
+        let field = app.descendants(matching: .any).matching(identifier: "memoryText").firstMatch
+        tap(field, in: app); field.typeText("，先留一笔钱")
+        guard let edited = field.value as? String else { XCTFail("Memory editor must expose its text"); return }
+        XCTAssertTrue(edited.contains("先留一笔钱"))
+        tap(app.buttons["saveMemory"], in: app)
+        XCTAssertTrue(app.staticTexts[edited].waitForExistence(timeout: 5))
+        app.terminate(); app.launch()
+        tap(app.buttons["tab_settings"], in: app); tap(app.buttons["openMemories"], in: app)
+        XCTAssertTrue(app.staticTexts[edited].waitForExistence(timeout: 5))
+        tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'memory_' ")).firstMatch, in: app)
+        tap(app.buttons["deleteMemory"], in: app)
+        XCTAssertTrue(app.staticTexts["emptyMemories"].waitForExistence(timeout: 5))
+    }
 }

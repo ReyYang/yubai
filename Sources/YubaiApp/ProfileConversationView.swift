@@ -89,11 +89,17 @@ struct ProfileConversationView: View {
                 guard store.current == before, !store.locked else {
                     errorText = "账本刚有变化，请重试这一步。"; return
                 }
-                if let change = reply.proposedChangeSets.first {
-                    guard store.update("保存待确认消费观", { ledger in
-                        ledger.pendingChanges.removeAll { $0.id == previousProposal }
-                        ledger.pendingChanges.append(change)
+                let change = reply.proposedChangeSets.first
+                if !reply.rememberedNotes.isEmpty || !reply.updatedNotes.isEmpty || !reply.usedMemoryIDs.isEmpty || change != nil {
+                    guard store.update("保存消费观对话", recordUndo: false, { ledger in
+                        try Memory.apply(reply, to: &ledger)
+                        if let change {
+                            ledger.pendingChanges.removeAll { $0.id == previousProposal }
+                            ledger.pendingChanges.append(change)
+                        }
                     }) else { return }
+                }
+                if let change {
                     proposalID = change.id; revising = false; messages = conversation
                 } else {
                     messages = conversation + [ChatMessage(role: .assistant, content: reply.text)]

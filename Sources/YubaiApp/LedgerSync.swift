@@ -152,7 +152,8 @@ extension AppStore {
         do {
             var selected = try await Task.detached {
                 try destination.resolve(choice.versions, choosing: id, source: choice.source,
-                                        reason: choice.switching ? "切换存储时的另一版本" : "同步冲突时的另一版本")
+                                        reason: choice.switching ? "切换存储时的另一版本" : "同步冲突时的另一版本",
+                                        prepare: { LedgerMemoryMerge.merge(chosen: $0, others: choice.versions.filter { $0.id != id }.map(\.ledger)) })
             }.value
             selected.preferences.lockEnabled = current.preferences.lockEnabled
             if choice.target == .iCloud { try localRepository.restoreBackup(selected) }

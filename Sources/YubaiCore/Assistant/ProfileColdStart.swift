@@ -4,7 +4,10 @@ import Foundation
 /// ledger; neither the profile nor a rendered profile description is cached here.
 public struct ProfileColdStart: Sendable {
     public let transport: any ChatTransport
-    public init(transport: any ChatTransport) { self.transport = transport }
+    public let characterBudget: Int
+    public init(transport: any ChatTransport, characterBudget: Int = AssistantContextBudget.defaultLimit) {
+        self.transport = transport; self.characterBudget = characterBudget
+    }
 
     public func next(ledger: Ledger, messages: [ChatMessage], now: Date = Date()) async throws -> AssistantReply {
         guard messages.allSatisfy({ ($0.role == .user || $0.role == .assistant) && $0.toolCalls == nil && $0.toolCallID == nil }) else {
@@ -23,9 +26,9 @@ public struct ProfileColdStart: Sendable {
         \(instruction)
         """
         let context = ToolContext(ledger: ledger, now: now)
-        let tools: [any AssistantTool] = final ? [ReadOnlyTool.getProfile, ProposalTool.profile] : [ReadOnlyTool.getProfile]
+        let tools: [any AssistantTool] = final ? [ReadOnlyTool.getProfile, ProposalTool.profile, MemoryTool.recall] : [ReadOnlyTool.getProfile, MemoryTool.recall]
         let reply = try await AssistantAgent(transport: transport, context: context).run(system: system,
-            messages: [ChatMessage(role: .user, content: "和我聊几句，整理我的消费观。可以跳过不想回答的部分。")] + messages, tools: tools)
+            messages: [ChatMessage(role: .user, content: "和我聊几句，整理我的消费观。可以跳过不想回答的部分。")] + messages, tools: tools, characterBudget: characterBudget)
         if final {
             guard reply.proposedChangeSets.count == 1, reply.proposedChangeSets[0].isProfileOnly else {
                 throw YubaiError.invalid("还没整理成一份消费观提案，请再试一次。")

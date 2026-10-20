@@ -116,7 +116,7 @@ final class ButlerTests: XCTestCase {
             card.areaID = area.id; card.createdAt = now; return card
         }
         ledger.cards = [card(0), card(1), card(2)]
-        ButlerCards.feedback(.regret, cardID: ledger.cards[0].id, in: &ledger, now: Dates.addDays(-31, to: now))
+        ButlerCards.feedback(.regret, cardID: ledger.cards[0].id, in: &ledger, now: Dates.addDays(-61, to: now))
         ButlerCards.feedback(.regret, cardID: ledger.cards[1].id, in: &ledger, now: now)
         XCTAssertTrue(ledger.pendingChanges.isEmpty)
         ButlerCards.feedback(.regret, cardID: ledger.cards[2].id, in: &ledger, now: now)
@@ -128,13 +128,16 @@ final class ButlerTests: XCTestCase {
         ButlerCards.feedback(.regret, cardID: ledger.cards[2].id, in: &ledger, now: now)
         XCTAssertEqual(ledger.pendingChanges, before)
         ledger.pendingChanges = []; ledger.cards = [card(3, kind: .restrain), card(4, kind: .restrain), card(5, kind: .restrain)]
-        for id in ledger.cards.prefix(2).map(\.id) { ButlerCards.feedback(.worth, cardID: id, in: &ledger, now: now) }
+        ButlerCards.feedback(.worth, cardID: ledger.cards[0].id, in: &ledger, now: now)
         XCTAssertTrue(ledger.pendingChanges.isEmpty)
+        ButlerCards.feedback(.worth, cardID: ledger.cards[1].id, in: &ledger, now: now)
         ButlerCards.feedback(.worth, cardID: ledger.cards[2].id, in: &ledger, now: now)
         XCTAssertEqual(ledger.pendingChanges.count, 1); XCTAssertEqual(ledger.profile, profile)
         let proposal = ledger.pendingChanges[0]
         try proposal.apply(to: &ledger)
-        XCTAssertEqual(ledger.profile.generous.first?.id, area.id)
+        XCTAssertTrue(ledger.profile.generous.isEmpty)
+        XCTAssertEqual(ledger.profile.restrain.first?.id, area.id)
+        XCTAssertEqual(ledger.profile.restrain.first?.softLimit, SoftLimit(perWeekCount: 3, perMonthAmount: 6250))
     }
     func testOffCharacterSelectionExcludesImportFromHabitAndCapsAtThree() async {
         var ledger = seed()
@@ -185,4 +188,69 @@ final class ButlerTests: XCTestCase {
         guard case .profile(.upsertArea(let area, let stance)) = ledger.pendingChanges[0].items[0] else { return XCTFail("Expected area proposal") }
         XCTAssertEqual(area.match.categories, ["娱乐旅行"]); XCTAssertEqual(stance, .restrain)
     }
+    func testWorthWithoutLineMovesToGenerousAndUsedFeedbackIsNotReused() throws {
+        var ledger = restrained(); ledger.profile.restrain[0].softLimit = nil
+        let area = ledger.profile.restrain[0]
+        ledger.cards = (0..<3).map { index in
+            var card = ButlerCard(kind: .offCharacter, title: "观察", body: "", dedupeKey: "test:\(index)")
+            card.areaID = area.id; card.createdAt = now; return card
+        }
+        for id in ledger.cards.prefix(2).map(\.id) { ButlerCards.feedback(.worth, cardID: id, in: &ledger, now: now) }
+        let change = try XCTUnwrap(ledger.pendingChanges.first)
+        XCTAssertEqual(ledger.cards.prefix(2).compactMap(\.feedbackProposalID), [change.id, change.id])
+        try change.apply(to: &ledger); ledger.pendingChanges = []
+        XCTAssertEqual(ledger.profile.generous.first?.id, area.id)
+        ButlerCards.feedback(.worth, cardID: ledger.cards[2].id, in: &ledger, now: now)
+        XCTAssertTrue(ledger.pendingChanges.isEmpty)
+    }
+    func testBothFeedbacksUseSixtyDayWindowAndLegacyCreatedAtFallback() {
+        for value in [CardFeedback.worth, .regret] {
+            var ledger = restrained(); let area = ledger.profile.restrain[0]
+            ledger.cards = (0..<4).map { index in
+                var card = ButlerCard(kind: .restrain, title: "观察", body: "", dedupeKey: "window:\(index)")
+                card.areaID = area.id; card.createdAt = Dates.addDays(-61, to: now); return card
+            }
+            ledger.cards[0].feedback = value
+            ButlerCards.feedback(value, cardID: ledger.cards[1].id, in: &ledger, now: now)
+            XCTAssertTrue(ledger.pendingChanges.isEmpty)
+            ledger.cards[2].createdAt = Dates.addDays(-60, to: now); ledger.cards[2].feedback = value
+            ButlerCards.feedback(value, cardID: ledger.cards[3].id, in: &ledger, now: now)
+            XCTAssertEqual(ledger.pendingChanges.count, 1)
+            XCTAssertNil(ledger.cards[0].feedbackProposalID)
+            XCTAssertNotNil(ledger.cards[2].feedbackProposalID)
+        }
+    }
+    func testFeedbackTightensOrRelaxesBothLinesAndRoundsCents() {
+        for value in [CardFeedback.worth, .regret] {
+            var ledger = restrained(); ledger.profile.restrain[0].softLimit = SoftLimit(perWeekCount: 0, perMonthAmount: 102)
+            ledger.cards = (0..<2).map { index in
+                var card = ButlerCard(kind: .followUp, title: "观察", body: "", dedupeKey: "line:\(index)")
+                card.areaID = ledger.profile.restrain[0].id; card.createdAt = now; return card
+            }
+            for id in ledger.cards.map(\.id) { ButlerCards.feedback(value, cardID: id, in: &ledger, now: now) }
+            guard case .profile(.upsertArea(let area, let stance))? = ledger.pendingChanges.first?.items.first else { return XCTFail("Expected profile proposal") }
+            XCTAssertEqual(stance, .restrain)
+            XCTAssertEqual(area.softLimit?.perWeekCount, value == .worth ? 1 : 0)
+            XCTAssertEqual(area.softLimit?.perMonthAmount, value == .worth ? 128 : 81)
+        }
+    }
+    func testRefreshArchivesOldDismissedPayloadAndKeepsMemoryAndDedupe() throws {
+        var ledger = seed()
+        var card = ButlerCard(kind: .followUp, title: "保留标题", body: "旧正文", evidence: [UUID()], dedupeKey: "archive:one")
+        card.dismissedAt = Dates.addDays(-366, to: now); card.feedback = .worth; card.feedbackAt = Dates.addDays(-367, to: now)
+        card.feedbackProposalID = UUID(); card.areaID = UUID(); card.facts = [CardFact("依据", "旧内容")]
+        card.importQuestion = ImportQuestion(text: "旧问题", entryIDs: [], options: [])
+        card.letter = WeeklyLetter.facts(ledger, weekEnding: now)
+        var recent = card; recent.id = UUID(); recent.dedupeKey = "archive:two"; recent.dismissedAt = Dates.addDays(-365, to: now)
+        ledger.cards = [card, recent]
+        XCTAssertTrue(ButlerCards.refresh(&ledger, candidates: [], now: now))
+        let archived = ledger.cards[0]
+        XCTAssertEqual(archived.body, ""); XCTAssertNil(archived.facts); XCTAssertTrue(archived.evidence.isEmpty)
+        XCTAssertNil(archived.letter); XCTAssertNil(archived.importQuestion)
+        var expected = card; expected.body = ""; expected.facts = nil; expected.evidence = []; expected.letter = nil; expected.importQuestion = nil
+        XCTAssertEqual(archived, expected); XCTAssertEqual(ledger.cards[1], recent)
+        XCTAssertFalse(ButlerCards.refresh(&ledger, candidates: [], now: now))
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)).cards[0], archived)
+    }
+
 }

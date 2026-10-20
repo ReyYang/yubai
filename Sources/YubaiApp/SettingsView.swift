@@ -24,6 +24,17 @@ struct SettingsView: View {
                     }
                 }
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
+            NavigationLink { MemoryView() } label: {
+                Card(style: .compact) {
+                    HStack(spacing: YubaiSpace.space12) {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                            Text("余白记得的").yubaiFont(YubaiFont.rowTitle)
+                            Text(memoryCount).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                        }
+                        Spacer(); chevron
+                    }
+                }
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openMemories")
             NavigationLink { WishlistView() } label: {
                 Card {
                     ViewThatFits(in: .horizontal) {
@@ -40,8 +51,14 @@ struct SettingsView: View {
                     NavigationLink { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")
                     separator
                     NavigationLink { IntelligencePrivacyView() } label: {
-                        row("智能与隐私", detail: store.current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured ? "DeepSeek · 已配好" : "未配好")
-                    }
+                        HStack {
+                            Text("智能与隐私").yubaiFont(YubaiFont.row); Spacer()
+                            if store.current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured {
+                                Pill(text: "DeepSeek · 已配好", variant: .brand, height: YubaiSize.tagHeight, showsDot: false)
+                            } else { Text("未配好").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                            chevron
+                        }.frame(minHeight: YubaiSize.tapMin)
+                    }.accessibilityIdentifier("openIntelligencePrivacy")
                     separator
                     NavigationLink { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
                     separator
@@ -55,6 +72,11 @@ struct SettingsView: View {
     }
     private var latestLetter: String? {
         store.current.cards.filter { $0.kind == .weeklyLetter }.max(by: { $0.createdAt < $1.createdAt })?.createdAt.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
+    }
+    private var memoryCount: String {
+        let week = ButlerCards.isoWeek(Date())
+        let added = store.current.memories.filter { ButlerCards.isoWeek($0.createdAt) == week }.count
+        return "\(store.current.memories.count) 条" + (added > 0 ? " · 这周新记了 \(added) 条" : "")
     }
     private var wishlistTitle: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -78,7 +100,10 @@ struct SettingsView: View {
                         HStack(spacing: 2) {
                             ForEach(values.indices, id: \.self) { i in
                                 let colors = [YubaiColor.brand, YubaiColor.series2, YubaiColor.series3, YubaiColor.neutralStrong, YubaiColor.neutralSoft]
-                                colors[min(i, colors.count - 1)].frame(width: max(0, geometry.size.width - CGFloat(max(0, values.count - 1)) * 2) * CGFloat(values[i]) / CGFloat(total))
+                                let gapWidth = CGFloat(max(0, values.count - 1)) * 2
+                                let availableWidth = max(CGFloat(0), geometry.size.width - gapWidth)
+                                let share = CGFloat(values[i]) / CGFloat(total)
+                                colors[min(i, colors.count - 1)].frame(width: availableWidth * share)
                             }
                         }.clipShape(Capsule())
                     }.frame(height: 8).accessibilityElement(children: .ignore)
@@ -102,23 +127,72 @@ struct SettingsView: View {
 
 struct IntelligencePrivacyView: View {
     @Environment(AppStore.self) private var store
+    @State private var hasKey = APIKeyStore.shared.hasKeychainKey
+    @State private var configured = IntelligenceRuntime.isConfigured
+    @State private var sendCount = SendLog.shared.totalCount
     var body: some View {
-        Form {
-            CloudAISettingsSection()
-            Section("来信") {
+        Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space12) {
+            if let model = IntelligenceRuntime.cloud.unavailableModel { ModelUnavailableNote(model: model) }
+            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+                heading("云端智能")
+                Card(style: .list) {
+                    VStack(spacing: 0) {
+                        Toggle("打开云端智能", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in
+                            store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value }
+                        })).tint(YubaiColor.brand).frame(minHeight: YubaiSize.headerHeight)
+                        separator
+                        settingsRow("服务", detail: "DeepSeek")
+                        separator
+                        NavigationLink { CloudModelEditor() } label: { settingsRow("模型", detail: IntelligenceRuntime.cloud.model, numeric: true, chevron: true) }
+                            .accessibilityIdentifier("editCloudModel")
+                        separator
+                        NavigationLink { Form { CloudAISettingsSection() }.editorForm().navigationTitle("密钥").yubaiNavigation() } label: {
+                            settingsRow("密钥", detail: hasKey ? "已存在本机钥匙串" : (configured ? "使用环境变量" : "未配好"), chevron: true)
+                        }
+                    }.buttonStyle(PressButtonStyle())
+                }
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+                heading("隐私")
+                Card(style: .list) {
+                    NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开后 \(sendCount) 条", chevron: true) }
+                        .buttonStyle(PressButtonStyle())
+                }
+                Text("会发出去：问题原文、记录的金额、日期、分类、商户和备注。不会发：账户名、卡号、交易单号、附件；转账对象的名字换成「联系人A」。")
+                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space4)
+            }
+            // Retain the existing device and notification preferences below the cloud/privacy groups.
+            Card(style: .list) {
                 Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { enabled in
                     Task { await store.setWeeklyLetterPush(enabled) }
-                })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush)
-                Text("每周一上午 9 点提醒一次，通知不含金额。打开余白后再写这周的来信。")
-                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            }.listRowBackground(YubaiColor.card)
-            Section("设备与界面") {
-                Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn)
-                Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in
-                    store.update("保存外观") { $0.preferences.appearance = value }
-                })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }
-            }.listRowBackground(YubaiColor.card)
-        }.editorForm().navigationTitle("智能与隐私").yubaiNavigation()
+                })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: YubaiSize.headerHeight)
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+                heading("设备与界面")
+                Card(style: .list) {
+                    VStack(spacing: 0) {
+                        Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.headerHeight)
+                        separator
+                        Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in
+                            store.update("保存外观") { $0.preferences.appearance = value }
+                        })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }.frame(minHeight: YubaiSize.tapMin)
+                    }
+                }
+            }
+        }.navigationTitle("智能与隐私").yubaiNavigation().onAppear {
+            IntelligenceRuntime.cloud.refresh(); hasKey = APIKeyStore.shared.hasKeychainKey
+            configured = IntelligenceRuntime.isConfigured; sendCount = SendLog.shared.totalCount
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.totalCount }
+    }
+    private func heading(_ text: String) -> some View { Text(text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space4) }
+    private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
+    private func settingsRow(_ title: String, detail: String, numeric: Bool = false, chevron: Bool = false) -> some View {
+        HStack(spacing: YubaiSpace.space8) {
+            Text(title).yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
+            Text(detail).yubaiFont(numeric ? YubaiFont.amountSmall : YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            if chevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+        }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
     }
     private func enableLock(_ enabled: Bool) {
         guard enabled else { store.update("关闭账本锁") { $0.preferences.lockEnabled = false }; return }

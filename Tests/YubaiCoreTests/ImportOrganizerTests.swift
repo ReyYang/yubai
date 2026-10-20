@@ -58,6 +58,47 @@ private struct ImportEval: Decodable {
 }
 
 final class ImportOrganizerTests: XCTestCase {
+    func testFreeAnswerAndMemoryPersistTogetherAndBatchUndoRemovesOnlyItsMemories() throws {
+        let fixture = try ImportEval.load(); let data = try fixture.imported()
+        var ledger = data.imported
+        let entry = try XCTUnwrap(ledger.entries.first { $0.batchID == data.batch.id })
+        let question = ImportQuestion(text: "这笔钱是什么用途？", entryIDs: [entry.id], options: [])
+        let organization = ImportOrganization(changeSet: ChangeSet(source: "导入整理", reason: "补充用途",
+            items: [.setPurpose(entry: entry.id, text: "待明确")]), questions: [question], skipped: [])
+        let before = ledger
+        try organization.changeSet.apply(to: &ledger)
+        organization.finish(batchID: data.batch.id, before: before, in: &ledger)
+        let unanswered = ledger
+        XCTAssertThrowsError(try question.describe("两行\n用途", batchID: data.batch.id, in: &ledger))
+        XCTAssertEqual(ledger, unanswered)
+        var samePurpose = unanswered
+        let sameIndex = try XCTUnwrap(samePurpose.entries.firstIndex { $0.id == entry.id })
+        samePurpose.entries[sameIndex].purpose = "已经写过的用途"
+        XCTAssertNoThrow(try question.describe("已经写过的用途", batchID: data.batch.id, in: &samePurpose))
+        XCTAssertTrue(samePurpose.imports[0].organization?.questions.isEmpty == true)
+        try question.describe("和张三合租，房租我出六成", batchID: data.batch.id, in: &ledger)
+        let memory = try XCTUnwrap(ledger.memories.first)
+        XCTAssertEqual(memory.source, .importAnswer); XCTAssertEqual(memory.kind, .life)
+        XCTAssertEqual(memory.evidence, [entry.id]); XCTAssertFalse(memory.text.contains("张三"))
+        XCTAssertEqual(ledger.entries.first { $0.id == entry.id }?.purpose, "和张三合租，房租我出六成")
+        XCTAssertTrue(ledger.imports[0].organization?.questions.isEmpty == true)
+        XCTAssertEqual(ledger.imports[0].undo?.memoryIDs, [memory.id])
+        let answered = ledger
+        XCTAssertThrowsError(try question.describe("再次回答", batchID: data.batch.id, in: &ledger))
+        XCTAssertEqual(ledger, answered)
+        let unrelated = MemoryNote(text: "另一条聊天记忆", kind: .plan, source: .chat)
+        ledger.memories.append(unrelated)
+        ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        BillImporter.undo(batchID: data.batch.id, in: &ledger)
+        var expected = data.before; expected.memories = [unrelated]
+        XCTAssertEqual(ledger, expected)
+    }
+    func testLegacyImportUndoWithoutMemoryIDsDecodes() throws {
+        let old = ImportUndo(updatedAt: Date())
+        let data = try JSONEncoder().encode(old)
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("memoryIDs"))
+        XCTAssertNil(try JSONDecoder().decode(ImportUndo.self, from: data).memoryIDs)
+    }
     func testFixtureProposalsFinancialInvariantsAndByteIdenticalBatchUndo() async throws {
         let fixture = try ImportEval.load(); let data = try fixture.imported()
         let scripted = fixture.script(ids: data.ids)
@@ -247,5 +288,56 @@ final class ImportOrganizerTests: XCTestCase {
             }, "Missing recurring evidence: \(series.title)")
         }
         XCTAssertLessThanOrEqual(result.questions.count, 5)
+    }
+}
+
+final class CategoryMemoryTests: XCTestCase {
+    func testKeysAndConfirmedCategoryEditsPersistButImportDoesNotTeach() throws {
+        XCTAssertEqual(CategoryMemory.key("  美团-订单123，ABC!  "), "美团订单abc")
+        XCTAssertEqual(CategoryMemory.key("123？！"), "")
+        var ledger = AssistantFixtures.context().ledger
+        let entry = ledger.entries[0]
+        var change = ChangeSet(source: "导入整理", reason: "模型分类", items: [.setCategory(entry: entry.id, category: "日用购物")])
+        try change.apply(to: &ledger); XCTAssertTrue(ledger.categoryMemory.isEmpty)
+        change.source = "问余白"; change.items = [.setCategory(entry: entry.id, category: "餐饮")]
+        try change.apply(to: &ledger)
+        XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "餐饮")
+        change.source = "回答整理问题"; change.items = [.setCategory(entry: entry.id, category: "日用购物")]
+        try change.apply(to: &ledger)
+        XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "日用购物")
+        try LedgerOperations.bulkEdit([entry.id], category: "餐饮", nature: nil, in: &ledger)
+        XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "餐饮")
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)).categoryMemory, ledger.categoryMemory)
+    }
+    func testRememberedCategoryIsAcceptedBeforeModelAndConflictsAreIgnored() async throws {
+        let ctx = AssistantFixtures.context(); var ledger = ctx.ledger
+        ledger.entries = [Entry(date: ctx.now, amount: 2000, accountID: ledger.accounts[0].id, title: "美团123!", category: "其他支出")]
+        ledger.categoryMemory[CategoryMemory.key("美团456")] = "餐饮"
+        let entry = ledger.entries[0]
+        let result = JSONValue.object(["rows": .array([.object(["entry": .string(entry.id.uuidString), "category": .string("日用购物"), "nature": .string("expense"), "confident": .bool(true)])]),
+            "items": .array([.object(["kind": .string("set_category"), "entry": .string(entry.id.uuidString), "category": .string("娱乐旅行")])])])
+        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: try result.jsonText()), ChatMessage(role: .assistant, content: "{}")])
+        let organized = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: [entry.id], now: ctx.now)
+        let categories = organized.changeSet.items.compactMap { item -> String? in if case .setCategory(_, let category) = item { return category }; return nil }
+        XCTAssertEqual(categories, ["餐饮"])
+        let requests = await script.recorded()
+        let input = try JSONValue.parse(try XCTUnwrap(requests[0].messages.last?.content))
+        XCTAssertEqual(input["known_categories"], .array([.object(["title": .string(entry.title), "category": .string("餐饮")])]))
+        XCTAssertEqual(input["batch"]?.arrayValue?.first?["category"], .string("餐饮"))
+        XCTAssertTrue(requests[0].messages.first?.content?.contains("known_categories 是用户确认过的分类") == true)
+        let memory = ledger.categoryMemory
+        try organized.changeSet.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries[0].category, "餐饮"); XCTAssertEqual(ledger.categoryMemory, memory)
+    }
+    func testMissingRememberedCategoryFallsBackToModel() async throws {
+        let ctx = AssistantFixtures.context(); var ledger = ctx.ledger
+        ledger.entries = [Entry(date: ctx.now, amount: 100, accountID: ledger.accounts[0].id, title: "普通商户")]
+        ledger.categoryMemory["普通商户"] = "已删除分类"
+        let id = ledger.entries[0].id.uuidString
+        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array([.object(["entry": .string(id), "category": .string("餐饮"), "confident": .bool(true), "nature": .string("expense")])])]).jsonText()), ChatMessage(role: .assistant, content: "{}")])
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: [ledger.entries[0].id], now: ctx.now)
+        XCTAssertTrue(result.changeSet.items.contains(.setCategory(entry: ledger.entries[0].id, category: "餐饮")))
+        let requests = await script.recorded()
+        XCTAssertEqual(try JSONValue.parse(requests[0].messages.last!.content!)["known_categories"], .array([]))
     }
 }
