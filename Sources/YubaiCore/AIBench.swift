@@ -186,9 +186,12 @@ public struct AssistantEvalCase: Codable, Sendable {
     public var expectedTools: [String]
     public var expectedNumbers: [String]
     public var scriptedCalls: [ScriptedCall]
+    public var expectedChangeKinds: [String]?
+    public var expectRefusal: Bool?
     private enum CodingKeys: String, CodingKey {
         case id, question
         case expectedTools = "expected_tools", expectedNumbers = "expected_numbers", scriptedCalls = "scripted_calls"
+        case expectedChangeKinds = "expected_change_kinds", expectRefusal = "expect_refusal"
     }
 }
 
@@ -208,12 +211,15 @@ extension AIBenchRunner {
 
     public static func runAssistantCase(_ sample: AssistantEvalCase, transport: any ChatTransport,
                                         context: ToolContext) async throws -> AssistantEvalResult {
-        let reply = try await AssistantAgent(transport: transport, context: context).run(
-            system: "你是余白，一位克制的个人财务管家。先用工具查证，金额只能引用工具结果，不自行计算。用简体中文简短回答。今天是\(Dates.text(context.now))。",
-            messages: [ChatMessage(role: .user, content: sample.question)], tools: ReadOnlyTool.all)
+        let reply = try await AskYubai.answer(sample.question, transport: transport, context: context)
         let names = Set(reply.toolTrace.map(\.name))
+        let kinds = reply.proposedChangeSets.flatMap(\.items).map { item -> String in
+            if case .setCategory = item { return "set_category" }; return "other"
+        }
+        let expectedChanges = sample.expectedChangeKinds.map { $0 == kinds } ?? true
+        let refused = sample.expectRefusal != true || (reply.proposedChangeSets.isEmpty && reply.text.contains("不能"))
         return AssistantEvalResult(id: sample.id, reply: reply,
             passed: sample.expectedTools.allSatisfy { names.contains($0) }
-                && sample.expectedNumbers.allSatisfy { reply.text.contains($0) } && reply.unverifiedAmounts.isEmpty)
+                && sample.expectedNumbers.allSatisfy { reply.text.contains($0) } && reply.unverifiedAmounts.isEmpty && expectedChanges && refused)
     }
 }

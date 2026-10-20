@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import PhotosUI
 import Vision
 import YubaiCore
 
@@ -28,12 +27,11 @@ enum ReceiptReader {
 struct ImportView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
-    @State private var accountID: UUID?; @State private var filePicker = false; @State private var photo: PhotosPickerItem?
+    @State private var accountID: UUID?; @State private var filePicker = false
     @State private var data: Data?; @State private var filename = ""; @State private var preview: ImportPreview?
     @State private var busy = false; @State private var result: ImportBatch?; @State private var filter = "全部"
     @State private var queue: [URL] = []; @State private var queueTotal = 0; @State private var processed = 0
-    @State private var receipt: ReceiptCandidate?; @State private var receiptAmount = ""; @State private var receiptTitle = ""
-    @State private var receiptInflow = false; @State private var receiptDate = Date(); @State private var localError: String?
+    @State private var localError: String?
     @State private var showAccount = false
     @State private var accountMappings: [String: UUID] = [:]
     @State private var parseID = UUID()
@@ -44,7 +42,6 @@ struct ImportView: View {
         VStack(spacing: 0) {
             if let result { resultView(result) }
             else if busy { readingView }
-            else if let receipt { receiptView(receipt) }
             else if let preview { previewView(preview) }
             else { intake }
             if let localError { InlineNote(text: localError, style: .attention).padding(YubaiSpace.space18).textSelection(.enabled) }
@@ -52,7 +49,6 @@ struct ImportView: View {
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .image, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: true) { result in
                 switch result { case .success(let urls): queue = urls; queueTotal = urls.count; processed = 0; readNext(); case .failure(let e): localError = e.localizedDescription }
             }
-            .onChange(of: photo) { _, value in guard let value else { return }; busy = true; localError = nil; Task { do { guard let bytes = try await value.loadTransferable(type: Data.self) else { throw YubaiError.invalid("图片读取失败。") }; data = bytes; filename = "账单截图-\(Dates.text(Date())).jpg"; await recognize(bytes) } catch { localError = error.localizedDescription; busy = false } } }
             .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().frame(minWidth: 340, minHeight: 520) }
             .onChange(of: store.current.accounts.count) { _, _ in if accountID == nil { accountID = store.current.accounts.last?.id } }
             .onChange(of: accountMappings) { _, _ in if preview != nil, let data { parse(data) } }
@@ -75,8 +71,8 @@ struct ImportView: View {
             Section("1 · 选择账户") { accountPicker; Button("添加账户") { showAccount = true }; InlineNote(text: "文件里有支付方式时，下一步可把零钱、银行卡分别对应到账户。没有标注支付方式的记录使用这里的默认账户。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             Section("2 · 选择文件或截图") {
                 Button { filePicker = true } label: { Label("选择账单文件", systemImage: "doc.badge.plus") }.disabled(accountID == nil).accessibilityIdentifier("chooseBillFile")
-                PhotosPicker(selection: $photo, matching: .images) { Label("从照片选一张账单截图", systemImage: "photo") }.disabled(accountID == nil)
-                Text("文件支持 CSV、TSV、XLSX；截图在本机识别，金额由你确认。原始文件留在本地账本中。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                NavigationLink { AskYubaiView() } label: { Label("截图或照片补记 · 问余白", systemImage: "photo") }
+                Text("文件支持 CSV、TSV、XLSX；截图通过问余白在本机识别，金额由你确认。账单原始文件留在本地。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             Section("导出账单的方法") {
                 Text("微信：我 → 服务 → 钱包 → 账单 → 常见问题 → 下载账单。\n支付宝：我的 → 账单 → 更多 → 开具交易流水证明 / 导出账单。\n银行：导出带日期、金额和收支方向的明细；不匹配时可使用余白 CSV 模板。") .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
@@ -193,12 +189,12 @@ struct ImportView: View {
                 }
                 Text("原始文件保留在本地。未回答的问题会留着，待明确的资金继续保守计算。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }.disabled(store.organizingBatchID == batch.id)
-                if !queue.isEmpty { Button("继续下一份（\(processed)/\(queueTotal)）") { result = nil; preview = nil; receipt = nil; readNext() }.buttonStyle(PrimaryButtonStyle()).disabled(store.organizingBatchID != nil) }
+                if !queue.isEmpty { Button("继续下一份（\(processed)/\(queueTotal)）") { result = nil; preview = nil; readNext() }.buttonStyle(PrimaryButtonStyle()).disabled(store.organizingBatchID != nil) }
                 Button("回到账本") { store.destination = .ledger; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
             }
         } else {
             Page { EmptyState("arrow.uturn.backward", "这一批已撤销", "整理产生的关联与安排也已还原。")
-                Button("继续导入") { result = nil; preview = nil; receipt = nil; data = nil }
+                Button("继续导入") { result = nil; preview = nil; data = nil }
             }
         }
     }
@@ -223,23 +219,15 @@ struct ImportView: View {
             }
         } }
     }
-    func receiptView(_ candidate: ReceiptCandidate) -> some View {
-        Form {
-            Section { Label("识别完成，请确认金额", systemImage: "text.viewfinder").yubaiFont(YubaiFont.rowTitle); Text("截图识别可能出错。确认后才会记入账本，余白不会自动修正金额。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-            Section { TextField("用途", text: $receiptTitle); TextField("确认金额", text: $receiptAmount).numericInput().yubaiFont(YubaiFont.amountInput); if candidate.amounts.count > 1 { Picker("截图中的金额", selection: $receiptAmount) { Text("手动填写").tag(receiptAmount); ForEach(candidate.amounts, id: \.self) { Text("¥" + $0).tag($0) } } }; Toggle("这是一笔收入", isOn: $receiptInflow).tint(YubaiColor.toggleOn); accountPicker; DatePicker("发生时间", selection: $receiptDate, in: ...Date(), displayedComponents: [.date, .hourAndMinute]) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-            Section { DisclosureGroup("查看识别到的原文") { Text(candidate.text).yubaiFont(YubaiFont.caption).textSelection(.enabled) } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-            Section { Button("确认并保存", action: saveReceipt); Button("放弃这张截图") { receipt = nil; data = nil; photo = nil } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-        }.editorForm()
-    }
     func toggle(_ id: UUID) { guard let i = preview?.rows.firstIndex(where: { $0.id == id }) else { return }; preview?.rows[i].included.toggle() }
     func readNext() {
         guard !queue.isEmpty else { return }
-        let url = queue.removeFirst(); processed += 1; result = nil; preview = nil; receipt = nil; localError = nil; accountMappings = [:]
+        let url = queue.removeFirst(); processed += 1; result = nil; preview = nil; localError = nil; accountMappings = [:]
         let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {
             let attributes = try url.resourceValues(forKeys: [.fileSizeKey]); guard (attributes.fileSize ?? 0) <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个文件请小于 50 MB。") }
             let bytes = try Data(contentsOf: url); data = bytes; filename = url.lastPathComponent
-            if UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true { busy = true; Task { await recognize(bytes) } }
+            if UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true { data = nil; store.sheet = .capture(bytes) }
             else { parse(bytes) }
         } catch { localError = error.localizedDescription }
     }
@@ -264,23 +252,8 @@ struct ImportView: View {
             guard parseID == requestID, !Task.isCancelled else { return }; preview = parsed; busy = false
         } catch { guard parseID == requestID, !Task.isCancelled else { return }; localError = error.localizedDescription; preview = nil; busy = false } }
     }
-    func recognize(_ bytes: Data) async {
-        do { let recognized = try await Task.detached(priority: .userInitiated) { try ReceiptReader.recognize(bytes) }.value; receipt = recognized; receiptAmount = recognized.amounts.count == 1 ? recognized.amounts[0] : ""; receiptTitle = recognized.title; receiptDate = min(recognized.date ?? Date(), Date()); busy = false }
-        catch { localError = error.localizedDescription; busy = false }
-    }
     func commit() {
         guard let preview, let data else { return }; var batch: ImportBatch?
         if store.update("导入账单", { l in batch = try BillImporter.commit(preview, data: data, to: &l) }) { result = batch; if let batch { Task { await store.organizeImport(batch.id) } } }
-    }
-    func saveReceipt() {
-        do {
-            guard let accountID, let data, receipt != nil else { throw YubaiError.invalid("请先选择账户。") }
-            let amount = try Money.parse(receiptAmount); guard amount > 0, !receiptTitle.isEmpty else { throw YubaiError.invalid("请确认用途和有效金额。") }
-            var e = Entry(date: receiptDate, amount: amount, nature: receiptInflow ? .income : .expense, accountID: accountID, title: receiptTitle, category: "待整理"); e.source = "截图"; e.note = "本机 OCR，金额经手动确认"; e.classificationReason = "截图金额经用户确认，等待整理"
-            if store.current.activeEntries.contains(where: { $0.accountID == accountID && $0.amount == amount && $0.nature.inflow == receiptInflow && abs($0.date.timeIntervalSince(receiptDate)) < 60 }) { throw YubaiError.invalid("同账户已有同时间同金额记录，请先核对账本，避免重复补记。") }
-            var batch = ImportBatch(filename: filename, importedCount: 1, duplicateCount: 0, skippedCount: 0)
-            batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: store.current.updatedAt)
-            if store.update("保存截图记录", { l in let attachment = Attachment(name: filename, data: data); l.attachments.append(attachment); e.attachmentID = attachment.id; e.batchID = batch.id; batch.attachmentID = attachment.id; l.entries.append(e); l.imports.append(batch) }) { result = batch; Task { await store.organizeImport(batch.id) } }
-        } catch { localError = error.localizedDescription }
     }
 }

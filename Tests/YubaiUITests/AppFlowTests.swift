@@ -34,7 +34,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Lunch"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["startLedger"].exists)
     }
-    func testDemoNavigationAndPurchaseAssessment() throws {
+    func testDemoNavigationAndAskEntry() throws {
         continueAfterFailure = false
         let app = application(demo: true); app.launch()
         XCTAssertTrue(app.staticTexts["给生活，留一点余白"].waitForExistence(timeout: 10))
@@ -47,14 +47,10 @@ final class AppFlowTests: XCTestCase {
         app.tabBars.buttons["安排"].tap(); attach(app, "iPhone-05-plans")
         app.buttons["房租分摊"].tap(); attach(app, "iPhone-06-rent")
         app.tabBars.buttons["洞察"].tap(); attach(app, "iPhone-07-insights")
-        app.buttons["购买前咨询"].tap()
-        XCTAssertTrue(app.textFields["想买什么"].waitForExistence(timeout: 5))
-        app.textFields["想买什么"].tap(); app.textFields["想买什么"].typeText("Camera")
-        app.textFields["金额"].tap(); app.textFields["金额"].typeText("999999")
-        app.buttons["看看对资金的影响"].tap()
-        app.swipeUp()
-        XCTAssertTrue(app.staticTexts["这笔购买会挤占已安排的资金"].waitForExistence(timeout: 5))
-        attach(app, "iPhone-08-purchase")
+        app.buttons["问余白"].tap()
+        XCTAssertTrue(app.navigationBars["问余白"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["设置云端智能"].exists)
+        attach(app, "iPhone-08-ask-unconfigured")
     }
     func testInvalidAmountDoesNotSaveAndDemoDoesNotBecomeRealLedger() throws {
         continueAfterFailure = false
@@ -102,7 +98,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["commitImport"].waitForExistence(timeout: 10)); XCTAssertFalse(app.buttons["commitImport"].isEnabled)
         attach(app, "iPhone-11-import-repeat")
     }
-    func testReceiptImageOCRAndConfirmedSave() throws {
+    func testReceiptImageRoutesToAskWithoutCloud() throws {
         continueAfterFailure = false
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 1200))
         let image = renderer.image { context in
@@ -119,12 +115,10 @@ final class AppFlowTests: XCTestCase {
         let folder = app.cells.matching(NSPredicate(format: "label BEGINSWITH '余白,' OR label == '余白'")).firstMatch; if folder.waitForExistence(timeout: 3) { folder.tap() }
         let file = app.cells.matching(NSPredicate(format: "label CONTAINS '余白验证截图'")).firstMatch
         XCTAssertTrue(file.waitForExistence(timeout: 10)); file.tap(); app.buttons["打开"].tap()
-        XCTAssertTrue(app.textFields["确认金额"].waitForExistence(timeout: 30))
-        XCTAssertEqual(app.textFields["确认金额"].value as? String, "28.5")
-        attach(app, "iPhone-12-OCR-confirmation")
-        app.buttons["确认并保存"].tap()
-        XCTAssertTrue(app.staticTexts["账单已保存"].waitForExistence(timeout: 10))
-        attach(app, "iPhone-13-OCR-result")
+        XCTAssertTrue(app.navigationBars["问余白"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["设置云端智能"].exists)
+        XCTAssertFalse(app.buttons["确认并保存"].exists)
+        attach(app, "iPhone-12-screenshot-ask-unconfigured")
     }
     func testEncryptedBackupExportAndRestoreIntoEmptyLedger() throws {
         continueAfterFailure = false

@@ -25,6 +25,7 @@ private struct OverviewContent: View {
                         .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).background(YubaiColor.raised, in: Circle()).frame(minHeight: YubaiSize.tapMin)
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel("隐藏或显示总览金额")
             }
+            Button { store.sheet = .ask("") } label: { Label("问余白", systemImage: "sparkle").frame(maxWidth: .infinity) }.buttonStyle(PrimaryButtonStyle())
             ButlerSection()
             if store.current.accounts.isEmpty {
                 EmptyState("wallet.bifold", "从真实余额开始", "添加微信、支付宝和银行卡，再导入历史账单。余额以你核对的时刻为准，不会因导入旧记录重复增加。", action: "添加第一个账户") { store.sheet = .account(nil) }
@@ -34,9 +35,6 @@ private struct OverviewContent: View {
                 upcoming
             }
             quickActions
-            Button { store.sheet = .advice } label: {
-                HStack { Text("购买前想一想"); Spacer(); Image(systemName: "chevron.right") }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-            }.yubaiFont(YubaiFont.row).buttonStyle(PressButtonStyle()).foregroundStyle(YubaiColor.brandInk)
             if !store.current.accounts.isEmpty {
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space12)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space24))
                 layout {

@@ -23,7 +23,7 @@ enum IntelligenceRuntime {
     }
 }
 
-private struct ActiveImportTransport: ChatTransport {
+struct ActiveImportTransport: ChatTransport {
     let client: DeepSeekClient
     let isCurrent: @MainActor @Sendable () -> Bool
     func send(_ request: ChatRequest) async throws -> ChatMessage {
@@ -125,7 +125,7 @@ private struct ActiveImportTransport: ChatTransport {
         case .reconcileAccount(let id): sheet = .reconcile(id)
         case .confirmChangeSet(let id): sheet = .cardProposal(id)
         case .answerQuestion: sheet = .cardQuestion(card.id)
-        case .openWish: break
+        case .openWish(let id): sheet = .wishlist(id)
         }
     }
 }

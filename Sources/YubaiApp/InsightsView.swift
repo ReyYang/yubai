@@ -8,13 +8,7 @@ enum CloudIntelligence {
     @MainActor static func canAssist(preferences: Preferences) -> Bool {
         IntelligenceRuntime.backend(for: preferences) != nil
     }
-    @MainActor static func reflect(title: String, purpose: String, assessment: PurchaseAssessment, ledger: Ledger) async throws -> String {
-        guard let backend = IntelligenceRuntime.backend(for: ledger) else {
-            throw YubaiError.invalid(availabilityText(for: ledger.preferences))
-        }
-        let profile = try ReadOnlyTool.getProfile.run(.object([:]), ToolContext(ledger: ledger))
-        return try await backend.reflectPurchase(title: title, purpose: purpose, profile: profile, assessmentTitle: assessment.title)
-    }
+
 }
 
 struct InsightsView: View {
@@ -37,23 +31,7 @@ struct InsightsView: View {
                 DailySpendingChart(ledger: store.current, from: from, through: through, days: days, hideAmounts: store.current.preferences.hideAmounts, appeared: $dailyChartAppeared)
                 observations(review)
             }
-            Button { store.sheet = .advice } label: { Card { HStack(spacing: YubaiSpace.space16) { VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("有一笔购买正在犹豫？").yubaiFont(YubaiFont.rowTitle); Text("把它放进你的真实资金安排里看一看。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }; Spacer(); Image(systemName: "arrow.up.right") } } }.buttonStyle(PressButtonStyle())
-            if !store.current.advice.isEmpty {
-                Card {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space16) {
-                        SectionHeading(title: "之前想过的事")
-                        ForEach(Array(store.current.advice.reversed().prefix(8))) { item in
-                            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
-                                HStack { Text(item.title).yubaiFont(YubaiFont.rowTitle); Spacer(); AmountLabel(cents: item.amount, hide: store.current.preferences.hideAmounts) }
-                                Text(item.result).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                                Text("当时的判断 · \(Dates.text(item.createdAt))").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                            }
-                        }
-                        InlineNote(text: "历史判断反映当时的账本；资金变化后请重新计算。")
-                    }
-                }
-            }
-        }.navigationTitle("洞察").yubaiNavigation().toolbar { Button { store.sheet = .advice } label: { Label("购买前咨询", systemImage: "sparkle") } }
+        }.navigationTitle("洞察").yubaiNavigation().toolbar { Button { store.sheet = .ask("") } label: { Label("问余白", systemImage: "sparkle") } }
             .onChange(of: store.current.profile) { _, _ in insightPolish = "" }
             .onChange(of: store.current.goals) { _, _ in insightPolish = "" }
             .onChange(of: store.current.id) { _, _ in insightPolish = "" }
@@ -219,77 +197,6 @@ private struct DailySpendingChart: View {
             }
             .frame(height: 180).accessibilityLabel(accessibilityText)
     }
-}
-
-struct AdviceView: View {
-    @Environment(AppStore.self) private var store
-    @State private var title = ""; @State private var amount = ""; @State private var purpose = ""
-    @State private var assessment: PurchaseAssessment?; @State private var assessedAmount: Int64 = 0
-    @State private var reflection = ""; @State private var aiError: String?; @State private var busy = false; @State private var saved = false
-    @State private var task: Task<Void, Never>?
-    private enum Field { case title, amount, purpose }
-    @FocusState private var focusedField: Field?
-    var body: some View {
-        Page {
-            VStack(alignment: .leading, spacing: YubaiSpace.space10) { Text("它值得，占用这份余白吗？").yubaiFont(YubaiFont.lead); Text("先算资金承受能力，再想使用价值。最终决定始终由你做。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
-            purchaseFields
-            if let assessment { assessmentCard(assessment) }
-        }.navigationTitle("购买前想一想").yubaiNavigation().toolbar { CloseButton() }
-            .onChange(of: amount) { _, _ in invalidate() }.onChange(of: title) { _, _ in invalidate() }
-            .onChange(of: store.current.updatedAt) { _, _ in if !saved { invalidate() } }
-            .onChange(of: store.current.profile) { _, _ in invalidate() }
-            .onChange(of: store.current.goals) { _, _ in invalidate() }
-            .onDisappear { task?.cancel() }
-    }
-    private var purchaseFields: some View {
-        Card { VStack(spacing: YubaiSpace.space16) {
-            TextField("想买什么", text: $title).yubaiFont(YubaiFont.rowTitle).focused($focusedField, equals: .title)
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                Text("¥").yubaiFont(YubaiFont.lead).foregroundStyle(YubaiColor.labelSecondary)
-                TextField("金额", text: $amount).numericInput().yubaiFont(YubaiFont.amountInput).focused($focusedField, equals: .amount)
-            }
-            TextField("它能解决什么问题？（可选）", text: $purpose, axis: .vertical).lineLimit(3...6).yubaiFont(YubaiFont.body).focused($focusedField, equals: .purpose)
-            Button("看看对资金的影响", action: assess).buttonStyle(PrimaryButtonStyle()).frame(maxWidth: .infinity)
-        } }
-    }
-    func assessmentCard(_ a: PurchaseAssessment) -> some View {
-        let beforePurchase: Double = Double(a.afterPurchase) + Double(assessedAmount)
-        let usedRatio: Double = min(1, max(0, 1 - Double(a.afterPurchase) / max(1, beforePurchase)))
-        // 买前余量被占用的比例映射到六道水位；放得下时最多五道。
-        let bandCount = Int((usedRatio * 6).rounded(.up))
-        let filledBands = min(5, bandCount)
-        return VStack(spacing: YubaiSpace.space12) {
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space16) {
-                Text(a.title).yubaiFont(YubaiFont.lead).foregroundStyle(a.severity == 2 ? YubaiColor.amberInk : YubaiColor.label)
-                if a.afterPurchase >= 0 { WaterLevelView(filledBands: filledBands).frame(maxWidth: .infinity) }
-                Text(a.explanation).yubaiFont(YubaiFont.body)
-                Rectangle().fill(YubaiColor.separator).frame(height: 1)
-                Text("购买后的保守余量").yubaiFont(YubaiFont.heroLabel)
-                AmountLabel(cents: a.afterPurchase, hide: store.current.preferences.hideAmounts, role: .large)
-                DisclosureGroup("查看计算与完整度依据") { VStack(alignment: .leading, spacing: YubaiSpace.space10) { ForEach(a.facts, id: \.self) { Text("· " + $0).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) } }.padding(.top, YubaiSpace.space10) }.yubaiFont(YubaiFont.callout)
-            } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space16) { SectionHeading(title: "除了金额，还可以想想"); ForEach(a.questions, id: \.self) { Text("· " + $0).yubaiFont(YubaiFont.body) }; ForEach(store.current.profile.principles, id: \.self) { Text("你的原则：" + $0).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) } } }
-            reflectionCard(a)
-            Button(saved ? "已经记下这次思考" : "保存这次思考") { saved = true; if !store.update("保存购买思考", { $0.advice.append(AdviceRecord(title: title, amount: assessedAmount, result: a.title + "。" + a.explanation, note: purpose)) }) { saved = false } }.buttonStyle(SecondaryButtonStyle()).disabled(saved)
-        }
-    }
-    private func reflectionCard(_ a: PurchaseAssessment) -> some View {
-        Card(style: .compact, background: YubaiColor.brandTint) { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            HStack(spacing: YubaiSpace.space8) { AssistantMark(thinking: busy); Text("智能辅助 · 补充使用价值思考").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.brandInk) }
-            Text(CloudIntelligence.availabilityText(for: store.current.preferences)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk)
-            if busy { HStack(spacing: YubaiSpace.space8) { Text("正在思考…").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk) } }
-            else if !reflection.isEmpty { Text(reflection).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.brandInk).textSelection(.enabled); InlineNote(text: "AI 补充可能不准确；上方金额始终来自确定性计算。") }
-            if let aiError { InlineNote(text: aiError, style: .attention) }
-            Button("让智能补充想法") { reflect(a) }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).disabled(!CloudIntelligence.canAssist(preferences: store.current.preferences) || busy)
-        } }
-    }
-    func assess() { do { let cents = try Money.parse(amount); guard cents > 0, !title.trimmingCharacters(in: .whitespaces).isEmpty else { throw YubaiError.invalid("请填写想买的东西和金额。") }; focusedField = nil; assessedAmount = cents; assessment = Finance.assessPurchase(store.current, amount: cents); reflection = ""; saved = false } catch { store.error = error.localizedDescription } }
-    func reflect(_ a: PurchaseAssessment) {
-        task?.cancel(); busy = true; aiError = nil
-        let ledger = store.current
-        task = Task { do { let text = try await CloudIntelligence.reflect(title: title, purpose: purpose, assessment: a, ledger: ledger); guard !Task.isCancelled, store.current == ledger else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次云端补充没有完成。本机资金计算已保留，你可以稍后重试。"; busy = false } }
-    }
-    func invalidate() { task?.cancel(); assessment = nil; reflection = ""; busy = false; saved = false }
 }
 
 private struct BarList: View {

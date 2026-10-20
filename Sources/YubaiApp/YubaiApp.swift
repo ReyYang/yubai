@@ -10,7 +10,8 @@ enum Destination: String, CaseIterable, Identifiable {
     var symbol: String { switch self { case .overview: "water.waves"; case .ledger: "text.book.closed"; case .plans: "calendar"; case .insights: "chart.xyaxis.line"; case .settings: "person.crop.circle" } }
 }
 enum AppSheet: Identifiable {
-    case entry(Entry?), account(Account?), plan(Plan?), goal(Goal?), rent(Rent?), imports, accounts, advice, categories, backup, history, rentDetail(UUID), entryDetail(UUID), guide, fundsCalculation
+    case entry(Entry?), account(Account?), plan(Plan?), goal(Goal?), rent(Rent?), imports, accounts, categories, backup, history, rentDetail(UUID), entryDetail(UUID), guide, fundsCalculation
+    case ask(String), capture(Data), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, reconcile(UUID)
     var id: String { String(describing: self) }
 }
@@ -98,7 +99,13 @@ enum AppSheet: Identifiable {
         guard loadFailure == nil || isDemo else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
         do {
-            try change(&next); if !preservingUpdatedAt { next.updatedAt = Date() }
+            try change(&next)
+            if next.entries.count > before.entries.count, next.wishlist.contains(where: { $0.status == .thinking }) {
+                let oldIDs = Set(before.entries.map(\.id))
+                let addedIDs = Set(next.entries.lazy.filter { !oldIDs.contains($0.id) }.map(\.id))
+                Wishlist.autoLink(&next, addedEntryIDs: addedIDs, now: Date())
+            }
+            if !preservingUpdatedAt { next.updatedAt = Date() }
             if isDemo { try next.validate(); demo = next } else { try repository.save(next, reason: reason); ledger = next }
             if recordUndo { undoLedger = before; undoLabel = reason; toast = reason + "完成" }; return true
         } catch { self.error = error.localizedDescription; return false }
@@ -171,7 +178,7 @@ enum AppSheet: Identifiable {
             CommandGroup(after: .newItem) {
                 Button("记一笔") { store.sheet = .entry(nil) }.keyboardShortcut("n").disabled(store.locked || !store.current.preferences.onboardingComplete)
                 Button("导入账单") { store.sheet = .imports }.keyboardShortcut("i").disabled(store.locked || !store.current.preferences.onboardingComplete)
-                Button("购买前想一想") { store.sheet = .advice }.keyboardShortcut("k").disabled(store.locked || !store.current.preferences.onboardingComplete)
+                Button("问余白") { store.sheet = .ask("") }.keyboardShortcut("k").disabled(store.locked || !store.current.preferences.onboardingComplete)
             }
             CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled(store.undoLabel == nil || store.locked) }
         }
@@ -255,7 +262,9 @@ struct RootView: View {
         case .rent(let rent): RentEditor(rent: rent)
         case .imports: ImportView()
         case .accounts: AccountsView()
-        case .advice: AdviceView()
+        case .ask(let text): AskYubaiView(initialText: text)
+        case .capture(let data): AskYubaiView(initialImage: data)
+        case .wishlist(let id): WishlistView(focusedWishID: id)
         case .categories: CategoriesView()
         case .backup: BackupView()
         case .history: HistoryView()

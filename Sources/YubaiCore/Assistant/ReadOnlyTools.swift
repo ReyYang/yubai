@@ -6,8 +6,12 @@ public struct ToolContext: Sendable {
     public let redactor: Redactor
     /// Captured from an explicit local amount input; never from model arguments.
     public let confirmedEntryAmount: Int64?
+    public let parsedEntryAmounts: [Int64]
+    public let entryAccountHint: UUID?
     let entriesByID: [UUID: Entry]
-    public init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil) {
+    public init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil, parsedEntryAmounts: [Int64] = [], entryAccountHint: UUID? = nil) {
+        self.entryAccountHint = entryAccountHint
+        self.parsedEntryAmounts = parsedEntryAmounts.filter { $0 > 0 && $0 <= Money.limit }
         self.confirmedEntryAmount = confirmedEntryAmount
         self.ledger = ledger; self.now = now; self.redactor = Redactor(ledger: ledger)
         self.entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
@@ -91,7 +95,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             result = .object(["entries": .array(rows.map { summary($0, ctx) }),
                 "entry_ids": .strings(rows.map { $0.id.uuidString }), "matched_count": .number(Double(all.count)),
                 "truncated": .bool(rows.count < all.count)])
-        case .summarize: result = try summarize(fields, ctx)
+        case .summarize: result = try summarizeWithChart(fields, ctx).result
         case .compareToHabit: result = try habit(fields, ctx)
         case .getProfile: result = profile(ctx)
         }
@@ -127,6 +131,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             "goals": .array(ctx.ledger.goals.map { .object(["id": .string($0.id.uuidString), "title": .string($0.title),
                 "target": .money($0.target), "saved": .money($0.reserved), "reserved": .money($0.reserved),
                 "date": $0.dueDate.map { .string(Dates.text($0)) } ?? .null]) })]
+        if let account = ctx.entryAccountHint { fields["entry_account_hint"] = .string(account.uuidString) }
+        fields["parsed_entry_amounts"] = .array(ctx.parsedEntryAmounts.map { .money($0) })
         if let amount = ctx.confirmedEntryAmount { fields["confirmed_entry_amount"] = .money(amount) }
         return .object(fields)
     }
@@ -159,7 +165,9 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         return .object(result)
     }
 
-    private func summarize(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {
+    func summarizeWithChart(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> (result: JSONValue, chart: AnswerChart) {
+        let allowed = Set(Self.summarize.parameters["properties"]?.objectValue?.keys.map { $0 } ?? [])
+        guard Set(fields.keys).isSubset(of: allowed) else { throw YubaiError.invalid("汇总参数包含未声明的字段。") }
         let filter = try Filter(fields)
         let group = try Self.optionalString(fields["group_by"]) ?? "category"
         guard ["day", "week", "month", "category"].contains(group) else { throw YubaiError.invalid("group_by必须是day/week/month/category。") }
@@ -191,7 +199,10 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         // Keep payloads bounded; totals cover every row, evidence is a representative recent sample.
         result["entry_ids"] = .strings(rows.prefix(50).map { $0.id.uuidString })
         result["evidence_truncated"] = .bool(rows.count > 50)
-        return .object(result)
+        let points = grouped.keys.sorted().map { key in
+            AnswerChart.Point(label: ctx.redactor.text(key), cents: (grouped[key] ?? []).reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ctx.ledger) })
+        }
+        return (ctx.redactor.value(.object(result)), AnswerChart(kind: group == "category" ? .bar : .line, title: "消费汇总（元）", points: points))
     }
 
     private func habit(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {

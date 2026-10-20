@@ -6,15 +6,16 @@ import XCTest
 private actor EvalScriptTransport: ChatTransport {
     let sample: AssistantEvalCase
     private var turns = 0
-    init(_ sample: AssistantEvalCase) { self.sample = sample }
+    private let context: ToolContext
+    init(_ sample: AssistantEvalCase, context: ToolContext) { self.sample = sample; self.context = context }
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         turns += 1
-        if turns == 1 {
-            return ChatMessage(role: .assistant, toolCalls: try sample.scriptedCalls.enumerated().map {
-                ChatToolCall(id: "eval-\($0.offset)", name: $0.element.name, arguments: try $0.element.args.jsonText())
-            })
+        if turns <= sample.scriptedCalls.count {
+            let call = sample.scriptedCalls[turns - 1]
+            let args = try call.args.jsonText().replacingOccurrences(of: "$last_week_meituan", with: context.ledger.entries[1].id.uuidString)
+            return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "eval-\(turns)", name: call.name, arguments: args)])
         }
-        guard turns == 2 else { throw YubaiError.invalid("评测产生了多余请求。") }
+        guard turns == sample.scriptedCalls.count + 1 else { throw YubaiError.invalid("评测产生了多余请求。") }
         let messages = request.messages.filter { $0.role == .tool }
         guard messages.count == sample.scriptedCalls.count else { throw YubaiError.invalid("缺少工具结果。") }
         let results = try messages.map { try JSONValue.parse($0.content ?? "") }
@@ -27,9 +28,10 @@ private actor EvalScriptTransport: ChatTransport {
 final class AssistantEvalTests: XCTestCase {
     func testAssistantEvalSeedWithScriptedResponses() async throws {
         let samples = try AIBenchRunner.loadAssistantEval(bundle: .module)
-        XCTAssertEqual(samples.count, 6)
+        XCTAssertEqual(samples.count, 8)
+        let context = AssistantFixtures.context()
         for sample in samples {
-            let result = try await AIBenchRunner.runAssistantCase(sample, transport: EvalScriptTransport(sample), context: AssistantFixtures.context())
+            let result = try await AIBenchRunner.runAssistantCase(sample, transport: EvalScriptTransport(sample, context: context), context: context)
             XCTAssertTrue(result.passed, sample.id)
             XCTAssertEqual(result.reply.toolTrace.map(\.name), sample.expectedTools, sample.id)
         }

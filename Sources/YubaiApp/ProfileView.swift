@@ -34,6 +34,7 @@ struct ProfileView: View {
                 }
             }
             if !canChat { Text("在设置中填写 DeepSeek 密钥并开启云端智能后，就能和余白聊几句。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            NavigationLink("心愿单") { WishlistView() }.yubaiFont(YubaiFont.rowTitle)
             SectionHeading(title: "你想花的", subtitle: "由你说了算，随时可以改。")
             areas(profile.restrain, stance: .restrain, title: "想克制的")
             areas(profile.generous, stance: .generous, title: "愿意多花的")

@@ -26,7 +26,7 @@ enum AssistantFixtures {
         ledger.preferences.purchaseValues = "为长期有用的事物花钱"
         let coffee = Entry(date: Dates.addDays(-2, to: now), amount: 2000, accountID: bank.id, title: "瑞幸咖啡", category: "餐饮")
         var second = Entry(date: Dates.addDays(-1, to: now), amount: 3000, accountID: bank.id, title: "咖啡", category: "餐饮")
-        second.note = "加班外卖"; second.externalID = "external_PRIVATE"; second.sourceIdentity = "source_PRIVATE"; second.fingerprint = "fingerprint_PRIVATE"
+        second.note = "加班外卖 美团"; second.externalID = "external_PRIVATE"; second.sourceIdentity = "source_PRIVATE"; second.fingerprint = "fingerprint_PRIVATE"
         var refund = Entry(date: now, amount: 500, nature: .refund, accountID: bank.id, title: "咖啡退款", category: "其他支出")
         refund.relatedEntryID = coffee.id
         var rent = Entry(date: Dates.addDays(-4, to: now), amount: 10_000, accountID: bank.id, title: "房租", category: "居住")

@@ -114,6 +114,7 @@ public enum ButlerCards {
                 facts: [CardFact("账户", account.name), CardFact("上次核对", Dates.text(account.anchorDate)), CardFact("账本余额", cents: Finance.balance(account, in: ledger, at: now))],
                 title: "余额该核对一下了", body: "「\(String(account.name.prefix(12)))」的余额起点已超过一个月，这之后有新的流水。", action: .reconcileAccount(account.id), priority: 4))
         }
+        result += Wishlist.followUps(ledger, now: now)
         let existing = Set(ledger.cards.map(\.dedupeKey))
         return result.filter { !existing.contains($0.dedupeKey) && !isMuted($0.dedupeKey, in: ledger) }.sorted { a, b in
             a.priority == b.priority ? a.dedupeKey < b.dedupeKey : a.priority < b.priority
@@ -152,7 +153,7 @@ public enum ButlerCards {
         for i in ledger.cards.indices where topic(ledger.cards[i].dedupeKey) == key { ledger.cards[i].dismissedAt = now }
     }
     public static func feedback(_ value: CardFeedback, cardID: UUID, in ledger: inout Ledger, now: Date) {
-        guard let i = ledger.cards.firstIndex(where: { $0.id == cardID }), [.restrain, .offCharacter].contains(ledger.cards[i].kind), ledger.cards[i].feedback == nil else { return }
+        guard let i = ledger.cards.firstIndex(where: { $0.id == cardID }), [.restrain, .offCharacter, .followUp].contains(ledger.cards[i].kind), ledger.cards[i].feedback == nil else { return }
         ledger.cards[i].feedback = value; ledger.cards[i].feedbackAt = now
         let card = ledger.cards[i]
         let entry = card.evidence.first.flatMap { id in ledger.entries.first { $0.id == id } }
@@ -161,12 +162,12 @@ public enum ButlerCards {
         guard let title = existing?.title ?? category else { return }
         var area = existing ?? ProfileArea(title: title, match: AreaMatch(categories: [title]))
         let relevant = ledger.cards.filter { other in
-            guard other.feedbackProposalID == nil, [.restrain, .offCharacter].contains(other.kind) else { return false }
+            guard other.feedbackProposalID == nil, [.restrain, .offCharacter, .followUp].contains(other.kind) else { return false }
             if let existing { return other.areaID == existing.id }
             return other.areaID == nil && other.evidence.contains { id in ledger.entries.contains { $0.id == id && ledger.resolveCategory($0.category) == category } }
         }
         let regrets = relevant.filter { $0.feedback == .regret && ($0.feedbackAt ?? $0.createdAt) >= Dates.addDays(-30, to: now) }
-        let worth = relevant.filter { $0.feedback == .worth && $0.kind == .restrain }
+        let worth = relevant.filter { $0.feedback == .worth && ($0.kind == .restrain || $0.kind == .followUp) }
         let relax = value == .worth && worth.count >= 3 && ledger.profile.restrain.contains { $0.id == area.id }
         guard (value == .regret && regrets.count >= 2) || relax, ledger.pendingChanges.count < 100 else { return }
         guard !ledger.pendingChanges.contains(where: { change in

@@ -10,7 +10,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         switch self {
         case .entryChanges: return "提议整理现有记录，只能改变分类、性质、用途或关联，不能改金额、主账户、原始日期。用户确认后才应用。"
         case .plan: return "提议新增/结束资金安排或新增房租；金额为人民币元。用户确认后才应用。"
-        case .entry: return "提议语音或截图补记。金额必须与本机用户确认的金额相同，否则返回错误；AI不能确认金额。"
+        case .entry: return "提议语音或截图补记。金额只能取本机从原文解析的候选或用户已核对金额；AI不能确认金额，草稿等待用户确认。"
         case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或始终留着的底线；不搬动储蓄目标。可用items一次提交整份消费观，用户确认后才应用。"
         }
     }
@@ -146,6 +146,9 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
             }
         case .entry:
             let amount = try a.amount("amount")
+            guard ctx.confirmedEntryAmount == amount || ctx.parsedEntryAmounts.contains(amount) else {
+                throw YubaiError.invalid("金额必须来自本机解析的本次原文，请补充或核对金额。")
+            }
             let draft = EntryDraft(date: try a.date("date"), amount: amount, amountConfirmed: ctx.confirmedEntryAmount == amount,
                                    nature: try a.nature(default: .expense), accountID: try a.uuid("account"), title: try a.text("title"),
                                    category: try a.optionalText("category") ?? "其他支出", purpose: try a.optionalText("purpose"))
@@ -163,12 +166,21 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
             }
         }
         var change = ChangeSet(source: "问余白", reason: try a.text("reason"), items: items); change.createdAt = ctx.now
-        var copy = ctx.ledger; _ = try change.apply(to: &copy)
+        var copy = ctx.ledger; _ = try validatedDrafts(change).apply(to: &copy)
         return change
+    }
+    // Validate all fields on a throwaway copy; the returned draft stays unconfirmed.
+    private func validatedDrafts(_ change: ChangeSet) -> ChangeSet {
+        var check = change
+        check.items = change.items.map { item in
+            if case .addEntry(var draft) = item { draft.amountConfirmed = true; return .addEntry(draft) }
+            return item
+        }
+        return check
     }
     func result(_ change: ChangeSet, _ ctx: ToolContext) -> JSONValue {
         var copy = ctx.ledger
-        let skipped = (try? change.apply(to: &copy)) ?? []
+        let skipped = (try? validatedDrafts(change).apply(to: &copy)) ?? []
         return ctx.redactor.value(.object(["id": .string(change.id.uuidString), "preview": .strings(change.preview(in: ctx.ledger)),
                                           "skipped": .strings(skipped), "entry_ids": .strings(change.items.flatMap(\.entryIDs).map { $0.uuidString }),
                                           "status": .string("仅提案，等待用户确认，尚未修改账本")]))

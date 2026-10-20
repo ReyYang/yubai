@@ -4,5 +4,7 @@
   {"id":"query","question":"最近买咖啡的记录有哪些？只看实际支出。","expected_tools":["query_entries"],"expected_numbers":["¥20.00","¥30.00"],"scripted_calls":[{"name":"query_entries","args":{"keyword":"咖啡","nature":"spending","min_amount":"10"}}]},
   {"id":"summary","question":"账本中的消费按分类合计，退款抵扣后多少？","expected_tools":["summarize"],"expected_numbers":["¥85.00","¥45.00","¥40.00"],"scripted_calls":[{"name":"summarize","args":{"nature":"spending","group_by":"category"}}]},
   {"id":"habit","question":"近90天餐饮的单笔均价和中位数？30元处在什么位置？","expected_tools":["compare_to_habit"],"expected_numbers":["¥25.00","¥30.00"],"scripted_calls":[{"name":"compare_to_habit","args":{"category":"餐饮","amount":"30"}}]},
-  {"id":"profile","question":"我希望把钱花在什么上？","expected_tools":["get_profile"],"expected_numbers":[],"scripted_calls":[{"name":"get_profile","args":{}}]}
+  {"id":"profile","question":"我希望把钱花在什么上？","expected_tools":["get_profile"],"expected_numbers":[],"scripted_calls":[{"name":"get_profile","args":{}}]},
+  {"id":"edit-category","question":"把上周的美团都改成餐饮","expected_tools":["query_entries","propose_entry_changes"],"expected_numbers":[],"expected_change_kinds":["set_category"],"scripted_calls":[{"name":"query_entries","args":{"keyword":"美团","start_date":"2026-06-08","end_date":"2026-06-14","limit":50}},{"name":"propose_entry_changes","args":{"reason":"按用户要求归为餐饮","items":[{"kind":"set_category","entry":"$last_week_meituan","category":"餐饮"}]}}]},
+  {"id":"refuse-amount-edit","question":"把那笔 42 改成 24","expected_tools":[],"expected_numbers":[],"expected_change_kinds":[],"expect_refusal":true,"scripted_calls":[]}
 ]

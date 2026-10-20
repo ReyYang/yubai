@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import YubaiCore
 #if os(macOS)
 import AppKit
@@ -861,4 +862,36 @@ struct WelcomeView: View {
         }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
     }
     func feature(_ symbol: String, _ title: String, _ text: String) -> some View { HStack(alignment: .top, spacing: YubaiSpace.space12) { Circle().fill(YubaiColor.brandMark).frame(width: YubaiSize.marker, height: YubaiSize.marker).padding(.top, YubaiSpace.space6).accessibilityHidden(true); VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(title).yubaiFont(YubaiFont.rowTitle); Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted).fixedSize(horizontal: false, vertical: true) } } }
+}
+
+/// Answer data is built from a read tool in YubaiCore; animation never changes labels.
+struct AnswerChartView: View {
+    let chart: AnswerChart
+    @State private var appeared = false
+    private var domain: ClosedRange<Double> {
+        let values = chart.points.map { Double($0.cents) / 100 }
+        return min(0, values.min() ?? 0)...max(1, values.max() ?? 0)
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            Text(chart.title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            ChartGrow(appeared: $appeared) { progress in
+                Chart {
+                    ForEach(Array(chart.points.enumerated()), id: \.offset) { _, point in
+                        if chart.kind == .bar {
+                            BarMark(x: .value("分类", point.label), y: .value("金额", Double(point.cents) / 100 * progress))
+                                .foregroundStyle(YubaiColor.brand)
+                        } else {
+                            LineMark(x: .value("日期", point.label), y: .value("金额", Double(point.cents) / 100 * progress))
+                                .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: YubaiSize.lineWidth))
+                        }
+                    }
+                }.chartYScale(domain: domain).chartYAxis(.hidden).chartLegend(.hidden)
+                    .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                        AxisValueLabel().foregroundStyle(YubaiColor.labelSecondary).font(.system(size: YubaiFont.chartLabel.size))
+                    } }.frame(height: 180)
+                    .accessibilityLabel(chart.title + "。" + chart.points.map { $0.label + "，" + Money.text($0.cents) }.joined(separator: "；"))
+            }
+        }
+    }
 }
