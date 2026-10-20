@@ -305,6 +305,20 @@ public struct SpendingProfile: Codable, Equatable, Sendable {
         if self != old { updatedAt = date }
     }
 }
+public enum MemoryKind: String, Codable, CaseIterable, Hashable, Sendable { case plan, value, life }
+public enum MemorySource: String, Codable, CaseIterable, Sendable { case chat, followUp, importAnswer, feedback, reflection, user }
+public struct MemoryNote: Codable, Identifiable, Equatable, Sendable {
+    public var id: UUID; public var text: String; public var kind: MemoryKind; public var source: MemorySource
+    public var createdAt: Date; public var updatedAt: Date; public var previousText: String?
+    public var lastUsedAt: Date?; public var evidence: [UUID]
+    public init(id: UUID = UUID(), text: String, kind: MemoryKind, source: MemorySource,
+                createdAt: Date = Date(), updatedAt: Date? = nil, previousText: String? = nil,
+                lastUsedAt: Date? = nil, evidence: [UUID] = []) {
+        self.id = id; self.text = text; self.kind = kind; self.source = source
+        self.createdAt = createdAt; self.updatedAt = updatedAt ?? createdAt; self.previousText = previousText
+        self.lastUsedAt = lastUsedAt; self.evidence = evidence
+    }
+}
 public enum CategoryMemory {
     public static func key(_ title: String) -> String {
         title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -360,6 +374,8 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var categories = Category.defaults; public var imports: [ImportBatch] = []; public var attachments: [Attachment] = []
     public var categoryAliases: [String: String] = [:]
     public var categoryMemory: [String: String] = [:]
+    public var memories: [MemoryNote] = []
+    public var lastReflectionWeek: String?
     public var preferences = Preferences()
     public var profile = SpendingProfile(); public var cards: [ButlerCard] = []
     public var pendingChanges: [ChangeSet] = []; public var wishlist: [WishItem] = []; public var mutedTopics: [String] = []
@@ -379,7 +395,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, categoryMemory, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, categoryMemory, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -401,6 +417,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         attachments = try c.decode([Attachment].self, forKey: .attachments)
         categoryAliases = try c.decodeIfPresent([String: String].self, forKey: .categoryAliases) ?? categoryAliases
         categoryMemory = try c.decodeIfPresent([String: String].self, forKey: .categoryMemory) ?? [:]
+        memories = try c.decodeIfPresent([MemoryNote].self, forKey: .memories) ?? []
+        lastReflectionWeek = try c.decodeIfPresent(String.self, forKey: .lastReflectionWeek)
         preferences = try c.decode(Preferences.self, forKey: .preferences)
         profile.updatedAt = updatedAt
         profile = try c.decodeIfPresent(SpendingProfile.self, forKey: .profile) ?? profile
@@ -438,6 +456,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(attachments, forKey: .attachments)
         try c.encode(categoryAliases, forKey: .categoryAliases)
         try c.encode(categoryMemory, forKey: .categoryMemory)
+        try c.encode(memories, forKey: .memories)
+        try c.encodeIfPresent(lastReflectionWeek, forKey: .lastReflectionWeek)
         try c.encode(preferences, forKey: .preferences)
         try c.encode(profile, forKey: .profile)
         try c.encode(cards, forKey: .cards)
@@ -460,6 +480,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.attachments == rhs.attachments &&
         lhs.categoryAliases == rhs.categoryAliases &&
         lhs.categoryMemory == rhs.categoryMemory &&
+        lhs.memories == rhs.memories &&
+        lhs.lastReflectionWeek == rhs.lastReflectionWeek &&
         lhs.preferences == rhs.preferences &&
         lhs.profile == rhs.profile &&
         lhs.cards == rhs.cards &&
@@ -485,6 +507,11 @@ public struct Ledger: Codable, Equatable, Sendable {
               Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或提案包含重复标识。") }
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.name)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
+        guard Set(memories.map(\.id)).count == memories.count else { throw YubaiError.invalid("记忆包含重复标识。") }
+        for note in memories { try Memory.validate(note) }
+        if let week = lastReflectionWeek {
+            guard MemoryReflection.validWeek(week) else { throw YubaiError.invalid("每周回看的周次无效。") }
+        }
         guard categoryMemory.allSatisfy({ !$0.key.isEmpty && $0.key.count <= 4000 && CategoryMemory.key($0.key) == $0.key &&
             !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.value.count <= 200 }) else { throw YubaiError.invalid("分类对照表无效。") }
         guard Set(categoryNames).count == categoryNames.count else { throw YubaiError.invalid("分类名称不能重复。") }
@@ -552,6 +579,8 @@ private extension Ledger {
             if let letter = c.letter {
                 guard date(letter.weekEnding), letter.series.count == 7, letter.series.allSatisfy({ date($0.date) }),
                       Set(letter.series.map(\.date)).count == 7, letter.evidence.count <= 1000 else { throw YubaiError.invalid("每周来信依据无效。") }
+                guard letter.learned?.allSatisfy({ Memory.validText($0.text, limit: 40) }) ?? true,
+                      letter.review.map({ date($0.confirmedAt) && text($0.text) && $0.usage.allSatisfy { date($0.weekStart) && $0.count >= 0 && $0.amount >= 0 } }) ?? true else { throw YubaiError.invalid("来信中的记忆或画像回顾无效。") }
             }
         }
         for w in wishlist {

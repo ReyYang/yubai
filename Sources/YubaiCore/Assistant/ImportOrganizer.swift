@@ -216,7 +216,7 @@ public struct ImportOrganizer: Sendable {
         questions = group(questions, ledger: working)
         var change = ChangeSet(source: "导入整理", reason: "根据账单用途与关联证据整理", items: items); change.createdAt = now
         let candidates = OffCharacter.candidates(working, entryIDs: entryIDs, now: now)
-        let comments = await ButlerWording.word(candidates, ledger: working, transport: transport, select: true)
+        let comments = await ButlerWording.word(candidates, ledger: working, transport: transport, select: true, now: now)
         return ImportOrganization(changeSet: change, questions: questions, skipped: skipped, comments: comments.map { $0.card(now: now) })
     }
 

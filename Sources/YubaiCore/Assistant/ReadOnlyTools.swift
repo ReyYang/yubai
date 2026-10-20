@@ -8,8 +8,10 @@ public struct ToolContext: Sendable {
     public let confirmedEntryAmount: Int64?
     public let parsedEntryAmounts: [Int64]
     public let entryAccountHint: UUID?
+    public let memoryCharacterBudget: Int
     let entriesByID: [UUID: Entry]
-    public init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil, parsedEntryAmounts: [Int64] = [], entryAccountHint: UUID? = nil) {
+    public init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil, parsedEntryAmounts: [Int64] = [], entryAccountHint: UUID? = nil, memoryCharacterBudget: Int = Memory.defaultCharacterBudget) {
+        self.memoryCharacterBudget = memoryCharacterBudget
         self.entryAccountHint = entryAccountHint
         self.parsedEntryAmounts = parsedEntryAmounts.filter { $0 > 0 && $0 <= Money.limit }
         self.confirmedEntryAmount = confirmedEntryAmount
@@ -38,7 +40,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，每页最多50条。offset从0开始，用next_offset继续查询。日期边界均包含当天，金额过滤用原始金额。"
         case .summarize: return "按日/周(周一开始)/月/分类汇总匹配记录；默认全部，不受查询默认条数限制。消费退款抵扣，房租只计个人承担。"
         case .compareToHabit: return "近90个自然日同类实际消费的均值、中位数、每周频次和最近记录；有数据时附last_year去年同期90天均值和次数，以及匹配的想克制领域柔性线soft_limits。不含未来记录或退款，可比较金额位置。"
-        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、底线和储蓄目标。附最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
+        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、底线和储蓄目标。附生活背景memories（可能过时，省略时用recall检索）和最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
         }
     }
     private static func field(_ type: String, _ description: String) -> JSONValue {
@@ -138,6 +140,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             "principles": .array(ctx.ledger.profile.principles.map { text in .object(["text": .string(text),
                 "confirmed_at": ctx.ledger.profile.principleDates[text].map { .string(Dates.text($0)) } ?? .null]) }),
             "recent_followups": .array(recent),
+            "memories": Memory.context(ledger: ctx.ledger, now: ctx.now, characterBudget: ctx.memoryCharacterBudget),
             "categories": .strings(ctx.ledger.categories.filter { !$0.income }.map(\.name)),
             "floor_amount": ctx.ledger.profile.floorAmount.map { .money($0) } ?? .null,
             "habits": .object(["label": .string("你常花的"), "meaning": .string("这是从账本里看到的，不是你的要求；分类与商户可能重叠，不可相加。"),

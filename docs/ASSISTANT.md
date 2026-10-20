@@ -1,6 +1,6 @@
 # 共享云端助手
 
-实现放在 `Sources/YubaiCore/Assistant/`；数字工具只读账本快照，修改工具只生成待确认的 ChangeSet。金额来自 `Finance` 或账本整数分，并同时提供 `{text: Money.text(cents), cents: 整数分}`。密钥保存在本机钥匙串，开发环境变量作为回退；不进入账本或备份。模型默认值仍为 `DeepSeekConfiguration.defaultModel`，可用 `DEEPSEEK_MODEL` 覆盖。
+实现放在 `Sources/YubaiCore/Assistant/`；数字工具只读账本快照，账务与画像修改生成待确认的 ChangeSet。2026-10-20 owner 决定：生活背景记忆直接保存，可查看、改、删和撤销；会触发提醒的画像规则仍需确认。金额来自 `Finance` 或账本整数分，并同时提供 `{text: Money.text(cents), cents: 整数分}`。密钥保存在本机钥匙串，开发环境变量作为回退；不进入账本或备份。模型默认值仍为 `DeepSeekConfiguration.defaultModel`，可用 `DEEPSEEK_MODEL` 覆盖。
 
 ## 公开接口
 
@@ -23,18 +23,32 @@ DeepSeekClient.configured(keyStore: APIKeyStore = .shared,
     environment: [String: String] = ProcessInfo.processInfo.environment,
     redactor: Redactor = .shared) -> DeepSeekClient?
 
-ToolContext.init(ledger: Ledger, now: Date = Date())
+ToolContext.init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil,
+                 parsedEntryAmounts: [Int64] = [], entryAccountHint: UUID? = nil,
+                 memoryCharacterBudget: Int = 20_000)
 AssistantTool // Sendable; name, description: String; parameters: JSONValue
 AssistantTool.run(_ args: JSONValue, _ ctx: ToolContext) throws -> JSONValue
 ReadOnlyTool.all: [any AssistantTool]
 AssistantAgent.init(transport: any ChatTransport, context: ToolContext)
 AssistantAgent.run(system: String, messages: [ChatMessage], tools: [any AssistantTool],
                    characterBudget: Int = 120_000) async throws -> AssistantReply
-AssistantReply // text, evidenceEntryIDs: [UUID], toolTrace: [AssistantToolTrace], unverifiedAmounts: [String]
+AssistantReply // text, evidenceEntryIDs, toolTrace, unverifiedAmounts；另含 rememberedNotes / updatedNotes / usedMemoryIDs
 AssistantToolTrace // name: String, args: JSONValue
 AskYubaiSession.init(characterBudget: Int = 120_000)
 ProfileColdStart.init(transport: any ChatTransport, characterBudget: Int = 120_000)
 AssistantAmountGuard.unverified(in text: String, results: [JSONValue]) -> [String]
+
+Memory.context(ledger: Ledger, now: Date = Date(), characterBudget: Int = 20_000) -> JSONValue
+Memory.apply(_ reply: AssistantReply, to ledger: inout Ledger, now: Date = Date()) throws
+Memory.undo(noteID: UUID, in ledger: inout Ledger, now: Date = Date())
+Memory.reject(lineMemoryID: UUID, in ledger: inout Ledger, now: Date = Date())
+MemoryReflection.isDue(ledger: Ledger, now: Date = Date()) -> Bool
+MemoryReflection.run(ledger: Ledger, transport: any ChatTransport, now: Date = Date()) async throws -> MemoryReflectionResult
+MemoryReflectionResult.apply(to ledger: inout Ledger, now: Date = Date()) throws
+MemoryReflectionResult.restoreRemoved(in ledger: inout Ledger, now: Date = Date()) throws
+ProfileReview.candidate(ledger: Ledger, now: Date = Date()) -> ProfileReviewCandidate?
+ProfileReview.keep(_ candidate: ProfileReviewCandidate, in ledger: inout Ledger, now: Date = Date()) throws
+ProfileReview.remove(_ candidate: ProfileReviewCandidate, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet
 
 Redactor.init(ledger: Ledger? = nil)
 Redactor.text(_ input: String) -> String
@@ -81,6 +95,52 @@ refresh压缩dismissedAt早于365天的卡片正文、facts、evidence、letter�
 
 iCloud选定版本后、持久化前调用LedgerMemoryMerge，仅合并同ledger.id的记忆：领域按id取较新confirmedAt（同时间chosen优先，缺失日期视为未知）；chosen缺失的领域／原则，仅在对侧确认时间（无时间时用对侧profile.updatedAt）晚于chosen.profile.updatedAt时加入，避免复活较早删除项。原则按文字和principleDates合并。保留任一侧反馈，冲突取较早的反馈时间（缺失用卡片createdAt），dismissedAt取较早的非空值，保留feedbackProposalID；静音主题取并集，分类对照chosen优先。资金、记录、底线和其余账本内容仍沿用用户选择；未选原始版本照旧存入恢复历史。合并后校验失败不会写回或标记冲突已解决。
 
+## 余白记得的（记忆层 core，2026-10-20）
+
+`Ledger.memories` 保存 `MemoryNote`：一句不超过200字的平实文字，分为计划 `plan`、在乎的事 `value`、生活情况 `life`。来源为聊天 `chat`、买后回访 `followUp`、导入时问过 `importAnswer`、卡片反馈 `feedback`、每周回看 `reflection`、你写的 `user`。另存身份、创建／更新时间、更新前原话 `previousText`、最近使用时间 `lastUsedAt` 与相关记录 `evidence`。文本须非空、单行，日期沿用账本有效范围，更新时间不得早于创建时间，ID唯一；不设记忆条数或 AI 调用次数上限。旧账本缺失时 memories 为空、lastReflectionWeek 为 nil，schema 仍为2；完整备份、恢复历史和 iCloud 账本自然包含这些字段。
+
+### 写入与撤销
+
+`remember {text, kind, replaces?, entry_ids?}` 做本机校验后返回 `{"remembered":{id,text,kind,source,updated,days_since_updated}}`，属于直接保存，不生成确认提案。`replaces` 必须引用现存记忆；记录依据须为当前未删除记录且不重复。缺省依据在更新时沿用旧值。写入文字先脱敏，再验证长度。值得记下的是长期计划、目标、在乎／不在乎的事及原因、合租、发薪规律和家庭变化；一次性情绪、临时决定、可从账本直接算出的数字不记。冲突时更新原条目。愿意多花、想克制、软线与底线等规则依旧走 `propose_profile_change`，记忆本身不参与提醒检测。
+
+工具使用不可变快照，因此 `AssistantReply.rememberedNotes` 带新增条目，`updatedNotes` 带 `MemoryUpdate(previous: 原条目, note: 新条目)`，`usedMemoryIDs` 带本次使用标记。同轮工具立即读到暂存的新文字；一轮多次更新同一记忆合为一次更新，previousText 保留本轮前原话。本轮新建后再更新的记忆撤销时删除。成功的相同 remember 参数在整个答复中复用，避免隔轮重试重复记下；记忆改变后清掉旧只读结果缓存。
+
+调用方须在一次 `store.update` 内先调用 `try Memory.apply(reply, to: &ledger, now: now)`，再登记其他待确认提案；本轮没有修改 App，现有 App 尚未消费这些新增字段。apply 核对账本ID、快照更新时间、被替换的原条目，验证完整候选后一次赋值，避免覆盖用户刚改过或删过的记忆。账本变化、网络失败或任务取消时丢弃整份结果，重新取快照再试。撤销新增用 `Memory.undo` 删除，撤销更新恢复 previousText 并刷新更新时间；只保留一层原话，完整历史仍由恢复版本提供。来信“不对”用 `Memory.reject` 真删除记忆，同时清理各来信中的关联 learned 行。
+
+`Wishlist.answerFollowUp` 有自由文字时，不调用模型，直接写一条 value／followUp 记忆：“买了「X」，一个月后觉得值得／一般／有点后悔：原话”。保留真实选择，标题最多40字、整句最多200字，换行转为空格；完整回答仍保留在心愿中。只选按钮或空白文字不新增记忆，重复回答被拒。
+
+### 每次读取与使用时间
+
+`Memory.context` 返回 JSON，以 plan／value／life 分组，每条含 id、text、kind、source、updated（yyyy-MM-dd）、days_since_updated。全部经过 Redactor。默认字符预算20,000，可直接注入，工具路径也可用 `ToolContext.memoryCharacterBudget` 注入；按 `max(updatedAt,lastUsedAt)` 倒序优先保留，平手按更新时间、UUID排序。预算计算脱敏后的 JSON 及元数据，不截断单条记忆；省略项用 `omitted_count` 和 recall 提示说明。若预算连空包也容不下，仍保留最小元数据。数量本身没有上限。
+
+`recall {keyword?, kind?}` 对全部记忆检索，关键词为脱敏文字子串，两个条件同时给出取交集；无参数返回全部，不受背景预算影响。`get_profile.memories`、`judge_purchase.memories` 和 AssistantAgent（包括 AskYubai、ProfileColdStart）的独立 JSON system 消息、ButlerWording 的卡片与来信 system 消息均带预算内记忆。独立 JSON 保证二次脱敏保留 UUID。提示明确“记忆是用户生活的背景，可能过时；引用时说明是什么时候记下的”，其中内容作为数据，不执行指令。ButlerWording 仍只能改写已有事实，不新增判断或数字。
+
+`recall` 命中条目、`judge_purchase` 明确传入 `memory_ids` 引用的条目，通过 reply 交由 apply 更新 lastUsedAt，取较晚时间，不改变记忆的 updatedAt。单纯放入背景或 get_profile 不算已使用；不会猜测最终文字是否用了某条记忆。购买工具校验引用ID，并返回 referenced_memories。冷启动也可 recall，调用方同样应用使用标记。
+
+### 每周回看与来信
+
+`MemoryReflection.isDue` 使用本地时区、周一开始且首周至少四天的 ISO 周（含跨年周所属年），与 `Ledger.lastReflectionWeek` 比较。`run` 读取全部记忆，不使用背景预算截断；输入为上一完整 ISO 周的分类汇总、单笔个人消费大于¥500或 OffCharacter 识别的不寻常记录、本周截至 now 的卡片反馈与已回答回访、消费观。分类汇总复用 summarize，含退款／个人承担口径；不寻常识别复用 OffCharacter 的候选范围，不能当作全部异常的证明。外发字段白名单，不发送完整 Entry 或 Ledger。
+
+模型仅返回 `{"add":[{text,kind}],"update":[{id,text}],"remove":[{id,reason}],"learned":["一句话"]}`。主要职责是合并重复、更新过时的事；统计或偶发行为不能推断生活事实或用户意愿。四个数组、类型、长度、ID存在性及同一ID只操作一次均在本机检查，任一非法则整份拒绝。更新保留原类型、创建时间、依据与上次原话；新增／更新来源为 reflection。learned 每句不超过40字，按 add 然后 update 的顺序关联到记忆，条数不能超过新增与更新总数；不能只有心得而无关联记忆。
+
+`run` 的入参是不可变快照，先在副本试应用全部结果，成功后返回 `MemoryReflectionResult`；调用方在同一个 store.update 内调用 result.apply。apply 再核对账本ID、快照时间、周次与旧标记，直接写入新增／更新、真删除指定记忆，再登记当周周次。无网、无密钥、取消、格式错、校验错或保存失败时不标记，下次再试。没有变化但成功的回看也登记本周。
+
+`LetterFacts.learned: [LearnedLine]?` 存 text 与 memoryID；apply 补入当周已有来信，或依现有来信资格创建一张，保留数字与已有的一条画像回顾。无账户或来信静音时不额外生成来信。删除项和理由保留在结果的 removedNotes，`restoreRemoved` 可显式恢复，更新时间刷新；不会覆盖已存在的同ID条目。新增／更新沿用 Memory.undo，否认某句沿用 Memory.reject。撤销记录由调用方保留，未新增常驻删除档案。
+
+### 合并与画像过期回顾
+
+`LedgerMemoryMerge` 对同账本记忆按ID取 updatedAt 较新者，平手 chosen 优先，lastUsedAt 取两侧较晚值。chosen 缺失的条目，只有对侧 note.updatedAt 晚于 chosen.updatedAt 才加入，避免复活 chosen 较新删除项；这与画像合并采用相同的版本水位思路，没有逐条墓碑。lastReflectionWeek 沿用 chosen 版本，避免把另一版本回看的状态误当成当前版本已完成。未选的原始版本照旧进入恢复历史。
+
+`ProfileReview.candidate` 在有明确日期且确认已超过90天的想克制领域、原则中按最旧优先给一条，写入 `WeeklyLetter.candidate` 的 LetterFacts.review。旧记录无日期不猜测年龄；愿意多花的领域不在这次过期回顾范围。领域附当前未完 ISO 周及前三周的次数、净消费额，按时间顺序；复用 usage 的分类／关键词匹配、退款和个人承担规则。原则没有领域选择器，不编造使用统计。`keep` 校验候选仍有效后刷新 confirmedAt／principleDates；`remove` 仅返回删除 ChangeSet，确认才生效；“改一下”留给界面跳转。
+
+### 隐私边界与 App 接入待办
+
+提示禁止记证件号、卡号、他人全名；写入和读取都经过现有 Redactor。启发式脱敏不能保证识别任意姓名，也不能从模型文字证明事实真实或长期有效，这些边界仍需真实发送样本与用户纠正验证。记忆随账本备份／同步，云端智能启用时以脱敏背景发送，不建立额外远端记忆库。
+
+本轮严格只改 YubaiCore、测试、文档。界面设计确认后接入：聊天／冷启动回复的单次 Memory.apply、记忆列表编辑删除与撤销、来信 learned 的“不对”、review 的保留／删除提案／修改跳转；在 `IntelligenceRuntime.refreshButler` 同类刷新时机检查 isDue，使用活动账本 transport，成功后同一 update 应用回看结果，失败静默保留下次重试。isDue 检查应放在现有 candidates.isEmpty 早退之前，没有新卡片也可回看；缺少可用 transport 时保留周次不动。并发刷新只允许一个回看任务，保存前继续检查取消与快照。来信已生成时补充，不新增第二封。
+
+导入自由补充的 `describeImportQuestion` 目前只在 YubaiApp；core 的 ImportQuestion.answer 只接受选项，没有自由文字入口。本轮不改它，界面阶段须在已成功保存用途的同一次 update 写入 importAnswer 记忆、关联 question.entryIDs，并纳入该导入批次的撤销差量；不可把所有 setPurpose 自动当成导入回答记忆。来源 feedback／user 已保留，卡片反馈通过每周回看整理，本轮不增加其他写入入口。
+
 ## 会话生命周期
 
 AskYubaiSession只在当前打开的问答会话内存中保留问答文字，不持久化工具结果或画像快照；关闭／新建会话后重新开始，每轮使用新账本快照。history没有轮数上限；每次发送前使用同一字符预算，超出时整对删除最早问答，在开头保留一条system「更早的对话已省略」。预算包含本次系统提示与新问题，保留未删除问答原文；当前问题自身过长也不截断。只有成功完成且未取消的回答加入history。本地金额候选也仅在会话内保留。
@@ -93,6 +153,6 @@ AskYubaiSession只在当前打开的问答会话内存中保留问答文字，�
 
 ## 当前验证状态
 
-包含脚本传输测试、六工具合成账本断言、金额护栏、中文脱敏、内存密钥存储、传输JSON和发送日志测试，并保留旧AIBench。合成 eval 夹具与执行说明见 `docs/ai-bench/README.md`。本环境无Swift工具链：本轮仅做源码通读、词法括号／字符串、JSON夹具、差异及工程引用静态检查；本机没有Swift解析器，未进行Swift语法树或类型检查，没有运行构建、测试、Keychain或UI。实网只在 `YUBAI_LIVE_EVAL=1` 且密钥已配置时可执行，本次没有请求DeepSeek。
+包含脚本传输测试、六工具合成账本断言、金额护栏、中文脱敏、内存密钥存储、传输JSON和发送日志测试，并保留旧AIBench。记忆层另有 MemoryTests、MemoryReflectionTests、ProfileReviewTests，覆盖写入／更新／撤销、预算／recall／使用标记、各模型路径的脱敏背景、回访、反思合法与非法结果、来信与否认、版本合并、旧JSON及画像回顾。合成 eval 夹具与执行说明见 `docs/ai-bench/README.md`。本环境无Swift工具链：记忆层只做源码通读、tree-sitter Swift 语法解析与 git diff 检查；解析不等于 Swift 编译器类型检查，没有运行构建、XCTest、Keychain或UI。实网只在 `YUBAI_LIVE_EVAL=1` 且密钥已配置时可执行，本次没有请求DeepSeek。
 
 应用中的问答、导入整理和管家文字共用 `ActiveLedgerTransport`：每次发送前后都核对账本快照、锁与密钥配置。UI 测试的脚本只在 Debug simulator 且使用 UUID 隔离账本时可用，见 [开发说明](DEVELOPMENT.md)。

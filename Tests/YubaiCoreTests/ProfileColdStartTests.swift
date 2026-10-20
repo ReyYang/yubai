@@ -39,8 +39,8 @@ final class ProfileColdStartTests: XCTestCase {
         XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(confirmed)).profile, confirmed.profile)
         let requests = await script.recorded()
         XCTAssertEqual(requests.count, 6)
-        for request in requests.prefix(3) { XCTAssertEqual(request.tools.map(\.function.name), ["get_profile"]) }
-        XCTAssertEqual(requests.last?.tools.map(\.function.name), ["get_profile", "propose_profile_change"])
+        for request in requests.prefix(3) { XCTAssertEqual(request.tools.map(\.function.name), ["get_profile", "recall"]) }
+        XCTAssertEqual(requests.last?.tools.map(\.function.name), ["get_profile", "propose_profile_change", "recall"])
         XCTAssertEqual(final.toolTrace.filter { $0.name == "propose_profile_change" }.count, 1)
     }
     func testRevisionStillProducesOneProposalWithoutMoreQuestions() async throws {

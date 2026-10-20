@@ -7,7 +7,16 @@ public enum LedgerMemoryMerge {
         let chosenAreaIDs = Set(areas.map { $0.0.id })
         var principles = chosen.profile.principles
         var dates = chosen.profile.principleDates
+        let chosenMemoryIDs = Set(chosen.memories.map(\.id))
         for other in others where other.id == chosen.id {
+            for note in other.memories {
+                if !chosenMemoryIDs.contains(note.id), chosen.updatedAt >= note.updatedAt { continue }
+                if let i = result.memories.firstIndex(where: { $0.id == note.id }) {
+                    let lastUsed = [result.memories[i].lastUsedAt, note.lastUsedAt].compactMap { $0 }.max()
+                    if note.updatedAt > result.memories[i].updatedAt { result.memories[i] = note }
+                    result.memories[i].lastUsedAt = lastUsed
+                } else { result.memories.append(note) }
+            }
             let incoming = other.profile.generous.map { ($0, ProfileStance.generous) } + other.profile.restrain.map { ($0, ProfileStance.restrain) }
             for (area, stance) in incoming {
                 if !chosenAreaIDs.contains(area.id), chosen.profile.updatedAt >= (area.confirmedAt ?? other.profile.updatedAt) { continue }

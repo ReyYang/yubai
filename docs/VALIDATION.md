@@ -1,5 +1,13 @@
 # 余白 · 交付与验证记录
 
+## 余白记忆层 core 静态检查（2026-10-20）
+
+分支 `feat/ai-memory-drift-fixes` 本轮只改 YubaiCore、测试和文档，YubaiApp 无差异，未创建提交。新增记忆读写／撤销、每周回看、来信 learned 与画像过期回顾；接口与待接线事项见 [ASSISTANT.md](ASSISTANT.md#余白记得的记忆层-core2026-10-20)。
+
+- 使用本机 tree-sitter Swift 解析 `Sources/`、`Tests/` 与 `Package.swift` 共82个文件，零语法解析错误；`git diff --check` 通过。新 core 文件由 SwiftPM 自动发现，无需改变 App 工程引用。
+- 新增24个 XCTest 方法，覆盖记忆写入／替换／撤销、预算和 recall、使用标记及隐私、回访、反思结果与非法输出、来信 learned 与否认、合并防复活、旧 JSON、画像回顾及动作；调整冷启动工具契约测试。均为脚本化传输／合成数据，**尚未执行**。
+- 本机没有 Swift／Xcode／Apple SDK，未做编译器类型检查、Codable／Sendable 合成验证、XCTest 编译或运行；未请求真实模型或验证 iCloud。语法解析通过不能认定可编译。界面管理、聊天结果保存、反思触发、导入自由补充和来信动作待设计确认后接入 App。
+
 ## 余白 2.0「管家」静态检查与待验收（2026-10-20）
 
 分支 `feat/yubai-2-butler` 已落地步骤 1–9 及 TestFlight 准备；步骤 10 同步产品记录。当前状态为**仅静态检查，尚未编译或运行**。本容器没有 Swift、Xcode 或 Apple SDK，不能据此宣称 2.0 可安装、测试通过或产品已验收。

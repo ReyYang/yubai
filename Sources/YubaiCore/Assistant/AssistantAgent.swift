@@ -6,6 +6,11 @@ public struct AssistantToolTrace: Equatable, Sendable {
 }
 
 public struct AssistantReply: Equatable, Sendable {
+    public var rememberedNotes: [MemoryNote] = []
+    public var updatedNotes: [MemoryUpdate] = []
+    public var usedMemoryIDs: [UUID] = []
+    public var memoryLedgerID: UUID? = nil
+    public var memoryLedgerUpdatedAt: Date? = nil
     public var chart: AnswerChart? = nil
     public var purchaseJudgment: PurchaseJudgment? = nil
     public let proposedChangeSets: [ChangeSet]
@@ -22,12 +27,17 @@ public struct AssistantAgent: Sendable {
 
     public func run(system: String, messages: [ChatMessage], tools: [any AssistantTool], characterBudget: Int = AssistantContextBudget.defaultLimit) async throws -> AssistantReply {
         let redactor = context.redactor
-        var conversation = [ChatMessage(role: .system, content: redactor.text(system))] + messages.map { clean($0) }
+        var conversation = [ChatMessage(role: .system, content: redactor.text(system)),
+            ChatMessage(role: .system, content: Memory.prompt(ledger: context.ledger, now: context.now, characterBudget: context.memoryCharacterBudget))] + messages.map { clean($0) }
         let definitions = tools.map { ChatToolDefinition(name: $0.name, description: redactor.text($0.description), parameters: redactor.value($0.parameters)) }
         var results: [JSONValue] = []; var trace: [AssistantToolTrace] = []; var evidence: [UUID] = []
         var proposed: [ChangeSet] = []
         var chart: AnswerChart?
         var judgment: PurchaseJudgment?
+        var memoryLedger = context.ledger
+        var current = context
+        var usedMemoryIDs = Set<UUID>()
+        var rememberedResults: [String: JSONValue] = [:]
         var previousResults: [String: JSONValue] = [:]
         let ledgerIDs = Set(context.ledger.activeEntries.map(\.id))
         while true {
@@ -58,6 +68,19 @@ public struct AssistantAgent: Sendable {
                 }
                 var answer = AssistantReply(proposedChangeSets: proposed, text: text, evidenceEntryIDs: evidence, toolTrace: trace, unverifiedAmounts: unverified)
                 answer.chart = chart; answer.purchaseJudgment = judgment
+                answer.memoryLedgerID = context.ledger.id; answer.memoryLedgerUpdatedAt = context.ledger.updatedAt
+                let originals = Dictionary(uniqueKeysWithValues: context.ledger.memories.map { ($0.id, $0) })
+                for note in memoryLedger.memories {
+                    if let old = originals[note.id] {
+                        if !Memory.sameContent(old, note) {
+                            var updated = note; updated.previousText = old.text
+                            answer.updatedNotes.append(MemoryUpdate(previous: old, note: updated))
+                        }
+                    } else {
+                        var added = note; added.previousText = nil; answer.rememberedNotes.append(added)
+                    }
+                }
+                answer.usedMemoryIDs = usedMemoryIDs.sorted { $0.uuidString < $1.uuidString }
                 return answer
             }
             guard Set(calls.map(\.id)).count == calls.count,
@@ -71,7 +94,7 @@ public struct AssistantAgent: Sendable {
                 let key = call.function.name + "\n" + normalized
                 trace.append(AssistantToolTrace(name: call.function.name, args: args.map { redactor.value($0) } ?? .null))
                 let result: JSONValue
-                if let cached = previousResults[key] { result = cached; repeated = true }
+                if let cached = rememberedResults[key] ?? previousResults[key] { result = cached; repeated = true }
                 else {
                     do {
                         guard let tool = tools.first(where: { $0.name == call.function.name }) else { throw YubaiError.invalid("没有这个工具，请使用已声明的工具。") }
@@ -80,11 +103,27 @@ public struct AssistantAgent: Sendable {
                             guard chart == nil else { throw YubaiError.invalid("每个答复只能展示一张图。") }
                             let built = try chartTool.build(args, context); chart = built.chart; result = built.result
                         } else if let purchaseTool = tool as? JudgePurchaseTool {
-                            let purchase = try purchaseTool.judge(args, context); judgment = purchase; result = purchase.facts
+                            let purchase = try purchaseTool.judge(args, current); judgment = purchase; result = purchase.facts
+                            usedMemoryIDs.formUnion(purchase.usedMemoryIDs)
+                        } else if let memoryTool = tool as? MemoryTool {
+                            if memoryTool == .remember {
+                                let note = try memoryTool.note(args, current)
+                                if let i = memoryLedger.memories.firstIndex(where: { $0.id == note.id }) { memoryLedger.memories[i] = note }
+                                else { memoryLedger.memories.append(note) }
+                                previousResults.removeAll(); currentResults.removeAll()
+                                current = ToolContext(ledger: memoryLedger, now: context.now, confirmedEntryAmount: context.confirmedEntryAmount,
+                                    parsedEntryAmounts: context.parsedEntryAmounts, entryAccountHint: context.entryAccountHint, memoryCharacterBudget: context.memoryCharacterBudget)
+                                result = redactor.value(.object(["remembered": Memory.row(note, now: context.now)]))
+                                rememberedResults[key] = result
+                            } else {
+                                let notes = try memoryTool.matches(args, current)
+                                usedMemoryIDs.formUnion(notes.map(\.id))
+                                result = redactor.value(.object(["memories": .array(notes.map { Memory.row($0, now: context.now) })]))
+                            }
                         } else if let proposalTool = tool as? ProposalTool {
                             let change = try proposalTool.propose(args, context)
                             result = proposalTool.result(change, context); proposed.append(change)
-                        } else { result = redactor.value(try tool.run(args, context)) }
+                        } else { result = redactor.value(try tool.run(args, current)) }
                     } catch {
                         // Only local validation messages may be echoed; arbitrary errors may contain data.
                         let message = (error as? YubaiError)?.localizedDescription ?? "工具未能完成，请检查参数后重试。"

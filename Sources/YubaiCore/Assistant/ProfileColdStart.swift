@@ -26,7 +26,7 @@ public struct ProfileColdStart: Sendable {
         \(instruction)
         """
         let context = ToolContext(ledger: ledger, now: now)
-        let tools: [any AssistantTool] = final ? [ReadOnlyTool.getProfile, ProposalTool.profile] : [ReadOnlyTool.getProfile]
+        let tools: [any AssistantTool] = final ? [ReadOnlyTool.getProfile, ProposalTool.profile, MemoryTool.recall] : [ReadOnlyTool.getProfile, MemoryTool.recall]
         let reply = try await AssistantAgent(transport: transport, context: context).run(system: system,
             messages: [ChatMessage(role: .user, content: "和我聊几句，整理我的消费观。可以跳过不想回答的部分。")] + messages, tools: tools, characterBudget: characterBudget)
         if final {

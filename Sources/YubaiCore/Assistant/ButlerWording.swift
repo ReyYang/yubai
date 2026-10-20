@@ -3,7 +3,7 @@ import Foundation
 /// This pass cannot add a topic, evidence, action or financial value. Failure keeps
 /// each code template. Only the post-import mode may select a subset (up to three).
 public enum ButlerWording {
-    public static func word(_ candidates: [CardCandidate], ledger: Ledger, transport: (any ChatTransport)?, select: Bool = false) async -> [CardCandidate] {
+    public static func word(_ candidates: [CardCandidate], ledger: Ledger, transport: (any ChatTransport)?, select: Bool = false, now: Date = Date()) async -> [CardCandidate] {
         let fallback = select ? Array(candidates.prefix(3)) : candidates
         guard let transport, !candidates.isEmpty else { return fallback }
         let redactor = Redactor(ledger: ledger)
@@ -23,6 +23,7 @@ public enum ButlerWording {
         """ + (select ? "这是导入后的「不像你」短评，从给定候选中选最有依据的2至3笔；不足时少选。" : "逐张改写全部候选。")
         do {
             let reply = try await transport.send(ChatRequest(messages: [ChatMessage(role: .system, content: prompt),
+                ChatMessage(role: .system, content: Memory.prompt(ledger: ledger, now: now)),
                 ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 3000, purpose: select ? "导入短评" : "管家卡片与来信"))
             guard reply.role == .assistant, let text = reply.content,
                   let rows = try JSONValue.parse(text)["cards"]?.arrayValue, !rows.isEmpty else { return fallback }
