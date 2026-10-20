@@ -40,7 +40,7 @@ final class StorageTests: XCTestCase {
             var expected = original
             expected.preferences.cloudAIEnabled = testCase.expected
             XCTAssertEqual(restored, expected)
-            XCTAssertEqual(restored.schema, 1)
+            XCTAssertEqual(restored.schema, 2)
             let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encode(restored)) as? [String: Any])
             let current = try XCTUnwrap(encoded["preferences"] as? [String: Any])
             XCTAssertEqual(current["cloudAIEnabled"] as? Bool, testCase.expected)
@@ -132,7 +132,9 @@ final class StorageTests: XCTestCase {
         let writer = LedgerRepository(directory: root); var ledger = sample(); try writer.save(ledger)
         let original = try Data(contentsOf: writer.file); let repo = LedgerRepository(directory: root); try repo.save(ledger)
         XCTAssertEqual(try Data(contentsOf: XCTUnwrap(repo.recoveries().first).url), original)
-        ledger.schema = 99; let invalid = try JSONEncoder().encode(ledger); try invalid.write(to: repo.file, options: .atomic)
+        var invalidJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encode(ledger)) as? [String: Any])
+        invalidJSON["schema"] = 99
+        let invalid = try JSONSerialization.data(withJSONObject: invalidJSON); try invalid.write(to: repo.file, options: .atomic)
         XCTAssertThrowsError(try LedgerRepository(directory: root).save(sample()))
         XCTAssertEqual(try Data(contentsOf: repo.file), invalid); XCTAssertEqual(try repo.recoveries().count, 1)
     }

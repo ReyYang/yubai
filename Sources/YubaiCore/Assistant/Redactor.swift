@@ -87,7 +87,7 @@ public final class Redactor: @unchecked Sendable {
     }
     public func value(_ input: JSONValue) -> JSONValue {
         switch input {
-        case .string(let s): return .string(text(s))
+        case .string(let s): return UUID(uuidString: s) != nil && !secrets.contains(s) ? input : .string(text(s))
         case .array(let values): return .array(values.map { value($0) })
         case .object(let fields):
             let blocked = Set(["externalid", "sourceidentity", "fingerprint", "attachment", "attachments", "attachmentid", "rawfile", "rawfiles"])

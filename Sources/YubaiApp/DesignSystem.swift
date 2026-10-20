@@ -438,7 +438,7 @@ struct EntryRow: View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space12))
         layout {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                Text(entry.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
+                Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
                 Text("\(dateText) · \(entry.category) · \(store.current.accountName(entry.accountID))")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(textSize.isAccessibilitySize ? nil : 1)
                 if entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20) }

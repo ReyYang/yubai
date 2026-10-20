@@ -6,6 +6,7 @@ public struct AssistantToolTrace: Equatable, Sendable {
 }
 
 public struct AssistantReply: Equatable, Sendable {
+    public let proposedChangeSets: [ChangeSet]
     public let text: String
     public let evidenceEntryIDs: [UUID]
     public let toolTrace: [AssistantToolTrace]
@@ -29,6 +30,7 @@ public struct AssistantAgent: Sendable {
         var conversation = [ChatMessage(role: .system, content: redactor.text(system))] + messages.map { clean($0) }
         let definitions = tools.map { ChatToolDefinition(name: $0.name, description: redactor.text($0.description), parameters: redactor.value($0.parameters)) }
         var results: [JSONValue] = []; var trace: [AssistantToolTrace] = []; var evidence: [UUID] = []
+        var proposed: [ChangeSet] = []
         let ledgerIDs = Set(context.ledger.activeEntries.map(\.id))
         for _ in 0..<maxSteps {
             try Task.checkCancellation()
@@ -49,7 +51,7 @@ public struct AssistantAgent: Sendable {
                     }
                     text = revised; unverified = AssistantAmountGuard.unverified(in: text, results: results)
                 }
-                return AssistantReply(text: text, evidenceEntryIDs: evidence, toolTrace: trace, unverifiedAmounts: unverified)
+                return AssistantReply(proposedChangeSets: proposed, text: text, evidenceEntryIDs: evidence, toolTrace: trace, unverifiedAmounts: unverified)
             }
             guard calls.count <= 16, Set(calls.map(\.id)).count == calls.count,
                   calls.allSatisfy({ !$0.id.isEmpty && $0.type == "function" }) else { throw YubaiError.invalid("云端工具调用格式无效。") }
@@ -62,7 +64,10 @@ public struct AssistantAgent: Sendable {
                 do {
                     guard let tool = tools.first(where: { $0.name == call.function.name }) else { throw YubaiError.invalid("没有这个工具，请使用已声明的工具。") }
                     guard let args, args.objectValue != nil else { throw YubaiError.invalid("参数不是有效JSON对象，请按工具结构重试。") }
-                    result = redactor.value(try tool.run(args, context))
+                    if let proposalTool = tool as? ProposalTool {
+                        let change = try proposalTool.propose(args, context)
+                        result = proposalTool.result(change, context); proposed.append(change)
+                    } else { result = redactor.value(try tool.run(args, context)) }
                 } catch {
                     // Only local validation messages may be echoed; arbitrary errors may contain data.
                     let message = (error as? YubaiError)?.localizedDescription ?? "工具未能完成，请检查参数后重试。"

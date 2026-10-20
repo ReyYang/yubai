@@ -114,7 +114,8 @@ public enum Finance {
         let uncertain = entries.filter { e in
             e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { e.date > $0.anchorDate && ($0.kind == .cash || $0.kind == .bank) } == true
         }.reduce(Int64(0)) { $0 + $1.amount }
-        let available = cash - debt - committed - goals - ledger.preferences.emergencyReserve - living - uncertain
+        let emergency = ledger.profile.floorAmount ?? ledger.preferences.emergencyReserve
+        let available = cash - debt - committed - goals - emergency - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("先添加账户并核对余额，才能判断可动用资金。") }
@@ -124,7 +125,7 @@ public enum Finance {
         if occurrences.contains(where: \.overdue) { warnings.append("有已到期但未登记完成的安排，仍计入预留。") }
         if ledger.preferences.dailyLiving == 0 { warnings.append("尚未设置日常生活预留，未来零碎开销没有计入。") }
         if entries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有内部移动尚未关联另一账户，请在账本中补全，避免重复计算。") }
-        let baseline = cash - debt - goals - ledger.preferences.emergencyReserve - uncertain
+        let baseline = cash - debt - goals - emergency - uncertain
         var points: [ForecastPoint] = []
         let start = Dates.day(now); let days = occurrences.map { Dates.day($0.date) }
         var cursor = 0; var out: Int64 = 0; var incoming: Int64 = 0
@@ -140,7 +141,7 @@ public enum Finance {
             points.append(ForecastPoint(date: date, conservative: conservative, expected: conservative + incoming))
         }
         return Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
-                     committed: committed, goals: goals, emergency: ledger.preferences.emergencyReserve, living: living,
+                     committed: committed, goals: goals, emergency: emergency, living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
                      occurrences: occurrences, points: points, warnings: warnings)
     }

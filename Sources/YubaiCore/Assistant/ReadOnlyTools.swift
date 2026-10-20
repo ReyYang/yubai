@@ -4,8 +4,11 @@ public struct ToolContext: Sendable {
     public let ledger: Ledger
     public let now: Date
     public let redactor: Redactor
+    /// Captured from an explicit local amount input; never from model arguments.
+    public let confirmedEntryAmount: Int64?
     let entriesByID: [UUID: Entry]
-    public init(ledger: Ledger, now: Date = Date()) {
+    public init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil) {
+        self.confirmedEntryAmount = confirmedEntryAmount
         self.ledger = ledger; self.now = now; self.redactor = Redactor(ledger: ledger)
         self.entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
     }
@@ -31,7 +34,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，最多50条。日期边界均包含当天，金额过滤用原始金额。"
         case .summarize: return "按日/周(周一开始)/月/分类汇总匹配记录；默认全部，不受查询默认条数限制。消费退款抵扣，房租只计个人承担。"
         case .compareToHabit: return "近90个自然日同类实际消费的均值、中位数、每周频次和最近记录；不含未来记录或退款，可比较金额位置。"
-        case .getProfile: return "用户当前消费偏好原文。"
+        case .getProfile: return "用户消费画像、原则、目标预留，以及用于提案的本地账户/安排标识。账户以编号代称；补记前读取本机已确认金额。"
         }
     }
     private static func field(_ type: String, _ description: String) -> JSONValue {
@@ -90,9 +93,29 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "truncated": .bool(rows.count < all.count)])
         case .summarize: result = try summarize(fields, ctx)
         case .compareToHabit: result = try habit(fields, ctx)
-        case .getProfile: result = .object(["purchaseValues": .string(ctx.ledger.preferences.purchaseValues)])
+        case .getProfile: result = profile(ctx)
         }
         return ctx.redactor.value(result)
+    }
+
+    private func profile(_ ctx: ToolContext) -> JSONValue {
+        func area(_ a: ProfileArea) -> JSONValue {
+            var row: [String: JSONValue] = ["id": .string(a.id.uuidString), "title": .string(a.title),
+                "categories": .strings(a.match.categories), "keywords": .strings(a.match.keywords), "note": .string(a.note)]
+            if let count = a.softLimit?.perWeekCount { row["per_week_count"] = .number(Double(count)) }
+            if let amount = a.softLimit?.perMonthAmount { row["per_month_amount"] = .money(amount) }
+            return .object(row)
+        }
+        var fields: [String: JSONValue] = ["purchaseValues": .string(ctx.ledger.preferences.purchaseValues),
+            "generous": .array(ctx.ledger.profile.generous.map(area)), "restrain": .array(ctx.ledger.profile.restrain.map(area)),
+            "principles": .strings(ctx.ledger.profile.principles),
+            "accounts": .array(ctx.ledger.accounts.enumerated().map { index, a in .object(["id": .string(a.id.uuidString), "title": .string("账户\(index + 1)"), "kind": .string(a.kind.rawValue)]) }),
+            "plans": .array(ctx.ledger.plans.map { .object(["id": .string($0.id.uuidString), "title": .string($0.title), "amount": .money($0.amount), "date": .string(Dates.text($0.dueDate))]) }),
+            "rents": .array(ctx.ledger.rents.map { .object(["id": .string($0.id.uuidString), "title": .string($0.title)]) }),
+            "goals": .array(ctx.ledger.goals.map { .object(["title": .string($0.title), "reserved": .money($0.reserved)]) })]
+        if let amount = ctx.ledger.profile.floorAmount { fields["floor_amount"] = .money(amount) }
+        if let amount = ctx.confirmedEntryAmount { fields["confirmed_entry_amount"] = .money(amount) }
+        return .object(fields)
     }
 
     private func forecast(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {
@@ -192,7 +215,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         .object(["id": .string(entry.id.uuidString), "date": .string(Dates.text(entry.date)),
             "amount": .money(entry.amount), "spending_amount": .money(Finance.spendingAmount(entry, ledger: ctx.ledger)),
             "direction": .string(entry.nature.paired ? "transfer" : (entry.nature.inflow ? "income" : "spending")),
-            "nature": .string(entry.nature.rawValue), "title": .string(entry.title), "category": .string(ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: ctx.entriesByID))),
+            "nature": .string(entry.nature.rawValue), "title": .string(entry.displayTitle), "category": .string(ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: ctx.entriesByID))),
+            "account": .string(entry.accountID.uuidString),
             "account_kind": .string(ctx.ledger.accounts.first { $0.id == entry.accountID }?.kind.rawValue ?? "unknown")])
     }
 
@@ -219,7 +243,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 if let end, e.date >= end { return false }
                 if let category, ctx.ledger.resolveCategory(Finance.spendingCategory(e, entriesByID: byID)) != ctx.ledger.resolveCategory(category) { return false }
                 if let keyword {
-                    let text = e.title + " " + e.note
+                    let text = e.title + " " + (e.purpose ?? "") + " " + e.note
                     if !text.localizedCaseInsensitiveContains(keyword) && !ctx.redactor.text(text).localizedCaseInsensitiveContains(keyword) { return false }
                 }
                 if let minimum, e.amount < minimum { return false }

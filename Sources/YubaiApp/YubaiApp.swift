@@ -99,6 +99,18 @@ enum AppSheet: Identifiable {
             undoLedger = before; undoLabel = reason; toast = reason + "完成"; return true
         } catch { self.error = error.localizedDescription; return false }
     }
+    @discardableResult func apply(_ changeSet: ChangeSet, label: String) -> Bool {
+        var skipped: [String] = []
+        let saved = update(label) { ledger in
+            skipped = try changeSet.apply(to: &ledger)
+            ledger.pendingChanges.removeAll { $0.id == changeSet.id }
+            for i in ledger.cards.indices where ledger.cards[i].action == .confirmChangeSet(changeSet.id) {
+                ledger.cards[i].dismissedAt = Date()
+            }
+        }
+        if saved, !skipped.isEmpty { toast = label + "完成；" + skipped.joined(separator: "；") }
+        return saved
+    }
     func undo() {
         guard let previous = undoLedger else { return }
         do {

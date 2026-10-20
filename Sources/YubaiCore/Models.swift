@@ -98,6 +98,8 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64
     public var nature: Nature; public var accountID: UUID; public var otherAccountID: UUID?
     public var title: String; public var category: String; public var note: String = ""
+    public var purpose: String?
+    public var displayTitle: String { purpose.flatMap { $0.isEmpty ? nil : $0 } ?? title }
     public var source: String = "手动"; public var externalID: String = ""; public var batchID: UUID?
     public var sourceIdentity: String = ""
     public var sourceRow: Int?; public var fingerprint: String = ""
@@ -212,34 +214,188 @@ public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
     public var result: String; public var note: String
     public init(title: String, amount: Int64, result: String, note: String) { self.title = title; self.amount = amount; self.result = result; self.note = note }
 }
+public struct AreaMatch: Codable, Equatable, Sendable {
+    public var categories: [String]; public var keywords: [String]
+    public init(categories: [String] = [], keywords: [String] = []) { self.categories = categories; self.keywords = keywords }
+}
+public struct SoftLimit: Codable, Equatable, Sendable {
+    public var perWeekCount: Int?; public var perMonthAmount: Int64?
+    public init(perWeekCount: Int? = nil, perMonthAmount: Int64? = nil) { self.perWeekCount = perWeekCount; self.perMonthAmount = perMonthAmount }
+}
+public struct ProfileArea: Codable, Identifiable, Equatable, Sendable {
+    public var id = UUID(); public var title: String; public var match: AreaMatch
+    public var note: String; public var softLimit: SoftLimit?
+    public init(title: String, match: AreaMatch = AreaMatch(), note: String = "", softLimit: SoftLimit? = nil) {
+        self.title = title; self.match = match; self.note = note; self.softLimit = softLimit
+    }
+}
+public struct SpendingProfile: Codable, Equatable, Sendable {
+    public var generous: [ProfileArea] = []; public var restrain: [ProfileArea] = []
+    public var principles: [String] = []; public var floorAmount: Int64?; public var updatedAt = Date()
+    public init() {}
+}
+public enum CardKind: String, Codable, CaseIterable, Sendable {
+    case restrain, shortfall, unknownInflow, staleBalance, recurring, duplicate, offCharacter, followUp, weeklyLetter
+}
+public enum CardAction: Codable, Equatable, Sendable {
+    case openEvidence, confirmChangeSet(UUID), reconcileAccount(UUID), answerQuestion, openWish(UUID)
+}
+public enum CardFeedback: String, Codable, Sendable { case worth, regret }
+public struct ButlerCard: Codable, Identifiable, Equatable, Sendable {
+    public var id = UUID(); public var kind: CardKind; public var title: String; public var body: String
+    public var evidence: [UUID]; public var action: CardAction?; public var dedupeKey: String
+    public var createdAt = Date(); public var dismissedAt: Date?; public var feedback: CardFeedback?
+    public init(kind: CardKind, title: String, body: String, evidence: [UUID] = [], action: CardAction? = nil, dedupeKey: String) {
+        self.kind = kind; self.title = title; self.body = body; self.evidence = evidence; self.action = action; self.dedupeKey = dedupeKey
+    }
+}
+public enum WishStatus: String, Codable, CaseIterable, Sendable { case thinking, bought, dropped }
+public struct WishItem: Codable, Identifiable, Equatable, Sendable {
+    public var id = UUID(); public var title: String; public var amount: Int64; public var purpose: String
+    public var createdAt = Date(); public var status: WishStatus = .thinking; public var judgment: String
+    public var boughtEntryID: UUID?; public var followUpAt: Date?; public var followUpAnswer: String?
+    public init(title: String, amount: Int64, purpose: String = "", judgment: String = "") {
+        self.title = title; self.amount = amount; self.purpose = purpose; self.judgment = judgment
+    }
+    init(_ advice: AdviceRecord) {
+        self.init(title: advice.title, amount: advice.amount, purpose: advice.note, judgment: advice.result)
+        id = advice.id; createdAt = advice.createdAt
+    }
+}
 public struct Ledger: Codable, Equatable, Sendable {
-    public var schema = 1; public var id = UUID(); public var updatedAt = Date()
+    public var schema = 2; public var id = UUID(); public var updatedAt = Date()
     public var isSample = false
     public var accounts: [Account] = []; public var entries: [Entry] = []; public var plans: [Plan] = []
     public var goals: [Goal] = []; public var rents: [Rent] = []; public var rules: [Rule] = []
     public var categories = Category.defaults; public var imports: [ImportBatch] = []; public var attachments: [Attachment] = []
     public var categoryAliases: [String: String] = [:]
-    public var advice: [AdviceRecord] = []; public var preferences = Preferences()
+    public var preferences = Preferences()
+    public var profile = SpendingProfile(); public var cards: [ButlerCard] = []
+    public var pendingChanges: [ChangeSet] = []; public var wishlist: [WishItem] = []; public var mutedTopics: [String] = []
+    // Only retained for restoring a legacy backup into a repository; never encoded.
+    var preMigrationData: Data?
+    // Compatibility for the old purchase screen until its replacement. Writes persist as wishes.
+    public var advice: [AdviceRecord] {
+        get { wishlist.map { wish in
+            var record = AdviceRecord(title: wish.title, amount: wish.amount, result: wish.judgment, note: wish.purpose)
+            record.id = wish.id; record.createdAt = wish.createdAt; return record
+        } }
+        set { wishlist = newValue.map { record in
+            var wish = wishlist.first { $0.id == record.id } ?? WishItem(record)
+            wish.title = record.title; wish.amount = record.amount; wish.judgment = record.result; wish.purpose = record.note
+            return wish
+        } }
+    }
     public init() {}
+    private enum CodingKeys: String, CodingKey {
+        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, rules, categories, imports, attachments, categoryAliases, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+    }
+    private enum LegacyKeys: String, CodingKey { case advice }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schema = try c.decode(Int.self, forKey: .schema)
+        guard schema == 1 || schema == 2 else { throw YubaiError.invalid("这个账本来自更新版本，请先更新余白。") }
+        let legacy = schema == 1
+        id = try c.decode(UUID.self, forKey: .id)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        isSample = try c.decodeIfPresent(Bool.self, forKey: .isSample) ?? isSample
+        accounts = try c.decode([Account].self, forKey: .accounts)
+        entries = try c.decode([Entry].self, forKey: .entries)
+        plans = try c.decode([Plan].self, forKey: .plans)
+        goals = try c.decode([Goal].self, forKey: .goals)
+        rents = try c.decode([Rent].self, forKey: .rents)
+        rules = try c.decode([Rule].self, forKey: .rules)
+        categories = try c.decode([Category].self, forKey: .categories)
+        imports = try c.decode([ImportBatch].self, forKey: .imports)
+        attachments = try c.decode([Attachment].self, forKey: .attachments)
+        categoryAliases = try c.decodeIfPresent([String: String].self, forKey: .categoryAliases) ?? categoryAliases
+        preferences = try c.decode(Preferences.self, forKey: .preferences)
+        profile.updatedAt = updatedAt
+        profile = try c.decodeIfPresent(SpendingProfile.self, forKey: .profile) ?? profile
+        cards = try c.decodeIfPresent([ButlerCard].self, forKey: .cards) ?? cards
+        pendingChanges = try c.decodeIfPresent([ChangeSet].self, forKey: .pendingChanges) ?? pendingChanges
+        wishlist = try c.decodeIfPresent([WishItem].self, forKey: .wishlist) ?? wishlist
+        mutedTopics = try c.decodeIfPresent([String].self, forKey: .mutedTopics) ?? mutedTopics
+        let old = try decoder.container(keyedBy: LegacyKeys.self)
+        let records = try old.decodeIfPresent([AdviceRecord].self, forKey: .advice) ?? []
+        guard Set(records.map(\.id)).count == records.count else { throw YubaiError.invalid("旧购买记录包含重复标识。") }
+        for record in records where !wishlist.contains(where: { $0.id == record.id }) { wishlist.append(WishItem(record)) }
+        if legacy, preferences.purchaseValues != "为长期有用和真正喜欢的事物花钱",
+           !profile.principles.contains(preferences.purchaseValues) {
+            profile.principles.insert(preferences.purchaseValues, at: 0)
+        }
+        schema = 2
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(2, forKey: .schema)
+        try c.encode(id, forKey: .id)
+        try c.encode(updatedAt, forKey: .updatedAt)
+        try c.encode(isSample, forKey: .isSample)
+        try c.encode(accounts, forKey: .accounts)
+        try c.encode(entries, forKey: .entries)
+        try c.encode(plans, forKey: .plans)
+        try c.encode(goals, forKey: .goals)
+        try c.encode(rents, forKey: .rents)
+        try c.encode(rules, forKey: .rules)
+        try c.encode(categories, forKey: .categories)
+        try c.encode(imports, forKey: .imports)
+        try c.encode(attachments, forKey: .attachments)
+        try c.encode(categoryAliases, forKey: .categoryAliases)
+        try c.encode(preferences, forKey: .preferences)
+        try c.encode(profile, forKey: .profile)
+        try c.encode(cards, forKey: .cards)
+        try c.encode(pendingChanges, forKey: .pendingChanges)
+        try c.encode(wishlist, forKey: .wishlist)
+        try c.encode(mutedTopics, forKey: .mutedTopics)
+    }
+    public static func == (lhs: Ledger, rhs: Ledger) -> Bool {
+        lhs.schema == rhs.schema &&
+        lhs.id == rhs.id &&
+        lhs.updatedAt == rhs.updatedAt &&
+        lhs.isSample == rhs.isSample &&
+        lhs.accounts == rhs.accounts &&
+        lhs.entries == rhs.entries &&
+        lhs.plans == rhs.plans &&
+        lhs.goals == rhs.goals &&
+        lhs.rents == rhs.rents &&
+        lhs.rules == rhs.rules &&
+        lhs.categories == rhs.categories &&
+        lhs.imports == rhs.imports &&
+        lhs.attachments == rhs.attachments &&
+        lhs.categoryAliases == rhs.categoryAliases &&
+        lhs.preferences == rhs.preferences &&
+        lhs.profile == rhs.profile &&
+        lhs.cards == rhs.cards &&
+        lhs.pendingChanges == rhs.pendingChanges &&
+        lhs.wishlist == rhs.wishlist &&
+        lhs.mutedTopics == rhs.mutedTopics
+    }
     public var activeEntries: [Entry] { entries.filter { $0.deletedAt == nil } }
     public func accountName(_ id: UUID?) -> String { accounts.first { $0.id == id }?.name ?? "未指定账户" }
     public func resolveCategory(_ category: String) -> String { categoryAliases[category] ?? category }
     public func validate() throws {
-        guard schema == 1 else { throw YubaiError.invalid("这个账本来自更新版本，请先更新余白。") }
+        guard schema == 1 || schema == 2 else { throw YubaiError.invalid("这个账本来自更新版本，请先更新余白。") }
         guard accounts.count <= 1000, entries.count <= 200_000, plans.count <= 1000, rents.count <= 100,
-              goals.count <= 1000, attachments.count <= 5000 else { throw YubaiError.invalid("账本超出安全容量，请分卷备份。") }
+              goals.count <= 1000, attachments.count <= 5000, cards.count <= 5000,
+              pendingChanges.count <= 100, wishlist.count <= 5000, mutedTopics.count <= 5000 else { throw YubaiError.invalid("账本超出安全容量，请分卷备份。") }
         guard Set(accounts.map(\.id)).count == accounts.count, Set(entries.map(\.id)).count == entries.count,
               Set(plans.map(\.id)).count == plans.count, Set(rents.map(\.id)).count == rents.count,
               Set(goals.map(\.id)).count == goals.count, Set(rules.map(\.id)).count == rules.count,
-              Set(imports.map(\.id)).count == imports.count, Set(advice.map(\.id)).count == advice.count,
+              Set(imports.map(\.id)).count == imports.count,
               Set(attachments.map(\.id)).count == attachments.count else { throw YubaiError.invalid("账本包含重复标识，无法安全读取。") }
+        guard Set(cards.map(\.id)).count == cards.count, Set(wishlist.map(\.id)).count == wishlist.count,
+              Set(pendingChanges.map(\.id)).count == pendingChanges.count,
+              Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或提案包含重复标识。") }
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.name)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
         guard Set(categoryNames).count == categoryNames.count else { throw YubaiError.invalid("分类名称不能重复。") }
         for a in accounts { guard !a.name.trimmingCharacters(in: .whitespaces).isEmpty, a.anchorBalance >= -Money.limit, a.anchorBalance <= Money.limit, (0...Money.limit).contains(a.creditLimit), dateValid(a.anchorDate) else { throw YubaiError.invalid("账户信息无效。") } }
         for e in entries {
             guard ids.contains(e.accountID), e.amount > 0, e.amount <= Money.limit, !e.title.isEmpty,
-                  dateValid(e.date), e.otherDate.map(dateValid) ?? true else { throw YubaiError.invalid("交易金额、日期或账户无效。") }
+                  dateValid(e.date), e.otherDate.map(dateValid) ?? true,
+                  e.occurrence.map(dateValid) ?? true, e.rentPeriod.map(dateValid) ?? true,
+                  (e.purpose?.count ?? 0) <= 4000 else { throw YubaiError.invalid("交易金额、日期或账户无效。") }
             if let other = e.otherAccountID { guard ids.contains(other), other != e.accountID, e.nature.paired else { throw YubaiError.invalid("转账的两个账户必须不同且存在。") } }
             if e.nature.paired, let other = e.otherAccountID, let kind = accounts.first(where: { $0.id == other })?.kind, e.nature != .transfer {
                 let required: AccountKind = [.borrow, .loanReturn, .repayment].contains(e.nature) ? .credit : ([.lend, .loanRecovery].contains(e.nature) ? .receivable : .investment)
@@ -260,11 +416,42 @@ public struct Ledger: Codable, Equatable, Sendable {
             guard let original = entriesByID[id], original.deletedAt == nil, original.nature == .expense,
                   rows.reduce(Int64(0), { $0 + $1.amount }) <= original.amount else { throw YubaiError.invalid("关联退款超过原支出，或原支出已被移除。请先核对退款关联。") }
         }
+        try validateProfileAndCards()
+        for change in pendingChanges { try change.validateStructure() }
         for p in plans { guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true else { throw YubaiError.invalid("资金安排信息无效。") } }
         guard plans.reduce(Int64(0), { $0 + $1.amount }) <= Money.limit else { throw YubaiError.invalid("所有安排总额超出安全计算范围。") }
         for g in goals { guard g.target > 0, g.target <= Money.limit, g.reserved >= 0, g.reserved <= g.target, !g.title.isEmpty else { throw YubaiError.invalid("目标金额或预留金额无效。") } }
         for r in rents { guard r.monthlyTotal > 0, r.monthlyTotal <= Money.limit / 12, r.personalShare >= 0, r.personalShare <= r.monthlyTotal, (1...12).contains(r.monthsPerPayment), (1...28).contains(r.receiveDay), dateValid(r.startDate), dateValid(r.nextDueDate), r.endDate.map({ dateValid($0) && $0 >= r.startDate }) ?? true else { throw YubaiError.invalid("房租金额、分摊或周期无效。") } }
         guard (7...366).contains(preferences.horizonDays), preferences.emergencyReserve >= 0, preferences.emergencyReserve <= Money.limit,
               preferences.dailyLiving >= 0, preferences.dailyLiving <= Money.limit / 366 else { throw YubaiError.invalid("资金偏好数值无效。") }
+    }
+}
+
+private extension Ledger {
+    func validateProfileAndCards() throws {
+        func text(_ s: String) -> Bool { !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && s.count <= 4000 }
+        func date(_ d: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(d.timeIntervalSince1970) }
+        let areas = profile.generous + profile.restrain
+        guard areas.count <= 200, Set(areas.map(\.id)).count == areas.count,
+              profile.principles.count <= 200, profile.principles.allSatisfy(text),
+              Set(profile.principles).count == profile.principles.count,
+              profile.floorAmount.map({ (0...Money.limit).contains($0) }) ?? true,
+              date(profile.updatedAt), mutedTopics.allSatisfy(text) else { throw YubaiError.invalid("消费画像或静音主题无效。") }
+        for a in areas {
+            guard text(a.title), a.note.count <= 4000, a.match.categories.count <= 200, a.match.keywords.count <= 200,
+                  a.match.categories.allSatisfy(text), a.match.keywords.allSatisfy(text),
+                  (a.softLimit?.perWeekCount).map({ (0...10_000).contains($0) }) ?? true,
+                  (a.softLimit?.perMonthAmount).map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("消费领域或柔性提醒数值无效。") }
+        }
+        for c in cards {
+            // Evidence and action targets can have been deleted or dismissed since creation.
+            guard text(c.title), c.body.count <= 16_000, text(c.dedupeKey), c.evidence.count <= 1000,
+                  Set(c.evidence).count == c.evidence.count, date(c.createdAt), c.dismissedAt.map(date) ?? true else { throw YubaiError.invalid("管家卡片无效。") }
+        }
+        for w in wishlist {
+            guard text(w.title), (0...Money.limit).contains(w.amount), w.purpose.count <= 4000,
+                  w.judgment.count <= 16_000, date(w.createdAt), w.followUpAt.map(date) ?? true,
+                  (w.followUpAnswer?.count ?? 0) <= 4000 else { throw YubaiError.invalid("心愿记录无效。") }
+        }
     }
 }

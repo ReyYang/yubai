@@ -3,6 +3,8 @@ import CryptoKit
 import CArchive
 import Darwin
 
+private struct LedgerHeader: Decodable { let schema: Int }
+
 public enum LedgerCodec {
     public static func encode(_ ledger: Ledger) throws -> Data {
         try ledger.validate(); let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]; let data = try encoder.encode(ledger)
@@ -10,7 +12,11 @@ public enum LedgerCodec {
     }
     public static func decode(_ data: Data) throws -> Ledger {
         guard data.count <= 250 * 1024 * 1024 else { throw YubaiError.invalid("账本超过安全读取大小，请分开处理附件。") }
-        do { let ledger = try JSONDecoder().decode(Ledger.self, from: data); try ledger.validate(); return ledger }
+        do {
+            var ledger = try JSONDecoder().decode(Ledger.self, from: data); try ledger.validate()
+            if try JSONDecoder().decode(LedgerHeader.self, from: data).schema == 1 { ledger.preMigrationData = data }
+            return ledger
+        }
         catch let error as YubaiError { throw error }
         catch { throw YubaiError.invalid("账本格式损坏或版本不兼容，原文件已保留。请从备份恢复。") }
     }
@@ -48,20 +54,31 @@ public struct LedgerRepository: Sendable {
         try prepare(history)
         let latest = try recoveries().first.map { Int64(($0.date.timeIntervalSince1970 * 1000).rounded()) } ?? 0
         let stamp = max(Int64(Date().timeIntervalSince1970 * 1000), latest + 1)
+        let suffix = UUID().uuidString.prefix(8)
         let safeReason = reason.replacingOccurrences(of: "/", with: "-").prefix(40)
-        let destination = history.appendingPathComponent("\(stamp)-\(UUID().uuidString.prefix(8))-\(safeReason).json")
+        var destination = history.appendingPathComponent("\(stamp)-\(suffix)-\(safeReason).json")
         var complete = false
         defer { if !complete { try? manager.removeItem(at: destination) } }
         // Atomic replacement leaves the linked prior inode intact; copying handles filesystems without links.
         if Darwin.link(file.path, destination.path) != 0 { try manager.copyItem(at: file, to: destination) }
         try protect(destination)
-        if verify {
-            let bytes = try Data(contentsOf: destination); let digest = SHA256.hash(data: bytes)
-            if state.digest != digest {
-                _ = try LedgerCodec.decode(bytes) // Unrecognized bytes must still pass full corruption checks.
-            }
+        let bytes = try Data(contentsOf: destination)
+        if verify, state.digest != SHA256.hash(data: bytes) {
+            _ = try LedgerCodec.decode(bytes) // Unrecognized bytes must still pass full corruption checks.
+        }
+        if (try? JSONDecoder().decode(LedgerHeader.self, from: bytes).schema) == 1 {
+            let upgraded = history.appendingPathComponent("\(stamp)-\(suffix)-升级前版本.json")
+            if upgraded != destination { try manager.moveItem(at: destination, to: upgraded); destination = upgraded }
         }
         complete = true
+    }
+    private func preserveMigrationSource(_ ledger: Ledger) throws {
+        guard let bytes = ledger.preMigrationData else { return }
+        let history = directory.appendingPathComponent("Recovery", isDirectory: true)
+        try prepare(history)
+        let latest = try recoveries().first.map { Int64(($0.date.timeIntervalSince1970 * 1000).rounded()) } ?? 0
+        let stamp = max(Int64(Date().timeIntervalSince1970 * 1000), latest + 1)
+        try writePrivate(bytes, to: history.appendingPathComponent("\(stamp)-\(UUID().uuidString.prefix(8))-升级前版本.json"))
     }
     private func pruneHistory() {
         if let history = try? recoveries() { for recovery in history.dropFirst(20) { try? FileManager.default.removeItem(at: recovery.url) } }
@@ -79,7 +96,7 @@ public struct LedgerRepository: Sendable {
         try prepare(directory)
         if manager.fileExists(atPath: file.path) {
             try preserveCurrent(reason: reason, verify: true)
-        }
+        } else { try preserveMigrationSource(ledger) }
         try writePrivate(encoded, to: file)
         state.digest = SHA256.hash(data: encoded)
         // History belongs solely to this ledger. Retain the latest 20 complete prior revisions.
@@ -112,6 +129,7 @@ public struct LedgerRepository: Sendable {
         if FileManager.default.fileExists(atPath: file.path) {
             try preserveCurrent(reason: "恢复前", verify: false)
         }
+        try preserveMigrationSource(restored)
         try writePrivate(bytes, to: file)
         state.digest = SHA256.hash(data: bytes)
         pruneHistory()
