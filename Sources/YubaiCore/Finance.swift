@@ -22,6 +22,44 @@ public struct Review: Sendable {
     public var spending: Int64; public var income: Int64; public var refunds: Int64
     public var byCategory: [Breakdown]; public var previousSpending: Int64; public var count: Int
 }
+/// Net expense/refund accounting is shared with Review and the weekly letter.
+/// Refunds offset spending, never appear as income. Categories may be negative
+/// for a refund of a purchase made before this half-open interval.
+public struct CashFlowSlice: Identifiable, Sendable {
+    public var id: [String] { categories }
+    public var title: String
+    public var categories: [String]
+    public var amount: Int64
+    public var share: Double
+}
+public struct CashFlowSummary: Sendable {
+    public var income: Int64
+    public var spending: Int64
+    public var incomeByCategory: [Breakdown]
+    public var spendingByCategory: [Breakdown]
+    public var balance: Int64 { income - spending }
+    /// At most six positive sectors. Nonpositive net categories remain readable
+    /// as signed rows, outside the donut. Shares describe positive sectors only.
+    public func slices(income: Bool) -> [CashFlowSlice] {
+        let rows = income ? incomeByCategory : spendingByCategory
+        let positive = rows.filter { $0.amount > 0 }
+        let total = positive.reduce(Int64(0)) { $0 + $1.amount }
+        func slice(_ rows: [Breakdown], title: String) -> CashFlowSlice {
+            let amount = rows.reduce(Int64(0)) { $0 + $1.amount }
+            return CashFlowSlice(title: title, categories: rows.map(\.category), amount: amount,
+                                 share: amount > 0 && total > 0 ? Double(amount) / Double(total) : 0)
+        }
+        var result = positive.prefix(positive.count > 6 ? 5 : 6).map { slice([$0], title: $0.category) }
+        if positive.count > 6 {
+            let rest = Array(positive.dropFirst(5))
+            result.append(slice(rest, title: "其他 \(rest.count) 类"))
+        }
+        result += rows.filter { $0.amount <= 0 }.map { slice([$0], title: $0.category) }
+        return result
+    }
+
+}
+
 public struct PurchaseAssessment: Sendable {
     public var title: String; public var explanation: String; public var afterPurchase: Int64
     public var severity: Int; public var facts: [String]; public var questions: [String]
@@ -196,6 +234,18 @@ public enum Finance {
         return Review(spending: byCategory.reduce(0) { $0 + $1.amount }, income: rows.filter { $0.nature == .income }.reduce(0) { $0 + $1.amount },
                       refunds: rows.filter { $0.nature == .refund }.reduce(0) { $0 + $1.amount }, byCategory: byCategory,
                       previousSpending: prior.reduce(0) { $0 + spendingAmount($1, ledger: ledger) }, count: rows.count)
+    }
+    /// Pure, deterministic, half-open [start, end) aggregation. Transfers,
+    /// repayments, contributions and uncertain natures are not income/spending.
+    public static func cashFlow(_ ledger: Ledger, during interval: DateInterval) -> CashFlowSummary {
+        let review = review(ledger, from: interval.start, through: interval.end)
+        let incomeRows = ledger.activeEntries.filter { $0.nature == .income && $0.date >= interval.start && $0.date < interval.end }
+        let income = Dictionary(grouping: incomeRows, by: \.category).map { category, rows in
+            Breakdown(category: category, amount: rows.reduce(Int64(0)) { $0 + $1.amount }, count: rows.count)
+        }.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
+        let spending = review.byCategory.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
+        return CashFlowSummary(income: review.income, spending: review.spending,
+                               incomeByCategory: income, spendingByCategory: spending)
     }
     public static func assessPurchase(_ ledger: Ledger, amount: Int64, now: Date = Date()) -> PurchaseAssessment {
         let f = funds(ledger, now: now); let after = f.available - amount

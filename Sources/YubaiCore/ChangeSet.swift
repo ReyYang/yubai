@@ -52,7 +52,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
               !items.isEmpty, items.count <= (["导入整理", "回答整理问题"].contains(source) ? 800_000 : 200),
               (-2_208_988_800...7_258_118_400).contains(createdAt.timeIntervalSince1970) else { throw YubaiError.invalid("提案的来源、依据、时间或项目数量无效。") }
     }
-    public func preview(in ledger: Ledger) -> [String] {
+    public func preview(in ledger: Ledger, showPreviousValues: Bool = false) -> [String] {
         func entry(_ id: UUID) -> String {
             guard let e = ledger.entries.first(where: { $0.id == id }) else { return "已移除的记录" }
             let parts = Dates.calendar.dateComponents([.month, .day], from: e.date)
@@ -60,10 +60,21 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         }
         return items.map { item in
             switch item {
-            case .setCategory(let id, let category): return "把 \(entry(id)) 归为 \(category)"
+            case .setCategory(let id, let category):
+                if showPreviousValues, let original = ledger.entries.first(where: { $0.id == id }) {
+                    return entry(id) + " · " + original.category + " → " + category
+                }
+                return "把 \(entry(id)) 归为 \(category)"
             case .setNature(let id, let nature, let other):
+                if showPreviousValues, let original = ledger.entries.first(where: { $0.id == id }) {
+                    return entry(id) + " · " + original.nature.label + " → " + nature.label + (other.map { "，关联" + ledger.accountName($0) } ?? "")
+                }
                 return "把 \(entry(id)) 标为 \(nature.label)" + (other.map { "，关联\(ledger.accountName($0))" } ?? "")
-            case .setPurpose(let id, let text): return "把 \(entry(id)) 的用途记为「\(text)」"
+            case .setPurpose(let id, let text):
+                if showPreviousValues, let original = ledger.entries.first(where: { $0.id == id }) {
+                    return entry(id) + " · 「" + (original.purpose ?? original.title) + "」 → 「" + text + "」"
+                }
+                return "把 \(entry(id)) 的用途记为「\(text)」"
             case .pairTransfer(let a, let b, let nature): return "把 \(entry(a)) 与 \(entry(b)) 配对为\(nature.label)"
             case .linkRefund(let refund, let original): return "把 \(entry(refund)) 关联为 \(entry(original)) 的退款"
             case .linkPlan(let id, let plan, let date): return "把 \(entry(id)) 关联为 \(Dates.text(date)) \(ledger.plans.first { $0.id == plan }?.title ?? "资金安排")"

@@ -4,15 +4,15 @@ import LocalAuthentication
 import YubaiCore
 
 enum Destination: String, CaseIterable, Identifiable {
-    case overview, settings
+    case overview, insights, settings
     var id: Self { self }
-    var title: String { self == .overview ? "现在" : "我" }
-    var symbol: String { self == .overview ? "water.waves" : "person.crop.circle" }
+    var title: String { switch self { case .overview: "现在"; case .insights: "洞察"; case .settings: "我" } }
+    var symbol: String { switch self { case .overview: "water.waves"; case .insights: "chart.pie"; case .settings: "person" } }
 }
 enum AppSheet: Identifiable {
     case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions
     case ask(String), capture(Data), wishlist(UUID?)
-    case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, reconcile(UUID)
+    case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, letter(UUID), reconcile(UUID)
     var id: String { String(describing: self) }
 }
 
@@ -66,6 +66,7 @@ enum AppSheet: Identifiable {
     var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
     var loadFailure: String?; var locked = false; var importedURL: URL?
     var errorHosts: [UUID] = []
+    var pickingInsightDates = false
     var organizingBatchID: UUID?
     var updatingWeeklyPush = false
     var organizationErrors: [UUID: String] = [:]
@@ -191,7 +192,7 @@ struct RootView: View {
         }
         .sheet(item: $store.sheet) { sheet in
             NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brandInk)
-                .appErrors()
+                .appErrors().presentationDragIndicator(.visible)
                 .overlay { privacyCover }
                 #if os(macOS)
                 .frame(minWidth: 540, idealWidth: 620, minHeight: 600, idealHeight: 720)
@@ -210,7 +211,7 @@ struct RootView: View {
                     .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(YubaiMotion.toastOut(reduceMotion: reduceMotion))))
             }
         }
-        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync() } }; if newValue == .background && store.current.preferences.lockEnabled { store.sheet = nil; store.toast = nil; store.locked = true } }
+        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync() } }; if newValue == .background && store.current.preferences.lockEnabled { store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
         .task { await store.configureSync() }
         .task(id: "\(store.current.id)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)") {
             if phase == .active { await store.organizePendingImports() }
@@ -240,27 +241,37 @@ struct RootView: View {
             }.listStyle(.sidebar).navigationTitle("余白")
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 250)
         } detail: {
-            NavigationStack { destination(store.destination) }.safeAreaInset(edge: .bottom, spacing: 0) { askAccessory }
+            NavigationStack { tabRoot(store.destination) }.id(store.destination)
         }
         #else
         TabView(selection: $store.destination) {
             ForEach(Destination.allCases) { d in
-                NavigationStack { destination(d) }.safeAreaInset(edge: .bottom, spacing: 0) { askAccessory }
-                    .toolbarBackground(YubaiColor.raised, for: .tabBar).toolbarBackground(.visible, for: .tabBar)
-                    .tabItem { Label(d.title, systemImage: d.symbol) }.tag(d)
+                NavigationStack { tabRoot(d) }
+                    .toolbar(.hidden, for: .tabBar)
+                    .tabItem { Text(d.title) }.tag(d)
             }
-        }.tint(YubaiColor.label)
+        }.toolbar(.hidden, for: .tabBar)
         #endif
     }
-    // Attach to the navigation container, so pushed pages keep the same entry point.
-    private var askAccessory: some View {
-        Button { store.sheet = .ask("") } label: { Label("问余白", systemImage: "sparkle") }
-            .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("askYubai")
-            .frame(maxWidth: 420).padding(.horizontal, YubaiSpace.space18).padding(.vertical, YubaiSpace.space8)
-            .frame(maxWidth: .infinity).background(YubaiColor.canvas)
+    // The row belongs to the root content, inside each navigation stack. Pushing
+    // a destination moves the entire root (including its row) off screen.
+    private func tabRoot(_ d: Destination) -> some View {
+        ZStack(alignment: .bottom) {
+            destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
+            if store.sheet == nil && !store.pickingInsightDates {
+                HStack(spacing: YubaiSpace.space8) {
+                    #if os(iOS)
+                    TabBar(selection: Binding(get: { store.destination }, set: { store.destination = $0 }))
+                    #else
+                    Spacer()
+                    #endif
+                    AskButton { store.sheet = .ask("") }
+                }.padding(.horizontal, YubaiSpace.space18).padding(.bottom, 22)
+            }
+        }.background(YubaiColor.canvas)
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
-        switch d { case .overview: OverviewView(); case .settings: SettingsView() }
+        switch d { case .overview: OverviewView(); case .insights: InsightsView(); case .settings: SettingsView() }
     }
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
         switch sheet {
@@ -278,6 +289,7 @@ struct RootView: View {
         case .cardQuestion(let id): ButlerQuestionView(cardID: id)
         case .cardProposal(let id): ButlerProposalView(changeID: id)
         case .letters: LettersView()
+        case .letter(let id): LetterDetailView(cardID: id).toolbar { CloseButton() }
         case .reconcile(let id):
             if let account = store.current.accounts.first(where: { $0.id == id }) { AccountEditor(account: account, startsReconciling: true) }
         }

@@ -38,6 +38,11 @@ struct ImportView: View {
     @State private var questionText: [UUID: String] = [:]
     @State private var freeTextQuestion: UUID?
     @State private var parsingTask: Task<Void, Never>?
+    private var resultTitle: String {
+        guard let result else { return "整理账单" }
+        guard let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) else { return "这一批已撤销" }
+        return batch.needsOrganization == true ? "账单已保存" : "整理好了"
+    }
     var body: some View {
         VStack(spacing: 0) {
             if let result { resultView(result) }
@@ -45,7 +50,14 @@ struct ImportView: View {
             else if let preview { previewView(preview) }
             else { intake }
             if let localError { InlineNote(text: localError, style: .attention).padding(YubaiSpace.space18).textSelection(.enabled) }
-        }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas).navigationTitle("整理账单").yubaiNavigation().toolbar { CloseButton() }
+        }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas).navigationTitle(resultTitle).yubaiNavigation().toolbar {
+                ToolbarItem(placement: .confirmationAction) { CloseButton() }
+                ToolbarItem(placement: .cancellationAction) {
+                    if let result, let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) {
+                        Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }.disabled(store.organizingBatchID == batch.id).frame(minHeight: 44).accessibilityIdentifier("undoImportResult")
+                    }
+                }
+            }
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .image, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: true) { result in
                 switch result { case .success(let urls): queue = urls; queueTotal = urls.count; processed = 0; readNext(); case .failure(let e): localError = e.localizedDescription }
             }
@@ -163,12 +175,19 @@ struct ImportView: View {
         if let batch = store.current.imports.first(where: { $0.id == savedBatch.id && $0.undoneAt == nil }) {
             Page {
                 if store.organizingBatchID == batch.id { ProgressView("正在整理…").padding(YubaiSpace.space18) }
-                EmptyState("checkmark.seal", batch.needsOrganization == true ? "账单已保存" : "这一份，整理好了",
-                           "已保存 \(batch.importedCount) 笔，跳过 \(batch.duplicateCount) 笔重复，另有 \(batch.skippedCount) 行未导入。")
+                Text(batch.filename + "，\(batch.importedCount) 笔，" + (batch.needsOrganization == true ? "已经保存了。" : "已经整理好了。"))
+                    .yubaiFont(YubaiFont.heroLabel)
+                Text("跳过 \(batch.duplicateCount) 笔重复，另有 \(batch.skippedCount) 行未导入。")
+                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 if let organization = batch.organization {
                     Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-                        Text("分类 \(organization.categoryCount) · 配对 \(organization.pairCount) · 周期 \(organization.recurringCount) · 重复 \(organization.duplicateCount)").yubaiFont(YubaiFont.rowTitle)
-                        DisclosureGroup("查看整理明细") {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), alignment: .leading)], alignment: .leading, spacing: 8) {
+                            resultCount("归了类", organization.categoryCount)
+                            resultCount("配成转账", organization.pairCount)
+                            resultCount("周期收付", organization.recurringCount)
+                            resultCount("可能重复", organization.duplicateCount)
+                        }
+                        DisclosureGroup("看看改了什么") {
                             ForEach(Array(organization.changeSet.preview(in: store.current).enumerated()), id: \.offset) { _, line in
                                 Text(line).yubaiFont(YubaiFont.caption).frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -177,7 +196,11 @@ struct ImportView: View {
                             }
                         }
                     } }
-                    ForEach(organization.questions) { question in questionCard(question, batchID: batch.id) }
+                    if !organization.questions.isEmpty {
+                        Text("还有 \(min(5, organization.questions.count)) 个问题，答完这些钱才算清楚")
+                            .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
+                        ForEach(Array(organization.questions.prefix(5))) { question in questionCard(question, batchID: batch.id) }
+                    }
                     ForEach(organization.comments ?? []) { comment in
                         if let card = store.current.cards.first(where: { $0.dedupeKey == comment.dedupeKey }), card.dismissedAt == nil, !ButlerCards.isMuted(card.dedupeKey, in: store.current) {
                             ButlerCardView(card: card)
@@ -191,8 +214,7 @@ struct ImportView: View {
                             .buttonStyle(SecondaryButtonStyle()).disabled(store.organizingBatchID != nil || store.assistantTransport(for: store.current) == nil)
                     } }
                 }
-                Text("原始文件保留在本地。未回答的问题会留着，待明确的资金继续保守计算。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }.disabled(store.organizingBatchID == batch.id).accessibilityIdentifier("undoImportResult")
+                Text("没答的问题会留在「现在」。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 if !queue.isEmpty { Button("继续下一份（\(processed)/\(queueTotal)）") { result = nil; preview = nil; readNext() }.buttonStyle(PrimaryButtonStyle()).disabled(store.organizingBatchID != nil) }
                 Button("回到现在") { store.destination = .overview; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
             }
@@ -203,19 +225,27 @@ struct ImportView: View {
             }
         }
     }
+    private func resultCount(_ title: String, _ count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(count)").yubaiFont(YubaiFont.amountDonut)
+            Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+        }
+    }
     private func questionCard(_ question: ImportQuestion, batchID: UUID) -> some View {
         let covered = Set(question.entryIDs)
-        return Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+        return Card(style: .compact, background: YubaiColor.amberTint) { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             Text(question.text).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("importQuestion")
             Pill(text: "\(question.entryIDs.count) 笔 · 可以稍后回答", variant: .neutral, showsDot: false)
             DisclosureGroup("看看这几笔") {
                 LazyVStack { ForEach(store.sortedEntries.filter { covered.contains($0.id) }) { EntryRow(entry: $0) } }
             }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], alignment: .leading, spacing: 8) {
             ForEach(question.options.indices, id: \.self) { index in
                 Button(question.options[index].title) { store.answerImportQuestion(question, batchID: batchID, option: index) }
-                    .buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("importAnswer_" + String(index))
+                    .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("importAnswer_" + String(index))
             }
-            Button("都不是") { freeTextQuestion = question.id }.buttonStyle(SecondaryButtonStyle())
+            Button("都不是") { freeTextQuestion = question.id }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+            }
             if freeTextQuestion == question.id {
                 TextField("用自己的话补充用途", text: Binding(get: { questionText[question.id] ?? "" }, set: { questionText[question.id] = $0 }))
                 Button("记下用途") { store.describeImportQuestion(question, batchID: batchID, text: questionText[question.id] ?? "") }

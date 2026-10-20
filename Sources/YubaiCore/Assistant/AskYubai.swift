@@ -102,6 +102,7 @@ public enum AskYubai {
         """
     }
     public static func isProtectedEdit(_ text: String) -> Bool {
+        if text.range(of: #"(?:那笔|这笔)\s*[¥￥]?\d+(?:\.\d+)?\s*(?:元)?\s*其实(?:是|应是|应该是)\s*\d+"#, options: .regularExpression) != nil { return true }
         let edit = text.range(of: "改|修改|更正|调整|换成|change|edit", options: [.regularExpression, .caseInsensitive]) != nil
         guard edit else { return false }
         let fieldEdit = #"(?:修改|更正|调整|换成|改成|改为|改到)\s*(?:那笔|这笔|记录的)?\s*(?:金额|数额|账户|账号|日期|amount|account)|(?:金额|数额|账户|账号|原始日期|交易日期|发生日期|日期)\s*(?:从[^，。；]{1,12})?(?:改|换|更正|调整)|(?:change|edit).*(?:amount|account|date)"#

@@ -4,19 +4,100 @@ import LocalAuthentication
 import YubaiCore
 
 struct SettingsView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
+    private var thinkingCount: Int { store.current.wishlist.filter { $0.status == .thinking }.count }
+    private var followUpCount: Int { store.current.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= Date() } == true }.count }
     var body: some View {
-        Form {
-            Section {
-                NavigationLink { ProfileView() } label: { Label("我的消费观", systemImage: "leaf") }.accessibilityIdentifier("openProfile")
-                NavigationLink { WishlistView() } label: { Label("心愿单", systemImage: "heart") }
-                NavigationLink { AccountsView() } label: { Label("账户", systemImage: "wallet.bifold") }
-                NavigationLink { ImportHistoryView() } label: { Label("导入记录", systemImage: "clock.arrow.circlepath") }.accessibilityIdentifier("openImportHistory")
-                NavigationLink { IntelligencePrivacyView() } label: { Label("智能与隐私", systemImage: "lock.shield") }
-                NavigationLink { BackupView() } label: { Label("备份与同步", systemImage: "externaldrive") }.accessibilityIdentifier("openBackup")
-                NavigationLink { GuideView() } label: { Label("使用指南", systemImage: "book.closed") }
-            }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-        }.editorForm().navigationTitle("我").yubaiNavigation()
+        Page(spacing: 10, topPadding: 12) {
+            Text("我").yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity, minHeight: 48)
+            NavigationLink { ProfileView() } label: {
+                Card {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack { Text("我的消费观").yubaiFont(YubaiFont.cardTitle); Spacer(); chevron }
+                        profileLine("想克制", store.current.profile.restrain.map(\.title).joined(separator: "、"))
+                        profileLine("愿意多花", store.current.profile.generous.map(\.title).joined(separator: "、"))
+                        if let floor = store.current.profile.floorAmount { profileLine("底线", store.current.preferences.hideAmounts ? "••••" : Money.text(floor, currency: false)) }
+                        if store.current.profile.restrain.isEmpty && store.current.profile.generous.isEmpty && store.current.profile.floorAmount == nil {
+                            Text("慢慢知道，什么值得。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+                        }
+                    }
+                }
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
+            NavigationLink { WishlistView() } label: {
+                Card {
+                    ViewThatFits(in: .horizontal) {
+                        HStack { wishlistTitle; Spacer(); followUp; chevron }
+                        VStack(alignment: .leading, spacing: 8) { wishlistTitle; followUp }
+                    }
+                }
+            }.buttonStyle(PressButtonStyle())
+            NavigationLink { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
+            Card(style: .list) {
+                VStack(spacing: 0) {
+                    NavigationLink { LettersView() } label: { row("来信", detail: latestLetter) }
+                    separator
+                    NavigationLink { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")
+                    separator
+                    NavigationLink { IntelligencePrivacyView() } label: {
+                        row("智能与隐私", detail: store.current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured ? "DeepSeek · 已配好" : "未配好")
+                    }
+                    separator
+                    NavigationLink { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
+                    separator
+                    NavigationLink { GuideView() } label: { row("使用指南") }
+                }
+            }.buttonStyle(PressButtonStyle())
+        }.safeAreaPadding(.bottom, 106).navigationTitle("我")
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
     }
+    private var latestLetter: String? {
+        store.current.cards.filter { $0.kind == .weeklyLetter }.max(by: { $0.createdAt < $1.createdAt })?.createdAt.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
+    }
+    private var wishlistTitle: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("心愿单").yubaiFont(YubaiFont.rowTitle)
+            Text("\(thinkingCount) 件在想").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+        }
+    }
+    @ViewBuilder private var followUp: some View {
+        if followUpCount > 0 { Pill(text: "\(followUpCount) 件该回访了", variant: .amber, showsDot: false) }
+    }
+    private var accountsCard: some View {
+        let cash = store.current.accounts.filter { $0.kind == .bank || $0.kind == .cash }
+        let values = cash.map { max(0, Finance.balance($0, in: store.current)) }
+        let total = values.reduce(Int64(0), +)
+        return Card {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack { Text("账户").yubaiFont(YubaiFont.rowTitle); Spacer(); Text("\(store.current.accounts.count) 个账户").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary); chevron }
+                AmountLabel(cents: store.funds.cash, hide: store.current.preferences.hideAmounts, role: .account)
+                if !store.current.preferences.hideAmounts && total > 0 {
+                    GeometryReader { geometry in
+                        HStack(spacing: 2) {
+                            ForEach(values.indices, id: \.self) { i in
+                                let colors = [YubaiColor.brand, YubaiColor.series2, YubaiColor.series3, YubaiColor.neutralStrong, YubaiColor.neutralSoft]
+                                colors[min(i, colors.count - 1)].frame(width: max(0, geometry.size.width - CGFloat(max(0, values.count - 1)) * 2) * CGFloat(values[i]) / CGFloat(total))
+                            }
+                        }.clipShape(Capsule())
+                    }.frame(height: 8).accessibilityElement(children: .ignore)
+                        .accessibilityLabel("现金分布：" + cash.map { $0.name + " " + Money.text(Finance.balance($0, in: store.current)) }.joined(separator: "；"))
+                }
+            }
+        }
+    }
+    @ViewBuilder private func profileLine(_ title: String, _ value: String) -> some View {
+        if !value.isEmpty {
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
+            layout { Text(title).foregroundStyle(YubaiColor.labelSecondary); Text(value) }.yubaiFont(YubaiFont.callout)
+        }
+    }
+    private func row(_ title: String, detail: String? = nil) -> some View {
+        HStack { Text(title).yubaiFont(YubaiFont.row); Spacer(); if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }; chevron }.frame(minHeight: 44).contentShape(Rectangle())
+    }
+    private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+    private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
 }
 
 struct IntelligencePrivacyView: View {
@@ -82,7 +163,7 @@ struct BackupView: View {
                 }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             }
             Section { NavigationLink("恢复版本") { RecoveryVersionsView() } }.listRowBackground(YubaiColor.card)
-        }.editorForm().navigationTitle("备份与同步").yubaiNavigation().toolbar { CloseButton() }
+        }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().toolbar { CloseButton() }
             .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .yubaiBackup, defaultFilename: exportName) { result in switch result { case .success: message = "文件已保存到你选择的位置。"; case .failure(let error): message = error.localizedDescription } }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.yubaiBackup, .json, .data]) { result in do { acceptBackup(try result.get()) } catch { message = error.localizedDescription } }
             .task { await store.configureSync() }
@@ -193,7 +274,7 @@ struct GuideView: View {
             explanation("我的消费观", "在「我」写下愿意多花、想克制的领域和自己的原则，也可以留储蓄目标与始终留着的底线。它们是你的选择，随时能改；「你常花的」只是账本里的习惯。")
             explanation("导入账单", "支持 CSV、TSV 和 XLSX。对应好实际付款账户，保存后自动整理分类、用途和关联，最多问五个问题，稍后答也可以。云端不可用时先保存，下次继续。需要反悔，可在「我 → 导入记录」整批撤销。")
             explanation("智能与隐私", "云端智能默认关闭。开启后，DeepSeek 会收到你的提问、消费观及任务所需的记录摘要：日期、金额、分类、用途和有限关联证据。截图先在本机识别，只发送脱敏文字；不发送原始图片、账单文件、交易单号或来源指纹，账户使用本地标识，长号码遮盖，部分转账姓名替换为别名。商户和备注仍可能出现在摘要里，脱敏不能识别所有姓名。到「我 → 智能与隐私 → 发给云端的内容」查看本次打开期间最近 50 次发送。密钥保存在本机 Keychain，不进入账本或备份。")
-            explanation("备份与同步", "在「我 → 备份与同步」设置至少 8 位密码，保存加密的完整备份，包含原始账单附件。密码请自己留好。恢复先验证，再等你确认；修改前的最近 20 份完整版本也能找回。iPhone 和 Mac 用同一格式；默认仅本机，iCloud 可用时，可在「备份与同步」选择共享账本。同步冲突会保留各版本，由你选择，不自动合并。")
+            explanation("备份与恢复", "在「我 → 备份与恢复」设置至少 8 位密码，保存加密的完整备份，包含原始账单附件。密码请自己留好。恢复先验证，再等你确认；修改前的最近 20 份完整版本也能找回。iPhone 和 Mac 用同一格式；默认仅本机，iCloud 可用时，可在「备份与恢复」选择共享账本。同步冲突会保留各版本，由你选择，不自动合并。")
         }.navigationTitle("使用指南").yubaiNavigation().toolbar { CloseButton() }
     }
     private func explanation(_ title: String, _ text: String) -> some View {
