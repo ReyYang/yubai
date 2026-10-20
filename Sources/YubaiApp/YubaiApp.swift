@@ -68,6 +68,7 @@ enum AppSheet: Identifiable {
     var errorHosts: [UUID] = []
     var pickingInsightDates = false
     var organizingBatchID: UUID?
+    var reflectingMemories = false
     var updatingWeeklyPush = false
     var organizationErrors: [UUID: String] = [:]
     private var undoLedger: Ledger?; var undoLabel: String?
@@ -90,7 +91,7 @@ enum AppSheet: Identifiable {
         } catch { loadFailure = error.localizedDescription }
     }
 
-    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard canEditLedger() else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
@@ -104,7 +105,7 @@ enum AppSheet: Identifiable {
             if !preservingUpdatedAt { next.updatedAt = Date() }
             try persist(next, reason: reason); ledger = next
             if recordUndo { undoLedger = before; undoLabel = reason; toast = reason + "完成" }; return true
-        } catch { self.error = error.localizedDescription; return false }
+        } catch { if reportError { self.error = error.localizedDescription }; return false }
     }
     @discardableResult func apply(_ changeSet: ChangeSet, label: String, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
         var skipped: [String] = []
@@ -213,10 +214,10 @@ struct RootView: View {
         }
         .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync() } }; if newValue == .background && store.current.preferences.lockEnabled { store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
         .task { await store.configureSync() }
-        .task(id: "\(store.current.id)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)") {
+        .task(id: "\(store.current.id)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
             if phase == .active { await store.organizePendingImports() }
         }
-        .task(id: "\(store.current.id)-\(store.current.updatedAt)-\(store.locked)-\(store.organizingBatchID != nil)-\(phase)") {
+        .task(id: "\(store.current.id)-\(store.current.updatedAt)-\(store.locked)-\(store.organizingBatchID != nil)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
             if phase == .active { await store.refreshButler() }
         }
         .task(id: store.ledger.preferences.weeklyLetterPush) { await WeeklyPush.sync(enabled: store.ledger.preferences.weeklyLetterPush) }

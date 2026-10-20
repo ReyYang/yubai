@@ -151,6 +151,7 @@ enum YubaiSize {
     static let buttonHeight: CGFloat = 52
     static let chipHeight: CGFloat = 32
     static let pillHeight: CGFloat = 28
+    static let tagHeight: CGFloat = 22
     static let tabbarHeight: CGFloat = 62
     static let barMax: CGFloat = 24
     static let lineWidth: CGFloat = 2
@@ -207,6 +208,15 @@ enum YubaiMotion {
 struct PressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+    }
+}
+
+struct SmallActionStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.label)
+            .padding(.horizontal, YubaiSpace.space10).frame(minHeight: YubaiSize.pillHeight)
+            .background(YubaiColor.raised, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
+            .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 

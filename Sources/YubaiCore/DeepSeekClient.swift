@@ -11,6 +11,15 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
     /// Prefer a fast chat model; override with `DEEPSEEK_MODEL` when needed.
     /// Current DeepSeek catalog commonly exposes `deepseek-flash` / `deepseek-v4-pro`.
     public static let defaultModel = "deepseek-flash"
+    public static let modelPreferenceKey = "DeepSeek.model"
+
+    public static func modelName(environment: [String: String] = ProcessInfo.processInfo.environment,
+                                 defaults: UserDefaults = .standard) -> String {
+        for value in [environment["DEEPSEEK_MODEL"], defaults.string(forKey: modelPreferenceKey)] {
+            if let name = value?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty { return name }
+        }
+        return defaultModel
+    }
 
     public init(
         apiKey: String,
@@ -27,7 +36,8 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
     /// Reads `DEEPSEEK_API_KEY` (required), optional `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL`.
     /// Returns `nil` when the key is missing or blank — callers must degrade gracefully.
     public static func fromEnvironment(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        defaults: UserDefaults = .standard
     ) -> DeepSeekConfiguration? {
         guard let raw = environment["DEEPSEEK_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty
@@ -41,18 +51,27 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
             }
             return defaultBaseURL
         }()
-        let model: String = {
-            if let s = environment["DEEPSEEK_MODEL"]?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
-                return s
-            }
-            return defaultModel
-        }()
+        let model = modelName(environment: environment, defaults: defaults)
         return DeepSeekConfiguration(apiKey: raw, baseURL: base, model: model)
     }
 
     /// Redacted description safe for logs / diagnostics (never includes the key).
     public var diagnosticsLabel: String {
         "DeepSeek(\(baseURL.host ?? "?")/\(model))"
+    }
+}
+
+public enum DeepSeekError: Error, LocalizedError, Equatable, Sendable {
+    case modelUnavailable(String)
+    public var errorDescription: String? {
+        switch self { case .modelUnavailable(let model): return "模型「\(model)」现在用不了。请到智能与隐私换一个模型名字再试。" }
+    }
+    static func modelError(status: Int, body: Data, model: String) -> DeepSeekError? {
+        let text = String(decoding: body, as: UTF8.self).lowercased()
+        if text.contains("model_not_found") || ([400, 404].contains(status) && text.contains("model")) {
+            return .modelUnavailable(model)
+        }
+        return nil
     }
 }
 
@@ -132,6 +151,7 @@ public struct DeepSeekClient: ChatTransport {
         guard let http = response as? HTTPURLResponse else { throw YubaiError.invalid("云端响应异常。") }
         guard (200..<300).contains(http.statusCode) else {
             // Response bodies may echo credentials. Do not expose them.
+            if let error = DeepSeekError.modelError(status: http.statusCode, body: data, model: configuration.model) { throw error }
             if http.statusCode == 401 || http.statusCode == 403 {
                 throw YubaiError.invalid("云端密钥无效或无权访问，请检查密钥设置。")
             }

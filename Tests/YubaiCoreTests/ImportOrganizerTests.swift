@@ -58,6 +58,47 @@ private struct ImportEval: Decodable {
 }
 
 final class ImportOrganizerTests: XCTestCase {
+    func testFreeAnswerAndMemoryPersistTogetherAndBatchUndoRemovesOnlyItsMemories() throws {
+        let fixture = try ImportEval.load(); let data = try fixture.imported()
+        var ledger = data.imported
+        let entry = try XCTUnwrap(ledger.entries.first { $0.batchID == data.batch.id })
+        let question = ImportQuestion(text: "这笔钱是什么用途？", entryIDs: [entry.id], options: [])
+        let organization = ImportOrganization(changeSet: ChangeSet(source: "导入整理", reason: "补充用途",
+            items: [.setPurpose(entry: entry.id, text: "待明确")]), questions: [question], skipped: [])
+        let before = ledger
+        try organization.changeSet.apply(to: &ledger)
+        organization.finish(batchID: data.batch.id, before: before, in: &ledger)
+        let unanswered = ledger
+        XCTAssertThrowsError(try question.describe("两行\n用途", batchID: data.batch.id, in: &ledger))
+        XCTAssertEqual(ledger, unanswered)
+        var samePurpose = unanswered
+        let sameIndex = try XCTUnwrap(samePurpose.entries.firstIndex { $0.id == entry.id })
+        samePurpose.entries[sameIndex].purpose = "已经写过的用途"
+        XCTAssertNoThrow(try question.describe("已经写过的用途", batchID: data.batch.id, in: &samePurpose))
+        XCTAssertTrue(samePurpose.imports[0].organization?.questions.isEmpty == true)
+        try question.describe("和张三合租，房租我出六成", batchID: data.batch.id, in: &ledger)
+        let memory = try XCTUnwrap(ledger.memories.first)
+        XCTAssertEqual(memory.source, .importAnswer); XCTAssertEqual(memory.kind, .life)
+        XCTAssertEqual(memory.evidence, [entry.id]); XCTAssertFalse(memory.text.contains("张三"))
+        XCTAssertEqual(ledger.entries.first { $0.id == entry.id }?.purpose, "和张三合租，房租我出六成")
+        XCTAssertTrue(ledger.imports[0].organization?.questions.isEmpty == true)
+        XCTAssertEqual(ledger.imports[0].undo?.memoryIDs, [memory.id])
+        let answered = ledger
+        XCTAssertThrowsError(try question.describe("再次回答", batchID: data.batch.id, in: &ledger))
+        XCTAssertEqual(ledger, answered)
+        let unrelated = MemoryNote(text: "另一条聊天记忆", kind: .plan, source: .chat)
+        ledger.memories.append(unrelated)
+        ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        BillImporter.undo(batchID: data.batch.id, in: &ledger)
+        var expected = data.before; expected.memories = [unrelated]
+        XCTAssertEqual(ledger, expected)
+    }
+    func testLegacyImportUndoWithoutMemoryIDsDecodes() throws {
+        let old = ImportUndo(updatedAt: Date())
+        let data = try JSONEncoder().encode(old)
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("memoryIDs"))
+        XCTAssertNil(try JSONDecoder().decode(ImportUndo.self, from: data).memoryIDs)
+    }
     func testFixtureProposalsFinancialInvariantsAndByteIdenticalBatchUndo() async throws {
         let fixture = try ImportEval.load(); let data = try fixture.imported()
         let scripted = fixture.script(ids: data.ids)

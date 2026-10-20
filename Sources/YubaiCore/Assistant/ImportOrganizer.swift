@@ -24,6 +24,29 @@ public struct ImportQuestion: Codable, Identifiable, Equatable, Sendable {
         guard !items.isEmpty else { return nil }
         return ChangeSet(source: "回答整理问题", reason: text, items: items)
     }
+    /// Save the free answer and its memory atomically, including the batch undo delta.
+    public func describe(_ text: String, batchID: UUID, in ledger: inout Ledger, now: Date = Date()) throws {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean.count <= 80, !clean.contains(where: { $0.isNewline }),
+              let batch = ledger.imports.first(where: { $0.id == batchID && $0.undoneAt == nil }),
+              batch.organization?.questions.contains(self) == true, !entryIDs.isEmpty,
+              entryIDs.allSatisfy({ id in ledger.activeEntries.contains { $0.id == id } }) else {
+            throw YubaiError.invalid("请用不超过80字的一句话补充尚未处理的用途。")
+        }
+        let before = ledger; var next = ledger
+        let change = ChangeSet(source: "回答整理问题", reason: self.text, items: entryIDs.map { .setPurpose(entry: $0, text: clean) })
+        _ = try change.apply(to: &next)
+        guard entryIDs.allSatisfy({ id in next.activeEntries.contains { $0.id == id && $0.purpose == clean } }) else {
+            throw YubaiError.invalid("相关记录已改变，请重新补充。")
+        }
+        next.memories.append(MemoryNote(text: Redactor(ledger: next).text(clean), kind: .life, source: .importAnswer,
+                                        createdAt: now, evidence: entryIDs))
+        if let i = next.imports.firstIndex(where: { $0.id == batchID }) { next.imports[i].organization?.questions.removeAll { $0.id == id } }
+        for i in next.cards.indices where next.cards[i].importQuestion?.id == id { next.cards[i].dismissedAt = now }
+        ImportOrganization.recordUndo(batchID: batchID, before: before, in: &next)
+        next.updatedAt = max(now, ledger.updatedAt)
+        try next.validate(); ledger = next
+    }
 }
 
 /// A delta, never a recursively embedded ledger snapshot. Older imports decode with nil.
@@ -32,6 +55,7 @@ public struct ImportUndo: Codable, Equatable, Sendable {
     public var entries: [Entry] = []
     public var planIDs: [UUID] = []
     public var cardIDs: [UUID] = []
+    public var memoryIDs: [UUID]? = nil
     public init(updatedAt: Date) { self.updatedAt = updatedAt }
 }
 
@@ -74,6 +98,9 @@ public struct ImportOrganization: Codable, Equatable, Sendable {
         let plans = Set(before.plans.map(\.id)), cards = Set(before.cards.map(\.id))
         undo.planIDs += ledger.plans.filter { !plans.contains($0.id) }.map(\.id)
         undo.cardIDs += ledger.cards.filter { !cards.contains($0.id) }.map(\.id)
+        let memories = Set(before.memories.map(\.id))
+        let added = ledger.memories.filter { !memories.contains($0.id) }.map(\.id)
+        if !added.isEmpty { undo.memoryIDs = (undo.memoryIDs ?? []) + added }
         ledger.imports[i].undo = undo
     }
 }

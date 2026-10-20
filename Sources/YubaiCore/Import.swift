@@ -238,6 +238,7 @@ public enum BillImporter {
             }
             ledger.plans.removeAll { undo.planIDs.contains($0.id) }
             ledger.cards.removeAll { undo.cardIDs.contains($0.id) }
+            for id in undo.memoryIDs ?? [] { Memory.reject(lineMemoryID: id, in: &ledger, now: now) }
             ledger.attachments.removeAll { $0.id == batch.attachmentID }
             ledger.imports.removeAll { $0.id == batchID }
             ledger.updatedAt = undo.updatedAt

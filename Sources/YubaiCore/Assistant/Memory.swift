@@ -107,6 +107,19 @@ public enum Memory {
             ledger.updatedAt = max(now, ledger.updatedAt)
         } else { reject(lineMemoryID: noteID, in: &ledger, now: now) }
     }
+    public static func edit(noteID: UUID, text: String, in ledger: inout Ledger, now: Date = Date()) throws {
+        guard let i = ledger.memories.firstIndex(where: { $0.id == noteID }) else { throw YubaiError.invalid("这条记忆已删除。") }
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard validText(clean) else { throw YubaiError.invalid("请用不超过200字的一句话。") }
+        guard clean != ledger.memories[i].text else { return }
+        var next = ledger
+        next.memories[i].previousText = next.memories[i].text
+        next.memories[i].text = clean; next.memories[i].source = .user
+        next.memories[i].updatedAt = max(now, next.memories[i].updatedAt)
+        _ = removeLearnedLines(for: noteID, in: &next)
+        next.updatedAt = max(now, ledger.updatedAt)
+        try next.validate(); ledger = next
+    }
     public static func reject(lineMemoryID: UUID, in ledger: inout Ledger, now: Date = Date()) {
         let count = ledger.memories.count
         ledger.memories.removeAll { $0.id == lineMemoryID }

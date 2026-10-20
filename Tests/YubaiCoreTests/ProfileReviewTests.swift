@@ -2,6 +2,21 @@ import XCTest
 @testable import YubaiCore
 
 final class ProfileReviewTests: XCTestCase {
+    func testReviewSummaryUsesConfirmationMonthAndOnlyCompleteWeeks() throws {
+        var ledger = seed()
+        let monday = ButlerCards.calendar.dateInterval(of: .weekOfYear, for: now)!.start
+        ledger.entries = (-3...0).flatMap { offset -> [Entry] in
+            (0..<(offset == 0 ? 10 : 4)).map { _ in
+                Entry(date: Dates.addDays(offset * 7, to: monday), amount: 1000,
+                      accountID: ledger.accounts[0].id, title: "合成外卖", category: "餐饮")
+            }
+        }
+        let candidate = try XCTUnwrap(ProfileReview.candidate(ledger: ledger, now: now))
+        let text = ProfileReview.summary(candidate, now: now)
+        XCTAssertTrue(text.contains("你 7 月写下「外卖想少一点」"))
+        XCTAssertTrue(text.contains("3 个月没动过了"))
+        XCTAssertTrue(text.contains("平均每周 4 次"))
+    }
     private let now = Dates.parse("2026-10-20 12:00")!
     private func seed() -> Ledger {
         var ledger = Ledger(); ledger.updatedAt = now; ledger.profile.updatedAt = now
@@ -47,11 +62,14 @@ final class ProfileReviewTests: XCTestCase {
         var ledger = seed(); let candidate = try XCTUnwrap(ProfileReview.candidate(ledger: ledger, now: now))
         let before = ledger
         let proposal = try ProfileReview.remove(candidate, in: ledger, now: now)
+        XCTAssertTrue(ProfileReview.isCurrent(candidate, in: ledger))
         XCTAssertEqual(ledger, before); XCTAssertTrue(ledger.pendingChanges.isEmpty)
         XCTAssertTrue(proposal.isProfileOnly); XCTAssertEqual(proposal.source, "画像回顾"); XCTAssertEqual(proposal.createdAt, now)
         try proposal.apply(to: &ledger)
+        XCTAssertFalse(ProfileReview.isCurrent(candidate, in: ledger))
         XCTAssertTrue(ledger.profile.restrain.isEmpty)
         ledger = before; try ProfileReview.keep(candidate, in: &ledger, now: now)
+        XCTAssertFalse(ProfileReview.isCurrent(candidate, in: ledger))
         XCTAssertEqual(ledger.profile.restrain[0].confirmedAt, now); XCTAssertEqual(ledger.profile.updatedAt, now)
         XCTAssertEqual(ledger.profile.restrain[0].note, before.profile.restrain[0].note)
         XCTAssertNil(ProfileReview.candidate(ledger: ledger, now: now))

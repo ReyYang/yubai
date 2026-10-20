@@ -2,6 +2,24 @@ import XCTest
 @testable import YubaiCore
 
 final class DeepSeekCloudTests: XCTestCase {
+    func testModelPreferenceIsUsedWithBothKeySourcesAndEnvironmentStillWins() throws {
+        let suite = "YubaiModelTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let storage = MemoryAPIKeyStorage(); let keys = APIKeyStore(storage: storage)
+        XCTAssertEqual(DeepSeekConfiguration.modelName(environment: [:], defaults: defaults), DeepSeekConfiguration.defaultModel)
+        defaults.set("  replacement-model  ", forKey: DeepSeekConfiguration.modelPreferenceKey)
+        let env = ["DEEPSEEK_API_KEY": "env-key"]
+        XCTAssertEqual(keys.configuration(environment: env, defaults: defaults)?.model, "replacement-model")
+        try keys.save("keychain-key")
+        XCTAssertTrue(keys.hasKeychainKey)
+        XCTAssertEqual(keys.configuration(environment: env, defaults: defaults)?.apiKey, "keychain-key")
+        XCTAssertEqual(keys.configuration(environment: env, defaults: defaults)?.model, "replacement-model")
+        XCTAssertEqual(keys.configuration(environment: ["DEEPSEEK_MODEL": "override-model"], defaults: defaults)?.model, "override-model")
+        defaults.set(" ", forKey: DeepSeekConfiguration.modelPreferenceKey)
+        XCTAssertEqual(DeepSeekConfiguration.modelName(environment: ["DEEPSEEK_MODEL": " "], defaults: defaults), DeepSeekConfiguration.defaultModel)
+        try keys.delete(); XCTAssertFalse(keys.hasKeychainKey)
+    }
     func testConfigurationMissingKeyReturnsNil() {
         XCTAssertNil(DeepSeekConfiguration.fromEnvironment(environment: [:]))
         XCTAssertNil(DeepSeekConfiguration.fromEnvironment(environment: ["DEEPSEEK_API_KEY": "  "]))

@@ -1,6 +1,6 @@
 # 共享云端助手
 
-实现放在 `Sources/YubaiCore/Assistant/`；数字工具只读账本快照，账务与画像修改生成待确认的 ChangeSet。2026-10-20 owner 决定：生活背景记忆直接保存，可查看、改、删和撤销；会触发提醒的画像规则仍需确认。金额来自 `Finance` 或账本整数分，并同时提供 `{text: Money.text(cents), cents: 整数分}`。密钥保存在本机钥匙串，开发环境变量作为回退；不进入账本或备份。模型默认值仍为 `DeepSeekConfiguration.defaultModel`，可用 `DEEPSEEK_MODEL` 覆盖。
+实现放在 `Sources/YubaiCore/Assistant/`；数字工具只读账本快照，账务与画像修改生成待确认的 ChangeSet。2026-10-20 owner 决定：生活背景记忆直接保存，可查看、改、删和撤销；会触发提醒的画像规则仍需确认。金额来自 `Finance` 或账本整数分，并同时提供 `{text: Money.text(cents), cents: 整数分}`。密钥保存在本机钥匙串，开发环境变量作为回退；不进入账本或备份。模型按 `DEEPSEEK_MODEL` → 本机 UserDefaults 的 `DeepSeek.model` → `DeepSeekConfiguration.defaultModel` 读取；界面可编辑模型名，密钥仍单独保存在钥匙串。
 
 ## 公开接口
 
@@ -105,7 +105,7 @@ iCloud选定版本后、持久化前调用LedgerMemoryMerge，仅合并同ledger
 
 工具使用不可变快照，因此 `AssistantReply.rememberedNotes` 带新增条目，`updatedNotes` 带 `MemoryUpdate(previous: 原条目, note: 新条目)`，`usedMemoryIDs` 带本次使用标记。同轮工具立即读到暂存的新文字；一轮多次更新同一记忆合为一次更新，previousText 保留本轮前原话。本轮新建后再更新的记忆撤销时删除。成功的相同 remember 参数在整个答复中复用，避免隔轮重试重复记下；记忆改变后清掉旧只读结果缓存。
 
-调用方须在一次 `store.update` 内先调用 `try Memory.apply(reply, to: &ledger, now: now)`，再登记其他待确认提案；本轮没有修改 App，现有 App 尚未消费这些新增字段。apply 核对账本ID、快照更新时间、被替换的原条目，验证完整候选后一次赋值，避免覆盖用户刚改过或删过的记忆。账本变化、网络失败或任务取消时丢弃整份结果，重新取快照再试。撤销新增用 `Memory.undo` 删除，撤销更新恢复 previousText 并刷新更新时间；只保留一层原话，完整历史仍由恢复版本提供。来信“不对”用 `Memory.reject` 真删除记忆，同时清理各来信中的关联 learned 行。
+调用方须在一次 `store.update` 内先调用 `try Memory.apply(reply, to: &ledger, now: now)`，再登记其他待确认提案；App 已在问答与冷启动回复的同次 update 内消费这些字段；保存成功后才展示回答与“已记下”行。apply 核对账本ID、快照更新时间、被替换的原条目，验证完整候选后一次赋值，避免覆盖用户刚改过或删过的记忆。账本变化、网络失败或任务取消时丢弃整份结果，重新取快照再试。撤销新增用 `Memory.undo` 删除，撤销更新恢复 previousText 并刷新更新时间；只保留一层原话，完整历史仍由恢复版本提供。来信“不对”用 `Memory.reject` 真删除记忆，同时清理各来信中的关联 learned 行。
 
 `Wishlist.answerFollowUp` 有自由文字时，不调用模型，直接写一条 value／followUp 记忆：“买了「X」，一个月后觉得值得／一般／有点后悔：原话”。保留真实选择，标题最多40字、整句最多200字，换行转为空格；完整回答仍保留在心愿中。只选按钮或空白文字不新增记忆，重复回答被拒。
 
@@ -137,9 +137,20 @@ iCloud选定版本后、持久化前调用LedgerMemoryMerge，仅合并同ledger
 
 提示禁止记证件号、卡号、他人全名；写入和读取都经过现有 Redactor。启发式脱敏不能保证识别任意姓名，也不能从模型文字证明事实真实或长期有效，这些边界仍需真实发送样本与用户纠正验证。记忆随账本备份／同步，云端智能启用时以脱敏背景发送，不建立额外远端记忆库。
 
-本轮严格只改 YubaiCore、测试、文档。界面设计确认后接入：聊天／冷启动回复的单次 Memory.apply、记忆列表编辑删除与撤销、来信 learned 的“不对”、review 的保留／删除提案／修改跳转；在 `IntelligenceRuntime.refreshButler` 同类刷新时机检查 isDue，使用活动账本 transport，成功后同一 update 应用回看结果，失败静默保留下次重试。isDue 检查应放在现有 candidates.isEmpty 早退之前，没有新卡片也可回看；缺少可用 transport 时保留周次不动。并发刷新只允许一个回看任务，保存前继续检查取消与快照。来信已生成时补充，不新增第二封。
+2026-10-20 界面阶段已按用户确认的八张画板接入（[源码映射](../.design-meta/DESIGN.md#2026-10-20--记忆与智能设置选定稿)）：
 
-导入自由补充的 `describeImportQuestion` 目前只在 YubaiApp；core 的 ImportQuestion.answer 只接受选项，没有自由文字入口。本轮不改它，界面阶段须在已成功保存用途的同一次 update 写入 importAnswer 记忆、关联 question.entryIDs，并纳入该导入批次的撤销差量；不可把所有 setPurpose 自动当成导入回答记忆。来源 feedback／user 已保留，卡片反馈通过每周回看整理，本轮不增加其他写入入口。
+- 问答和冷启动在同次 update 先 Memory.apply，再保存待确认提案；只有保存成功才展示结果。问答回答卡逐条展示新增／更新记忆及撤销，撤销前核对原条目未被后来编辑，lastUsedAt 的变化不阻止撤销。放下问答提案同步移除 pendingChanges。
+- “我”与 Mac 共用的 MemoryView 展示三个非空组、日期、中文来源与原话；点击编辑、左滑／编辑页删除。Memory.edit 保留身份和依据，记录一层 previousText，来源改为 user；编辑／删除清理相关来信 learned 行。编辑器保存前核对原条目，防止覆盖同步进来的修改。
+- 来信依据下先显示 learned，再显示 review；“不对”调用 Memory.reject。“还算数”调用 ProfileReview.keep，“改一下”进入消费观，“不需要了”保存删除提案并打开现有 ButlerProposalView，确认才删除。ProfileReview.isCurrent 隐藏已被确认、改动或删除的旧问题；summary 使用写下月份及未动时长，近况按三个完整周的次数平均，排除当前未完周，原则不编造使用量。
+- refreshButler 在 candidates.isEmpty 早退之前检查 MemoryReflection.isDue，使用活动账本 transport 后台回看。并发只允许一个回看；返回后核对 Task 取消、账本快照、锁、导入与同步选择状态；成功同次静默 update 应用结果，周次及来信一起保存，无变化也登记本周。失败不提示、不标记周次，下次刷新可重试；已有来信补充而不再生成一封。
+
+导入自由补充已移入 core 的 `ImportQuestion.describe(_:batchID:in:now:)`，App 在一次 update 内调用。校验问题仍未回答、记录仍有效及80字单行输入；用途保存原文，生活情况记忆保存脱敏文字，来源 importAnswer，依据为 question.entryIDs；问题移除、卡片收起及记忆全部原子写入。ImportUndo 新增可选 memoryIDs，旧 JSON 缺失仍兼容；整批撤销删除该批自由回答产生的记忆并清理 learned 行，保留其他记忆。普通 setPurpose 和选项回答不自动产生记忆，资金性质不猜测。卡片反馈仍通过每周回看整理。
+
+### 智能与隐私及模型不可用
+
+“智能与隐私”按稿分为云端智能／隐私，展示实际生效的模型、钥匙串状态与“本次打开后 N 条”。SendLog.totalCount 为本次进程的发送尝试总数，正文仍只保留最近50条；失败尝试也计数，重开归零。密钥输入、替换、删除与连接测试沿用原有实现；原设备／外观／来信提醒设置继续保留在下方。
+
+模型名保存在本机 UserDefaults，不进入账本或备份；APIKeyStore 的钥匙串和环境密钥路径都读取它，非空 DEEPSEEK_MODEL 优先。DeepSeekClient 在 HTTP 400／404 且错误体提及 model，或错误体含明确 model_not_found 时抛出 `DeepSeekError.modelUnavailable(实际模型名)`，不泄露服务错误体。App 的 CloudAIStatus 记在本机偏好中，所有活动账本传输及连接测试都更新它；智能页显示原稿 amber 提示，问答提供相同意思的提示与设置入口。已知模型不可用时暂停问答／导入／回看，成功请求或保存模型名后清除，旧模型请求不能污染新模型状态。模拟器脚本路径忽略已保存的错误状态，不访问实网。
 
 ## 会话生命周期
 

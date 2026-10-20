@@ -71,6 +71,7 @@ final class AssistantPrivacyTests: XCTestCase {
             log.record(purpose: "测试\(index)", model: "test-model", body: Data(("secret-key" + String(repeating: "余", count: 2000)).utf8), apiKey: "secret-key")
         }
         XCTAssertEqual(log.items.count, 50); XCTAssertEqual(log.items.first?.purpose, "测试54"); XCTAssertEqual(log.items.last?.purpose, "测试5")
+        XCTAssertEqual(log.totalCount, 55)
         for item in log.items {
             XCTAssertLessThanOrEqual(item.requestText.utf8.count, 4099)
             XCTAssertGreaterThan(item.byteSize, 4096); XCTAssertFalse(item.requestText.contains("secret-key"))

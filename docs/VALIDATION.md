@@ -1,5 +1,14 @@
 # 余白 · 交付与验证记录
 
+## 记忆与智能设置界面静态检查（2026-10-20）
+
+- 按用户确认的八张 HTML 源码实现记忆列表、问答撤销、来信 learned／review、智能与隐私及模型不可用状态，原稿原样保存在 `.design-meta/mockups/ai-memory-v3/`，映射见 [DESIGN.md](../.design-meta/DESIGN.md#2026-10-20--记忆与智能设置选定稿)。
+- 新增／扩展 core 测试源码覆盖用户编辑、导入自由补充的原子保存与批次撤销／旧JSON、画像回顾近况与已解决状态、模型偏好优先级、真实 HTTP 错误分类及响应体不外泄、发送总计。UI 测试新增第六条脚本流程：问答记下 → 我 → 记忆编辑 → 重开 → 删除；脚本不受之前保存的模型错误状态影响。
+- 已通读变更并使用 tree-sitter 解析 `Sources/`、`Tests/`、`Package.swift` 共85个 Swift 文件，零语法解析错误；已运行 `python3 scripts/generate-project.py` 更新工程，检查 App 源文件引用及重复生成一致性，`git diff --check` 通过。
+- 当前没有 Swift／Xcode／Apple SDK，未进行 Swift 类型检查、编译、XCTest 或 UI 运行，也未请求 DeepSeek。SwiftUI 的分组 List／编辑器、嵌套提案 sheet、Observable 跨 actor 状态以及两端 SDK 可用性仍须实际构建确认。设计已获确认，原生视觉／触控／辅助功能尚未验收；旧 Figma／原型／截图／包未同步。本轮未创建 git commit。
+- 本批全部手动验收项统一维护在 [组合清单的记忆与智能设置部分](V2-TEST-CHECKLIST.md#记忆与智能设置2026-10-20-用户确认稿尚未运行)，均未勾选，不视为已通过。
+
+
 ## 余白记忆层 core 静态检查（2026-10-20）
 
 分支 `feat/ai-memory-drift-fixes` 本轮只改 YubaiCore、测试和文档，YubaiApp 无差异，未创建提交。新增记忆读写／撤销、每周回看、来信 learned 与画像过期回顾；接口与待接线事项见 [ASSISTANT.md](ASSISTANT.md#余白记得的记忆层-core2026-10-20)。
@@ -22,7 +31,7 @@ owner 于 2026-10-20 决定暂不加入付费 Apple Developer Program：本轮�
 ## 安装与构建
 
 - [ ] 安装：本轮用 Xcode 直接装到 iPhone 和 Mac（免费个人团队，签名 7 天有效）；TestFlight 脚本已备好，开通付费开发者账号后按 docs/TESTFLIGHT.md 使用。
-- [ ] 构建：Xcode 26 打开 `Yubai.xcodeproj`，iPhone 模拟器与 My Mac 两个目标都能编译；`swift test` 全部通过；`YubaiUITests` 五条流程通过。
+- [ ] 构建：Xcode 26 打开 `Yubai.xcodeproj`，iPhone 模拟器与 My Mac 两个目标都能编译；`swift test` 全部通过；`YubaiUITests` 六条流程通过（新增问答记忆 → 我 → 编辑／重开／删除）。
 
 ## 升级与智能设置
 

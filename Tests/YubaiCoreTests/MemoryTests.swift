@@ -2,6 +2,26 @@ import XCTest
 @testable import YubaiCore
 
 final class MemoryTests: XCTestCase {
+    func testUserEditKeepsIdentityHistoryAndEvidenceAndCanBeUndone() throws {
+        var ledger = seed(); let original = note()
+        ledger.memories = [original]
+        try Memory.edit(noteID: original.id, text: "  计划独自住  ", in: &ledger, now: now)
+        XCTAssertEqual(ledger.memories[0].text, "计划独自住")
+        XCTAssertEqual(ledger.memories[0].source, .user)
+        XCTAssertEqual(ledger.memories[0].id, original.id)
+        XCTAssertEqual(ledger.memories[0].createdAt, original.createdAt)
+        XCTAssertEqual(ledger.memories[0].evidence, original.evidence)
+        XCTAssertEqual(ledger.memories[0].previousText, original.text)
+        let edited = ledger
+        for invalid in [" ", "分成\n两行", String(repeating: "字", count: 201)] {
+            XCTAssertThrowsError(try Memory.edit(noteID: original.id, text: invalid, in: &ledger, now: now))
+            XCTAssertEqual(ledger, edited)
+        }
+        Memory.undo(noteID: original.id, in: &ledger, now: now)
+        XCTAssertEqual(ledger.memories[0].text, original.text)
+        XCTAssertNil(ledger.memories[0].previousText)
+        XCTAssertThrowsError(try Memory.edit(noteID: UUID(), text: "已删的记忆", in: &ledger, now: now))
+    }
     private let now = Dates.parse("2026-10-20 12:00")!
     private func seed() -> Ledger {
         var ledger = Ledger(); ledger.updatedAt = now; ledger.profile.updatedAt = now

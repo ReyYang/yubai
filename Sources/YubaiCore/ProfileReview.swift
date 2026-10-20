@@ -53,6 +53,25 @@ public enum ProfileReview {
             guard candidate.text == text, ledger.profile.principles.contains(text), ledger.profile.principleDates[text] == candidate.confirmedAt else { throw YubaiError.invalid("这条原则已改变，请刷新来信。") }
         }
     }
+    public static func isCurrent(_ candidate: ProfileReviewCandidate, in ledger: Ledger) -> Bool {
+        (try? check(candidate, in: ledger)) != nil
+    }
+    public static func summary(_ candidate: ProfileReviewCandidate, now: Date = Date()) -> String {
+        let month = Dates.calendar.component(.month, from: candidate.confirmedAt)
+        let months = max(0, Dates.calendar.dateComponents([.month], from: candidate.confirmedAt, to: now).month ?? 0)
+        let age: String
+        if months > 0 { age = "\(months) 个月" }
+        else { age = "\(max(0, Dates.calendar.dateComponents([.day], from: candidate.confirmedAt, to: now).day ?? 0)) 天" }
+        // Exclude the current partial week from the weekly average.
+        let complete = candidate.usage.dropLast()
+        let recent: String
+        if complete.isEmpty { recent = "最近的取舍，想听听你现在怎么想。" }
+        else {
+            let average = Double(complete.reduce(0) { $0 + $1.count }) / Double(complete.count)
+            recent = "这几周平均每周 " + average.formatted(.number.precision(.fractionLength(0...1)).locale(Locale(identifier: "zh_CN"))) + " 次。"
+        }
+        return "你 \(month) 月写下「\(candidate.text)」，\(age)没动过了。" + recent
+    }
     public static func keep(_ candidate: ProfileReviewCandidate, in ledger: inout Ledger, now: Date = Date()) throws {
         try check(candidate, in: ledger)
         var next = ledger

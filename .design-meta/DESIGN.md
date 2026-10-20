@@ -1,5 +1,22 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-20 · 记忆与智能设置选定稿
+
+owner 本轮明确确认八张记忆与智能设置画板，按当前 `feat/ai-memory-drift-fixes` 源码结构接入；批准设计稿不代表已经完成原生设备验收。[原样保存的画板](mockups/ai-memory-v3/README.md)补充并取代下方相应的「缺画板／界面待确认」历史状态。
+
+| 用户确认的画板 | 对应权威源码与实现 |
+|---|---|
+| [V3-Ask-Remember](mockups/ai-memory-v3/V3-Ask-Remember.dc.html) | `AskYubaiView.swift` + `MemoryView.swift / RememberedRows`；一次 update 保存记忆及待确认提案，新增／更新各一行，撤销调用 Memory.undo，旧回答不会覆盖后来编辑过的记忆 |
+| [V3-Memory](mockups/ai-memory-v3/V3-Memory.dc.html) | 新 `MemoryView.swift`；三组非空记忆、日期／中文来源／原话，原生列表支持左滑删除，点开编辑或删除；空状态沿用用户指定的唯一补充文案 |
+| [V3-Me](mockups/ai-memory-v3/V3-Me.dc.html) | `SettingsView.swift`；消费观与心愿之间的记忆入口及本周新增计数，智能入口使用 brand-tint 已配好标签；Mac 的「我」复用同一页面 |
+| [V3-Letter-Learned](mockups/ai-memory-v3/V3-Letter-Learned.dc.html) | `ButlerViews.swift / WeeklyLetterCard`；依据下方的 brand-tint 卡，每句“不对”调用 Memory.reject 后隐藏 |
+| [V3-Letter-Review](mockups/ai-memory-v3/V3-Letter-Review.dc.html) | 同上，learned 后为 amber 回顾卡；保留刷新确认日期，修改进入消费观，删除经现有 ButlerProposalView 确认；过时问题不继续展示 |
+| [V3-Ask-Judge](mockups/ai-memory-v3/V3-Ask-Judge.dc.html) | `AskYubaiView.swift / AskPurchaseCard`；本地引用读取带 confirmed_at 的原则／领域，显示“你 X 月写过”，未知时间和超过180天沿用 core 的提示约定 |
+| [V3-AI](mockups/ai-memory-v3/V3-AI.dc.html) | `SettingsView.swift / IntelligencePrivacyView` + `CloudAssistantViews.swift`；云端与隐私两组、当前模型及编辑、钥匙串密钥输入、会话发送总数和原稿说明；原有来信提醒、设备锁与外观项继续保留在下方 |
+| [V3-AI-ModelError](mockups/ai-memory-v3/V3-AI-ModelError.dc.html) | `CloudAssistantViews.swift / ModelUnavailableNote` + `IntelligenceRuntime.swift / CloudAIStatus`；按稿显示实际模型名，问答内提供设置入口；错误状态留本机，成功请求或保存模型后清除 |
+
+只扩展 `DesignSystem.swift` 的小动作按钮与标签高度，继续使用现有语义颜色／字体／卡片。记忆列表使用原生分组 List 以提供两端删除能力，编辑器沿用原生 Form；原稿没有独立编辑画板。每周回看在管家刷新早退之前执行，成功原子保存并更新来信，失败静默。本轮重新生成 Xcode 工程，仅完成源码通读、Swift 语法解析和工程静态核对；编译、iPhone／Mac 布局、深色、大字号、VoiceOver、网络及 Keychain 验证待做，见 [验收清单](../docs/V2-TEST-CHECKLIST.md)。
+
 **2026-10-20 第三轮选定稿**：本轮 owner 明确批准本地 `design-ref/mockups/V3-*.dc.html` 全 13 稿及 `design-ref/ds`（来源目录为 `/tmp/claude-0/-home-user-yubai/daae97b0-203d-51d2-aee2-e0a1c7360177/scratchpad/`）。`refactor/v2-design-alignment` 已以此对齐 SwiftUI：iPhone 三 tab 浮动同排导航，Mac 三项侧栏与根页问余白圆钮；现在只露一张管家卡、来信入口与可收缩图表，洞察复用 Finance 的净收支口径，其余稿沿用真实数据和已有目的地。图表仍展示现有引擎已扣预留的保守路径；无依据的示例内容不补造。仅语法与工程静态检查，编译、两端视觉、Dynamic Type、VoiceOver 与设备验收待做；下方候选／缺画板记载为对齐前历史，Figma、旧原型与分发包仍未同步。
 
 更新：2026-10-20。当前为「余白 2.0 · 管家」，沿用暖纸设计系统与原生 SwiftUI 组件构建候选 UI；页面视觉尚未定稿，采用不等于用户已经完成个人体验验收。用户决定与 Agent 实现选择以[第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)为准。

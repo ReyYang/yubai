@@ -7,12 +7,12 @@ final class CloudTestStub {
     private let session: URLSession
     private let host: String
 
-    init(rawResponse: Bool = false, reply: @escaping (URLRequest) throws -> String) {
+    init(rawResponse: Bool = false, statusCode: Int = 200, reply: @escaping (URLRequest) throws -> String) {
         let host = UUID().uuidString.lowercased() + ".yubai.test"
         CloudTestURLProtocol.register({ request in
             let content = try reply(request)
-            if rawResponse { return Data(content.utf8) }
-            return try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]])
+            if rawResponse { return (Data(content.utf8), statusCode) }
+            return (try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]]), statusCode)
         }, for: host)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CloudTestURLProtocol.self]
@@ -63,9 +63,9 @@ final class CloudTestStub {
 
 private final class CloudTestURLProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
-    private static var replies: [String: (URLRequest) throws -> Data] = [:]
+    private static var replies: [String: (URLRequest) throws -> (Data, Int)] = [:]
 
-    static func register(_ reply: @escaping (URLRequest) throws -> Data, for host: String) {
+    static func register(_ reply: @escaping (URLRequest) throws -> (Data, Int), for host: String) {
         lock.lock(); defer { lock.unlock() }
         replies[host] = reply
     }
@@ -84,8 +84,8 @@ private final class CloudTestURLProtocol: URLProtocol, @unchecked Sendable {
         Self.lock.unlock()
         do {
             guard let reply, let url = request.url else { throw URLError(.unsupportedURL) }
-            let data = try reply(request)
-            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let (data, status) = try reply(request)
+            let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)

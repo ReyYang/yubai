@@ -11,6 +11,8 @@ Status: open
 
 `feat/yubai-2-butler` 的步骤 1–9 及 TestFlight 准备已落地源码，尚未编译或运行。用户决定与 Agent 实现选择、当前实现差异统一记录在[第 13 票](issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。Mac 保留；iCloud 已实现且构建默认关闭，可单行配置启用。owner 暂不加入付费开发者计划，先用 Xcode 免费团队直接安装，TestFlight 留待以后；最后仅提交一个到 main 的 PR，由 owner 在 Mac 按[组合清单](../../docs/V2-TEST-CHECKLIST.md)一次验收。本轮步骤 10 只同步记录，不创建提交或推送。owner 同日补充采用[AI 记忆与画像改进](issues/13-complete-personal-release.md#2026-10-20--ai-记忆与画像改进owner-明确决定)：取消AI次数上限、画像带时间、60天对称反馈、确认分类记忆，以及选定交易版本后的记忆合并；本轮只改非界面代码与文档，未编译或运行。以下保留 1.0 历史语境。
 
+2026-10-20 owner 确认记忆与智能设置八张 V3 画板并授权 App 接线，已写记忆管理、问答撤销、每周回看、来信回顾、导入自由补充及可编辑模型／模型不可用状态，见[第13票续作](issues/13-complete-personal-release.md#2026-10-20--记忆与智能设置界面owner-确认稿)。原稿与源码映射见[设计登记](../../.design-meta/DESIGN.md#2026-10-20--记忆与智能设置选定稿)；只完成静态检查，未编译／运行／提交。
+
 ## Destination
 
 2026-10-20 owner 进一步明确[余白记忆层](issues/13-complete-personal-release.md#2026-10-20--余白记忆层owner-明确决定)：长期生活背景由 AI 直接保存、用户可改删撤销，提醒画像仍确认；本轮仅完成 core、测试源码与文档，每周回看／记忆管理等 App 接线待界面设计确认，尚未编译或运行。

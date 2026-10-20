@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-20 记忆与智能设置续作**：owner 已确认本轮八张画板，原样归档于 [ai-memory-v3](mockups/ai-memory-v3/README.md)，[源码映射](DESIGN.md#2026-10-20--记忆与智能设置选定稿)已更新。问答记忆、余白记得的、来信 learned／画像回顾、每周回看、导入自由补充和模型设置／异常提示已接入 App；这取代下方 core 记录中的「界面待确认／未接线」。新增 core 和第六条 UI 测试源码，工程已重新生成；无 Swift 工具链，仅静态检查，未编译／运行／提交。外部 Figma、旧原型与分发包未同步，验收见 [组合清单](../docs/V2-TEST-CHECKLIST.md)。
+
 **当前选定稿（2026-10-20）**：owner 已批准第三轮 `V3-*.dc.html` 与配套 DS；已在 `refactor/v2-design-alignment` 按稿实现（现在／洞察／我、根页浮动导航与问余白、相关子页），仅静态核查，未编译、未验证真机。以下两 tab 与候选视觉描述保留为本次对齐前的历史状态。
 
 更新：**2026-10-20**。当前目标为「余白 2.0 · 管家」：AI 做事，代码算数，用户决定。`feat/yubai-2-butler` 的步骤 1–9 与 TestFlight 准备已落地源码，步骤 10 同步长期记录；2.0 **仅做静态检查，未编译或运行**。决定来源为 owner 的[产品评审](https://claude.ai/code/artifact/21365038-7478-4933-9c2c-0358b054f5a4)与[规格](https://claude.ai/code/artifact/9e7ad27e-85a3-478d-911e-aa58843ec4d3)，本轮使用 owner 提供的决定摘录，artifact 正文无法读取。用户决定、Agent 实现选择和差异见[第 13 票归档](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。
