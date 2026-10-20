@@ -178,6 +178,11 @@ struct ImportView: View {
                         }
                     } }
                     ForEach(organization.questions) { question in questionCard(question, batchID: batch.id) }
+                    ForEach(organization.comments ?? []) { comment in
+                        if let card = store.current.cards.first(where: { $0.dedupeKey == comment.dedupeKey }), card.dismissedAt == nil, !ButlerCards.isMuted(card.dedupeKey, in: store.current) {
+                            ButlerCardView(card: card)
+                        }
+                    }
                 }
                 if batch.needsOrganization == true {
                     Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {

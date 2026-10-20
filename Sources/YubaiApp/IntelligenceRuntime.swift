@@ -89,3 +89,43 @@ private struct ActiveImportTransport: ChatTransport {
         update("整批撤销", preservingUpdatedAt: true) { ledger in BillImporter.undo(batchID: batchID, in: &ledger) }
     }
 }
+
+@MainActor extension AppStore {
+    func refreshButler() async {
+        guard !locked, loadFailure == nil || isDemo, organizingBatchID == nil, current.preferences.onboardingComplete else { return }
+        let before = current; let wasDemo = isDemo; let now = Date()
+        var candidates = ButlerCards.detect(before, now: now)
+        if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
+        guard !candidates.isEmpty else { return }
+        let client = before.preferences.cloudAIEnabled ? DeepSeekClient.configured(redactor: Redactor(ledger: before)) : nil
+        let transport: (any ChatTransport)? = client.map { client in ActiveImportTransport(client: client) {
+            self.current == before && self.isDemo == wasDemo && !self.locked && APIKeyStore.shared.configuration() == client.configuration
+        } }
+        let worded = await ButlerWording.word(candidates, ledger: before, transport: transport)
+        guard !Task.isCancelled, current == before, isDemo == wasDemo, !locked, organizingBatchID == nil else { return }
+        var next = before
+        guard ButlerCards.refresh(&next, candidates: worded, now: now) else { return }
+        update("更新管家卡片", recordUndo: false) { $0.cards = next.cards }
+    }
+    func dismissCard(_ id: UUID) {
+        guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return }
+        update("收起管家卡片") { ledger in
+            if let i = ledger.cards.firstIndex(where: { $0.id == id }) { ledger.cards[i].dismissedAt = Date() }
+        }
+    }
+    func muteCard(_ id: UUID) {
+        update("以后不再提这个话题") { ButlerCards.mute(id, in: &$0, now: Date()) }
+    }
+    func cardFeedback(_ value: CardFeedback, id: UUID) {
+        update("记下卡片反馈") { ButlerCards.feedback(value, cardID: id, in: &$0, now: Date()) }
+    }
+    func performCardAction(_ card: ButlerCard) {
+        switch card.action ?? .openEvidence {
+        case .openEvidence: sheet = .cardEvidence(card.id)
+        case .reconcileAccount(let id): sheet = .reconcile(id)
+        case .confirmChangeSet(let id): sheet = .cardProposal(id)
+        case .answerQuestion: sheet = .cardQuestion(card.id)
+        case .openWish: break
+        }
+    }
+}

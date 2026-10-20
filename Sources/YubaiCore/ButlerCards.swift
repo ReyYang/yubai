@@ -1,0 +1,190 @@
+import Foundation
+
+public struct CardFact: Codable, Equatable, Sendable {
+    public var label: String
+    public var value: String
+    public var cents: Int64?
+    public init(_ label: String, _ value: String) { self.label = label; self.value = value }
+    public init(_ label: String, cents: Int64) { self.label = label; self.value = Money.text(cents); self.cents = cents }
+}
+
+public struct CardCandidate: Equatable, Sendable {
+    public var kind: CardKind
+    public var dedupeKey: String
+    public var evidence: [UUID]
+    public var facts: [CardFact]
+    public var title: String
+    public var body: String
+    public var action: CardAction
+    public var priority: Int
+    public var areaID: UUID? = nil
+    public var letter: LetterFacts? = nil
+    public func card(now: Date) -> ButlerCard {
+        var card = ButlerCard(kind: kind, title: String(title.prefix(14)), body: String(body.prefix(60)),
+                              evidence: Array(evidence.prefix(1000)), action: action, dedupeKey: dedupeKey)
+        card.createdAt = now; card.letter = letter; card.facts = facts; card.areaID = areaID; card.priority = priority
+        if evidence.count > 1000 { card.facts?.append(CardFact("依据范围", "记录较多，这里展示其中 1000 笔；数值按全部符合条件的记录计算。")) }
+        return card
+    }
+}
+
+public enum ButlerCards {
+    public static var calendar: Calendar {
+        var c = Dates.calendar; c.firstWeekday = 2; c.minimumDaysInFirstWeek = 4; return c
+    }
+    public static func isoWeek(_ date: Date) -> String {
+        let c = calendar
+        return String(format: "%04d-W%02d", c.component(.yearForWeekOfYear, from: date), c.component(.weekOfYear, from: date))
+    }
+    public static func topic(_ key: String) -> String {
+        let parts = key.split(separator: ":")
+        return parts.prefix(parts.first == "letter" ? 1 : 2).joined(separator: ":")
+    }
+    public static func isMuted(_ key: String, in ledger: Ledger) -> Bool {
+        ledger.mutedTopics.contains { key == $0 || key.hasPrefix($0 + ":") }
+    }
+    public static func matches(_ area: ProfileArea, entry: Entry, ledger: Ledger) -> Bool {
+        let category = ledger.resolveCategory(entry.category)
+        let text = entry.title + " " + (entry.purpose ?? "") + " " + entry.note
+        return area.match.categories.contains { ledger.resolveCategory($0) == category } || area.match.keywords.contains {
+            let word = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !word.isEmpty && text.localizedCaseInsensitiveContains(word)
+        }
+    }
+    public static func detect(_ ledger: Ledger, now: Date) -> [CardCandidate] {
+        var result: [CardCandidate] = []
+        let week = calendar.dateInterval(of: .weekOfYear, for: now)!.start
+        let month = calendar.dateInterval(of: .month, for: now)!.start
+        for area in ledger.profile.restrain {
+            let usage = area.usage(in: ledger, now: now)
+            let countLimit = area.softLimit?.perWeekCount
+            let amountLimit = area.softLimit?.perMonthAmount
+            let over = countLimit.map { usage.weekCount >= $0 && usage.weekCount > 0 } == true || amountLimit.map { usage.monthAmount >= $0 && usage.monthAmount > 0 } == true
+            let near = countLimit.map { Double(usage.weekCount) >= Double($0) * 0.8 && usage.weekCount > 0 } == true || amountLimit.map { Double(usage.monthAmount) >= Double($0) * 0.8 && usage.monthAmount > 0 } == true
+            let noLine = countLimit == nil && amountLimit == nil
+            guard over || near || (noLine && usage.weekCount > 0) else { continue }
+            let entries = ledger.activeEntries.filter { e in
+                guard e.date >= min(week, month), e.date <= now, e.nature == .expense || e.nature == .refund else { return false }
+                let source = e.relatedEntryID.flatMap { id in ledger.entries.first { $0.id == id } } ?? e
+                return matches(area, entry: source, ledger: ledger)
+            }.sorted { $0.date > $1.date }
+            var facts = [CardFact("领域", area.title), CardFact("你的原话", area.note), CardFact("本周", "\(usage.weekCount) 次"), CardFact("本月消费", cents: usage.monthAmount)]
+            if let countLimit { facts.append(CardFact("每周柔性提醒", "\(countLimit) 次")) }
+            if let amountLimit { facts.append(CardFact("每月柔性提醒", cents: amountLimit)) }
+            let detail: String
+            if let countLimit, usage.weekCount >= countLimit || (!over && Double(usage.weekCount) >= Double(countLimit) * 0.8) {
+                detail = "本周 \(usage.weekCount) 次，你写下的是每周 \(countLimit) 次。"
+            } else if let amountLimit {
+                detail = "本月 \(Money.text(usage.monthAmount))，你留的线是 \(Money.text(amountLimit))。"
+            } else { detail = "本周有 \(usage.weekCount) 次，落在你想克制的领域。" }
+            result.append(CardCandidate(kind: .restrain, dedupeKey: "restrain:\(area.id):\(isoWeek(now))", evidence: entries.map(\.id), facts: facts,
+                title: String(area.title.prefix(8)) + (over ? "到线了" : (near ? "快到线了" : "这周的记录")), body: detail,
+                action: .openEvidence, priority: over ? 1 : 2, areaID: area.id))
+        }
+        // Forecast points already subtract emergency. Comparing against zero avoids
+        // reserving the floor twice. Include the payment day, after that day's outflows.
+        var forecastLedger = ledger; forecastLedger.preferences.horizonDays = max(30, ledger.preferences.horizonDays)
+        let funds = Finance.funds(forecastLedger, now: now)
+        let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
+        let daily = ledger.preferences.dailyLiving == 0 ? Finance.estimatedDailyLiving(ledger, now: now) : ledger.preferences.dailyLiving
+        let end = Dates.addDays(30, to: Dates.day(now))
+        for item in funds.occurrences where !item.inflow && Dates.day(item.date) >= Dates.day(now) && Dates.day(item.date) <= end {
+            let path = funds.points.filter { $0.date <= Dates.day(item.date) }
+            guard let low = path.min(by: { $0.conservative < $1.conservative }), low.conservative < 0 else { continue }
+            let out = funds.occurrences.filter { !$0.inflow && Dates.day($0.date) <= low.date && !($0.planID.map { repayments.contains($0) } ?? false) }.reduce(Int64(0)) { $0 + $1.amount }
+            let days = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: low.date).day ?? 0
+            let facts = [CardFact("付款", item.title), CardFact("付款日", Dates.text(item.date)), CardFact("待付", cents: item.amount),
+                         CardFact("付款前及当天最低保守余量", cents: low.conservative), CardFact("已扣应急底线", cents: funds.emergency),
+                         CardFact("现金", cents: funds.cash), CardFact("信用待还", cents: funds.debt), CardFact("目标预留", cents: funds.goals),
+                         CardFact("待明确流入", cents: funds.uncertainInflow), CardFact("最低点日期", Dates.text(low.date)),
+                         CardFact("此前及当天付款（信用本金不重复扣）", cents: out), CardFact("此前日常预留", cents: daily * Int64(days))]
+            result.append(CardCandidate(kind: .shortfall, dedupeKey: "shortfall:" + item.id, evidence: [], facts: facts,
+                title: String(item.title.prefix(9)) + "的缺口", body: "到这笔付款时，保守余量最低为 \(Money.text(low.conservative))。已留出应急底线。", action: .openEvidence, priority: 0))
+        }
+        for entry in ledger.activeEntries where entry.nature == .unknownIn && entry.date < Dates.addDays(-3, to: now) {
+            result.append(CardCandidate(kind: .unknownInflow, dedupeKey: "unknownIn:\(entry.id)", evidence: [entry.id],
+                facts: [CardFact("待明确流入", cents: entry.amount), CardFact("入账日", Dates.text(entry.date))], title: "这笔来款还待明确",
+                body: "\(Money.text(entry.amount)) 的用途还没记下，可以看看原始记录。", action: .openEvidence, priority: 3))
+        }
+        for account in ledger.accounts where account.anchorDate < Dates.addDays(-30, to: now) {
+            let activity = ledger.activeEntries.filter { $0.delta(for: account.id) != 0 && $0.postingDate(for: account.id) > account.anchorDate && $0.postingDate(for: account.id) <= now }
+            guard !activity.isEmpty else { continue }
+            let monthKey = String(Dates.text(now).prefix(7))
+            result.append(CardCandidate(kind: .staleBalance, dedupeKey: "stale:\(account.id):\(monthKey)", evidence: activity.map(\.id),
+                facts: [CardFact("账户", account.name), CardFact("上次核对", Dates.text(account.anchorDate)), CardFact("账本余额", cents: Finance.balance(account, in: ledger, at: now))],
+                title: "余额该核对一下了", body: "「\(String(account.name.prefix(12)))」的余额起点已超过一个月，这之后有新的流水。", action: .reconcileAccount(account.id), priority: 4))
+        }
+        let existing = Set(ledger.cards.map(\.dedupeKey))
+        return result.filter { !existing.contains($0.dedupeKey) && !isMuted($0.dedupeKey, in: ledger) }.sorted { a, b in
+            a.priority == b.priority ? a.dedupeKey < b.dedupeKey : a.priority < b.priority
+        }
+    }
+    /// Overflow stays queued; dismissing a card reveals the next one, including questions.
+    public static func visible(_ ledger: Ledger) -> [ButlerCard] {
+        Array(ledger.cards.filter { $0.kind != .weeklyLetter && $0.dismissedAt == nil && !isMuted($0.dedupeKey, in: ledger) }.sorted {
+            let a = rank($0), b = rank($1)
+            if a != b { return a < b }
+            if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+            return $0.dedupeKey < $1.dedupeKey
+        }.prefix(5))
+    }
+    private static func rank(_ card: ButlerCard) -> Int {
+        if let priority = card.priority { return priority }
+        switch card.kind { case .shortfall: return 0; case .restrain: return 1; case .unknownInflow: return 3; case .staleBalance: return 4; default: return 5 }
+    }
+    /// The app checks this result before store.update("更新管家卡片"). No-op refreshes
+    /// neither change timestamps nor create repository versions.
+    @discardableResult public static func refresh(_ ledger: inout Ledger, candidates: [CardCandidate], now: Date) -> Bool {
+        var keys = Set(ledger.cards.map(\.dedupeKey)); var changed = false
+        for candidate in candidates where ledger.cards.count < 5000 && !isMuted(candidate.dedupeKey, in: ledger) {
+            if keys.insert(candidate.dedupeKey).inserted { ledger.cards.append(candidate.card(now: now)); changed = true }
+        }
+        return changed
+    }
+    @discardableResult public static func refresh(_ ledger: inout Ledger, now: Date) -> Bool {
+        let candidates = detect(ledger, now: now)
+        return refresh(&ledger, candidates: candidates, now: now)
+    }
+    public static func mute(_ id: UUID, in ledger: inout Ledger, now: Date) {
+        guard let i = ledger.cards.firstIndex(where: { $0.id == id }) else { return }
+        let key = topic(ledger.cards[i].dedupeKey)
+        if !ledger.mutedTopics.contains(key) { ledger.mutedTopics.append(key) }
+        for i in ledger.cards.indices where topic(ledger.cards[i].dedupeKey) == key { ledger.cards[i].dismissedAt = now }
+    }
+    public static func feedback(_ value: CardFeedback, cardID: UUID, in ledger: inout Ledger, now: Date) {
+        guard let i = ledger.cards.firstIndex(where: { $0.id == cardID }), [.restrain, .offCharacter].contains(ledger.cards[i].kind), ledger.cards[i].feedback == nil else { return }
+        ledger.cards[i].feedback = value; ledger.cards[i].feedbackAt = now
+        let card = ledger.cards[i]
+        let entry = card.evidence.first.flatMap { id in ledger.entries.first { $0.id == id } }
+        let category = entry.map { ledger.resolveCategory($0.category) }
+        let existing = (ledger.profile.restrain + ledger.profile.generous).first { $0.id == card.areaID }
+        guard let title = existing?.title ?? category else { return }
+        var area = existing ?? ProfileArea(title: title, match: AreaMatch(categories: [title]))
+        let relevant = ledger.cards.filter { other in
+            guard other.feedbackProposalID == nil, [.restrain, .offCharacter].contains(other.kind) else { return false }
+            if let existing { return other.areaID == existing.id }
+            return other.areaID == nil && other.evidence.contains { id in ledger.entries.contains { $0.id == id && ledger.resolveCategory($0.category) == category } }
+        }
+        let regrets = relevant.filter { $0.feedback == .regret && ($0.feedbackAt ?? $0.createdAt) >= Dates.addDays(-30, to: now) }
+        let worth = relevant.filter { $0.feedback == .worth && $0.kind == .restrain }
+        let relax = value == .worth && worth.count >= 3 && ledger.profile.restrain.contains { $0.id == area.id }
+        guard (value == .regret && regrets.count >= 2) || relax, ledger.pendingChanges.count < 100 else { return }
+        guard !ledger.pendingChanges.contains(where: { change in
+            change.source == "卡片反馈" && change.items.contains { if case .profile(.upsertArea(let proposed, _)) = $0 { return proposed.id == area.id || proposed.title == area.title }; return false }
+        }) else { return }
+        // A proposal only: repeated regret adds/tightens a soft line; repeated worth
+        // asks whether this area belongs among things the user is happy to spend on.
+        if relax { area.softLimit = nil }
+        else {
+            let old = area.softLimit
+            let count = old?.perWeekCount.map { max(0, $0 - 1) }
+            let amount = old?.perMonthAmount.map { $0 * 4 / 5 }
+            area.softLimit = SoftLimit(perWeekCount: count ?? (amount == nil ? max(1, area.usage(in: ledger, now: now).weekCount - 1) : nil), perMonthAmount: amount)
+        }
+        var proposal = ChangeSet(source: "卡片反馈", reason: relax ? "你几次觉得「\(title)」值得，要把它记为愿意多花的领域吗？" : "你最近几次对「\(title)」有点后悔，要试着收紧柔性提醒吗？",
+                                 items: [.profile(.upsertArea(area, stance: relax ? .generous : .restrain))])
+        proposal.createdAt = now; ledger.pendingChanges.append(proposal)
+        let used = Set((relax ? worth : regrets).map(\.id))
+        for i in ledger.cards.indices where used.contains(ledger.cards[i].id) { ledger.cards[i].feedbackProposalID = proposal.id }
+    }
+}

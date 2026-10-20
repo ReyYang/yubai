@@ -81,6 +81,7 @@ struct EntryEditor: View {
 struct AccountEditor: View {
     @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
     var account: Account?
+    var startsReconciling = false
     @State private var name = ""; @State private var kind = AccountKind.bank; @State private var amount = ""
     @State private var at = Date(); @State private var verified = true; @State private var note = ""; @State private var limit = ""
     @State private var loaded = false; @State private var reconcileNow = false
@@ -92,7 +93,7 @@ struct AccountEditor: View {
             if account != nil { Section { InlineNote(text: "重新核对会建立新的余额起点，不会改写或伪造历史收支。之前的账本可从本地历史恢复。") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
         }.editorForm().navigationTitle(account == nil ? "添加账户" : "核对与编辑账户").yubaiNavigation()
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("保存", action: save).foregroundStyle(YubaiColor.brandInk).fontWeight(.semibold).accessibilityIdentifier("saveAccount") } }
-            .onAppear { guard !loaded else { return }; loaded = true; if let a = account { name = a.name; kind = a.kind; amount = Money.input(a.kind == .credit ? max(0, -Finance.balance(a, in: store.current)) : Finance.balance(a, in: store.current)); verified = a.reconciled; note = a.note; limit = a.creditLimit == 0 ? "" : Money.input(a.creditLimit) } }
+            .onAppear { guard !loaded else { return }; loaded = true; reconcileNow = startsReconciling; if let a = account { name = a.name; kind = a.kind; amount = Money.input(a.kind == .credit ? max(0, -Finance.balance(a, in: store.current)) : Finance.balance(a, in: store.current)); verified = a.reconciled; note = a.note; limit = a.creditLimit == 0 ? "" : Money.input(a.creditLimit) } }
     }
     func save() {
         do {

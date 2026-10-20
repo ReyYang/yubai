@@ -1,0 +1,188 @@
+import XCTest
+@testable import YubaiCore
+
+final class ButlerTests: XCTestCase {
+    private let now = Dates.parse("2026-06-17 12:00")!
+    private func seed() -> Ledger {
+        var ledger = Ledger()
+        ledger.accounts = [Account(name: "合成账户", balance: 1_000_000, at: Dates.addDays(-10, to: now))]
+        return ledger
+    }
+    private func expense(_ ledger: Ledger, amount: Int64 = 2000, title: String = "外卖", date: Date? = nil, category: String = "餐饮") -> Entry {
+        Entry(date: date ?? now, amount: amount, accountID: ledger.accounts[0].id, title: title, category: category)
+    }
+    private func restrained() -> Ledger {
+        var ledger = seed()
+        ledger.profile.restrain = [ProfileArea(title: "外卖", match: AreaMatch(keywords: ["外卖"]), softLimit: SoftLimit(perWeekCount: 2, perMonthAmount: 5000))]
+        ledger.entries = [expense(ledger), expense(ledger, amount: 4000)]
+        return ledger
+    }
+    func testExactlyOneRestrainForBothLimitsAndNoNeutralOrGenerousCard() {
+        var ledger = restrained()
+        let cards = ButlerCards.detect(ledger, now: now)
+        XCTAssertEqual(cards.count, 1); XCTAssertEqual(cards.first?.kind, .restrain)
+        XCTAssertEqual(cards.first?.priority, 1)
+        XCTAssertEqual(Set(cards.first?.evidence ?? []), Set(ledger.entries.map(\.id)))
+        XCTAssertEqual(cards.first?.facts.first { $0.label == "本月消费" }?.cents, 6000)
+        ledger.profile.restrain = []
+        ledger.entries = [expense(ledger, amount: 500_000, title: "大件", category: "日用购物")]
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+        ledger.profile.generous = [ProfileArea(title: "购物", match: AreaMatch(categories: ["日用购物"]))]
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+    }
+    func testNearLineOnlyAtEightyPercentAndRefundPersonalShare() {
+        var ledger = seed()
+        ledger.profile.restrain = [ProfileArea(title: "外卖", match: AreaMatch(keywords: ["外卖"]), softLimit: SoftLimit(perMonthAmount: 10_000))]
+        var entry = expense(ledger, amount: 20_000); entry.personalExpense = 7999; ledger.entries = [entry]
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+        ledger.entries[0].personalExpense = 8000
+        XCTAssertEqual(ButlerCards.detect(ledger, now: now).first?.priority, 2)
+        var refund = expense(ledger, amount: 2000, title: "退款"); refund.nature = .refund; refund.relatedEntryID = entry.id
+        ledger.entries.append(refund)
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+    }
+    func testRentShortfallExactlyOnceAndFloorIsNotSubtractedTwice() {
+        var ledger = seed(); ledger.accounts[0].anchorBalance = 100_000
+        ledger.profile.floorAmount = 20_000
+        ledger.plans = [Plan(title: "房租", amount: 110_000, dueDate: Dates.addDays(5, to: now))]
+        ledger.preferences.horizonDays = 7 // Detection still looks 30 days ahead.
+        let cards = ButlerCards.detect(ledger, now: now)
+        XCTAssertEqual(cards.count, 1); XCTAssertEqual(cards.first?.kind, .shortfall)
+        XCTAssertEqual(cards.first?.facts.first { $0.label == "付款前及当天最低保守余量" }?.cents, -30_000)
+        ledger.plans[0].amount = 70_000
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty, "余量一万仍高于已扣过的底线")
+        ledger.plans[0].dueDate = Dates.addDays(31, to: now); ledger.plans[0].amount = 200_000
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+    }
+    func testUpkeepAgingAndActivity() {
+        var ledger = seed(); ledger.accounts[0].anchorDate = Dates.addDays(-31, to: now)
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+        var entry = expense(ledger, date: Dates.addDays(-4, to: now)); entry.nature = .unknownIn
+        ledger.entries = [entry]
+        XCTAssertEqual(Set(ButlerCards.detect(ledger, now: now).map(\.kind)), Set([.unknownInflow, .staleBalance]))
+        ledger.entries[0].date = Dates.addDays(-3, to: now)
+        XCTAssertEqual(ButlerCards.detect(ledger, now: now).map(\.kind), [.staleBalance])
+    }
+    func testMuteStableTopicDedupeDismissalAndNoOpRefresh() throws {
+        var ledger = restrained()
+        XCTAssertTrue(ButlerCards.refresh(&ledger, now: now))
+        let saved = ledger
+        XCTAssertFalse(ButlerCards.refresh(&ledger, now: now)); XCTAssertEqual(ledger, saved)
+        ledger.cards[0].dismissedAt = now
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+        ButlerCards.mute(ledger.cards[0].id, in: &ledger, now: now)
+        XCTAssertEqual(ledger.mutedTopics, ["restrain:" + ledger.profile.restrain[0].id.uuidString])
+        // Move the expenses into next week; weekly dedupe changes, stable mute remains.
+        let nextWeek = Dates.addDays(7, to: now)
+        for i in ledger.entries.indices { ledger.entries[i].date = nextWeek }
+        XCTAssertTrue(ButlerCards.detect(ledger, now: nextWeek).isEmpty)
+        let restored = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        XCTAssertEqual(restored.cards, ledger.cards)
+    }
+    func testFiveVisibleCardsInPriorityOrderAndOverflowRemainsQueued() {
+        var ledger = seed()
+        let kinds: [CardKind] = [.answerQuestion, .staleBalance, .unknownInflow, .restrain, .shortfall, .restrain, .offCharacter]
+        let priorities = [5, 4, 3, 2, 0, 1, 5]
+        ledger.cards = kinds.enumerated().map { index, kind in
+            var card = ButlerCard(kind: kind, title: "合成卡片", body: "观察", dedupeKey: "test:\(index)")
+            card.priority = priorities[index]; card.createdAt = now; return card
+        }
+        XCTAssertEqual(ButlerCards.visible(ledger).map(\.priority), [0, 1, 2, 3, 4])
+        XCTAssertEqual(ledger.cards.filter { $0.dismissedAt == nil }.count, 7)
+        let id = ButlerCards.visible(ledger)[0].id
+        ledger.cards[ledger.cards.firstIndex { $0.id == id }!].dismissedAt = now
+        XCTAssertEqual(ButlerCards.visible(ledger).count, 5)
+        XCTAssertEqual(ButlerCards.visible(ledger).last?.priority, 5)
+    }
+    func testFallbackAndUnverifiedAIAmountAndOneBatch() async throws {
+        let ledger = restrained(); let candidates = ButlerCards.detect(ledger, now: now)
+        let local = await ButlerWording.word(candidates, ledger: ledger, transport: nil)
+        XCTAssertEqual(local, candidates)
+        let bad = ScriptedChatTransport([ChatMessage(role: .assistant, content: try JSONValue.object(["cards": .array([
+            .object(["key": .string("c0"), "title": .string("外卖到线了"), "body": .string("本月消费 ¥999.00。")])])]).jsonText())])
+        let rejected = await ButlerWording.word(candidates, ledger: ledger, transport: bad)
+        XCTAssertEqual(rejected, candidates)
+        let requests = await bad.recorded(); XCTAssertEqual(requests.count, 1)
+        let good = ScriptedChatTransport([ChatMessage(role: .assistant, content: try JSONValue.object(["cards": .array([
+            .object(["key": .string("c0"), "title": .string("外卖到线了"), "body": .string("本月外卖 ¥60.00，到了你留的线。")])])]).jsonText())])
+        let accepted = await ButlerWording.word(candidates, ledger: ledger, transport: good)
+        XCTAssertEqual(accepted.first?.body, "本月外卖 ¥60.00，到了你留的线。")
+        XCTAssertEqual(accepted.first?.evidence, candidates.first?.evidence)
+    }
+    func testFeedbackProposalsThresholdsWindowAndNoAutomaticProfileChange() throws {
+        var ledger = restrained(); let profile = ledger.profile; let area = profile.restrain[0]
+        func card(_ index: Int, kind: CardKind = .offCharacter) -> ButlerCard {
+            var card = ButlerCard(kind: kind, title: "观察", body: "一笔记录", evidence: [ledger.entries[0].id], dedupeKey: "off:\(index)")
+            card.areaID = area.id; card.createdAt = now; return card
+        }
+        ledger.cards = [card(0), card(1), card(2)]
+        ButlerCards.feedback(.regret, cardID: ledger.cards[0].id, in: &ledger, now: Dates.addDays(-31, to: now))
+        ButlerCards.feedback(.regret, cardID: ledger.cards[1].id, in: &ledger, now: now)
+        XCTAssertTrue(ledger.pendingChanges.isEmpty)
+        ButlerCards.feedback(.regret, cardID: ledger.cards[2].id, in: &ledger, now: now)
+        XCTAssertEqual(ledger.pendingChanges.count, 1); XCTAssertEqual(ledger.profile, profile)
+        XCTAssertEqual(ledger.pendingChanges.first?.source, "卡片反馈")
+        XCTAssertTrue(ledger.pendingChanges.first?.isProfileOnly == true)
+        try ledger.pendingChanges[0].validateStructure()
+        let before = ledger.pendingChanges
+        ButlerCards.feedback(.regret, cardID: ledger.cards[2].id, in: &ledger, now: now)
+        XCTAssertEqual(ledger.pendingChanges, before)
+        ledger.pendingChanges = []; ledger.cards = [card(3, kind: .restrain), card(4, kind: .restrain), card(5, kind: .restrain)]
+        for id in ledger.cards.prefix(2).map(\.id) { ButlerCards.feedback(.worth, cardID: id, in: &ledger, now: now) }
+        XCTAssertTrue(ledger.pendingChanges.isEmpty)
+        ButlerCards.feedback(.worth, cardID: ledger.cards[2].id, in: &ledger, now: now)
+        XCTAssertEqual(ledger.pendingChanges.count, 1); XCTAssertEqual(ledger.profile, profile)
+        let proposal = ledger.pendingChanges[0]
+        try proposal.apply(to: &ledger)
+        XCTAssertEqual(ledger.profile.generous.first?.id, area.id)
+    }
+    func testOffCharacterSelectionExcludesImportFromHabitAndCapsAtThree() async {
+        var ledger = seed()
+        ledger.entries = (0..<10).map { _ in expense(ledger, amount: 1000, title: "午餐", date: Dates.addDays(-10, to: now)) }
+        let imported = (0..<4).map { _ in expense(ledger, amount: 10_000, title: "聚餐") }
+        ledger.entries += imported
+        let candidates = OffCharacter.candidates(ledger, entryIDs: imported.map(\.id), now: now)
+        XCTAssertEqual(candidates.count, 4)
+        XCTAssertTrue(candidates.allSatisfy { $0.facts.contains { $0.label == "近来同类均值" && $0.cents == 1000 } })
+        let local = await ButlerWording.word(candidates, ledger: ledger, transport: nil, select: true)
+        XCTAssertEqual(local.count, 3)
+        ledger.cards = local.map { $0.card(now: now) }
+        XCTAssertEqual(OffCharacter.candidates(ledger, entryIDs: imported.map(\.id), now: now).count, 1)
+    }
+    func testPostImportCommentsPersistWithOrganizationAndAreRemovedByBatchUndo() async throws {
+        let original = restrained()
+        var ledger = original
+        var batch = ImportBatch(filename: "合成账单", importedCount: 2, duplicateCount: 0, skippedCount: 0)
+        batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
+        let imported = [expense(ledger, title: "午餐外卖"), expense(ledger, title: "晚餐外卖")].map { entry -> Entry in
+            var entry = entry; entry.batchID = batch.id; return entry
+        }
+        ledger.entries += imported; ledger.imports = [batch]
+        let before = ledger
+        let script = ScriptedChatTransport([
+            ChatMessage(role: .assistant, content: "{\"rows\":[]}"),
+            ChatMessage(role: .assistant, content: "invalid optional wording")])
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: imported.map(\.id), now: now)
+        XCTAssertEqual(result.comments?.count, 2)
+        XCTAssertTrue(result.comments?.allSatisfy { $0.kind == .offCharacter } == true)
+        result.finish(batchID: batch.id, before: before, in: &ledger)
+        XCTAssertEqual(ledger.cards.count, 2)
+        XCTAssertEqual(ledger.imports[0].undo?.cardIDs.count, 2)
+        ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        XCTAssertEqual(ledger.imports[0].organization?.comments?.count, 2)
+        BillImporter.undo(batchID: batch.id, in: &ledger)
+        XCTAssertEqual(try LedgerCodec.encode(ledger), try LedgerCodec.encode(original))
+    }
+    func testRegretInUnprofiledAreaProposesANewRestrainArea() {
+        var ledger = seed()
+        ledger.entries = [expense(ledger, title: "游戏", category: "娱乐旅行"), expense(ledger, title: "电影", category: "娱乐旅行")]
+        ledger.cards = ledger.entries.map { entry in
+            ButlerCard(kind: .offCharacter, title: "和平时不同", body: "一笔观察", evidence: [entry.id], dedupeKey: "off:\(entry.id)")
+        }
+        for id in ledger.cards.map(\.id) { ButlerCards.feedback(.regret, cardID: id, in: &ledger, now: now) }
+        XCTAssertEqual(ledger.pendingChanges.count, 1)
+        XCTAssertTrue(ledger.profile.restrain.isEmpty)
+        guard case .profile(.upsertArea(let area, let stance)) = ledger.pendingChanges[0].items[0] else { return XCTFail("Expected area proposal") }
+        XCTAssertEqual(area.match.categories, ["娱乐旅行"]); XCTAssertEqual(stance, .restrain)
+    }
+}

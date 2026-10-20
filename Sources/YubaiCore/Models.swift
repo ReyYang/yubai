@@ -181,12 +181,13 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var colorTheme = "jade-vivid"
     /// Optional DeepSeek assistance; default off. Requires `DEEPSEEK_API_KEY` for now.
     public var cloudAIEnabled = false
+    public var weeklyLetterPush = false
     public var onboardingComplete = false
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
-        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete
+        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, weeklyLetterPush
     }
     // Decode the former master switch without including it in newly encoded ledgers.
     private enum LegacyCodingKeys: String, CodingKey {
@@ -205,6 +206,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
         let wasEnabled = try legacy.decodeIfPresent(Bool.self, forKey: .localAIEnabled) ?? true
         cloudAIEnabled = (try values.decodeIfPresent(Bool.self, forKey: .cloudAIEnabled) ?? false) && wasEnabled
+        weeklyLetterPush = try values.decodeIfPresent(Bool.self, forKey: .weeklyLetterPush) ?? false
         onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
     }
 }
@@ -245,6 +247,12 @@ public struct ButlerCard: Codable, Identifiable, Equatable, Sendable {
     public var evidence: [UUID]; public var action: CardAction?; public var dedupeKey: String
     public var createdAt = Date(); public var dismissedAt: Date?; public var feedback: CardFeedback?
     public var importQuestion: ImportQuestion?
+    public var facts: [CardFact]?
+    public var areaID: UUID?
+    public var priority: Int?
+    public var letter: LetterFacts?
+    public var feedbackAt: Date?
+    public var feedbackProposalID: UUID?
     public init(kind: CardKind, title: String, body: String, evidence: [UUID] = [], action: CardAction? = nil, dedupeKey: String) {
         self.kind = kind; self.title = title; self.body = body; self.evidence = evidence; self.action = action; self.dedupeKey = dedupeKey
     }
@@ -444,7 +452,13 @@ private extension Ledger {
         for c in cards {
             // Evidence and action targets can have been deleted or dismissed since creation.
             guard text(c.title), c.body.count <= 16_000, text(c.dedupeKey), c.evidence.count <= 1000,
-                  Set(c.evidence).count == c.evidence.count, date(c.createdAt), c.dismissedAt.map(date) ?? true else { throw YubaiError.invalid("管家卡片无效。") }
+                  Set(c.evidence).count == c.evidence.count, date(c.createdAt), c.dismissedAt.map(date) ?? true,
+                  c.feedbackAt.map(date) ?? true,
+                  c.facts.map({ $0.count <= 1000 && $0.allSatisfy { text($0.label) && $0.value.count <= 4000 } }) ?? true else { throw YubaiError.invalid("管家卡片无效。") }
+            if let letter = c.letter {
+                guard date(letter.weekEnding), letter.series.count == 7, letter.series.allSatisfy({ date($0.date) }),
+                      Set(letter.series.map(\.date)).count == 7, letter.evidence.count <= 1000 else { throw YubaiError.invalid("每周来信依据无效。") }
+            }
         }
         for w in wishlist {
             guard text(w.title), (0...Money.limit).contains(w.amount), w.purpose.count <= 4000,

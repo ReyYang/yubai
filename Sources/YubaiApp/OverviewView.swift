@@ -25,11 +25,12 @@ private struct OverviewContent: View {
                         .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).background(YubaiColor.raised, in: Circle()).frame(minHeight: YubaiSize.tapMin)
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel("隐藏或显示总览金额")
             }
+            ButlerSection()
             if store.current.accounts.isEmpty {
                 EmptyState("wallet.bifold", "从真实余额开始", "添加微信、支付宝和银行卡，再导入历史账单。余额以你核对的时刻为准，不会因导入旧记录重复增加。", action: "添加第一个账户") { store.sheet = .account(nil) }
             } else {
-                hero
-                DisclosureGroup("查看资金走势", isExpanded: $forecastExpanded) { forecast.padding(.top, YubaiSpace.space12) }.yubaiFont(YubaiFont.callout)
+                hero.transaction { $0.animation = nil; $0.disablesAnimations = true }
+                DisclosureGroup("查看资金走势", isExpanded: $forecastExpanded) { forecast.padding(.top, YubaiSpace.space12).transaction { if hasFreshLetter { $0.animation = nil; $0.disablesAnimations = true } } }.yubaiFont(YubaiFont.callout)
                 upcoming
             }
             quickActions
@@ -49,6 +50,9 @@ private struct OverviewContent: View {
                 }.yubaiFont(YubaiFont.callout)
             }
         }.navigationTitle("现在").yubaiNavigation().toolbar { ToolbarItemGroup { Button { store.sheet = .imports } label: { Label("导入", systemImage: "square.and.arrow.down") }; Button { store.sheet = .entry(nil) } label: { Label("记一笔", systemImage: "plus") }.accessibilityIdentifier("addEntry") } }
+    }
+    private var hasFreshLetter: Bool {
+        store.current.cards.contains { WeeklyLetter.isFresh($0, now: Date()) && !ButlerCards.isMuted($0.dedupeKey, in: store.current) }
     }
     var hero: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {

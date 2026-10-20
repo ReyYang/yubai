@@ -39,6 +39,7 @@ public struct ImportOrganization: Codable, Equatable, Sendable {
     public var changeSet: ChangeSet
     public var questions: [ImportQuestion]
     public var skipped: [String]
+    public var comments: [ButlerCard]? = nil
     public var categoryCount: Int { changeSet.items.filter { if case .setCategory = $0 { return true }; return false }.count }
     public var pairCount: Int { changeSet.items.filter { if case .pairTransfer = $0 { return true }; return false }.count }
     public var recurringCount: Int { changeSet.items.filter { if case .addPlan = $0 { return true }; return false }.count }
@@ -54,9 +55,13 @@ public struct ImportOrganization: Codable, Equatable, Sendable {
         ledger.imports[i].needsOrganization = false
         ledger.imports[i].organization = result
         for question in result.questions {
-            var card = ButlerCard(kind: .answerQuestion, title: question.text, body: "稍后回答也可以，待明确的资金继续保守计算。",
+            var card = ButlerCard(kind: .answerQuestion, title: "有个用途想问问你", body: "稍后回答也可以，待明确的资金继续保守计算。",
                                   evidence: Array(question.entryIDs.prefix(1000)), action: .answerQuestion, dedupeKey: "importQuestion:" + question.id.uuidString)
-            card.importQuestion = question; ledger.cards.append(card)
+            card.importQuestion = question
+            if ledger.cards.count < 5000 && !ButlerCards.isMuted(card.dedupeKey, in: ledger) && !ledger.cards.contains(where: { $0.dedupeKey == card.dedupeKey }) { ledger.cards.append(card) }
+        }
+        for card in comments ?? [] where ledger.cards.count < 5000 && !ButlerCards.isMuted(card.dedupeKey, in: ledger) {
+            if !ledger.cards.contains(where: { $0.dedupeKey == card.dedupeKey }) { ledger.cards.append(card) }
         }
         Self.recordUndo(batchID: batchID, before: before, in: &ledger)
     }
@@ -196,7 +201,9 @@ public struct ImportOrganizer: Sendable {
         }
         questions = group(questions, ledger: working)
         var change = ChangeSet(source: "导入整理", reason: "根据账单用途与关联证据整理", items: items); change.createdAt = now
-        return ImportOrganization(changeSet: change, questions: questions, skipped: skipped)
+        let candidates = OffCharacter.candidates(working, entryIDs: entryIDs, now: now)
+        let comments = await ButlerWording.word(candidates, ledger: working, transport: transport, select: true)
+        return ImportOrganization(changeSet: change, questions: questions, skipped: skipped, comments: comments.map { $0.card(now: now) })
     }
 
     private func categoryItem(id: UUID, category: String, ledger: Ledger) -> ChangeItem? {

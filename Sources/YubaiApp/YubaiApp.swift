@@ -11,6 +11,7 @@ enum Destination: String, CaseIterable, Identifiable {
 }
 enum AppSheet: Identifiable {
     case entry(Entry?), account(Account?), plan(Plan?), goal(Goal?), rent(Rent?), imports, accounts, advice, categories, backup, history, rentDetail(UUID), entryDetail(UUID), guide, fundsCalculation
+    case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, reconcile(UUID)
     var id: String { String(describing: self) }
 }
 
@@ -61,6 +62,7 @@ enum AppSheet: Identifiable {
     var loadFailure: String?; var locked = false; var importedURL: URL?
     var errorHosts: [UUID] = []
     var organizingBatchID: UUID?
+    var updatingWeeklyPush = false
     var organizationErrors: [UUID: String] = [:]
     private var undoLedger: Ledger?; var undoLabel: String?
     init() {
@@ -91,14 +93,14 @@ enum AppSheet: Identifiable {
         if args.contains("--demo") { demo = SampleData.ledger(); locked = false }
     }
 
-    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, _ change: (inout Ledger) throws -> Void) -> Bool {
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard !locked || isDemo else { error = "请先解锁账本。"; return false }
         guard loadFailure == nil || isDemo else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
         do {
             try change(&next); if !preservingUpdatedAt { next.updatedAt = Date() }
             if isDemo { try next.validate(); demo = next } else { try repository.save(next, reason: reason); ledger = next }
-            undoLedger = before; undoLabel = reason; toast = reason + "完成"; return true
+            if recordUndo { undoLedger = before; undoLabel = reason; toast = reason + "完成" }; return true
         } catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func apply(_ changeSet: ChangeSet, label: String, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
@@ -211,7 +213,13 @@ struct RootView: View {
             }
         }
         .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived() }; if newValue == .background && store.current.preferences.lockEnabled && !store.isDemo { store.sheet = nil; store.toast = nil; store.locked = true } }
-        .task(id: "\(store.current.id)-\(store.isDemo)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)") { if phase == .active { await store.organizePendingImports() } }
+        .task(id: "\(store.current.id)-\(store.isDemo)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)") {
+            if phase == .active { await store.organizePendingImports() }
+        }
+        .task(id: "\(store.current.id)-\(store.current.updatedAt)-\(store.isDemo)-\(store.locked)-\(store.organizingBatchID != nil)-\(phase)") {
+            if phase == .active { await store.refreshButler() }
+        }
+        .task(id: store.ledger.preferences.weeklyLetterPush) { await WeeklyPush.sync(enabled: store.ledger.preferences.weeklyLetterPush) }
         .overlay { privacyCover }
         .onOpenURL { url in guard url.isFileURL else { return }; store.importedURL = url; if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
         .onChange(of: store.locked) { _, value in if !value, let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
@@ -255,6 +263,12 @@ struct RootView: View {
         case .entryDetail(let id): EntryDetailView(entryID: id)
         case .guide: GuideView()
         case .fundsCalculation: FundsCalculationView()
+        case .cardEvidence(let id): ButlerEvidenceView(cardID: id)
+        case .cardQuestion(let id): ButlerQuestionView(cardID: id)
+        case .cardProposal(let id): ButlerProposalView(changeID: id)
+        case .letters: LettersView()
+        case .reconcile(let id):
+            if let account = store.current.accounts.first(where: { $0.id == id }) { AccountEditor(account: account, startsReconciling: true) }
         }
     }
     var lockedView: some View {

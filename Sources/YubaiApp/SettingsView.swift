@@ -12,6 +12,7 @@ struct SettingsView: View {
             identitySection
             fundsSection
             protectionSection
+            weeklyLetterSection
             appearanceSection
             intelligenceSection
             aboutSection
@@ -52,6 +53,14 @@ struct SettingsView: View {
             Button { store.sheet = .history } label: { Label("导入批次与本地恢复", systemImage: "clock.arrow.circlepath") }
             Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn)
             Text("使用设备现有的 Face ID、Touch ID 或密码。原始账单和本地账本不会上传。请另存一份加密备份，防止设备丢失。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+    }
+    private var weeklyLetterSection: some View {
+        Section("来信") {
+            Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { enabled in
+                Task { await store.setWeeklyLetterPush(enabled) }
+            })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush)
+            Text("每周一上午 9 点，轻轻提醒一次。通知不含金额，打开余白后再写这周的来信。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var appearanceSection: some View {
