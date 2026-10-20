@@ -8,11 +8,12 @@ enum CloudIntelligence {
     @MainActor static func canAssist(preferences: Preferences) -> Bool {
         IntelligenceRuntime.backend(for: preferences) != nil
     }
-    @MainActor static func reflect(title: String, purpose: String, values: String, assessment: PurchaseAssessment, ledger: Ledger) async throws -> String {
+    @MainActor static func reflect(title: String, purpose: String, assessment: PurchaseAssessment, ledger: Ledger) async throws -> String {
         guard let backend = IntelligenceRuntime.backend(for: ledger) else {
             throw YubaiError.invalid(availabilityText(for: ledger.preferences))
         }
-        return try await backend.reflectPurchase(title: title, purpose: purpose, values: values, assessmentTitle: assessment.title)
+        let profile = try ReadOnlyTool.getProfile.run(.object([:]), ToolContext(ledger: ledger))
+        return try await backend.reflectPurchase(title: title, purpose: purpose, profile: profile, assessmentTitle: assessment.title)
     }
 }
 
@@ -53,6 +54,9 @@ struct InsightsView: View {
                 }
             }
         }.navigationTitle("洞察").yubaiNavigation().toolbar { Button { store.sheet = .advice } label: { Label("购买前咨询", systemImage: "sparkle") } }
+            .onChange(of: store.current.profile) { _, _ in insightPolish = "" }
+            .onChange(of: store.current.goals) { _, _ in insightPolish = "" }
+            .onChange(of: store.current.id) { _, _ in insightPolish = "" }
     }
     private func stats(_ review: Review) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space20) {
@@ -106,7 +110,9 @@ struct InsightsView: View {
             defer { insightBusy = false }
             do {
                 guard let backend = IntelligenceRuntime.backend(for: ledger) else { return }
-                let text = try await backend.narrateInsights(facts: facts)
+                let profile = try ReadOnlyTool.getProfile.run(.object([:]), ToolContext(ledger: ledger))
+                let text = try await backend.narrateInsights(facts: facts, profile: profile)
+                guard store.current == ledger else { return }
                 if let ok = InsightNarrationGuard.accept(text, protecting: facts.protectedAmountTexts) {
                     // Keep template facts on screen; show only the model polish delta when possible.
                     insightPolish = ok
@@ -134,7 +140,7 @@ struct InsightsView: View {
         if !subscriptions.isEmpty {
             lines.append("你有 \(subscriptions.count) 项持续付款约定。")
         }
-        return InsightFactPack(factLines: lines, protectedAmountTexts: amounts, valuesHint: store.current.preferences.purchaseValues)
+        return InsightFactPack(factLines: lines, protectedAmountTexts: amounts)
     }
 }
 
@@ -231,6 +237,8 @@ struct AdviceView: View {
         }.navigationTitle("购买前想一想").yubaiNavigation().toolbar { CloseButton() }
             .onChange(of: amount) { _, _ in invalidate() }.onChange(of: title) { _, _ in invalidate() }
             .onChange(of: store.current.updatedAt) { _, _ in if !saved { invalidate() } }
+            .onChange(of: store.current.profile) { _, _ in invalidate() }
+            .onChange(of: store.current.goals) { _, _ in invalidate() }
             .onDisappear { task?.cancel() }
     }
     private var purchaseFields: some View {
@@ -260,7 +268,7 @@ struct AdviceView: View {
                 AmountLabel(cents: a.afterPurchase, hide: store.current.preferences.hideAmounts, role: .large)
                 DisclosureGroup("查看计算与完整度依据") { VStack(alignment: .leading, spacing: YubaiSpace.space10) { ForEach(a.facts, id: \.self) { Text("· " + $0).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) } }.padding(.top, YubaiSpace.space10) }.yubaiFont(YubaiFont.callout)
             } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space16) { SectionHeading(title: "除了金额，还可以想想"); ForEach(a.questions, id: \.self) { Text("· " + $0).yubaiFont(YubaiFont.body) }; Text("你重视：" + store.current.preferences.purchaseValues).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) } }
+            Card { VStack(alignment: .leading, spacing: YubaiSpace.space16) { SectionHeading(title: "除了金额，还可以想想"); ForEach(a.questions, id: \.self) { Text("· " + $0).yubaiFont(YubaiFont.body) }; ForEach(store.current.profile.principles, id: \.self) { Text("你的原则：" + $0).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) } } }
             reflectionCard(a)
             Button(saved ? "已经记下这次思考" : "保存这次思考") { saved = true; if !store.update("保存购买思考", { $0.advice.append(AdviceRecord(title: title, amount: assessedAmount, result: a.title + "。" + a.explanation, note: purpose)) }) { saved = false } }.buttonStyle(SecondaryButtonStyle()).disabled(saved)
         }
@@ -279,7 +287,7 @@ struct AdviceView: View {
     func reflect(_ a: PurchaseAssessment) {
         task?.cancel(); busy = true; aiError = nil
         let ledger = store.current
-        task = Task { do { let text = try await CloudIntelligence.reflect(title: title, purpose: purpose, values: ledger.preferences.purchaseValues, assessment: a, ledger: ledger); guard !Task.isCancelled else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次云端补充没有完成。本机资金计算已保留，你可以稍后重试。"; busy = false } }
+        task = Task { do { let text = try await CloudIntelligence.reflect(title: title, purpose: purpose, assessment: a, ledger: ledger); guard !Task.isCancelled, store.current == ledger else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次云端补充没有完成。本机资金计算已保留，你可以稍后重试。"; busy = false } }
     }
     func invalidate() { task?.cancel(); assessment = nil; reflection = ""; busy = false; saved = false }
 }

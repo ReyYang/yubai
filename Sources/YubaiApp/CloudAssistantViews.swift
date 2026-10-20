@@ -136,6 +136,8 @@ struct TemporaryAssistantView: View {
         }.navigationTitle("试问一句").yubaiNavigation()
             .onDisappear { runningTask?.cancel() }
             .onChange(of: store.current.id) { _, _ in runningTask?.cancel(); reply = nil; errorText = "" }
+            .onChange(of: store.current.profile) { _, _ in runningTask?.cancel(); reply = nil; errorText = "" }
+            .onChange(of: store.current.goals) { _, _ in runningTask?.cancel(); reply = nil; errorText = "" }
             .onChange(of: store.current.preferences.cloudAIEnabled) { _, enabled in if !enabled { runningTask?.cancel() } }
     }
     @MainActor private func ask() {

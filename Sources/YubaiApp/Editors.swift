@@ -215,6 +215,7 @@ struct PlanEditor: View {
 struct GoalEditor: View {
     @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
     var goal: Goal?
+    var updateLabel = "保存目标"
     @State private var title = ""; @State private var target = ""; @State private var reserved = ""; @State private var date = Date(); @State private var hasDate = false; @State private var note = ""; @State private var loaded = false
     var body: some View {
         Form { goalSection; reservationSection }.editorForm().navigationTitle(goal == nil ? "留给重要的事" : "调整目标").yubaiNavigation()
@@ -222,7 +223,7 @@ struct GoalEditor: View {
             .onAppear { guard !loaded else { return }; loaded = true; if let g = goal { title = g.title; target = Money.input(g.target); reserved = Money.input(g.reserved); hasDate = g.dueDate != nil; date = g.dueDate ?? Date(); note = g.note } }
     }
     func save() {
-        do { let total = try Money.parse(target); let saved = reserved.isEmpty ? 0 : try Money.parse(reserved); guard saved <= total, total > 0, !title.trimmingCharacters(in: .whitespaces).isEmpty else { throw YubaiError.invalid("请填写名称；预留不能超过目标金额。") }; var g = goal ?? Goal(title: title, target: total); g.title = title; g.target = total; g.reserved = saved; g.dueDate = hasDate ? date : nil; g.note = note; if store.update("保存目标", { l in if let i = l.goals.firstIndex(where: { $0.id == g.id }) { l.goals[i] = g } else { l.goals.append(g) } }) { dismiss() } } catch { store.error = error.localizedDescription }
+        do { let total = try Money.parse(target); let saved = reserved.isEmpty ? 0 : try Money.parse(reserved); guard saved <= total, total > 0, !title.trimmingCharacters(in: .whitespaces).isEmpty else { throw YubaiError.invalid("请填写名称；预留不能超过目标金额。") }; var g = goal ?? Goal(title: title, target: total); g.title = title; g.target = total; g.reserved = saved; g.dueDate = hasDate ? date : nil; g.note = note; if store.update(updateLabel, { l in if let i = l.goals.firstIndex(where: { $0.id == g.id }) { l.goals[i] = g } else { l.goals.append(g) } }) { dismiss() } } catch { store.error = error.localizedDescription }
     }
 
     private var goalSection: some View {

@@ -42,6 +42,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var createdAt = Date(); public var source: String; public var reason: String
     public var items: [ChangeItem]
     public init(source: String, reason: String, items: [ChangeItem]) { self.source = source; self.reason = reason; self.items = items }
+    public var isProfileOnly: Bool {
+        !items.isEmpty && items.allSatisfy { if case .profile = $0 { return true }; return false }
+    }
 
     public func validateStructure() throws {
         guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, source.count <= 200,

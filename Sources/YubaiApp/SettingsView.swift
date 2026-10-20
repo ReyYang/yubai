@@ -6,7 +6,7 @@ import YubaiCore
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
-    @State private var horizon = 90; @State private var reserve = ""; @State private var living = ""; @State private var values = ""; @State private var preferencesLoaded = false
+    @State private var horizon = 90; @State private var reserve = ""; @State private var living = ""; @State private var preferencesLoaded = false
     var body: some View {
         Form {
             identitySection
@@ -17,9 +17,9 @@ struct SettingsView: View {
             aboutSection
         }.editorForm().navigationTitle("我的余白").yubaiNavigation().onAppear { if !preferencesLoaded { loadPreferences(); preferencesLoaded = true } }.onChange(of: store.isDemo) { _, _ in loadPreferences() }
     }
-    func loadPreferences() { let p = store.current.preferences; horizon = p.horizonDays; reserve = Money.input(p.emergencyReserve); living = Money.input(p.dailyLiving); values = p.purchaseValues }
+    func loadPreferences() { let p = store.current.preferences; horizon = p.horizonDays; reserve = Money.input(p.emergencyReserve); living = Money.input(p.dailyLiving) }
     func savePreferences() {
-        do { let emergency = try Money.parse(reserve); let daily = try Money.parse(living); store.update("保存资金偏好") { $0.preferences.horizonDays = horizon; $0.preferences.emergencyReserve = emergency; $0.preferences.dailyLiving = daily; $0.preferences.purchaseValues = values } } catch { store.error = error.localizedDescription }
+        do { let emergency = try Money.parse(reserve); let daily = try Money.parse(living); store.update("保存资金偏好") { $0.preferences.horizonDays = horizon; $0.preferences.emergencyReserve = emergency; $0.preferences.dailyLiving = daily } } catch { store.error = error.localizedDescription }
     }
     func enableLock(_ enabled: Bool) {
         guard enabled else { store.update("关闭账本锁") { $0.preferences.lockEnabled = false }; return }
@@ -32,6 +32,7 @@ struct SettingsView: View {
         Section {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space12)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space18))
             layout { BrandMark(); if !textSize.isAccessibilitySize { Spacer() }; VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("个人资金管理").yubaiFont(YubaiFont.rowTitle); Text("1.0.0 · 本地优先").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) } }.padding(.vertical, YubaiSpace.space16)
+            NavigationLink { ProfileView() } label: { Label("我的消费观", systemImage: "leaf") }
             Button { store.sheet = .accounts } label: { Label("账户与余额核对", systemImage: "wallet.bifold") }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
@@ -40,7 +41,6 @@ struct SettingsView: View {
             Picker("从今天向前看", selection: $horizon) { Text("30 天").tag(30); Text("60 天").tag(60); Text("90 天").tag(90); Text("180 天").tag(180); Text("365 天").tag(365) }
             VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("应急底线金额").yubaiFont(YubaiFont.row); TextField("应急底线金额", text: $reserve).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("应急底线金额") }
             VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("每天的日常生活预留（0 为自动估算）").yubaiFont(YubaiFont.row); TextField("每天的日常生活预留", text: $living).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("每天的日常生活预留") }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) { Text("我希望把钱花在什么上").yubaiFont(YubaiFont.row); TextField("我希望把钱花在什么上", text: $values, axis: .vertical).lineLimit(2...5).accessibilityLabel("我希望把钱花在什么上") }
             Button("保存资金偏好", action: savePreferences)
             Text("日常生活预留用于未逐项列出的零碎开销。不要把同一笔固定付款既列为安排又放进日常预留。调整不会改动真实账单。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)

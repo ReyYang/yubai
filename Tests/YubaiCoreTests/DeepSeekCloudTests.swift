@@ -72,6 +72,27 @@ final class DeepSeekCloudTests: XCTestCase {
         }
     }
 
+    func testPurchaseJudgmentUsesCurrentStructuredProfileAfterEditAndDeletion() async throws {
+        var ledger = AssistantFixtures.context().ledger
+        ledger.profile.principles = ["先看看家里有没有替代"]
+        ledger.preferences.purchaseValues = "旧偏好不再引用"
+        let stub = CloudTestStub { request in
+            let messages = try CloudTestStub.messages(in: request)
+            let user = try XCTUnwrap(messages.last?["content"])
+            XCTAssertFalse(user.contains("旧偏好不再引用"))
+            XCTAssertTrue(user.contains("\"generous\"")); XCTAssertTrue(user.contains("\"habits\""))
+            return user.contains("先看看家里有没有替代") ? "按你的原则，先看看家里有没有替代。" : "想想它会在什么场景里用到。"
+        }
+        defer { stub.close() }
+        let firstProfile = try ReadOnlyTool.getProfile.run(.object([:]), ToolContext(ledger: ledger))
+        let first = try await stub.backend.reflectPurchase(title: "耳机", purpose: "通勤", profile: firstProfile, assessmentTitle: "已知安排内，可以承受")
+        try ChangeSet(source: "用户", reason: "删除原则", items: [.profile(.removePrinciple("先看看家里有没有替代"))]).apply(to: &ledger)
+        let nextProfile = try ReadOnlyTool.getProfile.run(.object([:]), ToolContext(ledger: ledger))
+        let next = try await stub.backend.reflectPurchase(title: "耳机", purpose: "通勤", profile: nextProfile, assessmentTitle: "已知安排内，可以承受")
+        XCTAssertNotEqual(first, next)
+        XCTAssertFalse(next.contains("先看看家里有没有替代"))
+    }
+
     func testCloudSearchFiltersAmountsAndLimitsExpansion() async throws {
         let stub = CloudTestStub { request in
             let messages = try CloudTestStub.messages(in: request)

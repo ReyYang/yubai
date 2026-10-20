@@ -11,7 +11,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         case .entryChanges: return "提议整理现有记录，只能改变分类、性质、用途或关联，不能改金额、主账户、原始日期。用户确认后才应用。"
         case .plan: return "提议新增/结束资金安排或新增房租；金额为人民币元。用户确认后才应用。"
         case .entry: return "提议语音或截图补记。金额必须与本机用户确认的金额相同，否则返回错误；AI不能确认金额。"
-        case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或始终留着的底线；不搬动储蓄目标。"
+        case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或始终留着的底线；不搬动储蓄目标。可用items一次提交整份消费观，用户确认后才应用。"
         }
     }
     private static func string(_ description: String) -> JSONValue { .object(["type": .string("string"), "description": .string(description)]) }
@@ -44,22 +44,51 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
             fields.merge(["title": Self.string("原始描述"), "amount": amount, "date": date, "account": id,
                 "nature": Self.choice(Nature.allCases.map(\.rawValue)), "category": Self.string("分类"), "purpose": Self.string("用途")]) { _, new in new }
         case .profile:
-            fields.merge(["operation": Self.choice(["upsert_area", "remove_area", "add_principle", "edit_principle", "remove_principle", "set_floor", "clear_floor"]),
-                "id": id, "stance": Self.choice(["generous", "restrain"]), "title": Self.string("领域名"),
-                "categories": .object(["type": .string("array"), "items": Self.string("分类名")]),
-                "keywords": .object(["type": .string("array"), "items": Self.string("关键词")]),
-                "note": Self.string("领域说明"), "per_week_count": .object(["type": .string("integer"), "minimum": .number(0), "maximum": .number(10000)]),
-                "per_month_amount": amount, "text": Self.string("消费原则"), "old_text": Self.string("原消费原则"), "amount": amount
-            ]) { _, new in new }
+            fields.merge(Self.profileFields) { _, new in new }
+            fields["items"] = .object(["type": .string("array"), "minItems": .number(1), "maxItems": .number(200),
+                "description": .string("整份消费观或多项反馈用一次调用提交；与顶层operation二选一。"),
+                "items": Self.object(Self.profileFields, required: ["operation"])])
         }
         var required = ["reason"]
         switch self {
         case .entryChanges: required.append("items")
-        case .plan, .profile: required.append("operation")
+        case .plan: required.append("operation")
+        case .profile: break
         case .entry: required += ["title", "amount", "date", "account"]
         }
         return Self.object(fields, required: required)
     }
+    private static var profileFields: [String: JSONValue] {
+        return ["operation": Self.choice(["upsert_area", "remove_area", "add_principle", "edit_principle", "remove_principle", "set_floor", "clear_floor"]),
+                "id": Self.string("本地UUID，从查询结果取"), "stance": Self.choice(["generous", "restrain"]), "title": Self.string("领域名"),
+                "categories": .object(["type": .string("array"), "items": Self.string("分类名")]),
+                "keywords": .object(["type": .string("array"), "items": Self.string("关键词")]),
+                "note": Self.string("领域说明"), "per_week_count": .object(["type": .string("integer"), "minimum": .number(0), "maximum": .number(10000)]),
+                "per_month_amount": Self.string("人民币元，最多两位小数"), "text": Self.string("消费原则"), "old_text": Self.string("原消费原则"), "amount": Self.string("人民币元，最多两位小数")
+            ]
+    }
+    private static func profileChange(_ a: Arguments) throws -> ProfileChange {
+        let change: ProfileChange
+        switch try a.text("operation") {
+        case "upsert_area":
+            guard let stance = ProfileStance(rawValue: try a.text("stance")) else { throw YubaiError.invalid("请选择愿意多花或想克制。") }
+            let count: Int? = a.fields["per_week_count"] == nil ? nil : try a.integer("per_week_count", fallback: 0, range: 0...10000)
+            let monthly: Int64? = a.fields["per_month_amount"] == nil ? nil : try a.amount("per_month_amount")
+            var area = ProfileArea(title: try a.text("title"), match: AreaMatch(categories: try a.strings("categories"), keywords: try a.strings("keywords")),
+                                   note: try a.optionalText("note") ?? "", softLimit: count == nil && monthly == nil ? nil : SoftLimit(perWeekCount: count, perMonthAmount: monthly))
+            if let id = try a.optionalUUID("id") { area.id = id }
+            change = .upsertArea(area, stance: stance)
+        case "remove_area": change = .removeArea(try a.uuid("id"))
+        case "add_principle": change = .addPrinciple(try a.text("text"))
+        case "edit_principle": change = .editPrinciple(old: try a.text("old_text"), new: try a.text("text"))
+        case "remove_principle": change = .removePrinciple(try a.text("text"))
+        case "set_floor": change = .setFloorAmount(try a.amount("amount"))
+        case "clear_floor": change = .setFloorAmount(nil)
+        default: throw YubaiError.invalid("未知的画像提案。")
+        }
+        return change
+    }
+
     public func run(_ args: JSONValue, _ ctx: ToolContext) throws -> JSONValue {
         let change = try propose(args, ctx); return result(change, ctx)
     }
@@ -122,25 +151,16 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                                    category: try a.optionalText("category") ?? "其他支出", purpose: try a.optionalText("purpose"))
             items = [.addEntry(draft)]
         case .profile:
-            let change: ProfileChange
-            switch try a.text("operation") {
-            case "upsert_area":
-                guard let stance = ProfileStance(rawValue: try a.text("stance")) else { throw YubaiError.invalid("请选择愿意多花或想克制。") }
-                let count: Int? = a.fields["per_week_count"] == nil ? nil : try a.integer("per_week_count", fallback: 0, range: 0...10000)
-                let monthly: Int64? = a.fields["per_month_amount"] == nil ? nil : try a.amount("per_month_amount")
-                var area = ProfileArea(title: try a.text("title"), match: AreaMatch(categories: try a.strings("categories"), keywords: try a.strings("keywords")),
-                                       note: try a.optionalText("note") ?? "", softLimit: count == nil && monthly == nil ? nil : SoftLimit(perWeekCount: count, perMonthAmount: monthly))
-                if let id = try a.optionalUUID("id") { area.id = id }
-                change = .upsertArea(area, stance: stance)
-            case "remove_area": change = .removeArea(try a.uuid("id"))
-            case "add_principle": change = .addPrinciple(try a.text("text"))
-            case "edit_principle": change = .editPrinciple(old: try a.text("old_text"), new: try a.text("text"))
-            case "remove_principle": change = .removePrinciple(try a.text("text"))
-            case "set_floor": change = .setFloorAmount(try a.amount("amount"))
-            case "clear_floor": change = .setFloorAmount(nil)
-            default: throw YubaiError.invalid("未知的画像提案。")
+            if let rows = a.fields["items"]?.arrayValue {
+                guard a.fields["operation"] == nil, Set(a.fields.keys) == Set(["reason", "items"]),
+                      !rows.isEmpty, rows.count <= 200 else { throw YubaiError.invalid("整份消费观需要 1 至 200 项，不能混用单项参数。") }
+                items = try rows.map { row in
+                    .profile(try Self.profileChange(Arguments(row, schema: Self.object(Self.profileFields, required: ["operation"]))))
+                }
+            } else {
+                guard a.fields["items"] == nil else { throw YubaiError.invalid("items 需要提案数组。") }
+                items = [.profile(try Self.profileChange(a))]
             }
-            items = [.profile(change)]
         }
         var change = ChangeSet(source: "问余白", reason: try a.text("reason"), items: items); change.createdAt = ctx.now
         var copy = ctx.ledger; _ = try change.apply(to: &copy)

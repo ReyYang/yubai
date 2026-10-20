@@ -86,7 +86,8 @@ final class AssistantToolTests: XCTestCase {
         XCTAssertThrowsError(try run(.compareToHabit))
     }
     func testProfileContractAndNoPrivateFieldsInAnyToolOutput() throws {
-        XCTAssertEqual(try run(.getProfile)["purchaseValues"], .string(ctx.ledger.preferences.purchaseValues))
+        XCTAssertNil(try run(.getProfile)["purchaseValues"])
+        XCTAssertEqual(try run(.getProfile)["principles"], .strings(ctx.ledger.profile.principles))
         for tool in ReadOnlyTool.allCases {
             let args: String
             switch tool {
