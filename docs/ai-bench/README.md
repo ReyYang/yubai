@@ -88,8 +88,8 @@ swift test --filter DeepSeekCloudTests
 
 ## SPM / XCFramework 取舍
 
-- **采用：** `mattt/llama.swift`（exact `2.10549.0`）再导出官方 `llama-b10549-xcframework.zip`（Metal，iOS/macOS）。
-- **原因：** 上游每次 release 出 XCFramework；该包提供可钉版本的 SPM 产品名，避免手搓 binaryTarget checksum。
+- **采用：** `mattt/llama.swift`（exact `2.10456.0`）再导出官方 `llama-b10456-xcframework.zip`（Metal，iOS/macOS，含 iOS Simulator slice）。
+- **原因：** 该包提供可钉版本的 SPM 产品名，避免手搓 binaryTarget checksum。b10456 是最后包含 iOS Simulator slice 的版本；上游自 b10470 起不再提供模拟器 slice，因此在恢复提供前不要升级到 b10456 之后的版本。
 - **备选：** 直接在 `Package.swift` 写 `.binaryTarget` 指向 ggml-org release（官方 docs/xcframework.md）；若 SPM 解析失败可改回该路径。
 - App 目标经 `scripts/generate-project.py` 链接本地包产品 `YubaiCore` + `YubaiLocalLLM`。
 

@@ -364,6 +364,6 @@ private struct BarList: View {
                         AmountLabel(cents: row.amount, role: .chart).frame(minWidth: YubaiSize.buttonHeight, alignment: .trailing)
                     }.frame(minHeight: YubaiSize.buttonHeight).accessibilityElement(children: .ignore).accessibilityLabel(accessibilityText)
                 }
-        }.accessibilityLabel("分类消费分布，具体金额见下方列表")
+        }.accessibilityElement(children: .contain).accessibilityLabel("分类消费分布")
     }
 }
