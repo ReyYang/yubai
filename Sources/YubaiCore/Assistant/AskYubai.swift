@@ -104,8 +104,10 @@ public enum AskYubai {
     public static func isProtectedEdit(_ text: String) -> Bool {
         let edit = text.range(of: "改|修改|更正|调整|换成|change|edit", options: [.regularExpression, .caseInsensitive]) != nil
         guard edit else { return false }
-        let fieldEdit = #"(?:修改|更正|调整|换成|改成|改为|改到)\s*(?:那笔|这笔|记录的)?\s*(?:金额|数额|账户|账号|日期|amount|account)|(?:金额|数额|账户|账号|原始日期|交易日期|发生日期|日期)\s*(?:从[^，。；]{1,12})?(?:改|换|更正|调整)|(?:change|edit).*(?:amount|account|date)"#
-        if text.range(of: fieldEdit, options: [.regularExpression, .caseInsensitive]) != nil { return true }
+        // Qualified date names refer to the same protected field; date filters alone are still allowed.
+        let fieldText = ["原始日期", "交易日期", "发生日期"].reduce(text) { $0.replacingOccurrences(of: $1, with: "日期") }
+        let fieldEdit = #"(?:修改|更正|调整|换成|改成|改为|改到)\s*(?:那笔|这笔|记录的)?\s*(?:金额|数额|账户|账号|日期|amount|account)|(?:金额|数额|账户|账号|日期)\s*(?:从[^，。；]{1,12})?(?:改|换|更正|调整)|(?:change|edit).*(?:amount|account|date)"#
+        if fieldText.range(of: fieldEdit, options: [.regularExpression, .caseInsensitive]) != nil { return true }
         return text.range(of: #"(?:把|将|那笔|这笔).*\d+(?:\.\d+)?\s*(?:元)?\s*改(?:成|为|到)\s*\d+"#, options: .regularExpression) != nil
     }
     public static func answer(_ question: String, history: [ChatMessage] = [], transport: any ChatTransport, context: ToolContext) async throws -> AssistantReply {

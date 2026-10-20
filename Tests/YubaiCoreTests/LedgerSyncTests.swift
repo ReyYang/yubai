@@ -116,10 +116,33 @@ final class LedgerSyncTests: XCTestCase {
                 XCTAssertEqual(selected, expected); XCTAssertEqual(try cloud.load(), expected)
                 XCTAssertTrue(source.resolved)
                 let recovery = try XCTUnwrap(local.recoveries().first { $0.name.hasSuffix("同步冲突时的另一版本") })
-                XCTAssertTrue(recovery.url.path.hasPrefix(local.directory.path))
+                XCTAssertEqual(recovery.url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL,
+                               local.directory.appendingPathComponent("Recovery", isDirectory: true).resolvingSymlinksInPath().standardizedFileURL)
                 XCTAssertEqual(try local.recover(recovery), other)
                 XCTAssertFalse(FileManager.default.fileExists(atPath: cloud.directory.appendingPathComponent("Recovery").path))
             }
+        }
+    }
+    func testRecoveryAcceptsSymlinkedLedgerDirectoryAndRejectsAnotherLedger() throws {
+        try withDirectories { root, local, _ in
+            let original = ledger("原始版本"); try local.save(original)
+            var next = original; next.entries[0].title = "新版本"; try local.save(next)
+            let recovery = try XCTUnwrap(local.recoveries().first)
+            let alias = root.appendingPathComponent("linked-local", isDirectory: true)
+            try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: local.directory)
+            let linked = LedgerRepository(directory: alias)
+            XCTAssertEqual(try linked.readRecovery(recovery), original)
+            var linkedRecovery = recovery
+            linkedRecovery.url = alias.appendingPathComponent("Recovery", isDirectory: true).appendingPathComponent(recovery.url.lastPathComponent)
+            XCTAssertEqual(try local.readRecovery(linkedRecovery), original)
+
+            let other = LedgerRepository(directory: root.appendingPathComponent("other"))
+            try other.preserveRecovery(ledger("其他账本"), reason: "测试版本")
+            let foreign = try XCTUnwrap(other.recoveries().first)
+            XCTAssertThrowsError(try linked.readRecovery(foreign))
+            XCTAssertEqual(try local.load(), next)
+            XCTAssertEqual(try linked.recover(recovery), original)
+            XCTAssertEqual(try local.load(), original)
         }
     }
     func testStaleOrInvalidConflictChoiceCannotReplaceLedgerOrResolveVersions() throws {

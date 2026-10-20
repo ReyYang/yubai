@@ -298,7 +298,8 @@ public struct LedgerRepository: Sendable {
     }
     public func readRecovery(_ recovery: Recovery) throws -> Ledger {
         historyLock.lock(); defer { historyLock.unlock() }
-        guard recovery.url.deletingLastPathComponent().standardizedFileURL == history.standardizedFileURL else { throw YubaiError.invalid("恢复文件不属于当前账本。") }
+        let recoveryDirectory = recovery.url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+        guard recoveryDirectory == history.resolvingSymlinksInPath().standardizedFileURL else { throw YubaiError.invalid("恢复文件不属于当前账本。") }
         return try read(recovery.url, attachmentDirectory: recoveryAttachments(recovery.url))
     }
     public func recover(_ recovery: Recovery) throws -> Ledger {

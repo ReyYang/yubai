@@ -61,7 +61,7 @@ struct UITestTransport: ChatTransport {
                 guard let key = row["id"]?.stringValue, key != id else { return nil }
                 return .object(["entry": .string(key), "category": .string("餐饮"), "nature": .string("expense"), "confident": .bool(true)])
             }
-            let question: JSONValue = .object(["text": .string("这笔来款是什么用途？"), "entry_ids": .strings([id]), "options": .array([
+            let question: JSONValue = .object(["text": .string("这笔来款是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array([
                 .object(["title": .string("日常收入"), "items": .array([
                     .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string("income")]),
                     .object(["kind": .string("set_category"), "entry": .string(id), "category": .string("其他收入")])])]),
