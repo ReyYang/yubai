@@ -76,6 +76,20 @@ final class AskYubaiTests: XCTestCase {
         XCTAssertEqual(reply.proposedChangeSets.flatMap(\.items), [.setCategory(entry: id, category: "餐饮")])
         XCTAssertEqual(ctx.ledger, before)
     }
+    func testQualifiedDateEditsRefuseLocallyWithoutBlockingCategoryOrPurposeEdits() async throws {
+        let ctx = AssistantFixtures.context()
+        for question in ["修改原始日期", "更正交易日期", "调整发生日期", "修改记录的交易日期", "修改 交易日期", "把交易日期改为昨天", "把原始日期从昨天改成今天"] {
+            let script = ScriptedChatTransport([])
+            let reply = try await AskYubai.answer(question, transport: script, context: ctx)
+            XCTAssertTrue(reply.text.contains("账单与账户"), question)
+            XCTAssertTrue(reply.proposedChangeSets.isEmpty, question)
+            XCTAssertTrue(reply.toolTrace.isEmpty, question)
+            let calls = await script.recorded(); XCTAssertTrue(calls.isEmpty, question)
+        }
+        for question in ["把微信账户的美团都改成餐饮", "把交易日期为昨天的美团都改成餐饮", "把发生日期为昨天的转账用途改成房租分摊"] {
+            XCTAssertFalse(AskYubai.isProtectedEdit(question), question)
+        }
+    }
     func testPurchaseFactsEqualFinanceAndOmitEmptyValuesDimension() throws {
         let ctx = AssistantFixtures.context()
         let args: JSONValue = .object(["title": .string("咖啡"), "amount": .string("32"), "category": .string("餐饮")])

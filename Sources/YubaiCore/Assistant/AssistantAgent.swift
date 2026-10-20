@@ -115,7 +115,7 @@ public struct AssistantAgent: Sendable {
     }
 }
 
-/// A conservative text heuristic, not a semantic proof. Dates, UUIDs, percentages and
+/// A conservative text heuristic, not a semantic proof. Dates, times, UUIDs, percentages and
 /// explicit counts are excluded; bare numbers otherwise count as possible money.
 public enum AssistantAmountGuard {
     public static func unverified(in text: String, results: [JSONValue]) -> [String] {
@@ -140,7 +140,12 @@ public enum AssistantAmountGuard {
 
     private static func tokens(in text: String) -> [(text: String, cents: Int64?)] {
         var scan = text
-        for pattern in [#"\b\d{4}-\d{2}-\d{2}\b"#, #"\b[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}\b"#] {
+        for pattern in [
+            #"(?<!\d)\d{4}[-/]\d{1,2}[-/]\d{1,2}(?!\d)"#,
+            #"(?<!\d)(?:\d{4}年)?\d{1,2}月\d{1,2}日(?!\d)"#,
+            #"(?<!\d)\d{1,2}[:：]\d{2}(?:[:：]\d{2})?(?!\d)"#,
+            #"(?<![0-9a-fA-F])[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(?![0-9a-fA-F])"#
+        ] {
             scan = scan.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
         }
         let pattern = #"(?i)(?:[-−+]\s*)?(?:[¥￥]|CNY|RMB)?\s*(?:[-−+]\s*)?\d+(?:[,，]\d{3})*(?:\.\d+)?\s*(?:万元|千元|百元|元|块钱|块|万|千)?"#
