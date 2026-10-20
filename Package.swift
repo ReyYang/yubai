@@ -10,8 +10,9 @@ let package = Package(
         .executable(name: "YubaiDesktop", targets: ["YubaiApp"])
     ],
     dependencies: [
-        // Versioned SPM wrapper around official llama.cpp XCFramework (Metal). Pin major for App Store builds.
-        .package(url: "https://github.com/mattt/llama.swift", exact: "2.10549.0")
+        // Official llama.cpp XCFramework (Metal): b10456 is the last release with iOS Simulator slices.
+        // Do not bump past b10456 until upstream ships simulator slices again.
+        .package(url: "https://github.com/mattt/llama.swift", exact: "2.10456.0")
     ],
     targets: [
         .target(name: "CArchive", linkerSettings: [.linkedLibrary("z")]),
