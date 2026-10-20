@@ -80,7 +80,7 @@ final class AssistantPrivacyTests: XCTestCase {
     func testSocialNamesShareTransferAliasesAndMerchantsRemainIntact() {
         let redactor = Redactor()
         let name = redactor.text("转账给张三").replacingOccurrences(of: "转账给", with: "")
-        for phrase in ["和张三吃饭", "跟张三聚餐", "给张三买书", "请张三一起", "与张三的约定", "陪张三，散步", "和张三。", "跟张三 今天", "给张三"] {
+        for phrase in ["和张三合租，房租我出六成", "和张三吃饭", "跟张三聚餐", "给张三买书", "请张三一起", "与张三的约定", "陪张三，散步", "和张三。", "跟张三 今天", "给张三"] {
             XCTAssertTrue(redactor.text(phrase).contains(name), phrase)
             XCTAssertFalse(redactor.text(phrase).contains("张三"), phrase)
         }

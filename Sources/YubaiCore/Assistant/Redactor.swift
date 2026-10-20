@@ -59,7 +59,7 @@ public final class Redactor: @unchecked Sendable {
         }
         let patterns = [
             #"(?:微信转账|支付宝转账|转账给|红包|转账)[\s\-—:：]*([\p{Han}]{2,4})(?=$|[\s，。；、,:：;\-\"}])"#,
-            #"(?:和|跟|给|请|与|陪)\s*([\p{Han}]{2,3}?)(?=吃饭|聚餐|买|一起|的|[，。\s]|$)"#
+            #"(?:和|跟|给|请|与|陪)\s*([\p{Han}]{2,3}?)(?=吃饭|聚餐|合租|买|一起|的|[，。\s]|$)"#
         ]
         for pattern in patterns {
             guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }

@@ -164,7 +164,7 @@ final class AskYubaiTests: XCTestCase {
     }
     func testSessionCompactsOldPairsAndKeepsRecentConversation() async throws {
         let ctx = AssistantFixtures.context()
-        let session = AskYubaiSession(characterBudget: AskYubai.prompt(now: ctx.now).count + 100)
+        let session = AskYubaiSession(characterBudget: AskYubai.prompt(now: ctx.now).count + Memory.prompt(ledger: ctx.ledger, now: ctx.now).count + 100)
         let script = ScriptedChatTransport([
             ChatMessage(role: .assistant, content: String(repeating: "旧回答", count: 100)),
             ChatMessage(role: .assistant, content: "可以继续看看。"),

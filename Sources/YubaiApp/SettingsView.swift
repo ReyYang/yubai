@@ -100,7 +100,10 @@ struct SettingsView: View {
                         HStack(spacing: 2) {
                             ForEach(values.indices, id: \.self) { i in
                                 let colors = [YubaiColor.brand, YubaiColor.series2, YubaiColor.series3, YubaiColor.neutralStrong, YubaiColor.neutralSoft]
-                                colors[min(i, colors.count - 1)].frame(width: max(0, geometry.size.width - CGFloat(max(0, values.count - 1)) * 2) * CGFloat(values[i]) / CGFloat(total))
+                                let gapWidth = CGFloat(max(0, values.count - 1)) * 2
+                                let availableWidth = max(CGFloat(0), geometry.size.width - gapWidth)
+                                let share = CGFloat(values[i]) / CGFloat(total)
+                                colors[min(i, colors.count - 1)].frame(width: availableWidth * share)
                             }
                         }.clipShape(Capsule())
                     }.frame(height: 8).accessibilityElement(children: .ignore)

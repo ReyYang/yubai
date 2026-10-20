@@ -240,9 +240,14 @@ public enum Finance {
     public static func cashFlow(_ ledger: Ledger, during interval: DateInterval) -> CashFlowSummary {
         let review = review(ledger, from: interval.start, through: interval.end)
         let incomeRows = ledger.activeEntries.filter { $0.nature == .income && $0.date >= interval.start && $0.date < interval.end }
-        let income = Dictionary(grouping: incomeRows, by: \.category).map { category, rows in
-            Breakdown(category: category, amount: rows.reduce(Int64(0)) { $0 + $1.amount }, count: rows.count)
-        }.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
+        let incomeGroups = Dictionary(grouping: incomeRows, by: \.category)
+        let incomeBreakdown: [Breakdown] = incomeGroups.map { category, rows in
+            let amount = rows.reduce(Int64(0)) { $0 + $1.amount }
+            return Breakdown(category: category, amount: amount, count: rows.count)
+        }
+        let income = incomeBreakdown.sorted {
+            $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount
+        }
         let spending = review.byCategory.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
         return CashFlowSummary(income: review.income, spending: review.spending,
                                incomeByCategory: income, spendingByCategory: spending)
