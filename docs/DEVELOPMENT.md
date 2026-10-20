@@ -1,53 +1,82 @@
-# 构建与维护
+# 开发与验证
 
-本轮工具链：Xcode 26.4.1、Swift 6.3.1、Apple Silicon。项目最低 iOS 18 / macOS 14。Apple Foundation Models 调用受运行时系统版本与模型可用性检查保护。
+Xcode 26 / Apple SDK，Swift 5 语言模式；最低 iOS 18 / macOS 14。当前环境没有 Swift 工具链，未运行编译或 XCTest；历史 1.0 的验证报告不覆盖 2.0。
 
-## 结构
+- `Sources/YubaiApp`：两项导航「现在／我」，底部常驻按钮「问余白」。首页复用 Finance 的待付款期次；依据打开精简记录详情。ProfileView 负责消费观、目标与底线。SettingsView 负责「我」的入口、导入记录、备份、恢复版本和指南。
+- `Sources/YubaiCore`：schema 2（兼容 schema 1）、财务计算、导入解析与去重、ChangeSet、助手工具、管家与来信、加密备份和原子存储。默认资金观察期固定 90 天，底线取 `profile.floorAmount ?? 0`，日常预留自动估算。旧 horizonDays / emergencyReserve / dailyLiving / isSample 等字段保留解码与往返，不再控制 UI 或资金默认值。主动问答的指定日期预测通过函数参数传入范围。
+- `Tests/YubaiCoreTests`：计算、兼容、整理、撤销、隐私和备份测试；SampleData.swift 仅属于测试目标。Fixtures 是合成资料；SPM 和 Xcode 原生测试目标使用同一份文件。
+- `Tests/YubaiUITests`：五条离线流程：空账本开户、CSV 整理问答与整批撤销、克制卡片静音、数字问答到依据详情、消费原则持久化与备份入口。
+- `scripts/generate-project.py`：生成 app、CoreTests 和 UITests 的工程引用与共享 scheme，包括签名配置和平台权限文件。源文件移动或删除后运行；生成结果纳入版本管理。
+- `scripts/testflight.sh [ios|mac|all]`：付费团队配置完成后归档、上传 TestFlight；默认 ios。当前本人暂不加入付费计划，免费团队直接安装仍是测试路径。设置、构建号和安装见 [TESTFLIGHT.md](TESTFLIGHT.md)。
+- `.design-meta/`、`.scratch/yubai-product/`：长期产品与设计资料。
 
-- `Sources/YubaiCore`：模型、整数金额、财务计算、来源导入、批量操作、加密备份和原子持久化。
-- `Sources/YubaiApp`：SwiftUI 页面、Apple Vision OCR、Foundation Models、系统文件交互和设备认证。
-- `Sources/CArchive`：系统 zlib 与 CommonCrypto 的小型桥接，不联网下载库。
-- `Tests/YubaiCoreTests`：计算与存档 contract；Fixtures 为明确合成资料（含 `ai-bench-samples.json`）。
-- `Tests/YubaiUITests`：iPhone 原生交互测试，使用独立 UUID 账本；测试夹具入口仅编译进 Debug simulator。
-- `docs/ai-bench/`：本地优先 AI 台架说明；跑 `swift test --filter AIBenchTests`。
-- `scripts/generate-project.py`：从 app 源文件生成 Xcode 工程；增加 app 源文件后运行。
-- `.design-meta` / `.scratch/yubai-product`：长期产品和设计资料。
-- AI 抽象：`YubaiCore` 的 `IntelligenceBackend`（RulesOnly / LocalDownloaded / CloudOptional→DeepSeek）与 App 侧 `AppleFMOptional`。**现阶段实用路径为云端**：设置开启「增强智能（云端）」+ `DEEPSEEK_API_KEY`；本机 GGUF 默认软关闭（高级选项），加载有 RAM/circuit-breaker 门控。台架与 filter：`docs/ai-bench/README.md`。
-
-## 本地验证
-
-在项目根目录执行：
+在 Apple 开发环境从仓库根目录运行：
 
 ```sh
+python3 scripts/generate-project.py
 swift test
 xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro Max' \
-  -derivedDataPath build/DerivedData -parallel-testing-enabled NO \
-  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO test
+  -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
+  -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
+  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-测试只使用合成账本。具体 simulator 名称以本机列表为准；本轮测试 ID 记录于验证报告。模拟器运行结果不能代替真机签名、系统认证或设备模型实测。
+模拟器名称按本机列表调整。UI 测试同时传入 `--test-ledger <UUID>` 与 `YUBAI_UI_TEST_SCRIPT=empty|import|restrain|ask|profile`，只读写缓存目录中的独立账本，脚本传输仍调用真实助手工具／整理器。导入测试以 `YUBAI_UI_STATEMENT` 的 base64 CSV 注入文件，经过与文件打开相同的预览和保存路径；这五条测试不覆盖系统文件选择器。两个条件缺一则不启用夹具。该入口仅编译进 Debug simulator，设备与 Release 不包含脚本传输，也不需要向 Keychain 写假密钥。
 
-Mac Release 与 iPhone 未签名归档：
+正常云端配置位于「我 → 智能与隐私」，密钥进入 Keychain，开发启动可回退 `DEEPSEEK_API_KEY`。`DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 可覆盖配置。测试默认为离线；实网评测须显式设置 `YUBAI_LIVE_EVAL=1`，见 [台架说明](ai-bench/README.md)。共享助手与外发边界见 [ASSISTANT.md](ASSISTANT.md)。
 
-```sh
-xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
-  -destination 'platform=macOS,arch=arm64' -derivedDataPath build/ReleaseMac \
-  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
-xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
-  -destination 'generic/platform=iOS' -derivedDataPath build/ReleaseiOS \
-  -archivePath build/iPhone/Yubai.xcarchive \
-  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO archive
+每次写入先在副本验证，磁盘保存成功才更新内存。原文件、兼容字段和旧用户记录继续保留；删除界面不删除存档数据。`endPlan` 同时接受 plan / rent 的标识：开始后截断后续期次并保留到期欠款，开始前只停用。整批撤销恢复该批整理的差量；删除记录只能通过撤销或完整恢复版本找回。备份使用密码加密；旧未加密备份仍能读取。正式账本通过系统 API 取得 Application Support 下的 `app.yubai.personal`，目录权限 700、文件 600；Mac 直接安装默认非沙盒，沿用原位置，沙盒构建才使用应用容器内的 Application Support。首次安装沙盒版 Mac 应用（TestFlight）时，新容器初始为空，会显示空账本，旧非沙盒目录不会自动迁入。切换前必须先在旧 Mac 应用的「我 → 备份与同步」导出加密的完整备份，再在 TestFlight 构建中选择备份、输入密码并确认恢复；测试不得指向真实目录。
+
+## 本机签名与版本
+
+应用 Debug / Release 使用 `Config/iCloud.xcconfig → Config/Signing.xcconfig → #include? "Local.xcconfig"`；CoreTests / UITests 只以 Signing.xcconfig 为基础配置，获得同一团队而不继承应用 entitlement。Local.xcconfig 已被 Git 忽略，缺失时不会设置团队或影响免费 Personal Team 自动签名。需要本机持久配置时，从 [模板](../Config/Local.xcconfig.example)复制，保持自动签名；TestFlight 只能填付费团队的 10 位 `DEVELOPMENT_TEAM`。不要把自己的团队或签名材料写进工程、生成器或模板。
+
+应用 `MARKETING_VERSION = 2.0.0`，日常 `CURRENT_PROJECT_VERSION = 1`；Info.plist 引用两项构建设置。上传脚本只在 archive 命令行以 UTC `YYYYMMDDHHMM` 覆盖 build number，导出时不让 Xcode 改号码。归档、源码副本及日志保留在已忽略的 `build/testflight/<构建号>/`；同一仓库同一分钟不重复运行，失败后下一分钟用新号码重试。跨机器上传也要错开分钟并保持时钟准确。没有配置付费团队前，不会开始归档或上传。
+
+Mac Xcode 应用默认 `YUBAI_MAC_SANDBOX = NO`，免费 Personal Team 直接安装保持非沙盒。在 `Config/Local.xcconfig` 设为 `YES` 才增加 App Sandbox、网络客户端、用户选中文件读写和麦克风输入 entitlement。Mac App Store / TestFlight 要求沙盒，`scripts/testflight.sh` 对 `mac` 和 `all` 的 Mac archive 命令行强制传入 `YUBAI_MAC_SANDBOX=YES`，不改日常安装的本机配置。系统文件导入 / 恢复已有安全作用域，备份和原件导出使用系统 fileExporter，不保存长期外部 URL；沙盒构建可能拒绝容器外的自定义开发数据目录。`scripts/package-mac.sh` 从已构建的 Info.plist 读取版本，临时签名时显式保留已有沙盒 entitlement，有 iCloud 权限时仍保留原构建签名。它仅打包本地 DMG，不用于 TestFlight。
+
+图标目录包含 iOS 通用 1024 图标和完整 Mac 尺寸。旧 iOS PNG 为 RGBA；`scripts/make-icon.swift` 已改为输出不含 alpha 的 RGB iOS PNG。TestFlight 脚本将 Sources、Tests、Config、工程和 Package.swift 复制到构建目录，在副本中重建图标并归档；既不运行工程生成器，也不改工作区的图标。开发者以后手工运行绘图脚本时，也会得到无 alpha 的 iOS 图标。当前无 Xcode，未运行上述脚本、工程生成器、shellcheck 或归档上传验证。
+
+
+## 可选 iCloud 账本
+
+Xcode app target 的 Debug / Release 共用 [Config/iCloud.xcconfig](../Config/iCloud.xcconfig)，默认 `YUBAI_ICLOUD = NO`、`YUBAI_MAC_SANDBOX = NO`；由上述 Signing.xcconfig 可选包含本机覆盖。默认 iOS 和 Mac 的 `CODE_SIGN_ENTITLEMENTS` 均为空，Swift 不定义 `YUBAI_ICLOUD`，免费 Personal Team 的本机构建不增加 iCloud 签名要求，Mac 也不会因更新切入沙盒。Swift Package 中的 app 默认也只使用本机；Core 的相同存储实现不依赖这个条件。
+
+启用只改 **Config/Local.xcconfig** 中的这一行，不改共享默认值：
+
+```xcconfig
+YUBAI_ICLOUD = YES
 ```
 
-## 数据与兼容性
+该行同时把 Swift 条件展开为 `YUBAI_ICLOUD`。iOS 签名文件展开为 `Sources/YubaiApp/Yubai-iCloud.entitlements`。macOS 使用 `CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = $(YUBAI_MAC_ENTITLEMENTS_$(YUBAI_MAC_SANDBOX)_$(YUBAI_ICLOUD))`，两个开关独立组合：
 
-`schema = 1`。正式 Mac 数据位于用户 Application Support 中的 `app.yubai.personal/ledger.json`；iOS 位于 app 私有 Library/Application Support 下。账本目录权限 700、文件 600，iOS 文件使用系统数据保护；本机文件不单独密码加密。密码加密只作用于导出的备份。
+| `YUBAI_MAC_SANDBOX` | `YUBAI_ICLOUD` | macOS 权限文件（位于 `Sources/YubaiApp/`） |
+|---|---|---|
+| NO | NO | 无 |
+| NO | YES | `Yubai-iCloud.entitlements`（仅 iCloud，无沙盒） |
+| YES | NO | `Yubai-macOS.entitlements` |
+| YES | YES | `Yubai-macOS-iCloud.entitlements` |
 
-每次事务先复制并验证账本，磁盘写入成功才替换内存；保存前保留最近 20 个完整版本。损坏文件不会变成空账本，恢复会保留被替换文件。目录位置可用 `--data-directory /absolute/path` 指定；测试和预览不得指向真实数据目录。
+非沙盒 Mac 与 iOS 复用现有 iCloud-only 文件，工程和 `generate-project.py` 已引用全部三个权限文件。组合文件是两个基础文件的显式并集，任一权限变动须同步更新组合文件；测试目标不使用这些文件。
 
-金额、关系和来源 ID 不能由模型修改。模型只收到未匹配用途、方向和可选分类；返回结构化类别后由本地白名单及方向校验。模型不可用或出错时保留规则结果，并显示原因。不要未获授权接入新 Provider 或发送真实账单。
+选择付费 Apple Developer Team，为 `app.yubai.personal` 在开发者门户或 Xcode 的 iCloud capability 中启用 iCloud Documents，并创建、关联 `iCloud.app.yubai.personal` 容器，刷新两端 provisioning profile。保持 entitlement 路径由 xcconfig 控制；不要在 target 的 Build Settings 另写一个非空覆盖值。Info.plist 仅登记容器元数据，不授予权限；容器文档不公开到文件浏览器。参考 [Apple 的 iCloud 配置](https://developer.apple.com/documentation/xcode/configuring-icloud-services)与[文档同步示例](https://developer.apple.com/documentation/uikit/synchronizing-documents-in-the-icloud-environment)。
 
-导入容量为单文件 50 MB、256 列、10 万行、100 万个单元格。工作簿解析会处理共享字符串、内联文本、1900/1904 日期系统，不执行公式或宏；公式单元格只读取文件内已有缓存值。旧二进制 `.xls`、PDF、多币种及任意银行私有格式未支持，应先转换或使用模板，不能通过改扩展名伪装格式。
+安装后仍默认「仅本机」，在「我 → 备份与同步」主动选择 iCloud。容器探测在后台；关闭编译条件、未登录或容器不可用时继续使用 Application Support 中的本机副本。自定义数据目录和 UI 测试目录不连接 iCloud。启用两端使用同一个容器、Apple ID 和三入口界面：现在／我／问余白。`scripts/package-mac.sh` 对本机构建保持临时签名；检测到 iCloud entitlement 时保留构建签名，不以临时签名覆盖它。
 
-模型和存档格式变更应先定义迁移与恢复方案。整个文件重写及 20 份完整历史适用于个人账本规模，接近 250 MB 编码容量时会拒绝继续写入并提示；无需通过删除原文件绕过。
+存储与恢复：
+
+- 旧布局：Application Support/app.yubai.personal/ledger.json，附件以 base64 内嵌。
+- 新布局：本机同目录或容器内 `Documents/Yubai/ledger.json` 只含附件 id、名称、时间、字节数和 SHA-256；字节在旁边 `Attachments/<UUID>`。schema 仍为 2，载入兼容旧内嵌形状并自动拆分；先验证、保留原始文件字节，再替换元数据文件。
+- 账本元数据上限 250 MiB，当前账本所引用的附件总量另限 250 MiB。附件 UUID 对应不可变字节，删除引用后暂保留文件，以免破坏尚未到达的冲突版本。未实现孤立附件清理；总磁盘占用因此可能超过当前附件上限。
+- `Recovery/*.json` 与同名 `*.attachments/` 始终在本机 Application Support，保留最近 20 份完整版本；旧内嵌恢复记录继续能读。设备解锁设置、位置选择及待上传标记也留在本机；`.icloud-pending` 在保存修改前原子写入 Application Support，避免重启时丢失待上传状态。iCloud 账本中的设备解锁字段固定为关闭，接收同步时保留本机设置。
+- 加密备份继续使用 v1 envelope，把附件字节一并打包，旧备份仍可恢复。JSON/base64 的包装读取上限单独放宽（由 `LedgerCodec.backupCapacity` 统一控制），不放宽账本或附件的逻辑上限。恢复附件缺失、校验失败时不替换现有账本。
+- iCloud 文件列表先经 NSMetadataQuery 完成发现，避免把尚未下载的账本误判为空。读取前请求下载，显示「正在从 iCloud 读取…」；等待 30 秒后保留本机内容并允许重试。账本与附件分别使用 NSFileCoordinator。
+- 每次修改先存本机，后台上传；待上传状态跨重启保留。没有待上传修改时接收远端账本；有修改、上传前指纹已变或存在 NSFileVersion 未解决版本时，显示更新时间、版本时间、设备名（如有）、有效记录数与最多三笔差异。用户选定后，先把未选中版本保存为「同步冲突时的另一版本」，再替换和标记这些已展示的冲突已解决。选择期间再更新会要求重新选择。
+- 切到 iCloud 时若两处不同先选择，未选中版本记为「切换存储时的另一版本」。切回仅本机复制当前账本，包括未上传修改；不删除云端账本。退出 iCloud 后保留本机副本并回到仅本机，再次使用 iCloud 需要主动选择。恢复版本只在产生它的设备上可用。
+
+`LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；原始文件断言按新的元数据布局调整。当前只执行静态语法、配置与工程生成核查，没有 Swift 工具链，未执行这些 XCTest。
+
+在 Xcode 验证默认 NO 的 iOS / Mac 构建与测试后，再用上方单行启用 YES，重复两端构建。真实同步需两端有效签名、同一 Apple ID、iCloud Drive；核对首次空云端、已有不同账本、下载占位、离线待上传、前台远端更新、同时编辑冲突、选择期间再次更新、切回本机及退出登录。静态检查与临时目录测试不能代替这些系统行为的设备验证。

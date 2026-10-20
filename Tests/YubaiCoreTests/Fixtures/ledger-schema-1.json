@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "id": "00000000-0000-4000-8000-000000000100",
+  "updatedAt": 812592000,
+  "isSample": false,
+  "accounts": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "测试工资卡",
+      "kind": "bank",
+      "anchorBalance": 1000000,
+      "anchorDate": 812592000,
+      "reconciled": true,
+      "archived": false,
+      "note": "",
+      "creditLimit": 0
+    }
+  ],
+  "entries": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "date": 812592000,
+      "amount": 4250,
+      "nature": "expense",
+      "accountID": "00000000-0000-4000-8000-000000000001",
+      "title": "美团",
+      "category": "餐饮",
+      "note": "午餐",
+      "source": "微信",
+      "externalID": "synthetic-order",
+      "sourceIdentity": "synthetic-source",
+      "fingerprint": "synthetic-fingerprint",
+      "userEdited": false,
+      "classificationReason": "规则：美团"
+    }
+  ],
+  "plans": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "title": "网络订阅",
+      "amount": 6800,
+      "dueDate": 812592000,
+      "frequency": "monthly",
+      "inflow": false,
+      "category": "学习工作",
+      "nature": "expense",
+      "active": true,
+      "note": ""
+    }
+  ],
+  "goals": [
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "title": "旅行",
+      "target": 800000,
+      "reserved": 180000,
+      "note": "保留原目标"
+    }
+  ],
+  "rents": [
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "title": "合租房租",
+      "monthlyTotal": 480000,
+      "personalShare": 240000,
+      "startDate": 812592000,
+      "nextDueDate": 812592000,
+      "monthsPerPayment": 3,
+      "receiveDay": 1,
+      "active": true,
+      "note": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "keyword": "美团",
+      "category": "餐饮",
+      "enabled": true
+    }
+  ],
+  "categories": [
+    {
+      "name": "餐饮",
+      "symbol": "fork.knife",
+      "income": false
+    }
+  ],
+  "imports": [],
+  "attachments": [],
+  "categoryAliases": {},
+  "advice": [
+    {
+      "id": "00000000-0000-4000-8000-000000000007",
+      "createdAt": 812505600,
+      "title": "阅读器",
+      "amount": 200000,
+      "result": "等两天，先确认使用频率。",
+      "note": "通勤阅读"
+    }
+  ],
+  "preferences": {
+    "horizonDays": 90,
+    "emergencyReserve": 50000,
+    "dailyLiving": 0,
+    "hideAmounts": false,
+    "lockEnabled": false,
+    "appearance": "system",
+    "purchaseValues": "超过 2,000 的东西等 48 小时",
+    "colorTheme": "jade-vivid",
+    "cloudAIEnabled": false,
+    "onboardingComplete": true
+  }
+}

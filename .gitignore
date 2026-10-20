@@ -21,12 +21,14 @@ __pycache__/
 xcuserdata/
 
 # Private local data and signing material
+/Config/Local.xcconfig
 *.yubai
 *.yubaibackup
 .env
 .env.*
 !.env.example
 *.p12
+*.p8
 *.mobileprovision
 
 # Local LLM weights (download on demand; never commit)

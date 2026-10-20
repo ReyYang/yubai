@@ -1,6 +1,26 @@
 # 余白 · 设计约定与资源登记
 
-更新：2026-10-19。用户明确委托自主主导完整产品后采用原生设计；本次按用户指定的暖纸设计系统迁移全部已有页面。采用不等于用户已经完成个人体验验收。
+更新：2026-10-20。当前为「余白 2.0 · 管家」，沿用暖纸设计系统与原生 SwiftUI 组件构建候选 UI；页面视觉尚未定稿，采用不等于用户已经完成个人体验验收。用户决定与 Agent 实现选择以[第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)为准。
+
+## 2.0 设计资源与缺口（2026-10-20）
+
+2026-10-19 的[390pt 页面稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)早于 2.0；它与[暖纸设计系统](https://claude.ai/artifact/Pz2z4mQNoCqTNLGRafY9v5)提供既有风格依据，不覆盖 2.0 的全部页面。当前 UI 使用 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift) 的 token、Card、Page、按钮、文字与图表组件直接构建，是实现候选，不能记为最终视觉。旧 Figma、HTML 原型、截图和发布包均未同步。本轮未绘图，页面稿 artifact 无法通过浏览工具读取，来源与日期沿用既有记录。
+
+以下七类均**尚无对应的 2.0 画板**；源码存在只说明实现已写，不表示布局与交互已通过验证。
+
+| 缺少的画板 | 当前候选实现 | 「同步设计稿」需覆盖的状态 |
+|---|---|---|
+| 消费观画像页 | `ProfileView.swift` | 愿意多花／想克制、软线、原则、底线、目标、空内容与待确认提案 |
+| 冷启动对话 | `ProfileConversationView.swift` | 一次一问、跳过、等待／失败、整份画像提案确认与取消 |
+| 心愿单 | `WishlistView.swift` | 考虑中／已买／放弃、交易匹配歧义、回访及反馈 |
+| 每周来信 | `ButlerViews.swift` / `WeeklyLetter.swift` | 来信正文、七日曲线与数字、依据、数据不足与历史回算说明 |
+| 导入问题 | `ImportView.swift` | 最多五题的分组、选项与自由补充、稍后处理、离线待整理与整批撤销 |
+| 推送 | `WeeklyPush.swift` / `SettingsView.swift` | 默认关闭、主动开启、权限请求／拒绝、系统设置入口与每周提醒文案 |
+| 问余白回答卡片 | `AskYubaiView.swift` | 数字与图表、依据详情、未核实金额、修改提案确认／拒绝、购买判断、心愿、语音与截图金额确认 |
+
+下一次「同步设计稿」以 2.0 的现在／我／问余白和 owner 的规格为范围，补齐上述画板及两端、深色、大字号与异常状态，再记录候选反馈和采用情况。旧稿保留原位置与历史含义，不把实现截图反写为用户定稿。本轮只维护记录；owner 最后在 Mac 按[组合清单](../docs/V2-TEST-CHECKLIST.md)验收，当前仅有静态解析与工程引用检查，没有编译或运行证据。
+
+下节为 2026-10-19 迁移及随后旧页面修复的历史，五项导航、本机模型、洞察页等描述已被当前 2.0 范围替代。
 
 ## 2026-10-19 · 设计系统迁移
 
@@ -15,28 +35,33 @@
 
 ## 当前应用设计
 
+2026-10-20 按用户批准的 2.0 范围采用「现在／我 + 问余白」。Agent 用两端共用 SwiftUI 导航容器底部 accessory 实现常驻入口（使用 safeAreaInset，不依赖 iOS 26 专属 accessory API，保持 iOS 18 / macOS 14 的部署范围）；Mac 侧栏仅有现在与我。现在保留来信、管家、保守可动用与计算依据、Finance 待付款列表、导入；移除原首页独立资金走势图与手工维护页面，图表继续用于来信和问余白回答，洞察 tab 已删除。记录详情从依据打开，删除只能通过撤销或恢复版本找回。目标编辑器仅由 ProfileView 使用，问余白直接展示自己的补记草稿，不需要旧记录编辑器。导入记录与恢复版本分开，后者在备份页面下。旧偏好和 isSample 不再控制运行界面，存档仍保留，SampleData 只在测试目标。数字默认看 90 天，底线只取消费观，日常生活自动估算；具体数值和算法属于 Agent 实现选择。现有 Figma、HTML 原型和历史截图均未同步；无 Swift / Apple SDK，布局、底部安全区、VoiceOver、类型检查与五条离线 UI 测试尚未运行验证。
+
+
+「我」的备份入口现为「备份与同步」，两端共用 LedgerSyncSection / SyncVersionsView：默认仅本机，可用时才显示 iCloud；读取时显示「正在从 iCloud 读取…」。切换遇到不同账本或同步冲突时，展示各自更新时间、版本时间、设备名（如有）、有效记录数、附件数和最多三笔差异，用户明确选定一份；另一份留本机恢复历史。位置切换可取消；未解决的同步冲突保留入口并阻止继续修改。采用现有 Form、Picker、Section 与样式 token，没有新增主入口。当前仅静态核查，未执行两端编译、布局、VoiceOver 或真实 iCloud 冲突验证，外部画布和包未同步。
+
 | 资源 | 权威位置与用途 |
 |---|---|
 | 颜色、字体、基础视图 | `Sources/YubaiApp/DesignSystem.swift`；暖纸浅/深色语义 token、衬线标题、系统中文正文与 rounded 等宽金额；品牌绿只强调动作和图表 |
-| 应用信息架构 | `YubaiApp.swift`；iPhone 五个 tab、Mac 侧栏；根视图处理示例隔离、账本锁、文件打开和错误 |
-| 现在 | `OverviewView.swift`；保守金额优先，依据可展开，图表和近期义务同屏衔接，不展示无依据的「可放心花」承诺 |
-| 账本与编辑 | `LedgerView.swift` / `Editors.swift`；检索、分类/时间/账户筛选、批量修改、明细关联、回收站、余额差额 |
+| 应用信息架构 | `YubaiApp.swift`；iPhone 两个 tab、Mac 两项侧栏，问余白底部常驻按钮；根视图处理账本锁、文件打开和错误 |
+| 现在 | `OverviewView.swift`；来信和管家、保守金额与计算依据、只读待付款及结束安排、导入账单，不展示无依据的「可放心花」承诺 |
+| 依据与账户 | `EntryDetailView.swift` / `Editors.swift`；依据打开记录来源，账户编辑和核对保留；不再提供独立账本或关联页面 |
 | 整理 | `ImportView.swift`；文件/截图入口 → 账户对应 → 自动归类与少量例外 → 保存结果 → 可直接离开；不强迫逐笔审核 |
-| 安排与洞察 | `PlansView.swift` / `InsightsView.swift`；已知义务、目标、房租实际收付、购买判断与按需本机模型 |
-| 持续维护 | `SettingsView.swift`；分类规则、完整备份、恢复预览、历史、设备保护、外观、本机模型权重与可选云/系统模型开关及计算口径 |
-| 本机智能（一期） | `IntelligenceRuntime` + `YubaiLocalLLM`（llama.cpp Metal）+ `ModelWeightStore`（HF Qwen GGUF）；台架见 `docs/ai-bench/`；方案见 Agent Store `docs/ai-local-first-plan.md` |
+| 消费观与问答 | `ProfileView.swift` / `AskYubaiView.swift` / `WishlistView.swift`；消费原则、领域、底线和目标，问答数字、依据、提案与心愿 |
+| 我与维护 | `SettingsView.swift`；七个维护入口、导入批次整批撤销、加密备份、可选 iCloud 同步与版本选择、恢复版本、智能与隐私和指南 |
+| 云端智能 | `IntelligenceRuntime` + `YubaiCore/Assistant/` 轻量 harness + DeepSeek，唯一模型路径；共用发送前后的快照保护，默认关闭；商户与备注可发送，敏感字段须脱敏，实际覆盖待验证，见 `docs/ASSISTANT.md` |
 | 图标 | `Assets.xcassets/AppIcon.appiconset`；本项目生成的深青绿余白符号，不依赖远端素材 |
 
 基础组件包括 `Page`、`Card` / `CardRows`、`AmountLabel`、`HeroCard`、`EntryRow`、`Pill`、`InlineNote`、`EmptyState`、`Toast`、`BrandMark`、`AssistantMark`、`WaterLevelView`、`ChartGrow` 和主次按钮；均有实际调用。使用 SwiftUI 原生表单、导航、选择器、sheet、文件选择、SF Symbols 和 Swift Charts；卡片无描边、阴影和渐变。
 
-大字号下，账本筛选合并到菜单、交易信息纵向排布、示例标记缩短，避免固定提示占满屏幕。金额不只靠颜色说明；入/出、性质、未知和异常均有文字。输入错误留在当前编辑页，不丢弃表单。触控、VoiceOver、设备认证与所有尺寸并未穷尽验收，已执行范围见 [验证记录](../docs/VALIDATION.md)。
+大字号下，金额与待付款行通过纵向排布保持可读；已移除旧筛选与示例提示。金额不只靠颜色说明；入/出、性质、未知和异常均有文字。输入错误留在当前编辑页，不丢弃表单。触控、VoiceOver、设备认证与所有尺寸并未穷尽验收，已执行范围见 [验证记录](../docs/VALIDATION.md)。
 
-2026-10-02 按用户明确要求建立 [Figma 全动作派生稿](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=13-3367)。三页分别为全动作 UI/UX、组件与参考、Mac 与共用流程；包含 111 个手机状态、11 个 Mac 画板、42 个本地组件（含 28 个图标）、43 个变量和 8 个文字样式。
+2026-10-02 按用户明确要求建立 [Figma 全动作派生稿](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=13-3367)。三页分别为全动作 UI/UX、组件与参考、Mac 与共用流程；包含 111 个手机状态、11 个 Mac 画板、42 个本地组件（含 28 个图标）、43 个变量和 8 个文字样式。这些数量属于 1.0，不包含上方七类 2.0 新画板。
 
 原生源码仍是应用实现的权威来源；Figma 是可编辑实现映射与设计说明，没有自动双向同步，也没有因画布排版回写应用。Figma 使用 Noto 字体和 Lucide 图标替代，Apple UI Kit 已检索但无法导入；通用反馈及系统控件以明确标注的示意表达。详细来源、逐动作索引、截图验证和原型播放限制见 [Figma 交付说明](../docs/UI-UX-FIGMA.md)。本轮画图不代表用户已确认最终视觉，不替代当前业务或真机验收。历史 HTML 继续保留为早期行为候选。
 
 
-2026-10-08 新增[当前版本浏览基线](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=40-6983)：完整页面和状态映射，用于逐页讨论；当前实现仍是上述原生源码，未采用改版。保留旧Figma页面。字体、系统控件与交互表达边界见[交付说明](../docs/UI-UX-FIGMA.md)。用户确认喜欢当前风格，但认为信息密度过大；本次按现状绘制，具体改动等待体验反馈。
+2026-10-08 新增[当时版本的浏览基线](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=40-6983)：当时完整页面和状态映射，用于逐页讨论，没有因画图采用改版。保留旧 Figma 页面，尚未同步 2.0。字体、系统控件与交互表达边界见[交付说明](../docs/UI-UX-FIGMA.md)。用户当时确认喜欢风格，但认为信息密度过大；该反馈不等于 2.0 新页面已经视觉验收。
 
 ## 历史候选登记（2026-09-20）
 

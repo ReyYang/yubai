@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import YubaiCore
 #if os(macOS)
 import AppKit
@@ -272,21 +273,14 @@ struct SecondaryButtonStyle: ButtonStyle {
 struct Page<Content: View>: View {
     let content: Content
     var spacing: CGFloat
-    var hasTabBar: Bool
-    init(spacing: CGFloat = YubaiSpace.space12, hasTabBar: Bool = false, @ViewBuilder content: () -> Content) {
-        self.content = content(); self.spacing = spacing; self.hasTabBar = hasTabBar
-    }
-    private var bottomPadding: CGFloat {
-        #if os(iOS)
-        if hasTabBar { return 106 }
-        #endif
-        return YubaiSpace.space24
+    init(spacing: CGFloat = YubaiSpace.space12, @ViewBuilder content: () -> Content) {
+        self.content = content(); self.spacing = spacing
     }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: spacing) { content }
                 .padding(.horizontal, YubaiSpace.space18).padding(.top, YubaiSpace.space20)
-                .padding(.bottom, bottomPadding)
+                .padding(.bottom, YubaiSpace.space24)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas)
     }
@@ -438,7 +432,7 @@ struct EntryRow: View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space12))
         layout {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                Text(entry.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
+                Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
                 Text("\(dateText) · \(entry.category) · \(store.current.accountName(entry.accountID))")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(textSize.isAccessibilitySize ? nil : 1)
                 if entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20) }
@@ -623,7 +617,7 @@ struct HeroCard: View {
     var reserved: Int64
     var attentionCount = 0
     var hideAmount = false
-    var title = "还能自在支配"
+    var title = "保守可动用"
     var onDetails: (() -> Void)? = nil
     var onAttention: (() -> Void)? = nil
     var body: some View {
@@ -854,11 +848,41 @@ struct WelcomeView: View {
                     feature("calendar", "从今天安排未来", "先留出房租、还款和目标，再看此刻有多少余地。")
                     feature("lock.shield", "数据留在你手里", "无需注册，离线可用，可导出和加密备份。")
                 }.padding(.vertical, YubaiSpace.space10)
-                Button("开始我的账本") { store.update("建立账本") { $0.preferences.onboardingComplete = true }; store.sheet = .account(nil) }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("startLedger")
-                Button("先看看示例账本") { store.startDemo() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("openDemo")
-                Text("示例数据与你的账本完全分开。所有示例金额都是虚构的。") .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                Button("开始我的账本") { store.update("建立账本") { $0.preferences.onboardingComplete = true } }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("startLedger")
             }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity).padding(.bottom, YubaiSpace.space24)
         }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
     }
     func feature(_ symbol: String, _ title: String, _ text: String) -> some View { HStack(alignment: .top, spacing: YubaiSpace.space12) { Circle().fill(YubaiColor.brandMark).frame(width: YubaiSize.marker, height: YubaiSize.marker).padding(.top, YubaiSpace.space6).accessibilityHidden(true); VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(title).yubaiFont(YubaiFont.rowTitle); Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted).fixedSize(horizontal: false, vertical: true) } } }
+}
+
+/// Answer data is built from a read tool in YubaiCore; animation never changes labels.
+struct AnswerChartView: View {
+    let chart: AnswerChart
+    @State private var appeared = false
+    private var domain: ClosedRange<Double> {
+        let values = chart.points.map { Double($0.cents) / 100 }
+        return min(0, values.min() ?? 0)...max(1, values.max() ?? 0)
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            Text(chart.title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            ChartGrow(appeared: $appeared) { progress in
+                Chart {
+                    ForEach(Array(chart.points.enumerated()), id: \.offset) { _, point in
+                        if chart.kind == .bar {
+                            BarMark(x: .value("分类", point.label), y: .value("金额", Double(point.cents) / 100 * progress))
+                                .foregroundStyle(YubaiColor.brand)
+                        } else {
+                            LineMark(x: .value("日期", point.label), y: .value("金额", Double(point.cents) / 100 * progress))
+                                .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: YubaiSize.lineWidth))
+                        }
+                    }
+                }.chartYScale(domain: domain).chartYAxis(.hidden).chartLegend(.hidden)
+                    .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                        AxisValueLabel().foregroundStyle(YubaiColor.labelSecondary).font(.system(size: YubaiFont.chartLabel.size))
+                    } }.frame(height: 180)
+                    .accessibilityLabel(chart.title + "。" + chart.points.map { $0.label + "，" + Money.text($0.cents) }.joined(separator: "；"))
+            }
+        }
+    }
 }

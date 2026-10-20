@@ -1,0 +1,151 @@
+{
+  "accounts": [
+    "工资卡",
+    "零钱"
+  ],
+  "rows": [
+    {
+      "key": "move1-out",
+      "date": "2026-09-12 10:00:00",
+      "amount": 50000,
+      "nature": "unknownOut",
+      "account": 0,
+      "title": "转入零钱"
+    },
+    {
+      "key": "move1-in",
+      "date": "2026-09-12 10:01:00",
+      "amount": 50000,
+      "nature": "unknownIn",
+      "account": 1,
+      "title": "工资卡转入"
+    },
+    {
+      "key": "move2-out",
+      "date": "2026-09-18 10:00:00",
+      "amount": 80000,
+      "nature": "unknownOut",
+      "account": 1,
+      "title": "零钱提现"
+    },
+    {
+      "key": "move2-in",
+      "date": "2026-09-18 10:02:00",
+      "amount": 80000,
+      "nature": "unknownIn",
+      "account": 0,
+      "title": "零钱提现到账"
+    },
+    {
+      "key": "sub1",
+      "date": "2026-07-06",
+      "amount": 2500,
+      "nature": "expense",
+      "account": 0,
+      "title": "音乐会员"
+    },
+    {
+      "key": "sub2",
+      "date": "2026-08-06",
+      "amount": 2500,
+      "nature": "expense",
+      "account": 0,
+      "title": "音乐会员"
+    },
+    {
+      "key": "sub3",
+      "date": "2026-09-06",
+      "amount": 2500,
+      "nature": "expense",
+      "account": 0,
+      "title": "音乐会员"
+    },
+    {
+      "key": "salary1",
+      "date": "2026-07-15",
+      "amount": 1500000,
+      "nature": "income",
+      "account": 0,
+      "title": "工资"
+    },
+    {
+      "key": "salary2",
+      "date": "2026-08-15",
+      "amount": 1500000,
+      "nature": "income",
+      "account": 0,
+      "title": "工资"
+    },
+    {
+      "key": "salary3",
+      "date": "2026-09-15",
+      "amount": 1500000,
+      "nature": "income",
+      "account": 0,
+      "title": "工资"
+    },
+    {
+      "key": "card1",
+      "date": "2026-07-10",
+      "amount": 100000,
+      "nature": "repayment",
+      "account": 0,
+      "title": "信用卡账单"
+    },
+    {
+      "key": "card2",
+      "date": "2026-08-10",
+      "amount": 150000,
+      "nature": "repayment",
+      "account": 0,
+      "title": "信用卡账单"
+    },
+    {
+      "key": "card3",
+      "date": "2026-09-10",
+      "amount": 120000,
+      "nature": "repayment",
+      "account": 0,
+      "title": "信用卡账单"
+    }
+  ],
+  "expectedPairs": [
+    [
+      "move1-out",
+      "move1-in"
+    ],
+    [
+      "move2-out",
+      "move2-in"
+    ]
+  ],
+  "expectedSeries": [
+    {
+      "keys": [
+        "sub1",
+        "sub2",
+        "sub3"
+      ],
+      "frequency": "monthly",
+      "title": "音乐会员"
+    },
+    {
+      "keys": [
+        "salary1",
+        "salary2",
+        "salary3"
+      ],
+      "frequency": "monthly",
+      "title": "工资"
+    },
+    {
+      "keys": [
+        "card1",
+        "card2",
+        "card3"
+      ],
+      "frequency": "monthly",
+      "title": "信用卡账单"
+    }
+  ]
+}

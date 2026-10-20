@@ -1,7 +1,6 @@
 import Foundation
 
-/// Configuration for optional DeepSeek cloud calls. Keys are read from the process environment only —
-/// never log, persist, or embed the API key.
+/// Configuration for optional DeepSeek cloud calls. Never log or embed credentials.
 public struct DeepSeekConfiguration: Equatable, Sendable {
     public var apiKey: String
     public var baseURL: URL
@@ -58,11 +57,13 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
 }
 
 /// Minimal OpenAI-compatible chat client for DeepSeek. Does not print credentials.
-public struct DeepSeekClient: Sendable {
+public struct DeepSeekClient: ChatTransport {
     public var configuration: DeepSeekConfiguration
+    private let redactor: Redactor
+    private let sendLog: SendLog
 
-    public init(configuration: DeepSeekConfiguration) {
-        self.configuration = configuration
+    public init(configuration: DeepSeekConfiguration, redactor: Redactor = .shared, sendLog: SendLog = .shared) {
+        self.configuration = configuration; self.redactor = redactor; self.sendLog = sendLog
     }
 
     public static func fromEnvironment(
@@ -72,65 +73,81 @@ public struct DeepSeekClient: Sendable {
         return DeepSeekClient(configuration: config)
     }
 
-    public func chat(
-        system: String,
-        user: String,
-        temperature: Double = 0.2,
-        maxTokens: Int = 400,
-        session: URLSession = .shared
-    ) async throws -> String {
-        let endpoint = Self.chatCompletionsURL(baseURL: configuration.baseURL)
-        var request = URLRequest(url: endpoint, timeoutInterval: configuration.timeout)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        // Avoid opaque compressed / hung chunked bodies on some edge paths.
-        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    public static func configured(keyStore: APIKeyStore = .shared,
+                                  environment: [String: String] = ProcessInfo.processInfo.environment,
+                                  redactor: Redactor = .shared) -> DeepSeekClient? {
+        guard let config = keyStore.configuration(environment: environment) else { return nil }
+        return DeepSeekClient(configuration: config, redactor: redactor)
+    }
 
-        let payload: [String: Any] = [
-            "model": configuration.model,
-            "temperature": temperature,
-            "max_tokens": maxTokens,
-            "messages": [
-                ["role": "system", "content": system],
-                ["role": "user", "content": user]
-            ]
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw YubaiError.invalid("云端请求失败：网络或超时。可稍后重试，或关闭云端增强改用规则 / 本机路径。")
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw YubaiError.invalid("云端响应异常。")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            // Never include response bodies that might echo auth headers; keep message generic.
-            if http.statusCode == 401 || http.statusCode == 403 {
-                throw YubaiError.invalid("云端密钥无效或无权访问。请检查环境变量配置（不会写入账本）。")
-            }
-            throw YubaiError.invalid("云端服务返回错误（HTTP \(http.statusCode)）。可关闭云端增强继续使用规则路径。")
-        }
-
-        guard
-            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let choices = root["choices"] as? [[String: Any]],
-            let first = choices.first,
-            let message = first["message"] as? [String: Any],
-            let content = message["content"] as? String
-        else {
-            throw YubaiError.invalid("云端响应无法解析。")
-        }
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+    public func chat(system: String, user: String, temperature: Double = 0.2, maxTokens: Int = 400,
+                     purpose: String = "云端智能", session: URLSession = .shared) async throws -> String {
+        let reply = try await send(ChatRequest(messages: [ChatMessage(role: .system, content: system),
+            ChatMessage(role: .user, content: user)], temperature: temperature, maxTokens: maxTokens,
+            purpose: purpose), session: session)
+        guard let text = reply.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
             throw YubaiError.invalid("云端返回空内容。")
         }
-        return trimmed
+        return text
+    }
+
+    public func send(_ request: ChatRequest) async throws -> ChatMessage {
+        try await send(request, session: .shared)
+    }
+
+    public func send(_ input: ChatRequest, session: URLSession) async throws -> ChatMessage {
+        struct Payload: Encodable {
+            var model: String; var messages: [ChatMessage]; var tools: [ChatToolDefinition]?
+            var temperature: Double; var max_tokens: Int
+        }
+        var messages = input.messages
+        for i in messages.indices {
+            if let content = messages[i].content { messages[i].content = redactor.content(content) }
+            if var calls = messages[i].toolCalls {
+                for j in calls.indices { calls[j].function.arguments = redactor.content(calls[j].function.arguments) }
+                messages[i].toolCalls = calls
+            }
+        }
+        var definitions = input.tools
+        for i in definitions.indices {
+            definitions[i].function.description = redactor.text(definitions[i].function.description)
+            definitions[i].function.parameters = redactor.value(definitions[i].function.parameters)
+        }
+        let payload = Payload(model: configuration.model, messages: messages,
+            tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens)
+        let body = try JSONEncoder().encode(payload)
+        var request = URLRequest(url: Self.chatCompletionsURL(baseURL: configuration.baseURL), timeoutInterval: configuration.timeout)
+        request.httpMethod = "POST"; request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        try Task.checkCancellation()
+        sendLog.record(purpose: redactor.text(input.purpose), model: configuration.model, body: body, apiKey: configuration.apiKey)
+        let data: Data; let response: URLResponse
+        do { (data, response) = try await session.data(for: request) }
+        catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw YubaiError.invalid("云端请求失败：网络或超时。本机计算结果已保留，可稍后重试。")
+        }
+        guard let http = response as? HTTPURLResponse else { throw YubaiError.invalid("云端响应异常。") }
+        guard (200..<300).contains(http.statusCode) else {
+            // Response bodies may echo credentials. Do not expose them.
+            if http.statusCode == 401 || http.statusCode == 403 {
+                throw YubaiError.invalid("云端密钥无效或无权访问，请检查密钥设置。")
+            }
+            throw YubaiError.invalid("云端服务返回错误（HTTP \(http.statusCode)）。本机计算结果已保留。")
+        }
+        struct Response: Decodable {
+            struct Choice: Decodable {
+                struct Message: Decodable { var content: String?; var tool_calls: [ChatToolCall]? }
+                var message: Message
+            }
+            var choices: [Choice]
+        }
+        guard let result = try? JSONDecoder().decode(Response.self, from: data), let message = result.choices.first?.message,
+              !(message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                || !(message.tool_calls?.isEmpty ?? true) else { throw YubaiError.invalid("云端响应无法解析或为空。") }
+        return ChatMessage(role: .assistant, content: message.content, toolCalls: message.tool_calls)
     }
 
     /// `DEEPSEEK_BASE_URL` should be the API root (e.g. `https://api.deepseek.com` or `…/v1`), not the full completions path.

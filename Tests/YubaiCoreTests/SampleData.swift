@@ -1,9 +1,10 @@
 import Foundation
+import YubaiCore
 
-public enum SampleData {
-    public static func ledger(now: Date = Date()) -> Ledger {
-        var l = Ledger(); l.isSample = true; l.preferences.onboardingComplete = true; l.preferences.horizonDays = 90
-        l.preferences.emergencyReserve = 500_000; l.preferences.dailyLiving = 4_000
+enum SampleData {
+    static func ledger(now: Date = Date()) -> Ledger {
+        var l = Ledger(); l.isSample = true; l.preferences.onboardingComplete = true
+        l.profile.floorAmount = 500_000
         let bank = Account(name: "工资卡", kind: .bank, balance: 3_680_000, at: now)
         let wechat = Account(name: "微信零钱", kind: .cash, balance: 186_050, at: now)
         let alipay = Account(name: "支付宝余额", kind: .cash, balance: 92_480, at: now)
@@ -23,7 +24,13 @@ public enum SampleData {
         var repay = Plan(title: "信用卡还款", amount: 238_600, dueDate: Dates.addDays(15, to: now), nature: .repayment); repay.accountID = credit.id; l.plans.append(repay)
         l.rents = [Rent(monthlyTotal: 480_000, personalShare: 240_000, startDate: Dates.addDays(-30, to: now), nextDueDate: Dates.addDays(42, to: now))]
         l.goals = [Goal(title: "下一次远行", target: 800_000, reserved: 180_000, dueDate: Dates.addDays(150, to: now))]
-        l.rules = [Rule(keyword: "咖啡", category: "餐饮")]
         return l
     }
 }
+
+#if !SWIFT_PACKAGE
+// Xcode's native test target copies the same Fixtures folder as Swift Package Manager.
+extension Bundle {
+    static var module: Bundle { Bundle(for: StorageTests.self) }
+}
+#endif

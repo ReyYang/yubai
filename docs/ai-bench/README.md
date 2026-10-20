@@ -1,100 +1,68 @@
-# 本地优先 AI · 台架评测
+# DeepSeek 云端 AI · 台架评测
 
-合成 / 脱敏样例，覆盖一期四类任务：用途归类、购买价值短答、洞察叙述（数字一致性）、搜索扩词。
+仅保留 DeepSeek 云端路径。合成样例覆盖用途归类、购买价值短答、洞察叙述（金额原文保护）和搜索扩词，供后续云端评测继续使用。
 
-## 夹具位置
+## 夹具与运行器
 
-- 权威 JSON：`Tests/YubaiCoreTests/Fixtures/ai-bench-samples.json`（随 `YubaiCoreTests` 复制进测试包）
-- 本目录仅说明如何跑；改样本请改上述 JSON。
+- 权威 JSON：`Tests/YubaiCoreTests/Fixtures/ai-bench-samples.json`，随测试包复制；共 52 例（归类 16、购买 12、洞察 12、搜索 12）。
+- `AIBenchRunner.run(fixture:backend:)` 接收 `CloudBackend`，输出各任务通过数及总通过率；请求失败计为该例失败。
+- 评测针对带护栏的后端结果：洞察缺失受保护金额时会返回本机模板，因此洞察通过数不等于模型原始回答的通过数。
+- 购买短答检查指定关键词并排除模型金额；搜索用扩词匹配标题、备注、分类，保持账本不变。当前关键词断言是初步检查，尚不能代表真实体验质量。
 
-## 怎么跑
+## 离线检查
 
-在仓库根目录：
-
-```sh
-swift test --filter AIBenchTests
-```
-
-也会打印各后端摘要行，例如：
-
-```text
-[MockLocalBackend/localDownloaded] 通过 …/…（…%）· 归类 … · 购买 … · 洞察 … · 搜索 …
-[RulesOnlyBackend/rulesOnly] …
-[MockCloudBackend/cloudOptional] …
-```
-
-`swift test`（全量）同样会执行该用例。
-
-相关 filter（无权重 CI 默认可绿）：
-
-| Filter | 说明 |
-|---|---|
-| `AIBenchTests` | 规则 / mock 本地 / mock 云台架；权重占位拦截；`LocalDownloaded` 降级与 stub 推理 |
-| `LocalGGUFTests` | 金额守卫、洞察护栏；**不含**实机 Metal（默认） |
-| `LocalGGUFTests/testLiveLocalGGUFSmokeWhenExplicitlyEnabled` | 真 GGUF 冒烟；需环境变量 + 已下载权重 |
-| `DeepSeekCloudTests` | 云端 mock / 守卫；实网另见下 |
-
-## 后端说明
-
-| 后端 | 用途 |
-|---|---|
-| `RulesOnlyBackend` | 规则 / 模板 / 无扩词；购买短答会失败（预期） |
-| `MockLocalBackend` | 无权重时的启发式 mock（设置里「实验性 mock」） |
-| `LocalDownloadedBackend` + `YubaiLocalLLM` | 本机路径（**默认关闭**；高级选项显式开启 + 健康门控） |
-| `MockCloudBackend` | 可选云 mock（默认产品开关关闭） |
-| `CloudOptionalBackend` + DeepSeek | **现阶段实用路径**：读 `DEEPSEEK_API_KEY`；仅当 `cloudAIEnabled`；无密钥降级 |
-
-### 默认模型选型
-
-| 档 | Spec ID | 文件 | 来源 |
-|---|---|---|---|
-| **推荐（≈8 GB RAM）** | `qwen25-15b-q4` | `qwen2.5-1.5b-instruct-q4_k_m.gguf` | Hugging Face `Qwen/Qwen2.5-1.5B-Instruct-GGUF` |
-| 覆盖（≈6 GB） | `qwen25-05b-q4` | `qwen2.5-0.5b-instruct-q4_k_m.gguf` | Hugging Face `Qwen/Qwen2.5-0.5B-Instruct-GGUF` |
-
-URL 与 SHA-256 写在 `ModelWeightCatalog`；**勿把 GGUF 提交进 git**。设置 → 高级选项 →「本机模型（开发者）」下载 / 删除。
-
-**可靠性路由（2026-10 真机冒烟失败后）：** 健康本机（显式开启）→ 云端增强 → Apple FM → 规则。本机默认关；不健康 / 未就绪时若云端已开则走云，否则规则。金额永不交模型修改。
-
-## 可选：本机 GGUF 实网冒烟
-
-1. 在 App 设置下载 0.5B（冒烟）或 1.5B（推荐档），或把文件放到 `ModelWeightStore` 目录并保证文件名与 catalog 一致。
-2. 跑：
-
-```sh
-export YUBAI_RUN_LOCAL_GGUF_LIVE=1
-swift test --filter LocalGGUFTests/testLiveLocalGGUFSmokeWhenExplicitlyEnabled
-```
-
-未设环境变量时该用例 `XCTSkip`，不失败。
-
-**模拟器 / vphone：** 仅冒烟（能否加载与出字）；延迟、发热、jetsam **以真机为准**。
-
-## 可选：DeepSeek 实网冒烟
-
-默认 CI / 无密钥环境**不要**开实网用例。本机或 Secrets 已配密钥时：
-
-```sh
-export YUBAI_RUN_DEEPSEEK_LIVE=1
-swift test --filter DeepSeekCloudTests/testLiveDeepSeekSmokeWhenExplicitlyEnabled
-```
-
-离线 / mock：
+在有 Swift / Apple SDK 的环境中，从仓库根目录执行：
 
 ```sh
 swift test --filter AIBenchTests
-swift test --filter LocalGGUFTests
 swift test --filter DeepSeekCloudTests
+swift test --filter StorageTests
 ```
 
-## SPM / XCFramework 取舍
+默认不发送网络请求。测试专用 `CloudTestStub` 用 `URLProtocol` 截获请求，验证真实云端后端的请求字段、提示词边界、金额保护、搜索解析及台架计分；这些 Core 测试不使用产品模拟开关；UI 测试另有仅 Debug simulator 可用的脚本入口。实网测试缺少明确启用变量或密钥时跳过。
 
-- **采用：** `mattt/llama.swift`（exact `2.10456.0`）再导出官方 `llama-b10456-xcframework.zip`（Metal，iOS/macOS，含 iOS Simulator slice）。
-- **原因：** 该包提供可钉版本的 SPM 产品名，避免手搓 binaryTarget checksum。b10456 是最后包含 iOS Simulator slice 的版本；上游自 b10470 起不再提供模拟器 slice，因此在恢复提供前不要升级到 b10456 之后的版本。
-- **备选：** 直接在 `Package.swift` 写 `.binaryTarget` 指向 ggml-org release（官方 docs/xcframework.md）；若 SPM 解析失败可改回该路径。
-- App 目标经 `scripts/generate-project.py` 链接本地包产品 `YubaiCore` + `YubaiLocalLLM`。
+## 云端配置与实网检查
 
-## 硬约束抽检
+应用设置中的「使用云端智能（DeepSeek）」默认关闭。仅在开关开启且存在 DeepSeek 配置时创建后端。密钥优先从设置保存的本机钥匙串读取；启动进程环境用于开发回退。Xcode 启动应用时在 Scheme → Run → Arguments → Environment Variables 设置：
 
-- 购买短答：不得出现 `¥` + 数字或 `x.xx元` 形态金额改写（本机 / 云端都会剥离 / 拒绝）
-- 洞察：输出必须保留夹具中的 `protectedAmountTexts`
-- 搜索：只匹配标题 / 备注 / 分类名，不改库
+```sh
+export DEEPSEEK_API_KEY='your-key'
+# 可选覆盖 API 根地址和模型；默认值见 DeepSeekConfiguration。
+export DEEPSEEK_BASE_URL='https://api.deepseek.com'
+export DEEPSEEK_MODEL='deepseek-flash'
+```
+
+密钥不写入账本或诊断摘要。运行测试时不需要打开应用偏好开关，以下显式启用变量表示允许对合成夹具发起云端请求。
+
+只做一次搜索扩词冒烟：
+
+```sh
+YUBAI_LIVE_EVAL=1 swift test --filter DeepSeekCloudTests/testLiveDeepSeekSmokeWhenExplicitlyEnabled
+```
+
+运行全部 52 例（会产生多次 API 请求及相应费用）：
+
+```sh
+YUBAI_LIVE_EVAL=1 swift test --filter AIBenchTests/testLiveCloudFixtureWhenExplicitlyEnabled
+```
+
+摘要示例：`[DeepSeek(api.deepseek.com/deepseek-flash)] 通过 …/52（…%）· 归类 … · 购买 … · 洞察 … · 搜索 …`。实网测试打印分项结果，不把当前通过率当作已确定的产品验收阈值。
+
+## 共享助手评测种子
+
+`Fixtures/assistant-eval.json` 有6例：资金、预测/购买缺口、记录查询、消费汇总、习惯对照与偏好。`AIBenchRunner.runAssistantCase(_:transport:context:)` 复用 agent，检查调用工具、必含金额及金额护栏结果。离线脚本会先确认真实工具结果含有预期金额，再生成最终回答；这验证接口与数字链路，不代表模型工具选择能力已验证。
+
+在具备 Swift / Apple SDK 的环境：
+
+```sh
+swift test --filter Assistant
+YUBAI_LIVE_EVAL=1 swift test --filter AssistantEvalTests/testLiveAssistantEvalOnlyWhenExplicitlyEnabled
+```
+
+所有实网测试都要求 `YUBAI_LIVE_EVAL=1` 且已配置密钥，且只用合成资料。本环境没有执行上述命令。
+
+## 产品回退与边界
+
+这些旧的购买文字、洞察和搜索扩词用例只用于 Core 后端回归，2.0 不再提供对应独立页面。关闭云端或缺少配置时，应用保留本机资金计算、导入解析和待整理状态。金额、账户和资金性质始终由本机逻辑处理；模型仅提供用途分类或文字与搜索词，洞察必须保留受保护金额。提示词明确把用户文字视为数据，忽略其中命令。
+
+2026-10-20 本次修改环境没有 Swift 工具链，仅完成静态检查，未运行上述测试或实网请求。

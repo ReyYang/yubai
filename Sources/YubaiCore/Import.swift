@@ -6,35 +6,17 @@ import CArchive
 public struct Classification: Sendable {
     public var category: String; public var nature: Nature; public var reason: String
 }
+/// Only explicit bill type fields supply deterministic nature hints. No merchant rules.
 public enum Classifier {
-    public static func classify(title: String, inflow: Bool, hint: String = "", rules: [Rule] = []) -> Classification {
-        let text = (title + " " + hint).lowercased()
-        if ["退款", "退货", "refund"].contains(where: text.contains), inflow { return Classification(category: "其他支出", nature: .refund, reason: "账单标记为退款；可关联原支出") }
-        if ["还信用卡", "信用卡还款", "花呗还款", "白条还款"].contains(where: text.contains) { return Classification(category: "内部移动", nature: inflow ? .adjustmentIn : .repayment, reason: "账单标记为还款，请关联另一账户") }
-        if ["基金", "理财申购", "理财赎回", "余额宝", "零钱通"].contains(where: text.contains) { return Classification(category: "投资本金", nature: inflow ? .investSell : .investBuy, reason: "投资本金不计日常收支，请关联投资账户") }
-        if ["转账", "提现", "充值", "红包", "收款"].contains(where: text.contains) {
-            return Classification(category: "待明确", nature: inflow ? .unknownIn : .unknownOut, reason: "仅凭转账描述不能确定性质，稍后补充即可")
-        }
-        // Category rules never turn an explicitly identified refund, principal movement,
-        // or unresolved transfer into ordinary income or spending.
-        for rule in rules where rule.enabled && !rule.keyword.isEmpty {
-            if text.contains(rule.keyword.lowercased()) { return Classification(category: rule.category, nature: inflow ? .income : .expense, reason: "学习规则：\(rule.keyword)") }
-        }
-        let groups: [(String, [String])] = inflow ? [
-            ("工资奖金", ["工资", "薪资", "奖金", "salary"]), ("兼职劳务", ["稿费", "劳务", "兼职"]),
-            ("投资收益", ["利息入账", "分红", "股息"]), ("礼金赠与", ["礼金", "赠与"])
-        ] : [
-            ("餐饮", ["餐", "食", "咖啡", "奶茶", "瑞幸", "星巴克", "肯德基", "麦当劳", "饿了么", "美团外卖", "便利蜂"]),
-            ("居住", ["房租", "租金", "物业", "电费", "水费", "燃气", "宽带"]),
-            ("交通", ["地铁", "公交", "滴滴", "打车", "铁路", "12306", "停车", "加油", "高速"]),
-            ("医疗健康", ["医院", "药", "体检", "牙科", "健身", "医疗"]),
-            ("学习工作", ["书店", "课程", "教材", "学费", "办公", "openai", "github", "notion"]),
-            ("娱乐旅行", ["电影", "影院", "酒店", "机票", "游戏", "音乐", "乐园", "旅行"]),
-            ("人情家庭", ["礼物", "礼金", "家用"]), ("利息手续费", ["手续费", "利息", "服务费"]),
-            ("日用购物", ["超市", "淘宝", "京东", "拼多多", "商店", "百货", "服饰", "盒马", "天猫"])
-        ]
-        for (category, words) in groups { if let word = words.first(where: text.contains) { return Classification(category: category, nature: inflow ? .income : .expense, reason: "本地分类：匹配“\(word)”") } }
-        return Classification(category: inflow ? "其他收入" : "其他支出", nature: inflow ? .income : .expense, reason: "未命中规则，归入其他；可批量纠正")
+    public static func classify(inflow: Bool, hint: String = "") -> Classification {
+        let text = hint.lowercased()
+        let nature: Nature
+        if inflow && ["退款", "退货", "refund"].contains(where: text.contains) { nature = .refund }
+        else if ["还信用卡", "信用卡还款", "花呗还款", "白条还款"].contains(where: text.contains) { nature = inflow ? .adjustmentIn : .repayment }
+        else if ["理财申购", "理财赎回", "余额宝", "零钱通"].contains(where: text.contains) { nature = inflow ? .investSell : .investBuy }
+        else if ["转账", "提现", "充值", "红包", "收款"].contains(where: text.contains) { nature = inflow ? .unknownIn : .unknownOut }
+        else { nature = inflow ? .income : .expense }
+        return Classification(category: "待整理", nature: nature, reason: "保留账单流向与明确性质，等待整理")
     }
 }
 
@@ -46,20 +28,14 @@ public struct ImportRow: Identifiable, Sendable {
 }
 public struct ImportPreview: Sendable {
     public var filename: String; public var source: String; public var rows: [ImportRow]; public var warnings: [String]
+    public var columnMapping: ImportColumnMapping? = nil
+    public var mappedHeader: Int? = nil
     public var selectedEntries: [Entry] { rows.filter(\.included).compactMap(\.entry) }
     public var readyCount: Int { rows.filter { $0.status == .ready }.count }
     public var duplicateCount: Int { rows.filter { $0.status == .duplicate }.count }
     public var issueCount: Int { rows.filter { [.invalid, .conflict, .possibleDuplicate, .needsAccount].contains($0.status) }.count }
     public var paymentMethods: [String] { Array(Set(rows.map(\.paymentMethod).filter { !$0.isEmpty })).sorted() }
-    public mutating func applyCategorySuggestions(_ suggestions: [UUID: String], categories: [Category]) {
-        for i in rows.indices {
-            guard rows[i].status == .ready, var e = rows[i].entry,
-                  [.expense, .income].contains(e.nature), e.classificationReason.hasPrefix("未命中规则"),
-                  let category = suggestions[e.id], categories.contains(where: { $0.name == category && $0.income == (e.nature == .income) }) else { continue }
-            e.category = category; e.classificationReason = "智能归类，可随时纠正"
-            rows[i].entry = e; rows[i].message = e.classificationReason
-        }
-    }
+
 }
 
 public enum CSV {
@@ -105,18 +81,7 @@ public enum CSV {
         if !cell.isEmpty || !row.isEmpty || endedQuote { try finishCell(); rows.append(row) }
         return rows
     }
-    public static func escape(_ value: String) -> String {
-        // Protect exports from spreadsheet formula injection without altering imported source archives.
-        let safe = ["=", "+", "-", "@", "\t", "\r"].contains(where: value.hasPrefix) ? "'" + value : value
-        return "\"" + safe.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-    }
-    public static func export(_ ledger: Ledger) -> Data {
-        let header = ["时间", "性质", "收支", "金额", "账户", "关联账户", "名称", "分类", "备注", "来源", "交易单号"]
-        let rows = ledger.activeEntries.sorted { $0.date > $1.date }.map { e in
-            [Dates.text(e.date, time: true), e.nature.label, e.nature.inflow ? "收入" : "支出", Money.input(e.amount), ledger.accountName(e.accountID), e.otherAccountID == nil ? "" : ledger.accountName(e.otherAccountID), e.title, e.category, e.note, e.source, e.externalID]
-        }
-        return Data(("\u{FEFF}" + ([header] + rows).map { $0.map(escape).joined(separator: ",") }.joined(separator: "\r\n")).utf8)
-    }
+
 }
 
 public enum BillImporter {
@@ -129,28 +94,31 @@ public enum BillImporter {
         let source = entry.source == "文件" ? entry.source + ":" + entry.accountID.uuidString : entry.source
         return source + ":" + entry.externalID + (entry.nature == .refund ? ":refund" : "")
     }
-    public static func preview(data: Data, filename: String, accountID: UUID, ledger: Ledger, accountMappings: [String: UUID] = [:], requireAccountMapping: Bool = false) throws -> ImportPreview {
+    public static func preview(data: Data, filename: String, accountID: UUID, ledger: Ledger, accountMappings: [String: UUID] = [:], requireAccountMapping: Bool = false, mapping: ImportColumnMapping? = nil, mappedHeader: Int = 0) throws -> ImportPreview {
         guard data.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个账单请小于 50 MB。") }
         guard ledger.accounts.contains(where: { $0.id == accountID }), accountMappings.values.allSatisfy({ id in ledger.accounts.contains { $0.id == id } }) else { throw YubaiError.invalid("导入账户不存在，请重新选择。") }
         let workbook = filename.lowercased().hasSuffix(".xlsx") ? try XLSX.readWorkbook(data) : nil
         let table = try workbook?.rows ?? CSV.parse(CSV.decode(data))
-        guard let headerIndex = table.firstIndex(where: { row in
+        let knownHeader = table.firstIndex(where: { row in
             let h = row.map(normalized)
             return h.contains(where: { dateNames.map(normalized).contains($0) }) && h.contains(where: { amountNames.map(normalized).contains($0) })
-        }) else { throw YubaiError.invalid("未找到日期和金额列。支持微信、支付宝账单和标准 CSV/XLSX；请使用设置中的模板，或检查表头。") }
+        })
+        guard let headerIndex = mapping == nil ? knownHeader : mappedHeader, table.indices.contains(headerIndex) else { throw ImportColumnError.missing }
         let headers = table[headerIndex].map(normalized)
         func index(_ aliases: [String]) -> Int? { headers.firstIndex { aliases.map(normalized).contains($0) } }
-        let dateCol = index(dateNames)!, amountCol = index(amountNames)!
-        let debitCol = index(["支出金额", "借方发生额"]), creditCol = index(["收入金额", "贷方发生额"])
-        let directionCol = index(["收/支", "收支", "收支类型", "收入/支出", "direction", "借贷标志"])
-        let titleCol = index(["商品", "商品说明", "商品名称", "摘要", "用途", "名称", "title", "交易备注"])
-        let merchantCol = index(["交易对方", "对方户名", "商户名称", "merchant"])
+        if let mapping { try mapping.validate(headers: table[headerIndex], samples: Array(table.dropFirst(headerIndex + 1).prefix(5)), date1904: workbook?.date1904) }
+        let dateCol = mapping?.date ?? index(dateNames)!, amountCol = mapping?.amount ?? (mapping == nil ? index(amountNames) : nil)
+        let debitCol = mapping?.outflow ?? (mapping == nil ? index(["支出金额", "借方发生额"]) : nil), creditCol = mapping?.inflow ?? (mapping == nil ? index(["收入金额", "贷方发生额"]) : nil)
+        let directionCol = mapping?.direction ?? (mapping == nil ? index(["收/支", "收支", "收支类型", "收入/支出", "direction", "借贷标志"]) : nil)
+        let titleCol = mapping?.description ?? (mapping == nil ? index(["商品", "商品说明", "商品名称", "摘要", "用途", "名称", "title", "交易备注"]) : nil)
+        let merchantCol = mapping?.counterparty ?? (mapping == nil ? index(["交易对方", "对方户名", "商户名称", "merchant"]) : nil)
         let typeCol = index(["交易类型", "类型", "性质", "type"])
         let statusCol = index(["当前状态", "交易状态", "状态", "status"])
         let idCol = index(["交易单号", "交易号", "流水号", "订单号", "交易订单号", "id"])
-        let noteCol = index(["备注", "note"]), categoryCol = index(["分类", "category"])
+        let noteCol = mapping?.note ?? (mapping == nil ? index(["备注", "note"]) : nil), categoryCol = index(["分类", "category"])
         let currencyCol = index(["币种", "货币", "currency"])
-        let paymentCol = index(["支付方式", "收/付款方式", "收付款方式", "付款方式", "资金渠道", "账户", "收支账户"])
+        let paymentCol = mapping?.account ?? (mapping == nil ? index(["支付方式", "收/付款方式", "收付款方式", "付款方式", "资金渠道", "账户", "收支账户"]) : nil)
+        guard titleCol != nil || merchantCol != nil else { throw ImportColumnError.missing }
         let prefix = table.prefix(headerIndex + 1).flatMap { $0 }.joined()
         let source = prefix.contains("微信") || headers.contains(normalized("商品")) && headers.contains(normalized("交易单号")) ? "微信" : (prefix.contains("支付宝") || headers.contains(normalized("交易创建时间")) ? "支付宝" : "文件")
         var knownIDs: [String: Entry] = [:]; var knownHashes: Set<String> = []
@@ -162,7 +130,7 @@ public enum BillImporter {
         for (offset, row) in table.dropFirst(headerIndex + 1).enumerated() {
             let line = headerIndex + offset + 2
             func field(_ col: Int?) -> String { guard let col, row.indices.contains(col) else { return "" }; return clean(row[col]) }
-            let rawDate = field(dateCol)
+            let rawDate = field(dateCol) + (mapping?.time.map { " " + field($0) } ?? "")
             var rawAmount = field(amountCol), inferredDirection = ""
             if debitCol != nil && creditCol != nil {
                 let debit = field(debitCol), credit = field(creditCol)
@@ -203,7 +171,7 @@ public enum BillImporter {
                 } else { throw YubaiError.invalid("缺少收入/支出方向，请使用模板的收支列") }
                 let titleParts = [field(merchantCol), field(titleCol)].filter { !$0.isEmpty && $0 != "/" && $0 != "-" }
                 let title = titleParts.isEmpty ? (type.isEmpty ? "账单记录" : type) : Array(NSOrderedSet(array: titleParts)) .compactMap { $0 as? String }.joined(separator: " · ")
-                let classification = Classifier.classify(title: title, inflow: inflow, hint: type, rules: ledger.rules)
+                let classification = Classifier.classify(inflow: inflow, hint: type)
                 let method = ["", "/", "-", "--"].contains(field(paymentCol)) ? "" : field(paymentCol)
                 let mappedAccount = accountMappings[method] ?? accountID
                 let needsMapping = requireAccountMapping && !method.isEmpty && accountMappings[method] == nil
@@ -237,7 +205,7 @@ public enum BillImporter {
         var warnings = ["按实际收付款账户入账。未填写收付款方式的行归入所选默认账户。"]
         if rows.contains(where: { $0.status == .needsAccount }) { warnings.append("账单包含不同收付款方式，请在上方逐组选择对应账户；未对应的行暂不入账。") }
         if rows.contains(where: { $0.status == .invalid }) { warnings.append("有行无法识别，详情已保留；这些行不会悄悄计入账本。") }
-        return ImportPreview(filename: filename, source: source, rows: rows, warnings: warnings)
+        return ImportPreview(filename: filename, source: source, rows: rows, warnings: warnings, columnMapping: mapping, mappedHeader: mapping == nil ? nil : headerIndex)
     }
     public static func commit(_ preview: ImportPreview, data: Data, to ledger: inout Ledger) throws -> ImportBatch {
         var candidate = ledger
@@ -249,6 +217,7 @@ public enum BillImporter {
         guard preview.rows.filter(\.included).allSatisfy({ [.ready, .possibleDuplicate].contains($0.status) }) else { throw YubaiError.invalid("仍有不可入账的行被选中，请重新预览并核对账户。") }
         guard !preview.selectedEntries.isEmpty else { throw YubaiError.invalid("还没有选中可导入的记录。") }
         var batch = ImportBatch(filename: preview.filename, importedCount: preview.selectedEntries.count, duplicateCount: preview.duplicateCount, skippedCount: preview.rows.filter { !$0.included && $0.status != .duplicate }.count)
+        batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
         let attachment = Attachment(name: preview.filename, data: data); batch.attachmentID = attachment.id
         var existing = Set(ledger.entries.map(\.id))
         let existingSourceIDs = Set(ledger.entries.filter { !$0.externalID.isEmpty }.map(sourceKey))
@@ -261,8 +230,22 @@ public enum BillImporter {
         ledger.attachments.append(attachment); ledger.imports.append(batch); try ledger.validate(); return batch
     }
     public static func undo(batchID: UUID, in ledger: inout Ledger, now: Date = Date()) {
-        for i in ledger.entries.indices where ledger.entries[i].batchID == batchID && ledger.entries[i].deletedAt == nil { ledger.entries[i].deletedAt = now }
-        if let i = ledger.imports.firstIndex(where: { $0.id == batchID }) { ledger.imports[i].undoneAt = now }
+        guard let batch = ledger.imports.first(where: { $0.id == batchID }) else { return }
+        if let undo = batch.undo {
+            ledger.entries.removeAll { $0.batchID == batchID }
+            for original in undo.entries {
+                if let i = ledger.entries.firstIndex(where: { $0.id == original.id }) { ledger.entries[i] = original }
+            }
+            ledger.plans.removeAll { undo.planIDs.contains($0.id) }
+            ledger.cards.removeAll { undo.cardIDs.contains($0.id) }
+            ledger.attachments.removeAll { $0.id == batch.attachmentID }
+            ledger.imports.removeAll { $0.id == batchID }
+            ledger.updatedAt = undo.updatedAt
+        } else {
+            // Legacy batches lack the originals needed for a complete restoration.
+            for i in ledger.entries.indices where ledger.entries[i].batchID == batchID && ledger.entries[i].deletedAt == nil { ledger.entries[i].deletedAt = now }
+            if let i = ledger.imports.firstIndex(where: { $0.id == batchID }) { ledger.imports[i].undoneAt = now }
+        }
     }
 }
 

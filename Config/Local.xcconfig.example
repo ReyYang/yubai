@@ -1,0 +1,11 @@
+// Copy to Config/Local.xcconfig (git-ignored).
+// Leave this commented while using a free Personal Team selected in Xcode.
+// For TestFlight, uncomment and replace with your paid team's 10-character Team ID.
+// DEVELOPMENT_TEAM = XXXXXXXXXX
+
+// Keep NO for free teams. YES also needs the paid team's iCloud capability/container.
+YUBAI_ICLOUD = NO
+
+// Keep NO for direct Mac installs and the existing ledger location.
+// Mac TestFlight archives override this to YES (App Sandbox is required).
+YUBAI_MAC_SANDBOX = NO

@@ -90,15 +90,18 @@ public enum AIBenchRunner {
         return try loadFixture(from: url)
     }
 
-    public static func run(fixture: AIBenchFixture, backend: any IntelligenceBackend) async -> AIBenchScore {
-        let allowedNames = Category.defaults.map(\.name)
-
+    public static func run(fixture: AIBenchFixture, backend: CloudBackend) async -> AIBenchScore {
         var catPass = 0
         for sample in fixture.categorize {
-            let batch = [CategorizeItem(index: 0, purpose: sample.purpose, direction: sample.direction)]
+            var ledger = Ledger(); ledger.accounts = [Account(name: "评测账户")]
+            let entry = Entry(date: Dates.parse("2026-10-01")!, amount: 1000,
+                              nature: sample.direction == "收入" ? .income : .expense,
+                              accountID: ledger.accounts[0].id, title: sample.purpose, category: "待整理")
+            ledger.entries = [entry]
             do {
-                let suggestions = try await backend.categorize(batch: batch, allowedCategories: allowedNames)
-                if suggestions.first?.category == sample.expectedCategory { catPass += 1 }
+                let result = try await ImportOrganizer(transport: backend).organize(ledger: ledger, entryIDs: [entry.id])
+                if !result.changeSet.items.isEmpty { try result.changeSet.apply(to: &ledger) }
+                if ledger.entries[0].category == sample.expectedCategory { catPass += 1 }
             } catch {
                 // count as fail
             }
@@ -116,9 +119,7 @@ public enum AIBenchRunner {
                 let okContains = sample.mustContain.allSatisfy { text.localizedCaseInsensitiveContains($0) }
                 let amountOk: Bool = {
                     guard sample.mustNotMatchAmountPattern else { return true }
-                    // Reject newly invented ¥ amounts (program owns numbers).
-                    return text.range(of: #"¥\s*\d"#, options: .regularExpression) == nil
-                        && text.range(of: #"\d+\.\d{2}\s*元"#, options: .regularExpression) == nil
+                    return !ModelAmountGuard.containsInventedAmount(text)
                 }()
                 if okContains && amountOk { purchasePass += 1 }
             } catch {}
@@ -161,7 +162,7 @@ public enum AIBenchRunner {
         }
 
         return AIBenchScore(
-            backend: String(describing: type(of: backend)) + "/\(backend.kind.rawValue)",
+            backend: backend.client.configuration.diagnosticsLabel,
             categorizePass: catPass,
             categorizeTotal: fixture.categorize.count,
             purchasePass: purchasePass,
@@ -171,5 +172,54 @@ public enum AIBenchRunner {
             searchPass: searchPass,
             searchTotal: fixture.search.count
         )
+    }
+}
+
+/// Seed cases for the shared financial assistant; scripted calls support offline regression.
+public struct AssistantEvalCase: Codable, Sendable {
+    public struct ScriptedCall: Codable, Sendable {
+        public var name: String
+        public var args: JSONValue
+    }
+    public var id: String
+    public var question: String
+    public var expectedTools: [String]
+    public var expectedNumbers: [String]
+    public var scriptedCalls: [ScriptedCall]
+    public var expectedChangeKinds: [String]?
+    public var expectRefusal: Bool?
+    private enum CodingKeys: String, CodingKey {
+        case id, question
+        case expectedTools = "expected_tools", expectedNumbers = "expected_numbers", scriptedCalls = "scripted_calls"
+        case expectedChangeKinds = "expected_change_kinds", expectRefusal = "expect_refusal"
+    }
+}
+
+public struct AssistantEvalResult: Sendable {
+    public let id: String
+    public let reply: AssistantReply
+    public let passed: Bool
+}
+
+extension AIBenchRunner {
+    public static func loadAssistantEval(bundle: Bundle) throws -> [AssistantEvalCase] {
+        let url = bundle.url(forResource: "assistant-eval", withExtension: "json", subdirectory: "Fixtures")
+            ?? bundle.url(forResource: "assistant-eval", withExtension: "json")
+        guard let url else { throw YubaiError.invalid("找不到assistant-eval.json。") }
+        return try JSONDecoder().decode([AssistantEvalCase].self, from: Data(contentsOf: url))
+    }
+
+    public static func runAssistantCase(_ sample: AssistantEvalCase, transport: any ChatTransport,
+                                        context: ToolContext) async throws -> AssistantEvalResult {
+        let reply = try await AskYubai.answer(sample.question, transport: transport, context: context)
+        let names = Set(reply.toolTrace.map(\.name))
+        let kinds = reply.proposedChangeSets.flatMap(\.items).map { item -> String in
+            if case .setCategory = item { return "set_category" }; return "other"
+        }
+        let expectedChanges = sample.expectedChangeKinds.map { $0 == kinds } ?? true
+        let refused = sample.expectRefusal != true || (reply.proposedChangeSets.isEmpty && reply.text.contains("不能"))
+        return AssistantEvalResult(id: sample.id, reply: reply,
+            passed: sample.expectedTools.allSatisfy { names.contains($0) }
+                && sample.expectedNumbers.allSatisfy { reply.text.contains($0) } && reply.unverifiedAmounts.isEmpty && expectedChanges && refused)
     }
 }

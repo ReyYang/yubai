@@ -4,7 +4,7 @@ import XCTest
 final class FinanceScaleTests: XCTestCase {
     func testLargeLedgerMatchesReferenceIncludingOldRecurrencesAndPostingDates() throws {
         let now = Dates.parse("2026-10-01 12:00:00")!; var ledger = Ledger()
-        ledger.preferences.horizonDays = 90; ledger.preferences.dailyLiving = 1234; ledger.preferences.emergencyReserve = 45678
+        ledger.profile.floorAmount = 45678
         ledger.accounts = [Account(name: "Bank", balance: 9_000_000, at: Dates.addDays(-90, to: now)), Account(name: "Cash", kind: .cash, balance: 300_000, at: Dates.addDays(-30, to: now)), Account(name: "Credit", kind: .credit, balance: -700_000, at: Dates.addDays(-60, to: now)), Account(name: "Credit surplus", kind: .credit, balance: 500_000, at: now), Account(name: "Investment", kind: .investment, balance: 800_000, at: Dates.addDays(-45, to: now)), Account(name: "Receivable", kind: .receivable, balance: 200_000, at: Dates.addDays(-20, to: now))]
         ledger.accounts[1].archived = true; ledger.accounts[5].reconciled = false
         ledger.goals = [Goal(title: "Goal", target: 100_000, reserved: 12345)]
@@ -71,7 +71,7 @@ private enum ReferenceFinance {
         account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && $0.postingDate(for: account.id) > account.anchorDate && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
     }
     static func occurrences(in ledger: Ledger, now: Date = Date(), days: Int? = nil) -> [Occurrence] {
-        let start = Dates.day(now); let end = Dates.addDays(days ?? ledger.preferences.horizonDays, to: start)
+        let start = Dates.day(now); let end = Dates.addDays(days ?? 90, to: start)
         let entries = ledger.activeEntries
         var result: [Occurrence] = []
         for p in ledger.plans where p.active {
@@ -118,12 +118,13 @@ private enum ReferenceFinance {
         let commitments = occurrences.filter { !$0.inflow && !($0.planID.flatMap { id in ledger.plans.first { $0.id == id } }.map { $0.nature == .repayment } ?? false) }
         let committed = commitments.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
-        let living = ledger.preferences.dailyLiving * Int64(ledger.preferences.horizonDays)
+        let daily = Finance.estimatedDailyLiving(ledger, now: now)
+        let living = daily * 90
         // An unresolved inflow after the most recent reconciliation is withheld until its nature is known.
         let uncertain = ledger.activeEntries.filter { e in
             e.nature == .unknownIn && e.date <= now && accounts.contains { $0.id == e.accountID && e.date > $0.anchorDate && ($0.kind == .cash || $0.kind == .bank) }
         }.reduce(Int64(0)) { $0 + $1.amount }
-        let available = cash - debt - committed - goals - ledger.preferences.emergencyReserve - living - uncertain
+        let available = cash - debt - committed - goals - (ledger.profile.floorAmount ?? 0) - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("先添加账户并核对余额，才能判断可动用资金。") }
@@ -131,19 +132,18 @@ private enum ReferenceFinance {
         if accounts.contains(where: { now.timeIntervalSince($0.anchorDate) > 14 * 86400 }) { warnings.append("部分余额已超过 14 天未核对；请确认没有遗漏账单。") }
         if ledger.activeEntries.contains(where: { $0.nature.uncertain }) { warnings.append("有资金性质待明确；余额核对后新增的未知流入已保守扣除，历史未知仍需核对用途。") }
         if occurrences.contains(where: \.overdue) { warnings.append("有已到期但未登记完成的安排，仍计入预留。") }
-        if ledger.preferences.dailyLiving == 0 { warnings.append("尚未设置日常生活预留，未来零碎开销没有计入。") }
-        if ledger.activeEntries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有内部移动尚未关联另一账户，请在账本中补全，避免重复计算。") }
-        let baseline = cash - debt - goals - ledger.preferences.emergencyReserve - uncertain
+        if ledger.activeEntries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有内部移动尚未关联另一账户，可以问余白协助核对，避免重复计算。") }
+        let baseline = cash - debt - goals - (ledger.profile.floorAmount ?? 0) - uncertain
         var points: [ForecastPoint] = []
-        for offset in 0...ledger.preferences.horizonDays {
+        for offset in 0...90 {
             let date = Dates.addDays(offset, to: Dates.day(now))
             let out = commitments.filter { Dates.day($0.date) <= date }.reduce(Int64(0)) { $0 + $1.amount }
             let incoming = occurrences.filter { $0.inflow && Dates.day($0.date) <= date }.reduce(Int64(0)) { $0 + $1.amount }
-            let conservative = baseline - out - Int64(offset) * ledger.preferences.dailyLiving
+            let conservative = baseline - out - Int64(offset) * daily
             points.append(ForecastPoint(date: date, conservative: conservative, expected: conservative + incoming))
         }
         return Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
-                     committed: committed, goals: goals, emergency: ledger.preferences.emergencyReserve, living: living,
+                     livingEstimated: true, committed: committed, goals: goals, emergency: (ledger.profile.floorAmount ?? 0), living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
                      occurrences: occurrences, points: points, warnings: warnings)
     }

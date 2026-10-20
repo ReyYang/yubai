@@ -59,7 +59,7 @@ final class FinanceTests: XCTestCase {
         let f = Finance.funds(l, now: now); XCTAssertEqual(f.uncertainInflow, 80000); XCTAssertEqual(f.available, 800000); XCTAssertTrue(f.warnings.contains { $0.contains("历史未知") })
     }
     func testMonthlyRentContributionAndQuarterlyPayment() {
-        var l = basic(); let r = Rent(monthlyTotal: 40000, personalShare: 20000, startDate: Dates.day(now), nextDueDate: Dates.addDays(20, to: now)); l.rents = [r]; l.preferences.horizonDays = 30
+        var l = basic(); let r = Rent(monthlyTotal: 40000, personalShare: 20000, startDate: Dates.day(now), nextDueDate: Dates.addDays(20, to: now)); l.rents = [r]
         var contribution = Entry(date: now, amount: 15000, nature: .contribution, accountID: l.accounts[0].id, title: "部分分摊"); contribution.rentID = r.id; contribution.rentPeriod = Dates.day(now); l.entries.append(contribution)
         let pending = Finance.occurrences(in: l, now: now).filter { $0.rentMonth != nil }; XCTAssertEqual(pending.first!.amount, 5000)
         XCTAssertEqual(Finance.funds(l, now: now).committed, 120000)
