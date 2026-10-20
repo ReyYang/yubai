@@ -62,20 +62,8 @@ struct SettingsView: View {
     }
     private var intelligenceSection: some View {
         Section("智能辅助") {
-            Toggle("允许智能辅助", isOn: Binding(get: { store.current.preferences.localAIEnabled }, set: { value in store.update("保存智能辅助总开关") { $0.preferences.localAIEnabled = value } })).tint(YubaiColor.toggleOn)
-            Toggle("增强智能（云端）", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value } })).tint(YubaiColor.toggleOn)
-            Text(LocalIntelligence.availabilityText(for: store.current.preferences)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            Text("规则与资金计算始终在本机。开启「增强智能」后，归类 / 购买短答 / 洞察润色 / 语义搜索可走云端（需配置 DEEPSEEK_API_KEY）；金额、账户与资金性质从不交给模型修改。未配置密钥时自动降级为规则与模板，不会崩溃。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            DisclosureGroup("高级选项") {
-                Toggle("尝试使用本机下载模型（实验）", isOn: Binding(get: { store.current.preferences.downloadedModelEnabled }, set: { value in
-                    store.update("保存本机模型偏好") { $0.preferences.downloadedModelEnabled = value }
-                    if value { IntelligenceRuntime.resetLocalInferenceGate() }
-                })).tint(YubaiColor.toggleOn)
-                Toggle("允许系统 Apple 模型", isOn: Binding(get: { store.current.preferences.appleSystemModelEnabled }, set: { value in store.update("保存系统模型偏好") { $0.preferences.appleSystemModelEnabled = value } })).tint(YubaiColor.toggleOn)
-                Toggle("实验性 mock 路径", isOn: Binding(get: { store.current.preferences.experimentalMockLocalAI }, set: { value in store.update("保存实验 AI 开关") { $0.preferences.experimentalMockLocalAI = value } })).tint(YubaiColor.toggleOn)
-                NavigationLink { ModelWeightsSettingsView() } label: { Label("本机模型（开发者）", systemImage: "wrench.and.screwdriver") }
-                Text("本机大模型在部分真机上可能导致卡顿或退出；默认关闭。仅在明确需要时开启。").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            }
+            Toggle("使用云端智能（DeepSeek）", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value } })).tint(YubaiColor.toggleOn)
+            Text("金额、账户、资金性质由本机计算，模型不修改；开启后会把记录用途等摘要发送到 DeepSeek；未配置密钥或离线时只显示本机计算结果。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var aboutSection: some View {
@@ -297,7 +285,7 @@ struct GuideView: View {
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "信用、借款与投资"); Text("信用消费记在信用账户，消费时增加欠款；还款使用双边记录关联现金账户与信用账户，不再次计作消费。借入/归还借款关联信用与借款账户；借出/收回本金关联借出待收账户。投资申赎关联现金与投资账户；市值变化在账户核对中更新，已实现收益单独记作投资收益。信用额度不是资产。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "导入与重复"); Text("微信或支付宝里的银行卡支付应记入实际银行卡，渠道不自动等于资金账户。交易单号优先去重，缺失时按同来源、账户、时间、金额和用途识别。跨来源同时间同金额只提示疑似重复，由你确认。被删除的原记录重新导入不会复活，用户修改也不会被覆盖。未识别行保留在预览；批次原文件可随时导出。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "房租分摊"); Text("月度分摊按月登记，允许部分收款和漏收。季度付款按与房东的真实约定预留全额；未收分摊不算现金。消费统计按付款发生日计入本人承担比例，现金流显示实际全额付款。房租已导入时关联已有记录，避免重复记一笔。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
-            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "隐私与 AI"); Text("CSV/XLSX、截图 OCR、去重、规则分类和资金计算都在本机完成。智能辅助默认使用规则与模板；「增强智能（云端）」默认关闭，开启后仅对所选短任务发送说明范围内的摘要。金额计算仍在本机，金额/账户/资金性质从不交模型修改。本机大模型为实验选项，默认关闭。账本锁使用系统认证；备份可用密码加密，密码无法找回。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
+            Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "隐私与 AI"); Text("CSV/XLSX、截图 OCR、去重、规则分类和资金计算都在本机完成。「使用云端智能（DeepSeek）」默认关闭，开启后会把记录用途等任务摘要发送到 DeepSeek，补充归类、购买思考、洞察文字或搜索词。金额、账户和资金性质不交模型修改；未配置密钥、离线或请求失败时保留本机计算结果。账本锁使用系统认证；备份可用密码加密，密码无法找回。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "跨设备与恢复"); Text("iPhone 与 Mac 共用同一备份格式。导出完整备份，再在另一台设备恢复；恢复是切换到所选完整账本，不是自动双向合并。请一次只在一台设备编辑，再交接备份。恢复前会保留原账本，修改前自动保留最近 20 个完整版本。示例账本不会写入真实账本。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
             Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) { SectionHeading(title: "金额与范围"); Text("当前版本统一使用人民币，不自动换汇；金额按整数分计算。消费退款冲减消费，本金和内部移动不计日常收支。余白不连接银行、不执行转账、授信或投资交易。原始账单应与你的机构账单一起核对。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted) } }
         }.yubaiFont(YubaiFont.callout).navigationTitle("使用指南").yubaiNavigation().toolbar { CloseButton() }

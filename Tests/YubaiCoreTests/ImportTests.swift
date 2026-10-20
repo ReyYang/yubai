@@ -119,7 +119,7 @@ final class ImportTests: XCTestCase {
         XCTAssertEqual(Classifier.classify(title: "银行转账", inflow: true, rules: rules).nature, .unknownIn)
         XCTAssertEqual(Classifier.classify(title: "银行信用卡还款", inflow: false, rules: rules).nature, .repayment)
     }
-    func testDeviceModelSuggestionsCannotOverrideRulesMoneyNatureOrCategoryDirection() throws {
+    func testModelSuggestionsCannotOverrideRulesMoneyNatureOrCategoryDirection() throws {
         let l = ledger()
         let data = Data("时间,收支,金额,名称\n2026-09-20,支出,23.45,未匹配用途\n2026-09-20,支出,28.00,午餐\n2026-09-20,收入,300.00,朋友转账\n2026-09-20,收入,300.00,未匹配收入\n".utf8)
         var p = try BillImporter.preview(data: data, filename: "test.csv", accountID: l.accounts[0].id, ledger: l)

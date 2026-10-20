@@ -103,12 +103,7 @@ struct LedgerView: View {
     }
     @MainActor func refreshSearchExpansion(_ query: String) async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, LocalIntelligence.canAssist(preferences: store.current.preferences) else {
-            searchExpanded = []
-            return
-        }
-        let backend = IntelligenceRuntime.backend(for: store.current.preferences)
-        guard backend.capabilities.expandSearch else {
+        guard !trimmed.isEmpty, let backend = IntelligenceRuntime.backend(for: store.current.preferences) else {
             searchExpanded = []
             return
         }

@@ -90,7 +90,7 @@ public enum AIBenchRunner {
         return try loadFixture(from: url)
     }
 
-    public static func run(fixture: AIBenchFixture, backend: any IntelligenceBackend) async -> AIBenchScore {
+    public static func run(fixture: AIBenchFixture, backend: CloudBackend) async -> AIBenchScore {
         let allowedNames = Category.defaults.map(\.name)
 
         var catPass = 0
@@ -116,9 +116,7 @@ public enum AIBenchRunner {
                 let okContains = sample.mustContain.allSatisfy { text.localizedCaseInsensitiveContains($0) }
                 let amountOk: Bool = {
                     guard sample.mustNotMatchAmountPattern else { return true }
-                    // Reject newly invented ¥ amounts (program owns numbers).
-                    return text.range(of: #"¥\s*\d"#, options: .regularExpression) == nil
-                        && text.range(of: #"\d+\.\d{2}\s*元"#, options: .regularExpression) == nil
+                    return !ModelAmountGuard.containsInventedAmount(text)
                 }()
                 if okContains && amountOk { purchasePass += 1 }
             } catch {}
@@ -161,7 +159,7 @@ public enum AIBenchRunner {
         }
 
         return AIBenchScore(
-            backend: String(describing: type(of: backend)) + "/\(backend.kind.rawValue)",
+            backend: backend.client.configuration.diagnosticsLabel,
             categorizePass: catPass,
             categorizeTotal: fixture.categorize.count,
             purchasePass: purchasePass,

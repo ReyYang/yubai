@@ -103,7 +103,7 @@ public struct DeepSeekClient: Sendable {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw YubaiError.invalid("云端请求失败：网络或超时。可稍后重试，或关闭云端增强改用规则 / 本机路径。")
+            throw YubaiError.invalid("云端请求失败：网络或超时。本机计算结果已保留，可稍后重试。")
         }
 
         guard let http = response as? HTTPURLResponse else {
@@ -114,7 +114,7 @@ public struct DeepSeekClient: Sendable {
             if http.statusCode == 401 || http.statusCode == 403 {
                 throw YubaiError.invalid("云端密钥无效或无权访问。请检查环境变量配置（不会写入账本）。")
             }
-            throw YubaiError.invalid("云端服务返回错误（HTTP \(http.statusCode)）。可关闭云端增强继续使用规则路径。")
+            throw YubaiError.invalid("云端服务返回错误（HTTP \(http.statusCode)）。本机计算结果已保留。")
         }
 
         guard

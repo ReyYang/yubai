@@ -193,7 +193,7 @@ struct ImportView: View {
         parsingTask = Task { do {
             let parsed = try await Task.detached(priority: .userInitiated) { try BillImporter.preview(data: bytes, filename: name, accountID: accountID, ledger: ledger, accountMappings: mappings, requireAccountMapping: true) }.value
             guard parseID == requestID, !Task.isCancelled else { return }
-            let assisted = await LocalIntelligence.categorize(parsed, ledger: ledger) { done, total in activity = "智能辅助正在整理用途 · \(done)/\(total)"; readingProgress = total > 0 ? Double(done) / Double(total) : nil }
+            let assisted = await CloudIntelligence.categorize(parsed, ledger: ledger) { done, total in activity = "智能辅助正在整理用途 · \(done)/\(total)"; readingProgress = total > 0 ? Double(done) / Double(total) : nil }
             guard parseID == requestID, !Task.isCancelled else { return }; preview = assisted; busy = false
         } catch { guard parseID == requestID, !Task.isCancelled else { return }; localError = error.localizedDescription; preview = nil; busy = false } }
     }

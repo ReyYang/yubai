@@ -7,7 +7,7 @@ final class StorageTests: XCTestCase {
         var ledger = sample()
         ledger.preferences.appearance = "dark"
         ledger.preferences.hideAmounts = true
-        ledger.preferences.localAIEnabled = false
+        ledger.preferences.cloudAIEnabled = true
         var json = try JSONSerialization.jsonObject(with: LedgerCodec.encode(ledger)) as! [String: Any]
         var preferences = json["preferences"] as! [String: Any]
         preferences.removeValue(forKey: "colorTheme")
@@ -15,6 +15,38 @@ final class StorageTests: XCTestCase {
         let restored = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
         XCTAssertEqual(restored.preferences.colorTheme, "jade-vivid")
         XCTAssertEqual(restored, ledger)
+    }
+    func testLegacyAIPreferencesDecodeAndMigrateWithoutReencodingOldKeys() throws {
+        let original = sample()
+        let oldKeys = ["localAIEnabled", "downloadedModelEnabled", "appleSystemModelEnabled", "experimentalMockLocalAI"]
+        // A missing legacy master switch means enabled; missing cloud always means off.
+        let cases: [(cloud: Bool?, master: Bool?, expected: Bool)] = [
+            (true, true, true), (true, false, false), (false, true, false), (false, false, false),
+            (nil, true, false), (nil, false, false), (true, nil, true), (false, nil, false), (nil, nil, false)
+        ]
+        for testCase in cases {
+            var json = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encode(original)) as? [String: Any])
+            var preferences = try XCTUnwrap(json["preferences"] as? [String: Any])
+            if let cloud = testCase.cloud { preferences["cloudAIEnabled"] = cloud }
+            else { preferences.removeValue(forKey: "cloudAIEnabled") }
+            if let master = testCase.master { preferences["localAIEnabled"] = master }
+            else { preferences.removeValue(forKey: "localAIEnabled") }
+            // Retired switches are ignored, even if their values no longer match the former type.
+            preferences["downloadedModelEnabled"] = true
+            preferences["appleSystemModelEnabled"] = "ignored"
+            preferences["experimentalMockLocalAI"] = true
+            json["preferences"] = preferences
+            let restored = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
+            var expected = original
+            expected.preferences.cloudAIEnabled = testCase.expected
+            XCTAssertEqual(restored, expected)
+            XCTAssertEqual(restored.schema, 1)
+            let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encode(restored)) as? [String: Any])
+            let current = try XCTUnwrap(encoded["preferences"] as? [String: Any])
+            XCTAssertEqual(current["cloudAIEnabled"] as? Bool, testCase.expected)
+            for key in oldKeys { XCTAssertNil(current[key], key) }
+            XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(restored)), restored)
+        }
     }
     func testColorThemesSurviveLedgerRoundTrip() throws {
         for theme in ["jade-vivid", "jade-current", "ocean"] {

@@ -2,14 +2,10 @@ import SwiftUI
 import Charts
 import YubaiCore
 
-/// Facade over `IntelligenceRuntime` backends. Amount / account / nature are never model-writable.
-enum LocalIntelligence {
+/// Cloud task helpers. Amount / account / nature are never model-writable.
+enum CloudIntelligence {
     @MainActor static func categorize(_ preview: ImportPreview, ledger: Ledger, progress: (Int, Int) -> Void) async -> ImportPreview {
-        guard ledger.preferences.localAIEnabled else { return preview }
-        let route = IntelligenceRuntime.routing(for: ledger.preferences)
-        guard route.kind != .rulesOnly else { return preview }
-        let backend = IntelligenceRuntime.backend(for: ledger.preferences)
-        guard backend.capabilities.categorize else { return preview }
+        guard let backend = IntelligenceRuntime.backend(for: ledger.preferences) else { return preview }
         let entries = preview.rows.filter { $0.status == .ready }.compactMap(\.entry).filter { [.expense, .income].contains($0.nature) && $0.classificationReason.hasPrefix("未命中规则") }
         guard !entries.isEmpty else { return preview }
         var result = preview; let started = Date()
@@ -30,32 +26,14 @@ enum LocalIntelligence {
         }
         return result
     }
-    @MainActor static var availabilityText: String { IntelligenceRuntime.availabilityText }
     @MainActor static func availabilityText(for preferences: Preferences) -> String { IntelligenceRuntime.availabilityText(for: preferences) }
     @MainActor static func canAssist(preferences: Preferences) -> Bool {
-        guard preferences.localAIEnabled else { return false }
-        let route = IntelligenceRuntime.routing(for: preferences)
-        switch route.kind {
-        case .rulesOnly: return false
-        case .localDownloaded:
-            return preferences.experimentalMockLocalAI
-                || (IntelligenceRuntime.weights.hasReadyWeight && IntelligenceRuntime.localInferenceHealthy(for: preferences))
-        case .cloudOptional:
-            // UI may offer cloud assist when switch is on; missing key degrades inside CloudOptionalBackend.
-            return preferences.cloudAIEnabled
-        case .appleFMOptional: return IntelligenceRuntime.appleFMAvailable
-        }
-    }
-    /// Legacy alias: any non-rules assist path may be available.
-    @MainActor static var available: Bool {
-        IntelligenceRuntime.appleFMAvailable
-            || (IntelligenceRuntime.weights.hasReadyWeight && IntelligenceRuntime.localGateHealthy)
-            || DeepSeekConfiguration.fromEnvironment() != nil
+        IntelligenceRuntime.backend(for: preferences) != nil
     }
     @MainActor static func reflect(title: String, purpose: String, values: String, assessment: PurchaseAssessment, preferences: Preferences) async throws -> String {
-        guard preferences.localAIEnabled else { throw YubaiError.invalid(availabilityText(for: preferences)) }
-        let backend = IntelligenceRuntime.backend(for: preferences)
-        guard backend.capabilities.reflectPurchase else { throw YubaiError.invalid(availabilityText(for: preferences)) }
+        guard let backend = IntelligenceRuntime.backend(for: preferences) else {
+            throw YubaiError.invalid(availabilityText(for: preferences))
+        }
         return try await backend.reflectPurchase(title: title, purpose: purpose, values: values, assessmentTitle: assessment.title)
     }
 }
@@ -135,7 +113,7 @@ struct InsightsView: View {
             if !subscriptions.isEmpty { Label("你有 \(subscriptions.count) 项持续付款约定。可以在安排中核对仍然需要的服务。", systemImage: "repeat").yubaiFont(YubaiFont.callout) }
             if !insightPolish.isEmpty { Text(insightPolish).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             Text("这些线索来自本地计算，不是 AI 推断，也不代表必须削减消费。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            if LocalIntelligence.canAssist(preferences: store.current.preferences) {
+            if CloudIntelligence.canAssist(preferences: store.current.preferences) {
                 Button(insightBusy ? "智能润色中…" : "用智能说说") { polishInsights(review) }
                     .disabled(insightBusy)
                     .yubaiFont(YubaiFont.caption)
@@ -149,8 +127,7 @@ struct InsightsView: View {
         Task {
             defer { insightBusy = false }
             do {
-                let backend = IntelligenceRuntime.backend(for: preferences)
-                guard backend.capabilities.narrateInsights else { return }
+                guard let backend = IntelligenceRuntime.backend(for: preferences) else { return }
                 let text = try await backend.narrateInsights(facts: facts)
                 if let ok = InsightNarrationGuard.accept(text, protecting: facts.protectedAmountTexts) {
                     // Keep template facts on screen; show only the model polish delta when possible.
@@ -313,20 +290,18 @@ struct AdviceView: View {
     private func reflectionCard(_ a: PurchaseAssessment) -> some View {
         Card(style: .compact, background: YubaiColor.brandTint) { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
             HStack(spacing: YubaiSpace.space8) { AssistantMark(thinking: busy); Text("智能辅助 · 补充使用价值思考").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.brandInk) }
-            Text(LocalIntelligence.availabilityText(for: store.current.preferences)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk)
+            Text(CloudIntelligence.availabilityText(for: store.current.preferences)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk)
             if busy { HStack(spacing: YubaiSpace.space8) { Text("正在思考…").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk) } }
             else if !reflection.isEmpty { Text(reflection).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.brandInk).textSelection(.enabled); InlineNote(text: "AI 补充可能不准确；上方金额始终来自确定性计算。") }
             if let aiError { InlineNote(text: aiError, style: .attention) }
-            Button("让智能补充想法") { reflect(a) }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).disabled(!LocalIntelligence.canAssist(preferences: store.current.preferences) || busy)
-            if !store.current.preferences.localAIEnabled { Text("智能辅助已在设置中关闭。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk) }
-            else if !LocalIntelligence.canAssist(preferences: store.current.preferences) { Text("当前为规则路径：可在设置中开启「增强智能（云端）」。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk) }
+            Button("让智能补充想法") { reflect(a) }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).disabled(!CloudIntelligence.canAssist(preferences: store.current.preferences) || busy)
         } }
     }
     func assess() { do { let cents = try Money.parse(amount); guard cents > 0, !title.trimmingCharacters(in: .whitespaces).isEmpty else { throw YubaiError.invalid("请填写想买的东西和金额。") }; focusedField = nil; assessedAmount = cents; assessment = Finance.assessPurchase(store.current, amount: cents); reflection = ""; saved = false } catch { store.error = error.localizedDescription } }
     func reflect(_ a: PurchaseAssessment) {
         task?.cancel(); busy = true; aiError = nil
         let preferences = store.current.preferences
-        task = Task { do { let text = try await LocalIntelligence.reflect(title: title, purpose: purpose, values: preferences.purchaseValues, assessment: a, preferences: preferences); guard !Task.isCancelled else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次智能补充没有完成。资金计算已保留，你可以稍后重试或改用规则路径。"; busy = false } }
+        task = Task { do { let text = try await CloudIntelligence.reflect(title: title, purpose: purpose, values: preferences.purchaseValues, assessment: a, preferences: preferences); guard !Task.isCancelled else { return }; reflection = text; busy = false } catch { guard !Task.isCancelled else { return }; aiError = "这次云端补充没有完成。本机资金计算已保留，你可以稍后重试。"; busy = false } }
     }
     func invalidate() { task?.cancel(); assessment = nil; reflection = ""; busy = false; saved = false }
 }
