@@ -27,9 +27,9 @@ enum YubaiColor {
     static let brandGlyph = adaptive(0x3f6a3e, 0xa9c9a6)
     static let amberTint = adaptive(0xefe1c4, 0x4a3c24)
     static let amberInk = adaptive(0x7a5320, 0xe9cf9f)
-    static let amberStrong = adaptive(0x5c3e16, 0xf3ddb3)
+    static let amberStrong = adaptive(0x5e3f17, 0xf3ddb3)
     static let amberDot = adaptive(0xb88443, 0xd2a867)
-    static let amberMark = adaptive(0xd2a867, 0xc9a061)
+    static let amberMark = adaptive(0xd9b77e, 0xc9a061)
     static let seriesSoft = adaptive(0xa9be9c, 0x5e7a5b)
     static let series2 = adaptive(0x8fae88, 0x4e6a4c)
     static let series3 = adaptive(0xc3d3b8, 0x3e523c)
@@ -76,6 +76,11 @@ enum YubaiFont {
     static let amountLarge = Style(size: 30, lineHeight: 36, weight: .semibold, family: .num, tracking: -0.5, relativeTo: .title)
     static let amount = Style(size: 15, lineHeight: 20, weight: .semibold, family: .num, tracking: 0, relativeTo: .body)
     static let amountSmall = Style(size: 13, lineHeight: 18, weight: .medium, family: .num, tracking: 0, relativeTo: .footnote)
+    // Numeric sizes specified by the approved V3 summary tiles and donut.
+    static let amountSummary = Style(size: 17, lineHeight: 24, weight: .semibold, family: .num, relativeTo: .headline)
+    static let amountCard = Style(size: 20, lineHeight: 28, weight: .semibold, family: .num, relativeTo: .title3)
+    static let amountDonut = Style(size: 22, lineHeight: 28, weight: .semibold, family: .num, relativeTo: .title2)
+    static let amountAccount = Style(size: 24, lineHeight: 30, weight: .semibold, family: .num, relativeTo: .title2)
     static let chartValue = Style(size: 11, lineHeight: 14, weight: .medium, family: .num, tracking: 0, relativeTo: .caption2)
     static let welcome = Style(size: 40, lineHeight: 48, weight: .semibold, family: .serif, tracking: 0, relativeTo: .largeTitle)
     static let lead = Style(size: 22, lineHeight: 32, weight: .semibold, family: .serif, tracking: 0, relativeTo: .title2)
@@ -247,25 +252,28 @@ struct ChartGrow<Content: View>: View {
 }
 
 struct PrimaryButtonStyle: ButtonStyle {
+    var compact = false
     @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.yubaiFont(YubaiFont.button)
-            .padding(.horizontal, YubaiSpace.space24).padding(.vertical, YubaiSpace.space12)
-            .frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight)
+        configuration.label.yubaiFont(compact ? YubaiFont.callout : YubaiFont.button)
+            .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.space24).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.space12)
+            .frame(maxWidth: .infinity, minHeight: compact ? 36 : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.onBrand : YubaiColor.labelSecondary)
-            .background(isEnabled ? YubaiColor.brand : Color.clear, in: Capsule())
+            .background(isEnabled ? YubaiColor.brand : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
             .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
 struct SecondaryButtonStyle: ButtonStyle {
+    var background = YubaiColor.card
+    var compact = false
     @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.yubaiFont(YubaiFont.button, weight: .regular)
-            .padding(.horizontal, YubaiSpace.space24).padding(.vertical, YubaiSpace.space12)
-            .frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight)
+        configuration.label.yubaiFont(compact ? YubaiFont.callout : YubaiFont.button, weight: .regular)
+            .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.space24).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.space12)
+            .frame(maxWidth: .infinity, minHeight: compact ? 36 : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.label : YubaiColor.labelSecondary)
-            .background(isEnabled ? YubaiColor.card : Color.clear, in: Capsule())
+            .background(isEnabled ? background : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
             .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
@@ -273,13 +281,14 @@ struct SecondaryButtonStyle: ButtonStyle {
 struct Page<Content: View>: View {
     let content: Content
     var spacing: CGFloat
-    init(spacing: CGFloat = YubaiSpace.space12, @ViewBuilder content: () -> Content) {
-        self.content = content(); self.spacing = spacing
+    var topPadding: CGFloat
+    init(spacing: CGFloat = YubaiSpace.space12, topPadding: CGFloat = YubaiSpace.space20, @ViewBuilder content: () -> Content) {
+        self.content = content(); self.spacing = spacing; self.topPadding = topPadding
     }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: spacing) { content }
-                .padding(.horizontal, YubaiSpace.space18).padding(.top, YubaiSpace.space20)
+                .padding(.horizontal, YubaiSpace.space18).padding(.top, topPadding)
                 .padding(.bottom, YubaiSpace.space24)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas)
@@ -350,7 +359,7 @@ struct SectionHeading: View {
 
 struct AmountLabel: View {
     enum Role {
-        case hero, display, input, large, amount, small, chart
+        case hero, display, input, large, amount, small, chart, summary, card, donut, account
         var font: YubaiFont.Style {
             switch self {
             case .hero: YubaiFont.amountHero
@@ -360,6 +369,10 @@ struct AmountLabel: View {
             case .amount: YubaiFont.amount
             case .small: YubaiFont.amountSmall
             case .chart: YubaiFont.chartValue
+            case .summary: YubaiFont.amountSummary
+            case .card: YubaiFont.amountCard
+            case .donut: YubaiFont.amountDonut
+            case .account: YubaiFont.amountAccount
             }
         }
     }
@@ -655,7 +668,7 @@ struct HeroCard: View {
                 AmountLabel(cents: available, hide: hideAmount, role: .hero)
             }
             Spacer(minLength: 0)
-            BrandMark(size: 48).padding(.bottom, YubaiSpace.space6).accessibilityHidden(true)
+            BrandMark(size: 44).padding(.bottom, YubaiSpace.space6).accessibilityHidden(true)
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
@@ -673,7 +686,7 @@ struct HeroCard: View {
                     colors[index].frame(width: width * CGFloat(animatedRatio))
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).background(total == 0 ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
-        }.frame(height: YubaiSpace.space12 + YubaiSpace.space2).accessibilityElement(children: .ignore)
+        }.frame(height: YubaiSpace.space12).accessibilityElement(children: .ignore)
             .accessibilityLabel("余白 \(AmountLabel.text(available))，要付 \(AmountLabel.text(payable))，预留 \(AmountLabel.text(reserved))")
     }
     private func legend(_ title: String, _ cents: Int64, _ color: Color) -> some View {
@@ -813,6 +826,7 @@ extension View {
     func yubaiNavigation() -> some View {
         self.background(YubaiColor.canvas).tint(YubaiColor.brandInk)
             #if os(iOS)
+            .toolbar(.visible, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(YubaiColor.canvas, for: .navigationBar).toolbarBackground(.visible, for: .navigationBar)
             #elseif os(macOS)
@@ -884,5 +898,171 @@ struct AnswerChartView: View {
                     .accessibilityLabel(chart.title + "。" + chart.points.map { $0.label + "，" + Money.text($0.cents) }.joined(separator: "；"))
             }
         }
+    }
+}
+
+/// The approved root navigation; labels remain separate, selectable AX buttons.
+struct TabBar: View {
+    @Binding var selection: Destination
+    var body: some View {
+        HStack(spacing: YubaiSpace.space4) {
+            ForEach(Destination.allCases) { destination in
+                Button { selection = destination } label: {
+                    VStack(spacing: YubaiSpace.space2) {
+                        TabGlyph(destination: destination, selected: selection == destination)
+                            .frame(width: 20, height: 20).accessibilityHidden(true)
+                        Text(destination.title).yubaiFont(YubaiFont.tabLabel, weight: selection == destination ? .medium : .regular)
+                    }.frame(maxWidth: .infinity, minHeight: 50)
+                        .background(selection == destination ? YubaiColor.card : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel(destination.title)
+                    .accessibilityIdentifier("tab_" + destination.rawValue)
+                    .accessibilityAddTraits(selection == destination ? .isSelected : [])
+            }
+        }.padding(.horizontal, YubaiSpace.space6).frame(height: YubaiSize.tabbarHeight)
+            .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.tabbar))
+            .yubaiShadow(YubaiShadow.float).accessibilityElement(children: .contain).accessibilityLabel("主导航")
+    }
+}
+
+private struct TabGlyph: View {
+    let destination: Destination
+    let selected: Bool
+    var body: some View {
+        Canvas { context, size in
+            let scale = size.width / 24
+            var path = Path()
+            switch destination {
+            case .overview:
+                path.addEllipse(in: CGRect(x: 1.5, y: 1.5, width: 21, height: 21))
+                // Three water bands, clipped to the circular silhouette.
+                path.move(to: CGPoint(x: 3, y: 13)); path.addLine(to: CGPoint(x: 21, y: 13))
+                path.move(to: CGPoint(x: 4, y: 17)); path.addLine(to: CGPoint(x: 20, y: 17))
+                path.move(to: CGPoint(x: 7, y: 21)); path.addLine(to: CGPoint(x: 17, y: 21))
+            case .insights:
+                path.addEllipse(in: CGRect(x: 3.5, y: 3.5, width: 17, height: 17))
+                path.move(to: CGPoint(x: 12, y: 3.5)); path.addLine(to: CGPoint(x: 12, y: 12)); path.addLine(to: CGPoint(x: 20.5, y: 12))
+            case .settings:
+                path.addEllipse(in: CGRect(x: 8, y: 4, width: 8, height: 8))
+                path.move(to: CGPoint(x: 4, y: 21))
+                path.addCurve(to: CGPoint(x: 20, y: 21), control1: CGPoint(x: 4, y: 10.3), control2: CGPoint(x: 20, y: 10.3))
+            }
+            context.stroke(path.applying(CGAffineTransform(scaleX: scale, y: scale)), with: .color(YubaiColor.label), style: StrokeStyle(lineWidth: (selected ? 2.2 : 1.8) * scale, lineCap: .round, lineJoin: .round))
+        }
+    }
+}
+
+struct AskButton: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) { AssistantMark(size: 26, color: YubaiColor.onBrand).accessibilityHidden(true)
+            .frame(width: 62, height: 62).background(YubaiColor.brand, in: Circle())
+        }.buttonStyle(PressButtonStyle()).yubaiShadow(YubaiShadow.ask)
+            .accessibilityLabel("问余白").accessibilityIdentifier("askYubai")
+    }
+}
+
+struct Segmented<Value: Hashable>: View {
+    let choices: [(Value, String)]
+    @Binding var selection: Value
+    var background = YubaiColor.card
+    @Environment(\.dynamicTypeSize) private var textSize
+    var body: some View {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 3)) : AnyLayout(HStackLayout(spacing: 3))
+        layout {
+            ForEach(choices.indices, id: \.self) { i in
+                let value = choices[i].0
+                Button { selection = value } label: {
+                    Text(choices[i].1).yubaiFont(YubaiFont.callout, weight: selection == value ? .medium : .regular)
+                        .foregroundStyle(selection == value ? YubaiColor.label : YubaiColor.labelSecondary)
+                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
+                        .background(selection == value ? YubaiColor.raised : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selection == value ? .isSelected : [])
+            }
+        }.padding(3).background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+    }
+}
+
+struct ProposalCard: View {
+    let title: String
+    let lines: [String]
+    let primaryTitle: String
+    var secondaryTitle = "不用了"
+    var canConfirm = true
+    let confirm: () -> Void
+    let cancel: () -> Void
+    @State private var expanded = false
+    var body: some View {
+        Card(style: .compact, background: YubaiColor.brandTint) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+                HStack(spacing: YubaiSpace.space6) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白想这样改").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                Text(title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.brandTintStrong)
+                ForEach(Array((expanded ? lines : Array(lines.prefix(3))).enumerated()), id: \.offset) { _, line in
+                    Text(line).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                }
+                if lines.count > 3 && !expanded {
+                    Button("还有 \(lines.count - 3) 项 ›") { expanded = true }.frame(minHeight: 44).yubaiFont(YubaiFont.callout)
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: YubaiSpace.space8) { actions }
+                    VStack(spacing: YubaiSpace.space8) { actions }
+                }.padding(.top, YubaiSpace.space6)
+            }
+        }
+    }
+    private var actions: some View {
+        Group {
+            Button(primaryTitle, action: confirm).buttonStyle(PrimaryButtonStyle(compact: true)).disabled(!canConfirm)
+            Button(secondaryTitle, action: cancel).buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+        }
+    }
+}
+
+struct ForecastChart: View {
+    @Environment(AppStore.self) private var store
+    let funds: Funds
+    var height: CGFloat = 150
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 8) {
+                SectionHeading(title: "现金会怎么走", meta: "接下来 90 天")
+                if store.current.preferences.hideAmounts {
+                    Text("金额已隐藏").yubaiFont(YubaiFont.callout)
+                } else {
+                    Chart {
+                        ForEach(funds.points) { point in
+                            LineMark(x: .value("日期", point.date), y: .value("保守余量", Double(point.conservative) / 100))
+                                .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand)
+                        }
+                        RuleMark(y: .value("预留后的零点", 0))
+                            .foregroundStyle(YubaiColor.chartRule).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        if let last = funds.points.last {
+                            PointMark(x: .value("日期", last.date), y: .value("保守余量", Double(last.conservative) / 100))
+                                .foregroundStyle(YubaiColor.brand).annotation(position: .top, alignment: .trailing) {
+                                    AmountLabel(cents: last.conservative, role: .chart)
+                                }
+                        }
+                    }.chartYAxis(.hidden).chartLegend(.hidden)
+                        .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month()) } }
+                        .frame(height: height)
+                        .accessibilityElement(children: .ignore).accessibilityLabel(chartDescription)
+                    Text("保守余量已扣底线与预留，未到账收入不算进来。")
+                        .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                }
+            }
+        }
+    }
+    private var chartDescription: String {
+        guard let first = funds.points.first, let last = funds.points.last,
+              let low = funds.points.min(by: { $0.conservative < $1.conservative }) else { return "还没有预测依据" }
+        return "保守余量从 \(Money.text(first.conservative)) 起，\(Dates.text(low.date)) 最低 \(Money.text(low.conservative))，90 天后 \(Money.text(last.conservative))。已扣底线与预留，未计预计收入。"
+    }
+}
+
+struct AssistantCard<Content: View>: View {
+    let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View {
+        content.padding(YubaiSpace.space16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(YubaiColor.card, in: UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 22, bottomTrailingRadius: 22, topTrailingRadius: 22))
     }
 }

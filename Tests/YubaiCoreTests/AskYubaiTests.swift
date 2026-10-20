@@ -53,7 +53,7 @@ final class AskYubaiTests: XCTestCase {
     }
     func testProtectedEditsRefuseBeforeAnyToolOrProposal() async throws {
         let ctx = AssistantFixtures.context()
-        for question in ["把那笔 42 改成 24", "把那笔金额改为24", "把账户改成微信", "修改交易日期"] {
+        for question in ["把那笔 42 改成 24", "把那笔金额改为24", "把账户改成微信", "修改交易日期", "那笔 42.50 其实是 24"] {
             let script = ScriptedChatTransport([])
             let reply = try await AskYubai.answer(question, transport: script, context: ctx)
             XCTAssertTrue(reply.proposedChangeSets.isEmpty); XCTAssertTrue(reply.toolTrace.isEmpty)

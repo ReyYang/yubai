@@ -10,12 +10,13 @@ struct ProfileView: View {
     @Environment(AppStore.self) private var store
     @State private var sheet: ProfileSheet?
     @State private var floor = ""
+    @State private var editing = false
     @State private var configured = IntelligenceRuntime.isConfigured
     private var profile: SpendingProfile { store.current.profile }
     private var empty: Bool { profile.generous.isEmpty && profile.restrain.isEmpty && profile.principles.isEmpty && profile.floorAmount == nil }
     private var canChat: Bool { configured && store.current.preferences.cloudAIEnabled }
     var body: some View {
-        Page {
+        Page(topPadding: 8) {
             ForEach(store.current.pendingChanges.filter(\.isProfileOnly)) { change in
                 ProfileProposalCard(change: change, confirm: { store.apply(change, label: "修改消费观") }, secondaryTitle: "不用了") {
                     store.update("修改消费观") { ledger in
@@ -34,15 +35,43 @@ struct ProfileView: View {
                 }
             }
             if !canChat { Text("在设置中填写 DeepSeek 密钥并开启云端智能后，就能和余白聊几句。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-            NavigationLink("心愿单") { WishlistView() }.yubaiFont(YubaiFont.rowTitle)
-            SectionHeading(title: "你想花的", subtitle: "由你说了算，随时可以改。")
             areas(profile.restrain, stance: .restrain, title: "想克制的")
-            areas(profile.generous, stance: .generous, title: "愿意多花的")
-            principles
-            goals
-            floorSection
-            habits
+            if editing {
+                areas(profile.generous, stance: .generous, title: "愿意多花的")
+                principles
+                floorSection
+                goals
+            } else {
+                if !profile.generous.isEmpty || !profile.principles.isEmpty {
+                    SectionHeading(title: "愿意多花的 · 原则")
+                    Card {
+                        VStack(alignment: .leading, spacing: 10) {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), alignment: .leading)], alignment: .leading, spacing: 6) {
+                                ForEach(profile.generous) { area in
+                                    Text(area.title).yubaiFont(YubaiFont.callout).padding(.horizontal, 12).padding(.vertical, 6).background(YubaiColor.raised, in: Capsule())
+                                }
+                            }
+                            ForEach(profile.principles, id: \.self) { text in Text(text).yubaiFont(YubaiFont.cardTitle) }
+                        }
+                    }
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 10) { savings }
+                    VStack(alignment: .leading, spacing: 10) { savings }
+                }
+                NavigationLink {
+                    Page { habits }.navigationTitle("你常花的").yubaiNavigation()
+                } label: {
+                    Card(style: .compact, background: YubaiColor.raised) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("你常花的 · 来自账本").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                            Text(habitSummary + " ›").yubaiFont(YubaiFont.row)
+                        }
+                    }
+                }.buttonStyle(PressButtonStyle())
+            }
         }.navigationTitle("我的消费观").yubaiNavigation()
+            .toolbar { Button(editing ? "完成" : "编辑") { editing.toggle() }.frame(minHeight: 44).accessibilityIdentifier("editProfile") }
             .onAppear { configured = IntelligenceRuntime.isConfigured; loadFloor() }
             .onChange(of: store.current.profile.floorAmount) { _, _ in loadFloor() }
             .onChange(of: store.current.id) { _, _ in sheet = nil; loadFloor() }
@@ -60,6 +89,27 @@ struct ProfileView: View {
                     #endif
             }
     }
+    private var habitSummary: String {
+        if store.current.preferences.hideAmounts { return "金额已隐藏" }
+        let lines = ProfileHabits.summary(store.current).filter { $0.kind == .category }.prefix(3)
+        return lines.isEmpty ? "有了消费记录，再一起看看。" : lines.map { $0.title + " " + Money.text($0.total, currency: false) }.joined(separator: " · ")
+    }
+    @ViewBuilder private var savings: some View {
+        if let floor = profile.floorAmount {
+            Card(style: .compact) { VStack(alignment: .leading, spacing: 2) {
+                Text("始终留着").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                AmountLabel(cents: floor, hide: store.current.preferences.hideAmounts, role: .card)
+            } }
+        }
+        ForEach(store.current.goals) { goal in
+            Button { sheet = .goal(goal) } label: {
+                Card(style: .compact) { VStack(alignment: .leading, spacing: 2) {
+                    Text("为" + goal.title + "存").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                    Text(store.current.preferences.hideAmounts ? "••••" : Money.text(goal.reserved, currency: false) + " / " + Money.text(goal.target, currency: false)).yubaiFont(YubaiFont.amountCard)
+                } }
+            }.buttonStyle(PressButtonStyle())
+        }
+    }
     private func areas(_ rows: [ProfileArea], stance: ProfileStance, title: String) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
             SectionHeading(title: title)
@@ -71,20 +121,31 @@ struct ProfileView: View {
                         if !area.note.isEmpty { Text(area.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
                         if stance == .restrain {
                             if let limit = area.softLimit, !limit.text.isEmpty { Text(limit.text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) }
-                            Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                            if !store.current.preferences.hideAmounts {
+                                Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                                if let progress = progress(area) {
+                                    ProgressView(value: progress).tint(YubaiColor.brand).accessibilityLabel(area.title + "柔性提醒进度")
+                                }
+                            }
                         }
                     }
                     Spacer(minLength: 0)
-                    Menu {
+                    if editing { Menu {
                         Button("编辑") { sheet = .area(area, stance) }
                         Button("删除", role: .destructive) {
                             edit { $0.generous.removeAll { $0.id == area.id }; $0.restrain.removeAll { $0.id == area.id } }
                         }
-                    } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除" + area.title)
+                    } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除" + area.title) }
                 }.padding(.vertical, YubaiSpace.space8)
             }
-            Button("添加" + title) { sheet = .area(ProfileArea(title: ""), stance) }
+            if editing { Button("添加" + title) { sheet = .area(ProfileArea(title: ""), stance) }.frame(minHeight: 44) }
         }
+    }
+    private func progress(_ area: ProfileArea) -> Double? {
+        let usage = area.usage(in: store.current)
+        if let count = area.softLimit?.perWeekCount, count > 0 { return min(1, Double(usage.weekCount) / Double(count)) }
+        if let amount = area.softLimit?.perMonthAmount, amount > 0 { return min(1, Double(usage.monthAmount) / Double(amount)) }
+        return nil
     }
     private func usage(_ area: ProfileArea) -> String {
         let value = area.usage(in: store.current)
@@ -150,7 +211,7 @@ struct ProfileView: View {
     private var habits: some View {
         let lines = ProfileHabits.summary(store.current)
         return VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            SectionHeading(title: "你常花的", subtitle: "这是从账本里看到的，不是你的要求")
+            SectionHeading(title: "你常花的", subtitle: "来自账本")
             Text("近 90 天 · 按消费金额排列，同额时看频次。分类与商户会重叠，金额不能相加。商户按账单原始名称归组。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             if lines.isEmpty { Text("有了消费记录，再一起看看。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             CardRows(lines) { line in
@@ -265,16 +326,7 @@ struct ProfileProposalCard: View {
     let secondaryTitle: String
     let secondary: () -> Void
     var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-                Text("消费观 · 等你确认").yubaiFont(YubaiFont.rowTitle)
-                Text(change.reason).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                ForEach(Array(change.preview(in: store.current).enumerated()), id: \.offset) { _, line in Text(line).yubaiFont(YubaiFont.body) }
-                HStack {
-                    Button("确认", action: confirm).buttonStyle(PrimaryButtonStyle())
-                    Button(secondaryTitle, action: secondary).buttonStyle(SecondaryButtonStyle())
-                }
-            }
-        }
+        ProposalCard(title: store.current.preferences.hideAmounts ? "等你核对的修改" : change.reason, lines: store.current.preferences.hideAmounts ? ["金额已隐藏，请显示金额后核对完整提案。"] : change.preview(in: store.current, showPreviousValues: true),
+                     primaryTitle: "记下这些", secondaryTitle: secondaryTitle, canConfirm: !store.current.preferences.hideAmounts, confirm: confirm, cancel: secondary)
     }
 }

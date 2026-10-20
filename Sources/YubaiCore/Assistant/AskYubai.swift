@@ -102,6 +102,7 @@ public enum AskYubai {
         """
     }
     public static func isProtectedEdit(_ text: String) -> Bool {
+        if text.range(of: #"(?:那笔|这笔)\s*[¥￥]?\d+(?:\.\d+)?\s*(?:元)?\s*其实(?:是|应是|应该是)\s*\d+"#, options: .regularExpression) != nil { return true }
         let edit = text.range(of: "改|修改|更正|调整|换成|change|edit", options: [.regularExpression, .caseInsensitive]) != nil
         guard edit else { return false }
         // Qualified date names refer to the same protected field; date filters alone are still allowed.
