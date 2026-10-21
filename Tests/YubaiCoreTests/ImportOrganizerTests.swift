@@ -344,3 +344,21 @@ final class CategoryMemoryTests: XCTestCase {
         XCTAssertEqual(try JSONValue.parse(requests[0].messages.last!.content!)["known_categories"], .array([]))
     }
 }
+
+extension ImportOrganizerTests {
+    func testExplicitImportCategoryChoiceCannotBeOverwrittenByOrganization() async throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]
+        let bytes = Data("日期,收支,金额,用途,分类\n2026-10-01,支出,25.00,车票,旅行\n".utf8)
+        let preview = try BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "其他支出"])
+        _ = try BillImporter.commit(preview, data: bytes, to: &ledger)
+        let id = try XCTUnwrap(ledger.entries.first?.id)
+        let transport = ImportScript { _ in .object(["rows": .array([.object([
+            "entry": .string(id.uuidString), "category": .string("交通"), "confident": .bool(true),
+            "nature": .string("expense"), "purpose": .string("周末车票")])])]) }
+        let organization = try await ImportOrganizer(transport: transport).organize(ledger: ledger, entryIDs: [id])
+        _ = try organization.changeSet.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries.first?.category, "其他支出")
+        XCTAssertEqual(ledger.entries.first?.purpose, "周末车票")
+    }
+}

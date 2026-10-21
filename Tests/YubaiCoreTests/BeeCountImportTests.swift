@@ -71,3 +71,61 @@ final class BeeCountImportTests: XCTestCase {
         }
     }
 }
+
+extension BeeCountImportTests {
+    func testCategoryOverridesPersistThroughCommitWithoutChangingSourceIdentity() throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "银行卡")]
+        ledger.categoryAliases = ["周游": "旅行"]
+        let bytes = Data("日期,收支,金额,用途,分类\n2026-10-01,支出,24.80,车票,周游\n2026-10-02,收入,10.00,礼物,礼金赠与\n".utf8)
+        let original = try BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id, ledger: ledger)
+        let mapped = try BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "其他支出"])
+        XCTAssertEqual(original.selectedEntries[0].category, "旅行")
+        XCTAssertEqual(mapped.rows.map(\.sourceCategory), ["旅行", "礼金赠与"])
+        XCTAssertEqual(mapped.selectedEntries.map(\.category), ["其他支出", "礼金赠与"])
+        XCTAssertTrue(mapped.selectedEntries[0].userEdited); XCTAssertFalse(mapped.selectedEntries[1].userEdited)
+        XCTAssertEqual(original.selectedEntries.map(\.fingerprint), mapped.selectedEntries.map(\.fingerprint))
+        _ = try BillImporter.commit(mapped, data: bytes, to: &ledger)
+        XCTAssertEqual(ledger.entries.map(\.category), ["其他支出", "礼金赠与"])
+        XCTAssertEqual(ledger.categoryAliases, ["周游": "旅行"])
+        let again = try BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "旅行"])
+        XCTAssertEqual(again.duplicateCount, 2)
+        XCTAssertTrue(again.selectedEntries.isEmpty)
+        XCTAssertThrowsError(try BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": " "]))
+    }
+    func testNewCategoryAndKnownExportOverridesStayLocal() async throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "银行卡")]
+        let bytes = Data("日期,收支,金额,用途,分类\n2026-10-01,支出,24.80,车票,旅行\n".utf8)
+        let preview = try await BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "旅行"], columnMapper: FailingColumnMapper())
+        ledger.categories.append(Category("旅行"))
+        _ = try BillImporter.commit(preview, data: bytes, to: &ledger)
+        XCTAssertEqual(ledger.entries.first?.category, "旅行"); XCTAssertTrue(ledger.entries.first?.userEdited == true)
+    }
+}
+
+extension BeeCountImportTests {
+    func testScreenshotIdentitySurvivesMissingDateCorrectionAndKeepsEqualAmountRowsSeparate() throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]
+        let image = Data("synthetic image bytes".utf8)
+        func preview(_ day: String, ledger: Ledger) throws -> ImportPreview {
+            let bytes = Data("日期,收支,金额,用途\n\(day),支出,18.00,咖啡\n\(day),支出,18.00,咖啡\n".utf8)
+            let parsed = try BillImporter.preview(data: bytes, filename: "screenshot.png", accountID: ledger.accounts[0].id, ledger: ledger)
+            return BillImporter.screenshotPreview(parsed, original: image, ledger: ledger)
+        }
+        var first = try preview("2026-10-01", ledger: ledger)
+        XCTAssertTrue(first.selectedEntries.isEmpty); XCTAssertEqual(first.readyCount, 2)
+        XCTAssertEqual(Set(first.rows.compactMap { $0.entry?.fingerprint }).count, 2)
+        first.rows[0].included = true
+        first.rows[0].entry?.date = try XCTUnwrap(Dates.parse("2026-09-01"))
+        _ = try BillImporter.commit(first, data: image, to: &ledger)
+        let nextDay = try preview("2026-10-02", ledger: ledger)
+        XCTAssertEqual(nextDay.rows.map(\.status), [.duplicate, .ready])
+        XCTAssertTrue(nextDay.selectedEntries.isEmpty)
+        XCTAssertEqual(nextDay.rows[0].entry?.fingerprint, first.rows[0].entry?.fingerprint)
+        BillImporter.undo(batchID: ledger.imports[0].id, in: &ledger)
+        XCTAssertEqual(try preview("2026-10-03", ledger: ledger).readyCount, 2)
+    }
+}

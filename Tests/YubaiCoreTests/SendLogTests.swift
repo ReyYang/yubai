@@ -172,3 +172,65 @@ final class SendLogTests: XCTestCase {
         XCTAssertTrue(log.items.first?.response?.errorDescription?.contains("网络或超时") == true)
     }
 }
+
+extension SendLogTests {
+    func testClearDropsAllSnapshotsAndCountersIgnoresLateCompletionAndAllowsFreshRequests() throws {
+        let log = SendLog(), body = Data(#"{"messages":[{"role":"user","content":"测试"}]}"#.utf8)
+        let id = log.record(purpose: "问余白", model: "m", body: body, apiKey: "key", groupID: UUID())
+        let snapshot = log.groups
+        let cleared = expectation(description: "clear notifies observers")
+        let observer = NotificationCenter.default.addObserver(forName: SendLog.didRecord, object: nil, queue: nil) { _ in
+            // Observers can read the log immediately: notification must be outside the lock.
+            XCTAssertTrue(log.items.isEmpty); XCTAssertEqual(log.totalCount, 0); cleared.fulfill()
+        }
+        log.clear(); NotificationCenter.default.removeObserver(observer)
+        wait(for: [cleared], timeout: 1)
+        XCTAssertTrue(log.items.isEmpty); XCTAssertTrue(log.groups.isEmpty)
+        XCTAssertEqual(log.retainedByteSize, 0); XCTAssertEqual(log.totalSentByteSize, 0)
+        XCTAssertEqual(snapshot.count, 1, "Existing value snapshots remain immutable")
+        log.complete(id: id, response: SendLogResponse(content: "迟到回复", durationMilliseconds: 1), apiKey: "key")
+        XCTAssertTrue(log.items.isEmpty)
+        log.record(purpose: "测试连接", model: "m", body: body, apiKey: "key")
+        XCTAssertEqual(log.totalCount, 1); XCTAssertEqual(log.totalSentByteSize, body.count); XCTAssertEqual(log.groups.count, 1)
+    }
+    func testTruncationIsFailureAndLifetimeBytesIncludeEvictedRequests() throws {
+        let log = SendLog(), body = Data(#"{"messages":[]}"#.utf8)
+        let id = log.record(purpose: "问余白", model: "m", body: body, apiKey: "key")
+        log.complete(id: id, response: SendLogResponse(finishReason: "length", durationMilliseconds: 1, httpStatus: 200), apiKey: "key")
+        XCTAssertEqual(log.groups.first?.failureReasons, ["云端回复被截断"])
+        let tiny = SendLog(byteBudget: 1)
+        tiny.record(purpose: "问余白", model: "m", body: body, apiKey: "key")
+        tiny.record(purpose: "问余白", model: "m", body: body, apiKey: "key")
+        XCTAssertTrue(tiny.items.isEmpty); XCTAssertEqual(tiny.totalSentByteSize, body.count * 2)
+        tiny.clear(); XCTAssertEqual(tiny.totalSentByteSize, 0)
+    }
+    func testTraceUsesOnlyThisTurnAndNewToolResultsWithoutJSONOrRepeatedHistory() throws {
+        let log = SendLog(), group = UUID()
+        let old: [ChatMessage] = [.init(role: .system, content: "规则"), .init(role: .user, content: "上一问"), .init(role: .assistant, content: "上一答")]
+        let first = old + [ChatMessage(role: .user, content: "午饭 32")]
+        func body(_ messages: [ChatMessage]) throws -> Data {
+            try JSONEncoder().encode(["messages": messages])
+        }
+        let one = log.record(purpose: "问余白", model: "m", body: try body(first), apiKey: "key", groupID: group)
+        log.complete(id: one, response: SendLogResponse(toolCalls: ["get_profile"], durationMilliseconds: 1), apiKey: "key")
+        let second = first + [ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "p", name: "get_profile")]),
+            ChatMessage(role: .tool, content: #"{"accounts":[{"id":"private-id","title":"账户1"}],"restrain":[{"title":"外卖"}],"parsed_entries":[{"text":"午饭","amount":{"text":"¥32.00","cents":3200}}]}"#, toolCallID: "p")]
+        let two = log.record(purpose: "问余白", model: "m", body: try body(second), apiKey: "key", groupID: group)
+        log.complete(id: two, response: SendLogResponse(toolCalls: ["propose_entry"], durationMilliseconds: 2), apiKey: "key")
+        let snapshot = try XCTUnwrap(log.groups.first)
+        let steps = SendLogPresentation.trace(in: snapshot)
+        XCTAssertEqual(steps.map(\.id), [1, 2, 3, 4])
+        XCTAssertEqual(steps.map(\.title), ["发出 · 你说的", "云端回 · 想先看", "发出 · 余白给的", "云端回 · 提出草稿"])
+        XCTAssertEqual(SendLogPresentation.rules(in: snapshot), ["规则"])
+        XCTAssertEqual(steps[1].lines.map(\.value), ["账户和消费观"])
+        XCTAssertTrue(steps[2].lines.contains { $0.label == "本机读出的" && $0.value.contains("午饭 ¥32.00") })
+        let rendered = steps.flatMap(\.lines).map(\.value).joined()
+        XCTAssertFalse(rendered.contains("上一问")); XCTAssertFalse(rendered.contains("上一答")); XCTAssertFalse(rendered.contains("private-id"))
+        XCTAssertFalse(rendered.contains("{")); XCTAssertFalse(rendered.contains("get_profile"))
+        XCTAssertEqual(SendLogPresentation.toolName("query_entries"), "查账目")
+        for name in ReadOnlyTool.allCases.map(\.name) + ProposalTool.allCases.map(\.name) + ["remember", "recall"] {
+            XCTAssertNotEqual(SendLogPresentation.toolName(name), "其他查阅", name)
+        }
+        XCTAssertEqual(SendLogPresentation.toolName("unknown_tool"), "其他查阅")
+    }
+}

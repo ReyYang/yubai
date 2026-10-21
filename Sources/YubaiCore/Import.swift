@@ -32,6 +32,8 @@ public struct ImportRow: Identifiable, Sendable {
     public var id = UUID(); public var line: Int; public var entry: Entry?; public var status: ImportStatus
     public var message: String; public var included: Bool
     public var paymentMethod: String = ""
+    /// Category after the ledger's aliases, before this import's explicit choices.
+    public var sourceCategory: String = ""
 }
 public struct ImportPreview: Sendable {
     public var filename: String; public var source: String; public var rows: [ImportRow]; public var warnings: [String]
@@ -101,9 +103,10 @@ public enum BillImporter {
         let source = entry.source == "文件" ? entry.source + ":" + entry.accountID.uuidString : entry.source
         return source + ":" + entry.externalID + (entry.nature == .refund ? ":refund" : "")
     }
-    public static func preview(data: Data, filename: String, accountID: UUID, ledger: Ledger, accountMappings: [String: UUID] = [:], requireAccountMapping: Bool = false, mapping: ImportColumnMapping? = nil, mappedHeader: Int = 0) throws -> ImportPreview {
+    public static func preview(data: Data, filename: String, accountID: UUID, ledger: Ledger, accountMappings: [String: UUID] = [:], requireAccountMapping: Bool = false, categoryMappings: [String: String] = [:], mapping: ImportColumnMapping? = nil, mappedHeader: Int = 0) throws -> ImportPreview {
         guard data.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个账单请小于 50 MB。") }
         guard ledger.accounts.contains(where: { $0.id == accountID }), accountMappings.values.allSatisfy({ id in ledger.accounts.contains { $0.id == id } }) else { throw YubaiError.invalid("导入账户不存在，请重新选择。") }
+        guard categoryMappings.allSatisfy({ !clean($0.key).isEmpty && !clean($0.value).isEmpty && $0.value.count <= 200 }) else { throw YubaiError.invalid("分类对应不能为空，名称请不超过 200 字。") }
         let workbook = filename.lowercased().hasSuffix(".xlsx") ? try XLSX.readWorkbook(data) : nil
         let table = try workbook?.rows ?? CSV.parse(CSV.decode(data), delimiter: filename.lowercased().hasSuffix(".tsv") ? "\t" : nil)
         let knownHeader = table.firstIndex(where: { row in
@@ -213,13 +216,18 @@ public enum BillImporter {
                 let needsMapping = isTransfer ? (fromAccount == nil || toAccount == nil) : (requireAccountMapping && !method.isEmpty && accountMappings[method] == nil)
                 if isTransfer, let fromAccount, let toAccount, fromAccount == toAccount { throw YubaiError.invalid("转账的两个账户必须不同，请核对原账单或账户对应。") }
                 let rawCategory = field(subcategoryCol).isEmpty ? field(categoryCol) : field(subcategoryCol)
-                var entry = Entry(date: date, amount: abs(signed), nature: explicitNature ?? classification.nature, accountID: mappedAccount, title: title, category: ledger.resolveCategory(rawCategory.isEmpty ? classification.category : rawCategory))
+                let sourceCategory = ledger.resolveCategory(rawCategory.isEmpty ? classification.category : rawCategory)
+                let category = categoryMappings[rawCategory] ?? categoryMappings[sourceCategory] ?? sourceCategory
+                var entry = Entry(date: date, amount: abs(signed), nature: explicitNature ?? classification.nature, accountID: mappedAccount, title: title, category: ledger.resolveCategory(clean(category)))
                 if isTransfer { entry.otherAccountID = toAccount }
                 entry.note = [field(noteCol), status.isEmpty ? "" : "原账单状态：" + status, method.isEmpty ? "" : "收付款方式：" + method].filter { !$0.isEmpty }.joined(separator: "\n"); entry.source = source; entry.sourceRow = line; entry.externalID = field(idCol).replacingOccurrences(of: "\t", with: "")
                 if isTransfer {
                     entry.note += "\n转出账户：" + fromName + "；转入账户：" + toName
                 }
                 entry.classificationReason = classification.reason
+                if categoryMappings[rawCategory] != nil || categoryMappings[sourceCategory] != nil {
+                    entry.userEdited = true
+                }
                 let baseIdentity = [source, String(date.timeIntervalSince1970), Money.input(entry.amount), inflow ? "+" : "-", title, mappedAccount.uuidString].joined(separator: "|") + (isTransfer ? "|to:" + (toAccount?.uuidString ?? toName) : "")
                 let ordinal = occurrences[baseIdentity, default: 0]; occurrences[baseIdentity] = ordinal + 1
                 // Distinct stable IDs are distinct events. Without IDs, retain duplicate-looking rows within a file by occurrence count.
@@ -236,7 +244,7 @@ public enum BillImporter {
                     rowStatus = .possibleDuplicate; message = "另一来源有同时间同金额记录，核对后可选中导入"
                 }
                 if rowStatus == .ready && status.contains("退款") && entry.nature != .refund { message += "；含退款状态，退款明细需另行导入或补记" }
-                rows.append(ImportRow(line: line, entry: entry, status: rowStatus, message: message, included: rowStatus == .ready, paymentMethod: isTransfer ? (fromAccount == nil ? fromName : (toAccount == nil ? toName : "")) : method))
+                rows.append(ImportRow(line: line, entry: entry, status: rowStatus, message: message, included: rowStatus == .ready, paymentMethod: isTransfer ? (fromAccount == nil ? fromName : (toAccount == nil ? toName : "")) : method, sourceCategory: sourceCategory))
                 if rowStatus == .ready {
                     knownHashes.insert(entry.fingerprint)
                     if !entry.externalID.isEmpty { knownIDs[key] = entry }
@@ -248,6 +256,23 @@ public enum BillImporter {
         if rows.contains(where: { $0.status == .needsAccount }) { warnings.append("账单包含不同收付款方式，请在上方逐组选择对应账户；未对应的行暂不入账。") }
         if rows.contains(where: { $0.status == .invalid }) { warnings.append("有行无法识别，详情已保留；这些行不会悄悄计入账本。") }
         return ImportPreview(filename: filename, source: source, rows: rows, warnings: warnings, columnMapping: mapping, mappedHeader: mapping == nil ? nil : headerIndex)
+    }
+    /// OCR can miss a date; its provisional date must not make the same image a
+    /// new transaction tomorrow. Keep each candidate's identity tied to the
+    /// original image and its row, including equal-amount candidates.
+    public static func screenshotPreview(_ preview: ImportPreview, original: Data, ledger: Ledger) -> ImportPreview {
+        var result = preview; result.source = "截图"
+        let digest = SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+        let known = Set(ledger.entries.map(\.fingerprint).filter { !$0.isEmpty })
+        for index in result.rows.indices {
+            guard var entry = result.rows[index].entry else { continue }
+            entry.fingerprint = "screenshot:" + digest + ":" + String(result.rows[index].line)
+            result.rows[index].entry = entry; result.rows[index].included = false
+            if known.contains(entry.fingerprint) {
+                result.rows[index].status = .duplicate; result.rows[index].message = "这张截图里的这一笔已经记过"
+            }
+        }
+        return result
     }
     public static func commit(_ preview: ImportPreview, data: Data, to ledger: inout Ledger) throws -> ImportBatch {
         var candidate = ledger

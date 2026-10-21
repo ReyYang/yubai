@@ -129,7 +129,7 @@ public struct ImportOrganizer: Sendable {
         var working = ledger
         var items: [ChangeItem] = [], questions: [ImportQuestion] = [], skipped: [String] = []
         let known: [UUID: String] = Dictionary(uniqueKeysWithValues: batch.compactMap { entry -> (UUID, String)? in
-            guard let category = ledger.categoryMemory[CategoryMemory.key(entry.title)],
+            guard let category = entry.userEdited ? entry.category : ledger.categoryMemory[CategoryMemory.key(entry.title)],
                   case .setCategory(_, let name)? = categoryItem(id: entry.id, category: category, ledger: ledger) else { return nil }
             return (entry.id, name)
         })

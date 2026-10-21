@@ -60,7 +60,7 @@ public struct SendLogGroup: Identifiable, Sendable, Equatable {
         var reasons: [String] = [], summary: [String: Int] = [:]
         for item in items {
             if let response = item.response {
-                let reason = response.errorDescription ?? response.httpStatus.flatMap {
+                let reason = response.errorDescription ?? (response.finishReason == "length" ? "云端回复被截断" : nil) ?? response.httpStatus.flatMap {
                     (200..<300).contains($0) ? nil : "HTTP \($0)"
                 }
                 if let reason, !reasons.contains(reason) { reasons.append(reason) }
@@ -81,6 +81,7 @@ public final class SendLog: @unchecked Sendable {
     private var sizes: [UUID: Int] = [:]
     private var bytes = 0
     private var count = 0
+    private var sentBytes = 0
     public let byteBudget: Int
     public init(byteBudget: Int = 2 * 1024 * 1024) { self.byteBudget = max(0, byteBudget) }
     public var items: [SendLogItem] {
@@ -99,7 +100,17 @@ public final class SendLog: @unchecked Sendable {
             .sorted { $0.startedAt > $1.startedAt }
     }
     public var totalCount: Int { lock.lock(); defer { lock.unlock() }; return count }
+    public var totalSentByteSize: Int { lock.lock(); defer { lock.unlock() }; return sentBytes }
     public var retainedByteSize: Int { lock.lock(); defer { lock.unlock() }; return bytes }
+
+    /// Drops requests, structured replies and counters together. Late completions
+    /// cannot restore cleared items; the next request starts a fresh record.
+    public func clear() {
+        lock.lock()
+        buffer.removeAll(); sizes.removeAll(); bytes = 0; count = 0; sentBytes = 0
+        lock.unlock()
+        NotificationCenter.default.post(name: Self.didRecord, object: nil)
+    }
 
     private static func hideKey(_ text: String, _ key: String) -> String {
         key.isEmpty ? text : text.replacingOccurrences(of: key, with: "[密钥已隐藏]")
@@ -142,7 +153,7 @@ public final class SendLog: @unchecked Sendable {
         }
         item.redactionSummary = Redactor.placeholderSummary(in: contents)
         lock.lock()
-        count += 1; buffer.append(item); accountFor(item); evict()
+        count += 1; sentBytes += body.count; buffer.append(item); accountFor(item); evict()
         lock.unlock()
         NotificationCenter.default.post(name: Self.didRecord, object: nil)
         return item.id

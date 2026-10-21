@@ -83,3 +83,19 @@ final class ImportColumnTests: XCTestCase {
     }
 
 }
+
+extension ImportColumnTests {
+    func testCategoryOverrideSurvivesAIColumnMappingAndCachedRepreview() async throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]
+        let bytes = Data("日戳,数值,详情,类型标签\n2026-10-01,-25.00,车票,旅行\n".utf8)
+        let mapping = ImportColumnMapping(date: 0, amount: 1, description: 2, category: 3)
+        let preview = try await BillImporter.preview(data: bytes, filename: "unknown.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "其他支出"], columnMapper: ScriptedColumns(mapping: mapping))
+        XCTAssertEqual(preview.selectedEntries.first?.category, "其他支出")
+        XCTAssertEqual(preview.rows.first?.sourceCategory, "旅行")
+        let cached = try BillImporter.preview(data: bytes, filename: "unknown.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "其他支出"], mapping: preview.columnMapping, mappedHeader: preview.mappedHeader ?? 0)
+        XCTAssertEqual(cached.selectedEntries.first?.category, "其他支出")
+        XCTAssertEqual(cached.selectedEntries.first?.fingerprint, preview.selectedEntries.first?.fingerprint)
+    }
+}

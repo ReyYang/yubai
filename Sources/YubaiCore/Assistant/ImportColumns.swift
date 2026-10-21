@@ -97,10 +97,11 @@ public struct AIImportColumnMapper: ImportColumnMapper {
 public extension BillImporter {
     static func preview(data: Data, filename: String, accountID: UUID, ledger: Ledger,
                         accountMappings: [String: UUID] = [:], requireAccountMapping: Bool = false,
+                        categoryMappings: [String: String] = [:],
                         columnMapper: any ImportColumnMapper) async throws -> ImportPreview {
         do {
             return try preview(data: data, filename: filename, accountID: accountID, ledger: ledger,
-                               accountMappings: accountMappings, requireAccountMapping: requireAccountMapping)
+                               accountMappings: accountMappings, requireAccountMapping: requireAccountMapping, categoryMappings: categoryMappings)
         } catch ImportColumnError.missing { }
         let table = filename.lowercased().hasSuffix(".xlsx") ? try XLSX.read(data) : try CSV.parse(CSV.decode(data), delimiter: filename.lowercased().hasSuffix(".tsv") ? "\t" : nil)
         let header = table.firstIndex { row in
@@ -113,6 +114,6 @@ public extension BillImporter {
                                                  samples: samples.map { $0.map { redactor.text($0) } })
         return try preview(data: data, filename: filename, accountID: accountID, ledger: ledger,
                            accountMappings: accountMappings, requireAccountMapping: requireAccountMapping,
-                           mapping: mapping, mappedHeader: header)
+                           categoryMappings: categoryMappings, mapping: mapping, mappedHeader: header)
     }
 }
