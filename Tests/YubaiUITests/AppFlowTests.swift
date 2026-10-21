@@ -57,19 +57,31 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(funds.waitForExistence(timeout: 10))
         // A newly opened ledger has no known obligations or spending estimate.
         XCTAssertTrue(funds.label.contains("还能自在支配")); XCTAssertTrue(funds.label.contains("1,000"))
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tab_'")).count, 3)
-        XCTAssertTrue(app.buttons["tab_overview"].exists); XCTAssertTrue(app.buttons["tab_insights"].exists); XCTAssertTrue(app.buttons["tab_settings"].exists)
-        XCTAssertTrue(app.buttons["askYubai"].exists)
+        XCTAssertEqual(app.tabBars.buttons.count, 4)
+        XCTAssertTrue(app.tabBars.buttons["现在"].exists); XCTAssertTrue(app.tabBars.buttons["洞察"].exists); XCTAssertTrue(app.tabBars.buttons["我"].exists)
+        XCTAssertTrue(app.tabBars.buttons["问余白"].exists)
         snapshot("overview", app)
-        tap(app.buttons["tab_insights"], in: app)
+        tap(app.tabBars.buttons["洞察"], in: app)
         XCTAssertTrue(app.buttons["支出 · 按类型"].waitForExistence(timeout: 5))
         snapshot("insights", app)
-        tap(app.buttons["tab_overview"], in: app)
+        tap(app.tabBars.buttons["现在"], in: app)
         tap(funds, in: app)
-        XCTAssertFalse(app.buttons["askYubai"].exists)
+        XCTAssertFalse(app.tabBars.buttons["问余白"].isHittable)
         XCTAssertTrue(app.staticTexts["可支配现金"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["减：日常生活预留"].exists)
         snapshot("funds-detail", app)
+    }
+
+    func testAskTabPreservesTheSelectedPage() {
+        let app = application("ask"); app.launch()
+        tap(app.tabBars.buttons["洞察"], in: app)
+        XCTAssertTrue(app.tabBars.buttons["洞察"].isSelected)
+        tap(app.tabBars.buttons["问余白"], in: app)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "askInput").firstMatch.waitForExistence(timeout: 5))
+        tap(app.buttons["closeSheet"], in: app)
+        XCTAssertTrue(app.tabBars.buttons["洞察"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["洞察"].isSelected)
+        XCTAssertTrue(app.buttons["支出 · 按类型"].exists)
     }
 
     func testImportOrganizeAnswerAndUndoEntireBatch() {
@@ -87,7 +99,7 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["importAnswer_0"], in: app)
         assertGone(question)
         tap(app.buttons["closeSheet"], in: app)
-        tap(app.buttons["tab_settings"], in: app)
+        tap(app.tabBars.buttons["我"], in: app)
         tap(app.buttons["openImportHistory"], in: app)
         XCTAssertTrue(app.staticTexts["合成账单.csv"].waitForExistence(timeout: 5))
         snapshot("import-history", app)
@@ -97,7 +109,7 @@ final class AppFlowTests: XCTestCase {
         snapshot("history-undone", app)
         // Reimport is no longer a duplicate. The pre-existing record survives undo.
         tap(app.navigationBars.buttons["我"], in: app)
-        tap(app.buttons["tab_overview"], in: app)
+        tap(app.tabBars.buttons["现在"], in: app)
         tap(app.buttons["importBills"], in: app)
         XCTAssertTrue(app.buttons["commitImport"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["commitImport"].isEnabled)
@@ -128,7 +140,7 @@ final class AppFlowTests: XCTestCase {
     func testAskNumericAnswerEvidenceAndEntryDetail() {
         let app = application("ask"); app.launch()
         snapshot("overview", app)
-        tap(app.buttons["askYubai"], in: app)
+        tap(app.tabBars.buttons["问余白"], in: app)
         snapshot("ask", app)
         tap(app.descendants(matching: .any).matching(identifier: "askInput").firstMatch, in: app); app.descendants(matching: .any).matching(identifier: "askInput").firstMatch.typeText("咖啡共花了多少钱？")
         tap(app.buttons["sendAsk"], in: app)
@@ -148,7 +160,7 @@ final class AppFlowTests: XCTestCase {
     func testProfilePrinciplePersistsAndBackupOpens() {
         let app = application("profile"); app.launch()
         snapshot("overview", app)
-        tap(app.buttons["tab_settings"], in: app)
+        tap(app.tabBars.buttons["我"], in: app)
         tap(app.buttons["openProfile"], in: app)
         snapshot("profile", app)
         tap(app.buttons["editProfile"], in: app)
@@ -159,7 +171,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["为每天用得上的东西花钱"].waitForExistence(timeout: 5))
         snapshot("principle-saved", app)
         app.terminate(); app.launch()
-        tap(app.buttons["tab_settings"], in: app)
+        tap(app.tabBars.buttons["我"], in: app)
         tap(app.buttons["openProfile"], in: app)
         XCTAssertTrue(app.staticTexts["为每天用得上的东西花钱"].waitForExistence(timeout: 5))
         snapshot("principle-after-relaunch", app)
@@ -167,24 +179,24 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["openBackup"], in: app)
         XCTAssertTrue(app.navigationBars["备份与恢复"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.secureTextFields["备份密码（至少 8 位）"].exists)
-        XCTAssertFalse(app.buttons["askYubai"].exists)
-        XCTAssertFalse(app.buttons["tab_settings"].exists)
+        XCTAssertFalse(app.tabBars.buttons["问余白"].isHittable)
+        XCTAssertFalse(app.tabBars.buttons["我"].isHittable)
         snapshot("backup", app)
     }
     func testAskMemoryCanBeOpenedEditedAndDeletedFromMe() {
         let app = application("memory"); app.launch()
         snapshot("overview", app)
-        tap(app.buttons["askYubai"], in: app)
+        tap(app.tabBars.buttons["问余白"], in: app)
         let input = app.descendants(matching: .any).matching(identifier: "askInput").firstMatch
         tap(input, in: app); input.typeText("年底前想换电脑")
         tap(app.buttons["sendAsk"], in: app)
         XCTAssertTrue(app.staticTexts["已记下：年底前想换电脑"].waitForExistence(timeout: 10))
         snapshot("memory-answer", app)
         tap(app.buttons["closeSheet"], in: app)
-        tap(app.buttons["tab_settings"], in: app)
+        tap(app.tabBars.buttons["我"], in: app)
         tap(app.buttons["openMemories"], in: app)
         XCTAssertTrue(app.navigationBars["余白记得的"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["askYubai"].exists)
+        XCTAssertFalse(app.tabBars.buttons["问余白"].isHittable)
         snapshot("memories", app)
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'memory_' ")).firstMatch
         tap(row, in: app)
@@ -196,12 +208,39 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["saveMemory"], in: app)
         XCTAssertTrue(app.staticTexts[edited].waitForExistence(timeout: 5))
         app.terminate(); app.launch()
-        tap(app.buttons["tab_settings"], in: app); tap(app.buttons["openMemories"], in: app)
+        tap(app.tabBars.buttons["我"], in: app); tap(app.buttons["openMemories"], in: app)
         XCTAssertTrue(app.staticTexts[edited].waitForExistence(timeout: 5))
         snapshot("memory-after-relaunch", app)
         tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'memory_' ")).firstMatch, in: app)
         tap(app.buttons["deleteMemory"], in: app)
         XCTAssertTrue(app.staticTexts["emptyMemories"].waitForExistence(timeout: 5))
         snapshot("memory-deleted", app)
+    }
+}
+
+/// The same Foundation-only source is compiled into the app and this test bundle.
+final class MotionStateTests: XCTestCase {
+    func testChartClaimsSurviveViewLifetimesAndStayIndependent() {
+        var session = MotionSessionState()
+        XCTAssertFalse(session.contains("forecast"))
+        XCTAssertTrue(session.claim("forecast"))
+        XCTAssertTrue(session.contains("forecast"))
+        XCTAssertFalse(session.claim("forecast"))
+        XCTAssertTrue(session.claim("donut"))
+        var nextLaunch = MotionSessionState()
+        XCTAssertTrue(nextLaunch.claim("forecast"))
+    }
+    func testTabDirectionAndReselection() {
+        XCTAssertEqual(MotionSessionState.direction(from: 0, to: 2), 1)
+        XCTAssertEqual(MotionSessionState.direction(from: 2, to: 1), -1)
+        XCTAssertEqual(MotionSessionState.direction(from: 1, to: 1), 0)
+    }
+    func testOnlyNewActiveEntriesTriggerSaveAndMissingActiveEntriesTriggerDeletion() {
+        let old = UUID(), added = UUID(), alreadyDeleted = UUID()
+        let change = MotionEntryChange(previous: [old, alreadyDeleted], previousActive: [old], currentActive: [added, alreadyDeleted])
+        XCTAssertEqual(change.saved, [added])
+        XCTAssertEqual(change.deleted, [old])
+        let edit = MotionEntryChange(previous: [old], previousActive: [old], currentActive: [old])
+        XCTAssertTrue(edit.saved.isEmpty); XCTAssertTrue(edit.deleted.isEmpty)
     }
 }

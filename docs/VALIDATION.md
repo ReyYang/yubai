@@ -1,5 +1,13 @@
 # 余白 · 交付与验证记录
 
+## Motion v2 / Liquid Glass 静态核对（2026-10-21）
+
+本轮容器无 `swift`／Xcode，执行 `swift test` 返回 127（command not found），未运行 Swift 类型检查、Core 测试或 UI 测试。下方同日 Linux Core 运行结果属于此前有 Swift 的环境，不覆盖本轮工程与 UI 改动。
+
+已通过：`git diff --check`；工程重复生成完全一致；六个 iOS build configuration 全为 26.0、macOS 仍为 14.0；MotionState 同时引用于 App 与 UI 测试 bundle；SVG／asset JSON 可解析且为 vector template；归档输入三文件与原附件 SHA256 一致；时长 token、旧自绘 TabBar／numberCrossfade 清除、App 动画曲线集中扫描；Swift 文件的括号、字符串／注释与条件编译配对检查（仅词法，不是 Swift 语法／类型检查）。`Sources/YubaiCore` 和既有 Core 测试无改动。
+
+待 Xcode 26 执行：七条 AppFlowTests、三条 MotionStateTests，现有 Core 测试及 iPhone／Mac 编译；iPhone 首次／再次出现、支出收入与周期切换、保存／删除／撤销与四种触感、下滑关闭 toast、辅助功能金额即时值、减少动态效果、深色／大字号和底栏安全区。尤其检查系统 Tab 标签上的 zoom 来源与独立圆钮 tint 的实际效果；自定义标签图标动画及缺屏边界见[设计登记](../.design-meta/DESIGN.md#2026-10-21--motion-v2-与-liquid-glass)。
+
 ## Linux Core 构建与单元测试（2026-10-21）
 
 环境为 Ubuntu 24.04.5 LTS、x86_64、Swift 6.2.4（`swift-6.2.4-RELEASE`），Swift 5 语言模式。先执行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH`；受限容器使用 [开发说明](DEVELOPMENT.md#linux-core-构建与测试) 中的可写模块缓存路径。

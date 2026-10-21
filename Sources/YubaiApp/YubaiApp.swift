@@ -14,6 +14,14 @@ enum AppSheet: Identifiable {
     case ask(String), capture(Data), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, letter(UUID), reconcile(UUID)
     var id: String { String(describing: self) }
+    var motionSource: String? {
+        switch self {
+        case .ask: "ask"
+        case .fundsCalculation: "funds"
+        case .cardEvidence(let id), .cardQuestion(let id): "card-" + id.uuidString
+        default: nil
+        }
+    }
 }
 
 @MainActor @Observable final class AppStore {
@@ -64,6 +72,12 @@ enum AppSheet: Identifiable {
     @ObservationIgnored var syncMonitor: CloudLedgerMonitor?
     var iCloudAvailable: Bool { locations.cloud != nil }
     var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
+    var sheetSource: String?
+    var entrySaveTrigger = 0; var entryDeleteTrigger = 0; var undoTrigger = 0; var floorWarningTrigger = 0
+    var freshEntryIDs: Set<UUID> = []
+    var pendingEntrySave = false
+    @ObservationIgnored private var pendingSaveToast: String?
+    @ObservationIgnored private var saveToastTask: Task<Void, Never>?
     var loadFailure: String?; var locked = false; var importedURL: URL?
     var errorHosts: [UUID] = []
     var pickingInsightDates = false
@@ -91,7 +105,7 @@ enum AppSheet: Identifiable {
         } catch { loadFailure = error.localizedDescription }
     }
 
-    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard canEditLedger() else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
@@ -103,8 +117,17 @@ enum AppSheet: Identifiable {
                 Wishlist.autoLink(&next, addedEntryIDs: addedIDs, now: Date())
             }
             if !preservingUpdatedAt { next.updatedAt = Date() }
-            try persist(next, reason: reason); ledger = next
-            if recordUndo { undoLedger = before; undoLabel = reason; toast = reason + "完成" }; return true
+            try persist(next, reason: reason)
+            let motion = MotionEntryChange(previous: before.entries.map(\.id), previousActive: before.activeEntries.map(\.id), currentActive: next.activeEntries.map(\.id))
+            if entryMotion && !motion.saved.isEmpty { freshEntryIDs = motion.saved; pendingEntrySave = true }
+            if entryMotion && !motion.deleted.isEmpty { entryDeleteTrigger &+= 1 }
+            ledger = next
+            if recordUndo {
+                undoLedger = before; undoLabel = reason
+                if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
+                else { toast = reason + "完成" }
+            }
+            return true
         } catch { if reportError { self.error = error.localizedDescription }; return false }
     }
     @discardableResult func apply(_ changeSet: ChangeSet, label: String, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
@@ -125,21 +148,36 @@ enum AppSheet: Identifiable {
         guard canEditLedger(), let previous = undoLedger else { return }
         do {
             try persist(previous, reason: "撤销"); ledger = previous
-            undoLedger = nil; undoLabel = nil; toast = "已撤销上一项修改"
+            cancelEntrySaveMotion()
+            undoTrigger &+= 1; undoLedger = nil; undoLabel = nil; toast = "已撤销上一项修改"
         } catch { self.error = error.localizedDescription }
+    }
+    func present(_ sheet: AppSheet, from source: String) { sheetSource = source; self.sheet = sheet }
+    func cancelEntrySaveMotion() { saveToastTask?.cancel(); pendingEntrySave = false; pendingSaveToast = nil; freshEntryIDs = [] }
+    func finishEntrySaveMotion() {
+        guard pendingEntrySave, sheet == nil, !locked else { return }
+        pendingEntrySave = false; entrySaveTrigger &+= 1
+        let message = pendingSaveToast; pendingSaveToast = nil
+        let trigger = entrySaveTrigger
+        saveToastTask?.cancel()
+        saveToastTask = Task { @MainActor in
+            do { try await Task.sleep(for: .seconds(YubaiMotion.saveToastDelay)) } catch { return }
+            guard !Task.isCancelled, entrySaveTrigger == trigger, !locked, sheet == nil, toast == nil else { return }
+            toast = message
+        }
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
         guard canEditLedger() else { return false }
-        do { try persist(restored, reason: "恢复前", restoring: true); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
+        do { try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func recover(_ recovery: Recovery) -> Bool {
         guard canEditLedger() else { return false }
-        do { let restored = try localRepository.readRecovery(recovery); try persist(restored, reason: "恢复版本", restoring: true); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
+        do { let restored = try localRepository.readRecovery(recovery); try persist(restored, reason: "恢复版本", restoring: true); cancelEntrySaveMotion(); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     func adoptSyncedLedger(_ next: Ledger) {
-        ledger = next; loadFailure = nil; undoLedger = nil; undoLabel = nil
+        cancelEntrySaveMotion(); ledger = next; loadFailure = nil; undoLedger = nil; undoLabel = nil
     }
     func unlock() async {
         let context = LAContext()
@@ -183,6 +221,9 @@ struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var motionNamespace
+    @State private var tabRevision = 0
+    @State private var tabDirection: Double = 1
     var body: some View {
         @Bindable var store = store
         Group {
@@ -193,6 +234,8 @@ struct RootView: View {
         }
         .sheet(item: $store.sheet) { sheet in
             NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brandInk)
+                .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
+                .yubaiZoomDestination(store.sheetSource ?? sheet.motionSource)
                 .appErrors().presentationDragIndicator(.visible)
                 .overlay { privacyCover }
                 #if os(macOS)
@@ -200,19 +243,33 @@ struct RootView: View {
                 #endif
         }
         .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas.ignoresSafeArea())
+        .environment(\.yubaiZoomNamespace, motionNamespace)
         .appErrors()
         .overlay(alignment: .bottom) {
             if let toast = store.toast {
                 Toast(text: toast, onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(toast)
-                    .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.space24)
                     #if os(iOS)
-                    .padding(.bottom, YubaiSize.tabbarHeight)
+                    .padding(.bottom, YubaiSize.tabbarHeight + YubaiSpace.space12)
+                    #else
+                    .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.space24)
                     #endif
                     .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(YubaiMotion.toastOut(reduceMotion: reduceMotion))))
             }
         }
-        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync() } }; if newValue == .background && store.current.preferences.lockEnabled { store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .onChange(of: store.pendingEntrySave) { _, pending in if pending { store.finishEntrySaveMotion() } }
+        .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil; store.finishEntrySaveMotion() } }
+        .onChange(of: store.destination) { old, next in
+            tabDirection = MotionSessionState.direction(from: Destination.allCases.firstIndex(of: old)!, to: Destination.allCases.firstIndex(of: next)!)
+            tabRevision &+= 1
+        }
+        #if os(iOS)
+        .sensoryFeedback(.success, trigger: store.entrySaveTrigger)
+        .sensoryFeedback(.impact(weight: .medium), trigger: store.entryDeleteTrigger)
+        .sensoryFeedback(.impact(weight: .light), trigger: store.undoTrigger)
+        .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
+        #endif
+        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
         .task { await store.configureSync() }
         .task(id: "\(store.current.id)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
             if phase == .active { await store.organizePendingImports() }
@@ -245,31 +302,43 @@ struct RootView: View {
             NavigationStack { tabRoot(store.destination) }.id(store.destination)
         }
         #else
-        TabView(selection: $store.destination) {
-            ForEach(Destination.allCases) { d in
-                NavigationStack { tabRoot(d) }
-                    .toolbar(.hidden, for: .tabBar)
-                    .tabItem { Text(d.title) }.tag(d)
+        TabView(selection: Binding(get: { store.destination.rawValue }, set: selectTab)) {
+            Tab(value: Destination.overview.rawValue) { NavigationStack { tabRoot(.overview) } } label: {
+                Label("现在", image: "TabWaterMark").accessibilityIdentifier("tab_overview")
             }
-        }.toolbar(.hidden, for: .tabBar)
+            Tab(value: Destination.insights.rawValue) { NavigationStack { tabRoot(.insights) } } label: {
+                Label("洞察", systemImage: "chart.pie").accessibilityIdentifier("tab_insights")
+            }
+            Tab(value: Destination.settings.rawValue) { NavigationStack { tabRoot(.settings) } } label: {
+                Label("我", systemImage: "person").accessibilityIdentifier("tab_settings")
+            }
+            Tab(value: "ask", role: .search) { Color.clear } label: {
+                Label("问余白", systemImage: "bubble.left.and.bubble.right").yubaiZoomSource("ask").accessibilityIdentifier("askYubai")
+            }
+        }.tint(YubaiColor.brand)
         #endif
     }
-    // The row belongs to the root content, inside each navigation stack. Pushing
-    // a destination moves the entire root (including its row) off screen.
+    private func selectTab(_ value: String) {
+        if value == "ask" { store.present(.ask(""), from: "ask"); return }
+        guard let next = Destination(rawValue: value), next != store.destination else { return }
+        store.destination = next
+    }
     private func tabRoot(_ d: Destination) -> some View {
+        #if os(macOS)
         ZStack(alignment: .bottom) {
             destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
             if store.sheet == nil && !store.pickingInsightDates {
                 HStack(spacing: YubaiSpace.space8) {
-                    #if os(iOS)
-                    TabBar(selection: Binding(get: { store.destination }, set: { store.destination = $0 }))
-                    #else
                     Spacer()
-                    #endif
-                    AskButton { store.sheet = .ask("") }
+                    AskButton { store.present(.ask(""), from: "ask") }.yubaiZoomSource("ask")
                 }.padding(.horizontal, YubaiSpace.space18).padding(.bottom, 22)
             }
         }.background(YubaiColor.canvas)
+        #else
+        destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
+            .modifier(TabContentEntrance(active: store.destination == d, revision: tabRevision, direction: tabDirection))
+            .background(YubaiColor.canvas)
+        #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
         switch d { case .overview: OverviewView(); case .insights: InsightsView(); case .settings: SettingsView() }

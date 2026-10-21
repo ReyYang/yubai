@@ -93,7 +93,7 @@ struct AccountsView: View {
                 NavigationLink("编辑账户") { AccountEditor(account: a) }.frame(minHeight: YubaiSize.buttonHeight)
             }.yubaiFont(YubaiFont.row) }
             SectionHeading(title: "关联记录")
-            CardRows(Array(store.current.activeEntries.filter { $0.accountID == a.id || $0.otherAccountID == a.id }.sorted { $0.date > $1.date }.prefix(100))) { e in NavigationLink { EntryDetailView(entryID: e.id) } label: { EntryRow(entry: e) }.buttonStyle(PressButtonStyle()) }
+            CardRows(Array(store.current.activeEntries.filter { $0.accountID == a.id || $0.otherAccountID == a.id }.sorted { $0.date > $1.date }.prefix(100))) { e in EntryLink(entry: e) }
             Button(a.archived ? "取消归档" : "归档账户") { store.update(a.archived ? "取消归档" : "归档账户") { l in if let i = l.accounts.firstIndex(where: { $0.id == a.id }) { l.accounts[i].archived.toggle() } } }.buttonStyle(SecondaryButtonStyle())
         }.navigationTitle(a.name).yubaiNavigation()
     }
