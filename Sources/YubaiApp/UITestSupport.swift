@@ -10,7 +10,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              ["empty", "import", "restrain", "ask", "profile", "memory"].contains(name) else { return nil }
+              ["empty", "import", "restrain", "ask", "profile", "memory", "manual"].contains(name) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -29,7 +29,7 @@ enum UITestSupport {
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
         let now = Date()
         var ledger = Ledger()
-        ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = true
+        ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = script != "manual"
         ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
         ledger.mutedTopics = ["letter"] // Keep scripted flows independent of the weekday.
         let account = Account(name: "合成银行卡", balance: 100_000, at: now)

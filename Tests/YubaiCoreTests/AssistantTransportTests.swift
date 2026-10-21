@@ -57,9 +57,12 @@ final class AssistantTransportTests: XCTestCase {
 
     func testTransportLogsSanitizedRequestWithoutHeaders() async throws {
         let stub = CloudTestStub { _ in "连接正常" }; defer { stub.close() }
-        let purpose = "日志验证-" + UUID().uuidString
+        let purpose = "日志验证-" + UUID().uuidString + "-123456789012"
         _ = try await stub.send(ChatRequest(messages: [ChatMessage(role: .user, content: "红包-王五 62220212345678")], purpose: purpose))
-        let item = try XCTUnwrap(SendLog.shared.items.first { $0.purpose == purpose })
+        // A UUID can itself contain eight consecutive digits. Purpose is redacted too.
+        let expectedPurpose = Redactor.shared.text(purpose)
+        let item = try XCTUnwrap(SendLog.shared.items.first { $0.purpose == expectedPurpose })
+        XCTAssertFalse(item.purpose.contains("123456789012"))
         XCTAssertFalse(item.requestText.contains("王五")); XCTAssertFalse(item.requestText.contains("62220212345678"))
         XCTAssertFalse(item.requestText.contains("Bearer")); XCTAssertFalse(item.requestText.contains("test-key"))
         XCTAssertGreaterThan(item.byteSize, 0)

@@ -11,6 +11,7 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64; public var amountConfirmed: Bool
     public var nature: Nature; public var accountID: UUID; public var title: String; public var category: String
     public var purpose: String?
+    public var otherAccountID: UUID?
     public init(date: Date, amount: Int64, amountConfirmed: Bool = false, nature: Nature = .expense,
                 accountID: UUID, title: String, category: String = "其他支出", purpose: String? = nil) {
         self.date = date; self.amount = amount; self.amountConfirmed = amountConfirmed; self.nature = nature
@@ -214,7 +215,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard !next.entries.contains(where: { $0.id == draft.id }) else { skip(position); continue }
                 guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
-                e.id = draft.id; e.recordedAt = createdAt; e.purpose = draft.purpose; e.source = source; e.classificationReason = stamp; e.userEdited = true
+                e.id = draft.id; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
+                e.source = source; e.classificationReason = stamp; e.userEdited = true
                 next.entries.append(e)
             case .profile(let change):
                 switch change {

@@ -211,9 +211,13 @@ public enum Finance {
                      occurrences: occurrences, points: points, warnings: warnings)
     }
     public static func spendingAmount(_ entry: Entry, ledger: Ledger) -> Int64 {
+        spendingAmount(entry, rent: entry.rentID.flatMap { id in ledger.rents.first { $0.id == id } })
+    }
+    /// Indexed callers can share the same rules without a rent lookup per row.
+    public static func spendingAmount(_ entry: Entry, rent: Rent?) -> Int64 {
         if entry.nature == .expense {
             if let personal = entry.personalExpense { return personal }
-            if let rentID = entry.rentID, let rent = ledger.rents.first(where: { $0.id == rentID }), rent.monthlyTotal > 0 {
+            if let rent, rent.monthlyTotal > 0 {
                 return NSDecimalNumber(decimal: Decimal(entry.amount) * Decimal(rent.personalShare) / Decimal(rent.monthlyTotal)).int64Value
             }
             return entry.amount

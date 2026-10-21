@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>账目</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yubai/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600&amp;family=Noto+Sans+SC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 12px 18px 0; background: var(--canvas, #f5f1e5); color: var(--label, #382f1f); font-family: var(--font-sans, 'Noto Sans SC', sans-serif); display: flex; flex-direction: column; position: relative; overflow: hidden">
+  <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 48px">
+    <a href="V4-Home-Saved.dc.html" style="justify-self: start; height: 36px; padding: 0 14px 0 10px; border-radius: 18px; background: var(--raised, #fefbea); color: var(--label, #382f1f); display: flex; align-items: center; gap: 2px; text-decoration: none; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>现在</a>
+    <span style="font-size: 15px; font-weight: 500">账目</span>
+    <a href="V4-Add.dc.html" style="justify-self: end; height: 36px; padding: 0 14px; border-radius: 18px; background: var(--brand, #557f53); color: var(--on-brand, #ffffff); display: flex; align-items: center; text-decoration: none; font-size: 14px; font-weight: 500">记一笔</a>
+  </div>
+
+  <label style="margin-top: 14px; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 20px; background: var(--raised, #fefbea); color: var(--label-secondary, #6a604f)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+    <input placeholder="找一笔：商户、用途、金额" aria-label="搜索账目" style="flex: 1; min-width: 0; border: 0; background: transparent; font-family: inherit; font-size: 14px; color: var(--label, #382f1f); outline: none">
+  </label>
+
+  <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: baseline">
+    <span style="font-family: var(--font-serif, 'Noto Serif SC', serif); font-size: 17px; font-weight: 600">10月</span>
+    <span style="font-size: 12px; color: var(--label-secondary, #6a604f); font-variant-numeric: tabular-nums">支出 <b style="font-family: var(--font-num, 'Geist', sans-serif); color: var(--label, #382f1f)">3,246.50</b> · 收入 <b style="font-family: var(--font-num, 'Geist', sans-serif); color: var(--label, #382f1f)">8,000</b></span>
+  </div>
+
+  <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 12px; color: var(--label-secondary, #6a604f)"><span>今天 · 10月21日</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">−32.00</span></div>
+  <div style="margin-top: 6px; border-radius: 22px; background: var(--card, #ede6d3); padding: 2px 18px">
+    <a href="V4-Entry-Edit.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 54px; color: inherit; text-decoration: none"><span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px; font-weight: 500">午饭</span><span style="font-size: 11px; color: var(--label-secondary, #6a604f)">12:15 · 餐饮 · 微信零钱</span></span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums">−32.00</span></a>
+  </div>
+
+  <div style="margin-top: 14px; display: flex; justify-content: space-between; font-size: 12px; color: var(--label-secondary, #6a604f)"><span>昨天 · 10月20日</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">−2,432.50</span></div>
+  <div style="margin-top: 6px; border-radius: 22px; background: var(--card, #ede6d3); padding: 2px 18px">
+    <a href="V4-Entry-Edit.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 54px; color: inherit; text-decoration: none"><span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px; font-weight: 500">信用卡还款</span><span style="font-size: 11px; color: var(--label-secondary, #6a604f)">工资卡 → 招行信用卡 · 不算支出</span></span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums">−2,380.00</span></a>
+    <a href="V4-Entry-Edit.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 54px; border-top: 1px solid var(--separator, #e0d8c9); color: inherit; text-decoration: none"><span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px; font-weight: 500">罗森</span><span style="font-size: 11px; color: var(--label-secondary, #6a604f)">08:10 · 日用 · 支付宝</span></span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums">−16.50</span></a>
+    <a href="V4-Entry-Edit.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 54px; border-top: 1px solid var(--separator, #e0d8c9); color: inherit; text-decoration: none"><span style="flex: 1; display: flex; flex-direction: column; align-items: flex-start"><span style="font-size: 15px; font-weight: 500">滴滴出行</span><span style="font-size: 11px; color: var(--label-secondary, #6a604f)">23:40 · 交通 · 招行信用卡</span></span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums">−36.00</span></a>
+  </div>
+
+  <div style="margin-top: 14px; display: flex; justify-content: space-between; font-size: 12px; color: var(--label-secondary, #6a604f)"><span>10月19日</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">+7,958.00</span></div>
+  <div style="margin-top: 6px; border-radius: 22px; background: var(--card, #ede6d3); padding: 2px 18px">
+    <a href="V4-Entry-Edit.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 54px; color: inherit; text-decoration: none"><span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px; font-weight: 500">工资</span><span style="font-size: 11px; color: var(--label-secondary, #6a604f)">09:00 · 工资 · 工资卡</span></span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums">+8,000.00</span></a>
+    <a href="V4-Entry-Edit.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 54px; border-top: 1px solid var(--separator, #e0d8c9); color: inherit; text-decoration: none"><span style="flex: 1; display: flex; flex-direction: column; align-items: flex-start"><span style="font-size: 15px; font-weight: 500">转出</span><span style="margin-top: 2px; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px; background: var(--amber-tint, #efe1c4); color: var(--amber-ink, #7a5320); font-size: 11px"><span style="width: 5px; height: 5px; border-radius: 3px; background: var(--amber-dot, #b88443)"></span>待明确</span></span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums">−42.00</span></a>
+  </div>
+  <div style="height: 40px; flex: none"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
