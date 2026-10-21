@@ -167,33 +167,68 @@ public struct AssistantAgent: Sendable {
 
 public enum AssistantContextBudget {
     public static let defaultLimit = 120_000
-    static let omitted = #"{"omitted":true,"note":"早期工具结果已省略，需要时重新查询"}"#
     static let historyNote = "更早的对话已省略"
+    static let summaryPrefix = "前情摘要："
     static func count(_ messages: [ChatMessage]) -> Int {
         messages.reduce(0) { total, message in
             let calls = (message.toolCalls ?? []).reduce(0) { $0 + $1.id.count + $1.function.name.count + $1.function.arguments.count }
             return total + (message.content?.count ?? 0) + (message.toolCallID?.count ?? 0) + calls
         }
     }
-    static func compactTools(_ messages: inout [ChatMessage], limit: Int) {
-        var size = count(messages)
-        let recent = messages.lastIndex { $0.role == .assistant && !($0.toolCalls?.isEmpty ?? true) } ?? messages.endIndex
-        for i in messages.indices where i < recent && messages[i].role == .tool {
-            guard size > limit else { break }
-            guard let content = messages[i].content, content.count > omitted.count else { continue }
-            size -= content.count - omitted.count; messages[i].content = omitted
-        }
-    }
-    static func compactHistory(_ messages: inout [ChatMessage], limit: Int, reserving: Int) {
-        var size = count(messages) + reserving
-        while size > limit {
-            let first = messages.firstIndex { $0.role == .user }
-            guard let first, first + 1 < messages.count, messages[first + 1].role == .assistant else { break }
-            size -= count(Array(messages[first...(first + 1)])); messages.removeSubrange(first...(first + 1))
-            if messages.first?.content != historyNote {
-                messages.insert(ChatMessage(role: .system, content: historyNote), at: 0); size += historyNote.count
+    private static func toolNote(_ message: ChatMessage, call: ChatToolCall?) -> String {
+        func scalar(_ value: JSONValue) -> String? {
+            switch value {
+            case .string(let text): return String(text.prefix(48))
+            case .number, .bool: return try? value.jsonText()
+            default: return nil
             }
         }
+        func facts(_ value: JSONValue, prefix: String = "") -> [String] {
+            guard let fields = value.objectValue else { return [] }
+            let preferred = ["count", "total", "sum", "amount", "from", "to", "start", "end", "range"]
+            let keys = preferred.filter { fields[$0] != nil } + fields.keys.filter { !preferred.contains($0) }.sorted()
+            return keys.flatMap { key -> [String] in
+                let item = fields[key]!
+                if let text = scalar(item) { return [prefix + key + "=" + text] }
+                if let rows = item.arrayValue { return [prefix + key + "条数=" + String(rows.count)] }
+                if prefix.isEmpty { return facts(item, prefix: key + ".") }
+                return []
+            }
+        }
+        let arguments = call.map { String($0.function.arguments.prefix(60)) } ?? "{}"
+        let result = message.content.flatMap { try? JSONValue.parse($0) }.map { facts($0).joined(separator: "，") } ?? ""
+        let text = (call?.function.name ?? "工具") + " 参数=" + arguments + "；" + result
+        return String(text.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ").prefix(184)) + "；需要细节请重新查询"
+    }
+    static func compactTools(_ messages: inout [ChatMessage], limit: Int) {
+        var size = count(messages)
+        guard size > limit else { return }
+        let target = max(0, limit * 3 / 5)
+        let recent = messages.lastIndex { $0.role == .assistant && !($0.toolCalls?.isEmpty ?? true) } ?? messages.endIndex
+        var calls: [String: ChatToolCall] = [:]
+        for i in messages.indices where i < recent {
+            for call in messages[i].toolCalls ?? [] { calls[call.id] = call }
+            guard size > target else { break }
+            guard messages[i].role == .tool, let content = messages[i].content,
+                  !content.hasSuffix("；需要细节请重新查询") else { continue }
+            let note = toolNote(messages[i], call: messages[i].toolCallID.flatMap { calls[$0] })
+            guard note.count < content.count else { continue }
+            size -= content.count - note.count; messages[i].content = note
+        }
+    }
+    static func historySlice(_ messages: [ChatMessage], limit: Int, reserving: Int) -> (remaining: [ChatMessage], removed: [ChatMessage], summaryBudget: Int)? {
+        guard count(messages) + reserving > limit else { return nil }
+        let first = messages.first?.role == .system ? 1 : 0
+        let target = max(0, (limit - reserving) * 3 / 5)
+        let summaryBudget = min(1600, max(32, target / 10))
+        var size = count(messages) - count(Array(messages.prefix(first)))
+        var end = first
+        while size + summaryBudget > target {
+            guard end + 1 < messages.count, messages[end].role == .user, messages[end + 1].role == .assistant else { break }
+            size -= count(Array(messages[end...(end + 1)])); end += 2
+        }
+        guard end > first else { return nil }
+        return (Array(messages.dropFirst(end)), Array(messages.prefix(end)), summaryBudget)
     }
 }
 

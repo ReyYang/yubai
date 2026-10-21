@@ -2,7 +2,7 @@ import XCTest
 @testable import YubaiCore
 
 final class StorageTests: XCTestCase {
-    func sample() -> Ledger { var l = SampleData.ledger(now: Dates.parse("2026-10-01")!); l.attachments = [Attachment(name: "账单原件.csv", data: Data([0, 1, 2, 0xFF]))]; return l }
+    func sample() -> Ledger { var l = SampleData.ledger(now: Dates.parse("2026-10-01")!); l.attachments = [Attachment(name: "账单原件.csv", data: Data([0, 1, 2, 0xFF]))]; l.entries[0].attachmentID = l.attachments[0].id; return l }
     func testLegacyLedgerDefaultsToVividThemeWithoutChangingPreferences() throws {
         var ledger = sample()
         ledger.preferences.appearance = "dark"
@@ -114,7 +114,7 @@ final class StorageTests: XCTestCase {
         let reopened = LedgerRepository(directory: repo.directory); XCTAssertEqual(try reopened.load(), l)
         let backup = try Backup.export(l, password: "restore-check")
         let fresh = LedgerRepository(directory: root.appendingPathComponent("fresh")); try fresh.restoreBackup(Backup.restore(backup, password: "restore-check"))
-        let readback = try fresh.load(); XCTAssertEqual(readback.accounts, l.accounts); XCTAssertEqual(readback.entries, l.entries); XCTAssertEqual(readback.attachments[0].data, l.attachments[0].data)
+        let readback = try fresh.load(); XCTAssertEqual(readback.accounts, l.accounts); XCTAssertEqual(readback.entries, l.entries); XCTAssertEqual(try fresh.attachmentData(l.attachments[0].id), l.attachments[0].data)
         XCTAssertEqual(Finance.funds(readback, now: Dates.parse("2026-10-01")!).netWorth, Finance.funds(l, now: Dates.parse("2026-10-01")!).netWorth)
     }
     func testCorruptionDoesNotBecomeEmptyLedgerAndCannotBeOverwritten() throws {
@@ -129,7 +129,7 @@ final class StorageTests: XCTestCase {
         let repo = LedgerRepository(directory: root); var l = sample(); try repo.save(l); let original = l
         l.accounts[0].name = "新名称"; try repo.save(l, reason: "重命名"); let history = try repo.recoveries(); XCTAssertEqual(history.count, 1)
         XCTAssertEqual(try repo.recover(history[0]), original)
-        XCTAssertTrue(try repo.recoveries().contains { try LedgerCodec.decode(Data(contentsOf: $0.url)).accounts[0].name == "新名称" })
+        XCTAssertTrue(try repo.recoveries().contains { try LedgerCodec.decode(repo.recoveryBytes($0.url)).accounts[0].name == "新名称" })
         let another = Ledger(); try repo.restoreBackup(another); XCTAssertEqual(try repo.load(), another); XCTAssertFalse(try repo.recoveries().isEmpty)
     }
     func testRepeatedSavesKeepExactPreviousBytesAndLatestTwentyRevisions() throws {
@@ -142,13 +142,13 @@ final class StorageTests: XCTestCase {
             try copy.save(ledger, reason: "Repeated/save")
         }
         let history = try repo.recoveries(); XCTAssertEqual(history.count, 20)
-        XCTAssertEqual(try history.map { try Data(contentsOf: $0.url) }, Array(previous.suffix(20).reversed()))
-        for revision in history { XCTAssertNoThrow(try LedgerCodec.decode(Data(contentsOf: revision.url))) }
+        XCTAssertEqual(try history.map { try repo.recoveryBytes($0.url) }, Array(previous.suffix(20).reversed()))
+        for revision in history { XCTAssertNoThrow(try LedgerCodec.decode(repo.recoveryBytes(revision.url))) }
         XCTAssertEqual(try repo.load(), ledger)
         let reopened = LedgerRepository(directory: root); _ = try reopened.load()
         let last = try Data(contentsOf: repo.file); try reopened.save(ledger)
         XCTAssertEqual(try reopened.recoveries().count, 20)
-        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(reopened.recoveries().first).url), last)
+        XCTAssertEqual(try reopened.recoveryBytes(XCTUnwrap(reopened.recoveries().first).url), last)
     }
     func testLoadedRepositoryVerifiesAndPreservesValidExternalChangesBeforeSaving() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-external-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }
@@ -161,15 +161,15 @@ final class StorageTests: XCTestCase {
         try copy.save(ledger)
         let history = try repo.recoveries(); XCTAssertEqual(history.count, 2)
         let newest = try XCTUnwrap(history.first); XCTAssertGreaterThan(newest.date, previous.date)
-        let preserved = try Data(contentsOf: newest.url)
-        XCTAssertEqual(preserved, external); XCTAssertEqual(try LedgerCodec.decode(preserved), externalLedger)
+        let preserved = try repo.recoveryBytes(newest.url)
+        XCTAssertEqual(preserved, try LedgerCodec.encodeMetadata(externalLedger)); XCTAssertEqual(try LedgerCodec.decode(preserved), externalLedger)
         XCTAssertEqual(try Data(contentsOf: repo.file), try LedgerCodec.encodeMetadata(ledger)); XCTAssertEqual(try repo.load(), ledger)
     }
     func testFirstSaveVerifiesUnrecognizedCurrentFile() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-unrecognized-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }
         let writer = LedgerRepository(directory: root); var ledger = sample(); try writer.save(ledger)
         let original = try Data(contentsOf: writer.file); let repo = LedgerRepository(directory: root); try repo.save(ledger)
-        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(repo.recoveries().first).url), original)
+        XCTAssertEqual(try repo.recoveryBytes(XCTUnwrap(repo.recoveries().first).url), original)
         var invalidJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encode(ledger)) as? [String: Any])
         invalidJSON["schema"] = 99
         let invalid = try JSONSerialization.data(withJSONObject: invalidJSON); try invalid.write(to: repo.file, options: .atomic)
@@ -210,5 +210,167 @@ final class StorageTests: XCTestCase {
         }
         XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber)?.intValue, 0o700)
         XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: root.appendingPathComponent("Recovery").path)[.posixPermissions] as? NSNumber)?.intValue, 0o700)
+    }
+}
+
+extension StorageTests {
+    private func withRepository(_ body: (LedgerRepository) throws -> Void) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-payloads-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try body(LedgerRepository(directory: root))
+    }
+    func testSavedAndLoadedAttachmentsAreLazyAndImmutablePayloadsAreNotRewritten() throws {
+        try withRepository { repo in
+            let original = sample(); var saved = try repo.save(original)
+            XCTAssertTrue(saved.attachments[0].data.isEmpty)
+            let id = original.attachments[0].id
+            XCTAssertEqual(try repo.attachmentData(id), original.attachments[0].data)
+            saved = try repo.save(saved)
+            let main = repo.directory.appendingPathComponent("Attachments/" + id.uuidString)
+            let shared = repo.directory.appendingPathComponent("Recovery/Payloads/" + id.uuidString)
+            let old = Date(timeIntervalSince1970: 100)
+            for file in [main, shared] { try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path) }
+            for _ in 0..<3 { saved = try repo.save(saved) }
+            for file in [main, shared] {
+                XCTAssertEqual(try file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, old)
+                XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+            }
+            let loaded = try LedgerRepository(directory: repo.directory).load()
+            XCTAssertTrue(loaded.attachments[0].data.isEmpty); XCTAssertEqual(loaded, original)
+            try Data([9, 9, 9, 9]).write(to: main)
+            // An ordinary metadata save neither reads nor rehashes the existing payload.
+            XCTAssertNoThrow(try repo.save(loaded))
+            XCTAssertThrowsError(try repo.attachmentData(id))
+            var changed = loaded; changed.attachments[0].data = Data([4, 3, 2, 1])
+            XCTAssertThrowsError(try repo.save(changed))
+        }
+    }
+    func testRecoverySharesOnePayloadAndCollectsItAfterLastReferenceIsPruned() throws {
+        try withRepository { repo in
+            var ledger = try repo.save(sample())
+            let id = ledger.attachments[0].id
+            let shared = repo.directory.appendingPathComponent("Recovery/Payloads", isDirectory: true)
+            let payload = shared.appendingPathComponent(id.uuidString)
+            for _ in 0..<23 { ledger = try repo.save(ledger) }
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: shared.path), [id.uuidString])
+            XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: shared.deletingLastPathComponent().path).contains { $0.hasSuffix(".attachments") })
+            ledger.entries[0].attachmentID = nil
+            ledger = try repo.save(ledger)
+            XCTAssertTrue(ledger.attachments.isEmpty)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: repo.directory.appendingPathComponent("Attachments/" + id.uuidString).path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: payload.path))
+            for _ in 0..<21 { ledger = try repo.save(ledger) }
+            XCTAssertEqual(try repo.recoveries().count, 20)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: payload.path))
+        }
+    }
+    func testOrphanCleanupKeepsSoftDeletedEntriesImportsAndPendingEntryReferences() throws {
+        try withRepository { repo in
+            var ledger = sample(); ledger.entries[0].deletedAt = Date()
+            let batchFile = Attachment(name: "批次.csv", data: Data([2]))
+            var batch = ImportBatch(filename: batchFile.name, importedCount: 0, duplicateCount: 0, skippedCount: 0); batch.attachmentID = batchFile.id
+            ledger.imports.append(batch); ledger.attachments.append(batchFile)
+            let undoFile = Attachment(name: "撤销原件.csv", data: Data([5]))
+            var previous = ledger.entries[2]; previous.attachmentID = undoFile.id
+            var undo = ImportUndo(updatedAt: ledger.updatedAt); undo.entries = [previous]
+            ledger.imports[0].undo = undo; ledger.attachments.append(undoFile)
+            let pendingFile = Attachment(name: "待确认.jpg", data: Data([3]))
+            ledger.entries[1].attachmentID = pendingFile.id; ledger.attachments.append(pendingFile)
+            ledger.pendingChanges = [ChangeSet(source: "测试", reason: "待确认", items: [.setPurpose(entry: ledger.entries[1].id, text: "核对")])]
+            let orphan = Attachment(name: "无引用", data: Data([4])); ledger.attachments.append(orphan)
+            let saved = try repo.save(ledger)
+            XCTAssertEqual(saved.attachments.count, 4)
+            XCTAssertFalse(saved.attachments.contains { $0.id == orphan.id })
+            XCTAssertEqual(try repo.attachmentData(batchFile.id), batchFile.data)
+            XCTAssertEqual(try repo.attachmentData(pendingFile.id), pendingFile.data)
+            XCTAssertEqual(try repo.attachmentData(undoFile.id), undoFile.data)
+            XCTAssertEqual(try repo.attachmentData(ledger.attachments[0].id), ledger.attachments[0].data)
+        }
+    }
+    func testUndoSnapshotCanCopyRemovedPayloadBackFromSharedRecovery() throws {
+        try withRepository { repo in
+            let before = try repo.save(sample()); var next = before
+            next.entries[0].attachmentID = nil; next = try repo.save(next)
+            XCTAssertTrue(next.attachments.isEmpty)
+            let saved = try repo.save(before)
+            XCTAssertEqual(saved, before)
+            XCTAssertEqual(try repo.attachmentData(before.attachments[0].id), sample().attachments[0].data)
+        }
+    }
+    func testCompressedAndLegacySidecarVersionsReadRecoverAndPrune() throws {
+        try withRepository { repo in
+            let original = sample(); try repo.save(original)
+            let history = repo.directory.appendingPathComponent("Recovery", isDirectory: true)
+            try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+            let legacy = history.appendingPathComponent("1000-legacy-旧版本.json")
+            let sidecar = legacy.deletingPathExtension().appendingPathExtension("attachments")
+            try FileManager.default.createDirectory(at: sidecar, withIntermediateDirectories: true)
+            try LedgerCodec.encodeMetadata(original).write(to: legacy)
+            try original.attachments[0].data.write(to: sidecar.appendingPathComponent(original.attachments[0].id.uuidString))
+            let old = try XCTUnwrap(repo.recoveries().first)
+            XCTAssertEqual(old.date, Date(timeIntervalSince1970: 1))
+            XCTAssertEqual(try repo.readRecovery(old), original)
+            XCTAssertEqual(try repo.recover(old), original)
+            let newest = try XCTUnwrap(repo.recoveries().first)
+            XCTAssertTrue(newest.url.lastPathComponent.hasSuffix(".json.gz"))
+            let bytes = try Data(contentsOf: newest.url)
+            XCTAssertEqual(Array(bytes.prefix(2)), [0x1f, 0x8b]); XCTAssertLessThan(bytes.count, try repo.recoveryBytes(newest.url).count)
+            XCTAssertEqual(try repo.readRecovery(newest), original)
+            for _ in 0..<22 { try repo.save(original) }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path)); XCTAssertFalse(FileManager.default.fileExists(atPath: sidecar.path))
+        }
+    }
+    func testGzipRejectsTruncationAndDamagedChecksum() throws {
+        let bytes = try RecoveryCompression.encode(Data(String(repeating: "账本元数据", count: 200).utf8))
+        XCTAssertThrowsError(try RecoveryCompression.decode(Data(bytes.dropLast())))
+        var corrupt = bytes; corrupt[corrupt.count - 8] ^= 1
+        XCTAssertThrowsError(try RecoveryCompression.decode(corrupt))
+    }
+    func testImageCompressionFailurePreservesBytesAndName() {
+        let bytes = Data([0, 1, 2, 3]); let result = ImageCompression.compress(bytes, name: "截图.png")
+        XCTAssertEqual(result.data, bytes); XCTAssertEqual(result.name, "截图.png")
+    }
+}
+
+extension StorageTests {
+    func testPlainBackupFromLazyLedgerRestoresAttachmentsAndRepairsCorruptLivePayload() throws {
+        try withRepository { repo in
+            let original = sample(); let lazy = try repo.save(original)
+            let backup = try Backup.export(lazy)
+            let restored = try Backup.restore(backup)
+            XCTAssertEqual(restored.attachments[0].data, original.attachments[0].data)
+            let id = original.attachments[0].id
+            let file = repo.directory.appendingPathComponent("Attachments/" + id.uuidString)
+            try Data([9, 9, 9, 9]).write(to: file)
+            XCTAssertThrowsError(try repo.attachmentData(id))
+            let saved = try repo.restoreBackup(restored)
+            XCTAssertTrue(saved.attachments[0].data.isEmpty)
+            XCTAssertEqual(try repo.attachmentData(id), original.attachments[0].data)
+            // Missing live payloads must not block restoring a complete backup either.
+            try FileManager.default.removeItem(at: file)
+            try FileManager.default.removeItem(at: repo.directory.appendingPathComponent("Recovery/Payloads/" + id.uuidString))
+            XCTAssertNoThrow(try repo.restoreBackup(restored))
+            XCTAssertEqual(try repo.attachmentData(id), original.attachments[0].data)
+        }
+    }
+}
+
+extension StorageTests {
+    func testEmbeddedLegacyRecoveryReturnsLazyAttachmentsAndNewHistoryIsMetadataOnly() throws {
+        try withRepository { repo in
+            let original = sample()
+            let history = repo.directory.appendingPathComponent("Recovery", isDirectory: true)
+            try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+            let legacy = history.appendingPathComponent("1000-inline-旧内嵌版本.json")
+            try LedgerCodec.encode(original).write(to: legacy)
+            let version = try XCTUnwrap(repo.recoveries().first)
+            let lazy = try repo.readRecovery(version)
+            XCTAssertEqual(lazy, original); XCTAssertTrue(lazy.attachments[0].data.isEmpty)
+            _ = try repo.recover(version); try repo.save(lazy)
+            let newest = try XCTUnwrap(repo.recoveries().first)
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: repo.recoveryBytes(newest.url)) as? [String: Any])
+            XCTAssertNil((json["attachments"] as? [[String: Any]])?.first?["data"])
+            XCTAssertEqual(try repo.attachmentData(original.attachments[0].id), original.attachments[0].data)
+        }
     }
 }

@@ -100,14 +100,14 @@ YUBAI_ICLOUD = YES
 存储与恢复：
 
 - 旧布局：Application Support/app.yubai.personal/ledger.json，附件以 base64 内嵌。
-- 新布局：本机同目录或容器内 `Documents/Yubai/ledger.json` 只含附件 id、名称、时间、字节数和 SHA-256；字节在旁边 `Attachments/<UUID>`。schema 仍为 2，载入兼容旧内嵌形状并自动拆分；先验证、保留原始文件字节，再替换元数据文件。
-- 账本元数据上限 250 MiB，当前账本所引用的附件总量另限 250 MiB。附件 UUID 对应不可变字节，删除引用后暂保留文件，以免破坏尚未到达的冲突版本。未实现孤立附件清理；总磁盘占用因此可能超过当前附件上限。
-- `Recovery/*.json` 与同名 `*.attachments/` 始终在本机 Application Support，保留最近 20 份完整版本；旧内嵌恢复记录继续能读。设备解锁设置、位置选择及待上传标记也留在本机；`.icloud-pending` 在保存修改前原子写入 Application Support，避免重启时丢失待上传状态。iCloud 账本中的设备解锁字段固定为关闭，接收同步时保留本机设置。
-- 加密备份继续使用 v1 envelope，把附件字节一并打包，旧备份仍可恢复。JSON/base64 的包装读取上限单独放宽（由 `LedgerCodec.backupCapacity` 统一控制），不放宽账本或附件的逻辑上限。恢复附件缺失、校验失败时不替换现有账本。
+- 新布局：本机同目录或容器内 `Documents/Yubai/ledger.json` 只含附件 id、名称、时间、字节数和 SHA-256；字节在旁边 `Attachments/<UUID>`。schema 仍为 2，载入兼容旧内嵌形状并自动拆分。Ledger 只驻留附件元数据；需要字节时由 `LedgerRepository.attachmentData(id)` 读取并检查大小／SHA-256。`save`／`restoreBackup` 返回已释放附件字节的账本，App 采用该返回值。
+- 账本元数据及单个附件仍限 250 MiB，取消附件总量 250 MiB 限制。附件 UUID 对应不可变字节；已有文件先比大小，复用已知校验信息，必要时流式计算 SHA-256，保存不重读所有 payload。保存清理未被任何账目（包括软删除）、导入批次（含撤销快照）或待确认修改所涉及账目引用的附件；选定冲突版本之前先保留另一版本的 payload。Apple 写入前检查可用卷空间，写满错误转为「手机空间不足，本次修改未保存。」；临时文件原子安装，沿用 0600／0700 与文件保护。
+- 新版本为本机 `Recovery/*.json.gz`，只含账本元数据，附件共享一份 `Recovery/Payloads/<UUID>`。保留最近 20 份；剪除后仅清理所有剩余恢复版本及当前账本均不引用的共享 payload。旧 `.json`、同名 `.attachments/` 和内嵌恢复记录兼容读取，旧 sidecar 随版本删除。schema 1 无内嵌附件的原始 JSON 仍按原字节压缩保留；有内嵌附件时先拆分为元数据。Apple 排除 Recovery 的整机备份。设备解锁设置、位置选择及待上传标记也留在本机；`.icloud-pending` 在保存修改前原子写入 Application Support，避免重启时丢失待上传状态。iCloud 账本中的设备解锁字段固定为关闭，接收同步时保留本机设置。
+- 加密备份继续使用 v1 envelope，把附件字节一并打包，旧备份仍可恢复。JSON/base64 包装上限按最大附件个数与单个附件上限推导（`LedgerCodec.backupCapacity`），不再用旧总量限制阻止大账本导出。导出时临时读取全部字节，完成后不写回驻留 Ledger；完整备份的内存峰值仍随附件总量增长。恢复附件缺失、校验失败时不替换现有账本。
 - iCloud 文件列表先经 NSMetadataQuery 完成发现，避免把尚未下载的账本误判为空。读取前请求下载，显示「正在从 iCloud 读取…」；等待 30 秒后保留本机内容并允许重试。账本与附件分别使用 NSFileCoordinator。
 - 每次修改先存本机，后台上传；待上传状态跨重启保留。没有待上传修改时接收远端账本；有修改、上传前指纹已变或存在 NSFileVersion 未解决版本时，显示更新时间、版本时间、设备名（如有）、有效记录数与最多三笔差异。用户选定后，先把未选中版本保存为「同步冲突时的另一版本」，再替换和标记这些已展示的冲突已解决。选择期间再更新会要求重新选择。
 - 切到 iCloud 时若两处不同先选择，未选中版本记为「切换存储时的另一版本」。切回仅本机复制当前账本，包括未上传修改；不删除云端账本。退出 iCloud 后保留本机副本并回到仅本机，再次使用 iCloud 需要主动选择。恢复版本只在产生它的设备上可用。
 
-`LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；原始文件断言按新的元数据布局调整。当前只执行静态语法、配置与工程生成核查，没有 Swift 工具链，未执行这些 XCTest。
+`LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；测试改为显式按需读取附件、解压恢复 JSON 后断言，容量与损坏断言遵循新语义。本轮验证见 [验证记录](VALIDATION.md#存储修复与对话压缩2026-10-21)。问余白截图保存前经 `ImageCompression`：ImageIO 缩长边至 2048、HEIC／JPEG 质量 0.8，仅更小时替换；Linux 或失败保留原件。
 
 在 Xcode 验证默认 NO 的 iOS / Mac 构建与测试后，再用上方单行启用 YES，重复两端构建。真实同步需两端有效签名、同一 Apple ID、iCloud Drive；核对首次空云端、已有不同账本、下载占位、离线待上传、前台远端更新、同时编辑冲突、选择期间再次更新、切回本机及退出登录。静态检查与临时目录测试不能代替这些系统行为的设备验证。

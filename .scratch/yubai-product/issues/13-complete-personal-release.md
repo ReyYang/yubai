@@ -154,3 +154,13 @@ owner 本轮明确批准“第四轮 · 手动优先”V4 画板与 DS，要求�
 Agent 实现适配：样例商户／金额／条数来自真实账本；系统字体、系统玻璃／sheet／返回／选择器和已有 tokens 保持。新表单在小屏／大字号可滚动。固定收付90天预览复用 Finance.occurrences，保留未付完的逾期义务，排除信用还款以免本金重复预留。安排稿按 owner 指示略去 AI 预填、租金／目标卡、进出图及解释性页脚；新字段使用现有 Plan 数据，无虚构数据。
 
 [原稿与 DS](../../../.design-meta/mockups/manual-first-v4/README.md)、[源码映射](../../../.design-meta/DESIGN.md#2026-10-21--第四轮手动优先)、[本轮测试与待验证清单](../../../docs/V2-TEST-CHECKLIST.md#第四轮手动优先2026-10-21待-apple-设备验证)。Linux Core 278项：274通过、原有4项实网 opt-in 跳过、0失败；没有新增跳过，也未调用网络。另修正原 AssistantTransportTests 中按原始随机 UUID 查找已脱敏日志标记的不稳定断言，增加固定长数字覆盖，未改 SendLog／发送实现。SwiftUI语法解析与人工核对、Xcode工程生成完成；没有Apple工具链，UI测试／真机未验证，不能标为产品验收完成。工作树保留，未提交／推送；ImportView内部、AskEntryDraftCard、ProposalTools、SendLog、DeepSeekClient、CloudSendLogView保持。Figma、旧原型与分发包未同步，本票继续 in-progress。
+
+### 2026-10-21 · 存储修复与对话压缩（owner 明确要求）
+
+来源为 owner 本轮完整任务，范围以 YubaiCore 为主；不改界面外观、文案布局或动效，不新增依赖、不调用付费网络。owner 明确决定 `AssistantContextBudget.defaultLimit` 保持120,000，不增加固定调用次数／轮数上限。
+
+采用实现：加载只保留附件元数据，按 id 读取／校验 payload；新附件保存后由返回账本释放字节，App 采用保存结果；备份临时读取完整附件。恢复 JSON 改 gzip，所有新版本共享本机 `Recovery/Payloads/<UUID>`，旧 JSON／sidecar 兼容；保留20份，剪除后依剩余历史及当前账本回收共享 payload。保存清理不再被账目（含软删除）、批次（含撤销快照）或待确认修改涉及的账目引用的附件，撤销可从恢复共享目录取回。取消附件总量250 MiB上限，保留单个附件／元数据上限和原子私有写入；Apple 检查卷空间、排除 Recovery 整机备份，iCloud 仍下载／协调并协调删除。问余白保存截图前调用 ImageIO 长边2048／HEIC优先、JPEG回退、质量0.8、仅更小时替换，Linux与失败保留原件。
+
+会话超预算时批量移出早期完整问答到约60%可用预算，已有摘要与移出文字经同一 transport 请求中文事实性前情摘要；脱敏输入／输出，失败或空白退回省略提示，取消传播。工具压缩也以约60%为目标，生成不超过约200字的本地工具名／参数／标量或条数要点，金额护栏继续用完整 results。固定系统／用户文字和最近工具结果受保护，预算仍是软约束；没有以条数取代字符预算。
+
+验证与边界见 [本轮记录](../../../docs/VALIDATION.md#存储修复与对话压缩2026-10-21)：容器内 Linux swift test 325项，321通过、原有4项实网跳过、0失败（含加密备份测试）；Apple 平台行为（ImageIO、卷空间、整机备份排除、iCloud）待真机验证。完整备份的临时内存峰值仍随附件增长。视觉资源无变化。

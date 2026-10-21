@@ -145,3 +145,17 @@ Mac 本地安装包已生成。2026-10-08 从当前源码新构建的 iPhone Rel
 本轮真实失败与修复包括：CRLF/Excel 日期解析、保留编辑页的错误提示、Files 的目录导航、备份结果在屏幕外、辅助字号挤压，以及总览按钮空白区域未命中。失败日志和 `.xcresult` 保留在本地；后续通过不覆盖原失败证据。没有使用真实账单、生产系统或远端发布作为测试环境。
 
 产品采用决定在 [第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md)，使用入口在 [README](../README.md)。
+
+## 存储修复与对话压缩（2026-10-21）
+
+本轮在 `fix/storage-attachments-compaction` 分支实施。只改 Core／CArchive、测试、文档和 App 的非视觉逻辑；没有改文案布局或动效，没有调用付费网络服务。
+
+- 正式 `swift test`（容器内 Linux Swift 6.2.4，依赖正常下载）：325 项，321 通过，4 项原有实网 opt-in 跳过，0 失败；包含六个加密备份测试。
+- 四个原有实网 opt-in 测试以 `YUBAI_LIVE_EVAL=0` 跳过。HTTP 测试沿用 CloudTestStub／内存 URLProtocol，问答测试沿用脚本 transport。
+- `cc -Wall -Wextra -Werror -fsyntax-only` 检查 CArchive；Swift 编译器解析四个有逻辑调用变更的 App 文件；`git diff --check` 通过。无 Apple SDK，未验证 App 构建、ImageIO HEIC／JPEG、卷剩余容量、排除整机备份、iCloud 下载与协调／删除、文件保护等系统行为。
+
+新增覆盖共享 payload 去重、当前与剩余恢复版本的引用回收、软删除／批次及其撤销快照／待确认引用保留、懒加载与按需 SHA-256、已有 payload 不重写／保存不校验所有字节、撤销回读、gzip 及截断／损坏检测、旧 sidecar／内嵌 JSON、完整附件备份及修复缺失／损坏的当前 payload、并发跨仓库复制、摘要成功／失败／空白／取消／60%预算、工具名称与标量要点／长度。
+
+旧测试调整：StorageTests／LedgerSyncTests 改为按需读取附件，恢复 JSON 解压后检查；内嵌旧账本的新恢复记录改为元数据形状；总量超过250 MiB允许，损坏在读取 payload／采用恢复版本时拒绝；Schema2Tests 在解压后继续验证无内嵌附件的旧原始 JSON；AskYubaiTests 改为验证摘要请求和前缀；AssistantTests 改为工具要点替代旧 omitted 常量。没有删除这些测试的有效校验。
+
+完整备份仍一次临时组装全部附件并加密，内存峰值随附件总量增长；本轮没有重写 v1 备份协议为流式格式。原有恢复 sidecar 按需兼容，随对应旧版本剪除，不做启动时全量迁移。

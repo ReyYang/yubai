@@ -311,7 +311,7 @@ struct ImportHistoryView: View {
                             .disabled(store.organizingBatchID != nil).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportBatch")
                     }
                     if let attachment = store.current.attachments.first(where: { $0.id == batch.attachmentID }) {
-                        Button("导出原文件") { document = ExportDocument(data: attachment.data); filename = attachment.name; exporting = true }
+                        Button("导出原文件") { do { document = ExportDocument(data: try store.localRepository.attachmentData(attachment.id)); filename = attachment.name; exporting = true } catch { store.error = error.localizedDescription } }
                             .frame(minHeight: YubaiSize.tapMin)
                     }
                 }.buttonStyle(.borderless).padding(.vertical, YubaiSpace.space8)

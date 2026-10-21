@@ -25,6 +25,7 @@ final class LedgerSyncTests: XCTestCase {
         var ledger = Ledger(); let account = Account(name: "现金"); ledger.accounts = [account]
         ledger.entries = [Entry(amount: 1234, accountID: account.id, title: title)]
         ledger.attachments = [Attachment(name: title + ".csv", data: Data([0, 1, 2, 255]))]
+        ledger.entries[0].attachmentID = ledger.attachments[0].id
         return ledger
     }
     func testEmbeddedAttachmentMigratesOnLoadWithoutChangingSchemaOrLosingSource() throws {
@@ -44,7 +45,9 @@ final class LedgerSyncTests: XCTestCase {
             let payload = local.directory.appendingPathComponent("Attachments/" + original.attachments[0].id.uuidString)
             XCTAssertEqual(try Data(contentsOf: payload), original.attachments[0].data)
             let before = try XCTUnwrap(local.recoveries().first)
-            XCTAssertEqual(try Data(contentsOf: before.url), old)
+            XCTAssertEqual(try LedgerCodec.decode(local.recoveryBytes(before.url)), original)
+            let preserved = try XCTUnwrap(JSONSerialization.jsonObject(with: local.recoveryBytes(before.url)) as? [String: Any])
+            XCTAssertNil((preserved["attachments"] as? [[String: Any]])?.first?["data"])
             XCTAssertEqual(try LedgerRepository(directory: local.directory).load(), original)
             XCTAssertEqual(try local.recoveries().count, 1) // Migration is idempotent.
         }
@@ -58,7 +61,7 @@ final class LedgerSyncTests: XCTestCase {
             let fresh = LedgerRepository(directory: root.appendingPathComponent("fresh"))
             try fresh.restoreBackup(restored)
             XCTAssertEqual(try fresh.load(), original)
-            XCTAssertEqual(try fresh.load().attachments[0].data, original.attachments[0].data)
+            XCTAssertEqual(try fresh.attachmentData(original.attachments[0].id), original.attachments[0].data)
             let metadataOnly = try LedgerCodec.decode(Data(contentsOf: local.file))
             XCTAssertThrowsError(try Backup.export(metadataOnly)) // Cannot silently export missing bytes.
         }
@@ -74,30 +77,37 @@ final class LedgerSyncTests: XCTestCase {
             XCTAssertEqual(try local.load(), original)
         }
     }
-    func testMissingAndSameSizeCorruptAttachmentsFailBeforeReplacement() throws {
+    func testLazyAttachmentReadRejectsMissingAndSameSizeCorruptPayloads() throws {
         try withDirectories { _, local, _ in
             let original = ledger("附件校验"); try local.save(original)
-            let payload = local.directory.appendingPathComponent("Attachments/" + original.attachments[0].id.uuidString)
-            let before = try Data(contentsOf: local.file)
+            let id = original.attachments[0].id
+            let payload = local.directory.appendingPathComponent("Attachments/" + id.uuidString)
             try Data([9, 9, 9, 9]).write(to: payload)
-            XCTAssertThrowsError(try local.load()); XCTAssertThrowsError(try local.save(original))
-            XCTAssertEqual(try Data(contentsOf: local.file), before)
-            XCTAssertTrue(try local.recoveries().isEmpty)
+            XCTAssertTrue(try local.load().attachments[0].data.isEmpty)
+            XCTAssertThrowsError(try local.attachmentData(id))
+            // Saving metadata does not eagerly read or hash every existing payload.
+            XCTAssertNoThrow(try local.save(original))
+            let recovery = try XCTUnwrap(local.recoveries().first)
+            XCTAssertThrowsError(try local.readRecovery(recovery))
             try FileManager.default.removeItem(at: payload)
-            XCTAssertThrowsError(try local.load()); XCTAssertThrowsError(try local.save(original))
-            XCTAssertEqual(try Data(contentsOf: local.file), before)
+            XCTAssertNoThrow(try local.load())
+            XCTAssertThrowsError(try local.attachmentData(id))
         }
     }
-    func testAttachmentTotalIsCheckedSeparatelyFromSmallMetadata() throws {
+    func testAttachmentTotalMayExceedMetadataCapacityButIndividualLimitRemains() throws {
         var original = ledger("容量")
         original.attachments.append(Attachment(name: "第二份", data: Data([1])))
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encodeMetadata(original)) as? [String: Any])
         var items = try XCTUnwrap(json["attachments"] as? [[String: Any]])
         for index in items.indices { items[index]["byteCount"] = 130 * 1024 * 1024 }
         json["attachments"] = items
-        let smallMetadata = try JSONSerialization.data(withJSONObject: json)
-        XCTAssertLessThan(smallMetadata.count, 20_000)
-        XCTAssertThrowsError(try LedgerCodec.decode(smallMetadata))
+        let metadata = try JSONSerialization.data(withJSONObject: json)
+        XCTAssertLessThan(metadata.count, 20_000)
+        let decoded = try LedgerCodec.decode(metadata)
+        XCTAssertGreaterThan(decoded.attachments.reduce(0) { $0 + $1.byteCount }, LedgerCodec.capacity)
+        XCTAssertNoThrow(try LedgerCodec.encodeMetadata(decoded))
+        items[0]["byteCount"] = LedgerCodec.capacity + 1; json["attachments"] = items
+        XCTAssertThrowsError(try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json)))
     }
     func testEitherConflictChoicePreservesTheOtherCompleteVersionBeforeResolving() throws {
         for chosen in ["0", "1"] {
@@ -311,5 +321,26 @@ final class LedgerMemoryMergeTests: XCTestCase {
         XCTAssertNoThrow(try result.validate())
         var foreign = other; foreign.id = UUID()
         XCTAssertEqual(LedgerMemoryMerge.merge(chosen: chosen, others: [foreign]), chosen)
+    }
+}
+
+extension LedgerSyncTests {
+    func testConcurrentCrossRepositoryHistoryCopiesDoNotInvertLedgerLocks() throws {
+        try withDirectories { _, local, locations in
+            let cloud = try locations.repository(for: .iCloud)
+            let first = try local.save(ledger("本机附件"))
+            let second = try cloud.save(ledger("云端附件"))
+            let done = DispatchGroup()
+            for (repository, snapshot) in [(local, second), (cloud, first)] {
+                done.enter()
+                DispatchQueue.global().async {
+                    defer { done.leave() }
+                    do { try repository.preserveRecovery(snapshot, reason: "并发副本") }
+                    catch { XCTFail(error.localizedDescription) }
+                }
+            }
+            XCTAssertEqual(done.wait(timeout: .now() + 5), .success)
+            XCTAssertEqual(try local.recoveries().count, 2)
+        }
     }
 }

@@ -169,22 +169,34 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
 }
 public struct Attachment: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var name: String; public var createdAt = Date()
-    public var data: Data { didSet { byteCount = data.count; checksum = nil } }
+    private var bytes: Data
+    public var data: Data {
+        get { bytes }
+        set { bytes = newValue; byteCount = newValue.count; checksum = nil; stagedChecksum = LedgerCodec.checksum(newValue); payloadURL = nil; payloadRepository = nil }
+    }
     public private(set) var byteCount: Int
     var checksum: String?
-    public init(name: String, data: Data) { self.name = name; self.data = data; byteCount = data.count }
+    private var stagedChecksum: String?
+    var payloadURL: URL?
+    var payloadRepository: LedgerRepository?
+    var payloadChecksum: String { checksum ?? stagedChecksum ?? LedgerCodec.checksum(bytes) }
+    public init(name: String, data: Data) { self.name = name; bytes = data; byteCount = data.count; stagedChecksum = LedgerCodec.checksum(data) }
+    mutating func unload(at url: URL, repository: LedgerRepository) {
+        checksum = payloadChecksum; bytes = Data(); payloadURL = url; payloadRepository = repository
+    }
     private enum CodingKeys: String, CodingKey { case id, name, createdAt, data, byteCount, checksum }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); name = try c.decode(String.self, forKey: .name)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         let embedded = try c.decodeIfPresent(Data.self, forKey: .data)
-        data = embedded ?? Data()
-        byteCount = try c.decodeIfPresent(Int.self, forKey: .byteCount) ?? data.count
+        bytes = embedded ?? Data()
+        byteCount = try c.decodeIfPresent(Int.self, forKey: .byteCount) ?? bytes.count
         checksum = try c.decodeIfPresent(String.self, forKey: .checksum)
         guard byteCount >= 0, byteCount <= LedgerCodec.capacity else { throw YubaiError.invalid("附件大小无效。") }
         if let embedded {
-            guard byteCount == embedded.count, checksum.map({ $0 == LedgerCodec.checksum(embedded) }) ?? true else { throw YubaiError.invalid("附件内容不完整。") }
+            stagedChecksum = LedgerCodec.checksum(embedded)
+            guard byteCount == embedded.count, checksum.map({ $0 == stagedChecksum }) ?? true else { throw YubaiError.invalid("附件内容不完整。") }
             checksum = nil
         } else {
             guard c.contains(.byteCount), let checksum, checksum.count == 64,
@@ -196,11 +208,11 @@ public struct Attachment: Codable, Identifiable, Equatable, Sendable {
         try c.encode(id, forKey: .id); try c.encode(name, forKey: .name); try c.encode(createdAt, forKey: .createdAt)
         try c.encode(byteCount, forKey: .byteCount)
         if encoder.userInfo[.ledgerMetadataOnly] as? Bool == true {
-            try c.encode(checksum ?? LedgerCodec.checksum(data), forKey: .checksum)
+            try c.encode(payloadChecksum, forKey: .checksum)
         } else { try c.encode(data, forKey: .data) }
     }
     public static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.id == rhs.id && lhs.name == rhs.name && lhs.createdAt == rhs.createdAt && lhs.data == rhs.data && lhs.byteCount == rhs.byteCount
+        lhs.id == rhs.id && lhs.name == rhs.name && lhs.createdAt == rhs.createdAt && lhs.byteCount == rhs.byteCount && lhs.payloadChecksum == rhs.payloadChecksum
     }
 }
 public struct ImportBatch: Codable, Identifiable, Equatable, Sendable {

@@ -119,7 +119,7 @@ enum AppSheet: Identifiable {
                 Wishlist.autoLink(&next, addedEntryIDs: addedIDs, now: Date())
             }
             if !preservingUpdatedAt { next.updatedAt = Date() }
-            try persist(next, reason: reason)
+            next = try persist(next, reason: reason)
             let motion = MotionEntryChange(previous: before.entries.map(\.id), previousActive: before.activeEntries.map(\.id), currentActive: next.activeEntries.map(\.id))
             if entryMotion && !motion.saved.isEmpty { freshEntryIDs = motion.saved; pendingEntrySave = true }
             if entryMotion && !motion.deleted.isEmpty { entryDeleteTrigger &+= 1 }
@@ -149,7 +149,7 @@ enum AppSheet: Identifiable {
     func undo() {
         guard canEditLedger(), let previous = undoLedger else { return }
         do {
-            try persist(previous, reason: "撤销"); ledger = previous
+            ledger = try persist(previous, reason: "撤销")
             cancelEntrySaveMotion()
             undoTrigger &+= 1; undoLedger = nil; undoLabel = nil; toast = "已撤销上一项修改"
         } catch { self.error = error.localizedDescription }
@@ -174,12 +174,12 @@ enum AppSheet: Identifiable {
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
         guard canEditLedger() else { return false }
-        do { try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
+        do { let saved = try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = saved; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func recover(_ recovery: Recovery) -> Bool {
         guard canEditLedger() else { return false }
-        do { let restored = try localRepository.readRecovery(recovery); try persist(restored, reason: "恢复版本", restoring: true); cancelEntrySaveMotion(); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
+        do { let restored = try localRepository.readRecovery(recovery); let saved = try persist(restored, reason: "恢复版本", restoring: true); cancelEntrySaveMotion(); ledger = saved; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     func adoptSyncedLedger(_ next: Ledger) {

@@ -65,7 +65,7 @@ final class Schema2Tests: XCTestCase {
         var ledger = try repo.load(); XCTAssertEqual(try repo.recoveries().count, 1)
         ledger.entries[0].category = "日用购物"; try repo.save(ledger, reason: "修改分类")
         let history = try repo.recoveries(); let before = try XCTUnwrap(history.first { $0.name.hasSuffix("升级前版本") })
-        XCTAssertTrue(before.name.hasSuffix("升级前版本")); XCTAssertEqual(try Data(contentsOf: before.url), old)
+        XCTAssertTrue(before.name.hasSuffix("升级前版本")); XCTAssertEqual(try repo.recoveryBytes(before.url), old)
         try repo.save(ledger)
         XCTAssertEqual(try repo.recoveries().filter { $0.name.hasSuffix("升级前版本") }.count, 1)
         XCTAssertEqual(try repo.recover(before).entries[0].category, "餐饮")
@@ -77,7 +77,7 @@ final class Schema2Tests: XCTestCase {
         try repo.save(LedgerCodec.decode(bytes))
         let recovery = try XCTUnwrap(repo.recoveries().first)
         XCTAssertTrue(recovery.name.hasSuffix("升级前版本"))
-        XCTAssertEqual(try Data(contentsOf: recovery.url), bytes)
+        XCTAssertEqual(try repo.recoveryBytes(recovery.url), bytes)
     }
     func testOldEncryptedBackupRestoresMigratesAndPreservesLegacySource() throws {
         // Fixed synthetic v1 backup created independently with PBKDF2-SHA256/AES-GCM.
@@ -90,7 +90,7 @@ final class Schema2Tests: XCTestCase {
         let repo = LedgerRepository(directory: root); try repo.restoreBackup(restored)
         XCTAssertEqual(try repo.load(), restored)
         let recovery = try XCTUnwrap(repo.recoveries().first { $0.name.hasSuffix("升级前版本") })
-        XCTAssertEqual(try Data(contentsOf: recovery.url), try fixture())
+        XCTAssertEqual(try repo.recoveryBytes(recovery.url), try fixture())
         XCTAssertEqual(try Backup.restore(Backup.export(restored, password: "new-test-password"), password: "new-test-password"), restored)
     }
     func testSchema2RelationshipsAndValidation() throws {

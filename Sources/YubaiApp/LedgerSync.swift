@@ -66,19 +66,21 @@ extension AppStore {
         guard syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { error = "请先完成账本位置或同步版本的选择。"; return false }
         return true
     }
-    func persist(_ next: Ledger, reason: String, restoring: Bool = false) throws {
+    func persist(_ next: Ledger, reason: String, restoring: Bool = false) throws -> Ledger {
+        var saved: Ledger
         let wasPending = localRepository.hasPendingSync
         if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
         do {
-            if restoring { try localRepository.restoreBackup(next) }
-            else { try localRepository.save(next, reason: reason) }
+            if restoring { saved = try localRepository.restoreBackup(next) }
+            else { saved = try localRepository.save(next, reason: reason) }
         } catch {
             if !wasPending { try? localRepository.markPendingSync(false) }; throw error
         }
         if ledgerLocation == .iCloud {
-            pendingUpload = next
+            pendingUpload = saved
             Task { await synchronizeLedger() }
         }
+        return saved
     }
     func configureSync() async {
         guard syncAllowed, loadFailure == nil else { return }
@@ -156,7 +158,7 @@ extension AppStore {
                                         prepare: { LedgerMemoryMerge.merge(chosen: $0, others: choice.versions.filter { $0.id != id }.map(\.ledger)) })
             }.value
             selected.preferences.lockEnabled = current.preferences.lockEnabled
-            if choice.target == .iCloud { try localRepository.restoreBackup(selected) }
+            if choice.target == .iCloud { selected = try localRepository.restoreBackup(selected) }
             adoptSyncedLedger(selected)
             ledgerLocation = choice.target; syncChoice = nil; pendingUpload = nil
             UserDefaults.standard.set(choice.target.rawValue, forKey: locationKey)
@@ -216,7 +218,7 @@ extension AppStore {
                     versions.insert(LedgerVersion(id: "device", ledger: shared, deviceName: "这台设备（尚未同步）"), at: 0)
                     presentSyncChoice(SyncChoice(versions: versions, source: source, target: .iCloud, switching: false))
                 } else if remote != current {
-                    try localRepository.save(remote, reason: "接收同步前")
+                    remote = try localRepository.save(remote, reason: "接收同步前")
                     adoptSyncedLedger(remote); syncStatus = "已读取 iCloud 账本。"
                 } else { syncStatus = "已读取 iCloud 账本。" }
             case .conflict(var versions):
