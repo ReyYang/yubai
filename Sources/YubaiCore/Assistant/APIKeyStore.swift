@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Security)
 import Security
+#endif
 
 /// Only this small boundary touches Security; tests can inject a memory implementation.
 public protocol APIKeyStorage: Sendable {
@@ -33,6 +35,7 @@ public struct APIKeyStore: Sendable {
 
 public struct KeychainAPIKeyStorage: APIKeyStorage {
     public init() {}
+    #if canImport(Security)
     private var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: "app.yubai.deepseek", kSecAttrAccount as String: "api-key"]
@@ -61,4 +64,23 @@ public struct KeychainAPIKeyStorage: APIKeyStorage {
         guard status == errSecSuccess || status == errSecItemNotFound else { throw failure() }
     }
     private func failure() -> YubaiError { .invalid("无法更新钥匙串中的密钥，请解锁设备后重试。") }
+    #else
+    // Linux 仅在进程内保存；不同实例共享，不写入文件或 UserDefaults。
+    private final class State: @unchecked Sendable {
+        let lock = NSLock(); var key: String?
+    }
+    private static let state = State()
+    public func read() throws -> String? {
+        Self.state.lock.lock(); defer { Self.state.lock.unlock() }
+        return Self.state.key
+    }
+    public func write(_ key: String) throws {
+        Self.state.lock.lock(); defer { Self.state.lock.unlock() }
+        Self.state.key = key
+    }
+    public func delete() throws {
+        Self.state.lock.lock(); defer { Self.state.lock.unlock() }
+        Self.state.key = nil
+    }
+    #endif
 }

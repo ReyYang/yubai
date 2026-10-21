@@ -1,7 +1,16 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#elseif os(Linux)
+import Crypto
+import _CryptoExtras
+#endif
 import CArchive
+#if os(Linux)
+import Glibc
+#else
 import Darwin
+#endif
 
 extension CodingUserInfoKey {
     static let ledgerMetadataOnly = CodingUserInfoKey(rawValue: "yubai.metadataOnly")!
@@ -92,7 +101,11 @@ public struct LedgerRepository: Sendable {
         return state.discoveredFiles?.contains(url.standardizedFileURL) == true
     }
     func containsFile(_ url: URL) -> Bool {
+        #if os(Linux)
+        return FileManager.default.fileExists(atPath: url.path) || discovered(url)
+        #else
         FileManager.default.fileExists(atPath: url.path) || discovered(url) || (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true
+        #endif
     }
     private func prepare(_ url: URL) throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -102,7 +115,12 @@ public struct LedgerRepository: Sendable {
         let temporary = destination.deletingLastPathComponent().appendingPathComponent(".writing-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: temporary) }
         try data.write(to: temporary, options: .atomic); try protect(temporary)
-        guard Darwin.rename(temporary.path, destination.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        #if os(Linux)
+        let result = Glibc.rename(temporary.path, destination.path)
+        #else
+        let result = Darwin.rename(temporary.path, destination.path)
+        #endif
+        guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     }
     private func protect(_ url: URL) throws {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
@@ -114,6 +132,9 @@ public struct LedgerRepository: Sendable {
     func access<T>(writing: Bool, _ body: (URL) throws -> T) throws -> T {
         state.lock.lock(); defer { state.lock.unlock() }
         guard isUbiquitous else { return try body(directory) }
+        #if os(Linux)
+        throw YubaiError.invalid("Linux 不支持 iCloud 账本，请使用本机目录。")
+        #else
         state.discoveryLock.lock(); let ready = state.discoveredFiles != nil; state.discoveryLock.unlock()
         guard ready else { throw YubaiError.invalid("正在从 iCloud 读取文件列表，请稍后重试。") }
         if writing || !FileManager.default.fileExists(atPath: directory.path) { try prepare(directory) }
@@ -130,9 +151,13 @@ public struct LedgerRepository: Sendable {
         if let coordinationError { throw coordinationError }
         guard let result else { throw YubaiError.invalid("无法协调账本文件，请稍后重试。") }
         return try result.get()
+        #endif
     }
     private func downloaded(_ url: URL) throws {
         guard isUbiquitous else { return }
+        #if os(Linux)
+        throw YubaiError.invalid("Linux 不支持 iCloud 账本，请使用本机目录。")
+        #else
         let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey])
         guard values?.isUbiquitousItem == true || discovered(url) else { return }
         try FileManager.default.startDownloadingUbiquitousItem(at: url)
@@ -144,9 +169,13 @@ public struct LedgerRepository: Sendable {
             guard Date() < deadline else { throw YubaiError.invalid("iCloud 还未读取完成，请联网后重试。") }
             Thread.sleep(forTimeInterval: 0.1)
         }
+        #endif
     }
     private func payloadAccess<T>(_ url: URL, writing: Bool, _ body: (URL) throws -> T) throws -> T {
         guard isUbiquitous else { return try body(url) }
+        #if os(Linux)
+        throw YubaiError.invalid("Linux 不支持 iCloud 账本，请使用本机目录。")
+        #else
         let coordinator = NSFileCoordinator(filePresenter: nil)
         var error: NSError?; var result: Result<T, Error>?
         if writing { coordinator.coordinate(writingItemAt: url, options: [], error: &error) { coordinated in result = Result { try body(coordinated) } } }
@@ -154,6 +183,7 @@ public struct LedgerRepository: Sendable {
         if let error { throw error }
         guard let result else { throw YubaiError.invalid("无法协调附件文件。") }
         return try result.get()
+        #endif
     }
     private func attachments(at root: URL) -> URL { root.appendingPathComponent("Attachments", isDirectory: true) }
     func read(_ url: URL, attachmentDirectory: URL) throws -> Ledger {
@@ -245,7 +275,9 @@ public struct LedgerRepository: Sendable {
         let ledger = try access(writing: false) { root -> Ledger in
             let url = root.appendingPathComponent("ledger.json")
             guard containsFile(url) else { state.digest = nil; return Ledger() }
+            #if !os(Linux)
             guard !isUbiquitous || (NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []).isEmpty else { throw LedgerSyncError.changed }
+            #endif
             let ledger = try read(url, attachmentDirectory: attachments(at: root))
             let bytes = try Data(contentsOf: url)
             let decoded = try LedgerCodec.decode(bytes)
@@ -274,7 +306,9 @@ public struct LedgerRepository: Sendable {
         let url = root.appendingPathComponent("ledger.json")
         let digest = FileManager.default.fileExists(atPath: url.path) ? try LedgerCodec.checksum(Data(contentsOf: url)) : nil
         guard digest == state.digest else { throw LedgerSyncError.changed }
+        #if !os(Linux)
         if isUbiquitous, !(NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []).isEmpty { throw LedgerSyncError.changed }
+        #endif
     }
     public func save(_ ledger: Ledger, reason: String = "修改", requiringUnchanged: Bool = false) throws {
         _ = try LedgerCodec.encodeMetadata(ledger)
@@ -337,12 +371,18 @@ public enum Backup {
     }
     private static func key(password: String, salt: Data, rounds: Int) throws -> SymmetricKey {
         guard (100_000...1_000_000).contains(rounds), salt.count == 16 else { throw YubaiError.invalid("备份加密参数无效。") }
+        #if os(Linux)
+        // 旧备份允许低于 210,000 轮；沿用上方校验范围，不改变 v1 格式。
+        return try KDF.Insecure.PBKDF2.deriveKey(from: Data(password.utf8), salt: salt, using: .sha256,
+                                              outputByteCount: 32, unsafeUncheckedRounds: rounds)
+        #else
         let passwordData = Array(password.utf8); var output = [UInt8](repeating: 0, count: 32)
         let result = passwordData.withUnsafeBytes { pass in salt.withUnsafeBytes { s in
             yubai_derive_key(pass.bindMemory(to: CChar.self).baseAddress, passwordData.count, s.bindMemory(to: UInt8.self).baseAddress, salt.count, UInt32(rounds), &output)
         } }
         guard result == 0 else { throw YubaiError.invalid("无法创建备份加密密钥。") }
         return SymmetricKey(data: output)
+        #endif
     }
     public static func export(_ ledger: Ledger, password: String = "") throws -> Data {
         let plain = try LedgerCodec.encode(ledger)

@@ -4,6 +4,7 @@ import YubaiCore
 struct OverviewView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var freshLetter: ButlerCard? {
         store.current.cards.first { WeeklyLetter.isFresh($0, now: Date()) && !ButlerCards.isMuted($0.dedupeKey, in: store.current) }
     }
@@ -11,13 +12,13 @@ struct OverviewView: View {
         Group {
             if textSize > .xxLarge {
                 ScrollView { content(chartHeight: 0).padding(.horizontal, 18).padding(.top, 12) }
-                    .safeAreaPadding(.bottom, 106)
+                    .safeAreaPadding(.bottom, YubaiSize.rootBottomPadding)
             } else {
                 ViewThatFits(in: .vertical) {
                     content(chartHeight: 150).fixedSize(horizontal: false, vertical: true)
                     content(chartHeight: 96).fixedSize(horizontal: false, vertical: true)
                     content(chartHeight: 0).fixedSize(horizontal: false, vertical: true)
-                }.padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 106)
+                }.padding(.horizontal, 18).padding(.top, 12).padding(.bottom, YubaiSize.rootBottomPadding)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
         }.frame(maxWidth: 680).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -29,16 +30,16 @@ struct OverviewView: View {
     private func content(chartHeight: CGFloat) -> some View {
         let funds = store.funds
         return VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            HStack {
+            GlassGroup { HStack {
                 Button { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } } label: {
                     Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
-                        .frame(width: 44, height: 44).background(YubaiColor.raised, in: Circle())
+                        .frame(width: 44, height: 44).floatingSurface(in: Circle())
                 }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
                 Spacer(); Text("现在").yubaiFont(YubaiFont.navTitle); Spacer()
                 Button { store.sheet = .imports } label: {
-                    Image(systemName: "plus").frame(width: 44, height: 44).background(YubaiColor.raised, in: Circle())
+                    Image(systemName: "plus").frame(width: 44, height: 44).floatingSurface(in: Circle())
                 }.accessibilityLabel("导入账单或记一笔").accessibilityIdentifier("importBills")
-            }.buttonStyle(PressButtonStyle()).frame(minHeight: 48)
+            }.buttonStyle(PressButtonStyle()).frame(minHeight: 48) }
             if let letter = freshLetter {
                 Button { store.sheet = .letter(letter.id) } label: {
                     HStack(spacing: 6) {
@@ -82,7 +83,8 @@ struct OverviewView: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
             }
-        }.foregroundStyle(YubaiColor.label)
+        }.foregroundStyle(YubaiColor.label).amountPrivacy(store.current.preferences.hideAmounts)
+            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: ButlerCards.visible(store.current).first?.id)
     }
     private func nextTitle(_ item: Occurrence) -> some View {
         VStack(alignment: .leading, spacing: 2) {

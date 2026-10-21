@@ -166,8 +166,8 @@ public enum AssistantContextBudget {
     static let historyNote = "更早的对话已省略"
     static func count(_ messages: [ChatMessage]) -> Int {
         messages.reduce(0) { total, message in
-            total + (message.content?.count ?? 0) + (message.toolCallID?.count ?? 0) +
-                (message.toolCalls ?? []).reduce(0) { $0 + $1.id.count + $1.function.name.count + $1.function.arguments.count }
+            let calls = (message.toolCalls ?? []).reduce(0) { $0 + $1.id.count + $1.function.name.count + $1.function.arguments.count }
+            return total + (message.content?.count ?? 0) + (message.toolCallID?.count ?? 0) + calls
         }
     }
     static func compactTools(_ messages: inout [ChatMessage], limit: Int) {
