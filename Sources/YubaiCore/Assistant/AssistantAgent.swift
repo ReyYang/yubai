@@ -112,7 +112,7 @@ public struct AssistantAgent: Sendable {
                                 else { memoryLedger.memories.append(note) }
                                 previousResults.removeAll(); currentResults.removeAll()
                                 current = ToolContext(ledger: memoryLedger, now: context.now, confirmedEntryAmount: context.confirmedEntryAmount,
-                                    parsedEntryAmounts: context.parsedEntryAmounts, entryAccountHint: context.entryAccountHint, memoryCharacterBudget: context.memoryCharacterBudget)
+                                    parsedEntryAmounts: context.parsedEntryAmounts, parsedEntries: context.parsedEntries, entryAccountHint: context.entryAccountHint, memoryCharacterBudget: context.memoryCharacterBudget)
                                 result = redactor.value(.object(["remembered": Memory.row(note, now: context.now)]))
                                 rememberedResults[key] = result
                             } else {

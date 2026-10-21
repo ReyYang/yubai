@@ -13,6 +13,7 @@ private actor EvalScriptTransport: ChatTransport {
         if turns <= sample.scriptedCalls.count {
             let call = sample.scriptedCalls[turns - 1]
             let args = try call.args.jsonText().replacingOccurrences(of: "$last_week_meituan", with: context.ledger.entries[1].id.uuidString)
+                .replacingOccurrences(of: "$account", with: context.ledger.accounts[0].id.uuidString)
             return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "eval-\(turns)", name: call.name, arguments: args)])
         }
         guard turns == sample.scriptedCalls.count + 1 else { throw YubaiError.invalid("评测产生了多余请求。") }
@@ -28,7 +29,7 @@ private actor EvalScriptTransport: ChatTransport {
 final class AssistantEvalTests: XCTestCase {
     func testAssistantEvalSeedWithScriptedResponses() async throws {
         let samples = try AIBenchRunner.loadAssistantEval(bundle: .module)
-        XCTAssertEqual(samples.count, 10)
+        XCTAssertEqual(samples.count, 11)
         let context = AssistantFixtures.context()
         for sample in samples {
             let result = try await AIBenchRunner.runAssistantCase(sample, transport: EvalScriptTransport(sample, context: context), context: context)

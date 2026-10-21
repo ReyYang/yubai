@@ -64,4 +64,22 @@ final class AssistantTransportTests: XCTestCase {
         XCTAssertFalse(item.requestText.contains("Bearer")); XCTAssertFalse(item.requestText.contains("test-key"))
         XCTAssertGreaterThan(item.byteSize, 0)
     }
+    func testEmptyContentDistinguishesTruncationReasoningAndEmptyOrMalformedReplies() async throws {
+        let cases = [
+            (#"{"choices":[{"finish_reason":"length","message":{"content":"","reasoning_content":"推理中"}}]}"#, "云端回复被截断"),
+            (#"{"choices":[{"finish_reason":"stop","message":{"content":null,"reasoning_content":"推理中"}}]}"#, "只返回了推理内容"),
+            (#"{"choices":[{"finish_reason":"stop","message":{"content":"  "}}]}"#, "云端返回空内容"),
+            ("not-json", "云端响应无法解析")
+        ]
+        for (body, expected) in cases {
+            let log = SendLog()
+            let stub = CloudTestStub(rawResponse: true, sendLog: log) { _ in body }
+            defer { stub.close() }
+            do { _ = try await stub.send(ChatRequest(messages: [])); XCTFail("Empty body should fail") }
+            catch { XCTAssertTrue(error.localizedDescription.contains(expected), error.localizedDescription) }
+            XCTAssertTrue(log.items.first?.response?.errorDescription?.contains(expected) == true)
+            XCTAssertEqual(log.items.first?.response?.httpStatus, 200)
+        }
+    }
+
 }

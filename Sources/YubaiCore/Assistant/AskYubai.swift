@@ -116,7 +116,7 @@ public enum AskYubai {
         对话出现值得长期记住的事实时调用remember直接保存：计划与目标、在乎或不在乎什么及原因、合租、发薪规律或家庭变化等生活情况。不要记一次性情绪、临时决定或能从账本算出的数字。不要记证件号、卡号、他人全名等敏感身份信息。与已有记忆冲突时用replaces更新，不要新增一条冲突记忆。会影响提醒的愿意多花、想克制、柔性线与底线仍走propose_profile_change确认，记忆不使规则生效。记忆可能过时，引用时说明记下时间。背景省略时用recall检索。judge_purchase实际引用记忆时用memory_ids标明。
         逐字引用画像原话时说明写下的时间，例如「你 3 月写过」；confirmed_at为空时说明时间未记录，超过180天时提醒这可能已经变了。
         拒绝修改已有金额、主账户或原始日期，解释这些来自账单与账户，请用户去记录详情手动核对。
-        记一笔或截图补记先get_profile查看账户、本机entry_account_hint和parsed_entry_amounts，再propose_entry。金额只能选本机从本次原文解析的候选，不能猜；多笔或不明确时先问清是哪一笔。无法确定账户时询问用户。补记仍要用户确认金额。
+        记一笔或截图补记先get_profile查看账户、本机entry_account_hint、parsed_entries和parsed_entry_amounts，再propose_entry。金额只能选本机从本次原文解析的候选，不能猜；多笔时一次propose_entry用entries一次提出全部；只有金额或账户不明确的那几笔才问。同额候选可用次数以本机解析出现次数为准。补记仍要用户确认金额。
         购买判断调用judge_purchase。按「付得起吗」「和你平时比」「和你在乎的比」陈述观察，后者逐字引用画像原话；没有画像时只给前两维，并说「还不知道你在乎什么，可以在『我的消费观』里补上」。不打分、不说教、不替用户决定。
         """
     }
@@ -141,18 +141,18 @@ public enum AskYubai {
 /// Lives only for the open conversation. A fresh ledger snapshot is used on every turn.
 public actor AskYubaiSession {
     private var history: [ChatMessage] = []
-    private var amountCandidates: [Int64] = []
+    private var parsedEntries: [(text: String, amount: Int64)] = []
     private let characterBudget: Int
     public init(characterBudget: Int = AssistantContextBudget.defaultLimit) { self.characterBudget = characterBudget }
     public func ask(_ text: String, ledger: Ledger, transport: any ChatTransport, now: Date = Date()) async throws -> AssistantReply {
-        let parsed = EntryAmountParser.candidates(in: text)
-        if !parsed.isEmpty { amountCandidates = parsed }
+        let parsed = EntryAmountParser.entries(in: text)
+        if !parsed.isEmpty { parsedEntries = parsed }
         let active = ledger.accounts.filter { !$0.archived }
         let matches = active.filter { account in
             text.localizedCaseInsensitiveContains(account.name) || ["微信", "支付宝", "现金"].contains { word in text.contains(word) && account.name.contains(word) }
         }
         let hint = matches.count == 1 ? matches.first?.id : (active.count == 1 ? active.first?.id : nil)
-        let context = ToolContext(ledger: ledger, now: now, parsedEntryAmounts: amountCandidates, entryAccountHint: hint)
+        let context = ToolContext(ledger: ledger, now: now, parsedEntryAmounts: parsedEntries.map(\.amount), parsedEntries: parsedEntries, entryAccountHint: hint)
         AssistantContextBudget.compactHistory(&history, limit: characterBudget,
             reserving: AskYubai.prompt(now: now).count + Memory.prompt(ledger: ledger, now: now).count + context.redactor.text(text).count)
         let reply = try await AskYubai.answer(text, history: history, transport: transport, context: context, characterBudget: characterBudget)
@@ -165,20 +165,57 @@ public actor AskYubaiSession {
 /// Conservative local extraction. Dates, times, long identifiers and counts never
 /// become amounts. Ambiguous candidates remain unconfirmed in the draft card.
 public enum EntryAmountParser {
-    public static func candidates(in text: String) -> [Int64] {
+    public static func candidates(in text: String) -> [Int64] { entries(in: text).map(\.amount) }
+
+    /// Amounts form a multiset. Text is the preceding local fragment, never a model title.
+    public static func entries(in text: String) -> [(text: String, amount: Int64)] {
         var scan = text
         for pattern in [#"\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?"#, #"\d{1,2}月\d{1,2}日?"#, #"\d{1,2}:\d{2}(?::\d{2})?"#, #"\d{8,}"#, #"\*{2,}\d+"#] {
-            scan = scan.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            // Preserve UTF-16 offsets so fragments still refer to the original input.
+            for match in regex.matches(in: scan, range: NSRange(location: 0, length: (scan as NSString).length)).reversed() {
+                scan = (scan as NSString).replacingCharacters(in: match.range, with: String(repeating: " ", count: match.range.length))
+            }
         }
         guard let regex = try? NSRegularExpression(pattern: #"(?<![\d.])[¥￥]?\s*\d+(?:[,，]\d{3})*(?:\.\d{1,2})?(?![\d.])\s*(?:元|块)?"#) else { return [] }
         let ns = scan as NSString
-        var amounts: [Int64] = []
+        var result: [(text: String, amount: Int64)] = []; var previousEnd = 0
         for match in regex.matches(in: scan, range: NSRange(location: 0, length: ns.length)) {
-            let suffix = ns.substring(from: NSMaxRange(match.range)).trimmingCharacters(in: .whitespaces)
-            if let first = suffix.first, "年月日天次个件笔%％".contains(first) { continue }
+            let suffix = ns.substring(from: NSMaxRange(match.range)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let first = suffix.first, "年月日天次个件笔杯份碗张瓶盒包人%％".contains(first) { continue }
             let raw = ns.substring(with: match.range).replacingOccurrences(of: "块", with: "")
-            if let cents = try? Money.parse(raw), cents > 0, !amounts.contains(cents) { amounts.append(cents) }
+            guard let cents = try? Money.parse(raw), cents > 0 else { continue }
+            let fragment = ns.substring(with: NSRange(location: previousEnd, length: match.range.location - previousEnd))
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            let count = explicitMultiplicity(in: fragment) ?? 1
+            for _ in 0..<count {
+                if Task.isCancelled { return result }
+                result.append((fragment, cents))
+            }
+            previousEnd = NSMaxRange(match.range)
         }
-        return amounts
+        return result
+    }
+
+    /// Expand only an explicit quantity + unit + 各/每. Other readings stay one candidate.
+    private static func explicitMultiplicity(in text: String) -> Int? {
+        let pattern = #"([0-9]+|[一二两三四五六七八九十百千]+)(?:杯|份|碗|件|个|笔|张|瓶|盒|包)[^0-9一二两三四五六七八九十百千，。、；\n]*?(?:各|每(?:杯|份|碗|件|个|笔|张|瓶|盒|包)?)\s*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length))
+        guard matches.count == 1, let match = matches.first,
+              let quantity = try? NSRegularExpression(pattern: #"(?:[0-9]+|[一二两三四五六七八九十百千]+)(?:杯|份|碗|件|个|笔|张|瓶|盒|包)"#),
+              quantity.numberOfMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length)) == 1 else { return nil }
+        let raw = (text as NSString).substring(with: match.range(at: 1))
+        if let count = Int(raw) { return count > 0 ? count : nil }
+        let digits: [Character: Int] = ["一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9]
+        let units: [Character: Int] = ["十": 10, "百": 100, "千": 1000]
+        var total = 0; var digit = 0; var lastUnit = Int.max
+        for c in raw {
+            if let n = digits[c] { guard digit == 0 else { return nil }; digit = n }
+            else if let unit = units[c], unit < lastUnit { total += max(digit, 1) * unit; digit = 0; lastUnit = unit }
+            else { return nil }
+        }
+        let count = total + digit
+        return count > 0 ? count : nil
     }
 }

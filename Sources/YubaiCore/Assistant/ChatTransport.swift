@@ -48,10 +48,11 @@ public struct ChatRequest: Sendable {
     public var temperature: Double
     public var maxTokens: Int
     public var purpose: String
+    public var responseFormat: JSONValue?
     public init(messages: [ChatMessage], tools: [ChatToolDefinition] = [], temperature: Double = 0.2,
-                maxTokens: Int = 4096, purpose: String = "财务管家") {
+                maxTokens: Int = 4096, purpose: String = "财务管家", responseFormat: JSONValue? = nil) {
         self.messages = messages; self.tools = tools; self.temperature = temperature
-        self.maxTokens = maxTokens; self.purpose = purpose
+        self.maxTokens = maxTokens; self.purpose = purpose; self.responseFormat = responseFormat
     }
 }
 
