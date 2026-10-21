@@ -169,7 +169,7 @@ struct IntelligencePrivacyView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.space6) {
                 heading("隐私")
                 Card(style: .list) {
-                    NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开后 \(sendCount) 条", chevron: true) }
+                    NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开后发了 \(sendCount) 次", chevron: true) }
                         .buttonStyle(PressButtonStyle())
                 }
                 Text("会发出去：问题原文、记录的金额、日期、分类、商户和备注。不会发：账户名、卡号、交易单号、附件；转账对象的名字换成「联系人A」。")

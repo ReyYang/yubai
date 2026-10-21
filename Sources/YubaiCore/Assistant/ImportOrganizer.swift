@@ -122,13 +122,14 @@ public struct ImportOrganizer: Sendable {
     """
 
     public func organize(ledger: Ledger, entryIDs: [UUID], now: Date = Date()) async throws -> ImportOrganization {
+        let groupID = UUID()
         let targets = Set(entryIDs)
         let batch = ledger.activeEntries.filter { targets.contains($0.id) }
         let redactor = Redactor(ledger: ledger)
         var working = ledger
         var items: [ChangeItem] = [], questions: [ImportQuestion] = [], skipped: [String] = []
         let known: [UUID: String] = Dictionary(uniqueKeysWithValues: batch.compactMap { entry -> (UUID, String)? in
-            guard let category = ledger.categoryMemory[CategoryMemory.key(entry.title)],
+            guard let category = entry.userEdited ? entry.category : ledger.categoryMemory[CategoryMemory.key(entry.title)],
                   case .setCategory(_, let name)? = categoryItem(id: entry.id, category: category, ledger: ledger) else { return nil }
             return (entry.id, name)
         })
@@ -183,7 +184,7 @@ public struct ImportOrganizer: Sendable {
                 "plans": .array(ledger.plans.filter(\.active).map { .object(["id": .string($0.id.uuidString), "title": .string($0.title), "amount": .money($0.amount), "nature": .string($0.nature.rawValue), "due": .string(Dates.text($0.dueDate)), "frequency": .string($0.frequency.rawValue)]) })
             ])
             let reply = try await transport.send(ChatRequest(messages: [ChatMessage(role: .system, content: Self.systemPrompt),
-                ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 12000, purpose: "导入整理"))
+                ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 12000, purpose: "导入整理", groupID: groupID, groupTitle: "整理 \(batch.count) 笔导入记录"))
             guard reply.role == .assistant, let text = reply.content, let output = try JSONValue.parse(text).objectValue,
                   output["rows"]?.arrayValue != nil else { throw YubaiError.invalid("整理结果格式无效，记录已保存，稍后可以再整理。") }
             let visible = Set(chunk.map(\.id) + context.map(\.id))

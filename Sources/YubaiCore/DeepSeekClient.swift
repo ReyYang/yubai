@@ -120,7 +120,7 @@ public struct DeepSeekClient: ChatTransport {
     public func send(_ input: ChatRequest, session: URLSession) async throws -> ChatMessage {
         struct Payload: Encodable {
             var model: String; var messages: [ChatMessage]; var tools: [ChatToolDefinition]?
-            var temperature: Double; var max_tokens: Int
+            var temperature: Double; var max_tokens: Int; var response_format: JSONValue?
         }
         var messages = input.messages
         for i in messages.indices {
@@ -136,7 +136,7 @@ public struct DeepSeekClient: ChatTransport {
             definitions[i].function.parameters = redactor.value(definitions[i].function.parameters)
         }
         let payload = Payload(model: configuration.model, messages: messages,
-            tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens)
+            tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens, response_format: input.responseFormat)
         let body = try JSONEncoder().encode(payload)
         var request = URLRequest(url: Self.chatCompletionsURL(baseURL: configuration.baseURL), timeoutInterval: configuration.timeout)
         request.httpMethod = "POST"; request.httpBody = body
@@ -144,33 +144,60 @@ public struct DeepSeekClient: ChatTransport {
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         try Task.checkCancellation()
-        sendLog.record(purpose: redactor.text(input.purpose), model: configuration.model, body: body, apiKey: configuration.apiKey)
-        let data: Data; let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
-        catch {
-            if Task.isCancelled { throw CancellationError() }
-            throw YubaiError.invalid("云端请求失败：网络或超时。本机计算结果已保留，可稍后重试。")
+        let logID = sendLog.record(purpose: redactor.text(input.purpose), model: configuration.model, body: body, apiKey: configuration.apiKey,
+            groupID: input.groupID ?? UUID(), groupTitle: redactor.text(input.groupTitle ?? input.purpose))
+        let started = DispatchTime.now().uptimeNanoseconds
+        var loggedResponse = SendLogResponse(durationMilliseconds: 0)
+        defer {
+            loggedResponse.durationMilliseconds = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+            sendLog.complete(id: logID, response: loggedResponse, apiKey: configuration.apiKey)
         }
-        guard let http = response as? HTTPURLResponse else { throw YubaiError.invalid("云端响应异常。") }
-        guard (200..<300).contains(http.statusCode) else {
-            // Response bodies may echo credentials. Do not expose them.
-            if let error = DeepSeekError.modelError(status: http.statusCode, body: data, model: configuration.model) { throw error }
-            if http.statusCode == 401 || http.statusCode == 403 {
-                throw YubaiError.invalid("云端密钥无效或无权访问，请检查密钥设置。")
+        do {
+            let data: Data; let response: URLResponse
+            do { (data, response) = try await session.data(for: request) }
+            catch {
+                if Task.isCancelled { throw CancellationError() }
+                throw YubaiError.invalid("云端请求失败：网络或超时。本机计算结果已保留，可稍后重试。")
             }
-            throw YubaiError.invalid("云端服务返回错误（HTTP \(http.statusCode)）。本机计算结果已保留。")
-        }
-        struct Response: Decodable {
-            struct Choice: Decodable {
-                struct Message: Decodable { var content: String?; var tool_calls: [ChatToolCall]? }
-                var message: Message
+            guard let http = response as? HTTPURLResponse else { throw YubaiError.invalid("云端响应异常。") }
+            loggedResponse.httpStatus = http.statusCode
+            guard (200..<300).contains(http.statusCode) else {
+                // Error bodies may echo credentials. Never retain or expose them.
+                if let error = DeepSeekError.modelError(status: http.statusCode, body: data, model: configuration.model) { throw error }
+                if http.statusCode == 401 || http.statusCode == 403 {
+                    throw YubaiError.invalid("云端密钥无效或无权访问，请检查密钥设置。")
+                }
+                throw YubaiError.invalid("云端服务返回错误（HTTP \(http.statusCode)）。本机计算结果已保留。")
             }
-            var choices: [Choice]
+            struct Response: Decodable {
+                struct Choice: Decodable {
+                    struct Message: Decodable { var content: String?; var tool_calls: [ChatToolCall]?; var reasoning_content: String? }
+                    var message: Message
+                    var finish_reason: String?
+                }
+                var choices: [Choice]
+            }
+            guard let result = try? JSONDecoder().decode(Response.self, from: data), let choice = result.choices.first else {
+                throw YubaiError.invalid("云端响应无法解析。")
+            }
+            let message = choice.message
+            loggedResponse.content = message.content
+            loggedResponse.toolCalls = message.tool_calls?.map { $0.function.name } ?? []
+            loggedResponse.finishReason = choice.finish_reason
+            let hasContent = !(message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let hasTools = !(message.tool_calls?.isEmpty ?? true)
+            guard hasContent || hasTools else {
+                if choice.finish_reason == "length" { throw YubaiError.invalid("云端回复被截断。请重试或调整模型输出空间。") }
+                if !(message.reasoning_content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                    throw YubaiError.invalid("云端只返回了推理内容，没有返回正文。请重试或更换模型。")
+                }
+                throw YubaiError.invalid("云端返回空内容。")
+            }
+            return ChatMessage(role: .assistant, content: message.content, toolCalls: message.tool_calls)
+        } catch {
+            loggedResponse.errorDescription = error is CancellationError ? "请求已取消。" : error.localizedDescription
+            throw error
         }
-        guard let result = try? JSONDecoder().decode(Response.self, from: data), let message = result.choices.first?.message,
-              !(message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-                || !(message.tool_calls?.isEmpty ?? true) else { throw YubaiError.invalid("云端响应无法解析或为空。") }
-        return ChatMessage(role: .assistant, content: message.content, toolCalls: message.tool_calls)
     }
 
     /// `DEEPSEEK_BASE_URL` should be the API root (e.g. `https://api.deepseek.com` or `…/v1`), not the full completions path.

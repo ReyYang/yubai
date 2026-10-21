@@ -211,10 +211,16 @@ extension AIBenchRunner {
 
     public static func runAssistantCase(_ sample: AssistantEvalCase, transport: any ChatTransport,
                                         context: ToolContext) async throws -> AssistantEvalResult {
-        let reply = try await AskYubai.answer(sample.question, transport: transport, context: context)
+        let parsed = EntryAmountParser.entries(in: sample.question)
+        let local = ToolContext(ledger: context.ledger, now: context.now, confirmedEntryAmount: context.confirmedEntryAmount,
+            parsedEntryAmounts: parsed.isEmpty ? context.parsedEntryAmounts : parsed.map(\.amount),
+            parsedEntries: parsed.isEmpty ? context.parsedEntries : parsed, entryAccountHint: context.entryAccountHint,
+            memoryCharacterBudget: context.memoryCharacterBudget)
+        let reply = try await AskYubai.answer(sample.question, transport: transport, context: local)
         let names = Set(reply.toolTrace.map(\.name))
         let kinds = reply.proposedChangeSets.flatMap(\.items).map { item -> String in
             if case .setCategory = item { return "set_category" }
+            if case .addEntry = item { return "add_entry" }
             if case .profile = item { return "profile" }; return "other"
         }
         let expectedChanges = sample.expectedChangeKinds.map { $0 == kinds } ?? true

@@ -59,4 +59,43 @@ final class ImportColumnTests: XCTestCase {
         let unknownResult = try await BillImporter.preview(data: unknown, filename: "unknown.csv", accountID: ledger.accounts[0].id, ledger: ledger, columnMapper: mapper)
         XCTAssertEqual(unknownResult.selectedEntries.count, 8)
     }
+    func testMapperExtractsFirstJSONObjectFromFenceAndProse() async throws {
+        for content in ["```json\n{\"date\":0,\"amount\":1,\"type\":2,\"category\":3,\"subcategory\":4}\n```",
+                        "识别结果如下：{\"date\":0,\"amount\":1,\"type\":2,\"category\":3,\"subcategory\":4} 请核对。"] {
+            let stub = CloudTestStub { request in
+                let payload = try CloudTestStub.payload(in: request)
+                XCTAssertEqual((payload["response_format"] as? [String: String])?["type"], "json_object")
+                XCTAssertEqual(payload["max_tokens"] as? Int, 4000)
+                return content
+            }
+            defer { stub.close() }
+            let mapper = AIImportColumnMapper(transport: stub.backend)
+            let mapping = try await mapper.map(headers: ["日戳", "数值", "流向值", "大类", "小类"], samples: [["2026-04-03", "18", "收入", "薪酬", "奖金"]])
+            XCTAssertEqual(mapping.type, 2); XCTAssertEqual(mapping.category, 3); XCTAssertEqual(mapping.subcategory, 4)
+            XCTAssertNil(mapping.description)
+            var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]; ledger.categoryAliases = ["奖金": "职业收入"]
+            let bytes = Data("日戳,数值,流向值,大类,小类\n2026-04-03,18,收入,薪酬,奖金\n".utf8)
+            let result = try await BillImporter.preview(data: bytes, filename: "unknown.csv", accountID: ledger.accounts[0].id, ledger: ledger, columnMapper: mapper)
+            XCTAssertEqual(result.selectedEntries.first?.nature, .income)
+            XCTAssertEqual(result.selectedEntries.first?.title, "奖金")
+            XCTAssertEqual(result.selectedEntries.first?.category, "职业收入")
+        }
+    }
+
+}
+
+extension ImportColumnTests {
+    func testCategoryOverrideSurvivesAIColumnMappingAndCachedRepreview() async throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]
+        let bytes = Data("日戳,数值,详情,类型标签\n2026-10-01,-25.00,车票,旅行\n".utf8)
+        let mapping = ImportColumnMapping(date: 0, amount: 1, description: 2, category: 3)
+        let preview = try await BillImporter.preview(data: bytes, filename: "unknown.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "其他支出"], columnMapper: ScriptedColumns(mapping: mapping))
+        XCTAssertEqual(preview.selectedEntries.first?.category, "其他支出")
+        XCTAssertEqual(preview.rows.first?.sourceCategory, "旅行")
+        let cached = try BillImporter.preview(data: bytes, filename: "unknown.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "其他支出"], mapping: preview.columnMapping, mappedHeader: preview.mappedHeader ?? 0)
+        XCTAssertEqual(cached.selectedEntries.first?.category, "其他支出")
+        XCTAssertEqual(cached.selectedEntries.first?.fingerprint, preview.selectedEntries.first?.fingerprint)
+    }
 }

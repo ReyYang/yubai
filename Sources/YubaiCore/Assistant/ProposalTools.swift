@@ -10,7 +10,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         switch self {
         case .entryChanges: return "提议整理现有记录，只能改变分类、性质、用途或关联，不能改金额、主账户、原始日期。用户确认后才应用。"
         case .plan: return "提议新增/结束资金安排或新增房租；金额为人民币元。用户确认后才应用。"
-        case .entry: return "提议语音或截图补记。金额只能取本机从原文解析的候选或用户已核对金额；AI不能确认金额，草稿等待用户确认。"
+        case .entry: return "提议语音或截图补记，多笔用entries一次提出全部。金额只能取本机从原文解析的候选或用户已核对金额；AI不能确认金额，草稿等待用户确认。"
         case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或始终留着的底线；不搬动储蓄目标。可用items一次提交整份消费观，用户确认后才应用。"
         }
     }
@@ -41,8 +41,12 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                 "receive_day": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(28)])
             ]) { _, new in new }
         case .entry:
-            fields.merge(["title": Self.string("原始描述"), "amount": amount, "date": date, "account": id,
-                "nature": Self.choice(Nature.allCases.map(\.rawValue)), "category": Self.string("分类"), "purpose": Self.string("用途")]) { _, new in new }
+            let entryFields: [String: JSONValue] = ["title": Self.string("原始描述，参考parsed_entries"), "amount": amount, "date": date, "account": id,
+                "nature": Self.choice(Nature.allCases.map(\.rawValue)), "category": Self.string("分类"), "purpose": Self.string("用途")]
+            fields.merge(entryFields) { _, new in new }
+            fields["entries"] = .object(["type": .string("array"), "minItems": .number(1),
+                "description": .string("一次提出全部补记；与顶层单笔字段二选一，金额及同额次数必须来自本机候选。"),
+                "items": Self.object(entryFields, required: ["title", "amount", "date", "account"])])
         case .profile:
             fields.merge(Self.profileFields) { _, new in new }
             fields["items"] = .object(["type": .string("array"), "minItems": .number(1), "maxItems": .number(200),
@@ -54,7 +58,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         case .entryChanges: required.append("items")
         case .plan: required.append("operation")
         case .profile: break
-        case .entry: required += ["title", "amount", "date", "account"]
+        case .entry: break
         }
         return Self.object(fields, required: required)
     }
@@ -145,14 +149,30 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
             default: throw YubaiError.invalid("未知的安排提案。")
             }
         case .entry:
-            let amount = try a.amount("amount")
-            guard ctx.confirmedEntryAmount == amount || ctx.parsedEntryAmounts.contains(amount) else {
-                throw YubaiError.invalid("金额必须来自本机解析的本次原文，请补充或核对金额。")
+            let rows: [Arguments]
+            if let entries = a.fields["entries"] {
+                guard Set(a.fields.keys) == Set(["reason", "entries"]), let values = entries.arrayValue, !values.isEmpty,
+                      let schema = parameters["properties"]?["entries"]?["items"] else { throw YubaiError.invalid("entries需要非空补记数组，不能混用单笔参数。") }
+                rows = try values.map { try Arguments($0, schema: schema) }
+            } else { rows = [a] }
+            var available: [Int64: Int] = [:]
+            for amount in ctx.parsedEntryAmounts { available[amount, default: 0] += 1 }
+            // A confirmed single draft authorizes one occurrence, never unlimited reuse.
+            if let amount = ctx.confirmedEntryAmount { available[amount] = max(available[amount, default: 0], 1) }
+            var confirmedAvailable = ctx.confirmedEntryAmount != nil
+            items = try rows.map { row in
+                try Task.checkCancellation()
+                let amount = try row.amount("amount")
+                guard available[amount, default: 0] > 0 else {
+                    throw YubaiError.invalid("金额及同额使用次数必须来自本机解析的原文，请补充或核对金额。")
+                }
+                available[amount, default: 0] -= 1
+                let confirmed = confirmedAvailable && ctx.confirmedEntryAmount == amount
+                if confirmed { confirmedAvailable = false }
+                return .addEntry(EntryDraft(date: try row.date("date"), amount: amount, amountConfirmed: confirmed,
+                    nature: try row.nature(default: .expense), accountID: try row.uuid("account"), title: try row.text("title"),
+                    category: try row.optionalText("category") ?? "其他支出", purpose: try row.optionalText("purpose")))
             }
-            let draft = EntryDraft(date: try a.date("date"), amount: amount, amountConfirmed: ctx.confirmedEntryAmount == amount,
-                                   nature: try a.nature(default: .expense), accountID: try a.uuid("account"), title: try a.text("title"),
-                                   category: try a.optionalText("category") ?? "其他支出", purpose: try a.optionalText("purpose"))
-            items = [.addEntry(draft)]
         case .profile:
             if let rows = a.fields["items"]?.arrayValue {
                 guard a.fields["operation"] == nil, Set(a.fields.keys) == Set(["reason", "items"]),

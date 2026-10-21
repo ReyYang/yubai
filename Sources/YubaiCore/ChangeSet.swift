@@ -50,7 +50,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
     public func validateStructure() throws {
         guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, source.count <= 200,
               !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, reason.count <= 4000,
-              !items.isEmpty, items.count <= (["导入整理", "回答整理问题"].contains(source) ? 800_000 : 200),
+              !items.isEmpty,
               (-2_208_988_800...7_258_118_400).contains(createdAt.timeIntervalSince1970) else { throw YubaiError.invalid("提案的来源、依据、时间或项目数量无效。") }
     }
     public func preview(in ledger: Ledger, showPreviousValues: Bool = false) -> [String] {
@@ -59,7 +59,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             let parts = Dates.calendar.dateComponents([.month, .day], from: e.date)
             return "\(parts.month ?? 1)月\(parts.day ?? 1)日 \(e.displayTitle) \(e.nature.inflow ? "+" : "−")\(Money.text(e.amount, currency: false))"
         }
-        return items.map { item in
+        var lines = items.map { item in
             switch item {
             case .setCategory(let id, let category):
                 if showPreviousValues, let original = ledger.entries.first(where: { $0.id == id }) {
@@ -103,6 +103,17 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 }
             }
         }
+        let drafts = items.compactMap { item -> EntryDraft? in if case .addEntry(let draft) = item { return draft }; return nil }
+        if drafts.count > 1 {
+            var total: Int64 = 0
+            for draft in drafts {
+                let sum = total.addingReportingOverflow(draft.amount)
+                guard !sum.overflow else { lines.append("合计金额超出可显示范围"); return lines }
+                total = sum.partialValue
+            }
+            lines.append("合计 \(drafts.count) 笔，\(Money.text(total))")
+        }
+        return lines
     }
 
     /// Reports stale items. All validation happens on a copy, so throws never partially mutate the ledger.

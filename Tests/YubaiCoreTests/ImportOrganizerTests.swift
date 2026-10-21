@@ -147,6 +147,9 @@ final class ImportOrganizerTests: XCTestCase {
         }
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
         let count = await script.count(); XCTAssertEqual(count, 2)
+        let requests = await script.requests
+        XCTAssertEqual(Set(requests.compactMap(\.groupID)).count, 1)
+        XCTAssertTrue(requests.allSatisfy { $0.groupID != nil && $0.groupTitle == "整理 90 笔导入记录" })
         XCTAssertEqual(result.questions.count, 5)
         XCTAssertTrue(result.questions.prefix(4).allSatisfy { $0.entryIDs.count == 15 })
         XCTAssertEqual(Set(result.questions.flatMap(\.entryIDs)), Set(ledger.entries.map(\.id)))
@@ -339,5 +342,23 @@ final class CategoryMemoryTests: XCTestCase {
         XCTAssertTrue(result.changeSet.items.contains(.setCategory(entry: ledger.entries[0].id, category: "餐饮")))
         let requests = await script.recorded()
         XCTAssertEqual(try JSONValue.parse(requests[0].messages.last!.content!)["known_categories"], .array([]))
+    }
+}
+
+extension ImportOrganizerTests {
+    func testExplicitImportCategoryChoiceCannotBeOverwrittenByOrganization() async throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]
+        let bytes = Data("日期,收支,金额,用途,分类\n2026-10-01,支出,25.00,车票,旅行\n".utf8)
+        let preview = try BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
+            ledger: ledger, categoryMappings: ["旅行": "其他支出"])
+        _ = try BillImporter.commit(preview, data: bytes, to: &ledger)
+        let id = try XCTUnwrap(ledger.entries.first?.id)
+        let transport = ImportScript { _ in .object(["rows": .array([.object([
+            "entry": .string(id.uuidString), "category": .string("交通"), "confident": .bool(true),
+            "nature": .string("expense"), "purpose": .string("周末车票")])])]) }
+        let organization = try await ImportOrganizer(transport: transport).organize(ledger: ledger, entryIDs: [id])
+        _ = try organization.changeSet.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries.first?.category, "其他支出")
+        XCTAssertEqual(ledger.entries.first?.purpose, "周末车票")
     }
 }

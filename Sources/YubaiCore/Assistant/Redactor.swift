@@ -83,6 +83,21 @@ public final class Redactor: @unchecked Sendable {
         return value
     }
 
+    /// Counts the actual placeholders used by this redactor. Long numbers may be
+    /// cards, phone numbers or orders, so the summary does not claim a finer type.
+    public static func placeholderSummary(in contents: [String]) -> [String: Int] {
+        let patterns = ["联系人": #"联系人[A-Z]+"#, "长号码": #"\*{4}[0-9]{4}"#, "标识符": #"\[已隐藏\]"#]
+        var counts: [String: Int] = [:]
+        for (kind, pattern) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let count = contents.reduce(0) { total, text in
+                total + regex.numberOfMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length))
+            }
+            if count > 0 { counts[kind] = count }
+        }
+        return counts
+    }
+
     /// Parse structured content before masking so money cents and local evidence UUIDs survive.
     public func content(_ input: String) -> String {
         if let json = try? JSONValue.parse(input), let clean = try? value(json).jsonText() { return clean }

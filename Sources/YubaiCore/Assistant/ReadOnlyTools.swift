@@ -6,14 +6,16 @@ public struct ToolContext: Sendable {
     public let redactor: Redactor
     /// Captured from an explicit local amount input; never from model arguments.
     public let confirmedEntryAmount: Int64?
+    public let parsedEntries: [(text: String, amount: Int64)]
     public let parsedEntryAmounts: [Int64]
     public let entryAccountHint: UUID?
     public let memoryCharacterBudget: Int
     let entriesByID: [UUID: Entry]
-    public init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil, parsedEntryAmounts: [Int64] = [], entryAccountHint: UUID? = nil, memoryCharacterBudget: Int = Memory.defaultCharacterBudget) {
+    public init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil, parsedEntryAmounts: [Int64] = [], parsedEntries: [(text: String, amount: Int64)] = [], entryAccountHint: UUID? = nil, memoryCharacterBudget: Int = Memory.defaultCharacterBudget) {
         self.memoryCharacterBudget = memoryCharacterBudget
         self.entryAccountHint = entryAccountHint
-        self.parsedEntryAmounts = parsedEntryAmounts.filter { $0 > 0 && $0 <= Money.limit }
+        self.parsedEntries = parsedEntries.filter { $0.amount > 0 && $0.amount <= Money.limit }
+        self.parsedEntryAmounts = (parsedEntryAmounts.isEmpty ? parsedEntries.map(\.amount) : parsedEntryAmounts).filter { $0 > 0 && $0 <= Money.limit }
         self.confirmedEntryAmount = confirmedEntryAmount
         self.ledger = ledger; self.now = now; self.redactor = Redactor(ledger: ledger)
         self.entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
@@ -154,6 +156,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "target": .money($0.target), "saved": .money($0.reserved), "reserved": .money($0.reserved),
                 "date": $0.dueDate.map { .string(Dates.text($0)) } ?? .null]) })]
         if let account = ctx.entryAccountHint { fields["entry_account_hint"] = .string(account.uuidString) }
+        fields["parsed_entries"] = .array(ctx.parsedEntries.map { .object(["text": .string($0.text), "amount": .money($0.amount)]) })
         fields["parsed_entry_amounts"] = .array(ctx.parsedEntryAmounts.map { .money($0) })
         if let amount = ctx.confirmedEntryAmount { fields["confirmed_entry_amount"] = .money(amount) }
         return .object(fields)
