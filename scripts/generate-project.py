@@ -115,6 +115,47 @@ TARGETED_DEVICE_FAMILY = "1,2"; ONLY_ACTIVE_ARCH = YES;
 core_test_config_list = add("core-test-configs", f'isa = XCConfigurationList; buildConfigurations = ({",".join(core_test_configs)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;')
 core_test_target = add("core-test-target", f'isa = PBXNativeTarget; buildConfigurationList = {core_test_config_list}; buildPhases = ({core_test_sources},{core_test_frameworks},{core_test_resources},); buildRules = (); dependencies = (); name = YubaiCoreTests; packageProductDependencies = ({core_test_dependency},); productName = YubaiCoreTests; productReference = {core_test_product}; productType = "com.apple.product-type.bundle.unit-test";')
 objects[project_id] = objects[project_id].replace(f'targets = ({target},{ui_target},);', f'targets = ({target},{ui_target},{core_test_target},);')
+# 小组件只在 iOS 嵌入；两个共享源文件均不包含账本写入实现。
+widget_refs, widget_builds = [], []
+for file in sorted((root / "Sources/YubaiWidgets").glob("*.swift")):
+    ref = add("widget-ref:" + file.name, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {quote(file.name)}; sourceTree = "<group>";')
+    widget_refs.append(ref)
+    widget_builds.append(add("widget-build:" + file.name, f'isa = PBXBuildFile; fileRef = {ref};'))
+for filename in ["CaptureWidgetSupport.swift", "CaptureControlIntent.swift"]:
+    ref = ident("Sources/YubaiApp/" + filename)
+    widget_builds.append(add("widget-shared:" + filename, f'isa = PBXBuildFile; fileRef = {ref};'))
+for filename in ["Info.plist", "YubaiWidgets.entitlements"]:
+    widget_refs.append(add("widget-extra:" + filename, f'isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = {quote(filename)}; sourceTree = "<group>";'))
+widget_group = add("widgets-group", f'isa = PBXGroup; children = ({",".join(widget_refs)},); path = Sources/YubaiWidgets; sourceTree = "<group>";')
+widget_config = add("widgets-config", 'isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Widgets.xcconfig; sourceTree = "<group>";')
+app_group_config = add("app-group-config", 'isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/AppGroup.xcconfig; sourceTree = "<group>";')
+objects[group] = objects[group].replace(f'{source_group},', f'{source_group},{widget_group},{widget_config},{app_group_config},')
+widget_product = add("widget-product", 'isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YubaiWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR;')
+objects[products] = objects[products].replace(f'{product},', f'{product},{widget_product},')
+widget_sources = add("widget-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(widget_builds)},); runOnlyForDeploymentPostprocessing = 0;')
+widget_core = add("widget-core", f'isa = XCSwiftPackageProductDependency; package = {package}; productName = YubaiCore;')
+widget_link = add("widget-link", f'isa = PBXBuildFile; productRef = {widget_core};')
+widget_frameworks = add("widget-frameworks", f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({widget_link},); runOnlyForDeploymentPostprocessing = 0;')
+widget_configs = [add("widget-config:" + name, f'''isa = XCBuildConfiguration; baseConfigurationReference = {widget_config}; name = {name}; buildSettings = {{
+APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic;
+CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 2.0.0; GENERATE_INFOPLIST_FILE = NO;
+INFOPLIST_FILE = Sources/YubaiWidgets/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+PRODUCT_BUNDLE_IDENTIFIER = app.yubai.personal.widgets; PRODUCT_NAME = "$(TARGET_NAME)";
+SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";
+LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+}};''') for name in ["Debug", "Release"]]
+widget_config_list = add("widget-configs", f'isa = XCConfigurationList; buildConfigurations = ({",".join(widget_configs)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
+widget_target = add("widget-target", f'isa = PBXNativeTarget; buildConfigurationList = {widget_config_list}; buildPhases = ({widget_sources},{widget_frameworks},); buildRules = (); dependencies = (); name = YubaiWidgets; packageProductDependencies = ({widget_core},); productName = YubaiWidgets; productReference = {widget_product}; productType = "com.apple.product-type.app-extension";')
+widget_proxy = add("widget-proxy", f'isa = PBXContainerItemProxy; containerPortal = {project_id}; proxyType = 1; remoteGlobalIDString = {widget_target}; remoteInfo = YubaiWidgets;')
+widget_dependency = add("widget-dependency", f'isa = PBXTargetDependency; target = {widget_target}; targetProxy = {widget_proxy}; platformFilter = ios;')
+widget_embed = add("widget-embed", f'isa = PBXBuildFile; fileRef = {widget_product}; platformFilter = ios; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy,);}};')
+widget_embed_phase = add("widget-embed-phase", f'isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = ({widget_embed},); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0;')
+objects[target] = objects[target].replace(f'{resources},', f'{resources},{widget_embed_phase},').replace('dependencies = ();', f'dependencies = ({widget_dependency},);')
+objects[project_id] = objects[project_id].replace(f'{core_test_target},);', f'{core_test_target},{widget_target},);')
+for filename in ["Yubai-AppGroup.entitlements", "Yubai-iCloud-AppGroup.entitlements"]:
+    ref = add("app-extra:" + filename, f'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = {quote(filename)}; sourceTree = "<group>";')
+    objects[source_group] = objects[source_group].replace('children = (', f'children = ({ref},', 1)
 content = '// !$*UTF8*$!\n{archiveVersion = 1; classes = {}; objectVersion = 77; objects = {\n'
 content += '\n'.join(f'{key} = {{{value}}};' for key, value in objects.items())
 content += f'\n}}; rootObject = {project_id}; }}\n'

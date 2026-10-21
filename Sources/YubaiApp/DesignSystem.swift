@@ -634,6 +634,7 @@ struct EntryRow: View {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                 HStack(spacing: YubaiSpace.space6) {
                     Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
+                    if entry.hasNoCaptureCategory { Pill(text: "没分类", variant: .amber, height: 20, showsDot: false) }
                     if metadata != nil && entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20, showsDot: false) }
                 }
                 Text(metadata ?? "\(dateText) · \(entry.category) · \(store.current.accountName(entry.accountID))")

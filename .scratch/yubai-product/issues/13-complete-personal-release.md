@@ -154,3 +154,12 @@ owner 本轮明确批准“第四轮 · 手动优先”V4 画板与 DS，要求�
 Agent 实现适配：样例商户／金额／条数来自真实账本；系统字体、系统玻璃／sheet／返回／选择器和已有 tokens 保持。新表单在小屏／大字号可滚动。固定收付90天预览复用 Finance.occurrences，保留未付完的逾期义务，排除信用还款以免本金重复预留。安排稿按 owner 指示略去 AI 预填、租金／目标卡、进出图及解释性页脚；新字段使用现有 Plan 数据，无虚构数据。
 
 [原稿与 DS](../../../.design-meta/mockups/manual-first-v4/README.md)、[源码映射](../../../.design-meta/DESIGN.md#2026-10-21--第四轮手动优先)、[本轮测试与待验证清单](../../../docs/V2-TEST-CHECKLIST.md#第四轮手动优先2026-10-21待-apple-设备验证)。Linux Core 278项：274通过、原有4项实网 opt-in 跳过、0失败；没有新增跳过，也未调用网络。另修正原 AssistantTransportTests 中按原始随机 UUID 查找已脱敏日志标记的不稳定断言，增加固定长数字覆盖，未改 SendLog／发送实现。SwiftUI语法解析与人工核对、Xcode工程生成完成；没有Apple工具链，UI测试／真机未验证，不能标为产品验收完成。工作树保留，未提交／推送；ImportView内部、AskEntryDraftCard、ProposalTools、SendLog、DeepSeekClient、CloudSendLogView保持。Figma、旧原型与分发包未同步，本票继续 in-progress。
+
+
+## 2026-10-21 · 第九轮快速记账（owner 明确决定）
+
+来源为本轮用户指定 brief 与已确认的 V9 八张画板，已[原样保存](../../../.design-meta/mockups/quick-capture-v9/README.md)。用户要求本机短句解析、Apple Pay 交易自动化记账、截图多笔选择、通知／Siri 结果编辑与撤销、卡到账户与商户到分类映射、快捷指令／深链、WidgetKit 锁屏／主屏／控制入口；主数字统称还能花，无把握的自动记录标没分类。保持原 TabView 和记一笔日期／分段布局，App Group 默认关闭，免费个人团队可只用打开 App 的按钮；本轮明确允许本地中文提交，禁止付费调用及 push。
+
+授权内实现选择：App Intents 只编入 App，在同一 AppStore／MainActor 中与界面共用存储和版本检查，允许专用记账／软删除越过应用的 Face ID 展示锁；结果在锁启用时只渲染金额，隐藏金额进一步遮住数字。源数据仍受系统文件保护，首次设备解锁前不可保证执行。共享给 Widget 的仅为 Core 快照，无共享账本；启用账本锁或隐藏金额时删除快照，跨日未刷新只显示按钮。截图不会申请新权限，已有相册权限时可读最近截图，否则只尝试剪贴板，拿不到进入导入；背面轻点建议通过系统截屏动作把当前文件传入。
+
+Linux Swift build 通过；完整测试 324 项、320 通过、4 项既有实网 opt-in 跳过、0 失败，新增 14 项 QuickCaptureTests 通过。App／Widget 已做语法、工程、plist、entitlement 和 API 文档核对，尚无 Apple SDK 构建、签名或设备证据。钱包实际参数、系统后台运行、Siri snippet、通知、免费团队扩展安装、开启 App Group 的共享行为仍待[设备检查](../../../docs/QUICK-CAPTURE.md)。旧画板和历史验证记录保留，不宣称整票完成。

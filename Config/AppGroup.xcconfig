@@ -1,0 +1,11 @@
+// 免费 Personal Team 默认仅显示小组件入口。启用数字需要可签 App Groups 的团队。
+YUBAI_APP_GROUP = NO
+YUBAI_APP_GROUP_IDENTIFIER = group.app.yubai.personal
+YUBAI_APP_GROUP_CONDITION_NO =
+YUBAI_APP_GROUP_CONDITION_YES = YUBAI_APP_GROUP
+YUBAI_IOS_ENTITLEMENTS_NO_NO =
+YUBAI_IOS_ENTITLEMENTS_NO_YES = Sources/YubaiApp/Yubai-AppGroup.entitlements
+YUBAI_IOS_ENTITLEMENTS_YES_NO = Sources/YubaiApp/Yubai-iCloud.entitlements
+YUBAI_IOS_ENTITLEMENTS_YES_YES = Sources/YubaiApp/Yubai-iCloud-AppGroup.entitlements
+YUBAI_WIDGET_ENTITLEMENTS_NO =
+YUBAI_WIDGET_ENTITLEMENTS_YES = Sources/YubaiWidgets/YubaiWidgets.entitlements

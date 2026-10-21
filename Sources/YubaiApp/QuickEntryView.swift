@@ -2,6 +2,7 @@ import SwiftUI
 import YubaiCore
 
 struct QuickEntryView: View {
+    var prefill: QuickEntryPrefill? = nil
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var keypad = EntryKeypad()
@@ -23,7 +24,7 @@ struct QuickEntryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: YubaiSpace.space12) {
                     ManualSheetHeader(title: "记一笔", actionTitle: "导入", actionImage: "photo", primary: false,
-                                      cancel: { dismiss() }, action: { store.sheetSource = nil; store.sheet = .imports })
+                                      cancel: { dismiss() }, action: { store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports })
                     if accounts.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("从真实余额开始").yubaiFont(YubaiFont.heroLabel)
@@ -40,7 +41,7 @@ struct QuickEntryView: View {
                                            didSelect: { userChoseCategory = true })
                         form
                         HStack {
-                            Text("记下后，还能自在支配").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                            Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             Spacer()
                             AmountLabel(cents: available, hide: store.current.preferences.hideAmounts, currency: true, fractionDigits: available % 100 == 0 ? 0 : 2)
                                 .accessibilityIdentifier("afterEntryAvailable")
@@ -64,6 +65,11 @@ struct QuickEntryView: View {
                 guard !loaded else { return }; loaded = true
                 accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
                 category = ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true).first ?? category
+                if let prefill {
+                    if let selected = prefill.category { category = selected; userChoseCategory = true }
+                    purpose = prefill.purpose ?? ""
+                    if let amount = prefill.amount { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
+                }
                 refreshBalances()
             }
             .onChange(of: store.current.updatedAt) { _, _ in refreshBalances() }

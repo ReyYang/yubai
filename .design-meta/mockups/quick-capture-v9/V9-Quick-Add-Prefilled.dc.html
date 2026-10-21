@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>记一笔 · 带着内容打开</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yubai/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600&amp;family=Noto+Sans+SC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 14px 18px 24px; background: var(--canvas, #f5f1e5); color: var(--label, #382f1f); font-family: var(--font-sans, 'Noto Sans SC', sans-serif); display: flex; flex-direction: column">
+  <div style="width: 40px; height: 5px; border-radius: 3px; background: var(--grabber, #d8cfbe); align-self: center"></div>
+  <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 44px">
+    <a href="V4-Home.dc.html" style="justify-self: start; height: 36px; padding: 0 16px; border-radius: 18px; background: var(--card, #ede6d3); color: var(--label, #382f1f); display: flex; align-items: center; text-decoration: none; font-size: 14px">取消</a>
+    <span style="font-size: 15px; font-weight: 500">改一笔</span><span></span>
+  </div>
+  <div style="margin-top: 10px; align-self: flex-start; height: 26px; padding: 0 10px; border-radius: 13px; background: var(--card, #ede6d3); font-size: 12px; color: var(--label-secondary, #6a604f); display: flex; align-items: center">来自 Apple Pay · 招行信用卡 · 09:38</div>
+  <div style="margin-top: 12px; display: flex; align-items: baseline; gap: 6px; min-height: 60px; padding: 0 4px">
+    <span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; font-size: 24px; color: var(--label-secondary, #6a604f)">¥</span>
+    <span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; font-size: 44px; line-height: 52px; font-weight: 600; letter-spacing: -1px">18</span>
+  </div>
+  <div role="radiogroup" aria-label="分类" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px">
+    <button role="radio" aria-checked="true" style="height: 32px; padding: 0 12px; border-radius: 16px; border: 0; background: var(--selected, #e3dac6); color: var(--label, #382f1f); font-family: inherit; font-size: 13px; font-weight: 500; box-shadow: inset 0 0 0 1.5px var(--brand, #557f53)">餐饮</button>
+    <button role="radio" aria-checked="false" style="height: 32px; padding: 0 12px; border-radius: 16px; border: 0; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px">交通</button>
+    <button role="radio" aria-checked="false" style="height: 32px; padding: 0 12px; border-radius: 16px; border: 0; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px">日用</button>
+    <button role="radio" aria-checked="false" style="height: 32px; padding: 0 12px; border-radius: 16px; border: 0; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px">购物</button>
+  </div>
+  <div style="margin-top: 12px; border-radius: 22px; background: var(--card, #ede6d3); padding: 2px 18px; font-size: 14px">
+    <div style="display: flex; justify-content: space-between; align-items: center; min-height: 46px"><span>用途</span><span>瑞幸咖啡</span></div>
+    <div style="display: flex; justify-content: space-between; align-items: center; min-height: 46px; border-top: 1px solid var(--separator, #e0d8c9)"><span>账户</span><span>招行信用卡</span></div>
+    <div style="display: flex; justify-content: space-between; align-items: center; min-height: 46px; border-top: 1px solid var(--separator, #e0d8c9)"><span>日期</span><span>今天 09:38</span></div>
+  </div>
+  <div style="margin-top: 12px; padding: 0 4px; font-size: 12px; color: var(--label-secondary, #6a604f)">以后「瑞幸」都记到 餐饮 · <button style="border: 0; background: transparent; padding: 0; font-family: inherit; font-size: 12px; color: var(--brand-ink, #3f6a3e); text-decoration: underline">好</button></div>
+  <div style="margin-top: auto; display: flex; gap: 8px">
+    <button style="flex: 1; height: 52px; border-radius: 14px; border: 0; background: var(--card, #ede6d3); color: var(--amber-ink, #7a5320); font-family: inherit; font-size: 15px">删除这笔</button>
+    <a href="V4-Home-Saved.dc.html" style="flex: 2; height: 52px; border-radius: 14px; background: var(--brand, #557f53); color: var(--on-brand, #ffffff); display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 16px; font-weight: 500">好了</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -11,7 +11,7 @@ enum Destination: String, CaseIterable, Identifiable {
 }
 enum AppSheet: Identifiable {
     case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions, addEntry, addPlan
-    case editEntry(UUID)
+    case editEntry(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
     case ask(String), capture(Data), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, letter(UUID), reconcile(UUID)
     var id: String { String(describing: self) }
@@ -27,6 +27,7 @@ enum AppSheet: Identifiable {
 }
 
 @MainActor @Observable final class AppStore {
+    static let shared = AppStore()
     private(set) var ledger = Ledger() { didSet { invalidateDerived() } }
     var current: Ledger { ledger }
     private var derivedRevision = 0
@@ -56,7 +57,7 @@ enum AppSheet: Identifiable {
         cachedEntries = rows; return rows
     }
     private func invalidateDerived() { cachedEntries = nil; refreshTimeDerived() }
-    func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1 }
+    func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
     var locations: LedgerLocations
     var ledgerLocation: LedgerLocation = .local
@@ -81,6 +82,7 @@ enum AppSheet: Identifiable {
     @ObservationIgnored private var pendingSaveToast: String?
     @ObservationIgnored private var saveToastTask: Task<Void, Never>?
     var loadFailure: String?; var locked = false; var importedURL: URL?
+    var pendingQuickSheet: AppSheet?
     var errorHosts: [UUID] = []
     var pickingInsightDates = false
     var organizingBatchID: UUID?
@@ -105,10 +107,14 @@ enum AppSheet: Identifiable {
             ledger = try localRepository.load()
             locked = ledger.preferences.lockEnabled
         } catch { loadFailure = error.localizedDescription }
+        CaptureSnapshotBridge.publish(ledger)
+        #if os(iOS)
+        CaptureNotifications.register()
+        #endif
     }
 
-    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
-        guard canEditLedger() else { return false }
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, _ change: (inout Ledger) throws -> Void) -> Bool {
+        guard canEditLedger(allowLockedCapture: allowLockedCapture) else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
         do {
@@ -124,6 +130,7 @@ enum AppSheet: Identifiable {
             if entryMotion && !motion.saved.isEmpty { freshEntryIDs = motion.saved; pendingEntrySave = true }
             if entryMotion && !motion.deleted.isEmpty { entryDeleteTrigger &+= 1 }
             ledger = next
+            if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
             if recordUndo {
                 undoLedger = before; undoLabel = reason
                 if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
@@ -194,7 +201,7 @@ enum AppSheet: Identifiable {
 }
 
 @main struct YubaiApp: App {
-    @State private var store = AppStore()
+    @State private var store = AppStore.shared
     private var colorScheme: ColorScheme? {
         switch store.current.preferences.appearance {
         case "dark": .dark
@@ -293,8 +300,13 @@ struct RootView: View {
             }
         }
         .overlay { privacyCover }
-        .onOpenURL { url in guard url.isFileURL else { return }; store.importedURL = url; if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync() }; if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
+        .onOpenURL { url in
+            if url.scheme?.lowercased() == "yubai" { store.handleCaptureURL(url); return }
+            guard url.isFileURL else { return }; store.importedURL = url
+            if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
+        }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+            else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {
         @Bindable var store = store
@@ -352,6 +364,9 @@ struct RootView: View {
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
         switch sheet {
         case .addEntry: QuickEntryView()
+        case .prefilledEntry(let prefill): QuickEntryView(prefill: prefill)
+        case .screenshotCapture(let data): ScreenshotCaptureView(imageData: data)
+        case .screenshotReview(let data): ImportView(initialScreenshot: data)
         case .editEntry(let id): EntryEditView(entryID: id)
         case .addPlan: FixedFlowEditor()
         case .account(let account): AccountEditor(account: account)

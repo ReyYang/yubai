@@ -19,19 +19,16 @@ enum ReceiptReader {
         let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
         guard !lines.isEmpty else { throw YubaiError.invalid("没有识别到文字。请使用清晰、完整的账单截图，或手动记一笔。") }
         let text = lines.joined(separator: "\n")
-        let regex = try NSRegularExpression(pattern: #"[¥￥]?[−-]?\d[\d,]*\.\d{2}(?!\d)"#)
-        var amounts: [String] = []
-        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            if let range = Range(match.range, in: text), let cents = try? Money.parse(String(text[range]), allowNegative: true), cents != 0 { let input = Money.input(abs(cents)); if !amounts.contains(input) { amounts.append(input) } }
-        }
-        let title = lines.first { line in line.count > 2 && line.count < 60 && !["支付", "微信", "支付宝", "交易", "账单", "金额", "详情", "服务", "时间", "单号", "收款方", "付款"].contains(where: line.contains) && line.rangeOfCharacter(from: .decimalDigits) == nil } ?? "截图补记"
+        let drafts = ReceiptTextParser.drafts(lines: lines)
+        let amounts = drafts.map { Money.input($0.amount) }
+        let title = drafts.first?.title ?? "截图补记"
         let date = lines.compactMap(Dates.parse).first
         return ReceiptCandidate(text: text, amounts: amounts, title: title, date: date)
     }
 }
 
 private struct ImportQueueFile: Identifiable {
-    enum Input { case file(URL), photo(PhotosPickerItem), pasted(PastedStatement) }
+    enum Input { case file(URL), photo(PhotosPickerItem), pasted(PastedStatement), screenshot(Data) }
     let id = UUID()
     let input: Input
     var name: String
@@ -59,6 +56,7 @@ struct ImportView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     var pasted: PastedStatement? = nil
+    var initialScreenshot: Data? = nil
     @State private var accountID: UUID?
     @State private var filePicker = false
     @State private var photoPicker = false
@@ -93,7 +91,7 @@ struct ImportView: View {
     @State private var rowEdits: [Int: Entry] = [:]
     @State private var editingScreenshotRow: ImportRow?
     @State private var showScreenshot = false
-    init(pasted: PastedStatement? = nil) { self.pasted = pasted }
+    init(pasted: PastedStatement? = nil, initialScreenshot: Data? = nil) { self.pasted = pasted; self.initialScreenshot = initialScreenshot }
     private var resultTitle: String {
         guard let result else { return preview == nil ? "导入" : "核对 \(processed + 1)/\(max(queueTotal, 1))" }
         guard let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) else { return "这一批已撤销" }
@@ -152,6 +150,7 @@ struct ImportView: View {
         .onChange(of: categoryMappings) { _, _ in refreshPreview() }
         .onDisappear { parsingTask?.cancel(); queueTask?.cancel() }
         .onAppear {
+            if !appeared, let initialScreenshot { enqueue([ImportQueueFile(input: .screenshot(initialScreenshot), name: "截图.png")]); reviewWhenReady = true }
             if appeared {
                 if queueTask == nil || queueTask?.isCancelled == true {
                     for index in queue.indices where queue[index].reading { queue[index].reading = false }
@@ -556,6 +555,7 @@ struct ImportView: View {
                         original = bytes; image = true
                         name += "." + (photo.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg")
                     case .pasted(let statement): original = statement.data
+                    case .screenshot(let bytes): original = bytes; image = true
                     }
                     try Task.checkCancellation()
                     guard original.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个文件请小于 50 MB。") }
@@ -680,22 +680,7 @@ struct ImportView: View {
     nonisolated private static func screenshotTable(_ bytes: Data) throws -> Data {
         let receipt = try ReceiptReader.recognize(bytes)
         if let table = PastedStatement.detect(receipt.text) { return table.data }
-        let regex = try NSRegularExpression(pattern: #"[¥￥]?[−-]?\d[\d,]*\.\d{2}(?!\d)"#)
-        var rows = ["日期,金额,收支,用途,备注"]
-        for line in receipt.text.components(separatedBy: .newlines) {
-            for match in regex.matches(in: line, range: NSRange(line.startIndex..., in: line)) {
-                guard let range = Range(match.range, in: line), let amount = try? Money.parse(String(line[range]), allowNegative: true), amount != 0 else { continue }
-                let title = line.replacingCharacters(in: range, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                let purpose = (title.isEmpty ? receipt.title : title).replacingOccurrences(of: "\"", with: "\"\"")
-                let explicitIncome = line.contains("收入") || line.contains("收款")
-                let explicitExpense = line.contains("支出") || line.contains("付款") || line.contains("支付")
-                let direction = explicitIncome ? "收入" : "支出"
-                let note = (receipt.date == nil ? "日期待核对 " : "") + (!explicitIncome && !explicitExpense ? "收支待核对" : "")
-                rows.append("\(Dates.text(receipt.date ?? Date(), time: true)),\(Money.input(abs(amount))),\(direction),\"\(purpose)\",\(note)")
-            }
-        }
-        guard rows.count > 1 else { throw YubaiError.invalid("没有读出金额，请换一张清晰的截图。") }
-        return Data(rows.joined(separator: "\n").utf8)
+        return try ReceiptTextParser.table(lines: receipt.text.components(separatedBy: .newlines))
     }
 }
 

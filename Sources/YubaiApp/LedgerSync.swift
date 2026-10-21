@@ -61,8 +61,8 @@ struct SyncChoice {
 
 extension AppStore {
     private var locationKey: String { "ledgerLocation:" + localRepository.directory.path }
-    func canEditLedger() -> Bool {
-        guard !locked else { error = "请先解锁账本。"; return false }
+    func canEditLedger(allowLockedCapture: Bool = false) -> Bool {
+        guard !locked || allowLockedCapture else { error = "请先解锁账本。"; return false }
         guard syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { error = "请先完成账本位置或同步版本的选择。"; return false }
         return true
     }
@@ -71,7 +71,7 @@ extension AppStore {
         if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
         do {
             if restoring { try localRepository.restoreBackup(next) }
-            else { try localRepository.save(next, reason: reason) }
+            else { try localRepository.save(next, reason: reason, requiringUnchanged: true) }
         } catch {
             if !wasPending { try? localRepository.markPendingSync(false) }; throw error
         }

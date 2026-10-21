@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>主屏 · 小组件</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yubai/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600&amp;family=Noto+Sans+SC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 70px 24px 40px; background: #dfe3d6; font-family: var(--font-sans, 'Noto Sans SC', sans-serif); color: var(--label, #382f1f); display: flex; flex-direction: column; gap: 22px">
+  <div style="display: flex; gap: 18px">
+    <div style="width: 160px; height: 160px; box-sizing: border-box; border-radius: 24px; background: var(--canvas, #f5f1e5); padding: 14px; display: flex; flex-direction: column">
+      <span style="font-size: 12px; color: var(--label-secondary, #6a604f)">还能花</span>
+      <span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; margin-top: 2px; font-size: 26px; line-height: 32px; font-weight: 600">¥12,448</span>
+      <span style="font-size: 11px; color: var(--label-secondary, #6a604f)">今天记了 3 笔 · ¥96</span>
+      <a href="V4-Add.dc.html" style="margin-top: auto; height: 40px; border-radius: 20px; background: var(--brand, #557f53); color: var(--on-brand, #ffffff); display: flex; align-items: center; justify-content: center; gap: 4px; text-decoration: none; font-size: 14px; font-weight: 500"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>记一笔</a>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px">
+      <a href="V4-Add.dc.html" aria-label="余白" style="width: 62px; height: 62px; border-radius: 15px; background: var(--brand, #557f53); color: #ffffff; display: flex; align-items: center; justify-content: center"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 10c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"></path><path d="M3 15c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"></path></svg></a><span>余白</span>
+    </div>
+  </div>
+  <div style="width: 342px; height: 160px; box-sizing: border-box; border-radius: 24px; background: var(--canvas, #f5f1e5); padding: 14px; display: flex; flex-direction: column">
+    <div style="display: flex; justify-content: space-between; align-items: baseline">
+      <span style="font-size: 12px; color: var(--label-secondary, #6a604f)">还能花</span>
+      <span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 600">¥12,448</span>
+    </div>
+    <span style="margin-top: 6px; font-size: 11px; color: var(--label-secondary, #6a604f)">常记的，点一下带着分类和金额打开记一笔</span>
+    <div style="margin-top: auto; display: flex; gap: 8px"><a href="V9-Quick-Add-Prefilled.dc.html" style="flex: 1; height: 44px; border-radius: 14px; background: var(--raised, #fefbea); color: var(--label, #382f1f); display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; font-size: 12px; line-height: 16px"><span style="font-weight: 500">午饭</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; color: var(--label-secondary, #6a604f)">¥32</span></a><a href="V9-Quick-Add-Prefilled.dc.html" style="flex: 1; height: 44px; border-radius: 14px; background: var(--raised, #fefbea); color: var(--label, #382f1f); display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; font-size: 12px; line-height: 16px"><span style="font-weight: 500">咖啡</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; color: var(--label-secondary, #6a604f)">¥18</span></a><a href="V9-Quick-Add-Prefilled.dc.html" style="flex: 1; height: 44px; border-radius: 14px; background: var(--raised, #fefbea); color: var(--label, #382f1f); display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; font-size: 12px; line-height: 16px"><span style="font-weight: 500">打车</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; color: var(--label-secondary, #6a604f)">¥24</span></a>
+      <a href="V4-Add.dc.html" aria-label="记一笔" style="width: 44px; height: 44px; border-radius: 14px; background: var(--brand, #557f53); color: var(--on-brand, #ffffff); display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

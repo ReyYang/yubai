@@ -56,6 +56,8 @@ struct SettingsView: View {
             }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: 0) {
+                    NavigationLink { QuickCaptureSettingsView() } label: { row("快速记账") }.accessibilityIdentifier("openQuickCapture")
+                    separator
                     NavigationLink { LettersView() } label: { row("来信", detail: latestLetter) }
                     separator
                     NavigationLink { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")

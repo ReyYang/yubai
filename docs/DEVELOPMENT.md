@@ -111,3 +111,8 @@ YUBAI_ICLOUD = YES
 `LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；原始文件断言按新的元数据布局调整。当前只执行静态语法、配置与工程生成核查，没有 Swift 工具链，未执行这些 XCTest。
 
 在 Xcode 验证默认 NO 的 iOS / Mac 构建与测试后，再用上方单行启用 YES，重复两端构建。真实同步需两端有效签名、同一 Apple ID、iCloud Drive；核对首次空云端、已有不同账本、下载占位、离线待上传、前台远端更新、同时编辑冲突、选择期间再次更新、切回本机及退出登录。静态检查与临时目录测试不能代替这些系统行为的设备验证。
+
+
+## 快速记账与可选 App Group
+
+第九轮新增 YubaiWidgets（iOS 26）并在 App 的 iOS 构建嵌入；Mac 通过平台条件排除。共享快照使用独立的 `Config/AppGroup.xcconfig`，默认 NO，iCloud 开关保持独立。配置组合、同团队签名、默认只有按钮的行为与设备验证见[快速记账说明](QUICK-CAPTURE.md)。工程生成器同步包含新源文件和扩展 target，不要只手动修改生成结果。

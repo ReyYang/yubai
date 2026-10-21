@@ -2,6 +2,7 @@
 YUBAI_ICLOUD = NO
 // NO keeps direct Mac installs using the existing non-container ledger location.
 YUBAI_MAC_SANDBOX = NO
+#include "AppGroup.xcconfig"
 #include "Signing.xcconfig"
 
 YUBAI_ICLOUD_CONDITION_NO =
@@ -15,4 +16,5 @@ YUBAI_MAC_ENTITLEMENTS_NO_YES = Sources/YubaiApp/Yubai-iCloud.entitlements
 YUBAI_MAC_ENTITLEMENTS_YES_NO = Sources/YubaiApp/Yubai-macOS.entitlements
 YUBAI_MAC_ENTITLEMENTS_YES_YES = Sources/YubaiApp/Yubai-macOS-iCloud.entitlements
 CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = $(YUBAI_MAC_ENTITLEMENTS_$(YUBAI_MAC_SANDBOX)_$(YUBAI_ICLOUD))
-SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(YUBAI_ICLOUD_CONDITION_$(YUBAI_ICLOUD))
+CODE_SIGN_ENTITLEMENTS[sdk=iphone*] = $(YUBAI_IOS_ENTITLEMENTS_$(YUBAI_ICLOUD)_$(YUBAI_APP_GROUP))
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(YUBAI_ICLOUD_CONDITION_$(YUBAI_ICLOUD)) $(YUBAI_APP_GROUP_CONDITION_$(YUBAI_APP_GROUP))

@@ -1,5 +1,23 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-21 · 第九轮「快速记账」
+
+owner 在本轮 brief 明确确认 V9 八张画板及 DS「系统入口／动效」，[原稿与任务原文](mockups/quick-capture-v9/README.md)原样长期归档。本轮授权优先于下方旧轮次“不提交”的范围描述。选定稿不代表原生设备验收通过。
+
+| 画板 | 采用源码与行为 |
+|---|---|
+| Lock／Home-Widget／Control | `YubaiWidgets/YubaiWidgets.swift`：两种圆形锁屏入口、矩形还能花、主屏 small／medium 常记预填、两个 ControlWidget；控制复用两 target 的 `CaptureControlIntent.swift` OpenIntent，所有点击打开 App。共享 `CaptureWidgetSupport.swift` 只传快照；App Group 配置默认关闭，关闭／无权限／跨日均不显示数字。主屏沿用暖纸浅深 token，锁屏单色交给系统。 |
+| Siri-Snippet | `QuickCaptureIntents.swift`：本机记账、金额缺失追问、iOS 26 SnippetIntent 的只读结果、用途／金额／分类／账户／时间、还能花、编辑和按 id 撤销；账本锁启用时去掉金额以外的记录信息，隐藏金额时遮住数字。 |
+| Pay-Auto／Add-Prefilled | `CaptureNotifications.swift`、`EntryEditView.swift`：本地通知及编辑／撤销动作；沿用改一笔，Apple Pay 状态使用顶部来源胶囊、底部商户分类保存与删除／好了两按钮，不新造编辑页；无把握的记录显示没分类标签。 |
+| Screenshot | `QuickCaptureSupport.swift`：Vision 本机读取、多笔勾选、记下 N 笔、原件附件、打开核对进入原 ImportView；读不出金额时返回记一笔并把原图留在其导入入口。`ImportView.swift` 的启发式改为共用 Core 纯函数；Vision 仍留 App。 |
+| Me-Quick | `QuickCaptureSettingsView.swift` + `SettingsView.swift`：近七天实际笔数／后台记账笔数、钱包自动化步骤与通知权限、卡到账户及商户到分类两个可增删改的原生列表。 |
+| 预填与深链 | `YubaiApp.swift` 只接 sheet／URL 分发和 AppStore 单例，不改 TabView；`QuickEntryView.swift` 仅预填参数、携带截图进入导入及指定的还能花文案，不改日期与分段布局。`EntryFormComponents.swift` 给既有表头增加可隐藏尾部动作的默认参数，Apple Pay 确认在底部。 |
+
+Core `QuickCapture.swift` 复用 EntryAmountParser、ManualBookkeeping 与 Finance；卡／商户偏好和可选来源字段向后兼容。Apple Pay 以原始卡、商户、金额身份和原付款时间做 120 秒去重，软删除后保留凭据；snippet 渲染不会再次记账。所有后台操作在 App 进程内复用同一 MainActor／AppStore／Repository、版本检查与 iCloud 待上传状态，账本锁下仅专用记账和撤销放行。App Group 快照在隐藏金额／启用账本锁时删除。
+
+没有新增动效或包，界面沿用 YubaiMotion 与系统 sheet／导航。Siri／通知／WidgetKit 的外框交给系统，画板的手机背景、系统遮罩、外部字体不复制进应用。实现与原稿的映射不构成逐像素原生验证；390pt、大字号、深色、VoiceOver、减少动态效果、锁屏及系统自动化均待 Apple 设备按[清单](../docs/QUICK-CAPTURE.md#验证与限制)验证。Linux build 和 324 项完整 Core 测试结果见[验证报告](../docs/VALIDATION.md#第九轮快速记账2026-10-21)。Figma、历史原型及分发包未同步。
+
+
 
 ## 2026-10-21 · 第四轮「手动优先」
 

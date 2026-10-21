@@ -145,3 +145,20 @@ Mac 本地安装包已生成。2026-10-08 从当前源码新构建的 iPhone Rel
 本轮真实失败与修复包括：CRLF/Excel 日期解析、保留编辑页的错误提示、Files 的目录导航、备份结果在屏幕外、辅助字号挤压，以及总览按钮空白区域未命中。失败日志和 `.xcresult` 保留在本地；后续通过不覆盖原失败证据。没有使用真实账单、生产系统或远端发布作为测试环境。
 
 产品采用决定在 [第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md)，使用入口在 [README](../README.md)。
+
+
+## 第九轮快速记账（2026-10-21）
+
+环境 Linux x86_64、Swift 6.2.4；当前任务 `feat/quick-capture-entries`。默认 `/root` 缓存只读，实际使用[可写缓存命令](QUICK-CAPTURE.md#验证与限制)。
+
+| 检查 | 实际结果 |
+|---|---|
+| swift build | 通过；最终增量构建 14.43 秒，没有新增包 |
+| swift test | 324 项，320 通过、4 项原有实网 opt-in 跳过、0 失败；38.891 秒；未启用付费实网测试 |
+| QuickCaptureTests | 14 项通过，含本机解析／缺金额／默认账户／分类记忆、币种金额、映射、两分钟边界／改账后／撤销后去重、旧 Codable、截图单笔／多笔／行内日期、快照与既有资金算法一致 |
+| App／Widget Swift 语法 | iOS 26 和 macOS 14 两组 frontend parse 通过；不等于 Apple SDK 类型检查 |
+| Xcode 工程 | 216 个对象引用完整、四个 target 登记、共享源文件加入两目标、iOS 依赖／嵌入过滤、Automatic 无 team；生成器重新生成与已存结果一致 |
+| plist／权限／原稿 | 全部 plist 和 entitlement 可解析；iCloud＋App Group 权限组合为基础文件并集；八张画板、DS 与 brief 逐字节匹配原输入 |
+| git diff --check | 通过 |
+
+既有测试 warning 为 CloudTestURLProtocol 的 Sendable 与 StorageTests 的未修改局部变量；未改动这些无关测试。构建日志只留本机 `/tmp/yubai-quick-build.log`、`/tmp/yubai-all-tests.log`，不纳入仓库。App、Widget、Siri、Vision、通知、钱包自动化、锁屏、签名、免费团队安装与 App Group 系统行为尚未运行；设备验收及边界详见[快速记账说明](QUICK-CAPTURE.md)。Figma、旧原型和发布包未同步，未 push。
