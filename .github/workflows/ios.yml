@@ -1,0 +1,90 @@
+name: iOS
+
+# macOS 分钟按 10 倍计费，所以只在改到代码的 PR 和手动触发时运行。
+on:
+  pull_request:
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Yubai.xcodeproj/**'
+      - 'Config/**'
+      - 'Package.swift'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+    inputs:
+      release_builds:
+        description: '同时做 Release 构建（iOS 真机与 macOS，不签名）'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: 选择 Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - name: 选择 iPhone 模拟器
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((r for r in devices if "iOS" in r), reverse=True)
+          for r in runtimes:
+              for d in devices[r]:
+                  if d["name"].startswith("iPhone") and "Pro Max" in d["name"]:
+                      print(d["udid"]); sys.exit()
+          for r in runtimes:
+              for d in devices[r]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit()
+          ')
+          xcrun simctl list devices | grep "$udid"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+      - name: 编译并运行单元与 UI 测试
+        run: |
+          mkdir -p build
+          status=0
+          xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Debug \
+            -destination "id=$SIM_UDID" -parallel-testing-enabled NO \
+            -resultBundlePath build/Yubai.xcresult CODE_SIGNING_ALLOWED=NO test \
+            > build/xcodebuild-test.log 2>&1 || status=$?
+          grep -E '(error:|Test Case .* (passed|failed)|Executed|\*\* TEST)' build/xcodebuild-test.log || tail -100 build/xcodebuild-test.log
+          exit $status
+      - name: 导出截图和测试摘要
+        if: always()
+        run: |
+          mkdir -p build/screenshots
+          if [ -d build/Yubai.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/Yubai.xcresult --output-path build/screenshots || true
+            xcrun xcresulttool get test-results summary --path build/Yubai.xcresult > build/test-summary.json || true
+          fi
+          ls -la build/screenshots | head -50
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-screenshots
+          path: build/screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-test-logs
+          path: |
+            build/xcodebuild-test.log
+            build/test-summary.json
+      - name: Release 构建（iOS 与 macOS，不签名）
+        if: inputs.release_builds
+        run: |
+          set -o pipefail
+          xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
+            -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -20
+          xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
+            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build | tail -20

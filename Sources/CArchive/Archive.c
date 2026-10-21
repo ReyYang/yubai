@@ -1,7 +1,9 @@
 #include "CArchive.h"
 #include <zlib.h>
 #include <limits.h>
+#if defined(__APPLE__)
 #include <CommonCrypto/CommonKeyDerivation.h>
+#endif
 int yubai_inflate(const uint8_t *source, size_t length, uint8_t *output, size_t output_length) {
     if (length > UINT_MAX || output_length > UINT_MAX) return -1;
     z_stream stream = {0};
@@ -18,6 +20,8 @@ int yubai_inflate(const uint8_t *source, size_t length, uint8_t *output, size_t 
 uint32_t yubai_crc32(const uint8_t *source, size_t length) {
     return (uint32_t)crc32(0, source, (uInt)length);
 }
+#if defined(__APPLE__)
 int yubai_derive_key(const char *password, size_t password_length, const uint8_t *salt, size_t salt_length, uint32_t rounds, uint8_t *key) {
     return CCKeyDerivationPBKDF(kCCPBKDF2, password, password_length, salt, salt_length, kCCPRFHmacAlgSHA256, rounds, key, 32);
 }
+#endif

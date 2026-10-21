@@ -1,6 +1,6 @@
 # 开发与验证
 
-Xcode 26 / Apple SDK，Swift 5 语言模式；最低 iOS 18 / macOS 14。当前环境没有 Swift 工具链，未运行编译或 XCTest；历史 1.0 的验证报告不覆盖 2.0。
+Xcode 26 / Apple SDK，Swift 5 语言模式；最低 iOS 18 / macOS 14。Linux 的 Core 构建与单元测试使用下方 SwiftPM 路径；Apple 应用与 UI 仍须在 Xcode 验证，历史 1.0 的验证报告不覆盖 2.0。
 
 - `Sources/YubaiApp`：两项导航「现在／我」，底部常驻按钮「问余白」。首页复用 Finance 的待付款期次；依据打开精简记录详情。ProfileView 负责消费观、目标与底线。SettingsView 负责「我」的入口、导入记录、备份、恢复版本和指南。
 - `Sources/YubaiCore`：schema 2（兼容 schema 1）、财务计算、导入解析与去重、ChangeSet、助手工具、管家与来信、加密备份和原子存储。默认资金观察期固定 90 天，底线取 `profile.floorAmount ?? 0`，日常预留自动估算。旧 horizonDays / emergencyReserve / dailyLiving / isSample 等字段保留解码与往返，不再控制 UI 或资金默认值。主动问答的指定日期预测通过函数参数传入范围。
@@ -27,6 +27,35 @@ xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
 模拟器名称按本机列表调整。UI 测试同时传入 `--test-ledger <UUID>` 与 `YUBAI_UI_TEST_SCRIPT=empty|import|restrain|ask|profile`，只读写缓存目录中的独立账本，脚本传输仍调用真实助手工具／整理器。导入测试以 `YUBAI_UI_STATEMENT` 的 base64 CSV 注入文件，经过与文件打开相同的预览和保存路径；这五条测试不覆盖系统文件选择器。两个条件缺一则不启用夹具。该入口仅编译进 Debug simulator，设备与 Release 不包含脚本传输，也不需要向 Keychain 写假密钥。
 
 正常云端配置位于「我 → 智能与隐私」，密钥进入 Keychain，开发启动可回退 `DEEPSEEK_API_KEY`。`DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 可覆盖配置。测试默认为离线；实网评测须显式设置 `YUBAI_LIVE_EVAL=1`，见 [台架说明](ai-bench/README.md)。共享助手与外发边界见 [ASSISTANT.md](ASSISTANT.md)。
+
+## Linux Core 构建与测试
+
+Ubuntu 24.04 / Swift 6.2.4，从仓库根目录运行。云端容器访问不了 swift.org 时，先用 `scripts/install-linux-swift.sh` 从 Docker Hub 官方 `swift:6.2-noble` 镜像取出工具链（约 1.2 GB，默认装到 `/opt/swift-rootfs`，已安装则跳过）：
+
+```sh
+scripts/install-linux-swift.sh
+export PATH=/opt/swift-rootfs/usr/bin:$PATH
+swift build --target YubaiCore
+swift build
+swift test
+```
+
+`CArchive`、`YubaiCore` 和 `YubaiCoreTests` 可在 Linux 构建；包清单在 Linux 排除 `YubaiApp` 与 `YubaiDesktop`，不编译 SwiftUI 源码。首次运行需从 GitHub 获取依赖，版本由 `Package.resolved` 固定。受限容器若无法写默认模块缓存，可在上述命令前设置：
+
+```sh
+export CLANG_MODULE_CACHE_PATH=/tmp/yubai-clang-module-cache
+export SWIFTPM_MODULECACHE_OVERRIDE=/tmp/yubai-swiftpm-module-cache
+export XDG_CACHE_HOME=/tmp/yubai-swift-cache
+```
+
+Linux 的 SHA256、AES-GCM 与 PBKDF2 使用仅限 Linux 的 swift-crypto 产品；Apple 继续使用 CryptoKit 与 CommonCrypto。备份 v1 的 PBKDF2-HMAC-SHA256、32 字节密钥、16 字节盐、导出 210,000 轮（读取接受 100,000–1,000,000 轮）、nonce／密文／tag 布局与 `yubai-backup-v1` AAD 保持一致。兼容向量由独立的 Python hashlib／AESGCM 实现生成，覆盖含 NUL 的 UTF-8 密码与轮数边界。
+
+Linux 的 `KeychainAPIKeyStorage` 只在进程内共享密钥，不写磁盘；iCloud 下载、协调与系统冲突版本不可用，显式请求 iCloud 仓库访问会报错。本机目录中的存储、附件、权限、恢复与版本选择逻辑仍运行真实测试。默认四个实网评测沿用原有 opt-in 跳过条件，离线测试仍使用真实 URLSession 与内存 HTTP stub。Linux 结果不代表 Keychain、iCloud、SwiftUI 或 Apple SDK 已验收；实际结果见 [验证记录](VALIDATION.md#linux-core-构建与单元测试2026-10-21)。
+
+## GitHub Actions
+
+- `Linux Core`（`.github/workflows/linux-core.yml`）：每个 PR 和 main 的推送都会跑。在 `swift:6.2-noble` 容器里确认 Xcode 工程与生成器一致、编译 YubaiCore 并跑 `swift test`。
+- `iOS`（`.github/workflows/ios.yml`）：改到 Sources、Tests、工程或配置的 PR 自动跑，也可在 Actions 页手动运行。用 macOS 26 runner 上最新的 Xcode 26，在 iPhone 模拟器上编译并跑 Core 与 UI 测试；UI 测试在关键页面和失败时截图，作为 `ios-screenshots` 产物上传，测试日志为 `ios-test-logs`。手动运行时勾选 `release_builds` 可加做不签名的 iOS／macOS Release 构建。私有仓库的 macOS 分钟按 10 倍计入额度。
 
 每次写入先在副本验证，磁盘保存成功才更新内存。原文件、兼容字段和旧用户记录继续保留；删除界面不删除存档数据。`endPlan` 同时接受 plan / rent 的标识：开始后截断后续期次并保留到期欠款，开始前只停用。整批撤销恢复该批整理的差量；删除记录只能通过撤销或完整恢复版本找回。备份使用密码加密；旧未加密备份仍能读取。正式账本通过系统 API 取得 Application Support 下的 `app.yubai.personal`，目录权限 700、文件 600；Mac 直接安装默认非沙盒，沿用原位置，沙盒构建才使用应用容器内的 Application Support。首次安装沙盒版 Mac 应用（TestFlight）时，新容器初始为空，会显示空账本，旧非沙盒目录不会自动迁入。切换前必须先在旧 Mac 应用的「我 → 备份与同步」导出加密的完整备份，再在 TestFlight 构建中选择备份、输入密码并确认恢复；测试不得指向真实目录。
 

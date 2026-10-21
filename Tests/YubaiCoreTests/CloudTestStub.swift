@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import YubaiCore
 
 /// Intercepts only this stub's host, so tests exercise cloud requests without network access.

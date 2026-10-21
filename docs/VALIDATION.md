@@ -1,5 +1,28 @@
 # 余白 · 交付与验证记录
 
+## Linux Core 构建与单元测试（2026-10-21）
+
+环境为 Ubuntu 24.04.5 LTS、x86_64、Swift 6.2.4（`swift-6.2.4-RELEASE`），Swift 5 语言模式。先执行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH`；受限容器使用 [开发说明](DEVELOPMENT.md#linux-core-构建与测试) 中的可写模块缓存路径。
+
+| 命令 | 实际结果 | 原始日志（本地保留，不纳入版本管理） |
+|---|---|---|
+| `swift build --target YubaiCore` | 退出 0，CArchive 与 YubaiCore 编译成功 | `.verification/linux-swift/core-build.log` |
+| `swift build` | 退出 0；Linux 构建图只包含 Core 与依赖，未构建 YubaiApp | `.verification/linux-swift/build.log` |
+| `swift test` | 退出 0；253 项 XCTest，249 通过、4 跳过、0 失败（0 unexpected），25.945 秒 | `.verification/linux-swift/test-final.log` |
+
+四个跳过均为原有的实网 opt-in 评测，未启用 `YUBAI_LIVE_EVAL=1` 与配置密钥：
+
+- `AIBenchTests.testLiveCloudFixtureWhenExplicitlyEnabled`
+- `AssistantEvalTests.testLiveAssistantEvalOnlyWhenExplicitlyEnabled`
+- `DeepSeekCloudTests.testLiveDeepSeekSmokeWhenExplicitlyEnabled`
+- `ImportOrganizerTests.testLiveImportEvalOnlyWhenExplicitlyEnabled`
+
+本轮新增 `XCTSkip` 为 0，既有测试未跳过、禁用或放宽断言。新增两项备份测试与一项 Linux 内存密钥生命周期测试：独立 hashlib／AESGCM 向量验证 100,000／210,000／1,000,000 轮 PBKDF2-HMAC-SHA256、含中文／NUL／emoji 的 UTF-8 密码、v1 nonce＋密文＋tag 与 AAD；另测 tag 篡改、导出参数与无效盐／轮数拒绝。原有 GB18030、XLSX、权限 700／600、附件、原子保存、恢复、云端 HTTP stub 等测试实际通过，无需改变金额或日期格式行为。首轮仅新增向量缺少必填偏好字段而失败，修正夹具后 StorageTests 17 项通过，再完成上述全量测试。
+
+Linux 使用 swift-crypto 3.15.1（`Crypto`、`_CryptoExtras` 产品仅在 Linux 生效）；Apple 的 CryptoKit／CommonCrypto 路径保持。API 密钥在 Linux 仅驻内存，iCloud 系统服务显式不可用；本机文件版本与测试注入的冲突选择照常运行。另将一处嵌套字符计数表达式拆成相同求和，解决 Swift 6.2.4 的类型推导超时，计数规则不变。`git diff --check` 通过；未修改 Yubai.xcodeproj、工程生成器或 UI。
+
+本记录仅证明 Linux Core 的编译与单元测试；未运行 Apple 构建、真实 Keychain／iCloud、SwiftUI／UI 测试、安装或实网 DeepSeek。下方 2026-10-20 的「无工具链／未执行」为当时历史状态，Apple 验收与设计资源边界继续有效。
+
 ## 记忆与智能设置界面静态检查（2026-10-20）
 
 - 按用户确认的八张 HTML 源码实现记忆列表、问答撤销、来信 learned／review、智能与隐私及模型不可用状态，原稿原样保存在 `.design-meta/mockups/ai-memory-v3/`，映射见 [DESIGN.md](../.design-meta/DESIGN.md#2026-10-20--记忆与智能设置选定稿)。

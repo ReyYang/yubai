@@ -10,6 +10,21 @@ final class MemoryAPIKeyStorage: APIKeyStorage, @unchecked Sendable {
 }
 
 final class AssistantPrivacyTests: XCTestCase {
+    #if os(Linux)
+    func testLinuxAPIKeyStorageSharesProcessMemoryAndSupportsReplacementAndDeletion() throws {
+        let first = APIKeyStore(); let second = APIKeyStore()
+        try first.delete(); defer { try? first.delete() }
+        XCTAssertNil(second.configuration(environment: [:]))
+        XCTAssertThrowsError(try first.save(" \n"))
+        try first.save("  process-only-key \n")
+        XCTAssertEqual(second.configuration(environment: [:])?.apiKey, "process-only-key")
+        try second.save("replacement")
+        XCTAssertEqual(first.configuration(environment: ["DEEPSEEK_API_KEY": "env-key"])?.apiKey, "replacement")
+        try first.delete(); try second.delete()
+        XCTAssertFalse(second.hasKeychainKey)
+        XCTAssertEqual(first.configuration(environment: ["DEEPSEEK_API_KEY": "env-key"])?.apiKey, "env-key")
+    }
+    #endif
     func testChineseTransferNamesAndMerchants() {
         let ledger = AssistantFixtures.context().ledger
         let redactor = Redactor(ledger: ledger)

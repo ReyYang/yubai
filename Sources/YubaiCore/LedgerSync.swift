@@ -29,8 +29,11 @@ public protocol LedgerVersionSource: Sendable {
 public final class FileLedgerVersionSource: LedgerVersionSource, @unchecked Sendable {
     private let repository: LedgerRepository
     private var fingerprint: String?
+    #if !os(Linux)
     private var conflicts: [NSFileVersion] = []
+    #endif
     public init(repository: LedgerRepository) { self.repository = repository }
+    #if !os(Linux)
     private func unresolved() -> [NSFileVersion] {
         repository.isUbiquitous ? NSFileVersion.unresolvedConflictVersionsOfItem(at: repository.file) ?? [] : []
     }
@@ -39,16 +42,22 @@ public final class FileLedgerVersionSource: LedgerVersionSource, @unchecked Send
             latest.contains { (old.persistentIdentifier as? NSObject)?.isEqual($0.persistentIdentifier) == true }
         }
     }
+    #endif
     public func versions() throws -> [LedgerVersion] {
         try repository.access(writing: false) { root in
             let file = root.appendingPathComponent("ledger.json")
+            #if !os(Linux)
             conflicts = unresolved()
+            #endif
             guard repository.containsFile(file) else {
                 fingerprint = nil; return []
             }
             let payloads = root.appendingPathComponent("Attachments", isDirectory: true)
             let current = try repository.read(file, attachmentDirectory: payloads)
             fingerprint = try LedgerCodec.checksum(Data(contentsOf: file))
+            #if os(Linux)
+            return [LedgerVersion(id: "current", ledger: current)]
+            #else
             let native = repository.isUbiquitous ? NSFileVersion.currentVersionOfItem(at: file) : nil
             var result = [LedgerVersion(id: "current", ledger: current, date: native?.modificationDate, deviceName: native?.localizedNameOfSavingComputer)]
             for (index, version) in conflicts.enumerated() {
@@ -56,17 +65,23 @@ public final class FileLedgerVersionSource: LedgerVersionSource, @unchecked Send
                 result.append(LedgerVersion(id: "conflict-\(index)", ledger: ledger, date: version.modificationDate, deviceName: version.localizedNameOfSavingComputer))
             }
             return result
+            #endif
         }
     }
     public func validate() throws {
         // Invoked under the repository's write coordination, immediately before replacement.
         let file = repository.file
         let latest = FileManager.default.fileExists(atPath: file.path) ? try LedgerCodec.checksum(Data(contentsOf: file)) : nil
-        guard latest == fingerprint, sameConflicts(unresolved()) else { throw LedgerSyncError.changed }
+        guard latest == fingerprint else { throw LedgerSyncError.changed }
+        #if !os(Linux)
+        guard sameConflicts(unresolved()) else { throw LedgerSyncError.changed }
+        #endif
     }
     public func markResolved() throws {
         // Only the versions the user saw are marked resolved. Never delete newly arriving versions.
+        #if !os(Linux)
         for version in conflicts { version.isResolved = true }
+        #endif
     }
 }
 

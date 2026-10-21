@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-21 Linux Core 验证**：Ubuntu 24.04.5／Swift 6.2.4 已完成 `swift build --target YubaiCore`、`swift build` 与 `swift test`，253 项中 249 通过、4 项原有实网 opt-in 评测跳过、0 失败；未新增 `XCTSkip`。SwiftPM 在 Linux 排除 YubaiApp；Core 增加平台兼容路径与备份兼容向量，Apple 加密路径不变。开发命令见 [DEVELOPMENT.md](../docs/DEVELOPMENT.md#linux-core-构建与测试)，证据及限制见 [VALIDATION.md](../docs/VALIDATION.md#linux-core-构建与单元测试2026-10-21)。未修改 UI、Xcode 工程或生成器；Apple 构建、系统服务及视觉验收仍待 Mac 执行，下方旧日期记录保留原含义。
+
 **2026-10-20 记忆与智能设置续作**：owner 已确认本轮八张画板，原样归档于 [ai-memory-v3](mockups/ai-memory-v3/README.md)，[源码映射](DESIGN.md#2026-10-20--记忆与智能设置选定稿)已更新。问答记忆、余白记得的、来信 learned／画像回顾、每周回看、导入自由补充和模型设置／异常提示已接入 App；这取代下方 core 记录中的「界面待确认／未接线」。新增 core 和第六条 UI 测试源码，工程已重新生成；无 Swift 工具链，仅静态检查，未编译／运行／提交。外部 Figma、旧原型与分发包未同步，验收见 [组合清单](../docs/V2-TEST-CHECKLIST.md)。
 
 **当前选定稿（2026-10-20）**：owner 已批准第三轮 `V3-*.dc.html` 与配套 DS；已在 `refactor/v2-design-alignment` 按稿实现（现在／洞察／我、根页浮动导航与问余白、相关子页），仅静态核查，未编译、未验证真机。以下两 tab 与候选视觉描述保留为本次对齐前的历史状态。
@@ -73,7 +75,7 @@ owner 于 2026-10-20 决定暂不加入付费 Apple Developer Program：先用�
 | 历史候选 | [导入结果原型](../.scratch/yubai-product/prototypes/import-result.prototype.html)、[首页 v1](prototypes/home-v1/README.md) | 合成内存交互，保留原位置；行为、导航与视觉均未同步 2.0 |
 | 样式与组件 | [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift)、[源码登记](DESIGN.md#当前应用设计) | 已有原生 token 与共用组件，2.0 新页面据此构建；编译、视觉、大字号与辅助功能待 Mac 验证 |
 | 工具与画布 | [Figma 全动作稿](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=13-3367)、[浏览基线](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=40-6983) | 1.0 派生资源已登记，未同步 2.0；本轮未调用绘图工具，也未切换设计面 |
-| 验证与分发 | [VALIDATION.md](../docs/VALIDATION.md)、[组合清单](../docs/V2-TEST-CHECKLIST.md)、[TESTFLIGHT.md](../docs/TESTFLIGHT.md) | 仅静态检查；先免费直接安装，TestFlight 准备但未启用，旧截图与包只作历史 |
+| 验证与分发 | [VALIDATION.md](../docs/VALIDATION.md)、[组合清单](../docs/V2-TEST-CHECKLIST.md)、[TESTFLIGHT.md](../docs/TESTFLIGHT.md) | Linux Core 249 通过／4 原有跳过／0 失败；Apple 应用仍待构建与验收。先免费直接安装，TestFlight 准备但未启用，旧截图与包只作历史 |
 | 维护入口 | [AGENTS.md](../AGENTS.md)、[项目协议副本](../产品设计启动协议.md) | 沿用下方维护表；tracker 继续区分真实决定、实现选择与候选，长期资料不清理或迁移 |
 
 上述资料均为长期项目资料，包括仍在 `.scratch/yubai-product/` 的权威记录。保留原位置；未来初始化版本管理时一并纳入，不能因目录名而当作缓存清理。2026-10-13 已初始化本地 Git 版本管理，代码、测试、设计资料（含原型与设计证据）和文档纳入首次提交。构建产物、依赖缓存、日志及 `.verification/` 原始运行输出由 `.gitignore` 排除，文件仍保留本地；整理后的验证报告与文档截图纳入版本管理。未配置远端或推送。

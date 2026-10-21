@@ -1,6 +1,13 @@
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 import CoreFoundation
+#if canImport(CryptoKit)
 import CryptoKit
+#elseif os(Linux)
+import Crypto
+#endif
 import CArchive
 
 public struct Classification: Sendable {
