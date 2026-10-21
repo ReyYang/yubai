@@ -59,7 +59,7 @@ struct AskYubaiView: View {
                             Text("想问什么，或记下一笔，都可以从这里开始。").yubaiFont(YubaiFont.lead)
                             Text("例如：午饭 32 微信，或这笔购买合理吗？").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                         }
-                        ForEach(messages) { message in messageView(message) }
+                        ForEach(messages) { message in messageView(message).messageEntrance(user: message.isUser) }
                         if busy || reading {
                             HStack { AssistantMark(thinking: true); Text(reading ? "正在读截图…" : "正在查阅…").yubaiFont(YubaiFont.callout) }
                         }
@@ -70,7 +70,7 @@ struct AskYubaiView: View {
                 }.onChange(of: messages.count) { _, _ in proxy.scrollTo("latest", anchor: .bottom) }
             }
             inputBar
-        }.background(YubaiColor.canvas).navigationTitle("问余白").yubaiNavigation().toolbar { CloseButton() }
+        }.amountPrivacy(store.current.preferences.hideAmounts).paperBackground().navigationTitle("问余白").yubaiNavigation().toolbar { CloseButton() }
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
                 do {
@@ -117,8 +117,8 @@ struct AskYubaiView: View {
                 if enabled { Button { send() } label: { Image(systemName: "arrow.up.circle.fill").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                     .accessibilityLabel("发送").accessibilityIdentifier("sendAsk").disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || voice.recording) }
             }.disabled(!enabled || busy || reading)
-        }.padding(8).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: 26))
-            .yubaiShadow(YubaiShadow.input).padding(.horizontal, 18).padding(.bottom, 18).opacity(enabled ? 1 : 0.6)
+        }.padding(8).buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
+            .padding(.horizontal, 18).padding(.bottom, 18).opacity(enabled ? 1 : 0.6)
     }
     @ViewBuilder private func messageView(_ message: AskMessage) -> some View {
         if message.isUser {
@@ -216,7 +216,7 @@ struct AskEvidenceView: View {
         Page {
             Text("回答依据生成时的记录；汇总较多时展示最近的部分记录。").yubaiFont(YubaiFont.caption)
             CardRows(rows) { entry in
-                NavigationLink { EntryDetailView(entryID: entry.id) } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("evidenceEntry_" + entry.id.uuidString)
+                EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts).accessibilityIdentifier("evidenceEntry_" + entry.id.uuidString)
             }
             if rows.isEmpty { Text("没有可展示的记录，或原记录已移除。") }
         }.navigationTitle("依据").yubaiNavigation()
@@ -233,7 +233,7 @@ private struct AskRecordLookupView: View {
             TextField("找一笔记录", text: $search).frame(minHeight: 44)
             let rows = store.sortedEntries.filter { $0.deletedAt == nil && (ids.isEmpty || ids.contains($0.id)) && (search.isEmpty || $0.displayTitle.localizedCaseInsensitiveContains(search)) }
             CardRows(rows) { entry in
-                NavigationLink { EntryDetailView(entryID: entry.id) } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }.buttonStyle(PressButtonStyle())
+                EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts)
             }
         }.navigationTitle("核对记录").yubaiNavigation()
     }

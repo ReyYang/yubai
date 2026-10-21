@@ -4,27 +4,32 @@ import YubaiCore
 
 struct ButlerSection: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         let cards = ButlerCards.visible(store.current)
-        if let first = cards.first {
-            ButlerCardView(card: first, additionalCount: cards.count - 1)
-        } else {
-            HStack(spacing: 8) { AssistantMark(size: 14).accessibilityHidden(true); Text("管家这会儿没有要说的。") }
-                .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).padding(.vertical, 4)
-        }
+        VStack {
+            if let first = cards.first {
+                ButlerCardView(card: first, additionalCount: cards.count - 1).id(first.id)
+                    .transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion))
+            } else {
+                HStack(spacing: 8) { AssistantMark(size: 14).accessibilityHidden(true); Text("管家这会儿没有要说的。") }
+                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).padding(.vertical, 4)
+            }
+        }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: cards.map(\.id))
     }
 }
 
 struct ButlerListView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         let cards = ButlerCards.visible(store.current)
         Page {
-            ForEach(cards) { card in ButlerCardView(card: card) }
+            ForEach(cards) { card in ButlerCardView(card: card).transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion)) }
             if !store.current.mutedTopics.isEmpty {
                 Text("说过「以后别提」的：\(store.current.mutedTopics.count) 类").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
-        }.navigationTitle("管家的话").yubaiNavigation()
+        }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: cards.map(\.id)).navigationTitle("管家的话").yubaiNavigation()
     }
 }
 
@@ -46,7 +51,7 @@ struct ButlerCardView: View {
                 Text(hidden ? "管家的观察" : card.title).yubaiFont(YubaiFont.cardTitle).padding(.trailing, 32)
                     .foregroundStyle(amber ? YubaiColor.amberStrong : YubaiColor.label)
                     .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("butlerTitle_" + card.kind.rawValue)
-                Button { store.sheet = .cardEvidence(card.id) } label: {
+                Button { store.present(.cardEvidence(card.id), from: "card-" + card.id.uuidString) } label: {
                     Text((hidden ? "金额已隐藏" : card.body) + " · 依据 ›")
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).multilineTextAlignment(.leading)
                 }.buttonStyle(PressButtonStyle()).frame(minHeight: 44, alignment: .leading)
@@ -63,7 +68,8 @@ struct ButlerCardView: View {
                         .frame(width: 28, height: 28).background(YubaiColor.raised, in: Circle()).frame(width: 44, height: 44)
                 }.accessibilityLabel("更多：知道了、以后别提").accessibilityIdentifier("butlerOptions_" + card.kind.rawValue)
             }
-        }
+        }.yubaiZoomSource("card-" + card.id.uuidString)
+            .onAppear { if card.kind == .shortfall, YubaiMotion.claim("floor-alert-" + card.id.uuidString) { store.floorWarningTrigger &+= 1 } }
     }
     @ViewBuilder private var actions: some View {
         if card.kind == .offCharacter {
@@ -73,8 +79,8 @@ struct ButlerCardView: View {
             }.disabled(card.feedback != nil).buttonStyle(ButlerActionStyle(amber: true))
         } else {
             Button(actionTitle) {
-                if card.kind == .shortfall { store.sheet = .ask("接下来的付款有缺口，帮我看看怎么挪。" + card.title) }
-                else { store.performCardAction(card) }
+                if card.kind == .shortfall { store.present(.ask("接下来的付款有缺口，帮我看看怎么挪。" + card.title), from: "card-" + card.id.uuidString) }
+                else { store.sheetSource = "card-" + card.id.uuidString; store.performCardAction(card) }
             }.buttonStyle(ButlerActionStyle(amber: amber))
         }
     }
@@ -119,7 +125,7 @@ private struct ButlerActionStyle: ButtonStyle {
             .padding(.horizontal, 14).padding(.vertical, 7)
             .foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.onBrand)
             .background(amber ? YubaiColor.raised : YubaiColor.brand, in: Capsule())
-            .frame(minHeight: 44).opacity(configuration.isPressed ? 0.75 : 1)
+            .frame(minHeight: 44).opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
@@ -148,8 +154,7 @@ struct ButlerEvidenceView: View {
                 let ids = Set(card.evidence)
                 let rows = store.sortedEntries.filter { ids.contains($0.id) }
                 CardRows(rows) { entry in
-                    NavigationLink { EntryDetailView(entryID: entry.id) } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }
-                        .buttonStyle(PressButtonStyle())
+                    EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts)
                 }
                 if card.evidence.count > rows.count { Text("部分原始记录已移除，以上数值保留生成时的依据。").yubaiFont(YubaiFont.caption) }
             } else { Text("这张卡片已移除。") }
@@ -226,7 +231,6 @@ struct WeeklyLetterCard: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     let card: ButlerCard
-    @State private var appeared = false
     @State private var reviewProposal: ChangeSet?
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -239,7 +243,7 @@ struct WeeklyLetterCard: View {
                 Card {
                     VStack(alignment: .leading, spacing: 8) {
                         SectionHeading(title: "余白这一周", meta: "每日收盘回算")
-                        ChartGrow(appeared: $appeared) { progress in LetterChart(points: facts.series, progress: progress) }
+                        ChartGrow(key: "letter-chart-" + card.id.uuidString) { progress in LetterChart(points: facts.series, progress: progress) }
                     }
                 }
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
@@ -248,7 +252,7 @@ struct WeeklyLetterCard: View {
                         Card(style: .compact) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(fact.label).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                                Text(fact.value).yubaiFont(YubaiFont.amountCard)
+                                Text(fact.value).yubaiFont(YubaiFont.amountCard).numberTransition(value: Double(fact.cents ?? 0) / 100)
                             }
                         }
                     }
@@ -322,11 +326,12 @@ private struct LetterChart: View {
     }
     var body: some View {
         Chart(points) { point in
-            AreaMark(x: .value("日期", point.date), y: .value("余白", Double(point.available) / 100 * progress))
+            AreaMark(x: .value("日期", point.date), y: .value("余白", Double(point.available) / 100))
                 .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand.opacity(0.12))
-            LineMark(x: .value("日期", point.date), y: .value("余白", Double(point.available) / 100 * progress))
+            LineMark(x: .value("日期", point.date), y: .value("余白", Double(point.available) / 100))
                 .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: YubaiSize.lineWidth))
         }.chartYScale(domain: domain).chartYAxis(.hidden)
+            .chartPlotStyle { plot in plot.mask(alignment: .leading) { GeometryReader { geometry in Rectangle().frame(width: geometry.size.width * progress) } } }
             .chartXAxis { AxisMarks(values: .stride(by: .day, count: 2)) { _ in
                 AxisValueLabel(format: .dateTime.month().day()).foregroundStyle(YubaiColor.labelSecondary).font(.system(size: YubaiFont.chartLabel.size))
             } }.frame(height: 140)

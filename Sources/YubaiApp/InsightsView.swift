@@ -6,6 +6,7 @@ struct InsightsView: View {
     private enum Window: String, CaseIterable { case week = "本周", month = "本月", quarter = "近 3 个月", custom = "自定" }
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var window = Window.month
     @State private var anchor = Date()
     @State private var income = false
@@ -55,9 +56,9 @@ struct InsightsView: View {
                     }
                     if slices.isEmpty { Text("先有生活的记录，再有洞察").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, 24) }
                     VStack(spacing: 0) {
-                        ForEach(Array(slices.enumerated()), id: \.element.id) { rank, slice in
-                            NavigationLink { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range) } label: {
-                                legend(slice, rank: rank, slices: slices)
+                        ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
+                            NavigationLink { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range).yubaiZoomDestination("category-\(rank)") } label: {
+                                legend(slice, rank: rank, slices: slices).yubaiZoomSource("category-\(rank)")
                             }.buttonStyle(PressButtonStyle())
                             if slice.id != slices.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
                         }
@@ -70,7 +71,7 @@ struct InsightsView: View {
                 Text("有跨期退款：负数类型不画扇区，占比按正数类型合计；中央与上方数字仍为退款抵减后的净额。")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }
-        }.safeAreaPadding(.bottom, 106).navigationTitle("洞察")
+        }.amountPrivacy(store.current.preferences.hideAmounts).safeAreaPadding(.bottom, YubaiSize.rootBottomPadding).navigationTitle("洞察")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
@@ -112,12 +113,22 @@ struct InsightsView: View {
         return colors[min(normalRank, colors.count - 1)]
     }
     private func donut(_ slices: [CashFlowSlice], total: Int64) -> some View {
-        Chart {
-            ForEach(Array(slices.enumerated()).filter { $0.element.amount > 0 }, id: \.element.id) { rank, slice in
-                SectorMark(angle: .value("金额", Double(slice.amount)), innerRadius: .fixed(64), outerRadius: .fixed(90), angularInset: 2.5)
-                    .foregroundStyle(color(slice, rank: rank, slices: slices))
-            }
-        }.chartLegend(.hidden).frame(width: 180, height: 180)
+        let positiveTotal = slices.reduce(0.0) { $0 + max(0, Double($1.amount)) }
+        return ChartSegments(key: "insights-donut", count: slices.count) { progress in
+            ZStack {
+                ForEach(0..<6, id: \.self) { rank in
+                    let start = positiveTotal > 0 ? slices.prefix(rank).reduce(0.0) { $0 + max(0, Double($1.amount)) } / positiveTotal : 0
+                    let share = rank < slices.count && positiveTotal > 0 ? max(0, Double(slices[rank].amount)) / positiveTotal : 0
+                    // Animate the angular mask; palette changes stay immediate.
+                    (rank < slices.count ? color(slices[rank], rank: rank, slices: slices) : YubaiColor.neutralSoft).mask {
+                        Chart {
+                            SectorMark(angle: .value("整圈", 0.0..<1.0), outerRadius: .fixed(0)).foregroundStyle(.clear)
+                            SectorMark(angle: .value("占比", start..<(start + share * progress[rank])), innerRadius: .fixed(64), outerRadius: .fixed(90), angularInset: 2.5)
+                        }.chartLegend(.hidden).animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: slices.map(\.amount))
+                    }
+                }
+            }.frame(width: 180, height: 180)
+        }
             .overlay {
                 VStack(spacing: 2) { Text(income ? "收入" : "支出").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary); AmountLabel(cents: total, role: .donut) }.frame(maxWidth: 116)
             }.frame(maxWidth: .infinity).padding(.vertical, 10)
@@ -136,7 +147,7 @@ struct InsightsView: View {
             HStack(spacing: 10) {
                 AmountLabel(cents: slice.amount, hide: store.current.preferences.hideAmounts, role: .small)
                 Text(store.current.preferences.hideAmounts ? "" : (slice.amount < 0 ? "—" : String(format: "%.0f%%", slice.share * 100)))
-                    .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                    .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).numberTransition(value: slice.share * 100, enabled: !store.current.preferences.hideAmounts)
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
             }
         }.frame(minHeight: 44).padding(.vertical, textSize.isAccessibilitySize ? 6 : 0).contentShape(Rectangle())
@@ -170,7 +181,7 @@ private struct FlowRecordsView: View {
         }
         Page {
             CardRows(rows) { entry in
-                NavigationLink { EntryDetailView(entryID: entry.id) } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }.buttonStyle(PressButtonStyle())
+                EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts)
             }
         }.navigationTitle(title).yubaiNavigation()
     }

@@ -50,7 +50,7 @@ struct ImportView: View {
             else if let preview { previewView(preview) }
             else { intake }
             if let localError { InlineNote(text: localError, style: .attention).padding(YubaiSpace.space18).textSelection(.enabled) }
-        }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas).navigationTitle(resultTitle).yubaiNavigation().toolbar {
+        }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground().navigationTitle(resultTitle).yubaiNavigation().toolbar {
                 ToolbarItem(placement: .confirmationAction) { CloseButton() }
                 ToolbarItem(placement: .cancellationAction) {
                     if let result, let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) {
@@ -73,7 +73,7 @@ struct ImportView: View {
     }
     private var readingView: some View {
         VStack(spacing: YubaiSpace.space20) {
-            WaterLevelView(filledBands: 6)
+            WaterLevelView(filledBands: 6, moment: "import-reading")
             Text("正在读取账单…").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
             Text("原始文件留在本机；云端智能只接收脱敏后的任务摘要。").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
         }.padding(YubaiSpace.space18).frame(maxWidth: .infinity, maxHeight: .infinity)

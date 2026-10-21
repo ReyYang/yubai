@@ -1,5 +1,21 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-21 · Motion v2 与 Liquid Glass
+
+owner 本轮明确批准 motion v2 与 iOS 26 Liquid Glass，按所附 README 的「玻璃／动效／SwiftUI 对照」、tokens 和交互样机接入。三份输入[原样长期保存](motion-v2/README.md)，本轮指令中的已批准状态优先于原文件遗留的「待确认」。本次取代下方 V3 的 iPhone 自绘导航与 iOS 18 部署描述；V3 其余页面结构继续沿用，不改财务规则或 Core。
+
+- `DesignSystem.swift`：集中三种 spring、时长与曲线；数字用 numericText，隐藏金额／减少动态效果用 160ms 淡入淡出或终态。首现图表与水位按进程登记，离开时结束；预测线横向揭示，低点下落与单次外圈，环图逐段长出／角度变形、柱从基线生长。环图着色放在动画 mask 外，避免颜色渐变。
+- `YubaiApp.swift`：iOS 系统 TabView 三页，search role 作为问余白动作，selection binding 保留原页；新根页方向偏移 12pt，首开无入场。保留 `tab_*` 标签标识，UI 测试按系统标签文字查找。Mac 侧栏与旧版安全留白保持；系统栏接管 iOS 底部安全区。
+- 浮层：顶栏圆钮、提示条、助手输入条和 Mac 问余白圆钮用系统 glassEffect；顶栏组合使用 GlassEffectContainer。sheet 容器不再强盖 canvas，内卡／列表仍为暖纸；iOS 系统导航提供返回控件，内容详情用 matchedTransitionSource／zoom，设置列表继续 push。所有新增玻璃 API 均有 macOS 26 可用性分支。
+- 保存：持久化成功后识别实际新增／删除记录；sheet 收起后英雄数字换位、水带 keyframe 单次晃动与成功触感，380ms 后提示条入场，名义时长至 680ms。撤销只换回数字与轻触感；整批撤销抑制删除触感。替换账本或锁屏会取消待播反馈。行插入／删除让位、首次新行洗色、管家收起、分段滑块、助手消息入场和 4 秒提示条下滑关闭已接线。
+- 新增 `MotionState.swift` 的 Foundation 逻辑测试，直接与 App 共用源文件编入 UI 测试 bundle；新增问余白保留当前页的 UI 流程。工程生成器同步 iOS 26 与源文件引用；PackageDescription 升到 6.2 以使用 `.iOS(.v26)`，Swift 5 语言模式、macOS 14 与 Linux Core 排除 App 的规则保持。
+
+缺屏：当前没有原型中的独立「记一笔」数字键盘／分类选中芯片、「今天 → 账目」总账页、独立「想一想」五道水位购买完成页；没有为本任务新造这些页面。现有问答补记、导入、分类／账户／依据记录列表已接入对应保存与行反馈。分类芯片的缩放 helper 已备好，但无该类选中芯片可接。
+
+系统标签图标当前使用静态水位模板资产与 SF Symbols，原型的逐带／扇区／点头自定义图标动画未实现；标签栏的玻璃选择动作交给系统。问余白的 zoom 来源已绑到系统 Tab 标签，原生 Tab 标签提取是否保留来源几何、圆钮的 tint 效果仍需 Xcode 26 真机确认，不能当成已验收。
+
+本轮只有[静态检查](../docs/VALIDATION.md#motion-v2--liquid-glass静态核对2026-10-21)，没有 Swift 类型检查、Apple 构建、Core／UI 测试运行或视觉、VoiceOver、减少动态效果设备验收。旧 Figma、历史 HTML、截图和发布包未同步；不提交、不推送。
+
 ## 2026-10-20 · 记忆与智能设置选定稿
 
 owner 本轮明确确认八张记忆与智能设置画板，按当前 `feat/ai-memory-drift-fixes` 源码结构接入；批准设计稿不代表已经完成原生设备验收。[原样保存的画板](mockups/ai-memory-v3/README.md)补充并取代下方相应的「缺画板／界面待确认」历史状态。
