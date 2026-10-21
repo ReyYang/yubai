@@ -73,7 +73,7 @@ struct ModelUnavailableNote: View {
     let model: String
     var body: some View {
         (Text("模型「\(model)」现在用不了。").foregroundColor(YubaiColor.amberInk).fontWeight(.medium)
-         + Text("DeepSeek 可能改名或下线了它。问余白和整理先停下，账本和计算不受影响。点「模型」换一个名字再试。"))
+         + Text("请到「模型」换个名字再试。"))
             .yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, YubaiSpace.space12).padding(.horizontal, YubaiSpace.space16)
             .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.row))

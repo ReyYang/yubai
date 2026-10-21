@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-21 · 快速记账与五个界面概念合并
+
+按本轮合并任务保留双方已采用范围，不新增产品或视觉决定。`SettingsView.swift` 保持消费观内记忆计数、心愿单／每周来信共卡及指南删除，同时保留「快速记账」入口，移除底部重复的旧来信行。`EntryEditView.swift` 保留 Apple Pay 来源胶囊、商户分类映射、删除／好了按钮与普通记录编辑，性质使用 `entryLabel`，购买问题统一为「该不该买」。`DesignSystem.swift` 保留「没分类」标签、新主数字文案与分段控件尺寸修复；`EntryFormComponents.swift` 保留日期弹窗尺寸及可隐藏表头动作。
+
+Siri 结果、截图列表、通知、商户映射与编辑页的分类文案复用 `Classification.displayCategory`，不修改分类存储原值或规则。V7 卡片检测／合并／日期／反馈逻辑保持。`scripts/generate-project.py` 已核对包含双方新增文件与四个 target，再生成工程；没有手工拼接 pbxproj。双方原始设计记录按新到旧保留于下方，产品票按旧到新保存。
+
+合并后的 Linux 构建、346 项 Core 测试、iOS／Mac App 与 iOS Widget 语法解析及工程引用检查见[验证记录](../docs/VALIDATION.md#快速记账与五个界面概念合并2026-10-21)。Apple SDK 类型检查、UI 测试与设备验收仍待做；未提交／推送，Figma、历史原型与分发包未同步。
+
 ## 2026-10-21 · 第九轮「快速记账」
 
 owner 在本轮 brief 明确确认 V9 八张画板及 DS「系统入口／动效」，[原稿与任务原文](mockups/quick-capture-v9/README.md)原样长期归档。本轮授权优先于下方旧轮次“不提交”的范围描述。选定稿不代表原生设备验收通过。
@@ -17,6 +25,32 @@ Core `QuickCapture.swift` 复用 EntryAmountParser、ManualBookkeeping 与 Finan
 
 没有新增动效或包，界面沿用 YubaiMotion 与系统 sheet／导航。Siri／通知／WidgetKit 的外框交给系统，画板的手机背景、系统遮罩、外部字体不复制进应用。实现与原稿的映射不构成逐像素原生验证；390pt、大字号、深色、VoiceOver、减少动态效果、锁屏及系统自动化均待 Apple 设备按[清单](../docs/QUICK-CAPTURE.md#验证与限制)验证。Linux build 和 324 项完整 Core 测试结果见[验证报告](../docs/VALIDATION.md#第九轮快速记账2026-10-21)。Figma、历史原型及分发包未同步。
 
+## 2026-10-21 · 五个界面概念
+
+来源为 owner 本轮完整任务；这是明确采用的文案与局部结构调整，不是新增视觉定稿。术语权威见 [CONTEXT.md](../CONTEXT.md#界面用词)，决定与边界见[第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-21--五个界面概念owner-明确要求)。本条取代 V3／V4 稿中对应旧文案、我页独立记忆入口和指南；原稿归档保持原样。
+
+| 范围 | 权威源码与采用方式 |
+|---|---|
+| 我 | `SettingsView.swift`：我的消费观内加记忆总数与本周新增数；下方心愿单／每周来信合为一张卡；保留账户、账目、固定收付及底部导入记录／智能与隐私／备份与恢复；删除指南行和实现 |
+| 我的消费观 | `ProfileView.swift`：末节展示最近更新的两条记忆，带日期与中文来源；「全部 N 条 ›」push 原 `MemoryView`，空列表仍可进入；沿用现有暖纸卡片、字体与导航 |
+| 还能花 | `OverviewView.swift`／`DesignSystem.swift`：主数字、图例、预测、每周来信与购买判断统一用词；明细页仅列现金、信用卡要还、接下来要付、在存钱、始终留着、日常开销、没写用途的进账、= 还能花，保留付款列表和事实提示 |
+| 详情与欢迎页 | `EntryDetailView.swift` 不展示性质行；编辑／版本摘要只展示支出、收入、转账，底层 Nature 不变；`WelcomeView` 保留品牌、先记下此刻的余额与原按钮 |
+| 需要留意与每周来信 | `ButlerViews.swift`：空卡片区不显示占位话；标题、标签和明细链接按新词；保留 PR #18 的 V7 检测、合并、日期、证据与反馈逻辑及所有入口 |
+| Core 与生成文案 | 仅更新可见模板、错误提示及模型措辞约束；记忆来源使用展示属性，旧分类占位用展示映射；不迁移存档、不改计算、字段、Codable 键、枚举原值或去重键 |
+
+验证见[本轮记录](../docs/VALIDATION.md#五个界面概念2026-10-21)。Linux 不编译 SwiftUI；Apple 构建、两端布局、大字号、VoiceOver 与真机验收仍待做。未提交；Figma、历史原型、截图和分发包未同步。
+
+## 2026-10-21 · 管家的话 V7 异常消费卡
+
+owner 在本轮任务提供已批准的 `V7-Butler-Unusual` 文案与行为，[文字归档](mockups/butler-unusual-v7.md)是本轮来源；没有取得原画板文件，也未新绘制或改动历史稿。采用以下范围，其他卡片沿用现有设计。
+
+| 范围 | 权威源码与采用方式 |
+|---|---|
+| 原因、用途与日期 | `Assistant/ButlerWording.swift / OffCharacter`：偏高／少见／想克制的模板、用途约 10 字与 Money.text 金额、单笔倍数四舍五入、合并最小倍数向下取整、实际消费日期范围。 |
+| 合并与存档 | 同原因同分类／克制领域合并；所有 entry IDs 留在 evidence 和稳定键中。`CardCandidate`／`ButlerCard` 仅新增可选 meta，旧卡片缺字段仍用现有展示。反馈、静音、导入撤销与每周回看复用既有入口。 |
+| 原生展示 | `ButlerViews.swift / ButlerCardView`：复用 serif cardTitle、muted 正文按钮及现有依据页；单笔「看这笔 ›／值得」、合并「看看这 N 笔 ›／都值得」，「有点后悔」保持。隐藏金额时仍只显示隐藏提示与依据链接。 |
+
+合并偏高正文的「平时一笔约」取各笔历史的去重并集、排除本卡记录后的均值；标题最低倍数仍按每笔自己的检测均值计算。合并少见／克制标题与有界事实摘要为授权内实现选择，非 owner 提供的额外画板。运行结果见 [本轮验证](../docs/VALIDATION.md#管家的话-v7-异常消费卡2026-10-21)。已通读核对 SwiftUI，Apple 编译、布局、辅助功能与真机验收未执行；Figma、旧原型、截图及分发包未同步，不提交。
 
 
 ## 2026-10-21 · 第四轮「手动优先」

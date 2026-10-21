@@ -82,7 +82,7 @@ struct ScreenshotCaptureView: View {
                                     Image(systemName: selected.contains(draft.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(YubaiColor.brandInk)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(draft.title).yubaiFont(YubaiFont.rowTitle)
-                                        Text(draft.category + " · " + store.current.accountName(draft.accountID) + " · " + ManualBookkeeping.dayLabel(draft.date))
+                                        Text(Classification.displayCategory(draft.category) + " · " + store.current.accountName(draft.accountID) + " · " + ManualBookkeeping.dayLabel(draft.date))
                                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                                     }
                                     Spacer()

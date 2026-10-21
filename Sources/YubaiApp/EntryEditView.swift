@@ -43,7 +43,7 @@ private struct EntryEditForm: View {
                     if standardNature && draft.source != "Apple Pay" {
                         Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $draft.nature)
                     } else if !standardNature {
-                        Text(draft.nature.label).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                        Text(draft.nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                             .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -80,21 +80,21 @@ private struct EntryEditForm: View {
                     if draft.source != "Apple Pay" {
                         Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, 4)
                         Button {
-                            let question = "\(draft.displayTitle)，\(Money.text(draft.amount))，这笔合理吗？"
+                            let question = "\(draft.displayTitle)，\(Money.text(draft.amount))，该不该买？"
                             store.sheetSource = nil; store.sheet = .ask(question)
                         } label: {
                             Card(style: .list) {
                                 HStack(spacing: 8) {
                                     AssistantMark(size: 16, color: YubaiColor.brandInk)
-                                    Text("问余白：这笔合理吗").yubaiFont(YubaiFont.row)
-                                    Spacer(); Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                                    Text("该不该买 ›").yubaiFont(YubaiFont.row)
+                                    Spacer()
                                 }.frame(minHeight: 46)
                             }
                         }.buttonStyle(PressButtonStyle())
                     }
                     if let merchant = draft.quickCapture?.merchant {
                         HStack {
-                            Text("以后「\(merchant)」都记到 \(draft.category)").yubaiFont(YubaiFont.caption)
+                            Text("以后「\(merchant)」都记到 \(Classification.displayCategory(draft.category))").yubaiFont(YubaiFont.caption)
                             Text("·").foregroundStyle(YubaiColor.labelSecondary)
                             Button(remembered ? "已记好" : "好") {
                                 remembered = store.update("记下商户分类") { try QuickCapture.remember(merchant: merchant, category: draft.category, in: &$0) }

@@ -54,7 +54,7 @@ struct InsightsView: View {
                     if !store.current.preferences.hideAmounts {
                         donut(slices, total: income ? summary.income : summary.spending)
                     }
-                    if slices.isEmpty { Text("先有生活的记录，再有洞察").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, 24) }
+                    if slices.isEmpty { Text("还没有收支记录").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, 24) }
                     VStack(spacing: 0) {
                         ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
                             NavigationLink { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range).yubaiZoomDestination("category-\(rank)") } label: {
@@ -65,10 +65,8 @@ struct InsightsView: View {
                     }
                 }
             }
-            Text("转账、还信用卡不算收支；退款只抵减支出，不算收入。与每周来信使用同一口径。")
-                .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             if summary.spendingByCategory.contains(where: { $0.amount < 0 }) {
-                Text("有跨期退款：负数类型不画扇区，占比按正数类型合计；中央与上方数字仍为退款抵减后的净额。")
+                Text("本期有跨期退款。")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }
         }.amountPrivacy(store.current.preferences.hideAmounts).safeAreaPadding(.bottom, YubaiSize.rootBottomPadding).navigationTitle("洞察")

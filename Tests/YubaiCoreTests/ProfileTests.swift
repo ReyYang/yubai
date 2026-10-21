@@ -32,7 +32,7 @@ final class ProfileTests: XCTestCase {
         let limit = first["restrain"]?.arrayValue?.first?["soft_limit"]
         XCTAssertEqual(limit?["per_week_count"], .number(3))
         XCTAssertEqual(limit?["per_month_amount"], .money(50_000))
-        XCTAssertEqual(limit?["text"], .string("每周 ≤ 3 次 · 每月 ≤ " + Money.text(50_000)))
+        XCTAssertEqual(limit?["text"], .string("每周最多 3 次 · 每月最多 " + Money.text(50_000)))
         XCTAssertEqual(first["floor_amount"], .money(500_000))
         let goal = first["goals"]?.arrayValue?.first
         XCTAssertEqual(goal?["title"], .string("旅行")); XCTAssertEqual(goal?["target"], .money(800_000))
@@ -77,7 +77,7 @@ final class ProfileTests: XCTestCase {
         XCTAssertEqual(ProfileArea(title: "空").usage(in: ledger, now: now).monthAmount, 0)
         let blank = ProfileArea(title: "空", match: AreaMatch(keywords: ["  "]))
         XCTAssertEqual(blank.usage(in: ledger, now: now).weekCount, 0)
-        XCTAssertEqual(SoftLimit(perWeekCount: 0).text, "每周 ≤ 0 次")
+        XCTAssertEqual(SoftLimit(perWeekCount: 0).text, "每周最多 0 次")
     }
     func testUsageRefundMatchesOriginalKeywordOutsideMonthAndUsesPersonalShare() {
         var ledger = seed()

@@ -1,5 +1,51 @@
 # 余白 · 交付与验证记录
 
+## 快速记账与五个界面概念合并（2026-10-21）
+
+本轮在 `feat/quick-capture-entries` 的进行中 merge 内解决 `origin/refactor/five-user-concepts` 冲突。[合并映射](../.design-meta/DESIGN.md#2026-10-21--快速记账与五个界面概念合并)保留快速记账、五个概念词汇、日期／分段控件与 V7 卡片修复；双方产品／设计记录完整保留，按时间排列。
+
+| 检查 | 实际结果 |
+|---|---|
+| `swift build && swift test` | Linux x86_64／Swift 6.2.4，退出 0；build 20.45 秒，测试构建 12.57 秒；346 项 XCTest，342 通过、4 项原有实网 opt-in 跳过、0 失败，运行 37.357 秒 |
+| 相关回归 | QuickCaptureTests 14 项、InterfaceVocabularyTests 3 项、OffCharacterTests 15 项全部通过；完整测试同时覆盖财务计算、存储与 Codable 兼容 |
+| App／Widget 语法 | 34 个 App Swift 文件分别按 iOS 26／macOS 14 解析；Widget 及两个共享文件按 iOS 26 解析，全部退出 0 |
+| 工程生成与引用 | 核对生成脚本后运行；重复生成逐字节一致，无悬空对象引用；App／CoreTests／UITests／Widget 四个 target、双方全部 App／Core 测试文件、Widget 共用文件及共享 scheme 均已纳入 |
+| 文案与冲突 | App 字符串词汇测试通过；快速记账相关动态分类复用展示映射，普通改账提问使用「该不该买」；冲突标记扫描与 `git diff --check` 通过 |
+
+首次命令因 `/root` 默认模块缓存只读而失败，改用以下环境变量后原样执行 `swift build && swift test` 成功；没有修改包清单或跳过新增测试：
+
+```sh
+export CLANG_MODULE_CACHE_PATH=/tmp/yubai-merge1-clang-module-cache
+export SWIFTPM_MODULECACHE_OVERRIDE=/tmp/yubai-merge1-swiftpm-module-cache
+export XDG_CACHE_HOME=/tmp/yubai-merge1-swift-cache
+swift build && swift test
+```
+
+完整成功日志留在本机 `.verification/merge-quick-capture-swift.log`（Git 忽略）。Linux 不编译 SwiftUI／WidgetKit；上述语法解析不代表 Apple SDK 类型检查、UI 测试、签名或设备验收。未提交／推送，Figma、历史稿、截图及分发包未同步；下方记录保留各轮原始证据。
+
+已尝试对 7 个冲突文件、4 个快速记账文案适配文件及本文执行 `git add`，退出 128：`Unable to create '/home/user/yubai/.git/index.lock': Read-only file system`。工作区内容已解决且检查通过；索引没有写入，`git diff --name-only --diff-filter=U` 仍列出原 7 个文件，须在 `.git` 可写环境暂存。未创建提交，HEAD 保持 `68d9131`。
+
+## 五个界面概念（2026-10-21）
+
+本轮仅按 owner 的文案与指定结构任务调整界面；[采用映射](../.design-meta/DESIGN.md#2026-10-21--五个界面概念)、[界面用词](../CONTEXT.md#界面用词)与[决定来源](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-21--五个界面概念owner-明确要求)已同步。
+
+- 使用 `/opt/swift-rootfs/usr/bin/swift`（Swift 6.2.4），配置 `/tmp` 内模块缓存后运行 `swift test`：332 项 XCTest，328 通过，4 项原有实网 opt-in 跳过，0 失败（0 unexpected），36.069 秒。首轮三个旧文案断言失败，已仅同步预期字符串并完整重跑通过；未新增跳过或调用真实模型。
+- 新增 `InterfaceVocabularyTests`：扫描 `Sources/YubaiApp/*.swift` 的字符串，禁止 owner 指定的 11 个旧词，排除注释；扫描器覆盖嵌套块注释、字符串内注释标记、原始／多行字符串和插值内字符串。另核对记忆来源原值与旧分类占位原值保持，新词只用于展示。
+- 运行 `swiftc -frontend -parse Sources/YubaiApp/*.swift Tests/YubaiUITests/AppFlowTests.swift`，退出 0。更新记忆 UI 流程为「我 → 我的消费观 → 全部 N 条」；该 UI 测试未运行。
+- 已重跑工程生成器登记新测试；`git diff --check` 通过。财务规模对照、存档／Codable 兼容及 PR #18 的 OffCharacter／合并卡片回归均包含在上述完整测试内。未修改资金算法、模型存储字段、Codable 键、枚举原值、去重键或迁移已有数据。
+
+分支 `refactor/five-user-concepts` 基于 PR #18 最新提交 `105c280`；本轮核对时 PR #18 尚未合并，远端 main 为 `81c8b2c`，因此尚未完成「合入后对齐 main」的前提。不代为合并该 PR，不提交或推送。
+
+Linux 包清单排除 YubaiApp，因此语法解析不能证明 SwiftUI／Apple API 类型检查或运行效果。Apple 构建、iPhone／Mac 布局、大字号、VoiceOver、通知与真实模型生成文案仍待验证；Figma、历史稿、截图及分发包未同步。
+
+## 管家的话 V7 异常消费卡（2026-10-21）
+
+按 owner 本轮提供的 [V7 文案与规则](../.design-meta/mockups/butler-unusual-v7.md)实现。执行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH; swift build && swift test`：构建退出 0，329 项 XCTest，325 通过、4 项原有实网 opt-in 测试跳过、0 失败（0 unexpected），33.760 秒。没有新增跳过；依赖已在本地，无需网络抓取。SwiftPM 用户级缓存不可写的警告未阻止构建或测试。
+
+新增 16 项测试（`OffCharacterTests` 15 项、`MemoryReflectionTests` 1 项），另调整既有导入历史／撤销断言以验证合并：三种原因的标题／正文／meta、用途截断与分类回退、个人承担／3 倍边界、四舍五入与合并最小整数下界、实际消费日期与同日／跨月范围、三笔高消费全部依据及稳定去重、按原因／分类／领域分组、已有依据／旧键跳过、AI 只挑选与回退及其他类型继续改写、合并反馈计一次／静音、旧卡无 meta 解码、完整依据与长键存储，以及每周回看使用全部合并依据。原始测试日志保留于 `/tmp/yubai-off-character-tests-final.log`，不纳入版本管理。
+
+`git diff --check`、`swiftc -frontend -parse Sources/YubaiApp/ButlerViews.swift` 通过，人工通读核对卡片 serif／muted 样式、两种依据链接、单笔／合并反馈与隐藏金额、旧卡回退。Linux 不编译 YubaiApp，未执行 Apple SwiftUI 类型检查、UI 测试或真机布局／辅助功能验收。未提交，Figma、旧原型、截图和分发包未同步。历史记录保留原日期语义。
+
 ## Motion v2 / Liquid Glass 静态核对（2026-10-21）
 
 本轮容器无 `swift`／Xcode，执行 `swift test` 返回 127（command not found），未运行 Swift 类型检查、Core 测试或 UI 测试。下方同日 Linux Core 运行结果属于此前有 Swift 的环境，不覆盖本轮工程与 UI 改动。

@@ -152,7 +152,7 @@ final class FinanceTests: XCTestCase {
     }
     func testUnknownIncomingAfterAnchorIsWithheldButHistoricalNotSubtractedTwice() {
         var l = basic(); l.entries = [Entry(date: now, amount: 80000, nature: .unknownIn, accountID: l.accounts[0].id, title: "待明确"), Entry(date: Dates.addDays(-20, to: now), amount: 90000, nature: .unknownIn, accountID: l.accounts[0].id, title: "历史")]
-        let f = Finance.funds(l, now: now); XCTAssertEqual(f.uncertainInflow, 80000); XCTAssertEqual(f.available, 800000); XCTAssertTrue(f.warnings.contains { $0.contains("历史未知") })
+        let f = Finance.funds(l, now: now); XCTAssertEqual(f.uncertainInflow, 80000); XCTAssertEqual(f.available, 800000); XCTAssertTrue(f.warnings.contains { $0.contains("没写用途") })
     }
     func testMonthlyRentContributionAndQuarterlyPayment() {
         var l = basic(); let r = Rent(monthlyTotal: 40000, personalShare: 20000, startDate: Dates.day(now), nextDueDate: Dates.addDays(20, to: now)); l.rents = [r]

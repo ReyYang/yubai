@@ -11,6 +11,8 @@ import Crypto
 import CArchive
 
 public struct Classification: Sendable {
+    public static let pendingCategory = "待整理"
+    public static func displayCategory(_ category: String) -> String { category == pendingCategory ? "没分类" : category }
     public var category: String; public var nature: Nature; public var reason: String
 }
 /// Only explicit bill type fields supply deterministic nature hints. No merchant rules.

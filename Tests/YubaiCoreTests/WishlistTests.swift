@@ -16,7 +16,7 @@ final class WishlistTests: XCTestCase {
         XCTAssertTrue(ButlerCards.refresh(&ledger, now: ctx.now))
         let cards = ledger.cards.filter { $0.dedupeKey == "follow:\(wish.id)" }
         XCTAssertEqual(cards.count, 1); XCTAssertEqual(cards.first?.kind, .followUp)
-        XCTAssertEqual(cards.first?.title, "买了一个月，觉得值吗？")
+        XCTAssertEqual(cards.first?.title, "买了一个月 · 用得怎么样？")
         XCTAssertEqual(cards.first?.evidence, [entry.id])
         _ = ButlerCards.refresh(&ledger, now: ctx.now)
         XCTAssertEqual(ledger.cards.filter { $0.dedupeKey == "follow:\(wish.id)" }.count, 1)

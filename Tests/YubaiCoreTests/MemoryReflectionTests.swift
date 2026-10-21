@@ -132,6 +132,31 @@ final class MemoryReflectionTests: XCTestCase {
         XCTAssertEqual(input["this_week_followups"]?.arrayValue?.count, 1)
         XCTAssertNil(input["profile"]?["memories"])
     }
+    func testMergedUnusualEvidenceIncludesEveryEntryInReflectionAndFeedback() async throws {
+        var ledger = seed()
+        ledger.entries = (0..<41).map { _ in Entry(date: Dates.parse("2026-10-01")!, amount: 3200,
+            accountID: ledger.accounts[0].id, title: "合成午餐", category: "餐饮") }
+        let entries = (0..<3).map { index in Entry(date: Dates.parse("2026-10-\(16 + index)")!, amount: Int64(12_800 + index * 3200),
+            accountID: ledger.accounts[0].id, title: "合成聚餐", category: "餐饮") }
+        ledger.entries += entries
+        let candidates = OffCharacter.candidates(ledger, entryIDs: entries.map(\.id), now: now)
+        XCTAssertEqual(candidates.count, 1)
+        let script = try transport(output())
+        _ = try await MemoryReflection.run(ledger: ledger, transport: script, now: now)
+        var requests = await script.recorded()
+        var input = try JSONValue.parse(try XCTUnwrap(requests[0].messages.last?.content))
+        let notable = input["last_week"]?["notable"]?.arrayValue ?? []
+        XCTAssertEqual(Set(notable.compactMap { $0["id"]?.stringValue }), Set(entries.map(\.id.uuidString)))
+        var card = try XCTUnwrap(candidates.first).card(now: now)
+        card.feedback = .worth; card.feedbackAt = now; ledger.cards = [card]
+        let feedbackScript = try transport(output())
+        _ = try await MemoryReflection.run(ledger: ledger, transport: feedbackScript, now: now)
+        requests = await feedbackScript.recorded()
+        input = try JSONValue.parse(try XCTUnwrap(requests[0].messages.last?.content))
+        let feedback = input["this_week_feedback"]?.arrayValue ?? []
+        XCTAssertEqual(feedback.count, 1)
+        XCTAssertEqual(Set(feedback.first?["entry_ids"]?.arrayValue?.compactMap(\.stringValue) ?? []), Set(entries.map(\.id.uuidString)))
+    }
     func testDueUsesISOWeekYearBoundaryAndSuccessfulEmptyResultStampsWeek() async throws {
         var ledger = seed(); let date = Dates.parse("2027-01-01 12:00")!
         XCTAssertEqual(ButlerCards.isoWeek(date), "2026-W53")

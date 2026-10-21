@@ -43,7 +43,7 @@ private struct CaptureSnippetView: View {
                         AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow, fractionDigits: entry.amount % 100 == 0 ? 0 : 2)
                     }
                     if !privateResult {
-                        Text(entry.category + " · " + ledger.accountName(entry.accountID) + " · " + ManualBookkeeping.dayLabel(entry.date) + " " + entry.date.formatted(.dateTime.hour().minute()))
+                        Text(Classification.displayCategory(entry.category) + " · " + ledger.accountName(entry.accountID) + " · " + ManualBookkeeping.dayLabel(entry.date) + " " + entry.date.formatted(.dateTime.hour().minute()))
                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }
                 }

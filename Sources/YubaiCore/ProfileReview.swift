@@ -48,9 +48,9 @@ public enum ProfileReview {
         switch candidate.target {
         case .area(let id):
             guard let area = ledger.profile.restrain.first(where: { $0.id == id }), area.confirmedAt == candidate.confirmedAt,
-                  words(area) == candidate.text else { throw YubaiError.invalid("这条消费观已改变，请刷新来信。") }
+                  words(area) == candidate.text else { throw YubaiError.invalid("这条消费观已改变，请刷新每周来信。") }
         case .principle(let text):
-            guard candidate.text == text, ledger.profile.principles.contains(text), ledger.profile.principleDates[text] == candidate.confirmedAt else { throw YubaiError.invalid("这条原则已改变，请刷新来信。") }
+            guard candidate.text == text, ledger.profile.principles.contains(text), ledger.profile.principleDates[text] == candidate.confirmedAt else { throw YubaiError.invalid("这条原则已改变，请刷新每周来信。") }
         }
     }
     public static func isCurrent(_ candidate: ProfileReviewCandidate, in ledger: Ledger) -> Bool {

@@ -635,11 +635,11 @@ struct EntryRow: View {
                 HStack(spacing: YubaiSpace.space6) {
                     Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
                     if entry.hasNoCaptureCategory { Pill(text: "没分类", variant: .amber, height: 20, showsDot: false) }
-                    if metadata != nil && entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20, showsDot: false) }
+                    if metadata != nil && entry.nature.uncertain { Pill(text: "没写用途", variant: .amber, height: 20, showsDot: false) }
                 }
-                Text(metadata ?? "\(dateText) · \(entry.category) · \(store.current.accountName(entry.accountID))")
+                Text(metadata ?? "\(dateText) · \(Classification.displayCategory(entry.category)) · \(store.current.accountName(entry.accountID))")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(textSize.isAccessibilitySize ? nil : 1)
-                if metadata == nil && entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20) }
+                if metadata == nil && entry.nature.uncertain { Pill(text: "没写用途", variant: .amber, height: 20) }
             }
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space6) }
             AmountLabel(cents: entry.amount, hide: hideAmount, sign: entry.nature.inflow ? .inflow : .outflow)
@@ -858,7 +858,7 @@ struct AssistantMark: View {
             } else { wave.transaction { $0.animation = nil; $0.disablesAnimations = true } }
         }.frame(width: size, height: size)
             .transaction { if !thinking || reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
-            .accessibilityElement(children: .ignore).accessibilityLabel(thinking ? "余白助手正在思考" : "余白助手")
+            .accessibilityElement(children: .ignore).accessibilityLabel(thinking ? "余白正在思考" : "余白")
     }
 }
 
@@ -882,7 +882,7 @@ struct HeroCard: View {
     var reserved: Int64
     var attentionCount = 0
     var hideAmount = false
-    var title = "保守可动用"
+    var title = "还能花"
     var onDetails: (() -> Void)? = nil
     var onAttention: (() -> Void)? = nil
     private var waterBands: Int {
@@ -891,7 +891,7 @@ struct HeroCard: View {
     }
     var body: some View {
         ChartGrow(key: "hero-composition") { progress in VStack(alignment: .leading, spacing: YubaiSpace.space16) {
-            if let onDetails { Button(action: onDetails) { amounts(progress) }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula").accessibilityHint("打开计算依据") }
+            if let onDetails { Button(action: onDetails) { amounts(progress) }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula").accessibilityHint("还能花是怎么算的") }
             else { amounts(progress) }
             if attentionCount > 0 {
                 if let onAttention {
@@ -916,9 +916,9 @@ struct HeroCard: View {
         }.contentShape(Rectangle())
     }
     @ViewBuilder private var legends: some View {
-        legend("余白", available, YubaiColor.brand)
+        legend("还能花", available, YubaiColor.brand)
         legend("要付", payable, YubaiColor.neutralStrong)
-        legend("预留", reserved, YubaiColor.neutralSoft)
+        legend("日常开销", reserved, YubaiColor.neutralSoft)
     }
     private var summary: some View {
         HStack(alignment: .bottom, spacing: YubaiSpace.space12) {
@@ -946,7 +946,7 @@ struct HeroCard: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).background(total == 0 ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
         }.frame(height: YubaiSpace.space12).accessibilityElement(children: .ignore)
-            .accessibilityLabel("余白 \(AmountLabel.text(available))，要付 \(AmountLabel.text(payable))，预留 \(AmountLabel.text(reserved))")
+            .accessibilityLabel("还能花 \(AmountLabel.text(available))，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))")
     }
     private func legend(_ title: String, _ cents: Int64, _ color: Color) -> some View {
         HStack(spacing: YubaiSpace.space4) {
@@ -1116,18 +1116,15 @@ struct WelcomeView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.space24) {
                 BrandMark(size: 88).padding(.top, YubaiSpace.space24)
                 Text("余白").yubaiFont(YubaiFont.welcome)
-                Text("把钱理清，\n把生活留给自己。").yubaiFont(YubaiFont.lead).fixedSize(horizontal: false, vertical: true)
-                Text("余额不等于可花的钱。余白把散落的账单、未来要付的钱和真正想做的事，放在同一处。") .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted)
-                VStack(alignment: .leading, spacing: YubaiSpace.space16) {
-                    feature("wallet.bifold", "一份可信的账本", "导入微信、支付宝与银行卡账单，自动整理，随时纠正。")
-                    feature("calendar", "从今天安排未来", "先留出房租、还款和目标，再看此刻有多少余地。")
-                    feature("lock.shield", "数据留在你手里", "无需注册，离线可用，可导出和加密备份。")
-                }.padding(.vertical, YubaiSpace.space10)
+                Text("先记下此刻的余额").yubaiFont(YubaiFont.lead).fixedSize(horizontal: false, vertical: true)
                 Button("开始我的账本") { store.update("建立账本") { $0.preferences.onboardingComplete = true } }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("startLedger")
             }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity).padding(.bottom, YubaiSpace.space24)
         }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
     }
-    func feature(_ symbol: String, _ title: String, _ text: String) -> some View { HStack(alignment: .top, spacing: YubaiSpace.space12) { Circle().fill(YubaiColor.brandMark).frame(width: YubaiSize.marker, height: YubaiSize.marker).padding(.top, YubaiSpace.space6).accessibilityHidden(true); VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(title).yubaiFont(YubaiFont.rowTitle); Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted).fixedSize(horizontal: false, vertical: true) } } }
+}
+
+extension Nature {
+    var entryLabel: String { paired ? "转账" : (inflow ? "收入" : "支出") }
 }
 
 /// Answer data is built from a read tool in YubaiCore; animation never changes labels.
@@ -1218,17 +1215,17 @@ struct Segmented<Value: Hashable>: View {
             ForEach(choices.indices, id: \.self) { i in
                 let value = choices[i].0
                 Button { selection = value } label: {
-                    ZStack {
-                        if selection == value {
-                            if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).transition(.opacity) }
-                            else { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
-                        }
-                        Text(choices[i].1).yubaiFont(YubaiFont.callout, weight: selection == value ? .medium : .regular)
-                            .foregroundStyle(selection == value ? YubaiColor.label : YubaiColor.labelSecondary).transaction { $0.animation = nil }
-                    }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
+                    Text(choices[i].1).yubaiFont(YubaiFont.callout, weight: selection == value ? .medium : .regular)
+                        .foregroundStyle(selection == value ? YubaiColor.label : YubaiColor.labelSecondary).transaction { $0.animation = nil }
+                        .frame(maxWidth: .infinity, minHeight: 32).fixedSize(horizontal: false, vertical: true).background {
+                            if selection == value {
+                                if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).transition(.opacity) }
+                                else { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
+                            }
+                        }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selection == value ? .isSelected : [])
             }
-        }.padding(3).background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+        }.padding(4).background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).fixedSize(horizontal: false, vertical: true)
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
     }
 }
@@ -1237,7 +1234,7 @@ struct ProposalCard: View {
     let title: String
     let lines: [String]
     let primaryTitle: String
-    var secondaryTitle = "不用了"
+    var secondaryTitle = "不改了"
     var canConfirm = true
     let confirm: () -> Void
     let cancel: () -> Void
@@ -1285,8 +1282,6 @@ struct ForecastChart: View {
                     Text("金额已隐藏").yubaiFont(YubaiFont.callout)
                 } else {
                     forecastPlot
-                    Text("保守余量已扣底线与预留，未到账收入不算进来。")
-                        .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }
         }
@@ -1295,13 +1290,13 @@ struct ForecastChart: View {
         ChartGrow(key: "forecast-line") { progress in
             Chart {
                 ForEach(funds.points) { point in
-                    LineMark(x: .value("日期", point.date), y: .value("保守余量", Double(point.conservative) / 100))
+                    LineMark(x: .value("日期", point.date), y: .value("还能花", Double(point.conservative) / 100))
                         .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand)
                 }
-                RuleMark(y: .value("预留后的零点", 0))
+                RuleMark(y: .value("零点", 0))
                     .foregroundStyle(YubaiColor.chartRule).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 if let last = funds.points.last {
-                    PointMark(x: .value("日期", last.date), y: .value("保守余量", Double(last.conservative) / 100))
+                    PointMark(x: .value("日期", last.date), y: .value("还能花", Double(last.conservative) / 100))
                         .foregroundStyle(YubaiColor.brand).annotation(position: .top, alignment: .trailing) { AmountLabel(cents: last.conservative, role: .chart) }
                 }
             }.chartYAxis(.hidden).chartLegend(.hidden)
@@ -1346,8 +1341,8 @@ struct ForecastChart: View {
     }
     private var chartDescription: String {
         guard let first = funds.points.first, let last = funds.points.last,
-              let low = funds.points.min(by: { $0.conservative < $1.conservative }) else { return "还没有预测依据" }
-        return "保守余量从 \(Money.text(first.conservative)) 起，\(Dates.text(low.date)) 最低 \(Money.text(low.conservative))，90 天后 \(Money.text(last.conservative))。已扣底线与预留，未计预计收入。"
+              let low = funds.points.min(by: { $0.conservative < $1.conservative }) else { return "还没有预测明细" }
+        return "还能花从 \(Money.text(first.conservative)) 起，\(Dates.text(low.date)) 最低 \(Money.text(low.conservative))，90 天后 \(Money.text(last.conservative))。"
     }
 }
 

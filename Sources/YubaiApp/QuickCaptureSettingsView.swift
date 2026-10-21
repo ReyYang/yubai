@@ -52,7 +52,7 @@ struct QuickCaptureSettingsView: View {
     }
     private var merchantSummary: String {
         let rules = store.current.preferences.quickCapture.merchantCategories
-        return rules.keys.sorted().prefix(2).map { $0 + " → " + rules[$0]! }.joined(separator: "，")
+        return rules.keys.sorted().prefix(2).map { $0 + " → " + Classification.displayCategory(rules[$0]!) }.joined(separator: "，")
     }
     private func line(_ title: String, _ subtitle: String, detail: String? = nil) -> some View {
         HStack(spacing: 10) {
@@ -111,7 +111,7 @@ private struct CaptureRulesView: View {
     }
     private func value(_ name: String) -> String {
         if kind == .card { return store.current.accountName(store.current.preferences.quickCapture.cardAccounts[name]) }
-        return store.current.preferences.quickCapture.merchantCategories[name] ?? ""
+        return Classification.displayCategory(store.current.preferences.quickCapture.merchantCategories[name] ?? "")
     }
 }
 private struct CaptureRuleSelection: Identifiable { var id = UUID(); var name: String? }
@@ -129,7 +129,7 @@ private struct CaptureRuleEditor: View {
             if kind == .card {
                 Picker("账户", selection: $account) { ForEach(accounts) { Text($0.name).tag(Optional($0.id)) } }
             } else {
-                Picker("分类", selection: $category) { ForEach(ManualBookkeeping.categories(in: store.current, nature: .expense), id: \.self) { Text($0).tag($0) } }
+                Picker("分类", selection: $category) { ForEach(ManualBookkeeping.categories(in: store.current, nature: .expense), id: \.self) { Text(Classification.displayCategory($0)).tag($0) } }
             }
             if let original { Button("删除", role: .destructive) { if store.update("删除映射", { remove(original, in: &$0) }) { dismiss() } } }
         }.navigationTitle(original == nil ? "添加映射" : "修改映射")
