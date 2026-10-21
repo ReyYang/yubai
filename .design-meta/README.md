@@ -1,5 +1,8 @@
 # 余白 · 产品与设计入口
 
+**2026-10-21 第四轮「手动优先」**：owner 已批准 V4 及配套 DS，并复用两张 P-Plans 稿；[原稿归档](mockups/manual-first-v4/README.md)、[逐稿源码映射](DESIGN.md#2026-10-21--第四轮手动优先)。系统分离圆钮现在是记一笔，三根页右上角问余白；手动记账／账目／改账／固定收付已接线，既有保存动效与同日余额修复保持。Linux Core 测试通过，SwiftUI 仅语法与人工核对，Apple 编译、UI 测试与真机验收尚未执行。未提交，未调用网络，未同步 Figma／旧原型／分发包；下一步按[第四轮人工清单](../docs/V2-TEST-CHECKLIST.md#第四轮手动优先2026-10-21待-apple-设备验证)验证。下方旧记录保留各自日期语义，本条取代其中旧的问余白圆形 tab／缺少手动页描述。
+
+
 **2026-10-21 Motion v2／Liquid Glass**：按 owner 本轮明确批准的[规范、tokens 与交互样机](motion-v2/README.md)更新原生实现；iPhone 最低 iOS 26、系统三 tab 与分开的问余白入口，Mac 保留侧栏和 macOS 14 回退。源码采用范围、缺屏与系统图标动效限制见 [DESIGN.md](DESIGN.md#2026-10-21--motion-v2-与-liquid-glass)。本轮环境没有 Swift／Xcode；只完成工程、token、资源与源码静态核对，新增测试尚未运行，未提交。下方同日 Linux Core 的运行证据来自此前环境，不能当作本轮构建证据；Figma、旧页面稿与分发包未同步。
 
 **2026-10-21 Linux Core 验证**：Ubuntu 24.04.5／Swift 6.2.4 已完成 `swift build --target YubaiCore`、`swift build` 与 `swift test`，253 项中 249 通过、4 项原有实网 opt-in 评测跳过、0 失败；未新增 `XCTSkip`。SwiftPM 在 Linux 排除 YubaiApp；Core 增加平台兼容路径与备份兼容向量，Apple 加密路径不变。开发命令见 [DEVELOPMENT.md](../docs/DEVELOPMENT.md#linux-core-构建与测试)，证据及限制见 [VALIDATION.md](../docs/VALIDATION.md#linux-core-构建与单元测试2026-10-21)。未修改 UI、Xcode 工程或生成器；Apple 构建、系统服务及视觉验收仍待 Mac 执行，下方旧日期记录保留原含义。

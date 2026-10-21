@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>安排</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yubai/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600&amp;family=Noto+Sans+SC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 12px 18px 24px; background: var(--canvas, #f5f1e5); color: var(--label, #382f1f); font-family: var(--font-sans, 'Noto Sans SC', sans-serif); display: flex; flex-direction: column">
+  <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 48px">
+    <a href="P-Home.dc.html" style="justify-self: start; height: 36px; padding: 0 14px 0 10px; border-radius: 18px; background: var(--raised, #fefbea); color: var(--label, #382f1f); display: flex; align-items: center; gap: 2px; text-decoration: none; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>现在</a>
+    <span style="font-size: 15px; font-weight: 500">安排</span>
+    <button aria-label="添加安排" style="justify-self: end; width: 40px; height: 40px; border-radius: 20px; border: 0; background: var(--raised, #fefbea); color: var(--label, #382f1f); display: flex; align-items: center; justify-content: center; padding: 0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+  </div>
+
+  <div style="margin-top: 20px; font-family: var(--font-serif, 'Noto Serif SC', serif); font-size: 17px; font-weight: 600">接下来 90 天要付</div>
+  <div style="margin-top: 4px; display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums">
+    <span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 44px; line-height: 50px; font-weight: 600; letter-spacing: -1.5px">11,380</span>
+    <span style="font-size: 13px; color: var(--label-secondary, #6a604f)">要收 +2,250</span>
+  </div>
+  <div style="margin-top: 2px; font-size: 12px; color: var(--label-secondary, #6a604f)">都已从余白里先留出。</div>
+
+  <div style="margin-top: 20px; border-radius: 22px; background: var(--card, #ede6d3); padding: 18px 18px 14px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline">
+      <span style="font-family: var(--font-serif, 'Noto Serif SC', serif); font-size: 16px; font-weight: 600">什么时候进出</span>
+      <span style="display: flex; gap: 10px; font-size: 11px; color: var(--label-secondary, #6a604f)"><span style="display: flex; align-items: center; gap: 4px"><span style="width: 8px; height: 8px; border-radius: 2px; background: var(--brand-mark, #6e926e)"></span>收</span><span style="display: flex; align-items: center; gap: 4px"><span style="width: 8px; height: 8px; border-radius: 2px; background: var(--outflow, #b09e80)"></span>付</span></span>
+    </div>
+    <svg width="318" height="142" viewBox="0 0 318 142" role="img" aria-label="接下来 90 天：10月20日 信用卡 −2,380；10月25日 前后朋友转房租 +2,250；11月1日 房租 −4,500；11月20日 信用卡约 −2,000；12月20日 信用卡约 −2,500" style="margin-top: 14px; overflow: visible">
+      <line x1="0" y1="56" x2="318" y2="56" stroke-width="1" style="stroke: var(--chart-rule, #b9ac93)"></line>
+      <path d="M8.1 56V78.4Q8.1 82.4 12.1 82.4H16.1Q20.1 82.4 20.1 78.4V56Z" style="fill: var(--outflow, #b09e80)"><title>10月20日 信用卡 −2,380</title></path>
+      <path d="M25.8 56V35Q25.8 31 29.8 31H33.8Q37.8 31 37.8 35V56Z" style="fill: var(--brand-mark, #6e926e)"><title>朋友转房租 +2,250</title></path>
+      <path d="M50.5 56V102Q50.5 106 54.5 106H58.5Q62.5 106 62.5 102V56Z" style="fill: var(--outflow, #b09e80)"><title>11月1日 房租 −4,500</title></path>
+      <path d="M117.7 56V74.2Q117.7 78.2 121.7 78.2H125.7Q129.7 78.2 129.7 74.2V56Z" style="fill: var(--outflow, #b09e80)"><title>11月20日 信用卡（估）−2,000</title></path>
+      <path d="M223.7 56V79.8Q223.7 83.8 227.7 83.8H231.7Q235.7 83.8 235.7 79.8V56Z" style="fill: var(--outflow, #b09e80)"><title>12月20日 信用卡（估）−2,500</title></path>
+      <g font-family="Geist" font-size="11" style="fill: var(--label, #382f1f)">
+        <text x="31.8" y="24" text-anchor="middle">+2,250</text>
+        <text x="4" y="96">−2,380</text>
+        <text x="56.5" y="120" text-anchor="middle" font-weight="600">−4,500</text>
+        <text x="123.7" y="92" text-anchor="middle">−2,000</text>
+        <text x="229.7" y="98" text-anchor="middle">−2,500</text>
+      </g>
+      <g font-family="Noto Sans SC" font-size="10" style="fill: var(--label-secondary, #6a604f)"><text x="0" y="138">今天</text><text x="56.5" y="138" text-anchor="middle">11月</text><text x="162.5" y="138" text-anchor="middle">12月</text><text x="272" y="138" text-anchor="middle">1月</text></g>
+    </svg>
+  </div>
+
+  <a href="P-Rent.dc.html" style="margin-top: 12px; display: block; border-radius: 22px; background: var(--card, #ede6d3); padding: 16px 18px; color: inherit; text-decoration: none; font-variant-numeric: tabular-nums">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 15px; font-weight: 500">房租分摊</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 13px; color: var(--label-muted, #5a5040)">2,250 / 4,500</span></div>
+    <div role="img" aria-label="11月1日 的房租已凑齐一半" style="margin-top: 10px; display: flex; gap: 2px; height: 10px"><span style="flex: 1; border-radius: 5px 0 0 5px; background: var(--brand-mark, #6e926e)"></span><span style="flex: 1; border-radius: 0 5px 5px 0; background: var(--raised, #fefbea)"></span></div>
+    <div style="margin-top: 8px; font-size: 12px; color: var(--label-secondary, #6a604f)">小林这期的 2,250 到账后就齐了。</div>
+  </a>
+
+  <a href="P-Goal.dc.html" style="margin-top: 10px; display: block; border-radius: 22px; background: var(--card, #ede6d3); padding: 16px 18px; color: inherit; text-decoration: none; font-variant-numeric: tabular-nums">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 15px; font-weight: 500">旅行</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-size: 13px; color: var(--label-muted, #5a5040)">2,600 / 8,000</span></div>
+    <div role="img" aria-label="旅行目标留了 2,600，约三分之一" style="margin-top: 10px; display: flex; gap: 2px; height: 10px"><span style="flex: 2600 1 0; border-radius: 5px 0 0 5px; background: var(--brand-mark, #6e926e)"></span><span style="flex: 5400 1 0; border-radius: 0 5px 5px 0; background: var(--raised, #fefbea)"></span></div>
+  </a>
+
+  <a href="P-Link.dc.html" style="margin-top: 10px; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 18px; background: var(--amber-tint, #efe1c4); color: var(--amber-strong, #5c3e16); text-decoration: none; font-size: 13px"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--amber-dot, #b88443)"></span><span style="flex: 1">9月20日的卡账还没对上真实记录</span><span style="color: var(--amber-ink, #7a5320)">去关联</span></a>
+
+  <a href="P-Plan-Edit.dc.html" style="margin-top: auto; height: 52px; box-sizing: border-box; border-radius: 20px; border: 1.5px dashed var(--border-dashed, #cfc3ae); color: var(--label-muted, #5a5040); display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 14px">＋ 添加一笔已知的收付或目标</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

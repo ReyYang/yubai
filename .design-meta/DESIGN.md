@@ -1,5 +1,27 @@
 # 余白 · 设计约定与资源登记
 
+
+## 2026-10-21 · 第四轮「手动优先」
+
+owner 已批准本轮 V4 与 DS，原样保存在 [manual-first-v4](mockups/manual-first-v4/README.md)。任何记账、改账、看账与添加固定收付均有手动入口；问余白继续辅助。以下取代同日 Motion v2 中问余白圆形 tab 及相关缺屏描述，其他既有动效／iOS 26 系统玻璃约定不变。
+
+| 选定稿 | 原生源码与采用范围 |
+|---|---|
+| `V4-Home.dc.html` / `V4-Home-Saved.dc.html` | `OverviewView.swift`：左眼睛／现在／40pt 问余白；主数字构成条下的今天行、笔数／最近用途／净额，zoom 到 `EntriesView`；仍用 150／96／一行的 `ViewThatFits`。`YubaiApp.swift` 与 `DesignSystem.swift` 复用 pendingEntrySave、数字换位、水面、触感和撤销 toast。 |
+| `V4-Add.dc.html` / `DS-Keypad.md` | `QuickEntryView.swift` / `EntryFormComponents.swift`：支出／收入／转账、只用自定义键盘的金额与加减结果、常用分类／更多、用途／账户余额／日期、保存后余白预览、连续记账；通过手动 ChangeSet 保存。导入仅切换到参数为空的 `ImportView()`。 |
+| `V4-Entries.dc.html` | `EntriesView.swift`：系统返回胶囊、右侧记一笔、搜索、逐月净收支／逐日进出与懒加载 EntryRow；新行洗色与删除让位复用原动效，隐藏金额同步处理。今天、我均可进入。 |
+| `V4-Entry-Edit.dc.html` | `EntryEditView.swift`：原性质、金额、分类／更多、用途、账户、日期与时间、备注、source／recordedAt、就事提问、确认软删除及撤销；保存保留 id／source／recordedAt。洞察与账户的普通记录点开编辑，助手／管家依据仍走 `EntryDetailView`。 |
+| `V4-Ask-Empty.dc.html` / `V4-Ask-Typing.dc.html` / `DS-AskBar.md` | `AskYubaiView.swift`：只改空态标题与输入区域；52pt 最小高度、6pt 内距、40pt 加号／单一尾钮、20pt 字行与10pt上下内距、最多5行、底部对齐、三条建议直发。消息列表、草稿卡、发送与听写实现保持其原逻辑。 |
+| `V4-Me.dc.html` | `SettingsView.swift` / `DesignSystem.swift`：左空／我／右助手圆钮，账户后新增账目／固定收付卡，保留其余维护入口，指南仍在底部；`InsightsView` 使用同一助手顶栏。 |
+| `P-Plans.dc.html` / `P-Plan-Edit.dc.html` | `FixedFlowsView.swift`：标题固定收付，90天非还款安排的要付／要收、活动安排与房租行、结束安排；`FixedFlowEditor` 的要付／要收、金额、名字、周期／首次日期、可选账户、结束日期及90天副本预览。按任务省略 AI 预填、租金与目标卡、进出图及解释性页脚。 |
+| 三根页／系统圆钮 | `YubaiApp.swift`：系统 `Tab(role: .search)` 变为 plus／记一笔（`addEntry`，source `add`），保留当前 tab；根页助手为 `askYubai`／source `ask`。Mac 浮钮同样记一笔，⌘N 新建、⌘K 问余白。 |
+
+非 UI 逻辑在 `YubaiCore/ManualBookkeeping.swift`：整数分键盘、分类频次与 CategoryMemory／关键词建议、最近应用内账户、日期落点、保存副本资金预览、编辑保留来源、按天／月汇总与搜索、安排周期和未来发生项。`ChangeSet.EntryDraft` 增加向后兼容的可选转入账户，保留 recordedAt 锚点修复；月收支与 Finance 共用支出／退款口径。
+
+适配边界：样例数据由本机账本替换；字体沿用已采用的系统 rounded／serif，sheet／返回／菜单／日期使用系统控件，不自行模拟玻璃。输入金额、分类芯片和键盘复用现有 token，分类选中内描边 1.5pt。没有新增 spring 或动效；大字号／较小 sheet 允许表单滚动。固定收付直接复用 Finance.occurrences 的90天口径，保留尚未付完的逾期义务，排除信用还款避免本金重复预留。
+
+验证：Linux Swift 6.2.4 的 Core 测试通过（运行结果见 [检查清单](../docs/V2-TEST-CHECKLIST.md#第四轮手动优先2026-10-21待-apple-设备验证)）；SwiftUI 按 iOS 26／macOS 14 目标仅做语法解析与人工 diff 核对，不能代替 Apple API 类型检查。新增手动记账 UI 流程源码尚未运行；390×844 首屏、输入条单行基线、保存顺序、转账、深色／大字号／VoiceOver／减少动态效果与 Mac 仍待设备验收。工程已按生成器的 App 顶层 swift glob 重新生成；没有改 ImportView 内部、AskEntryDraftCard 或网络服务，也未提交。Figma、旧原型与分发包未同步。
+
 ## 2026-10-21 · Motion v2 与 Liquid Glass
 
 owner 本轮明确批准 motion v2 与 iOS 26 Liquid Glass，按所附 README 的「玻璃／动效／SwiftUI 对照」、tokens 和交互样机接入。三份输入[原样长期保存](motion-v2/README.md)，本轮指令中的已批准状态优先于原文件遗留的「待确认」。本次取代下方 V3 的 iPhone 自绘导航与 iOS 18 部署描述；V3 其余页面结构继续沿用，不改财务规则或 Core。

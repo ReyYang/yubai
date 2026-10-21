@@ -28,7 +28,12 @@ public enum WeeklyLetter {
         var snapshot = ledger
         for i in snapshot.accounts.indices where snapshot.accounts[i].anchorDate > date {
             let account = snapshot.accounts[i]
-            let later = ledger.activeEntries.filter { $0.postingDate(for: account.id) > date && $0.postingDate(for: account.id) <= account.anchorDate }
+            var earlier = account; earlier.anchorDate = date
+            // Rewind only activity included in the later anchor, not entries recorded after it.
+            let later = ledger.activeEntries.filter {
+                let posting = $0.postingDate(for: account.id)
+                return earlier.includes($0, posting: posting) && !account.includes($0, posting: posting)
+            }
             snapshot.accounts[i].anchorBalance -= later.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
             snapshot.accounts[i].anchorDate = date
         }

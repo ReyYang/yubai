@@ -63,6 +63,17 @@ final class ButlerTests: XCTestCase {
         ledger.entries[0].date = Dates.addDays(-3, to: now)
         XCTAssertEqual(ButlerCards.detect(ledger, now: now).map(\.kind), [.staleBalance])
     }
+    func testUpkeepIncludesSameDayRecordingAfterAnchorButNotEarlierDays() {
+        var ledger = seed(); let anchor = Dates.addDays(-31, to: now); ledger.accounts[0].anchorDate = anchor
+        var entry = expense(ledger, date: Dates.day(anchor)); entry.recordedAt = anchor.addingTimeInterval(60)
+        ledger.entries = [entry]
+        let cards = ButlerCards.detect(ledger, now: now)
+        XCTAssertEqual(cards.map(\.kind), [.staleBalance]); XCTAssertEqual(cards.first?.evidence, [entry.id])
+        ledger.entries[0].recordedAt = anchor
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+        ledger.entries[0].recordedAt = now; ledger.entries[0].date = Dates.addDays(-1, to: Dates.day(anchor))
+        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+    }
     func testMuteStableTopicDedupeDismissalAndNoOpRefresh() throws {
         var ledger = restrained()
         XCTAssertTrue(ButlerCards.refresh(&ledger, now: now))

@@ -10,7 +10,7 @@ struct SettingsView: View {
     private var followUpCount: Int { store.current.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= Date() } == true }.count }
     var body: some View {
         Page(spacing: 10, topPadding: 12) {
-            Text("我").yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity, minHeight: 48)
+            TabRootHeader(title: "我")
             NavigationLink { ProfileView() } label: {
                 Card {
                     VStack(alignment: .leading, spacing: 8) {
@@ -46,6 +46,16 @@ struct SettingsView: View {
             NavigationLink { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: 0) {
+                    NavigationLink { EntriesView().yubaiZoomDestination("me-entries") } label: {
+                        row("账目", detail: "今天 \(TodayEntries(in: store.current).count) 笔").yubaiZoomSource("me-entries")
+                    }.accessibilityIdentifier("openEntries")
+                    separator
+                    NavigationLink { FixedFlowsView() } label: { row("固定收付", detail: fixedFlowsDetail) }
+                        .accessibilityIdentifier("openFixedFlows")
+                }
+            }.buttonStyle(PressButtonStyle())
+            Card(style: .list) {
+                VStack(spacing: 0) {
                     NavigationLink { LettersView() } label: { row("来信", detail: latestLetter) }
                     separator
                     NavigationLink { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")
@@ -72,6 +82,10 @@ struct SettingsView: View {
     }
     private var latestLetter: String? {
         store.current.cards.filter { $0.kind == .weeklyLetter }.max(by: { $0.createdAt < $1.createdAt })?.createdAt.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
+    }
+    private var fixedFlowsDetail: String {
+        let titles = FixedFlowArrangement.rows(in: store.current).map(\.title)
+        return (titles.isEmpty ? "" : titles.prefix(2).joined(separator: "、") + "等 ") + "\(titles.count) 项"
     }
     private var memoryCount: String {
         let week = ButlerCards.isoWeek(Date())

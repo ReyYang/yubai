@@ -56,8 +56,7 @@ struct AskYubaiView: View {
                                     .buttonStyle(PrimaryButtonStyle()).frame(maxWidth: 240)
                             }.frame(maxWidth: .infinity).padding(.top, 100)
                         } else if messages.isEmpty {
-                            Text("想问什么，或记下一笔，都可以从这里开始。").yubaiFont(YubaiFont.lead)
-                            Text("例如：午饭 32 微信，或这笔购买合理吗？").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                            Text("问点什么").yubaiFont(YubaiFont.lead).padding(.top, YubaiSpace.space20)
                         }
                         ForEach(messages) { message in messageView(message).messageEntrance(user: message.isUser) }
                         if busy || reading {
@@ -100,25 +99,50 @@ struct AskYubaiView: View {
             .onChange(of: store.locked) { _, value in if value { cancel(); messages = []; originalImage = nil; session = AskYubaiSession() } }
     }
     private var inputBar: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+            if enabled && messages.isEmpty && !busy && !reading {
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    ForEach(["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，合理吗？"], id: \.self) { question in
+                        Button { input = question; send() } label: {
+                            Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, 14).padding(.vertical, 10)
+                                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+                        }.buttonStyle(PressButtonStyle())
+                    }
+                }.padding(.bottom, YubaiSpace.space8)
+            }
             if voice.recording { Text("正在听，停下后可以修改再发送。").yubaiFont(YubaiFont.caption) }
             HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
-                if enabled { Menu {
+                Menu {
                     Button("从照片选择截图") { photoPicker = true }
                     Button("选择图片文件") { filePicker = true }
-                } label: { Image(systemName: "plus").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("添加截图或照片") }
-                TextField(enabled ? "接着问…" : "暂时还不能问", text: $input, axis: .vertical).lineLimit(1...5).yubaiFont(YubaiFont.body).accessibilityIdentifier("askInput").accessibilityLabel(enabled ? "问余白" : "问余白（暂不可用）")
-                if enabled && (voice.available || voice.recording) {
+                } label: {
+                    Image(systemName: "plus").frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
+                }.accessibilityLabel("添加截图或照片")
+                TextField(enabled ? (messages.isEmpty ? "问点什么…" : "接着问…") : "暂时还不能问", text: $input, axis: .vertical)
+                    .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
+                    .padding(.vertical, 10).frame(minHeight: YubaiSize.iconButton)
+                    .accessibilityIdentifier("askInput").accessibilityLabel(enabled ? "问余白" : "问余白（暂不可用）")
+                if voice.recording || (trimmed.isEmpty && voice.available) {
                     Button {
                         if voice.recording { voice.stop() }
                         else { voicePrefix = input.isEmpty ? "" : input + " "; voiceTask = Task { await voice.start() } }
-                    } label: { Image(systemName: voice.recording ? "stop.circle" : "mic").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel(voice.recording ? "停止听写" : "语音输入")
+                    } label: {
+                        Image(systemName: voice.recording ? "stop.fill" : "mic")
+                            .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
+                            .foregroundStyle(YubaiColor.label).background(YubaiColor.card, in: Circle())
+                    }.accessibilityLabel(voice.recording ? "停止听写" : "语音输入")
+                } else {
+                    Button { send() } label: {
+                        Image(systemName: "arrow.up").fontWeight(.semibold)
+                            .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
+                            .foregroundStyle(Color.white).background(YubaiColor.brand, in: Circle())
+                    }.accessibilityLabel("发送").accessibilityIdentifier("sendAsk").disabled(trimmed.isEmpty)
                 }
-                if enabled { Button { send() } label: { Image(systemName: "arrow.up.circle.fill").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
-                    .accessibilityLabel("发送").accessibilityIdentifier("sendAsk").disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || voice.recording) }
-            }.disabled(!enabled || busy || reading)
-        }.padding(8).buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
-            .padding(.horizontal, 18).padding(.bottom, 18).opacity(enabled ? 1 : 0.6)
+            }.disabled(!enabled || busy || reading).padding(6).frame(minHeight: 52)
+                .buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
+                .opacity(enabled ? 1 : 0.6)
+        }.padding(.horizontal, 18).padding(.bottom, 18)
     }
     @ViewBuilder private func messageView(_ message: AskMessage) -> some View {
         if message.isUser {

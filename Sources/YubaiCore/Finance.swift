@@ -67,13 +67,14 @@ public struct PurchaseAssessment: Sendable {
 
 public enum Finance {
     public static let observationDays = 90
-    /// Median of nine 10-day spending totals / 10 over the last 90 calendar days.
+    /// Median of nine 10-day spending totals / 10 over the 90 complete calendar days
+    /// ending yesterday. Today's entries cannot change the estimate within the day.
     /// Includes zero-spend days; excludes single bills above ¥500 and plan/rent-linked
     /// expenses. Linked refunds offset their original; unlinked refunds offset their
     /// own 10-day window. The median resists a few unusually expensive windows.
     public static func estimatedDailyLiving(_ ledger: Ledger, now: Date) -> Int64 {
-        let start = Dates.addDays(-89, to: Dates.day(now))
-        let entries = ledger.activeEntries.filter { $0.date <= now }
+        let end = Dates.day(now); let start = Dates.addDays(-90, to: end)
+        let entries = ledger.activeEntries.filter { $0.date < end }
         var refunds: [UUID: Int64] = [:]
         for e in entries where e.nature == .refund {
             if let id = e.relatedEntryID { refunds[id, default: 0] += e.amount }
@@ -92,7 +93,7 @@ public enum Finance {
     }
     private struct PaymentKey: Hashable { var id: UUID; var period: Date }
     public static func balance(_ account: Account, in ledger: Ledger, at: Date = Date()) -> Int64 {
-        account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && $0.postingDate(for: account.id) > account.anchorDate && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
+        account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && account.includes($0, posting: $0.postingDate(for: account.id)) && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
     }
     public static func occurrences(in ledger: Ledger, now: Date = Date(), days: Int? = nil) -> [Occurrence] {
         let start = Dates.day(now); let end = Dates.addDays(days ?? observationDays, to: start)
@@ -150,11 +151,11 @@ public enum Finance {
         for entry in entries {
             if let account = accountsByID[entry.accountID] {
                 let date = entry.postingDate(for: account.id)
-                if date > account.anchorDate && date <= now { deltas[account.id, default: 0] += entry.delta(for: account.id) }
+                if account.includes(entry, posting: date) && date <= now { deltas[account.id, default: 0] += entry.delta(for: account.id) }
             }
             if entry.nature.paired, let other = entry.otherAccountID, other != entry.accountID, let account = accountsByID[other] {
                 let date = entry.postingDate(for: other)
-                if date > account.anchorDate && date <= now { deltas[other, default: 0] += entry.delta(for: other) }
+                if account.includes(entry, posting: date) && date <= now { deltas[other, default: 0] += entry.delta(for: other) }
             }
         }
         var cash: Int64 = 0; var creditNet: Int64 = 0; var debt: Int64 = 0; var investment: Int64 = 0; var receivables: Int64 = 0
@@ -177,7 +178,7 @@ public enum Finance {
         let living = daily * Int64(horizon)
         // An unresolved inflow after the most recent reconciliation is withheld until its nature is known.
         let uncertain = entries.filter { e in
-            e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { e.date > $0.anchorDate && ($0.kind == .cash || $0.kind == .bank) } == true
+            e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) } == true
         }.reduce(Int64(0)) { $0 + $1.amount }
         let emergency = ledger.profile.floorAmount ?? 0
         let available = cash - debt - committed - goals - emergency - living - uncertain
@@ -210,9 +211,13 @@ public enum Finance {
                      occurrences: occurrences, points: points, warnings: warnings)
     }
     public static func spendingAmount(_ entry: Entry, ledger: Ledger) -> Int64 {
+        spendingAmount(entry, rent: entry.rentID.flatMap { id in ledger.rents.first { $0.id == id } })
+    }
+    /// Indexed callers can share the same rules without a rent lookup per row.
+    public static func spendingAmount(_ entry: Entry, rent: Rent?) -> Int64 {
         if entry.nature == .expense {
             if let personal = entry.personalExpense { return personal }
-            if let rentID = entry.rentID, let rent = ledger.rents.first(where: { $0.id == rentID }), rent.monthlyTotal > 0 {
+            if let rent, rent.monthlyTotal > 0 {
                 return NSDecimalNumber(decimal: Decimal(entry.amount) * Decimal(rent.personalShare) / Decimal(rent.monthlyTotal)).int64Value
             }
             return entry.amount

@@ -10,12 +10,14 @@ enum Destination: String, CaseIterable, Identifiable {
     var symbol: String { switch self { case .overview: "water.waves"; case .insights: "chart.pie"; case .settings: "person" } }
 }
 enum AppSheet: Identifiable {
-    case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions
+    case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions, addEntry, addPlan
+    case editEntry(UUID)
     case ask(String), capture(Data), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, letter(UUID), reconcile(UUID)
     var id: String { String(describing: self) }
     var motionSource: String? {
         switch self {
+        case .addEntry: "add"
         case .ask: "ask"
         case .fundsCalculation: "funds"
         case .cardEvidence(let id), .cardQuestion(let id): "card-" + id.uuidString
@@ -153,6 +155,10 @@ enum AppSheet: Identifiable {
         } catch { self.error = error.localizedDescription }
     }
     func present(_ sheet: AppSheet, from source: String) { sheetSource = source; self.sheet = sheet }
+    func setEntrySaveToast(_ message: String) {
+        if pendingEntrySave { pendingSaveToast = message }
+        else { toast = message }
+    }
     func cancelEntrySaveMotion() { saveToastTask?.cancel(); pendingEntrySave = false; pendingSaveToast = nil; freshEntryIDs = [] }
     func finishEntrySaveMotion() {
         guard pendingEntrySave, sheet == nil, !locked else { return }
@@ -207,8 +213,8 @@ enum AppSheet: Identifiable {
         #if os(macOS)
         .defaultSize(width: 1240, height: 850)
         .commands {
-            CommandGroup(after: .newItem) {
-                Button("导入账单") { store.sheet = .imports }.keyboardShortcut("i").disabled(store.locked || !store.current.preferences.onboardingComplete)
+            CommandGroup(replacing: .newItem) {
+                Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked || !store.current.preferences.onboardingComplete)
                 Button("问余白") { store.sheet = .ask("") }.keyboardShortcut("k").disabled(store.locked || !store.current.preferences.onboardingComplete)
             }
             CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled(store.undoLabel == nil || store.locked) }
@@ -312,14 +318,14 @@ struct RootView: View {
             Tab(value: Destination.settings.rawValue) { NavigationStack { tabRoot(.settings) } } label: {
                 Label("我", systemImage: "person").accessibilityIdentifier("tab_settings")
             }
-            Tab(value: "ask", role: .search) { Color.clear } label: {
-                Label("问余白", systemImage: "bubble.left.and.bubble.right").yubaiZoomSource("ask").accessibilityIdentifier("askYubai")
+            Tab(value: "add", role: .search) { Color.clear } label: {
+                Label("记一笔", systemImage: "plus").yubaiZoomSource("add").accessibilityIdentifier("addEntry")
             }
         }.tint(YubaiColor.brand)
         #endif
     }
     private func selectTab(_ value: String) {
-        if value == "ask" { store.present(.ask(""), from: "ask"); return }
+        if value == "add" { store.present(.addEntry, from: "add"); return }
         guard let next = Destination(rawValue: value), next != store.destination else { return }
         store.destination = next
     }
@@ -330,7 +336,7 @@ struct RootView: View {
             if store.sheet == nil && !store.pickingInsightDates {
                 HStack(spacing: YubaiSpace.space8) {
                     Spacer()
-                    AskButton { store.present(.ask(""), from: "ask") }.yubaiZoomSource("ask")
+                    AddEntryButton { store.present(.addEntry, from: "add") }.yubaiZoomSource("add")
                 }.padding(.horizontal, YubaiSpace.space18).padding(.bottom, 22)
             }
         }.background(YubaiColor.canvas)
@@ -345,6 +351,9 @@ struct RootView: View {
     }
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
         switch sheet {
+        case .addEntry: QuickEntryView()
+        case .editEntry(let id): EntryEditView(entryID: id)
+        case .addPlan: FixedFlowEditor()
         case .account(let account): AccountEditor(account: account)
         case .imports: ImportView()
         case .accounts: AccountsView()
