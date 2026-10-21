@@ -18,7 +18,7 @@ struct ProfileView: View {
     var body: some View {
         Page(topPadding: 8) {
             ForEach(store.current.pendingChanges.filter(\.isProfileOnly)) { change in
-                ProfileProposalCard(change: change, confirm: { store.apply(change, label: "修改消费观") }, secondaryTitle: "不用了") {
+                ProfileProposalCard(change: change, confirm: { store.apply(change, label: "修改消费观") }, secondaryTitle: "不改了") {
                     store.update("修改消费观") { ledger in
                         ledger.pendingChanges.removeAll { $0.id == change.id }
                         for i in ledger.cards.indices where ledger.cards[i].action == .confirmChangeSet(change.id) { ledger.cards[i].dismissedAt = Date() }
@@ -28,13 +28,12 @@ struct ProfileView: View {
             if empty {
                 Card {
                     VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-                        Text("慢慢知道，什么值得。").yubaiFont(YubaiFont.lead)
-                        Text("这里留着你想怎样花钱。可以自己写，也可以和余白聊几句。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                        Text("写下你的消费观。").yubaiFont(YubaiFont.lead)
                         if canChat { Button("和余白聊几句") { sheet = .conversation }.buttonStyle(PrimaryButtonStyle()) }
                     }
                 }
             }
-            if !canChat { Text("在设置中填写 DeepSeek 密钥并开启云端智能后，就能和余白聊几句。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            if !canChat { Text("先到智能与隐私填写密钥，开启云端智能。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             areas(profile.restrain, stance: .restrain, title: "想克制的")
             if editing {
                 areas(profile.generous, stance: .generous, title: "愿意多花的")
@@ -70,6 +69,7 @@ struct ProfileView: View {
                     }
                 }.buttonStyle(PressButtonStyle())
             }
+            memories
         }.navigationTitle("我的消费观").yubaiNavigation()
             .toolbar { Button(editing ? "完成" : "编辑") { editing.toggle() }.frame(minHeight: 44).accessibilityIdentifier("editProfile") }
             .onAppear { configured = IntelligenceRuntime.isConfigured; loadFloor() }
@@ -89,6 +89,27 @@ struct ProfileView: View {
                     #endif
             }
     }
+    private var memories: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+            SectionHeading(title: "余白记得的")
+            Card(style: .list) {
+                VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+                    ForEach(Array(store.current.memories.sorted {
+                        $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt > $1.updatedAt
+                    }.prefix(2))) { note in
+                        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                            Text(note.text).yubaiFont(YubaiFont.row)
+                            Text(Dates.text(note.updatedAt) + " · " + note.source.label)
+                                .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                        }
+                    }
+                    NavigationLink("全部 \(store.current.memories.count) 条 ›") { MemoryView() }
+                        .yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin)
+                        .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openMemories")
+                }
+            }
+        }
+    }
     private var habitSummary: String {
         if store.current.preferences.hideAmounts { return "金额已隐藏" }
         let lines = ProfileHabits.summary(store.current).filter { $0.kind == .category }.prefix(3)
@@ -104,7 +125,7 @@ struct ProfileView: View {
         ForEach(store.current.goals) { goal in
             Button { sheet = .goal(goal) } label: {
                 Card(style: .compact) { VStack(alignment: .leading, spacing: 2) {
-                    Text("为" + goal.title + "存").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                    Text("为 " + goal.title + " 存").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     Text(store.current.preferences.hideAmounts ? "••••" : Money.text(goal.reserved, currency: false) + " / " + Money.text(goal.target, currency: false)).yubaiFont(YubaiFont.amountCard)
                 } }
             }.buttonStyle(PressButtonStyle())
@@ -124,7 +145,7 @@ struct ProfileView: View {
                             if !store.current.preferences.hideAmounts {
                                 Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                                 if let progress = progress(area) {
-                                    ProgressView(value: progress).tint(YubaiColor.brand).accessibilityLabel(area.title + "柔性提醒进度")
+                                    ProgressView(value: progress).tint(YubaiColor.brand).accessibilityLabel(area.title + " · " + usage(area))
                                 }
                             }
                         }
@@ -149,8 +170,8 @@ struct ProfileView: View {
     }
     private func usage(_ area: ProfileArea) -> String {
         let value = area.usage(in: store.current)
-        let count = area.softLimit?.perWeekCount.map { "本周 \(value.weekCount) / \($0) 次" } ?? "本周 \(value.weekCount) 次"
-        let amount = area.softLimit?.perMonthAmount.map { "本月 " + Money.text(value.monthAmount) + " / " + Money.text($0) } ?? "本月 " + Money.text(value.monthAmount)
+        let count = area.softLimit?.perWeekCount.map { "本周第 \(value.weekCount) 次 · 你写的最多 \($0) 次" } ?? "本周 \(value.weekCount) 次"
+        let amount = area.softLimit?.perMonthAmount.map { "本月 " + Money.text(value.monthAmount) + " · 你写的最多 " + Money.text($0) } ?? "本月 " + Money.text(value.monthAmount)
         return count + " · " + amount
     }
     private var principles: some View {
@@ -173,34 +194,33 @@ struct ProfileView: View {
     }
     private var goals: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            SectionHeading(title: "想为什么存钱")
+            SectionHeading(title: "在存钱")
             CardRows(store.current.goals) { goal in
                 HStack {
                     VStack(alignment: .leading, spacing: YubaiSpace.space6) {
-                        Text(goal.title).yubaiFont(YubaiFont.rowTitle)
-                        Text("已留 " + Money.text(goal.reserved) + " / " + Money.text(goal.target)).yubaiFont(YubaiFont.amountSmall)
+                        Text("为 " + goal.title + " 存").yubaiFont(YubaiFont.rowTitle)
+                        Text("已存 " + Money.text(goal.reserved) + " / " + Money.text(goal.target)).yubaiFont(YubaiFont.amountSmall)
                         if let date = goal.dueDate { Text("期待在 " + Dates.text(date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                         if !goal.note.isEmpty { Text(goal.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
                     }
                     Spacer(minLength: 0)
                     Menu {
-                        Button("调整目标") { sheet = .goal(goal) }
-                        Button("释放预留并移除", role: .destructive) { store.update("修改消费观") { $0.goals.removeAll { $0.id == goal.id } } }
+                        Button("调整存钱") { sheet = .goal(goal) }
+                        Button("不存了", role: .destructive) { store.update("修改消费观") { $0.goals.removeAll { $0.id == goal.id } } }
                     } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("调整或移除" + goal.title)
                 }.padding(.vertical, YubaiSpace.space8)
             }
-            Button("添加目标") { sheet = .goal(nil) }
+            Button("添加存钱的事") { sheet = .goal(nil) }
         }
     }
     private var floorSection: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            SectionHeading(title: "始终留着的底线")
+            SectionHeading(title: "始终留着")
             Card {
                 VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-                    TextField("底线金额（元）", text: $floor).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("始终留着的底线金额")
-                    Text("计算可动用时会先留出这笔钱").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    TextField("金额（元）", text: $floor).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("始终留着金额")
 
-                    Button("保存底线") {
+                    Button("保存") {
                         do { let amount = try Money.parse(floor); edit { $0.floorAmount = amount } }
                         catch { store.error = error.localizedDescription }
                     }
@@ -212,7 +232,7 @@ struct ProfileView: View {
         let lines = ProfileHabits.summary(store.current)
         return VStack(alignment: .leading, spacing: YubaiSpace.space12) {
             SectionHeading(title: "你常花的", subtitle: "来自账本")
-            Text("近 90 天 · 按消费金额排列，同额时看频次。分类与商户会重叠，金额不能相加。商户按账单原始名称归组。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            Text("近 90 天").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             if lines.isEmpty { Text("有了消费记录，再一起看看。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             CardRows(lines) { line in
                 VStack(alignment: .leading, spacing: YubaiSpace.space6) {
@@ -248,7 +268,6 @@ private struct ProfileAreaEditor: View {
                 TextField("例如：外卖、学习、旅行", text: $title)
                 TextField("说明（可选）", text: $note, axis: .vertical)
                 TextField("关键词，用顿号或逗号分开", text: $keywords, axis: .vertical)
-                Text("任一分类或关键词符合，就计入这个领域。关键词会查找标题、用途和备注。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
             Section("相关分类，可多选") {
                 ForEach(store.current.categories.filter { !$0.income }) { category in
@@ -258,10 +277,9 @@ private struct ProfileAreaEditor: View {
                 }
             }
             if stance == .restrain {
-                Section("柔性提醒，可以留空") {
+                Section("每周次数 / 每月金额（可选）") {
                     TextField("每周最多几次", text: $weekly).numericInput()
                     TextField("每月金额（元）", text: $monthly).numericInput()
-                    Text("只是帮你留意，不是不能越过的规定。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }
         }.editorForm().navigationTitle(stance == .restrain ? "想克制的" : "愿意多花的").yubaiNavigation()
@@ -330,7 +348,7 @@ struct ProfileProposalCard: View {
     let secondaryTitle: String
     let secondary: () -> Void
     var body: some View {
-        ProposalCard(title: store.current.preferences.hideAmounts ? "等你核对的修改" : change.reason, lines: store.current.preferences.hideAmounts ? ["金额已隐藏，请显示金额后核对完整提案。"] : change.preview(in: store.current, showPreviousValues: true),
-                     primaryTitle: "记下这些", secondaryTitle: secondaryTitle, canConfirm: !store.current.preferences.hideAmounts, confirm: confirm, cancel: secondary)
+        ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? ["请显示金额后核对。"] : change.preview(in: store.current, showPreviousValues: true),
+                     primaryTitle: "改好这 \(change.items.count) 项", secondaryTitle: secondaryTitle, canConfirm: !store.current.preferences.hideAmounts, confirm: confirm, cancel: secondary)
     }
 }

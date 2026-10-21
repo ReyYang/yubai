@@ -24,7 +24,7 @@ struct ProfileConversationView: View {
                             if message.role == .user { Spacer(minLength: 40) }
                             VStack(alignment: .leading, spacing: 6) {
                                 if message.role == .assistant {
-                                    HStack(spacing: 6) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白助手").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                                    HStack(spacing: 6) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                                 }
                                 Text(message.content ?? "").yubaiFont(message.role == .user ? YubaiFont.body : YubaiFont.cardTitle)
                                     .foregroundStyle(message.role == .user ? YubaiColor.onBrand : YubaiColor.label).textSelection(.enabled)

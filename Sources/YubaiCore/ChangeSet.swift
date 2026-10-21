@@ -51,7 +51,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, source.count <= 200,
               !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, reason.count <= 4000,
               !items.isEmpty,
-              (-2_208_988_800...7_258_118_400).contains(createdAt.timeIntervalSince1970) else { throw YubaiError.invalid("提案的来源、依据、时间或项目数量无效。") }
+              (-2_208_988_800...7_258_118_400).contains(createdAt.timeIntervalSince1970) else { throw YubaiError.invalid("修改的来源、明细、时间或项目数量无效。") }
     }
     public func preview(in ledger: Ledger, showPreviousValues: Bool = false) -> [String] {
         func entry(_ id: UUID) -> String {
@@ -92,14 +92,14 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     if !area.match.categories.isEmpty { line += "，分类：" + area.match.categories.joined(separator: "、") }
                     if !area.match.keywords.isEmpty { line += "，关键词：" + area.match.keywords.joined(separator: "、") }
                     if !area.note.isEmpty { line += "，说明：" + area.note }
-                    if let count = area.softLimit?.perWeekCount { line += "，柔性提醒每周 \(count) 次" }
-                    if let amount = area.softLimit?.perMonthAmount { line += "，柔性提醒每月 \(Money.text(amount))" }
+                    if let count = area.softLimit?.perWeekCount { line += "，每周最多 \(count) 次" }
+                    if let amount = area.softLimit?.perMonthAmount { line += "，每月最多 \(Money.text(amount))" }
                     return line
                 case .removeArea(let id): return "移除消费领域「\((ledger.profile.generous + ledger.profile.restrain).first { $0.id == id }?.title ?? "已移除")」"
                 case .addPrinciple(let text): return "新增消费原则「\(text)」"
                 case .editPrinciple(let old, let new): return "将消费原则「\(old)」改为「\(new)」"
                 case .removePrinciple(let text): return "移除消费原则「\(text)」"
-                case .setFloorAmount(let amount): return amount.map { "将始终留着的底线设为 \(Money.text($0))" } ?? "清除消费观中的底线，不额外预留底线金额"
+                case .setFloorAmount(let amount): return amount.map { "将始终留着设为 \(Money.text($0))" } ?? "清除始终留着的金额"
                 }
             }
         }
@@ -256,7 +256,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         let originals = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         for i in next.entries.indices {
             if let old = originals[next.entries[i].id], old != next.entries[i] {
-                guard old.amount == next.entries[i].amount, old.accountID == next.entries[i].accountID, old.date == next.entries[i].date else { throw YubaiError.invalid("提案不能修改已有记录的金额、账户或日期。") }
+                guard old.amount == next.entries[i].amount, old.accountID == next.entries[i].accountID, old.date == next.entries[i].date else { throw YubaiError.invalid("不能修改已有记录的金额、账户或日期。") }
                 // Includes refund categories updated as a consequence of an original's category change.
                 if !next.entries[i].classificationReason.hasPrefix(stamp) { touch(i) }
             }

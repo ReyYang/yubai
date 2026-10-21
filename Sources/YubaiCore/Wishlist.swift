@@ -47,12 +47,12 @@ public enum Wishlist {
             let area = entry.flatMap { entry in (ledger.profile.restrain + ledger.profile.generous).first { ButlerCards.matches($0, entry: entry, ledger: ledger) } }
             return CardCandidate(kind: .followUp, dedupeKey: "follow:\(wish.id)", evidence: entry.map { [$0.id] } ?? [],
                 facts: [CardFact("心愿", wish.title), CardFact("当时的判断", wish.judgment), CardFact("购买金额", cents: entry?.amount ?? wish.amount)],
-                title: "买了一个月，觉得值吗？", body: "「\(String(wish.title.prefix(20)))」用了一阵，想听听你的感受。", action: .openWish(wish.id), priority: 2, areaID: area?.id)
+                title: "买了一个月 · 用得怎么样？", body: "\(String(wish.title.prefix(20)))，用得怎么样？", action: .openWish(wish.id), priority: 2, areaID: area?.id)
         }
     }
     public static func answerFollowUp(_ wishID: UUID, choice: FollowUpChoice, text: String = "", in ledger: inout Ledger, now: Date) throws {
         guard let i = ledger.wishlist.firstIndex(where: { $0.id == wishID && $0.status == .bought }),
-              let due = ledger.wishlist[i].followUpAt, due <= now, ledger.wishlist[i].followUpAnswer == nil, text.count <= 3900 else { throw YubaiError.invalid("这条回访已处理或还没到时间。") }
+              let due = ledger.wishlist[i].followUpAt, due <= now, ledger.wishlist[i].followUpAnswer == nil, text.count <= 3900 else { throw YubaiError.invalid("已经回答过或还没满一个月。") }
         _ = ButlerCards.refresh(&ledger, now: now)
         ledger.wishlist[i].followUpAnswer = choice.rawValue + (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "：" + text)
         ledger.wishlist[i].followUpAnsweredAt = now

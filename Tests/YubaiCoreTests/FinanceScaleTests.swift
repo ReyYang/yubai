@@ -131,12 +131,12 @@ private enum ReferenceFinance {
         let available = cash - debt - committed - goals - (ledger.profile.floorAmount ?? 0) - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
-        if accounts.isEmpty { warnings.append("先添加账户并核对余额，才能判断可动用资金。") }
-        if accounts.contains(where: { !$0.reconciled }) { warnings.append("有账户尚未核对余额，资金判断仅供参考。") }
-        if accounts.contains(where: { now.timeIntervalSince($0.anchorDate) > 14 * 86400 }) { warnings.append("部分余额已超过 14 天未核对；请确认没有遗漏账单。") }
-        if ledger.activeEntries.contains(where: { $0.nature.uncertain }) { warnings.append("有资金性质待明确；余额核对后新增的未知流入已保守扣除，历史未知仍需核对用途。") }
-        if occurrences.contains(where: \.overdue) { warnings.append("有已到期但未登记完成的安排，仍计入预留。") }
-        if ledger.activeEntries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有内部移动尚未关联另一账户，可以问余白协助核对，避免重复计算。") }
+        if accounts.isEmpty { warnings.append("先添加账户，对一下余额。") }
+        if accounts.contains(where: { !$0.reconciled }) { warnings.append("有账户还没对过账。") }
+        if accounts.contains(where: { now.timeIntervalSince($0.anchorDate) > 14 * 86400 }) { warnings.append("部分账户上次对账已超过 14 天，请补齐账单。") }
+        if ledger.activeEntries.contains(where: { $0.nature.uncertain }) { warnings.append("有账目没写用途，请补上。") }
+        if occurrences.contains(where: \.overdue) { warnings.append("有固定收付已到期，请确认是否已付。") }
+        if ledger.activeEntries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有转账没选另一账户，请补上。") }
         let baseline = cash - debt - goals - (ledger.profile.floorAmount ?? 0) - uncertain
         var points: [ForecastPoint] = []
         for offset in 0...90 {

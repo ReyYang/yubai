@@ -40,7 +40,7 @@ struct QuickEntryView: View {
                                            didSelect: { userChoseCategory = true })
                         form
                         HStack {
-                            Text("记下后，还能自在支配").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                            Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             Spacer()
                             AmountLabel(cents: available, hide: store.current.preferences.hideAmounts, currency: true, fractionDigits: available % 100 == 0 ? 0 : 2)
                                 .accessibilityIdentifier("afterEntryAvailable")
