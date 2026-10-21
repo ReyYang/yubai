@@ -28,7 +28,7 @@ public struct ProfileColdStart: Sendable {
         let context = ToolContext(ledger: ledger, now: now)
         let tools: [any AssistantTool] = final ? [ReadOnlyTool.getProfile, ProposalTool.profile, MemoryTool.recall] : [ReadOnlyTool.getProfile, MemoryTool.recall]
         let reply = try await AssistantAgent(transport: transport, context: context).run(system: system,
-            messages: [ChatMessage(role: .user, content: "和我聊几句，整理我的消费观。可以跳过不想回答的部分。")] + messages, tools: tools, characterBudget: characterBudget)
+            messages: [ChatMessage(role: .user, content: "和我聊几句，整理我的消费观。可以跳过不想回答的部分。")] + messages, tools: tools, characterBudget: characterBudget, purpose: "消费观对话")
         if final {
             guard reply.proposedChangeSets.count == 1, reply.proposedChangeSets[0].isProfileOnly else {
                 throw YubaiError.invalid("还没整理成一份消费观提案，请再试一次。")

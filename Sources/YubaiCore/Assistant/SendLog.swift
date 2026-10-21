@@ -21,6 +21,8 @@ public struct SendLogItem: Identifiable, Codable, Sendable, Equatable {
     public let model: String
     public let byteSize: Int
     public let requestText: String
+    public var groupID: UUID? = nil
+    public var groupTitle: String? = nil
     /// Tool results are messages with role .tool and their original toolCallID.
     public var messages: [ChatMessage] = []
     public var tools: [String] = []
@@ -29,6 +31,44 @@ public struct SendLogItem: Identifiable, Codable, Sendable, Equatable {
     public var response: SendLogResponse?
     /// Occurrences in the outgoing message content/arguments, after redaction.
     public var redactionSummary: [String: Int] = [:]
+}
+
+/// A snapshot of retained requests, in chronological order. Evicted requests are
+/// not included in totals. Legacy requests without a group ID each form one group.
+public struct SendLogGroup: Identifiable, Sendable, Equatable {
+    public let id: UUID
+    public let title: String
+    public let purpose: String
+    public let startedAt: Date
+    public let requestCount: Int
+    public let totalBytes: Int
+    /// Sum of request durations, rather than elapsed time between requests.
+    public let totalDurationMilliseconds: Int
+    public let hasFailure: Bool
+    public let failureReasons: [String]
+    public let redactionSummary: [String: Int]
+    public let items: [SendLogItem]
+
+    init(items: [SendLogItem]) {
+        let items = items.sorted { $0.time < $1.time }
+        let first = items[0]
+        self.items = items; id = first.groupID ?? first.id
+        title = first.groupTitle ?? first.purpose; purpose = first.purpose
+        startedAt = first.time; requestCount = items.count
+        totalBytes = items.reduce(0) { $0 + $1.byteSize }
+        totalDurationMilliseconds = items.reduce(0) { $0 + ($1.response?.durationMilliseconds ?? 0) }
+        var reasons: [String] = [], summary: [String: Int] = [:]
+        for item in items {
+            if let response = item.response {
+                let reason = response.errorDescription ?? response.httpStatus.flatMap {
+                    (200..<300).contains($0) ? nil : "HTTP \($0)"
+                }
+                if let reason, !reasons.contains(reason) { reasons.append(reason) }
+            }
+            for (kind, count) in item.redactionSummary { summary[kind, default: 0] += count }
+        }
+        failureReasons = reasons; hasFailure = !reasons.isEmpty; redactionSummary = summary
+    }
 }
 
 /// Memory only; never stores headers or credentials. All access is guarded by the lock.
@@ -45,6 +85,18 @@ public final class SendLog: @unchecked Sendable {
     public init(byteBudget: Int = 2 * 1024 * 1024) { self.byteBudget = max(0, byteBudget) }
     public var items: [SendLogItem] {
         lock.lock(); defer { lock.unlock() }; return Array(buffer.reversed())
+    }
+    /// Newest group first. Each group's items and totals share one locked snapshot.
+    public var groups: [SendLogGroup] {
+        let snapshot = items.reversed()
+        var grouped: [UUID: [SendLogItem]] = [:], order: [UUID] = []
+        for item in snapshot {
+            let key = item.groupID ?? item.id
+            if grouped[key] == nil { order.append(key) }
+            grouped[key, default: []].append(item)
+        }
+        return order.reversed().compactMap { grouped[$0].map { SendLogGroup(items: $0) } }
+            .sorted { $0.startedAt > $1.startedAt }
     }
     public var totalCount: Int { lock.lock(); defer { lock.unlock() }; return count }
     public var retainedByteSize: Int { lock.lock(); defer { lock.unlock() }; return bytes }
@@ -64,7 +116,8 @@ public final class SendLog: @unchecked Sendable {
         }
     }
 
-    @discardableResult func record(time: Date = Date(), purpose: String, model: String, body: Data, apiKey: String) -> UUID {
+    @discardableResult func record(time: Date = Date(), purpose: String, model: String, body: Data, apiKey: String,
+                                   groupID: UUID? = nil, groupTitle: String? = nil) -> UUID {
         // Parse before replacing: a key can contain JSON-escaped characters.
         let original = String(decoding: body, as: UTF8.self)
         let text = (try? JSONValue.parse(original)).flatMap { try? Self.sanitized($0, key: apiKey).jsonText() }
@@ -79,6 +132,9 @@ public final class SendLog: @unchecked Sendable {
         let parsed = try? JSONDecoder().decode(Request.self, from: Data(text.utf8))
         var item = SendLogItem(id: UUID(), time: time, purpose: Self.hideKey(purpose, apiKey),
             model: Self.hideKey(model, apiKey), byteSize: body.count, requestText: text)
+        item.groupID = groupID
+        // Redact the complete title before truncating, so a cut identifier cannot leak.
+        item.groupTitle = groupTitle.map { String(Redactor.shared.text(Self.hideKey($0, apiKey)).prefix(30)) }
         item.messages = parsed?.messages ?? []; item.tools = parsed?.tools?.map { $0.function.name } ?? []
         item.temperature = parsed?.temperature; item.maxTokens = parsed?.max_tokens
         let contents = item.messages.flatMap { message in

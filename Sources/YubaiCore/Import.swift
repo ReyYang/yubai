@@ -105,7 +105,7 @@ public enum BillImporter {
         guard data.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个账单请小于 50 MB。") }
         guard ledger.accounts.contains(where: { $0.id == accountID }), accountMappings.values.allSatisfy({ id in ledger.accounts.contains { $0.id == id } }) else { throw YubaiError.invalid("导入账户不存在，请重新选择。") }
         let workbook = filename.lowercased().hasSuffix(".xlsx") ? try XLSX.readWorkbook(data) : nil
-        let table = try workbook?.rows ?? CSV.parse(CSV.decode(data))
+        let table = try workbook?.rows ?? CSV.parse(CSV.decode(data), delimiter: filename.lowercased().hasSuffix(".tsv") ? "\t" : nil)
         let knownHeader = table.firstIndex(where: { row in
             let h = row.map(normalized)
             return h.contains(where: { dateNames.map(normalized).contains($0) }) && h.contains(where: { amountNames.map(normalized).contains($0) })

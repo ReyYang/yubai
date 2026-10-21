@@ -147,6 +147,9 @@ final class ImportOrganizerTests: XCTestCase {
         }
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
         let count = await script.count(); XCTAssertEqual(count, 2)
+        let requests = await script.requests
+        XCTAssertEqual(Set(requests.compactMap(\.groupID)).count, 1)
+        XCTAssertTrue(requests.allSatisfy { $0.groupID != nil && $0.groupTitle == "整理 90 笔导入记录" })
         XCTAssertEqual(result.questions.count, 5)
         XCTAssertTrue(result.questions.prefix(4).allSatisfy { $0.entryIDs.count == 15 })
         XCTAssertEqual(Set(result.questions.flatMap(\.entryIDs)), Set(ledger.entries.map(\.id)))

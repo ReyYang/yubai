@@ -144,7 +144,8 @@ public struct DeepSeekClient: ChatTransport {
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         try Task.checkCancellation()
-        let logID = sendLog.record(purpose: redactor.text(input.purpose), model: configuration.model, body: body, apiKey: configuration.apiKey)
+        let logID = sendLog.record(purpose: redactor.text(input.purpose), model: configuration.model, body: body, apiKey: configuration.apiKey,
+            groupID: input.groupID ?? UUID(), groupTitle: redactor.text(input.groupTitle ?? input.purpose))
         let started = DispatchTime.now().uptimeNanoseconds
         var loggedResponse = SendLogResponse(durationMilliseconds: 0)
         defer {

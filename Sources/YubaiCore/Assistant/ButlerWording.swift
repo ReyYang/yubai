@@ -24,7 +24,8 @@ public enum ButlerWording {
         do {
             let reply = try await transport.send(ChatRequest(messages: [ChatMessage(role: .system, content: prompt),
                 ChatMessage(role: .system, content: Memory.prompt(ledger: ledger, now: now)),
-                ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 3000, purpose: select ? "导入短评" : "管家卡片与来信"))
+                ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 3000, purpose: select ? "导入短评" : "管家卡片与来信",
+                groupID: UUID(), groupTitle: select ? "导入短评" : "管家卡片与每周来信"))
             guard reply.role == .assistant, let text = reply.content,
                   let rows = try JSONValue.parse(text)["cards"]?.arrayValue, !rows.isEmpty else { return fallback }
             var output = select ? [] : candidates

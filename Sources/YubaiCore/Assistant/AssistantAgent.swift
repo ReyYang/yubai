@@ -13,6 +13,7 @@ public struct AssistantReply: Equatable, Sendable {
     public var memoryLedgerUpdatedAt: Date? = nil
     public var chart: AnswerChart? = nil
     public var purchaseJudgment: PurchaseJudgment? = nil
+    public var pastedStatement: PastedStatement? = nil
     public let proposedChangeSets: [ChangeSet]
     public let text: String
     public let evidenceEntryIDs: [UUID]
@@ -25,8 +26,12 @@ public struct AssistantAgent: Sendable {
     public let context: ToolContext
     public init(transport: any ChatTransport, context: ToolContext) { self.transport = transport; self.context = context }
 
-    public func run(system: String, messages: [ChatMessage], tools: [any AssistantTool], characterBudget: Int = AssistantContextBudget.defaultLimit) async throws -> AssistantReply {
+    public func run(system: String, messages: [ChatMessage], tools: [any AssistantTool], characterBudget: Int = AssistantContextBudget.defaultLimit, purpose: String = "财务管家") async throws -> AssistantReply {
         let redactor = context.redactor
+        let groupID = UUID()
+        // SendLog truncates after hiding the transport's key, which may straddle
+        // the title boundary and is not known to this agent.
+        let groupTitle = redactor.text(messages.last(where: { $0.role == .user })?.content ?? purpose)
         var conversation = [ChatMessage(role: .system, content: redactor.text(system)),
             ChatMessage(role: .system, content: Memory.prompt(ledger: context.ledger, now: context.now, characterBudget: context.memoryCharacterBudget))] + messages.map { clean($0) }
         let definitions = tools.map { ChatToolDefinition(name: $0.name, description: redactor.text($0.description), parameters: redactor.value($0.parameters)) }
@@ -43,7 +48,7 @@ public struct AssistantAgent: Sendable {
         while true {
             try Task.checkCancellation()
             AssistantContextBudget.compactTools(&conversation, limit: characterBudget)
-            let reply = try await transport.send(ChatRequest(messages: conversation, tools: definitions))
+            let reply = try await transport.send(ChatRequest(messages: conversation, tools: definitions, purpose: purpose, groupID: groupID, groupTitle: groupTitle))
             try Task.checkCancellation()
             guard reply.role == .assistant else { throw YubaiError.invalid("云端未返回助手消息。") }
             let calls = reply.toolCalls ?? []
@@ -55,7 +60,7 @@ public struct AssistantAgent: Sendable {
                     conversation.append(clean(reply))
                     conversation.append(ChatMessage(role: .system, content: "上一条回复含未经工具核实的金额。请重写最终答复，只引用工具结果中的金额原文；没有依据就说明无法确认，不要计算或猜测金额。"))
                     AssistantContextBudget.compactTools(&conversation, limit: characterBudget)
-                    let retry = try await transport.send(ChatRequest(messages: conversation, purpose: "财务管家·金额核对"))
+                    let retry = try await transport.send(ChatRequest(messages: conversation, purpose: "\(purpose)·金额核对", groupID: groupID, groupTitle: groupTitle))
                     try Task.checkCancellation()
                     guard retry.role == .assistant, retry.toolCalls?.isEmpty ?? true,
                           let revised = retry.content?.trimmingCharacters(in: .whitespacesAndNewlines), !revised.isEmpty else {

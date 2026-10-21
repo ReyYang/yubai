@@ -121,6 +121,7 @@ final class MemoryReflectionTests: XCTestCase {
         let script = try transport(output())
         _ = try await MemoryReflection.run(ledger: ledger, transport: script, now: now)
         let requests = await script.recorded()
+        XCTAssertNotNil(requests[0].groupID); XCTAssertEqual(requests[0].groupTitle, "每周回看与记忆提炼")
         let input = try JSONValue.parse(try XCTUnwrap(requests[0].messages.last?.content))
         XCTAssertEqual(input["last_week"]?["start"], .string("2026-10-12")); XCTAssertEqual(input["last_week"]?["end"], .string("2026-10-18"))
         XCTAssertEqual(input["last_week"]?["summary"]?["matched_count"], .number(1))

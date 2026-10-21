@@ -134,7 +134,7 @@ public enum AskYubai {
         if isProtectedEdit(question) {
             return AssistantReply(proposedChangeSets: [], text: "金额、账户和原始日期来自账单与账户，我不能替你改动。请先核对原始账单；金额、账户或日期有误时，需要由你修正来源后重新导入。", evidenceEntryIDs: [], toolTrace: [], unverifiedAmounts: [])
         }
-        return try await AssistantAgent(transport: transport, context: context).run(system: prompt(now: context.now), messages: history + [ChatMessage(role: .user, content: question)], tools: tools, characterBudget: characterBudget)
+        return try await AssistantAgent(transport: transport, context: context).run(system: prompt(now: context.now), messages: history + [ChatMessage(role: .user, content: question)], tools: tools, characterBudget: characterBudget, purpose: "问余白")
     }
 }
 
@@ -145,6 +145,14 @@ public actor AskYubaiSession {
     private let characterBudget: Int
     public init(characterBudget: Int = AssistantContextBudget.defaultLimit) { self.characterBudget = characterBudget }
     public func ask(_ text: String, ledger: Ledger, transport: any ChatTransport, now: Date = Date()) async throws -> AssistantReply {
+        try Task.checkCancellation()
+        if let statement = PastedStatement.detect(text)?.locallyPreviewed(ledger: ledger) {
+            try Task.checkCancellation()
+            // Keep the complete pasted turn out of history and amount candidates.
+            var reply = AssistantReply(proposedChangeSets: [], text: statement.replyText, evidenceEntryIDs: [], toolTrace: [], unverifiedAmounts: [])
+            reply.pastedStatement = statement
+            return reply
+        }
         let parsed = EntryAmountParser.entries(in: text)
         if !parsed.isEmpty { parsedEntries = parsed }
         let active = ledger.accounts.filter { !$0.archived }
