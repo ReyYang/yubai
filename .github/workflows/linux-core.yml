@@ -1,10 +1,8 @@
 name: Linux Core
 
-# 便宜的快速检查：在 Linux 上编译 YubaiCore 并跑单元测试，同时确认 Xcode 工程与生成器一致。
+# 在 Linux 上编译 YubaiCore 并跑单元测试，同时确认 Xcode 工程与生成器一致。
+# 会消耗 GitHub 额度，只手动触发；平时在本地或 Claude 容器里用 scripts/install-linux-swift.sh 免费跑同样的检查。
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:
