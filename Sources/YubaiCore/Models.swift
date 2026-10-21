@@ -108,6 +108,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var displayTitle: String { purpose.flatMap { $0.isEmpty ? nil : $0 } ?? title }
     public var source: String = "手动"; public var externalID: String = ""; public var batchID: UUID?
     public var sourceIdentity: String = ""
+    public var quickCapture: QuickCaptureOrigin?
     public var sourceRow: Int?; public var fingerprint: String = ""
     public var userEdited = false; public var deletedAt: Date?
     public var relatedEntryID: UUID?; public var planID: UUID?; public var occurrence: Date?
@@ -221,12 +222,13 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Optional DeepSeek assistance; default off. Requires `DEEPSEEK_API_KEY` for now.
     public var cloudAIEnabled = false
     public var weeklyLetterPush = false
+    public var quickCapture = QuickCapturePreferences()
     public var onboardingComplete = false
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
-        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, weeklyLetterPush
+        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, weeklyLetterPush, quickCapture
     }
     // Decode the former master switch without including it in newly encoded ledgers.
     private enum LegacyCodingKeys: String, CodingKey {
@@ -246,6 +248,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         let wasEnabled = try legacy.decodeIfPresent(Bool.self, forKey: .localAIEnabled) ?? true
         cloudAIEnabled = (try values.decodeIfPresent(Bool.self, forKey: .cloudAIEnabled) ?? false) && wasEnabled
         weeklyLetterPush = try values.decodeIfPresent(Bool.self, forKey: .weeklyLetterPush) ?? false
+        quickCapture = try values.decodeIfPresent(QuickCapturePreferences.self, forKey: .quickCapture) ?? QuickCapturePreferences()
         onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
     }
 }
