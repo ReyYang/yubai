@@ -60,10 +60,3 @@ Mac／iPhone 待执行：
 - 390×844、小屏、深色、大字号、VoiceOver、减少动态效果；沿用现有 YubaiMotion，没有新增动画。
 
 免费 Personal Team 的 provisioning profile 有效 7 天，过期需要重新构建安装；最多 10 个 App ID、3 台设备、每台设备 3 个 App。新增 Widget 另用一个 bundle id，实际签名安装仍需 Xcode 核对。App Groups 需要对应团队能力，故默认关闭数字共享；本地通知不使用 APNs entitlement，本次钱包交易是用户的系统自动化输入，不需要商户 Apple Pay entitlement。来源：[Apple 账户说明](https://developer.apple.com/help/account/basics/about-your-developer-account)、[App Groups 配置](https://developer.apple.com/documentation/xcode/configuring-app-groups)、[交互式 snippet](https://developer.apple.com/documentation/appintents/displaying-static-and-interactive-snippets)、[OpenIntent](https://developer.apple.com/documentation/appintents/openintent)、[ControlWidget](https://developer.apple.com/documentation/widgetkit/creating-controls-to-perform-actions-across-the-system)。
-
-
-## 本轮本地提交位置
-
-执行环境将原仓库 `/home/user/yubai/.git` 以只读挂载，`git add` 无法创建 index.lock；没有修改挂载或尝试提权。为完成本地提交，建立 `/tmp/yubai-quick-capture.git` 的本地 Git 副本，沿用原分支基线和已配置作者，工作树仍指向 `/home/user/yubai`，提交分 Core 与 App／Widget 两次。原仓库 HEAD 无法前移，其工作区改动保持原位；没有 push。
-
-可移交文件为 `/tmp/yubai-quick-capture-patches/` 内两份 format-patch，以及 `/tmp/yubai-quick-capture.bundle`（含此分支相对原基线的两次提交，原基线为前置条件）。补丁可在可写环境的干净基线分支中应用；当前已有源码改动的工作区须先妥善保留，避免重复应用。
