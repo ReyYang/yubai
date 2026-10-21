@@ -68,6 +68,7 @@ public struct LedgerRepository: Sendable {
         var payloadChecksums: [URL: String] = [:]
     }
     private let state: State
+    private let localState: State
     private let historyLock: NSRecursiveLock
     public let directory: URL
     public let localDirectory: URL
@@ -75,14 +76,16 @@ public struct LedgerRepository: Sendable {
     public var file: URL { directory.appendingPathComponent("ledger.json") }
     private var history: URL { localDirectory.appendingPathComponent("Recovery", isDirectory: true) }
     public init(directory: URL) {
-        self.directory = directory; localDirectory = directory; isUbiquitous = false; state = State(); historyLock = NSRecursiveLock()
+        self.directory = directory; localDirectory = directory; isUbiquitous = false
+        let state = State(); self.state = state; localState = state; historyLock = NSRecursiveLock()
     }
-    private init(directory: URL, localDirectory: URL, isUbiquitous: Bool, historyLock: NSRecursiveLock) {
-        self.directory = directory; self.localDirectory = localDirectory; self.isUbiquitous = isUbiquitous; state = State(); self.historyLock = historyLock
+    private init(directory: URL, localDirectory: URL, isUbiquitous: Bool, historyLock: NSRecursiveLock, localState: State) {
+        self.directory = directory; self.localDirectory = localDirectory; self.isUbiquitous = isUbiquitous
+        state = State(); self.localState = localState; self.historyLock = historyLock
     }
     // A relocated repository shares LOCAL history and its lock, never the last-read digest.
     public func relocated(to directory: URL, isUbiquitous: Bool = false) -> Self {
-        Self(directory: directory, localDirectory: localDirectory, isUbiquitous: isUbiquitous, historyLock: historyLock)
+        Self(directory: directory, localDirectory: localDirectory, isUbiquitous: isUbiquitous, historyLock: historyLock, localState: localState)
     }
     private var pendingSyncFile: URL { localDirectory.appendingPathComponent(".icloud-pending") }
     public var hasPendingSync: Bool { FileManager.default.fileExists(atPath: pendingSyncFile.path) }
@@ -454,6 +457,152 @@ public struct LedgerRepository: Sendable {
             let date = stamp.map { Date(timeIntervalSince1970: Double($0) / 1000) } ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             return Recovery(url: url, date: date, name: name)
         }.sorted { $0.date > $1.date }
+    }
+
+    /// App storage is measured from the local mirror. Recovery includes shared payloads
+    /// exactly once; file lengths are read without loading attachment contents.
+    public func storageUsage() throws -> StorageUsage {
+        do {
+            return try access(writing: false) { root in
+                historyLock.lock(); defer { historyLock.unlock() }
+                var usage = StorageUsage()
+                let versions = try recoveries()
+                usage.recoveryCount = versions.count; usage.oldestRecovery = versions.map(\.date).min()
+                usage.attachmentBytes = try bytesIn(attachments(at: root))
+                usage.recoveryBytes = try bytesIn(history)
+                if FileManager.default.fileExists(atPath: root.path) {
+                    for url in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                    where url.lastPathComponent != "Attachments" && url.lastPathComponent != "Recovery" {
+                        usage.ledgerBytes += try bytesIn(url)
+                    }
+                }
+                return usage
+            }
+        } catch { throw YubaiError.invalid("无法读取存储空间，请稍后重试。") }
+    }
+    private func bytesIn(_ url: URL) throws -> Int64 {
+        guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
+        let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey])
+        guard values.isSymbolicLink != true else { return 0 }
+        if values.isDirectory != true { return Int64(values.fileSize ?? 0) }
+        return try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil).reduce(0) { try $0 + bytesIn($1) }
+    }
+
+    @discardableResult public func deleteOldScreenshots(from ledger: Ledger, months: Int, now: Date = Date(), calendar: Calendar = .current) throws -> Ledger {
+        do {
+            return try access(writing: true) { root in
+                historyLock.lock(); defer { historyLock.unlock() }
+                try checkUnchanged(at: root)
+                var next = ledger
+                let removed = StorageAttachments.removeOldScreenshots(from: &next, months: months, now: now, calendar: calendar)
+                guard !removed.isEmpty else { return ledger }
+                next.updatedAt = Date()
+                let payloads = removed.map { attachments(at: root).appendingPathComponent($0.id.uuidString) }
+                return try storageTransaction(paths: [root.appendingPathComponent("ledger.json"), history] + payloads) {
+                    // The ordinary save preserves the previous ledger and its shared payloads.
+                    let saved = try save(next, reason: "删除旧截图", requiringUnchanged: true)
+                    // Ordinary garbage collection is best effort. This user action must report
+                    // an unlink failure and roll back rather than claim the screenshots are gone.
+                    for url in payloads where containsFile(url) {
+                        try payloadAccess(url, writing: true, deleting: true) { try FileManager.default.removeItem(at: $0) }
+                    }
+                    return saved
+                }
+            }
+        } catch LedgerSyncError.changed { throw YubaiError.invalid("账本已有更新，请重新打开存储空间后再试。") }
+        catch let error as YubaiError { throw error }
+        catch { throw YubaiError.invalid("删除旧截图失败，原账本已保留。请稍后重试。") }
+    }
+
+    public func clearRecoveryHistory() throws {
+        state.lock.lock(); defer { state.lock.unlock() }
+        historyLock.lock(); defer { historyLock.unlock() }
+        do {
+            try storageTransaction(paths: [history]) {
+                if FileManager.default.fileExists(atPath: history.path) { try FileManager.default.removeItem(at: history) }
+            }
+            state.payloadChecksums = state.payloadChecksums.filter { !$0.key.path.hasPrefix(history.path + "/") }
+        } catch let error as YubaiError { throw error }
+        catch { throw YubaiError.invalid("清除恢复历史失败，原数据已保留。请稍后重试。") }
+    }
+
+    /// Always targets Application Support, even when invoked on a relocated cloud repository.
+    /// The caller switches its location preference to local only after this succeeds.
+    public func eraseAllLocalData() throws {
+        localState.lock.lock(); defer { localState.lock.unlock() }
+        state.lock.lock(); defer { state.lock.unlock() }
+        historyLock.lock(); defer { historyLock.unlock() }
+        do {
+            let manager = FileManager.default
+            if manager.fileExists(atPath: localDirectory.path) {
+                let paths = try manager.contentsOfDirectory(at: localDirectory, includingPropertiesForKeys: nil)
+                try storageTransaction(paths: paths) { for url in paths { try manager.removeItem(at: url) } }
+            }
+            localState.digest = nil; localState.payloadChecksums.removeAll()
+            if directory == localDirectory { state.digest = nil; state.payloadChecksums.removeAll() }
+        } catch let error as YubaiError { throw error }
+        catch { throw YubaiError.invalid("抹掉失败，本机数据已保留。请稍后重试。") }
+    }
+
+    /// Private rollback snapshot uses hard links on the same volume, with copy fallback.
+    /// Immutable payloads require no second in-memory or on-disk copy. A failed delete
+    /// restores metadata, history and payloads together, including an originally absent path.
+    private func storageTransaction<T>(paths: [URL], _ body: () throws -> T) throws -> T {
+        guard !paths.isEmpty else { return try body() }
+        let manager = FileManager.default
+        let staging = localDirectory.deletingLastPathComponent().appendingPathComponent(".yubai-storage-\(UUID().uuidString)", isDirectory: true)
+        try prepare(staging)
+        var snapshots: [(URL, URL, Bool)] = []
+        let digest = state.digest
+        var keepSnapshot = false
+        defer { if !keepSnapshot { try? manager.removeItem(at: staging) } }
+        for (index, original) in paths.enumerated() {
+            let snapshot = staging.appendingPathComponent(String(index))
+            let exists = containsFile(original)
+            if exists { try snapshotStorage(original, to: snapshot) }
+            snapshots.append((original, snapshot, exists))
+        }
+        do { return try body() }
+        catch {
+            do {
+                for (original, snapshot, existed) in snapshots {
+                    let restore: (URL) throws -> Void = { destination in
+                        if manager.fileExists(atPath: destination.path) { try manager.removeItem(at: destination) }
+                        if existed { try manager.moveItem(at: snapshot, to: destination) }
+                    }
+                    if isCloudPayload(original) { try payloadAccess(original, writing: true, restore) }
+                    else { try restore(original) }
+                }
+                state.digest = digest; state.payloadChecksums.removeAll()
+            } catch {
+                keepSnapshot = true
+                throw YubaiError.invalid("无法完成清理，原数据副本保留在 \(staging.path)。")
+            }
+            throw error
+        }
+    }
+    private func isCloudPayload(_ url: URL) -> Bool {
+        isUbiquitous && url.deletingLastPathComponent().standardizedFileURL == attachments(at: directory).standardizedFileURL
+    }
+    private func snapshotStorage(_ original: URL, to snapshot: URL) throws {
+        if isCloudPayload(original) {
+            try downloaded(original)
+            try payloadAccess(original, writing: false) { try cloneStorage($0, to: snapshot) }
+        } else { try cloneStorage(original, to: snapshot) }
+    }
+    private func cloneStorage(_ original: URL, to snapshot: URL) throws {
+        let manager = FileManager.default
+        let values = try original.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        if values.isSymbolicLink == true { try manager.copyItem(at: original, to: snapshot) }
+        else if values.isDirectory == true {
+            try prepare(snapshot)
+            for child in try manager.contentsOfDirectory(at: original, includingPropertiesForKeys: nil) {
+                try cloneStorage(child, to: snapshot.appendingPathComponent(child.lastPathComponent))
+            }
+        } else {
+            do { try manager.linkItem(at: original, to: snapshot) }
+            catch { try manager.copyItem(at: original, to: snapshot); try protect(snapshot) }
+        }
     }
     public func readRecovery(_ recovery: Recovery) throws -> Ledger {
         state.lock.lock(); defer { state.lock.unlock() }

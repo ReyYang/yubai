@@ -111,3 +111,17 @@ YUBAI_ICLOUD = YES
 `LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；测试改为显式按需读取附件、解压恢复 JSON 后断言，容量与损坏断言遵循新语义。本轮验证见 [验证记录](VALIDATION.md#存储修复与对话压缩2026-10-21)。问余白截图保存前经 `ImageCompression`：ImageIO 缩长边至 2048、HEIC／JPEG 质量 0.8，仅更小时替换；Linux 或失败保留原件。
 
 在 Xcode 验证默认 NO 的 iOS / Mac 构建与测试后，再用上方单行启用 YES，重复两端构建。真实同步需两端有效签名、同一 Apple ID、iCloud Drive；核对首次空云端、已有不同账本、下载占位、离线待上传、前台远端更新、同时编辑冲突、选择期间再次更新、切回本机及退出登录。静态检查与临时目录测试不能代替这些系统行为的设备验证。
+
+## 第八轮存储空间（2026-10-21）
+
+从「我 → 备份与恢复」下一行进入「存储空间」。[三张已确认稿及归档](../.design-meta/mockups/storage-v8/README.md)、[稿到源码映射](../.design-meta/DESIGN.md#2026-10-21--第八轮存储空间)。入口在 `SettingsView.swift`，主页与两个 sheet 在 `StorageView.swift`，复用现有 DesignSystem、系统导航／sheet、恢复版本页和加密备份页，无新增动效或依赖。
+
+`LedgerRepository.storageUsage()` 返回三类实际文件字节数、恢复份数与最早时间：账本目录其余文件为账本，`Attachments` 为截图和账单原件，`Recovery`（含共享 `Payloads`、旧 sidecar）为恢复历史。App 查询本机副本，后台只读文件长度，不载入所有附件；显示按十进制 KB／MB／GB，一位小数。
+
+`StorageAttachments.classify`／`oldScreenshots`／`removeOldScreenshots` 是纯函数，截图以账目引用且非任何导入原件判定，包括软删除记录的引用，撤销批次仍保留原件；日期按 Calendar 的3／6／12个月回退，早于边界才删除。`deleteOldScreenshots` 走正常 save，留一份「删除旧截图」恢复版本，主目录 payload 删除失败则回滚元数据、历史与相关附件；账目及金额保持，账目和批次撤销快照中的已删截图引用置空。云端 payload 沿原有下载／协调规则；App 先改本机并按既有 pending／上传链同步。
+
+`clearRecoveryHistory` 在账本锁与恢复锁下清空恢复目录，包括共享 payload；不触发另一次账本保存。`eraseAllLocalData` 仅清空 `localDirectory`，即使从 cloud repository 调用也不触碰云端目录。破坏性操作先建私有回滚快照，同卷文件用硬链接，失败则复制；清理失败恢复快照，回滚本身失败会保留副本并给出中文路径。App 等待同步操作结束，先改回本机位置，成功后清除位置／pending状态和内存撤销，换全新 Ledger 回 onboarding；钥匙串密钥不删。
+
+可选 `Preferences.lastBackupAt` 兼容旧存档 nil，只在系统文件导出回调成功后保存，取消／加密失败不写入。抹掉 sheet 的「之后记了」按手动 recordedAt 或导入批次 importedAt 计算，不给旧记录补造时间；没有备份记录显示「还没备份过」。
+
+本轮 Linux 全量测试见 [VALIDATION.md](VALIDATION.md#第八轮存储空间2026-10-21)。新增11项 `StorageManagementTests`；UI 增加 `openStorage`／`storagePage`／`storageHeadline` 等标识与 `testStorageEntryAndOverviewOpenFromMe`。在 Mac 重新生成工程后执行 iOS／Mac 编译与 UITests；当前 AppFlowTests 共9条，另有3条 MotionStateTests。人工验收按 [第八轮清单](V2-TEST-CHECKLIST.md#第八轮存储空间2026-10-21待-apple-设备验证)，包括真实数据量、空态、3／6／12月、备份成功／取消、确认文字、抹掉重开、iCloud 保留和 VoiceOver。

@@ -1,5 +1,21 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-21 · 第八轮「存储空间」
+
+owner 明确确认 [storage-v8 三稿](mockups/storage-v8/README.md)并授权实现。原始 HTML 未改写，数字为样例，App 使用本机账本副本与实际文件长度。此轮补充第四轮「我」的维护入口，继续沿用 `DesignSystem.swift` 与 Motion v2；没有新增动效、依赖或独立样式体系。
+
+| 选定稿 | 原生源码与采用范围 |
+|---|---|
+| `V8-Storage.dc.html` | `StorageView.swift / StorageView`：衬线两行占用标题、brand／series2／neutralStrong 分段条与三行图例、截图与原件卡、恢复历史卡、底部 amberInk／card 抹掉按钮。`SettingsView.swift` 在备份与恢复下一行加入存储空间和实际总大小。恢复历史仍打开现有 `RecoveryVersionsView`，清除使用系统 confirmationDialog。 |
+| `V8-Storage-Photos.dc.html` | `StoragePhotosSheet`：3／6／12 个月单选，默认半年；截图数／主目录 payload 大小／账目都留着、原件说明、删除与取消。按附件 createdAt 判断；移除附件并清空账目与导入撤销快照中的截图引用，正常保存留下「删除旧截图」恢复版本，主目录 payload 删除后用既有 toast 显示张数。 |
+| `V8-Storage-Erase.dc.html` | `StorageEraseSheet`：有效账目／账户／记忆／截图及原件／恢复历史数量，备份状态，先加密备份打开原 `BackupView`，精确输入「抹掉」才启用抹掉操作。`Preferences.lastBackupAt` 可选兼容字段只在导出成功后记录；之后笔数取 recordedAt／导入时间，不伪造旧记录时间。`AppStore.eraseAllDeviceData` 与 `LedgerSync.swift` 切回仅本机、清除待上传状态与本机目录、换空账本并回到 onboarding；云端账本及钥匙串密钥保留。 |
+
+Core 统计、分类和删除在 `YubaiCore/Storage.swift`／`StorageManagement.swift`。恢复占用包含共享 Payloads 与旧 sidecar；截图以账目引用且不属于任何导入原件判定，撤销过的批次仍保留原件。清理使用 repository 锁／恢复锁，云端截图 payload 经过原有下载与协调；删除失败回滚账本、恢复历史和涉及的 payload。App 实际只操作本机副本，再沿原有上传链同步截图删除。
+
+适配：返回、标题栏、拖拽条与呈现采用原生导航／sheet；sheet 按内容高度呈现并可拉到大高度，小屏与大字号滚动，单选在辅助字号改纵排。复用 Card、Primary／PressButtonStyle、Pill、Toast 与既有列表／sheet 行为；32pt 视觉单选包在至少44pt触控区中。分段条和每条统计有 VoiceOver 文本，按钮／输入框有可访问名称与测试标识。
+
+验证与限制见 [本轮记录](../docs/VALIDATION.md#第八轮存储空间2026-10-21)与 [人工验收](../docs/V2-TEST-CHECKLIST.md#第八轮存储空间2026-10-21待-apple-设备验证)。Linux 可验证 Core；SwiftUI 只做语法与源码核对，Apple 编译、UI 测试及视觉／交互／无障碍验收尚未执行。工程已重新生成；Figma、旧原型和分发包未同步，未提交。
+
 
 ## 2026-10-21 · 第四轮「手动优先」
 

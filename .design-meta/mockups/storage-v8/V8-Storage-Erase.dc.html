@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>抹掉全部数据</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yubai/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600&amp;family=Noto+Sans+SC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: var(--canvas, #f5f1e5); font-family: var(--font-sans, 'Noto Sans SC', sans-serif); color: var(--label, #382f1f)">
+  <div style="position: absolute; inset: 0; padding: 12px 18px; box-sizing: border-box; opacity: 0.5" aria-hidden="true">
+    <div style="height: 48px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500">存储空间</div>
+    <div style="margin-top: 20px; font-family: var(--font-serif, 'Noto Serif SC', serif); font-size: 22px; line-height: 32px; font-weight: 600">余白在这台手机上<br>占 38 MB</div>
+  </div>
+  <div style="position: absolute; inset: 0; background: #382f1f; opacity: 0.18" aria-hidden="true"></div>
+  <div role="dialog" aria-label="抹掉全部数据" style="position: absolute; left: 0; right: 0; bottom: 0; border-radius: 28px 28px 0 0; background: var(--raised, #fefbea); padding: 8px 20px 30px; box-sizing: border-box; display: flex; flex-direction: column">
+    <span style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: var(--grabber, #d8cfbe)" aria-hidden="true"></span>
+    <div style="margin-top: 14px; font-size: 17px; font-weight: 600; text-align: center">抹掉全部数据</div>
+    <div style="margin-top: 18px; border-radius: 22px; background: var(--card, #ede6d3); padding: 14px 18px; display: grid; grid-template-columns: 1fr auto; row-gap: 8px; font-size: 14px">
+      <span>账目</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">1,286 笔</span>
+      <span>账户</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">3 个</span>
+      <span>余白记得的</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">14 条</span>
+      <span>截图和账单原件</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">160 份</span>
+      <span>恢复历史</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">20 份</span>
+    </div>
+    <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px; font-size: 13px"><span style="height: 24px; padding: 0 9px; border-radius: 12px; background: var(--amber-tint, #efe1c4); color: var(--amber-ink, #7a5320); font-size: 12px; display: flex; align-items: center">上次备份 9 天前</span><span style="color: var(--label-secondary, #6a604f)">之后记了 31 笔</span></div>
+    <a href="P-Backup.dc.html" style="margin-top: 18px; height: 52px; border-radius: 26px; background: var(--brand, #557f53); color: var(--on-brand, #ffffff); display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 15px; font-weight: 500">先加密备份</a>
+    <label for="eraseConfirm" style="margin-top: 18px; font-size: 12px; color: var(--label-secondary, #6a604f)">输入「抹掉」确认</label>
+    <input id="eraseConfirm" type="text" placeholder="抹掉" style="margin-top: 6px; height: 44px; border-radius: 14px; border: 1px solid var(--border-dashed, #cfc3ae); background: var(--canvas, #f5f1e5); padding: 0 14px; font-family: inherit; font-size: 15px; color: var(--label, #382f1f)">
+    <button disabled style="margin-top: 12px; height: 48px; border-radius: 24px; border: 0; background: var(--card, #ede6d3); color: var(--amber-ink, #7a5320); font-family: inherit; font-size: 14px; opacity: 0.55">抹掉这台手机上的全部数据</button>
+    <button style="margin-top: 6px; height: 44px; border-radius: 22px; border: 0; background: transparent; color: var(--label-muted, #5a5040); font-family: inherit; font-size: 14px">取消</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -61,6 +61,18 @@ struct SyncChoice {
 
 extension AppStore {
     private var locationKey: String { "ledgerLocation:" + localRepository.directory.path }
+    func eraseLocalStorageAndResetLocation() throws {
+        let previous = ledgerLocation
+        // No await here: a cloud task cannot start between the location change and erase.
+        ledgerLocation = .local
+        do { try localRepository.eraseAllLocalData() }
+        catch { ledgerLocation = previous; throw error }
+        UserDefaults.standard.set(LedgerLocation.local.rawValue, forKey: locationKey)
+        pendingUpload = nil; syncChoice = nil; syncStatus = nil
+        syncRefreshRequested = false; syncAvailabilityNeedsRefresh = false
+        syncMonitor = nil
+        locations = LedgerLocations(local: localRepository, cloudDirectory: nil)
+    }
     func canEditLedger() -> Bool {
         guard !locked else { error = "请先解锁账本。"; return false }
         guard syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { error = "请先完成账本位置或同步版本的选择。"; return false }

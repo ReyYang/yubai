@@ -234,11 +234,12 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var cloudAIEnabled = false
     public var weeklyLetterPush = false
     public var onboardingComplete = false
+    public var lastBackupAt: Date?
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
-        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, weeklyLetterPush
+        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, weeklyLetterPush, lastBackupAt
     }
     // Decode the former master switch without including it in newly encoded ledgers.
     private enum LegacyCodingKeys: String, CodingKey {
@@ -259,6 +260,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         cloudAIEnabled = (try values.decodeIfPresent(Bool.self, forKey: .cloudAIEnabled) ?? false) && wasEnabled
         weeklyLetterPush = try values.decodeIfPresent(Bool.self, forKey: .weeklyLetterPush) ?? false
         onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
+        lastBackupAt = try values.decodeIfPresent(Date.self, forKey: .lastBackupAt)
     }
 }
 public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
@@ -525,6 +527,7 @@ public struct Ledger: Codable, Equatable, Sendable {
               Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或提案包含重复标识。") }
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.name)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
+        guard preferences.lastBackupAt.map(dateValid) ?? true else { throw YubaiError.invalid("上次备份时间无效。") }
         guard Set(memories.map(\.id)).count == memories.count else { throw YubaiError.invalid("记忆包含重复标识。") }
         for note in memories { try Memory.validate(note) }
         if let week = lastReflectionWeek {

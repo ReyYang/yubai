@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>删除旧截图</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yubai/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600&amp;family=Noto+Sans+SC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: var(--canvas, #f5f1e5); font-family: var(--font-sans, 'Noto Sans SC', sans-serif); color: var(--label, #382f1f)">
+  <div style="position: absolute; inset: 0; padding: 12px 18px; box-sizing: border-box; opacity: 0.5" aria-hidden="true">
+    <div style="height: 48px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500">存储空间</div>
+    <div style="margin-top: 20px; font-family: var(--font-serif, 'Noto Serif SC', serif); font-size: 22px; line-height: 32px; font-weight: 600">余白在这台手机上<br>占 38 MB</div>
+  </div>
+  <div style="position: absolute; inset: 0; background: #382f1f; opacity: 0.18" aria-hidden="true"></div>
+  <div role="dialog" aria-label="删除旧截图" style="position: absolute; left: 0; right: 0; bottom: 0; border-radius: 28px 28px 0 0; background: var(--raised, #fefbea); padding: 8px 20px 30px; box-sizing: border-box; display: flex; flex-direction: column">
+    <span style="align-self: center; width: 36px; height: 5px; border-radius: 3px; background: var(--grabber, #d8cfbe)" aria-hidden="true"></span>
+    <div style="margin-top: 14px; font-size: 17px; font-weight: 600; text-align: center">删除旧截图</div>
+    <div style="margin-top: 18px; font-size: 12px; color: var(--label-secondary, #6a604f)">删除多久以前的</div>
+    <div role="radiogroup" aria-label="删除多久以前的截图" style="margin-top: 8px; display: flex; gap: 8px"><button role="radio" aria-checked="false" style="height: 32px; padding: 0 14px; border-radius: 16px; border: 0; background: var(--card, #ede6d3); color: var(--label-muted, #5a5040); font-family: inherit; font-size: 13px">3 个月前</button><button role="radio" aria-checked="true" style="height: 32px; padding: 0 14px; border-radius: 16px; border: 0; background: var(--brand-tint, #d6e2cc); color: var(--brand-ink, #476846); font-family: inherit; font-size: 13px; font-weight: 500">半年前</button><button role="radio" aria-checked="false" style="height: 32px; padding: 0 14px; border-radius: 16px; border: 0; background: var(--card, #ede6d3); color: var(--label-muted, #5a5040); font-family: inherit; font-size: 13px">一年前</button></div>
+    <div style="margin-top: 18px; border-radius: 22px; background: var(--card, #ede6d3); padding: 14px 18px; display: grid; grid-template-columns: 1fr auto; row-gap: 8px; font-size: 14px">
+      <span>截图</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">88 张</span>
+      <span>腾出</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums">17 MB</span>
+      <span>账目</span><span>都留着</span>
+    </div>
+    <div style="margin-top: 10px; font-size: 12px; color: var(--label-secondary, #6a604f)">账单原件不删，导入记录里仍可撤销。</div>
+    <button style="margin-top: 22px; height: 52px; border-radius: 26px; border: 0; background: var(--brand, #557f53); color: var(--on-brand, #ffffff); font-family: inherit; font-size: 15px; font-weight: 500">删除 88 张截图</button>
+    <button style="margin-top: 10px; height: 48px; border-radius: 24px; border: 0; background: transparent; color: var(--label-muted, #5a5040); font-family: inherit; font-size: 14px">取消</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -185,6 +185,50 @@ enum AppSheet: Identifiable {
     func adoptSyncedLedger(_ next: Ledger) {
         cancelEntrySaveMotion(); ledger = next; loadFailure = nil; undoLedger = nil; undoLabel = nil
     }
+    func recordSuccessfulBackup(of ledgerID: UUID, at date: Date) {
+        guard current.id == ledgerID else { return }
+        if update("记录备份时间", preservingUpdatedAt: true, recordUndo: false, { $0.preferences.lastBackupAt = date }) {
+            // Undoing the preceding edit must not forget a successfully exported backup.
+            undoLedger?.preferences.lastBackupAt = date
+        }
+    }
+    @discardableResult func deleteOldScreenshots(months: Int, now: Date) -> Bool {
+        guard canEditLedger(), loadFailure == nil else { return false }
+        let count = StorageAttachments.oldScreenshots(in: current, months: months, now: now).count
+        guard count > 0 else { return false }
+        let wasPending = localRepository.hasPendingSync
+        do {
+            if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
+            let saved = try localRepository.deleteOldScreenshots(from: current, months: months, now: now)
+            cancelEntrySaveMotion(); ledger = saved; undoLedger = nil; undoLabel = nil
+            if ledgerLocation == .iCloud { pendingUpload = saved; Task { await synchronizeLedger() } }
+            toast = "已删除 \(count) 张截图"
+            return true
+        } catch {
+            if !wasPending { try? localRepository.markPendingSync(false) }
+            self.error = error.localizedDescription; return false
+        }
+    }
+    @discardableResult func clearStorageHistory() -> Bool {
+        guard canEditLedger() else { return false }
+        guard !syncBusy else { error = "请等同步完成后再清除恢复历史。"; return false }
+        do {
+            try localRepository.clearRecoveryHistory()
+            // A pre-clear undo snapshot may refer to payloads that no longer exist.
+            undoLedger = nil; undoLabel = nil; toast = "已清除恢复历史"; return true
+        } catch { self.error = error.localizedDescription; return false }
+    }
+    @discardableResult func eraseAllDeviceData() -> Bool {
+        guard canEditLedger() else { return false }
+        guard !syncBusy, !checkingCloudAvailability else { error = "请等同步完成后再抹掉本机数据。"; return false }
+        do {
+            try eraseLocalStorageAndResetLocation()
+            cancelEntrySaveMotion(); ledger = Ledger(); undoLedger = nil; undoLabel = nil
+            loadFailure = nil; locked = false; importedURL = nil; sheet = nil; sheetSource = nil
+            destination = .overview; toast = nil; organizationErrors.removeAll(); pickingInsightDates = false
+            return true
+        } catch { self.error = error.localizedDescription; return false }
+    }
     func unlock() async {
         let context = LAContext()
         do { if try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "解锁你的余白账本") { locked = false; if syncChoice != nil { sheet = .syncVersions } } }

@@ -1,5 +1,17 @@
 # 余白 · 交付与验证记录
 
+## 第八轮存储空间（2026-10-21）
+
+在 `fix/storage-attachments-compaction` 继续实现 owner 确认的 [V8 三稿](../.design-meta/mockups/storage-v8/README.md)，没有换分支／提交。新增主页与两个 sheet、我页入口、Core 存储管理接口、导出成功后的可选备份时间；没有引入依赖或新增动效。
+
+已实际执行（Linux Swift 6.2.4、现有 `.build` 依赖缓存）：
+
+- `export PATH=/opt/swift-rootfs/usr/bin:$PATH; swift test`：336项，332通过，4项原有实网 opt-in 跳过，0失败；未新增跳过。新增11项 `StorageManagementTests` 覆盖三类文件字节、共享／旧恢复目录、数量与最早时间、按引用分类和撤销批次原件保护、3／6／12个月及精确边界、保留账目并清空所有截图引用、正常保存恢复理由、主 payload 删除及恢复附件可读取、失败回滚、过期快照拒绝、清空共享历史、抹掉后空目录与空账本、cloud仓库调用只删本机、大小单位与可选备份字段往返。
+- `swiftc -frontend -parse`：新 `StorageView.swift`、修改的 `SettingsView.swift`／`YubaiApp.swift`／`LedgerSync.swift` 与 `AppFlowTests.swift` 通过语法解析。此检查没有 SwiftUI／XCTest UI API 类型检查能力。
+- `python3 scripts/generate-project.py` 已重新登记新 App 文件；`git diff --check` 通过。原三张 HTML 保持不变，README／DESIGN／产品记录与人工清单已同步。
+
+尚未验证：Apple SDK 下 iPhone／Mac 应用及 UI 测试编译、`testStorageEntryAndOverviewOpenFromMe` 运行、390×844布局／浅深色／大字号／VoiceOver、内容高度 sheet 和键盘、实际导出成功／取消的回调与恢复份数刷新、无磁盘空间／权限失败、真实 iCloud 下载与协调删除／抹掉后云端保留、钥匙串保留、重开 onboarding。临时目录的云端隔离测试不替代真实 iCloud 行为。逐项人工步骤见 [第八轮验收](V2-TEST-CHECKLIST.md#第八轮存储空间2026-10-21待-apple-设备验证)。没有同步 Figma／历史原型／分发包。
+
 ## Motion v2 / Liquid Glass 静态核对（2026-10-21）
 
 本轮容器无 `swift`／Xcode，执行 `swift test` 返回 127（command not found），未运行 Swift 类型检查、Core 测试或 UI 测试。下方同日 Linux Core 运行结果属于此前有 Swift 的环境，不覆盖本轮工程与 UI 改动。
