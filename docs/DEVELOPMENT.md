@@ -54,8 +54,10 @@ Linux 的 `KeychainAPIKeyStorage` 只在进程内共享密钥，不写磁盘；i
 
 ## GitHub Actions
 
-- `Linux Core`（`.github/workflows/linux-core.yml`）：每个 PR 和 main 的推送都会跑。在 `swift:6.2-noble` 容器里确认 Xcode 工程与生成器一致、编译 YubaiCore 并跑 `swift test`。
-- `iOS`（`.github/workflows/ios.yml`）：改到 Sources、Tests、工程或配置的 PR 自动跑，也可在 Actions 页手动运行。用 macOS 26 runner 上最新的 Xcode 26，在 iPhone 模拟器上编译并跑 Core 与 UI 测试；UI 测试在关键页面和失败时截图，作为 `ios-screenshots` 产物上传，测试日志为 `ios-test-logs`。手动运行时勾选 `release_builds` 可加做不签名的 iOS／macOS Release 构建。私有仓库的 macOS 分钟按 10 倍计入额度。
+两个工作流都会消耗 GitHub 额度，所以只能在 Actions 页手动运行，不随 PR 或推送自动跑；运行前先确认要花这笔额度。日常验证免费做：YubaiCore 用 `scripts/install-linux-swift.sh` 在本地或 Claude 容器里跑 `swift test`，App 构建与 UI 测试在自己的 Mac 上跑。
+
+- `Linux Core`（`.github/workflows/linux-core.yml`）：在 `swift:6.2-noble` 容器里确认 Xcode 工程与生成器一致、编译 YubaiCore 并跑 `swift test`。
+- `iOS`（`.github/workflows/ios.yml`）：用 macOS 26 runner 上最新的 Xcode 26，在 iPhone 模拟器上编译并跑 Core 与 UI 测试；UI 测试在关键页面和失败时截图，作为 `ios-screenshots` 产物上传，测试日志为 `ios-test-logs`。手动运行时勾选 `release_builds` 可加做不签名的 iOS／macOS Release 构建。私有仓库的 macOS 分钟按 10 倍计入额度。
 
 每次写入先在副本验证，磁盘保存成功才更新内存。原文件、兼容字段和旧用户记录继续保留；删除界面不删除存档数据。`endPlan` 同时接受 plan / rent 的标识：开始后截断后续期次并保留到期欠款，开始前只停用。整批撤销恢复该批整理的差量；删除记录只能通过撤销或完整恢复版本找回。备份使用密码加密；旧未加密备份仍能读取。正式账本通过系统 API 取得 Application Support 下的 `app.yubai.personal`，目录权限 700、文件 600；Mac 直接安装默认非沙盒，沿用原位置，沙盒构建才使用应用容器内的 Application Support。首次安装沙盒版 Mac 应用（TestFlight）时，新容器初始为空，会显示空账本，旧非沙盒目录不会自动迁入。切换前必须先在旧 Mac 应用的「我 → 备份与同步」导出加密的完整备份，再在 TestFlight 构建中选择备份、输入密码并确认恢复；测试不得指向真实目录。
 

@@ -1,15 +1,7 @@
 name: iOS
 
-# macOS 分钟按 10 倍计费，所以只在改到代码的 PR 和手动触发时运行。
+# 会消耗 GitHub 额度（macOS 分钟按 10 倍计），只手动触发；跑之前先问用户。
 on:
-  pull_request:
-    paths:
-      - 'Sources/**'
-      - 'Tests/**'
-      - 'Yubai.xcodeproj/**'
-      - 'Config/**'
-      - 'Package.swift'
-      - '.github/workflows/ios.yml'
   workflow_dispatch:
     inputs:
       release_builds:
