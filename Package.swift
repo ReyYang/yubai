@@ -5,18 +5,18 @@ let package = Package(
     name: "Yubai",
     platforms: [.macOS(.v14), .iOS(.v18)],
     products: [
-        .library(name: "YubaiCore", targets: ["YubaiCore"]),
-        .executable(name: "YubaiDesktop", targets: ["YubaiApp"])
+        .library(name: "YubaiCore", targets: ["YubaiCore"])
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.15.1")
     ],
     targets: [
         .target(name: "CArchive", linkerSettings: [.linkedLibrary("z")]),
-        .target(name: "YubaiCore", dependencies: ["CArchive"]),
-        .executableTarget(
-            name: "YubaiApp",
-            dependencies: ["YubaiCore"],
-            exclude: ["Info.plist", "Assets.xcassets", "PrivacyInfo.xcprivacy", "Yubai-iCloud.entitlements",
-                      "Yubai-macOS.entitlements", "Yubai-macOS-iCloud.entitlements"]
-        ),
+        .target(name: "YubaiCore", dependencies: [
+            "CArchive",
+            .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux])),
+            .product(name: "_CryptoExtras", package: "swift-crypto", condition: .when(platforms: [.linux]))
+        ]),
         .testTarget(
             name: "YubaiCoreTests",
             dependencies: ["YubaiCore"],
@@ -26,3 +26,13 @@ let package = Package(
     ],
     swiftLanguageModes: [.v5]
 )
+
+#if !os(Linux)
+package.products.append(.executable(name: "YubaiDesktop", targets: ["YubaiApp"]))
+package.targets.append(.executableTarget(
+    name: "YubaiApp",
+    dependencies: ["YubaiCore"],
+    exclude: ["Info.plist", "Assets.xcassets", "PrivacyInfo.xcprivacy", "Yubai-iCloud.entitlements",
+              "Yubai-macOS.entitlements", "Yubai-macOS-iCloud.entitlements"]
+))
+#endif

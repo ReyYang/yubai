@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// DeepSeek cloud tasks. Callers keep deterministic results when a request fails.
 public struct CloudBackend: ChatTransport {

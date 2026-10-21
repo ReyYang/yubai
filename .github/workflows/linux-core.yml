@@ -1,0 +1,38 @@
+name: Linux Core
+
+# 在 Linux 上编译 YubaiCore 并跑单元测试，同时确认 Xcode 工程与生成器一致。
+# 会消耗 GitHub 额度，只手动触发；平时在本地或 Claude 容器里用 scripts/install-linux-swift.sh 免费跑同样的检查。
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: linux-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode 工程与生成器一致
+        run: |
+          apt-get update -qq && apt-get install -y -qq python3 >/dev/null
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          python3 scripts/generate-project.py
+          git diff --exit-code -- Yubai.xcodeproj
+      - name: 编译 YubaiCore
+        run: swift build --target YubaiCore
+      - name: 单元测试
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee swift-test.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-swift-test-log
+          path: swift-test.log

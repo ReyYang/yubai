@@ -62,6 +62,44 @@ final class StorageTests: XCTestCase {
         XCTAssertThrowsError(try Backup.restore(bytes, password: "wrong password"))
         XCTAssertThrowsError(try Backup.restore(bytes))
     }
+    func testEncryptedBackupV1CompatibilityVectors() throws {
+        // Python hashlib.pbkdf2_hmac("sha256") + cryptography AESGCM；固定盐、nonce 与 v1 AAD。
+        let plain = Data(#"{"schema":2,"id":"00000000-0000-0000-0000-000000000001","updatedAt":0,"accounts":[],"entries":[],"plans":[],"goals":[],"rents":[],"categories":[],"imports":[],"attachments":[],"preferences":{"horizonDays":90,"emergencyReserve":0,"dailyLiving":0,"hideAmounts":false,"lockEnabled":false,"appearance":"system","purchaseValues":"compatibility","onboardingComplete":false}}"#.utf8)
+        let expected = try LedgerCodec.decode(plain)
+        let vectors: [(Int, String)] = [
+            (100_000, "EBESExQVFhcYGRobzl2jIUaMo5ORlggUqttVqrF65XHAQjCjcqVHg+lHd3NWsuaybFMDfBx/BWGWeOJJ2wgAGaqhhqhR/8+ADQ7wDfnteIh/QV5ppyQwlTqTpsdR7oOPN5gP/qPvFeh2n/QQAXz3HzfqsYfR06Bzt842BhL+xk9Ki9Zv4v6GeGj6FNQWABevOrz6ZCZmeYIsqDR4AJoFyox4D3uAXBxkZxCTmNDe1p2AgaN3NzBxdHTz1zalllQ+KFbJxkSHGnQ9oYacEsfU4iZ47KrCNi8TFw+80vAze8WgD/NLlBg2N3MlAuCvDjLGSyeEUqmYI8pqXAEaF+8x0Ll08Z1TLKkf9bEfEXLzVPGILWiFXLDRsqaExFMOg0njhEOnLB3SjplMlI/oTjMdKDy5fygFYUoFILO2096uonCjKuvW/FkymugAOCaTu76qb0qP4TLpeGldrC9pBDk6E9+swu3y50akM9rwRyYzBqptZgSduk+MGsHpRSmxNg5JIv8yk1O9CJvQ8zlO"),
+            (210_000, "EBESExQVFhcYGRobAzYZB+zeVTcQXbQ03pO89hOwC2czvR5saOFKW8pQgVCGqoxy0Ed6fcvle+kkMcv8sv0BolxPuJQEHyXEnRFtCKd+CIRD/QwZqfsC4b0694OLc4NXcjYsS2kNVD7Qer1LnF9uHWT6goFGriDjArPOLPM/2dv2IvxyYOFRt+aacvDdi8XQ00KxzRCoqFkvbfwTDKV0cXW2QHn7ak/AtGJnb1X/TFv4dzGBjFRswNSZyRMw90Evv6foRAsSIRAKD0WcgG0BNXjK+sqdUcHDwC0XCukgW1a5RwtrW0/7LDrlz0GKeofi55QZiy9wM2MbjrqtznhOByQLD9KZpfH13dc+yJ8AvV5Pt/e+LDFtgiObvZAUAYFGx2jcud4eFdKHv3OGeS6VJuDfNDcPRYIl7utFwsZ5ub4bFmBiWZq0xWdR6ErnLqcyHF7Ef6q95FRMnvr5Poiq/yRkUWPbdHbvSkhZ2DE4/anQsp2O9B9t2XEdW/WtYOj8wkOmYMVucCIQH8c+"),
+            (1_000_000, "EBESExQVFhcYGRob/QvFSvAiG4776BYcQ0pIAz6ei/Foua5JlyUyIcAxPM4KQ+QF/3xD4BuLDewc8vNWLIcqgWKvT4gdFQmKGbbjT4Fvt9LByCwEVL90lfmrlbiHpQ/rozQELmvv4KAh6JnCmrf5kBOUQo4UzFJqtoUgdkxxClYIBaoyuV+7dhKZz6wMlKtFVsKdlq1EDxGoP1SWtHS7HJGUwIAFXhg80b/Rel7J0mw4tD/B2tuJUPNIKHcgSGDkOgDAcL+dDiP9ruHOWB01JhC00boVzzqJzD6hbX9f1sZqIxxL/4KanS63OVCPUdXngc+0sWxWqsQj/cSLRN4IsIIK/ik02UoCM2iZmc/MS8IRyVCP6stLxkie2eQtfsxe4k7qmnvPHy9zi1XQnHivokpJVmgLL1MJI/45BpOfmN+G+k3dicUmX6iyhVEW5LQ2p6/M1xprt6z9uEU1vdrtQx944r63GH8PnGZopGaduSYiWQBL5qAlVECXWba6xIeYm4yIZd4uUrjYLhdu")
+        ]
+        for (rounds, payload) in vectors {
+            let envelope: [String: Any] = [
+                "format": "yubai-backup", "version": 1, "createdAt": 0, "encrypted": true,
+                "salt": "AAECAwQFBgcICQoLDA0ODw==", "rounds": rounds, "payload": payload,
+                "checksum": "2b9edd31f6dd6b0821ef255a4b4b62fb907264d9b44edf6e33e561b3453da938"
+            ]
+            let bytes = try JSONSerialization.data(withJSONObject: envelope)
+            XCTAssertEqual(try Backup.restore(bytes, password: "备份\0密码🔐123"), expected, "\(rounds) rounds")
+            var damaged = envelope
+            var combined = try XCTUnwrap(Data(base64Encoded: payload)); combined[combined.count - 1] ^= 1
+            damaged["payload"] = combined.base64EncodedString()
+            XCTAssertThrowsError(try Backup.restore(JSONSerialization.data(withJSONObject: damaged), password: "备份\0密码🔐123"))
+        }
+    }
+    func testEncryptedBackupExportsV1ParametersAndRejectsInvalidParameters() throws {
+        let ledger = sample(); let password = "portable-backup-password"
+        let bytes = try Backup.export(ledger, password: password)
+        let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        XCTAssertEqual(envelope["version"] as? Int, 1); XCTAssertEqual(envelope["rounds"] as? Int, 210_000)
+        let salt = try XCTUnwrap((envelope["salt"] as? String).flatMap { Data(base64Encoded: $0) })
+        let payload = try XCTUnwrap((envelope["payload"] as? String).flatMap { Data(base64Encoded: $0) })
+        XCTAssertEqual(salt.count, 16); XCTAssertEqual(payload.count, try LedgerCodec.encode(ledger).count + 12 + 16)
+        for rounds in [99_999, 1_000_001] {
+            var invalid = envelope; invalid["rounds"] = rounds
+            XCTAssertThrowsError(try Backup.restore(JSONSerialization.data(withJSONObject: invalid), password: password))
+        }
+        var invalid = envelope; invalid["salt"] = Data([0]).base64EncodedString()
+        XCTAssertThrowsError(try Backup.restore(JSONSerialization.data(withJSONObject: invalid), password: password))
+    }
     func testPlainBackupChecksumAndVersionChecks() throws {
         let l = sample(); let bytes = try Backup.export(l); XCTAssertEqual(try Backup.restore(bytes), l)
         var json = try JSONSerialization.jsonObject(with: bytes) as! [String: Any]; json["checksum"] = "bad"
