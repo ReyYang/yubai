@@ -8,6 +8,7 @@ struct ProfileConversationView: View {
     @State private var input = ""
     @State private var errorText = ""
     @State private var busy = false
+    @State private var pendingUserTurn = false
     @State private var revising = false
     @State private var proposalID: UUID?
     @State private var runningTask: Task<Void, Never>?
@@ -31,7 +32,7 @@ struct ProfileConversationView: View {
                                 .background(message.role == .user ? YubaiColor.brand : YubaiColor.card,
                                             in: UnevenRoundedRectangle(topLeadingRadius: message.role == .user ? 18 : 6, bottomLeadingRadius: 22, bottomTrailingRadius: message.role == .user ? 6 : 22, topTrailingRadius: 22))
                             if message.role == .assistant { Spacer(minLength: 24) }
-                        }
+                        }.messageEntrance(user: message.role == .user)
                     }
                     if busy { HStack { AssistantMark(thinking: true); Text("余白在听，也在想…").yubaiFont(YubaiFont.callout) } }
                     if let proposal, !revising {
@@ -51,9 +52,9 @@ struct ProfileConversationView: View {
                         .accessibilityLabel("告诉余白你的消费观")
                     Button { ask() } label: { Image(systemName: "arrow.up").frame(width: 44, height: 44).background(YubaiColor.brand, in: Circle()).foregroundStyle(YubaiColor.onBrand) }
                         .accessibilityLabel("发送").disabled(busy || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }.padding(8).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: 26)).yubaiShadow(YubaiShadow.input).padding(18)
+                }.padding(8).buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input).padding(18)
             }
-        }.background(YubaiColor.canvas).navigationTitle("和余白聊几句").yubaiNavigation()
+        }.paperBackground().navigationTitle("和余白聊几句").yubaiNavigation()
             .toolbar {
                 CloseButton()
                 if proposal == nil && !messages.isEmpty {
@@ -76,9 +77,11 @@ struct ProfileConversationView: View {
         let answer = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if !messages.isEmpty {
             guard !answer.isEmpty else { return }
+            if pendingUserTurn, turn.last?.role == .user { turn.removeLast() }
             turn.append(ChatMessage(role: .user, content: answer))
         }
         let conversation = turn
+        messages = conversation; pendingUserTurn = conversation.last?.role == .user
         let previousProposal = proposalID
         busy = true; errorText = ""
         runningTask = Task { @MainActor in
@@ -99,6 +102,7 @@ struct ProfileConversationView: View {
                         }
                     }) else { return }
                 }
+                pendingUserTurn = false
                 if let change {
                     proposalID = change.id; revising = false; messages = conversation
                 } else {

@@ -65,7 +65,7 @@ struct SettingsView: View {
                     NavigationLink { GuideView() } label: { row("使用指南") }
                 }
             }.buttonStyle(PressButtonStyle())
-        }.safeAreaPadding(.bottom, 106).navigationTitle("我")
+        }.amountPrivacy(store.current.preferences.hideAmounts).safeAreaPadding(.bottom, YubaiSize.rootBottomPadding).navigationTitle("我")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif

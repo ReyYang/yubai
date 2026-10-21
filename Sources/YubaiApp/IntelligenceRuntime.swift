@@ -121,7 +121,7 @@ struct ActiveLedgerTransport: ChatTransport {
         update("回答整理问题") { try question.describe(text, batchID: batchID, in: &$0) }
     }
     func undoImport(_ batchID: UUID) {
-        update("整批撤销", preservingUpdatedAt: true) { ledger in BillImporter.undo(batchID: batchID, in: &ledger) }
+        if update("整批撤销", preservingUpdatedAt: true, entryMotion: false, { ledger in BillImporter.undo(batchID: batchID, in: &ledger) }) { cancelEntrySaveMotion(); undoTrigger &+= 1 }
     }
 }
 

@@ -156,6 +156,11 @@ enum YubaiSize {
     static let barMax: CGFloat = 24
     static let lineWidth: CGFloat = 2
     static let marker: CGFloat = 8
+    #if os(macOS)
+    static let rootBottomPadding: CGFloat = 106
+    #else
+    static let rootBottomPadding: CGFloat = 12
+    #endif
 }
 
 enum YubaiShadow {
@@ -175,39 +180,66 @@ extension View {
     func yubaiShadow(_ token: YubaiShadow.Token) -> some View { shadow(color: token.color, radius: token.radius, x: token.x, y: token.y) }
 }
 
-enum YubaiMotion {
+@MainActor enum YubaiMotion {
     static let durationInstant = 0.100
     static let durationQuick = 0.160
     static let durationStandard = 0.240
+    static let durationDraw = 0.480
     static let durationWater = 0.320
-    static let durationStagger = 0.060
+    static let durationStagger = 0.040
     static let durationThink = 1.600
+    static let durationBrandMax = 0.700
+    static let durationWash = 1.200
+    static let durationDismiss = 0.200
+    static let durationRing = 0.600
+    static let toastLifetime = 4.0
+    static let saveToastDelay = 0.380
+    static let pointDelay = 0.180
+    static let ringDelay = 0.420
+    static let settle = Animation.smooth(duration: 0.42)
+    static let snappy = Animation.snappy(duration: 0.3)
+    static let lively = Animation.spring(duration: 0.45, bounce: 0.25)
+    static let livelySpring = Spring(duration: 0.45, bounce: 0.25)
+    static let durationWobbleHalf = 0.225
+    private static var session = MotionSessionState()
+    static func hasAppeared(_ key: String) -> Bool { session.contains(key) }
+    static func claim(_ key: String) -> Bool { session.claim(key) }
 
     static func easeOut(duration: Double) -> Animation { .timingCurve(0.2, 0, 0, 1, duration: duration) }
     static func easeIn(duration: Double) -> Animation { .timingCurve(0.4, 0, 1, 1, duration: duration) }
     static func easeInOut(duration: Double) -> Animation { .timingCurve(0.4, 0, 0.2, 1, duration: duration) }
     static let instant = easeInOut(duration: durationInstant)
-    static let quick = easeInOut(duration: durationQuick)
-    static let chartGrowth = easeOut(duration: durationStandard)
+    static let quick = Animation.easeInOut(duration: durationQuick)
+    static let chartGrowth = easeOut(duration: durationDraw)
     static let waterRise = easeOut(duration: durationWater)
     static let stagger = easeOut(duration: durationStagger)
     static let thinkCycle = easeInOut(duration: durationThink)
 
-    static func number(reduceMotion: Bool) -> Animation { quick }
+    static func number(reduceMotion: Bool) -> Animation { reduceMotion ? quick : snappy }
+    static func layout(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : settle }
+    static func control(reduceMotion: Bool) -> Animation { reduceMotion ? quick : snappy }
+    static func entrance(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeOut(duration: durationStandard) }
+    static func dismiss(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeIn(duration: durationDismiss) }
+    static func wash(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeOut(duration: durationWash) }
+    static func ring(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : easeOut(duration: durationRing) }
     static func chart(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : chartGrowth }
     static func water(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : waterRise }
     static func think(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : thinkCycle }
-    static func toastIn(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : chartGrowth }
-    static func toastOut(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : easeIn(duration: durationQuick) }
+    static func toastIn(reduceMotion: Bool) -> Animation { reduceMotion ? quick : snappy }
+    static func toastOut(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeIn(duration: durationQuick) }
+    static func rise(_ distance: CGFloat, reduceMotion: Bool) -> AnyTransition { reduceMotion ? .opacity : .offset(y: distance).combined(with: .opacity) }
+    static func rowTransition(reduceMotion: Bool) -> AnyTransition { reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)) }
+    static func cardTransition(reduceMotion: Bool) -> AnyTransition {
+        .asymmetric(insertion: .identity, removal: (reduceMotion ? AnyTransition.opacity : .scale(scale: 0.96).combined(with: .opacity)).animation(dismiss(reduceMotion: reduceMotion)))
+    }
     static func toastTransition(reduceMotion: Bool) -> AnyTransition {
-        if reduceMotion { return .identity }
-        return .asymmetric(insertion: .offset(y: YubaiSpace.space8).combined(with: .opacity).animation(toastIn(reduceMotion: false)), removal: .opacity.animation(toastOut(reduceMotion: false)))
+        .asymmetric(insertion: rise(YubaiSpace.space12, reduceMotion: reduceMotion).animation(toastIn(reduceMotion: reduceMotion)), removal: .opacity.animation(toastOut(reduceMotion: reduceMotion)))
     }
 }
 
 struct PressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+        configuration.label.opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
@@ -216,40 +248,38 @@ struct SmallActionStyle: ButtonStyle {
         configuration.label.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.label)
             .padding(.horizontal, YubaiSpace.space10).frame(minHeight: YubaiSize.pillHeight)
             .background(YubaiColor.raised, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
-            .opacity(configuration.isPressed ? 0.75 : 1)
+            .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
-private struct NumberCrossfade<Value: Equatable>: ViewModifier {
+private struct NumberChange: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let value: Value
+    let value: Double
     var enabled: Bool
     func body(content: Content) -> some View {
-        content.contentTransition(.opacity).animation(enabled ? YubaiMotion.number(reduceMotion: reduceMotion) : nil, value: value)
+        content.contentTransition(reduceMotion || !enabled ? .opacity : .numericText(value: value))
+            .animation(enabled ? YubaiMotion.number(reduceMotion: reduceMotion) : nil, value: value)
     }
 }
 
 extension View {
-    func numberCrossfade<Value: Equatable>(value: Value, enabled: Bool = true) -> some View { modifier(NumberCrossfade(value: value, enabled: enabled)) }
+    func numberTransition(value: Double, enabled: Bool = true) -> some View { modifier(NumberChange(value: value, enabled: enabled)) }
 }
 
 struct ChartGrow<Content: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var progress: Double = 0
-    @State private var appeared = false
-    private let appearance: Binding<Bool>?
+    let key: String
     let content: (Double) -> Content
-    init(appeared: Binding<Bool>? = nil, @ViewBuilder content: @escaping (Double) -> Content) {
-        self.appearance = appeared; self.content = content
-        _progress = State(initialValue: appeared?.wrappedValue == true ? 1 : 0)
+    init(key: String, @ViewBuilder content: @escaping (Double) -> Content) {
+        self.key = key; self.content = content
+        _progress = State(initialValue: YubaiMotion.hasAppeared(key) ? 1 : 0)
     }
     var body: some View {
         content(reduceMotion ? 1 : progress)
             .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
             .onAppear {
-                guard !appeared && appearance?.wrappedValue != true else { finish(); return }
-                appeared = true
-                if let appearance { appearance.wrappedValue = true }
+                guard YubaiMotion.claim(key) else { finish(); return }
                 withAnimation(YubaiMotion.chart(reduceMotion: reduceMotion)) { progress = 1 }
             }
             .onDisappear { finish() }
@@ -261,6 +291,142 @@ struct ChartGrow<Content: View>: View {
     }
 }
 
+struct ChartSegments<Content: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var progress: [Double]
+    let key: String
+    let count: Int
+    let content: ([Double]) -> Content
+    init(key: String, count: Int, @ViewBuilder content: @escaping ([Double]) -> Content) {
+        self.key = key; self.count = min(6, max(1, count)); self.content = content
+        _progress = State(initialValue: Array(repeating: YubaiMotion.hasAppeared(key) ? 1 : 0, count: 6))
+    }
+    var body: some View {
+        content(reduceMotion ? Array(repeating: 1, count: 6) : progress)
+            .onAppear {
+                guard YubaiMotion.claim(key), !reduceMotion else { finish(); return }
+                for index in 0..<6 {
+                    withAnimation(YubaiMotion.chart(reduceMotion: false)?.delay(Double(min(index, count - 1)) * YubaiMotion.durationStagger)) { progress[index] = 1 }
+                }
+            }
+            .onDisappear { finish() }
+            .onChange(of: reduceMotion) { _, reduced in if reduced { finish() } }
+    }
+    private func finish() {
+        var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
+        withTransaction(transaction) { progress = Array(repeating: 1, count: 6) }
+    }
+}
+
+private struct SheetSurfaceKey: EnvironmentKey { static let defaultValue = false }
+private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
+extension EnvironmentValues {
+    var yubaiSheetSurface: Bool { get { self[SheetSurfaceKey.self] } set { self[SheetSurfaceKey.self] = newValue } }
+    var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
+}
+
+private struct PaperBackground: ViewModifier {
+    @Environment(\.yubaiSheetSurface) private var inSheet
+    func body(content: Content) -> some View {
+        if #available(iOS 26, macOS 26, *), inSheet { content }
+        else { content.background(YubaiColor.canvas) }
+    }
+}
+
+private struct FloatingSurface<S: Shape>: ViewModifier {
+    let shape: S
+    var tint: Color?
+    var shadow: YubaiShadow.Token
+    func body(content: Content) -> some View {
+        if #available(iOS 26, macOS 26, *) {
+            if let tint { content.glassEffect(.regular.tint(tint).interactive(), in: shape) }
+            else { content.glassEffect(.regular.interactive(), in: shape) }
+        } else { content.background(tint ?? YubaiColor.raised, in: shape).yubaiShadow(shadow) }
+    }
+}
+
+struct GlassGroup<Content: View>: View {
+    let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View {
+        if #available(iOS 26, macOS 26, *) { GlassEffectContainer(spacing: YubaiSpace.space12) { content } }
+        else { content }
+    }
+}
+
+private struct ContentZoom: ViewModifier {
+    @Environment(\.yubaiZoomNamespace) private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let id: String?
+    var source = false
+    @ViewBuilder func body(content: Content) -> some View {
+        #if os(iOS)
+        if let namespace, let id, !reduceMotion {
+            if source { content.matchedTransitionSource(id: id, in: namespace) }
+            else { content.navigationTransition(.zoom(sourceID: id, in: namespace)) }
+        } else { content }
+        #else
+        content
+        #endif
+    }
+}
+
+struct TabContentEntrance: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var progress: Double = 1
+    var active: Bool
+    var revision: Int
+    var direction: Double
+    func body(content: Content) -> some View {
+        content.opacity(progress).offset(x: reduceMotion ? 0 : (1 - progress) * YubaiSpace.space12 * direction)
+            .task(id: active ? revision : -1) {
+                guard active, revision > 0 else { finish(); return }
+                var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
+                withTransaction(transaction) { progress = 0 }
+                await Task.yield()
+                guard !Task.isCancelled else { finish(); return }
+                withAnimation(YubaiMotion.entrance(reduceMotion: reduceMotion)) { progress = 1 }
+            }.onDisappear { finish() }
+    }
+    private func finish() { var transaction = Transaction(animation: nil); transaction.disablesAnimations = true; withTransaction(transaction) { progress = 1 } }
+}
+
+private struct MessageEntrance: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = false
+    let user: Bool
+    func body(content: Content) -> some View {
+        content.opacity(visible ? 1 : 0).offset(y: reduceMotion || visible ? 0 : (user ? YubaiSpace.space12 : YubaiSpace.space8))
+            .onAppear { withAnimation(user ? YubaiMotion.control(reduceMotion: reduceMotion) : YubaiMotion.entrance(reduceMotion: reduceMotion)) { visible = true } }
+    }
+}
+
+private struct ChipSelection: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scale: CGFloat = 1
+    let selected: Bool
+    func body(content: Content) -> some View {
+        content.scaleEffect(reduceMotion ? 1 : scale).onChange(of: selected) { _, selected in
+            guard selected, !reduceMotion else { return }
+            scale = 0.94
+            Task { @MainActor in
+                await Task.yield()
+                withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { scale = 1 }
+            }
+        }
+    }
+}
+
+extension View {
+    func amountPrivacy(_ hidden: Bool) -> some View { contentTransition(.opacity).animation(YubaiMotion.quick, value: hidden) }
+    func paperBackground() -> some View { modifier(PaperBackground()) }
+    func floatingSurface<S: Shape>(in shape: S, tint: Color? = nil, shadow: YubaiShadow.Token = YubaiShadow.float) -> some View { modifier(FloatingSurface(shape: shape, tint: tint, shadow: shadow)) }
+    func yubaiZoomSource(_ id: String) -> some View { modifier(ContentZoom(id: id, source: true)) }
+    func yubaiZoomDestination(_ id: String?) -> some View { modifier(ContentZoom(id: id)) }
+    func messageEntrance(user: Bool) -> some View { modifier(MessageEntrance(user: user)) }
+    func chipSelection(_ selected: Bool) -> some View { modifier(ChipSelection(selected: selected)) }
+}
+
 struct PrimaryButtonStyle: ButtonStyle {
     var compact = false
     @Environment(\.isEnabled) private var isEnabled
@@ -270,7 +436,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: compact ? 36 : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.onBrand : YubaiColor.labelSecondary)
             .background(isEnabled ? YubaiColor.brand : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
-            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
@@ -284,7 +450,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: compact ? 36 : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.label : YubaiColor.labelSecondary)
             .background(isEnabled ? background : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
-            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
@@ -301,7 +467,7 @@ struct Page<Content: View>: View {
                 .padding(.horizontal, YubaiSpace.space18).padding(.top, topPadding)
                 .padding(.bottom, YubaiSpace.space24)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
-        }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas)
+        }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
     }
 }
 
@@ -330,6 +496,7 @@ struct Card<Content: View>: View {
 
 /// A single list surface with lazy rows, including large ledgers and matching candidates.
 struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Element: Identifiable {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let rows: Data
     let content: (Data.Element) -> Row
     init(_ rows: Data, @ViewBuilder content: @escaping (Data.Element) -> Row) { self.rows = rows; self.content = content }
@@ -337,10 +504,10 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
         Card(style: .list) {
             LazyVStack(spacing: 0) {
                 ForEach(rows) { row in
-                    content(row).frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight, alignment: .leading)
+                    content(row).frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight, alignment: .leading).transition(YubaiMotion.rowTransition(reduceMotion: reduceMotion))
                     if row.id != rows.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
                 }
-            }
+            }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: rows.map(\.id))
         }
     }
 }
@@ -388,6 +555,7 @@ struct AmountLabel: View {
     }
     enum Sign { case automatic, inflow, outflow, none }
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let cents: Int64
     var large = false
     var hide = false
@@ -401,12 +569,18 @@ struct AmountLabel: View {
         return resolvedRole == .amount || resolvedRole == .input ? 2 : 0
     }
     private var text: String { Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: decimals) }
+    private var numericValue: Double {
+        switch sign { case .automatic: Double(cents) / 100; case .inflow, .none: abs(Double(cents)) / 100; case .outflow: -abs(Double(cents)) / 100 }
+    }
     var body: some View {
         let font = textSize.isAccessibilitySize && (resolvedRole == .hero || resolvedRole == .display) ? YubaiFont.amountLarge : resolvedRole.font
-        Text(hide ? "••••" : text).yubaiFont(font).foregroundStyle(YubaiColor.label)
+        Group {
+            if hide { Text("••••").transition(.opacity) }
+            else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
+        }.yubaiFont(font).foregroundStyle(YubaiColor.label)
             .minimumScaleFactor(0.55).lineLimit(1)
             .accessibilityLabel(hide ? "金额已隐藏" : Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: 2))
-            .numberCrossfade(value: cents, enabled: !hide).animation(nil, value: hide)
+            .animation(YubaiMotion.quick, value: hide)
     }
     fileprivate static func text(_ cents: Int64, sign: Sign = .automatic, currency: Bool = false, decimals: Int = 0) -> String {
         let magnitude = cents.magnitude
@@ -445,6 +619,8 @@ struct Pill: View {
 struct EntryRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var highlighted = true
     var entry: Entry
     var hideAmount = false
     private static let dateFormatter: DateFormatter = {
@@ -464,6 +640,11 @@ struct EntryRow: View {
             AmountLabel(cents: entry.amount, hide: hideAmount, sign: entry.nature.inflow ? .inflow : .outflow)
                 .layoutPriority(1)
         }.padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.buttonHeight).contentShape(Rectangle())
+            .background(store.freshEntryIDs.contains(entry.id) && highlighted ? YubaiColor.brandTint : .clear)
+            .task(id: store.freshEntryIDs.contains(entry.id)) {
+                guard store.freshEntryIDs.contains(entry.id), YubaiMotion.claim("new-row-" + entry.id.uuidString) else { highlighted = false; return }
+                withAnimation(YubaiMotion.wash(reduceMotion: reduceMotion)) { highlighted = false }
+            }
     }
     private var dateText: String {
         let calendar = Calendar.current
@@ -473,17 +654,34 @@ struct EntryRow: View {
     }
 }
 
+struct EntryLink: View {
+    @Namespace private var namespace
+    let entry: Entry
+    var hideAmount = false
+    var body: some View {
+        NavigationLink {
+            EntryDetailView(entryID: entry.id).yubaiZoomDestination("entry-" + entry.id.uuidString).environment(\.yubaiZoomNamespace, namespace)
+        } label: {
+            EntryRow(entry: entry, hideAmount: hideAmount).yubaiZoomSource("entry-" + entry.id.uuidString).environment(\.yubaiZoomNamespace, namespace)
+        }.buttonStyle(PressButtonStyle())
+    }
+}
+
 struct CloseButton: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View { Button("完成") { dismiss() }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("closeSheet") }
 }
 
 struct BrandMark: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var risen = true
     enum Variant { case tile, mark }
     var size: CGFloat = 43
     var variant: Variant = .tile
     var color: Color? = nil
     var bands = 3
+    var wobbleTrigger = 0
+    var moment: String? = nil
     var body: some View {
         let geometry = WaterGeometry(size: size, variant: variant, bands: bands)
         let ink = color ?? (variant == .tile ? YubaiColor.iconInk : YubaiColor.label)
@@ -491,9 +689,36 @@ struct BrandMark: View {
             if variant == .tile { RoundedRectangle(cornerRadius: size * YubaiRadius.tile).fill(YubaiColor.iconTile) }
             MarkCircle(radius: geometry.ringRadius).stroke(ink, lineWidth: geometry.stroke * size / 100)
             ForEach(0..<geometry.count, id: \.self) { index in
-                WaterBand(index: index, geometry: geometry).fill(ink).clipShape(MarkCircle(radius: geometry.clipRadius))
+                WaterBand(index: index, geometry: geometry).fill(ink)
+                    .modifier(WaterWobble(trigger: wobbleTrigger, index: index))
+                    .offset(y: reduceMotion || risen ? 0 : YubaiSpace.space24)
+                    .opacity(risen ? 1 : 0)
+                    .animation(YubaiMotion.water(reduceMotion: reduceMotion)?.delay(Double(index) * YubaiMotion.durationStagger), value: risen)
+                    .clipShape(MarkCircle(radius: geometry.clipRadius))
             }
         }.frame(width: size, height: size).accessibilityElement(children: .ignore).accessibilityLabel("余白")
+            .task {
+                guard let moment, YubaiMotion.claim(moment), !reduceMotion else { return }
+                var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
+                withTransaction(transaction) { risen = false }; await Task.yield()
+                guard !Task.isCancelled else { risen = true; return }; risen = true
+            }.onDisappear { risen = true }
+    }
+}
+
+private struct WaterWobble: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let trigger: Int
+    let index: Int
+    @ViewBuilder func body(content: Content) -> some View {
+        if reduceMotion { content }
+        else {
+            content.keyframeAnimator(initialValue: CGFloat.zero, trigger: trigger) { band, y in band.offset(y: y) } keyframes: { _ in
+                LinearKeyframe(CGFloat.zero, duration: Double(index) * YubaiMotion.durationStagger)
+                SpringKeyframe(CGFloat(5), duration: YubaiMotion.durationWobbleHalf, spring: YubaiMotion.livelySpring)
+                SpringKeyframe(CGFloat.zero, duration: YubaiMotion.durationWobbleHalf, spring: YubaiMotion.livelySpring)
+            }
+        }
     }
 }
 
@@ -556,15 +781,16 @@ struct WaterLevelView: View {
     var totalBands: Int
     var size: CGFloat
     var showsTile: Bool
-    init(filledBands: Int, totalBands: Int = 6, size: CGFloat = 168, showsTile: Bool = false) {
-        self.filledBands = filledBands; self.totalBands = totalBands; self.size = size; self.showsTile = showsTile
+    var moment: String
+    init(filledBands: Int, totalBands: Int = 6, size: CGFloat = 168, showsTile: Bool = false, moment: String = "water-level") {
+        self.filledBands = filledBands; self.totalBands = totalBands; self.size = size; self.showsTile = showsTile; self.moment = moment
     }
-    init(progress: Double, totalBands: Int = 6, size: CGFloat = 168, showsTile: Bool = false) {
+    init(progress: Double, totalBands: Int = 6, size: CGFloat = 168, showsTile: Bool = false, moment: String = "water-level") {
         let geometry = WaterGeometry(size: size, variant: .tile, bands: totalBands)
         let count = max(1, geometry.count)
         let clampedProgress: Double = progress.isFinite ? min(1, max(0, progress)) : 0
         let filledBands = Int((clampedProgress * Double(count)).rounded(.down))
-        self.init(filledBands: filledBands, totalBands: count, size: size, showsTile: showsTile)
+        self.init(filledBands: filledBands, totalBands: count, size: size, showsTile: showsTile, moment: moment)
     }
     private var geometry: WaterGeometry { WaterGeometry(size: size, variant: .tile, bands: max(1, min(6, totalBands))) }
     private var target: Int { max(0, min(geometry.count, filledBands)) }
@@ -575,7 +801,7 @@ struct WaterLevelView: View {
             ForEach(0..<geometry.count, id: \.self) { index in
                 WaterBand(index: index, geometry: geometry).fill(YubaiColor.grabber).clipShape(MarkCircle(radius: geometry.clipRadius))
                 WaterBand(index: index, geometry: geometry).fill(YubaiColor.brand)
-                    .offset(y: reduceMotion || index < visibleBands ? 0 : size * 0.4)
+                    .offset(y: reduceMotion || index < visibleBands ? 0 : YubaiSpace.space24)
                     .opacity(index < (reduceMotion ? target : visibleBands) ? 1 : 0)
                     .animation(YubaiMotion.water(reduceMotion: reduceMotion)?.delay(Double(min(index, 5)) * YubaiMotion.durationStagger), value: visibleBands)
                     .clipShape(MarkCircle(radius: geometry.clipRadius))
@@ -583,8 +809,8 @@ struct WaterLevelView: View {
         }.frame(width: size, height: size)
             .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
             .accessibilityElement(children: .ignore).accessibilityLabel("水位，共 \(geometry.count) 格，已填 \(target) 格")
-            .onAppear { if appeared { finish() } else { appeared = true; visibleBands = target } }
-            .onChange(of: target) { _, value in visibleBands = value }
+            .onAppear { if appeared || !YubaiMotion.claim(moment) { finish() } else { appeared = true; visibleBands = target } }
+            .onChange(of: target) { _, value in if appeared { visibleBands = value } else { finish() } }
             .onChange(of: reduceMotion) { _, reduced in if reduced { finish() } }
             .onDisappear { finish() }
     }
@@ -635,6 +861,8 @@ private struct AssistantWave: Shape {
 }
 
 struct HeroCard: View {
+    @Environment(AppStore.self) private var store
+    @State private var displayedAvailable: Int64?
     var available: Int64
     var payable: Int64
     var reserved: Int64
@@ -643,16 +871,23 @@ struct HeroCard: View {
     var title = "保守可动用"
     var onDetails: (() -> Void)? = nil
     var onAttention: (() -> Void)? = nil
+    private var waterBands: Int {
+        let cash = Double(available) + Double(payable) + Double(reserved)
+        return cash > 0 ? Int((min(1, max(0, Double(available) / cash)) * 6).rounded(.down)) : 0
+    }
     var body: some View {
-        ChartGrow { progress in VStack(alignment: .leading, spacing: YubaiSpace.space16) {
-            if let onDetails { Button(action: onDetails) { amounts(progress) }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fundsFormula").accessibilityHint("打开计算依据") }
+        ChartGrow(key: "hero-composition") { progress in VStack(alignment: .leading, spacing: YubaiSpace.space16) {
+            if let onDetails { Button(action: onDetails) { amounts(progress) }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula").accessibilityHint("打开计算依据") }
             else { amounts(progress) }
             if attentionCount > 0 {
                 if let onAttention {
                     Button(action: onAttention) { attention }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
                 } else { attention }
             }
-        }.foregroundStyle(YubaiColor.label).animation(nil, value: hideAmount) }
+        }.foregroundStyle(YubaiColor.label) }
+            .onAppear { displayedAvailable = available }
+            .onChange(of: available) { _, value in if !store.pendingEntrySave || store.sheet == nil { displayedAvailable = value } }
+            .onChange(of: store.entrySaveTrigger) { _, _ in displayedAvailable = available }
     }
     private func amounts(_ progress: Double) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space10) {
@@ -675,10 +910,10 @@ struct HeroCard: View {
         HStack(alignment: .bottom, spacing: YubaiSpace.space12) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(title).yubaiFont(YubaiFont.heroLabel)
-                AmountLabel(cents: available, hide: hideAmount, role: .hero)
+                AmountLabel(cents: displayedAvailable ?? available, hide: hideAmount, role: .hero)
             }
             Spacer(minLength: 0)
-            BrandMark(size: 44).padding(.bottom, YubaiSpace.space6).accessibilityHidden(true)
+            BrandMark(size: 44, bands: waterBands, wobbleTrigger: store.entrySaveTrigger, moment: "hero-water").padding(.bottom, YubaiSpace.space6).accessibilityHidden(true)
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
@@ -793,10 +1028,9 @@ struct Toast: View {
     var onDismiss: (() -> Void)? = nil
     var body: some View {
         Group { if visible { surface } }
-            .transaction { if reduceMotion { $0.animation = nil } }
             .task(id: text) {
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
-                do { try await Task.sleep(for: .seconds(6)) } catch { return }
+                do { try await Task.sleep(for: .seconds(YubaiMotion.toastLifetime)) } catch { return }
                 withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() }
             }
     }
@@ -813,9 +1047,12 @@ struct Toast: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel("关闭提示")
             }
         }.padding(.leading, YubaiSpace.space18).padding(.trailing, YubaiSpace.space8).padding(.vertical, YubaiSpace.space4)
-            .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: Capsule()).yubaiShadow(YubaiShadow.float)
+            .frame(minHeight: YubaiSize.buttonHeight).floatingSurface(in: Capsule())
             .padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSpace.space12)
             .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
+            .gesture(DragGesture(minimumDistance: YubaiSpace.space12).onEnded { value in
+                if value.translation.height > YubaiSpace.space24 { withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() } }
+            })
     }
 }
 
@@ -829,16 +1066,16 @@ extension View {
         #endif
     }
     func editorForm() -> some View {
-        self.formStyle(.grouped).scrollContentBackground(.hidden).background(YubaiColor.canvas)
+        self.formStyle(.grouped).scrollContentBackground(.hidden).paperBackground()
             .environment(\.defaultMinListRowHeight, YubaiSize.buttonHeight).scrollDismissesKeyboard(.interactively)
             .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).tint(YubaiColor.brand).buttonStyle(.automatic)
     }
     func yubaiNavigation() -> some View {
-        self.background(YubaiColor.canvas).tint(YubaiColor.brandInk)
+        self.paperBackground().tint(YubaiColor.brandInk)
             #if os(iOS)
             .toolbar(.visible, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(YubaiColor.canvas, for: .navigationBar).toolbarBackground(.visible, for: .navigationBar)
+            .toolbar(.hidden, for: .tabBar)
             #elseif os(macOS)
             .toolbarBackground(YubaiColor.canvas, for: .windowToolbar).toolbarBackground(.visible, for: .windowToolbar)
             #endif
@@ -882,7 +1119,6 @@ struct WelcomeView: View {
 /// Answer data is built from a read tool in YubaiCore; animation never changes labels.
 struct AnswerChartView: View {
     let chart: AnswerChart
-    @State private var appeared = false
     private var domain: ClosedRange<Double> {
         let values = chart.points.map { Double($0.cents) / 100 }
         return min(0, values.min() ?? 0)...max(1, values.max() ?? 0)
@@ -890,18 +1126,21 @@ struct AnswerChartView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             Text(chart.title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            ChartGrow(appeared: $appeared) { progress in
+            ChartSegments(key: "answer-chart-\(chart.kind)-\(chart.title)", count: chart.kind == .bar ? chart.points.count : 1) { progress in
                 Chart {
-                    ForEach(Array(chart.points.enumerated()), id: \.offset) { _, point in
+                    ForEach(Array(chart.points.enumerated()), id: \.offset) { index, point in
                         if chart.kind == .bar {
-                            BarMark(x: .value("分类", point.label), y: .value("金额", Double(point.cents) / 100 * progress))
+                            BarMark(x: .value("分类", point.label), y: .value("金额", Double(point.cents) / 100 * progress[min(index, 5)]))
                                 .foregroundStyle(YubaiColor.brand)
                         } else {
-                            LineMark(x: .value("日期", point.label), y: .value("金额", Double(point.cents) / 100 * progress))
+                            LineMark(x: .value("日期", point.label), y: .value("金额", Double(point.cents) / 100))
                                 .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: YubaiSize.lineWidth))
                         }
                     }
                 }.chartYScale(domain: domain).chartYAxis(.hidden).chartLegend(.hidden)
+                    .chartPlotStyle { plot in plot.mask(alignment: .leading) { GeometryReader { geometry in
+                        Rectangle().frame(width: geometry.size.width * (chart.kind == .bar ? 1 : progress[0]))
+                    } } }
                     .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                         AxisValueLabel().foregroundStyle(YubaiColor.labelSecondary).font(.system(size: YubaiFont.chartLabel.size))
                     } }.frame(height: 180)
@@ -911,67 +1150,27 @@ struct AnswerChartView: View {
     }
 }
 
-/// The approved root navigation; labels remain separate, selectable AX buttons.
-struct TabBar: View {
-    @Binding var selection: Destination
-    var body: some View {
-        HStack(spacing: YubaiSpace.space4) {
-            ForEach(Destination.allCases) { destination in
-                Button { selection = destination } label: {
-                    VStack(spacing: YubaiSpace.space2) {
-                        TabGlyph(destination: destination, selected: selection == destination)
-                            .frame(width: 20, height: 20).accessibilityHidden(true)
-                        Text(destination.title).yubaiFont(YubaiFont.tabLabel, weight: selection == destination ? .medium : .regular)
-                    }.frame(maxWidth: .infinity, minHeight: 50)
-                        .background(selection == destination ? YubaiColor.card : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel(destination.title)
-                    .accessibilityIdentifier("tab_" + destination.rawValue)
-                    .accessibilityAddTraits(selection == destination ? .isSelected : [])
-            }
-        }.padding(.horizontal, YubaiSpace.space6).frame(height: YubaiSize.tabbarHeight)
-            .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.tabbar))
-            .yubaiShadow(YubaiShadow.float).accessibilityElement(children: .contain).accessibilityLabel("主导航")
-    }
-}
-
-private struct TabGlyph: View {
-    let destination: Destination
-    let selected: Bool
-    var body: some View {
-        Canvas { context, size in
-            let scale = size.width / 24
-            var path = Path()
-            switch destination {
-            case .overview:
-                path.addEllipse(in: CGRect(x: 1.5, y: 1.5, width: 21, height: 21))
-                // Three water bands, clipped to the circular silhouette.
-                path.move(to: CGPoint(x: 3, y: 13)); path.addLine(to: CGPoint(x: 21, y: 13))
-                path.move(to: CGPoint(x: 4, y: 17)); path.addLine(to: CGPoint(x: 20, y: 17))
-                path.move(to: CGPoint(x: 7, y: 21)); path.addLine(to: CGPoint(x: 17, y: 21))
-            case .insights:
-                path.addEllipse(in: CGRect(x: 3.5, y: 3.5, width: 17, height: 17))
-                path.move(to: CGPoint(x: 12, y: 3.5)); path.addLine(to: CGPoint(x: 12, y: 12)); path.addLine(to: CGPoint(x: 20.5, y: 12))
-            case .settings:
-                path.addEllipse(in: CGRect(x: 8, y: 4, width: 8, height: 8))
-                path.move(to: CGPoint(x: 4, y: 21))
-                path.addCurve(to: CGPoint(x: 20, y: 21), control1: CGPoint(x: 4, y: 10.3), control2: CGPoint(x: 20, y: 10.3))
-            }
-            context.stroke(path.applying(CGAffineTransform(scaleX: scale, y: scale)), with: .color(YubaiColor.label), style: StrokeStyle(lineWidth: (selected ? 2.2 : 1.8) * scale, lineCap: .round, lineJoin: .round))
-        }
-    }
-}
-
 struct AskButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) { AssistantMark(size: 26, color: YubaiColor.onBrand).accessibilityHidden(true)
-            .frame(width: 62, height: 62).background(YubaiColor.brand, in: Circle())
-        }.buttonStyle(PressButtonStyle()).yubaiShadow(YubaiShadow.ask)
+            .frame(width: 62, height: 62).floatingSurface(in: Circle(), tint: YubaiColor.brand, shadow: YubaiShadow.ask)
+        }.buttonStyle(RoundPressStyle())
             .accessibilityLabel("问余白").accessibilityIdentifier("askYubai")
     }
 }
 
+private struct RoundPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(configuration.isPressed ? YubaiMotion.instant : (reduceMotion ? YubaiMotion.quick : YubaiMotion.lively), value: configuration.isPressed)
+    }
+}
+
 struct Segmented<Value: Hashable>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var selectionNamespace
     let choices: [(Value, String)]
     @Binding var selection: Value
     var background = YubaiColor.card
@@ -982,13 +1181,18 @@ struct Segmented<Value: Hashable>: View {
             ForEach(choices.indices, id: \.self) { i in
                 let value = choices[i].0
                 Button { selection = value } label: {
-                    Text(choices[i].1).yubaiFont(YubaiFont.callout, weight: selection == value ? .medium : .regular)
-                        .foregroundStyle(selection == value ? YubaiColor.label : YubaiColor.labelSecondary)
-                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
-                        .background(selection == value ? YubaiColor.raised : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                    ZStack {
+                        if selection == value {
+                            if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).transition(.opacity) }
+                            else { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
+                        }
+                        Text(choices[i].1).yubaiFont(YubaiFont.callout, weight: selection == value ? .medium : .regular)
+                            .foregroundStyle(selection == value ? YubaiColor.label : YubaiColor.labelSecondary).transaction { $0.animation = nil }
+                    }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
                 }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selection == value ? .isSelected : [])
             }
         }.padding(3).background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
     }
 }
 
@@ -1029,8 +1233,13 @@ struct ProposalCard: View {
 
 struct ForecastChart: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pointVisible = YubaiMotion.hasAppeared("forecast-point")
+    @State private var ringVisible = false
+    @State private var ringProgress: CGFloat = 0
     let funds: Funds
     var height: CGFloat = 150
+    private var lowPoint: ForecastPoint? { funds.points.min(by: { $0.conservative < $1.conservative }) }
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 8) {
@@ -1038,28 +1247,65 @@ struct ForecastChart: View {
                 if store.current.preferences.hideAmounts {
                     Text("金额已隐藏").yubaiFont(YubaiFont.callout)
                 } else {
-                    Chart {
-                        ForEach(funds.points) { point in
-                            LineMark(x: .value("日期", point.date), y: .value("保守余量", Double(point.conservative) / 100))
-                                .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand)
-                        }
-                        RuleMark(y: .value("预留后的零点", 0))
-                            .foregroundStyle(YubaiColor.chartRule).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                        if let last = funds.points.last {
-                            PointMark(x: .value("日期", last.date), y: .value("保守余量", Double(last.conservative) / 100))
-                                .foregroundStyle(YubaiColor.brand).annotation(position: .top, alignment: .trailing) {
-                                    AmountLabel(cents: last.conservative, role: .chart)
-                                }
-                        }
-                    }.chartYAxis(.hidden).chartLegend(.hidden)
-                        .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month()) } }
-                        .frame(height: height)
-                        .accessibilityElement(children: .ignore).accessibilityLabel(chartDescription)
+                    forecastPlot
                     Text("保守余量已扣底线与预留，未到账收入不算进来。")
                         .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }
         }
+    }
+    private var forecastPlot: some View {
+        ChartGrow(key: "forecast-line") { progress in
+            Chart {
+                ForEach(funds.points) { point in
+                    LineMark(x: .value("日期", point.date), y: .value("保守余量", Double(point.conservative) / 100))
+                        .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand)
+                }
+                RuleMark(y: .value("预留后的零点", 0))
+                    .foregroundStyle(YubaiColor.chartRule).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                if let last = funds.points.last {
+                    PointMark(x: .value("日期", last.date), y: .value("保守余量", Double(last.conservative) / 100))
+                        .foregroundStyle(YubaiColor.brand).annotation(position: .top, alignment: .trailing) { AmountLabel(cents: last.conservative, role: .chart) }
+                }
+            }.chartYAxis(.hidden).chartLegend(.hidden)
+                .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month()) } }
+                .chartPlotStyle { plot in plot.mask(alignment: .leading) { GeometryReader { geometry in
+                    Rectangle().frame(width: geometry.size.width * progress)
+                } } }
+                .chartOverlay { proxy in
+                    GeometryReader { geometry in
+                        if let point = lowPoint, point.conservative < 0,
+                           let plotFrame = proxy.plotFrame, let x = proxy.position(forX: point.date), let y = proxy.position(forY: Double(point.conservative) / 100) {
+                            let frame = geometry[plotFrame]
+                            let ink = point.conservative < 0 ? YubaiColor.amberDot : YubaiColor.brand
+                            ZStack {
+                                if ringVisible && !reduceMotion {
+                                    Circle().stroke(ink, lineWidth: 1).frame(width: YubaiSize.marker * (1 + ringProgress * 2.2), height: YubaiSize.marker * (1 + ringProgress * 2.2))
+                                        .opacity(0.7 * (1 - ringProgress))
+                                }
+                                Circle().fill(ink).frame(width: YubaiSize.marker, height: YubaiSize.marker)
+                                    .opacity(pointVisible ? 1 : 0).offset(y: reduceMotion || pointVisible ? 0 : -YubaiSpace.space8)
+                            }.position(x: frame.minX + x, y: frame.minY + y)
+                        }
+                    }.accessibilityHidden(true)
+                }.frame(height: height)
+        }.accessibilityElement(children: .ignore).accessibilityLabel(chartDescription)
+            .task {
+                guard YubaiMotion.claim("forecast-point"), !reduceMotion else { finishPoint(); return }
+                do {
+                    try await Task.sleep(for: .seconds(YubaiMotion.pointDelay))
+                    withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { pointVisible = true }
+                    guard (lowPoint?.conservative ?? 0) < 0 else { return }
+                    try await Task.sleep(for: .seconds(YubaiMotion.ringDelay - YubaiMotion.pointDelay))
+                    ringVisible = true
+                    withAnimation(YubaiMotion.ring(reduceMotion: reduceMotion)) { ringProgress = 1 }
+                } catch { finishPoint() }
+            }.onDisappear { finishPoint() }
+            .onChange(of: reduceMotion) { _, reduced in if reduced { finishPoint() } }
+    }
+    private func finishPoint() {
+        var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
+        withTransaction(transaction) { pointVisible = true; ringVisible = false; ringProgress = 1 }
     }
     private var chartDescription: String {
         guard let first = funds.points.first, let last = funds.points.last,
