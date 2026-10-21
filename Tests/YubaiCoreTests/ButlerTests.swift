@@ -151,18 +151,51 @@ final class ButlerTests: XCTestCase {
         XCTAssertEqual(ledger.profile.restrain.first?.id, area.id)
         XCTAssertEqual(ledger.profile.restrain.first?.softLimit, SoftLimit(perWeekCount: 3, perMonthAmount: 6250))
     }
-    func testOffCharacterSelectionExcludesImportFromHabitAndCapsAtThree() async {
+    func testOffCharacterSelectionIncludesImportHistoryAndCapsAtThree() async {
         var ledger = seed()
         ledger.entries = (0..<10).map { _ in expense(ledger, amount: 1000, title: "午餐", date: Dates.addDays(-10, to: now)) }
         let imported = (0..<4).map { _ in expense(ledger, amount: 10_000, title: "聚餐") }
         ledger.entries += imported
         let candidates = OffCharacter.candidates(ledger, entryIDs: imported.map(\.id), now: now)
         XCTAssertEqual(candidates.count, 4)
-        XCTAssertTrue(candidates.allSatisfy { $0.facts.contains { $0.label == "近来同类均值" && $0.cents == 1000 } })
+        XCTAssertTrue(candidates.allSatisfy { $0.facts.contains { $0.label == "近来同类均值" && $0.cents == 3076 } })
         let local = await ButlerWording.word(candidates, ledger: ledger, transport: nil, select: true)
         XCTAssertEqual(local.count, 3)
         ledger.cards = local.map { $0.card(now: now) }
         XCTAssertEqual(OffCharacter.candidates(ledger, entryIDs: imported.map(\.id), now: now).count, 1)
+    }
+    func testOffCharacterBulkImportCountsSameCategoryHistory() {
+        var ledger = seed(); let batchID = UUID()
+        ledger.entries = (0..<10).map { expense(ledger, date: Dates.addDays(-30 + $0 * 3, to: now), category: "交通") }
+        let imported = (0..<20).map { index -> Entry in
+            var entry = expense(ledger, title: "午餐", date: Dates.addDays(-60 + index * 3, to: now))
+            entry.batchID = batchID; return entry
+        }
+        ledger.entries += imported
+        XCTAssertTrue(OffCharacter.candidates(ledger, entryIDs: imported.map(\.id), now: now).isEmpty)
+    }
+    func testOffCharacterHistoricalImportUsesItsOwnPriorNinetyDays() {
+        var ledger = seed(); let day = Dates.day(Dates.addDays(-120, to: now))
+        ledger.entries = [-90, -60, -1].map { expense(ledger, amount: 1000, date: Dates.addDays($0, to: day)) }
+        ledger.entries += [expense(ledger, amount: 100_000, date: Dates.addDays(-90, to: day).addingTimeInterval(-1)),
+                           expense(ledger, amount: 100_000, date: Dates.addDays(1, to: day)),
+                           expense(ledger, amount: 100_000, date: Dates.addDays(-10, to: now))]
+        let imported = expense(ledger, amount: 3000, date: Dates.addDays(-120, to: now))
+        ledger.entries.append(imported)
+        let candidates = OffCharacter.candidates(ledger, entryIDs: [imported.id], now: now)
+        XCTAssertEqual(candidates.count, 1); XCTAssertEqual(candidates.first?.evidence, [imported.id])
+        XCTAssertEqual(candidates.first?.facts.first { $0.label == "近来同类均值" }?.cents, 1000)
+    }
+    func testOffCharacterGenuinelyRareCategoryStillProducesCandidate() {
+        var ledger = seed()
+        ledger.entries = (0..<10).map { _ in expense(ledger, date: Dates.addDays(-10, to: now)) }
+        let imported = expense(ledger, title: "电影", category: "娱乐旅行")
+        ledger.entries.append(imported)
+        let candidates = OffCharacter.candidates(ledger, entryIDs: [imported.id], now: now)
+        XCTAssertEqual(candidates.count, 1); XCTAssertEqual(candidates.first?.evidence, [imported.id])
+        XCTAssertEqual(candidates.first?.facts.first { $0.label == "近90天同类记录" }?.value, "0 笔")
+        ledger.entries.removeFirst()
+        XCTAssertTrue(OffCharacter.candidates(ledger, entryIDs: [imported.id], now: now).isEmpty)
     }
     func testPostImportCommentsPersistWithOrganizationAndAreRemovedByBatchUndo() async throws {
         let original = restrained()

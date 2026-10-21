@@ -106,7 +106,7 @@ struct FixedFlowEditor: View {
             .popover(isPresented: $pickingSchedule) {
                 VStack(spacing: 12) {
                     Picker("多久一次", selection: $frequency) { ForEach(Frequency.allCases) { Text($0.label).tag($0) } }
-                    DatePicker("第一次", selection: $date, displayedComponents: .date).datePickerStyle(.graphical)
+                    DatePicker("第一次", selection: $date, displayedComponents: .date).datePickerStyle(.graphical).frame(width: 320).fixedSize()
                     Button("完成") { pickingSchedule = false }.frame(minHeight: 44)
                 }.padding(18).frame(minWidth: 300)
                     #if os(iOS)
@@ -117,7 +117,7 @@ struct FixedFlowEditor: View {
                 VStack(spacing: 12) {
                     Toggle("一直", isOn: Binding(get: { endDate == nil }, set: { endDate = $0 ? nil : max(date, Date()) })).tint(YubaiColor.toggleOn)
                     if endDate != nil {
-                        DatePicker("结束日期", selection: Binding(get: { endDate ?? date }, set: { endDate = $0 }), in: Dates.day(date)..., displayedComponents: .date).datePickerStyle(.graphical)
+                        DatePicker("结束日期", selection: Binding(get: { endDate ?? date }, set: { endDate = $0 }), in: Dates.day(date)..., displayedComponents: .date).datePickerStyle(.graphical).frame(width: 320).fixedSize()
                     }
                     Button("完成") { pickingEnd = false }.frame(minHeight: 44)
                 }.padding(18).frame(minWidth: 300)

@@ -49,26 +49,24 @@ public enum ButlerWording {
 }
 
 public enum OffCharacter {
-    /// Same 90-day, expense-only, personal-spend average as compare_to_habit.
-    /// Exclude this import from the baseline. Require at least 10 prior expenses
-    /// before calling a category rare (at most one prior use), or 3 same-category
-    /// expenses and at least 3x their mean. A matching restrain area needs no baseline.
+    /// Personal-spend baseline: active expenses through now in the 90 days before
+    /// each entry's day, plus other same-day entries, including the same import.
+    /// Exclude only the entry itself. Require at least 10 baseline expenses before
+    /// calling a category rare (at most one prior use), or 3 same-category expenses
+    /// and at least 3x their mean. A matching restrain area needs no baseline.
     public static func candidates(_ ledger: Ledger, entryIDs: [UUID], now: Date) -> [CardCandidate] {
         let ids = Set(entryIDs)
         let rows = ledger.activeEntries.filter { $0.nature == .expense && $0.date <= now }
-        let history = rows.filter { !ids.contains($0.id) && $0.date >= Dates.addDays(-89, to: Dates.day(now)) }
-        let byCategory = Dictionary(grouping: history, by: { ledger.resolveCategory($0.category) })
-        let averages = byCategory.mapValues { previous in
-            previous.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ledger) } / Int64(previous.count)
-        }
         let existing = Set(ledger.cards.map(\.dedupeKey))
         var result: [CardCandidate] = []
         for entry in rows.filter({ ids.contains($0.id) }).sorted(by: { $0.amount == $1.amount ? $0.id.uuidString < $1.id.uuidString : $0.amount > $1.amount }) {
             let key = "off:\(entry.id)"
             guard !ButlerCards.isMuted(key, in: ledger), !existing.contains(key) else { continue }
             let category = ledger.resolveCategory(entry.category)
-            let previous = byCategory[category] ?? []
-            let average = averages[category] ?? 0
+            let day = Dates.day(entry.date), start = Dates.addDays(-90, to: day), end = Dates.addDays(1, to: day)
+            let history = rows.filter { $0.id != entry.id && $0.date >= start && $0.date < end }
+            let previous = history.filter { ledger.resolveCategory($0.category) == category }
+            let average = previous.isEmpty ? 0 : previous.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ledger) } / Int64(previous.count)
             let spending = Finance.spendingAmount(entry, ledger: ledger)
             let area = ledger.profile.restrain.first { ButlerCards.matches($0, entry: entry, ledger: ledger) }
             let high = previous.count >= 3 && average > 0 && spending >= average * 3

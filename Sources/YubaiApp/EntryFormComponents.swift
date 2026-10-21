@@ -150,9 +150,9 @@ struct EntryDateChip: View {
         }.buttonStyle(PressButtonStyle()).popover(isPresented: $picking) {
             VStack {
                 if time {
-                    DatePicker("时间", selection: $date, in: ...Date(), displayedComponents: .hourAndMinute).labelsHidden()
+                    DatePicker("时间", selection: $date, in: ...Date(), displayedComponents: .hourAndMinute).labelsHidden().frame(width: 240).fixedSize()
                 } else {
-                    DatePicker("日期", selection: $date, in: ...Date(), displayedComponents: .date).datePickerStyle(.graphical).labelsHidden()
+                    DatePicker("日期", selection: $date, in: ...Date(), displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320).fixedSize()
                 }
                 Button("完成") { picking = false }.frame(minHeight: YubaiSize.tapMin)
             }.padding(YubaiSpace.space18)
