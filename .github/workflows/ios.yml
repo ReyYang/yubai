@@ -75,10 +75,16 @@ jobs:
           if os.path.exists(path):
               for test in json.load(open(path)):
                   for a in test.get("attachments", []):
-                      name = re.sub(r"_\d+_[0-9A-F-]{36}(\.\w+)$", r"\1", a.get("suggestedHumanReadableName", ""))
+                      name = re.sub(r"_\d+_[0-9A-F-]{36}(\.\w+)?$", r"\1", a.get("suggestedHumanReadableName", ""))
+                      # upload-artifact 不接受 " : < > | * ? 等字符；失败时 Xcode 附带的调试文件名里会有
+                      name = re.sub(r'[\\"`:<>|*?\r\n/]+', "-", name).strip(" -")
                       src = os.path.join(root, a["exportedFileName"])
+                      dst = os.path.join(root, name)
+                      n = 2
+                      while os.path.exists(dst):
+                          base, ext = os.path.splitext(name); dst = os.path.join(root, f"{base}-{n}{ext}"); n += 1
                       if name and os.path.exists(src):
-                          os.rename(src, os.path.join(root, name))
+                          os.rename(src, dst)
           PY
           ls build/screenshots
           python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
