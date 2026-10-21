@@ -52,7 +52,7 @@ struct ButlerCardView: View {
                     .foregroundStyle(amber ? YubaiColor.amberStrong : YubaiColor.label)
                     .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("butlerTitle_" + card.kind.rawValue)
                 Button { store.present(.cardEvidence(card.id), from: "card-" + card.id.uuidString) } label: {
-                    Text((hidden ? "金额已隐藏" : card.body) + " · 依据 ›")
+                    Text(evidenceText)
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).multilineTextAlignment(.leading)
                 }.buttonStyle(PressButtonStyle()).frame(minHeight: 44, alignment: .leading)
                 ViewThatFits(in: .horizontal) {
@@ -74,7 +74,8 @@ struct ButlerCardView: View {
     @ViewBuilder private var actions: some View {
         if card.kind == .offCharacter {
             HStack(spacing: 8) {
-                Button(card.feedback == .worth ? "已记下：值得" : "值得") { store.cardFeedback(.worth, id: card.id) }
+                let worth = card.evidence.count > 1 ? "都值得" : "值得"
+                Button(card.feedback == .worth ? "已记下：" + worth : worth) { store.cardFeedback(.worth, id: card.id) }
                 Button(card.feedback == .regret ? "已记下：有点后悔" : "有点后悔") { store.cardFeedback(.regret, id: card.id) }
             }.disabled(card.feedback != nil).buttonStyle(ButlerActionStyle(amber: true))
         } else {
@@ -91,6 +92,7 @@ struct ButlerCardView: View {
         }
     }
     private var meta: String {
+        if card.kind == .offCharacter, let meta = card.meta { return meta }
         let label: String
         switch card.kind {
         case .shortfall: label = "钱不够"
@@ -106,6 +108,13 @@ struct ButlerCardView: View {
         }
         let area = store.current.profile.restrain.first { $0.id == card.areaID }
         return label + (area.map { " · " + $0.title } ?? "") + " · " + card.createdAt.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
+    }
+    private var evidenceText: String {
+        if card.kind == .offCharacter, card.meta != nil {
+            let link = card.evidence.count > 1 ? "看看这 \(card.evidence.count) 笔 ›" : "看这笔 ›"
+            return hidden ? "金额已隐藏 · " + link : card.body
+        }
+        return (hidden ? "金额已隐藏" : card.body) + " · 依据 ›"
     }
     private var actionTitle: String {
         switch card.action ?? .openEvidence {

@@ -1,5 +1,13 @@
 # 余白 · 交付与验证记录
 
+## 管家的话 V7 异常消费卡（2026-10-21）
+
+按 owner 本轮提供的 [V7 文案与规则](../.design-meta/mockups/butler-unusual-v7.md)实现。执行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH; swift build && swift test`：构建退出 0，329 项 XCTest，325 通过、4 项原有实网 opt-in 测试跳过、0 失败（0 unexpected），33.760 秒。没有新增跳过；依赖已在本地，无需网络抓取。SwiftPM 用户级缓存不可写的警告未阻止构建或测试。
+
+新增 16 项测试（`OffCharacterTests` 15 项、`MemoryReflectionTests` 1 项），另调整既有导入历史／撤销断言以验证合并：三种原因的标题／正文／meta、用途截断与分类回退、个人承担／3 倍边界、四舍五入与合并最小整数下界、实际消费日期与同日／跨月范围、三笔高消费全部依据及稳定去重、按原因／分类／领域分组、已有依据／旧键跳过、AI 只挑选与回退及其他类型继续改写、合并反馈计一次／静音、旧卡无 meta 解码、完整依据与长键存储，以及每周回看使用全部合并依据。原始测试日志保留于 `/tmp/yubai-off-character-tests-final.log`，不纳入版本管理。
+
+`git diff --check`、`swiftc -frontend -parse Sources/YubaiApp/ButlerViews.swift` 通过，人工通读核对卡片 serif／muted 样式、两种依据链接、单笔／合并反馈与隐藏金额、旧卡回退。Linux 不编译 YubaiApp，未执行 Apple SwiftUI 类型检查、UI 测试或真机布局／辅助功能验收。未提交，Figma、旧原型、截图和分发包未同步。历史记录保留原日期语义。
+
 ## Motion v2 / Liquid Glass 静态核对（2026-10-21）
 
 本轮容器无 `swift`／Xcode，执行 `swift test` 返回 127（command not found），未运行 Swift 类型检查、Core 测试或 UI 测试。下方同日 Linux Core 运行结果属于此前有 Swift 的环境，不覆盖本轮工程与 UI 改动。

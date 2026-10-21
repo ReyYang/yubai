@@ -354,6 +354,7 @@ public struct ButlerCard: Codable, Identifiable, Equatable, Sendable {
     public var letter: LetterFacts?
     public var feedbackAt: Date?
     public var feedbackProposalID: UUID?
+    public var meta: String?
     public init(kind: CardKind, title: String, body: String, evidence: [UUID] = [], action: CardAction? = nil, dedupeKey: String) {
         self.kind = kind; self.title = title; self.body = body; self.evidence = evidence; self.action = action; self.dedupeKey = dedupeKey
     }
@@ -561,6 +562,8 @@ public struct Ledger: Codable, Equatable, Sendable {
 private extension Ledger {
     func validateProfileAndCards() throws {
         func text(_ s: String) -> Bool { !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && s.count <= 4000 }
+        // A merged off-character key can contain every entry ID in the ledger.
+        func cardKey(_ s: String) -> Bool { text(s) || (s.hasPrefix("off:") && s.count <= 4 + 37 * 200_000) }
         func date(_ d: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(d.timeIntervalSince1970) }
         let areas = profile.generous + profile.restrain
         guard areas.count <= 200, Set(areas.map(\.id)).count == areas.count,
@@ -568,7 +571,7 @@ private extension Ledger {
               Set(profile.principles).count == profile.principles.count,
               profile.principleDates.allSatisfy({ profile.principles.contains($0.key) && date($0.value) }),
               profile.floorAmount.map({ (0...Money.limit).contains($0) }) ?? true,
-              date(profile.updatedAt), mutedTopics.allSatisfy(text) else { throw YubaiError.invalid("消费画像或静音主题无效。") }
+              date(profile.updatedAt), mutedTopics.allSatisfy(cardKey) else { throw YubaiError.invalid("消费画像或静音主题无效。") }
         for a in areas {
             guard text(a.title), a.note.count <= 4000, a.match.categories.count <= 200, a.match.keywords.count <= 200,
                   a.confirmedAt.map(date) ?? true,
@@ -578,9 +581,9 @@ private extension Ledger {
         }
         for c in cards {
             // Evidence and action targets can have been deleted or dismissed since creation.
-            guard text(c.title), c.body.count <= 16_000, text(c.dedupeKey), c.evidence.count <= 1000,
+            guard text(c.title), c.body.count <= 16_000, cardKey(c.dedupeKey), c.evidence.count <= (c.kind == .offCharacter ? 200_000 : 1000),
                   Set(c.evidence).count == c.evidence.count, date(c.createdAt), c.dismissedAt.map(date) ?? true,
-                  c.feedbackAt.map(date) ?? true,
+                  c.feedbackAt.map(date) ?? true, c.meta.map({ $0.count <= 16_000 }) ?? true,
                   c.facts.map({ $0.count <= 1000 && $0.allSatisfy { text($0.label) && $0.value.count <= 4000 } }) ?? true else { throw YubaiError.invalid("管家卡片无效。") }
             if let letter = c.letter {
                 guard date(letter.weekEnding), letter.series.count == 7, letter.series.allSatisfy({ date($0.date) }),

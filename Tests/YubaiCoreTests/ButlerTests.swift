@@ -151,18 +151,19 @@ final class ButlerTests: XCTestCase {
         XCTAssertEqual(ledger.profile.restrain.first?.id, area.id)
         XCTAssertEqual(ledger.profile.restrain.first?.softLimit, SoftLimit(perWeekCount: 3, perMonthAmount: 6250))
     }
-    func testOffCharacterSelectionIncludesImportHistoryAndCapsAtThree() async {
+    func testOffCharacterSelectionIncludesImportHistoryAndMergesSameCategory() async {
         var ledger = seed()
         ledger.entries = (0..<10).map { _ in expense(ledger, amount: 1000, title: "午餐", date: Dates.addDays(-10, to: now)) }
         let imported = (0..<4).map { _ in expense(ledger, amount: 10_000, title: "聚餐") }
         ledger.entries += imported
         let candidates = OffCharacter.candidates(ledger, entryIDs: imported.map(\.id), now: now)
-        XCTAssertEqual(candidates.count, 4)
+        XCTAssertEqual(candidates.count, 1)
         XCTAssertTrue(candidates.allSatisfy { $0.facts.contains { $0.label == "近来同类均值" && $0.cents == 3076 } })
+        XCTAssertEqual(Set(candidates.first?.evidence ?? []), Set(imported.map(\.id)))
         let local = await ButlerWording.word(candidates, ledger: ledger, transport: nil, select: true)
-        XCTAssertEqual(local.count, 3)
+        XCTAssertEqual(local.count, 1)
         ledger.cards = local.map { $0.card(now: now) }
-        XCTAssertEqual(OffCharacter.candidates(ledger, entryIDs: imported.map(\.id), now: now).count, 1)
+        XCTAssertTrue(OffCharacter.candidates(ledger, entryIDs: imported.map(\.id), now: now).isEmpty)
     }
     func testOffCharacterBulkImportCountsSameCategoryHistory() {
         var ledger = seed(); let batchID = UUID()
@@ -211,13 +212,14 @@ final class ButlerTests: XCTestCase {
             ChatMessage(role: .assistant, content: "{\"rows\":[]}"),
             ChatMessage(role: .assistant, content: "invalid optional wording")])
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: imported.map(\.id), now: now)
-        XCTAssertEqual(result.comments?.count, 2)
+        XCTAssertEqual(result.comments?.count, 1)
         XCTAssertTrue(result.comments?.allSatisfy { $0.kind == .offCharacter } == true)
+        XCTAssertEqual(Set(result.comments?.first?.evidence ?? []), Set(imported.map(\.id)))
         result.finish(batchID: batch.id, before: before, in: &ledger)
-        XCTAssertEqual(ledger.cards.count, 2)
-        XCTAssertEqual(ledger.imports[0].undo?.cardIDs.count, 2)
+        XCTAssertEqual(ledger.cards.count, 1)
+        XCTAssertEqual(ledger.imports[0].undo?.cardIDs.count, 1)
         ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
-        XCTAssertEqual(ledger.imports[0].organization?.comments?.count, 2)
+        XCTAssertEqual(ledger.imports[0].organization?.comments?.count, 1)
         BillImporter.undo(batchID: batch.id, in: &ledger)
         XCTAssertEqual(try LedgerCodec.encode(ledger), try LedgerCodec.encode(original))
     }
