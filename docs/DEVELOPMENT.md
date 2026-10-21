@@ -100,15 +100,15 @@ YUBAI_ICLOUD = YES
 存储与恢复：
 
 - 旧布局：Application Support/app.yubai.personal/ledger.json，附件以 base64 内嵌。
-- 新布局：本机同目录或容器内 `Documents/Yubai/ledger.json` 只含附件 id、名称、时间、字节数和 SHA-256；字节在旁边 `Attachments/<UUID>`。schema 仍为 2，载入兼容旧内嵌形状并自动拆分；先验证、保留原始文件字节，再替换元数据文件。
-- 账本元数据上限 250 MiB，当前账本所引用的附件总量另限 250 MiB。附件 UUID 对应不可变字节，删除引用后暂保留文件，以免破坏尚未到达的冲突版本。未实现孤立附件清理；总磁盘占用因此可能超过当前附件上限。
-- `Recovery/*.json` 与同名 `*.attachments/` 始终在本机 Application Support，保留最近 20 份完整版本；旧内嵌恢复记录继续能读。设备解锁设置、位置选择及待上传标记也留在本机；`.icloud-pending` 在保存修改前原子写入 Application Support，避免重启时丢失待上传状态。iCloud 账本中的设备解锁字段固定为关闭，接收同步时保留本机设置。
-- 加密备份继续使用 v1 envelope，把附件字节一并打包，旧备份仍可恢复。JSON/base64 的包装读取上限单独放宽（由 `LedgerCodec.backupCapacity` 统一控制），不放宽账本或附件的逻辑上限。恢复附件缺失、校验失败时不替换现有账本。
+- 新布局：本机同目录或容器内 `Documents/Yubai/ledger.json` 只含附件 id、名称、时间、字节数和 SHA-256；字节在旁边 `Attachments/<UUID>`。schema 仍为 2，载入兼容旧内嵌形状并自动拆分。Ledger 只驻留附件元数据；需要字节时由 `LedgerRepository.attachmentData(id)` 读取并检查大小／SHA-256。`save`／`restoreBackup` 返回已释放附件字节的账本，App 采用该返回值。
+- 账本元数据及单个附件仍限 250 MiB，取消附件总量 250 MiB 限制。附件 UUID 对应不可变字节；已有文件先比大小，复用已知校验信息，必要时流式计算 SHA-256，保存不重读所有 payload。保存清理未被任何账目（包括软删除）、导入批次（含撤销快照）或待确认修改所涉及账目引用的附件；选定冲突版本之前先保留另一版本的 payload。Apple 写入前检查可用卷空间，写满错误转为「手机空间不足，本次修改未保存。」；临时文件原子安装，沿用 0600／0700 与文件保护。
+- 新版本为本机 `Recovery/*.json.gz`，只含账本元数据，附件共享一份 `Recovery/Payloads/<UUID>`。保留最近 20 份；剪除后仅清理所有剩余恢复版本及当前账本均不引用的共享 payload。旧 `.json`、同名 `.attachments/` 和内嵌恢复记录兼容读取，旧 sidecar 随版本删除。schema 1 无内嵌附件的原始 JSON 仍按原字节压缩保留；有内嵌附件时先拆分为元数据。Apple 排除 Recovery 的整机备份。设备解锁设置、位置选择及待上传标记也留在本机；`.icloud-pending` 在保存修改前原子写入 Application Support，避免重启时丢失待上传状态。iCloud 账本中的设备解锁字段固定为关闭，接收同步时保留本机设置。
+- 加密备份继续使用 v1 envelope，把附件字节一并打包，旧备份仍可恢复。JSON/base64 包装上限按最大附件个数与单个附件上限推导（`LedgerCodec.backupCapacity`），不再用旧总量限制阻止大账本导出。导出时临时读取全部字节，完成后不写回驻留 Ledger；完整备份的内存峰值仍随附件总量增长。恢复附件缺失、校验失败时不替换现有账本。
 - iCloud 文件列表先经 NSMetadataQuery 完成发现，避免把尚未下载的账本误判为空。读取前请求下载，显示「正在从 iCloud 读取…」；等待 30 秒后保留本机内容并允许重试。账本与附件分别使用 NSFileCoordinator。
 - 每次修改先存本机，后台上传；待上传状态跨重启保留。没有待上传修改时接收远端账本；有修改、上传前指纹已变或存在 NSFileVersion 未解决版本时，显示更新时间、版本时间、设备名（如有）、有效记录数与最多三笔差异。用户选定后，先把未选中版本保存为「同步冲突时的另一版本」，再替换和标记这些已展示的冲突已解决。选择期间再更新会要求重新选择。
 - 切到 iCloud 时若两处不同先选择，未选中版本记为「切换存储时的另一版本」。切回仅本机复制当前账本，包括未上传修改；不删除云端账本。退出 iCloud 后保留本机副本并回到仅本机，再次使用 iCloud 需要主动选择。恢复版本只在产生它的设备上可用。
 
-`LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；原始文件断言按新的元数据布局调整。当前只执行静态语法、配置与工程生成核查，没有 Swift 工具链，未执行这些 XCTest。
+`LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；测试改为显式按需读取附件、解压恢复 JSON 后断言，容量与损坏断言遵循新语义。本轮验证见 [验证记录](VALIDATION.md#存储修复与对话压缩2026-10-21)。问余白截图保存前经 `ImageCompression`：ImageIO 缩长边至 2048、HEIC／JPEG 质量 0.8，仅更小时替换；Linux 或失败保留原件。
 
 在 Xcode 验证默认 NO 的 iOS / Mac 构建与测试后，再用上方单行启用 YES，重复两端构建。真实同步需两端有效签名、同一 Apple ID、iCloud Drive；核对首次空云端、已有不同账本、下载占位、离线待上传、前台远端更新、同时编辑冲突、选择期间再次更新、切回本机及退出登录。静态检查与临时目录测试不能代替这些系统行为的设备验证。
 
@@ -116,3 +116,17 @@ YUBAI_ICLOUD = YES
 ## 快速记账与可选 App Group
 
 第九轮新增 YubaiWidgets（iOS 26）并在 App 的 iOS 构建嵌入；Mac 通过平台条件排除。共享快照使用独立的 `Config/AppGroup.xcconfig`，默认 NO，iCloud 开关保持独立。配置组合、同团队签名、默认只有按钮的行为与设备验证见[快速记账说明](QUICK-CAPTURE.md)。工程生成器同步包含新源文件和扩展 target，不要只手动修改生成结果。
+
+## 第八轮存储空间（2026-10-21）
+
+从「我 → 备份与恢复」下一行进入「存储空间」。[三张已确认稿及归档](../.design-meta/mockups/storage-v8/README.md)、[稿到源码映射](../.design-meta/DESIGN.md#2026-10-21--第八轮存储空间)。入口在 `SettingsView.swift`，主页与两个 sheet 在 `StorageView.swift`，复用现有 DesignSystem、系统导航／sheet、恢复版本页和加密备份页，无新增动效或依赖。
+
+`LedgerRepository.storageUsage()` 返回三类实际文件字节数、恢复份数与最早时间：账本目录其余文件为账本，`Attachments` 为截图和账单原件，`Recovery`（含共享 `Payloads`、旧 sidecar）为恢复历史。App 查询本机副本，后台只读文件长度，不载入所有附件；显示按十进制 KB／MB／GB，一位小数。
+
+`StorageAttachments.classify`／`oldScreenshots`／`removeOldScreenshots` 是纯函数，截图以账目引用且非任何导入原件判定，包括软删除记录的引用，撤销批次仍保留原件；日期按 Calendar 的3／6／12个月回退，早于边界才删除。`deleteOldScreenshots` 走正常 save，留一份「删除旧截图」恢复版本，主目录 payload 删除失败则回滚元数据、历史与相关附件；账目及金额保持，账目和批次撤销快照中的已删截图引用置空。云端 payload 沿原有下载／协调规则；App 先改本机并按既有 pending／上传链同步。
+
+`clearRecoveryHistory` 在账本锁与恢复锁下清空恢复目录，包括共享 payload；不触发另一次账本保存。`eraseAllLocalData` 仅清空 `localDirectory`，即使从 cloud repository 调用也不触碰云端目录。破坏性操作先建私有回滚快照，同卷文件用硬链接，失败则复制；清理失败恢复快照，回滚本身失败会保留副本并给出中文路径。App 等待同步操作结束，先改回本机位置，成功后清除位置／pending状态和内存撤销，换全新 Ledger 回 onboarding；钥匙串密钥不删。
+
+可选 `Preferences.lastBackupAt` 兼容旧存档 nil，只在系统文件导出回调成功后保存，取消／加密失败不写入。抹掉 sheet 的「之后记了」按手动 recordedAt 或导入批次 importedAt 计算，不给旧记录补造时间；没有备份记录显示「还没备份过」。
+
+本轮 Linux 全量测试见 [VALIDATION.md](VALIDATION.md#第八轮存储空间2026-10-21)。新增11项 `StorageManagementTests`；UI 增加 `openStorage`／`storagePage`／`storageHeadline` 等标识与 `testStorageEntryAndOverviewOpenFromMe`。在 Mac 重新生成工程后执行 iOS／Mac 编译与 UITests；当前 AppFlowTests 共9条，另有3条 MotionStateTests。人工验收按 [第八轮清单](V2-TEST-CHECKLIST.md#第八轮存储空间2026-10-21待-apple-设备验证)，包括真实数据量、空态、3／6／12月、备份成功／取消、确认文字、抹掉重开、iCloud 保留和 VoiceOver。

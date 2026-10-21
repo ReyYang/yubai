@@ -167,20 +167,107 @@ final class AskYubaiTests: XCTestCase {
         let session = AskYubaiSession(characterBudget: AskYubai.prompt(now: ctx.now).count + Memory.prompt(ledger: ctx.ledger, now: ctx.now).count + 100)
         let script = ScriptedChatTransport([
             ChatMessage(role: .assistant, content: String(repeating: "旧回答", count: 100)),
+            ChatMessage(role: .assistant, content: "用户问过旧问题，已给出旧回答。"),
             ChatMessage(role: .assistant, content: "可以继续看看。"),
             ChatMessage(role: .assistant, content: "记得刚才的问题。")])
         _ = try await session.ask(String(repeating: "旧问题", count: 100), ledger: ctx.ledger, transport: script, now: ctx.now)
         _ = try await session.ask("最近的问题", ledger: ctx.ledger, transport: script, now: ctx.now)
         let reply = try await session.ask("继续回答", ledger: ctx.ledger, transport: script, now: ctx.now)
         XCTAssertEqual(reply.text, "记得刚才的问题。")
-        let requests = await script.recorded(); let messages = requests[2].messages
-        XCTAssertEqual(messages.filter { $0.content == "更早的对话已省略" }.count, 1)
+        let requests = await script.recorded(); let messages = requests[3].messages
+        XCTAssertEqual(requests.filter { $0.purpose == "对话摘要" }.count, 1)
+        XCTAssertTrue(messages[2].content?.hasPrefix("前情摘要：") == true)
         XCTAssertEqual(messages.filter { $0.role == .user }.map(\.content), ["最近的问题", "继续回答"])
         XCTAssertTrue(messages.contains { $0.content == "可以继续看看。" })
-        XCTAssertFalse(messages.contains { $0.content?.contains("旧问题") == true })
+        XCTAssertFalse(messages.contains { $0.role != .system && $0.content?.contains("旧问题") == true })
         let fresh = ScriptedChatTransport([ChatMessage(role: .assistant, content: "新的对话。")])
         _ = try await AskYubaiSession().ask("重新开始", ledger: ctx.ledger, transport: fresh, now: ctx.now)
         let reset = await fresh.recorded(); XCTAssertEqual(reset[0].messages.filter { $0.role == .user }.count, 1)
     }
 
+}
+
+private actor SummaryTestTransport: ChatTransport {
+    enum Mode { case success, failure, empty, cancelled }
+    let mode: Mode
+    private var requests: [ChatRequest] = []
+    init(_ mode: Mode) { self.mode = mode }
+    func send(_ request: ChatRequest) async throws -> ChatMessage {
+        requests.append(request)
+        if request.purpose == "对话摘要" {
+            switch mode {
+            case .failure: throw URLError(.notConnectedToInternet)
+            case .empty: return ChatMessage(role: .assistant, content: " \n")
+            case .cancelled: throw CancellationError()
+            case .success: return ChatMessage(role: .assistant, content: "用户讨论合租，仍在核对。卡号6222021234567890123")
+            }
+        }
+        return ChatMessage(role: .assistant, content: String(repeating: "继续核对。", count: 400))
+    }
+    func recorded() -> [ChatRequest] { requests }
+}
+
+extension AskYubaiTests {
+    func testSummaryUsesOneRequestRedactsAndStabilizesHistoryPrefix() async throws {
+        let ctx = AssistantFixtures.context()
+        let base = AskYubai.prompt(now: ctx.now).count + Memory.prompt(ledger: ctx.ledger, now: ctx.now).count
+        let session = AskYubaiSession(characterBudget: base + 12_000)
+        let transport = SummaryTestTransport(.success)
+        let question = String(repeating: "核对", count: 500)
+        for _ in 0..<6 { _ = try await session.ask(question, ledger: ctx.ledger, transport: transport, now: ctx.now) }
+        let requests = await transport.recorded()
+        let summaries = requests.filter { $0.purpose == "对话摘要" }
+        XCTAssertEqual(summaries.count, 1)
+        let summary = try XCTUnwrap(summaries.first)
+        XCTAssertEqual(summary.temperature, 0); XCTAssertEqual(summary.maxTokens, 800); XCTAssertTrue(summary.tools.isEmpty)
+        XCTAssertTrue(summary.messages[0].content?.contains("不编造金额") == true)
+        let answers = requests.filter { $0.purpose == "问余白" }
+        let compressed = answers[4].messages
+        XCTAssertEqual(compressed[2].role, .system); XCTAssertTrue(compressed[2].content?.hasPrefix("前情摘要：") == true)
+        XCTAssertFalse(compressed[2].content?.contains("6222021234567890123") == true)
+        XCTAssertEqual(compressed[2], answers[5].messages[2])
+        XCTAssertLessThanOrEqual(AssistantContextBudget.count(Array(compressed.dropFirst(2).dropLast())), 11_000 * 3 / 5)
+        XCTAssertGreaterThan(compressed.filter { $0.role == .user }.count, 1)
+    }
+    func testSummaryFailureOrEmptyFallsBackWithoutLosingAnswer() async throws {
+        for mode in [SummaryTestTransport.Mode.failure, .empty] {
+            let ctx = AssistantFixtures.context()
+            let base = AskYubai.prompt(now: ctx.now).count + Memory.prompt(ledger: ctx.ledger, now: ctx.now).count
+            let session = AskYubaiSession(characterBudget: base + 100)
+            let transport = SummaryTestTransport(mode)
+            _ = try await session.ask("先核对", ledger: ctx.ledger, transport: transport, now: ctx.now)
+            let reply = try await session.ask("继续", ledger: ctx.ledger, transport: transport, now: ctx.now)
+            XCTAssertFalse(reply.text.isEmpty)
+            let requests = await transport.recorded()
+            XCTAssertEqual(requests.filter { $0.purpose == "对话摘要" }.count, 1)
+            XCTAssertEqual(requests.last?.messages[2].content, AssistantContextBudget.historyNote)
+        }
+    }
+    func testSummaryCancellationPropagatesAndRetainsHistoryForRetry() async throws {
+        let ctx = AssistantFixtures.context()
+        let base = AskYubai.prompt(now: ctx.now).count + Memory.prompt(ledger: ctx.ledger, now: ctx.now).count
+        let session = AskYubaiSession(characterBudget: base + 100)
+        let cancelled = SummaryTestTransport(.cancelled)
+        _ = try await session.ask("旧问题", ledger: ctx.ledger, transport: cancelled, now: ctx.now)
+        do { _ = try await session.ask("新问题", ledger: ctx.ledger, transport: cancelled, now: ctx.now); XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        let retry = SummaryTestTransport(.success)
+        _ = try await session.ask("重试", ledger: ctx.ledger, transport: retry, now: ctx.now)
+        let requests = await retry.recorded()
+        XCTAssertEqual(requests.first?.purpose, "对话摘要")
+        XCTAssertTrue(requests.first?.messages.last?.content?.contains("旧问题") == true)
+    }
+    func testHistorySliceMergesOldSummaryRemovesWholePairsAndTargetsSixtyPercent() throws {
+        let previous = ChatMessage(role: .system, content: "前情摘要：之前讨论过合租")
+        let turns = (0..<10).flatMap { _ in [ChatMessage(role: .user, content: String(repeating: "问", count: 80)), ChatMessage(role: .assistant, content: String(repeating: "答", count: 80))] }
+        let slice = try XCTUnwrap(AssistantContextBudget.historySlice([previous] + turns, limit: 1000, reserving: 0))
+        XCTAssertEqual(slice.removed.first, previous)
+        XCTAssertEqual(slice.remaining.first?.role, .user); XCTAssertEqual(slice.remaining.last?.role, .assistant)
+        XCTAssertEqual(slice.remaining.count % 2, 0)
+        XCTAssertLessThanOrEqual(AssistantContextBudget.count(slice.remaining) + slice.summaryBudget, 600)
+        XCTAssertGreaterThan(AssistantContextBudget.count(slice.remaining), 400)
+        XCTAssertEqual(AssistantContextBudget.defaultLimit, 120_000)
+        let tinyPairs = (0..<1000).flatMap { _ in [ChatMessage(role: .user, content: "问"), ChatMessage(role: .assistant, content: "答")] }
+        XCTAssertNil(AssistantContextBudget.historySlice(tinyPairs, limit: AssistantContextBudget.defaultLimit, reserving: 0))
+    }
 }

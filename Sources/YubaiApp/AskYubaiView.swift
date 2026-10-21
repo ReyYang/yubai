@@ -458,7 +458,8 @@ private struct AskEntryDraftCard: View {
         confirmed.items = chosen.map { draft in var value = draft; value.amountConfirmed = true; return .addEntry(value) }
         if store.apply(confirmed, label: "问余白修改", finishing: { ledger in
             if let image {
-                let attachment = Attachment(name: image.name, data: image.data)
+                let compressed = ImageCompression.compress(image.data, name: image.name)
+                let attachment = Attachment(name: compressed.name, data: compressed.data)
                 let ids = Set(chosen.map(\.id))
                 ledger.attachments.append(attachment)
                 for index in ledger.entries.indices where ids.contains(ledger.entries[index].id) && ledger.entries[index].attachmentID == nil { ledger.entries[index].attachmentID = attachment.id }

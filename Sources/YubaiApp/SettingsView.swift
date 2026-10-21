@@ -6,6 +6,7 @@ import YubaiCore
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
+    @State private var storageSize: String?
     private var thinkingCount: Int { store.current.wishlist.filter { $0.status == .thinking }.count }
     private var followUpCount: Int { store.current.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= Date() } == true }.count }
     var body: some View {
@@ -65,9 +66,16 @@ struct SettingsView: View {
                     }.accessibilityIdentifier("openIntelligencePrivacy")
                     separator
                     NavigationLink { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
+                    separator
+                    NavigationLink { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
             }.buttonStyle(PressButtonStyle())
         }.amountPrivacy(store.current.preferences.hideAmounts).safeAreaPadding(.bottom, YubaiSize.rootBottomPadding).navigationTitle("我")
+            .task(id: store.current.updatedAt) {
+                let repository = store.localRepository
+                do { storageSize = StorageSize.text(try await Task.detached(priority: .utility) { try repository.storageUsage() }.value.totalBytes) }
+                catch { storageSize = nil }
+            }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
@@ -225,6 +233,7 @@ struct BackupView: View {
     @State private var password = ""; @State private var restorePassword = ""; @State private var exportDocument = ExportDocument()
     @State private var exporting = false; @State private var importing = false; @State private var exportName = ""
     @State private var pendingRestore: Ledger?; @State private var restoreData: Data?; @State private var busy = false; @State private var message: String?
+    @State private var exportedLedgerID: UUID?; @State private var exportedAt: Date?
     private enum PasswordField: Hashable { case export, restore }
     @FocusState private var passwordFocus: PasswordField?
     var body: some View {
@@ -244,7 +253,16 @@ struct BackupView: View {
             }
             Section { NavigationLink("恢复版本") { RecoveryVersionsView() } }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().toolbar { CloseButton() }
-            .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .yubaiBackup, defaultFilename: exportName) { result in switch result { case .success: message = "文件已保存到你选择的位置。"; case .failure(let error): message = error.localizedDescription } }
+            .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .yubaiBackup, defaultFilename: exportName) { result in
+                switch result {
+                case .success:
+                    message = "文件已保存到你选择的位置。"
+                    if let exportedLedgerID, let exportedAt {
+                        store.recordSuccessfulBackup(of: exportedLedgerID, at: exportedAt)
+                    }
+                case .failure(let error): message = error.localizedDescription
+                }
+            }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.yubaiBackup, .json, .data]) { result in do { acceptBackup(try result.get()) } catch { message = error.localizedDescription } }
             .task { await store.configureSync() }
             .onAppear { if let url = store.importedURL, url.pathExtension.lowercased() == "yubaibackup" { store.importedURL = nil; acceptBackup(url) } }
@@ -255,6 +273,7 @@ struct BackupView: View {
     func exportBackup() {
         passwordFocus = nil
         let ledger = store.current; let password = password; busy = true; message = nil
+        exportedLedgerID = ledger.id; exportedAt = Date()
         Task { do { let data = try await Task.detached { try Backup.export(ledger, password: password) }.value; exportDocument = ExportDocument(data: data); exportName = "余白备份-" + Dates.text(Date()) + ".yubaibackup"; exporting = true; busy = false } catch { message = error.localizedDescription; busy = false } }
     }
     func readBackup() {
@@ -302,7 +321,7 @@ struct ImportHistoryView: View {
                             .disabled(store.organizingBatchID != nil).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportBatch")
                     }
                     if let attachment = store.current.attachments.first(where: { $0.id == batch.attachmentID }) {
-                        Button("导出原文件") { document = ExportDocument(data: attachment.data); filename = attachment.name; exporting = true }
+                        Button("导出原文件") { do { document = ExportDocument(data: try store.localRepository.attachmentData(attachment.id)); filename = attachment.name; exporting = true } catch { store.error = error.localizedDescription } }
                             .frame(minHeight: YubaiSize.tapMin)
                     }
                 }.buttonStyle(.borderless).padding(.vertical, YubaiSpace.space8)

@@ -94,13 +94,56 @@ final class QuickCaptureTests: XCTestCase {
         var ledger = fixture()
         _ = try QuickCapture.applePay(merchant: "咖啡", amount: "18", card: "卡", date: now, in: &ledger, now: now)
         ledger.preferences.quickCapture.cardAccounts["卡"] = ledger.accounts[0].id
+        ledger.preferences.lastBackupAt = now
         let data = try LedgerCodec.encode(ledger)
         XCTAssertEqual(try LedgerCodec.decode(data), ledger)
-        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        var preferences = try XCTUnwrap(json["preferences"] as? [String: Any]); preferences.removeValue(forKey: "quickCapture"); json["preferences"] = preferences
-        var entries = try XCTUnwrap(json["entries"] as? [[String: Any]]); entries[0].removeValue(forKey: "quickCapture"); json["entries"] = entries
-        let old = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
-        XCTAssertEqual(old.preferences.quickCapture, QuickCapturePreferences()); XCTAssertNil(old.entries[0].quickCapture)
+        for missing in [["quickCapture"], ["lastBackupAt"], ["quickCapture", "lastBackupAt"]] {
+            var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            var preferences = try XCTUnwrap(json["preferences"] as? [String: Any])
+            for key in missing { preferences.removeValue(forKey: key) }
+            json["preferences"] = preferences
+            var entries = try XCTUnwrap(json["entries"] as? [[String: Any]])
+            entries[0].removeValue(forKey: "quickCapture"); json["entries"] = entries
+            let old = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
+            XCTAssertEqual(old.preferences.quickCapture, missing.contains("quickCapture") ? QuickCapturePreferences() : ledger.preferences.quickCapture)
+            XCTAssertEqual(old.preferences.lastBackupAt, missing.contains("lastBackupAt") ? nil : now)
+            XCTAssertNil(old.entries[0].quickCapture)
+        }
+    }
+    func testQuickCaptureSurvivesLazyStorageBackupAndCompressedRecovery() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("quick-capture-storage-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let repository = LedgerRepository(directory: directory)
+        var ledger = fixture()
+        ledger.preferences.lastBackupAt = now
+        ledger.preferences.quickCapture.cardAccounts["卡"] = ledger.accounts[1].id
+        try QuickCapture.remember(merchant: "咖啡", category: "餐饮", in: &ledger)
+        let ids = try QuickCapture.record(drafts("午饭32", ledger: ledger), in: &ledger, source: "截图记", withoutOpeningApp: false, now: now)
+        let payload = Data("synthetic receipt".utf8)
+        let attachment = Attachment(name: "截图.png", data: payload)
+        ledger.attachments.append(attachment); ledger.entries[0].attachmentID = attachment.id
+        ledger = try repository.save(ledger, requiringUnchanged: true)
+        XCTAssertTrue(ledger.attachments[0].data.isEmpty)
+        let payment = try QuickCapture.applePay(merchant: "咖啡", amount: "18", card: "卡", date: now, in: &ledger, now: now)
+        ledger = try repository.save(ledger, requiringUnchanged: true)
+        XCTAssertTrue(ledger.attachments[0].data.isEmpty)
+        var loaded = try LedgerRepository(directory: directory).load()
+        XCTAssertEqual(loaded.preferences, ledger.preferences)
+        XCTAssertFalse(try QuickCapture.applePay(merchant: "咖啡", amount: "18", card: "卡", date: now, in: &loaded, now: now).inserted)
+        XCTAssertEqual(loaded.entries.first { $0.id == ids[0] }?.quickCapture?.withoutOpeningApp, false)
+        let backup = try Backup.restore(Backup.export(loaded))
+        XCTAssertEqual(backup.preferences, ledger.preferences)
+        XCTAssertEqual(backup.entries, ledger.entries)
+        XCTAssertEqual(backup.attachments[0].data, payload)
+        QuickCapture.undo(entryID: payment.entry.id, in: &loaded, now: now)
+        try repository.save(loaded, requiringUnchanged: true)
+        let recovery = try XCTUnwrap(repository.recoveries().first)
+        XCTAssertTrue(recovery.url.lastPathComponent.hasSuffix(".json.gz"))
+        let restored = try repository.restoreBackup(repository.readRecovery(recovery))
+        XCTAssertEqual(restored.preferences, ledger.preferences)
+        XCTAssertEqual(restored.entries, ledger.entries)
+        XCTAssertTrue(restored.attachments[0].data.isEmpty)
+        XCTAssertEqual(try repository.attachmentData(attachment.id), payload)
     }
     func testScreenshotPaymentAndAmountOnSeparateLine() {
         let result = ReceiptTextParser.drafts(lines: ["支付成功", "¥32.00", "老王面馆", "2026-10-21 12:30:00", "订单号 2026102112345678", "账户余额 100.00"], now: now)

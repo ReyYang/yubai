@@ -47,6 +47,23 @@ final class AppFlowTests: XCTestCase {
         return identified.exists ? identified : app.tabBars.buttons["记一笔"]
     }
 
+    func testStorageEntryAndOverviewOpenFromMe() {
+        let app = application("ask"); app.launch()
+        tap(app.tabBars.buttons["我"], in: app)
+        tap(app.buttons["openStorage"], in: app)
+        XCTAssertTrue(app.navigationBars["存储空间"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "storageHeadline").firstMatch.exists)
+        XCTAssertTrue(app.buttons["openStoragePhotos"].exists)
+        XCTAssertTrue(app.buttons["openStorageHistory"].exists)
+        XCTAssertTrue(app.buttons["openStorageErase"].exists)
+        XCTAssertFalse(addEntryTab(app).isHittable)
+        snapshot("storage-overview", app)
+        tap(app.buttons["openStoragePhotos"], in: app)
+        XCTAssertTrue(app.staticTexts["账单原件不删，导入记录里仍可撤销。"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["半年前"].isSelected)
+        snapshot("storage-photos", app)
+    }
+
     func testFirstLaunchEmptyLedgerAccountAndAvailableFunds() {
         let app = application("empty"); app.launch()
         snapshot("welcome", app)

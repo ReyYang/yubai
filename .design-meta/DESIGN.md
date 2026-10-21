@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-21 · 快速记账、存储与五个概念合并
+
+本轮按 owner 的 merge2 任务整合 `origin/fix/storage-attachments-compaction`，不新增产品或视觉决定。第九轮快速入口、五个概念、V7 卡片与记一笔日期／分段控件修复均保留；第八轮存储空间、附件按需读取、共享恢复 payload／gzip、对话压缩完整纳入。存储页沿用当前 `DesignSystem.swift` 的符号与展示用词，「余白记得的」只指具体记忆条数；保留已删除指南的决定。我页同时提供快速记账和存储空间。
+
+`LedgerSync.persist` 采用存储接口返回的轻量账本，同时保留 `requiringUnchanged` 与专用锁屏记账权限；`Models.Preferences` 同时编码 `quickCapture` 和 `lastBackupAt`，缺失时分别回退默认配置和 nil。`ScreenshotCaptureView` 保存前复用 `ImageCompression`；抹掉本机数据同时清除待打开的快速记账 sheet，账本替换继续触发原有 Widget 快照更新。原始 V8／V9 画板不改写；设计记录按新到旧、产品票按旧到新保留三路条目。
+
+生成器已核对：App／Widget 源文件与 CoreTests 均自动发现，保留 App、CoreTests、UITests、Widget 四个 target 和两个扩展共用文件；运行生成脚本重建 pbxproj，无手工拼接。[验证记录](../docs/VALIDATION.md#快速记账存储与五个概念合并2026-10-21)包含完整 Linux 测试、兼容性／存储组合回归及 App／Widget 语法检查。Apple SDK 类型检查、UI 测试、设备与真实 iCloud 验收待做；未提交／推送，Figma、历史原型、截图和分发包未同步。
+
 ## 2026-10-21 · 快速记账与五个界面概念合并
 
 按本轮合并任务保留双方已采用范围，不新增产品或视觉决定。`SettingsView.swift` 保持消费观内记忆计数、心愿单／每周来信共卡及指南删除，同时保留「快速记账」入口，移除底部重复的旧来信行。`EntryEditView.swift` 保留 Apple Pay 来源胶囊、商户分类映射、删除／好了按钮与普通记录编辑，性质使用 `entryLabel`，购买问题统一为「该不该买」。`DesignSystem.swift` 保留「没分类」标签、新主数字文案与分段控件尺寸修复；`EntryFormComponents.swift` 保留日期弹窗尺寸及可隐藏表头动作。
@@ -24,6 +32,22 @@ owner 在本轮 brief 明确确认 V9 八张画板及 DS「系统入口／动效
 Core `QuickCapture.swift` 复用 EntryAmountParser、ManualBookkeeping 与 Finance；卡／商户偏好和可选来源字段向后兼容。Apple Pay 以原始卡、商户、金额身份和原付款时间做 120 秒去重，软删除后保留凭据；snippet 渲染不会再次记账。所有后台操作在 App 进程内复用同一 MainActor／AppStore／Repository、版本检查与 iCloud 待上传状态，账本锁下仅专用记账和撤销放行。App Group 快照在隐藏金额／启用账本锁时删除。
 
 没有新增动效或包，界面沿用 YubaiMotion 与系统 sheet／导航。Siri／通知／WidgetKit 的外框交给系统，画板的手机背景、系统遮罩、外部字体不复制进应用。实现与原稿的映射不构成逐像素原生验证；390pt、大字号、深色、VoiceOver、减少动态效果、锁屏及系统自动化均待 Apple 设备按[清单](../docs/QUICK-CAPTURE.md#验证与限制)验证。Linux build 和 324 项完整 Core 测试结果见[验证报告](../docs/VALIDATION.md#第九轮快速记账2026-10-21)。Figma、历史原型及分发包未同步。
+
+## 2026-10-21 · 第八轮「存储空间」
+
+owner 明确确认 [storage-v8 三稿](mockups/storage-v8/README.md)并授权实现。原始 HTML 未改写，数字为样例，App 使用本机账本副本与实际文件长度。此轮补充第四轮「我」的维护入口，继续沿用 `DesignSystem.swift` 与 Motion v2；没有新增动效、依赖或独立样式体系。
+
+| 选定稿 | 原生源码与采用范围 |
+|---|---|
+| `V8-Storage.dc.html` | `StorageView.swift / StorageView`：衬线两行占用标题、brand／series2／neutralStrong 分段条与三行图例、截图与原件卡、恢复历史卡、底部 amberInk／card 抹掉按钮。`SettingsView.swift` 在备份与恢复下一行加入存储空间和实际总大小。恢复历史仍打开现有 `RecoveryVersionsView`，清除使用系统 confirmationDialog。 |
+| `V8-Storage-Photos.dc.html` | `StoragePhotosSheet`：3／6／12 个月单选，默认半年；截图数／主目录 payload 大小／账目都留着、原件说明、删除与取消。按附件 createdAt 判断；移除附件并清空账目与导入撤销快照中的截图引用，正常保存留下「删除旧截图」恢复版本，主目录 payload 删除后用既有 toast 显示张数。 |
+| `V8-Storage-Erase.dc.html` | `StorageEraseSheet`：有效账目／账户／记忆／截图及原件／恢复历史数量，备份状态，先加密备份打开原 `BackupView`，精确输入「抹掉」才启用抹掉操作。`Preferences.lastBackupAt` 可选兼容字段只在导出成功后记录；之后笔数取 recordedAt／导入时间，不伪造旧记录时间。`AppStore.eraseAllDeviceData` 与 `LedgerSync.swift` 切回仅本机、清除待上传状态与本机目录、换空账本并回到 onboarding；云端账本及钥匙串密钥保留。 |
+
+Core 统计、分类和删除在 `YubaiCore/Storage.swift`／`StorageManagement.swift`。恢复占用包含共享 Payloads 与旧 sidecar；截图以账目引用且不属于任何导入原件判定，撤销过的批次仍保留原件。清理使用 repository 锁／恢复锁，云端截图 payload 经过原有下载与协调；删除失败回滚账本、恢复历史和涉及的 payload。App 实际只操作本机副本，再沿原有上传链同步截图删除。
+
+适配：返回、标题栏、拖拽条与呈现采用原生导航／sheet；sheet 按内容高度呈现并可拉到大高度，小屏与大字号滚动，单选在辅助字号改纵排。复用 Card、Primary／PressButtonStyle、Pill、Toast 与既有列表／sheet 行为；32pt 视觉单选包在至少44pt触控区中。分段条和每条统计有 VoiceOver 文本，按钮／输入框有可访问名称与测试标识。
+
+验证与限制见 [本轮记录](../docs/VALIDATION.md#第八轮存储空间2026-10-21)与 [人工验收](../docs/V2-TEST-CHECKLIST.md#第八轮存储空间2026-10-21待-apple-设备验证)。Linux 可验证 Core；SwiftUI 只做语法与源码核对，Apple 编译、UI 测试及视觉／交互／无障碍验收尚未执行。工程已重新生成；Figma、旧原型和分发包未同步，未提交。
 
 ## 2026-10-21 · 五个界面概念
 
@@ -51,7 +75,6 @@ owner 在本轮任务提供已批准的 `V7-Butler-Unusual` 文案与行为，[�
 | 原生展示 | `ButlerViews.swift / ButlerCardView`：复用 serif cardTitle、muted 正文按钮及现有依据页；单笔「看这笔 ›／值得」、合并「看看这 N 笔 ›／都值得」，「有点后悔」保持。隐藏金额时仍只显示隐藏提示与依据链接。 |
 
 合并偏高正文的「平时一笔约」取各笔历史的去重并集、排除本卡记录后的均值；标题最低倍数仍按每笔自己的检测均值计算。合并少见／克制标题与有界事实摘要为授权内实现选择，非 owner 提供的额外画板。运行结果见 [本轮验证](../docs/VALIDATION.md#管家的话-v7-异常消费卡2026-10-21)。已通读核对 SwiftUI，Apple 编译、布局、辅助功能与真机验收未执行；Figma、旧原型、截图及分发包未同步，不提交。
-
 
 ## 2026-10-21 · 第四轮「手动优先」
 

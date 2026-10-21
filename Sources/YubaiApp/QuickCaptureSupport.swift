@@ -124,7 +124,8 @@ struct ScreenshotCaptureView: View {
         if store.update("截图记", { ledger in
             let ids = try QuickCapture.record(entries, in: &ledger, source: "截图记", withoutOpeningApp: false)
             if let bytes {
-                let attachment = Attachment(name: "截图.png", data: bytes); ledger.attachments.append(attachment)
+                let compressed = ImageCompression.compress(bytes, name: "截图.png")
+                let attachment = Attachment(name: compressed.name, data: compressed.data); ledger.attachments.append(attachment)
                 let saved = Set(ids)
                 for i in ledger.entries.indices where saved.contains(ledger.entries[i].id) { ledger.entries[i].attachmentID = attachment.id }
             }
