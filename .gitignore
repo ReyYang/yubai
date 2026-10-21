@@ -6,6 +6,9 @@ dist/
 node_modules/
 DerivedData/
 *.xcresult/
+*.ipa
+*.dSYM
+*.dSYM.zip
 
 # Local verification output and logs
 /.verification/
@@ -19,6 +22,9 @@ __pycache__/
 .DS_Store
 *.xcuserstate
 xcuserdata/
+
+# Keep Xcode project definitions, shared workspace settings, and Package.resolved tracked.
+# Do not ignore entire *.xcodeproj or *.xcworkspace directories.
 
 # Private local data and signing material
 /Config/Local.xcconfig
