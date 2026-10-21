@@ -67,7 +67,28 @@ jobs:
             xcrun xcresulttool export attachments --path build/Yubai.xcresult --output-path build/screenshots || true
             xcrun xcresulttool get test-results summary --path build/Yubai.xcresult > build/test-summary.json || true
           fi
-          ls -la build/screenshots | head -50
+          # 按测试里给的名字重命名截图，例如 import-02-import-preview.png
+          python3 - <<'PY'
+          import json, os, re
+          root = "build/screenshots"
+          path = os.path.join(root, "manifest.json")
+          if os.path.exists(path):
+              for test in json.load(open(path)):
+                  for a in test.get("attachments", []):
+                      name = re.sub(r"_\d+_[0-9A-F-]{36}(\.\w+)$", r"\1", a.get("suggestedHumanReadableName", ""))
+                      src = os.path.join(root, a["exportedFileName"])
+                      if name and os.path.exists(src):
+                          os.rename(src, os.path.join(root, name))
+          PY
+          ls build/screenshots
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json
+          try: s = json.load(open("build/test-summary.json"))
+          except Exception: s = {}
+          print(f"测试结果：{s.get('result', '未知')}，共 {s.get('totalTestCount', '?')} 项，通过 {s.get('passedTests', '?')}，失败 {s.get('failedTests', '?')}，跳过 {s.get('skippedTests', '?')}")
+          for f in s.get("testFailures", []):
+              print(f"- 失败：{f.get('testIdentifierString', f.get('testName', ''))}：{f.get('failureText', '')}")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
