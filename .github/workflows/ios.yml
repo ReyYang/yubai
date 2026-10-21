@@ -1,15 +1,7 @@
 name: iOS
 
-# macOS 分钟按 10 倍计费，所以只在改到代码的 PR 和手动触发时运行。
+# 会消耗 GitHub 额度（macOS 分钟按 10 倍计），只手动触发；跑之前先问用户。
 on:
-  pull_request:
-    paths:
-      - 'Sources/**'
-      - 'Tests/**'
-      - 'Yubai.xcodeproj/**'
-      - 'Config/**'
-      - 'Package.swift'
-      - '.github/workflows/ios.yml'
   workflow_dispatch:
     inputs:
       release_builds:
@@ -67,7 +59,34 @@ jobs:
             xcrun xcresulttool export attachments --path build/Yubai.xcresult --output-path build/screenshots || true
             xcrun xcresulttool get test-results summary --path build/Yubai.xcresult > build/test-summary.json || true
           fi
-          ls -la build/screenshots | head -50
+          # 按测试里给的名字重命名截图，例如 import-02-import-preview.png
+          python3 - <<'PY'
+          import json, os, re
+          root = "build/screenshots"
+          path = os.path.join(root, "manifest.json")
+          if os.path.exists(path):
+              for test in json.load(open(path)):
+                  for a in test.get("attachments", []):
+                      name = re.sub(r"_\d+_[0-9A-F-]{36}(\.\w+)?$", r"\1", a.get("suggestedHumanReadableName", ""))
+                      # upload-artifact 不接受 " : < > | * ? 等字符；失败时 Xcode 附带的调试文件名里会有
+                      name = re.sub(r'[\\"`:<>|*?\r\n/]+', "-", name).strip(" -")
+                      src = os.path.join(root, a["exportedFileName"])
+                      dst = os.path.join(root, name)
+                      n = 2
+                      while os.path.exists(dst):
+                          base, ext = os.path.splitext(name); dst = os.path.join(root, f"{base}-{n}{ext}"); n += 1
+                      if name and os.path.exists(src):
+                          os.rename(src, dst)
+          PY
+          ls build/screenshots
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json
+          try: s = json.load(open("build/test-summary.json"))
+          except Exception: s = {}
+          print(f"测试结果：{s.get('result', '未知')}，共 {s.get('totalTestCount', '?')} 项，通过 {s.get('passedTests', '?')}，失败 {s.get('failedTests', '?')}，跳过 {s.get('skippedTests', '?')}")
+          for f in s.get("testFailures", []):
+              print(f"- 失败：{f.get('testIdentifierString', f.get('testName', ''))}：{f.get('failureText', '')}")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
