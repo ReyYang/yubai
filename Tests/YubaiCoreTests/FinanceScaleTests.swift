@@ -36,6 +36,10 @@ final class FinanceScaleTests: XCTestCase {
                 entry.rentID = rent.id; entry.rentPeriod = Dates.addMonths(index % 250, to: rent.nextDueDate)
                 entry.nature = index % 2 == 0 ? .expense : .contribution; entry.otherAccountID = nil
             }
+            if index % 19 == 0 {
+                let anchor = ledger.accounts.first { $0.id == entry.accountID }!.anchorDate
+                entry.date = Dates.day(anchor); entry.recordedAt = anchor.addingTimeInterval(index % 2 == 0 ? 60 : -60)
+            }
             if index % 23 == 0 { entry.deletedAt = now }
             ledger.entries.append(entry)
         }
@@ -68,7 +72,7 @@ final class FinanceScaleTests: XCTestCase {
 // Deliberately retain the scan-based calculation as an independent correctness oracle.
 private enum ReferenceFinance {
     static func balance(_ account: Account, in ledger: Ledger, at: Date = Date()) -> Int64 {
-        account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && $0.postingDate(for: account.id) > account.anchorDate && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
+        account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && account.includes($0, posting: $0.postingDate(for: account.id)) && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
     }
     static func occurrences(in ledger: Ledger, now: Date = Date(), days: Int? = nil) -> [Occurrence] {
         let start = Dates.day(now); let end = Dates.addDays(days ?? 90, to: start)
@@ -122,7 +126,7 @@ private enum ReferenceFinance {
         let living = daily * 90
         // An unresolved inflow after the most recent reconciliation is withheld until its nature is known.
         let uncertain = ledger.activeEntries.filter { e in
-            e.nature == .unknownIn && e.date <= now && accounts.contains { $0.id == e.accountID && e.date > $0.anchorDate && ($0.kind == .cash || $0.kind == .bank) }
+            e.nature == .unknownIn && e.date <= now && accounts.contains { $0.id == e.accountID && $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) }
         }.reduce(Int64(0)) { $0 + $1.amount }
         let available = cash - debt - committed - goals - (ledger.profile.floorAmount ?? 0) - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }

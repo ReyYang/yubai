@@ -34,7 +34,7 @@ struct InsightsView: View {
         let summary = Finance.cashFlow(store.current, during: range)
         let slices = summary.slices(income: income)
         Page(spacing: 10, topPadding: 12) {
-            Text("洞察").yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity, minHeight: 48)
+            TabRootHeader(title: "洞察")
             Segmented(choices: Window.allCases.map { ($0, $0.rawValue) }, selection: $window)
             if window == .custom { Button("选择日期范围") { store.pickingInsightDates = true }.frame(minHeight: 44) }
             HStack {
@@ -181,7 +181,7 @@ private struct FlowRecordsView: View {
         }
         Page {
             CardRows(rows) { entry in
-                EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts)
+                EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts, editable: true)
             }
         }.navigationTitle(title).yubaiNavigation()
     }

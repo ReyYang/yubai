@@ -582,7 +582,7 @@ struct AmountLabel: View {
             .accessibilityLabel(hide ? "金额已隐藏" : Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: 2))
             .animation(YubaiMotion.quick, value: hide)
     }
-    fileprivate static func text(_ cents: Int64, sign: Sign = .automatic, currency: Bool = false, decimals: Int = 0) -> String {
+    static func text(_ cents: Int64, sign: Sign = .automatic, currency: Bool = false, decimals: Int = 0) -> String {
         let magnitude = cents.magnitude
         let units = magnitude / 100 + (decimals == 0 && magnitude % 100 >= 50 ? 1 : 0)
         let digits = String(units)
@@ -623,6 +623,7 @@ struct EntryRow: View {
     @State private var highlighted = true
     var entry: Entry
     var hideAmount = false
+    var metadata: String? = nil
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.dateFormat = "M月d日"
         return formatter
@@ -631,10 +632,13 @@ struct EntryRow: View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space12))
         layout {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
-                Text("\(dateText) · \(entry.category) · \(store.current.accountName(entry.accountID))")
+                HStack(spacing: YubaiSpace.space6) {
+                    Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
+                    if metadata != nil && entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20, showsDot: false) }
+                }
+                Text(metadata ?? "\(dateText) · \(entry.category) · \(store.current.accountName(entry.accountID))")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(textSize.isAccessibilitySize ? nil : 1)
-                if entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20) }
+                if metadata == nil && entry.nature.uncertain { Pill(text: "待明确", variant: .amber, height: 20) }
             }
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space6) }
             AmountLabel(cents: entry.amount, hide: hideAmount, sign: entry.nature.inflow ? .inflow : .outflow)
@@ -655,15 +659,24 @@ struct EntryRow: View {
 }
 
 struct EntryLink: View {
+    @Environment(AppStore.self) private var store
     @Namespace private var namespace
     let entry: Entry
     var hideAmount = false
+    var editable = false
+    var metadata: String? = nil
     var body: some View {
-        NavigationLink {
-            EntryDetailView(entryID: entry.id).yubaiZoomDestination("entry-" + entry.id.uuidString).environment(\.yubaiZoomNamespace, namespace)
-        } label: {
-            EntryRow(entry: entry, hideAmount: hideAmount).yubaiZoomSource("entry-" + entry.id.uuidString).environment(\.yubaiZoomNamespace, namespace)
-        }.buttonStyle(PressButtonStyle())
+        if editable {
+            Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: {
+                EntryRow(entry: entry, hideAmount: hideAmount, metadata: metadata)
+            }.buttonStyle(PressButtonStyle())
+        } else {
+            NavigationLink {
+                EntryDetailView(entryID: entry.id).yubaiZoomDestination("entry-" + entry.id.uuidString).environment(\.yubaiZoomNamespace, namespace)
+            } label: {
+                EntryRow(entry: entry, hideAmount: hideAmount).yubaiZoomSource("entry-" + entry.id.uuidString).environment(\.yubaiZoomNamespace, namespace)
+            }.buttonStyle(PressButtonStyle())
+        }
     }
 }
 
@@ -1150,13 +1163,36 @@ struct AnswerChartView: View {
     }
 }
 
-struct AskButton: View {
+struct AddEntryButton: View {
     let action: () -> Void
     var body: some View {
-        Button(action: action) { AssistantMark(size: 26, color: YubaiColor.onBrand).accessibilityHidden(true)
+        Button(action: action) { Image(systemName: "plus").font(.system(size: 26, weight: .medium)).foregroundStyle(YubaiColor.onBrand).accessibilityHidden(true)
             .frame(width: 62, height: 62).floatingSurface(in: Circle(), tint: YubaiColor.brand, shadow: YubaiShadow.ask)
         }.buttonStyle(RoundPressStyle())
+            .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
+    }
+}
+
+struct AskToolbarButton: View {
+    @Environment(AppStore.self) private var store
+    var body: some View {
+        Button { store.present(.ask(""), from: "ask") } label: {
+            AssistantMark(size: 22, color: YubaiColor.brandInk).accessibilityHidden(true)
+                .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).floatingSurface(in: Circle())
+        }.buttonStyle(PressButtonStyle()).yubaiZoomSource("ask")
             .accessibilityLabel("问余白").accessibilityIdentifier("askYubai")
+    }
+}
+
+struct TabRootHeader: View {
+    let title: String
+    var body: some View {
+        GlassGroup {
+            ZStack {
+                Text(title).yubaiFont(YubaiFont.navTitle)
+                HStack { Color.clear.frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton); Spacer(); AskToolbarButton() }
+            }.frame(minHeight: YubaiSize.headerHeight)
+        }
     }
 }
 

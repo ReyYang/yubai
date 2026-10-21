@@ -4,6 +4,102 @@ import XCTest
 final class FinanceTests: XCTestCase {
     let now = Dates.parse("2026-10-01 12:00:00")!
     func basic() -> Ledger { var l = Ledger(); l.accounts = [Account(name: "银行", balance: 1_000_000, at: Dates.parse("2026-10-01 00:00:00")!), Account(name: "零钱", kind: .cash, balance: 0, at: Dates.parse("2026-10-01 00:00:00")!), Account(name: "信用卡", kind: .credit, balance: -200_000, at: Dates.parse("2026-10-01 00:00:00")!)]; return l }
+    private func record(_ ledger: inout Ledger, date: Date, at recordedAt: Date, nature: Nature = .expense) throws {
+        let draft = EntryDraft(date: date, amount: 3200, amountConfirmed: true, nature: nature, accountID: ledger.accounts[0].id, title: "补记")
+        var change = ChangeSet(source: "问余白", reason: "用户补记", items: [.addEntry(draft)]); change.createdAt = recordedAt
+        XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
+    }
+    func testSameDayChangeSetEntriesChangeBalanceCashAndAvailableByExactAmount() throws {
+        for nature in [Nature.expense, .refund, .income] {
+            var ledger = Ledger(); ledger.accounts = [Account(name: "银行", balance: 100_000, at: Dates.parse("2026-10-01 08:30")!)]
+            let before = Finance.funds(ledger, now: now)
+            try record(&ledger, date: Dates.day(now), at: now, nature: nature)
+            let delta: Int64 = nature.inflow ? 3200 : -3200
+            let after = Finance.funds(ledger, now: now)
+            XCTAssertEqual(ledger.entries[0].recordedAt, now); XCTAssertEqual(ledger.entries[0].date, Dates.day(now))
+            XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: now), 100_000 + delta)
+            XCTAssertEqual(after.cash, before.cash + delta); XCTAssertEqual(after.available, before.available + delta)
+            XCTAssertEqual(after.living, before.living)
+        }
+    }
+    func testBackdatedChangeSetEntryBeforeAnchorDayDoesNotChangeBalance() throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "银行", balance: 100_000, at: Dates.parse("2026-10-01 08:30")!)]
+        try record(&ledger, date: Dates.addDays(-1, to: Dates.day(now)), at: now)
+        XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: now), 100_000)
+        XCTAssertEqual(Finance.funds(ledger, now: now).cash, 100_000)
+    }
+    func testSameDayReconciliationExcludesEarlierRecordingsAndIncludesLaterOnes() throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "银行", balance: 100_000, at: Dates.parse("2026-10-01 08:30")!)]
+        try record(&ledger, date: Dates.day(now), at: now)
+        XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: now), 96_800)
+        let reconcile = Dates.parse("2026-10-01 20:00")!
+        ledger.accounts[0].anchorBalance = 96_800; ledger.accounts[0].anchorDate = reconcile
+        // Recording at exactly the anchor is already included, like recording before it.
+        try record(&ledger, date: Dates.day(now), at: reconcile)
+        XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: reconcile), 96_800)
+        try record(&ledger, date: Dates.day(now), at: Dates.parse("2026-10-01 21:00")!)
+        let close = Dates.parse("2026-10-01 22:00")!; let funds = Finance.funds(ledger, now: close)
+        XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: close), 93_600)
+        XCTAssertEqual(funds.cash, 93_600); XCTAssertEqual(funds.available, 93_600)
+    }
+    func testImportedEntriesUseExactPostingTimeOnAnchorDay() {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "银行", balance: 100_000, at: Dates.parse("2026-10-01 08:30")!)]
+        for time in ["07:00", "08:30", "09:00"] {
+            var entry = Entry(date: Dates.parse("2026-10-01 " + time)!, amount: 3200, accountID: ledger.accounts[0].id, title: "导入午饭")
+            entry.source = "微信"; XCTAssertNil(entry.recordedAt); ledger.entries.append(entry)
+        }
+        XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: now), 96_800)
+        let funds = Finance.funds(ledger, now: now)
+        XCTAssertEqual(funds.cash, 96_800); XCTAssertEqual(funds.available, 96_800)
+    }
+    func testManualTransferUsesEachAccountsAnchorAndKeepsPostingUpperBound() {
+        var ledger = Ledger()
+        ledger.accounts = [Account(name: "银行", balance: 100_000, at: Dates.parse("2026-10-01 08:30")!), Account(name: "零钱", kind: .cash, at: Dates.parse("2026-10-01 13:00")!)]
+        var entry = Entry(date: Dates.day(now), amount: 3200, nature: .transfer, accountID: ledger.accounts[0].id, title: "转零钱")
+        entry.recordedAt = now; entry.otherAccountID = ledger.accounts[1].id; ledger.entries = [entry]
+        let at = Dates.parse("2026-10-01 14:00")!
+        XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: at), 96_800)
+        XCTAssertEqual(Finance.balance(ledger.accounts[1], in: ledger, at: at), 0)
+        XCTAssertEqual(Finance.funds(ledger, now: at).cash, 96_800)
+        ledger.accounts[1].anchorDate = ledger.accounts[0].anchorDate
+        XCTAssertEqual(Finance.balance(ledger.accounts[1], in: ledger, at: at), 3200)
+        XCTAssertEqual(Finance.funds(ledger, now: at).cash, 100_000)
+        let tomorrow = Dates.addDays(1, to: Dates.day(now)); ledger.entries[0].otherDate = tomorrow
+        XCTAssertEqual(Finance.balance(ledger.accounts[1], in: ledger, at: at), 0)
+        XCTAssertEqual(Finance.funds(ledger, now: at).cash, 96_800)
+        XCTAssertEqual(Finance.funds(ledger, now: tomorrow).cash, 100_000)
+        ledger.entries[0].date = tomorrow
+        XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: at), 100_000)
+        XCTAssertEqual(Finance.funds(ledger, now: at).cash, 100_000)
+    }
+    func testSameDayUnknownInflowIsWithheldUsingTheSameAnchorRuleAsCash() throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "银行", balance: 100_000, at: Dates.parse("2026-10-01 08:30")!)]
+        try record(&ledger, date: Dates.day(now), at: now, nature: .unknownIn)
+        let funds = Finance.funds(ledger, now: now)
+        XCTAssertEqual(funds.cash, 103_200); XCTAssertEqual(funds.uncertainInflow, 3200); XCTAssertEqual(funds.available, 100_000)
+        let reconcile = Dates.parse("2026-10-01 20:00")!
+        ledger.accounts[0].anchorBalance = funds.cash; ledger.accounts[0].anchorDate = reconcile
+        XCTAssertEqual(Finance.funds(ledger, now: reconcile).uncertainInflow, 0)
+        try record(&ledger, date: Dates.day(now), at: Dates.parse("2026-10-01 21:00")!, nature: .unknownIn)
+        let after = Finance.funds(ledger, now: Dates.parse("2026-10-01 22:00")!)
+        XCTAssertEqual(after.cash, 106_400); XCTAssertEqual(after.uncertainInflow, 3200); XCTAssertEqual(after.available, 103_200)
+    }
+    func testRecordedAtRoundTripsAndOldLedgersDecodeWithoutIt() throws {
+        var ledger = basic(); try record(&ledger, date: Dates.day(now), at: now)
+        let data = try LedgerCodec.encode(ledger)
+        XCTAssertEqual(try LedgerCodec.decode(data).entries, ledger.entries)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var entries = try XCTUnwrap(json["entries"] as? [[String: Any]])
+        entries[0].removeValue(forKey: "recordedAt"); json["entries"] = entries
+        var expected = ledger.entries[0]; expected.recordedAt = nil
+        for schema in [1, 2] {
+            json["schema"] = schema
+            let decoded = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
+            XCTAssertEqual(decoded.schema, 2); XCTAssertEqual(decoded.entries, [expected]); XCTAssertNil(decoded.entries[0].recordedAt)
+        }
+        ledger.entries[0].recordedAt = Date(timeIntervalSince1970: 7_258_118_401)
+        XCTAssertThrowsError(try ledger.validate())
+    }
     func testMoneyUsesIntegerCents() throws {
         XCTAssertEqual(try Money.parse("￥1,234.56"), 123456)
         XCTAssertEqual(try Money.parse("0.01"), 1)

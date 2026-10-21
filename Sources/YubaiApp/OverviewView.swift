@@ -5,6 +5,7 @@ struct OverviewView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var displayedToday: TodayEntries?
     private var freshLetter: ButlerCard? {
         store.current.cards.first { WeeklyLetter.isFresh($0, now: Date()) && !ButlerCards.isMuted($0.dedupeKey, in: store.current) }
     }
@@ -26,6 +27,11 @@ struct OverviewView: View {
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+            .onAppear { displayedToday = TodayEntries(in: store.current) }
+            .onChange(of: store.current.updatedAt) { _, _ in
+                if !store.pendingEntrySave || store.sheet == nil { displayedToday = TodayEntries(in: store.current) }
+            }
+            .onChange(of: store.entrySaveTrigger) { _, _ in displayedToday = TodayEntries(in: store.current) }
     }
     private func content(chartHeight: CGFloat) -> some View {
         let funds = store.funds
@@ -33,12 +39,10 @@ struct OverviewView: View {
             GlassGroup { HStack {
                 Button { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } } label: {
                     Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
-                        .frame(width: 44, height: 44).floatingSurface(in: Circle())
+                        .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).floatingSurface(in: Circle())
                 }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
                 Spacer(); Text("现在").yubaiFont(YubaiFont.navTitle); Spacer()
-                Button { store.sheet = .imports } label: {
-                    Image(systemName: "plus").frame(width: 44, height: 44).floatingSurface(in: Circle())
-                }.accessibilityLabel("导入账单或记一笔").accessibilityIdentifier("importBills")
+                AskToolbarButton()
             }.buttonStyle(PressButtonStyle()).frame(minHeight: 48) }
             if let letter = freshLetter {
                 Button { store.sheet = .letter(letter.id) } label: {
@@ -60,6 +64,7 @@ struct OverviewView: View {
                          reserved: funds.goals + funds.emergency + funds.living + funds.uncertainInflow,
                          hideAmount: store.current.preferences.hideAmounts, title: "还能自在支配",
                          onDetails: { store.sheet = .fundsCalculation })
+                todayRow
             }
             ButlerSection()
             if !store.current.accounts.isEmpty {
@@ -85,6 +90,25 @@ struct OverviewView: View {
             }
         }.foregroundStyle(YubaiColor.label).amountPrivacy(store.current.preferences.hideAmounts)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: ButlerCards.visible(store.current).first?.id)
+    }
+    private var todayRow: some View {
+        let today = store.pendingEntrySave ? (displayedToday ?? TodayEntries(in: store.current)) : TodayEntries(in: store.current)
+        return NavigationLink { EntriesView().yubaiZoomDestination("today") } label: {
+            HStack(spacing: 8) {
+                Text("今天").yubaiFont(YubaiFont.row, weight: .medium)
+                Text(today.count == 0 ? "还没记" : "\(today.count) 笔 · \(today.latest?.displayTitle ?? "")")
+                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
+                Spacer(minLength: 0)
+                if today.count == 0 {
+                    Text("账目").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                } else {
+                    AmountLabel(cents: today.net, hide: store.current.preferences.hideAmounts, role: .small,
+                                sign: today.net > 0 ? .inflow : .automatic, fractionDigits: 2)
+                }
+                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+            }.padding(.horizontal, 16).frame(minHeight: 44).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                .yubaiZoomSource("today")
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("todayEntries")
     }
     private func nextTitle(_ item: Occurrence) -> some View {
         VStack(alignment: .leading, spacing: 2) {
