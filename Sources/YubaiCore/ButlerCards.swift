@@ -106,7 +106,7 @@ public enum ButlerCards {
                 body: "\(Money.text(entry.amount)) 的用途还没记下，可以看看原始记录。", action: .openEvidence, priority: 3))
         }
         for account in ledger.accounts where account.anchorDate < Dates.addDays(-30, to: now) {
-            let activity = ledger.activeEntries.filter { $0.delta(for: account.id) != 0 && $0.postingDate(for: account.id) > account.anchorDate && $0.postingDate(for: account.id) <= now }
+            let activity = ledger.activeEntries.filter { $0.delta(for: account.id) != 0 && account.includes($0, posting: $0.postingDate(for: account.id)) && $0.postingDate(for: account.id) <= now }
             guard !activity.isEmpty else { continue }
             let monthKey = String(Dates.text(now).prefix(7))
             result.append(CardCandidate(kind: .staleBalance, dedupeKey: "stale:\(account.id):\(monthKey)", evidence: activity.map(\.id),

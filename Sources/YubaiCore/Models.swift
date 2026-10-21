@@ -73,6 +73,11 @@ public struct Account: Codable, Identifiable, Equatable, Sendable {
     public init(name: String, kind: AccountKind = .bank, balance: Int64 = 0, at: Date = Date(), reconciled: Bool = true) {
         self.name = name; self.kind = kind; self.anchorBalance = balance; self.anchorDate = at; self.reconciled = reconciled
     }
+    /// Date-only in-app entries recorded after reconciliation still move that day's balance.
+    /// Earlier posting days are already included in the anchor; imports use posting time alone.
+    public func includes(_ entry: Entry, posting: Date) -> Bool {
+        posting > anchorDate || (entry.recordedAt.map { $0 > anchorDate && Dates.day(posting) >= Dates.day(anchorDate) } ?? false)
+    }
 }
 
 public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -96,6 +101,7 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
 
 public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64
+    public var recordedAt: Date? // In-app recording time; imports and old ledgers keep nil.
     public var nature: Nature; public var accountID: UUID; public var otherAccountID: UUID?
     public var title: String; public var category: String; public var note: String = ""
     public var purpose: String?
@@ -518,7 +524,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         for a in accounts { guard !a.name.trimmingCharacters(in: .whitespaces).isEmpty, a.anchorBalance >= -Money.limit, a.anchorBalance <= Money.limit, (0...Money.limit).contains(a.creditLimit), dateValid(a.anchorDate) else { throw YubaiError.invalid("账户信息无效。") } }
         for e in entries {
             guard ids.contains(e.accountID), e.amount > 0, e.amount <= Money.limit, !e.title.isEmpty,
-                  dateValid(e.date), e.otherDate.map(dateValid) ?? true,
+                  dateValid(e.date), e.recordedAt.map(dateValid) ?? true, e.otherDate.map(dateValid) ?? true,
                   e.occurrence.map(dateValid) ?? true, e.rentPeriod.map(dateValid) ?? true,
                   (e.purpose?.count ?? 0) <= 4000 else { throw YubaiError.invalid("交易金额、日期或账户无效。") }
             if let other = e.otherAccountID { guard ids.contains(other), other != e.accountID, e.nature.paired else { throw YubaiError.invalid("转账的两个账户必须不同且存在。") } }

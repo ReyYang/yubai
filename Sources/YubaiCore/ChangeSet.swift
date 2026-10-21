@@ -214,7 +214,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard !next.entries.contains(where: { $0.id == draft.id }) else { skip(position); continue }
                 guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
-                e.id = draft.id; e.purpose = draft.purpose; e.source = source; e.classificationReason = stamp; e.userEdited = true
+                e.id = draft.id; e.recordedAt = createdAt; e.purpose = draft.purpose; e.source = source; e.classificationReason = stamp; e.userEdited = true
                 next.entries.append(e)
             case .profile(let change):
                 switch change {

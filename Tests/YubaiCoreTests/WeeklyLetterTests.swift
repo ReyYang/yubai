@@ -43,6 +43,23 @@ final class WeeklyLetterTests: XCTestCase {
         // Rewind the recorded payment as well as reserve it at the earlier date.
         XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 500_000 - 20_000)
     }
+    func testRewindIncludesManualEntriesInAnchorButNotLaterRecordings() {
+        var ledger = seed(); let day = Dates.day(sunday)
+        let reconcile = Dates.parse("2026-06-14 20:00")!; let close = Dates.parse("2026-06-14 22:00")!
+        var before = Entry(date: day, amount: 3200, accountID: ledger.accounts[0].id, title: "午饭")
+        before.recordedAt = Dates.parse("2026-06-14 12:00")!
+        var after = Entry(date: day, amount: 2000, accountID: ledger.accounts[0].id, title: "晚饭")
+        after.recordedAt = Dates.parse("2026-06-14 21:00")!
+        ledger.entries = [before, after]
+        // The reconciled balance includes lunch; dinner was added afterwards.
+        ledger.accounts[0].anchorBalance = 496_800; ledger.accounts[0].anchorDate = reconcile
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: day.addingTimeInterval(-0.001)), 480_000)
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: close), 474_800)
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: close), Finance.funds(ledger, now: close).available)
+        // Moving an anchor later within the same day must not count lunch twice.
+        ledger.entries = [before]
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: Dates.parse("2026-06-14 18:00")!), 476_800)
+    }
     func testRestrainedThirdNumberAndFreshLetterDedupeFallback() async throws {
         var ledger = seed()
         ledger.profile.restrain = [ProfileArea(title: "用餐", match: AreaMatch(categories: ["餐饮"]), softLimit: SoftLimit(perWeekCount: 1))]
