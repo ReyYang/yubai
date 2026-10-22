@@ -26,3 +26,11 @@
 | fix2-01-one-row-open | 账目行左滑露出删除（同一时间只有一行） |
 | fix2-02-tap-row-edit | 点行打开「改一笔」 |
 | fix2-03-butler-card | 为测试经 我的消费观 临时添加「想克制的」后出现的管家卡片（测完已删除这些领域） |
+
+## 复测 fix3：fix/tabbar-gesture-regression（bd8b1b2，标签栏下移 14pt）
+
+| 文件 | 内容 |
+|---|---|
+| fix3-01-now | 现在（标签栏下移后的位置） |
+| fix3-02-entries-top | 账目顶部 |
+| fix3-03-entries-bottom | 账目滚到底，最后一行仍在标签栏上方 |
