@@ -87,7 +87,7 @@ struct ScreenshotCaptureView: View {
                                     }
                                     Spacer()
                                     AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .outflow)
-                                }.frame(minHeight: YubaiSize.buttonHeight).padding(.vertical, 8)
+                                }.frame(minHeight: YubaiSize.buttonHeight).padding(.vertical, 8).contentShape(Rectangle())
                             }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected.contains(draft.id) ? .isSelected : [])
                         }
                     }

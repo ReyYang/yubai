@@ -351,7 +351,7 @@ struct LettersView: View {
                     LetterDetailView(cardID: card.id)
                 } label: {
                     HStack { Text(card.title); Spacer(); Text(Dates.text(card.createdAt)).foregroundStyle(YubaiColor.labelSecondary) }
-                        .yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin)
+                        .yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle())
             }
         }.navigationTitle("每周来信").yubaiNavigation().toolbar { CloseButton() }

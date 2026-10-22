@@ -62,7 +62,7 @@ struct QuickCaptureSettingsView: View {
             }
             Spacer(minLength: 4)
             if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-        }.frame(minHeight: 56).padding(.vertical, 6)
+        }.frame(minHeight: 56).padding(.vertical, 6).contentShape(Rectangle())
     }
 }
 private struct ApplePaySetupView: View {
@@ -93,7 +93,7 @@ private struct CaptureRulesView: View {
         List {
             ForEach(names, id: \.self) { name in
                 Button { editing = CaptureRuleSelection(name: name) } label: {
-                    HStack { Text(name); Spacer(); Text(value(name)).foregroundStyle(YubaiColor.labelSecondary) }
+                    HStack { Text(name); Spacer(); Text(value(name)).foregroundStyle(YubaiColor.labelSecondary) }.contentShape(Rectangle())
                 }.foregroundStyle(YubaiColor.label)
             }.onDelete { offsets in
                 let deleted = offsets.map { names[$0] }

@@ -245,7 +245,7 @@ struct ImportView: View {
                         Divider().overlay(YubaiColor.separator)
                         Button { showCategories = true } label: {
                             HStack { Text("分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
-                                .frame(minHeight: YubaiSize.tapMin)
+                                .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
                         if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
                     }
