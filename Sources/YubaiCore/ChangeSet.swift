@@ -12,10 +12,12 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var nature: Nature; public var accountID: UUID; public var title: String; public var category: String
     public var purpose: String?
     public var otherAccountID: UUID?
+    public var planID: UUID?; public var occurrence: Date?
     public init(date: Date, amount: Int64, amountConfirmed: Bool = false, nature: Nature = .expense,
-                accountID: UUID, title: String, category: String = "其他支出", purpose: String? = nil) {
+                accountID: UUID, title: String, category: String = "其他支出", purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil) {
         self.date = date; self.amount = amount; self.amountConfirmed = amountConfirmed; self.nature = nature
         self.accountID = accountID; self.title = title; self.category = category; self.purpose = purpose
+        self.planID = planID; self.occurrence = occurrence
     }
 }
 public enum ChangeItem: Codable, Equatable, Sendable {
@@ -84,7 +86,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
             case .addRent(let r): return "新增「\(r.title)」，月租 \(Money.text(r.monthlyTotal))，个人承担 \(Money.text(r.personalShare))，每 \(r.monthsPerPayment) 月支付，从 \(Dates.text(r.startDate)) 起，首付 \(Dates.text(r.nextDueDate))，每月 \(r.receiveDay) 日收分摊" + (r.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
-            case .addEntry(let d): return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）"
+            case .addEntry(let d):
+                let link = d.planID.flatMap { id in d.occurrence.map { "，关联为 \(Dates.text($0)) \(ledger.plans.first { $0.id == id }?.title ?? d.title)" } } ?? ""
+                return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）" + link
             case .profile(let change):
                 switch change {
                 case .upsertArea(let area, let stance):
@@ -177,8 +181,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard let i = active(id), let p = next.plans.first(where: { $0.id == plan }) else { skip(position); continue }
                 guard next.entries[i].planID == nil, next.entries[i].rentID == nil, next.entries[i].relatedEntryID == nil else { skip(position); continue }
                 guard next.entries[i].nature == p.nature, p.accountID == nil || p.accountID == next.entries[i].accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
-                guard occurrence >= Dates.day(p.dueDate), p.endDate.map({ Dates.day(occurrence) <= Dates.day($0) }) ?? true,
-                      Self.isOccurrence(occurrence, of: p) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
+                guard p.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
                 next.entries[i].planID = plan; next.entries[i].occurrence = Dates.day(occurrence); touch(i)
             case .linkRent(let id, let rent, let period):
                 guard validDate(period) else { throw YubaiError.invalid("房租月份无效。") }
@@ -227,6 +230,11 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
                 e.id = draft.id; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
+                if let id = draft.planID, let occurrence = draft.occurrence {
+                    guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
+                    guard e.nature == plan.nature, plan.accountID == nil || plan.accountID == e.accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
+                    e.planID = id; e.occurrence = Dates.day(occurrence)
+                } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
                 e.source = source; e.classificationReason = stamp; e.userEdited = true
                 next.entries.append(e)
             case .profile(let change):
@@ -264,16 +272,4 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         try next.validate(); ledger = next; return skipped
     }
     private static func month(_ date: Date) -> Date { Dates.calendar.dateInterval(of: .month, for: date)?.start ?? Dates.day(date) }
-    private static func isOccurrence(_ date: Date, of plan: Plan) -> Bool {
-        let day = Dates.day(date); let start = Dates.day(plan.dueDate)
-        let count: Int
-        switch plan.frequency {
-        case .once: return day == start
-        case .weekly: count = (Dates.calendar.dateComponents([.day], from: start, to: day).day ?? -1) / 7
-        case .monthly, .quarterly, .yearly:
-            let months = Dates.calendar.dateComponents([.month], from: month(start), to: month(day)).month ?? -1
-            count = months / (plan.frequency == .monthly ? 1 : (plan.frequency == .quarterly ? 3 : 12))
-        }
-        return count >= 0 && Dates.day(plan.frequency.advance(plan.dueDate, by: count)) == day
-    }
 }

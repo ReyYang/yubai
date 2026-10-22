@@ -37,7 +37,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
     public var name: String { rawValue }
     public var description: String {
         switch self {
-        case .getFunds: return "本机计算的保守可动用与各项预留、预计收入和警示。"
+        case .getFunds: return "本机计算的还能花与各项预留、预计收入和警示。还能花看到下次发工资，包含发工资当天的付款；没有固定工资时看未来90天，预计收入仍看90天。"
         case .forecast: return "从今天预测指定日期的保守/预计余额及此前已知付款；可比较一笔金额。最远365天，预计收入不算保守资金。"
         case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，每页最多50条。offset从0开始，用next_offset继续查询。日期边界均包含当天，金额过滤用原始金额。"
         case .summarize: return "按日/周(周一开始)/月/分类汇总匹配记录；默认全部，不受查询默认条数限制。消费退款抵扣，房租只计个人承担。"
@@ -89,10 +89,13 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         switch self {
         case .getFunds:
             let f = Finance.funds(ctx.ledger, now: ctx.now)
-            result = .object(["available": .money(f.available), "cash": .money(f.cash), "debt": .money(f.debt),
+            var fields: [String: JSONValue] = ["available": .money(f.available), "cash": .money(f.cash), "debt": .money(f.debt),
                 "committed": .money(f.committed), "goals": .money(f.goals), "emergency": .money(f.emergency),
                 "living": .money(f.living), "uncertain": .money(f.uncertainInflow), "expected_income": .money(f.expectedIncome),
-                "horizon_days": .number(Double(Finance.observationDays)), "warnings": .strings(f.warnings)])
+                "horizon_days": .number(Double(f.horizonDays)), "warnings": .strings(f.warnings)]
+            if let payday = f.payday { fields["payday"] = .string(Dates.text(payday)) }
+            if let title = f.paydayTitle { fields["payday_title"] = .string(title) }
+            result = .object(fields)
         case .forecast: result = try forecast(fields, ctx)
         case .queryEntries:
             let filter = try Filter(fields)

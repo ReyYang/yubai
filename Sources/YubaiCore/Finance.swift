@@ -14,6 +14,8 @@ public struct Funds: Sendable {
     public var committed: Int64; public var goals: Int64; public var emergency: Int64; public var living: Int64
     public var uncertainInflow: Int64; public var available: Int64; public var expectedIncome: Int64
     public var occurrences: [Occurrence]; public var points: [ForecastPoint]; public var warnings: [String]
+    public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Date()))
+    public var horizonDays: Int = Finance.observationDays; public var payday: Date? = nil; public var paydayTitle: String? = nil
 }
 public struct Breakdown: Identifiable, Sendable {
     public var id: String { category }; public var category: String; public var amount: Int64; public var count: Int
@@ -91,7 +93,6 @@ public enum Finance {
         }
         return min(Money.limit / 366, max(0, windows.sorted()[4]) / 10)
     }
-    private struct PaymentKey: Hashable { var id: UUID; var period: Date }
     public static func balance(_ account: Account, in ledger: Ledger, at: Date = Date()) -> Int64 {
         account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && account.includes($0, posting: $0.postingDate(for: account.id)) && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
     }
@@ -99,25 +100,15 @@ public enum Finance {
         let start = Dates.day(now); let end = Dates.addDays(days ?? observationDays, to: start)
         let calendar = Dates.calendar
         func month(_ date: Date) -> Date { calendar.date(from: calendar.dateComponents([.year, .month], from: date))! }
-        var planPaid: [PaymentKey: Int64] = [:]; var rentPaid: [PaymentKey: Int64] = [:]; var rentReceived: [PaymentKey: Int64] = [:]
-        for entry in ledger.entries where entry.deletedAt == nil {
-            if let id = entry.planID, let date = entry.occurrence { planPaid[PaymentKey(id: id, period: calendar.startOfDay(for: date)), default: 0] += entry.amount }
-            if let id = entry.rentID, let date = entry.rentPeriod {
-                if entry.nature == .expense { rentPaid[PaymentKey(id: id, period: calendar.startOfDay(for: date)), default: 0] += entry.amount }
-                if entry.nature == .contribution { rentReceived[PaymentKey(id: id, period: month(date)), default: 0] += entry.amount }
-            }
-        }
+        let payments = FixedFlowPayments(in: ledger)
         var result: [Occurrence] = []
         for p in ledger.plans where p.active {
             // Always derive from the original day (Jan 31 → Feb 28 → Mar 31), never chained dates.
-            for index in 0..<2400 {
-                let date = p.frequency.advance(p.dueDate, by: index)
-                if date > end || (p.endDate != nil && date > p.endDate!) { break }
-                let day = calendar.startOfDay(for: date); let paid = planPaid[PaymentKey(id: p.id, period: day), default: 0]
-                if paid < p.amount {
-                    result.append(Occurrence(id: "\(p.id)-\(date.timeIntervalSince1970)", title: p.title, date: date, amount: p.amount - paid, inflow: p.inflow, planID: p.id, overdue: day < start))
+            for item in p.schedule(through: end) {
+                let date = item.date; let day = Dates.day(date); let remaining = payments.remaining(for: p, on: date)
+                if remaining > 0 {
+                    result.append(Occurrence(id: "\(p.id)-\(date.timeIntervalSince1970)", title: p.title, date: date, amount: remaining, inflow: p.inflow, planID: p.id, overdue: day < start))
                 }
-                if p.frequency == .once { break }
             }
         }
         for r in ledger.rents where r.active {
@@ -126,7 +117,7 @@ public enum Finance {
                 let due = Dates.addMonths(index * r.monthsPerPayment, to: r.nextDueDate)
                 let day = calendar.startOfDay(for: due)
                 if due > end || (endDay != nil && day > endDay!) { break }
-                let paid = rentPaid[PaymentKey(id: r.id, period: day), default: 0]
+                let paid = payments.rentPaid[FixedFlowPaymentKey(id: r.id, day: day), default: 0]
                 let dueAmount = r.monthlyTotal * Int64(r.monthsPerPayment)
                 if paid < dueAmount { result.append(Occurrence(id: "rent-\(r.id)-\(due.timeIntervalSince1970)", title: r.title, date: due, amount: dueAmount - paid, inflow: false, rentID: r.id, overdue: day < start)) }
             }
@@ -136,12 +127,22 @@ public enum Finance {
                 let receiveDate = max(Dates.addDays(r.receiveDay - 1, to: month), r.startDate)
                 let day = calendar.startOfDay(for: receiveDate)
                 if receiveDate > end || (endDay != nil && day > endDay!) { break }
-                let paid = rentReceived[PaymentKey(id: r.id, period: month), default: 0]
+                let paid = payments.rentReceived[FixedFlowPaymentKey(id: r.id, day: month), default: 0]
                 let amount = r.monthlyTotal - r.personalShare - paid
                 if amount > 0 { result.append(Occurrence(id: "share-\(r.id)-\(month.timeIntervalSince1970)", title: r.title + " · 应收分摊", date: receiveDate, amount: amount, inflow: true, rentID: r.id, overdue: day < start, rentMonth: month)) }
             }
         }
         return result.sorted { $0.date < $1.date }
+    }
+    public static func nextPayday(in ledger: Ledger, now: Date) -> (date: Date, title: String)? {
+        let today = Dates.day(now)
+        return ledger.plans.filter { $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once }.compactMap { plan -> (date: Date, title: String)? in
+            for offset in 1...observationDays {
+                let day = Dates.addDays(offset, to: today)
+                if let index = plan.occurrenceIndex(on: day), plan.endDate.map({ plan.frequency.advance(plan.dueDate, by: index) <= $0 }) ?? true { return (day, plan.title) }
+            }
+            return nil
+        }.min { $0.date == $1.date ? $0.title < $1.title : $0.date < $1.date }
     }
     public static func funds(_ ledger: Ledger, now: Date = Date(), days: Int = Finance.observationDays) -> Funds {
         let horizon = max(0, min(366, days))
@@ -169,13 +170,17 @@ public enum Finance {
             }
         }
         let occurrences = occurrences(in: ledger, now: now, days: horizon)
+        let payday = nextPayday(in: ledger, now: now)
+        let horizonEnd = payday?.date ?? Dates.addDays(horizon, to: Dates.day(now))
+        let horizonDays = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: horizonEnd).day ?? horizon
         // Credit principal is reserved once as debt. A credit-repayment plan only changes its payment date.
         let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
-        let commitments = occurrences.filter { !$0.inflow && !($0.planID.map { repayments.contains($0) } ?? false) }
+        let reserved = payday != nil ? self.occurrences(in: ledger, now: now, days: horizonDays + 1) : occurrences
+        let commitments = reserved.filter { !$0.inflow && Dates.day($0.date) <= horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
         let committed = commitments.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
         let daily = estimatedDailyLiving(ledger, now: now)
-        let living = daily * Int64(horizon)
+        let living = daily * Int64(horizonDays)
         // An unresolved inflow after the most recent reconciliation is withheld until its nature is known.
         let uncertain = entries.filter { e in
             e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) } == true
@@ -208,7 +213,8 @@ public enum Finance {
         return Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
                      livingEstimated: true, committed: committed, goals: goals, emergency: emergency, living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
-                     occurrences: occurrences, points: points, warnings: warnings)
+                     occurrences: occurrences, points: points, warnings: warnings,
+                     horizonEnd: horizonEnd, horizonDays: horizonDays, payday: payday?.date, paydayTitle: payday?.title)
     }
     public static func spendingAmount(_ entry: Entry, ledger: Ledger) -> Int64 {
         spendingAmount(entry, rent: entry.rentID.flatMap { id in ledger.rents.first { $0.id == id } })
@@ -263,8 +269,9 @@ public enum Finance {
         let severity = after < 0 ? 2 : (incomplete || amount > max(0, f.available) / 3 ? 1 : 0)
         let title = after < 0 ? "这笔购买会挤占已安排的资金" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
         let explanation = after < 0 ? "还差 \(Money.text(-after))，可以少花一些或晚点再买。" : "买了以后还能花 \(Money.text(after))。"
+        let horizon = f.payday == nil ? "到 \(Dates.calendar.component(.month, from: f.horizonEnd))月\(Dates.calendar.component(.day, from: f.horizonEnd))日已知付款" : "发工资前已知付款"
         return PurchaseAssessment(title: title, explanation: explanation, afterPurchase: after, severity: severity,
-                                  facts: ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "未来 \(observationDays) 天已知付款 \(Money.text(f.committed))", "在存钱、始终留着与日常开销 \(Money.text(f.goals + f.emergency + f.living))"] + f.warnings,
+                                  facts: ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱、始终留着与日常开销 \(Money.text(f.goals + f.emergency + f.living))"] + f.warnings,
                                   questions: ["它具体解决什么经常发生的问题？", "现有物品能否满足同样需要？", "如果等 48 小时，还会同样想买吗？"])
     }
 }

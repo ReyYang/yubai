@@ -139,8 +139,51 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public var frequency: Frequency; public var inflow: Bool; public var accountID: UUID?
     public var category: String; public var nature: Nature; public var active = true
     public var endDate: Date?; public var note = ""
+    public var autoPay = false; public var autoPaySince: Date?
+    public var installments: Int?; public var estimated = false
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = "其他支出", nature: Nature = .expense) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
+    }
+    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, note, autoPay, autoPaySince, installments, estimated }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
+        amount = try c.decode(Int64.self, forKey: .amount); dueDate = try c.decode(Date.self, forKey: .dueDate)
+        frequency = try c.decode(Frequency.self, forKey: .frequency); inflow = try c.decode(Bool.self, forKey: .inflow)
+        accountID = try c.decodeIfPresent(UUID.self, forKey: .accountID)
+        category = try c.decode(String.self, forKey: .category); nature = try c.decode(Nature.self, forKey: .nature)
+        active = try c.decodeIfPresent(Bool.self, forKey: .active) ?? true; endDate = try c.decodeIfPresent(Date.self, forKey: .endDate)
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+        autoPay = try c.decodeIfPresent(Bool.self, forKey: .autoPay) ?? false
+        autoPaySince = try c.decodeIfPresent(Date.self, forKey: .autoPaySince)
+        installments = try c.decodeIfPresent(Int.self, forKey: .installments)
+        estimated = try c.decodeIfPresent(Bool.self, forKey: .estimated) ?? false
+    }
+    func schedule(through end: Date) -> [(index: Int, date: Date)] {
+        var result: [(index: Int, date: Date)] = []
+        for index in 0..<min(2400, max(0, installments ?? 2400)) {
+            let date = frequency.advance(dueDate, by: index)
+            if date > end || endDate.map({ date > $0 }) == true { break }
+            result.append((index, date))
+            if frequency == .once { break }
+        }
+        return result
+    }
+    func occurrenceIndex(on date: Date) -> Int? {
+        let day = Dates.day(date); let start = Dates.day(dueDate)
+        guard day >= start, endDate.map({ day <= Dates.day($0) }) ?? true else { return nil }
+        let count: Int
+        switch frequency {
+        case .once: count = 0
+        case .weekly: count = (Dates.calendar.dateComponents([.day], from: start, to: day).day ?? -1) / 7
+        case .monthly, .quarterly, .yearly:
+            let c = Dates.calendar
+            let months = c.dateComponents([.month], from: c.dateInterval(of: .month, for: start)!.start, to: c.dateInterval(of: .month, for: day)!.start).month ?? -1
+            count = months / (frequency == .monthly ? 1 : (frequency == .quarterly ? 3 : 12))
+        }
+        guard count >= 0, installments.map({ count < $0 }) ?? true,
+              Dates.day(frequency.advance(dueDate, by: count)) == day else { return nil }
+        return count
     }
 }
 public struct Goal: Codable, Identifiable, Equatable, Sendable {
@@ -580,7 +623,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         }
         try validateProfileAndCards()
         for change in pendingChanges { try change.validateStructure() }
-        for p in plans { guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true else { throw YubaiError.invalid("资金安排信息无效。") } }
+        for p in plans { guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true,
+                              p.autoPaySince.map(dateValid) ?? true, p.installments.map({ $0 > 0 }) ?? true else { throw YubaiError.invalid("资金安排信息无效。") } }
         guard plans.reduce(Int64(0), { $0 + $1.amount }) <= Money.limit else { throw YubaiError.invalid("所有安排总额超出安全计算范围。") }
         for g in goals { guard g.target > 0, g.target <= Money.limit, g.reserved >= 0, g.reserved <= g.target, !g.title.isEmpty else { throw YubaiError.invalid("想存金额或已存金额无效。") } }
         for r in rents { guard r.monthlyTotal > 0, r.monthlyTotal <= Money.limit / 12, r.personalShare >= 0, r.personalShare <= r.monthlyTotal, (1...12).contains(r.monthsPerPayment), (1...28).contains(r.receiveDay), dateValid(r.startDate), dateValid(r.nextDueDate), r.endDate.map({ dateValid($0) && $0 >= r.startDate }) ?? true else { throw YubaiError.invalid("房租金额、分摊或周期无效。") } }
