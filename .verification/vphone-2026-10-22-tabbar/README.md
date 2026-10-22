@@ -42,3 +42,15 @@
 | del2-01-entries-first-row | 账目第一行左滑露出删除 |
 | del2-02-entries-middle-row | 账目中间行左滑露出删除 |
 | del2-03-fixedflow-stop | 固定收付左滑露出停掉 |
+
+## 固定收付第十四轮：fix/fixed-bills-clarity（31cc440，浅色、默认字号）
+
+测试用界面新增了「测试过期」「测试今天付」「测试还没到」三条安排，测完都已停掉。
+
+| 文件 | 内容 |
+|---|---|
+| bills-01-list | 主列表（含过期、今天、还没到、已付、要收过期、已停掉） |
+| bills-02-after-pay | 「测试过期」点付了之后 |
+| bills-03-stop-dialog | 停掉「测试今天付」时的弹窗 |
+| bills-04-after-stop | 停掉后进入已停掉区 |
+| bills-05-all-stopped | 测试安排全部停掉后的列表 |
