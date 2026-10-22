@@ -480,18 +480,24 @@ final class FixedBillsTests: XCTestCase {
         let rent = Plan(title: "房租", amount: 175_000, dueDate: date("2026-10-01 23:59:00"))
         let income = Plan(title: "工资", amount: 1_500_000, dueDate: date("2026-10-16"), inflow: true, nature: .income)
         let today = Plan(title: "今天", amount: 1000, dueDate: date("2026-10-22 23:59:00"))
+        let todayIncome = Plan(title: "今天要收", amount: 2000, dueDate: date("2026-10-22 23:59:00"), inflow: true, nature: .income)
         let future = Plan(title: "话费", amount: 5800, dueDate: date("2026-10-28"))
-        ledger.plans = [rent, income, today, future]
+        ledger.plans = [rent, income, today, todayIncome, future]
         func row(_ plan: Plan) throws -> FixedFlowOccurrence { try XCTUnwrap(FixedFlows.month(containing: now, in: ledger).occurrences.first { $0.planID == plan.id }) }
         XCTAssertEqual(try row(rent).statusText(now: now), "1日 · 过了 21 天还没记")
         XCTAssertEqual(try row(income).statusText(now: now), "16日 · 过了 6 天还没收到")
-        XCTAssertEqual(try row(today).statusText(now: now), "今天")
+        XCTAssertEqual(try row(today).statusText(now: now), "22日 · 今天到期")
+        XCTAssertEqual(try row(todayIncome).statusText(now: now), "22日 · 今天该收到")
         XCTAssertEqual(try row(future).statusText(now: now), "28日 · 还没到")
         XCTAssertEqual(try row(today).overdueDays(now: now), 0); XCTAssertEqual(try row(future).overdueDays(now: now), 0)
         try FixedFlows.settle(planID: rent.id, occurrence: rent.dueDate, in: ledger, now: now).apply(to: &ledger)
         try FixedFlows.settle(planID: income.id, occurrence: income.dueDate, in: ledger, now: now).apply(to: &ledger)
+        try FixedFlows.settle(planID: today.id, occurrence: today.dueDate, in: ledger, now: now).apply(to: &ledger)
+        try FixedFlows.settle(planID: todayIncome.id, occurrence: todayIncome.dueDate, in: ledger, now: now).apply(to: &ledger)
         XCTAssertEqual(try row(rent).statusText(now: now), "1日 · 已付")
         XCTAssertEqual(try row(income).statusText(now: now), "16日 · 已收到")
+        XCTAssertEqual(try row(today).statusText(now: now), "22日 · 已付")
+        XCTAssertEqual(try row(todayIncome).statusText(now: now), "22日 · 已收到")
         XCTAssertEqual(try row(rent).overdueDays(now: date("2027-01-01")), 92)
     }
     func testOverdueDaysAcrossDaylightSavingAndMidnight() throws {
@@ -524,6 +530,36 @@ final class FixedBillsTests: XCTestCase {
         try FixedFlows.settle(planID: past.id, occurrence: past.dueDate, in: ledger, now: now).apply(to: &ledger)
         XCTAssertEqual(FixedFlows.month(containing: now, in: ledger).overdueOutflow, 0)
     }
+    func testOverdueInflowUsesOnlyUnsettledPastBalances() throws {
+        var ledger = fixture()
+        let past = Plan(title: "部分已收", amount: 500_000, dueDate: date("2026-10-16"), inflow: true, nature: .income)
+        let received = Plan(title: "已收", amount: 2500, dueDate: date("2026-10-05"), inflow: true, nature: .income)
+        let today = Plan(title: "今天要收", amount: 1000, dueDate: date("2026-10-22 23:59:00"), inflow: true, nature: .income)
+        let future = Plan(title: "以后要收", amount: 5800, dueDate: date("2026-10-28"), inflow: true, nature: .income)
+        var skipped = Plan(title: "没要", amount: 8000, dueDate: date("2026-10-10"), inflow: true, nature: .income)
+        skipped.skippedOccurrences = [skipped.dueDate]
+        let expense = Plan(title: "要付", amount: 12_000, dueDate: date("2026-10-01"))
+        ledger.plans = [past, received, today, future, skipped, expense]
+        ledger.entries = [payment(past, on: past.dueDate, amount: 100_000, in: ledger), payment(received, on: received.dueDate, in: ledger)]
+        let month = FixedFlows.month(containing: now, in: ledger)
+        XCTAssertEqual(month.overdueInflow, 400_000); XCTAssertEqual(month.remainingInflow, 406_800)
+        XCTAssertEqual(month.overdueOutflow, 12_000)
+        try FixedFlows.settle(planID: past.id, occurrence: past.dueDate, in: ledger, now: now).apply(to: &ledger)
+        XCTAssertEqual(FixedFlows.month(containing: now, in: ledger).overdueInflow, 0)
+        ledger.entries[1].deletedAt = now
+        XCTAssertEqual(FixedFlows.month(containing: now, in: ledger).overdueInflow, received.amount)
+    }
+    func testOverdueInflowIncludesUnreceivedRentShare() {
+        var ledger = fixture()
+        let rent = Rent(title: "合租", monthlyTotal: 10_000, personalShare: 6000, startDate: date("2026-10-01"), nextDueDate: date("2026-10-28"), monthsPerPayment: 1, receiveDay: 16)
+        ledger.rents = [rent]
+        var share = Entry(date: now, amount: 1500, nature: .contribution, accountID: ledger.accounts[0].id, title: "分摊")
+        share.rentID = rent.id; share.rentPeriod = date("2026-10-01"); ledger.entries = [share]
+        let month = FixedFlows.month(containing: now, in: ledger)
+        XCTAssertEqual(month.overdueInflow, 2500); XCTAssertEqual(month.remainingInflow, 2500); XCTAssertEqual(month.overdueOutflow, 0)
+        ledger.entries[0].amount = 4000
+        XCTAssertEqual(FixedFlows.month(containing: now, in: ledger).overdueInflow, 0)
+    }
     func testLegacyStoppedPeriodMatchesHeaderAndCanBeSettledOrSkippedInPlace() throws {
         for inflow in [false, true] {
             for resolution in [FixedFlowStopResolution.settle, .skip] {
@@ -540,6 +576,7 @@ final class FixedBillsTests: XCTestCase {
                 XCTAssertEqual(month.remainingInflow, inflow ? row.pendingAmount : 0)
                 XCTAssertEqual(month.remainingOutflow, inflow ? 0 : row.pendingAmount)
                 XCTAssertEqual(month.overdueOutflow, month.remainingOutflow)
+                XCTAssertEqual(month.overdueInflow, month.remainingInflow)
                 let before = Finance.funds(ledger, now: now)
                 XCTAssertEqual(before.committed, month.remainingOutflow); XCTAssertEqual(before.expectedIncome, month.remainingInflow)
                 XCTAssertEqual(before.available, before.cash - month.remainingOutflow)
@@ -555,6 +592,7 @@ final class FixedBillsTests: XCTestCase {
                 XCTAssertEqual(stopped.detail, "10月22日停掉 · 16日那期" + (resolution == .settle ? "已记" : "没要"))
                 XCTAssertEqual(stopped.stoppedAt, now)
                 XCTAssertEqual(after.remainingInflow, 0); XCTAssertEqual(after.remainingOutflow, 0); XCTAssertEqual(after.overdueOutflow, 0)
+                XCTAssertEqual(after.overdueInflow, 0)
                 let funds = Finance.funds(ledger, now: now)
                 XCTAssertTrue(funds.occurrences.isEmpty); XCTAssertEqual(funds.committed, 0); XCTAssertEqual(funds.expectedIncome, 0)
                 XCTAssertEqual(funds.available, before.available + (inflow ? (resolution == .settle ? plan.amount : 0) : (resolution == .skip ? plan.amount : 0)))
@@ -586,9 +624,11 @@ final class FixedBillsTests: XCTestCase {
                 XCTAssertEqual(row.pending.map(\.amount), [1000, 1000, 600, 1000]); XCTAssertEqual(row.pendingAmount, 3600)
                 XCTAssertEqual(month.remainingInflow, inflow ? row.pendingAmount : 0)
                 XCTAssertEqual(month.remainingOutflow, inflow ? 0 : row.pendingAmount); XCTAssertEqual(month.overdueOutflow, inflow ? 0 : 2600)
+                XCTAssertEqual(month.overdueInflow, inflow ? 2600 : 0)
                 let nextMonth = FixedFlows.month(containing: date("2026-11-01"), in: ledger)
                 XCTAssertEqual(nextMonth.remainingInflow, month.remainingInflow); XCTAssertEqual(nextMonth.remainingOutflow, month.remainingOutflow)
                 XCTAssertEqual(nextMonth.overdueOutflow, nextMonth.remainingOutflow)
+                XCTAssertEqual(nextMonth.overdueInflow, nextMonth.remainingInflow)
                 let change = try FixedFlows.resolveStopped(planID: plan.id, resolution: resolution, in: ledger, now: now)
                 XCTAssertEqual(change.items.count, 4); XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
                 ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
@@ -598,6 +638,7 @@ final class FixedBillsTests: XCTestCase {
                 XCTAssertTrue(after.occurrences.isEmpty); XCTAssertTrue(after.stopped[0].pending.isEmpty)
                 XCTAssertEqual(after.stopped[0].detail, "10月22日停掉 · 22日那期" + (resolution == .settle ? "已记" : "没要"))
                 XCTAssertEqual(after.remainingInflow, 0); XCTAssertEqual(after.remainingOutflow, 0); XCTAssertEqual(after.overdueOutflow, 0)
+                XCTAssertEqual(after.overdueInflow, 0)
                 let funds = Finance.funds(ledger, now: now)
                 XCTAssertEqual(funds.cash, before.cash + (resolution == .settle ? (inflow ? 3600 : -3600) : 0))
                 XCTAssertEqual(funds.available, before.available + (inflow ? (resolution == .settle ? 3600 : 0) : (resolution == .skip ? 3600 : 0)))

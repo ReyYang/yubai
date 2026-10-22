@@ -21,12 +21,18 @@ struct FixedFlowsView: View {
                 }
                 AmountLabel(cents: month.remainingOutflow, hide: ledger.preferences.hideAmounts, role: .display,
                             fractionDigits: month.remainingOutflow % 100 == 0 ? 0 : 2).accessibilityIdentifier("fixedFlowRemaining")
-                if month.overdueOutflow > 0 {
+                if month.overdueOutflow > 0 || month.overdueInflow > 0 {
                     HStack(spacing: YubaiSpace.space4) {
-                        Text("其中").yubaiFont(YubaiFont.row)
-                        AmountLabel(cents: month.overdueOutflow, hide: ledger.preferences.hideAmounts,
-                                    fractionDigits: month.overdueOutflow % 100 == 0 ? 0 : 2, ink: YubaiColor.amberInk)
-                        Text("已过期").yubaiFont(YubaiFont.row)
+                        if month.overdueOutflow > 0 {
+                            Text("其中").yubaiFont(YubaiFont.row)
+                            overdueAmount(month.overdueOutflow)
+                            Text("已过期").yubaiFont(YubaiFont.row)
+                        }
+                        if month.overdueInflow > 0 {
+                            if month.overdueOutflow > 0 { Text("·").yubaiFont(YubaiFont.row) }
+                            overdueAmount(month.overdueInflow)
+                            Text("过期没收到").yubaiFont(YubaiFont.row)
+                        }
                     }.foregroundStyle(YubaiColor.amberInk).accessibilityElement(children: .combine).accessibilityIdentifier("fixedFlowOverdue")
                 }
             }
@@ -53,19 +59,19 @@ struct FixedFlowsView: View {
                 Button { store.sheetSource = nil; store.sheet = .addPlan } label: { Image(systemName: "plus") }
                     .accessibilityLabel("添加安排").accessibilityIdentifier("addFixedFlow")
             } }
-            .confirmationDialog("停掉「\(ending?.title ?? "这个安排")」？", isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } }), titleVisibility: .visible) {
-                if pendingEnding.isEmpty { Button("停掉") { stop() } }
-                else {
-                    Button(ending?.inflow == true ? "收到了，记一笔再停" : "付了，记一笔再停") { stop(.settle) }
-                    Button(ending?.inflow == true ? "没收到，这期也不要了" : "没付，这期也不要了") { stop(.skip) }
-                }
-                Button("取消", role: .cancel) { ending = nil }
-            } message: { Text(stopMessage) }
+            .sheet(item: $ending) { row in
+                FixedFlowStopSheet(title: row.title, inflow: row.inflow, message: stopMessage, hasPending: !pendingEnding.isEmpty,
+                                   stop: stop, cancel: { ending = nil })
+            }
+    }
+    private func overdueAmount(_ amount: Int64) -> some View {
+        AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts,
+                    fractionDigits: amount % 100 == 0 ? 0 : 2, ink: YubaiColor.amberInk)
     }
     private var pendingEnding: [Occurrence] { ending?.planID.map { FixedFlows.unsettled(planID: $0, in: store.current) } ?? [] }
     private var stopMessage: String {
         let pending = pendingEnding
-        if pending.count > 1 { return "还有 \(pending.count) 期没记" }
+        if pending.count > 1 { return "还有 \(pending.count) 期没记。" }
         if let row = pending.first { return FixedFlowPresentation.monthDay(row.date) + "这期还没记。" }
         return "只停以后的，付过的记录保留。"
     }
@@ -144,6 +150,40 @@ struct FixedFlowsView: View {
                 .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
                 .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card))
         }
+    }
+}
+
+private struct FixedFlowStopSheet: View {
+    let title: String; let inflow: Bool; let message: String; let hasPending: Bool
+    let stop: (FixedFlowStopResolution?) -> Void; let cancel: () -> Void
+    @State private var contentHeight: CGFloat = 320
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                Text("停掉「\(title)」？").yubaiFont(YubaiFont.quote).accessibilityAddTraits(.isHeader)
+                Text(message).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted)
+                action(hasPending ? (inflow ? "收到了，记一笔再停" : "付了，记一笔再停") : "停掉",
+                       ink: YubaiColor.white, background: YubaiColor.brand, id: "fixedFlowStopConfirm") { stop(hasPending ? .settle : nil) }
+                if hasPending {
+                    action(inflow ? "没收到，这期也不要了" : "没付，这期也不要了",
+                           ink: YubaiColor.label, background: YubaiColor.card, id: "fixedFlowStopSkip") { stop(.skip) }
+                }
+                action("取消", ink: YubaiColor.labelSecondary, background: .clear, id: "fixedFlowStopCancel", perform: cancel)
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapSection)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+        }.scrollBounceBehavior(.basedOnSize).foregroundStyle(YubaiColor.label).background(YubaiColor.raised)
+            .presentationDetents([.height(contentHeight)]).presentationDragIndicator(.visible)
+            .presentationBackground(YubaiColor.raised).presentationCornerRadius(28)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("fixedFlowStopSheet")
+            #if os(macOS)
+            .frame(minWidth: 420)
+            #endif
+    }
+    private func action(_ title: String, ink: Color, background: Color, id: String, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) {
+            Text(title).yubaiFont(YubaiFont.rowTitle, weight: .semibold).foregroundStyle(ink)
+                .frame(maxWidth: .infinity).frame(height: 50).background(background, in: Capsule()).contentShape(Capsule())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(id)
     }
 }
 

@@ -125,7 +125,12 @@ final class AppFlowTests: XCTestCase {
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' AND value == '已收到'")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5)); row.swipeLeft()
         tap(app.buttons["停掉"], in: app)
-        tap(app.buttons["停掉"], in: app)
+        XCTAssertTrue(app.staticTexts["只停以后的，付过的记录保留。"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["fixedFlowStopSkip"].exists)
+        tap(app.buttons["fixedFlowStopCancel"], in: app)
+        XCTAssertTrue(row.exists); XCTAssertFalse(app.buttons["resumeFixedFlow_" + planID].exists)
+        row.swipeLeft(); tap(app.buttons["停掉"], in: app)
+        tap(app.buttons["fixedFlowStopConfirm"], in: app)
         XCTAssertFalse(check.exists); XCTAssertFalse(row.exists)
         XCTAssertTrue(app.buttons["resumeFixedFlow_" + planID].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '那期已记'")).firstMatch.exists)
@@ -233,9 +238,18 @@ final class AppFlowTests: XCTestCase {
         let app = application("bills-clarity"); app.launch(); openFixedBills(app)
         XCTAssertTrue(app.staticTexts["要付"].exists); XCTAssertTrue(app.staticTexts["要收"].exists)
         let day = Calendar.current.component(.day, from: Date())
-        let status = day > 1 ? "1日 · 过了 \(day - 1) 天还没记" : "今天"
+        let status = day > 1 ? "1日 · 过了 \(day - 1) 天还没记" : "1日 · 今天到期"
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", status)).firstMatch.exists)
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "fixedFlowOverdue").firstMatch.exists, day > 1)
+        let overdue = app.descendants(matching: .any).matching(identifier: "fixedFlowOverdue").firstMatch
+        XCTAssertEqual(overdue.exists, day > 1)
+        if day > 1 {
+            XCTAssertTrue(overdue.label.contains("其中")); XCTAssertTrue(overdue.label.contains("已过期"))
+            XCTAssertTrue(overdue.label.contains("过期没收到")); XCTAssertTrue(overdue.label.contains("·"))
+            tap(app.buttons["付了 房租"], in: app)
+            let incomeOnly = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '过期没收到' AND NOT (label CONTAINS '其中')"), object: overdue)
+            XCTAssertEqual(XCTWaiter.wait(for: [incomeOnly], timeout: 5), .completed)
+            tap(app.buttons["收到了 工资"], in: app); assertGone(overdue)
+        }
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '已付 · 自动'")).firstMatch.exists)
         XCTAssertFalse(app.buttons["付了 视频会员"].exists)
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' AND value == '还没到'")).firstMatch
@@ -259,7 +273,15 @@ final class AppFlowTests: XCTestCase {
         row.swipeLeft(); tap(app.buttons["停掉"], in: app)
         XCTAssertTrue(app.buttons["收到了，记一笔再停"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["没收到，这期也不要了"].exists)
-        tap(app.buttons["取消"], in: app); XCTAssertTrue(check.exists); XCTAssertFalse(restore.exists)
+        let sheet = app.descendants(matching: .any).matching(identifier: "fixedFlowStopSheet").firstMatch
+        XCTAssertTrue(sheet.exists); XCTAssertEqual(app.popovers.count, 0)
+        XCTAssertTrue(app.staticTexts["停掉「工资」？"].exists)
+        let confirm = app.buttons["fixedFlowStopConfirm"], skip = app.buttons["fixedFlowStopSkip"], cancel = app.buttons["fixedFlowStopCancel"]
+        for button in [confirm, skip, cancel] {
+            XCTAssertTrue(button.isHittable); XCTAssertEqual(button.frame.height, 50, accuracy: 1)
+            XCTAssertEqual(button.frame.width, confirm.frame.width, accuracy: 1)
+        }
+        tap(cancel, in: app); assertGone(sheet); XCTAssertTrue(check.exists); XCTAssertFalse(restore.exists)
         row.swipeLeft(); tap(app.buttons["停掉"], in: app); tap(app.buttons["没收到，这期也不要了"], in: app)
         XCTAssertTrue(restore.waitForExistence(timeout: 5)); assertGone(row)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '那期没要'")).firstMatch.exists)
@@ -278,7 +300,7 @@ final class AppFlowTests: XCTestCase {
         let planID = String(check.identifier.split(separator: "_")[1])
         let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID))
         rows.firstMatch.swipeLeft(); tap(app.buttons["停掉"], in: app)
-        XCTAssertTrue(app.staticTexts["还有 6 期没记"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["还有 6 期没记。"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["没付，这期也不要了"].exists)
         tap(app.buttons["付了，记一笔再停"], in: app)
         XCTAssertTrue(app.buttons["resumeFixedFlow_" + planID].waitForExistence(timeout: 5))

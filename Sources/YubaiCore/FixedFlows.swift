@@ -38,21 +38,21 @@ public struct FixedFlowOccurrence: Identifiable, Sendable {
         max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0)
     }
     public func statusText(now: Date = Date(), calendar: Calendar = Dates.calendar) -> String {
-        let dateLabel = calendar.isDate(date, inSameDayAs: now) ? "今天" : "\(calendar.component(.day, from: date))日"
+        let dateLabel = "\(calendar.component(.day, from: date))日"
         let days = overdueDays(now: now, calendar: calendar)
         let status: String
         switch state {
         case .paid: status = inflow ? "已收到" : "已付"
-        case .due: status = days > 0 ? "过了 \(days) 天" + (inflow ? "还没收到" : "还没记") : ""
+        case .due: status = days > 0 ? "过了 \(days) 天" + (inflow ? "还没收到" : "还没记") : (inflow ? "今天该收到" : "今天到期")
         case .upcoming: status = "还没到"
         }
-        return dateLabel + (status.isEmpty ? "" : " · " + status)
+        return dateLabel + " · " + status
     }
 }
 public struct FixedFlowMonth: Sendable {
     public var date: Date; public var occurrences: [FixedFlowOccurrence]
     public var remainingOutflow: Int64; public var remainingInflow: Int64
-    public var overdueOutflow: Int64 = 0
+    public var overdueOutflow: Int64 = 0; public var overdueInflow: Int64 = 0
     public var stopped: [FixedFlowArrangement] = []
 }
 
@@ -154,12 +154,13 @@ extension FixedFlows {
         var rows: [FixedFlowOccurrence] = []
         var outflow = pending.filter { !$0.inflow }.reduce(Int64(0)) { $0 + $1.amount }
         var inflow = pending.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
-        var overdue = pending.filter { !$0.inflow && $0.overdue }.reduce(Int64(0)) { $0 + $1.amount }
+        var overdueOutflow = pending.filter { !$0.inflow && $0.overdue }.reduce(Int64(0)) { $0 + $1.amount }
+        var overdueInflow = pending.filter { $0.inflow && $0.overdue }.reduce(Int64(0)) { $0 + $1.amount }
         func append(id: String, title: String, date: Date, amount: Int64, paid: Int64, remaining: Int64, incoming: Bool, planID: UUID? = nil, rentID: UUID? = nil, autoPay: Bool = false, installment: (index: Int, total: Int)? = nil, estimated: Bool = false) {
             guard date >= interval.start, date < interval.end else { return }
             if planID.map({ stoppedIDs.contains($0) }) == true { return }
             if incoming { inflow += remaining } else { outflow += remaining }
-            if !incoming && Dates.day(date) < today { overdue += remaining }
+            if Dates.day(date) < today { if incoming { overdueInflow += remaining } else { overdueOutflow += remaining } }
             if rentID.map({ stoppedIDs.contains($0) }) == true { return }
             rows.append(FixedFlowOccurrence(id: id, title: title, date: date, state: paid > 0 && remaining == 0 ? .paid : (Dates.day(date) <= today ? .due : .upcoming),
                                             amount: paid > 0 && remaining == 0 ? paid : (paid > 0 ? remaining : amount), planID: planID, rentID: rentID, inflow: incoming, autoPay: autoPay,
@@ -194,6 +195,7 @@ extension FixedFlows {
             }
         }
         rows.sort { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
-        return FixedFlowMonth(date: interval.start, occurrences: rows, remainingOutflow: outflow, remainingInflow: inflow, overdueOutflow: overdue, stopped: stopped)
+        return FixedFlowMonth(date: interval.start, occurrences: rows, remainingOutflow: outflow, remainingInflow: inflow,
+                              overdueOutflow: overdueOutflow, overdueInflow: overdueInflow, stopped: stopped)
     }
 }
