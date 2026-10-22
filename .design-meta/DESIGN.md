@@ -1,5 +1,17 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-22 · 标签栏方案 B：暖色 Liquid Glass
+
+来源为 owner 明确选定的 `/tmp/claude-0/r11/canvas12/project/V12-TabBar-Options.dc.html` 中间 B 方案与 `V12-TabBar.dc.html` 的规则，只读引用。该选择取代历史系统标签栏与系统玻璃＋的外观；现在／洞察／账目／我、横滑、记一笔及各标签导航状态保持。
+
+`YubaiApp.swift` 保留四个 Tab 与各自 NavigationStack，隐藏系统栏，在 RootView 叠加 `FloatingTabBar`：左右 18pt、66pt 高、距底部安全区 22pt，内部 50pt 选中胶囊和 54pt 品牌绿＋；20pt 线性图标、10pt 标签、card 高亮、brandInk 选中色、label 未选中色。高亮以 matchedGeometryEffect 配合 YubaiMotion.layout 移动，Reduce Motion 时无动画。中央按钮沿用 addEntry sheet 与 add 缩放源，不改变 destination。容器按「主导航」分组，保留按钮 identifier 与 selected trait。各根页以 safeAreaInset 留出 88pt；键盘出现期间隐藏栏、释放预留，键盘完全收起后恢复。TabView／NavigationStack 下方以 canvas 铺满安全区。
+
+`DesignSystem.swift` 通过每个标签独立的 environment binding，让 yubaiNavigation 默认隐藏自绘栏、根页出现时恢复；账目根页的 hidesTabBar:false 保留，sheet 的 yubaiSheetSurface 隔离这些更新。新增字体与白色 token，iOS 专用栏／状态不进入 macOS 分支。玻璃底放在 GlassEffectContainer 内，使用 regular.tint(raised.opacity(0.72)).interactive()；降低透明度时使用不透明 raised。按 B 采用 72% 暖色 tint 与淡白色内描边；早一张规则稿的 88%／neutralStrong 描边不再作为这两个参数的依据。原生玻璃的折射、饱和度与阴影不会逐像素等于 HTML backdrop-filter；底部 22pt 以设备安全区为起点。
+
+Apple 官方签名已核对：[glassEffect(_:in:)](https://developer.apple.com/documentation/swiftui/view/glasseffect(_:in:)) 的 Glass 默认为 regular、shape 为 some Shape；[tint(_:)](https://developer.apple.com/documentation/swiftui/glass/tint(_:)) 接收 Color? 并返回 Glass；[interactive(_:)](https://developer.apple.com/documentation/swiftui/glass/interactive(_:)) 的 Bool 默认为 true；[GlassEffectContainer 初始化](https://developer.apple.com/documentation/swiftui/glasseffectcontainer/init(spacing:content:)) 的 spacing: CGFloat? 默认为 nil。
+
+UI 测试全部改为 app.buttons[identifier]，沿用 isSelected；保留全部原用例，补充 push 隐藏／返回恢复、导航分组／按钮顺序、键盘隐藏／恢复、最后一行可见与切换后滚动位置保持。Linux swift test 退出 0：401 项、397 通过、4 项原有实网 opt-in 跳过、0 失败，未改 Core。App 在 arm64-apple-ios26.0／arm64-apple-macosx14.0、UI 测试在 iOS 26 条件下语法解析通过；Apple SDK 类型检查、UI 实跑、玻璃／深色／降低透明度／Reduce Motion／VoiceOver 与导航生命周期设备验收仍待做。`docs/`、HTML 原稿、Figma 与分发包未改，未提交／推送。
+
 ## 2026-10-22 · 固定收付「会回来的账单」
 
 来源为 owner 本轮明确确认的 `/tmp/claude-0/r11/canvas/project/` 四张 HTML 与便签规则；只读引用，不复制或修改原稿。本轮接入已合入的 #25 Core，不改变其规则，取代第四轮固定收付的 90 天汇总、到什么时候与点行结束菜单；保留此前第十一轮交互、系统玻璃＋、TabView 和我页副标题。

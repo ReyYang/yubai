@@ -2,6 +2,9 @@ import SwiftUI
 import Observation
 import LocalAuthentication
 import YubaiCore
+#if os(iOS)
+import UIKit
+#endif
 
 enum Destination: String, CaseIterable, Identifiable {
     case overview, insights, entries, settings
@@ -296,6 +299,10 @@ struct RootView: View {
     @Namespace private var motionNamespace
     @State private var tabRevision = 0
     @State private var tabDirection: Double = 1
+    #if os(iOS)
+    @State private var hiddenTabBars: [Destination: Bool] = [:]
+    @State private var keyboardVisible = false
+    #endif
     var body: some View {
         @Bindable var store = store
         Group {
@@ -322,7 +329,7 @@ struct RootView: View {
                 Toast(text: toast, onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(toast)
                     #if os(iOS)
-                    .padding(.bottom, YubaiSize.tabbarHeight + YubaiSpace.space12)
+                    .padding(.bottom, YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom + YubaiSpace.space12)
                     #else
                     .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.space24)
                     #endif
@@ -380,30 +387,29 @@ struct RootView: View {
             NavigationStack { tabRoot(store.destination) }.id(store.destination)
         }
         #else
-        TabView(selection: Binding(get: { store.destination.rawValue }, set: selectTab)) {
-            Tab(value: Destination.overview.rawValue) { NavigationStack { tabRoot(.overview) } } label: {
-                Label("现在", image: "TabWaterMark").accessibilityIdentifier("tab_overview")
+        TabView(selection: $store.destination) {
+            ForEach(Destination.allCases) { d in
+                Tab(d.title, systemImage: d.symbol, value: d) { tabNavigation(d) }
             }
-            Tab(value: Destination.insights.rawValue) { NavigationStack { tabRoot(.insights) } } label: {
-                Label("洞察", systemImage: "chart.pie").accessibilityIdentifier("tab_insights")
+        }.toolbar(.hidden, for: .tabBar)
+            .background(YubaiColor.canvas.ignoresSafeArea())
+            .overlay(alignment: .bottom) {
+                if hiddenTabBars[store.destination] != true {
+                    FloatingTabBar().padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSize.floatingTabbarBottom)
+                        .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
+                }
             }
-            Tab(value: "add") { Color.clear } label: {
-                Label("记一笔", systemImage: "plus.circle.fill").yubaiZoomSource("add").accessibilityIdentifier("addEntry")
-            }
-            Tab(value: Destination.entries.rawValue) { NavigationStack { tabRoot(.entries) } } label: {
-                Label("账目", systemImage: "list.bullet").accessibilityIdentifier("tab_entries")
-            }
-            Tab(value: Destination.settings.rawValue) { NavigationStack { tabRoot(.settings) } } label: {
-                Label("我", systemImage: "person").accessibilityIdentifier("tab_settings")
-            }
-        }.tint(YubaiColor.brand)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboardVisible = false }
         #endif
     }
-    private func selectTab(_ value: String) {
-        if value == "add" { store.present(.addEntry, from: "add"); return }
-        guard let next = Destination(rawValue: value), next != store.destination else { return }
-        store.destination = next
+    #if os(iOS)
+    private func tabNavigation(_ d: Destination) -> some View {
+        NavigationStack { tabRoot(d) }.toolbar(.hidden, for: .tabBar)
+            .environment(\.yubaiTabBarHidden, Binding(get: { hiddenTabBars[d] ?? false }, set: { hiddenTabBars[d] = $0 }))
+            .background(YubaiColor.canvas.ignoresSafeArea())
     }
+    #endif
     private func tabRoot(_ d: Destination) -> some View {
         #if os(macOS)
         ZStack(alignment: .bottom) {
@@ -419,6 +425,10 @@ struct RootView: View {
         destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
             .modifier(TabContentEntrance(active: store.destination == d, revision: tabRevision, direction: tabDirection))
             .modifier(TabRootSwipe(destination: d))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: keyboardVisible ? 0 : YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom).allowsHitTesting(false)
+            }
+            .modifier(TabBarVisibility(hidden: false))
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
@@ -463,6 +473,53 @@ struct RootView: View {
         VStack(spacing: YubaiSpace.space20) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Text("原文件已保留，请选择恢复记录。").yubaiFont(YubaiFont.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.space24).frame(maxWidth: 540)
     }
 }
+
+#if os(iOS)
+private struct FloatingTabBar: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Namespace private var selection
+    var body: some View {
+        GlassEffectContainer {
+            HStack(spacing: 0) {
+                tab(.overview); tab(.insights)
+                Button { store.present(.addEntry, from: "add") } label: {
+                    Image(systemName: "plus").yubaiFont(YubaiFont.addIcon).foregroundStyle(YubaiColor.white)
+                        .frame(width: 54, height: 54).background(YubaiColor.brand, in: Circle())
+                        .shadow(color: YubaiColor.brandInk.opacity(0.3), radius: 6, y: 4)
+                }.buttonStyle(.plain).yubaiZoomSource("add").padding(.horizontal, 4)
+                    .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
+                tab(.entries); tab(.settings)
+            }.padding(.horizontal, 6).frame(height: YubaiSize.floatingTabbarHeight)
+                .background {
+                    if reduceTransparency { Capsule().fill(YubaiColor.raised) }
+                    else { Color.clear.glassEffect(.regular.tint(YubaiColor.raised.opacity(0.72)).interactive(), in: Capsule()) }
+                }
+                .overlay { Capsule().strokeBorder(YubaiColor.white.opacity(0.3), lineWidth: 0.5).allowsHitTesting(false) }
+                .yubaiShadow(YubaiShadow.float)
+                .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.destination)
+        }.accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
+    }
+    private func tab(_ d: Destination) -> some View {
+        let selected = store.destination == d
+        return Button { store.destination = d } label: {
+            VStack(spacing: 2) {
+                Group {
+                    if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit().frame(width: 20, height: 20) }
+                    else { Image(systemName: d.symbol).symbolVariant(.none).yubaiFont(YubaiFont.tabIcon, weight: selected ? .semibold : .regular).frame(height: 20) }
+                }
+                Text(d.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .semibold : .regular).lineLimit(1)
+            }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.label)
+                .frame(maxWidth: .infinity).frame(height: 50).contentShape(Capsule())
+                .background {
+                    if selected { Capsule().fill(YubaiColor.card).matchedGeometryEffect(id: "selection", in: selection) }
+                }
+        }.buttonStyle(.plain).accessibilityLabel(d.title).accessibilityIdentifier("tab_" + d.rawValue)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+#endif
 
 struct TabSwipeReservedRegions: PreferenceKey {
     static let defaultValue: [CGRect] = []

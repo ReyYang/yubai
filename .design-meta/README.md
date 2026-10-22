@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-22 标签栏方案 B**：owner 选定 `/tmp/claude-0/r11/canvas12/project/V12-TabBar-Options.dc.html` 中间方案及 `V12-TabBar.dc.html` 的暖纸规则；在 `fix/round11-acceptance` 采用自绘暖色 Liquid Glass 悬浮胶囊，取代下方历史系统标签栏／系统玻璃＋，保留 TabView 与四个 NavigationStack。[源码映射、原生适配与验证边界](DESIGN.md#2026-10-22--标签栏方案-b暖色-liquid-glass)。Linux `swift test`：401 项、397 通过／4 项原有实网跳过／0 失败；App 的 iOS 26／macOS 14 和 UI 测试的 iOS 26 条件语法解析通过，Apple SDK 类型检查、UI 实跑及设备视觉／无障碍验收待做。`docs/`、HTML 原稿、Figma 与分发包未改，未提交／推送。
+
 **2026-10-22 固定收付「会回来的账单」**：owner 已确认本轮 `V11-Bills`／`V11-Bills-Add`／`V11-Home-Due`／`V11-Add-Match` 四稿；在 `feat/round11-gestures-bills` 接入 #25 Core，完成当月待付／待收、日期点阵、结清／长按改金额、撤销、左滑停掉、分期与自动记表单、现在页跨月到期卡和发薪期限、记一笔主动选择关联、启动／前台静默自动记账。[源码映射与差异](DESIGN.md#2026-10-22--固定收付会回来的账单)、[采用决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--固定收付会回来的账单owner-确认稿)已登记。Linux `swift test`：396 项、392 通过／4 项原有实网跳过／0 失败；未修改 Core。App 的 iOS 26／macOS 14 条件语法解析及 UI 测试源码的 iOS 26 条件语法解析通过，新增 8 条 UI 用例尚未执行，Apple SDK 类型检查、视觉与手势／VoiceOver 验收待做。`docs/`、用户提供的 HTML 设计稿、Figma 与分发包均未改；未提交／推送。
 
 **2026-10-22 第十一轮交互**：owner 已确认本轮五张 V11 稿，现于 `feat/round11-gestures-bills` 接入四标签根页横滑、管家卡左滑「知道了」、现金图按住逐日查看、洞察环图点选和 DeepSeek 原生模型菜单。[源码映射与差异](DESIGN.md#2026-10-22--第十一轮交互)登记采用范围及手势优先级；保留系统 TabView、既有 tokens 和业务计算。Linux `swift build --target YubaiCore && swift test` 通过：396 项、392 通过／4 项原有实网跳过／0 失败，新增模型列表测试 4 项通过。App 全部 Swift 和 UI 测试在 iOS 26／App 在 macOS 14 条件下语法解析通过；新增 5 条 UI 用例尚未运行，Apple SDK 类型检查、手势／视觉／VoiceOver／Reduce Motion 设备验收待做。原始 HTML、`docs/`、Figma 和分发包未改；未提交／推送。

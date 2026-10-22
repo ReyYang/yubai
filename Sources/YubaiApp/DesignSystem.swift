@@ -8,6 +8,7 @@ import UIKit
 #endif
 
 enum YubaiColor {
+    static let white = Color.white
     static let canvas = adaptive(0xf5f1e5, 0x1f1b14)
     static let card = adaptive(0xede6d3, 0x2a251c)
     static let raised = adaptive(0xfefbea, 0x353026)
@@ -97,6 +98,8 @@ enum YubaiFont {
     static let meta = Style(size: 11, lineHeight: 16, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption2)
     static let chartLabel = Style(size: 10, lineHeight: 12, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption2)
     static let tabLabel = Style(size: 10, lineHeight: 12, weight: .medium, family: .sans, tracking: 0, relativeTo: .caption2)
+    static let tabIcon = Style(size: 20, lineHeight: 24, weight: .regular, family: .sans, relativeTo: .title3)
+    static let addIcon = Style(size: 24, lineHeight: 28, weight: .semibold, family: .sans, relativeTo: .title2)
     static let button = Style(size: 15, lineHeight: 20, weight: .medium, family: .sans, tracking: 0, relativeTo: .headline)
 }
 
@@ -153,6 +156,10 @@ enum YubaiSize {
     static let pillHeight: CGFloat = 28
     static let tagHeight: CGFloat = 22
     static let tabbarHeight: CGFloat = 62
+    #if os(iOS)
+    static let floatingTabbarHeight: CGFloat = 66
+    static let floatingTabbarBottom: CGFloat = 22
+    #endif
     static let barMax: CGFloat = 24
     static let lineWidth: CGFloat = 2
     static let marker: CGFloat = 8
@@ -320,10 +327,28 @@ struct ChartSegments<Content: View>: View {
 
 private struct SheetSurfaceKey: EnvironmentKey { static let defaultValue = false }
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
+#if os(iOS)
+private struct TabBarHiddenKey: EnvironmentKey { static let defaultValue: Binding<Bool>? = nil }
+#endif
 extension EnvironmentValues {
     var yubaiSheetSurface: Bool { get { self[SheetSurfaceKey.self] } set { self[SheetSurfaceKey.self] = newValue } }
     var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
+    #if os(iOS)
+    var yubaiTabBarHidden: Binding<Bool>? { get { self[TabBarHiddenKey.self] } set { self[TabBarHiddenKey.self] = newValue } }
+    #endif
 }
+
+#if os(iOS)
+struct TabBarVisibility: ViewModifier {
+    @Environment(\.yubaiTabBarHidden) private var tabBarHidden
+    @Environment(\.yubaiSheetSurface) private var inSheet
+    let hidden: Bool
+    func body(content: Content) -> some View {
+        content.onAppear { update() }.onChange(of: hidden) { _, _ in update() }
+    }
+    private func update() { if !inSheet { tabBarHidden?.wrappedValue = hidden } }
+}
+#endif
 
 private struct PaperBackground: ViewModifier {
     @Environment(\.yubaiSheetSurface) private var inSheet
@@ -1094,7 +1119,8 @@ extension View {
             #if os(iOS)
             .toolbar(.visible, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(hidesTabBar ? .hidden : .visible, for: .tabBar)
+            .toolbar(.hidden, for: .tabBar)
+            .modifier(TabBarVisibility(hidden: hidesTabBar))
             #elseif os(macOS)
             .toolbarBackground(YubaiColor.canvas, for: .windowToolbar).toolbarBackground(.visible, for: .windowToolbar)
             #endif
