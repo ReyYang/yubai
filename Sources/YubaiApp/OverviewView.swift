@@ -104,6 +104,7 @@ struct OverviewView: View {
                 } else {
                     AmountLabel(cents: today.net, hide: store.current.preferences.hideAmounts, role: .small,
                                 sign: today.net > 0 ? .inflow : .automatic, fractionDigits: 2)
+                        .layoutPriority(1)
                 }
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }.padding(.horizontal, 16).frame(minHeight: 44).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))

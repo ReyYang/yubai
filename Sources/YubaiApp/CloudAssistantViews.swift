@@ -165,7 +165,7 @@ struct CloudSendLogView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             if group.hasFailure { Circle().fill(YubaiColor.amberDot).frame(width: YubaiSize.marker, height: YubaiSize.marker).accessibilityHidden(true) }
             Image(systemName: "chevron.right").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-        }.padding(.vertical, YubaiSpace.space8)
+        }.padding(.vertical, YubaiSpace.space8).contentShape(Rectangle())
     }
     private func reload() {
         groups = SendLog.shared.groups; sentCount = SendLog.shared.totalCount; sentBytes = SendLog.shared.totalSentByteSize

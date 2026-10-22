@@ -447,7 +447,7 @@ private struct AskEntryDraftCard: View {
                         Text(Classification.displayCategory(draft.category)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .none)
-                }.frame(minHeight: YubaiSize.tapMin)
+                }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("editDraft_" + draft.id.uuidString)
         }
     }

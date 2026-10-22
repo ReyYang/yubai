@@ -34,8 +34,8 @@ struct FixedFlowsView: View {
         }.amountPrivacy(ledger.preferences.hideAmounts).navigationTitle("固定收付").yubaiNavigation()
             .toolbar { ToolbarItem(placement: .primaryAction) {
                 Button { store.sheetSource = nil; store.sheet = .addPlan } label: {
-                    Image(systemName: "plus").frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).floatingSurface(in: Circle())
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel("添加安排").accessibilityIdentifier("addFixedFlow")
+                    Image(systemName: "plus")
+                }.accessibilityLabel("添加安排").accessibilityIdentifier("addFixedFlow")
             } }
             .confirmationDialog("结束「\(ending?.title ?? "这个安排")」？", isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } }), titleVisibility: .visible) {
                 Button("结束这个安排", role: .destructive) {
@@ -59,16 +59,17 @@ struct FixedFlowEditor: View {
     @State private var frequency = Frequency.monthly
     @State private var date = Date()
     @State private var accountID: UUID?
-    @State private var endDate: Date?
+    @State private var endDate = Dates.addMonths(1, to: Date())
+    @State private var hasEndDate = false
     @State private var pickingSchedule = false
     @State private var pickingEnd = false
     @State private var balances: [UUID: Int64] = [:]
     private var accounts: [Account] { store.current.accounts.filter { !$0.archived } }
     private var plan: Plan? {
-        guard let cents = try? Money.parse(amount), cents > 0, endDate.map({ Dates.day($0) >= Dates.day(date) }) ?? true else { return nil }
+        guard let cents = try? Money.parse(amount), cents > 0, !hasEndDate || Dates.day(endDate) >= Dates.day(date) else { return nil }
         var plan = Plan(title: title.trimmingCharacters(in: .whitespacesAndNewlines), amount: cents, dueDate: Dates.day(date),
                         frequency: frequency, inflow: inflow, category: inflow ? "其他收入" : "其他支出", nature: inflow ? .income : .expense)
-        plan.accountID = accountID; plan.endDate = endDate.map(Dates.day); return plan
+        plan.accountID = accountID; plan.endDate = hasEndDate ? Dates.day(endDate) : nil; return plan
     }
     var body: some View {
         Page(spacing: 12, topPadding: 12) {
@@ -92,7 +93,7 @@ struct FixedFlowEditor: View {
                     }
                     EntryFormDivider()
                     EntryFormRow(title: "到什么时候") {
-                        Button(endDate.map { ManualBookkeeping.dayLabel($0) } ?? "一直") { pickingEnd = true }.manualFormChip()
+                        Button(hasEndDate ? ManualBookkeeping.dayLabel(endDate) : "一直") { pickingEnd = true }.manualFormChip()
                     }
                 }
             }
@@ -105,27 +106,26 @@ struct FixedFlowEditor: View {
             .onAppear { balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) }) }
             .popover(isPresented: $pickingSchedule) {
                 VStack(spacing: 12) {
-                    Picker("多久一次", selection: $frequency) { ForEach(Frequency.allCases) { Text($0.label).tag($0) } }
-                    DatePicker("第一次", selection: $date, displayedComponents: .date).datePickerStyle(.graphical).frame(width: 320).fixedSize()
+                    Picker("多久一次", selection: $frequency) { ForEach(Frequency.allCases) { Text($0.label).tag($0) } }.frame(width: 320)
+                    DatePicker("第一次", selection: $date, displayedComponents: .date).datePickerStyle(.graphical).frame(width: 320, height: 360).fixedSize()
                     Button("完成") { pickingSchedule = false }.frame(minHeight: 44)
-                }.padding(18).frame(minWidth: 300)
+                }.padding(18).frame(minWidth: 300).transaction { $0.animation = nil }
                     #if os(iOS)
                     .presentationCompactAdaptation(.popover)
                     #endif
             }
             .popover(isPresented: $pickingEnd) {
                 VStack(spacing: 12) {
-                    Toggle("一直", isOn: Binding(get: { endDate == nil }, set: { endDate = $0 ? nil : max(date, Date()) })).tint(YubaiColor.toggleOn)
-                    if endDate != nil {
-                        DatePicker("结束日期", selection: Binding(get: { endDate ?? date }, set: { endDate = $0 }), in: Dates.day(date)..., displayedComponents: .date).datePickerStyle(.graphical).frame(width: 320).fixedSize()
-                    }
+                    Toggle("一直", isOn: Binding(get: { !hasEndDate }, set: { hasEndDate = !$0 })).tint(YubaiColor.toggleOn)
+                    DatePicker("结束日期", selection: $endDate, in: Dates.day(date)..., displayedComponents: .date).datePickerStyle(.graphical).frame(width: 320, height: 360).fixedSize()
+                        .disabled(!hasEndDate).opacity(hasEndDate ? 1 : 0.5)
                     Button("完成") { pickingEnd = false }.frame(minHeight: 44)
-                }.padding(18).frame(minWidth: 300)
+                }.padding(18).frame(minWidth: 300).transaction { $0.animation = nil }
                     #if os(iOS)
                     .presentationCompactAdaptation(.popover)
                     #endif
             }
-            .onChange(of: date) { _, value in if let endDate, endDate < value { self.endDate = value } }
+            .onChange(of: date) { _, value in if endDate < value { endDate = value } }
     }
     private var preview: some View {
         let plan = plan

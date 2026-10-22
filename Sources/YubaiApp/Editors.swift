@@ -66,7 +66,7 @@ struct AccountsView: View {
                             ViewThatFits(in: .horizontal) {
                                 HStack(spacing: YubaiSpace.space12) { accountName(a); Spacer(); AmountLabel(cents: Finance.balance(a, in: store.current), fractionDigits: 2) }
                                 VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); AmountLabel(cents: Finance.balance(a, in: store.current), fractionDigits: 2) }
-                            }.padding(.vertical, YubaiSpace.space8)
+                            }.padding(.vertical, YubaiSpace.space8).contentShape(Rectangle())
                         }.buttonStyle(PressButtonStyle())
                     }
                 }
