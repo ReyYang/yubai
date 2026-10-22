@@ -54,7 +54,7 @@ struct ButlerCardView: View {
                 Button { store.dismissCard(card.id) } label: {
                     Text("知道了")
                         #if os(iOS)
-                        .padding(.trailing, YubaiSpace.space18).frame(width: max(88, -swipe) - YubaiSpace.space6, alignment: .trailing)
+                        .padding(.trailing, YubaiSpace.space18).frame(width: max(0, -swipe - YubaiSpace.space6 - YubaiSpace.space12), alignment: .trailing).clipped()
                         .frame(maxHeight: .infinity)
                         .background(YubaiColor.neutralSoft, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                         .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
@@ -63,7 +63,7 @@ struct ButlerCardView: View {
                     #if os(iOS)
                     .padding(.vertical, YubaiSpace.space6).padding(.trailing, YubaiSpace.space6)
                     #else
-                    .frame(width: max(88, -swipe), alignment: .trailing).padding(.trailing, YubaiSpace.space18)
+                    .padding(.trailing, YubaiSpace.space18).frame(width: max(0, -swipe - YubaiSpace.space12), alignment: .trailing).clipped()
                     .frame(maxHeight: .infinity).background(YubaiColor.neutralSoft)
                     #endif
                     .opacity(swipe < 0 ? 1 : 0).allowsHitTesting(swipe < 0)
