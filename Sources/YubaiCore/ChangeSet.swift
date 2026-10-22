@@ -29,7 +29,7 @@ public enum ChangeItem: Codable, Equatable, Sendable {
     case linkPlan(entry: UUID, plan: UUID, occurrence: Date)
     case linkRent(entry: UUID, rent: UUID, period: Date)
     case markDuplicate(entry: UUID, of: UUID)
-    case addPlan(Plan), endPlan(UUID, Date), addRent(Rent), addEntry(EntryDraft)
+    case addPlan(Plan), endPlan(UUID, Date), resumePlan(UUID), addRent(Rent), addEntry(EntryDraft)
     case profile(ProfileChange)
 
     public var entryIDs: [UUID] {
@@ -85,6 +85,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .markDuplicate(let id, let original): return "把 \(entry(id)) 作为 \(entry(original)) 的重复记录标为已删除"
             case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
+            case .resumePlan(let id): return "恢复「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」"
             case .addRent(let r): return "新增「\(r.title)」，月租 \(Money.text(r.monthlyTotal))，个人承担 \(Money.text(r.personalShare))，每 \(r.monthsPerPayment) 月支付，从 \(Dates.text(r.startDate)) 起，首付 \(Dates.text(r.nextDueDate))，每月 \(r.receiveDay) 日收分摊" + (r.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .addEntry(let d):
                 let link = d.planID.flatMap { id in d.occurrence.map { "，关联为 \(Dates.text($0)) \(ledger.plans.first { $0.id == id }?.title ?? d.title)" } } ?? ""
@@ -213,12 +214,24 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 // an end date before its original start. Keep all stored records.
                 if let i = next.plans.firstIndex(where: { $0.id == id }) {
                     guard next.plans[i].active, next.plans[i].endDate == nil else { skip(position); continue }
+                    next.plans[i].stoppedAt = date
                     if date < next.plans[i].dueDate { next.plans[i].active = false }
                     else { next.plans[i].endDate = date }
                 } else if let i = next.rents.firstIndex(where: { $0.id == id }) {
                     guard next.rents[i].active, next.rents[i].endDate == nil else { skip(position); continue }
+                    next.rents[i].stoppedAt = date
                     if date < next.rents[i].startDate { next.rents[i].active = false }
                     else { next.rents[i].endDate = date }
+                } else { skip(position); continue }
+            case .resumePlan(let id):
+                if let i = next.plans.firstIndex(where: { $0.id == id }) {
+                    let plan = next.plans[i]
+                    guard (plan.stoppedAt ?? plan.endDate).map({ $0 <= createdAt }) ?? !plan.active else { skip(position); continue }
+                    next.plans[i].active = true; next.plans[i].endDate = nil; next.plans[i].stoppedAt = nil
+                } else if let i = next.rents.firstIndex(where: { $0.id == id }) {
+                    let rent = next.rents[i]
+                    guard (rent.stoppedAt ?? rent.endDate).map({ $0 <= createdAt }) ?? !rent.active else { skip(position); continue }
+                    next.rents[i].active = true; next.rents[i].endDate = nil; next.rents[i].stoppedAt = nil
                 } else { skip(position); continue }
             case .addRent(let r):
                 guard !next.rents.contains(where: { $0.id == r.id }) else { skip(position); continue }

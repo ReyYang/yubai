@@ -36,7 +36,6 @@ struct ButlerCardView: View {
     @GestureState private var dragging = false
     @State private var horizontal: Bool?
     @State private var swipe: CGFloat = 0
-    @State private var restingSwipe: CGFloat = 0
     @State private var width: CGFloat = 1
     let card: ButlerCard
     var additionalCount = 0
@@ -44,7 +43,7 @@ struct ButlerCardView: View {
     private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) }
     private var ink: Color { amber ? YubaiColor.amberInk : YubaiColor.labelSecondary }
     var body: some View {
-        cardContent.offset(x: swipe)
+        cardContent.allowsHitTesting(horizontal != true).offset(x: swipe)
             .background(alignment: .trailing) {
                 Button("知道了") { store.dismissCard(card.id) }
                     .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
@@ -64,19 +63,16 @@ struct ButlerCardView: View {
                 .onChanged { value in
                     if horizontal == nil { horizontal = value.translation.width < 0 && abs(value.translation.width) > abs(value.translation.height) * 1.3 }
                     guard horizontal == true else { return }
-                    swipe = max(-width, min(0, restingSwipe + value.translation.width))
+                    swipe = max(-width, min(0, value.translation.width))
                 }
-                .onEnded { _ in
+                .onEnded { value in
                     guard horizontal == true else { return }
-                    if -swipe > width * 0.5 { store.dismissCard(card.id) }
-                    else {
-                        restingSwipe = -swipe > 36 ? -88 : 0
-                        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = restingSwipe }
-                    }
+                    if -value.translation.width > width * 0.25 || (value.velocity.width < -650 && value.translation.width < -20) { store.dismissCard(card.id) }
+                    withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = 0 }
                     horizontal = nil
                 })
             .onChange(of: dragging) { _, active in
-                if !active { horizontal = nil; withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = restingSwipe } }
+                if !active { horizontal = nil; withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = 0 } }
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("butlerCard_" + card.kind.rawValue)

@@ -86,6 +86,150 @@ final class FixedBillsTests: XCTestCase {
         XCTAssertEqual(funds.points.count, 8); XCTAssertFalse(funds.occurrences.contains { $0.title == "订阅" })
         XCTAssertEqual(funds.horizonDays, 19); XCTAssertEqual(funds.committed, 3000); XCTAssertEqual(funds.living, 19_000)
     }
+    func testRecurringIncomeChangesNinetyDayFallbackAfterSaveAndStopRestoresIt() throws {
+        var ledger = fixture()
+        XCTAssertNil(Finance.funds(ledger, now: now).payday)
+        XCTAssertEqual(Finance.funds(ledger, now: now).horizonDays, 90)
+        let plan = salary()
+        try ChangeSet(source: "用户操作", reason: "添加工资", items: [.addPlan(plan)]).apply(to: &ledger)
+        ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        let funds = Finance.funds(ledger, now: now)
+        XCTAssertEqual(funds.payday, date("2026-11-10")); XCTAssertEqual(funds.paydayTitle, "工资")
+        XCTAssertEqual(funds.horizonDays, 19)
+        try ChangeSet(source: "用户操作", reason: "停掉工资", items: [.endPlan(plan.id, now)]).apply(to: &ledger)
+        XCTAssertNil(Finance.funds(ledger, now: now).payday)
+        XCTAssertEqual(Finance.funds(ledger, now: now).horizonDays, 90)
+    }
+    func testStoppedWeeklyBillsKeepPaidAndDueRowsThroughStopDayOnly() throws {
+        var ledger = fixture()
+        var plan = Plan(title: "每周订阅", amount: 1000, dueDate: date("2026-10-01"), frequency: .weekly)
+        plan.accountID = ledger.accounts[0].id; plan.autoPay = true; ledger.plans = [plan]
+        ledger.entries = [payment(plan, on: plan.dueDate, in: ledger), payment(plan, on: date("2026-10-15"), in: ledger)]
+        let originalEntries = ledger.entries
+        XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).occurrences.contains { $0.date == date("2026-10-29") })
+        try ChangeSet(source: "用户操作", reason: "停掉", items: [.endPlan(plan.id, now)]).apply(to: &ledger)
+        let month = FixedFlows.month(containing: now, in: ledger)
+        XCTAssertEqual(month.occurrences.map(\.date), ["2026-10-01", "2026-10-08", "2026-10-15", "2026-10-22"].map(date))
+        XCTAssertEqual(month.occurrences.map(\.state), [.paid, .due, .paid, .due])
+        XCTAssertEqual(month.remainingOutflow, 2000); XCTAssertEqual(month.remainingInflow, 0)
+        XCTAssertTrue(FixedFlows.month(containing: date("2026-11-01"), in: ledger).occurrences.isEmpty)
+        XCTAssertTrue(Finance.occurrences(in: ledger, now: now).allSatisfy { $0.date <= now })
+        XCTAssertEqual(ledger.entries, originalEntries)
+        let stopped = try XCTUnwrap(FixedFlowArrangement.stopped(in: ledger, now: now).first)
+        XCTAssertEqual(stopped.id, plan.id); XCTAssertEqual(stopped.title, plan.title)
+        XCTAssertEqual(stopped.stoppedAt, now); XCTAssertEqual(stopped.amount, 1000); XCTAssertFalse(stopped.canEnd)
+        XCTAssertTrue(FixedFlowArrangement.rows(in: ledger, now: now).isEmpty)
+        let automatic = try XCTUnwrap(FixedFlows.autoSettle(in: ledger, now: date("2026-11-01")))
+        try automatic.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries.suffix(2).map(\.occurrence), [date("2026-10-08"), date("2026-10-22")])
+        XCTAssertNil(FixedFlows.autoSettle(in: ledger, now: date("2026-11-01")))
+    }
+    func testStoppingBeforeFirstDueDatePersistsDateAndRemovesThisMonthOccurrence() throws {
+        var ledger = fixture()
+        let plan = Plan(title: "尚未开始", amount: 8000, dueDate: date("2026-10-29"), frequency: .monthly)
+        let rent = Rent(title: "下月房租", monthlyTotal: 20_000, personalShare: 10_000, startDate: date("2026-11-01"), nextDueDate: date("2026-11-01"))
+        ledger.plans = [plan]; ledger.rents = [rent]
+        try ChangeSet(source: "用户操作", reason: "停掉", items: [.endPlan(plan.id, now), .endPlan(rent.id, now)]).apply(to: &ledger)
+        ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).occurrences.isEmpty)
+        XCTAssertTrue(Finance.occurrences(in: ledger, now: now).isEmpty)
+        XCTAssertNil(FixedFlows.autoSettle(in: ledger, now: date("2026-12-01")))
+        let rows = FixedFlowArrangement.stopped(in: ledger, now: now)
+        XCTAssertEqual(Set(rows.map(\.id)), [plan.id, rent.id])
+        XCTAssertTrue(rows.allSatisfy { $0.stoppedAt == now && !$0.canEnd })
+        XCTAssertEqual(rows.first { $0.id == plan.id }?.amount, 8000)
+        XCTAssertEqual(rows.first { $0.id == rent.id }?.amount, 60_000)
+        XCTAssertTrue(FixedFlowArrangement.stopped(in: ledger, now: now.addingTimeInterval(-1)).isEmpty)
+        let change = ChangeSet(source: "用户操作", reason: "再次停掉", items: [.endPlan(plan.id, date("2026-10-23"))])
+        XCTAssertEqual(try change.apply(to: &ledger).count, 1); XCTAssertEqual(ledger.plans[0].stoppedAt, now)
+    }
+    func testStoppedListIncludesLegacyEndDatesAndLatestEstimatedAmount() throws {
+        var ledger = fixture(); var plan = salary()
+        plan.endDate = date("2026-10-20"); plan.estimated = true
+        var future = salary(); future.endDate = date("2026-11-20")
+        ledger.plans = [plan, future]
+        ledger.entries = [payment(plan, on: date("2026-10-10"), amount: 750_000, in: ledger)]
+        let rows = FixedFlowArrangement.stopped(in: ledger, now: now)
+        XCTAssertEqual(rows.map(\.id), [plan.id]); XCTAssertEqual(rows[0].stoppedAt, plan.endDate)
+        XCTAssertEqual(rows[0].amount, 750_000); XCTAssertTrue(rows[0].inflow)
+        XCTAssertEqual(FixedFlows.month(containing: now, in: ledger).occurrences.first { $0.planID == plan.id }?.state, .paid)
+    }
+    func testLegacyInactiveArrangementsRemainQueryableWithUnknownStopDate() throws {
+        var ledger = fixture(); var plan = salary(); plan.active = false
+        var rent = Rent(monthlyTotal: 20_000, personalShare: 10_000, startDate: now, nextDueDate: now); rent.active = false
+        ledger.plans = [plan]; ledger.rents = [rent]
+        ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        let rows = FixedFlowArrangement.stopped(in: ledger, now: now)
+        XCTAssertEqual(Set(rows.map(\.id)), [plan.id, rent.id]); XCTAssertTrue(rows.allSatisfy { $0.stoppedAt == nil })
+        XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).occurrences.isEmpty)
+    }
+    func testResumeStoppedPlanPreservesPaymentsScheduleAndSettingsThroughPersistence() throws {
+        var ledger = fixture()
+        var plan = Plan(title: "每周订阅", amount: 1000, dueDate: date("2026-10-01"), frequency: .weekly)
+        plan.accountID = ledger.accounts[0].id; plan.autoPay = true; plan.autoPaySince = plan.dueDate
+        plan.installments = 8; plan.estimated = true; plan.note = "保留原安排"
+        ledger.plans = [plan]; ledger.entries = [payment(plan, on: plan.dueDate, amount: 1200, in: ledger)]
+        let originalEntries = ledger.entries
+        try ChangeSet(source: "用户操作", reason: "停掉", items: [.endPlan(plan.id, now)]).apply(to: &ledger)
+        let stoppedSnapshot = try LedgerCodec.encode(ledger)
+        let change = try FixedFlows.resume(id: plan.id, in: ledger, now: now)
+        XCTAssertEqual(change.source, "用户操作"); XCTAssertEqual(change.reason, "恢复「每周订阅」")
+        XCTAssertEqual(change.createdAt, now); XCTAssertEqual(change.preview(in: ledger), ["恢复「每周订阅」"])
+        let decoded = try JSONDecoder().decode(ChangeSet.self, from: JSONEncoder().encode(change))
+        XCTAssertEqual(decoded, change); XCTAssertTrue(try decoded.apply(to: &ledger).isEmpty)
+        ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        XCTAssertEqual(ledger.plans, [plan]); XCTAssertEqual(ledger.entries, originalEntries)
+        XCTAssertTrue(FixedFlowArrangement.stopped(in: ledger, now: now).isEmpty)
+        XCTAssertEqual(FixedFlowArrangement.rows(in: ledger, now: now).map(\.id), [plan.id])
+        let rows = FixedFlows.month(containing: now, in: ledger).occurrences
+        XCTAssertEqual(rows.first?.state, .paid); XCTAssertEqual(rows.first?.amount, 1200)
+        XCTAssertEqual(rows.last?.date, date("2026-10-29")); XCTAssertEqual(rows.last?.state, .upcoming)
+        XCTAssertEqual(rows.last?.installment?.index, 5)
+        XCTAssertEqual(try change.apply(to: &ledger).count, 1)
+        let undone = try LedgerCodec.decode(stoppedSnapshot)
+        XCTAssertEqual(FixedFlowArrangement.stopped(in: undone, now: now).map(\.id), [plan.id])
+        XCTAssertFalse(FixedFlows.month(containing: now, in: undone).occurrences.contains { $0.date == date("2026-10-29") })
+    }
+    func testResumePlansAndRentsStoppedBeforeTheirFirstDateRestoresOriginalArrangements() throws {
+        var ledger = fixture()
+        let plan = Plan(title: "尚未开始", amount: 8000, dueDate: date("2026-10-29"), frequency: .monthly)
+        let rent = Rent(title: "下月房租", monthlyTotal: 20_000, personalShare: 10_000, startDate: date("2026-11-01"), nextDueDate: date("2026-11-01"))
+        ledger.plans = [plan]; ledger.rents = [rent]
+        try ChangeSet(source: "用户操作", reason: "停掉", items: [.endPlan(plan.id, now), .endPlan(rent.id, now)]).apply(to: &ledger)
+        XCTAssertFalse(ledger.plans[0].active); XCTAssertFalse(ledger.rents[0].active)
+        for id in [plan.id, rent.id] { try FixedFlows.resume(id: id, in: ledger, now: now).apply(to: &ledger) }
+        ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        XCTAssertEqual(ledger.plans, [plan]); XCTAssertEqual(ledger.rents, [rent])
+        XCTAssertTrue(FixedFlowArrangement.stopped(in: ledger, now: now).isEmpty)
+        XCTAssertEqual(Set(FixedFlowArrangement.rows(in: ledger, now: now).map(\.id)), [plan.id, rent.id])
+        XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).occurrences.contains { $0.planID == plan.id })
+        XCTAssertTrue(FixedFlows.month(containing: date("2026-11-01"), in: ledger).occurrences.contains { $0.rentID == rent.id })
+    }
+    func testResumeLegacyEndedAndInactiveArrangements() throws {
+        var ledger = fixture(); var plan = salary(); plan.endDate = date("2026-10-20")
+        var rent = Rent(monthlyTotal: 20_000, personalShare: 10_000, startDate: date("2026-09-01"), nextDueDate: date("2026-10-01"))
+        rent.endDate = date("2026-10-20")
+        var inactive = salary(); inactive.active = false
+        var inactiveRent = rent; inactiveRent.id = UUID(); inactiveRent.endDate = nil; inactiveRent.active = false
+        ledger.plans = [plan, inactive]; ledger.rents = [rent, inactiveRent]
+        for id in [plan.id, inactive.id, rent.id, inactiveRent.id] { try FixedFlows.resume(id: id, in: ledger, now: now).apply(to: &ledger) }
+        XCTAssertTrue(ledger.plans.allSatisfy { $0.active && $0.endDate == nil && $0.stoppedAt == nil })
+        XCTAssertTrue(ledger.rents.allSatisfy { $0.active && $0.endDate == nil && $0.stoppedAt == nil })
+        XCTAssertEqual(FixedFlowArrangement.rows(in: ledger, now: now).count, 4)
+    }
+    func testResumeRejectsMissingActiveAndFutureEndedPlansAndKeepsChangesAtomic() throws {
+        var ledger = fixture(); let active = salary(); var future = salary(); future.endDate = date("2026-11-20")
+        var stopped = salary(); stopped.stoppedAt = now; stopped.endDate = now
+        ledger.plans = [active, future, stopped]
+        for id in [UUID(), active.id, future.id] { XCTAssertThrowsError(try FixedFlows.resume(id: id, in: ledger, now: now)) }
+        var stale = ChangeSet(source: "用户操作", reason: "恢复", items: [.resumePlan(UUID()), .resumePlan(active.id), .resumePlan(future.id)])
+        stale.createdAt = now
+        let before = ledger
+        XCTAssertEqual(try stale.apply(to: &ledger).count, 3); XCTAssertEqual(ledger, before)
+        var change = try FixedFlows.resume(id: stopped.id, in: ledger, now: now)
+        change.items.append(.addEntry(EntryDraft(date: now, amount: 100, accountID: ledger.accounts[0].id, title: "未确认")))
+        XCTAssertThrowsError(try change.apply(to: &ledger)); XCTAssertEqual(ledger, before)
+    }
     func testSettleOutflowMovesCashOnceRemovesOverdueAndSnapshotUndoRestoresState() throws {
         var ledger = fixture(); let plan = Plan(title: "房租", amount: 100_000, dueDate: date("2026-10-10"))
         ledger.plans = [plan]
@@ -288,8 +432,8 @@ final class FixedBillsTests: XCTestCase {
     func testLegacyPlanAndDraftDecodeWithoutNewKeysAndNewFieldsRoundTrip() throws {
         let legacyPlan = #"{"id":"D2B1F585-7829-44B6-A1AE-C3D1847F45A5","title":"房租","amount":10000,"dueDate":0,"frequency":"monthly","inflow":false,"category":"居住","nature":"expense","active":true,"note":""}"#
         var plan = try JSONDecoder().decode(Plan.self, from: Data(legacyPlan.utf8))
-        XCTAssertFalse(plan.autoPay); XCTAssertNil(plan.autoPaySince); XCTAssertNil(plan.installments); XCTAssertFalse(plan.estimated)
-        plan.autoPay = true; plan.autoPaySince = now; plan.installments = 12; plan.estimated = true
+        XCTAssertFalse(plan.autoPay); XCTAssertNil(plan.autoPaySince); XCTAssertNil(plan.installments); XCTAssertFalse(plan.estimated); XCTAssertNil(plan.stoppedAt)
+        plan.autoPay = true; plan.autoPaySince = now; plan.installments = 12; plan.estimated = true; plan.stoppedAt = now
         XCTAssertEqual(try JSONDecoder().decode(Plan.self, from: JSONEncoder().encode(plan)), plan)
         let legacyDraft = #"{"id":"D2B1F585-7829-44B6-A1AE-C3D1847F45A5","date":0,"amount":10000,"amountConfirmed":true,"nature":"expense","accountID":"D2B1F585-7829-44B6-A1AE-C3D1847F45A5","title":"房租","category":"居住"}"#
         var draft = try JSONDecoder().decode(EntryDraft.self, from: Data(legacyDraft.utf8))

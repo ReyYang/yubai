@@ -83,6 +83,30 @@ final class ManualBookkeepingTests: XCTestCase {
         XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: now), 121_800)
         XCTAssertEqual(Finance.balance(ledger.accounts[1], in: ledger, at: now), 503_200)
     }
+    func testTimelineFiltersCombineWithSearchAndOnlyIncludeUncategorizedEntries() {
+        var ledger = fixture(); let account = ledger.accounts[0].id
+        let categories = ["", " \n ", Classification.pendingCategory, "其他支出", "餐饮"]
+        ledger.entries = categories.enumerated().map { index, category in
+            Entry(date: now.addingTimeInterval(Double(-index)), amount: 3200, accountID: account, title: "午饭", category: category)
+        }
+        ledger.entries[3].classificationReason = "没分类"; ledger.entries[4].note = "朋友聚餐"
+        ledger.categoryAliases["餐饮"] = "吃喝"
+        let income = Entry(date: now.addingTimeInterval(-10), amount: 5000, nature: .income, accountID: account, title: "奖金", category: "奖金")
+        var deleted = ledger.entries[0]; deleted.id = UUID(); deleted.deletedAt = now
+        ledger.entries += [income, deleted]
+        func ids(_ filter: EntryTimeline.Filter, _ query: String = "") -> [UUID] {
+            EntryTimeline.months(sortedEntries: ledger.entries, ledger: ledger, search: query, filter: filter).flatMap(\.days).flatMap(\.entries).map(\.id)
+        }
+        XCTAssertEqual(ids(.all).count, 6)
+        XCTAssertEqual(ids(.uncategorized), Array(ledger.entries.prefix(4)).map(\.id))
+        XCTAssertEqual(ids(.expense), Array(ledger.entries.prefix(5)).map(\.id))
+        XCTAssertEqual(ids(.income), [income.id]); XCTAssertEqual(ids(.income, "32"), [])
+        XCTAssertEqual(ids(.expense, "朋友"), [ledger.entries[4].id])
+        XCTAssertEqual(ids(.uncategorized, "32.00").count, 4)
+        XCTAssertEqual(ids(.uncategorized, "没分类").count, 4)
+        XCTAssertEqual(ids(.expense, "吃喝"), [ledger.entries[4].id])
+        XCTAssertFalse(EntryTimeline.isUncategorized(Entry(date: now, amount: 100, accountID: account, title: "其他", category: "其他支出")))
+    }
     func testTimelineSearchDayNetAndMonthlyCashFlowUseSameRules() throws {
         var ledger = fixture(); let a = ledger.accounts[0].id
         ledger.entries = [Entry(date: now, amount: 3200, accountID: a, title: "午饭", category: "餐饮"), Entry(date: Dates.addDays(-1, to: now), amount: 800_000, nature: .income, accountID: a, title: "工资", category: "工资"), Entry(date: Dates.addDays(-1, to: now), amount: 238_000, nature: .repayment, accountID: a, title: "还款"), Entry(date: now, amount: 200, nature: .refund, accountID: a, title: "退款", category: "餐饮")]
@@ -92,6 +116,7 @@ final class ManualBookkeepingTests: XCTestCase {
         let months = EntryTimeline.months(sortedEntries: sorted, ledger: ledger)
         XCTAssertEqual(months.count, 1); XCTAssertEqual(months[0].days.count, 2)
         XCTAssertEqual(months[0].days[0].net, -3000); XCTAssertEqual(months[0].days[1].net, 562_000)
+        XCTAssertEqual(months[0].days[0].spending, 3000); XCTAssertEqual(months[0].days[1].spending, 0)
         let summary = Finance.cashFlow(ledger, during: Dates.calendar.dateInterval(of: .month, for: now)!)
         XCTAssertEqual(months[0].spending, summary.spending); XCTAssertEqual(months[0].income, summary.income)
         for query in ["午饭", "外卖", "工作日", "餐饮", "微信零钱", "32", "32.00", "−32.00", "-32.00", "¥32.00"] {
