@@ -159,7 +159,7 @@ enum YubaiSize {
     static let tabbarHeight: CGFloat = 62
     #if os(iOS)
     static let floatingTabbarHeight: CGFloat = 66
-    static let floatingTabbarBottom: CGFloat = 22
+    static let floatingTabbarBottom: CGFloat = 8
     #endif
     static let barMax: CGFloat = 24
     static let lineWidth: CGFloat = 2
