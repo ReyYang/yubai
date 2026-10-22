@@ -177,7 +177,7 @@ private struct LedgerEntryRow: View {
                     .accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
             }.clipped().contentShape(Rectangle())
             #if os(iOS)
-            .gesture(HorizontalPan(changed: { distance in
+            .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
                 if distance < 0 { revealedEntryID = entry.id }
                 offset = max(-84, min(0, resting + distance))
             }, ended: { distance, _ in

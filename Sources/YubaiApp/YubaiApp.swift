@@ -303,7 +303,7 @@ struct RootView: View {
     #if os(iOS)
     @State private var hiddenTabBars: [Destination: Bool] = [:]
     @State private var keyboardVisible = false
-    @State private var scrolledTab: Destination? = .overview
+    @State private var visibleTab: Destination = .overview
     #endif
     var body: some View {
         @Bindable var store = store
@@ -385,37 +385,48 @@ struct RootView: View {
             NavigationStack { tabRoot(store.destination) }.id(store.destination)
         }
         #else
-        ScrollView(.horizontal) {
-            HStack(spacing: 0) {
-                ForEach(Destination.allCases) { d in
-                    tabNavigation(d).containerRelativeFrame(.horizontal).id(d)
-                        .accessibilityHidden(store.destination != d)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(Destination.allCases) { d in
+                        tabNavigation(d).containerRelativeFrame(.horizontal).id(d)
+                            .accessibilityHidden(store.destination != d)
+                    }
+                }.scrollTargetLayout()
+            }.scrollTargetBehavior(.paging)
+                .scrollIndicators(.hidden)
+                .scrollDisabled(store.pagingLocked || hiddenTabBars[store.destination] == true || store.sheet != nil || store.pickingInsightDates)
+                .scrollClipDisabled()
+                .background(YubaiColor.canvas.ignoresSafeArea())
+                .onScrollGeometryChange(for: Destination.self) { tab(at: $0) } action: { _, next in
+                    visibleTab = next
+                    if store.destination != next { store.destination = next }
                 }
-            }.scrollTargetLayout()
-        }.scrollTargetBehavior(.paging).scrollPosition(id: $scrolledTab, anchor: .center)
-            .scrollIndicators(.hidden)
-            .scrollDisabled(store.pagingLocked || hiddenTabBars[store.destination] == true || store.sheet != nil || store.pickingInsightDates)
-            .scrollClipDisabled()
-            .background(YubaiColor.canvas.ignoresSafeArea())
-            .onChange(of: scrolledTab) { _, next in
-                if let next, next != store.destination { store.destination = next }
-            }
-            .onChange(of: store.destination) { _, next in
-                guard next != scrolledTab else { return }
-                withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scrolledTab = next }
-            }
-            .onAppear { scrolledTab = store.destination }
-            .overlay(alignment: .bottom) {
-                if hiddenTabBars[store.destination] != true {
-                    FloatingTabBar().padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSize.floatingTabbarBottom)
-                        .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
+                .onChange(of: store.destination) { _, next in
+                    if next != visibleTab { scrollTo(next, using: proxy) }
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboardVisible = false }
+                .onAppear { proxy.scrollTo(store.destination, anchor: .leading) }
+                .overlay(alignment: .bottom) {
+                    if hiddenTabBars[store.destination] != true {
+                        FloatingTabBar { scrollTo($0, using: proxy) }
+                            .padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSize.floatingTabbarBottom)
+                            .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboardVisible = false }
+        }
         #endif
     }
     #if os(iOS)
+    private func tab(at geometry: ScrollGeometry) -> Destination {
+        guard geometry.containerSize.width > 0 else { return store.destination }
+        let index = Int(((geometry.contentOffset.x + geometry.contentInsets.leading) / geometry.containerSize.width).rounded())
+        return Destination.allCases[max(0, min(Destination.allCases.count - 1, index))]
+    }
+    private func scrollTo(_ d: Destination, using proxy: ScrollViewProxy) {
+        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo(d, anchor: .leading) }
+    }
     private func tabNavigation(_ d: Destination) -> some View {
         NavigationStack {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
@@ -490,6 +501,7 @@ private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var selection
+    var select: (Destination) -> Void
     var body: some View {
         HStack(spacing: 0) {
             tab(.overview); tab(.insights)
@@ -509,7 +521,7 @@ private struct FloatingTabBar: View {
     }
     private func tab(_ d: Destination) -> some View {
         let selected = store.destination == d
-        return Button { store.destination = d } label: {
+        return Button { select(d) } label: {
             VStack(spacing: 2) {
                 Group {
                     if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit().frame(width: 20, height: 20) }

@@ -64,7 +64,7 @@ struct ButlerCardView: View {
             }.allowsHitTesting(false) }
             .onPreferenceChange(ButlerCardWidth.self) { width = $0 }
             #if os(iOS)
-            .gesture(HorizontalPan(changed: { distance in
+            .gesture(HorizontalPan(shouldBegin: { $0 < 0 }, changed: { distance in
                 swipe = max(-width, min(0, distance))
             }, ended: { distance, velocity in
                 if -distance > width * 0.25 || (velocity < -650 && distance < -20) { store.dismissCard(card.id) }

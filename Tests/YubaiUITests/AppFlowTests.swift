@@ -45,6 +45,17 @@ final class AppFlowTests: XCTestCase {
         let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: app.buttons[identifier])
         XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed, file: file, line: line)
     }
+    private func assertCurrentTab(_ identifier: String, content: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        assertSelectedTab(identifier, in: app, file: file, line: line)
+        let element = app.buttons[content]
+        let visible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.minX, app.frame.minX, file: file, line: line)
+        XCTAssertLessThanOrEqual(element.frame.maxX, app.frame.maxX, file: file, line: line)
+        for other in ["tab_overview", "tab_insights", "tab_entries", "tab_settings"] where other != identifier {
+            XCTAssertFalse(app.buttons[other].isSelected, file: file, line: line)
+        }
+    }
 
     private func addEntryTab(_ app: XCUIApplication) -> XCUIElement {
         app.buttons["addEntry"]
@@ -329,6 +340,37 @@ final class AppFlowTests: XCTestCase {
         assertSelectedTab("tab_settings", in: app)
     }
 
+    func testTabTapReturnsToLedgerAfterRightSwipe() {
+        let app = application("ask"); app.launch(); tap(app.buttons["tab_entries"], in: app)
+        assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
+        for _ in 0..<3 {
+            let start = app.staticTexts["本月支出"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: app.frame.width * 0.6, dy: 0)))
+            assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+            tap(app.buttons["tab_entries"], in: app)
+            assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
+        }
+        tap(app.buttons["tab_entries"], in: app)
+        assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
+    }
+
+    func testTabTapReturnsToOverviewAfterLeftSwipe() {
+        let app = application("ask"); app.launch()
+        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+        let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2))
+        let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
+        for _ in 0..<3 {
+            right.press(forDuration: 0.05, thenDragTo: left)
+            assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+            tap(app.buttons["tab_overview"], in: app)
+            assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+        }
+        tap(app.buttons["tab_entries"], in: app)
+        assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
+        tap(app.buttons["tab_overview"], in: app)
+        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+    }
+
     func testHorizontalFiltersKeepPagingAndVerticalScrollingSeparate() {
         let app = application("entries"); app.launch()
         tap(app.buttons["tab_entries"], in: app)
@@ -387,6 +429,47 @@ final class AppFlowTests: XCTestCase {
         assertSelectedTab("tab_overview", in: app)
         XCTAssertTrue(app.buttons["fundsFormula"].isHittable)
         XCTAssertFalse(app.buttons["支出 · 按类型"].exists)
+    }
+
+    func testButlerRightSwipeAtFirstPagePreservesCardAndPaging() {
+        let app = application("restrain"); app.launch()
+        let title = app.staticTexts["butlerTitle_restrain"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        let card = app.descendants(matching: .any).matching(identifier: "butlerCard_restrain").firstMatch
+        for velocity in [XCUIGestureVelocity.slow, XCUIGestureVelocity(1000)] {
+            let start = card.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.35))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: card.frame.width * 0.7, dy: 0)), withVelocity: velocity, thenHoldForDuration: 0)
+            assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+            XCTAssertTrue(title.isHittable); assertGone(app.buttons["知道了"])
+        }
+        let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2))
+        let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
+        right.press(forDuration: 0.05, thenDragTo: left)
+        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        left.press(forDuration: 0.05, thenDragTo: right)
+        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+        XCTAssertTrue(title.isHittable)
+    }
+
+    func testClosedLedgerRowPagesRightAndRevealedRowClosesFirst() {
+        let app = application("ask"); app.launch(); tap(app.buttons["tab_entries"], in: app)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let delete = app.buttons[row.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
+        row.swipeRight()
+        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        XCTAssertFalse(app.textFields["editEntryAmount"].exists)
+        tap(app.buttons["tab_entries"], in: app)
+        assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
+        assertGone(delete)
+        row.swipeLeft()
+        XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
+        row.swipeRight()
+        assertGone(delete)
+        assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
+        row.swipeRight()
+        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        XCTAssertFalse(app.textFields["editEntryAmount"].exists)
     }
 
     func testRevealedLedgerRowConsumesSwipesInBothDirections() {

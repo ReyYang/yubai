@@ -352,6 +352,7 @@ struct TabBarVisibility: ViewModifier {
 
 struct HorizontalPan: UIGestureRecognizerRepresentable {
     var allowsSubgestures = false
+    var shouldBegin: (CGFloat) -> Bool = { _ in true }
     var changed: (CGFloat) -> Void = { _ in }
     var ended: (CGFloat, CGFloat) -> Void = { _, _ in }
     var cancelled: () -> Void = {}
@@ -361,7 +362,8 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
         pan.delegate = context.coordinator
         return pan
     }
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator(allowsSubgestures: allowsSubgestures) }
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator(allowsSubgestures: allowsSubgestures, shouldBegin: shouldBegin) }
+    func updateUIGestureRecognizer(_ pan: UIPanGestureRecognizer, context: Context) { context.coordinator.shouldBegin = shouldBegin }
     func handleUIGestureRecognizerAction(_ pan: UIPanGestureRecognizer, context: Context) {
         let distance = pan.translation(in: pan.view).x
         switch pan.state {
@@ -373,11 +375,12 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
     }
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         let allowsSubgestures: Bool
-        init(allowsSubgestures: Bool) { self.allowsSubgestures = allowsSubgestures }
+        var shouldBegin: (CGFloat) -> Bool
+        init(allowsSubgestures: Bool, shouldBegin: @escaping (CGFloat) -> Bool) { self.allowsSubgestures = allowsSubgestures; self.shouldBegin = shouldBegin }
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
             let translation = pan.translation(in: pan.view)
-            return abs(translation.x) > abs(translation.y) && abs(translation.x) > 0
+            return abs(translation.x) > abs(translation.y) && abs(translation.x) > 0 && shouldBegin(translation.x)
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
             guard let scroll = other.view as? UIScrollView, other === scroll.panGestureRecognizer else { return false }

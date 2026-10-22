@@ -33,6 +33,8 @@ Status: open
 
 2026-10-22 owner 根据 main 真机验收要求修复[标签栏与分页回归](issues/13-complete-personal-release.md#2026-10-22--标签栏与分页回归owner-真机反馈)：采用实色暖纸浮栏、贯穿安全区的 canvas、仅四根页原生横向分页与页内横拖优先；[vphone 后续要求](issues/13-complete-personal-release.md#2026-10-22--页内横滑复验owner-vphone-反馈)已接入位移判向、横向分页等待、账目单行展开及关闭协调，macOS 保持，Apple 设备复验待做。
 
+2026-10-22 owner 的 [bd8b1b2 复测规则](issues/13-complete-personal-release.md#2026-10-22--分页同步与右滑归属owner-vphone-复测)：tab 点击直接滚动、实际分页位置同步高亮；未展开账目行与管家卡只接左滑、右滑让给分页，展开行仍双向处理并锁页，其余已通过手势及 macOS 保持。源码与 4 个 UI 用例已补，Linux 406 项、0 失败，Apple UI 复验待做。
+
 2026-10-22 owner 确认[固定收付「会回来的账单」四稿](issues/13-complete-personal-release.md#2026-10-22--固定收付会回来的账单owner-确认稿)：在 #25 Core 上接入当月账单、主动结清与撤销、分期／自动记、跨月到期卡、发薪期限及手动记账匹配；不改变 Core。Linux 396 项测试通过（392 通过、4 项原有跳过），新增 8 条 UI 用例仅语法解析，Apple 验收待做。
 
 当前目的地为上方的「余白 2.0 · 管家」。历史 1.0 目的地：交付可供用户本人使用的完整余白，iPhone 优先、Mac 可用，覆盖分散账户、导入与纠正、动态资金安排、房租分摊、负债/投资、购买判断、备份与恢复。2026-10-01 的自主实施委托已取代原建图阶段「仅规划、不编码」的范围；采用决定、实际验证及安装缺口见 [第 13 票](issues/13-complete-personal-release.md)。

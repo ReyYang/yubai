@@ -243,3 +243,11 @@ owner 在分支 `fix/tabbar-gesture-regression`、HEAD `2be7adb` 的 vphone 实�
 Agent 核对与实现：起手仅按瞬时速度判定、优先关系依赖 UIKit 子视图关系，以及每行独立 resting 确实存在于源码。改为按位移判方向、仅让可横滚／paging UIScrollView 的 pan 等待页内识别器失败；EntriesView 共享展开 ID，保持原生取消轻点与 ScrollView 竖滚，用 simultaneous tap、scroll phase、destination／sheet 观察关闭展开。管家原阈值已符合要求，通过共用识别器修正；[源码映射与边界](../../../.design-meta/DESIGN.md#2026-10-22--页内横滑复验修复)。
 
 Linux 指定 swift test 退出 0：406 项、402 通过／4 项原有实网跳过／0 失败；改动 App 文件 iOS 26／macOS 14、UI 测试 iOS 26 语法解析通过。原 38 个测试方法全部保留、新增 4 个并扩充慢拖／快扫／竖滚断言，无新增跳过。当前没有 Xcode／vphone 工具，UI 实跑、Apple SDK 类型检查与设备手势复验仍待做，本票不标记完成。docs／原稿／Figma／分发包未改，未提交／推送。
+
+## 2026-10-22 · 分页同步与右滑归属（owner vphone 复测）
+
+owner 在 `fix/tabbar-gesture-regression`／HEAD `bd8b1b2` 复测发现：账目右滑到洞察后点账目、现在左滑到洞察后点现在，只移高亮不切页，还曾出现现在页高亮账目；其余手势已通过，不再调整。明确要求点击 tab 必须滚到对应页，滑动后当前页与高亮同步；调整未展开账目行为为只接左滑露出删除，右滑让给分页，已展开仍左右接收并锁分页；管家卡同样只接左滑、右滑交给分页。macOS、docs／设计稿保持，不提交／推送。
+
+Agent 实现选择：移除同时承担命令与位置报告的 `scrolledTab` 绑定，每次 tab 点击直接 `ScrollViewReader.scrollTo`，由实际分页偏移回写 destination；外部 destination 跳转保留，位置报告阻止反馈循环。`HorizontalPan` 增加起手方向闭包并动态更新协调器，复用全部既有左滑阈值和展开协调；[源码映射](../../../.design-meta/DESIGN.md#2026-10-22--分页同步与右滑归属复验)。未将系统 ID 回写滞后的具体触发因素当作设备已证实的结论。
+
+指定 Linux swift test 退出 0：406 项、402 通过／4 项原有实网跳过／0 失败；四个 App 文件通过 iOS 26／macOS 14、UI 测试通过 iOS 26 语法解析。原 43 个测试方法保留，新增 4 个覆盖两条点回路径（含实际内容屏内位置）、账目收回前后右滑及管家快慢右滑的首页边界／后续分页。无 Xcode／vphone，Apple SDK 类型检查与 UI 实跑待做，本票保持 in-progress；docs／原稿／Figma／分发包未改，未提交／推送。
