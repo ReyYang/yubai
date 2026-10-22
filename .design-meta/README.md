@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-22 V14 旧期补修**：已停掉行原地显示并结算／跳过全部到期未结算期（含跨月、部分已付），头部与该行共用余额，处理后保留结果与恢复；还能花的未付预留与预期收入同源更新，详见[设计记录](DESIGN.md#第十四轮--状态与停掉)及 [owner 补充](../.scratch/yubai-product/issues/13-complete-personal-release.md#同日补充--已停掉旧期原地处理owner-明确要求)。指定 swift test：417 项、413 通过／4 项原有跳过／0 失败；新增 4 项 Core 回归，App 全文件 iOS 26／改动文件 macOS 14 语法解析通过，Apple SDK 类型检查与 UI 实跑待做，原稿／Figma／分发包未同步，未提交／推送。
+
 **2026-10-22 固定收付第十四轮**：owner 确认 V14 三张稿与 `notes.v14n`；已采用明确状态副标题、逾期金额、描边「付了／收到了」、已记灰勾、未到长按提前标记及停止前结算／跳过全部到期未记期。[源码映射、旧数据边界与差异](DESIGN.md#第十四轮--状态与停掉)、[owner 决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--固定收付状态与停掉owner-确认-v14)。停掉只在「已停掉」出现，跳过持久化且恢复不重生。指定 swift test：413 项、409 通过／4 项原有跳过／0 失败；App 改动通过 iOS 26／macOS 14、UI 测试通过 iOS 26 条件语法解析。新增 7 项 Core／3 项 UI 测试，原测试全部保留；Apple SDK 构建、UI 实跑和设备验收待做。`docs/`、设计稿和依赖未改，未提交／推送。
 
 **2026-10-22 分页同步与右滑归属复验**：按 owner 对 `bd8b1b2` 的 vphone 反馈，tab 点击改为每次直接滚动，实际分页偏移回写当前页与高亮；未展开账目行及管家卡只接左滑，右滑交给分页，账目展开后双向处理与锁页保持。[实现与验证边界](DESIGN.md#2026-10-22--分页同步与右滑归属复验)、[owner 规则](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--分页同步与右滑归属owner-vphone-复测)。指定 swift test：406 项、402 通过／4 项原有跳过／0 失败；四个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 语法解析通过，保留原 43 个测试方法并新增 4 个。Apple SDK 类型检查、UI 实跑待做，其余手势、macOS、`docs/` 和设计稿保持，未提交／推送。

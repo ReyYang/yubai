@@ -244,13 +244,20 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
     public let id: UUID; public let title: String; public let detail: String; public let amount: Int64; public let inflow: Bool; public let canEnd: Bool
     public var paidCount: Int = 0; public var total: Int? = nil
     public var stoppedAt: Date? = nil
+    public var pending: [Occurrence] = []
+    public var pendingAmount: Int64 { pending.reduce(0) { $0 + $1.amount } }
     public static func stopped(in ledger: Ledger, now: Date = Date()) -> [Self] {
         let payments = FixedFlowPayments(in: ledger)
+        let pendingByPlan = Dictionary(grouping: Finance.occurrences(in: ledger, now: now, days: 1).filter { $0.planID != nil && Dates.day($0.date) <= Dates.day(now) }, by: { $0.planID! })
         var rows = ledger.plans.compactMap { plan -> Self? in
             let date = plan.stoppedAt ?? plan.endDate
             guard date.map({ $0 <= now }) ?? !plan.active else { return nil }
             var detail = date.map { "\(Dates.calendar.component(.month, from: $0))月\(Dates.calendar.component(.day, from: $0))日停掉" } ?? "已停掉"
-            if let date {
+            let pending = pendingByPlan[plan.id] ?? []
+            if pending.count > 1 { detail += " · 还有 \(pending.count) 期没记" }
+            else if let row = pending.first {
+                detail += " · \(Dates.calendar.component(.day, from: row.date))日那期" + (plan.inflow ? "还没收到" : "还没记")
+            } else if let date {
                 var original = plan; original.endDate = nil
                 let end = Dates.addDays(1, to: Dates.day(date)).addingTimeInterval(-0.001)
                 if let last = original.schedule(through: end).last {
@@ -260,7 +267,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
                 }
             }
             return Self(id: plan.id, title: plan.title, detail: detail,
-                        amount: payments.amount(for: plan), inflow: plan.inflow, canEnd: false, total: plan.installments, stoppedAt: date)
+                        amount: payments.amount(for: plan), inflow: plan.inflow, canEnd: false, total: plan.installments, stoppedAt: date, pending: pending)
         }
         rows += ledger.rents.compactMap { rent -> Self? in
             let date = rent.stoppedAt ?? rent.endDate

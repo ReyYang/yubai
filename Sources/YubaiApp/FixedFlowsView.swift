@@ -7,7 +7,7 @@ struct FixedFlowsView: View {
     var body: some View {
         let ledger = store.current
         let month = store.fixedFlowMonth
-        let stopped = FixedFlowArrangement.stopped(in: ledger)
+        let stopped = month.stopped
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
@@ -81,23 +81,51 @@ struct FixedFlowsView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             Text("已停掉").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.leading, YubaiSpace.insetCard)
             CardRows(rows) { row in
-                HStack(spacing: YubaiSpace.gapGroup) {
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     HStack(spacing: YubaiSpace.gapGroup) {
-                        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                            Text(row.title).yubaiFont(YubaiFont.rowTitle)
-                            Text(row.detail).yubaiFont(YubaiFont.caption)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts,
-                                    sign: row.inflow ? .inflow : .none, fractionDigits: row.amount % 100 == 0 ? 0 : 2, ink: YubaiColor.labelSecondary)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }.foregroundStyle(YubaiColor.labelSecondary).opacity(0.7)
-                    Button("恢复") { resume(row) }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
-                        .frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
-                        .accessibilityLabel("恢复" + row.title).accessibilityIdentifier("resumeFixedFlow_" + row.id.uuidString)
+                        HStack(spacing: YubaiSpace.gapGroup) {
+                            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                                Text(row.title).yubaiFont(YubaiFont.rowTitle)
+                                Text(row.detail).yubaiFont(YubaiFont.caption)
+                                    .foregroundStyle(row.pending.isEmpty ? YubaiColor.labelSecondary : YubaiColor.amberInk)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            let amount = row.pending.isEmpty ? row.amount : row.pendingAmount
+                            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts,
+                                        sign: row.inflow ? .inflow : .none, fractionDigits: amount % 100 == 0 ? 0 : 2, ink: YubaiColor.labelSecondary)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }.foregroundStyle(YubaiColor.labelSecondary).opacity(row.pending.isEmpty ? 0.7 : 1)
+                        Button("恢复") { resume(row) }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
+                            .frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
+                            .accessibilityLabel("恢复" + row.title).accessibilityIdentifier("resumeFixedFlow_" + row.id.uuidString)
+                    }
+                    if !row.pending.isEmpty {
+                        HStack(spacing: YubaiSpace.gapGroup) {
+                            stoppedAction(row.inflow ? "收到了" : "付了", row: row, resolution: .settle)
+                            stoppedAction("不要了", row: row, resolution: .skip)
+                        }
+                    }
                 }.padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).accessibilityElement(children: .contain)
                     .accessibilityIdentifier("stoppedFixedFlow_" + row.id.uuidString)
             }
         }
+    }
+    private func stoppedAction(_ title: String, row: FixedFlowArrangement, resolution: FixedFlowStopResolution) -> some View {
+        let ink = resolution == .skip ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.amberInk
+        return Button(title) { resolve(row, resolution) }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(ink)
+            .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowIcon)
+            .overlay { Capsule().strokeBorder(ink, lineWidth: 1.5) }.yubaiHitTarget().buttonStyle(PressButtonStyle())
+            .accessibilityLabel(title + row.title + "的全部 \(row.pending.count) 期")
+            .accessibilityIdentifier((resolution == .settle ? "settleStoppedFixedFlow_" : "skipStoppedFixedFlow_") + row.id.uuidString)
+    }
+    private func resolve(_ row: FixedFlowArrangement, _ resolution: FixedFlowStopResolution) {
+        do {
+            let change = try FixedFlows.resolveStopped(planID: row.id, resolution: resolution, in: store.current)
+            if store.apply(change, label: row.title + (resolution == .settle ? "已记下" : "不要了")) {
+                store.cancelEntrySaveMotion()
+                if resolution == .settle { store.fixedFlowSettleTrigger &+= 1 }
+                store.toast = resolution == .settle ? "已记下" : "已不要了"
+            }
+        } catch { store.error = error.localizedDescription }
     }
     private func resume(_ row: FixedFlowArrangement) {
         do {

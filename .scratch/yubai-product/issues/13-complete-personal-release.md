@@ -259,3 +259,9 @@ owner 已确认 r14canvas 的 `V14-Bills`、`V14-Bills-Stop`、`V14-Bills-After`
 Agent 实现选择：用系统 confirmationDialog 呈现稿中的停止 sheet；提前标记保留在未到行长按菜单。新增 ChangeSet 的 `skipOccurrence` 与兼容旧存档的 `Plan.skippedOccurrences`，不生成账目；结算或跳过全部未记期与停止一次应用、快照撤销，恢复不重新出现已跳过的期。月列表排除已停掉行；旧版仅 endPlan 留下的真实未记义务继续计入月余额与 Finance，停止副标题如实写还没记，可恢复后处理，不推测其收付或作废。rentID 专用合租记录沿用此前只读边界。其余来源、映射及稿子差异见[设计记录](../../../.design-meta/DESIGN.md#第十四轮--状态与停掉)。
 
 指定 Linux `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0：413 项、409 通过／4 项原有实网 opt-in 跳过／0 失败。固定收付原 28 个测试方法保留、新增 7 个；UI 原 47 个保留、新增 3 个并更新旧状态／停掉断言。改动 App 文件通过 iOS 26／macOS 14、UI 测试通过 iOS 26 条件语法解析，diff 检查通过；Apple SDK 类型检查、iOS／Mac 构建、UI 实跑、视觉与 VoiceOver 仍待设备验收。本票保持 in-progress；未修改 docs、设计稿或依赖，未提交／推送。
+
+### 同日补充 · 已停掉旧期原地处理（owner 明确要求）
+
+owner 指出旧版停掉工资后仍有未收期，头部金额缺少对应可处理行；要求唯一的已停掉行显示单期「还没收到／还没记」或「还有 N 期没记」，提供结算／不要了，处理后显示已记／没要并保留恢复。实现用 `FixedFlowMonth.stopped` 的全部到期未结算期（含跨月、部分已付）同时生成行金额与头部余额；`resolveStopped` 将全部 `settle` 或 `skipOccurrence` 合为一个 ChangeSet，复用快照撤销，恢复不重生已处理期。Finance 继续预留未付额、记录预期收入，未收款不提前增加还能花；结算用实际现金替换预留，跳过释放未付预留，两者均消除对应待处理额。此补充取代上方旧数据须恢复后处理的适配选择；专用 rentID 的既有只读边界保持。
+
+验证：指定 swift test 退出 0，417 项、413 通过／4 项原有跳过／0 失败，新增 4 项 Core 回归覆盖收支两种处理、单期／跨月多期／部分付款／当天、头部与行余额、Finance／预测、持久化／恢复与缺账户失败；App 全文件 iOS 26／改动文件 macOS 14 语法解析通过，Apple SDK 类型检查和 UI 实跑待做，未提交／推送。

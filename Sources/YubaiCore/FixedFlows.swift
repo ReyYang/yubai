@@ -53,6 +53,7 @@ public struct FixedFlowMonth: Sendable {
     public var date: Date; public var occurrences: [FixedFlowOccurrence]
     public var remainingOutflow: Int64; public var remainingInflow: Int64
     public var overdueOutflow: Int64 = 0
+    public var stopped: [FixedFlowArrangement] = []
 }
 
 extension FixedFlows {
@@ -77,6 +78,17 @@ extension FixedFlows {
         guard let row = FixedFlowArrangement.stopped(in: ledger, now: now).first(where: { $0.id == id }) else { throw YubaiError.invalid("找不到已停掉的安排。") }
         var change = ChangeSet(source: "用户操作", reason: "恢复「\(row.title)」", items: [.resumePlan(id)])
         change.createdAt = now
+        var preview = ledger; try change.apply(to: &preview)
+        return change
+    }
+    public static func resolveStopped(planID: UUID, resolution: FixedFlowStopResolution, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+        guard let row = FixedFlowArrangement.stopped(in: ledger, now: now).first(where: { $0.id == planID }), !row.pending.isEmpty else { throw YubaiError.invalid("找不到已停掉安排的待处理期。") }
+        var items: [ChangeItem] = []
+        for occurrence in row.pending {
+            if resolution == .settle { items += try settle(planID: planID, occurrence: occurrence.date, in: ledger, now: now).items }
+            else { items.append(.skipOccurrence(planID, occurrence.date)) }
+        }
+        var change = ChangeSet(source: "用户操作", reason: "「\(row.title)」" + (resolution == .settle ? "已记下" : "不要了"), items: items); change.createdAt = now
         var preview = ledger; try change.apply(to: &preview)
         return change
     }
@@ -137,13 +149,18 @@ extension FixedFlows {
     public static func month(containing now: Date, in ledger: Ledger) -> FixedFlowMonth {
         let interval = Dates.calendar.dateInterval(of: .month, for: now)!; let end = interval.end.addingTimeInterval(-0.001)
         let today = Dates.day(now); let payments = FixedFlowPayments(in: ledger)
-        let stopped = Set(FixedFlowArrangement.stopped(in: ledger, now: now).map(\.id))
-        var rows: [FixedFlowOccurrence] = []; var outflow: Int64 = 0; var inflow: Int64 = 0; var overdue: Int64 = 0
+        let stopped = FixedFlowArrangement.stopped(in: ledger, now: now); let stoppedIDs = Set(stopped.map(\.id))
+        let pending = stopped.flatMap(\.pending)
+        var rows: [FixedFlowOccurrence] = []
+        var outflow = pending.filter { !$0.inflow }.reduce(Int64(0)) { $0 + $1.amount }
+        var inflow = pending.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
+        var overdue = pending.filter { !$0.inflow && $0.overdue }.reduce(Int64(0)) { $0 + $1.amount }
         func append(id: String, title: String, date: Date, amount: Int64, paid: Int64, remaining: Int64, incoming: Bool, planID: UUID? = nil, rentID: UUID? = nil, autoPay: Bool = false, installment: (index: Int, total: Int)? = nil, estimated: Bool = false) {
             guard date >= interval.start, date < interval.end else { return }
+            if planID.map({ stoppedIDs.contains($0) }) == true { return }
             if incoming { inflow += remaining } else { outflow += remaining }
             if !incoming && Dates.day(date) < today { overdue += remaining }
-            if planID.map({ stopped.contains($0) }) == true || rentID.map({ stopped.contains($0) }) == true { return }
+            if rentID.map({ stoppedIDs.contains($0) }) == true { return }
             rows.append(FixedFlowOccurrence(id: id, title: title, date: date, state: paid > 0 && remaining == 0 ? .paid : (Dates.day(date) <= today ? .due : .upcoming),
                                             amount: paid > 0 && remaining == 0 ? paid : (paid > 0 ? remaining : amount), planID: planID, rentID: rentID, inflow: incoming, autoPay: autoPay,
                                             installment: installment, estimated: estimated))
@@ -177,6 +194,6 @@ extension FixedFlows {
             }
         }
         rows.sort { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
-        return FixedFlowMonth(date: interval.start, occurrences: rows, remainingOutflow: outflow, remainingInflow: inflow, overdueOutflow: overdue)
+        return FixedFlowMonth(date: interval.start, occurrences: rows, remainingOutflow: outflow, remainingInflow: inflow, overdueOutflow: overdue, stopped: stopped)
     }
 }
