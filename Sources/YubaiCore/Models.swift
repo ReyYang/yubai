@@ -141,10 +141,11 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public var endDate: Date?; public var stoppedAt: Date?; public var note = ""
     public var autoPay = false; public var autoPaySince: Date?
     public var installments: Int?; public var estimated = false
+    public var skippedOccurrences: [Date] = []
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = "其他支出", nature: Nature = .expense) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
     }
-    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated }
+    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
@@ -159,6 +160,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         autoPaySince = try c.decodeIfPresent(Date.self, forKey: .autoPaySince)
         installments = try c.decodeIfPresent(Int.self, forKey: .installments)
         estimated = try c.decodeIfPresent(Bool.self, forKey: .estimated) ?? false
+        skippedOccurrences = try c.decodeIfPresent([Date].self, forKey: .skippedOccurrences) ?? []
     }
     func schedule(through end: Date) -> [(index: Int, date: Date)] {
         var result: [(index: Int, date: Date)] = []
@@ -170,6 +172,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         }
         return result
     }
+    func isSkipped(on date: Date) -> Bool { skippedOccurrences.contains { Dates.day($0) == Dates.day(date) } }
     func occurrenceIndex(on date: Date) -> Int? {
         let day = Dates.day(date); let start = Dates.day(dueDate)
         guard day >= start, endDate.map({ day <= Dates.day($0) }) ?? true else { return nil }
@@ -624,8 +627,13 @@ public struct Ledger: Codable, Equatable, Sendable {
         }
         try validateProfileAndCards()
         for change in pendingChanges { try change.validateStructure() }
-        for p in plans { guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true,
-                              p.stoppedAt.map(dateValid) ?? true, p.autoPaySince.map(dateValid) ?? true, p.installments.map({ $0 > 0 }) ?? true else { throw YubaiError.invalid("资金安排信息无效。") } }
+        for p in plans {
+            var schedule = p; schedule.endDate = nil
+            guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true,
+                              p.stoppedAt.map(dateValid) ?? true, p.autoPaySince.map(dateValid) ?? true, p.installments.map({ $0 > 0 }) ?? true,
+                              Set(p.skippedOccurrences.map(Dates.day)).count == p.skippedOccurrences.count,
+                              p.skippedOccurrences.allSatisfy({ dateValid($0) && schedule.occurrenceIndex(on: $0) != nil }) else { throw YubaiError.invalid("资金安排信息无效。") }
+        }
         guard plans.reduce(Int64(0), { $0 + $1.amount }) <= Money.limit else { throw YubaiError.invalid("所有安排总额超出安全计算范围。") }
         for g in goals { guard g.target > 0, g.target <= Money.limit, g.reserved >= 0, g.reserved <= g.target, !g.title.isEmpty else { throw YubaiError.invalid("想存金额或已存金额无效。") } }
         for r in rents { guard r.monthlyTotal > 0, r.monthlyTotal <= Money.limit / 12, r.personalShare >= 0, r.personalShare <= r.monthlyTotal, (1...12).contains(r.monthsPerPayment), (1...28).contains(r.receiveDay), dateValid(r.startDate), dateValid(r.nextDueDate), r.endDate.map({ dateValid($0) && $0 >= r.startDate }) ?? true, r.stoppedAt.map(dateValid) ?? true else { throw YubaiError.invalid("房租金额、分摊或周期无效。") } }

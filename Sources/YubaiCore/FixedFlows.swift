@@ -22,23 +22,57 @@ struct FixedFlowPayments {
     }
     func amount(for plan: Plan) -> Int64 { plan.estimated ? latest[plan.id]?.amount ?? plan.amount : plan.amount }
     func remaining(for plan: Plan, on date: Date) -> Int64 {
+        guard !plan.isSkipped(on: date) else { return 0 }
         let paid = plans[FixedFlowPaymentKey(id: plan.id, day: Dates.day(date)), default: 0]
         return plan.estimated && paid > 0 ? 0 : max(0, amount(for: plan) - paid)
     }
 }
 
 public enum FixedFlowState: String, Sendable { case paid, due, upcoming }
+public enum FixedFlowStopResolution: Sendable { case settle, skip }
 public struct FixedFlowOccurrence: Identifiable, Sendable {
     public var id: String; public var title: String; public var date: Date; public var state: FixedFlowState
     public var amount: Int64; public var planID: UUID?; public var rentID: UUID?; public var inflow: Bool; public var autoPay: Bool
     public var installment: (index: Int, total: Int)?; public var estimated: Bool
+    public func overdueDays(now: Date = Date(), calendar: Calendar = Dates.calendar) -> Int {
+        max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0)
+    }
+    public func statusText(now: Date = Date(), calendar: Calendar = Dates.calendar) -> String {
+        let dateLabel = calendar.isDate(date, inSameDayAs: now) ? "今天" : "\(calendar.component(.day, from: date))日"
+        let days = overdueDays(now: now, calendar: calendar)
+        let status: String
+        switch state {
+        case .paid: status = inflow ? "已收到" : "已付"
+        case .due: status = days > 0 ? "过了 \(days) 天" + (inflow ? "还没收到" : "还没记") : ""
+        case .upcoming: status = "还没到"
+        }
+        return dateLabel + (status.isEmpty ? "" : " · " + status)
+    }
 }
 public struct FixedFlowMonth: Sendable {
     public var date: Date; public var occurrences: [FixedFlowOccurrence]
     public var remainingOutflow: Int64; public var remainingInflow: Int64
+    public var overdueOutflow: Int64 = 0
 }
 
 extension FixedFlows {
+    public static func unsettled(planID: UUID, in ledger: Ledger, now: Date = Date()) -> [Occurrence] {
+        Finance.occurrences(in: ledger, now: now, days: 1).filter { $0.planID == planID && Dates.day($0.date) <= Dates.day(now) }
+    }
+    public static func stop(planID: UUID, resolution: FixedFlowStopResolution? = nil, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+        guard let plan = ledger.plans.first(where: { $0.id == planID && $0.active && $0.endDate == nil }) else { throw YubaiError.invalid("找不到可停掉的安排。") }
+        let pending = unsettled(planID: planID, in: ledger, now: now)
+        guard pending.isEmpty || resolution != nil else { throw YubaiError.invalid("先处理已到期还没记的账单。") }
+        var items: [ChangeItem] = []
+        for row in pending {
+            if resolution == .settle { items += try settle(planID: planID, occurrence: row.date, in: ledger, now: now).items }
+            else { items.append(.skipOccurrence(planID, row.date)) }
+        }
+        items.append(.endPlan(planID, now))
+        var change = ChangeSet(source: "用户操作", reason: "停掉「\(plan.title)」", items: items); change.createdAt = now
+        var preview = ledger; try change.apply(to: &preview)
+        return change
+    }
     public static func resume(id: UUID, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
         guard let row = FixedFlowArrangement.stopped(in: ledger, now: now).first(where: { $0.id == id }) else { throw YubaiError.invalid("找不到已停掉的安排。") }
         var change = ChangeSet(source: "用户操作", reason: "恢复「\(row.title)」", items: [.resumePlan(id)])
@@ -103,16 +137,19 @@ extension FixedFlows {
     public static func month(containing now: Date, in ledger: Ledger) -> FixedFlowMonth {
         let interval = Dates.calendar.dateInterval(of: .month, for: now)!; let end = interval.end.addingTimeInterval(-0.001)
         let today = Dates.day(now); let payments = FixedFlowPayments(in: ledger)
-        var rows: [FixedFlowOccurrence] = []; var outflow: Int64 = 0; var inflow: Int64 = 0
+        let stopped = Set(FixedFlowArrangement.stopped(in: ledger, now: now).map(\.id))
+        var rows: [FixedFlowOccurrence] = []; var outflow: Int64 = 0; var inflow: Int64 = 0; var overdue: Int64 = 0
         func append(id: String, title: String, date: Date, amount: Int64, paid: Int64, remaining: Int64, incoming: Bool, planID: UUID? = nil, rentID: UUID? = nil, autoPay: Bool = false, installment: (index: Int, total: Int)? = nil, estimated: Bool = false) {
             guard date >= interval.start, date < interval.end else { return }
+            if incoming { inflow += remaining } else { outflow += remaining }
+            if !incoming && Dates.day(date) < today { overdue += remaining }
+            if planID.map({ stopped.contains($0) }) == true || rentID.map({ stopped.contains($0) }) == true { return }
             rows.append(FixedFlowOccurrence(id: id, title: title, date: date, state: paid > 0 && remaining == 0 ? .paid : (Dates.day(date) <= today ? .due : .upcoming),
                                             amount: paid > 0 && remaining == 0 ? paid : (paid > 0 ? remaining : amount), planID: planID, rentID: rentID, inflow: incoming, autoPay: autoPay,
                                             installment: installment, estimated: estimated))
-            if incoming { inflow += remaining } else { outflow += remaining }
         }
         for plan in ledger.plans where plan.active {
-            for item in plan.schedule(through: end) where item.date >= interval.start {
+            for item in plan.schedule(through: end) where item.date >= interval.start && !plan.isSkipped(on: item.date) {
                 let paid = payments.plans[FixedFlowPaymentKey(id: plan.id, day: Dates.day(item.date)), default: 0]
                 append(id: "\(plan.id)-\(item.date.timeIntervalSince1970)", title: plan.title, date: item.date, amount: payments.amount(for: plan), paid: paid,
                        remaining: payments.remaining(for: plan, on: item.date), incoming: plan.inflow, planID: plan.id, autoPay: plan.autoPay,
@@ -140,6 +177,6 @@ extension FixedFlows {
             }
         }
         rows.sort { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
-        return FixedFlowMonth(date: interval.start, occurrences: rows, remainingOutflow: outflow, remainingInflow: inflow)
+        return FixedFlowMonth(date: interval.start, occurrences: rows, remainingOutflow: outflow, remainingInflow: inflow, overdueOutflow: overdue)
     }
 }

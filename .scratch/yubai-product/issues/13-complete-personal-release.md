@@ -251,3 +251,11 @@ owner 在 `fix/tabbar-gesture-regression`／HEAD `bd8b1b2` 复测发现：账目
 Agent 实现选择：移除同时承担命令与位置报告的 `scrolledTab` 绑定，每次 tab 点击直接 `ScrollViewReader.scrollTo`，由实际分页偏移回写 destination；外部 destination 跳转保留，位置报告阻止反馈循环。`HorizontalPan` 增加起手方向闭包并动态更新协调器，复用全部既有左滑阈值和展开协调；[源码映射](../../../.design-meta/DESIGN.md#2026-10-22--分页同步与右滑归属复验)。未将系统 ID 回写滞后的具体触发因素当作设备已证实的结论。
 
 指定 Linux swift test 退出 0：406 项、402 通过／4 项原有实网跳过／0 失败；四个 App 文件通过 iOS 26／macOS 14、UI 测试通过 iOS 26 语法解析。原 43 个测试方法保留，新增 4 个覆盖两条点回路径（含实际内容屏内位置）、账目收回前后右滑及管家快慢右滑的首页边界／后续分页。无 Xcode／vphone，Apple SDK 类型检查与 UI 实跑待做，本票保持 in-progress；docs／原稿／Figma／分发包未改，未提交／推送。
+
+## 2026-10-22 · 固定收付状态与停掉（owner 确认 V14）
+
+owner 已确认 r14canvas 的 `V14-Bills`、`V14-Bills-Stop`、`V14-Bills-After` 三稿与 `canvas.json / notes.v14n`，要求解决未处理项实心勾像已付、停掉工资重复、同状态收支样式不同及顶部日期点无意义。采用每行明确状态与 Calendar 逾期天数、到期未处理行的描边「付了／收到了」、已记灰勾／淡化、未到无按钮、逾期未付金额、要付／要收／已停掉三个分区及第十三轮 20／16 留白。停掉前对今天及以前的全部未结算期提供结算后停／跳过后停／取消；停后只在已停掉出现并写最近一期已记或没要。没有未结算期沿用普通确认。
+
+Agent 实现选择：用系统 confirmationDialog 呈现稿中的停止 sheet；提前标记保留在未到行长按菜单。新增 ChangeSet 的 `skipOccurrence` 与兼容旧存档的 `Plan.skippedOccurrences`，不生成账目；结算或跳过全部未记期与停止一次应用、快照撤销，恢复不重新出现已跳过的期。月列表排除已停掉行；旧版仅 endPlan 留下的真实未记义务继续计入月余额与 Finance，停止副标题如实写还没记，可恢复后处理，不推测其收付或作废。rentID 专用合租记录沿用此前只读边界。其余来源、映射及稿子差异见[设计记录](../../../.design-meta/DESIGN.md#第十四轮--状态与停掉)。
+
+指定 Linux `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0：413 项、409 通过／4 项原有实网 opt-in 跳过／0 失败。固定收付原 28 个测试方法保留、新增 7 个；UI 原 47 个保留、新增 3 个并更新旧状态／停掉断言。改动 App 文件通过 iOS 26／macOS 14、UI 测试通过 iOS 26 条件语法解析，diff 检查通过；Apple SDK 类型检查、iOS／Mac 构建、UI 实跑、视觉与 VoiceOver 仍待设备验收。本票保持 in-progress；未修改 docs、设计稿或依赖，未提交／推送。

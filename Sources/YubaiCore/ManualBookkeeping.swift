@@ -249,13 +249,23 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
         var rows = ledger.plans.compactMap { plan -> Self? in
             let date = plan.stoppedAt ?? plan.endDate
             guard date.map({ $0 <= now }) ?? !plan.active else { return nil }
-            return Self(id: plan.id, title: plan.title, detail: schedule(plan.frequency, date: plan.dueDate, now: now),
+            var detail = date.map { "\(Dates.calendar.component(.month, from: $0))月\(Dates.calendar.component(.day, from: $0))日停掉" } ?? "已停掉"
+            if let date {
+                var original = plan; original.endDate = nil
+                let end = Dates.addDays(1, to: Dates.day(date)).addingTimeInterval(-0.001)
+                if let last = original.schedule(through: end).last {
+                    let day = Dates.day(last.date)
+                    let status = plan.isSkipped(on: day) ? "没要" : payments.remaining(for: plan, on: day) == 0 ? "已记" : "还没记"
+                    detail += " · \(Dates.calendar.component(.day, from: day))日那期" + status
+                }
+            }
+            return Self(id: plan.id, title: plan.title, detail: detail,
                         amount: payments.amount(for: plan), inflow: plan.inflow, canEnd: false, total: plan.installments, stoppedAt: date)
         }
         rows += ledger.rents.compactMap { rent -> Self? in
             let date = rent.stoppedAt ?? rent.endDate
             guard date.map({ $0 <= now }) ?? !rent.active else { return nil }
-            return Self(id: rent.id, title: rent.title, detail: "每 \(rent.monthsPerPayment) 月", amount: rent.monthlyTotal * Int64(rent.monthsPerPayment),
+            return Self(id: rent.id, title: rent.title, detail: date.map { "\(Dates.calendar.component(.month, from: $0))月\(Dates.calendar.component(.day, from: $0))日停掉" } ?? "已停掉", amount: rent.monthlyTotal * Int64(rent.monthsPerPayment),
                         inflow: false, canEnd: false, stoppedAt: date)
         }
         return rows.sorted { $0.stoppedAt == $1.stoppedAt ? $0.id.uuidString < $1.id.uuidString : ($0.stoppedAt ?? .distantPast) > ($1.stoppedAt ?? .distantPast) }
@@ -275,7 +285,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
         }.map { plan in
             Self(id: plan.id, title: plan.title, detail: schedule(plan.frequency, date: plan.dueDate, now: now) + (plan.accountID.map { " · " + ledger.accountName($0) } ?? ""),
                  amount: next[plan.id]?.amount ?? payments.amount(for: plan), inflow: plan.inflow, canEnd: plan.endDate == nil,
-                 paidCount: plan.installments == nil ? 0 : payments.plans.keys.filter { $0.id == plan.id && plan.occurrenceIndex(on: $0.day) != nil && payments.remaining(for: plan, on: $0.day) == 0 }.count,
+                 paidCount: plan.installments == nil ? 0 : payments.plans.keys.filter { $0.id == plan.id && plan.occurrenceIndex(on: $0.day) != nil && !plan.isSkipped(on: $0.day) && payments.remaining(for: plan, on: $0.day) == 0 }.count,
                  total: plan.installments)
         }
         rows += ledger.rents.filter { $0.active && ($0.endDate == nil || $0.endDate! > now) }.map { rent in
