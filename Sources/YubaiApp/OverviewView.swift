@@ -93,7 +93,7 @@ struct OverviewView: View {
     }
     private var todayRow: some View {
         let today = store.pendingEntrySave ? (displayedToday ?? TodayEntries(in: store.current)) : TodayEntries(in: store.current)
-        return NavigationLink { EntriesView().yubaiZoomDestination("today") } label: {
+        return Button { store.destination = .entries } label: {
             HStack(spacing: 8) {
                 Text("今天").yubaiFont(YubaiFont.row, weight: .medium)
                 Text(today.count == 0 ? "还没记" : "\(today.count) 笔 · \(today.latest?.displayTitle ?? "")")
@@ -108,7 +108,6 @@ struct OverviewView: View {
                 }
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }.padding(.horizontal, 16).frame(minHeight: 44).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
-                .yubaiZoomSource("today")
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("todayEntries")
     }
     private func nextTitle(_ item: Occurrence) -> some View {

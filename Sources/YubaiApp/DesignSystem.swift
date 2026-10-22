@@ -1084,12 +1084,12 @@ extension View {
             .environment(\.defaultMinListRowHeight, YubaiSize.buttonHeight).scrollDismissesKeyboard(.interactively)
             .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).tint(YubaiColor.brand).buttonStyle(.automatic)
     }
-    func yubaiNavigation() -> some View {
+    func yubaiNavigation(hidesTabBar: Bool = true) -> some View {
         self.paperBackground().tint(YubaiColor.brandInk)
             #if os(iOS)
             .toolbar(.visible, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .tabBar)
+            .toolbar(hidesTabBar ? .hidden : .visible, for: .tabBar)
             #elseif os(macOS)
             .toolbarBackground(YubaiColor.canvas, for: .windowToolbar).toolbarBackground(.visible, for: .windowToolbar)
             #endif

@@ -4,10 +4,10 @@ import LocalAuthentication
 import YubaiCore
 
 enum Destination: String, CaseIterable, Identifiable {
-    case overview, insights, settings
+    case overview, insights, entries, settings
     var id: Self { self }
-    var title: String { switch self { case .overview: "现在"; case .insights: "洞察"; case .settings: "我" } }
-    var symbol: String { switch self { case .overview: "water.waves"; case .insights: "chart.pie"; case .settings: "person" } }
+    var title: String { switch self { case .overview: "现在"; case .insights: "洞察"; case .entries: "账目"; case .settings: "我" } }
+    var symbol: String { switch self { case .overview: "water.waves"; case .insights: "chart.pie"; case .entries: "list.bullet"; case .settings: "person" } }
 }
 enum AppSheet: Identifiable {
     case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions, addEntry, addPlan
@@ -357,7 +357,7 @@ struct RootView: View {
         #if os(macOS)
         NavigationSplitView {
             List(Destination.allCases, selection: $store.destination) { d in
-                Label(d.title, systemImage: d.symbol).tag(d)
+                Label(d.title, systemImage: d.symbol).tag(d).accessibilityIdentifier("tab_" + d.rawValue)
             }.listStyle(.sidebar).navigationTitle("余白")
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 250)
         } detail: {
@@ -371,11 +371,14 @@ struct RootView: View {
             Tab(value: Destination.insights.rawValue) { NavigationStack { tabRoot(.insights) } } label: {
                 Label("洞察", systemImage: "chart.pie").accessibilityIdentifier("tab_insights")
             }
+            Tab(value: "add") { Color.clear } label: {
+                Label("记一笔", systemImage: "plus.circle.fill").yubaiZoomSource("add").accessibilityIdentifier("addEntry")
+            }
+            Tab(value: Destination.entries.rawValue) { NavigationStack { tabRoot(.entries) } } label: {
+                Label("账目", systemImage: "list.bullet").accessibilityIdentifier("tab_entries")
+            }
             Tab(value: Destination.settings.rawValue) { NavigationStack { tabRoot(.settings) } } label: {
                 Label("我", systemImage: "person").accessibilityIdentifier("tab_settings")
-            }
-            Tab(value: "add", role: .search) { Color.clear } label: {
-                Label("记一笔", systemImage: "plus").yubaiZoomSource("add").accessibilityIdentifier("addEntry")
             }
         }.tint(YubaiColor.brand)
         #endif
@@ -403,7 +406,7 @@ struct RootView: View {
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
-        switch d { case .overview: OverviewView(); case .insights: InsightsView(); case .settings: SettingsView() }
+        switch d { case .overview: OverviewView(); case .insights: InsightsView(); case .entries: EntriesView(); case .settings: SettingsView() }
     }
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
         switch sheet {
