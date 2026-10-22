@@ -34,3 +34,11 @@
 | fix3-01-now | 现在（标签栏下移后的位置） |
 | fix3-02-entries-top | 账目顶部 |
 | fix3-03-entries-bottom | 账目滚到底，最后一行仍在标签栏上方 |
+
+## 左滑按钮外观：fix/row-delete-shape（ba977eb，深色、vphone 当前字号）
+
+| 文件 | 内容 |
+|---|---|
+| del2-01-entries-first-row | 账目第一行左滑露出删除 |
+| del2-02-entries-middle-row | 账目中间行左滑露出删除 |
+| del2-03-fixedflow-stop | 固定收付左滑露出停掉 |
