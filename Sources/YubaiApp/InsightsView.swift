@@ -35,29 +35,29 @@ struct InsightsView: View {
         let range = interval
         let summary = Finance.cashFlow(store.current, during: range)
         let slices = summary.slices(income: income)
-        Page(spacing: 10, topPadding: 12) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             TabRootHeader(title: "洞察")
             Segmented(choices: Window.allCases.map { ($0, $0.rawValue) }, selection: $window)
-            if window == .custom { Button("选择日期范围") { store.pickingInsightDates = true }.frame(minHeight: 44) }
-            HStack {
-                Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("上一段")
-                Spacer(minLength: 0)
+            if window == .custom { Button("选择日期范围") { store.pickingInsightDates = true }.frame(minHeight: YubaiSize.tapMin) }
+            HStack(spacing: YubaiSpace.gapGroup) {
+                Button { move(-1) } label: { Image(systemName: "chevron.left").yubaiPageArrowTarget(edge: .leading) }.accessibilityLabel("上一段")
+                Spacer(minLength: YubaiSpace.none)
                 Text(dateLabel).yubaiFont(YubaiFont.callout).multilineTextAlignment(.center)
-                Spacer(minLength: 0)
-                Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.disabled(!canAdvance).accessibilityLabel("下一段")
+                Spacer(minLength: YubaiSpace.none)
+                Button { move(1) } label: { Image(systemName: "chevron.right").yubaiPageArrowTarget(edge: .trailing) }.disabled(!canAdvance).accessibilityLabel("下一段")
             }.buttonStyle(PressButtonStyle())
-            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.gapGroup)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
             layout {
                 tile("收入", summary.income); tile("支出", summary.spending); tile("结余", summary.balance, balance: true)
             }
             Card(style: .compact) {
-                VStack(spacing: 10) {
+                VStack(spacing: YubaiSpace.gapGroup) {
                     Segmented(choices: [(false, "支出 · 按类型"), (true, "收入 · 按类型")], selection: $income, background: YubaiColor.canvas)
                     if !store.current.preferences.hideAmounts {
                         donut(slices, total: income ? summary.income : summary.spending)
                     }
-                    if slices.isEmpty { Text("还没有收支记录").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, 24) }
-                    VStack(spacing: 0) {
+                    if slices.isEmpty { Text("还没有收支记录").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, YubaiSpace.gapSection) }
+                    VStack(spacing: YubaiSpace.none) {
                         ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
                             NavigationLink { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range).yubaiZoomDestination("category-\(rank)") } label: {
                                 legend(slice, rank: rank, slices: slices).yubaiZoomSource("category-\(rank)")
@@ -99,10 +99,10 @@ struct InsightsView: View {
         return fullInterval.start.formatted(format) + " – " + last.formatted(format)
     }
     private func tile(_ title: String, _ amount: Int64, balance: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(balance ? YubaiColor.brandInk : YubaiColor.labelSecondary)
             AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .summary)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
             .background(balance ? YubaiColor.brandTint : YubaiColor.card, in: RoundedRectangle(cornerRadius: 18))
     }
     private func restrained(_ slice: CashFlowSlice) -> Bool {
@@ -140,7 +140,7 @@ struct InsightsView: View {
                     }
                 }
                 Button { select(nil) } label: {
-                    VStack(spacing: 2) {
+                    VStack(spacing: YubaiSpace.space4) {
                         Text(selected.map { $0.title + " · " + percentage($0) } ?? (income ? "收入" : "支出"))
                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                         AmountLabel(cents: selected?.amount ?? total, role: .donut)
@@ -151,7 +151,7 @@ struct InsightsView: View {
                     .accessibilityHint("点两下回到全部")
             }.frame(width: 204, height: 204)
         }
-            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapGroup)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: slices.map(\.amount))
     }
     private func percentage(_ slice: CashFlowSlice) -> String { String(format: "%.0f%%", slice.share * 100) }
@@ -162,23 +162,27 @@ struct InsightsView: View {
         selectionTrigger &+= 1
     }
     private func legend(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice]) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 10))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
-            HStack(spacing: 10) {
+            HStack(spacing: YubaiSpace.gapGroup) {
                 RoundedRectangle(cornerRadius: 3).fill(color(slice, rank: rank, slices: slices)).frame(width: 10, height: 10).accessibilityHidden(true)
                 Text(slice.title).yubaiFont(YubaiFont.row)
                 if restrained(slice) { Text(slice.categories.count > 1 ? "含想克制" : "想克制").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk) }
             }
-            if !textSize.isAccessibilitySize { Spacer(minLength: 0) }
-            HStack(spacing: 10) {
+            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+            HStack(spacing: YubaiSpace.gapGroup) {
                 AmountLabel(cents: slice.amount, hide: store.current.preferences.hideAmounts, role: .small)
                 Text(store.current.preferences.hideAmounts ? "" : (slice.amount < 0 ? "—" : String(format: "%.0f%%", slice.share * 100)))
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).numberTransition(value: slice.share * 100, enabled: !store.current.preferences.hideAmounts)
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
             }
-        }.frame(minHeight: 44).padding(.vertical, textSize.isAccessibilitySize ? 6 : 0)
-            .padding(.horizontal, YubaiSpace.space8)
-            .background { if selectedSlice == slice.id { RoundedRectangle(cornerRadius: YubaiRadius.row).fill(YubaiColor.brandTint) } }
+        }.frame(minHeight: YubaiSize.rowSingle).padding(.vertical, textSize.isAccessibilitySize ? YubaiSpace.space8 : YubaiSpace.none)
+            .background {
+                if selectedSlice == slice.id {
+                    RoundedRectangle(cornerRadius: YubaiRadius.row).fill(YubaiColor.brandTint)
+                        .padding(.horizontal, -YubaiSpace.space8)
+                }
+            }
             .opacity(selectedSlice == nil || selectedSlice == slice.id ? 1 : 0.55).contentShape(Rectangle())
     }
     private func move(_ direction: Int) {

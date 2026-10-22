@@ -19,10 +19,10 @@ struct StorageView: View {
         return "\(usage.recoveryCount) 份" + (usage.oldestRecovery.map { " · 最早 " + storageDate($0, format: "M月d日") } ?? "")
     }
     var body: some View {
-        Page(spacing: YubaiSpace.space12) {
-            VStack(alignment: .leading, spacing: 0) {
+        Page(spacing: YubaiSpace.gapSection) {
+            VStack(alignment: .leading, spacing: YubaiSpace.none) {
                 Text("余白在这台手机上").yubaiFont(YubaiFont.lead)
-                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space6) {
+                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                     Text("占").yubaiFont(YubaiFont.lead)
                     if let usage {
                         let parts = StorageSize.text(usage.totalBytes).split(separator: " ")
@@ -32,10 +32,9 @@ struct StorageView: View {
                     else { Text("正在读取…").yubaiFont(YubaiFont.lead) }
                 }
             }.accessibilityElement(children: .combine).accessibilityIdentifier("storageHeadline")
-                .padding(.bottom, YubaiSpace.space6)
             if let usage { usageCard(usage) }
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     cardHeading("截图和账单原件", subtitle: attachmentSummary)
                     EntryFormDivider()
                     Button { sheet = .photos } label: { actionRow("删除旧截图", chevron: true) }
@@ -43,7 +42,7 @@ struct StorageView: View {
                 }
             }
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     cardHeading("恢复历史", subtitle: recoverySummary)
                     EntryFormDivider()
                     NavigationLink { RecoveryVersionsView() } label: { actionRow("查看恢复历史", chevron: true) }
@@ -61,8 +60,8 @@ struct StorageView: View {
                         .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight)
                         .background(YubaiColor.card, in: Capsule())
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openStorageErase")
-                    .padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSpace.space24)
-                    .padding(.top, YubaiSpace.space12).frame(maxWidth: 1080).frame(maxWidth: .infinity)
+                    .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
+                    .padding(.top, YubaiSpace.gapGroup).frame(maxWidth: 1080).frame(maxWidth: .infinity)
                     .background(YubaiColor.canvas)
             }
             .navigationTitle("存储空间").yubaiNavigation()
@@ -94,17 +93,17 @@ struct StorageView: View {
         let colors = [YubaiColor.brand, YubaiColor.series2, YubaiColor.neutralStrong]
         let visible = values.indices.filter { values[$0] > 0 }
         return Card(style: .compact) {
-            VStack(spacing: YubaiSpace.space12) {
+            VStack(spacing: YubaiSpace.gapGroup) {
                 GeometryReader { geometry in
-                    HStack(spacing: YubaiSpace.space2) {
+                    HStack(spacing: YubaiSpace.space4) {
                         ForEach(visible, id: \.self) { i in
-                            colors[i].frame(width: max(0, geometry.size.width - CGFloat(max(0, visible.count - 1)) * YubaiSpace.space2) * CGFloat(values[i]) / CGFloat(max(1, usage.totalBytes)))
+                            colors[i].frame(width: max(0, geometry.size.width - CGFloat(max(0, visible.count - 1)) * YubaiSpace.space4) * CGFloat(values[i]) / CGFloat(max(1, usage.totalBytes)))
                         }
                     }.clipShape(Capsule())
-                }.frame(height: YubaiSpace.space12).background(YubaiColor.neutralSoft, in: Capsule())
+                }.frame(height: YubaiSpace.gapGroup).background(YubaiColor.neutralSoft, in: Capsule())
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(values.indices.map { labels[$0] + " " + StorageSize.text(values[$0]) }.joined(separator: "，"))
-                VStack(spacing: YubaiSpace.space10) {
+                VStack(spacing: YubaiSpace.gapGroup) {
                     ForEach(values.indices, id: \.self) { i in
                         HStack(spacing: YubaiSpace.space8) {
                             Circle().fill(colors[i]).frame(width: YubaiSize.marker, height: YubaiSize.marker).accessibilityHidden(true)
@@ -114,17 +113,17 @@ struct StorageView: View {
                         }.accessibilityElement(children: .combine)
                     }
                 }
-            }.padding(.horizontal, YubaiSpace.space2)
+            }
         }
     }
     private func cardHeading(_ title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.rowTitle)
             Text(subtitle).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-        }.frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
     }
     private func actionRow(_ title: String, chevron: Bool = false) -> some View {
-        HStack {
+        HStack(spacing: YubaiSpace.gapGroup) {
             Text(title).yubaiFont(YubaiFont.row)
             Spacer(minLength: YubaiSpace.space8)
             if chevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
@@ -147,7 +146,7 @@ private struct StoragePhotosSheet: View {
     var body: some View {
         StorageSheet(title: "删除旧截图") {
             Text("删除多久以前的").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                .padding(.top, YubaiSpace.space18)
+                .padding(.top, YubaiSpace.gapSection)
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
             layout {
                 ForEach([3, 6, 12], id: \.self) { value in
@@ -155,24 +154,24 @@ private struct StoragePhotosSheet: View {
                         Text(value == 3 ? "3 个月前" : value == 6 ? "半年前" : "一年前")
                             .yubaiFont(YubaiFont.callout, weight: months == value ? .medium : .regular)
                             .foregroundStyle(months == value ? YubaiColor.brandInk : YubaiColor.labelMuted)
-                            .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.chipHeight)
+                            .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
                             .background(months == value ? YubaiColor.brandTint : YubaiColor.card, in: Capsule())
                             .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                     }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(months == value ? .isSelected : [])
                 }
             }.padding(.top, YubaiSpace.space8).accessibilityElement(children: .contain).accessibilityLabel("删除多久以前的截图")
             StorageSummaryCard(rows: [("截图", "\(selected.count) 张"), ("腾出", StorageSize.text(Int64(selected.reduce(0) { $0 + $1.byteCount }))), ("账目", "都留着")])
-                .padding(.top, YubaiSpace.space18)
+                .padding(.top, YubaiSpace.gapSection)
             Text("账单原件不删，导入记录里仍可撤销。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                .padding(.top, YubaiSpace.space10)
+                .padding(.top, YubaiSpace.gapGroup)
             Button("删除 \(selected.count) 张截图") {
                 if store.deleteOldScreenshots(months: months, now: now) { dismiss() }
-            }.buttonStyle(PrimaryButtonStyle()).disabled(selected.isEmpty).padding(.top, YubaiSpace.space24)
+            }.buttonStyle(PrimaryButtonStyle()).disabled(selected.isEmpty).padding(.top, YubaiSpace.gapSection)
                 .accessibilityIdentifier("deleteStoragePhotos")
             Button { dismiss() } label: {
                 Text("取消").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.space10)
+            }.buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.gapGroup)
         }
     }
 }
@@ -202,31 +201,31 @@ private struct StorageEraseSheet: View {
                 ("余白记得的", "\(store.current.memories.count) 条"),
                 ("截图和账单原件", attachmentCount),
                 ("恢复历史", currentRecoveryCount.map { "\($0) 份" } ?? "正在读取…")
-            ]).padding(.top, YubaiSpace.space18)
+            ]).padding(.top, YubaiSpace.gapSection)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.space8) { backupStatus }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) { backupStatus }
-            }.padding(.top, YubaiSpace.space12)
-            Button("先加密备份") { backingUp = true }.buttonStyle(PrimaryButtonStyle()).padding(.top, YubaiSpace.space18)
+            }.padding(.top, YubaiSpace.gapGroup)
+            Button("先加密备份") { backingUp = true }.buttonStyle(PrimaryButtonStyle()).padding(.top, YubaiSpace.gapAction)
                 .accessibilityIdentifier("backupBeforeErase")
             Text("输入「抹掉」确认").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                .padding(.top, YubaiSpace.space18)
+                .padding(.top, YubaiSpace.gapSection)
             TextField("抹掉", text: $confirmation).textFieldStyle(.plain).yubaiFont(YubaiFont.body)
-                .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin)
                 .background(YubaiColor.canvas, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
                 .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).stroke(YubaiColor.borderDashed, lineWidth: 1) }
                 .accessibilityLabel("输入「抹掉」确认").accessibilityIdentifier("storageEraseConfirmation")
-                .padding(.top, YubaiSpace.space6)
+                .padding(.top, YubaiSpace.space8)
             Button { if store.eraseAllDeviceData() { dismiss() } } label: {
                 Text("抹掉这台手机上的全部数据").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberInk)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight)
                     .background(YubaiColor.card, in: Capsule()).opacity(confirmation == "抹掉" ? 1 : 0.55)
             }.buttonStyle(PressButtonStyle()).disabled(confirmation != "抹掉" || currentRecoveryCount == nil || store.syncBusy || store.checkingCloudAvailability)
-                .padding(.top, YubaiSpace.space12).accessibilityIdentifier("eraseDeviceData")
+                .padding(.top, YubaiSpace.gapGroup).accessibilityIdentifier("eraseDeviceData")
             Button { dismiss() } label: {
                 Text("取消").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.space6)
+            }.buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.space8)
         }.task(id: backingUp) {
             guard !backingUp else { return }
             if currentRecoveryCount == nil { currentRecoveryCount = recoveryCount }
@@ -255,15 +254,15 @@ private struct StorageSummaryCard: View {
     let rows: [(String, String)]
     var body: some View {
         Card(style: .list) {
-            VStack(spacing: YubaiSpace.space8) {
+            VStack(spacing: YubaiSpace.none) {
                 ForEach(rows.indices, id: \.self) { i in
                     HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                         Text(rows[i].0).yubaiFont(YubaiFont.row)
                         Spacer(minLength: YubaiSpace.space8)
                         Text(rows[i].1).yubaiFont(YubaiFont.row).fontDesign(.rounded).monospacedDigit().multilineTextAlignment(.trailing)
-                    }.accessibilityElement(children: .combine)
+                    }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
                 }
-            }.padding(.vertical, YubaiSpace.space10)
+            }
         }
     }
 }
@@ -279,13 +278,13 @@ private struct StorageSheet<Content: View>: View {
     @State private var contentHeight: CGFloat = 600
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: YubaiSpace.none) {
                 Text(title).yubaiFont(YubaiFont.amountSummary).fontDesign(.default).frame(maxWidth: .infinity).accessibilityAddTraits(.isHeader)
                 content
-            }.padding(.horizontal, YubaiSpace.space20).padding(.top, YubaiSpace.space12).padding(.bottom, YubaiSpace.space24)
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
                 .background { GeometryReader { geometry in Color.clear.preference(key: StorageSheetHeight.self, value: geometry.size.height) } }
         }.scrollDismissesKeyboard(.interactively).foregroundStyle(YubaiColor.label).background(YubaiColor.raised)
-            .onPreferenceChange(StorageSheetHeight.self) { contentHeight = $0 + YubaiSpace.space24 }
+            .onPreferenceChange(StorageSheetHeight.self) { contentHeight = $0 + YubaiSpace.gapSection }
             .presentationDetents([.height(contentHeight), .large]).presentationDragIndicator(.visible)
             .presentationBackground(YubaiColor.raised).presentationCornerRadius(28)
             #if os(macOS)

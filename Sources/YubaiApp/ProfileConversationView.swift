@@ -14,27 +14,27 @@ struct ProfileConversationView: View {
     @State private var runningTask: Task<Void, Never>?
     private var proposal: ChangeSet? { store.current.pendingChanges.first { $0.id == proposalID } }
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: YubaiSpace.none) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     Text("三个问题 · 第 \(min(3, max(1, messages.filter { $0.role == .assistant }.count))) 个")
                         .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).frame(maxWidth: .infinity)
                     ForEach(Array(messages.enumerated()), id: \.offset) { _, message in
-                        HStack {
-                            if message.role == .user { Spacer(minLength: 40) }
-                            VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: YubaiSpace.gapGroup) {
+                            if message.role == .user { Spacer(minLength: YubaiSpace.messageIndent) }
+                            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                                 if message.role == .assistant {
-                                    HStack(spacing: 6) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                                    HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                                 }
                                 Text(message.content ?? "").yubaiFont(message.role == .user ? YubaiFont.body : YubaiFont.cardTitle)
                                     .foregroundStyle(message.role == .user ? YubaiColor.onBrand : YubaiColor.label).textSelection(.enabled)
-                            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                            }.padding(YubaiSpace.insetCard).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(message.role == .user ? YubaiColor.brand : YubaiColor.card,
                                             in: UnevenRoundedRectangle(topLeadingRadius: message.role == .user ? 18 : 6, bottomLeadingRadius: 22, bottomTrailingRadius: message.role == .user ? 6 : 22, topTrailingRadius: 22))
-                            if message.role == .assistant { Spacer(minLength: 24) }
+                            if message.role == .assistant { Spacer(minLength: YubaiSpace.gapSection) }
                         }.messageEntrance(user: message.role == .user)
                     }
-                    if busy { HStack { AssistantMark(thinking: true); Text("余白在听，也在想…").yubaiFont(YubaiFont.callout) } }
+                    if busy { HStack(spacing: YubaiSpace.gapGroup) { AssistantMark(thinking: true); Text("余白在听，也在想…").yubaiFont(YubaiFont.callout) } }
                     if let proposal, !revising {
                         ProfileProposalCard(change: proposal, confirm: {
                             if store.apply(proposal, label: "修改消费观") { dismiss() }
@@ -42,23 +42,23 @@ struct ProfileConversationView: View {
                     }
                     if !errorText.isEmpty {
                         InlineNote(text: errorText)
-                        Button("重试") { ask() }.disabled(busy).frame(minHeight: 44)
+                        Button("重试") { ask() }.disabled(busy).frame(minHeight: YubaiSize.tapMin)
                     }
-                }.padding(18).frame(maxWidth: 680).frame(maxWidth: .infinity)
+                }.padding(YubaiSpace.insetPage).frame(maxWidth: 680).frame(maxWidth: .infinity)
             }.scrollDismissesKeyboard(.interactively)
             if proposal == nil || revising {
-                HStack(spacing: 8) {
+                HStack(spacing: YubaiSpace.space8) {
                     TextField(revising ? "想改哪里？" : "写下你的想法…", text: $input, axis: .vertical).lineLimit(1...6)
                         .accessibilityLabel("告诉余白你的消费观")
-                    Button { ask() } label: { Image(systemName: "arrow.up").frame(width: 44, height: 44).background(YubaiColor.brand, in: Circle()).foregroundStyle(YubaiColor.onBrand) }
+                    Button { ask() } label: { Image(systemName: "arrow.up").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).background(YubaiColor.brand, in: Circle()).foregroundStyle(YubaiColor.onBrand) }
                         .accessibilityLabel("发送").disabled(busy || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }.padding(8).buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input).padding(18)
+                }.padding(YubaiSpace.space8).buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input).padding(YubaiSpace.insetPage)
             }
         }.paperBackground().navigationTitle("和余白聊几句").yubaiNavigation()
             .toolbar {
                 CloseButton()
                 if proposal == nil && !messages.isEmpty {
-                    Button("先跳过") { input = "暂时没想好，先跳过"; ask() }.disabled(busy).frame(minHeight: 44)
+                    Button("先跳过") { input = "暂时没想好，先跳过"; ask() }.disabled(busy).frame(minHeight: YubaiSize.tapMin)
                 }
             }
             .task { if messages.isEmpty && proposalID == nil { ask() } }

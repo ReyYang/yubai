@@ -98,11 +98,11 @@ struct ImportView: View {
         return batch.needsOrganization == true ? "账单已保存" : "整理好了"
     }
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: YubaiSpace.none) {
             if let result { resultView(result) }
             else if let preview { previewView(preview) }
             else { intake }
-            if let localError { InlineNote(text: store.current.preferences.hideAmounts ? "这份账单还没读好" : localError, style: .attention).padding(YubaiSpace.space18).textSelection(.enabled) }
+            if let localError { InlineNote(text: store.current.preferences.hideAmounts ? "这份账单还没读好" : localError, style: .attention).padding(YubaiSpace.insetPage).textSelection(.enabled) }
         }
         .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
         .amountPrivacy(store.current.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
@@ -170,25 +170,27 @@ struct ImportView: View {
         }
     }
     private var intake: some View {
-        VStack(spacing: 0) {
-            Page(spacing: YubaiSpace.space16) {
-                HStack(spacing: YubaiSpace.space10) {
+        VStack(spacing: YubaiSpace.none) {
+            Page(spacing: YubaiSpace.gapSection) {
+                HStack(spacing: YubaiSpace.gapGroup) {
                     intakeButton("截图", subtitle: "可以选多张", symbol: "photo.on.rectangle", identifier: "chooseBillScreenshots") { photoPicker = true }
                     intakeButton("账单文件", subtitle: "CSV、Excel，可以选多份", symbol: "doc.badge.plus", identifier: "chooseBillFile") { filePicker = true }
                 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text("认得这些导出").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: YubaiSpace.space6) { exportChips(["微信", "支付宝", "银行流水", "蜜蜂记账"]) }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], alignment: .leading, spacing: YubaiSpace.space6) { exportChips(["微信", "支付宝", "银行流水", "蜜蜂记账"]) }
+                        HStack(spacing: YubaiSpace.space8) { exportChips(["微信", "支付宝", "银行流水", "蜜蜂记账"]) }
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], alignment: .leading, spacing: YubaiSpace.space8) { exportChips(["微信", "支付宝", "银行流水", "蜜蜂记账"]) }
                     }
-                    HStack(spacing: YubaiSpace.space6) { exportChips(["随手记", "鲨鱼记账", "钱迹"]) }
+                    HStack(spacing: YubaiSpace.space8) { exportChips(["随手记", "鲨鱼记账", "钱迹"]) }
                     Text("其他表格：请核对表头与列。")
                         .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }
                 if !queue.isEmpty {
-                    SectionHeading(title: "选了 \(queue.count) 份", meta: "一份一份核对")
-                    CardRows(queue) { item in queueRow(item) }
+                    VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                        SectionHeading(title: "选了 \(queue.count) 份", meta: "一份一份核对").padding(.horizontal, YubaiSpace.insetCard)
+                        CardRows(queue) { item in queueRow(item) }
+                    }
                 }
                 let unfinished = store.current.imports.filter { $0.undoneAt == nil && ($0.needsOrganization == true || !($0.organization?.questions.isEmpty ?? true)) }
                 if !unfinished.isEmpty {
@@ -197,27 +199,27 @@ struct ImportView: View {
             }
             Button("核对第 \(processed + 1) 份") { readNext() }.buttonStyle(PrimaryButtonStyle())
                 .disabled(queue.first?.preview == nil).accessibilityIdentifier("reviewNextImport")
-                .padding(YubaiSpace.space18)
+                .padding(YubaiSpace.insetPage)
         }
     }
     private func intakeButton(_ title: String, subtitle: String, symbol: String, identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 Image(systemName: symbol).frame(minHeight: YubaiSize.barMax)
-                VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     Text(title).yubaiFont(YubaiFont.rowTitle)
                     Text(subtitle).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight, alignment: .leading)
-                .padding(YubaiSpace.space16).background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+                .padding(YubaiSpace.insetCard).background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier)
     }
     private func exportChips(_ names: [String]) -> some View {
         ForEach(names, id: \.self) { Pill(text: $0, variant: .neutral, showsDot: false) }
     }
     private func queueRow(_ item: ImportQueueFile) -> some View {
-        HStack(spacing: YubaiSpace.space10) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(item.name).yubaiFont(YubaiFont.row).lineLimit(1)
                 if let p = item.preview {
                     Text("\(ImportStatementText.source(p.source)) · \(p.rows.count) 笔 · " + ImportStatementText.range(p.rows.compactMap { $0.entry?.date }))
@@ -235,16 +237,16 @@ struct ImportView: View {
         }.accessibilityIdentifier("importQueue_" + item.id.uuidString)
     }
     private func previewView(_ p: ImportPreview) -> some View {
-        VStack(spacing: 0) {
-            Page(spacing: YubaiSpace.space10, topPadding: YubaiSpace.space12) {
+        VStack(spacing: YubaiSpace.none) {
+            Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
                 previewHeader(p)
                 decisionCard(p)
                 Card(style: .list) {
-                    VStack(spacing: 0) {
+                    VStack(spacing: YubaiSpace.none) {
                         accountPicker
                         Divider().overlay(YubaiColor.separator)
                         Button { showCategories = true } label: {
-                            HStack { Text("分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
+                            HStack(spacing: YubaiSpace.gapGroup) { Text("分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
                                 .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
                         if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
@@ -254,8 +256,10 @@ struct ImportView: View {
                     .accessibilityIdentifier("importPreviewFilter")
                 if busy { ProgressView("正在核对…").yubaiFont(YubaiFont.caption) }
                 ForEach(groupedRows(p)) { group in
-                    Text(group.title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space4)
-                    CardRows(group.rows) { row in previewRow(row) }
+                    VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                        Text(group.title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard)
+                        CardRows(group.rows) { row in previewRow(row) }
+                    }
                 }
                 if screenshot {
                     Button("对照原图") { showScreenshot = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewImportScreenshot")
@@ -266,32 +270,32 @@ struct ImportView: View {
         }
     }
     private func previewHeader(_ p: ImportPreview) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text("\(ImportStatementText.source(p.source)) · " + ImportStatementText.range(p.rows.compactMap { $0.entry?.date }) + " · \(p.rows.count) 笔").yubaiFont(YubaiFont.heroLabel)
                 Text(p.columnMapping == nil ? "在本机读完，没有发给云端" : "已发送表头和 5 行脱敏样例")
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityIdentifier("importPrivacySummary")
             }
             Card(style: .compact) {
-                VStack(spacing: YubaiSpace.space10) {
-                    HStack { countPill("将导入", p.selectedEntries.count); countPill("已经记过", p.duplicateCount); countPill("要你选", p.rows.filter(needsDecision).count) }
+                VStack(spacing: YubaiSpace.gapGroup) {
+                    HStack(spacing: YubaiSpace.gapGroup) { countPill("将导入", p.selectedEntries.count); countPill("已经记过", p.duplicateCount); countPill("要你选", p.rows.filter(needsDecision).count) }
                     let expenses = p.selectedEntries.filter { $0.nature == .expense }, income = p.selectedEntries.filter { $0.nature == .income }
                     ViewThatFits(in: .horizontal) {
-                        HStack { total("支出", entries: expenses); Spacer(); total("收入", entries: income) }
-                        VStack(alignment: .leading, spacing: YubaiSpace.space6) { total("支出", entries: expenses); total("收入", entries: income) }
+                        HStack(spacing: YubaiSpace.gapGroup) { total("支出", entries: expenses); Spacer(); total("收入", entries: income) }
+                        VStack(alignment: .leading, spacing: YubaiSpace.space8) { total("支出", entries: expenses); total("收入", entries: income) }
                     }
                 }
             }
         }
     }
     private func countPill(_ label: String, _ count: Int) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text("\(count)").yubaiFont(YubaiFont.amountDonut)
             Text(label).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private func total(_ title: String, entries: [Entry]) -> some View {
-        HStack(spacing: YubaiSpace.space6) {
+        HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(entries.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
             AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.current.preferences.hideAmounts, role: .small, sign: .none, fractionDigits: 2)
         }
@@ -337,16 +341,16 @@ struct ImportView: View {
         let invalid = p.rows.filter { [.invalid, .conflict].contains($0.status) }
         if !unknown.isEmpty || !methods.isEmpty || !possible.isEmpty || !invalid.isEmpty || screenshot {
             Card(style: .compact, background: YubaiColor.amberTint) {
-                VStack(alignment: .leading, spacing: YubaiSpace.space10) {
+                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     Text("要你决定的事").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
                     if screenshot { Text("选出要记的几笔，点一笔可以核对日期和收支。").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberStrong) }
                     ForEach(unknown, id: \.self) { name in
                         let count = p.rows.filter { $0.sourceCategory == name }.count
-                        VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                             Text("分类「\(name)」你这里还没有，\(count) 笔").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberStrong)
                             ViewThatFits(in: .horizontal) {
                                 HStack(spacing: YubaiSpace.space8) { categoryChoices(name, preview: p) }
-                                VStack(alignment: .leading, spacing: YubaiSpace.space6) { categoryChoices(name, preview: p) }
+                                VStack(alignment: .leading, spacing: YubaiSpace.space8) { categoryChoices(name, preview: p) }
                             }
                         }
                     }
@@ -401,13 +405,13 @@ struct ImportView: View {
         }
     }
     private func previewRow(_ row: ImportRow) -> some View {
-        HStack(spacing: YubaiSpace.space6) {
+        HStack(spacing: YubaiSpace.space8) {
             if row.entry != nil && [.ready, .possibleDuplicate].contains(row.status) {
                 Button { select(row, included: !row.included) } label: {
                     Image(systemName: row.included ? "checkmark.circle.fill" : "circle").foregroundStyle(row.included ? YubaiColor.brand : YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel(row.included ? "不导入这一行" : "导入这一行").accessibilityIdentifier("selectImportRow_" + String(row.line))
             }
-            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(row.entry?.title ?? "第 \(row.line) 行").yubaiFont(YubaiFont.row).lineLimit(textSize.isAccessibilitySize ? nil : 2)
                 Text(rowSubtitle(row)).yubaiFont(YubaiFont.meta).foregroundStyle(needsDecision(row) ? YubaiColor.amberInk : YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -431,25 +435,25 @@ struct ImportView: View {
         return ImportStatementText.time(entry.date) + " · " + detail
     }
     private func previewActions(_ p: ImportPreview) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space10)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space10))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.gapGroup)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
             Button("跳过这份") { finishFile(); preview = nil; readNext() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("skipImportFile")
             Button("导入 \(p.selectedEntries.count) 笔", action: commit).buttonStyle(PrimaryButtonStyle())
                 .disabled(busy || accountID == nil || p.selectedEntries.isEmpty || p.rows.contains { $0.included && needsDecision($0) } || (screenshot && !screenshotConfirmed))
                 .accessibilityIdentifier("commitImport")
-        }.padding(YubaiSpace.space18)
+        }.padding(YubaiSpace.insetPage)
     }
     @ViewBuilder func resultView(_ savedBatch: ImportBatch) -> some View {
         if let batch = store.current.imports.first(where: { $0.id == savedBatch.id && $0.undoneAt == nil }) {
             Page {
-                if store.organizingBatchID == batch.id { ProgressView("正在整理…").padding(YubaiSpace.space18) }
+                if store.organizingBatchID == batch.id { ProgressView("正在整理…").padding(YubaiSpace.insetCard) }
                 Text(batch.filename + "，\(batch.importedCount) 笔，" + (batch.needsOrganization == true ? "已经保存了。" : "已经整理好了。"))
                     .yubaiFont(YubaiFont.heroLabel)
                 Text("跳过 \(batch.duplicateCount) 笔重复，另有 \(batch.skippedCount) 行未导入。")
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 if let organization = batch.organization {
-                    Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), alignment: .leading)], alignment: .leading, spacing: 8) {
+                    Card { VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
                             resultCount("归了类", organization.categoryCount)
                             resultCount("配成转账", organization.pairCount)
                             resultCount("像是固定收付", organization.recurringCount)
@@ -476,7 +480,7 @@ struct ImportView: View {
                     }
                 }
                 if batch.needsOrganization == true {
-                    Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+                    Card { VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                         Text(store.organizationErrors[batch.id] ?? "记录已保存，请稍后继续整理。").yubaiFont(YubaiFont.callout)
                         Button("现在整理") { Task { await store.organizeImport(batch.id) } }
                             .buttonStyle(SecondaryButtonStyle()).disabled(store.organizingBatchID != nil || store.assistantTransport(for: store.current) == nil)
@@ -494,7 +498,7 @@ struct ImportView: View {
         }
     }
     private func resultCount(_ title: String, _ count: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text("\(count)").yubaiFont(YubaiFont.amountDonut)
             Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
         }
@@ -505,9 +509,9 @@ struct ImportView: View {
             Text(store.current.preferences.hideAmounts ? "有几笔记录要你核对" : question.text).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("importQuestion")
             Pill(text: "\(question.entryIDs.count) 笔 · 可以稍后回答", variant: .neutral, showsDot: false)
             DisclosureGroup("看看这几笔") {
-                LazyVStack { ForEach(store.sortedEntries.filter { covered.contains($0.id) }) { EntryRow(entry: $0) } }
+                LazyVStack(spacing: YubaiSpace.gapGroup) { ForEach(store.sortedEntries.filter { covered.contains($0.id) }) { EntryRow(entry: $0) } }
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], alignment: .leading, spacing: YubaiSpace.space8) {
             ForEach(question.options.indices, id: \.self) { index in
                 Button(store.current.preferences.hideAmounts ? "选项 \(index + 1)" : question.options[index].title) { store.answerImportQuestion(question, batchID: batchID, option: index) }
                     .disabled(store.current.preferences.hideAmounts)

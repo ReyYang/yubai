@@ -33,11 +33,11 @@ struct CaptureSnippetIntent: SnippetIntent {
 private struct CaptureSnippetView: View {
     let entries: [Entry]; let ledger: Ledger; let privateResult: Bool
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             Label(entries.isEmpty ? "余白 · 已撤销" : "余白 · 已记下", systemImage: "water.waves").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             ForEach(entries) { entry in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                    HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
                         if !privateResult { Text(entry.displayTitle).yubaiFont(YubaiFont.cardTitle) }
                         Spacer()
                         AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow, fractionDigits: entry.amount % 100 == 0 ? 0 : 2)
@@ -49,17 +49,17 @@ private struct CaptureSnippetView: View {
                 }
             }
             Divider()
-            HStack {
+            HStack(spacing: YubaiSpace.gapGroup) {
                 Text("还能花").foregroundStyle(YubaiColor.labelSecondary)
                 Spacer(); AmountLabel(cents: QuickCapture.available(in: ledger), hide: ledger.preferences.hideAmounts, currency: true)
             }.yubaiFont(YubaiFont.caption)
             ForEach(entries) { entry in
-                HStack {
+                HStack(spacing: YubaiSpace.gapGroup) {
                     Button("改一下", intent: EditCapturedEntryIntent(id: entry.id)).buttonStyle(.bordered)
                     Button("撤销", intent: UndoCapturedEntryIntent(id: entry.id)).buttonStyle(.bordered).tint(YubaiColor.amberInk)
                 }
             }
-        }.padding(16).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas)
+        }.padding(YubaiSpace.insetCard).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas)
     }
 }
 struct EditCapturedEntryIntent: AppIntent {

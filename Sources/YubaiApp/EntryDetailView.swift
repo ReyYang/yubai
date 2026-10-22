@@ -14,7 +14,7 @@ struct EntryDetailView: View {
                 AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts, role: .display,
                             sign: entry.nature.inflow ? .inflow : .outflow, fractionDigits: 2)
                 Card {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+                    VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                         LabeledContent("时间", value: Dates.text(entry.date, time: true))
                         LabeledContent("账户", value: store.current.accountName(entry.accountID))
                         if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.current.accountName(other)) }
@@ -25,7 +25,7 @@ struct EntryDetailView: View {
                     }.yubaiFont(YubaiFont.row)
                 }
                 Card {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+                    VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                         SectionHeading(title: "明细")
                         Text(entry.title)
                         LabeledContent("来源", value: entry.source)
