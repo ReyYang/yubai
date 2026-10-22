@@ -13,17 +13,17 @@ struct ManualSheetHeader: View {
     var body: some View {
         ZStack {
             Text(title).yubaiFont(YubaiFont.navTitle)
-            HStack {
+            HStack(spacing: YubaiSpace.gapGroup) {
                 Button("取消", action: cancel).yubaiFont(YubaiFont.row)
-                    .padding(.horizontal, 16).frame(height: 36).background(YubaiColor.card, in: Capsule())
+                    .padding(.horizontal, YubaiSpace.insetCard).frame(height: YubaiSize.rowIcon).background(YubaiColor.card, in: Capsule())
                     .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("cancelManualSheet")
                 Spacer()
                 if showsAction { Button(action: action) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: YubaiSpace.space8) {
                         if let actionImage { Image(systemName: actionImage) }
                         Text(actionTitle)
                     }.yubaiFont(YubaiFont.row, weight: primary ? .medium : .regular)
-                        .padding(.horizontal, 14).frame(height: 36)
+                        .padding(.horizontal, YubaiSpace.gapGroup).frame(height: YubaiSize.rowIcon)
                         .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
                         .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
                 }.frame(minHeight: YubaiSize.tapMin).disabled(!enabled).opacity(enabled ? 1 : 0.5)
@@ -37,11 +37,14 @@ struct ManualSheetHeader: View {
 /// Chips wrap at their intrinsic width, including at accessibility text sizes.
 struct EntryChipLayout: Layout {
     var spacing: CGFloat = YubaiSpace.space8
+    var rowSpacing: CGFloat = YubaiSpace.gapGroup
     private func arrangement(_ subviews: Subviews, width: CGFloat) -> (CGSize, [CGPoint]) {
         var x: CGFloat = 0; var y: CGFloat = 0; var rowHeight: CGFloat = 0; var points: [CGPoint] = []
         for view in subviews {
             let size = view.sizeThatFits(.unspecified)
-            if x > 0 && x + size.width > width { x = 0; y += rowHeight + spacing; rowHeight = 0 }
+            // 32pt chips in 44pt targets already contribute 12pt of visible vertical space.
+            let targetOutset = YubaiSize.tapMin - YubaiSize.chipHeight
+            if x > 0 && x + size.width > width { x = 0; y += rowHeight + max(YubaiSpace.none, rowSpacing - targetOutset); rowHeight = 0 }
             points.append(CGPoint(x: x, y: y)); x += size.width + spacing; rowHeight = max(rowHeight, size.height)
         }
         return (CGSize(width: width, height: y + rowHeight), points)
@@ -76,20 +79,24 @@ struct EntryCategoryChips: View {
             ForEach(visible, id: \.self) { name in
                 Button { selection = name; didSelect() } label: {
                     Text(name).yubaiFont(YubaiFont.callout, weight: selection == name ? .medium : .regular)
-                        .padding(.horizontal, 12).frame(height: YubaiSize.chipHeight)
+                        .padding(.horizontal, YubaiSpace.gapGroup).frame(height: YubaiSize.chipHeight)
                         .background(selection == name ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
                         .overlay { if selection == name { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
+                        .yubaiHitTarget()
                 }.chipSelection(selection == name).accessibilityAddTraits(selection == name ? .isSelected : [])
             }
-            Button("更多") { picking = true }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
-                .padding(.horizontal, 12).frame(height: YubaiSize.chipHeight)
-                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+            Button { picking = true } label: {
+                Text("更多").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+                    .padding(.horizontal, YubaiSpace.gapGroup).frame(height: YubaiSize.chipHeight)
+                    .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+                    .yubaiHitTarget()
+            }
         }.buttonStyle(PressButtonStyle()).animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
             .sheet(isPresented: $picking) {
                 NavigationStack {
                     List(all, id: \.self) { name in
                         Button { selection = name; didSelect(); picking = false } label: {
-                            HStack { Text(name); Spacer(); if name == selection { Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk) } }.contentShape(Rectangle())
+                            HStack(spacing: YubaiSpace.gapGroup) { Text(name); Spacer(); if name == selection { Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk) } }.contentShape(Rectangle())
                         }.listRowBackground(YubaiColor.card)
                     }.scrollContentBackground(.hidden).navigationTitle("分类").yubaiNavigation()
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { picking = false } } }
@@ -103,11 +110,11 @@ struct EntryFormRow<Content: View>: View {
     let content: Content
     init(title: String, @ViewBuilder content: () -> Content) { self.title = title; self.content = content() }
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: YubaiSpace.gapGroup) {
             Text(title).yubaiFont(YubaiFont.row).fixedSize()
-            Spacer(minLength: 0)
+            Spacer(minLength: YubaiSpace.none)
             content
-        }.frame(minHeight: 46).yubaiFont(YubaiFont.row)
+        }.frame(minHeight: YubaiSize.rowSingle).yubaiFont(YubaiFont.row)
     }
 }
 
@@ -131,8 +138,9 @@ struct EntryAccountMenu: View {
         } label: {
             let account = accounts.first { $0.id == selection }
             Text((account?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户")) + (showsBalance && account != nil ? " · 余额 " + balanceText(account!.id) : ""))
-                .yubaiFont(YubaiFont.callout).lineLimit(1).padding(.horizontal, 12).frame(minHeight: 30)
+                .yubaiFont(YubaiFont.callout).lineLimit(1).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
                 .background(YubaiColor.raised, in: Capsule())
+                .yubaiHitTarget()
         }.buttonStyle(PressButtonStyle()).accessibilityLabel("账户")
             .accessibilityValue(accounts.first { $0.id == selection }?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户"))
     }
@@ -151,16 +159,17 @@ struct EntryDateChip: View {
         Button { latestDate = Date(); picking = true } label: {
             Text(time ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date))
                 .yubaiFont(time ? YubaiFont.amountSmall : YubaiFont.callout)
-                .padding(.horizontal, 12).frame(minHeight: 30).background(YubaiColor.raised, in: Capsule())
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight).background(YubaiColor.raised, in: Capsule())
+                .yubaiHitTarget()
         }.buttonStyle(PressButtonStyle()).popover(isPresented: $picking) {
-            VStack {
+            VStack(spacing: YubaiSpace.gapGroup) {
                 if time {
                     DatePicker("时间", selection: $date, in: ...latestDate, displayedComponents: .hourAndMinute).labelsHidden().frame(width: 240).fixedSize()
                 } else {
                     DatePicker("日期", selection: $date, in: ...latestDate, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320, height: 360).fixedSize()
                 }
                 Button("完成") { picking = false }.frame(minHeight: YubaiSize.tapMin)
-            }.padding(YubaiSpace.space18).transaction { $0.animation = nil }
+            }.padding(YubaiSpace.insetCard).transaction { $0.animation = nil }
                 #if os(iOS)
                 .presentationCompactAdaptation(.popover)
                 #endif

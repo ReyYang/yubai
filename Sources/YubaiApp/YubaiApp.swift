@@ -331,9 +331,9 @@ struct RootView: View {
                 Toast(text: toast, onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(toast)
                     #if os(iOS)
-                    .padding(.bottom, YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom + YubaiSpace.space12)
+                    .padding(.bottom, YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom + YubaiSpace.gapGroup)
                     #else
-                    .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.space24)
+                    .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
                     #endif
                     .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(YubaiMotion.toastOut(reduceMotion: reduceMotion))))
             }
@@ -358,10 +358,10 @@ struct RootView: View {
         .task(id: store.ledger.preferences.weeklyLetterPush) { await WeeklyPush.sync(enabled: store.ledger.preferences.weeklyLetterPush) }
         .overlay(alignment: .top) {
             if !store.locked, store.syncBusy || store.syncChoice != nil {
-                VStack {
+                VStack(spacing: YubaiSpace.gapGroup) {
                     if store.syncBusy { ProgressView(store.syncStatus ?? "正在从 iCloud 读取…") }
                     if store.syncChoice != nil { Button("选择同步账本版本") { store.sheet = .syncVersions } }
-                }.padding().background(YubaiColor.card)
+                }.padding(YubaiSpace.insetCard).background(YubaiColor.card)
             }
         }
         .overlay { privacyCover }
@@ -387,7 +387,7 @@ struct RootView: View {
         #else
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
-                HStack(spacing: 0) {
+                HStack(spacing: YubaiSpace.none) {
                     ForEach(Destination.allCases) { d in
                         tabNavigation(d).containerRelativeFrame(.horizontal).id(d)
                             .accessibilityHidden(store.destination != d)
@@ -409,7 +409,7 @@ struct RootView: View {
                 .overlay(alignment: .bottom) {
                     if hiddenTabBars[store.destination] != true {
                         FloatingTabBar { scrollTo($0, using: proxy) }
-                            .padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSize.floatingTabbarBottom)
+                            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.floatingTabbarBottom)
                             .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
                     }
                 }
@@ -445,7 +445,7 @@ struct RootView: View {
                 HStack(spacing: YubaiSpace.space8) {
                     Spacer()
                     AddEntryButton { store.present(.addEntry, from: "add") }.yubaiZoomSource("add")
-                }.padding(.horizontal, YubaiSpace.space18).padding(.bottom, 22)
+                }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
             }
         }.background(YubaiColor.canvas)
         #else
@@ -484,15 +484,15 @@ struct RootView: View {
         }
     }
     var lockedView: some View {
-        VStack(spacing: YubaiSpace.space24) { BrandMark(); Image(systemName: "lock.shield").yubaiFont(YubaiFont.amountDisplay).foregroundStyle(YubaiColor.labelSecondary); Text("你的账本，只属于你").yubaiFont(YubaiFont.lead); Button("解锁余白") { Task { await store.unlock() } }.buttonStyle(PrimaryButtonStyle()) }.padding(YubaiSpace.space24)
+        VStack(spacing: YubaiSpace.gapSection) { BrandMark(); Image(systemName: "lock.shield").yubaiFont(YubaiFont.amountDisplay).foregroundStyle(YubaiColor.labelSecondary); Text("你的账本，只属于你").yubaiFont(YubaiFont.lead); Button("解锁余白") { Task { await store.unlock() } }.buttonStyle(PrimaryButtonStyle()) }.padding(YubaiSpace.gapSection)
     }
     @ViewBuilder var privacyCover: some View {
         if (phase != .active || store.locked) && store.current.preferences.lockEnabled {
-            if phase != .active { ZStack { YubaiColor.canvas.ignoresSafeArea(); VStack(spacing: YubaiSpace.space18) { BrandMark(); Label("个人账本已保护", systemImage: "lock.shield").foregroundStyle(YubaiColor.labelSecondary) } } }
+            if phase != .active { ZStack { YubaiColor.canvas.ignoresSafeArea(); VStack(spacing: YubaiSpace.gapSection) { BrandMark(); Label("个人账本已保护", systemImage: "lock.shield").foregroundStyle(YubaiColor.labelSecondary) } } }
         }
     }
     func recoveryView(_ message: String) -> some View {
-        VStack(spacing: YubaiSpace.space20) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Text("原文件已保留，请选择恢复记录。").yubaiFont(YubaiFont.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.space24).frame(maxWidth: 540)
+        VStack(spacing: YubaiSpace.gapSection) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Text("原文件已保留，请选择恢复记录。").yubaiFont(YubaiFont.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.gapSection).frame(maxWidth: 540)
     }
 }
 
@@ -503,16 +503,16 @@ private struct FloatingTabBar: View {
     @Namespace private var selection
     var select: (Destination) -> Void
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: YubaiSpace.none) {
             tab(.overview); tab(.insights)
             Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
                 Image(systemName: "plus").yubaiFont(YubaiFont.addIcon).foregroundStyle(YubaiColor.white)
-                    .frame(width: 54, height: 54).background(YubaiColor.brand, in: Circle())
+                    .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background(YubaiColor.brand, in: Circle())
                     .shadow(color: YubaiColor.brandInk.opacity(0.3), radius: 6, y: 4)
-            }.buttonStyle(.plain).padding(.horizontal, 4)
+            }.buttonStyle(.plain).padding(.horizontal, YubaiSpace.space8)
                 .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
             tab(.entries); tab(.settings)
-        }.padding(.horizontal, 6).frame(height: YubaiSize.floatingTabbarHeight)
+        }.padding(.horizontal, YubaiSpace.space8).frame(height: YubaiSize.tabBarHeight)
             .background(YubaiColor.raised, in: Capsule())
             .overlay { Capsule().strokeBorder(YubaiColor.separator, lineWidth: 1).allowsHitTesting(false) }
             .yubaiShadow(YubaiShadow.float)
@@ -522,16 +522,17 @@ private struct FloatingTabBar: View {
     private func tab(_ d: Destination) -> some View {
         let selected = store.destination == d
         return Button { select(d) } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: YubaiSpace.space4) {
                 Group {
-                    if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit().frame(width: 20, height: 20) }
-                    else { Image(systemName: d.symbol).symbolVariant(.none).yubaiFont(YubaiFont.tabIcon, weight: selected ? .semibold : .regular).frame(height: 20) }
+                    if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit().frame(width: YubaiSize.tabIcon, height: YubaiSize.tabIcon) }
+                    else { Image(systemName: d.symbol).symbolVariant(.none).yubaiFont(YubaiFont.tabIcon, weight: selected ? .semibold : .regular).frame(height: YubaiSize.tabIcon) }
                 }
                 Text(d.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .semibold : .regular).lineLimit(1)
             }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
-                .frame(maxWidth: .infinity).frame(height: 50).contentShape(Capsule())
+                .frame(maxWidth: .infinity).frame(height: YubaiSize.tabSelectionHeight)
+                .contentShape(RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius))
                 .background {
-                    if selected { Capsule().fill(YubaiColor.card).matchedGeometryEffect(id: "selection", in: selection) }
+                    if selected { RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius).fill(YubaiColor.card).matchedGeometryEffect(id: "selection", in: selection) }
                 }
         }.buttonStyle(.plain).accessibilityLabel(d.title).accessibilityIdentifier("tab_" + d.rawValue)
             .accessibilityAddTraits(selected ? .isSelected : [])

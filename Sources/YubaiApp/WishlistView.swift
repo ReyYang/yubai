@@ -5,21 +5,21 @@ struct WishlistView: View {
     @Environment(AppStore.self) private var store
     var focusedWishID: UUID? = nil
     var body: some View {
-        Page(topPadding: 8) {
+        Page(topPadding: YubaiSpace.space8) {
             if store.current.wishlist.isEmpty { EmptyState("heart", "心愿单还是空的", "问问余白：该不该买？") }
             if let focusedWishID, let wish = store.current.wishlist.first(where: { $0.id == focusedWishID }) { wishRow(wish) }
             let due = store.current.wishlist.filter { $0.id != focusedWishID && followUpVisible($0) }
             ForEach(due) { wish in
                 Card(style: .compact, background: YubaiColor.amberTint) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                        HStack(spacing: YubaiSpace.gapGroup) {
                             Text("买了一个月 · 用得怎么样？").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
                             Spacer()
                             if let card = store.current.cards.first(where: { $0.dedupeKey == "follow:\(wish.id)" }) {
                                 Menu {
                                     Button("知道了") { store.dismissCard(card.id) }
                                     Button("以后别提") { store.muteCard(card.id) }
-                                } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                                } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                                     .accessibilityLabel("更多：知道了、以后别提")
                             }
                         }
@@ -31,16 +31,18 @@ struct WishlistView: View {
             }
             let thinking = store.current.wishlist.filter { $0.status == .thinking && $0.id != focusedWishID }.sorted { $0.createdAt > $1.createdAt }
             if !thinking.isEmpty {
-                Text("在想 · \(thinking.count) 件").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                CardRows(thinking) { wish in wishContent(wish).padding(.vertical, 12) }
+                VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                    Text("在想 · \(thinking.count) 件").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard)
+                    CardRows(thinking) { wish in wishContent(wish).padding(.vertical, YubaiSpace.gapGroup) }
+                }
             }
             let past = store.current.wishlist.filter { $0.status != .thinking && $0.id != focusedWishID }
             if !past.isEmpty {
                 NavigationLink {
                     Page { ForEach(past.sorted { $0.createdAt > $1.createdAt }) { wish in wishRow(wish) } }.navigationTitle("过去的心愿").yubaiNavigation()
                 } label: {
-                    HStack { Text("已经买了 \(past.filter { $0.status == .bought }.count) 件 · 不买了 \(past.filter { $0.status == .dropped }.count) 件"); Spacer(); Image(systemName: "chevron.right") }
-                        .yubaiFont(YubaiFont.row).padding(.horizontal, 16).frame(minHeight: 44).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: 18))
+                    HStack(spacing: YubaiSpace.gapGroup) { Text("已经买了 \(past.filter { $0.status == .bought }.count) 件 · 不买了 \(past.filter { $0.status == .dropped }.count) 件"); Spacer(); Image(systemName: "chevron.right") }
+                        .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: 18))
                 }.buttonStyle(PressButtonStyle())
             }
         }.navigationTitle("心愿单").yubaiNavigation()
@@ -54,14 +56,14 @@ struct WishlistView: View {
         Card { wishContent(wish) }
     }
     private func wishContent(_ wish: WishItem) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack { Text(wish.title).yubaiFont(YubaiFont.cardTitle); Spacer(); AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts) }
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            HStack(spacing: YubaiSpace.gapGroup) { Text(wish.title).yubaiFont(YubaiFont.cardTitle); Spacer(); AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts) }
             if !wish.judgment.isEmpty { Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
             let days = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(Date())).day ?? 0)
             Text(wish.status == .thinking ? "已经想了 \(days) 天" : "加入 \(days) 天 · " + Dates.text(wish.createdAt)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { wishActions(wish) }
-                VStack(alignment: .leading, spacing: 8) { wishActions(wish) }
+                HStack(spacing: YubaiSpace.space8) { wishActions(wish) }
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) { wishActions(wish) }
             }
             if wish.status == .bought {
                 if let id = wish.boughtEntryID, store.current.activeEntries.contains(where: { $0.id == id }) {
@@ -115,12 +117,12 @@ private struct WishFollowUpView: View {
     let wishID: UUID
     @State private var text = ""
     var body: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             Text("用得怎么样？").yubaiFont(YubaiFont.rowTitle)
             TextField("想补充的话（可选）", text: $text, axis: .vertical).lineLimit(1...4)
             ViewThatFits(in: .horizontal) {
-                HStack { choices }
-                VStack(alignment: .leading) { choices }
+                HStack(spacing: YubaiSpace.gapGroup) { choices }
+                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) { choices }
             }
         }
     }

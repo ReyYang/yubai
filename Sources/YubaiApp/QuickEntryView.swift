@@ -24,17 +24,17 @@ struct QuickEntryView: View {
         let available = previewAvailable
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: YubaiSpace.space12) {
+                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     ManualSheetHeader(title: "记一笔", actionTitle: "导入", actionImage: "photo", primary: false,
                                       cancel: { dismiss() }, action: { store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports })
                     if accounts.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                             Text("从真实余额开始").yubaiFont(YubaiFont.heroLabel)
                             Text("先添加账户，填写此刻真实余额。").yubaiFont(YubaiFont.callout)
                             Button("添加第一个账户") { store.sheet = .account(nil) }
                                 .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addFirstAccount")
                         }
-                        Spacer(minLength: 0)
+                        Spacer(minLength: YubaiSpace.none)
                     } else {
                         Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature)
                         amountDisplay
@@ -42,20 +42,20 @@ struct QuickEntryView: View {
                                            all: ManualBookkeeping.categories(in: store.current, nature: nature), selection: $category,
                                            didSelect: { userChoseCategory = true })
                         form
-                        HStack {
+                        HStack(spacing: YubaiSpace.gapGroup) {
                             Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             Spacer()
                             AmountLabel(cents: available, hide: store.current.preferences.hideAmounts, currency: true, fractionDigits: available % 100 == 0 ? 0 : 2)
                                 .accessibilityIdentifier("afterEntryAvailable")
-                        }.padding(.horizontal, 4)
-                        Spacer(minLength: YubaiSpace.space12)
+                        }
+                        Spacer(minLength: YubaiSpace.gapGroup)
                         if let suggestion { matchChip(suggestion) }
                         EntryKeypadView(keypad: $keypad, canSave: canSave, save: { save(again: false) }, onKey: { purposeFocused = false })
                         Button("记下，再记一笔") { save(again: true) }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
-                            .frame(maxWidth: .infinity, minHeight: 40).buttonStyle(PressButtonStyle()).disabled(!canSave)
+                            .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle()).disabled(!canSave)
                             .accessibilityIdentifier("saveAndAddAnother")
                     }
-                }.padding(.horizontal, YubaiSpace.space18).padding(.top, YubaiSpace.space12).padding(.bottom, YubaiSpace.space24)
+                }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
                     .frame(minHeight: geometry.size.height, alignment: .top)
                     .frame(maxWidth: 620).frame(maxWidth: .infinity)
             }.scrollDismissesKeyboard(.interactively)
@@ -97,11 +97,11 @@ struct QuickEntryView: View {
     private func matchChip(_ match: Occurrence) -> some View {
         let selected = selectedMatchID == match.id
         return Button { purposeFocused = false; selectedMatchID = selected ? nil : match.id } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: YubaiSpace.space8) {
                 if selected { Image(systemName: "checkmark") }
                 Text((selected ? "已选 · " + match.title + "这期" : "是" + match.title + "这期吗") + " · " + FixedFlowPresentation.monthDay(match.date))
             }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberStrong)
-                .padding(.horizontal, 12).padding(.vertical, 8).background(YubaiColor.amberTint, in: Capsule())
+                .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8).background(YubaiColor.amberTint, in: Capsule())
                 .overlay { if selected { Capsule().strokeBorder(YubaiColor.amberDot, lineWidth: 1) } }
                 .frame(minHeight: YubaiSize.tapMin)
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fixedFlowSuggestion")
@@ -118,18 +118,18 @@ struct QuickEntryView: View {
         suggestion = first
     }
     private var amountDisplay: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
             Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
             Text(keypad.displayText.replacingOccurrences(of: "-", with: "−")).yubaiFont(YubaiFont.amountDisplay)
                 .numberTransition(value: Double(keypad.amount ?? 0) / 100)
                 .lineLimit(1).minimumScaleFactor(0.5).accessibilityIdentifier("entryKeypadAmount")
-            Rectangle().fill(YubaiColor.brand).frame(width: 2, height: 36).accessibilityHidden(true)
-            Spacer(minLength: 0)
-        }.padding(.horizontal, 4).frame(minHeight: 60).contentShape(Rectangle()).onTapGesture { purposeFocused = false }
+            Rectangle().fill(YubaiColor.brand).frame(width: 2, height: YubaiSize.rowIcon).accessibilityHidden(true)
+            Spacer(minLength: YubaiSpace.none)
+        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle()).onTapGesture { purposeFocused = false }
     }
     private var form: some View {
         Card(style: .list) {
-            VStack(spacing: 0) {
+            VStack(spacing: YubaiSpace.none) {
                 EntryFormRow(title: "用途") {
                     TextField("午饭、打车…（可不填）", text: $purpose).multilineTextAlignment(.trailing)
                         .focused($purposeFocused).accessibilityIdentifier("entryPurpose").accessibilityLabel("用途")
@@ -183,7 +183,7 @@ private struct EntryKeypadView: View {
     let onKey: () -> Void
     private let rows = [["1", "2", "3", "⌫"], ["4", "5", "6", "+"], ["7", "8", "9", "−"]]
     var body: some View {
-        Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+        Grid(horizontalSpacing: YubaiSpace.space8, verticalSpacing: YubaiSpace.space8) {
             ForEach(rows.indices, id: \.self) { row in
                 GridRow { ForEach(rows[row], id: \.self) { key in keyButton(key) } }
             }

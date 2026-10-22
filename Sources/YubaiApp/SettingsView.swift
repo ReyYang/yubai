@@ -10,12 +10,12 @@ struct SettingsView: View {
     private var thinkingCount: Int { store.current.wishlist.filter { $0.status == .thinking }.count }
     private var followUpCount: Int { store.current.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= Date() } == true }.count }
     var body: some View {
-        Page(spacing: 10, topPadding: 12) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             TabRootHeader(title: "我")
             NavigationLink { ProfileView() } label: {
                 Card {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack { Text("我的消费观").yubaiFont(YubaiFont.cardTitle); Spacer(); chevron }
+                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                        HStack(spacing: YubaiSpace.gapGroup) { Text("我的消费观").yubaiFont(YubaiFont.cardTitle); Spacer(); chevron }
                         profileLine("想克制", store.current.profile.restrain.map(\.title).joined(separator: "、"))
                         profileLine("愿意多花", store.current.profile.generous.map(\.title).joined(separator: "、"))
                         if let floor = store.current.profile.floorAmount { profileLine("始终留着", store.current.preferences.hideAmounts ? "••••" : Money.text(floor, currency: false)) }
@@ -27,12 +27,12 @@ struct SettingsView: View {
                 }
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     NavigationLink { WishlistView() } label: {
                         ViewThatFits(in: .horizontal) {
-                            HStack { wishlistTitle; Spacer(); followUp; chevron }
-                            VStack(alignment: .leading, spacing: 8) { wishlistTitle; followUp }
-                        }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                            HStack(spacing: YubaiSpace.gapGroup) { wishlistTitle; Spacer(); followUp; chevron }
+                            VStack(alignment: .leading, spacing: YubaiSpace.space8) { wishlistTitle; followUp }
+                        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
                     }
                     separator
                     NavigationLink { LettersView() } label: { row("每周来信", detail: latestLetter) }
@@ -44,19 +44,19 @@ struct SettingsView: View {
                     .accessibilityIdentifier("openFixedFlows")
             }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     NavigationLink { QuickCaptureSettingsView() } label: { row("快速记账") }.accessibilityIdentifier("openQuickCapture")
                     separator
                     NavigationLink { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")
                     separator
                     NavigationLink { IntelligencePrivacyView() } label: {
-                        HStack {
+                        HStack(spacing: YubaiSpace.gapGroup) {
                             Text("智能与隐私").yubaiFont(YubaiFont.row); Spacer()
                             if store.current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured {
                                 Pill(text: "DeepSeek · 已配好", variant: .brand, height: YubaiSize.tagHeight, showsDot: false)
                             } else { Text("未配好").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                             chevron
-                        }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                        }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
                     }.accessibilityIdentifier("openIntelligencePrivacy")
                     separator
                     NavigationLink { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
@@ -87,7 +87,7 @@ struct SettingsView: View {
         return "\(store.current.memories.count) 条 · 这周新记了 \(added) 条"
     }
     private var wishlistTitle: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text("心愿单").yubaiFont(YubaiFont.rowTitle)
             Text("\(thinkingCount) 件在想").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
         }
@@ -100,15 +100,15 @@ struct SettingsView: View {
         let values = cash.map { max(0, Finance.balance($0, in: store.current)) }
         let total = values.reduce(Int64(0), +)
         return Card {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack { Text("账户").yubaiFont(YubaiFont.rowTitle); Spacer(); Text("\(store.current.accounts.count) 个账户").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary); chevron }
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                HStack(spacing: YubaiSpace.gapGroup) { Text("账户").yubaiFont(YubaiFont.rowTitle); Spacer(); Text("\(store.current.accounts.count) 个账户").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary); chevron }
                 AmountLabel(cents: store.funds.cash, hide: store.current.preferences.hideAmounts, role: .account)
                 if !store.current.preferences.hideAmounts && total > 0 {
                     GeometryReader { geometry in
-                        HStack(spacing: 2) {
+                        HStack(spacing: YubaiSpace.space4) {
                             ForEach(values.indices, id: \.self) { i in
                                 let colors = [YubaiColor.brand, YubaiColor.series2, YubaiColor.series3, YubaiColor.neutralStrong, YubaiColor.neutralSoft]
-                                let gapWidth = CGFloat(max(0, values.count - 1)) * 2
+                                let gapWidth = CGFloat(max(0, values.count - 1)) * YubaiSpace.space4
                                 let availableWidth = max(CGFloat(0), geometry.size.width - gapWidth)
                                 let share = CGFloat(values[i]) / CGFloat(total)
                                 colors[min(i, colors.count - 1)].frame(width: availableWidth * share)
@@ -122,12 +122,12 @@ struct SettingsView: View {
     }
     @ViewBuilder private func profileLine(_ title: String, _ value: String) -> some View {
         if !value.isEmpty {
-            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .top, spacing: YubaiSpace.space8))
             layout { Text(title).foregroundStyle(YubaiColor.labelSecondary); Text(value) }.yubaiFont(YubaiFont.callout)
         }
     }
     private func row(_ title: String, detail: String? = nil) -> some View {
-        HStack { Text(title).yubaiFont(YubaiFont.row); Spacer(); if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }; chevron }.frame(minHeight: 44).contentShape(Rectangle())
+        HStack(spacing: YubaiSpace.gapGroup) { Text(title).yubaiFont(YubaiFont.row); Spacer(); if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }; chevron }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
     }
     private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
     private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
@@ -139,12 +139,12 @@ struct IntelligencePrivacyView: View {
     @State private var configured = IntelligenceRuntime.isConfigured
     @State private var sendCount = SendLog.shared.totalCount
     var body: some View {
-        Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space12) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             if let model = IntelligenceRuntime.cloud.unavailableModel { ModelUnavailableNote(model: model) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 heading("云端智能")
                 Card(style: .list) {
-                    VStack(spacing: 0) {
+                    VStack(spacing: YubaiSpace.none) {
                         Toggle("打开云端智能", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in
                             store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value }
                         })).tint(YubaiColor.brand).frame(minHeight: YubaiSize.headerHeight)
@@ -159,14 +159,14 @@ struct IntelligencePrivacyView: View {
                     }.buttonStyle(PressButtonStyle())
                 }
             }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 heading("隐私")
                 Card(style: .list) {
                     NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开后发了 \(sendCount) 次", chevron: true) }
                         .buttonStyle(PressButtonStyle())
                 }
                 Text("发送：问题、金额、日期、分类、商户和备注。不发送：账户名、卡号、交易单号、附件；转账姓名以「联系人A」显示。")
-                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space4)
+                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard)
             }
             // Retain the existing device and notification preferences below the cloud/privacy groups.
             Card(style: .list) {
@@ -174,15 +174,15 @@ struct IntelligencePrivacyView: View {
                     Task { await store.setWeeklyLetterPush(enabled) }
                 })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: YubaiSize.headerHeight)
             }
-            VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 heading("设备与界面")
                 Card(style: .list) {
-                    VStack(spacing: 0) {
+                    VStack(spacing: YubaiSpace.none) {
                         Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.headerHeight)
                         separator
                         Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in
                             store.update("保存外观") { $0.preferences.appearance = value }
-                        })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }.frame(minHeight: YubaiSize.tapMin)
+                        })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }.frame(minHeight: YubaiSize.rowSingle)
                     }
                 }
             }
@@ -192,14 +192,14 @@ struct IntelligencePrivacyView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.totalCount }
     }
-    private func heading(_ text: String) -> some View { Text(text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space4) }
+    private func heading(_ text: String) -> some View { Text(text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard) }
     private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
     private func settingsRow(_ title: String, detail: String, numeric: Bool = false, chevron: Bool = false) -> some View {
         HStack(spacing: YubaiSpace.space8) {
             Text(title).yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
             Text(detail).yubaiFont(numeric ? YubaiFont.amountSmall : YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             if chevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
-        }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+        }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
     }
     private func enableLock(_ enabled: Bool) {
         guard enabled else { store.update("关闭账本锁") { $0.preferences.lockEnabled = false }; return }
@@ -308,7 +308,7 @@ struct ImportHistoryView: View {
                         .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     if batch.undoneAt == nil {
                         if batch.needsOrganization == true || !(batch.organization?.questions.isEmpty ?? true) {
-                            Button("继续整理") { store.sheet = .imports }.frame(minHeight: YubaiSize.tapMin)
+                            Button("继续整理") { store.sheet = .imports }.frame(minHeight: YubaiSize.rowSingle)
                         }
                         Button("整批撤销", role: .destructive) { undoBatch = batch }
                             .disabled(store.organizingBatchID != nil).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportBatch")

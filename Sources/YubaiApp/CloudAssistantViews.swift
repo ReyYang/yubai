@@ -75,7 +75,7 @@ struct CloudModelMenu: View {
                 Text("模型").yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
                 Text(IntelligenceRuntime.cloud.model).yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary)
                 Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+            }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
         }.accessibilityIdentifier("editCloudModel")
             .navigationDestination(isPresented: $editing) { CloudModelEditor() }
             .task { await fetchModels() }
@@ -131,7 +131,7 @@ struct ModelUnavailableNote: View {
         (Text("模型「\(model)」现在用不了。").foregroundColor(YubaiColor.amberInk).fontWeight(.medium)
          + Text("请到「模型」换个名字再试。"))
             .yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, YubaiSpace.space12).padding(.horizontal, YubaiSpace.space16)
+            .padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
             .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
             .accessibilityIdentifier("modelUnavailable")
     }
@@ -166,7 +166,7 @@ struct CloudSendLogView: View {
     }
     var body: some View {
         Page {
-            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text("本次打开后发了 \(sentCount) 次，共 " + CloudLogText.bytes(sentBytes)).yubaiFont(YubaiFont.lead).accessibilityIdentifier("cloudSendSummary")
                 Text("只存在本机内存，关掉应用就清空").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
@@ -192,10 +192,10 @@ struct CloudSendLogView: View {
     }
     private var summaryCard: some View {
         Card(style: .compact) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space10) {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 Text("为了什么发").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 ForEach(purposeCounts, id: \.key) { row in
-                    HStack(spacing: YubaiSpace.space10) {
+                    HStack(spacing: YubaiSpace.gapGroup) {
                         Text(row.key).yubaiFont(YubaiFont.callout).frame(width: YubaiSize.tapMin * 2, alignment: .leading)
                         GeometryReader { geometry in
                             Capsule().fill(YubaiColor.neutralSoft)
@@ -213,7 +213,7 @@ struct CloudSendLogView: View {
         }
     }
     private func groupRow(_ group: SendLogGroup) -> some View {
-        HStack(spacing: YubaiSpace.space10) {
+        HStack(spacing: YubaiSpace.gapGroup) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(group.purpose + (store.current.preferences.hideAmounts || group.title == group.purpose ? "" : " · " + group.title)).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
                 Text(ImportStatementText.time(group.startedAt) + " · " + CloudLogText.metadata(group)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
@@ -231,7 +231,7 @@ struct CloudSendLogView: View {
 private struct CloudRedactionChips: View {
     let summary: [String: Int]
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space6) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
             ForEach(CloudLogText.redaction(summary), id: \.key) { row in Pill(text: row.title, showsDot: false) }
         }
     }
@@ -245,11 +245,11 @@ private struct CloudSendLogDetailView: View {
     @State private var removed = false
     private var hidden: Bool { store.current.preferences.hideAmounts }
     var body: some View {
-        Page(spacing: YubaiSpace.space12, topPadding: YubaiSpace.space10) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             if removed { Text("这份记录已清空或移出。").yubaiFont(YubaiFont.callout) }
             else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: YubaiSpace.space6) {
+                    HStack(spacing: YubaiSpace.space8) {
                         ForEach(Set(group.items.map(\.model)).sorted(), id: \.self) { Pill(text: $0, variant: .neutral, showsDot: false) }
                         Pill(text: CloudLogText.metadata(group), variant: .neutral, showsDot: false)
                     }
@@ -261,7 +261,7 @@ private struct CloudSendLogDetailView: View {
                             Text(hidden ? "金额已隐藏" : rule).yubaiFont(YubaiFont.caption).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space8)
                         }
                     } label: {
-                        HStack {
+                        HStack(spacing: YubaiSpace.gapGroup) {
                             Text("给云端的规则说明").yubaiFont(YubaiFont.row)
                             Spacer()
                             Text("\(SendLogPresentation.rules(in: group).reduce(0) { $0 + $1.count }) 字").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
@@ -275,10 +275,10 @@ private struct CloudSendLogDetailView: View {
             }
         }.safeAreaInset(edge: .bottom) {
             if !removed {
-                HStack(spacing: YubaiSpace.space10) {
+                HStack(spacing: YubaiSpace.gapGroup) {
                     Button("看原文") { raw = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewCloudLogRaw")
                     Button(copied ? "已拷贝" : "拷贝原文") { copyRaw(); copied = true }.buttonStyle(SecondaryButtonStyle()).disabled(hidden).accessibilityIdentifier("copyCloudLogRaw")
-                }.padding(YubaiSpace.space18).background(YubaiColor.canvas)
+                }.padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
             }
         }
         .amountPrivacy(hidden).navigationTitle(group.purpose + " · " + ImportStatementText.time(group.startedAt)).yubaiNavigation()
@@ -289,21 +289,21 @@ private struct CloudSendLogDetailView: View {
         }
     }
     private func traceRow(_ step: SendLogTraceStep) -> some View {
-        HStack(alignment: .top, spacing: YubaiSpace.space10) {
+        HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
             Text("\(step.id)").yubaiFont(YubaiFont.meta)
                 .foregroundStyle(step.outgoing ? YubaiColor.onBrand : YubaiColor.label)
                 .frame(width: YubaiSize.tagHeight, height: YubaiSize.tagHeight)
                 .background(step.outgoing ? YubaiColor.brand : YubaiColor.card, in: Circle())
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(step.title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     ForEach(Array(step.lines.enumerated()), id: \.offset) { _, line in
-                        HStack(alignment: .top, spacing: YubaiSpace.space10) {
+                        HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
                             if !line.label.isEmpty { Text(line.label).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
                             Text(hidden ? "金额已隐藏" : line.value).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                }.padding(.vertical, YubaiSpace.space10).padding(.horizontal, YubaiSpace.space16)
+                }.padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(step.outgoing ? YubaiColor.raised : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
             }

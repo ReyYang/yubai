@@ -13,7 +13,7 @@ struct QuickCaptureSettingsView: View {
     var body: some View {
         Page {
             Text("近 7 天").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space4) {
                 Text("\(recent.count)").yubaiFont(YubaiFont.amountAccount)
                 Text("笔，\(recent.filter { $0.quickCapture?.withoutOpeningApp == true }.count) 笔没打开 App").yubaiFont(YubaiFont.callout)
             }
@@ -21,7 +21,7 @@ struct QuickCaptureSettingsView: View {
                 NavigationLink { ApplePaySetupView() } label: { line("Apple Pay 付款后自动记", "在快捷指令的「自动化 › 钱包」里建一次", detail: "去设置") }
             }
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     NavigationLink { CaptureRulesView(kind: .card) } label: {
                         line("卡对应的账户", cardSummary, detail: "\(store.current.preferences.quickCapture.cardAccounts.count) 张")
                     }
@@ -33,7 +33,7 @@ struct QuickCaptureSettingsView: View {
             }
             Text("其他入口").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     line("Siri 和快捷指令", "说「余白记一笔，午饭 32」", detail: "已可用")
                     EntryFormDivider()
                     line("锁屏和主屏小组件", "长按锁屏或主屏 › 添加小组件 › 余白")
@@ -55,14 +55,14 @@ struct QuickCaptureSettingsView: View {
         return rules.keys.sorted().prefix(2).map { $0 + " → " + Classification.displayCategory(rules[$0]!) }.joined(separator: "，")
     }
     private func line(_ title: String, _ subtitle: String, detail: String? = nil) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(title).yubaiFont(YubaiFont.rowTitle)
                 if !subtitle.isEmpty { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: YubaiSpace.space4)
             if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-        }.frame(minHeight: 56).padding(.vertical, 6).contentShape(Rectangle())
+        }.padding(.vertical, YubaiSpace.space4).frame(minHeight: subtitle.isEmpty ? YubaiSize.rowSingle : YubaiSize.rowDouble).contentShape(Rectangle())
     }
 }
 private struct ApplePaySetupView: View {
@@ -93,7 +93,7 @@ private struct CaptureRulesView: View {
         List {
             ForEach(names, id: \.self) { name in
                 Button { editing = CaptureRuleSelection(name: name) } label: {
-                    HStack { Text(name); Spacer(); Text(value(name)).foregroundStyle(YubaiColor.labelSecondary) }.contentShape(Rectangle())
+                    HStack(spacing: YubaiSpace.gapGroup) { Text(name); Spacer(); Text(value(name)).foregroundStyle(YubaiColor.labelSecondary) }.contentShape(Rectangle())
                 }.foregroundStyle(YubaiColor.label)
             }.onDelete { offsets in
                 let deleted = offsets.map { names[$0] }

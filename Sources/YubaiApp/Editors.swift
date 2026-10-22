@@ -60,14 +60,16 @@ struct AccountsView: View {
             ForEach(AccountKind.allCases) { kind in
                 let accounts = store.current.accounts.filter { $0.kind == kind }
                 if !accounts.isEmpty {
-                    SectionHeading(title: kind.label)
-                    CardRows(accounts) { a in
-                        NavigationLink { accountDetail(a) } label: {
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: YubaiSpace.space12) { accountName(a); Spacer(); AmountLabel(cents: Finance.balance(a, in: store.current), fractionDigits: 2) }
-                                VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); AmountLabel(cents: Finance.balance(a, in: store.current), fractionDigits: 2) }
-                            }.padding(.vertical, YubaiSpace.space8).contentShape(Rectangle())
-                        }.buttonStyle(PressButtonStyle())
+                    VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                        SectionHeading(title: kind.label).padding(.horizontal, YubaiSpace.insetCard)
+                        CardRows(accounts) { a in
+                            NavigationLink { accountDetail(a) } label: {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: YubaiSpace.gapGroup) { accountName(a); Spacer(); AmountLabel(cents: Finance.balance(a, in: store.current), fractionDigits: 2) }
+                                    VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); AmountLabel(cents: Finance.balance(a, in: store.current), fractionDigits: 2) }
+                                }.padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+                            }.buttonStyle(PressButtonStyle())
+                        }
                     }
                 }
             }
@@ -80,18 +82,20 @@ struct AccountsView: View {
     func accountDetail(_ a: Account) -> some View {
         Page {
             AmountLabel(cents: Finance.balance(a, in: store.current), role: .display, fractionDigits: 2)
-            Card(style: .list) { VStack(spacing: 0) {
-                LabeledContent("类型", value: a.kind.label).frame(minHeight: YubaiSize.buttonHeight)
+            Card(style: .list) { VStack(spacing: YubaiSpace.none) {
+                LabeledContent("类型", value: a.kind.label).frame(minHeight: YubaiSize.rowSingle)
                 Divider().overlay(YubaiColor.separator)
-                LabeledContent("上次对账", value: Dates.text(a.anchorDate, time: true)).frame(minHeight: YubaiSize.buttonHeight)
-                if a.creditLimit > 0 { Divider().overlay(YubaiColor.separator); LabeledContent("信用额度", value: Money.text(a.creditLimit)).frame(minHeight: YubaiSize.buttonHeight) }
-                if !a.note.isEmpty { Divider().overlay(YubaiColor.separator); Text(a.note).frame(minHeight: YubaiSize.buttonHeight) }
+                LabeledContent("上次对账", value: Dates.text(a.anchorDate, time: true)).frame(minHeight: YubaiSize.rowSingle)
+                if a.creditLimit > 0 { Divider().overlay(YubaiColor.separator); LabeledContent("信用额度", value: Money.text(a.creditLimit)).frame(minHeight: YubaiSize.rowSingle) }
+                if !a.note.isEmpty { Divider().overlay(YubaiColor.separator); Text(a.note).frame(minHeight: YubaiSize.rowSingle) }
                 Divider().overlay(YubaiColor.separator)
-                NavigationLink("对一下余额") { AccountEditor(account: a, startsReconciling: true) }
-                NavigationLink("编辑账户") { AccountEditor(account: a) }.frame(minHeight: YubaiSize.buttonHeight)
+                NavigationLink("对一下余额") { AccountEditor(account: a, startsReconciling: true) }.frame(minHeight: YubaiSize.rowSingle)
+                NavigationLink("编辑账户") { AccountEditor(account: a) }.frame(minHeight: YubaiSize.rowSingle)
             }.yubaiFont(YubaiFont.row) }
-            SectionHeading(title: "关联记录")
-            CardRows(Array(store.current.activeEntries.filter { $0.accountID == a.id || $0.otherAccountID == a.id }.sorted { $0.date > $1.date }.prefix(100))) { e in EntryLink(entry: e, hideAmount: store.current.preferences.hideAmounts, editable: true) }
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                SectionHeading(title: "关联记录").padding(.horizontal, YubaiSpace.insetCard)
+                CardRows(Array(store.current.activeEntries.filter { $0.accountID == a.id || $0.otherAccountID == a.id }.sorted { $0.date > $1.date }.prefix(100))) { e in EntryLink(entry: e, hideAmount: store.current.preferences.hideAmounts, editable: true) }
+            }
             Button(a.archived ? "取消归档" : "归档账户") { store.update(a.archived ? "取消归档" : "归档账户") { l in if let i = l.accounts.firstIndex(where: { $0.id == a.id }) { l.accounts[i].archived.toggle() } } }.buttonStyle(SecondaryButtonStyle())
         }.navigationTitle(a.name).yubaiNavigation()
     }

@@ -20,7 +20,7 @@ struct SyncVersionsView: View {
                         if let other = choice.versions.first(where: { $0.id != version.id }) {
                             let differences = version.differingEntries(from: other.ledger)
                             ForEach(differences) { entry in
-                                VStack(alignment: .leading) {
+                                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                                     Text("\(Dates.text(entry.date, time: true)) · \(entry.displayTitle) · \(Money.text(entry.amount))\(entry.deletedAt == nil ? "" : " · 已删除")")
                                     Text("\(entry.nature.entryLabel) · \(Classification.displayCategory(entry.category)) · \(version.ledger.accountName(entry.accountID))")
                                         .foregroundStyle(YubaiColor.labelSecondary)

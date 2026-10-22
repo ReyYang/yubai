@@ -35,7 +35,7 @@ private struct EntryEditForm: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     ManualSheetHeader(title: "改一笔", showsAction: draft.source != "Apple Pay", enabled: canSave, cancel: { dismiss() }, action: save)
                     if draft.source == "Apple Pay" {
                         Pill(text: "来自 Apple Pay · " + (draft.quickCapture?.card ?? "") + " · " + (draft.quickCapture?.transactionDate ?? draft.date).formatted(.dateTime.hour().minute()), variant: .neutral, height: 26, showsDot: false)
@@ -46,15 +46,15 @@ private struct EntryEditForm: View {
                         Text(draft.nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                             .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
                     }
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                         Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
                         TextField("0", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay)
                             .accessibilityLabel("金额").accessibilityIdentifier("editEntryAmount")
-                    }.frame(minHeight: 60).padding(.horizontal, 4)
+                    }.frame(minHeight: YubaiSize.rowDouble)
                     EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: draft.nature, frequentOnly: true),
                                        all: ManualBookkeeping.categories(in: store.current, nature: draft.nature), selection: $draft.category, didSelect: { choseCategory = true }, limit: 4)
                     Card(style: .list) {
-                        VStack(spacing: 0) {
+                        VStack(spacing: YubaiSpace.none) {
                             EntryFormRow(title: "用途") {
                                 TextField("午饭、打车…（可不填）", text: $purpose).multilineTextAlignment(.trailing).accessibilityLabel("用途")
                             }
@@ -70,7 +70,7 @@ private struct EntryEditForm: View {
                                 }
                             }
                             EntryFormDivider()
-                            EntryFormRow(title: "时间") { HStack(spacing: 6) { EntryDateChip(date: $draft.date); EntryDateChip(date: $draft.date, time: true) } }
+                            EntryFormRow(title: "时间") { HStack(spacing: YubaiSpace.space8) { EntryDateChip(date: $draft.date); EntryDateChip(date: $draft.date, time: true) } }
                             if draft.source != "Apple Pay" {
                                 EntryFormDivider()
                                 EntryFormRow(title: "备注") { TextField("可不填", text: $draft.note).multilineTextAlignment(.trailing).accessibilityLabel("备注") }
@@ -78,38 +78,38 @@ private struct EntryEditForm: View {
                         }
                     }
                     if draft.source != "Apple Pay" {
-                        Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, 4)
+                        Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                         Button {
                             let question = "\(draft.displayTitle)，\(Money.text(draft.amount))，该不该买？"
                             store.sheetSource = nil; store.sheet = .ask(question)
                         } label: {
                             Card(style: .list) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: YubaiSpace.space8) {
                                     AssistantMark(size: 16, color: YubaiColor.brandInk)
                                     Text("该不该买 ›").yubaiFont(YubaiFont.row)
                                     Spacer()
-                                }.frame(minHeight: 46)
+                                }.frame(minHeight: YubaiSize.rowSingle)
                             }
                         }.buttonStyle(PressButtonStyle())
                     }
                     if let merchant = draft.quickCapture?.merchant {
-                        HStack {
+                        HStack(spacing: YubaiSpace.gapGroup) {
                             Text("以后「\(merchant)」都记到 \(Classification.displayCategory(draft.category))").yubaiFont(YubaiFont.caption)
                             Text("·").foregroundStyle(YubaiColor.labelSecondary)
                             Button(remembered ? "已记好" : "好") {
                                 remembered = store.update("记下商户分类") { try QuickCapture.remember(merchant: merchant, category: draft.category, in: &$0) }
                             }.disabled(remembered).foregroundStyle(YubaiColor.brandInk)
-                        }.padding(.horizontal, 4)
+                        }
                     }
-                    Spacer(minLength: 24)
+                    Spacer(minLength: YubaiSpace.gapSection)
                     if draft.source == "Apple Pay" {
-                        HStack(spacing: 8) {
+                        HStack(spacing: YubaiSpace.space8) {
                             deleteButton.frame(maxWidth: .infinity)
                             Button("好了", action: save).buttonStyle(PrimaryButtonStyle()).disabled(!canSave).frame(maxWidth: .infinity)
                         }
                     } else { deleteButton }
 
-                }.padding(.horizontal, YubaiSpace.space18).padding(.top, 12).padding(.bottom, 24)
+                }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
                     .frame(minHeight: geometry.size.height, alignment: .top).frame(maxWidth: 620).frame(maxWidth: .infinity)
             }.scrollDismissesKeyboard(.interactively)
         }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)

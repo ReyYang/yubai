@@ -16,10 +16,10 @@ struct MemoryView: View {
                     Section {
                         ForEach(notes) { note in
                             NavigationLink { MemoryEditor(note: note) } label: {
-                                VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                                     Text(note.text).yubaiFont(YubaiFont.row)
                                     Text(metadata(note)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                                }.padding(.vertical, YubaiSpace.space6)
+                                }.padding(.vertical, YubaiSpace.space8)
                             }.accessibilityIdentifier("memory_" + note.id.uuidString)
                                 .listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
                         }.onDelete { offsets in

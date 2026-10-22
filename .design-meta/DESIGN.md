@@ -397,3 +397,34 @@ owner 本轮明确确认八张记忆与智能设置画板，按当前 `feat/ai-m
 只有选定方向后，才将其升级为正式视觉资源。交接须同时指向：本轮真实任务、选定画面、关键状态、样式来源、可复用组件和未决业务行为。现在能交接的是资料与局部候选，尚不能宣称资金计算、账单导入或正式 UI 已可直接实现。
 
 本轮验证范围：文件存在、引用和来源一致、原有记录与原型保留。历史静态检查结论以原型票为准；本轮未运行原型或真实业务测试，也未设置使用成效指标。
+
+## 2026-10-22 第十三轮 · 留白规范
+
+来源为 owner 本轮明确的 Apple HIG + 4/8 网格修正清单；对应设计稿页面为「第十三轮 · 留白规范」。本轮采用这些留白与点按尺寸，权威数值仍在 `Sources/YubaiApp/DesignSystem.swift`，不调整业务规则、文案或颜色。按本轮写入范围，只更新 App 界面源码与本文；设计入口、产品票、HTML 原稿、Figma 与分发包未同步，未新建或宣称已更新设计稿页面。
+
+公共约定：页面左右 20pt，卡片、列表与汇总小卡水平内边距 16pt，卡片文字距屏幕边 36pt；`Card.standard`／`.compact` 四边 16pt，`.list` 上下 4pt，行高由 `CardRows.rowHeight` 与行内容撑开，对齐「第十三轮 · 账目」的 `padding: 4px 16px`；区块之间 24pt，同组 12pt，标题到内容 8pt，操作到内容 12pt。保留全部旧 token，`space6`／`space10`／`space18` 标注「已停用，仅兼容」，本轮界面不再引用它们；H1 原有滑动内缩及标签几何另用专属 token 保留原值。44pt 最小点按区通过标签内部的 `yubaiHitTarget()` 和矩形 contentShape 建立，视觉背景先绘制，再透明外扩；相邻控件按各自占位排布，不叠加重叠的点击 overlay。
+
+| 编号 | 源码位置与本轮采用的修正 |
+|---|---|
+| H2 | `YubaiApp.swift / FloatingTabBar`：栏高 66，屏幕左右 20，底部安全区上方 8；栏内左右 8；选中块高 50、圆角 25，上下左右边距按 8 排布；中央＋为 54，左右各留 8。保留现有实色、选择及分页逻辑。 |
+| H3 | `EntryFormComponents.swift / EntryChipLayout、EntryCategoryChips`：分类与「更多」视觉高 32、点按区至少 44；横向间距 8、换行视觉间距 12。换行计算扣除点按框比芯片多出的 12，避免重复增加留白，纵向点击框相接而不重叠。 |
+| H4 | `EntryFormComponents.swift / EntryAccountMenu、EntryDateChip`：账户、日期、时间胶囊视觉最小高 32，背景外扩至至少 44 的点按区。 |
+| H5 | `OverviewView.swift / 顶栏`、`DesignSystem.swift / AskToolbarButton、TabRootHeader`：眼睛与问余白视觉 40、点按区至少 44；占位同步 44，标题居中。 |
+| H6 | `AskYubaiView.swift / inputBar`：＋、麦克风／停止、发送均保留 40 视觉并增加至少 44 的点按区；推荐问题胶囊最小高 44，同组间距 12。 |
+| M1 | `DesignSystem.swift / Page` 及 `OverviewView`、`EntriesView`、`QuickEntryView`、`EntryEditView`、`AskYubaiView`、`ProfileConversationView`、`ImportView`、`StorageView`、`CloudAssistantViews`、根页浮层：页面与底部操作栏的左右边距采用 `insetPage`。 |
+| M2 | `DesignSystem.swift / Card、AssistantCard`、`EntriesView / total`、`InsightsView / tile`、`FixedFlowsView / bills、FixedFlowBillRow`：卡片／列表／汇总小卡水平内边距统一 16；`Card.list` 上下 4，`.standard`／`.compact` 四边 16；移除存储用量卡及汇总卡的重复内缩。保留 Card.Style 调用接口。 |
+| M3 | `DesignSystem.swift / EntryRow、CardRows、editorForm`，以及 `EntriesView`、`EntryFormComponents`、`SettingsView`、`CloudAssistantViews`、`FixedFlowsView`、`OverviewView`、`Editors`、`QuickCaptureSettingsView`、`QuickCaptureSupport`、`StorageView`：单行最小高 48、两行最小高 56；账目页分类＋备注为两行，`CardRows(day.entries)` 统一使用 `rowHeight: YubaiSize.rowDouble`（56）。行内 padding 放在最小高度之前，长文、大字号与多内容行仍可自然增长。主按钮原 52pt 尺寸保留。 |
+| M4 | `Page` 默认区块间距 24；`EntriesView` 日期组、`ImportView` 导入组、`SettingsView` 隐私分组、`ProfileView` 消费观分组、`Editors` 账户分组、`WishlistView` 心愿分组等采用标题间距 8；同组卡片及内容采用 12，操作与正文之间采用 12；现在页与存储页等同步公共 token。 |
+| M5 | `EntriesView / 日期组标题`、`SettingsView / heading`、`FixedFlowsView / 要收、已停掉`、`ImportView / group.title`：标题内缩从 4 调到 16，与列表内容边缘对齐。 |
+| M6 | `DesignSystem.swift / Segmented`：常规字号下，底板视觉高 40、选中块高 32、四边 4；按钮自身透明占位高 44，底板上下各内收 `(44−40)/2`，不被点按框撑高。大字号保留纵向排列和自然增高。 |
+| M7 | `QuickEntryView / 记下，再记一笔`：最小高度由 40 改为 44。 |
+| M8 | `EntriesView / monthPicker`：依「第十三轮 · 账目」排列为 `[<] 年月 [>]`、Spacer、搜索，HStack 间距 4；左箭头用 `yubaiPageArrowTarget` 贴页面左边距，44pt 点击框向左外扩；右箭头紧跟月份，用普通 44×44 点按区；搜索视觉 40、点按区 44，视觉右缘贴页面右边距。`InsightsView / 时间范围` 仍用 `yubaiPageArrowTarget` 将两端箭头贴页面左右边距；保留月份／时间切换与搜索动作。 |
+| L1 | 本轮 25 个 App Swift 文件的显式 spacing、padding、Spacer minLength 使用 token；不再引用 2／6／10／18 的旧间距 token，也不保留裸数字的这些布局调用。原有字体、图形尺寸、线宽、圆角、手势阈值与 H1 专用几何不当作布局间距替换。 |
+| L2 | `DesignSystem.swift / CardRows`、`EntriesView / CardRows(day.entries)`：有图标列表的分隔线从卡片边起 16 + 36 + 12 = 64，卡片内额外缩进 48；无图标列表从卡片边起 16。 |
+| L3 | `InsightsView / legend`：取消内容左右额外 8 的内缩；选中背景用负 padding 向外扩 8，不移动文字与金额。 |
+| L4 | `ButlerViews.swift / cardContent`：类型行与标题统一 trailing 留位 48，避让右上角 ⋯ 的 44pt 点按区。 |
+| L5 | `QuickEntryView / 金额、记下后还能花`、`EntryEditView / 金额、来源说明、商户提示`、`FixedFlowsView / 添加金额`：移除多余的横向 4，贴齐页面 20pt 边距。 |
+
+验证：`git diff --check` 通过；临时只读源码核对覆盖 25 个改动 Swift 文件，确认写入路径符合本轮限制、旧 token 名称全部保留、间距／尺寸 token 引用均有定义、显式布局调用无裸数字间距、旧 2／6／10／18 间距 token 引用为零；Swift 字符串字面量、颜色和字体定义保持，H1 三处左滑按钮背景及露出常量在解析 token 后与修改前一致。未修改 YubaiCore、业务测试断言或依赖，未提交。
+
+已尝试对全部改动文件执行 `swiftc -parse`，但本会话容器未安装 `swiftc`（`command not found`），也没有历史记录中的 `/opt/swift-rootfs/usr/bin/swiftc`；尝试从 Swift 官方站点取得工具链时，配置的网络代理不可达，直连 DNS 也不可用，因此语法解析未执行，不能记为通过。Apple SDK 类型检查、iOS／macOS 构建、设备视觉与点按区实测均待有工具链的环境完成。macOS 条件分支和既有平台行为保留；源码核对不等于编译或视觉验收。

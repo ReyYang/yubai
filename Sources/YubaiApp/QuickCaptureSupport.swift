@@ -73,26 +73,26 @@ struct ScreenshotCaptureView: View {
             } else {
                 Text("余白 · 从截图认出 \(drafts.count) 笔").yubaiFont(YubaiFont.cardTitle)
                 Card(style: .list) {
-                    VStack(spacing: 0) {
+                    VStack(spacing: YubaiSpace.none) {
                         ForEach(drafts, id: \.id) { draft in
                             Button {
                                 if selected.contains(draft.id) { selected.remove(draft.id) } else { selected.insert(draft.id) }
                             } label: {
-                                HStack(spacing: 12) {
+                                HStack(spacing: YubaiSpace.gapGroup) {
                                     Image(systemName: selected.contains(draft.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(YubaiColor.brandInk)
-                                    VStack(alignment: .leading, spacing: 4) {
+                                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                                         Text(draft.title).yubaiFont(YubaiFont.rowTitle)
                                         Text(Classification.displayCategory(draft.category) + " · " + store.current.accountName(draft.accountID) + " · " + ManualBookkeeping.dayLabel(draft.date))
                                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                                     }
                                     Spacer()
                                     AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .outflow)
-                                }.frame(minHeight: YubaiSize.buttonHeight).padding(.vertical, 8).contentShape(Rectangle())
+                                }.padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
                             }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected.contains(draft.id) ? .isSelected : [])
                         }
                     }
                 }
-                HStack {
+                HStack(spacing: YubaiSpace.gapGroup) {
                     Button("打开核对") { if let bytes { store.sheet = .screenshotReview(bytes) } }.buttonStyle(SecondaryButtonStyle())
                     Button("记下 \(selected.count) 笔", action: save).buttonStyle(PrimaryButtonStyle()).disabled(selected.isEmpty)
                 }
