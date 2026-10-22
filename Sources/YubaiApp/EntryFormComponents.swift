@@ -89,7 +89,7 @@ struct EntryCategoryChips: View {
                 NavigationStack {
                     List(all, id: \.self) { name in
                         Button { selection = name; didSelect(); picking = false } label: {
-                            HStack { Text(name); Spacer(); if name == selection { Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk) } }
+                            HStack { Text(name); Spacer(); if name == selection { Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk) } }.contentShape(Rectangle())
                         }.listRowBackground(YubaiColor.card)
                     }.scrollContentBackground(.hidden).navigationTitle("分类").yubaiNavigation()
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { picking = false } } }
@@ -144,20 +144,21 @@ struct EntryDateChip: View {
     @Binding var date: Date
     var time = false
     @State private var picking = false
+    @State private var latestDate = Date()
     var body: some View {
-        Button { picking = true } label: {
+        Button { latestDate = Date(); picking = true } label: {
             Text(time ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date))
                 .yubaiFont(time ? YubaiFont.amountSmall : YubaiFont.callout)
                 .padding(.horizontal, 12).frame(minHeight: 30).background(YubaiColor.raised, in: Capsule())
         }.buttonStyle(PressButtonStyle()).popover(isPresented: $picking) {
             VStack {
                 if time {
-                    DatePicker("时间", selection: $date, in: ...Date(), displayedComponents: .hourAndMinute).labelsHidden().frame(width: 240).fixedSize()
+                    DatePicker("时间", selection: $date, in: ...latestDate, displayedComponents: .hourAndMinute).labelsHidden().frame(width: 240).fixedSize()
                 } else {
-                    DatePicker("日期", selection: $date, in: ...Date(), displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320).fixedSize()
+                    DatePicker("日期", selection: $date, in: ...latestDate, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320, height: 360).fixedSize()
                 }
                 Button("完成") { picking = false }.frame(minHeight: YubaiSize.tapMin)
-            }.padding(YubaiSpace.space18)
+            }.padding(YubaiSpace.space18).transaction { $0.animation = nil }
                 #if os(iOS)
                 .presentationCompactAdaptation(.popover)
                 #endif

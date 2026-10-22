@@ -578,7 +578,7 @@ struct AmountLabel: View {
             if hide { Text("••••").transition(.opacity) }
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
         }.yubaiFont(font).foregroundStyle(YubaiColor.label)
-            .minimumScaleFactor(0.55).lineLimit(1)
+            .minimumScaleFactor(resolvedRole == .summary || resolvedRole == .donut ? 0.25 : 0.55).lineLimit(1)
             .accessibilityLabel(hide ? "金额已隐藏" : Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: 2))
             .animation(YubaiMotion.quick, value: hide)
     }
@@ -1297,7 +1297,9 @@ struct ForecastChart: View {
                     .foregroundStyle(YubaiColor.chartRule).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 if let last = funds.points.last {
                     PointMark(x: .value("日期", last.date), y: .value("还能花", Double(last.conservative) / 100))
-                        .foregroundStyle(YubaiColor.brand).annotation(position: .top, alignment: .trailing) { AmountLabel(cents: last.conservative, role: .chart) }
+                        .foregroundStyle(YubaiColor.brand).annotation(position: .top, alignment: .trailing, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                            AmountLabel(cents: last.conservative, role: .chart).fixedSize()
+                        }
                 }
             }.chartYAxis(.hidden).chartLegend(.hidden)
                 .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month()) } }

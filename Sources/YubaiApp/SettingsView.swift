@@ -32,7 +32,7 @@ struct SettingsView: View {
                         ViewThatFits(in: .horizontal) {
                             HStack { wishlistTitle; Spacer(); followUp; chevron }
                             VStack(alignment: .leading, spacing: 8) { wishlistTitle; followUp }
-                        }.frame(minHeight: YubaiSize.tapMin)
+                        }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                     }
                     separator
                     NavigationLink { LettersView() } label: { row("每周来信", detail: latestLetter) }
@@ -62,7 +62,7 @@ struct SettingsView: View {
                                 Pill(text: "DeepSeek · 已配好", variant: .brand, height: YubaiSize.tagHeight, showsDot: false)
                             } else { Text("未配好").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                             chevron
-                        }.frame(minHeight: YubaiSize.tapMin)
+                        }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                     }.accessibilityIdentifier("openIntelligencePrivacy")
                     separator
                     NavigationLink { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
@@ -351,7 +351,7 @@ struct RecoveryVersionsView: View {
                     VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                         Text(Dates.text(recovery.date, time: true)).yubaiFont(YubaiFont.rowTitle)
                         Text(recovery.name).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space8)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space8).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle())
             }
         }.navigationTitle("恢复版本").yubaiNavigation().toolbar { CloseButton() }
