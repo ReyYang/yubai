@@ -18,3 +18,11 @@
 | fix-09-entries-two-rows-open | 两行同时露出删除（展开后不自动收回） |
 
 注：修复版测试中管家建议卡片被左滑收起（知道了），所以 main-01-now 里没有这张卡片。
+
+## 复测 fix2：fix/tabbar-gesture-regression（0caf4e2）
+
+| 文件 | 内容 |
+|---|---|
+| fix2-01-one-row-open | 账目行左滑露出删除（同一时间只有一行） |
+| fix2-02-tap-row-edit | 点行打开「改一笔」 |
+| fix2-03-butler-card | 为测试经 我的消费观 临时添加「想克制的」后出现的管家卡片（测完已删除这些领域） |
