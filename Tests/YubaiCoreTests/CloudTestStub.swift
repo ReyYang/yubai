@@ -10,7 +10,7 @@ final class CloudTestStub {
     private let session: URLSession
     private let host: String
 
-    init(rawResponse: Bool = false, statusCode: Int = 200, sendLog: SendLog = .shared, reply: @escaping (URLRequest) throws -> String) {
+    init(rawResponse: Bool = false, statusCode: Int = 200, sendLog: SendLog = .shared, basePath: String = "", reply: @escaping (URLRequest) throws -> String) {
         let host = UUID().uuidString.lowercased() + ".yubai.test"
         CloudTestURLProtocol.register({ request in
             let content = try reply(request)
@@ -24,7 +24,7 @@ final class CloudTestStub {
         self.session = session
         backend = CloudBackend(
             client: DeepSeekClient(configuration: DeepSeekConfiguration(
-                apiKey: "test-key", baseURL: URL(string: "https://" + host)!
+                apiKey: "test-key", baseURL: URL(string: "https://" + host + basePath)!
             ), sendLog: sendLog),
             session: session
         )
@@ -37,6 +37,10 @@ final class CloudTestStub {
 
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         try await backend.client.send(request, session: session)
+    }
+
+    func listModels() async throws -> [String] {
+        try await backend.client.listModels(session: session)
     }
 
     static func messages(in request: URLRequest) throws -> [[String: String]] {

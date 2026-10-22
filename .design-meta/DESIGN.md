@@ -1,5 +1,23 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-22 · 第十一轮交互
+
+来源为 owner 本轮明确批准的 `/tmp/claude-0/r11/canvas/project/` 中五张 V11 HTML；该目录只读引用，没有复制或修改原稿。本轮只接交互，保留 #23 修复、#24 系统标签栏和 #25 固定收付 Core，不扩展固定收付页面范围。
+
+| 选定稿 | 采用源码与行为 |
+|---|---|
+| `V11-Swipe.dc.html` | `YubaiApp.swift`：根内容的 simultaneous DragGesture 跟手位移，30% 宽度或同方向快速甩动后切换 `store.destination`。顺序为现在／洞察／账目／我，＋不参与；方向在起手时锁定，竖向交给滚动。管家卡和现金图通过根坐标系区域登记排除，根内容以外的 push 页面继续系统返回；Reduce Motion 关闭跟手位移。 |
+| `V11-Home.dc.html` | `ButlerViews.swift`：单向左滑露出中性色「知道了」，短滑停在动作位，超过卡宽一半松手调用既有 `dismissCard`，下一条按原有布局动效顶上。右滑不响应，保留 ··· 菜单；容器保留子控件并提供「知道了」无障碍动作。 |
+| `V11-Home-Scrub.dc.html` | `DesignSystem.swift / ForecastChart`：0.2 秒长按后逐日拖动，竖线、气泡显示真实日期／星期、`ForecastPoint.conservative` 及当天全部发生项，负数带缺口说明；换日 selection 触感，松手和取消淡出。不拖时只显示 Funds horizon，发薪日取 `horizonEnd`，预测路径仍按 Core 保留的完整观察期。图表提供逐日 adjustable action，不暴露隐藏金额。 |
+| `V11-Insights-Tap.dc.html` | `InsightsView.swift`：环形扇区按钮按实际弧形命中，点选增加外径、其余淡化，中心显示分类／占比、金额和总额，对应行高亮；重复点击或中心清除，轻震反馈；行仍进入原类别账目。保留 ChartSegments 的首现登记、时长与配色，筛选窗口变化清除选择。 |
+| `V11-Model.dc.html` | `SettingsView.swift`、`CloudAssistantViews.swift`：模型原生 Menu，已选项勾选，两个已知模型有原文副标题，未知模型只显示名字；成功获取显示实际 HH:mm，失败／未配置显示「内置模型」，最后一项「自己填…」进入原 CloudModelEditor。选中复用原保存与生效路径。`DeepSeekClient.swift` 提供带密钥的 GET `/models`，保留可注入 URLSession、版本路径及 Linux FoundationNetworking 约定，不发 chat、不计问答发送记录。 |
+
+实现差异：系统 TabView 和 Menu 使用原生外观与现有系统字体；洞察保留现有时间窗筛选和汇总区，本轮没有采用画板里简化的整页排版。横滑仅移动当前根页，露出区域使用 canvas，相邻内容在松手切换后出现，没有复刻稿中的邻页预览。图中示例金额与日期全部换为真实 Funds／收支；未拖动的提示依本轮规则采用 horizon，取列表失败不显示「刚从 DeepSeek 取到」。这些是实现范围与状态差异，不能视为 owner 额外确认。
+
+验证：Linux `swift build --target YubaiCore && swift test` 通过，396 项、392 通过／4 项原有实网 opt-in 跳过／0 失败；模型列表新增 4 项，覆盖 GET 与鉴权、未知 ID／去重、版本 URL、错误／空响应／离线／取消，不访问真实服务。`AppFlowTests.swift` 新增 5 项，覆盖饼图中心与还原／分类导航、模型菜单与手填、四页横滑与系统返回、管家卡手势、现金图手势归属。App 全部 Swift 和 UI 测试以 iOS 26 条件、App 以 macOS 14 条件语法解析通过，`git diff --check` 通过；这些不是 Apple SDK 类型检查或已执行 UI 测试。设备手势、辅助字号、VoiceOver、Reduce Motion 和视觉仍待 Apple 环境验证。沿用既有文件，工程引用无需增加；`docs/`、原稿、Figma、旧原型及分发包未改，未提交／推送。
+
+接口核对参考：[DeepSeek 模型列表](https://api-docs.deepseek.com/api/list-models/)、[Apple 原生菜单副标题](https://developer.apple.com/documentation/swiftui/populating-swiftui-menus-with-adaptive-controls)、[DragGesture 速度](https://developer.apple.com/documentation/swiftui/draggesture/value/velocity)。
+
 ## 2026-10-22 · App Group 默认开启
 
 按 owner 本轮明确要求，`Config/AppGroup.xcconfig` 改为默认 YES，取代第九轮记录中的默认关闭；依据为 [Apple 官方 iOS 能力表](https://developer.apple.com/help/account/reference/supported-capabilities-ios)的免费 Apple Developer 支持。App 与 Widget 保留先加载共享默认、再加载本机配置的顺序，`Local.xcconfig` 可设 NO 回退为按钮；App 的 `YUBAI_APP_GROUP` 编译条件限定 iPhone SDK，Mac 权限／条件和测试 target 保持独立。iCloud 默认值及开关含义保持。

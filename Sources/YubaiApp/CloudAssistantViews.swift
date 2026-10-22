@@ -47,6 +47,62 @@ struct CloudAISettingsSection: View {
     }
 }
 
+struct CloudModelMenu: View {
+    @Environment(AppStore.self) private var store
+    @State private var models = DeepSeekClient.fallbackModels
+    @State private var fetchedAt: Date?
+    @State private var editing = false
+    var body: some View {
+        Menu {
+            ForEach(models, id: \.self) { model in
+                Button {
+                    do { try IntelligenceRuntime.cloud.saveModel(model) }
+                    catch { store.error = error.localizedDescription }
+                } label: {
+                    Text(model)
+                    if let description = description(model) { Text(description) }
+                    if IntelligenceRuntime.cloud.model == model { Image(systemName: "checkmark") }
+                }.accessibilityIdentifier("cloudModel_" + model)
+                    .accessibilityAddTraits(IntelligenceRuntime.cloud.model == model ? .isSelected : [])
+            }
+            Divider()
+            if let fetchedAt {
+                Text("刚从 DeepSeek 取到 · " + fetchedAt.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(Locale(identifier: "zh_CN"))))
+            } else { Text("内置模型") }
+            Button("自己填…") { editing = true }.accessibilityIdentifier("customCloudModel")
+        } label: {
+            HStack(spacing: YubaiSpace.space8) {
+                Text("模型").yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
+                Text(IntelligenceRuntime.cloud.model).yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary)
+                Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+            }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+        }.accessibilityIdentifier("editCloudModel")
+            .navigationDestination(isPresented: $editing) { CloudModelEditor() }
+            .task { await fetchModels() }
+    }
+    private func description(_ model: String) -> String? {
+        switch model {
+        case "deepseek-chat": "快，日常记账和问答"
+        case "deepseek-reasoner": "会多想一会，适合该不该买"
+        default: nil
+        }
+    }
+    private func fetchModels() async {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { return }
+        #endif
+        guard let client = DeepSeekClient.configured() else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
+        do {
+            let result = try await client.listModels()
+            guard !Task.isCancelled else { return }
+            models = result; fetchedAt = Date()
+        } catch {
+            guard !Task.isCancelled else { return }
+            models = DeepSeekClient.fallbackModels; fetchedAt = nil
+        }
+    }
+}
+
 struct CloudModelEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = IntelligenceRuntime.cloud.model

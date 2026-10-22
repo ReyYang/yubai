@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-22 第十一轮交互**：owner 已确认本轮五张 V11 稿，现于 `feat/round11-gestures-bills` 接入四标签根页横滑、管家卡左滑「知道了」、现金图按住逐日查看、洞察环图点选和 DeepSeek 原生模型菜单。[源码映射与差异](DESIGN.md#2026-10-22--第十一轮交互)登记采用范围及手势优先级；保留系统 TabView、既有 tokens 和业务计算。Linux `swift build --target YubaiCore && swift test` 通过：396 项、392 通过／4 项原有实网跳过／0 失败，新增模型列表测试 4 项通过。App 全部 Swift 和 UI 测试在 iOS 26／App 在 macOS 14 条件下语法解析通过；新增 5 条 UI 用例尚未运行，Apple SDK 类型检查、手势／视觉／VoiceOver／Reduce Motion 设备验收待做。原始 HTML、`docs/`、Figma 和分发包未改；未提交／推送。
+
 **2026-10-22 App Group 默认开启**：按 owner 明确任务，iOS App／Widget 默认共享「还能花」、今日统计和最多三项常记；免费 Personal Team 支持依据及 `Local.xcconfig` 的 NO 回退见[配置说明](../docs/QUICK-CAPTURE.md#app-group默认开启)。该决定取代下方第九轮当时的「默认关闭」，iCloud 仍独立默认关闭，Mac 与测试 target 不加 App Group 权限或编译条件。现有快照发布、隐私清除和读取失败回退路径经源码核对，无需改动；Linux build／373 项测试通过（369 通过、4 项原有跳过、0 失败），54 组配置静态检查和语法解析通过，生成器输出与现有工程一致。[验证边界](../docs/VALIDATION.md#app-group-默认开启2026-10-22)：Apple SDK 构建、Personal Team 自动注册／签名及设备验收待做；未提交／推送，原稿、Figma 与分发包未同步。
 
 **2026-10-21 存储合并核对**：本轮将存储压缩／第八轮存储空间合入已包含五个概念与第九轮快速记账的工作区。保留全部入口、V7 卡片和记一笔修复，继续采用「还能花」等五个概念；我页新增存储空间且保留快速记账，指南不恢复。截图记账接入压缩，保存采用轻量返回账本并保留版本检查，两个偏好新字段兼容旧账本。[合并映射](DESIGN.md#2026-10-21--快速记账存储与五个概念合并)、[本轮验证](../docs/VALIDATION.md#快速记账存储与五个概念合并2026-10-21)：Linux `swift build && swift test` 通过，373 项、369 通过／4 项原有实网跳过／0 失败；App／Widget 语法和四 target 工程检查通过。Apple SDK 类型检查及设备验收待做；未提交／推送，Figma／原稿／分发包未同步。`git add` 因 `.git` 只读退出128，工作区已解决，索引仍有10个未合并文件，须在可写环境暂存。下方原始记录按各自发生顺序保存，不改写历史验证范围。

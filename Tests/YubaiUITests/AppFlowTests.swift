@@ -63,6 +63,98 @@ final class AppFlowTests: XCTestCase {
         snapshot("storage-photos", app)
     }
 
+    func testDonutSelectionChangesSummaryAndCanBeCleared() {
+        let app = application("ask"); app.launch()
+        tap(app.tabBars.buttons["洞察"], in: app)
+        let summary = app.buttons["donutSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(summary.label.contains("支出合计"))
+        let slice = app.buttons["donutSlice_0"]
+        XCTAssertTrue(slice.waitForExistence(timeout: 5))
+        let center = summary.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let segment = center.withOffset(CGVector(dx: 78, dy: 0))
+        segment.tap()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '餐饮 · 100%' AND label CONTAINS '共'"), object: summary)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed)
+        XCTAssertTrue(slice.isSelected)
+        snapshot("donut-selected", app)
+        segment.tap()
+        XCTAssertTrue(summary.label.contains("支出合计"))
+        segment.tap()
+        tap(summary, in: app)
+        XCTAssertTrue(summary.label.contains("支出合计"))
+        tap(app.buttons["insightCategory_0"], in: app)
+        XCTAssertTrue(app.navigationBars["餐饮"].waitForExistence(timeout: 5))
+    }
+
+    func testModelMenuSelectsInlineAndKeepsCustomEditor() {
+        let app = application("ask"); app.launch()
+        tap(app.tabBars.buttons["我"], in: app)
+        tap(app.buttons["openIntelligencePrivacy"], in: app)
+        tap(app.buttons["editCloudModel"], in: app)
+        XCTAssertTrue(app.buttons["cloudModel_deepseek-chat"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["cloudModel_deepseek-reasoner"].exists)
+        XCTAssertTrue(app.buttons["customCloudModel"].exists)
+        XCTAssertFalse(app.textFields["cloudModelName"].exists)
+        snapshot("model-menu", app)
+        tap(app.buttons["cloudModel_deepseek-reasoner"], in: app)
+        XCTAssertTrue(app.buttons["editCloudModel"].label.contains("deepseek-reasoner"))
+        tap(app.buttons["editCloudModel"], in: app)
+        tap(app.buttons["customCloudModel"], in: app)
+        XCTAssertTrue(app.textFields["cloudModelName"].waitForExistence(timeout: 5))
+    }
+
+    func testRootSwipeSkipsAddTabAndPushedPageKeepsSystemBack() {
+        let app = application("ask"); app.launch()
+        XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
+        let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2))
+        let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
+        for title in ["洞察", "账目", "我"] {
+            right.press(forDuration: 0.05, thenDragTo: left)
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: app.tabBars.buttons[title])
+            XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed)
+            XCTAssertFalse(app.buttons["saveQuickEntry"].exists)
+        }
+        tap(app.buttons["openIntelligencePrivacy"], in: app)
+        XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.45))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.45)))
+        XCTAssertTrue(app.buttons["openIntelligencePrivacy"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["我"].isSelected)
+        left.press(forDuration: 0.05, thenDragTo: right)
+        XCTAssertTrue(app.tabBars.buttons["账目"].isSelected)
+    }
+
+    func testButlerSwipeDismissesWithoutSwitchingTabs() {
+        let app = application("restrain"); app.launch()
+        let title = app.staticTexts["butlerTitle_restrain"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        let card = app.descendants(matching: .any).matching(identifier: "butlerCard_restrain").firstMatch
+        let middle = card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+        middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(CGVector(dx: 80, dy: 0)))
+        XCTAssertTrue(title.exists)
+        XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
+        let start = card.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.35))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -70, dy: 0)))
+        XCTAssertTrue(app.buttons["知道了"].waitForExistence(timeout: 5))
+        XCTAssertTrue(title.exists)
+        XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
+        let dismiss = card.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.35))
+        dismiss.press(forDuration: 0.05, thenDragTo: dismiss.withOffset(CGVector(dx: -210, dy: 0)))
+        assertGone(title)
+        XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
+    }
+
+    func testForecastHoldAndDragKeepsTheCurrentTab() {
+        let app = application("ask"); app.launch()
+        let chart = app.descendants(matching: .any).matching(identifier: "forecastChart").firstMatch
+        XCTAssertTrue(chart.waitForExistence(timeout: 5))
+        let start = chart.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        start.press(forDuration: 0.3, thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)))
+        XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
+        XCTAssertTrue(chart.exists)
+    }
+
     func testFirstLaunchEmptyLedgerAccountAndAvailableFunds() {
         let app = application("empty"); app.launch()
         snapshot("welcome", app)

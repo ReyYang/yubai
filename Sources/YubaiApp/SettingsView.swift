@@ -151,8 +151,7 @@ struct IntelligencePrivacyView: View {
                         separator
                         settingsRow("服务", detail: "DeepSeek")
                         separator
-                        NavigationLink { CloudModelEditor() } label: { settingsRow("模型", detail: IntelligenceRuntime.cloud.model, numeric: true, chevron: true) }
-                            .accessibilityIdentifier("editCloudModel")
+                        CloudModelMenu()
                         separator
                         NavigationLink { Form { CloudAISettingsSection() }.editorForm().navigationTitle("密钥").yubaiNavigation() } label: {
                             settingsRow("密钥", detail: hasKey ? "已存在本机钥匙串" : (configured ? "使用环境变量" : "未配好"), chevron: true)
