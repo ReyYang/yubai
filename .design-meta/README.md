@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-22 固定收付「会回来的账单」**：owner 已确认本轮 `V11-Bills`／`V11-Bills-Add`／`V11-Home-Due`／`V11-Add-Match` 四稿；在 `feat/round11-gestures-bills` 接入 #25 Core，完成当月待付／待收、日期点阵、结清／长按改金额、撤销、左滑停掉、分期与自动记表单、现在页跨月到期卡和发薪期限、记一笔主动选择关联、启动／前台静默自动记账。[源码映射与差异](DESIGN.md#2026-10-22--固定收付会回来的账单)、[采用决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--固定收付会回来的账单owner-确认稿)已登记。Linux `swift test`：396 项、392 通过／4 项原有实网跳过／0 失败；未修改 Core。App 的 iOS 26／macOS 14 条件语法解析及 UI 测试源码的 iOS 26 条件语法解析通过，新增 8 条 UI 用例尚未执行，Apple SDK 类型检查、视觉与手势／VoiceOver 验收待做。`docs/`、用户提供的 HTML 设计稿、Figma 与分发包均未改；未提交／推送。
+
 **2026-10-22 第十一轮交互**：owner 已确认本轮五张 V11 稿，现于 `feat/round11-gestures-bills` 接入四标签根页横滑、管家卡左滑「知道了」、现金图按住逐日查看、洞察环图点选和 DeepSeek 原生模型菜单。[源码映射与差异](DESIGN.md#2026-10-22--第十一轮交互)登记采用范围及手势优先级；保留系统 TabView、既有 tokens 和业务计算。Linux `swift build --target YubaiCore && swift test` 通过：396 项、392 通过／4 项原有实网跳过／0 失败，新增模型列表测试 4 项通过。App 全部 Swift 和 UI 测试在 iOS 26／App 在 macOS 14 条件下语法解析通过；新增 5 条 UI 用例尚未运行，Apple SDK 类型检查、手势／视觉／VoiceOver／Reduce Motion 设备验收待做。原始 HTML、`docs/`、Figma 和分发包未改；未提交／推送。
 
 **2026-10-22 App Group 默认开启**：按 owner 明确任务，iOS App／Widget 默认共享「还能花」、今日统计和最多三项常记；免费 Personal Team 支持依据及 `Local.xcconfig` 的 NO 回退见[配置说明](../docs/QUICK-CAPTURE.md#app-group默认开启)。该决定取代下方第九轮当时的「默认关闭」，iCloud 仍独立默认关闭，Mac 与测试 target 不加 App Group 权限或编译条件。现有快照发布、隐私清除和读取失败回退路径经源码核对，无需改动；Linux build／373 项测试通过（369 通过、4 项原有跳过、0 失败），54 组配置静态检查和语法解析通过，生成器输出与现有工程一致。[验证边界](../docs/VALIDATION.md#app-group-默认开启2026-10-22)：Apple SDK 构建、Personal Team 自动注册／签名及设备验收待做；未提交／推送，原稿、Figma 与分发包未同步。

@@ -15,6 +15,8 @@ struct QuickEntryView: View {
     @State private var userChoseCategory = false
     @State private var loaded = false
     @State private var balances: [UUID: Int64] = [:]
+    @State private var suggestion: Occurrence?
+    @State private var selectedMatchID: String?
     @FocusState private var purposeFocused: Bool
     private var accounts: [Account] { store.current.accounts.filter { !$0.archived } }
     private var canSave: Bool { keypad.canSave && accountID != nil && (nature != .transfer || (otherAccountID != nil && otherAccountID != accountID)) }
@@ -47,6 +49,7 @@ struct QuickEntryView: View {
                                 .accessibilityIdentifier("afterEntryAvailable")
                         }.padding(.horizontal, 4)
                         Spacer(minLength: YubaiSpace.space12)
+                        if let suggestion { matchChip(suggestion) }
                         EntryKeypadView(keypad: $keypad, canSave: canSave, save: { save(again: false) }, onKey: { purposeFocused = false })
                         Button("记下，再记一笔") { save(again: true) }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
                             .frame(maxWidth: .infinity, minHeight: 40).buttonStyle(PressButtonStyle()).disabled(!canSave)
@@ -70,21 +73,49 @@ struct QuickEntryView: View {
                     purpose = prefill.purpose ?? ""
                     if let amount = prefill.amount { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
                 }
-                refreshBalances()
+                refreshBalances(); refreshSuggestions()
             }
-            .onChange(of: store.current.updatedAt) { _, _ in refreshBalances() }
+            .onChange(of: store.current.updatedAt) { _, _ in refreshBalances(); refreshSuggestions() }
+            .onChange(of: keypad.amount) { _, _ in refreshSuggestions() }
+            .onChange(of: date) { _, _ in refreshSuggestions() }
             .onChange(of: nature) { _, value in
                 userChoseCategory = false
                 category = ManualBookkeeping.guessCategory(purpose, nature: value, in: store.current) ?? ManualBookkeeping.categories(in: store.current, nature: value, frequentOnly: true).first ?? "其他支出"
                 if value == .transfer { otherAccountID = accounts.first { $0.id != accountID }?.id }
+                refreshSuggestions()
             }
             .onChange(of: accountID) { _, id in
                 if nature == .transfer && id == otherAccountID { otherAccountID = accounts.first { $0.id != id }?.id }
+                refreshSuggestions()
             }
             .onChange(of: purpose) { _, value in
+                refreshSuggestions()
                 guard !userChoseCategory else { return }
                 category = ManualBookkeeping.guessCategory(value, nature: nature, in: store.current) ?? ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true).first ?? category
             }
+    }
+    private func matchChip(_ match: Occurrence) -> some View {
+        let selected = selectedMatchID == match.id
+        return Button { purposeFocused = false; selectedMatchID = selected ? nil : match.id } label: {
+            HStack(spacing: 6) {
+                if selected { Image(systemName: "checkmark") }
+                Text((selected ? "已选 · " + match.title + "这期" : "是" + match.title + "这期吗") + " · " + FixedFlowPresentation.monthDay(match.date))
+            }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberStrong)
+                .padding(.horizontal, 12).padding(.vertical, 8).background(YubaiColor.amberTint, in: Capsule())
+                .overlay { if selected { Capsule().strokeBorder(YubaiColor.amberDot, lineWidth: 1) } }
+                .frame(minHeight: YubaiSize.tapMin)
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fixedFlowSuggestion")
+            .accessibilityAddTraits(selected ? .isSelected : []).accessibilityHint(selected ? "再点取消关联" : "关联这期账单")
+    }
+    private var selectedLink: (planID: UUID, occurrence: Date)? {
+        guard let suggestion, suggestion.id == selectedMatchID, let id = suggestion.planID else { return nil }
+        return (id, suggestion.date)
+    }
+    private func refreshSuggestions() {
+        let first = FixedFlows.suggestions(amount: keypad.amount ?? 0, nature: nature, purpose: purpose, day: date,
+                                           accountID: accountID, in: store.current).first
+        if first?.id != suggestion?.id { selectedMatchID = nil }
+        suggestion = first
     }
     private var amountDisplay: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -117,7 +148,7 @@ struct QuickEntryView: View {
     private func draftChange(now: Date) throws -> ChangeSet {
         guard let accountID, let amount = keypad.amount else { throw YubaiError.invalid("请选择账户并填写金额。") }
         return try ManualBookkeeping.change(amount: amount, nature: nature, accountID: accountID, otherAccountID: otherAccountID,
-                                             day: date, purpose: purpose, category: category, now: now)
+                                             day: date, purpose: purpose, category: category, link: selectedLink, now: now)
     }
     private var previewAvailable: Int64 {
         let now = Date()
@@ -138,7 +169,7 @@ struct QuickEntryView: View {
             let amount = store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(keypad.amount ?? 0, sign: sign, decimals: 2)
             store.setEntrySaveToast("已记下 · " + (title.isEmpty ? category : title) + " " + amount + " · " + store.current.accountName(accountID))
             if again {
-                keypad.reset(); purpose = ""; userChoseCategory = false
+                keypad.reset(); purpose = ""; userChoseCategory = false; selectedMatchID = nil
                 category = ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true).first ?? category
             } else { dismiss() }
         } catch { store.error = error.localizedDescription }

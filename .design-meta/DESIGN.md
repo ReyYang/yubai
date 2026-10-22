@@ -1,5 +1,24 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-22 · 固定收付「会回来的账单」
+
+来源为 owner 本轮明确确认的 `/tmp/claude-0/r11/canvas/project/` 四张 HTML 与便签规则；只读引用，不复制或修改原稿。本轮接入已合入的 #25 Core，不改变其规则，取代第四轮固定收付的 90 天汇总、到什么时候与点行结束菜单；保留此前第十一轮交互、系统玻璃＋、TabView 和我页副标题。
+
+| 选定稿 | 采用源码与行为 |
+|---|---|
+| `V11-Bills.dc.html` | `FixedFlowsView.swift`：当月剩余要付／要收、每日一个状态点、付款／收款分卡；账户、自动、期数、大约、已记组合副标题；绿色收入、估额 ~、已付淡化。共享 `FixedFlowCheck` 以 `settle → store.apply` 结清，长按输入实际金额；复用现有 Toast／完整账本撤销，轻震。左滑露出中性色「停掉」，确认后 `.endPlan`，并提供同名无障碍动作。rentID 行无结清与停掉动作。 |
+| `V11-Bills-Add.dc.html` | 同文件 `FixedFlowEditor`：频率／首次日期沿用 popover，月度 chip 写「每月 X 号」；2–60 期或一直；账户未指定时 chip 提示、自动记禁用；保存 autoPay／今天的 autoPaySince／estimated／installments。第二卡两个开关；底部最多四期点阵，移除结束日期和 90 天预留卡。 |
+| `V11-Home-Due.dc.html` | `OverviewView.swift`：今天行下最多两条到期付款，含历史未付项；超出链接进固定收付，没有到期项时保留下一笔。`HeroCard` 标题旁显示实际发薪期限或接下来 90 天；计算页文字和付款明细使用同一期限，预测图仍保留原 Core 观察路径。 |
+| `V11-Add-Match.dc.html` | `QuickEntryView.swift`：金额、用途、日期、性质、账户及账本变化时刷新首项建议；键盘上方琥珀胶囊需主动选择、可取消，失去匹配即清空选择；保存和还能花预览都传递选定 link。保持已有记一笔布局和加减键盘。 |
+
+`YubaiApp.swift` 为 ChangeSet 应用增加默认关闭的静默选项，启动、前台及解锁后调用自动记账，保留存储／同步／完整快照撤销；自动记账不触发落笔动效、触感或提示。固定收付月数据随原时间派生版本刷新，避免跨日返回前台仍显示旧状态。`DesignSystem.swift` 只为金额补可选 token 色、HeroCard 补期限文字；`EntryFormComponents.swift` 补账户空值提示和可访问值，不引入依赖。
+
+实现适配与差异：系统导航、sheet、菜单、日期选择器、开关和现有系统字体沿用原生外观，未逐像素复刻 HTML。画板样例金额／日期替换为账本实际值；当月列表遵循 `FixedFlows.month`，不会为了画板里的下月工资示例插入下月行。日期点超过七个时换行；同一天多笔以未付优先汇总一个点，VoiceOver 读取全部状态。一次性安排禁用共几期，预览按真实可发生期数最多显示四个。rentID 按本轮明确要求只读，因此与画板普通 Plan「房租」的可结清按钮不同。原额付清已预留付款时 Core 保持还能花不变；收款或变动金额会按真实现金与预留变化更新，未人为扣减两次。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，396 项、392 通过／4 项原有实网 opt-in 跳过／0 失败；没有修改 Core 或删除／跳过测试。`AppFlowTests.swift` 新增 8 项，覆盖付清／撤销、收款后还能花变化及持久化、长按改金额、左滑停掉保留已付期、分期／账户自动记开关与前台结算、历史到期卡与溢出导航、手动建议选择／取消／失效及保存关联、启动自动记账幂等且无提示。现有 UI 用例没有旧结束日期或点行结束菜单流程需要迁移。全部 App Swift 的 iOS 26／macOS 14 条件语法解析及 UI 测试的 iOS 26 条件语法解析通过，`git diff --check` 通过；没有 Apple SDK 类型检查或已执行 UI 测试证据。390pt／大字号／深色、长短按区分、滑动与系统返回、VoiceOver、Reduce Motion 和实际自动记账生命周期仍待 Apple 设备验收。`docs/`、原稿、Figma 和分发包未改；未提交／推送。
+
+接口静态核对参考：[Apple 高优先级手势](https://developer.apple.com/documentation/swiftui/view/highprioritygesture(_:including:))、[命名无障碍动作](https://developer.apple.com/documentation/swiftui/view/accessibilityaction(named:_:))。
+
 ## 2026-10-22 · 第十一轮交互
 
 来源为 owner 本轮明确批准的 `/tmp/claude-0/r11/canvas/project/` 中五张 V11 HTML；该目录只读引用，没有复制或修改原稿。本轮只接交互，保留 #23 修复、#24 系统标签栏和 #25 固定收付 Core，不扩展固定收付页面范围。

@@ -563,6 +563,7 @@ struct AmountLabel: View {
     var sign: Sign = .automatic
     var currency: Bool? = nil
     var fractionDigits: Int? = nil
+    var ink: Color = YubaiColor.label
     private var resolvedRole: Role { role ?? (large ? .display : .amount) }
     private var decimals: Int {
         if let fractionDigits { return fractionDigits == 0 ? 0 : 2 }
@@ -577,7 +578,7 @@ struct AmountLabel: View {
         Group {
             if hide { Text("••••").transition(.opacity) }
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
-        }.yubaiFont(font).foregroundStyle(YubaiColor.label)
+        }.yubaiFont(font).foregroundStyle(ink)
             .minimumScaleFactor(resolvedRole == .summary || resolvedRole == .donut ? 0.25 : 0.55).lineLimit(1)
             .accessibilityLabel(hide ? "金额已隐藏" : Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: 2))
             .animation(YubaiMotion.quick, value: hide)
@@ -883,6 +884,7 @@ struct HeroCard: View {
     var attentionCount = 0
     var hideAmount = false
     var title = "还能花"
+    var horizon: String? = nil
     var onDetails: (() -> Void)? = nil
     var onAttention: (() -> Void)? = nil
     private var waterBands: Int {
@@ -923,7 +925,10 @@ struct HeroCard: View {
     private var summary: some View {
         HStack(alignment: .bottom, spacing: YubaiSpace.space12) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text(title).yubaiFont(YubaiFont.heroLabel)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title).yubaiFont(YubaiFont.heroLabel).fixedSize()
+                    if let horizon { Text(horizon).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                }
                 AmountLabel(cents: displayedAvailable ?? available, hide: hideAmount, role: .hero)
             }
             Spacer(minLength: 0)

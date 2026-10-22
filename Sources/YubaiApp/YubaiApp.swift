@@ -50,6 +50,7 @@ enum AppSheet: Identifiable {
         let value = Finance.funds(ledger, now: now)
         cachedFunds = (value, now, expires, zone); return value
     }
+    var fixedFlowMonth: FixedFlowMonth { _ = derivedRevision; return FixedFlows.month(containing: Date(), in: current) }
     var sortedEntries: [Entry] {
         _ = derivedRevision
         if let cachedEntries { return cachedEntries }
@@ -77,6 +78,7 @@ enum AppSheet: Identifiable {
     var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
     var sheetSource: String?
     var entrySaveTrigger = 0; var entryDeleteTrigger = 0; var undoTrigger = 0; var floorWarningTrigger = 0
+    var fixedFlowSettleTrigger = 0
     var freshEntryIDs: Set<UUID> = []
     var pendingEntrySave = false
     @ObservationIgnored private var pendingSaveToast: String?
@@ -113,7 +115,7 @@ enum AppSheet: Identifiable {
         #endif
     }
 
-    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, _ change: (inout Ledger) throws -> Void) -> Bool {
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, showToast: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard canEditLedger(allowLockedCapture: allowLockedCapture) else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
@@ -133,15 +135,17 @@ enum AppSheet: Identifiable {
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
             if recordUndo {
                 undoLedger = before; undoLabel = reason
-                if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
-                else { toast = reason + "完成" }
+                if showToast {
+                    if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
+                    else { toast = reason + "完成" }
+                }
             }
             return true
         } catch { if reportError { self.error = error.localizedDescription }; return false }
     }
-    @discardableResult func apply(_ changeSet: ChangeSet, label: String, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
+    @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
         var skipped: [String] = []
-        let saved = update(label) { ledger in
+        let saved = update(label, entryMotion: !silently, showToast: !silently) { ledger in
             if !changeSet.items.isEmpty { skipped = try changeSet.apply(to: &ledger) }
             else if changeSet.source != "导入整理" { try changeSet.validateStructure() }
             try finishing(&ledger)
@@ -150,8 +154,14 @@ enum AppSheet: Identifiable {
                 ledger.cards[i].dismissedAt = Date()
             }
         }
-        if saved, !skipped.isEmpty { toast = label + "完成；" + skipped.joined(separator: "；") }
+        if saved, !silently, !skipped.isEmpty { toast = label + "完成；" + skipped.joined(separator: "；") }
         return saved
+    }
+    func autoSettleFixedFlows() {
+        guard !locked, loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
+              let change = FixedFlows.autoSettle(in: current) else { return }
+        cancelEntrySaveMotion()
+        if apply(change, label: "自动记下", silently: true) { toast = nil }
     }
     func undo() {
         guard canEditLedger(), let previous = undoLedger else { return }
@@ -324,10 +334,11 @@ struct RootView: View {
         .sensoryFeedback(.success, trigger: store.entrySaveTrigger)
         .sensoryFeedback(.impact(weight: .medium), trigger: store.entryDeleteTrigger)
         .sensoryFeedback(.impact(weight: .light), trigger: store.undoTrigger)
+        .sensoryFeedback(.impact(weight: .light), trigger: store.fixedFlowSettleTrigger)
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
-        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
-        .task { await store.configureSync() }
+        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .task { await store.configureSync(); store.autoSettleFixedFlows() }
         .task(id: "\(store.current.id)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
             if phase == .active { await store.organizePendingImports() }
         }
@@ -349,7 +360,7 @@ struct RootView: View {
             guard url.isFileURL else { return }; store.importedURL = url
             if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
         }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.autoSettleFixedFlows() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {

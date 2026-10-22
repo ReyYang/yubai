@@ -218,3 +218,12 @@ Linux Swift build 通过；完整测试 324 项、320 通过、4 项既有实网
 来源为 owner 指定的 `appgroup.md`：依据 [Apple 官方 iOS 能力表](https://developer.apple.com/help/account/reference/supported-capabilities-ios)，将 App Group 默认改为 YES，让小组件显示还能花、今日统计与最多三项常记；这取代上方第九轮当时的默认关闭。保留 `Config/Local.xcconfig` 改回 `YUBAI_APP_GROUP = NO` 的按钮回退。免费 Personal Team 的首次配置为 App／Widget 两 target 同团队、自动签名，在 Signing & Capabilities 核对自动注册 `group.app.yubai.personal`；失败时本机改 NO 重新构建。iCloud、Mac 与测试 target 的权限边界保持，不扩展功能或改稿。
 
 Agent 实现选择：将 App Group 编译条件限定到 iPhone SDK，核对原有共享快照发布／读取／锁账本和隐藏金额清除／无容器回退路径，无真实缺陷则不改 Swift。生成器无独立默认，临时目录输出与现有工程一致，未重写 pbxproj。[验证记录](../../../docs/VALIDATION.md#app-group-默认开启2026-10-22)：Linux `swift build && swift test` 退出0，373 项、369 通过、4 项原有实网 opt-in 跳过、0 失败；54 组配置静态检查及 App／Widget 语法解析通过。Apple SDK 编译、Personal Team 自动注册／签名和设备行为仍待[验收](../../../docs/QUICK-CAPTURE.md#验证与限制)，不将官方能力支持等同于本项目已签名成功。未提交／推送，原稿、Figma 与分发包未同步，本票仍为 in-progress。
+
+
+## 2026-10-22 · 固定收付「会回来的账单」（owner 确认稿）
+
+来源为 owner 本轮明确任务：已确认 `V11-Bills.dc.html`、`V11-Bills-Add.dc.html`、`V11-Home-Due.dc.html`、`V11-Add-Match.dc.html`，并给出状态色、结清／长按改金额、左滑停掉、分期、账户约束下的自动记、估额、到期卡、发薪期限及手动匹配的便签规则。沿用 #25 已有 Core 与完整账本撤销，不修改 docs 或设计稿。这取代第四轮固定收付的 90 天汇总、结束日期、点行结束菜单与预留预览卡；保留此前第十一轮手势、系统玻璃＋和我页「房租、工资等 N 项」副标题。
+
+已接入：当月剩余要付／要收与日期点阵、状态账单卡及结清、2–60 期／一直、autoPay／autoPaySince／estimated、现在页历史到期最多两条与溢出入口、发薪期限、记一笔需主动选择的首项关联建议、启动／前台／解锁后的静默自动记账。rentID 行本轮只读，不新增房租维护入口。Agent 适配为原生系统控件与既有 tokens，日期多于七个时换行，同日点汇总但无障碍读取全部状态；一次性安排禁用共几期。原额付清已预留付款时还能花按 Core 保持不变，收款或改实际金额时按真实结果变化。
+
+[源码映射与差异](../../../.design-meta/DESIGN.md#2026-10-22--固定收付会回来的账单)。Linux `swift test` 退出 0：396 项、392 通过、4 项原有实网 opt-in 跳过、0 失败；没有修改 Core、删除或跳过测试。新增 8 条 UI 流程源码；全部 App 在 iOS 26／macOS 14、UI 测试在 iOS 26 条件下语法解析通过，Apple SDK 类型检查、UI 实跑、视觉、手势、VoiceOver、Reduce Motion 与生命周期验收仍待做。原始 HTML、docs、Figma 与分发包未改，未提交／推送，本票保持 in-progress。
