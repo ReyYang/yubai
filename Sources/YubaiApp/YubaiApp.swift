@@ -20,7 +20,7 @@ enum AppSheet: Identifiable {
     var id: String { String(describing: self) }
     var motionSource: String? {
         switch self {
-        case .addEntry: "add"
+        case .addEntry: nil
         case .ask: "ask"
         case .fundsCalculation: "funds"
         case .cardEvidence(let id), .cardQuestion(let id): "card-" + id.uuidString
@@ -297,11 +297,10 @@ struct RootView: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var motionNamespace
-    @State private var tabRevision = 0
-    @State private var tabDirection: Double = 1
     #if os(iOS)
     @State private var hiddenTabBars: [Destination: Bool] = [:]
     @State private var keyboardVisible = false
+    @State private var scrolledTab: Destination? = .overview
     #endif
     var body: some View {
         @Bindable var store = store
@@ -338,10 +337,6 @@ struct RootView: View {
         }
         .onChange(of: store.pendingEntrySave) { _, pending in if pending { store.finishEntrySaveMotion() } }
         .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil; store.finishEntrySaveMotion() } }
-        .onChange(of: store.destination) { old, next in
-            tabDirection = MotionSessionState.direction(from: Destination.allCases.firstIndex(of: old)!, to: Destination.allCases.firstIndex(of: next)!)
-            tabRevision &+= 1
-        }
         #if os(iOS)
         .sensoryFeedback(.success, trigger: store.entrySaveTrigger)
         .sensoryFeedback(.impact(weight: .medium), trigger: store.entryDeleteTrigger)
@@ -387,12 +382,26 @@ struct RootView: View {
             NavigationStack { tabRoot(store.destination) }.id(store.destination)
         }
         #else
-        TabView(selection: $store.destination) {
-            ForEach(Destination.allCases) { d in
-                Tab(d.title, systemImage: d.symbol, value: d) { tabNavigation(d) }
-            }
-        }.toolbar(.hidden, for: .tabBar)
+        ScrollView(.horizontal) {
+            HStack(spacing: 0) {
+                ForEach(Destination.allCases) { d in
+                    tabNavigation(d).containerRelativeFrame(.horizontal).id(d)
+                        .accessibilityHidden(store.destination != d)
+                }
+            }.scrollTargetLayout()
+        }.scrollTargetBehavior(.paging).scrollPosition(id: $scrolledTab, anchor: .center)
+            .scrollIndicators(.hidden)
+            .scrollDisabled(hiddenTabBars[store.destination] == true || store.sheet != nil || store.pickingInsightDates)
+            .scrollClipDisabled()
             .background(YubaiColor.canvas.ignoresSafeArea())
+            .onChange(of: scrolledTab) { _, next in
+                if let next, next != store.destination { store.destination = next }
+            }
+            .onChange(of: store.destination) { _, next in
+                guard next != scrolledTab else { return }
+                withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scrolledTab = next }
+            }
+            .onAppear { scrolledTab = store.destination }
             .overlay(alignment: .bottom) {
                 if hiddenTabBars[store.destination] != true {
                     FloatingTabBar().padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSize.floatingTabbarBottom)
@@ -405,8 +414,12 @@ struct RootView: View {
     }
     #if os(iOS)
     private func tabNavigation(_ d: Destination) -> some View {
-        NavigationStack { tabRoot(d) }.toolbar(.hidden, for: .tabBar)
+        NavigationStack {
+            tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
+        }.toolbarBackground(.hidden, for: .navigationBar)
             .environment(\.yubaiTabBarHidden, Binding(get: { hiddenTabBars[d] ?? false }, set: { hiddenTabBars[d] = $0 }))
+            .environment(\.isScrollEnabled, true)
+            .scrollClipDisabled(false)
             .background(YubaiColor.canvas.ignoresSafeArea())
     }
     #endif
@@ -423,11 +436,6 @@ struct RootView: View {
         }.background(YubaiColor.canvas)
         #else
         destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            .modifier(TabContentEntrance(active: store.destination == d, revision: tabRevision, direction: tabDirection))
-            .modifier(TabRootSwipe(destination: d))
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: keyboardVisible ? 0 : YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom).allowsHitTesting(false)
-            }
             .modifier(TabBarVisibility(hidden: false))
         #endif
     }
@@ -478,28 +486,23 @@ struct RootView: View {
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Namespace private var selection
     var body: some View {
-        GlassEffectContainer {
-            HStack(spacing: 0) {
-                tab(.overview); tab(.insights)
-                Button { store.present(.addEntry, from: "add") } label: {
-                    Image(systemName: "plus").yubaiFont(YubaiFont.addIcon).foregroundStyle(YubaiColor.white)
-                        .frame(width: 54, height: 54).background(YubaiColor.brand, in: Circle())
-                        .shadow(color: YubaiColor.brandInk.opacity(0.3), radius: 6, y: 4)
-                }.buttonStyle(.plain).yubaiZoomSource("add").padding(.horizontal, 4)
-                    .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
-                tab(.entries); tab(.settings)
-            }.padding(.horizontal, 6).frame(height: YubaiSize.floatingTabbarHeight)
-                .background {
-                    if reduceTransparency { Capsule().fill(YubaiColor.raised) }
-                    else { Color.clear.glassEffect(.regular.tint(YubaiColor.raised.opacity(0.72)).interactive(), in: Capsule()) }
-                }
-                .overlay { Capsule().strokeBorder(YubaiColor.white.opacity(0.3), lineWidth: 0.5).allowsHitTesting(false) }
-                .yubaiShadow(YubaiShadow.float)
-                .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.destination)
-        }.accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
+        HStack(spacing: 0) {
+            tab(.overview); tab(.insights)
+            Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
+                Image(systemName: "plus").yubaiFont(YubaiFont.addIcon).foregroundStyle(YubaiColor.white)
+                    .frame(width: 54, height: 54).background(YubaiColor.brand, in: Circle())
+                    .shadow(color: YubaiColor.brandInk.opacity(0.3), radius: 6, y: 4)
+            }.buttonStyle(.plain).padding(.horizontal, 4)
+                .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
+            tab(.entries); tab(.settings)
+        }.padding(.horizontal, 6).frame(height: YubaiSize.floatingTabbarHeight)
+            .background(YubaiColor.raised, in: Capsule())
+            .overlay { Capsule().strokeBorder(YubaiColor.separator, lineWidth: 1).allowsHitTesting(false) }
+            .yubaiShadow(YubaiShadow.float)
+            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.destination)
+            .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
     }
     private func tab(_ d: Destination) -> some View {
         let selected = store.destination == d
@@ -510,7 +513,7 @@ private struct FloatingTabBar: View {
                     else { Image(systemName: d.symbol).symbolVariant(.none).yubaiFont(YubaiFont.tabIcon, weight: selected ? .semibold : .regular).frame(height: 20) }
                 }
                 Text(d.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .semibold : .regular).lineLimit(1)
-            }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.label)
+            }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity).frame(height: 50).contentShape(Capsule())
                 .background {
                     if selected { Capsule().fill(YubaiColor.card).matchedGeometryEffect(id: "selection", in: selection) }
@@ -520,77 +523,3 @@ private struct FloatingTabBar: View {
     }
 }
 #endif
-
-struct TabSwipeReservedRegions: PreferenceKey {
-    static let defaultValue: [CGRect] = []
-    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
-}
-
-extension View {
-    func tabSwipeReserved() -> some View {
-        background { GeometryReader { geometry in
-            Color.clear.preference(key: TabSwipeReservedRegions.self, value: [geometry.frame(in: .named("tab-swipe"))])
-        } }
-    }
-}
-
-private struct TabRootSwipe: ViewModifier {
-    @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @GestureState private var dragging = false
-    @State private var regions: [CGRect] = []
-    @State private var horizontal: Bool?
-    @State private var tapsBlocked = false
-    @State private var offset: CGFloat = 0
-    let destination: Destination
-    func body(content: Content) -> some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.clear
-                content.allowsHitTesting(!tapsBlocked).disabled(tapsBlocked)
-                    .offset(x: reduceMotion ? 0 : offset)
-            }.frame(width: geometry.size.width, height: geometry.size.height)
-                .contentShape(Rectangle())
-                .simultaneousGesture(DragGesture(minimumDistance: 18, coordinateSpace: .named("tab-swipe"))
-                    .updating($dragging) { _, state, _ in state = true }
-                    .onChanged { value in
-                        guard store.destination == destination, store.sheet == nil else { return }
-                        if horizontal == nil {
-                            horizontal = !regions.contains { $0.contains(value.startLocation) }
-                                && abs(value.translation.width) > abs(value.translation.height) * 1.3
-                        }
-                        guard horizontal == true else { return }
-                        tapsBlocked = true
-                        offset = neighbor(value.translation.width) == nil ? value.translation.width * 0.16 : value.translation.width
-                    }
-                    .onEnded { value in
-                        let distance = value.translation.width
-                        let fast = abs(value.velocity.width) > 650 && abs(distance) > 20 && value.velocity.width * distance > 0
-                        if horizontal == true, store.destination == destination,
-                           abs(distance) > geometry.size.width * 0.3 || fast,
-                           let next = neighbor(distance) { store.destination = next }
-                        reset(); releaseTaps()
-                    })
-        }.coordinateSpace(name: "tab-swipe").background(YubaiColor.canvas).clipped()
-            .onPreferenceChange(TabSwipeReservedRegions.self) { regions = $0 }
-            .onChange(of: dragging) { _, active in
-                if !active {
-                    reset(); releaseTaps()
-                }
-            }
-            .onChange(of: store.destination) { _, _ in reset() }
-            .onAppear { if !dragging { tapsBlocked = false } }
-            .onDisappear { horizontal = nil; offset = 0; releaseTaps() }
-    }
-    private func neighbor(_ distance: CGFloat) -> Destination? {
-        let tabs = Destination.allCases
-        guard let index = tabs.firstIndex(of: destination), distance != 0 else { return nil }
-        let next = index + (distance < 0 ? 1 : -1)
-        return tabs.indices.contains(next) ? tabs[next] : nil
-    }
-    private func reset() {
-        horizontal = nil
-        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = 0 }
-    }
-    private func releaseTaps() { DispatchQueue.main.async { if !dragging { tapsBlocked = false } } }
-}

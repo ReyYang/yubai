@@ -71,7 +71,7 @@ struct InsightsView: View {
                 Text("本期有跨期退款。")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }
-        }.amountPrivacy(store.current.preferences.hideAmounts).safeAreaPadding(.bottom, YubaiSize.rootBottomPadding).navigationTitle("洞察")
+        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().navigationTitle("洞察")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif

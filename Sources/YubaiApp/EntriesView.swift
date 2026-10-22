@@ -47,7 +47,10 @@ struct EntriesView: View {
             }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.entryDeleteTrigger)
                 .padding(.horizontal, YubaiSpace.space18).padding(.top, YubaiSpace.space12).padding(.bottom, YubaiSpace.space24)
                 .frame(maxWidth: 780).frame(maxWidth: .infinity)
-        }.scrollDismissesKeyboard(.interactively).amountPrivacy(store.current.preferences.hideAmounts)
+        }.scrollDismissesKeyboard(.interactively).amountPrivacy(store.current.preferences.hideAmounts).accessibilityIdentifier("entriesScroll")
+            #if os(iOS)
+            .rootScrollContentMargins()
+            #endif
             .navigationTitle("账目").yubaiNavigation(hidesTabBar: false)
     }
     private var monthPicker: some View {
@@ -78,7 +81,7 @@ struct EntriesView: View {
             TextField("找一笔：备注、分类、金额", text: $search).yubaiFont(YubaiFont.row).focused($searchFocused)
                 .accessibilityLabel("搜索账目").accessibilityIdentifier("entriesSearch")
         }.padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
-            .background(YubaiColor.raised, in: Capsule()).tabSwipeReserved()
+            .background(YubaiColor.raised, in: Capsule())
     }
     private var filters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -94,7 +97,11 @@ struct EntriesView: View {
                         .accessibilityIdentifier("entriesFilter_" + choice.rawValue)
                 }
             }
-        }.tabSwipeReserved().accessibilityElement(children: .contain).accessibilityLabel("筛选账目")
+        }.pageLocalHorizontalGestures()
+            #if os(iOS)
+            .contentMargins(.bottom, 0, for: .scrollContent)
+            #endif
+            .accessibilityElement(children: .contain).accessibilityLabel("筛选账目")
     }
     private func total(_ title: String, cents: Int64, inflow: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
@@ -127,9 +134,11 @@ private struct LedgerEntryRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
+    #if os(macOS)
     @GestureState private var dragging = false
     @State private var horizontal: Bool?
     @State private var tapsBlocked = false
+    #endif
     @State private var offset: CGFloat = 0
     @State private var resting: CGFloat = 0
     @State private var highlighted = true
@@ -141,7 +150,9 @@ private struct LedgerEntryRow: View {
     private var note: String { entry.note.isEmpty ? (entry.displayTitle == categoryName ? "" : entry.displayTitle) : entry.note }
     var body: some View {
         Button {
+            #if os(macOS)
             guard !tapsBlocked, !dragging else { return }
+            #endif
             if resting != 0 { resting = 0; reset(); return }
             store.sheetSource = nil; store.sheet = .editEntry(entry.id)
         } label: { content }
@@ -151,7 +162,16 @@ private struct LedgerEntryRow: View {
                     .frame(width: 84).frame(maxHeight: .infinity).background(YubaiColor.amberTint)
                     .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
                     .accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
-            }.clipped().contentShape(Rectangle()).tabSwipeReserved()
+            }.clipped().contentShape(Rectangle())
+            #if os(iOS)
+            .gesture(HorizontalPan(changed: { distance in
+                offset = max(-84, min(0, resting + distance))
+            }, ended: { _, _ in
+                resting = offset < -36 ? -84 : 0
+                reset()
+            }, cancelled: reset))
+            .onDisappear { resting = 0; reset() }
+            #else
             .simultaneousGesture(DragGesture(minimumDistance: 18)
                 .updating($dragging) { _, state, _ in state = true }
                 .onChanged { value in
@@ -165,6 +185,7 @@ private struct LedgerEntryRow: View {
                 })
             .onChange(of: dragging) { _, active in if !active { reset(); releaseTaps() } }
             .onDisappear { resting = 0; reset(); releaseTaps() }
+            #endif
             .accessibilityAction(named: "删除这笔", delete)
             .task(id: store.freshEntryIDs.contains(entry.id)) {
                 guard store.freshEntryIDs.contains(entry.id), YubaiMotion.claim("new-row-" + entry.id.uuidString) else { highlighted = false; return }
@@ -191,8 +212,15 @@ private struct LedgerEntryRow: View {
         }.padding(.vertical, YubaiSpace.space8).frame(maxWidth: .infinity, minHeight: 58).contentShape(Rectangle())
             .background(store.freshEntryIDs.contains(entry.id) && highlighted ? YubaiColor.brandTint : YubaiColor.card)
     }
-    private func reset() { horizontal = nil; withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = resting } }
+    private func reset() {
+        #if os(macOS)
+        horizontal = nil
+        #endif
+        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = resting }
+    }
+    #if os(macOS)
     private func releaseTaps() { DispatchQueue.main.async { if !dragging { tapsBlocked = false } } }
+    #endif
     private func delete() {
         store.update("删除这笔") { ledger in
             guard let index = ledger.entries.firstIndex(where: { $0.id == entry.id && $0.deletedAt == nil }) else { return }

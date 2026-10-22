@@ -64,7 +64,7 @@ struct SettingsView: View {
                     NavigationLink { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
             }.buttonStyle(PressButtonStyle())
-        }.amountPrivacy(store.current.preferences.hideAmounts).safeAreaPadding(.bottom, YubaiSize.rootBottomPadding).navigationTitle("我")
+        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().navigationTitle("我")
             .task(id: store.current.updatedAt) {
                 let repository = store.localRepository
                 do { storageSize = StorageSize.text(try await Task.detached(priority: .utility) { try repository.storageUsage() }.value.totalBytes) }
