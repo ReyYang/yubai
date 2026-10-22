@@ -434,6 +434,26 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.textFields["editEntryAmount"].exists)
     }
 
+    func testRevealedLedgerRowSlowLeftSwipeKeepsCurrentTab() {
+        let app = application("ask"); app.launch(); tap(app.buttons["tab_entries"], in: app)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let delete = app.buttons[row.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
+        row.swipeLeft()
+        XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
+        for _ in 0..<3 {
+            let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)), withVelocity: XCUIGestureVelocity(200 / 0.6), thenHoldForDuration: 0)
+            assertSelectedTab("tab_entries", in: app)
+            XCTAssertTrue(delete.isHittable); XCTAssertFalse(app.textFields["editEntryAmount"].exists)
+        }
+        row.swipeRight()
+        assertGone(delete)
+        let start = app.staticTexts["本月收入"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)))
+        assertSelectedTab("tab_settings", in: app)
+    }
+
     func testLedgerRevealClosesAfterTabSelectionAndPaging() {
         let app = application("ask"); app.launch(); tap(app.buttons["tab_entries"], in: app)
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
@@ -446,6 +466,10 @@ final class AppFlowTests: XCTestCase {
         row.swipeLeft()
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
         let start = app.staticTexts["本月收入"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)))
+        assertSelectedTab("tab_entries", in: app); XCTAssertTrue(delete.isHittable)
+        app.staticTexts["本月收入"].tap()
+        assertGone(delete)
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)))
         assertSelectedTab("tab_settings", in: app)
         tap(app.buttons["tab_entries"], in: app)

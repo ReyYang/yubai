@@ -82,6 +82,9 @@ enum AppSheet: Identifiable {
         didSet { if destination == .overview && oldValue != .overview { overviewVisit &+= 1 } }
     }
     var overviewVisit = 0
+    #if os(iOS)
+    var pagingLocked = false
+    #endif
     @ObservationIgnored var forecastMotion = MotionVisitState()
     var sheet: AppSheet?; var error: String?; var toast: String?
     var sheetSource: String?
@@ -391,7 +394,7 @@ struct RootView: View {
             }.scrollTargetLayout()
         }.scrollTargetBehavior(.paging).scrollPosition(id: $scrolledTab, anchor: .center)
             .scrollIndicators(.hidden)
-            .scrollDisabled(hiddenTabBars[store.destination] == true || store.sheet != nil || store.pickingInsightDates)
+            .scrollDisabled(store.pagingLocked || hiddenTabBars[store.destination] == true || store.sheet != nil || store.pickingInsightDates)
             .scrollClipDisabled()
             .background(YubaiColor.canvas.ignoresSafeArea())
             .onChange(of: scrolledTab) { _, next in

@@ -53,9 +53,10 @@ struct EntriesView: View {
             .rootScrollContentMargins()
             .simultaneousGesture(TapGesture().onEnded { revealedEntryID = nil })
             .onScrollPhaseChange { _, phase in if phase == .interacting { revealedEntryID = nil } }
+            .onChange(of: revealedEntryID, initial: true) { _, id in store.pagingLocked = id != nil }
             .onChange(of: store.destination) { _, _ in revealedEntryID = nil }
             .onChange(of: store.sheet?.id) { _, _ in revealedEntryID = nil }
-            .onDisappear { revealedEntryID = nil }
+            .onDisappear { revealedEntryID = nil; store.pagingLocked = false }
             #endif
             .navigationTitle("账目").yubaiNavigation(hidesTabBar: false)
     }
