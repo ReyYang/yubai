@@ -33,6 +33,8 @@ struct FixedFlowsView: View {
                     bills(income)
                 }
             }
+            let stopped = FixedFlowArrangement.stopped(in: ledger)
+            if !stopped.isEmpty { stoppedBills(stopped) }
         }.amountPrivacy(ledger.preferences.hideAmounts).navigationTitle("固定收付").yubaiNavigation()
             .toolbar { ToolbarItem(placement: .primaryAction) {
                 Button { store.sheetSource = nil; store.sheet = .addPlan } label: { Image(systemName: "plus") }
@@ -42,12 +44,41 @@ struct FixedFlowsView: View {
                 Button("停掉") {
                     if let ending, let id = ending.planID {
                         let change = ChangeSet(source: "用户操作", reason: "从今天起停掉「\(ending.title)」", items: [.endPlan(id, Date())])
-                        store.apply(change, label: "停掉安排")
+                        if store.apply(change, label: "停掉安排") { store.toast = "已停掉" }
                     }
                     ending = nil
                 }
                 Button("取消", role: .cancel) { ending = nil }
             } message: { Text("只停以后的，已到期账单和付过的记录保留。") }
+    }
+    private func stoppedBills(_ rows: [FixedFlowArrangement]) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space6) {
+            Text("已停掉").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.leading, YubaiSpace.space4)
+            CardRows(rows) { row in
+                HStack(spacing: YubaiSpace.space12) {
+                    HStack(spacing: YubaiSpace.space12) {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                            Text(row.title).yubaiFont(YubaiFont.rowTitle)
+                            Text(row.stoppedAt.map { FixedFlowPresentation.monthDay($0) + "停掉" } ?? "已停掉")
+                                .yubaiFont(YubaiFont.caption)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                        AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts,
+                                    sign: row.inflow ? .inflow : .none, fractionDigits: row.amount % 100 == 0 ? 0 : 2, ink: YubaiColor.labelSecondary)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }.foregroundStyle(YubaiColor.labelSecondary).opacity(0.75)
+                    Button("恢复") { resume(row) }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
+                        .frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
+                        .accessibilityLabel("恢复" + row.title).accessibilityIdentifier("resumeFixedFlow_" + row.id.uuidString)
+                }.padding(.vertical, YubaiSpace.space6).accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("stoppedFixedFlow_" + row.id.uuidString)
+            }
+        }
+    }
+    private func resume(_ row: FixedFlowArrangement) {
+        do {
+            let change = try FixedFlows.resume(id: row.id, in: store.current)
+            if store.apply(change, label: "恢复安排") { store.toast = "已恢复" }
+        } catch { store.error = error.localizedDescription }
     }
     @ViewBuilder private func bills(_ rows: [FixedFlowOccurrence]) -> some View {
         if !rows.isEmpty {

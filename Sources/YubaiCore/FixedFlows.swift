@@ -39,6 +39,13 @@ public struct FixedFlowMonth: Sendable {
 }
 
 extension FixedFlows {
+    public static func resume(id: UUID, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+        guard let row = FixedFlowArrangement.stopped(in: ledger, now: now).first(where: { $0.id == id }) else { throw YubaiError.invalid("找不到已停掉的安排。") }
+        var change = ChangeSet(source: "用户操作", reason: "恢复「\(row.title)」", items: [.resumePlan(id)])
+        change.createdAt = now
+        var preview = ledger; try change.apply(to: &preview)
+        return change
+    }
     public static func settle(planID: UUID, occurrence: Date, amount: Int64? = nil, accountID: UUID? = nil, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
         guard let plan = ledger.plans.first(where: { $0.id == planID && $0.active }), plan.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("找不到这期固定收付。") }
         let payments = FixedFlowPayments(in: ledger); let remaining = payments.remaining(for: plan, on: occurrence)

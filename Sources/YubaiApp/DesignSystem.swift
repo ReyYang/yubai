@@ -77,6 +77,7 @@ enum YubaiFont {
     static let amountLarge = Style(size: 30, lineHeight: 36, weight: .semibold, family: .num, tracking: -0.5, relativeTo: .title)
     static let amount = Style(size: 15, lineHeight: 20, weight: .semibold, family: .num, tracking: 0, relativeTo: .body)
     static let amountSmall = Style(size: 13, lineHeight: 18, weight: .medium, family: .num, tracking: 0, relativeTo: .footnote)
+    static let amountDay = Style(size: 18, lineHeight: 24, weight: .semibold, family: .num, tracking: -0.3, relativeTo: .headline)
     // Numeric sizes specified by the approved V3 summary tiles and donut.
     static let amountSummary = Style(size: 17, lineHeight: 24, weight: .semibold, family: .num, relativeTo: .headline)
     static let amountCard = Style(size: 20, lineHeight: 28, weight: .semibold, family: .num, relativeTo: .title3)
@@ -561,7 +562,7 @@ struct SectionHeading: View {
 
 struct AmountLabel: View {
     enum Role {
-        case hero, display, input, large, amount, small, chart, summary, card, donut, account
+        case hero, display, input, large, amount, small, day, chart, summary, card, donut, account
         var font: YubaiFont.Style {
             switch self {
             case .hero: YubaiFont.amountHero
@@ -570,6 +571,7 @@ struct AmountLabel: View {
             case .large: YubaiFont.amountLarge
             case .amount: YubaiFont.amount
             case .small: YubaiFont.amountSmall
+            case .day: YubaiFont.amountDay
             case .chart: YubaiFont.chartValue
             case .summary: YubaiFont.amountSummary
             case .card: YubaiFont.amountCard
@@ -1082,7 +1084,8 @@ struct Toast: View {
         HStack(spacing: YubaiSpace.space12) {
             Text(text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).frame(maxWidth: .infinity, alignment: .leading)
             if let onUndo {
-                Button(undoTitle, action: onUndo).yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.brandInk)
+                Text("·").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).accessibilityHidden(true)
+                Button(undoTitle, action: onUndo).yubaiFont(YubaiFont.row, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
                     .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
             }
             if let onDismiss {
@@ -1091,7 +1094,8 @@ struct Toast: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel("关闭提示")
             }
         }.padding(.leading, YubaiSpace.space18).padding(.trailing, YubaiSpace.space8).padding(.vertical, YubaiSpace.space4)
-            .frame(minHeight: YubaiSize.buttonHeight).floatingSurface(in: Capsule())
+            .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: Capsule())
+            .overlay { Capsule().strokeBorder(YubaiColor.separator, lineWidth: 1) }.yubaiShadow(YubaiShadow.float)
             .padding(.horizontal, YubaiSpace.space18).padding(.bottom, YubaiSpace.space12)
             .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
             .gesture(DragGesture(minimumDistance: YubaiSpace.space12).onEnded { value in

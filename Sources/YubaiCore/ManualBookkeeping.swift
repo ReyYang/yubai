@@ -150,6 +150,7 @@ public enum ManualBookkeeping {
 
 public struct EntryDay: Identifiable, Sendable {
     public var id: Date { date }; public var date: Date; public var entries: [Entry]; public var net: Int64
+    public var spending: Int64 = 0
 }
 public struct EntryMonth: Identifiable, Sendable {
     public var id: Date { date }; public var date: Date; public var days: [EntryDay]; public var spending: Int64; public var income: Int64
@@ -166,7 +167,22 @@ public struct TodayEntries: Equatable, Sendable {
 }
 /// One pass over the store's cached descending entries. No ledger scans per day or row.
 public enum EntryTimeline {
-    public static func months(sortedEntries: [Entry], ledger: Ledger, search: String = "") -> [EntryMonth] {
+    public enum Filter: String, CaseIterable, Sendable {
+        case all = "全部", expense = "支出", income = "收入", uncategorized = "没分类"
+        public func includes(_ entry: Entry) -> Bool {
+            switch self {
+            case .all: true
+            case .expense: entry.nature == .expense
+            case .income: entry.nature == .income
+            case .uncategorized: EntryTimeline.isUncategorized(entry)
+            }
+        }
+    }
+    public static func isUncategorized(_ entry: Entry) -> Bool {
+        entry.hasNoCaptureCategory || entry.category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || entry.category == Classification.pendingCategory
+    }
+    public static func months(sortedEntries: [Entry], ledger: Ledger, search: String = "", filter: Filter = .all) -> [EntryMonth] {
         let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0.name) })
         let rents = Dictionary(uniqueKeysWithValues: ledger.rents.map { ($0.id, $0) })
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -175,11 +191,13 @@ public enum EntryTimeline {
         let calendar = Dates.calendar
         var dayInterval: DateInterval?; var monthInterval: DateInterval?
         var result: [EntryMonth] = []
-        for entry in sortedEntries where entry.deletedAt == nil {
+        for entry in sortedEntries where entry.deletedAt == nil && filter.includes(entry) {
             if !query.isEmpty {
                 let amount = formatter.string(from: NSDecimalNumber(decimal: Decimal(entry.amount) / 100)) ?? ""
                 let signed = (entry.nature.inflow ? "+" : "−") + amount
-                let fields = [entry.title, entry.purpose ?? "", entry.note, entry.category, accounts[entry.accountID] ?? "", entry.otherAccountID.flatMap { accounts[$0] } ?? "", Money.input(entry.amount), amount, signed, signed.replacingOccurrences(of: "−", with: "-"), "¥" + amount]
+                let category = ledger.resolveCategory(entry.category)
+                let displayCategory = isUncategorized(entry) ? "没分类" : Classification.displayCategory(category)
+                let fields = [entry.title, entry.purpose ?? "", entry.note, entry.category, category, displayCategory, accounts[entry.accountID] ?? "", entry.otherAccountID.flatMap { accounts[$0] } ?? "", Money.input(entry.amount), amount, signed, signed.replacingOccurrences(of: "−", with: "-"), "¥" + amount]
                 guard fields.contains(where: { $0.localizedCaseInsensitiveContains(query) }) else { continue }
             }
             if dayInterval.map({ entry.date >= $0.start && entry.date < $0.end }) != true {
@@ -195,7 +213,9 @@ public enum EntryTimeline {
             let d = result[m].days.count - 1
             result[m].days[d].entries.append(entry)
             result[m].days[d].net += entry.nature.inflow ? entry.amount : -entry.amount
-            result[m].spending += Finance.spendingAmount(entry, rent: entry.rentID.flatMap { rents[$0] })
+            let spending = Finance.spendingAmount(entry, rent: entry.rentID.flatMap { rents[$0] })
+            result[m].days[d].spending += spending
+            result[m].spending += spending
             if entry.nature == .income { result[m].income += entry.amount }
         }
         return result
