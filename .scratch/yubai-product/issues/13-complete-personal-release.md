@@ -235,3 +235,11 @@ owner 真机验收 main `146e379` 后明确拒绝玻璃浮栏模糊、底部白�
 Agent 实现选择：原生横向 ScrollView + HStack 常驻四个 NavigationStack，以 paging／scrollPosition 双向同步；选用 HStack 保留每页导航与滚动状态。删旧 iOS simultaneous 根页拖动、区域登记和临时点击抑制，页内用 UIGestureRecognizerRepresentable 的横向 pan 建立优先关系；macOS 沿用原处理。去掉浮栏 add 的 matchedTransitionSource 和默认 addEntry zoom，继续原记一笔 sheet；截图的＋模糊是否单独由缩放源引起，尚无设备证据。根因与采用映射见[设计记录](../../../.design-meta/DESIGN.md#2026-10-22--标签栏与分页回归修复)，新记录取代此前玻璃与自绘横滑的当前采用状态。
 
 Linux swift test：406 项、402 通过／4 项原有实网跳过／0 失败；App iOS 26／macOS 14 与 UI 测试 iOS 26 条件语法解析通过。原 36 个测试方法全部保留，新增 2 个并扩充既有分页、push／系统返回和 sheet 场景；没有执行 Apple SDK 类型检查或 UI 测试。暖纸背景、底部穿透、嵌套手势、现金图长按、快速切页、深色／大字号／降低动态效果／VoiceOver 待设备复验。本票仍 in-progress；原设计稿、docs、Figma 和分发包未改，未提交／推送。
+
+## 2026-10-22 · 页内横滑复验（owner vphone 反馈）
+
+owner 在分支 `fix/tabbar-gesture-regression`、HEAD `2be7adb` 的 vphone 实测确认两项回归：账目露出删除后再次左右滑会翻页，且多行可同时露出；管家约 0.3 秒快扫会翻到洞察，约 0.8 秒慢拖不收起。明确要求展开行右滑收回、左滑保持并吃掉手势；同一时间只展开一行，另一行开始左滑、点别处、列表竖滚、切 tab／翻页时关闭；管家慢拖超过卡宽 25% 或快速左扫速度 < -650 且位移 < -20 收起，其余回弹，横滑不翻页。只用 iOS HorizontalPan，macOS 保持，不加依赖、不删／跳测试、不改 docs／设计稿、不提交／推送。
+
+Agent 核对与实现：起手仅按瞬时速度判定、优先关系依赖 UIKit 子视图关系，以及每行独立 resting 确实存在于源码。改为按位移判方向、仅让可横滚／paging UIScrollView 的 pan 等待页内识别器失败；EntriesView 共享展开 ID，保持原生取消轻点与 ScrollView 竖滚，用 simultaneous tap、scroll phase、destination／sheet 观察关闭展开。管家原阈值已符合要求，通过共用识别器修正；[源码映射与边界](../../../.design-meta/DESIGN.md#2026-10-22--页内横滑复验修复)。
+
+Linux 指定 swift test 退出 0：406 项、402 通过／4 项原有实网跳过／0 失败；改动 App 文件 iOS 26／macOS 14、UI 测试 iOS 26 语法解析通过。原 38 个测试方法全部保留、新增 4 个并扩充慢拖／快扫／竖滚断言，无新增跳过。当前没有 Xcode／vphone 工具，UI 实跑、Apple SDK 类型检查与设备手势复验仍待做，本票不标记完成。docs／原稿／Figma／分发包未改，未提交／推送。

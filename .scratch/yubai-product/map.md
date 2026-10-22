@@ -31,7 +31,7 @@ Status: open
 
 ## Destination
 
-2026-10-22 owner 根据 main 真机验收要求修复[标签栏与分页回归](issues/13-complete-personal-release.md#2026-10-22--标签栏与分页回归owner-真机反馈)：采用实色暖纸浮栏、贯穿安全区的 canvas、仅四根页原生横向分页与页内横拖优先；macOS 保持，Apple 设备复验待做。
+2026-10-22 owner 根据 main 真机验收要求修复[标签栏与分页回归](issues/13-complete-personal-release.md#2026-10-22--标签栏与分页回归owner-真机反馈)：采用实色暖纸浮栏、贯穿安全区的 canvas、仅四根页原生横向分页与页内横拖优先；[vphone 后续要求](issues/13-complete-personal-release.md#2026-10-22--页内横滑复验owner-vphone-反馈)已接入位移判向、横向分页等待、账目单行展开及关闭协调，macOS 保持，Apple 设备复验待做。
 
 2026-10-22 owner 确认[固定收付「会回来的账单」四稿](issues/13-complete-personal-release.md#2026-10-22--固定收付会回来的账单owner-确认稿)：在 #25 Core 上接入当月账单、主动结清与撤销、分期／自动记、跨月到期卡、发薪期限及手动记账匹配；不改变 Core。Linux 396 项测试通过（392 通过、4 项原有跳过），新增 8 条 UI 用例仅语法解析，Apple 验收待做。
 

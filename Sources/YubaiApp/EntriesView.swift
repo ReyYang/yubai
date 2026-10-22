@@ -8,6 +8,7 @@ struct EntriesView: View {
     @State private var filter = EntryTimeline.Filter.all
     @State private var search = ""
     @State private var showingSearch = false
+    @State private var revealedEntryID: UUID?
     @FocusState private var searchFocused: Bool
     var body: some View {
         let end = Dates.addMonths(1, to: month)
@@ -40,7 +41,7 @@ struct EntriesView: View {
                         }.foregroundStyle(YubaiColor.label).padding(.horizontal, YubaiSpace.space4)
                         CardRows(day.entries) { entry in
                             let category = store.current.resolveCategory(entry.category)
-                            LedgerEntryRow(entry: entry, category: category, symbol: symbols[category] ?? fallbackSymbol(category, nature: entry.nature))
+                            LedgerEntryRow(revealedEntryID: $revealedEntryID, entry: entry, category: category, symbol: symbols[category] ?? fallbackSymbol(category, nature: entry.nature))
                         }
                     }
                 }
@@ -50,6 +51,11 @@ struct EntriesView: View {
         }.scrollDismissesKeyboard(.interactively).amountPrivacy(store.current.preferences.hideAmounts).accessibilityIdentifier("entriesScroll")
             #if os(iOS)
             .rootScrollContentMargins()
+            .simultaneousGesture(TapGesture().onEnded { revealedEntryID = nil })
+            .onScrollPhaseChange { _, phase in if phase == .interacting { revealedEntryID = nil } }
+            .onChange(of: store.destination) { _, _ in revealedEntryID = nil }
+            .onChange(of: store.sheet?.id) { _, _ in revealedEntryID = nil }
+            .onDisappear { revealedEntryID = nil }
             #endif
             .navigationTitle("账目").yubaiNavigation(hidesTabBar: false)
     }
@@ -142,6 +148,7 @@ private struct LedgerEntryRow: View {
     @State private var offset: CGFloat = 0
     @State private var resting: CGFloat = 0
     @State private var highlighted = true
+    @Binding var revealedEntryID: UUID?
     let entry: Entry
     let category: String
     let symbol: String
@@ -153,7 +160,12 @@ private struct LedgerEntryRow: View {
             #if os(macOS)
             guard !tapsBlocked, !dragging else { return }
             #endif
-            if resting != 0 { resting = 0; reset(); return }
+            if resting != 0 {
+                #if os(iOS)
+                revealedEntryID = nil
+                #endif
+                resting = 0; reset(); return
+            }
             store.sheetSource = nil; store.sheet = .editEntry(entry.id)
         } label: { content }
             .buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
@@ -165,12 +177,19 @@ private struct LedgerEntryRow: View {
             }.clipped().contentShape(Rectangle())
             #if os(iOS)
             .gesture(HorizontalPan(changed: { distance in
+                if distance < 0 { revealedEntryID = entry.id }
                 offset = max(-84, min(0, resting + distance))
-            }, ended: { _, _ in
-                resting = offset < -36 ? -84 : 0
-                reset()
-            }, cancelled: reset))
-            .onDisappear { resting = 0; reset() }
+            }, ended: { distance, _ in
+                resting = resting < 0 ? (distance > 0 ? 0 : -84) : (offset < -36 ? -84 : 0)
+                finishSwipe()
+            }, cancelled: finishSwipe))
+            .onChange(of: revealedEntryID) { _, id in
+                if id != entry.id { resting = 0; reset() }
+            }
+            .onDisappear {
+                if revealedEntryID == entry.id { revealedEntryID = nil }
+                resting = 0; reset()
+            }
             #else
             .simultaneousGesture(DragGesture(minimumDistance: 18)
                 .updating($dragging) { _, state, _ in state = true }
@@ -220,8 +239,17 @@ private struct LedgerEntryRow: View {
     }
     #if os(macOS)
     private func releaseTaps() { DispatchQueue.main.async { if !dragging { tapsBlocked = false } } }
+    #elseif os(iOS)
+    private func finishSwipe() {
+        if resting < 0 { revealedEntryID = entry.id }
+        else if revealedEntryID == entry.id { revealedEntryID = nil }
+        reset()
+    }
     #endif
     private func delete() {
+        #if os(iOS)
+        revealedEntryID = nil
+        #endif
         store.update("删除这笔") { ledger in
             guard let index = ledger.entries.firstIndex(where: { $0.id == entry.id && $0.deletedAt == nil }) else { return }
             ledger.entries[index].deletedAt = Date()

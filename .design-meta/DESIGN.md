@@ -1,5 +1,15 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-22 · 页内横滑复验修复
+
+来源为 owner 在 `fix/tabbar-gesture-regression`／`2be7adb` 的 vphone 实测：账目已露出删除后横滑翻页、可同时展开多行；管家快速左扫翻到洞察、慢拖不收起。此次只修页内手势与展开协调，取代下方起手速度 1.3 倍与 UIKit 祖先判定；既有视觉与原稿保持。
+
+`DesignSystem.swift` 的 iOS `HorizontalPan` 以 `abs(translation.x) > abs(translation.y)` 且横向位移非零决定开始；瞬时速度仅保留给松手处理。动态失败关系只针对 UIScrollView 自身的 pan，条件为 `contentSize.width > bounds.width + 1` 或 `isPagingEnabled`，删除 SwiftUI 挂载视图必须是 UIKit 子视图的假设。竖向 ScrollView 不增加等待；横拖开始后仍由原生 pan 取消轻点，未加全页拖动。管家 `ButlerViews.swift` 的收起规则原已符合本轮要求：左拖超过卡宽 25%，或速度 < -650 且位移 < -20 时 dismiss，其余回弹；此次通过共用识别器修正归属，无需改阈值。
+
+`EntriesView.swift` 共享 `revealedEntryID`：另一行开始左滑即关闭旧行，已展开行继续左滑保持，任意已识别右滑松手收回；包含删除按钮区域的横拖由行处理。列表轻点、竖滚进入 interacting、destination／sheet 改变和页面消失均关闭展开；删除后也清理状态。列表轻点采用 simultaneous tap，保留按钮动作；竖滚由 ScrollView 的 phase 观察关闭，不增加竖拖识别器。全部新协调逻辑限定 iOS，macOS 原拖动、阈值与点击抑制保持。
+
+验证：指定 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，406 项、402 通过／4 项原有实网 opt-in 跳过／0 失败。改动的两个 App 文件在 `arm64-apple-ios26.0`／`arm64-apple-macosx14.0`、`AppFlowTests.swift` 在 iOS 26 下通过 `swiftc -frontend -parse`。保留原 38 个测试方法，新增 4 个覆盖展开后左右滑及删除按钮区域、单行展开／外部点按、切 tab／分页关闭、管家长距离快扫；扩充原快短扫、慢拖与竖滚断言。当前 Linux 无 Xcode／vphone 工具，Apple SDK 类型检查、UI 实跑及设备上竖滚／点按和快慢横拖复验仍待做，不能将语法解析视为手势验收。未修改 Core、依赖、`docs/`、设计稿、Figma 或分发包，未提交／推送。
+
 ## 2026-10-22 · 标签栏与分页回归修复
 
 来源为 owner 对 main `146e379` 的真机验收反馈及本轮明确要求，在 `fix/tabbar-gesture-regression` 修复。取代下方方案 B 的玻璃底板、add 缩放源、根页 safeAreaInset，以及第十一轮自绘横拖；历史选定稿只读保留，不修改 `docs/`、HTML、Figma 或分发包。

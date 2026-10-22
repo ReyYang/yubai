@@ -376,12 +376,12 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
         init(allowsSubgestures: Bool) { self.allowsSubgestures = allowsSubgestures }
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
-            let velocity = pan.velocity(in: pan.view)
-            return abs(velocity.x) > abs(velocity.y) * 1.3
+            let translation = pan.translation(in: pan.view)
+            return abs(translation.x) > abs(translation.y) && abs(translation.x) > 0
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
-            guard other is UIPanGestureRecognizer, let scroll = other.view as? UIScrollView, let view = gestureRecognizer.view else { return false }
-            return view != scroll && view.isDescendant(of: scroll)
+            guard let scroll = other.view as? UIScrollView, other === scroll.panGestureRecognizer else { return false }
+            return scroll.isPagingEnabled || scroll.contentSize.width > scroll.bounds.width + 1
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
             guard allowsSubgestures, let view = gestureRecognizer.view, let otherView = other.view else { return false }
