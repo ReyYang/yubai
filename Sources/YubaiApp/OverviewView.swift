@@ -16,7 +16,7 @@ struct OverviewView: View {
         Group {
             if textSize > .xxLarge {
                 ScrollView { content(chartHeight: 0).padding(.horizontal, 18).padding(.top, 12) }
-                    .safeAreaPadding(.bottom, YubaiSize.rootBottomPadding)
+                    .rootScrollContentMargins()
             } else {
                 ViewThatFits(in: .vertical) {
                     content(chartHeight: 150).fixedSize(horizontal: false, vertical: true)
@@ -122,7 +122,7 @@ struct OverviewView: View {
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("moreDueBills")
                 }
             }
-        }.tabSwipeReserved().accessibilityIdentifier("dueBills")
+        }.accessibilityIdentifier("dueBills")
     }
     private func dueDetail(_ row: Occurrence) -> String {
         let date = Dates.day(row.date) == Dates.day(Date()) ? "今天到期" : FixedFlowPresentation.monthDay(row.date) + "到期"

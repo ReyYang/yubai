@@ -33,8 +33,10 @@ struct ButlerListView: View {
 struct ButlerCardView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(macOS)
     @GestureState private var dragging = false
     @State private var horizontal: Bool?
+    #endif
     @State private var swipe: CGFloat = 0
     @State private var width: CGFloat = 1
     let card: ButlerCard
@@ -43,7 +45,11 @@ struct ButlerCardView: View {
     private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) }
     private var ink: Color { amber ? YubaiColor.amberInk : YubaiColor.labelSecondary }
     var body: some View {
-        cardContent.allowsHitTesting(horizontal != true).offset(x: swipe)
+        cardContent
+            #if os(macOS)
+            .allowsHitTesting(horizontal != true)
+            #endif
+            .offset(x: swipe)
             .background(alignment: .trailing) {
                 Button("知道了") { store.dismissCard(card.id) }
                     .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
@@ -53,11 +59,19 @@ struct ButlerCardView: View {
                     .accessibilityHidden(swipe == 0)
             }
             .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).contentShape(Rectangle())
-            .tabSwipeReserved()
             .overlay { GeometryReader { geometry in
                 Color.clear.preference(key: ButlerCardWidth.self, value: geometry.size.width)
             }.allowsHitTesting(false) }
             .onPreferenceChange(ButlerCardWidth.self) { width = $0 }
+            #if os(iOS)
+            .gesture(HorizontalPan(changed: { distance in
+                swipe = max(-width, min(0, distance))
+            }, ended: { distance, velocity in
+                if -distance > width * 0.25 || (velocity < -650 && distance < -20) { store.dismissCard(card.id) }
+                resetSwipe()
+            }, cancelled: resetSwipe))
+            .onDisappear { swipe = 0 }
+            #else
             .simultaneousGesture(DragGesture(minimumDistance: 18)
                 .updating($dragging) { _, state, _ in state = true }
                 .onChanged { value in
@@ -74,10 +88,12 @@ struct ButlerCardView: View {
             .onChange(of: dragging) { _, active in
                 if !active { horizontal = nil; withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = 0 } }
             }
+            #endif
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("butlerCard_" + card.kind.rawValue)
             .accessibilityAction(named: "知道了") { store.dismissCard(card.id) }
     }
+    private func resetSwipe() { withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = 0 } }
     private var cardContent: some View {
         Card(style: .compact, background: amber ? YubaiColor.amberTint : YubaiColor.card) {
             VStack(alignment: .leading, spacing: 4) {

@@ -159,7 +159,7 @@ enum YubaiSize {
     static let tabbarHeight: CGFloat = 62
     #if os(iOS)
     static let floatingTabbarHeight: CGFloat = 66
-    static let floatingTabbarBottom: CGFloat = 22
+    static let floatingTabbarBottom: CGFloat = 8
     #endif
     static let barMax: CGFloat = 24
     static let lineWidth: CGFloat = 2
@@ -167,7 +167,7 @@ enum YubaiSize {
     #if os(macOS)
     static let rootBottomPadding: CGFloat = 106
     #else
-    static let rootBottomPadding: CGFloat = 12
+    static let rootBottomPadding: CGFloat = floatingTabbarHeight + floatingTabbarBottom + YubaiSpace.space12
     #endif
 }
 
@@ -349,13 +349,59 @@ struct TabBarVisibility: ViewModifier {
     }
     private func update() { if !inSheet { tabBarHidden?.wrappedValue = hidden } }
 }
+
+struct HorizontalPan: UIGestureRecognizerRepresentable {
+    var allowsSubgestures = false
+    var changed: (CGFloat) -> Void = { _ in }
+    var ended: (CGFloat, CGFloat) -> Void = { _, _ in }
+    var cancelled: () -> Void = {}
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = context.coordinator
+        return pan
+    }
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator(allowsSubgestures: allowsSubgestures) }
+    func handleUIGestureRecognizerAction(_ pan: UIPanGestureRecognizer, context: Context) {
+        let distance = pan.translation(in: pan.view).x
+        switch pan.state {
+        case .began, .changed: changed(distance)
+        case .ended: ended(distance, pan.velocity(in: pan.view).x)
+        case .cancelled, .failed: cancelled()
+        default: break
+        }
+    }
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        let allowsSubgestures: Bool
+        init(allowsSubgestures: Bool) { self.allowsSubgestures = allowsSubgestures }
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            let translation = pan.translation(in: pan.view)
+            return abs(translation.x) > abs(translation.y) && abs(translation.x) > 0
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            guard let scroll = other.view as? UIScrollView, other === scroll.panGestureRecognizer else { return false }
+            return scroll.isPagingEnabled || scroll.contentSize.width > scroll.bounds.width + 1
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            guard allowsSubgestures, let view = gestureRecognizer.view, let otherView = other.view else { return false }
+            return otherView.isDescendant(of: view)
+        }
+    }
+}
 #endif
 
 private struct PaperBackground: ViewModifier {
     @Environment(\.yubaiSheetSurface) private var inSheet
     func body(content: Content) -> some View {
         if #available(iOS 26, macOS 26, *), inSheet { content }
-        else { content.background(YubaiColor.canvas) }
+        else {
+            #if os(iOS)
+            content.background(YubaiColor.canvas.ignoresSafeArea())
+            #else
+            content.background(YubaiColor.canvas)
+            #endif
+        }
     }
 }
 
@@ -397,26 +443,6 @@ private struct ContentZoom: ViewModifier {
     }
 }
 
-struct TabContentEntrance: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var progress: Double = 1
-    var active: Bool
-    var revision: Int
-    var direction: Double
-    func body(content: Content) -> some View {
-        content.opacity(progress).offset(x: reduceMotion ? 0 : (1 - progress) * YubaiSpace.space12 * direction)
-            .task(id: active ? revision : -1) {
-                guard active, revision > 0 else { finish(); return }
-                var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-                withTransaction(transaction) { progress = 0 }
-                await Task.yield()
-                guard !Task.isCancelled else { finish(); return }
-                withAnimation(YubaiMotion.entrance(reduceMotion: reduceMotion)) { progress = 1 }
-            }.onDisappear { finish() }
-    }
-    private func finish() { var transaction = Transaction(animation: nil); transaction.disablesAnimations = true; withTransaction(transaction) { progress = 1 } }
-}
-
 private struct MessageEntrance: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visible = false
@@ -446,6 +472,21 @@ private struct ChipSelection: ViewModifier {
 extension View {
     func amountPrivacy(_ hidden: Bool) -> some View { contentTransition(.opacity).animation(YubaiMotion.quick, value: hidden) }
     func paperBackground() -> some View { modifier(PaperBackground()) }
+    func rootScrollContentMargins() -> some View {
+        #if os(iOS)
+        self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
+            .scrollEdgeEffectHidden(true, for: .bottom)
+        #else
+        self.safeAreaPadding(.bottom, YubaiSize.rootBottomPadding)
+        #endif
+    }
+    func pageLocalHorizontalGestures() -> some View {
+        #if os(iOS)
+        self.gesture(HorizontalPan(allowsSubgestures: true))
+        #else
+        self
+        #endif
+    }
     func floatingSurface<S: Shape>(in shape: S, tint: Color? = nil, shadow: YubaiShadow.Token = YubaiShadow.float) -> some View { modifier(FloatingSurface(shape: shape, tint: tint, shadow: shadow)) }
     func yubaiZoomSource(_ id: String) -> some View { modifier(ContentZoom(id: id, source: true)) }
     func yubaiZoomDestination(_ id: String?) -> some View { modifier(ContentZoom(id: id)) }
@@ -1122,6 +1163,7 @@ extension View {
         self.paperBackground().tint(YubaiColor.brandInk)
             #if os(iOS)
             .toolbar(.visible, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .modifier(TabBarVisibility(hidden: hidesTabBar))
@@ -1339,7 +1381,7 @@ struct ForecastChart: View {
                     forecastPlot
                 }
             }
-        }.tabSwipeReserved()
+        }.pageLocalHorizontalGestures()
     }
     private var forecastPlot: some View {
         let visit = store.overviewVisit; let active = store.destination == .overview && appeared && visible; let reduced = reduceMotion

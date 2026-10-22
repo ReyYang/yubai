@@ -1,5 +1,40 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-22 · 页内横滑复验修复
+
+来源为 owner 在 `fix/tabbar-gesture-regression`／`2be7adb` 的 vphone 实测：账目已露出删除后横滑翻页、可同时展开多行；管家快速左扫翻到洞察、慢拖不收起。此次只修页内手势与展开协调，取代下方起手速度 1.3 倍与 UIKit 祖先判定；既有视觉与原稿保持。
+
+`DesignSystem.swift` 的 iOS `HorizontalPan` 以 `abs(translation.x) > abs(translation.y)` 且横向位移非零决定开始；瞬时速度仅保留给松手处理。动态失败关系只针对 UIScrollView 自身的 pan，条件为 `contentSize.width > bounds.width + 1` 或 `isPagingEnabled`，删除 SwiftUI 挂载视图必须是 UIKit 子视图的假设。竖向 ScrollView 不增加等待；横拖开始后仍由原生 pan 取消轻点，未加全页拖动。管家 `ButlerViews.swift` 的收起规则原已符合本轮要求：左拖超过卡宽 25%，或速度 < -650 且位移 < -20 时 dismiss，其余回弹；此次通过共用识别器修正归属，无需改阈值。
+
+`EntriesView.swift` 共享 `revealedEntryID`：另一行开始左滑即关闭旧行，已展开行继续左滑保持，任意已识别右滑松手收回；包含删除按钮区域的横拖由行处理。列表轻点、竖滚进入 interacting、destination／sheet 改变和页面消失均关闭展开；删除后也清理状态。列表轻点采用 simultaneous tap，保留按钮动作；竖滚由 ScrollView 的 phase 观察关闭，不增加竖拖识别器。全部新协调逻辑限定 iOS，macOS 原拖动、阈值与点击抑制保持。
+
+验证：指定 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，406 项、402 通过／4 项原有实网 opt-in 跳过／0 失败。改动的两个 App 文件在 `arm64-apple-ios26.0`／`arm64-apple-macosx14.0`、`AppFlowTests.swift` 在 iOS 26 下通过 `swiftc -frontend -parse`。保留原 38 个测试方法，新增 4 个覆盖展开后左右滑及删除按钮区域、单行展开／外部点按、切 tab／分页关闭、管家长距离快扫；扩充原快短扫、慢拖与竖滚断言。当前 Linux 无 Xcode／vphone 工具，Apple SDK 类型检查、UI 实跑及设备上竖滚／点按和快慢横拖复验仍待做，不能将语法解析视为手势验收。未修改 Core、依赖、`docs/`、设计稿、Figma 或分发包，未提交／推送。
+
+## 2026-10-22 · 标签栏与分页回归修复
+
+来源为 owner 对 main `146e379` 的真机验收反馈及本轮明确要求，在 `fix/tabbar-gesture-regression` 修复。用户于 2026-10-22 选定实色暖纸 raised 胶囊，不用玻璃；随后要求「位置稍微往下一点」，标签栏底边改为距 home indicator 安全区上沿 8pt，整体下移 14pt。取代下方方案 B 的玻璃底板与历史 22pt 底部间距、add 缩放源、根页 safeAreaInset，以及第十一轮自绘横拖；历史选定稿只读保留，不修改 `docs/`、HTML、Figma 或分发包。
+
+根因核对使用 `git diff 5ae3882..HEAD` 及相关提交：`02fe751` 将系统标签栏换成带 72% raised tint 的 interactive regular glass，玻璃会参与模糊、折射与系统底色合成，不能保证实色暖纸和静态清晰度；截图中＋的变形是否还受 matchedTransitionSource 影响，在 Linux 无法分离确认。本轮直接移除 FloatingTabBar 的 GlassEffectContainer／glassEffect，采用不透明 raised Capsule、1pt separator 与 float 阴影；形状、66pt 高、左右 18pt、底部安全区上方 8pt、50pt matchedGeometryEffect 选中胶囊、54pt 绿色＋和全部原 identifier 保留。未选中改 labelSecondary，选中保持 brandInk／card。＋移除 add 源及 addEntry 默认 zoom 目的地，清空 sheetSource 后打开原记一笔 sheet，避免没有源仍请求 zoom。
+
+白条与裁切来自布局链，而非缺少一层颜色：旧 TabRootSwipe 在安全区尺寸的 GeometryReader 内强制 frame，并 clipped；`02fe751` 又在外侧加入 88pt safeAreaInset，缩短该裁切区域。因此列表在栏上方就结束，放在外侧的 canvas 背景无法越过裁切覆盖导航与底部；隐藏系统 tabBar 后仍保留 TabView 的系统容器，PaperBackground 又没有延伸安全区，导航栏未明确采用透明背景，露出了系统底色。本轮删除该 GeometryReader／clipped／占位 inset 与普通 TabView；各 NavigationStack 内外及 iOS 非 sheet 的 PaperBackground 延伸 canvas 到安全区，导航栏透明。分页 ScrollView 允许绘制到安全区；根页滚动用 contentMargins 留出 86pt（66 + 8 + 12）滚动余量，不缩短视口，最后一行仍可完整滚到栏上方，至少留出 12pt；rootBottomPadding 与 toast 底部间距均随 floatingTabbarBottom 自动更新。筛选横条覆写底部 margin 为 0。底部 scroll edge effect 关闭，避免浮栏附近再叠系统模糊；它不是已确认的独立白条根因。
+
+旧 simultaneous DragGesture 同时驱动根页与页内控件，只有当前页位移，没有相邻页；`7453f94` 又临时切换整页 hit testing／disabled 来压制误点，仍未建立原生手势优先关系。本轮采用横向 ScrollView + 零间距 HStack，四个 NavigationStack 常驻以保留状态；containerRelativeFrame(.horizontal)、scrollTargetLayout、paging 与 scrollPosition(id:anchor:.center) 提供跟手、回弹和双向 destination 同步。点击标签以 YubaiMotion.layout 滚动，Reduce Motion 时无程序动画。push 可见性、AppSheet 或洞察日期 sheet 禁止外层滚动；NavigationStack 内恢复 isScrollEnabled，二级页竖向滚动与系统边缘返回继续工作。非当前页对无障碍隐藏，防止四页常驻时相同控件 identifier 重复暴露。
+
+管家卡与现有账目行删除改由 iOS HorizontalPan（UIGestureRecognizerRepresentable + UIPanGestureRecognizer）识别：开始时水平速度须超过竖向的 1.3 倍，祖先 UIScrollView pan 等待它失败，已开始的横拖由系统取消轻点。管家右拖不移动卡片，短左拖回弹，超过四分之一或快速左甩仍 dismissCard；账目保留原来的删除按钮、阈值与撤销。筛选横条／现金图使用同一原生优先关系，同时允许控件内部的滚动／长按拖动识别。删除 iOS 的 tabSwipeReserved、区域 preference、tapsBlocked、TabRootSwipe 和 TabContentEntrance。macOS 的侧栏、底部按钮、背景、滚动余量与原有卡片／账目拖动保持；账目原有点击抑制仅在 macOS 条件分支保留。
+
+### 手势
+
+- 只在现在／洞察／账目／我四个根页横滑翻页，按顺序分页。
+- push 后禁止翻 tab，只保留系统左边缘返回；有 sheet 时不翻页。
+- 从账目行、管家卡、现金图、筛选 chips 或横向列表开始的横拖交给页内操作。
+- 管家卡只响应明显横向拖动，左滑收起，右滑不翻页。
+- 竖向拖动交给竖向滚动；横拖不触发行点击。
+- 点击标签平滑切页，降低动态效果时直接定位；各页保留导航和滚动状态。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，406 项、402 通过／4 项原有实网 opt-in 跳过／0 失败，未修改 Core 或依赖。App 全部 Swift 的 iOS 26／macOS 14 条件语法解析，以及 UI 测试 iOS 26 条件语法解析通过；这不是 Apple SDK 类型检查。`AppFlowTests.swift` 原 36 个测试方法全部保留，新增 2 个；覆盖双向分页、短拖回弹、push 内横拖不翻页与系统返回、非相邻标签点击及月份状态保持、管家／账目／筛选／现金图归属、sheet 横拖、竖向滚动和最后一行。UI 测试尚未运行。导航背景与 home indicator 实际颜色、底部穿透、嵌套识别器竞争、长按现金图、快速连滑／点击、深色／大字号／Reduce Motion 和 VoiceOver 仍需 Apple 设备验收。未提交／推送。
+
+Apple 官方签名核对：[scrollPosition(id:anchor:)](https://developer.apple.com/documentation/SwiftUI/View/scrollPosition(id:anchor:)) 使用 Binding<(some Hashable)?>；[containerRelativeFrame(_:alignment:)](https://developer.apple.com/documentation/swiftui/view/containerrelativeframe(_:alignment:)) 使用 Axis.Set；[paging](https://developer.apple.com/documentation/swiftui/scrolltargetbehavior/paging) 按容器分页；[UIGestureRecognizerRepresentable](https://developer.apple.com/documentation/swiftui/uigesturerecognizerrepresentable) 使用 makeUIGestureRecognizer(context:)、handleUIGestureRecognizerAction(_:context:) 与 makeCoordinator(converter:)；[动态失败关系](https://developer.apple.com/documentation/uikit/uigesturerecognizerdelegate/gesturerecognizer(_:shouldberequiredtofailby:)) 在开始识别前决定；[isScrollEnabled](https://developer.apple.com/documentation/swiftui/environmentvalues/isscrollenabled) 是可覆写的环境值。
+
 ## 2026-10-22 · 标签栏方案 B：暖色 Liquid Glass
 
 来源为 owner 明确选定的 `/tmp/claude-0/r11/canvas12/project/V12-TabBar-Options.dc.html` 中间 B 方案与 `V12-TabBar.dc.html` 的规则，只读引用。该选择取代历史系统标签栏与系统玻璃＋的外观；现在／洞察／账目／我、横滑、记一笔及各标签导航状态保持。

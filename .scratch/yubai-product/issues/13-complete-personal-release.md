@@ -227,3 +227,19 @@ Agent 实现选择：将 App Group 编译条件限定到 iPhone SDK，核对原�
 已接入：当月剩余要付／要收与日期点阵、状态账单卡及结清、2–60 期／一直、autoPay／autoPaySince／estimated、现在页历史到期最多两条与溢出入口、发薪期限、记一笔需主动选择的首项关联建议、启动／前台／解锁后的静默自动记账。rentID 行本轮只读，不新增房租维护入口。Agent 适配为原生系统控件与既有 tokens，日期多于七个时换行，同日点汇总但无障碍读取全部状态；一次性安排禁用共几期。原额付清已预留付款时还能花按 Core 保持不变，收款或改实际金额时按真实结果变化。
 
 [源码映射与差异](../../../.design-meta/DESIGN.md#2026-10-22--固定收付会回来的账单)。Linux `swift test` 退出 0：396 项、392 通过、4 项原有实网 opt-in 跳过、0 失败；没有修改 Core、删除或跳过测试。新增 8 条 UI 流程源码；全部 App 在 iOS 26／macOS 14、UI 测试在 iOS 26 条件下语法解析通过，Apple SDK 类型检查、UI 实跑、视觉、手势、VoiceOver、Reduce Motion 与生命周期验收仍待做。原始 HTML、docs、Figma 与分发包未改，未提交／推送，本票保持 in-progress。
+
+## 2026-10-22 · 标签栏与分页回归（owner 真机反馈）
+
+owner 真机验收 main `146e379` 后明确拒绝玻璃浮栏模糊、底部白条／列表裁切、白色导航区与混乱横滑，授权在 `fix/tabbar-gesture-regression` 找根因并替换，不叠原手势补丁。明确采用不透明 raised 胶囊、separator 描边与 float 阴影，保留尺寸、绿色＋、选中胶囊和 accessibility id；整屏 canvas、透明导航，滚动内容从浮栏下方通过，末行可滚至栏上。只在四个根页系统分页，push 后仅系统边缘返回，sheet 时不翻；账目删除、管家卡、现金图与横向筛选／列表优先，竖滚和轻点不误触。macOS 行为保持，不加依赖，不改 docs／设计稿，不提交或推送。
+
+Agent 实现选择：原生横向 ScrollView + HStack 常驻四个 NavigationStack，以 paging／scrollPosition 双向同步；选用 HStack 保留每页导航与滚动状态。删旧 iOS simultaneous 根页拖动、区域登记和临时点击抑制，页内用 UIGestureRecognizerRepresentable 的横向 pan 建立优先关系；macOS 沿用原处理。去掉浮栏 add 的 matchedTransitionSource 和默认 addEntry zoom，继续原记一笔 sheet；截图的＋模糊是否单独由缩放源引起，尚无设备证据。根因与采用映射见[设计记录](../../../.design-meta/DESIGN.md#2026-10-22--标签栏与分页回归修复)，新记录取代此前玻璃与自绘横滑的当前采用状态。
+
+Linux swift test：406 项、402 通过／4 项原有实网跳过／0 失败；App iOS 26／macOS 14 与 UI 测试 iOS 26 条件语法解析通过。原 36 个测试方法全部保留，新增 2 个并扩充既有分页、push／系统返回和 sheet 场景；没有执行 Apple SDK 类型检查或 UI 测试。暖纸背景、底部穿透、嵌套手势、现金图长按、快速切页、深色／大字号／降低动态效果／VoiceOver 待设备复验。本票仍 in-progress；原设计稿、docs、Figma 和分发包未改，未提交／推送。
+
+## 2026-10-22 · 页内横滑复验（owner vphone 反馈）
+
+owner 在分支 `fix/tabbar-gesture-regression`、HEAD `2be7adb` 的 vphone 实测确认两项回归：账目露出删除后再次左右滑会翻页，且多行可同时露出；管家约 0.3 秒快扫会翻到洞察，约 0.8 秒慢拖不收起。明确要求展开行右滑收回、左滑保持并吃掉手势；同一时间只展开一行，另一行开始左滑、点别处、列表竖滚、切 tab／翻页时关闭；管家慢拖超过卡宽 25% 或快速左扫速度 < -650 且位移 < -20 收起，其余回弹，横滑不翻页。只用 iOS HorizontalPan，macOS 保持，不加依赖、不删／跳测试、不改 docs／设计稿、不提交／推送。
+
+Agent 核对与实现：起手仅按瞬时速度判定、优先关系依赖 UIKit 子视图关系，以及每行独立 resting 确实存在于源码。改为按位移判方向、仅让可横滚／paging UIScrollView 的 pan 等待页内识别器失败；EntriesView 共享展开 ID，保持原生取消轻点与 ScrollView 竖滚，用 simultaneous tap、scroll phase、destination／sheet 观察关闭展开。管家原阈值已符合要求，通过共用识别器修正；[源码映射与边界](../../../.design-meta/DESIGN.md#2026-10-22--页内横滑复验修复)。
+
+Linux 指定 swift test 退出 0：406 项、402 通过／4 项原有实网跳过／0 失败；改动 App 文件 iOS 26／macOS 14、UI 测试 iOS 26 语法解析通过。原 38 个测试方法全部保留、新增 4 个并扩充慢拖／快扫／竖滚断言，无新增跳过。当前没有 Xcode／vphone 工具，UI 实跑、Apple SDK 类型检查与设备手势复验仍待做，本票不标记完成。docs／原稿／Figma／分发包未改，未提交／推送。
