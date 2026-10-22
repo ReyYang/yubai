@@ -171,8 +171,19 @@ private struct LedgerEntryRow: View {
         } label: { content }
             .buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .offset(x: offset).background(alignment: .trailing) {
-                Button("删除", action: delete).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.amberInk)
+                Button(action: delete) {
+                    Text("删除")
+                        #if os(iOS)
+                        .frame(width: 78).frame(maxHeight: .infinity)
+                        .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        #endif
+                }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.amberInk)
+                    #if os(iOS)
+                    .padding(.vertical, YubaiSpace.space6).padding(.trailing, YubaiSpace.space6)
+                    #else
                     .frame(width: 84).frame(maxHeight: .infinity).background(YubaiColor.amberTint)
+                    #endif
                     .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
                     .accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
             }.clipped().contentShape(Rectangle())

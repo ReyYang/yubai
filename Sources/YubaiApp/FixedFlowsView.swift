@@ -149,8 +149,19 @@ private struct FixedFlowBillRow: View {
         Group {
             if canEnd {
                 content.offset(x: offset).background(alignment: .trailing) {
-                    Button("停掉", action: stop).yubaiFont(YubaiFont.callout, weight: .medium)
+                    Button(action: stop) {
+                        Text("停掉")
+                            #if os(iOS)
+                            .frame(width: 78).frame(maxHeight: .infinity)
+                            .background(YubaiColor.neutralStrong, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            #endif
+                    }.yubaiFont(YubaiFont.callout, weight: .medium)
+                        #if os(iOS)
+                        .padding(.vertical, YubaiSpace.space6).padding(.trailing, YubaiSpace.space6)
+                        #else
                         .frame(width: 84).frame(maxHeight: .infinity).background(YubaiColor.neutralStrong)
+                        #endif
                         .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
                 }.clipped().contentShape(Rectangle())
                     .simultaneousGesture(DragGesture(minimumDistance: 18)

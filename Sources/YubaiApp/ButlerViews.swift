@@ -51,10 +51,21 @@ struct ButlerCardView: View {
             #endif
             .offset(x: swipe)
             .background(alignment: .trailing) {
-                Button("知道了") { store.dismissCard(card.id) }
-                    .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
+                Button { store.dismissCard(card.id) } label: {
+                    Text("知道了")
+                        #if os(iOS)
+                        .padding(.trailing, YubaiSpace.space18).frame(width: max(88, -swipe) - YubaiSpace.space6, alignment: .trailing)
+                        .frame(maxHeight: .infinity)
+                        .background(YubaiColor.neutralSoft, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        #endif
+                }.yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
+                    #if os(iOS)
+                    .padding(.vertical, YubaiSpace.space6).padding(.trailing, YubaiSpace.space6)
+                    #else
                     .frame(width: max(88, -swipe), alignment: .trailing).padding(.trailing, YubaiSpace.space18)
                     .frame(maxHeight: .infinity).background(YubaiColor.neutralSoft)
+                    #endif
                     .opacity(swipe < 0 ? 1 : 0).allowsHitTesting(swipe < 0)
                     .accessibilityHidden(swipe == 0)
             }
