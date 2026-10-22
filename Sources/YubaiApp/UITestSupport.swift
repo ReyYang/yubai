@@ -10,7 +10,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              ["empty", "import", "restrain", "ask", "profile", "memory", "manual"].contains(name) else { return nil }
+              ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "bills", "bills-overdue", "bills-auto", "bills-estimated"].contains(name) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -29,7 +29,7 @@ enum UITestSupport {
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
         let now = Date()
         var ledger = Ledger()
-        ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = script != "manual"
+        ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = script != "manual" && !script.hasPrefix("bills")
         ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
         ledger.mutedTopics = ["letter"] // Keep scripted flows independent of the weekday.
         let account = Account(name: "合成银行卡", balance: 100_000, at: now)
@@ -41,6 +41,26 @@ enum UITestSupport {
         }
         if script == "restrain" {
             ledger.profile.restrain = [ProfileArea(title: "咖啡", match: AreaMatch(keywords: ["咖啡"]), softLimit: SoftLimit(perMonthAmount: 3000))]
+        }
+        if script.hasPrefix("bills") {
+            var rent = Plan(title: "房租", amount: 30_000, dueDate: Dates.day(now))
+            rent.accountID = account.id
+            var salary = Plan(title: "工资", amount: 50_000, dueDate: Dates.day(now), frequency: .monthly, inflow: true, category: "工资", nature: .income)
+            salary.accountID = account.id; ledger.plans = [rent, salary]
+            if script == "bills-overdue" {
+                var old = Plan(title: "上月账单", amount: 1000, dueDate: Dates.addMonths(-1, to: Dates.day(now)))
+                old.accountID = account.id
+                var phone = Plan(title: "话费", amount: 6800, dueDate: Dates.day(now))
+                phone.accountID = account.id; ledger.plans += [old, phone]
+            }
+            if script == "bills-auto" {
+                ledger.plans[0].autoPay = true; ledger.plans[0].autoPaySince = Dates.day(now)
+                ledger.plans[1].dueDate = Dates.addDays(1, to: Dates.day(now))
+            }
+            if script == "bills-estimated" {
+                var power = Plan(title: "电费", amount: 12_000, dueDate: Dates.day(now))
+                power.accountID = account.id; power.estimated = true; ledger.plans = [power]
+            }
         }
         try repository.save(ledger, reason: "合成测试夹具")
     }

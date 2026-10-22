@@ -9,6 +9,9 @@ struct OverviewView: View {
     private var freshLetter: ButlerCard? {
         store.current.cards.first { WeeklyLetter.isFresh($0, now: Date()) && !ButlerCards.isMuted($0.dedupeKey, in: store.current) }
     }
+    private var dueBills: [Occurrence] {
+        store.funds.occurrences.filter { !$0.inflow && ($0.planID != nil || $0.rentID != nil) && Dates.day($0.date) <= Dates.day(Date()) }
+    }
     var body: some View {
         Group {
             if textSize > .xxLarge {
@@ -62,9 +65,10 @@ struct OverviewView: View {
             } else {
                 HeroCard(available: funds.available, payable: funds.debt + funds.committed,
                          reserved: funds.goals + funds.emergency + funds.living + funds.uncertainInflow,
-                         hideAmount: store.current.preferences.hideAmounts, title: "还能花",
+                         hideAmount: store.current.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
                          onDetails: { store.sheet = .fundsCalculation })
                 todayRow
+                if !dueBills.isEmpty { dueCard }
             }
             ButlerSection()
             if !store.current.accounts.isEmpty {
@@ -76,20 +80,54 @@ struct OverviewView: View {
                             .padding(.horizontal, 16).frame(minHeight: 44).background(YubaiColor.card, in: RoundedRectangle(cornerRadius: 18))
                     }.buttonStyle(PressButtonStyle())
                 }
-                if let next = funds.occurrences.first(where: { !$0.inflow }) {
+                if dueBills.isEmpty, let next = funds.occurrences.first(where: { !$0.inflow }) {
                     NavigationLink { Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation() } label: {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 12) { nextTitle(next); Spacer(); nextAmount(next); Image(systemName: "chevron.right") }
                             VStack(alignment: .leading, spacing: 6) { nextTitle(next); nextAmount(next) }
                         }.padding(.horizontal, 16).padding(.vertical, 12).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: 18))
                     }.buttonStyle(PressButtonStyle())
-                } else {
+                } else if dueBills.isEmpty {
                     Text("下一笔 · 还没有待付款").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
             }
         }.foregroundStyle(YubaiColor.label).amountPrivacy(store.current.preferences.hideAmounts)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: ButlerCards.visible(store.current).first?.id)
+            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: dueBills.map(\.id))
+    }
+    private var dueCard: some View {
+        let rows = dueBills
+        return Card(style: .list, background: YubaiColor.amberTint) {
+            VStack(spacing: 0) {
+                ForEach(Array(rows.prefix(2))) { row in
+                    HStack(spacing: 12) {
+                        FixedFlowDot(state: .due)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
+                            Text(dueDetail(row)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                        AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, fractionDigits: row.amount % 100 == 0 ? 0 : 2,
+                                    ink: YubaiColor.amberStrong)
+                        if let id = row.planID {
+                            FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount)
+                        }
+                    }.frame(minHeight: 60)
+                    if row.id != rows.prefix(2).last?.id { EntryFormDivider() }
+                }
+                if rows.count > 2 {
+                    NavigationLink { FixedFlowsView() } label: {
+                        HStack { Text("还有 \(rows.count - 2) 笔 ›"); Spacer() }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
+                            .frame(minHeight: YubaiSize.tapMin)
+                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("moreDueBills")
+                }
+            }
+        }.tabSwipeReserved().accessibilityIdentifier("dueBills")
+    }
+    private func dueDetail(_ row: Occurrence) -> String {
+        let date = Dates.day(row.date) == Dates.day(Date()) ? "今天到期" : FixedFlowPresentation.monthDay(row.date) + "到期"
+        let account = store.current.plans.first { $0.id == row.planID }?.accountID ?? store.current.rents.first { $0.id == row.rentID }?.accountID
+        return date + (account.map { " · " + store.current.accountName($0) } ?? "")
     }
     private var todayRow: some View {
         let today = store.pendingEntrySave ? (displayedToday ?? TodayEntries(in: store.current)) : TodayEntries(in: store.current)
@@ -130,10 +168,11 @@ struct OverviewView: View {
 struct UpcomingPaymentsView: View {
     @Environment(AppStore.self) private var store
     @State private var ending: Occurrence?
-    private var payments: [Occurrence] { store.funds.occurrences.filter { !$0.inflow } }
+    var throughHorizon = false
+    private var payments: [Occurrence] { store.funds.occurrences.filter { !$0.inflow && (!throughHorizon || Dates.day($0.date) <= store.funds.horizonEnd) } }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            SectionHeading(title: "接下来要付的", subtitle: "未来 90 天 · 含已到期")
+            SectionHeading(title: "接下来要付的", subtitle: (throughHorizon ? store.funds.horizonTitle : "未来 90 天") + " · 含已到期")
             if payments.isEmpty { Text("没有待完成的付款。")
                 .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             CardRows(payments) { item in
@@ -182,7 +221,7 @@ struct FundsCalculationView: View {
     var body: some View {
         let funds = store.funds
         Page {
-            Text("未来 90 天").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+            Text(funds.horizonTitle).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
             Card(style: .list) {
                 VStack(spacing: 0) {
                     formula("现金", funds.cash); formula("信用卡要还", -funds.debt); formula("接下来要付", -funds.committed)
@@ -192,7 +231,7 @@ struct FundsCalculationView: View {
                 }
             }
             ForEach(funds.warnings, id: \.self) { InlineNote(text: $0, style: .attention) }
-            UpcomingPaymentsView()
+            UpcomingPaymentsView(throughHorizon: true)
         }.navigationTitle("还能花是怎么算的").yubaiNavigation().toolbar { CloseButton() }
     }
     private func formula(_ title: String, _ amount: Int64) -> some View {
@@ -201,5 +240,13 @@ struct FundsCalculationView: View {
             layout { Text(title).yubaiFont(YubaiFont.row); if !textSize.isAccessibilitySize { Spacer() }; AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts) }.frame(minHeight: YubaiSize.buttonHeight)
             if title != "= 还能花" { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
         }
+    }
+}
+
+extension Funds {
+    var horizonTitle: String {
+        guard let payday, let paydayTitle else { return "接下来 90 天" }
+        let date = FixedFlowPresentation.monthDay(payday)
+        return "到 " + date + (paydayTitle.contains("工资") ? "发工资" : " · " + paydayTitle)
     }
 }

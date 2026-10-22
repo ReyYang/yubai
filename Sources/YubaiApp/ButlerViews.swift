@@ -32,12 +32,57 @@ struct ButlerListView: View {
 
 struct ButlerCardView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var dragging = false
+    @State private var horizontal: Bool?
+    @State private var swipe: CGFloat = 0
+    @State private var restingSwipe: CGFloat = 0
+    @State private var width: CGFloat = 1
     let card: ButlerCard
     var additionalCount = 0
     private var hidden: Bool { store.current.preferences.hideAmounts }
     private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) }
     private var ink: Color { amber ? YubaiColor.amberInk : YubaiColor.labelSecondary }
     var body: some View {
+        cardContent.offset(x: swipe)
+            .background(alignment: .trailing) {
+                Button("知道了") { store.dismissCard(card.id) }
+                    .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
+                    .frame(width: max(88, -swipe), alignment: .trailing).padding(.trailing, YubaiSpace.space18)
+                    .frame(maxHeight: .infinity).background(YubaiColor.neutralSoft)
+                    .opacity(swipe < 0 ? 1 : 0).allowsHitTesting(swipe < 0)
+                    .accessibilityHidden(swipe == 0)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).contentShape(Rectangle())
+            .tabSwipeReserved()
+            .overlay { GeometryReader { geometry in
+                Color.clear.preference(key: ButlerCardWidth.self, value: geometry.size.width)
+            }.allowsHitTesting(false) }
+            .onPreferenceChange(ButlerCardWidth.self) { width = $0 }
+            .simultaneousGesture(DragGesture(minimumDistance: 18)
+                .updating($dragging) { _, state, _ in state = true }
+                .onChanged { value in
+                    if horizontal == nil { horizontal = value.translation.width < 0 && abs(value.translation.width) > abs(value.translation.height) * 1.3 }
+                    guard horizontal == true else { return }
+                    swipe = max(-width, min(0, restingSwipe + value.translation.width))
+                }
+                .onEnded { _ in
+                    guard horizontal == true else { return }
+                    if -swipe > width * 0.5 { store.dismissCard(card.id) }
+                    else {
+                        restingSwipe = -swipe > 36 ? -88 : 0
+                        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = restingSwipe }
+                    }
+                    horizontal = nil
+                })
+            .onChange(of: dragging) { _, active in
+                if !active { horizontal = nil; withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = restingSwipe } }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("butlerCard_" + card.kind.rawValue)
+            .accessibilityAction(named: "知道了") { store.dismissCard(card.id) }
+    }
+    private var cardContent: some View {
         Card(style: .compact, background: amber ? YubaiColor.amberTint : YubaiColor.card) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -122,6 +167,11 @@ struct ButlerCardView: View {
         case .openWish: return "看看心愿"
         }
     }
+}
+
+private struct ButlerCardWidth: PreferenceKey {
+    static let defaultValue: CGFloat = 1
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct ButlerActionStyle: ButtonStyle {

@@ -2,6 +2,55 @@ import XCTest
 @testable import YubaiCore
 
 final class DeepSeekCloudTests: XCTestCase {
+    func testModelsUsesAuthenticatedGETAndKeepsUnknownIDsWithoutChatRequest() async throws {
+        let log = SendLog()
+        let before = log.totalCount
+        let stub = CloudTestStub(rawResponse: true, sendLog: log) { request in
+            XCTAssertEqual(request.url?.path, "/models")
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-key")
+            XCTAssertNil(request.httpBody)
+            return #"{"data":[{"id":"deepseek-chat"},{"id":"deepseek-reasoner"},{"id":" future-model "},{"id":"deepseek-chat"},{"id":" "}]}"#
+        }
+        defer { stub.close() }
+        let models = try await stub.listModels()
+        XCTAssertEqual(models, ["deepseek-chat", "deepseek-reasoner", "future-model"])
+        XCTAssertEqual(log.totalCount, before)
+    }
+
+    func testModelsRejectsHTTPMalformedAndEmptyResponsesWithoutExposingBody() async {
+        for (status, body) in [(401, "test-key"), (503, "test-key"), (200, "not json"), (200, #"{"data":[]}"#), (200, #"{"data":[{"id":" "}]}"#), (200, #"{"data":[{}]}"#)] {
+            let stub = CloudTestStub(rawResponse: true, statusCode: status) { _ in body }
+            defer { stub.close() }
+            do { _ = try await stub.listModels(); XCTFail("invalid model list must fail") }
+            catch { XCTAssertFalse(error.localizedDescription.contains("test-key")) }
+        }
+        XCTAssertEqual(DeepSeekClient.fallbackModels, ["deepseek-chat", "deepseek-reasoner"])
+    }
+
+    func testModelsPreservesVersionedBaseAndNormalizesCompletionURL() async throws {
+        for basePath in ["/v1", "/v1/", "/v1/chat/completions", "/v1/chat/completions/"] {
+            let stub = CloudTestStub(rawResponse: true, basePath: basePath) { request in
+                XCTAssertEqual(request.url?.path, "/v1/models")
+                return #"{"data":[{"id":"future-model","extra":"ignored"}]}"#
+            }
+            defer { stub.close() }
+            let models = try await stub.listModels()
+            XCTAssertEqual(models, ["future-model"])
+        }
+    }
+
+    func testModelsOfflineAndCancellationDoNotReturnASuccessfulCatalog() async {
+        let stub = CloudTestStub { _ in throw URLError(.notConnectedToInternet) }
+        defer { stub.close() }
+        do { _ = try await stub.listModels(); XCTFail("offline model list must fail") } catch {}
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await stub.listModels()
+        }
+        do { _ = try await task.value; XCTFail("cancelled model list must fail") }
+        catch { XCTAssertTrue(error is CancellationError) }
+    }
     func testModelPreferenceIsUsedWithBothKeySourcesAndEnvironmentStillWins() throws {
         let suite = "YubaiModelTests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

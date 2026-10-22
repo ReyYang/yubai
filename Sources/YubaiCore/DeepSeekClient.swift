@@ -80,6 +80,7 @@ public enum DeepSeekError: Error, LocalizedError, Equatable, Sendable {
 
 /// Minimal OpenAI-compatible chat client for DeepSeek. Does not print credentials.
 public struct DeepSeekClient: ChatTransport {
+    public static let fallbackModels = ["deepseek-chat", "deepseek-reasoner"]
     public var configuration: DeepSeekConfiguration
     private let redactor: Redactor
     private let sendLog: SendLog
@@ -115,6 +116,38 @@ public struct DeepSeekClient: ChatTransport {
 
     public func send(_ request: ChatRequest) async throws -> ChatMessage {
         try await send(request, session: .shared)
+    }
+
+    public func listModels(session: URLSession = .shared) async throws -> [String] {
+        struct Response: Decodable {
+            struct Model: Decodable { var id: String }
+            var data: [Model]
+        }
+        let root = Self.chatCompletionsURL(baseURL: configuration.baseURL).deletingLastPathComponent().deletingLastPathComponent()
+        var request = URLRequest(url: root.appendingPathComponent("models"), timeoutInterval: configuration.timeout)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        try Task.checkCancellation()
+        let data: Data; let response: URLResponse
+        do { (data, response) = try await session.data(for: request) }
+        catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw YubaiError.invalid("暂时取不到模型列表。")
+        }
+        try Task.checkCancellation()
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let result = try? JSONDecoder().decode(Response.self, from: data) else {
+            throw YubaiError.invalid("暂时取不到模型列表。")
+        }
+        var seen: Set<String> = []
+        let models = result.data.compactMap { model -> String? in
+            let id = model.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty, id.count <= 200, !id.contains(where: { $0.isNewline }), seen.insert(id).inserted else { return nil }
+            return id
+        }
+        guard !models.isEmpty else { throw YubaiError.invalid("暂时取不到模型列表。") }
+        return models
     }
 
     public func send(_ input: ChatRequest, session: URLSession) async throws -> ChatMessage {

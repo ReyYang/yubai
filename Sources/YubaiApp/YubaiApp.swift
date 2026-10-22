@@ -50,6 +50,7 @@ enum AppSheet: Identifiable {
         let value = Finance.funds(ledger, now: now)
         cachedFunds = (value, now, expires, zone); return value
     }
+    var fixedFlowMonth: FixedFlowMonth { _ = derivedRevision; return FixedFlows.month(containing: Date(), in: current) }
     var sortedEntries: [Entry] {
         _ = derivedRevision
         if let cachedEntries { return cachedEntries }
@@ -77,6 +78,7 @@ enum AppSheet: Identifiable {
     var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
     var sheetSource: String?
     var entrySaveTrigger = 0; var entryDeleteTrigger = 0; var undoTrigger = 0; var floorWarningTrigger = 0
+    var fixedFlowSettleTrigger = 0
     var freshEntryIDs: Set<UUID> = []
     var pendingEntrySave = false
     @ObservationIgnored private var pendingSaveToast: String?
@@ -113,7 +115,7 @@ enum AppSheet: Identifiable {
         #endif
     }
 
-    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, _ change: (inout Ledger) throws -> Void) -> Bool {
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, showToast: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard canEditLedger(allowLockedCapture: allowLockedCapture) else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
@@ -133,15 +135,17 @@ enum AppSheet: Identifiable {
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
             if recordUndo {
                 undoLedger = before; undoLabel = reason
-                if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
-                else { toast = reason + "完成" }
+                if showToast {
+                    if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
+                    else { toast = reason + "完成" }
+                }
             }
             return true
         } catch { if reportError { self.error = error.localizedDescription }; return false }
     }
-    @discardableResult func apply(_ changeSet: ChangeSet, label: String, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
+    @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
         var skipped: [String] = []
-        let saved = update(label) { ledger in
+        let saved = update(label, entryMotion: !silently, showToast: !silently) { ledger in
             if !changeSet.items.isEmpty { skipped = try changeSet.apply(to: &ledger) }
             else if changeSet.source != "导入整理" { try changeSet.validateStructure() }
             try finishing(&ledger)
@@ -150,8 +154,14 @@ enum AppSheet: Identifiable {
                 ledger.cards[i].dismissedAt = Date()
             }
         }
-        if saved, !skipped.isEmpty { toast = label + "完成；" + skipped.joined(separator: "；") }
+        if saved, !silently, !skipped.isEmpty { toast = label + "完成；" + skipped.joined(separator: "；") }
         return saved
+    }
+    func autoSettleFixedFlows() {
+        guard !locked, loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
+              let change = FixedFlows.autoSettle(in: current) else { return }
+        cancelEntrySaveMotion()
+        if apply(change, label: "自动记下", silently: true) { toast = nil }
     }
     func undo() {
         guard canEditLedger(), let previous = undoLedger else { return }
@@ -324,10 +334,11 @@ struct RootView: View {
         .sensoryFeedback(.success, trigger: store.entrySaveTrigger)
         .sensoryFeedback(.impact(weight: .medium), trigger: store.entryDeleteTrigger)
         .sensoryFeedback(.impact(weight: .light), trigger: store.undoTrigger)
+        .sensoryFeedback(.impact(weight: .light), trigger: store.fixedFlowSettleTrigger)
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
-        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
-        .task { await store.configureSync() }
+        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .task { await store.configureSync(); store.autoSettleFixedFlows() }
         .task(id: "\(store.current.id)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
             if phase == .active { await store.organizePendingImports() }
         }
@@ -349,7 +360,7 @@ struct RootView: View {
             guard url.isFileURL else { return }; store.importedURL = url
             if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
         }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.autoSettleFixedFlows() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {
@@ -402,7 +413,7 @@ struct RootView: View {
         #else
         destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
             .modifier(TabContentEntrance(active: store.destination == d, revision: tabRevision, direction: tabDirection))
-            .background(YubaiColor.canvas)
+            .modifier(TabRootSwipe(destination: d))
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
@@ -445,5 +456,68 @@ struct RootView: View {
     }
     func recoveryView(_ message: String) -> some View {
         VStack(spacing: YubaiSpace.space20) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Text("原文件已保留，请选择恢复记录。").yubaiFont(YubaiFont.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.space24).frame(maxWidth: 540)
+    }
+}
+
+struct TabSwipeReservedRegions: PreferenceKey {
+    static let defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+
+extension View {
+    func tabSwipeReserved() -> some View {
+        background { GeometryReader { geometry in
+            Color.clear.preference(key: TabSwipeReservedRegions.self, value: [geometry.frame(in: .named("tab-swipe"))])
+        } }
+    }
+}
+
+private struct TabRootSwipe: ViewModifier {
+    @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var dragging = false
+    @State private var regions: [CGRect] = []
+    @State private var horizontal: Bool?
+    @State private var offset: CGFloat = 0
+    let destination: Destination
+    func body(content: Content) -> some View {
+        GeometryReader { geometry in
+            content.offset(x: reduceMotion ? 0 : offset)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .contentShape(Rectangle())
+                .simultaneousGesture(DragGesture(minimumDistance: 18, coordinateSpace: .named("tab-swipe"))
+                    .updating($dragging) { _, state, _ in state = true }
+                    .onChanged { value in
+                        guard store.destination == destination, store.sheet == nil else { return }
+                        if horizontal == nil {
+                            horizontal = !regions.contains { $0.contains(value.startLocation) }
+                                && abs(value.translation.width) > abs(value.translation.height) * 1.3
+                        }
+                        guard horizontal == true else { return }
+                        offset = neighbor(value.translation.width) == nil ? value.translation.width * 0.16 : value.translation.width
+                    }
+                    .onEnded { value in
+                        let distance = value.translation.width
+                        let fast = abs(value.velocity.width) > 650 && abs(distance) > 20 && value.velocity.width * distance > 0
+                        if horizontal == true, store.destination == destination,
+                           abs(distance) > geometry.size.width * 0.3 || fast,
+                           let next = neighbor(distance) { store.destination = next }
+                        reset()
+                    })
+        }.coordinateSpace(name: "tab-swipe").background(YubaiColor.canvas).clipped()
+            .onPreferenceChange(TabSwipeReservedRegions.self) { regions = $0 }
+            .onChange(of: dragging) { _, active in if !active { reset() } }
+            .onChange(of: store.destination) { _, _ in reset() }
+            .onDisappear { horizontal = nil; offset = 0 }
+    }
+    private func neighbor(_ distance: CGFloat) -> Destination? {
+        let tabs = Destination.allCases
+        guard let index = tabs.firstIndex(of: destination), distance != 0 else { return nil }
+        let next = index + (distance < 0 ? 1 : -1)
+        return tabs.indices.contains(next) ? tabs[next] : nil
+    }
+    private func reset() {
+        horizontal = nil
+        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = 0 }
     }
 }

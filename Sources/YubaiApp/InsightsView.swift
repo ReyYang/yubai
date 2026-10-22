@@ -10,6 +10,8 @@ struct InsightsView: View {
     @State private var window = Window.month
     @State private var anchor = Date()
     @State private var income = false
+    @State private var selectedSlice: [String]?
+    @State private var selectionTrigger = 0
     @State private var customStart = Dates.calendar.dateInterval(of: .month, for: Date())!.start
     @State private var customEnd = Date()
     private var fullInterval: DateInterval {
@@ -59,7 +61,7 @@ struct InsightsView: View {
                         ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
                             NavigationLink { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range).yubaiZoomDestination("category-\(rank)") } label: {
                                 legend(slice, rank: rank, slices: slices).yubaiZoomSource("category-\(rank)")
-                            }.buttonStyle(PressButtonStyle())
+                            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
                             if slice.id != slices.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
                         }
                     }
@@ -74,6 +76,12 @@ struct InsightsView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .onChange(of: window) { _, value in anchor = Date(); if value == .custom { store.pickingInsightDates = true } }
+            .onChange(of: income) { _, _ in selectedSlice = nil }
+            .onChange(of: fullInterval) { _, _ in selectedSlice = nil }
+            .onChange(of: slices.map(\.id)) { _, _ in selectedSlice = nil }
+            #if os(iOS)
+            .sensoryFeedback(.selection, trigger: selectionTrigger)
+            #endif
             .sheet(isPresented: Binding(get: { store.pickingInsightDates }, set: { store.pickingInsightDates = $0 })) {
                 NavigationStack {
                     Form {
@@ -112,26 +120,46 @@ struct InsightsView: View {
     }
     private func donut(_ slices: [CashFlowSlice], total: Int64) -> some View {
         let positiveTotal = slices.reduce(0.0) { $0 + max(0, Double($1.amount)) }
+        let selected = slices.first { $0.id == selectedSlice }
         return ChartSegments(key: "insights-donut", count: slices.count) { progress in
             ZStack {
-                ForEach(0..<6, id: \.self) { rank in
+                ForEach(Array(slices.enumerated()), id: \.element.id) { rank, slice in
                     let start = positiveTotal > 0 ? slices.prefix(rank).reduce(0.0) { $0 + max(0, Double($1.amount)) } / positiveTotal : 0
-                    let share = rank < slices.count && positiveTotal > 0 ? max(0, Double(slices[rank].amount)) / positiveTotal : 0
-                    // Animate the angular mask; palette changes stay immediate.
-                    (rank < slices.count ? color(slices[rank], rank: rank, slices: slices) : YubaiColor.neutralSoft).mask {
-                        Chart {
-                            SectorMark(angle: .value("整圈", 0.0..<1.0), outerRadius: .fixed(0)).foregroundStyle(.clear)
-                            SectorMark(angle: .value("占比", start..<(start + share * progress[rank])), innerRadius: .fixed(64), outerRadius: .fixed(90), angularInset: 2.5)
-                        }.chartLegend(.hidden).animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: slices.map(\.amount))
+                    let share = positiveTotal > 0 ? max(0, Double(slice.amount)) / positiveTotal : 0
+                    let shape = DonutSlice(start: start, end: start + share * progress[min(rank, 5)], outerRadius: selectedSlice == slice.id ? 100 : 90)
+                    if share > 0 {
+                        Button { select(slice.id) } label: {
+                            shape.fill(color(slice, rank: rank, slices: slices))
+                                .opacity(selectedSlice == nil || selectedSlice == slice.id ? 1 : 0.3)
+                                .contentShape(shape)
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel(slice.title + " · " + percentage(slice))
+                            .accessibilityValue(Money.text(slice.amount))
+                            .accessibilityAddTraits(selectedSlice == slice.id ? .isSelected : [])
+                            .accessibilityIdentifier("donutSlice_\(rank)")
                     }
                 }
-            }.frame(width: 180, height: 180)
+                Button { select(nil) } label: {
+                    VStack(spacing: 2) {
+                        Text(selected.map { $0.title + " · " + percentage($0) } ?? (income ? "收入" : "支出"))
+                            .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                        AmountLabel(cents: selected?.amount ?? total, role: .donut)
+                        if selected != nil { Text("共 " + Money.text(total, currency: false)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+                    }.frame(width: 124, height: 124).contentShape(Circle())
+                }.buttonStyle(.plain).accessibilityIdentifier("donutSummary")
+                    .accessibilityLabel(selected.map { $0.title + " · " + percentage($0) + "，" + Money.text($0.amount) + "，共 " + Money.text(total) } ?? ((income ? "收入" : "支出") + "合计 " + Money.text(total)))
+                    .accessibilityHint("点两下回到全部")
+            }.frame(width: 204, height: 204)
         }
-            .overlay {
-                VStack(spacing: 2) { Text(income ? "收入" : "支出").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary); AmountLabel(cents: total, role: .donut) }.frame(maxWidth: 116)
-            }.frame(maxWidth: .infinity).padding(.vertical, 10)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel((income ? "收入" : "支出") + "合计 " + Money.text(total) + "。" + slices.map { $0.title + " " + Money.text($0.amount) }.joined(separator: "；"))
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: slices.map(\.amount))
+    }
+    private func percentage(_ slice: CashFlowSlice) -> String { String(format: "%.0f%%", slice.share * 100) }
+    private func select(_ id: [String]?) {
+        let next = selectedSlice == id ? nil : id
+        guard next != selectedSlice else { return }
+        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { selectedSlice = next }
+        selectionTrigger &+= 1
     }
     private func legend(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice]) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 10))
@@ -148,7 +176,10 @@ struct InsightsView: View {
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).numberTransition(value: slice.share * 100, enabled: !store.current.preferences.hideAmounts)
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
             }
-        }.frame(minHeight: 44).padding(.vertical, textSize.isAccessibilitySize ? 6 : 0).contentShape(Rectangle())
+        }.frame(minHeight: 44).padding(.vertical, textSize.isAccessibilitySize ? 6 : 0)
+            .padding(.horizontal, YubaiSpace.space8)
+            .background { if selectedSlice == slice.id { RoundedRectangle(cornerRadius: YubaiRadius.row).fill(YubaiColor.brandTint) } }
+            .opacity(selectedSlice == nil || selectedSlice == slice.id ? 1 : 0.55).contentShape(Rectangle())
     }
     private func move(_ direction: Int) {
         switch window {
@@ -160,6 +191,28 @@ struct InsightsView: View {
             customStart = Dates.addDays(direction * days, to: customStart)
             customEnd = min(Date(), Dates.addDays(direction * days, to: customEnd))
         }
+    }
+}
+
+private struct DonutSlice: Shape {
+    var start: Double
+    var end: Double
+    var outerRadius: Double
+    var animatableData: AnimatablePair<Double, AnimatablePair<Double, Double>> {
+        get { AnimatablePair(start, AnimatablePair(end, outerRadius)) }
+        set { start = newValue.first; end = newValue.second.first; outerRadius = newValue.second.second }
+    }
+    func path(in rect: CGRect) -> Path {
+        guard end > start else { return Path() }
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let gap = min(0.012, (end - start) / 3)
+        let from = Angle.degrees((start + gap / 2) * 360 - 90)
+        let to = Angle.degrees((end - gap / 2) * 360 - 90)
+        var path = Path()
+        path.addArc(center: center, radius: outerRadius, startAngle: from, endAngle: to, clockwise: false)
+        path.addArc(center: center, radius: 64, startAngle: to, endAngle: from, clockwise: true)
+        path.closeSubpath()
+        return path
     }
 }
 

@@ -121,6 +121,7 @@ struct EntryAccountMenu: View {
     @Binding var selection: UUID?
     var showsBalance = false
     var optional = false
+    var emptyTitle: String? = nil
     var body: some View {
         Menu {
             if optional { Button("不指定") { selection = nil } }
@@ -129,10 +130,11 @@ struct EntryAccountMenu: View {
             }
         } label: {
             let account = accounts.first { $0.id == selection }
-            Text((account?.name ?? (optional ? "不指定" : "选择账户")) + (showsBalance && account != nil ? " · 余额 " + balanceText(account!.id) : ""))
+            Text((account?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户")) + (showsBalance && account != nil ? " · 余额 " + balanceText(account!.id) : ""))
                 .yubaiFont(YubaiFont.callout).lineLimit(1).padding(.horizontal, 12).frame(minHeight: 30)
                 .background(YubaiColor.raised, in: Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityLabel("账户")
+            .accessibilityValue(accounts.first { $0.id == selection }?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户"))
     }
     @Environment(AppStore.self) private var store
     private func balanceText(_ id: UUID) -> String {
