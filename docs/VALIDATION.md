@@ -1,5 +1,25 @@
 # 余白 · 交付与验证记录
 
+## 固定收付 Core 与下次发薪窗口（2026-10-22）
+
+分支 `feat/fixed-bills-core`，仅修改 `Sources/YubaiCore/**`、`Tests/YubaiCoreTests/**`、本目录 Markdown 和术语表。采用规则与接口见 [FIXED-BILLS.md](FIXED-BILLS.md)。App／Desktop、Xcode 工程、`.github` 与依赖清单均未修改。
+
+Linux x86_64／Swift 6.2.4，最终 `swift build && swift test` 退出 0：build 3.60 秒，测试构建 3.92 秒，**392 项 XCTest，388 通过、4 项原有实网 opt-in 跳过、0 失败**，测试运行 33.323 秒。新增 `FixedBillsTests` **19 项全部通过**；既有大账本参考算法同步预留窗口，完整预测路径仍与独立参考一致。`git diff --check` 通过。
+
+覆盖下次发薪与 90 天回退、发薪当天和逾期付款、完整预测与缺口卡、收入计划结束／一次性／期数耗尽、早付与部分付款、账户校验、手动关联及快照撤销、建议排序和三天边界、自动扣款范围与幂等、分期进度、估额实付、旧 Plan／EntryDraft 解码，以及含房租分摊的月视图状态和剩余数。
+
+```sh
+export PATH=/opt/swift-rootfs/usr/bin:$PATH
+export CLANG_MODULE_CACHE_PATH=/tmp/yubai-clang-cache
+export SWIFTPM_MODULECACHE_OVERRIDE=/tmp/yubai-swiftpm-module-cache
+export XDG_CACHE_HOME=/tmp/yubai-cache
+swift build && swift test
+```
+
+首次构建因只读默认缓存、随后因终端无法连接 GitHub 而失败；改用可写缓存，通过只读 GitHub 连接器取回 `Package.resolved` 锁定的 swift-crypto 3.15.1（`95ba0316a9b733e92bb6b071255ff46263bbe7dc`）及 swift-asn1 1.7.3（`3b6410f7dee09eb33cdd26260c5fd47fda19b0e2`）。逐文件 blob、目录树和原始提交哈希均核对一致，恢复至临时依赖缓存后离线解析并正常构建；没有替换加密实现或修改依赖版本。
+
+未接入自动扣款的 App 启动／前台触发；Apple SDK、SwiftUI 分支与设备行为待 UI 分支验证。产品 tracker、设计入口、原稿和分发包因本轮范围限制尚未同步。
+
 ## App Group 默认开启（2026-10-22）
 
 本轮在 `fix/app-group-default-on` 按 owner 的 `appgroup.md` 将 App Group 默认改为 YES；[配置与回退](QUICK-CAPTURE.md#app-group默认开启)已更新，iCloud 保持默认 NO。实际访问 [Apple 官方 iOS 能力表](https://developer.apple.com/help/account/reference/supported-capabilities-ios)，核对 HTML 中 App groups 在 Apple Developer 免费账号一列为 yes；该事实不替代本项目的签名／安装验收。

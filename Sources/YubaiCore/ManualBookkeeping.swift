@@ -111,7 +111,7 @@ public enum ManualBookkeeping {
         Dates.calendar.isDate(day, inSameDayAs: now) ? now : Dates.calendar.date(bySettingHour: 12, minute: 0, second: 0, of: day)!
     }
     public static func change(amount: Int64, nature: Nature, accountID: UUID, otherAccountID: UUID? = nil,
-                              day: Date, purpose: String, category: String, now: Date = Date()) throws -> ChangeSet {
+                              day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Date()) throws -> ChangeSet {
         guard amount > 0, amount <= Money.limit, Dates.day(day) <= Dates.day(now) else { throw YubaiError.invalid("请核对金额和日期。") }
         if nature == .transfer { guard let otherAccountID, otherAccountID != accountID else { throw YubaiError.invalid("转账的两个账户必须不同。") } }
         let purpose = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -119,6 +119,7 @@ public enum ManualBookkeeping {
                                nature: nature, accountID: accountID, title: purpose.isEmpty ? category : purpose,
                                category: category, purpose: purpose.isEmpty ? nil : purpose)
         draft.otherAccountID = nature == .transfer ? otherAccountID : nil
+        draft.planID = link?.planID; draft.occurrence = link?.occurrence
         var change = ChangeSet(source: "手动", reason: "记一笔", items: [.addEntry(draft)])
         change.createdAt = now; return change
     }
@@ -221,6 +222,7 @@ public enum FixedFlows {
 
 public struct FixedFlowArrangement: Identifiable, Sendable {
     public let id: UUID; public let title: String; public let detail: String; public let amount: Int64; public let inflow: Bool; public let canEnd: Bool
+    public var paidCount: Int = 0; public var total: Int? = nil
     public static func rows(in ledger: Ledger, now: Date = Date()) -> [Self] {
         let occurrences = Finance.occurrences(in: ledger, now: now, days: 90)
         var next: [UUID: Occurrence] = [:]
@@ -229,12 +231,15 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
             else if !occurrence.inflow, let id = occurrence.rentID, next[id] == nil { next[id] = occurrence }
         }
         let horizon = Dates.addDays(90, to: Dates.day(now))
+        let payments = FixedFlowPayments(in: ledger)
         var rows = ledger.plans.filter {
             $0.active && ($0.endDate == nil || $0.endDate! > now)
                 && !($0.frequency == .once && $0.dueDate <= horizon && next[$0.id] == nil)
         }.map { plan in
             Self(id: plan.id, title: plan.title, detail: schedule(plan.frequency, date: plan.dueDate, now: now) + (plan.accountID.map { " · " + ledger.accountName($0) } ?? ""),
-                 amount: next[plan.id]?.amount ?? plan.amount, inflow: plan.inflow, canEnd: plan.endDate == nil)
+                 amount: next[plan.id]?.amount ?? payments.amount(for: plan), inflow: plan.inflow, canEnd: plan.endDate == nil,
+                 paidCount: plan.installments == nil ? 0 : payments.plans.keys.filter { $0.id == plan.id && plan.occurrenceIndex(on: $0.day) != nil && payments.remaining(for: plan, on: $0.day) == 0 }.count,
+                 total: plan.installments)
         }
         rows += ledger.rents.filter { $0.active && ($0.endDate == nil || $0.endDate! > now) }.map { rent in
             Self(id: rent.id, title: rent.title, detail: "每 \(rent.monthsPerPayment) 月 \(Dates.calendar.component(.day, from: rent.nextDueDate)) 日" + (rent.accountID.map { " · " + ledger.accountName($0) } ?? ""),
