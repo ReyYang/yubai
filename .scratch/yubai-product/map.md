@@ -61,7 +61,7 @@ Status: open
 - [余白个人完整版本](issues/13-complete-personal-release.md) — 保留 1.0 交付历史，并承载 2026-10-20「2.0 · 管家」的用户决定、Agent 实现选择与未验证项；当前只有静态检查，owner 的两端组合验收待完成。
 - [现有记账软件怎样分类和自动整理交易](issues/10-category-research.md) — 官方资料支持稳定类别、自动匹配、批量纠正及其他兜底的候选方向，批量 AI 实际效果仍待样本验证。
 
-- [第九轮快速记账](issues/13-complete-personal-release.md#2026-10-21--第九轮快速记账owner-明确决定) — owner 确认本机短句／截图、Apple Pay 自动化、Siri／通知与系统入口；共享快照默认关闭，Core 验证完成，Apple 设备验收待做。
+- [第九轮快速记账](issues/13-complete-personal-release.md#2026-10-21--第九轮快速记账owner-明确决定) — owner 确认本机短句／截图、Apple Pay 自动化、Siri／通知与系统入口；[2026-10-22 明确改为 App Group 默认开启](issues/13-complete-personal-release.md#2026-10-22--app-group-默认开启owner-明确要求)，保留本机 NO 回退，Core 验证完成，Apple 设备验收待做。
 
 ## Not yet specified
 

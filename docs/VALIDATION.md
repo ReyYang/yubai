@@ -1,5 +1,30 @@
 # 余白 · 交付与验证记录
 
+## App Group 默认开启（2026-10-22）
+
+本轮在 `fix/app-group-default-on` 按 owner 的 `appgroup.md` 将 App Group 默认改为 YES；[配置与回退](QUICK-CAPTURE.md#app-group默认开启)已更新，iCloud 保持默认 NO。实际访问 [Apple 官方 iOS 能力表](https://developer.apple.com/help/account/reference/supported-capabilities-ios)，核对 HTML 中 App groups 在 Apple Developer 免费账号一列为 yes；该事实不替代本项目的签名／安装验收。
+
+| 检查 | 实际结果 |
+|---|---|
+| `swift build && swift test` | Linux x86_64／Swift 6.2.4，退出0；build 9.28秒，测试构建2.62秒；373项 XCTest，369通过、4项原有实网 opt-in 跳过、0失败，测试运行52.222秒；未增加测试跳过或开启实网模型测试 |
+| 配置与 Local 覆盖 | 静态展开54组 App 配置：Debug／Release、iPhone设备／模拟器／Mac、App Group／iCloud／Mac沙盒所有开关组合及无 Local 的默认值；同时核对相应 Widget 和 Core／UI 测试配置。Local 的 NO 覆盖默认 YES；iOS entitlement／编译条件对应开关，Widget 不带 iCloud，Mac 不加 App Group，测试 target 不继承 App 权限／条件 |
+| plist／工程生成 | Info.plist 的两处共享标识与 entitlement 变量一致，组合权限等于基础文件并集；所有 entitlement 可解析。生成器无独立 App Group 默认，在临时目录运行后 pbxproj／共享scheme 与仓库逐字节一致，不重写工作区工程或生成器 |
+| Swift 语法 | 35个 App 文件按 iOS 26 的四组 App Group／iCloud 组合及 Mac 两组 iCloud 条件解析；Widget＋两个共享文件按四组 iOS 组合解析，共10次通过。仅语法解析，无 Apple SDK 类型检查 |
+| 快照运行路径 | 源码核对 `AppStore` 初始化／账本 didSet／时间刷新 → `CaptureSnapshotBridge.publish` → 原子快照／Widget reload；锁账本或隐藏金额分支删除快照，容器 nil／读取或解码失败／跨日返回 nil，Widget 显示入口。没有发现需修改的运行逻辑，未改 Swift |
+
+运行环境使用可写缓存，命令为：
+
+```sh
+export CLANG_MODULE_CACHE_PATH=/tmp/yubai-appgroup-clang-cache
+export SWIFTPM_MODULECACHE_OVERRIDE=/tmp/yubai-appgroup-swiftpm-cache
+export XDG_CACHE_HOME=/tmp/yubai-appgroup-cache
+swift build && swift test
+```
+
+完整运行日志与静态检查脚本留在本机 `.verification/app-group-default-swift.log`、`.verification/app-group-static.log`、`.verification/check-app-group.py`（Git 忽略）。SwiftPM 提示 `/root/.swiftpm/configuration`／`security` 不可写而关闭用户级缓存，不影响结果。`git diff --check` 通过。
+
+本机没有 Xcode／Apple SDK；App／Widget 类型检查、Personal Team 自动注册 App Group 与签名、Mac／iPhone 安装，以及真实共享容器、锁账本／隐藏金额清除和系统 Widget 刷新仍待[设备验收](V2-TEST-CHECKLIST.md#app-group-默认开启2026-10-22待-apple-设备验证)。未提交／推送，原始画板、Figma、历史原型和分发包未同步；历史条目保留各轮原始语义。
+
 ## 快速记账、存储与五个概念合并（2026-10-21）
 
 本轮在 `feat/quick-capture-entries`（HEAD `6e393dc`，已包含五个概念与记一笔修复）内解决合入 `origin/fix/storage-attachments-compaction`（`b657d84`）的10个冲突文件。双方功能及五个概念／V7 的既有修复保留；[设计映射](../.design-meta/DESIGN.md#2026-10-21--快速记账存储与五个概念合并)记录组合适配。产品／设计记录与本文的三路历史条目全部保留，按发生顺序排列；核对两父提交的原始段落均未丢失。

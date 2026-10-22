@@ -1,5 +1,7 @@
-// 免费 Personal Team 默认仅显示小组件入口。启用数字需要可签 App Groups 的团队。
-YUBAI_APP_GROUP = NO
+// 免费 Apple Developer / Personal Team 也支持 App Groups，默认共享小组件快照。
+// https://developer.apple.com/help/account/reference/supported-capabilities-ios
+// Config/Local.xcconfig 在本文件之后加载，可设为 NO 回退为仅显示入口。
+YUBAI_APP_GROUP = YES
 YUBAI_APP_GROUP_IDENTIFIER = group.app.yubai.personal
 YUBAI_APP_GROUP_CONDITION_NO =
 YUBAI_APP_GROUP_CONDITION_YES = YUBAI_APP_GROUP

@@ -212,3 +212,9 @@ Linux Swift build 通过；完整测试 324 项、320 通过、4 项既有实网
 [设计映射](../../../.design-meta/DESIGN.md#2026-10-21--快速记账存储与五个概念合并)、[验证记录](../../../docs/VALIDATION.md#快速记账存储与五个概念合并2026-10-21)：Linux `swift build && swift test` 通过，373 项、369 通过／4 项原有实网跳过／0 失败；新增快速记账与懒加载附件／备份／gzip 恢复组合回归，并扩展偏好字段缺失组合。工程由生成器重建，四 target、源文件及语法检查通过。Apple SDK 类型检查、UI 测试、设备和真实 iCloud 仍待验收，Figma／历史原型／分发包未同步。本票继续 in-progress，不新增 owner 产品决定。
 
 本轮 `git add` 因 `.git/index.lock` 只读退出128；工作区已解决且验证通过，索引仍有10个未合并文件，待可写环境暂存；HEAD保持 `6e393dc`，未提交。
+
+## 2026-10-22 · App Group 默认开启（owner 明确要求）
+
+来源为 owner 指定的 `appgroup.md`：依据 [Apple 官方 iOS 能力表](https://developer.apple.com/help/account/reference/supported-capabilities-ios)，将 App Group 默认改为 YES，让小组件显示还能花、今日统计与最多三项常记；这取代上方第九轮当时的默认关闭。保留 `Config/Local.xcconfig` 改回 `YUBAI_APP_GROUP = NO` 的按钮回退。免费 Personal Team 的首次配置为 App／Widget 两 target 同团队、自动签名，在 Signing & Capabilities 核对自动注册 `group.app.yubai.personal`；失败时本机改 NO 重新构建。iCloud、Mac 与测试 target 的权限边界保持，不扩展功能或改稿。
+
+Agent 实现选择：将 App Group 编译条件限定到 iPhone SDK，核对原有共享快照发布／读取／锁账本和隐藏金额清除／无容器回退路径，无真实缺陷则不改 Swift。生成器无独立默认，临时目录输出与现有工程一致，未重写 pbxproj。[验证记录](../../../docs/VALIDATION.md#app-group-默认开启2026-10-22)：Linux `swift build && swift test` 退出0，373 项、369 通过、4 项原有实网 opt-in 跳过、0 失败；54 组配置静态检查及 App／Widget 语法解析通过。Apple SDK 编译、Personal Team 自动注册／签名和设备行为仍待[验收](../../../docs/QUICK-CAPTURE.md#验证与限制)，不将官方能力支持等同于本项目已签名成功。未提交／推送，原稿、Figma 与分发包未同步，本票仍为 in-progress。

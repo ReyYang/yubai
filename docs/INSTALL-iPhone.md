@@ -20,7 +20,7 @@
 ## Xcode 直接安装（免费团队当前使用）
 
 1. 解锁 Mac 和 iPhone，用数据线连接，在 iPhone 上确认信任这台 Mac。若系统要求开发者模式，在手机「设置 → 隐私与安全 → 开发者模式」按系统流程启用；这一步可能要求重启，需本人操作。
-2. 在 Xcode 26 打开 `Yubai.xcodeproj`，选择 **Yubai target → Signing & Capabilities**。选择你自己的现有 Personal Team，保留 Automatically manage signing。`Config/Local.xcconfig` 若存在，保持 `YUBAI_ICLOUD = NO`；若已填写别的付费团队，先移除该本机团队赋值再选免费团队。不要把个人 Team ID 写入共享工程并提交。
+2. 在 Xcode 26 打开 `Yubai.xcodeproj`，为 **Yubai 与 YubaiWidgets 两个 target → Signing & Capabilities** 选择同一现有 Personal Team，保留 Automatically manage signing。App Group 默认开启，核对 App Groups 自动注册并关联 `group.app.yubai.personal`；若失败，在 `Config/Local.xcconfig` 设 `YUBAI_APP_GROUP = NO` 后重新构建，小组件回退为按钮。该本机配置若存在，保持 `YUBAI_ICLOUD = NO`；若已填写别的付费团队，先移除该本机团队赋值再选免费团队。不要把个人 Team ID 写入共享工程并提交。详见[快速记账配置](QUICK-CAPTURE.md#app-group默认开启)。
 3. 在工具栏选择已连接的 iPhone，scheme 选 Yubai，再按 Run。首次签名可能由 Xcode 向 Apple 登记 App ID、设备并创建 provisioning profile；账号登录、证书或权限确认由本人完成。
 4. 若手机提示不受信任开发者，按系统提示在「设置 → 通用 → VPN 与设备管理」确认自己的开发者身份。回到余白，确认欢迎页出现，再建立账本。
 5. 新建一个明确的测试账户、导入一份合成账单，关闭重开后核对，再整批撤销或恢复自己的完整备份。当前 2.0 源码没有应用内示例模式；验证请使用独立测试账本并保存自己的备份。

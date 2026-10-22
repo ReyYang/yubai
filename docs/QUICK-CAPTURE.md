@@ -18,18 +18,19 @@ App Intents 只编入 App target，没有账本写入扩展；`openAppWhenRun = 
 
 启用账本锁时 snippet 和通知只显示金额与操作；隐藏金额时金额也遮住。不把用途、商户、卡名、分类或账户渲染到受保护的结果中。小组件从来不读取完整账本。
 
-## 可选 App Group
+## App Group（默认开启）
 
-`Config/AppGroup.xcconfig` 默认 `YUBAI_APP_GROUP = NO`，iCloud 仍独立默认关闭。此时小组件、锁屏和控制中心仅提供打开 App 的入口，不显示数字或常记用途。
+`Config/AppGroup.xcconfig` 默认 `YUBAI_APP_GROUP = YES`，免费 Apple Developer／Personal Team 也支持 App Groups，依据 [Apple 官方 iOS 能力表](https://developer.apple.com/help/account/reference/supported-capabilities-ios)。App 共享快照后，小组件按尺寸显示「还能花」、今日统计和最多三项常记；圆形锁屏组件和控制中心仍为打开 App 的按钮。iCloud 仍独立默认关闭。
 
-获得可签 App Groups 的团队后，可在不入库的 `Config/Local.xcconfig` 写：
+首次在 Xcode 26 中为 **Yubai** 与 **YubaiWidgets** 两个 target 都选择同一 Personal Team，保持 Automatically manage signing；在 Signing & Capabilities 核对 App Groups 自动注册并关联 `group.app.yubai.personal`（两个 bundle id 为 `app.yubai.personal` 与 `app.yubai.personal.widgets`）。仓库不写 DEVELOPMENT_TEAM。若注册或签名失败，在不入库的 `Config/Local.xcconfig` 写入后重新构建：
 
 ```xcconfig
-YUBAI_APP_GROUP = YES
-YUBAI_APP_GROUP_IDENTIFIER = group.app.yubai.personal
+YUBAI_APP_GROUP = NO
 ```
 
-在 App 与 `app.yubai.personal.widgets` 两个标识都关联同一 App Group，并选择本机团队。仓库保持 Automatic，不写 DEVELOPMENT_TEAM。iOS entitlement 按 iCloud／App Group 四组合选择；macOS 沿用原组合，不启用本轮 iOS 小组件权限。
+App 与 Widget 都先加载 `AppGroup.xcconfig`，再由 `Signing.xcconfig` 可选包含 `Local.xcconfig`，本机的 NO 能覆盖默认 YES。关闭后两者均不带 App Group entitlement／编译条件，小组件仅显示入口。共享容器不可用时同样回退；签名失败的构建本身无法安装，需先用上述 NO 重新构建。
+
+iOS entitlement 按 iCloud／App Group 四组合选择，Widget 只按 App Group 开关选择；macOS 不加 App Group entitlement 或编译条件，Core／UI 测试 target 也不继承这些权限和条件。
 
 App 在账本变化时原子写 `quick-capture.json`，随后 reloadAllTimelines；快照仅含还能花、今日统计和最多三项常记用途／金额／分类。账本锁或隐藏金额时移除快照。扩展读不到共享容器、读取失败或跨日时只显示入口；时间线在午夜去掉过期数字。刷新频率最终由 WidgetKit 控制，不能视作实时余额。
 
@@ -37,7 +38,7 @@ App 在账本变化时原子写 `quick-capture.json`，随后 reloadAllTimelines
 
 ## 验证与限制
 
-Linux Swift 6.2.4：`swift build` 与 `swift test`；实际最终数字见 [VALIDATION.md](VALIDATION.md#第九轮快速记账2026-10-21)。默认 `/root` 缓存只读，运行时使用可写缓存：
+Linux Swift 6.2.4：`swift build` 与 `swift test`；App Group 默认开启的本轮结果见 [VALIDATION.md](VALIDATION.md#app-group-默认开启2026-10-22)，第九轮原始结果保留。默认 `/root` 缓存只读，运行时使用可写缓存：
 
 ```bash
 CLANG_MODULE_CACHE_PATH=/tmp/yubai-swift-cache \
@@ -51,12 +52,13 @@ swift test --cache-path /tmp/yubai-swiftpm-cache \
 
 Mac／iPhone 待执行：
 
-- Xcode 26 构建 iOS App＋Widget、macOS App；确认 Mac 不构建／嵌入 Widget，iOS 两个 target 均用 Automatic＋同一团队；默认无 App Group entitlement。
+- 首次在 Xcode 26 为 Yubai 与 YubaiWidgets 两个 target 都选同一 Personal Team，确认 Signing & Capabilities 中 App Groups 自动注册并关联 `group.app.yubai.personal`；失败时在 `Config/Local.xcconfig` 设 `YUBAI_APP_GROUP = NO`，重新构建后仅显示按钮。
+- Xcode 26 构建 iOS App＋Widget、macOS App；确认默认 iOS 两 target 均有 App Group entitlement，iCloud 开／关组合正确，Mac 不带 App Group 权限或编译条件且不构建／嵌入 Widget；Core／UI 测试 target 不受影响。
 - 冷启动、App 已在前台、App 在后台、系统锁屏和 Face ID 账本锁下，执行单笔／多笔短句；缺金额追问；Siri snippet 的编辑、逐笔撤销和刷新；重启首次解锁前失败不得覆盖原文件。
 - 钱包自动化参数实际类型、通知同意／拒绝、点按／长按编辑与撤销；跨两分钟边界的重复付款、软删除后重触发、卡映射和商户分类编辑。
 - 当前截屏文件、剪贴板、已授权／受限相册、无权限、无可读截图；逐笔勾选、原图附件和导入核对；模糊图返回记一笔后仍能在导入入口找到原图。
 - 深链中文编码、预填字段、锁定期间保留目的地；账目标签和 Apple Pay 改账首屏；通知权限、拒绝权限后的保存。
-- 默认关闭的所有小组件和控制按钮仅打开 App；可签团队启用 App Group 后确认数字、三项预填、保存／编辑／撤销／同步刷新、跨日、锁账本／隐藏金额清理。
+- 默认开启时确认还能花、今日统计、最多三项常记预填、保存／编辑／撤销／同步刷新、跨日、锁账本／隐藏金额清理；读取不到共享容器或改回 NO 后只显示按钮，圆形组件和控制按钮保持可打开 App。
 - 390×844、小屏、深色、大字号、VoiceOver、减少动态效果；沿用现有 YubaiMotion，没有新增动画。
 
-免费 Personal Team 的 provisioning profile 有效 7 天，过期需要重新构建安装；最多 10 个 App ID、3 台设备、每台设备 3 个 App。新增 Widget 另用一个 bundle id，实际签名安装仍需 Xcode 核对。App Groups 需要对应团队能力，故默认关闭数字共享；本地通知不使用 APNs entitlement，本次钱包交易是用户的系统自动化输入，不需要商户 Apple Pay entitlement。来源：[Apple 账户说明](https://developer.apple.com/help/account/basics/about-your-developer-account)、[App Groups 配置](https://developer.apple.com/documentation/xcode/configuring-app-groups)、[交互式 snippet](https://developer.apple.com/documentation/appintents/displaying-static-and-interactive-snippets)、[OpenIntent](https://developer.apple.com/documentation/appintents/openintent)、[ControlWidget](https://developer.apple.com/documentation/widgetkit/creating-controls-to-perform-actions-across-the-system)。
+免费 Personal Team 的 provisioning profile 有效 7 天，过期需要重新构建安装；最多 10 个 App ID、3 台设备、每台设备 3 个 App。新增 Widget 另用一个 bundle id，实际签名安装与 App Group 自动注册仍需 Xcode 核对。本地通知不使用 APNs entitlement，本次钱包交易是用户的系统自动化输入，不需要商户 Apple Pay entitlement。来源：[Apple 账户说明](https://developer.apple.com/help/account/basics/about-your-developer-account)、[App Groups 配置](https://developer.apple.com/documentation/xcode/configuring-app-groups)、[交互式 snippet](https://developer.apple.com/documentation/appintents/displaying-static-and-interactive-snippets)、[OpenIntent](https://developer.apple.com/documentation/appintents/openintent)、[ControlWidget](https://developer.apple.com/documentation/widgetkit/creating-controls-to-perform-actions-across-the-system)。

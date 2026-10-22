@@ -63,7 +63,7 @@ Linux 的 `KeychainAPIKeyStorage` 只在进程内共享密钥，不写磁盘；i
 
 ## 本机签名与版本
 
-应用 Debug / Release 使用 `Config/iCloud.xcconfig → Config/Signing.xcconfig → #include? "Local.xcconfig"`；CoreTests / UITests 只以 Signing.xcconfig 为基础配置，获得同一团队而不继承应用 entitlement。Local.xcconfig 已被 Git 忽略，缺失时不会设置团队或影响免费 Personal Team 自动签名。需要本机持久配置时，从 [模板](../Config/Local.xcconfig.example)复制，保持自动签名；TestFlight 只能填付费团队的 10 位 `DEVELOPMENT_TEAM`。不要把自己的团队或签名材料写进工程、生成器或模板。
+应用 Debug / Release 使用 `Config/iCloud.xcconfig`，Widget 使用 `Config/Widgets.xcconfig`；两者均先包含 `AppGroup.xcconfig` 的共享默认，再由 `Signing.xcconfig → #include? "Local.xcconfig"` 加载本机覆盖，因此 Local 中的 `YUBAI_APP_GROUP = NO` 对两个 target 均生效。CoreTests / UITests 只以 Signing.xcconfig 为基础配置，获得同一团队而不继承应用 entitlement／编译条件。Local.xcconfig 已被 Git 忽略，缺失时不会设置团队；免费 Personal Team 在 Xcode 为 App 与 Widget 两 target 选择同一团队并保持自动签名。需要本机持久配置时，从 [模板](../Config/Local.xcconfig.example)复制；TestFlight 只能填付费团队的 10 位 `DEVELOPMENT_TEAM`。不要把自己的团队或签名材料写进工程、生成器或模板。
 
 应用 `MARKETING_VERSION = 2.0.0`，日常 `CURRENT_PROJECT_VERSION = 1`；Info.plist 引用两项构建设置。上传脚本只在 archive 命令行以 UTC `YYYYMMDDHHMM` 覆盖 build number，导出时不让 Xcode 改号码。归档、源码副本及日志保留在已忽略的 `build/testflight/<构建号>/`；同一仓库同一分钟不重复运行，失败后下一分钟用新号码重试。跨机器上传也要错开分钟并保持时钟准确。没有配置付费团队前，不会开始归档或上传。
 
@@ -74,7 +74,7 @@ Mac Xcode 应用默认 `YUBAI_MAC_SANDBOX = NO`，免费 Personal Team 直接安
 
 ## 可选 iCloud 账本
 
-Xcode app target 的 Debug / Release 共用 [Config/iCloud.xcconfig](../Config/iCloud.xcconfig)，默认 `YUBAI_ICLOUD = NO`、`YUBAI_MAC_SANDBOX = NO`；由上述 Signing.xcconfig 可选包含本机覆盖。默认 iOS 和 Mac 的 `CODE_SIGN_ENTITLEMENTS` 均为空，Swift 不定义 `YUBAI_ICLOUD`，免费 Personal Team 的本机构建不增加 iCloud 签名要求，Mac 也不会因更新切入沙盒。Swift Package 中的 app 默认也只使用本机；Core 的相同存储实现不依赖这个条件。
+Xcode app target 的 Debug / Release 共用 [Config/iCloud.xcconfig](../Config/iCloud.xcconfig)，默认 `YUBAI_ICLOUD = NO`、`YUBAI_MAC_SANDBOX = NO`，App Group 独立默认 YES；由上述 Signing.xcconfig 可选包含本机覆盖。默认 iOS 使用 `Sources/YubaiApp/Yubai-AppGroup.entitlements`，Mac 的 `CODE_SIGN_ENTITLEMENTS` 仍为空；Swift 不定义 `YUBAI_ICLOUD`，本机构建不增加 iCloud 签名要求，Mac 也不会因更新切入沙盒或启用 App Group。Swift Package 中的 app 默认也只使用本机；Core 的相同存储实现不依赖这个条件。
 
 启用只改 **Config/Local.xcconfig** 中的这一行，不改共享默认值：
 
@@ -82,7 +82,7 @@ Xcode app target 的 Debug / Release 共用 [Config/iCloud.xcconfig](../Config/i
 YUBAI_ICLOUD = YES
 ```
 
-该行同时把 Swift 条件展开为 `YUBAI_ICLOUD`。iOS 签名文件展开为 `Sources/YubaiApp/Yubai-iCloud.entitlements`。macOS 使用 `CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = $(YUBAI_MAC_ENTITLEMENTS_$(YUBAI_MAC_SANDBOX)_$(YUBAI_ICLOUD))`，两个开关独立组合：
+该行同时把 Swift 条件展开为 `YUBAI_ICLOUD`。App Group 保持默认 YES 时，iOS 签名文件为 `Sources/YubaiApp/Yubai-iCloud-AppGroup.entitlements`；App Group 改回 NO 时为 `Yubai-iCloud.entitlements`。macOS 使用 `CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = $(YUBAI_MAC_ENTITLEMENTS_$(YUBAI_MAC_SANDBOX)_$(YUBAI_ICLOUD))`，两个开关独立组合：
 
 | `YUBAI_MAC_SANDBOX` | `YUBAI_ICLOUD` | macOS 权限文件（位于 `Sources/YubaiApp/`） |
 |---|---|---|
@@ -91,7 +91,7 @@ YUBAI_ICLOUD = YES
 | YES | NO | `Yubai-macOS.entitlements` |
 | YES | YES | `Yubai-macOS-iCloud.entitlements` |
 
-非沙盒 Mac 与 iOS 复用现有 iCloud-only 文件，工程和 `generate-project.py` 已引用全部三个权限文件。组合文件是两个基础文件的显式并集，任一权限变动须同步更新组合文件；测试目标不使用这些文件。
+非沙盒 Mac 与关闭 App Group 的 iOS 复用现有 iCloud-only 文件，工程和 `generate-project.py` 已引用全部权限文件。组合文件是对应基础文件的显式并集，任一权限变动须同步更新组合文件；测试目标不使用这些文件。
 
 选择付费 Apple Developer Team，为 `app.yubai.personal` 在开发者门户或 Xcode 的 iCloud capability 中启用 iCloud Documents，并创建、关联 `iCloud.app.yubai.personal` 容器，刷新两端 provisioning profile。保持 entitlement 路径由 xcconfig 控制；不要在 target 的 Build Settings 另写一个非空覆盖值。Info.plist 仅登记容器元数据，不授予权限；容器文档不公开到文件浏览器。参考 [Apple 的 iCloud 配置](https://developer.apple.com/documentation/xcode/configuring-icloud-services)与[文档同步示例](https://developer.apple.com/documentation/uikit/synchronizing-documents-in-the-icloud-environment)。
 
@@ -113,9 +113,9 @@ YUBAI_ICLOUD = YES
 在 Xcode 验证默认 NO 的 iOS / Mac 构建与测试后，再用上方单行启用 YES，重复两端构建。真实同步需两端有效签名、同一 Apple ID、iCloud Drive；核对首次空云端、已有不同账本、下载占位、离线待上传、前台远端更新、同时编辑冲突、选择期间再次更新、切回本机及退出登录。静态检查与临时目录测试不能代替这些系统行为的设备验证。
 
 
-## 快速记账与可选 App Group
+## 快速记账与 App Group
 
-第九轮新增 YubaiWidgets（iOS 26）并在 App 的 iOS 构建嵌入；Mac 通过平台条件排除。共享快照使用独立的 `Config/AppGroup.xcconfig`，默认 NO，iCloud 开关保持独立。配置组合、同团队签名、默认只有按钮的行为与设备验证见[快速记账说明](QUICK-CAPTURE.md)。工程生成器同步包含新源文件和扩展 target，不要只手动修改生成结果。
+第九轮新增 YubaiWidgets（iOS 26）并在 App 的 iOS 构建嵌入；Mac 通过平台条件排除。共享快照使用独立的 `Config/AppGroup.xcconfig`，默认 `YUBAI_APP_GROUP = YES`；[Apple 官方 iOS 能力表](https://developer.apple.com/help/account/reference/supported-capabilities-ios)列出免费 Apple Developer 也支持 App Groups，iCloud 开关保持独立。首次在 Xcode 为 Yubai／YubaiWidgets 都选同一 Personal Team，核对 Signing & Capabilities 自动注册并关联 `group.app.yubai.personal`；失败时在 `Config/Local.xcconfig` 设 `YUBAI_APP_GROUP = NO` 后重新构建，仅显示入口。配置组合、容器不可用时的按钮回退与设备验证见[快速记账说明](QUICK-CAPTURE.md#app-group默认开启)。工程生成器同步包含源文件和扩展 target，没有另外写入 App Group 默认值；不要只手动修改生成结果。
 
 ## 第八轮存储空间（2026-10-21）
 

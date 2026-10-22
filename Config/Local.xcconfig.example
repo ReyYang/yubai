@@ -6,6 +6,10 @@
 // Keep NO for free teams. YES also needs the paid team's iCloud capability/container.
 YUBAI_ICLOUD = NO
 
+// App Groups support free Personal Teams and share iOS widget snapshots by default.
+// If group registration/signing fails, uncomment to fall back to entry-only widgets.
+// YUBAI_APP_GROUP = NO
+
 // Keep NO for direct Mac installs and the existing ledger location.
 // Mac TestFlight archives override this to YES (App Sandbox is required).
 YUBAI_MAC_SANDBOX = NO
