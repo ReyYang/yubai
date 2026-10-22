@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-22 分页同步与右滑归属复验**：按 owner 对 `bd8b1b2` 的 vphone 反馈，tab 点击改为每次直接滚动，实际分页偏移回写当前页与高亮；未展开账目行及管家卡只接左滑，右滑交给分页，账目展开后双向处理与锁页保持。[实现与验证边界](DESIGN.md#2026-10-22--分页同步与右滑归属复验)、[owner 规则](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--分页同步与右滑归属owner-vphone-复测)。指定 swift test：406 项、402 通过／4 项原有跳过／0 失败；四个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 语法解析通过，保留原 43 个测试方法并新增 4 个。Apple SDK 类型检查、UI 实跑待做，其余手势、macOS、`docs/` 和设计稿保持，未提交／推送。
+
 **2026-10-22 页内横滑复验修复**：按 owner 的 vphone 反馈，`HorizontalPan` 改用位移判方向，仅让可横滚／paging 的 UIScrollView pan 等待页内手势失败，不再依赖 UIKit 子视图关系；账目共享 `revealedEntryID`，重复左滑保持、右滑收回，另一行左滑、点按、竖滚、切页／sheet 时关闭。[实现与验证边界](DESIGN.md#2026-10-22--页内横滑复验修复)、[owner 要求](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--页内横滑复验owner-vphone-反馈)。管家原有 25%／快速左扫阈值及 macOS 行为保持。Linux swift test：406 项、402 通过／4 项原有实网跳过／0 失败；改动 App 文件 iOS 26／macOS 14、UI 测试 iOS 26 语法解析通过。原 38 个测试方法保留并新增 4 个，UI 实跑与设备复验待做。`docs/`、设计稿、依赖和分发包未改，未提交／推送。
 
 **2026-10-22 标签栏与分页回归修复**：owner 真机拒绝 main `146e379` 的玻璃模糊、白条／裁切与横滑混乱；在 `fix/tabbar-gesture-regression` 改用实色 raised 胶囊、透明导航后的全屏 canvas、滚动内容余量和原生四页 paging，移除旧 iOS 区域登记／整页拖动与＋缩放源，保留 macOS 行为。[根因、源码映射与手势规则](DESIGN.md#2026-10-22--标签栏与分页回归修复)、[owner 决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--标签栏与分页回归owner-真机反馈)。Linux swift test：406 项、402 通过／4 项原有实网跳过／0 失败；App 的 iOS 26／macOS 14 与 UI 测试的 iOS 26 条件语法解析通过。原测试方法全部保留并新增 2 个，Apple SDK 类型检查、UI 实跑与设备视觉／手势验收待做。`docs/`、设计稿、Figma 与分发包未改，未提交／推送；下方玻璃方案和旧手势记录保留历史语义。
