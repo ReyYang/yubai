@@ -144,13 +144,25 @@ private struct FixedFlowBillRow: View {
     @State private var resting: CGFloat = 0
     let row: FixedFlowOccurrence
     let ending: () -> Void
+    private let revealDistance = 78 + YubaiSpace.space6 + YubaiSpace.space12
     private var canEnd: Bool { store.current.plans.contains { $0.id == row.planID && $0.active && $0.endDate == nil } }
     var body: some View {
         Group {
             if canEnd {
                 content.offset(x: offset).background(alignment: .trailing) {
-                    Button("停掉", action: stop).yubaiFont(YubaiFont.callout, weight: .medium)
-                        .frame(width: 84).frame(maxHeight: .infinity).background(YubaiColor.neutralStrong)
+                    Button(action: stop) {
+                        Text("停掉")
+                            #if os(iOS)
+                            .frame(width: 78).frame(maxHeight: .infinity)
+                            .background(YubaiColor.neutralStrong, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            #endif
+                    }.yubaiFont(YubaiFont.callout, weight: .medium)
+                        #if os(iOS)
+                        .padding(.vertical, YubaiSpace.space6).padding(.trailing, YubaiSpace.space6)
+                        #else
+                        .frame(width: revealDistance - YubaiSpace.space12).frame(maxHeight: .infinity).background(YubaiColor.neutralStrong)
+                        #endif
                         .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
                 }.clipped().contentShape(Rectangle())
                     .simultaneousGesture(DragGesture(minimumDistance: 18)
@@ -158,10 +170,10 @@ private struct FixedFlowBillRow: View {
                         .onChanged { value in
                             if horizontal == nil { horizontal = abs(value.translation.width) > abs(value.translation.height) * 1.3 }
                             guard horizontal == true else { return }
-                            offset = max(-84, min(0, resting + value.translation.width))
+                            offset = max(-revealDistance, min(0, resting + value.translation.width))
                         }.onEnded { _ in
                             guard horizontal == true else { return }
-                            resting = offset < -36 ? -84 : 0; reset()
+                            resting = offset < -revealDistance * 0.43 ? -revealDistance : 0; reset()
                         })
                     .onChange(of: dragging) { _, active in if !active { reset() } }
                     .onChange(of: canEnd) { _, value in if !value { resting = 0; reset() } }

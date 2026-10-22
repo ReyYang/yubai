@@ -153,6 +153,7 @@ private struct LedgerEntryRow: View {
     let entry: Entry
     let category: String
     let symbol: String
+    private let revealDistance = 78 + YubaiSpace.space6 + YubaiSpace.space12
     private var uncategorized: Bool { EntryTimeline.isUncategorized(entry) }
     private var categoryName: String { uncategorized ? "没分类" : Classification.displayCategory(category) }
     private var note: String { entry.note.isEmpty ? (entry.displayTitle == categoryName ? "" : entry.displayTitle) : entry.note }
@@ -171,17 +172,28 @@ private struct LedgerEntryRow: View {
         } label: { content }
             .buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .offset(x: offset).background(alignment: .trailing) {
-                Button("删除", action: delete).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.amberInk)
-                    .frame(width: 84).frame(maxHeight: .infinity).background(YubaiColor.amberTint)
+                Button(action: delete) {
+                    Text("删除")
+                        #if os(iOS)
+                        .frame(width: 78).frame(maxHeight: .infinity)
+                        .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        #endif
+                }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.amberInk)
+                    #if os(iOS)
+                    .padding(.vertical, YubaiSpace.space6).padding(.trailing, YubaiSpace.space6)
+                    #else
+                    .frame(width: revealDistance - YubaiSpace.space12).frame(maxHeight: .infinity).background(YubaiColor.amberTint)
+                    #endif
                     .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
                     .accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
             }.clipped().contentShape(Rectangle())
             #if os(iOS)
             .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
                 if distance < 0 { revealedEntryID = entry.id }
-                offset = max(-84, min(0, resting + distance))
+                offset = max(-revealDistance, min(0, resting + distance))
             }, ended: { distance, _ in
-                resting = resting < 0 ? (distance > 0 ? 0 : -84) : (offset < -36 ? -84 : 0)
+                resting = resting < 0 ? (distance > 0 ? 0 : -revealDistance) : (offset < -revealDistance * 0.43 ? -revealDistance : 0)
                 finishSwipe()
             }, cancelled: finishSwipe))
             .onChange(of: revealedEntryID) { _, id in
@@ -198,9 +210,9 @@ private struct LedgerEntryRow: View {
                     if horizontal == nil { horizontal = abs(value.translation.width) > abs(value.translation.height) * 1.3 }
                     guard horizontal == true else { return }
                     tapsBlocked = true
-                    offset = max(-84, min(0, resting + value.translation.width))
+                    offset = max(-revealDistance, min(0, resting + value.translation.width))
                 }.onEnded { _ in
-                    if horizontal == true { resting = offset < -36 ? -84 : 0 }
+                    if horizontal == true { resting = offset < -revealDistance * 0.43 ? -revealDistance : 0 }
                     reset(); releaseTaps()
                 })
             .onChange(of: dragging) { _, active in if !active { reset(); releaseTaps() } }
