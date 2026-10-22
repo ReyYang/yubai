@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-22 · App Group 默认开启
+
+按 owner 本轮明确要求，`Config/AppGroup.xcconfig` 改为默认 YES，取代第九轮记录中的默认关闭；依据为 [Apple 官方 iOS 能力表](https://developer.apple.com/help/account/reference/supported-capabilities-ios)的免费 Apple Developer 支持。App 与 Widget 保留先加载共享默认、再加载本机配置的顺序，`Local.xcconfig` 可设 NO 回退为按钮；App 的 `YUBAI_APP_GROUP` 编译条件限定 iPhone SDK，Mac 权限／条件和测试 target 保持独立。iCloud 默认值及开关含义保持。
+
+继续采用已确认 V9 Widget 版式，没有改稿或新增布局：共享容器可用且 App 已发布快照时按尺寸显示还能花、今日统计、最多三项常记。`AppStore` 账本变化／时间刷新发布，锁账本或隐藏金额时删除；`CaptureSnapshotBridge.read` 失败／跨日返回 nil，由现有 Widget 视图显示入口。这些运行路径仅核对源码，没有修改 Swift。生成器没有另设默认，在临时目录生成的 pbxproj／scheme 与仓库逐字节一致，因此不重写工程。
+
+[验证记录](../docs/VALIDATION.md#app-group-默认开启2026-10-22)包含 Linux build／373 项测试、54 组配置静态检查及 App／Widget 语法检查；Apple SDK 类型检查、Personal Team 自动注册／签名与隐私清除的设备行为仍待[清单](../docs/V2-TEST-CHECKLIST.md#app-group-默认开启2026-10-22待-apple-设备验证)。未提交／推送，原始 V9 稿、Figma、历史原型和分发包未同步。
+
 ## 2026-10-21 · 快速记账、存储与五个概念合并
 
 本轮按 owner 的 merge2 任务整合 `origin/fix/storage-attachments-compaction`，不新增产品或视觉决定。第九轮快速入口、五个概念、V7 卡片与记一笔日期／分段控件修复均保留；第八轮存储空间、附件按需读取、共享恢复 payload／gzip、对话压缩完整纳入。存储页沿用当前 `DesignSystem.swift` 的符号与展示用词，「余白记得的」只指具体记忆条数；保留已删除指南的决定。我页同时提供快速记账和存储空间。

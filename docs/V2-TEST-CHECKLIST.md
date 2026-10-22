@@ -1,5 +1,13 @@
 # 余白 2.0 · Mac 组合测试清单
 
+## App Group 默认开启（2026-10-22，待 Apple 设备验证）
+
+Linux 构建／Core 测试和配置静态检查已通过，见[本轮验证](VALIDATION.md#app-group-默认开启2026-10-22)。以下需在 Xcode／设备执行，尚未勾选。
+
+- [ ] 首次在 Xcode 26 为 Yubai 与 YubaiWidgets 两个 target 都选同一 Personal Team，保持自动签名；在 Signing & Capabilities 确认 App Groups 自动注册并关联 `group.app.yubai.personal`。注册／签名失败时在 `Config/Local.xcconfig` 设 `YUBAI_APP_GROUP = NO`，重新构建后小组件仅显示按钮。
+- [ ] 默认 YES 下核对还能花、今日统计、最多三项常记预填，以及保存／编辑／撤销／同步后的快照刷新；锁账本／隐藏金额时清除数字和用途，跨日及共享容器不可读时仅显示入口。
+- [ ] iCloud 开／关与 App Group YES／NO 的 iOS App＋Widget 均构建；Mac 不带 App Group entitlement／编译条件、不构建／嵌入 Widget，Core／UI 测试 target 不受影响。完整系统入口检查沿用[快速记账清单](QUICK-CAPTURE.md#验证与限制)。
+
 ## 五个界面概念（2026-10-21，待 Apple 设备验证）
 
 Linux 完整 Core 与用词扫描已通过，结果见[验证记录](VALIDATION.md#五个界面概念2026-10-21)。以下新增界面路径未在 Apple 平台运行；历史清单中的旧词以 [CONTEXT.md](../CONTEXT.md#界面用词) 为准。
