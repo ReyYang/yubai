@@ -84,7 +84,7 @@ public struct ImportOrganization: Codable, Equatable, Sendable {
             card.importQuestion = question
             if ledger.cards.count < 5000 && !ButlerCards.isMuted(card.dedupeKey, in: ledger) && !ledger.cards.contains(where: { $0.dedupeKey == card.dedupeKey }) { ledger.cards.append(card) }
         }
-        for card in comments ?? [] where ledger.cards.count < 5000 && !ButlerCards.isMuted(card.dedupeKey, in: ledger) {
+        for card in comments ?? [] where ledger.cards.count < 5000 && !ButlerCards.isMuted(card.dedupeKey, evidence: Array(ButlerCards.offCharacterEntryIDs(card)), in: ledger) {
             if !ledger.cards.contains(where: { $0.dedupeKey == card.dedupeKey }) { ledger.cards.append(card) }
         }
         Self.recordUndo(batchID: batchID, before: before, in: &ledger)

@@ -19,11 +19,14 @@ public struct CardCandidate: Equatable, Sendable {
     public var priority: Int
     public var areaID: UUID? = nil
     public var letter: LetterFacts? = nil
+    public var meta: String? = nil
     public func card(now: Date) -> ButlerCard {
-        var card = ButlerCard(kind: kind, title: String(title.prefix(14)), body: String(body.prefix(60)),
-                              evidence: Array(evidence.prefix(1000)), action: action, dedupeKey: dedupeKey)
+        var card = ButlerCard(kind: kind, title: kind == .offCharacter ? title : String(title.prefix(14)),
+                              body: kind == .offCharacter ? body : String(body.prefix(60)),
+                              evidence: kind == .offCharacter ? evidence : Array(evidence.prefix(1000)), action: action, dedupeKey: dedupeKey)
         card.createdAt = now; card.letter = letter; card.facts = facts; card.areaID = areaID; card.priority = priority
-        if evidence.count > 1000 { card.facts?.append(CardFact("依据范围", "记录较多，这里展示其中 1000 笔；数值按全部符合条件的记录计算。")) }
+        card.meta = meta
+        if kind != .offCharacter && evidence.count > 1000 { card.facts?.append(CardFact("依据范围", "记录较多，这里展示其中 1000 笔；数值按全部符合条件的记录计算。")) }
         return card
     }
 }
@@ -37,11 +40,23 @@ public enum ButlerCards {
         return String(format: "%04d-W%02d", c.component(.yearForWeekOfYear, from: date), c.component(.weekOfYear, from: date))
     }
     public static func topic(_ key: String) -> String {
+        if key.hasPrefix("off:") { return key }
         let parts = key.split(separator: ":")
         return parts.prefix(parts.first == "letter" ? 1 : 2).joined(separator: ":")
     }
-    public static func isMuted(_ key: String, in ledger: Ledger) -> Bool {
-        ledger.mutedTopics.contains { key == $0 || key.hasPrefix($0 + ":") }
+    static func offCharacterEntryIDs(_ key: String) -> Set<UUID> {
+        guard key.hasPrefix("off:") else { return [] }
+        return Set(key.dropFirst(4).split(whereSeparator: { $0 == ":" || $0 == "," }).compactMap { UUID(uuidString: String($0)) })
+    }
+    static func offCharacterEntryIDs(_ card: ButlerCard) -> Set<UUID> {
+        guard card.kind == .offCharacter else { return [] }
+        return Set(card.evidence).union(offCharacterEntryIDs(card.dedupeKey))
+    }
+    public static func isMuted(_ key: String, evidence: [UUID] = [], in ledger: Ledger) -> Bool {
+        let ids = offCharacterEntryIDs(key).union(evidence)
+        return ledger.mutedTopics.contains {
+            key == $0 || key.hasPrefix($0 + ":") || !ids.isDisjoint(with: offCharacterEntryIDs($0))
+        }
     }
     public static func matches(_ area: ProfileArea, entry: Entry, ledger: Ledger) -> Bool {
         let category = ledger.resolveCategory(entry.category)
@@ -121,7 +136,7 @@ public enum ButlerCards {
     }
     /// Overflow stays queued; dismissing a card reveals the next one, including questions.
     public static func visible(_ ledger: Ledger) -> [ButlerCard] {
-        Array(ledger.cards.filter { $0.kind != .weeklyLetter && $0.dismissedAt == nil && !isMuted($0.dedupeKey, in: ledger) }.sorted {
+        Array(ledger.cards.filter { $0.kind != .weeklyLetter && $0.dismissedAt == nil && !isMuted($0.dedupeKey, evidence: Array(offCharacterEntryIDs($0)), in: ledger) }.sorted {
             let a = rank($0), b = rank($1)
             if a != b { return a < b }
             if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
@@ -143,7 +158,7 @@ public enum ButlerCards {
             ledger.cards[i].letter = nil; ledger.cards[i].importQuestion = nil
             if ledger.cards[i] != old { changed = true }
         }
-        for candidate in candidates where ledger.cards.count < 5000 && !isMuted(candidate.dedupeKey, in: ledger) {
+        for candidate in candidates where ledger.cards.count < 5000 && !isMuted(candidate.dedupeKey, evidence: candidate.kind == .offCharacter ? candidate.evidence : [], in: ledger) {
             if keys.insert(candidate.dedupeKey).inserted { ledger.cards.append(candidate.card(now: now)); changed = true }
         }
         return changed
@@ -154,15 +169,18 @@ public enum ButlerCards {
     }
     public static func mute(_ id: UUID, in ledger: inout Ledger, now: Date) {
         guard let i = ledger.cards.firstIndex(where: { $0.id == id }) else { return }
-        let key = topic(ledger.cards[i].dedupeKey)
+        let ids = offCharacterEntryIDs(ledger.cards[i])
+        let key = ids.isEmpty ? topic(ledger.cards[i].dedupeKey) : "off:" + ids.map(\.uuidString).sorted().joined(separator: ":")
         if !ledger.mutedTopics.contains(key) { ledger.mutedTopics.append(key) }
-        for i in ledger.cards.indices where topic(ledger.cards[i].dedupeKey) == key { ledger.cards[i].dismissedAt = now }
+        for i in ledger.cards.indices where topic(ledger.cards[i].dedupeKey) == key || !ids.isDisjoint(with: offCharacterEntryIDs(ledger.cards[i])) { ledger.cards[i].dismissedAt = now }
     }
     public static func feedback(_ value: CardFeedback, cardID: UUID, in ledger: inout Ledger, now: Date) {
         guard let i = ledger.cards.firstIndex(where: { $0.id == cardID }), [.restrain, .offCharacter, .followUp].contains(ledger.cards[i].kind), ledger.cards[i].feedback == nil else { return }
         ledger.cards[i].feedback = value; ledger.cards[i].feedbackAt = now
         let card = ledger.cards[i]
-        let entry = card.evidence.first.flatMap { id in ledger.entries.first { $0.id == id } }
+        let ids = Set(card.evidence).union(offCharacterEntryIDs(card))
+        let entries = ledger.entries
+        let entry = card.evidence.lazy.compactMap { id in entries.first { $0.id == id } }.first ?? entries.first { ids.contains($0.id) }
         let category = entry.map { ledger.resolveCategory($0.category) }
         let existing = (ledger.profile.restrain + ledger.profile.generous).first { $0.id == card.areaID }
         guard let title = existing?.title ?? category else { return }
@@ -172,7 +190,8 @@ public enum ButlerCards {
             let date = other.feedbackAt ?? other.createdAt
             guard date >= Dates.addDays(-60, to: now), date <= now else { return false }
             if let existing { return other.areaID == existing.id }
-            return other.areaID == nil && other.evidence.contains { id in ledger.entries.contains { $0.id == id && ledger.resolveCategory($0.category) == category } }
+            let otherIDs = Set(other.evidence).union(offCharacterEntryIDs(other))
+            return other.areaID == nil && ledger.entries.contains { otherIDs.contains($0.id) && ledger.resolveCategory($0.category) == category }
         }
         let regrets = relevant.filter { $0.feedback == .regret }
         let worth = relevant.filter { $0.feedback == .worth }

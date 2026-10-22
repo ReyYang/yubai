@@ -1217,17 +1217,17 @@ struct Segmented<Value: Hashable>: View {
             ForEach(choices.indices, id: \.self) { i in
                 let value = choices[i].0
                 Button { selection = value } label: {
-                    ZStack {
-                        if selection == value {
-                            if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).transition(.opacity) }
-                            else { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
-                        }
-                        Text(choices[i].1).yubaiFont(YubaiFont.callout, weight: selection == value ? .medium : .regular)
-                            .foregroundStyle(selection == value ? YubaiColor.label : YubaiColor.labelSecondary).transaction { $0.animation = nil }
-                    }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
+                    Text(choices[i].1).yubaiFont(YubaiFont.callout, weight: selection == value ? .medium : .regular)
+                        .foregroundStyle(selection == value ? YubaiColor.label : YubaiColor.labelSecondary).transaction { $0.animation = nil }
+                        .frame(maxWidth: .infinity, minHeight: 32).fixedSize(horizontal: false, vertical: true).background {
+                            if selection == value {
+                                if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).transition(.opacity) }
+                                else { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
+                            }
+                        }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selection == value ? .isSelected : [])
             }
-        }.padding(3).background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+        }.padding(4).background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).fixedSize(horizontal: false, vertical: true)
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
     }
 }
