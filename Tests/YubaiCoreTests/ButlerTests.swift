@@ -48,7 +48,7 @@ final class ButlerTests: XCTestCase {
         ledger.preferences.horizonDays = 7 // Detection still looks 30 days ahead.
         let cards = ButlerCards.detect(ledger, now: now)
         XCTAssertEqual(cards.count, 1); XCTAssertEqual(cards.first?.kind, .shortfall)
-        XCTAssertEqual(cards.first?.facts.first { $0.label == "付款前及当天最低保守余量" }?.cents, -30_000)
+        XCTAssertEqual(cards.first?.facts.first { $0.label == "付款前及当天最少还能花" }?.cents, -30_000)
         ledger.plans[0].amount = 70_000
         XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty, "余量一万仍高于已扣过的底线")
         ledger.plans[0].dueDate = Dates.addDays(31, to: now); ledger.plans[0].amount = 200_000

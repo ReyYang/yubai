@@ -88,7 +88,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         case "remove_principle": change = .removePrinciple(try a.text("text"))
         case "set_floor": change = .setFloorAmount(try a.amount("amount"))
         case "clear_floor": change = .setFloorAmount(nil)
-        default: throw YubaiError.invalid("未知的画像提案。")
+        default: throw YubaiError.invalid("未知的画像修改。")
         }
         return change
     }
@@ -102,7 +102,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         switch self {
         case .entryChanges:
             guard let rows = a.fields["items"]?.arrayValue, !rows.isEmpty, rows.count <= 200,
-                  let itemSchema = parameters["properties"]?["items"]?["items"] else { throw YubaiError.invalid("请提供 1 至 200 项整理提案。") }
+                  let itemSchema = parameters["properties"]?["items"]?["items"] else { throw YubaiError.invalid("请提供 1 至 200 项整理修改。") }
             items = try rows.map { row in
                 let r = try Arguments(row, schema: itemSchema); let id = try r.uuid("entry")
                 let kind = try r.text("kind")
@@ -146,7 +146,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                                 monthsPerPayment: try a.integer("months_per_payment", fallback: 3, range: 1...12),
                                 receiveDay: try a.integer("receive_day", fallback: 1, range: 1...28))
                 rent.accountID = try a.optionalUUID("account"); items = [.addRent(rent)]
-            default: throw YubaiError.invalid("未知的安排提案。")
+            default: throw YubaiError.invalid("未知的安排修改。")
             }
         case .entry:
             let rows: [Arguments]
@@ -181,7 +181,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                     .profile(try Self.profileChange(Arguments(row, schema: Self.object(Self.profileFields, required: ["operation"]))))
                 }
             } else {
-                guard a.fields["items"] == nil else { throw YubaiError.invalid("items 需要提案数组。") }
+                guard a.fields["items"] == nil else { throw YubaiError.invalid("items 需要修改数组。") }
                 items = [.profile(try Self.profileChange(a))]
             }
         }
@@ -211,11 +211,11 @@ private struct Arguments {
     let fields: [String: JSONValue]
     init(_ value: JSONValue, schema: JSONValue) throws {
         let keys = Set(schema["properties"]?.objectValue?.keys.map { $0 } ?? [])
-        guard let fields = value.objectValue, Set(fields.keys).isSubset(of: keys) else { throw YubaiError.invalid("提案参数只能包含声明的字段。") }
+        guard let fields = value.objectValue, Set(fields.keys).isSubset(of: keys) else { throw YubaiError.invalid("修改参数只能包含声明的字段。") }
         self.fields = fields
     }
     func text(_ key: String) throws -> String {
-        guard let s = fields[key]?.stringValue, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, s.count <= 4000 else { throw YubaiError.invalid("提案缺少有效的 \(key)。") }
+        guard let s = fields[key]?.stringValue, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, s.count <= 4000 else { throw YubaiError.invalid("修改缺少有效的 \(key)。") }
         return s
     }
     func optionalText(_ key: String) throws -> String? { fields[key] == nil ? nil : try text(key) }

@@ -6,14 +6,14 @@ struct WishlistView: View {
     var focusedWishID: UUID? = nil
     var body: some View {
         Page(topPadding: 8) {
-            if store.current.wishlist.isEmpty { EmptyState("heart", "给想要的东西，一点时间", "和余白聊过一笔购买后，可以把它放在这里。心愿与回访都保存在本机。") }
+            if store.current.wishlist.isEmpty { EmptyState("heart", "心愿单还是空的", "问问余白：该不该买？") }
             if let focusedWishID, let wish = store.current.wishlist.first(where: { $0.id == focusedWishID }) { wishRow(wish) }
             let due = store.current.wishlist.filter { $0.id != focusedWishID && followUpVisible($0) }
             ForEach(due) { wish in
                 Card(style: .compact, background: YubaiColor.amberTint) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("● 该回访了 · 购买满一个月").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
+                            Text("买了一个月 · 用得怎么样？").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
                             Spacer()
                             if let card = store.current.cards.first(where: { $0.dedupeKey == "follow:\(wish.id)" }) {
                                 Menu {
@@ -23,7 +23,7 @@ struct WishlistView: View {
                                     .accessibilityLabel("更多：知道了、以后别提")
                             }
                         }
-                        Text(wish.title + "，现在觉得值吗？").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.amberStrong)
+                        Text(wish.title + "，用得怎么样？").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.amberStrong)
                         if !wish.purpose.isEmpty { Text("当时说「" + wish.purpose + "」").yubaiFont(YubaiFont.callout) }
                         WishFollowUpView(wishID: wish.id)
                     }
@@ -80,7 +80,7 @@ struct WishlistView: View {
                 if let i = ledger.wishlist.firstIndex(where: { $0.id == wish.id }) { ledger.wishlist[i].status = .dropped }
             } }
         }
-        NavigationLink("再问一次") { AskYubaiView(initialText: "我还想再看看「\(wish.title)」，\(Money.input(wish.amount))元，这笔合理吗？") }
+        NavigationLink("再问一次") { AskYubaiView(initialText: "我还想再看看「\(wish.title)」，\(Money.input(wish.amount))元，该不该买？") }
     }
 
 }
@@ -93,11 +93,11 @@ struct WishEntryPicker: View {
     var body: some View {
         Page {
             if let wish = store.current.wishlist.first(where: { $0.id == wishID && $0.status == .thinking }) {
-                Text("选一笔已经记下的支出，回访从购买日期起算。").yubaiFont(YubaiFont.callout)
+                Text("选一笔已经记下的支出。").yubaiFont(YubaiFont.callout)
                 let matches = Wishlist.candidates(for: wish, in: store.current, now: Date())
                 let used = Set(store.current.wishlist.compactMap(\.boughtEntryID))
                 let rows = all ? store.sortedEntries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.date <= Date() && !used.contains($0.id) } : matches
-                if rows.isEmpty { Text("还没有匹配的支出，可以先记一笔，保存后会尝试自动关联。") }
+                if rows.isEmpty { Text("还没有匹配的支出，先记一笔。") }
                 CardRows(rows) { entry in
                     Button {
                         if store.update("关联心愿购买记录", { try Wishlist.markBought(wishID, entryID: entry.id, in: &$0) }) { dismiss() }
@@ -116,7 +116,7 @@ private struct WishFollowUpView: View {
     @State private var text = ""
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            Text("用下来，觉得值吗？").yubaiFont(YubaiFont.rowTitle)
+            Text("用得怎么样？").yubaiFont(YubaiFont.rowTitle)
             TextField("想补充的话（可选）", text: $text, axis: .vertical).lineLimit(1...4)
             ViewThatFits(in: .horizontal) {
                 HStack { choices }

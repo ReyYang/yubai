@@ -88,7 +88,7 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
         case .expense: "支出"; case .income: "收入"; case .transfer: "自有账户转账"; case .repayment: "信用还款"
         case .borrow: "借入本金"; case .lend: "借出本金"; case .loanReturn: "归还借款"; case .loanRecovery: "收回借款"
         case .refund: "消费退款"; case .contribution: "收到分摊"; case .investBuy: "投资申购"; case .investSell: "投资赎回"
-        case .adjustmentIn: "调增余额"; case .adjustmentOut: "调减余额"; case .unknownIn: "待明确流入"; case .unknownOut: "待明确流出"
+        case .adjustmentIn: "调增余额"; case .adjustmentOut: "调减余额"; case .unknownIn: "没写用途的进账"; case .unknownOut: "没写用途的出账"
         }
     }
     public var inflow: Bool { [.income, .borrow, .loanRecovery, .refund, .contribution, .investSell, .adjustmentIn, .unknownIn].contains(self) }
@@ -312,7 +312,19 @@ public struct SpendingProfile: Codable, Equatable, Sendable {
     }
 }
 public enum MemoryKind: String, Codable, CaseIterable, Hashable, Sendable { case plan, value, life }
-public enum MemorySource: String, Codable, CaseIterable, Sendable { case chat, followUp, importAnswer, feedback, reflection, user }
+public enum MemorySource: String, Codable, CaseIterable, Sendable {
+    case chat, followUp, importAnswer, feedback, reflection, user
+    public var label: String {
+        switch self {
+        case .chat: "聊天时"
+        case .followUp: "买了一个月 · 用得怎么样？"
+        case .importAnswer: "导入时问过"
+        case .feedback: "你点过的提醒"
+        case .reflection: "每周来信"
+        case .user: "你写的"
+        }
+    }
+}
 public struct MemoryNote: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID; public var text: String; public var kind: MemoryKind; public var source: MemorySource
     public var createdAt: Date; public var updatedAt: Date; public var previousText: String?
@@ -511,13 +523,13 @@ public struct Ledger: Codable, Equatable, Sendable {
               Set(attachments.map(\.id)).count == attachments.count else { throw YubaiError.invalid("账本包含重复标识，无法安全读取。") }
         guard Set(cards.map(\.id)).count == cards.count, Set(wishlist.map(\.id)).count == wishlist.count,
               Set(pendingChanges.map(\.id)).count == pendingChanges.count,
-              Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或提案包含重复标识。") }
+              Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或修改包含重复标识。") }
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.name)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
         guard Set(memories.map(\.id)).count == memories.count else { throw YubaiError.invalid("记忆包含重复标识。") }
         for note in memories { try Memory.validate(note) }
         if let week = lastReflectionWeek {
-            guard MemoryReflection.validWeek(week) else { throw YubaiError.invalid("每周回看的周次无效。") }
+            guard MemoryReflection.validWeek(week) else { throw YubaiError.invalid("每周来信的周次无效。") }
         }
         guard categoryMemory.allSatisfy({ !$0.key.isEmpty && $0.key.count <= 4000 && CategoryMemory.key($0.key) == $0.key &&
             !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.value.count <= 200 }) else { throw YubaiError.invalid("分类对照表无效。") }
@@ -552,7 +564,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         for change in pendingChanges { try change.validateStructure() }
         for p in plans { guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true else { throw YubaiError.invalid("资金安排信息无效。") } }
         guard plans.reduce(Int64(0), { $0 + $1.amount }) <= Money.limit else { throw YubaiError.invalid("所有安排总额超出安全计算范围。") }
-        for g in goals { guard g.target > 0, g.target <= Money.limit, g.reserved >= 0, g.reserved <= g.target, !g.title.isEmpty else { throw YubaiError.invalid("目标金额或预留金额无效。") } }
+        for g in goals { guard g.target > 0, g.target <= Money.limit, g.reserved >= 0, g.reserved <= g.target, !g.title.isEmpty else { throw YubaiError.invalid("想存金额或已存金额无效。") } }
         for r in rents { guard r.monthlyTotal > 0, r.monthlyTotal <= Money.limit / 12, r.personalShare >= 0, r.personalShare <= r.monthlyTotal, (1...12).contains(r.monthsPerPayment), (1...28).contains(r.receiveDay), dateValid(r.startDate), dateValid(r.nextDueDate), r.endDate.map({ dateValid($0) && $0 >= r.startDate }) ?? true else { throw YubaiError.invalid("房租金额、分摊或周期无效。") } }
         guard (7...366).contains(preferences.horizonDays), preferences.emergencyReserve >= 0, preferences.emergencyReserve <= Money.limit,
               preferences.dailyLiving >= 0, preferences.dailyLiving <= Money.limit / 366 else { throw YubaiError.invalid("资金偏好数值无效。") }
@@ -577,7 +589,7 @@ private extension Ledger {
                   a.confirmedAt.map(date) ?? true,
                   a.match.categories.allSatisfy(text), a.match.keywords.allSatisfy(text),
                   (a.softLimit?.perWeekCount).map({ (0...10_000).contains($0) }) ?? true,
-                  (a.softLimit?.perMonthAmount).map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("消费领域或柔性提醒数值无效。") }
+                  (a.softLimit?.perMonthAmount).map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("消费领域、次数或金额无效。") }
         }
         for c in cards {
             // Evidence and action targets can have been deleted or dismissed since creation.
@@ -587,9 +599,9 @@ private extension Ledger {
                   c.facts.map({ $0.count <= 1000 && $0.allSatisfy { text($0.label) && $0.value.count <= 4000 } }) ?? true else { throw YubaiError.invalid("管家卡片无效。") }
             if let letter = c.letter {
                 guard date(letter.weekEnding), letter.series.count == 7, letter.series.allSatisfy({ date($0.date) }),
-                      Set(letter.series.map(\.date)).count == 7, letter.evidence.count <= 1000 else { throw YubaiError.invalid("每周来信依据无效。") }
+                      Set(letter.series.map(\.date)).count == 7, letter.evidence.count <= 1000 else { throw YubaiError.invalid("每周来信明细无效。") }
                 guard letter.learned?.allSatisfy({ Memory.validText($0.text, limit: 40) }) ?? true,
-                      letter.review.map({ date($0.confirmedAt) && text($0.text) && $0.usage.allSatisfy { date($0.weekStart) && $0.count >= 0 && $0.amount >= 0 } }) ?? true else { throw YubaiError.invalid("来信中的记忆或画像回顾无效。") }
+                      letter.review.map({ date($0.confirmedAt) && text($0.text) && $0.usage.allSatisfy { date($0.weekStart) && $0.count >= 0 && $0.amount >= 0 } }) ?? true else { throw YubaiError.invalid("每周来信中的记忆或消费观问题无效。") }
             }
         }
         for w in wishlist {

@@ -17,30 +17,24 @@ struct SettingsView: View {
                         HStack { Text("我的消费观").yubaiFont(YubaiFont.cardTitle); Spacer(); chevron }
                         profileLine("想克制", store.current.profile.restrain.map(\.title).joined(separator: "、"))
                         profileLine("愿意多花", store.current.profile.generous.map(\.title).joined(separator: "、"))
-                        if let floor = store.current.profile.floorAmount { profileLine("底线", store.current.preferences.hideAmounts ? "••••" : Money.text(floor, currency: false)) }
+                        if let floor = store.current.profile.floorAmount { profileLine("始终留着", store.current.preferences.hideAmounts ? "••••" : Money.text(floor, currency: false)) }
+                        Text("余白记得的 · " + memoryCount).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                         if store.current.profile.restrain.isEmpty && store.current.profile.generous.isEmpty && store.current.profile.floorAmount == nil {
-                            Text("慢慢知道，什么值得。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+                            Text("还没写消费观。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
                         }
                     }
                 }
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
-            NavigationLink { MemoryView() } label: {
-                Card(style: .compact) {
-                    HStack(spacing: YubaiSpace.space12) {
-                        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                            Text("余白记得的").yubaiFont(YubaiFont.rowTitle)
-                            Text(memoryCount).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                        }
-                        Spacer(); chevron
+            Card(style: .list) {
+                VStack(spacing: 0) {
+                    NavigationLink { WishlistView() } label: {
+                        ViewThatFits(in: .horizontal) {
+                            HStack { wishlistTitle; Spacer(); followUp; chevron }
+                            VStack(alignment: .leading, spacing: 8) { wishlistTitle; followUp }
+                        }.frame(minHeight: YubaiSize.tapMin)
                     }
-                }
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openMemories")
-            NavigationLink { WishlistView() } label: {
-                Card {
-                    ViewThatFits(in: .horizontal) {
-                        HStack { wishlistTitle; Spacer(); followUp; chevron }
-                        VStack(alignment: .leading, spacing: 8) { wishlistTitle; followUp }
-                    }
+                    separator
+                    NavigationLink { LettersView() } label: { row("每周来信", detail: latestLetter) }
                 }
             }.buttonStyle(PressButtonStyle())
             NavigationLink { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
@@ -56,8 +50,6 @@ struct SettingsView: View {
             }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: 0) {
-                    NavigationLink { LettersView() } label: { row("来信", detail: latestLetter) }
-                    separator
                     NavigationLink { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")
                     separator
                     NavigationLink { IntelligencePrivacyView() } label: {
@@ -71,8 +63,6 @@ struct SettingsView: View {
                     }.accessibilityIdentifier("openIntelligencePrivacy")
                     separator
                     NavigationLink { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
-                    separator
-                    NavigationLink { GuideView() } label: { row("使用指南") }
                 }
             }.buttonStyle(PressButtonStyle())
         }.amountPrivacy(store.current.preferences.hideAmounts).safeAreaPadding(.bottom, YubaiSize.rootBottomPadding).navigationTitle("我")
@@ -90,7 +80,7 @@ struct SettingsView: View {
     private var memoryCount: String {
         let week = ButlerCards.isoWeek(Date())
         let added = store.current.memories.filter { ButlerCards.isoWeek($0.createdAt) == week }.count
-        return "\(store.current.memories.count) 条" + (added > 0 ? " · 这周新记了 \(added) 条" : "")
+        return "\(store.current.memories.count) 条 · 这周新记了 \(added) 条"
     }
     private var wishlistTitle: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -99,7 +89,7 @@ struct SettingsView: View {
         }
     }
     @ViewBuilder private var followUp: some View {
-        if followUpCount > 0 { Pill(text: "\(followUpCount) 件该回访了", variant: .amber, showsDot: false) }
+        if followUpCount > 0 { Pill(text: "\(followUpCount) 件买了一个月", variant: .amber, showsDot: false) }
     }
     private var accountsCard: some View {
         let cash = store.current.accounts.filter { $0.kind == .bank || $0.kind == .cash }
@@ -172,7 +162,7 @@ struct IntelligencePrivacyView: View {
                     NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开后发了 \(sendCount) 次", chevron: true) }
                         .buttonStyle(PressButtonStyle())
                 }
-                Text("会发出去：问题原文、记录的金额、日期、分类、商户和备注。不会发：账户名、卡号、交易单号、附件；转账对象的名字换成「联系人A」。")
+                Text("发送：问题、金额、日期、分类、商户和备注。不发送：账户名、卡号、交易单号、附件；转账姓名以「联系人A」显示。")
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space4)
             }
             // Retain the existing device and notification preferences below the cloud/privacy groups.
@@ -273,10 +263,9 @@ struct BackupView: View {
 
     private var exportSection: some View {
         Section("完整备份") {
-            Text("包括账户、记录、安排、目标和原始账单附件。备份包含所有附件，可通过系统分享或文件传递；可用时可在上方选择 iCloud 同步。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             SecureField("备份密码（至少 8 位）", text: $password).focused($passwordFocus, equals: .export)
             Button("导出完整备份", action: exportBackup).disabled(busy || password.count < 8)
-            Text("完整备份使用密码加密。密码无法找回，请妥善保存；文件只写到你选择的位置。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            Text("密码无法找回，请妥善保存。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var restoreSection: some View {
@@ -284,7 +273,7 @@ struct BackupView: View {
             SecureField("如果备份已加密，填写密码", text: $restorePassword).focused($passwordFocus, equals: .restore)
             Button("选择备份文件") { passwordFocus = nil; importing = true }.disabled(busy)
             if restoreData != nil { Button("使用当前密码重新读取", action: readBackup).disabled(busy) }
-            Text("先验证备份，再由你确认切换。当前账本会先保留到恢复版本，不会合并为两份重复记录。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            Text("请选择备份文件，核对后确认恢复。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
 }
@@ -334,7 +323,7 @@ struct RecoveryVersionsView: View {
     @State private var target: Recovery?
     var body: some View {
         Page {
-            Text("修改前的完整账本，最多保留 20 份。恢复前会再保留当前版本。")
+            Text("最近 20 份账本")
                 .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             CardRows(recoveries) { recovery in
                 Button { target = recovery } label: {
@@ -349,26 +338,5 @@ struct RecoveryVersionsView: View {
             .confirmationDialog("恢复到这个版本？当前账本会先保留。", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } })) {
                 Button("恢复所选版本") { if let target, store.recover(target) { dismiss() }; target = nil }
             }
-    }
-}
-
-struct GuideView: View {
-    var body: some View {
-        Page {
-            explanation("现在", "这里有每周来信、管家卡片、保守可动用和接下来要付的钱。先添加账户并核对真实余额，再导入历史账单。旧账单不会重复增加当前余额。")
-            explanation("保守可动用", "看未来 90 天：现金扣去信用待还、已知付款、储蓄目标、你写下的底线、估算的日常生活费，以及余额核对后待明确的流入。未来收入和投资市值不提前当现金。点金额可看计算依据；记录少或余额过旧时，判断也会有缺口。")
-            explanation("管家什么时候开口", "碰到你想克制的消费，或钱不够覆盖付款时，管家才主动提醒。整理中的疑问、需要核对的余额和心愿回访也会留成卡片。觉得不需要，可以选「知道了」；选「以后别提」，这个话题以后就不再出现。")
-            explanation("问余白", "问数字、看依据，也可以说一句话补记或上传截图。数字来自你的账本；回答中的「依据」能打开原始记录。修改先列出来，等你确认。AI 不会改动已有记录的金额、主账户和原始日期，补记金额也要由你核对。")
-            explanation("我的消费观", "在「我」写下愿意多花、想克制的领域和自己的原则，也可以留储蓄目标与始终留着的底线。它们是你的选择，随时能改；「你常花的」只是账本里的习惯。")
-            explanation("导入账单", "支持 CSV、TSV 和 XLSX。对应好实际付款账户，保存后自动整理分类、用途和关联，最多问五个问题，稍后答也可以。云端不可用时先保存，下次继续。需要反悔，可在「我 → 导入记录」整批撤销。")
-            explanation("智能与隐私", "云端智能默认关闭。开启后，DeepSeek 会收到你的提问、消费观及任务所需的记录摘要：日期、金额、分类、用途和有限关联证据。截图先在本机识别，只发送脱敏文字；不发送原始图片、账单文件、交易单号或来源指纹，账户使用本地标识，长号码遮盖，部分转账姓名替换为别名。商户和备注仍可能出现在摘要里，脱敏不能识别所有姓名。到「我 → 智能与隐私 → 发给云端的内容」查看本次打开期间最近 50 次发送。密钥保存在本机 Keychain，不进入账本或备份。")
-            explanation("备份与恢复", "在「我 → 备份与恢复」设置至少 8 位密码，保存加密的完整备份，包含原始账单附件。密码请自己留好。恢复先验证，再等你确认；修改前的最近 20 份完整版本也能找回。iPhone 和 Mac 用同一格式；默认仅本机，iCloud 可用时，可在「备份与恢复」选择共享账本。同步冲突会保留各版本，由你选择，不自动合并。")
-        }.navigationTitle("使用指南").yubaiNavigation().toolbar { CloseButton() }
-    }
-    private func explanation(_ title: String, _ text: String) -> some View {
-        Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            SectionHeading(title: title)
-            Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted)
-        } }
     }
 }

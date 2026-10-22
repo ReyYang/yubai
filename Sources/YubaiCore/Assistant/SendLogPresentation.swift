@@ -19,7 +19,7 @@ public enum SendLogPresentation {
         switch name {
         case "get_profile": return "账户和消费观"
         case "query_entries": return "查账目"
-        case "get_funds": return "算可支配的钱"
+        case "get_funds": return "算还能花"
         case "forecast": return "看现金会怎么走"
         case "summarize": return "汇总收支"
         case "compare_to_habit": return "和平时的花费比一比"

@@ -1,5 +1,18 @@
 # 余白 · 交付与验证记录
 
+## 五个界面概念（2026-10-21）
+
+本轮仅按 owner 的文案与指定结构任务调整界面；[采用映射](../.design-meta/DESIGN.md#2026-10-21--五个界面概念)、[界面用词](../CONTEXT.md#界面用词)与[决定来源](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-21--五个界面概念owner-明确要求)已同步。
+
+- 使用 `/opt/swift-rootfs/usr/bin/swift`（Swift 6.2.4），配置 `/tmp` 内模块缓存后运行 `swift test`：332 项 XCTest，328 通过，4 项原有实网 opt-in 跳过，0 失败（0 unexpected），36.069 秒。首轮三个旧文案断言失败，已仅同步预期字符串并完整重跑通过；未新增跳过或调用真实模型。
+- 新增 `InterfaceVocabularyTests`：扫描 `Sources/YubaiApp/*.swift` 的字符串，禁止 owner 指定的 11 个旧词，排除注释；扫描器覆盖嵌套块注释、字符串内注释标记、原始／多行字符串和插值内字符串。另核对记忆来源原值与旧分类占位原值保持，新词只用于展示。
+- 运行 `swiftc -frontend -parse Sources/YubaiApp/*.swift Tests/YubaiUITests/AppFlowTests.swift`，退出 0。更新记忆 UI 流程为「我 → 我的消费观 → 全部 N 条」；该 UI 测试未运行。
+- 已重跑工程生成器登记新测试；`git diff --check` 通过。财务规模对照、存档／Codable 兼容及 PR #18 的 OffCharacter／合并卡片回归均包含在上述完整测试内。未修改资金算法、模型存储字段、Codable 键、枚举原值、去重键或迁移已有数据。
+
+分支 `refactor/five-user-concepts` 基于 PR #18 最新提交 `105c280`；本轮核对时 PR #18 尚未合并，远端 main 为 `81c8b2c`，因此尚未完成「合入后对齐 main」的前提。不代为合并该 PR，不提交或推送。
+
+Linux 包清单排除 YubaiApp，因此语法解析不能证明 SwiftUI／Apple API 类型检查或运行效果。Apple 构建、iPhone／Mac 布局、大字号、VoiceOver、通知与真实模型生成文案仍待验证；Figma、历史稿、截图及分发包未同步。
+
 ## 管家的话 V7 异常消费卡（2026-10-21）
 
 按 owner 本轮提供的 [V7 文案与规则](../.design-meta/mockups/butler-unusual-v7.md)实现。执行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH; swift build && swift test`：构建退出 0，329 项 XCTest，325 通过、4 项原有实网 opt-in 测试跳过、0 失败（0 unexpected），33.760 秒。没有新增跳过；依赖已在本地，无需网络抓取。SwiftPM 用户级缓存不可写的警告未阻止构建或测试。
