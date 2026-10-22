@@ -37,12 +37,12 @@ struct EntriesView: View {
                 .padding(.horizontal, YubaiSpace.space18).padding(.top, 14).padding(.bottom, 24)
                 .frame(maxWidth: 780).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).amountPrivacy(store.current.preferences.hideAmounts)
-            .navigationTitle("账目").yubaiNavigation()
+            .navigationTitle("账目").yubaiNavigation(hidesTabBar: false)
             .toolbar { ToolbarItem(placement: .primaryAction) {
-                Button("记一笔") { store.sheetSource = nil; store.sheet = .addEntry }
+                Button("记一笔") { store.present(.addEntry, from: "entries-add") }
                     .yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.onBrand)
                     .padding(.horizontal, 14).frame(height: 36).background(YubaiColor.brand, in: Capsule())
-                    .buttonStyle(PressButtonStyle()).yubaiZoomSource("add").accessibilityIdentifier("addFromEntries")
+                    .buttonStyle(PressButtonStyle()).yubaiZoomSource("entries-add").accessibilityIdentifier("addFromEntries")
             } }
     }
     private func monthHeading(_ month: EntryMonth) -> some View {
