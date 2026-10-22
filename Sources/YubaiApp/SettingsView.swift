@@ -40,14 +40,8 @@ struct SettingsView: View {
             }.buttonStyle(PressButtonStyle())
             NavigationLink { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
-                VStack(spacing: 0) {
-                    NavigationLink { EntriesView().yubaiZoomDestination("me-entries") } label: {
-                        row("账目", detail: "今天 \(TodayEntries(in: store.current).count) 笔").yubaiZoomSource("me-entries")
-                    }.accessibilityIdentifier("openEntries")
-                    separator
-                    NavigationLink { FixedFlowsView() } label: { row("固定收付", detail: fixedFlowsDetail) }
-                        .accessibilityIdentifier("openFixedFlows")
-                }
+                NavigationLink { FixedFlowsView() } label: { row("固定收付", detail: fixedFlowsDetail) }
+                    .accessibilityIdentifier("openFixedFlows")
             }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: 0) {
