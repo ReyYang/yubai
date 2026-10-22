@@ -276,14 +276,88 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(title.exists)
         XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
         let start = card.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.35))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -70, dy: 0)))
-        XCTAssertTrue(app.buttons["知道了"].waitForExistence(timeout: 5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -card.frame.width * 0.15, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        assertGone(app.buttons["知道了"])
         XCTAssertTrue(title.exists)
         XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
         let dismiss = card.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.35))
-        dismiss.press(forDuration: 0.05, thenDragTo: dismiss.withOffset(CGVector(dx: -210, dy: 0)))
+        dismiss.press(forDuration: 0.05, thenDragTo: dismiss.withOffset(CGVector(dx: -card.frame.width * 0.35, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
         assertGone(title)
         XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
+    }
+
+    func testButlerFastShortSwipeDismisses() {
+        let app = application("restrain"); app.launch()
+        let title = app.staticTexts["butlerTitle_restrain"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        let card = app.descendants(matching: .any).matching(identifier: "butlerCard_restrain").firstMatch
+        let start = card.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.35))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -card.frame.width * 0.2, dy: 0)), withVelocity: XCUIGestureVelocity(1200), thenHoldForDuration: 0)
+        assertGone(title)
+        XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
+    }
+
+    func testLedgerRowSwipesDoNotOpenEditorAndTapStillWorks() {
+        let app = application("ask"); app.launch()
+        tap(app.tabBars.buttons["账目"], in: app)
+        XCTAssertFalse(app.buttons["addFromEntries"].exists)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -40, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(app.tabBars.buttons["账目"].isSelected)
+        XCTAssertFalse(app.textFields["editEntryAmount"].exists)
+        start.press(forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: app.tabBars.buttons["我"])
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed)
+        XCTAssertFalse(app.textFields["editEntryAmount"].exists); XCTAssertFalse(app.buttons["saveQuickEntry"].exists)
+        tap(app.tabBars.buttons["账目"], in: app); tap(row, in: app)
+        XCTAssertTrue(app.textFields["editEntryAmount"].waitForExistence(timeout: 5))
+        tap(app.buttons["cancelManualSheet"], in: app)
+        tap(addEntryTab(app), in: app)
+        XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
+    }
+
+    func testDonutSwipeDoesNotSelectSlice() {
+        let app = application("ask"); app.launch()
+        tap(app.tabBars.buttons["洞察"], in: app)
+        let summary = app.buttons["donutSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        let start = summary.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 78, dy: 0))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -app.frame.width * 0.5, dy: 0)))
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: app.tabBars.buttons["账目"])
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed)
+        tap(app.tabBars.buttons["洞察"], in: app)
+        XCTAssertTrue(summary.waitForExistence(timeout: 5)); XCTAssertTrue(summary.label.contains("支出合计"))
+        XCTAssertFalse(app.buttons["donutSlice_0"].isSelected)
+    }
+
+    func testLedgerRowsStillScrollVerticallyAndOpenWithTap() {
+        let app = application("entries"); app.launch()
+        tap(app.tabBars.buttons["账目"], in: app)
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' "))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
+        let first = app.buttons[rows.firstMatch.identifier]
+        let start = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)))
+        XCTAssertTrue(app.tabBars.buttons["账目"].isSelected); XCTAssertFalse(app.textFields["editEntryAmount"].exists)
+        XCTAssertFalse(first.isHittable)
+        let visible = rows.allElementsBoundByIndex.first { $0.isHittable }
+        XCTAssertNotNil(visible)
+        if let visible { tap(visible, in: app) }
+        XCTAssertTrue(app.textFields["editEntryAmount"].waitForExistence(timeout: 5))
+    }
+
+    func testOverviewRowSwipeAtTabBoundaryDoesNotTapRow() {
+        let app = application("ask"); app.launch()
+        let row = app.buttons["todayEntries"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)))
+        XCTAssertTrue(app.tabBars.buttons["现在"].isSelected)
+        XCTAssertFalse(app.buttons["saveQuickEntry"].exists)
+        tap(row, in: app)
+        XCTAssertTrue(app.textFields["entriesSearch"].waitForExistence(timeout: 5))
     }
 
     func testForecastHoldAndDragKeepsTheCurrentTab() {
@@ -523,6 +597,18 @@ final class AppFlowTests: XCTestCase {
 
 /// The same Foundation-only source is compiled into the app and this test bundle.
 final class MotionStateTests: XCTestCase {
+    func testForecastPlaysOncePerVisitAcrossScrollingAndViewLifetimes() {
+        var motion = MotionVisitState()
+        XCTAssertTrue(motion.claim(0)); XCTAssertFalse(motion.claim(0))
+        XCTAssertTrue(motion.claim(1)); XCTAssertFalse(motion.claim(1))
+        XCTAssertTrue(motion.claim(2)); XCTAssertFalse(motion.claim(2))
+    }
+    func testReducedMotionSkipsPlaybackAndDoesNotReplayDuringSameVisit() {
+        var motion = MotionVisitState()
+        XCTAssertFalse(motion.claim(0, reduceMotion: true)); XCTAssertFalse(motion.claim(0))
+        XCTAssertTrue(motion.claim(1)); XCTAssertFalse(motion.claim(1, reduceMotion: true))
+        XCTAssertTrue(motion.claim(2))
+    }
     func testChartClaimsSurviveViewLifetimesAndStayIndependent() {
         var session = MotionSessionState()
         XCTAssertFalse(session.contains("forecast"))

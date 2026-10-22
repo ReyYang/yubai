@@ -138,13 +138,13 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var amount: Int64; public var dueDate: Date
     public var frequency: Frequency; public var inflow: Bool; public var accountID: UUID?
     public var category: String; public var nature: Nature; public var active = true
-    public var endDate: Date?; public var note = ""
+    public var endDate: Date?; public var stoppedAt: Date?; public var note = ""
     public var autoPay = false; public var autoPaySince: Date?
     public var installments: Int?; public var estimated = false
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = "其他支出", nature: Nature = .expense) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
     }
-    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, note, autoPay, autoPaySince, installments, estimated }
+    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
@@ -153,6 +153,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         accountID = try c.decodeIfPresent(UUID.self, forKey: .accountID)
         category = try c.decode(String.self, forKey: .category); nature = try c.decode(Nature.self, forKey: .nature)
         active = try c.decodeIfPresent(Bool.self, forKey: .active) ?? true; endDate = try c.decodeIfPresent(Date.self, forKey: .endDate)
+        stoppedAt = try c.decodeIfPresent(Date.self, forKey: .stoppedAt)
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
         autoPay = try c.decodeIfPresent(Bool.self, forKey: .autoPay) ?? false
         autoPaySince = try c.decodeIfPresent(Date.self, forKey: .autoPaySince)
@@ -195,7 +196,7 @@ public struct Rent: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var monthlyTotal: Int64; public var personalShare: Int64
     public var startDate: Date; public var nextDueDate: Date; public var monthsPerPayment: Int
     public var receiveDay: Int; public var accountID: UUID?; public var active = true; public var note = ""
-    public var endDate: Date?
+    public var endDate: Date?; public var stoppedAt: Date?
     public init(title: String = "合租房租", monthlyTotal: Int64, personalShare: Int64, startDate: Date, nextDueDate: Date, monthsPerPayment: Int = 3, receiveDay: Int = 1) {
         self.title = title; self.monthlyTotal = monthlyTotal; self.personalShare = personalShare; self.startDate = startDate; self.nextDueDate = nextDueDate; self.monthsPerPayment = monthsPerPayment; self.receiveDay = receiveDay
     }
@@ -624,10 +625,10 @@ public struct Ledger: Codable, Equatable, Sendable {
         try validateProfileAndCards()
         for change in pendingChanges { try change.validateStructure() }
         for p in plans { guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true,
-                              p.autoPaySince.map(dateValid) ?? true, p.installments.map({ $0 > 0 }) ?? true else { throw YubaiError.invalid("资金安排信息无效。") } }
+                              p.stoppedAt.map(dateValid) ?? true, p.autoPaySince.map(dateValid) ?? true, p.installments.map({ $0 > 0 }) ?? true else { throw YubaiError.invalid("资金安排信息无效。") } }
         guard plans.reduce(Int64(0), { $0 + $1.amount }) <= Money.limit else { throw YubaiError.invalid("所有安排总额超出安全计算范围。") }
         for g in goals { guard g.target > 0, g.target <= Money.limit, g.reserved >= 0, g.reserved <= g.target, !g.title.isEmpty else { throw YubaiError.invalid("想存金额或已存金额无效。") } }
-        for r in rents { guard r.monthlyTotal > 0, r.monthlyTotal <= Money.limit / 12, r.personalShare >= 0, r.personalShare <= r.monthlyTotal, (1...12).contains(r.monthsPerPayment), (1...28).contains(r.receiveDay), dateValid(r.startDate), dateValid(r.nextDueDate), r.endDate.map({ dateValid($0) && $0 >= r.startDate }) ?? true else { throw YubaiError.invalid("房租金额、分摊或周期无效。") } }
+        for r in rents { guard r.monthlyTotal > 0, r.monthlyTotal <= Money.limit / 12, r.personalShare >= 0, r.personalShare <= r.monthlyTotal, (1...12).contains(r.monthsPerPayment), (1...28).contains(r.receiveDay), dateValid(r.startDate), dateValid(r.nextDueDate), r.endDate.map({ dateValid($0) && $0 >= r.startDate }) ?? true, r.stoppedAt.map(dateValid) ?? true else { throw YubaiError.invalid("房租金额、分摊或周期无效。") } }
         guard (7...366).contains(preferences.horizonDays), preferences.emergencyReserve >= 0, preferences.emergencyReserve <= Money.limit,
               preferences.dailyLiving >= 0, preferences.dailyLiving <= Money.limit / 366 else { throw YubaiError.invalid("资金偏好数值无效。") }
     }

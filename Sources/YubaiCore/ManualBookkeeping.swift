@@ -223,6 +223,23 @@ public enum FixedFlows {
 public struct FixedFlowArrangement: Identifiable, Sendable {
     public let id: UUID; public let title: String; public let detail: String; public let amount: Int64; public let inflow: Bool; public let canEnd: Bool
     public var paidCount: Int = 0; public var total: Int? = nil
+    public var stoppedAt: Date? = nil
+    public static func stopped(in ledger: Ledger, now: Date = Date()) -> [Self] {
+        let payments = FixedFlowPayments(in: ledger)
+        var rows = ledger.plans.compactMap { plan -> Self? in
+            let date = plan.stoppedAt ?? plan.endDate
+            guard date.map({ $0 <= now }) ?? !plan.active else { return nil }
+            return Self(id: plan.id, title: plan.title, detail: schedule(plan.frequency, date: plan.dueDate, now: now),
+                        amount: payments.amount(for: plan), inflow: plan.inflow, canEnd: false, total: plan.installments, stoppedAt: date)
+        }
+        rows += ledger.rents.compactMap { rent -> Self? in
+            let date = rent.stoppedAt ?? rent.endDate
+            guard date.map({ $0 <= now }) ?? !rent.active else { return nil }
+            return Self(id: rent.id, title: rent.title, detail: "每 \(rent.monthsPerPayment) 月", amount: rent.monthlyTotal * Int64(rent.monthsPerPayment),
+                        inflow: false, canEnd: false, stoppedAt: date)
+        }
+        return rows.sorted { $0.stoppedAt == $1.stoppedAt ? $0.id.uuidString < $1.id.uuidString : ($0.stoppedAt ?? .distantPast) > ($1.stoppedAt ?? .distantPast) }
+    }
     public static func rows(in ledger: Ledger, now: Date = Date()) -> [Self] {
         let occurrences = Finance.occurrences(in: ledger, now: now, days: 90)
         var next: [UUID: Occurrence] = [:]

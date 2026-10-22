@@ -1270,10 +1270,22 @@ struct ProposalCard: View {
     }
 }
 
+private struct ChartReveal: Shape {
+    var progress: Double
+    var animatableData: Double { get { progress } set { progress = newValue } }
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(x: rect.minX, y: rect.minY - YubaiSpace.space24, width: rect.width * min(1, max(0, progress)), height: rect.height + YubaiSpace.space24 * 2))
+    }
+}
+
 struct ForecastChart: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pointVisible = YubaiMotion.hasAppeared("forecast-point")
+    @State private var lineProgress: Double = 0
+    @State private var pointVisible = false
+    @State private var endpointVisible = false
+    @State private var appeared = false
+    @State private var visible = false
     @State private var ringVisible = false
     @State private var ringProgress: CGFloat = 0
     @GestureState private var scrubbing = false
@@ -1300,32 +1312,33 @@ struct ForecastChart: View {
         }.tabSwipeReserved()
     }
     private var forecastPlot: some View {
-        ChartGrow(key: "forecast-line") { progress in
-            Chart {
-                ForEach(funds.points) { point in
-                    LineMark(x: .value("日期", point.date), y: .value("还能花", Double(point.conservative) / 100))
-                        .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand)
-                }
-                RuleMark(y: .value("零点", 0))
-                    .foregroundStyle(YubaiColor.chartRule).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                if let point = selectedPoint {
-                    RuleMark(x: .value("选中日期", point.date)).foregroundStyle(YubaiColor.chartGuide)
-                    PointMark(x: .value("日期", point.date), y: .value("还能花", Double(point.conservative) / 100))
-                        .foregroundStyle(YubaiColor.brand)
-                }
-                if let last = funds.points.last {
-                    PointMark(x: .value("日期", last.date), y: .value("还能花", Double(last.conservative) / 100))
-                        .foregroundStyle(YubaiColor.brand).annotation(position: .top, alignment: .trailing, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
-                            AmountLabel(cents: last.conservative, role: .chart).fixedSize()
-                        }
-                }
-            }.chartYAxis(.hidden).chartLegend(.hidden)
-                .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month()) } }
-                .chartPlotStyle { plot in plot.mask(alignment: .leading) { GeometryReader { geometry in
-                    Rectangle().frame(width: geometry.size.width * progress)
-                } } }
-                .chartOverlay { proxy in forecastOverlay(proxy) }.frame(height: height)
-        }.accessibilityElement(children: .ignore).accessibilityLabel(chartDescription)
+        let visit = store.overviewVisit; let active = store.destination == .overview && appeared && visible; let reduced = reduceMotion
+        return Chart {
+            ForEach(funds.points) { point in
+                LineMark(x: .value("日期", point.date), y: .value("还能花", Double(point.conservative) / 100))
+                    .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand)
+            }
+            RuleMark(y: .value("零点", 0))
+                .foregroundStyle(YubaiColor.chartRule).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            if let point = selectedPoint {
+                RuleMark(x: .value("选中日期", point.date)).foregroundStyle(YubaiColor.chartGuide)
+                PointMark(x: .value("日期", point.date), y: .value("还能花", Double(point.conservative) / 100))
+                    .foregroundStyle(YubaiColor.brand)
+            }
+            if let last = funds.points.last {
+                PointMark(x: .value("日期", last.date), y: .value("还能花", Double(last.conservative) / 100))
+                    .foregroundStyle(YubaiColor.brand).symbolSize(0)
+                    .annotation(position: .top, alignment: .trailing, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                        AmountLabel(cents: last.conservative, role: .chart).fixedSize().opacity(reduceMotion || endpointVisible ? 1 : 0)
+                    }
+            }
+        }.chartYAxis(.hidden).chartLegend(.hidden)
+            .chartXScale(range: .plotDimension(padding: YubaiSpace.space8))
+            .chartYScale(range: .plotDimension(padding: YubaiSpace.space18))
+            .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month()) } }
+            .chartPlotStyle { plot in plot.mask(ChartReveal(progress: reduceMotion ? 1 : lineProgress)) }
+            .chartOverlay { proxy in forecastOverlay(proxy) }.frame(height: height)
+            .accessibilityElement(children: .ignore).accessibilityLabel(chartDescription)
             .accessibilityValue(accessibleDay.flatMap { date in funds.points.first { $0.date == date } }.map(readoutDescription) ?? "")
             .accessibilityHint("上下轻扫逐天查看")
             .accessibilityAdjustableAction { direction in
@@ -1341,28 +1354,31 @@ struct ForecastChart: View {
                 if accessibleDay != date { accessibleDay = date; selectionTrigger &+= 1 }
             }
             .accessibilityIdentifier("forecastChart")
+            .onGeometryChange(for: Bool.self) { geometry in
+                let bounds = CGRect(origin: .zero, size: geometry.size)
+                return !bounds.isEmpty && (geometry.bounds(of: .scrollView)?.intersects(bounds) ?? true)
+            } action: { visible = $0 }
             .onChange(of: scrubbing) { _, active in if !active { endScrub() } }
             #if os(iOS)
             .sensoryFeedback(.selection, trigger: selectionTrigger)
             #endif
-            .task {
-                guard YubaiMotion.claim("forecast-point"), !reduceMotion else { finishPoint(); return }
-                do {
-                    try await Task.sleep(for: .seconds(YubaiMotion.pointDelay))
-                    withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { pointVisible = true }
-                    guard (lowPoint?.conservative ?? 0) < 0 else { return }
-                    try await Task.sleep(for: .seconds(YubaiMotion.ringDelay - YubaiMotion.pointDelay))
-                    ringVisible = true
-                    withAnimation(YubaiMotion.ring(reduceMotion: reduceMotion)) { ringProgress = 1 }
-                } catch { finishPoint() }
-            }.onDisappear { finishPoint() }
-            .onChange(of: reduceMotion) { _, reduced in if reduced { finishPoint() } }
+            .task(id: "\(visit)-\(active)-\(reduced)") { await playForecast(visit: visit, active: active, reduced: reduced) }
+            .onAppear { appeared = true }
+            .onDisappear { appeared = false; finishForecast() }
     }
     private func forecastOverlay(_ proxy: ChartProxy) -> some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(.clear).contentShape(Rectangle())
                     .gesture(scrubGesture(proxy, geometry: geometry))
+                if let point = funds.points.last, let plot = proxy.plotFrame,
+                   let x = proxy.position(forX: point.date), let y = proxy.position(forY: Double(point.conservative) / 100) {
+                    let frame = geometry[plot]
+                    Circle().fill(YubaiColor.brand).frame(width: YubaiSize.marker, height: YubaiSize.marker)
+                        .opacity(reduceMotion || endpointVisible ? 1 : 0)
+                        .offset(y: reduceMotion || endpointVisible ? 0 : -YubaiSpace.space8)
+                        .position(x: frame.minX + x, y: frame.minY + y).allowsHitTesting(false)
+                }
                 if let point = lowPoint, point.conservative < 0,
                    let plotFrame = proxy.plotFrame, let x = proxy.position(forX: point.date), let y = proxy.position(forY: Double(point.conservative) / 100) {
                     let frame = geometry[plotFrame]
@@ -1373,7 +1389,7 @@ struct ForecastChart: View {
                                 .opacity(0.7 * (1 - ringProgress))
                         }
                         Circle().fill(ink).frame(width: YubaiSize.marker, height: YubaiSize.marker)
-                            .opacity(pointVisible ? 1 : 0).offset(y: reduceMotion || pointVisible ? 0 : -YubaiSpace.space8)
+                            .opacity(reduceMotion || pointVisible ? 1 : 0).offset(y: reduceMotion || pointVisible ? 0 : -YubaiSpace.space8)
                     }.position(x: frame.minX + x, y: frame.minY + y).allowsHitTesting(false)
                 }
                 if let point = selectedPoint, let plot = proxy.plotFrame, let x = proxy.position(forX: point.date) {
@@ -1402,9 +1418,28 @@ struct ForecastChart: View {
             }
             .onEnded { _ in endScrub() }
     }
-    private func finishPoint() {
+    private func playForecast(visit: Int, active: Bool, reduced: Bool) async {
+        guard !Task.isCancelled, active else { return }
+        guard store.forecastMotion.claim(visit, reduceMotion: reduced) else { finishForecast(); return }
         var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-        withTransaction(transaction) { pointVisible = true; ringVisible = false; ringProgress = 1 }
+        withTransaction(transaction) { lineProgress = 0; pointVisible = false; endpointVisible = false; ringVisible = false; ringProgress = 0 }
+        do {
+            try await Task.sleep(for: .seconds(YubaiMotion.durationStagger))
+            withAnimation(YubaiMotion.chart(reduceMotion: false)) { lineProgress = 1 }
+            try await Task.sleep(for: .seconds(YubaiMotion.pointDelay))
+            withAnimation(YubaiMotion.control(reduceMotion: false)) { pointVisible = true }
+            try await Task.sleep(for: .seconds(YubaiMotion.ringDelay - YubaiMotion.pointDelay))
+            if (lowPoint?.conservative ?? 0) < 0 {
+                ringVisible = true
+                withAnimation(YubaiMotion.ring(reduceMotion: false)) { ringProgress = 1 }
+            }
+            try await Task.sleep(for: .seconds(YubaiMotion.durationDraw - YubaiMotion.ringDelay))
+            withAnimation(YubaiMotion.control(reduceMotion: false)) { endpointVisible = true }
+        } catch {}
+    }
+    private func finishForecast() {
+        var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
+        withTransaction(transaction) { lineProgress = 1; pointVisible = true; endpointVisible = true; ringVisible = false; ringProgress = 1 }
     }
     private func endScrub() { withAnimation(YubaiMotion.quick) { selectedDay = nil } }
     private func dayLabel(_ point: ForecastPoint) -> String {

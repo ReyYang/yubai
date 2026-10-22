@@ -75,7 +75,12 @@ enum AppSheet: Identifiable {
     var pendingUpload: Ledger?
     @ObservationIgnored var syncMonitor: CloudLedgerMonitor?
     var iCloudAvailable: Bool { locations.cloud != nil }
-    var destination: Destination = .overview; var sheet: AppSheet?; var error: String?; var toast: String?
+    var destination: Destination = .overview {
+        didSet { if destination == .overview && oldValue != .overview { overviewVisit &+= 1 } }
+    }
+    var overviewVisit = 0
+    @ObservationIgnored var forecastMotion = MotionVisitState()
+    var sheet: AppSheet?; var error: String?; var toast: String?
     var sheetSource: String?
     var entrySaveTrigger = 0; var entryDeleteTrigger = 0; var undoTrigger = 0; var floorWarningTrigger = 0
     var fixedFlowSettleTrigger = 0
@@ -478,12 +483,16 @@ private struct TabRootSwipe: ViewModifier {
     @GestureState private var dragging = false
     @State private var regions: [CGRect] = []
     @State private var horizontal: Bool?
+    @State private var tapsBlocked = false
     @State private var offset: CGFloat = 0
     let destination: Destination
     func body(content: Content) -> some View {
         GeometryReader { geometry in
-            content.offset(x: reduceMotion ? 0 : offset)
-                .frame(width: geometry.size.width, height: geometry.size.height)
+            ZStack {
+                Color.clear
+                content.allowsHitTesting(!tapsBlocked).disabled(tapsBlocked)
+                    .offset(x: reduceMotion ? 0 : offset)
+            }.frame(width: geometry.size.width, height: geometry.size.height)
                 .contentShape(Rectangle())
                 .simultaneousGesture(DragGesture(minimumDistance: 18, coordinateSpace: .named("tab-swipe"))
                     .updating($dragging) { _, state, _ in state = true }
@@ -494,6 +503,7 @@ private struct TabRootSwipe: ViewModifier {
                                 && abs(value.translation.width) > abs(value.translation.height) * 1.3
                         }
                         guard horizontal == true else { return }
+                        tapsBlocked = true
                         offset = neighbor(value.translation.width) == nil ? value.translation.width * 0.16 : value.translation.width
                     }
                     .onEnded { value in
@@ -502,13 +512,18 @@ private struct TabRootSwipe: ViewModifier {
                         if horizontal == true, store.destination == destination,
                            abs(distance) > geometry.size.width * 0.3 || fast,
                            let next = neighbor(distance) { store.destination = next }
-                        reset()
+                        reset(); releaseTaps()
                     })
         }.coordinateSpace(name: "tab-swipe").background(YubaiColor.canvas).clipped()
             .onPreferenceChange(TabSwipeReservedRegions.self) { regions = $0 }
-            .onChange(of: dragging) { _, active in if !active { reset() } }
+            .onChange(of: dragging) { _, active in
+                if !active {
+                    reset(); releaseTaps()
+                }
+            }
             .onChange(of: store.destination) { _, _ in reset() }
-            .onDisappear { horizontal = nil; offset = 0 }
+            .onAppear { if !dragging { tapsBlocked = false } }
+            .onDisappear { horizontal = nil; offset = 0; releaseTaps() }
     }
     private func neighbor(_ distance: CGFloat) -> Destination? {
         let tabs = Destination.allCases
@@ -520,4 +535,5 @@ private struct TabRootSwipe: ViewModifier {
         horizontal = nil
         withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = 0 }
     }
+    private func releaseTaps() { DispatchQueue.main.async { if !dragging { tapsBlocked = false } } }
 }

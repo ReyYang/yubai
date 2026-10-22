@@ -213,10 +213,12 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 // an end date before its original start. Keep all stored records.
                 if let i = next.plans.firstIndex(where: { $0.id == id }) {
                     guard next.plans[i].active, next.plans[i].endDate == nil else { skip(position); continue }
+                    next.plans[i].stoppedAt = date
                     if date < next.plans[i].dueDate { next.plans[i].active = false }
                     else { next.plans[i].endDate = date }
                 } else if let i = next.rents.firstIndex(where: { $0.id == id }) {
                     guard next.rents[i].active, next.rents[i].endDate == nil else { skip(position); continue }
+                    next.rents[i].stoppedAt = date
                     if date < next.rents[i].startDate { next.rents[i].active = false }
                     else { next.rents[i].endDate = date }
                 } else { skip(position); continue }
