@@ -11,7 +11,7 @@ enum Destination: String, CaseIterable, Identifiable {
 }
 enum AppSheet: Identifiable {
     case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions, addEntry, addPlan
-    case editEntry(UUID)
+    case editEntry(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
     case ask(String), capture(Data), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, letter(UUID), reconcile(UUID)
     var id: String { String(describing: self) }
@@ -27,6 +27,7 @@ enum AppSheet: Identifiable {
 }
 
 @MainActor @Observable final class AppStore {
+    static let shared = AppStore()
     private(set) var ledger = Ledger() { didSet { invalidateDerived() } }
     var current: Ledger { ledger }
     private var derivedRevision = 0
@@ -56,7 +57,7 @@ enum AppSheet: Identifiable {
         cachedEntries = rows; return rows
     }
     private func invalidateDerived() { cachedEntries = nil; refreshTimeDerived() }
-    func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1 }
+    func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
     var locations: LedgerLocations
     var ledgerLocation: LedgerLocation = .local
@@ -81,6 +82,7 @@ enum AppSheet: Identifiable {
     @ObservationIgnored private var pendingSaveToast: String?
     @ObservationIgnored private var saveToastTask: Task<Void, Never>?
     var loadFailure: String?; var locked = false; var importedURL: URL?
+    var pendingQuickSheet: AppSheet?
     var errorHosts: [UUID] = []
     var pickingInsightDates = false
     var organizingBatchID: UUID?
@@ -105,10 +107,14 @@ enum AppSheet: Identifiable {
             ledger = try localRepository.load()
             locked = ledger.preferences.lockEnabled
         } catch { loadFailure = error.localizedDescription }
+        CaptureSnapshotBridge.publish(ledger)
+        #if os(iOS)
+        CaptureNotifications.register()
+        #endif
     }
 
-    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
-        guard canEditLedger() else { return false }
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, _ change: (inout Ledger) throws -> Void) -> Bool {
+        guard canEditLedger(allowLockedCapture: allowLockedCapture) else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
         do {
@@ -119,11 +125,12 @@ enum AppSheet: Identifiable {
                 Wishlist.autoLink(&next, addedEntryIDs: addedIDs, now: Date())
             }
             if !preservingUpdatedAt { next.updatedAt = Date() }
-            try persist(next, reason: reason)
+            next = try persist(next, reason: reason)
             let motion = MotionEntryChange(previous: before.entries.map(\.id), previousActive: before.activeEntries.map(\.id), currentActive: next.activeEntries.map(\.id))
             if entryMotion && !motion.saved.isEmpty { freshEntryIDs = motion.saved; pendingEntrySave = true }
             if entryMotion && !motion.deleted.isEmpty { entryDeleteTrigger &+= 1 }
             ledger = next
+            if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
             if recordUndo {
                 undoLedger = before; undoLabel = reason
                 if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
@@ -149,7 +156,7 @@ enum AppSheet: Identifiable {
     func undo() {
         guard canEditLedger(), let previous = undoLedger else { return }
         do {
-            try persist(previous, reason: "撤销"); ledger = previous
+            ledger = try persist(previous, reason: "撤销")
             cancelEntrySaveMotion()
             undoTrigger &+= 1; undoLedger = nil; undoLabel = nil; toast = "已撤销上一项修改"
         } catch { self.error = error.localizedDescription }
@@ -174,16 +181,60 @@ enum AppSheet: Identifiable {
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
         guard canEditLedger() else { return false }
-        do { try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
+        do { let saved = try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = saved; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func recover(_ recovery: Recovery) -> Bool {
         guard canEditLedger() else { return false }
-        do { let restored = try localRepository.readRecovery(recovery); try persist(restored, reason: "恢复版本", restoring: true); cancelEntrySaveMotion(); ledger = restored; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
+        do { let restored = try localRepository.readRecovery(recovery); let saved = try persist(restored, reason: "恢复版本", restoring: true); cancelEntrySaveMotion(); ledger = saved; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     func adoptSyncedLedger(_ next: Ledger) {
         cancelEntrySaveMotion(); ledger = next; loadFailure = nil; undoLedger = nil; undoLabel = nil
+    }
+    func recordSuccessfulBackup(of ledgerID: UUID, at date: Date) {
+        guard current.id == ledgerID else { return }
+        if update("记录备份时间", preservingUpdatedAt: true, recordUndo: false, { $0.preferences.lastBackupAt = date }) {
+            // Undoing the preceding edit must not forget a successfully exported backup.
+            undoLedger?.preferences.lastBackupAt = date
+        }
+    }
+    @discardableResult func deleteOldScreenshots(months: Int, now: Date) -> Bool {
+        guard canEditLedger(), loadFailure == nil else { return false }
+        let count = StorageAttachments.oldScreenshots(in: current, months: months, now: now).count
+        guard count > 0 else { return false }
+        let wasPending = localRepository.hasPendingSync
+        do {
+            if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
+            let saved = try localRepository.deleteOldScreenshots(from: current, months: months, now: now)
+            cancelEntrySaveMotion(); ledger = saved; undoLedger = nil; undoLabel = nil
+            if ledgerLocation == .iCloud { pendingUpload = saved; Task { await synchronizeLedger() } }
+            toast = "已删除 \(count) 张截图"
+            return true
+        } catch {
+            if !wasPending { try? localRepository.markPendingSync(false) }
+            self.error = error.localizedDescription; return false
+        }
+    }
+    @discardableResult func clearStorageHistory() -> Bool {
+        guard canEditLedger() else { return false }
+        guard !syncBusy else { error = "请等同步完成后再清除恢复历史。"; return false }
+        do {
+            try localRepository.clearRecoveryHistory()
+            // A pre-clear undo snapshot may refer to payloads that no longer exist.
+            undoLedger = nil; undoLabel = nil; toast = "已清除恢复历史"; return true
+        } catch { self.error = error.localizedDescription; return false }
+    }
+    @discardableResult func eraseAllDeviceData() -> Bool {
+        guard canEditLedger() else { return false }
+        guard !syncBusy, !checkingCloudAvailability else { error = "请等同步完成后再抹掉本机数据。"; return false }
+        do {
+            try eraseLocalStorageAndResetLocation()
+            cancelEntrySaveMotion(); ledger = Ledger(); undoLedger = nil; undoLabel = nil
+            loadFailure = nil; locked = false; importedURL = nil; sheet = nil; sheetSource = nil; pendingQuickSheet = nil
+            destination = .overview; toast = nil; organizationErrors.removeAll(); pickingInsightDates = false
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
     func unlock() async {
         let context = LAContext()
@@ -194,7 +245,7 @@ enum AppSheet: Identifiable {
 }
 
 @main struct YubaiApp: App {
-    @State private var store = AppStore()
+    @State private var store = AppStore.shared
     private var colorScheme: ColorScheme? {
         switch store.current.preferences.appearance {
         case "dark": .dark
@@ -293,8 +344,13 @@ struct RootView: View {
             }
         }
         .overlay { privacyCover }
-        .onOpenURL { url in guard url.isFileURL else { return }; store.importedURL = url; if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync() }; if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
+        .onOpenURL { url in
+            if url.scheme?.lowercased() == "yubai" { store.handleCaptureURL(url); return }
+            guard url.isFileURL else { return }; store.importedURL = url
+            if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
+        }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+            else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {
         @Bindable var store = store
@@ -352,6 +408,9 @@ struct RootView: View {
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
         switch sheet {
         case .addEntry: QuickEntryView()
+        case .prefilledEntry(let prefill): QuickEntryView(prefill: prefill)
+        case .screenshotCapture(let data): ScreenshotCaptureView(imageData: data)
+        case .screenshotReview(let data): ImportView(initialScreenshot: data)
         case .editEntry(let id): EntryEditView(entryID: id)
         case .addPlan: FixedFlowEditor()
         case .account(let account): AccountEditor(account: account)
@@ -382,6 +441,6 @@ struct RootView: View {
         }
     }
     func recoveryView(_ message: String) -> some View {
-        VStack(spacing: YubaiSpace.space20) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Text("原文件已保留，余白不会用空账本覆盖它。").yubaiFont(YubaiFont.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.space24).frame(maxWidth: 540)
+        VStack(spacing: YubaiSpace.space20) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Text("原文件已保留，请选择恢复记录。").yubaiFont(YubaiFont.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.space24).frame(maxWidth: 540)
     }
 }

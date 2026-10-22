@@ -8,7 +8,7 @@ struct SyncVersionsView: View {
             if let choice = store.syncChoice {
                 Section {
                     Text(choice.switching ? "两处账本不同，请选择继续使用哪一份。" : "账本有同步冲突，请选择继续使用哪一份。")
-                    Text("不会自动合并。未选中的完整版本会留在这台设备的恢复历史中。")
+                    Text("请先核对下方的记录。")
                         .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     if choice.switching { Button("取消切换", role: .cancel) { store.cancelSyncLocationChoice() }.disabled(store.syncBusy) }
                 }.listRowBackground(YubaiColor.card)
@@ -22,7 +22,7 @@ struct SyncVersionsView: View {
                             ForEach(differences) { entry in
                                 VStack(alignment: .leading) {
                                     Text("\(Dates.text(entry.date, time: true)) · \(entry.displayTitle) · \(Money.text(entry.amount))\(entry.deletedAt == nil ? "" : " · 已删除")")
-                                    Text("\(entry.nature.label) · \(entry.category) · \(version.ledger.accountName(entry.accountID))")
+                                    Text("\(entry.nature.entryLabel) · \(Classification.displayCategory(entry.category)) · \(version.ledger.accountName(entry.accountID))")
                                         .foregroundStyle(YubaiColor.labelSecondary)
                                     if !entry.note.isEmpty { Text(entry.note).lineLimit(3) }
                                 }.yubaiFont(YubaiFont.caption)
@@ -57,7 +57,7 @@ struct LedgerSyncSection: View {
             else if store.ledgerLocation == .iCloud {
                 Button("重新读取与同步") { Task { await store.synchronizeLedger() } }.disabled(store.syncBusy)
             }
-            Text("默认只保存在本机。iCloud 可用时可共享同一账本和原始附件；冲突由你选择。恢复历史和设备解锁设置只保留在本机。")
+            Text("恢复历史与设备解锁设置：仅本机")
                 .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card)
     }

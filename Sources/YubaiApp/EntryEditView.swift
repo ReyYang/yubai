@@ -5,7 +5,7 @@ struct EntryEditView: View {
     @Environment(AppStore.self) private var store
     let entryID: UUID
     var body: some View {
-        if let entry = store.current.entries.first(where: { $0.id == entryID }) {
+        if let entry = store.current.entries.first(where: { $0.id == entryID && $0.deletedAt == nil }) {
             EntryEditForm(entry: entry).id(entryID)
         } else { EmptyState("doc.questionmark", "记录已不存在", "") }
     }
@@ -18,6 +18,8 @@ private struct EntryEditForm: View {
     @State private var amount: String
     @State private var purpose: String
     @State private var deleting = false
+    @State private var remembered = false
+    @State private var choseCategory = false
     @State private var balances: [UUID: Int64] = [:]
     init(entry: Entry) {
         _draft = State(initialValue: entry)
@@ -34,11 +36,14 @@ private struct EntryEditForm: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    ManualSheetHeader(title: "改一笔", enabled: canSave, cancel: { dismiss() }, action: save)
-                    if standardNature {
+                    ManualSheetHeader(title: "改一笔", showsAction: draft.source != "Apple Pay", enabled: canSave, cancel: { dismiss() }, action: save)
+                    if draft.source == "Apple Pay" {
+                        Pill(text: "来自 Apple Pay · " + (draft.quickCapture?.card ?? "") + " · " + (draft.quickCapture?.transactionDate ?? draft.date).formatted(.dateTime.hour().minute()), variant: .neutral, height: 26, showsDot: false)
+                    }
+                    if standardNature && draft.source != "Apple Pay" {
                         Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $draft.nature)
-                    } else {
-                        Text(draft.nature.label).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    } else if !standardNature {
+                        Text(draft.nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                             .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -47,7 +52,7 @@ private struct EntryEditForm: View {
                             .accessibilityLabel("金额").accessibilityIdentifier("editEntryAmount")
                     }.frame(minHeight: 60).padding(.horizontal, 4)
                     EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: draft.nature, frequentOnly: true),
-                                       all: ManualBookkeeping.categories(in: store.current, nature: draft.nature), selection: $draft.category, limit: 4)
+                                       all: ManualBookkeeping.categories(in: store.current, nature: draft.nature), selection: $draft.category, didSelect: { choseCategory = true }, limit: 4)
                     Card(style: .list) {
                         VStack(spacing: 0) {
                             EntryFormRow(title: "用途") {
@@ -66,27 +71,44 @@ private struct EntryEditForm: View {
                             }
                             EntryFormDivider()
                             EntryFormRow(title: "时间") { HStack(spacing: 6) { EntryDateChip(date: $draft.date); EntryDateChip(date: $draft.date, time: true) } }
-                            EntryFormDivider()
-                            EntryFormRow(title: "备注") { TextField("可不填", text: $draft.note).multilineTextAlignment(.trailing).accessibilityLabel("备注") }
+                            if draft.source != "Apple Pay" {
+                                EntryFormDivider()
+                                EntryFormRow(title: "备注") { TextField("可不填", text: $draft.note).multilineTextAlignment(.trailing).accessibilityLabel("备注") }
+                            }
                         }
                     }
-                    Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, 4)
-                    Button {
-                        let question = "\(draft.displayTitle)，\(Money.text(draft.amount))，这笔合理吗？"
-                        store.sheetSource = nil; store.sheet = .ask(question)
-                    } label: {
-                        Card(style: .list) {
-                            HStack(spacing: 8) {
-                                AssistantMark(size: 16, color: YubaiColor.brandInk)
-                                Text("问余白：这笔合理吗").yubaiFont(YubaiFont.row)
-                                Spacer(); Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                            }.frame(minHeight: 46)
-                        }
-                    }.buttonStyle(PressButtonStyle())
+                    if draft.source != "Apple Pay" {
+                        Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, 4)
+                        Button {
+                            let question = "\(draft.displayTitle)，\(Money.text(draft.amount))，该不该买？"
+                            store.sheetSource = nil; store.sheet = .ask(question)
+                        } label: {
+                            Card(style: .list) {
+                                HStack(spacing: 8) {
+                                    AssistantMark(size: 16, color: YubaiColor.brandInk)
+                                    Text("该不该买 ›").yubaiFont(YubaiFont.row)
+                                    Spacer()
+                                }.frame(minHeight: 46)
+                            }
+                        }.buttonStyle(PressButtonStyle())
+                    }
+                    if let merchant = draft.quickCapture?.merchant {
+                        HStack {
+                            Text("以后「\(merchant)」都记到 \(Classification.displayCategory(draft.category))").yubaiFont(YubaiFont.caption)
+                            Text("·").foregroundStyle(YubaiColor.labelSecondary)
+                            Button(remembered ? "已记好" : "好") {
+                                remembered = store.update("记下商户分类") { try QuickCapture.remember(merchant: merchant, category: draft.category, in: &$0) }
+                            }.disabled(remembered).foregroundStyle(YubaiColor.brandInk)
+                        }.padding(.horizontal, 4)
+                    }
                     Spacer(minLength: 24)
-                    Button("删除这笔") { deleting = true }.yubaiFont(YubaiFont.button).foregroundStyle(YubaiColor.amberInk)
-                        .frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight).background(YubaiColor.card, in: Capsule())
-                        .buttonStyle(PressButtonStyle()).accessibilityIdentifier("deleteEntry")
+                    if draft.source == "Apple Pay" {
+                        HStack(spacing: 8) {
+                            deleteButton.frame(maxWidth: .infinity)
+                            Button("好了", action: save).buttonStyle(PrimaryButtonStyle()).disabled(!canSave).frame(maxWidth: .infinity)
+                        }
+                    } else { deleteButton }
+
                 }.padding(.horizontal, YubaiSpace.space18).padding(.top, 12).padding(.bottom, 24)
                     .frame(minHeight: geometry.size.height, alignment: .top).frame(maxWidth: 620).frame(maxWidth: .infinity)
             }.scrollDismissesKeyboard(.interactively)
@@ -96,6 +118,7 @@ private struct EntryEditForm: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .onAppear { balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) }) }
+            .onChange(of: draft.category) { _, _ in remembered = false }
             .onChange(of: draft.nature) { _, nature in
                 draft.otherAccountID = nature == .transfer ? accounts.first { $0.id != draft.accountID }?.id : nil
                 draft.category = ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true).first ?? draft.category
@@ -110,6 +133,11 @@ private struct EntryEditForm: View {
                 Button("取消", role: .cancel) {}
             }
     }
+    private var deleteButton: some View {
+        Button("删除这笔") { deleting = true }.yubaiFont(YubaiFont.button).foregroundStyle(YubaiColor.amberInk)
+            .frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight).background(YubaiColor.card, in: Capsule())
+            .buttonStyle(PressButtonStyle()).accessibilityIdentifier("deleteEntry")
+    }
     private var provenance: String {
         let source = draft.source == "手动" ? "手动记的" : draft.source
         guard let recorded = draft.recordedAt else { return source }
@@ -119,7 +147,9 @@ private struct EntryEditForm: View {
     private func save() {
         guard canSave else { return }
         do {
-            var edited = draft; edited.amount = try Money.parse(amount)
+            var edited = draft
+            if edited.hasNoCaptureCategory && choseCategory { edited.classificationReason = "手动选择" }
+            edited.amount = try Money.parse(amount)
             let clean = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
             edited.purpose = clean.isEmpty ? nil : clean
             if clean.isEmpty { edited.title = edited.category }

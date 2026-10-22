@@ -184,12 +184,12 @@ public enum Finance {
         let available = cash - debt - committed - goals - emergency - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
-        if accounts.isEmpty { warnings.append("先添加账户并核对余额，才能判断可动用资金。") }
-        if accounts.contains(where: { !$0.reconciled }) { warnings.append("有账户尚未核对余额，资金判断仅供参考。") }
-        if accounts.contains(where: { now.timeIntervalSince($0.anchorDate) > 14 * 86400 }) { warnings.append("部分余额已超过 14 天未核对；请确认没有遗漏账单。") }
-        if entries.contains(where: { $0.nature.uncertain }) { warnings.append("有资金性质待明确；余额核对后新增的未知流入已保守扣除，历史未知仍需核对用途。") }
-        if occurrences.contains(where: \.overdue) { warnings.append("有已到期但未登记完成的安排，仍计入预留。") }
-        if entries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有内部移动尚未关联另一账户，可以问余白协助核对，避免重复计算。") }
+        if accounts.isEmpty { warnings.append("先添加账户，对一下余额。") }
+        if accounts.contains(where: { !$0.reconciled }) { warnings.append("有账户还没对过账。") }
+        if accounts.contains(where: { now.timeIntervalSince($0.anchorDate) > 14 * 86400 }) { warnings.append("部分账户上次对账已超过 14 天，请补齐账单。") }
+        if entries.contains(where: { $0.nature.uncertain }) { warnings.append("有账目没写用途，请补上。") }
+        if occurrences.contains(where: \.overdue) { warnings.append("有固定收付已到期，请确认是否已付。") }
+        if entries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有转账没选另一账户，请补上。") }
         let baseline = cash - debt - goals - emergency - uncertain
         var points: [ForecastPoint] = []
         let start = Dates.day(now); let occurrenceDays = occurrences.map { Dates.day($0.date) }
@@ -261,10 +261,10 @@ public enum Finance {
         let f = funds(ledger, now: now); let after = f.available - amount
         let incomplete = ledger.accounts.isEmpty || ledger.accounts.contains { !$0.reconciled } || !f.warnings.isEmpty
         let severity = after < 0 ? 2 : (incomplete || amount > max(0, f.available) / 3 ? 1 : 0)
-        let title = after < 0 ? "这笔购买会挤占已安排的资金" : (incomplete ? "资金有空间，但先核对这些依据" : "已知安排内，可以承受")
-        let explanation = after < 0 ? "扣除已知义务和预留后，还差 \(Money.text(-after))。可以降低金额、延后购买，或明确调整某项安排。" : "购买后仍有 \(Money.text(after)) 的保守余量。这个判断不把未到账收入或投资市值当作现金。"
+        let title = after < 0 ? "这笔购买会挤占已安排的资金" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
+        let explanation = after < 0 ? "还差 \(Money.text(-after))，可以少花一些或晚点再买。" : "买了以后还能花 \(Money.text(after))。"
         return PurchaseAssessment(title: title, explanation: explanation, afterPurchase: after, severity: severity,
-                                  facts: ["当前现金 \(Money.text(f.cash))", "信用待还 \(Money.text(f.debt))", "未来 \(observationDays) 天已知付款 \(Money.text(f.committed))", "目标、应急与生活预留 \(Money.text(f.goals + f.emergency + f.living))"] + f.warnings,
+                                  facts: ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "未来 \(observationDays) 天已知付款 \(Money.text(f.committed))", "在存钱、始终留着与日常开销 \(Money.text(f.goals + f.emergency + f.living))"] + f.warnings,
                                   questions: ["它具体解决什么经常发生的问题？", "现有物品能否满足同样需要？", "如果等 48 小时，还会同样想买吗？"])
     }
 }

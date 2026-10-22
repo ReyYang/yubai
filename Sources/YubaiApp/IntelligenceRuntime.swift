@@ -153,7 +153,7 @@ struct ActiveLedgerTransport: ChatTransport {
             try Task.checkCancellation()
             guard current == before, !locked, organizingBatchID == nil, loadFailure == nil,
                   syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { return }
-            update("每周回看", recordUndo: false, reportError: false) { try result.apply(to: &$0) }
+            update("每周来信", recordUndo: false, reportError: false) { try result.apply(to: &$0) }
         } catch { /* Leave the week pending so a later refresh can retry. */ }
     }
     func dismissCard(_ id: UUID) {
@@ -166,7 +166,7 @@ struct ActiveLedgerTransport: ChatTransport {
         update("以后不再提这个话题") { ButlerCards.mute(id, in: &$0, now: Date()) }
     }
     func cardFeedback(_ value: CardFeedback, id: UUID) {
-        update("记下卡片反馈") { ButlerCards.feedback(value, cardID: id, in: &$0, now: Date()) }
+        update("记下你点过的提醒") { ButlerCards.feedback(value, cardID: id, in: &$0, now: Date()) }
     }
     func performCardAction(_ card: ButlerCard) {
         switch card.action ?? .openEvidence {

@@ -45,8 +45,8 @@ public enum ProfileHabits {
 public extension SoftLimit {
     var text: String {
         var parts: [String] = []
-        if let count = perWeekCount { parts.append("每周 ≤ \(count) 次") }
-        if let amount = perMonthAmount { parts.append("每月 ≤ " + Money.text(amount)) }
+        if let count = perWeekCount { parts.append("每周最多 \(count) 次") }
+        if let amount = perMonthAmount { parts.append("每月最多 " + Money.text(amount)) }
         return parts.joined(separator: " · ")
     }
 }

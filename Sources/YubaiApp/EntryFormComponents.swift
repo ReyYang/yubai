@@ -6,6 +6,7 @@ struct ManualSheetHeader: View {
     var actionTitle = "保存"
     var actionImage: String? = nil
     var primary = true
+    var showsAction = true
     var enabled = true
     let cancel: () -> Void
     let action: () -> Void
@@ -17,7 +18,7 @@ struct ManualSheetHeader: View {
                     .padding(.horizontal, 16).frame(height: 36).background(YubaiColor.card, in: Capsule())
                     .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("cancelManualSheet")
                 Spacer()
-                Button(action: action) {
+                if showsAction { Button(action: action) {
                     HStack(spacing: 6) {
                         if let actionImage { Image(systemName: actionImage) }
                         Text(actionTitle)
@@ -27,6 +28,7 @@ struct ManualSheetHeader: View {
                         .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
                 }.frame(minHeight: YubaiSize.tapMin).disabled(!enabled).opacity(enabled ? 1 : 0.5)
                     .accessibilityIdentifier(actionTitle == "导入" ? "importFromEntry" : "saveManualSheet")
+                }
             }
         }.frame(height: YubaiSize.headerHeight).buttonStyle(PressButtonStyle())
     }

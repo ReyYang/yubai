@@ -18,7 +18,7 @@ public enum Memory {
         guard validText(note.text), note.previousText.map({ validText($0) }) ?? true,
               date(note.createdAt), date(note.updatedAt), note.updatedAt >= note.createdAt,
               note.lastUsedAt.map(date) ?? true, Set(note.evidence).count == note.evidence.count else {
-            throw YubaiError.invalid("记忆的文字、日期或依据无效；请用不超过200字的一句话。")
+            throw YubaiError.invalid("记忆的文字、日期或明细无效；请用不超过200字的一句话。")
         }
     }
     static func row(_ note: MemoryNote, now: Date) -> JSONValue {
@@ -164,9 +164,9 @@ public enum MemoryTool: String, AssistantTool {
               let rawKind = fields["kind"]?.stringValue, let kind = MemoryKind(rawValue: rawKind) else { throw YubaiError.invalid("记忆需要一句不超过200字的话，以及plan、value或life类型。") }
         var evidence: [UUID] = []
         if let raw = fields["entry_ids"] {
-            guard let rows = raw.arrayValue else { throw YubaiError.invalid("记忆依据需要记录ID列表。") }
+            guard let rows = raw.arrayValue else { throw YubaiError.invalid("记忆明细需要记录ID列表。") }
             for row in rows {
-                guard let id = row.stringValue.flatMap(UUID.init(uuidString:)), ctx.ledger.activeEntries.contains(where: { $0.id == id }), !evidence.contains(id) else { throw YubaiError.invalid("记忆依据不存在或重复。") }
+                guard let id = row.stringValue.flatMap(UUID.init(uuidString:)), ctx.ledger.activeEntries.contains(where: { $0.id == id }), !evidence.contains(id) else { throw YubaiError.invalid("记忆明细不存在或重复。") }
                 evidence.append(id)
             }
         }

@@ -71,7 +71,7 @@ struct UITestTransport: ChatTransport {
                 .object(["title": .string("日常收入"), "items": .array([
                     .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string("income")]),
                     .object(["kind": .string("set_category"), "entry": .string(id), "category": .string("其他收入")])])]),
-                .object(["title": .string("先留待明确"), "items": .array([
+                .object(["title": .string("先留没写用途"), "items": .array([
                     .object(["kind": .string("set_purpose"), "entry": .string(id), "text": .string("待核对来款")])])])])])
             let result = JSONValue.object(["rows": .array(rows), "items": .array([]), "series": .array([]), "questions": .array([question])])
             return ChatMessage(role: .assistant, content: try result.jsonText())

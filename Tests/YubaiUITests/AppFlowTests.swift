@@ -47,6 +47,23 @@ final class AppFlowTests: XCTestCase {
         return identified.exists ? identified : app.tabBars.buttons["记一笔"]
     }
 
+    func testStorageEntryAndOverviewOpenFromMe() {
+        let app = application("ask"); app.launch()
+        tap(app.tabBars.buttons["我"], in: app)
+        tap(app.buttons["openStorage"], in: app)
+        XCTAssertTrue(app.navigationBars["存储空间"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "storageHeadline").firstMatch.exists)
+        XCTAssertTrue(app.buttons["openStoragePhotos"].exists)
+        XCTAssertTrue(app.buttons["openStorageHistory"].exists)
+        XCTAssertTrue(app.buttons["openStorageErase"].exists)
+        XCTAssertFalse(addEntryTab(app).isHittable)
+        snapshot("storage-overview", app)
+        tap(app.buttons["openStoragePhotos"], in: app)
+        XCTAssertTrue(app.staticTexts["账单原件不删，导入记录里仍可撤销。"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["半年前"].isSelected)
+        snapshot("storage-photos", app)
+    }
+
     func testFirstLaunchEmptyLedgerAccountAndAvailableFunds() {
         let app = application("empty"); app.launch()
         snapshot("welcome", app)
@@ -61,7 +78,7 @@ final class AppFlowTests: XCTestCase {
         let funds = app.buttons["fundsFormula"]
         XCTAssertTrue(funds.waitForExistence(timeout: 10))
         // A newly opened ledger has no known obligations or spending estimate.
-        XCTAssertTrue(funds.label.contains("还能自在支配")); XCTAssertTrue(funds.label.contains("1,000"))
+        XCTAssertTrue(funds.label.contains("还能花")); XCTAssertTrue(funds.label.contains("1,000"))
         XCTAssertEqual(app.tabBars.buttons.count, 4)
         XCTAssertTrue(app.tabBars.buttons["现在"].exists); XCTAssertTrue(app.tabBars.buttons["洞察"].exists); XCTAssertTrue(app.tabBars.buttons["我"].exists)
         XCTAssertTrue(addEntryTab(app).exists); XCTAssertTrue(app.buttons["askYubai"].exists)
@@ -72,8 +89,8 @@ final class AppFlowTests: XCTestCase {
         tap(app.tabBars.buttons["现在"], in: app)
         tap(funds, in: app)
         XCTAssertFalse(addEntryTab(app).isHittable)
-        XCTAssertTrue(app.staticTexts["可支配现金"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["减：日常生活预留"].exists)
+        XCTAssertTrue(app.staticTexts["现金"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["日常开销"].exists)
         snapshot("funds-detail", app)
     }
 
@@ -195,7 +212,7 @@ final class AppFlowTests: XCTestCase {
         tap(row, in: app)
         XCTAssertTrue(app.staticTexts["entryDetailTitle"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["entryDetailTitle"].label, "合成咖啡")
-        XCTAssertTrue(app.staticTexts["来源与依据"].exists)
+        XCTAssertTrue(app.staticTexts["明细"].exists)
         snapshot("entry-detail", app)
     }
 
@@ -236,7 +253,7 @@ final class AppFlowTests: XCTestCase {
         snapshot("memory-answer", app)
         tap(app.buttons["closeSheet"], in: app)
         tap(app.tabBars.buttons["我"], in: app)
-        tap(app.buttons["openMemories"], in: app)
+        tap(app.buttons["openProfile"], in: app); tap(app.buttons["openMemories"], in: app)
         XCTAssertTrue(app.navigationBars["余白记得的"].waitForExistence(timeout: 5))
         XCTAssertFalse(addEntryTab(app).isHittable)
         snapshot("memories", app)
@@ -250,7 +267,7 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["saveMemory"], in: app)
         XCTAssertTrue(app.staticTexts[edited].waitForExistence(timeout: 5))
         app.terminate(); app.launch()
-        tap(app.tabBars.buttons["我"], in: app); tap(app.buttons["openMemories"], in: app)
+        tap(app.tabBars.buttons["我"], in: app); tap(app.buttons["openProfile"], in: app); tap(app.buttons["openMemories"], in: app)
         XCTAssertTrue(app.staticTexts[edited].waitForExistence(timeout: 5))
         snapshot("memory-after-relaunch", app)
         tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'memory_' ")).firstMatch, in: app)

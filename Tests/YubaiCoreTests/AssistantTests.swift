@@ -97,8 +97,11 @@ final class AssistantTests: XCTestCase {
         let requests = await script.recorded(); let messages = requests.last!.messages
         let results = messages.filter { $0.role == .tool }
         XCTAssertEqual(results.map(\.toolCallID), ["large-0", "large-1", "large-2"])
-        XCTAssertEqual(results[0].content, AssistantContextBudget.omitted)
-        XCTAssertEqual(results[1].content, AssistantContextBudget.omitted)
+        for result in results.prefix(2) {
+            XCTAssertTrue(result.content?.contains(tool.name) == true)
+            XCTAssertTrue(result.content?.contains("需要细节请重新查询") == true)
+            XCTAssertLessThanOrEqual(result.content?.count ?? 0, 200)
+        }
         XCTAssertTrue(results[2].content?.contains("早期依据") == true)
         XCTAssertEqual(messages.first?.content, "保留系统要求")
         XCTAssertTrue(messages.contains { $0.content == "保留用户原文" })
@@ -189,5 +192,25 @@ private actor CancellationChatTransport: ChatTransport {
         started = true; for waiter in waiters { waiter.resume() }; waiters = []
         while !Task.isCancelled { await Task.yield() }
         return ChatMessage(role: .assistant, content: "已取消的回答不应返回。")
+    }
+}
+
+extension AssistantTests {
+    func testToolCompactionKeepsLocalFactsAndCompactsPastThresholdToSixtyPercent() throws {
+        var messages = [ChatMessage(role: .system, content: "系统要求")]
+        for index in 0..<8 {
+            messages.append(ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "facts-\(index)", name: "summarize", arguments: #"{"from":"2026-01-01","to":"2026-10-01"}"#)]))
+            let content = try JSONValue.object(["count": .number(12), "total": .string("123.45元"), "rows": .array([.null, .null]), "detail": .string(String(repeating: "依据", count: 220))]).jsonText()
+            messages.append(ChatMessage(role: .tool, content: content, toolCallID: "facts-\(index)"))
+        }
+        XCTAssertGreaterThan(AssistantContextBudget.count(messages), 4000)
+        AssistantContextBudget.compactTools(&messages, limit: 4000)
+        XCTAssertLessThanOrEqual(AssistantContextBudget.count(messages), 2400)
+        let note = try XCTUnwrap(messages.first { $0.role == .tool }?.content)
+        XCTAssertTrue(note.contains("summarize")); XCTAssertTrue(note.contains("2026-01-01"))
+        XCTAssertTrue(note.contains("count=12")); XCTAssertTrue(note.contains("123.45元")); XCTAssertTrue(note.contains("rows条数=2"))
+        XCTAssertTrue(note.hasSuffix("需要细节请重新查询")); XCTAssertLessThanOrEqual(note.count, 200)
+        let once = messages; AssistantContextBudget.compactTools(&messages, limit: 4000); XCTAssertEqual(messages, once)
+        XCTAssertTrue(messages.last?.content?.contains("依据依据") == true)
     }
 }

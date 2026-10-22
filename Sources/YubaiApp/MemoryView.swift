@@ -3,15 +3,10 @@ import YubaiCore
 
 struct MemoryView: View {
     @Environment(AppStore.self) private var store
-    private let explanation = "聊天和反馈里我记下的事，回答你时会用到。点开能改，左滑能删。"
     var body: some View {
         List {
-            Text(explanation).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                .listRowBackground(YubaiColor.canvas).listRowSeparator(.hidden)
             if store.current.memories.isEmpty {
-                Text("还没有记下什么。聊天时说到的计划和在乎的事，会记在这里。")
-                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                    .listRowBackground(YubaiColor.canvas).listRowSeparator(.hidden).accessibilityIdentifier("emptyMemories")
+                Text("还没有记下什么。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).accessibilityIdentifier("emptyMemories")
             }
             ForEach(MemoryKind.allCases, id: \.self) { kind in
                 let notes = store.current.memories.filter { $0.kind == kind }.sorted {
@@ -57,14 +52,14 @@ struct MemoryView: View {
     private func day(_ date: Date) -> String { date.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))) }
     private func source(_ note: MemoryNote) -> String {
         switch note.source {
-        case .chat: return "聊天时"
+        case .chat: return note.source.label
         case .followUp:
-            for choice in ["值得", "一般", "有点后悔"] where note.text.contains("一个月后觉得" + choice) { return "买后回访「" + choice + "」" }
-            return "买后回访"
-        case .importAnswer: return "导入时问过"
-        case .feedback: return "卡片反馈"
-        case .reflection: return "每周回看"
-        case .user: return "你写的"
+            for choice in ["值得", "一般", "有点后悔"] where note.text.contains("一个月后觉得" + choice) { return "买了一个月 · 用得怎么样？「" + choice + "」" }
+            return "买了一个月 · 用得怎么样？"
+        case .importAnswer: return note.source.label
+        case .feedback: return note.source.label
+        case .reflection: return note.source.label
+        case .user: return note.source.label
         }
     }
 }

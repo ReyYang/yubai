@@ -16,10 +16,9 @@ struct EntryDetailView: View {
                 Card {
                     VStack(alignment: .leading, spacing: YubaiSpace.space12) {
                         LabeledContent("时间", value: Dates.text(entry.date, time: true))
-                        LabeledContent("性质", value: entry.nature.label)
                         LabeledContent("账户", value: store.current.accountName(entry.accountID))
                         if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.current.accountName(other)) }
-                        LabeledContent("分类", value: entry.category)
+                        LabeledContent("分类", value: Classification.displayCategory(entry.category))
                         if !entry.note.isEmpty { Text(entry.note) }
                         if let id = entry.planID, let plan = store.current.plans.first(where: { $0.id == id }) { Text("已关联：" + plan.title) }
                         if let id = entry.rentID, let rent = store.current.rents.first(where: { $0.id == id }) { Text("已关联：" + rent.title) }
@@ -27,7 +26,7 @@ struct EntryDetailView: View {
                 }
                 Card {
                     VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-                        SectionHeading(title: "来源与依据")
+                        SectionHeading(title: "明细")
                         Text(entry.title)
                         LabeledContent("来源", value: entry.source)
                         if let row = entry.sourceRow { LabeledContent("原文件行号", value: String(row)) }

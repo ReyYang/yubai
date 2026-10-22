@@ -62,7 +62,7 @@ struct OverviewView: View {
             } else {
                 HeroCard(available: funds.available, payable: funds.debt + funds.committed,
                          reserved: funds.goals + funds.emergency + funds.living + funds.uncertainInflow,
-                         hideAmount: store.current.preferences.hideAmounts, title: "还能自在支配",
+                         hideAmount: store.current.preferences.hideAmounts, title: "还能花",
                          onDetails: { store.sheet = .fundsCalculation })
                 todayRow
             }
@@ -120,9 +120,9 @@ struct OverviewView: View {
         AmountLabel(cents: item.amount, hide: store.current.preferences.hideAmounts, sign: .outflow)
     }
     private func letterChip(_ card: ButlerCard) -> String {
-        guard !store.current.preferences.hideAmounts, let facts = card.letter else { return "周一来信 · 这周的来信" }
+        guard !store.current.preferences.hideAmounts, let facts = card.letter else { return "每周来信" }
         let change = facts.availableChange
-        return "周一来信 · 这周余白" + (change >= 0 ? "多了 " : "少了 ") + Money.text(change == .min ? 0 : abs(change), currency: false)
+        return "每周来信 · 还能花比上周" + (change >= 0 ? "多 " : "少 ") + Money.text(change == .min ? 0 : abs(change), currency: false)
     }
 }
 
@@ -133,8 +133,8 @@ struct UpcomingPaymentsView: View {
     private var payments: [Occurrence] { store.funds.occurrences.filter { !$0.inflow } }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            SectionHeading(title: "接下来要付的", subtitle: "未来 90 天，也保留已到期的付款。")
-            if payments.isEmpty { Text("没有待完成的付款。新的安排可以告诉余白，确认后再记下。")
+            SectionHeading(title: "接下来要付的", subtitle: "未来 90 天 · 含已到期")
+            if payments.isEmpty { Text("没有待完成的付款。")
                 .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             CardRows(payments) { item in
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -182,28 +182,24 @@ struct FundsCalculationView: View {
     var body: some View {
         let funds = store.funds
         Page {
-            Text("从现在的现金里，留出已经有用途的钱").yubaiFont(YubaiFont.lead)
             Text("未来 90 天").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
             Card(style: .list) {
                 VStack(spacing: 0) {
-                    formula("可支配现金", funds.cash); formula("减：全部信用待还", -funds.debt); formula("减：已知付款", -funds.committed)
-                    formula("减：目标预留", -funds.goals); formula("减：始终留着的底线", -funds.emergency); formula("减：日常生活预留", -funds.living)
-                    Text("日常生活按近 90 天的小额支出估算，排除已关联的固定付款；记录少时可能偏低。")
-                        .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    if funds.uncertainInflow > 0 { formula("减：性质待明确流入", -funds.uncertainInflow) }
-                    formula("保守可动用", funds.available)
+                    formula("现金", funds.cash); formula("信用卡要还", -funds.debt); formula("接下来要付", -funds.committed)
+                    formula("在存钱", -funds.goals); formula("始终留着", -funds.emergency); formula("日常开销", -funds.living)
+                    if funds.uncertainInflow > 0 { formula("没写用途的进账", -funds.uncertainInflow) }
+                    formula("= 还能花", funds.available)
                 }
             }
             ForEach(funds.warnings, id: \.self) { InlineNote(text: $0, style: .attention) }
-            InlineNote(text: "未来收入、投资市值和借出待收不提前当现金；信用本金不重复预留。判断依赖账单和余额是否完整。")
             UpcomingPaymentsView()
-        }.navigationTitle("计算依据").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("还能花是怎么算的").yubaiNavigation().toolbar { CloseButton() }
     }
     private func formula(_ title: String, _ amount: Int64) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space6)) : AnyLayout(HStackLayout())
         return VStack(spacing: 0) {
             layout { Text(title).yubaiFont(YubaiFont.row); if !textSize.isAccessibilitySize { Spacer() }; AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts) }.frame(minHeight: YubaiSize.buttonHeight)
-            if title != "保守可动用" { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
+            if title != "= 还能花" { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
         }
     }
 }

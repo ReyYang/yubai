@@ -19,19 +19,16 @@ enum ReceiptReader {
         let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
         guard !lines.isEmpty else { throw YubaiError.invalid("没有识别到文字。请使用清晰、完整的账单截图，或手动记一笔。") }
         let text = lines.joined(separator: "\n")
-        let regex = try NSRegularExpression(pattern: #"[¥￥]?[−-]?\d[\d,]*\.\d{2}(?!\d)"#)
-        var amounts: [String] = []
-        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            if let range = Range(match.range, in: text), let cents = try? Money.parse(String(text[range]), allowNegative: true), cents != 0 { let input = Money.input(abs(cents)); if !amounts.contains(input) { amounts.append(input) } }
-        }
-        let title = lines.first { line in line.count > 2 && line.count < 60 && !["支付", "微信", "支付宝", "交易", "账单", "金额", "详情", "服务", "时间", "单号", "收款方", "付款"].contains(where: line.contains) && line.rangeOfCharacter(from: .decimalDigits) == nil } ?? "截图补记"
+        let drafts = ReceiptTextParser.drafts(lines: lines)
+        let amounts = drafts.map { Money.input($0.amount) }
+        let title = drafts.first?.title ?? "截图补记"
         let date = lines.compactMap(Dates.parse).first
         return ReceiptCandidate(text: text, amounts: amounts, title: title, date: date)
     }
 }
 
 private struct ImportQueueFile: Identifiable {
-    enum Input { case file(URL), photo(PhotosPickerItem), pasted(PastedStatement) }
+    enum Input { case file(URL), photo(PhotosPickerItem), pasted(PastedStatement), screenshot(Data) }
     let id = UUID()
     let input: Input
     var name: String
@@ -59,6 +56,7 @@ struct ImportView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     var pasted: PastedStatement? = nil
+    var initialScreenshot: Data? = nil
     @State private var accountID: UUID?
     @State private var filePicker = false
     @State private var photoPicker = false
@@ -93,7 +91,7 @@ struct ImportView: View {
     @State private var rowEdits: [Int: Entry] = [:]
     @State private var editingScreenshotRow: ImportRow?
     @State private var showScreenshot = false
-    init(pasted: PastedStatement? = nil) { self.pasted = pasted }
+    init(pasted: PastedStatement? = nil, initialScreenshot: Data? = nil) { self.pasted = pasted; self.initialScreenshot = initialScreenshot }
     private var resultTitle: String {
         guard let result else { return preview == nil ? "导入" : "核对 \(processed + 1)/\(max(queueTotal, 1))" }
         guard let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) else { return "这一批已撤销" }
@@ -152,6 +150,7 @@ struct ImportView: View {
         .onChange(of: categoryMappings) { _, _ in refreshPreview() }
         .onDisappear { parsingTask?.cancel(); queueTask?.cancel() }
         .onAppear {
+            if !appeared, let initialScreenshot { enqueue([ImportQueueFile(input: .screenshot(initialScreenshot), name: "截图.png")]); reviewWhenReady = true }
             if appeared {
                 if queueTask == nil || queueTask?.isCancelled == true {
                     for index in queue.indices where queue[index].reading { queue[index].reading = false }
@@ -184,7 +183,7 @@ struct ImportView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], alignment: .leading, spacing: YubaiSpace.space6) { exportChips(["微信", "支付宝", "银行流水", "蜜蜂记账"]) }
                     }
                     HStack(spacing: YubaiSpace.space6) { exportChips(["随手记", "鲨鱼记账", "钱迹"]) }
-                    Text("别的表格：表头认不出时，只把表头和 5 行脱敏样例发给云端对一下列。")
+                    Text("其他表格：请核对表头与列。")
                         .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }
                 if !queue.isEmpty {
@@ -270,7 +269,7 @@ struct ImportView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                 Text("\(ImportStatementText.source(p.source)) · " + ImportStatementText.range(p.rows.compactMap { $0.entry?.date }) + " · \(p.rows.count) 笔").yubaiFont(YubaiFont.heroLabel)
-                Text(p.columnMapping == nil ? "在本机读完，没有发给云端" : "只把表头和 5 行脱敏样例发给云端识别列")
+                Text(p.columnMapping == nil ? "在本机读完，没有发给云端" : "已发送表头和 5 行脱敏样例")
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityIdentifier("importPrivacySummary")
             }
             Card(style: .compact) {
@@ -317,11 +316,11 @@ struct ImportView: View {
     }
     private func unknownCategories(_ p: ImportPreview) -> [String] {
         let known = Set(store.current.categories.map(\.name))
-        return Set(p.rows.map(\.sourceCategory).filter { !$0.isEmpty && $0 != "待整理" && !known.contains($0) }).sorted()
+        return Set(p.rows.map(\.sourceCategory).filter { !$0.isEmpty && $0 != Classification.pendingCategory && !known.contains($0) }).sorted()
     }
     private func directCategoryCount(_ p: ImportPreview) -> Int {
         Set(p.rows.map(\.sourceCategory).filter { name in
-            name != "待整理" && (categoryMappings[name] != nil || store.current.categories.contains { $0.name == name })
+            name != Classification.pendingCategory && (categoryMappings[name] != nil || store.current.categories.contains { $0.name == name })
         }).count
     }
     private func needsDecision(_ row: ImportRow) -> Bool {
@@ -329,7 +328,7 @@ struct ImportView: View {
         if row.status == .duplicate || row.status == .skipped { return false }
         if row.status == .possibleDuplicate && rowSelections[row.line] == nil { return true }
         if screenshot && rowEdits[row.line] == nil && row.entry?.note.contains("待核对") == true { return true }
-        return !row.sourceCategory.isEmpty && row.sourceCategory != "待整理" && !store.current.categories.contains { $0.name == row.sourceCategory } && categoryMappings[row.sourceCategory] == nil
+        return !row.sourceCategory.isEmpty && row.sourceCategory != Classification.pendingCategory && !store.current.categories.contains { $0.name == row.sourceCategory } && categoryMappings[row.sourceCategory] == nil
     }
     @ViewBuilder private func decisionCard(_ p: ImportPreview) -> some View {
         let unknown = unknownCategories(p)
@@ -387,7 +386,7 @@ struct ImportView: View {
                 ForEach(Set(preview.rows.map(\.sourceCategory).filter { !$0.isEmpty }).sorted(), id: \.self) { name in
                     Card(style: .list) {
                         Picker(name, selection: Binding(get: { categoryMappings[name] ?? name }, set: { categoryMappings[name] = $0 })) {
-                            ForEach(Set(store.current.categories.map(\.name) + [name]).sorted(), id: \.self) { Text($0).tag($0) }
+                            ForEach(Set(store.current.categories.map(\.name) + [name]).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
                         }.frame(minHeight: YubaiSize.tapMin)
                     }
                 }
@@ -425,9 +424,9 @@ struct ImportView: View {
         let detail: String
         switch row.status {
         case .duplicate: detail = "已经记过"
-        case .possibleDuplicate: detail = "可能重复"
+        case .possibleDuplicate: detail = "可能记重了"
         case .needsAccount, .invalid, .conflict, .skipped: detail = row.message
-        case .ready: detail = needsDecision(row) ? (screenshot ? "日期和收支待核对" : "分类待定") : entry.category
+        case .ready: detail = needsDecision(row) ? (screenshot ? "日期和收支待核对" : "分类待定") : Classification.displayCategory(entry.category)
         }
         return ImportStatementText.time(entry.date) + " · " + detail
     }
@@ -453,8 +452,8 @@ struct ImportView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), alignment: .leading)], alignment: .leading, spacing: 8) {
                             resultCount("归了类", organization.categoryCount)
                             resultCount("配成转账", organization.pairCount)
-                            resultCount("周期收付", organization.recurringCount)
-                            resultCount("可能重复", organization.duplicateCount)
+                            resultCount("像是固定收付", organization.recurringCount)
+                            resultCount("可能记重了", organization.duplicateCount)
                         }
                         DisclosureGroup("看看改了什么") {
                             ForEach(Array(organization.changeSet.preview(in: store.current).enumerated()), id: \.offset) { _, line in
@@ -466,7 +465,7 @@ struct ImportView: View {
                         }
                     } }
                     if !organization.questions.isEmpty {
-                        Text("还有 \(min(5, organization.questions.count)) 个问题，答完这些钱才算清楚")
+                        Text("还有 \(min(5, organization.questions.count)) 个问题")
                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
                         ForEach(Array(organization.questions.prefix(5))) { question in questionCard(question, batchID: batch.id) }
                     }
@@ -478,12 +477,12 @@ struct ImportView: View {
                 }
                 if batch.needsOrganization == true {
                     Card { VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-                        Text(store.organizationErrors[batch.id] ?? "记录已按账单保存。云端智能可用时，会继续整理这一批。").yubaiFont(YubaiFont.callout)
+                        Text(store.organizationErrors[batch.id] ?? "记录已保存，请稍后继续整理。").yubaiFont(YubaiFont.callout)
                         Button("现在整理") { Task { await store.organizeImport(batch.id) } }
                             .buttonStyle(SecondaryButtonStyle()).disabled(store.organizingBatchID != nil || store.assistantTransport(for: store.current) == nil)
                     } }
                 }
-                Text("没答的问题会留在「现在」。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                Text("还没答的问题，请到「现在」补上。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 if !queue.isEmpty { Button("继续下一份") { result = nil; readNext() }.buttonStyle(PrimaryButtonStyle()).disabled(store.organizingBatchID != nil) }
                 Button("回到现在") { store.destination = .overview; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
             }
@@ -520,7 +519,7 @@ struct ImportView: View {
                 TextField("用自己的话补充用途", text: Binding(get: { questionText[question.id] ?? "" }, set: { questionText[question.id] = $0 }))
                 Button("记下用途") { store.describeImportQuestion(question, batchID: batchID, text: questionText[question.id] ?? "") }
                     .disabled((questionText[question.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Text("先记下你的说明，资金性质仍待明确。也可以问余白继续核对。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                Text("还没写用途，可以稍后补上。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
         } }
     }
@@ -556,6 +555,7 @@ struct ImportView: View {
                         original = bytes; image = true
                         name += "." + (photo.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg")
                     case .pasted(let statement): original = statement.data
+                    case .screenshot(let bytes): original = bytes; image = true
                     }
                     try Task.checkCancellation()
                     guard original.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个文件请小于 50 MB。") }
@@ -666,7 +666,7 @@ struct ImportView: View {
               !preview.rows.contains(where: { $0.included && needsDecision($0) }), !screenshot || screenshotConfirmed else { return }
         var batch: ImportBatch?
         if store.update("导入账单", { ledger in
-            for entry in preview.selectedEntries where !ledger.categories.contains(where: { $0.name == entry.category }) && entry.category != "待整理" {
+            for entry in preview.selectedEntries where !ledger.categories.contains(where: { $0.name == entry.category }) && entry.category != Classification.pendingCategory {
                 ledger.categories.append(Category(entry.category, income: entry.nature == .income))
             }
             batch = try BillImporter.commit(preview, data: data, to: &ledger)
@@ -680,22 +680,7 @@ struct ImportView: View {
     nonisolated private static func screenshotTable(_ bytes: Data) throws -> Data {
         let receipt = try ReceiptReader.recognize(bytes)
         if let table = PastedStatement.detect(receipt.text) { return table.data }
-        let regex = try NSRegularExpression(pattern: #"[¥￥]?[−-]?\d[\d,]*\.\d{2}(?!\d)"#)
-        var rows = ["日期,金额,收支,用途,备注"]
-        for line in receipt.text.components(separatedBy: .newlines) {
-            for match in regex.matches(in: line, range: NSRange(line.startIndex..., in: line)) {
-                guard let range = Range(match.range, in: line), let amount = try? Money.parse(String(line[range]), allowNegative: true), amount != 0 else { continue }
-                let title = line.replacingCharacters(in: range, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                let purpose = (title.isEmpty ? receipt.title : title).replacingOccurrences(of: "\"", with: "\"\"")
-                let explicitIncome = line.contains("收入") || line.contains("收款")
-                let explicitExpense = line.contains("支出") || line.contains("付款") || line.contains("支付")
-                let direction = explicitIncome ? "收入" : "支出"
-                let note = (receipt.date == nil ? "日期待核对 " : "") + (!explicitIncome && !explicitExpense ? "收支待核对" : "")
-                rows.append("\(Dates.text(receipt.date ?? Date(), time: true)),\(Money.input(abs(amount))),\(direction),\"\(purpose)\",\(note)")
-            }
-        }
-        guard rows.count > 1 else { throw YubaiError.invalid("没有读出金额，请换一张清晰的截图。") }
-        return Data(rows.joined(separator: "\n").utf8)
+        return try ReceiptTextParser.table(lines: receipt.text.components(separatedBy: .newlines))
     }
 }
 
@@ -712,7 +697,7 @@ private struct ImportScreenshotEntryEditor: View {
                 DatePicker("日期", selection: $entry.date, displayedComponents: [.date, .hourAndMinute])
                 Picker("收支", selection: $entry.nature) { Text("支出").tag(Nature.expense); Text("收入").tag(Nature.income) }
                 Picker("分类", selection: $entry.category) {
-                    ForEach(Set(store.current.categories.filter { $0.income == entry.nature.inflow }.map(\.name) + [entry.category]).sorted(), id: \.self) { Text($0).tag($0) }
+                    ForEach(Set(store.current.categories.filter { $0.income == entry.nature.inflow }.map(\.name) + [entry.category]).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
                 }
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("核对这一笔").yubaiNavigation().toolbar {

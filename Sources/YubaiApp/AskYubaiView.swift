@@ -67,8 +67,6 @@ struct AskYubaiView: View {
                             VStack(spacing: 12) {
                                 AssistantMark(size: 56).accessibilityHidden(true)
                                 Text("联网并配好密钥后，\n余白才能回答").yubaiFont(YubaiFont.quote).multilineTextAlignment(.center)
-                                Text("「现在」的数字照常由本机计算，不受影响。整理和提议会等到能联网时再做。")
-                                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).multilineTextAlignment(.center).frame(maxWidth: 280)
                                 NavigationLink("去配好密钥") { IntelligencePrivacyView() }
                                     .buttonStyle(PrimaryButtonStyle()).frame(maxWidth: 240)
                             }.frame(maxWidth: .infinity).padding(.top, 100)
@@ -120,7 +118,7 @@ struct AskYubaiView: View {
         return VStack(alignment: .leading, spacing: YubaiSpace.space12) {
             if enabled && messages.isEmpty && !busy && !reading {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    ForEach(["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，合理吗？"], id: \.self) { question in
+                    ForEach(["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，该不该买？"], id: \.self) { question in
                         Button { input = question; send() } label: {
                             Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, 14).padding(.vertical, 10)
                                 .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
@@ -172,11 +170,11 @@ struct AskYubaiView: View {
         } else if let reply = message.reply {
             if let statement = reply.pastedStatement { AskPastedStatementCard(statement: statement) }
             else if reply.purchaseJudgment == nil && !isEntryDraftReply(reply) { AssistantCard { VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白助手").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                HStack(spacing: 6) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                 Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
                 if let chart = reply.chart, !store.current.preferences.hideAmounts { AnswerChartView(chart: chart) }
                 if !message.protectedEdit {
-                NavigationLink("依据：\(reply.evidenceEntryIDs.count) 笔记录 ›") { AskEvidenceView(ids: reply.evidenceEntryIDs) }.yubaiFont(YubaiFont.caption).frame(minHeight: 44).accessibilityIdentifier("answerEvidence")
+                NavigationLink("明细：\(reply.evidenceEntryIDs.count) 笔 ›") { AskEvidenceView(ids: reply.evidenceEntryIDs) }.yubaiFont(YubaiFont.caption).frame(minHeight: 44).accessibilityIdentifier("answerEvidence")
                 }
                 if !reply.unverifiedAmounts.isEmpty {
                     InlineNote(text: store.current.preferences.hideAmounts ? "回答中有金额尚未核实，请核对记录。" : "这些金额尚未核实：" + reply.unverifiedAmounts.joined(separator: "、"), style: .attention)
@@ -279,12 +277,11 @@ struct AskEvidenceView: View {
     var body: some View {
         let rows = store.sortedEntries.filter { ids.contains($0.id) && $0.deletedAt == nil }
         Page {
-            Text("回答依据生成时的记录；汇总较多时展示最近的部分记录。").yubaiFont(YubaiFont.caption)
             CardRows(rows) { entry in
                 EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts).accessibilityIdentifier("evidenceEntry_" + entry.id.uuidString)
             }
             if rows.isEmpty { Text("没有可展示的记录，或原记录已移除。") }
-        }.navigationTitle("依据").yubaiNavigation()
+        }.navigationTitle("明细").yubaiNavigation()
     }
 }
 
@@ -294,7 +291,7 @@ private struct AskRecordLookupView: View {
     @State private var search = ""
     var body: some View {
         Page {
-            Text("金额、账户和日期按来源保存，请在记录详情核对原始账单。").yubaiFont(YubaiFont.callout)
+            Text("请在记录详情核对原始账单。").yubaiFont(YubaiFont.callout)
             TextField("找一笔记录", text: $search).frame(minHeight: 44)
             let rows = store.sortedEntries.filter { $0.deletedAt == nil && (ids.isEmpty || ids.contains($0.id)) && (search.isEmpty || $0.displayTitle.localizedCaseInsensitiveContains(search)) }
             CardRows(rows) { entry in
@@ -312,13 +309,13 @@ private struct AskChangeCard: View {
         if let status { Text(status).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).frame(minHeight: 44) }
         else {
             let count = Set(change.items.flatMap(\.entryIDs)).count
-            ProposalCard(title: store.current.preferences.hideAmounts ? "等你核对的修改" : change.reason, lines: store.current.preferences.hideAmounts ? ["金额已隐藏，请显示金额后核对完整提案。"] : change.preview(in: store.current, showPreviousValues: true),
-                         primaryTitle: count > 0 ? "改好这 \(count) 笔" : "记下这些修改", canConfirm: !store.current.preferences.hideAmounts, confirm: {
+            ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? ["请显示金额后核对。"] : change.preview(in: store.current, showPreviousValues: true),
+                         primaryTitle: count > 0 ? "改好这 \(count) 笔" : "改好这 \(change.items.count) 项", canConfirm: !store.current.preferences.hideAmounts, confirm: {
                 if store.apply(change, label: "问余白修改") {
                     status = "已改好，可撤销上一项修改。" + (store.toast?.contains("；") == true ? (store.toast ?? "") : "")
                 }
             }, cancel: {
-                if store.update("放下提案", { $0.pendingChanges.removeAll { $0.id == change.id } }) { status = "这次不改了。" }
+                if store.update("不改了", { $0.pendingChanges.removeAll { $0.id == change.id } }) { status = "这次不改了。" }
             })
         }
     }
@@ -335,7 +332,7 @@ private struct AskPastedStatementCard: View {
         else {
             Card(style: .compact) {
                 VStack(alignment: .leading, spacing: YubaiSpace.space10) {
-                    HStack(spacing: YubaiSpace.space6) { AssistantMark(size: 14); Text("余白助手").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                    HStack(spacing: YubaiSpace.space6) { AssistantMark(size: 14); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                     if let summary = statement.summary {
                         Text("这是一份\(ImportStatementText.source(summary.source))导出，\(count) 笔").yubaiFont(YubaiFont.cardTitle)
                         Text(ImportStatementText.range(start: summary.startDate, end: summary.endDate) + " · 在本机读完，没有发给云端")
@@ -347,7 +344,7 @@ private struct AskPastedStatementCard: View {
                     } else {
                         Text("这是一份账单表格，\(count) 笔").yubaiFont(YubaiFont.cardTitle)
                         Text("在本机读完，没有发给云端").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                        Text(statement.needsColumnMapping ? "表头还没认出，核对时只发出表头和 5 行脱敏样例" : (statement.previewError ?? "日期待核对"))
+                        Text(statement.needsColumnMapping ? "请核对表头" : (statement.previewError ?? "日期待核对"))
                             .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
                     }
                     HStack(spacing: YubaiSpace.space8) {
@@ -400,7 +397,7 @@ private struct AskEntryDraftCard: View {
         else {
             Card(style: .compact) {
                 VStack(alignment: .leading, spacing: YubaiSpace.space10) {
-                    HStack(spacing: YubaiSpace.space6) { AssistantMark(size: 14); Text("余白助手").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                    HStack(spacing: YubaiSpace.space6) { AssistantMark(size: 14); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .firstTextBaseline) { Text("准备记下 \(chosen.count) 笔").yubaiFont(YubaiFont.cardTitle); Spacer(); Text(summary).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                         VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text("准备记下 \(chosen.count) 笔").yubaiFont(YubaiFont.cardTitle); Text(summary).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
@@ -447,7 +444,7 @@ private struct AskEntryDraftCard: View {
                 HStack(spacing: YubaiSpace.space10) {
                     VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                         Text(draft.purpose ?? draft.title).yubaiFont(YubaiFont.row)
-                        Text(draft.category).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                        Text(Classification.displayCategory(draft.category)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .none)
                 }.frame(minHeight: YubaiSize.tapMin)
@@ -461,7 +458,8 @@ private struct AskEntryDraftCard: View {
         confirmed.items = chosen.map { draft in var value = draft; value.amountConfirmed = true; return .addEntry(value) }
         if store.apply(confirmed, label: "问余白修改", finishing: { ledger in
             if let image {
-                let attachment = Attachment(name: image.name, data: image.data)
+                let compressed = ImageCompression.compress(image.data, name: image.name)
+                let attachment = Attachment(name: compressed.name, data: compressed.data)
                 let ids = Set(chosen.map(\.id))
                 ledger.attachments.append(attachment)
                 for index in ledger.entries.indices where ids.contains(ledger.entries[index].id) && ledger.entries[index].attachmentID == nil { ledger.entries[index].attachmentID = attachment.id }
@@ -485,7 +483,7 @@ private struct AskDraftEditor: View {
                 AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts)
                 DatePicker("日期", selection: $draft.date, displayedComponents: .date)
                 Picker("账户", selection: $draft.accountID) { ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag($0.id) } }
-                Picker("分类", selection: $draft.category) { ForEach(Set(store.current.categories.map(\.name) + [draft.category]).sorted(), id: \.self) { Text($0).tag($0) } }
+                Picker("分类", selection: $draft.category) { ForEach(Set(store.current.categories.map(\.name) + [draft.category]).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) } }
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("编辑这一笔").yubaiNavigation().toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
@@ -511,7 +509,7 @@ private struct AskPurchaseCard: View {
     var body: some View {
         AssistantCard {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白助手").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                HStack(spacing: 6) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                 HStack { Text(purchase.title).yubaiFont(YubaiFont.rowTitle); Spacer(); AmountLabel(cents: purchase.amount, hide: store.current.preferences.hideAmounts) }
                 judgmentRow("付得起吗", affordability)
                 Divider().overlay(YubaiColor.separator)
@@ -520,7 +518,7 @@ private struct AskPurchaseCard: View {
                     Divider().overlay(YubaiColor.separator)
                     judgmentRow("和你在乎的比", quotes(values))
                 } else { Text("还不知道你在乎什么，可以在『我的消费观』里补上。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
-                NavigationLink("依据：\(evidence.count) 笔记录 ›") { AskEvidenceView(ids: evidence) }
+                NavigationLink("明细：\(evidence.count) 笔 ›") { AskEvidenceView(ids: evidence) }
                     .yubaiFont(YubaiFont.caption).frame(minHeight: 44).accessibilityIdentifier("answerEvidence")
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) { actions }
@@ -541,7 +539,7 @@ private struct AskPurchaseCard: View {
         let facts = purchase.facts["affordability"]
         let after = facts?["available_after_purchase"]?["text"]?.stringValue
         let warnings = facts?["warnings"]?.arrayValue?.compactMap(\.stringValue) ?? []
-        return (after.map { "买后保守余量 " + $0 + "。底线与预留已扣除，未到账收入不算进来。" } ?? "还缺少计算依据。") + warnings.joined(separator: " ")
+        return (after.map { "买了以后还能花 " + $0 } ?? "还缺少明细。") + warnings.joined(separator: " ")
     }
     private var habit: String {
         guard let average = purchase.facts["habit"]?["average"]?["text"]?.stringValue else { return "近 90 天还没有足够的同类消费记录。" }

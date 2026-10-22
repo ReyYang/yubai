@@ -1,5 +1,113 @@
 # 余白 · 交付与验证记录
 
+## 快速记账、存储与五个概念合并（2026-10-21）
+
+本轮在 `feat/quick-capture-entries`（HEAD `6e393dc`，已包含五个概念与记一笔修复）内解决合入 `origin/fix/storage-attachments-compaction`（`b657d84`）的10个冲突文件。双方功能及五个概念／V7 的既有修复保留；[设计映射](../.design-meta/DESIGN.md#2026-10-21--快速记账存储与五个概念合并)记录组合适配。产品／设计记录与本文的三路历史条目全部保留，按发生顺序排列；核对两父提交的原始段落均未丢失。
+
+| 检查 | 实际结果 |
+|---|---|
+| `swift build && swift test` | Linux x86_64／Swift 6.2.4，退出0；最终 build 3.58秒，测试构建7.80秒，373项 XCTest，369通过、4项原有实网 opt-in 跳过、0失败，运行46.653秒 |
+| 组合与兼容性回归 | QuickCaptureTests 15项、StorageManagementTests 11项、InterfaceVocabularyTests 3项、OffCharacterTests 15项全部通过；新增组合回归覆盖截图附件保存后释放字节、再记 Apple Pay、重开去重、备份与gzip恢复后映射／备份日期／记录来源及附件完整；偏好测试覆盖两个新字段分别缺失与同时缺失 |
+| App／Widget 语法 | 35个 App Swift 文件按 iOS 26和macOS 14解析；Widget及两个共享文件按iOS 26解析，AppFlowTests按iOS 26解析，全部退出0 |
+| 工程与资源 | 核对生成脚本后重建；重复生成逐字节一致，224个对象无悬空引用，四个target及全部App／Widget／Core测试源文件齐全；共享scheme、plist／entitlement可解析，存储页引用的design tokens均存在 |
+| 文案与工作区 | 新增存储页和快速记账页面无旧展示词汇／符号引用；沿用当前DesignSystem、分类展示映射与「还能花」。工作区冲突标记扫描、`git diff --check`通过 |
+
+运行使用可写模块缓存：
+
+```sh
+export PATH=/opt/swift-rootfs/usr/bin:$PATH
+export CLANG_MODULE_CACHE_PATH=/tmp/yubai-merge2-clang-module-cache
+export SWIFTPM_MODULECACHE_OVERRIDE=/tmp/yubai-merge2-swiftpm-module-cache
+export XDG_CACHE_HOME=/tmp/yubai-merge2-swift-cache
+swift build && swift test
+```
+
+完整成功日志留本机 `.verification/merge-storage-swift.log`（Git忽略）。首轮新增组合测试误用了备份API名，已改为现有 `Backup.restore` 并完整重跑通过；首轮日志保留为 `.verification/merge-storage-swift-initial.log`。未放宽断言、未新增跳过。原有SwiftPM用户缓存、CloudTestURLProtocol Sendable与StorageTests局部变量警告不影响通过。
+
+Linux 不编译 SwiftUI／WidgetKit；语法检查不能替代 Apple SDK 类型检查、UI测试、签名、ImageIO压缩、真实iCloud及设备验收。未提交／推送，Figma、原始画板、历史原型和分发包未同步；下方原始轮次记录保留当时语义。
+
+本轮对全部36个合并／适配文件执行 `git add`，退出128：`Unable to create '/home/user/yubai/.git/index.lock': Read-only file system`。工作区已无冲突标记，索引因只读未变，仍列出10个原始未合并文件；须在 `.git` 可写环境暂存。未创建提交，HEAD仍为 `6e393dc`。
+
+## 快速记账与五个界面概念合并（2026-10-21）
+
+本轮在 `feat/quick-capture-entries` 的进行中 merge 内解决 `origin/refactor/five-user-concepts` 冲突。[合并映射](../.design-meta/DESIGN.md#2026-10-21--快速记账与五个界面概念合并)保留快速记账、五个概念词汇、日期／分段控件与 V7 卡片修复；双方产品／设计记录完整保留，按时间排列。
+
+| 检查 | 实际结果 |
+|---|---|
+| `swift build && swift test` | Linux x86_64／Swift 6.2.4，退出 0；build 20.45 秒，测试构建 12.57 秒；346 项 XCTest，342 通过、4 项原有实网 opt-in 跳过、0 失败，运行 37.357 秒 |
+| 相关回归 | QuickCaptureTests 14 项、InterfaceVocabularyTests 3 项、OffCharacterTests 15 项全部通过；完整测试同时覆盖财务计算、存储与 Codable 兼容 |
+| App／Widget 语法 | 34 个 App Swift 文件分别按 iOS 26／macOS 14 解析；Widget 及两个共享文件按 iOS 26 解析，全部退出 0 |
+| 工程生成与引用 | 核对生成脚本后运行；重复生成逐字节一致，无悬空对象引用；App／CoreTests／UITests／Widget 四个 target、双方全部 App／Core 测试文件、Widget 共用文件及共享 scheme 均已纳入 |
+| 文案与冲突 | App 字符串词汇测试通过；快速记账相关动态分类复用展示映射，普通改账提问使用「该不该买」；冲突标记扫描与 `git diff --check` 通过 |
+
+首次命令因 `/root` 默认模块缓存只读而失败，改用以下环境变量后原样执行 `swift build && swift test` 成功；没有修改包清单或跳过新增测试：
+
+```sh
+export CLANG_MODULE_CACHE_PATH=/tmp/yubai-merge1-clang-module-cache
+export SWIFTPM_MODULECACHE_OVERRIDE=/tmp/yubai-merge1-swiftpm-module-cache
+export XDG_CACHE_HOME=/tmp/yubai-merge1-swift-cache
+swift build && swift test
+```
+
+完整成功日志留在本机 `.verification/merge-quick-capture-swift.log`（Git 忽略）。Linux 不编译 SwiftUI／WidgetKit；上述语法解析不代表 Apple SDK 类型检查、UI 测试、签名或设备验收。未提交／推送，Figma、历史稿、截图及分发包未同步；下方记录保留各轮原始证据。
+
+已尝试对 7 个冲突文件、4 个快速记账文案适配文件及本文执行 `git add`，退出 128：`Unable to create '/home/user/yubai/.git/index.lock': Read-only file system`。工作区内容已解决且检查通过；索引没有写入，`git diff --name-only --diff-filter=U` 仍列出原 7 个文件，须在 `.git` 可写环境暂存。未创建提交，HEAD 保持 `68d9131`。
+
+## 第九轮快速记账（2026-10-21）
+
+环境 Linux x86_64、Swift 6.2.4；当前任务 `feat/quick-capture-entries`。默认 `/root` 缓存只读，实际使用[可写缓存命令](QUICK-CAPTURE.md#验证与限制)。
+
+| 检查 | 实际结果 |
+|---|---|
+| swift build | 通过；最终增量构建 14.43 秒，没有新增包 |
+| swift test | 324 项，320 通过、4 项原有实网 opt-in 跳过、0 失败；38.891 秒；未启用付费实网测试 |
+| QuickCaptureTests | 14 项通过，含本机解析／缺金额／默认账户／分类记忆、币种金额、映射、两分钟边界／改账后／撤销后去重、旧 Codable、截图单笔／多笔／行内日期、快照与既有资金算法一致 |
+| App／Widget Swift 语法 | iOS 26 和 macOS 14 两组 frontend parse 通过；不等于 Apple SDK 类型检查 |
+| Xcode 工程 | 216 个对象引用完整、四个 target 登记、共享源文件加入两目标、iOS 依赖／嵌入过滤、Automatic 无 team；生成器重新生成与已存结果一致 |
+| plist／权限／原稿 | 全部 plist 和 entitlement 可解析；iCloud＋App Group 权限组合为基础文件并集；八张画板、DS 与 brief 逐字节匹配原输入 |
+| git diff --check | 通过 |
+
+既有测试 warning 为 CloudTestURLProtocol 的 Sendable 与 StorageTests 的未修改局部变量；未改动这些无关测试。构建日志只留本机 `/tmp/yubai-quick-build.log`、`/tmp/yubai-all-tests.log`，不纳入仓库。App、Widget、Siri、Vision、通知、钱包自动化、锁屏、签名、免费团队安装与 App Group 系统行为尚未运行；设备验收及边界详见[快速记账说明](QUICK-CAPTURE.md)。Figma、旧原型和发布包未同步，未 push。
+
+## 第八轮存储空间（2026-10-21）
+
+在 `fix/storage-attachments-compaction` 继续实现 owner 确认的 [V8 三稿](../.design-meta/mockups/storage-v8/README.md)，没有换分支／提交。新增主页与两个 sheet、我页入口、Core 存储管理接口、导出成功后的可选备份时间；没有引入依赖或新增动效。
+
+已实际执行（Linux Swift 6.2.4、现有 `.build` 依赖缓存）：
+
+- `export PATH=/opt/swift-rootfs/usr/bin:$PATH; swift test`：336项，332通过，4项原有实网 opt-in 跳过，0失败；未新增跳过。新增11项 `StorageManagementTests` 覆盖三类文件字节、共享／旧恢复目录、数量与最早时间、按引用分类和撤销批次原件保护、3／6／12个月及精确边界、保留账目并清空所有截图引用、正常保存恢复理由、主 payload 删除及恢复附件可读取、失败回滚、过期快照拒绝、清空共享历史、抹掉后空目录与空账本、cloud仓库调用只删本机、大小单位与可选备份字段往返。
+- `swiftc -frontend -parse`：新 `StorageView.swift`、修改的 `SettingsView.swift`／`YubaiApp.swift`／`LedgerSync.swift` 与 `AppFlowTests.swift` 通过语法解析。此检查没有 SwiftUI／XCTest UI API 类型检查能力。
+- `python3 scripts/generate-project.py` 已重新登记新 App 文件；`git diff --check` 通过。原三张 HTML 保持不变，README／DESIGN／产品记录与人工清单已同步。
+
+尚未验证：Apple SDK 下 iPhone／Mac 应用及 UI 测试编译、`testStorageEntryAndOverviewOpenFromMe` 运行、390×844布局／浅深色／大字号／VoiceOver、内容高度 sheet 和键盘、实际导出成功／取消的回调与恢复份数刷新、无磁盘空间／权限失败、真实 iCloud 下载与协调删除／抹掉后云端保留、钥匙串保留、重开 onboarding。临时目录的云端隔离测试不替代真实 iCloud 行为。逐项人工步骤见 [第八轮验收](V2-TEST-CHECKLIST.md#第八轮存储空间2026-10-21待-apple-设备验证)。没有同步 Figma／历史原型／分发包。
+
+## 五个界面概念（2026-10-21）
+
+本轮仅按 owner 的文案与指定结构任务调整界面；[采用映射](../.design-meta/DESIGN.md#2026-10-21--五个界面概念)、[界面用词](../CONTEXT.md#界面用词)与[决定来源](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-21--五个界面概念owner-明确要求)已同步。
+
+- 使用 `/opt/swift-rootfs/usr/bin/swift`（Swift 6.2.4），配置 `/tmp` 内模块缓存后运行 `swift test`：332 项 XCTest，328 通过，4 项原有实网 opt-in 跳过，0 失败（0 unexpected），36.069 秒。首轮三个旧文案断言失败，已仅同步预期字符串并完整重跑通过；未新增跳过或调用真实模型。
+- 新增 `InterfaceVocabularyTests`：扫描 `Sources/YubaiApp/*.swift` 的字符串，禁止 owner 指定的 11 个旧词，排除注释；扫描器覆盖嵌套块注释、字符串内注释标记、原始／多行字符串和插值内字符串。另核对记忆来源原值与旧分类占位原值保持，新词只用于展示。
+- 运行 `swiftc -frontend -parse Sources/YubaiApp/*.swift Tests/YubaiUITests/AppFlowTests.swift`，退出 0。更新记忆 UI 流程为「我 → 我的消费观 → 全部 N 条」；该 UI 测试未运行。
+- 已重跑工程生成器登记新测试；`git diff --check` 通过。财务规模对照、存档／Codable 兼容及 PR #18 的 OffCharacter／合并卡片回归均包含在上述完整测试内。未修改资金算法、模型存储字段、Codable 键、枚举原值、去重键或迁移已有数据。
+
+分支 `refactor/five-user-concepts` 基于 PR #18 最新提交 `105c280`；本轮核对时 PR #18 尚未合并，远端 main 为 `81c8b2c`，因此尚未完成「合入后对齐 main」的前提。不代为合并该 PR，不提交或推送。
+
+Linux 包清单排除 YubaiApp，因此语法解析不能证明 SwiftUI／Apple API 类型检查或运行效果。Apple 构建、iPhone／Mac 布局、大字号、VoiceOver、通知与真实模型生成文案仍待验证；Figma、历史稿、截图及分发包未同步。
+
+## 存储修复与对话压缩（2026-10-21）
+
+本轮在 `fix/storage-attachments-compaction` 分支实施。只改 Core／CArchive、测试、文档和 App 的非视觉逻辑；没有改文案布局或动效，没有调用付费网络服务。
+
+- 正式 `swift test`（容器内 Linux Swift 6.2.4，依赖正常下载）：325 项，321 通过，4 项原有实网 opt-in 跳过，0 失败；包含六个加密备份测试。
+- 四个原有实网 opt-in 测试以 `YUBAI_LIVE_EVAL=0` 跳过。HTTP 测试沿用 CloudTestStub／内存 URLProtocol，问答测试沿用脚本 transport。
+- `cc -Wall -Wextra -Werror -fsyntax-only` 检查 CArchive；Swift 编译器解析四个有逻辑调用变更的 App 文件；`git diff --check` 通过。无 Apple SDK，未验证 App 构建、ImageIO HEIC／JPEG、卷剩余容量、排除整机备份、iCloud 下载与协调／删除、文件保护等系统行为。
+
+新增覆盖共享 payload 去重、当前与剩余恢复版本的引用回收、软删除／批次及其撤销快照／待确认引用保留、懒加载与按需 SHA-256、已有 payload 不重写／保存不校验所有字节、撤销回读、gzip 及截断／损坏检测、旧 sidecar／内嵌 JSON、完整附件备份及修复缺失／损坏的当前 payload、并发跨仓库复制、摘要成功／失败／空白／取消／60%预算、工具名称与标量要点／长度。
+
+旧测试调整：StorageTests／LedgerSyncTests 改为按需读取附件，恢复 JSON 解压后检查；内嵌旧账本的新恢复记录改为元数据形状；总量超过250 MiB允许，损坏在读取 payload／采用恢复版本时拒绝；Schema2Tests 在解压后继续验证无内嵌附件的旧原始 JSON；AskYubaiTests 改为验证摘要请求和前缀；AssistantTests 改为工具要点替代旧 omitted 常量。没有删除这些测试的有效校验。
+
+完整备份仍一次临时组装全部附件并加密，内存峰值随附件总量增长；本轮没有重写 v1 备份协议为流式格式。原有恢复 sidecar 按需兼容，随对应旧版本剪除，不做启动时全量迁移。
+
 ## 管家的话 V7 异常消费卡（2026-10-21）
 
 按 owner 本轮提供的 [V7 文案与规则](../.design-meta/mockups/butler-unusual-v7.md)实现。执行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH; swift build && swift test`：构建退出 0，329 项 XCTest，325 通过、4 项原有实网 opt-in 测试跳过、0 失败（0 unexpected），33.760 秒。没有新增跳过；依赖已在本地，无需网络抓取。SwiftPM 用户级缓存不可写的警告未阻止构建或测试。

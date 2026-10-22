@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>截图记 · 认出几笔</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yubai/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600&amp;family=Noto+Sans+SC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 60px 14px 40px; background: #3a3f37; font-family: var(--font-sans, 'Noto Sans SC', sans-serif); color: var(--label, #382f1f); display: flex; flex-direction: column; gap: 12px">
+  <div style="align-self: center; width: 150px; height: 230px; border-radius: 16px; background: #f4f4f2; box-shadow: 0 0 0 1px rgba(255,255,255,.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: #555">
+    <span>支付成功</span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; font-size: 22px; color: #222">¥32.00</span><span>老王面馆</span>
+  </div>
+  <div style="border-radius: 26px; background: rgba(245,241,229,.96); padding: 16px 18px">
+    <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--label-secondary, #6a604f)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 10c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"></path><path d="M3 15c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"></path></svg>余白 · 从截图认出 2 笔（本机读取）</div>
+    <div style="margin-top: 8px"><label style="display: flex; align-items: center; gap: 10px; min-height: 48px; border-top: 1px solid var(--separator, #e0d8c9); font-size: 14px"><span style="width: 22px; height: 22px; border-radius: 11px; background: var(--brand, #557f53); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1px var(--grabber, #d8cfbe)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></span><span style="flex: 1">老王面馆<span style="display: block; font-size: 12px; color: var(--label-secondary, #6a604f)">餐饮 · 微信零钱 · 今天</span></span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; font-weight: 600">−¥32</span><input type="checkbox" checked aria-label="老王面馆" style="position: absolute; opacity: 0; width: 1px; height: 1px"></label><label style="display: flex; align-items: center; gap: 10px; min-height: 48px; border-top: 1px solid var(--separator, #e0d8c9); font-size: 14px"><span style="width: 22px; height: 22px; border-radius: 11px; background: var(--brand, #557f53); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1px var(--grabber, #d8cfbe)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></span><span style="flex: 1">滴滴出行<span style="display: block; font-size: 12px; color: var(--label-secondary, #6a604f)">交通 · 微信零钱 · 今天</span></span><span style="font-family: var(--font-num, 'Geist', sans-serif); font-variant-numeric: tabular-nums; font-weight: 600">−¥24</span><input type="checkbox" checked aria-label="滴滴出行" style="position: absolute; opacity: 0; width: 1px; height: 1px"></label></div>
+    <div style="margin-top: 12px; display: flex; gap: 8px">
+      <a href="V5-Import-Preview.dc.html" style="flex: 1; height: 44px; border-radius: 22px; background: var(--raised, #fefbea); color: var(--label, #382f1f); display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 14px">打开核对</a>
+      <a href="V4-Home-Saved.dc.html" style="flex: 1; height: 44px; border-radius: 22px; background: var(--brand, #557f53); color: var(--on-brand, #ffffff); display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 14px; font-weight: 500">记下 2 笔</a>
+    </div>
+  </div>
+  <div style="border-radius: 22px; background: rgba(255,255,255,.12); color: #ffffff; padding: 12px 14px; font-size: 13px; line-height: 19px">
+    <div style="font-weight: 500">读不清时</div>
+    <div style="opacity: .85">只回「没认出金额」和「打开记一笔」，截图带进记一笔 sheet 的导入里。</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -26,7 +26,7 @@ public struct CardCandidate: Equatable, Sendable {
                               evidence: kind == .offCharacter ? evidence : Array(evidence.prefix(1000)), action: action, dedupeKey: dedupeKey)
         card.createdAt = now; card.letter = letter; card.facts = facts; card.areaID = areaID; card.priority = priority
         card.meta = meta
-        if kind != .offCharacter && evidence.count > 1000 { card.facts?.append(CardFact("依据范围", "记录较多，这里展示其中 1000 笔；数值按全部符合条件的记录计算。")) }
+        if kind != .offCharacter && evidence.count > 1000 { card.facts?.append(CardFact("明细", "显示 1000 笔")) }
         return card
     }
 }
@@ -84,16 +84,16 @@ public enum ButlerCards {
                 return matches(area, entry: source, ledger: ledger)
             }.sorted { $0.date > $1.date }
             var facts = [CardFact("领域", area.title), CardFact("你的原话", area.note), CardFact("本周", "\(usage.weekCount) 次"), CardFact("本月消费", cents: usage.monthAmount)]
-            if let countLimit { facts.append(CardFact("每周柔性提醒", "\(countLimit) 次")) }
-            if let amountLimit { facts.append(CardFact("每月柔性提醒", cents: amountLimit)) }
+            if let countLimit { facts.append(CardFact("每周最多", "\(countLimit) 次")) }
+            if let amountLimit { facts.append(CardFact("每月最多", cents: amountLimit)) }
             let detail: String
             if let countLimit, usage.weekCount >= countLimit || (!over && Double(usage.weekCount) >= Double(countLimit) * 0.8) {
-                detail = "本周 \(usage.weekCount) 次，你写下的是每周 \(countLimit) 次。"
+                detail = "本周第 \(usage.weekCount) 次 · 你写的最多 \(countLimit) 次"
             } else if let amountLimit {
-                detail = "本月 \(Money.text(usage.monthAmount))，你留的线是 \(Money.text(amountLimit))。"
+                detail = "本月 \(Money.text(usage.monthAmount)) · 你写的最多 \(Money.text(amountLimit))"
             } else { detail = "本周有 \(usage.weekCount) 次，落在你想克制的领域。" }
             result.append(CardCandidate(kind: .restrain, dedupeKey: "restrain:\(area.id):\(isoWeek(now))", evidence: entries.map(\.id), facts: facts,
-                title: String(area.title.prefix(8)) + (over ? "到线了" : (near ? "快到线了" : "这周的记录")), body: detail,
+                title: String(area.title.prefix(8)) + "这周的记录", body: detail,
                 action: .openEvidence, priority: over ? 1 : 2, areaID: area.id))
         }
         // Forecast points already subtract emergency. Comparing against zero avoids
@@ -108,16 +108,16 @@ public enum ButlerCards {
             let out = funds.occurrences.filter { !$0.inflow && Dates.day($0.date) <= low.date && !($0.planID.map { repayments.contains($0) } ?? false) }.reduce(Int64(0)) { $0 + $1.amount }
             let days = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: low.date).day ?? 0
             let facts = [CardFact("付款", item.title), CardFact("付款日", Dates.text(item.date)), CardFact("待付", cents: item.amount),
-                         CardFact("付款前及当天最低保守余量", cents: low.conservative), CardFact("已扣应急底线", cents: funds.emergency),
-                         CardFact("现金", cents: funds.cash), CardFact("信用待还", cents: funds.debt), CardFact("目标预留", cents: funds.goals),
-                         CardFact("待明确流入", cents: funds.uncertainInflow), CardFact("最低点日期", Dates.text(low.date)),
-                         CardFact("此前及当天付款（信用本金不重复扣）", cents: out), CardFact("此前日常预留", cents: daily * Int64(days))]
+                         CardFact("付款前及当天最少还能花", cents: low.conservative), CardFact("始终留着", cents: funds.emergency),
+                         CardFact("现金", cents: funds.cash), CardFact("信用卡要还", cents: funds.debt), CardFact("在存钱", cents: funds.goals),
+                         CardFact("没写用途的进账", cents: funds.uncertainInflow), CardFact("最低点日期", Dates.text(low.date)),
+                         CardFact("此前及当天要付", cents: out), CardFact("此前日常开销", cents: daily * Int64(days))]
             result.append(CardCandidate(kind: .shortfall, dedupeKey: "shortfall:" + item.id, evidence: [], facts: facts,
-                title: String(item.title.prefix(9)) + "的缺口", body: "到这笔付款时，保守余量最低为 \(Money.text(low.conservative))。已留出应急底线。", action: .openEvidence, priority: 0))
+                title: String(item.title.prefix(9)) + "的缺口", body: "到这笔付款时，最少还能花 \(Money.text(low.conservative))。", action: .openEvidence, priority: 0))
         }
         for entry in ledger.activeEntries where entry.nature == .unknownIn && entry.date < Dates.addDays(-3, to: now) {
             result.append(CardCandidate(kind: .unknownInflow, dedupeKey: "unknownIn:\(entry.id)", evidence: [entry.id],
-                facts: [CardFact("待明确流入", cents: entry.amount), CardFact("入账日", Dates.text(entry.date))], title: "这笔来款还待明确",
+                facts: [CardFact("没写用途的进账", cents: entry.amount), CardFact("入账日", Dates.text(entry.date))], title: "这笔是什么？",
                 body: "\(Money.text(entry.amount)) 的用途还没记下，可以看看原始记录。", action: .openEvidence, priority: 3))
         }
         for account in ledger.accounts where account.anchorDate < Dates.addDays(-30, to: now) {
@@ -125,8 +125,8 @@ public enum ButlerCards {
             guard !activity.isEmpty else { continue }
             let monthKey = String(Dates.text(now).prefix(7))
             result.append(CardCandidate(kind: .staleBalance, dedupeKey: "stale:\(account.id):\(monthKey)", evidence: activity.map(\.id),
-                facts: [CardFact("账户", account.name), CardFact("上次核对", Dates.text(account.anchorDate)), CardFact("账本余额", cents: Finance.balance(account, in: ledger, at: now))],
-                title: "余额该核对一下了", body: "「\(String(account.name.prefix(12)))」的余额起点已超过一个月，这之后有新的流水。", action: .reconcileAccount(account.id), priority: 4))
+                facts: [CardFact("账户", account.name), CardFact("上次对账", Dates.text(account.anchorDate)), CardFact("账本余额", cents: Finance.balance(account, in: ledger, at: now))],
+                title: "对一下余额", body: "「\(String(account.name.prefix(12)))」上次对账已超过一个月，之后有新的账目。", action: .reconcileAccount(account.id), priority: 4))
         }
         result += Wishlist.followUps(ledger, now: now)
         let existing = Set(ledger.cards.map(\.dedupeKey))
@@ -217,7 +217,7 @@ public enum ButlerCards {
             let amount = old?.perMonthAmount.map { $0 * 4 / 5 }
             area.softLimit = SoftLimit(perWeekCount: count ?? (amount == nil ? max(1, area.usage(in: ledger, now: now).weekCount - 1) : nil), perMonthAmount: amount)
         }
-        let reason = move ? "最近两次觉得「\(title)」值得，要记为愿意多花吗？" : (relax ? "最近两次觉得「\(title)」值得，要放宽一点柔性提醒吗？" : "最近两次对「\(title)」有点后悔，要收紧一点柔性提醒吗？")
+        let reason = move ? "最近两次觉得「\(title)」值得，要记为愿意多花吗？" : (relax ? "最近两次觉得「\(title)」值得，要调高每周次数或每月金额吗？" : "最近两次对「\(title)」有点后悔，要调低每周次数或每月金额吗？")
         var proposal = ChangeSet(source: "卡片反馈", reason: reason,
                                  items: [.profile(.upsertArea(area, stance: move ? .generous : .restrain))])
         proposal.createdAt = now; ledger.pendingChanges.append(proposal)

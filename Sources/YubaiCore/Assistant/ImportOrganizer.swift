@@ -79,7 +79,7 @@ public struct ImportOrganization: Codable, Equatable, Sendable {
         ledger.imports[i].needsOrganization = false
         ledger.imports[i].organization = result
         for question in result.questions {
-            var card = ButlerCard(kind: .answerQuestion, title: "有个用途想问问你", body: "稍后回答也可以，待明确的资金继续保守计算。",
+            var card = ButlerCard(kind: .answerQuestion, title: "有个用途想问问你", body: "这几笔没写用途，稍后补上也可以。",
                                   evidence: Array(question.entryIDs.prefix(1000)), action: .answerQuestion, dedupeKey: "importQuestion:" + question.id.uuidString)
             card.importQuestion = question
             if ledger.cards.count < 5000 && !ButlerCards.isMuted(card.dedupeKey, in: ledger) && !ledger.cards.contains(where: { $0.dedupeKey == card.dedupeKey }) { ledger.cards.append(card) }
@@ -331,7 +331,7 @@ public struct ImportOrganizer: Sendable {
             entries[id].map { .setNature(entry: id, nature: $0.nature.inflow ? .unknownIn : .unknownOut, otherAccount: nil) }
         }
         let remaining = ImportQuestion(text: "其余这 \(ids.count) 笔是什么钱？", entryIDs: ids,
-            options: [ImportAnswer(title: "都是日常收支", items: ordinary), ImportAnswer(title: "先保持待明确", items: pending)])
+            options: [ImportAnswer(title: "都是日常收支", items: ordinary), ImportAnswer(title: "稍后写用途", items: pending)])
         return Array(result.prefix(4)) + [remaining]
     }
 }
