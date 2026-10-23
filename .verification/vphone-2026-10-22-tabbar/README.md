@@ -54,3 +54,18 @@
 | bills-03-stop-dialog | 停掉「测试今天付」时的弹窗 |
 | bills-04-after-stop | 停掉后进入已停掉区 |
 | bills-05-all-stopped | 测试安排全部停掉后的列表 |
+
+## 洞察分类与记录详情推入：fix/insights-push-inset（0838156，vphone 当前外观：深色、文字大一档、粗体）
+
+文件名后缀为点击/手势开始后的毫秒数。
+
+| 文件 | 内容 |
+|---|---|
+| push-01-category-* | 洞察点「其他支出」进入分类明细 |
+| push-02-category-back-* | 点返回 |
+| push-03-edge-cancel-* | 左边缘侧滑约一半后取消 |
+| push-04-after-cancel-3s | 取消侧滑 3 秒后：标签栏仍留在分类明细页 |
+| push-05-record-* | 分类明细里点记录：弹出「改一笔」表单（不是推入） |
+| push-06-record-detail-* | 管家卡片明细里点记录推入「记录详情」 |
+| push-07-record-edge-cancel-* | 记录详情左边缘侧滑一半后取消 |
+| push-08-record-back-* | 记录详情点返回 |
