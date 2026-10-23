@@ -33,6 +33,8 @@ Status: open
 
 2026-10-23 按 owner [main 与省钱分支合并要求](issues/13-complete-personal-release.md#2026-10-23--main-与省钱分支合并owner-明确任务)，同时保留固定收付 V14、导航路径控制浮栏、V15 省钱／小项及少写字；主项小项页采用标准推入。Linux 464 项测试、App／UI 条件解析与十个夹具离线验证通过，Apple 验收待做；工作树已解决，`.git` 只读导致暂存未完成，未提交。
 
+2026-10-23 按 owner [两次 V16 截图修正合并要求](issues/13-complete-personal-release.md#2026-10-23--两次-v16-截图修正合并owner-明确任务)，在省钱／main 合并基础上完整带入 65928a9／205edde；停止采用系统 alert 同时保留旧期结算／跳过，V15／小项／导航／夹具保持。Linux 464 项、App／UI 条件解析与离线夹具验证通过；68 个 UI 方法保留，Apple 验收待做，未提交；.git 只读导致暂存未完成，命令见交付记录。
+
 ## Destination
 
 2026-10-22 owner 确认[固定收付 V14 状态与停掉规则](issues/13-complete-personal-release.md#2026-10-22--固定收付状态与停掉owner-确认-v14)：每行写明状态、仅到期未处理项有描边操作、停止前结算或跳过全部到期未记期，已停掉只列一次；Core 与语法验证完成，Apple UI 验收待做。

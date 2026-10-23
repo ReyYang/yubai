@@ -26,7 +26,7 @@ struct StorageView: View {
                     if let usage {
                         let parts = StorageSize.text(usage.totalBytes).split(separator: " ")
                         Text(String(parts[0])).yubaiFont(YubaiFont.amountDisplay)
-                        Text(String(parts[1])).yubaiFont(YubaiFont.lead)
+                        Text(String(parts[1])).yubaiFont(YubaiFont.amountCard, weight: .regular).foregroundStyle(YubaiColor.labelSecondary)
                     }
                     else { Text("正在读取…").yubaiFont(YubaiFont.lead) }
                 }
@@ -64,7 +64,6 @@ struct StorageView: View {
                     .background(YubaiColor.canvas)
             }
             .navigationTitle("存储空间").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .principal) { Text("存储空间").yubaiFont(YubaiFont.navTitle) } }
             .task(id: store.current.updatedAt) { await refreshUsage() }
             .confirmationDialog("清除恢复历史？", isPresented: $clearing, titleVisibility: .visible) {
                 Button("清除 \(usage?.recoveryCount ?? 0) 份恢复历史", role: .destructive) {

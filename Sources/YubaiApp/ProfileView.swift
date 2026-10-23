@@ -96,8 +96,13 @@ struct ProfileView: View {
                                 .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                         }
                     }
-                    NavigationLink("全部 \(store.current.memories.count) 条 ›") { MemoryView() }
-                        .yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin)
+                    NavigationLink { MemoryView() } label: {
+                        HStack(spacing: YubaiSpace.gapGroup) {
+                            Text("全部 \(store.current.memories.count) 条").yubaiFont(YubaiFont.row)
+                            Spacer(minLength: YubaiSpace.space8)
+                            Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                        }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                    }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openMemories")
                 }
             }

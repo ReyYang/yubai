@@ -18,7 +18,7 @@ struct QuickCaptureSettingsView: View {
             Card {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     HStack(spacing: YubaiSpace.space8) {
-                        Text("Apple Pay 付完就记").yubaiFont(YubaiFont.cardTitle)
+                        Text("Apple Pay 付完就记").yubaiFont(YubaiFont.rowTitle)
                         Spacer()
                         #if os(iOS)
                         Button {
@@ -80,8 +80,12 @@ struct QuickCaptureSettingsView: View {
             Text(title).yubaiFont(YubaiFont.row)
             Spacer(minLength: YubaiSpace.space4)
             if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-            if navigates { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
-        }.padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+            if navigates {
+                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+            } else {
+                Color.clear.frame(width: YubaiFont.meta.size, height: YubaiFont.meta.lineHeight).accessibilityHidden(true)
+            }
+        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
     }
 }
 

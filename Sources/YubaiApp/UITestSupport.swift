@@ -9,12 +9,22 @@ enum UITestSupport {
         "judge-ask", "judge-wait", "judge-buy", "judge-skip", "wishlist-cool",
         "letter-saving", "profile-revisit", "subcategory"
     ]
+    /// Scripted replies alone do not imply that a key is configured.
+    /// UI tests can explicitly simulate either state without changing Keychain.
+    static var configuredKeyOverride: Bool? {
+        guard script != nil else { return nil }
+        switch ProcessInfo.processInfo.environment["YUBAI_UI_TEST_CONFIGURED_KEY"] {
+        case "1": return true
+        case "0": return false
+        default: return nil
+        }
+    }
     static var script: String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple"].contains(name)) else { return nil }
+              (screenshotScripts.contains(name) || ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl"].contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -42,7 +52,9 @@ enum UITestSupport {
         ledger.mutedTopics = ["letter"] // Keep scripted flows independent of the weekday.
         let account = Account(name: "合成银行卡", balance: 100_000, at: now)
         ledger.accounts = [account]
-        if script == "ask" || script == "restrain" {
+        if script == "overview-xl" {
+            ledger.entries = [Entry(date: now, amount: 3200, accountID: account.id, title: "合成测试的午饭和日用品以及下周旅行准备", category: "日用")]
+        } else if script == "ask" || script == "restrain" {
             ledger.entries = [Entry(date: now, amount: 3200, accountID: account.id, title: "合成咖啡", category: "餐饮")]
         } else if script == "import" {
             ledger.entries = [Entry(date: now.addingTimeInterval(-60), amount: 1600, accountID: account.id, title: "原有午饭", category: "餐饮")]
@@ -51,6 +63,13 @@ enum UITestSupport {
         }
         if script == "restrain" {
             ledger.profile.restrain = [ProfileArea(title: "咖啡", match: AreaMatch(keywords: ["咖啡"]), softLimit: SoftLimit(perMonthAmount: 3000))]
+        }
+        if script == "wish-bought" {
+            let entry = Entry(date: now, amount: 3200, accountID: account.id, title: "合成水壶", category: "日用")
+            ledger.entries = [entry]
+            var wish = WishItem(title: "合成水壶", amount: entry.amount)
+            wish.status = .bought; wish.boughtEntryID = entry.id; wish.followUpAt = Dates.addMonths(1, to: now)
+            ledger.wishlist = [wish]
         }
         if script.hasPrefix("bills") {
             var rent = Plan(title: "房租", amount: 30_000, dueDate: Dates.day(now))

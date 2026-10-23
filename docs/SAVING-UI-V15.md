@@ -198,12 +198,13 @@ owner 在 iPhone 17 Pro 模拟器／iOS 26 SDK 真编译发现的小项页错误
 
 只在 **Debug + iOS 模拟器** 启用，必须同时提供启动参数 `--test-ledger <UUID>` 和环境变量 `YUBAI_UI_TEST_SCRIPT=<脚本名>`；缺一、UUID 无效或脚本不在白名单时不启用。所有数据均为合成数据／设计示例，云端请求走现有 `UITestTransport`，不需要密钥。
 
-Xcode Scheme › Run › Arguments：加入 `--test-ledger`、一个新 UUID，Environment Variables 加入对应的 `YUBAI_UI_TEST_SCRIPT`。可附加 `-AppleLanguages (zh-Hans) -AppleLocale zh_CN` 固定中文。每次要重置截图数据就换 UUID；同一 UUID 重启保留修改，不覆盖已有测试账本。
+Xcode Scheme › Run › Arguments：加入 `--test-ledger`、一个新 UUID，Environment Variables 加入对应的 `YUBAI_UI_TEST_SCRIPT`。合入 V16 截图复查修正后，还须设 `YUBAI_UI_TEST_CONFIGURED_KEY=1` 显式模拟已配密钥；设为 `0` 可验无密钥禁用态，未设置时沿用真实钥匙串状态。此覆盖只对通过上述隔离门槛的 Debug 模拟器脚本生效，不写入钥匙串。可附加 `-AppleLanguages (zh-Hans) -AppleLocale zh_CN` 固定中文。每次要重置截图数据就换 UUID；同一 UUID 重启保留修改，不覆盖已有测试账本。
 
 已安装 Debug App、模拟器已启动时也可运行（Bundle ID 如有本机配置覆盖，替换成实际值）：
 
 ```bash
 SIMCTL_CHILD_YUBAI_UI_TEST_SCRIPT=judge-ask \
+SIMCTL_CHILD_YUBAI_UI_TEST_CONFIGURED_KEY=1 \
 SIMCTL_CHILD_DEEPSEEK_API_KEY= \
 xcrun simctl launch --terminate-running-process booted app.yubai.personal \
   --test-ledger "$(uuidgen)" -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN

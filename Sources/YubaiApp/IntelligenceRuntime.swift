@@ -6,7 +6,7 @@ import YubaiCore
     static let cloud = CloudAIStatus()
     static var isConfigured: Bool {
         #if DEBUG && targetEnvironment(simulator)
-        if UITestSupport.script != nil { return true }
+        if let configured = UITestSupport.configuredKeyOverride { return configured }
         #endif
         return cloud.configured
     }
@@ -69,6 +69,7 @@ struct ActiveLedgerTransport: ChatTransport {
         guard snapshot.preferences.cloudAIEnabled, !locked, IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
         #if DEBUG && targetEnvironment(simulator)
         if let script = UITestSupport.script {
+            guard IntelligenceRuntime.isConfigured else { return nil }
             return ActiveLedgerTransport(base: UITestTransport(script: script)) { self.current == snapshot && !self.locked }
         }
         #endif
