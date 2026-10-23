@@ -305,7 +305,8 @@ struct FixedFlowCheck: View {
                         .foregroundStyle(inflow ? YubaiColor.brandInk : YubaiColor.amberInk)
                         .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowIcon)
                         .overlay { Capsule().strokeBorder(inflow ? YubaiColor.brandInk : YubaiColor.amberInk, lineWidth: 1.5) }
-                        .yubaiHitTarget()
+                        // Keep the visible control flush with the shared swipe action gap.
+                        .yubaiHitTarget(alignment: .trailing)
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel(label)
                     .accessibilityValue(FixedFlowPresentation.state(state, inflow: inflow))
                     .accessibilityIdentifier("settleFixedFlow_" + planID.uuidString + "_" + Dates.text(occurrence))

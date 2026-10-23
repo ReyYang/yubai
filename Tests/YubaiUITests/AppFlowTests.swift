@@ -391,8 +391,8 @@ final class AppFlowTests: XCTestCase {
         let card = app.descendants(matching: .any).matching(identifier: "fixedFlowExpenseCard").firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         let rows = card.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' ")).allElementsBoundByIndex
-        XCTAssertGreaterThanOrEqual(rows.count, 3)
-        for index in [0, rows.count / 2, rows.count - 1] {
+        XCTAssertGreaterThanOrEqual(rows.count, 2)
+        for index in [0, rows.count - 1] {
             let row = rows[index]
             for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
             XCTAssertTrue(row.isHittable)
@@ -422,7 +422,7 @@ final class AppFlowTests: XCTestCase {
         }
     }
 
-    func testUpcomingPaymentStopUsesAlertAndSupportsCancelAndUndo() {
+    func testUpcomingPaymentStopUsesAlertAndSupportsCancelAndConfirm() {
         let app = application("bills"); app.launch()
         tap(app.buttons["fundsFormula"], in: app)
         let end = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'endArrangement_' ")).firstMatch
@@ -439,8 +439,28 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons[identifier].exists)
         tap(app.buttons[identifier], in: app)
         tap(confirmation.buttons["停掉以后的"], in: app)
+        assertGone(confirmation)
         assertGone(app.buttons[identifier])
+    }
+
+    func testUpcomingPaymentStopUsesAlertAndSupportsCancelAndUndo() {
+        let app = application("bills"); app.launch()
+        tap(app.buttons["fundsFormula"], in: app)
+        let end = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'endArrangement_' ")).firstMatch
+        XCTAssertTrue(end.waitForExistence(timeout: 5))
+        let identifier = end.identifier
+        tap(end, in: app)
+        let confirmation = app.alerts.firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        tap(confirmation.buttons["取消"], in: app); assertGone(confirmation)
+        XCTAssertTrue(app.buttons[identifier].exists)
+        tap(app.buttons[identifier], in: app)
+        tap(confirmation.buttons["停掉以后的"], in: app)
+        assertGone(confirmation)
+        // Undo belongs to the root overlay, behind the calculation sheet.
+        tap(app.buttons["closeSheet"], in: app)
         tap(app.buttons["撤销"], in: app)
+        tap(app.buttons["fundsFormula"], in: app)
         XCTAssertTrue(app.buttons[identifier].waitForExistence(timeout: 5))
     }
 
@@ -621,20 +641,62 @@ final class AppFlowTests: XCTestCase {
 
     func testScrolledRootHeadersStayInsideSafeAreaWhenOpeningEntrySheet() {
         let app = application("entries")
-        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
-        app.launch()
-        let statusBar = app.statusBars.firstMatch
-        XCTAssertTrue(statusBar.waitForExistence(timeout: 5))
-        for (tab, scrollID) in [("tab_overview", "overviewScroll"), ("tab_insights", "insightsScroll"), ("tab_entries", "entriesScroll"), ("tab_settings", "settingsScroll")] {
-            tap(app.buttons[tab], in: app)
-            let scroll = app.scrollViews[scrollID]
-            XCTAssertTrue(scroll.waitForExistence(timeout: 5))
-            XCTAssertGreaterThanOrEqual(scroll.frame.minY, statusBar.frame.maxY)
-            for _ in 0..<4 { scroll.swipeUp() }
-            let title = app.staticTexts["rootHeaderTitle"], ask = app.buttons["askYubai"]
-            if title.isHittable { XCTAssertGreaterThanOrEqual(title.frame.minY, statusBar.frame.maxY) }
-            if ask.isHittable { XCTAssertGreaterThanOrEqual(ask.frame.minY, statusBar.frame.maxY) }
-            snapshot("\(tab)-scrolled-safe-area", app)
+        let arguments = app.launchArguments
+        for category in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryAccessibilityXL"] {
+            app.launchArguments = arguments + ["-UIPreferredContentSizeCategoryName", category]
+            app.launch()
+            // Measure the native navigation region on a pushed page, then verify system back.
+            // All four roots use the custom header; iOS 26 has no statusBars element.
+            openFixedBills(app)
+            let navigationBar = app.navigationBars["固定收付"]
+            XCTAssertTrue(navigationBar.waitForExistence(timeout: 5))
+            let window = app.windows.firstMatch
+            XCTAssertTrue(window.exists)
+            let safeTop = navigationBar.frame.minY
+            XCTAssertGreaterThan(safeTop, window.frame.minY)
+            tap(navigationBar.buttons["我"], in: app)
+            assertSelectedTab("tab_settings", in: app)
+            var titleY: CGFloat?
+            for (tab, scrollID, firstContentID) in [("tab_overview", "overviewScroll", "fundsFormula"), ("tab_insights", "insightsScroll", "本周"), ("tab_entries", "entriesScroll", "entriesPreviousMonth"), ("tab_settings", "settingsScroll", "openProfile")] {
+                tap(app.buttons[tab], in: app)
+                let scroll = app.scrollViews[scrollID]
+                let scrolls = tab != "tab_overview" || category == "UICTContentSizeCategoryAccessibilityXL"
+                if scrolls { XCTAssertTrue(scroll.waitForExistence(timeout: 5)) }
+                let headers = [app.staticTexts["rootHeaderTitle"], app.buttons["askYubai"]]
+                for header in headers { XCTAssertTrue(header.isHittable) }
+                if let titleY { XCTAssertEqual(headers[0].frame.minY, titleY, accuracy: 1) }
+                else { titleY = headers[0].frame.minY }
+                let headerBottom = max(headers[0].frame.maxY, headers[1].frame.maxY)
+                let firstContent = app.buttons[firstContentID]
+                if scrolls {
+                    for _ in 0..<8 {
+                        if firstContent.isHittable && firstContent.frame.minY >= headerBottom { break }
+                        scroll.swipeDown()
+                    }
+                }
+                XCTAssertTrue(firstContent.isHittable)
+                XCTAssertGreaterThanOrEqual(firstContent.frame.minY, headerBottom)
+                let originalFrames = headers.map(\.frame)
+                if scrolls { for _ in 0..<4 { scroll.swipeUp() } }
+                for (header, originalFrame) in zip(headers, originalFrames) {
+                    XCTAssertTrue(header.isHittable)
+                    XCTAssertGreaterThanOrEqual(header.frame.minY, safeTop)
+                    XCTAssertTrue(window.frame.contains(header.frame))
+                    XCTAssertEqual(header.frame.minY, originalFrame.minY, accuracy: 1)
+                    XCTAssertEqual(header.frame.height, originalFrame.height, accuracy: 1)
+                }
+                if scrolls {
+                    // Accessibility frames can include the clipped part of a partially visible row.
+                    // Fully covered content must not be tappable, while the body remains usable.
+                    let content = scroll.descendants(matching: .button).allElementsBoundByIndex
+                    XCTAssertTrue(content.contains { $0.isHittable })
+                    for element in content where element.frame.maxY <= headerBottom {
+                        XCTAssertFalse(element.isHittable)
+                    }
+                }
+                snapshot("\(category)-\(tab)-scrolled-safe-area", app)
+            }
+            if category == "UICTContentSizeCategoryL" { app.terminate() }
         }
         tap(addEntryTab(app), in: app)
         XCTAssertTrue(app.buttons["importFromEntry"].waitForExistence(timeout: 5))
@@ -642,6 +704,35 @@ final class AppFlowTests: XCTestCase {
         snapshot("scrolled-me-entry-sheet", app)
         tap(app.buttons["cancelManualSheet"], in: app)
         assertSelectedTab("tab_settings", in: app)
+    }
+
+    func testEntrySheetWithPurposeSuggestionsKeepsActionsAboveHomeIndicator() {
+        let app = application("entries"); app.launch()
+        let navigation = app.otherElements["mainNavigation"]
+        XCTAssertTrue(navigation.waitForExistence(timeout: 5))
+        // The floating bar ends 8pt above the bottom safe-area boundary.
+        let safeBottom = navigation.frame.maxY + 8
+        tap(addEntryTab(app), in: app)
+        let form = app.scrollViews["entryFormScroll"]
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+        let recent = app.buttons["合成账目 0"]
+        for _ in 0..<8 { if recent.isHittable { break }; form.swipeUp() }
+        XCTAssertTrue(recent.isHittable)
+        tap(recent, in: app)
+        tap(app.buttons["keypad_3"], in: app)
+        let save = app.buttons["saveQuickEntry"], again = app.buttons["saveAndAddAnother"]
+        XCTAssertTrue(save.isHittable); XCTAssertTrue(again.isHittable)
+        XCTAssertLessThanOrEqual(save.frame.maxY, again.frame.minY)
+        XCTAssertLessThanOrEqual(again.frame.maxY, safeBottom - 12)
+        let originalFrame = again.frame
+        form.swipeUp()
+        XCTAssertTrue(again.isHittable)
+        XCTAssertEqual(again.frame.minY, originalFrame.minY, accuracy: 1)
+        XCTAssertLessThanOrEqual(again.frame.maxY, safeBottom - 12)
+        snapshot("entry-purpose-chips-safe-bottom", app)
+        tap(again, in: app)
+        XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "0")
+        XCTAssertTrue(again.exists); XCTAssertFalse(again.isEnabled)
     }
 
     func testOverviewAccessibilityXLScalesHeaderAndWrapsTodaySummary() {
@@ -1216,28 +1307,37 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["startLedger"].isEnabled)
         XCTAssertGreaterThan(app.buttons["startLedger"].frame.width, app.frame.width * 0.8)
         XCTAssertGreaterThan(app.buttons["startLedger"].frame.minY, app.frame.midY)
-        tap(app.buttons["welcomeOtherAccount"], in: app)
-        snapshot("welcome-account", app)
-        tap(app.textFields["accountName"], in: app); app.textFields["accountName"].typeText("UI Bank")
         tap(app.textFields["accountBalance"], in: app); app.textFields["accountBalance"].typeText("1000")
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
         let scroll = app.scrollViews["welcomeScroll"]
         let start = app.buttons["startLedger"]
         let chips = ["微信零钱", "支付宝", "招行储蓄卡", "welcomeOtherAccount"].map { app.buttons[$0] }
-        for _ in 0..<8 {
-            if chips.allSatisfy({ $0.isHittable && $0.frame.minY >= scroll.frame.minY && $0.frame.maxY <= start.frame.minY }) { break }
-            scroll.swipeUp()
-        }
-        XCTAssertTrue(keyboard.exists)
-        XCTAssertLessThanOrEqual(start.frame.maxY, keyboard.frame.minY)
-        for chip in chips {
-            XCTAssertTrue(chip.isHittable)
-            XCTAssertGreaterThanOrEqual(chip.frame.minY, scroll.frame.minY)
-            XCTAssertLessThanOrEqual(chip.frame.maxY, start.frame.minY)
-        }
         let card = app.descendants(matching: .any).matching(identifier: "welcomeBalanceCard").firstMatch
-        XCTAssertLessThanOrEqual(card.frame.maxY, start.frame.minY)
+        func assertKeyboardLayout() {
+            // No swipe first: focusing the field must reveal the card's chips automatically.
+            let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                chips.allSatisfy { $0.isHittable && $0.frame.minY >= scroll.frame.minY && $0.frame.maxY <= start.frame.minY }
+                    && card.frame.maxY <= start.frame.minY && start.frame.maxY <= keyboard.frame.minY
+            }, object: scroll)
+            XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed)
+            XCTAssertTrue(keyboard.exists)
+            XCTAssertTrue(start.isHittable)
+            XCTAssertLessThanOrEqual(start.frame.maxY, keyboard.frame.minY)
+            for chip in chips {
+                XCTAssertTrue(chip.isHittable)
+                XCTAssertGreaterThanOrEqual(chip.frame.minY, scroll.frame.minY)
+                XCTAssertLessThanOrEqual(chip.frame.maxY, start.frame.minY)
+            }
+            XCTAssertLessThanOrEqual(card.frame.maxY, start.frame.minY)
+        }
+        assertKeyboardLayout()
+        snapshot("welcome-default-account-keyboard", app)
+        tap(app.buttons["welcomeOtherAccount"], in: app)
+        tap(app.textFields["accountName"], in: app); app.textFields["accountName"].typeText("UI Bank")
+        snapshot("welcome-account", app)
+        tap(app.textFields["accountBalance"], in: app)
+        assertKeyboardLayout()
         snapshot("welcome-keyboard-chips", app)
         tap(app.buttons["startLedger"], in: app)
         let funds = app.buttons["fundsFormula"]

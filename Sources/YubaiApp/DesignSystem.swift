@@ -190,7 +190,7 @@ enum YubaiSize {
     static let segmentedPill: CGFloat = 32
     static let segmentedHitOutset = (tapMin - segmentedHeight) / 2
     static let swipeActionWidth: CGFloat = 78
-    static let swipeRevealDistance = swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapGroup
+    static let swipeRevealDistance = swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapAction
     static let tabBarHeight: CGFloat = 66
     static let tabSelectionHeight = tabBarHeight - YubaiSpace.space8 * 2
     static let tabSelectionRadius = tabSelectionHeight / 2
@@ -515,11 +515,25 @@ extension View {
         #if os(iOS)
         self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
             .scrollEdgeEffectHidden(true, for: .bottom)
-            // Keep scrolled headers inside the root page's top safe area.
+            // Root headers live outside this clipped scrolling body.
             .clipped()
         #else
         self.safeAreaPadding(.bottom, YubaiSize.rootBottomPadding)
         #endif
+    }
+    func rootPageHeader<Header: View>(@ViewBuilder _ header: () -> Header) -> some View {
+        VStack(spacing: YubaiSpace.none) {
+            header()
+                .padding(.horizontal, YubaiSpace.insetPage)
+                .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+                .background(YubaiColor.canvas)
+            self
+                .overlay(alignment: .top) {
+                    LinearGradient(colors: [YubaiColor.canvas, YubaiColor.canvas.opacity(0)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: YubaiSpace.space8)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
+        }
     }
     func pageLocalHorizontalGestures() -> some View {
         #if os(iOS)
@@ -652,7 +666,7 @@ struct SwipeActionRow<Content: View>: View {
                     #if os(iOS)
                     .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
                     #else
-                    .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapGroup).frame(maxHeight: .infinity).background(tint)
+                    .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
                     #endif
                     .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
                     .accessibilityIdentifier(actionIdentifier)
@@ -1270,46 +1284,69 @@ private struct AppErrorPresenter: ViewModifier {
 }
 
 struct WelcomeView: View {
+    private enum Field: Hashable { case balance, name }
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var name = "微信零钱"
     @State private var amount = ""
     @State private var customName = false
+    @FocusState private var focusedField: Field?
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: YubaiSpace.insetCard) {
-                BrandMark(size: YubaiSize.iconButton + YubaiSpace.gapSection)
-                    .padding(.top, YubaiSpace.gapSection + YubaiSpace.space8)
-                Text("余白").yubaiFont(YubaiFont.welcome)
-                Card {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                        Text("现在手里有").yubaiFont(YubaiFont.heroLabel)
-                        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                            Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-                            TextField("0.00", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay)
-                                .accessibilityLabel("现在手里的余额，元").accessibilityIdentifier("accountBalance")
-                        }
-                        ChipFlow {
-                            ForEach(["微信零钱", "支付宝", "招行储蓄卡"], id: \.self) { value in
-                                SuggestionChip(value: value, selected: !customName && name == value) { name = value; customName = false }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: YubaiSpace.insetCard) {
+                    BrandMark(size: YubaiSize.iconButton + YubaiSpace.gapSection)
+                        .padding(.top, YubaiSpace.gapSection + YubaiSpace.space8)
+                    Text("余白").yubaiFont(YubaiFont.welcome)
+                    Card {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                            Text("现在手里有").yubaiFont(YubaiFont.heroLabel)
+                            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                                Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
+                                TextField("0.00", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay)
+                                    .focused($focusedField, equals: .balance)
+                                    .accessibilityLabel("现在手里的余额，元").accessibilityIdentifier("accountBalance")
                             }
-                            SuggestionChip(value: "＋ 别的", selected: customName) { name = ""; customName = true }
-                                .accessibilityIdentifier("welcomeOtherAccount")
-                        }.padding(.top, YubaiSpace.space8)
-                        if customName {
-                            TextField("名称", text: $name).accessibilityIdentifier("accountName")
-                                .accessibilityLabel("账户名称")
+                            ChipFlow {
+                                ForEach(["微信零钱", "支付宝", "招行储蓄卡"], id: \.self) { value in
+                                    SuggestionChip(value: value, selected: !customName && name == value) { name = value; customName = false }
+                                }
+                                SuggestionChip(value: "＋ 别的", selected: customName) { name = ""; customName = true; focusedField = .name }
+                                    .accessibilityIdentifier("welcomeOtherAccount")
+                            }.padding(.top, YubaiSpace.space8)
+                            if customName {
+                                TextField("名称", text: $name).accessibilityIdentifier("accountName")
+                                    .focused($focusedField, equals: .name)
+                                    .accessibilityLabel("账户名称")
+                            }
                         }
-                    }
-                }.padding(.top, YubaiSpace.gapSection).accessibilityElement(children: .contain).accessibilityIdentifier("welcomeBalanceCard")
-            }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity)
-                .padding(YubaiSpace.insetPage)
-        }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("welcomeScroll")
-        .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
-            Button("开始", action: start).buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.brandTint))
-                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
-                .accessibilityIdentifier("startLedger")
-                .padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
+                    }.padding(.top, YubaiSpace.gapSection).id("welcomeBalanceCard")
+                        .accessibilityElement(children: .contain).accessibilityIdentifier("welcomeBalanceCard")
+                }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity)
+                    .padding(YubaiSpace.insetPage)
+            }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("welcomeScroll")
+                .onGeometryChange(for: CGSize.self) { geometry in
+                    // The inset can change the safe viewport without changing the scroll frame.
+                    CGSize(width: geometry.size.width,
+                           height: geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom)
+                } action: { _ in revealBalanceCard(using: proxy) }
+                .task(id: focusedField) {
+                    await Task.yield()
+                    revealBalanceCard(using: proxy)
+                }
+                .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+                    Button("开始", action: start).buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.brandTint))
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
+                        .accessibilityIdentifier("startLedger")
+                        .padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
+                }
         }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
+    }
+    private func revealBalanceCard(using proxy: ScrollViewProxy) {
+        guard focusedField != nil else { return }
+        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) {
+            proxy.scrollTo("welcomeBalanceCard", anchor: .bottom)
+        }
     }
     private func start() {
         do {
@@ -1521,12 +1558,23 @@ struct AskToolbarButton: View {
 }
 
 struct TabRootHeader: View {
+    @Environment(AppStore.self) private var store
     let title: String
+    var showsAmountVisibility = false
     var body: some View {
         GlassGroup {
             ZStack {
                 Text(title).yubaiFont(YubaiFont.navTitle).accessibilityIdentifier("rootHeaderTitle")
-                HStack(spacing: YubaiSpace.gapGroup) { Color.clear.frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin); Spacer(); AskToolbarButton() }
+                HStack(spacing: YubaiSpace.gapGroup) {
+                    if showsAmountVisibility {
+                        HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
+                            Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
+                                .font(.system(size: size))
+                        }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
+                            .accessibilityIdentifier("toggleAmountVisibility")
+                    } else { Color.clear.frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
+                    Spacer(); AskToolbarButton()
+                }
             }.frame(minHeight: YubaiSize.headerHeight)
         }
     }

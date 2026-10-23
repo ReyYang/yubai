@@ -10,8 +10,7 @@ struct SettingsView: View {
     private var thinkingCount: Int { store.current.wishlist.filter { $0.status == .thinking }.count }
     private var followUpCount: Int { store.current.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= Date() } == true }.count }
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-            TabRootHeader(title: "我")
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.none) {
             TabNavigationLink(.profile) { ProfileView() } label: {
                 Card {
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -67,7 +66,8 @@ struct SettingsView: View {
                     TabNavigationLink(.storage) { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
             }.buttonStyle(PressButtonStyle())
-        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("settingsScroll").navigationTitle("我")
+        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("settingsScroll")
+            .rootPageHeader { TabRootHeader(title: "我") }.navigationTitle("我")
             .task(id: store.current.updatedAt) {
                 let repository = store.localRepository
                 do { storageSize = StorageSize.text(try await Task.detached(priority: .utility) { try repository.storageUsage() }.value.totalBytes) }
