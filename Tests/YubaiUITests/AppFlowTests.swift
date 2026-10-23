@@ -17,6 +17,7 @@ final class AppFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
+        app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         currentApp = app; snapshotNumber = 0
         return app
@@ -65,6 +66,39 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_settings"], in: app)
         tap(app.buttons["openFixedFlows"], in: app)
         XCTAssertTrue(app.navigationBars["固定收付"].waitForExistence(timeout: 5))
+    }
+
+    func testAskWithoutKeyDisablesComposerEvenWithScriptedReplies() {
+        let app = application("ask")
+        app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "0"
+        app.launch()
+        tap(app.buttons["askYubai"], in: app)
+        let input = app.descendants(matching: .any).matching(identifier: "askInput").firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 5)); XCTAssertFalse(input.isEnabled)
+        for title in ["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，该不该买？"] {
+            XCTAssertTrue(app.buttons[title].exists); XCTAssertFalse(app.buttons[title].isEnabled)
+        }
+        let configure = app.buttons["configureAskKey"]
+        XCTAssertTrue(configure.exists); XCTAssertTrue(configure.isEnabled)
+        snapshot("ask-missing-key", app)
+        tap(configure, in: app)
+        XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.switches["打开云端智能"].value as? String, "1")
+    }
+
+    func testBoughtWishShowsStatusAndDateWithoutAskAgain() {
+        let app = application("wish-bought"); app.launch()
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons["openWishlist"], in: app)
+        XCTAssertTrue(app.staticTexts["心愿单还是空的"].exists)
+        XCTAssertTrue(app.buttons["该不该买"].exists)
+        tap(app.buttons["pastWishes"], in: app)
+        XCTAssertTrue(app.navigationBars["过去的心愿"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["已买"].exists)
+        let date = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'wishFollowUpDate_' ")).firstMatch
+        XCTAssertTrue(date.exists); XCTAssertTrue(date.label.contains("问你用得怎么样"))
+        XCTAssertFalse(app.buttons["再问一次"].exists)
+        snapshot("wish-bought", app)
     }
 
     func testFixedBillCheckMarksPaidAndUndoRestoresIt() {
@@ -138,9 +172,19 @@ final class AppFlowTests: XCTestCase {
         let planID = String(check.identifier.split(separator: "_")[1])
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID)).firstMatch
         let restore = app.buttons["resumeFixedFlow_" + planID]
+        row.swipeLeft()
+        tap(app.buttons["停掉"], in: app)
+        let confirmation = app.sheets.firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirmation.staticTexts["停掉「工资」？"].exists)
+        tap(confirmation.buttons["取消"], in: app)
+        assertGone(confirmation)
+        XCTAssertTrue(check.isEnabled)
         func stop() {
             row.swipeLeft()
-            tap(app.buttons["停掉"], in: app); tap(app.buttons["停掉以后的"], in: app)
+            tap(app.buttons["停掉"], in: app)
+            XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+            tap(confirmation.buttons["停掉以后的"], in: app)
             XCTAssertTrue(restore.waitForExistence(timeout: 5))
             XCTAssertTrue(app.staticTexts.matching(identifier: "已停掉").firstMatch.exists)
         }
@@ -228,6 +272,14 @@ final class AppFlowTests: XCTestCase {
     func testStorageEntryAndOverviewOpenFromMe() {
         let app = application("ask"); app.launch()
         tap(app.buttons["tab_settings"], in: app)
+        let storage = app.buttons["openStorage"]
+        let navigation = app.otherElements["mainNavigation"]
+        for _ in 0..<8 {
+            if storage.isHittable && storage.frame.maxY <= navigation.frame.minY { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(storage.isHittable)
+        XCTAssertLessThanOrEqual(storage.frame.maxY, navigation.frame.minY)
         tap(app.buttons["openStorage"], in: app)
         XCTAssertTrue(app.navigationBars["存储空间"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "storageHeadline").firstMatch.exists)
@@ -237,7 +289,8 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(addEntryTab(app).isHittable)
         snapshot("storage-overview", app)
         tap(app.buttons["openStoragePhotos"], in: app)
-        XCTAssertTrue(app.staticTexts["账单原件不删，导入记录里仍可撤销。"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["账单原件"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["不删"].exists)
         XCTAssertTrue(app.buttons["半年前"].isSelected)
         snapshot("storage-photos", app)
     }
@@ -690,6 +743,8 @@ final class AppFlowTests: XCTestCase {
         let app = application("empty"); app.launch()
         snapshot("welcome", app)
         XCTAssertFalse(app.buttons["startLedger"].isEnabled)
+        XCTAssertGreaterThan(app.buttons["startLedger"].frame.width, app.frame.width * 0.8)
+        XCTAssertGreaterThan(app.buttons["startLedger"].frame.minY, app.frame.midY)
         tap(app.buttons["welcomeOtherAccount"], in: app)
         snapshot("welcome-account", app)
         tap(app.textFields["accountName"], in: app); app.textFields["accountName"].typeText("UI Bank")
@@ -818,6 +873,11 @@ final class AppFlowTests: XCTestCase {
         tap(addEntryTab(app), in: app)
         tap(app.buttons["importFromEntry"], in: app)
         snapshot("import-preview", app)
+        let incoming = app.descendants(matching: .any).matching(identifier: "importTotal_流入").firstMatch
+        XCTAssertTrue(incoming.waitForExistence(timeout: 5))
+        XCTAssertTrue(incoming.label.contains("1 笔")); XCTAssertTrue(incoming.label.contains("40.00"))
+        let outgoing = app.descendants(matching: .any).matching(identifier: "importTotal_流出").firstMatch
+        XCTAssertTrue(outgoing.label.contains("1 笔")); XCTAssertTrue(outgoing.label.contains("32.00"))
         tap(app.buttons["commitImport"], in: app)
         let question = app.staticTexts["importQuestion"]
         XCTAssertTrue(question.waitForExistence(timeout: 10)); XCTAssertEqual(question.label, "这笔来款是什么用途？")

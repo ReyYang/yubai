@@ -156,3 +156,53 @@
 - Linux swift test：待维护者填写结果。
 
 本地原始输出在 `.verification/v16/final-checks.log`、`.verification/v16/build-and-test.log`；该目录按项目既有忽略规则保留本机，不作为已运行 Apple 测试的证据。所有改动留在工作区。
+
+## 截图复查修正
+
+2026-10-23，依据 owner 的 iOS 26.4 模拟器截图复查清单，在干净的 `feat/no-explanatory-copy`（起始 `e50a73b`）继续修改。逐文件核对 `git diff 18889f8 -- <file>`，并对旧组件比较 main 与起始 HEAD 的源码片段。沿用 V16 原始画板和 rule／audit，未改原稿。本节「已改」指源码修正，尚未重新运行 Apple 模拟器截图验收。
+
+### 逐项处理
+
+| # | 结果与归属 | 处理／保留原因 |
+|---|---|---|
+| 1 欢迎 | 已改；V16-Welcome | 「开始」原已使用 PrimaryButtonStyle，但该组件的禁用背景为透明，空金额时看起来只有文字。本次仅为欢迎按钮指定现有 brandTint 禁用底色；填入有效余额后使用品牌色，全宽，并让外层填满可用高度、保持按钮在底部。保留名称与金额校验。 |
+| 2 问余白 | 已改；V16-Ask-Offline | Debug 的任意脚本原先都会让 isConfigured 返回 true。脚本现在只有显式 `YUBAI_UI_TEST_CONFIGURED_KEY=1` 才模拟有密钥，`0` 可模拟无密钥；未指定时读取真实配置。无密钥时脚本 transport 也不可用，输入条及三枚建议禁用、建议使用次要色，显示可进入智能与隐私的「还没配密钥 ›」。普通 Debug／Release 的真实钥匙串及环境变量读取保持。 |
+| 3 消费观空状态 | 已改；V16-Profile-Empty 的末节 | 「全部 N 条」改为占满行宽的 HStack，Spacer 后使用 SF Symbol chevron.right，箭头与其他行一样靠右；入口 identifier 保留。 |
+| 4 我 | 已改；V16 少写字规则／根页留白 | 消费观入口只留右侧 N 条计数；周新增计数及空消费观信息保留给读屏，删除两行可见说明。原 main 已有 rootScrollContentMargins，但本次改为通过 Page 的滚动内容 bottomPadding 明确留下 `gapSection + rootBottomPadding`，直接复用现有浮栏高度／底边／间隔 token，保证末行能够滚到浮栏上方；其他 Page 的默认 padding 保持。 |
+| 5 心愿单 | 已改；V16-Wishlist-Empty／已触及的日期状态 | 空态按当前可展示内容判断：没有在想的项目、到期提示或聚焦卡片时显示 V16 虚线占位、空态标题和「该不该买」，已有历史入口保留，避免只剩历史计数一行。已买卡片增加「已买」胶囊；只要有 followUpAt 就显示现有日历图标＋日期，包括已到期或已回答的情况；已买不渲染操作区，因此没有「再问一次」。不使用禁用词作可见后缀，日期的完整读屏标签保留。 |
+| 6 记一笔 | 已改；V16-Forms／EditorForm | 记一笔、改一笔的用途输入改为空占位，左侧「用途」、完整 accessibilityLabel 及建议芯片保留。 |
+| 7 账户详情／计算页 | 旧问题未改；超出 V16 触及组件 | main `18889f8` 到起始 HEAD 的整个 AccountsView（含 accountDetail）完全相同，居中纯文字账户操作及空关联记录卡片均原已存在；CardRows 本身也未被 V16 改动，空细条来自其空集合仍包 Card，并非 EmptyState 去说明遗留。计算页的空付款卡片和两次期限来自原有 UpcomingPaymentsView／FundsCalculationView；FundsCalculationView 整段与 main 相同。V16 在这些文件触及的是账户编辑表单、无账户状态与停掉确认，不把此次复查扩为旧账户详情／资金计算布局重做。 |
+| 8 我的账户／每周来信 | 旧问题未改；超出 V16 导航范围 | AccountsView、LettersView 两个完整组件从 main 到起始 HEAD 均无变化，push 页面上多余的 CloseButton 是旧导航问题；V16 的来信修改位于 WeeklyLetterCard，不涉及来信列表的呈现方式。本次保留并登记，未全局修改 CloseButton，以免影响 sheet。 |
+| 9 停掉确认 | 已改；V16-Forms | 源码原本已经是 confirmationDialog，但挂在整页。固定收付改由各账单行持有确认状态、在该行挂载；Overview 的同类确认挂在对应「结束这个安排」按钮。统一标题「停掉「{名称}」？」、destructive「停掉以后的」和「取消」，后果保留在读屏 hint。iPhone 使用系统 confirmationDialog 的底部动作表适配；实际 iOS 26.4 呈现待复验。 |
+| 10 固定收付左滑 | 已改；main 旧问题，owner 明确要求例外修复 | 复用账目行的 HorizontalPan、78pt 按钮＋6pt 右内缩＋12pt 间距＝96pt 露出及既有回弹规则。iOS 删除行与整组的裁切，把卡面／分隔线随原宽内容整体平移；首末圆角由各行使用原 card radius 组成，停掉按钮独立露在 canvas 上。没有缩窄文字的布局宽度，macOS 保留原裁切与 DragGesture。未扩为新的多行滑动协调规则。 |
+| 11 导入核对 | 已改；V16-Import，仅界面统计 | 表格来源／日期／笔数标题改用现有无衬线 rowTitle。原汇总只筛 `.expense`／`.income`，行内符号却按 `.nature.inflow`；Classifier 会把转账来款保留为 `.unknownIn`，退款等也可为正数，不能当作工资类收入。本次汇总改为「流出／流入」，按与行内相同的流向对所选记录计数及求和，因此 +40.00 会进入流入。没有把这些来款改成 income，也未改 Core 分类、金额或入账行为；未发现需要本次处理的 Core 计算缺陷。 |
+| 12 存储空间 | 已改；V16-Storage | KB／MB 等单位使用现有 amountCard（与数字同为 rounded 数字字体），页面 principal 标题使用 navTitle 的 semibold，与其他页面标题字重一致。 |
+| 13 快速记账 | 已改；V16-Quick | Apple Pay 标题改为画板的无衬线行标题 rowTitle。其他入口统一占满行宽，并为不可点行预留与行尾箭头相同的空位；小组件／控制中心／轻点背面仍为静态缩略图和名称，不出现可见箭头或新的假操作。 |
+| 14 无障碍 XL | 部分已改；tab bar 为 owner 明确允许的旧问题例外 | 四个 tab 图标（含现在的水位图）共用一个 @ScaledMetric，统一限制到既有 barMax（24pt）；＋也按 ScaledMetric 缩放并限制在既有 amountLarge 尺寸（30pt），保留原按钮／浮栏尺寸。标签的动态字号上限为 xxxLarge，以免挤出原选择胶囊。眼睛按钮所在 header、AskToolbarButton 和 todayRow 的完整片段在 main 到起始 HEAD 均无变化，V16 未触及这些组件；依本项「只在本分支改动或 V16 触及的组件里修」保留其旧尺寸／截断问题，未扩改现在页布局。 |
+
+### 本次可见中文清单
+
+新增／改写和随布局复用的字符串列在下表；动态名称、笔数、日期均来自现有数据。未新增说明句或需要六步规则例外的可见正文。
+
+| 页面 | 新增／改动／复用的可见文字 | 分类 |
+|---|---|---|
+| 欢迎 | 开始（只改位置／禁用外观） | 控件字 |
+| 问余白 | 还没配密钥 ›；这周外卖花了多少？；11月1日的房租够吗？；想买一双 899 的鞋，该不该买？（原文复用，修正缺密钥时的展示与禁用） | 状态／控件字 |
+| 消费观 | 全部 {N} 条（移除文字中的 ›，改用行尾图标） | 控件字／数字 |
+| 我 | {N} 条（右侧值）；删除可见的「余白记得的 · {N} 条 · 这周新记了 {M} 条」和「还没写消费观。」 | 数字；删除的说明不再可见，相关信息保留给读屏 |
+| 心愿单 | 已买（新增）；心愿单还是空的；该不该买（当前列表空时复用）；删除已买卡片的「再问一次」 | 状态／标题／控件字 |
+| 记一笔／改一笔 | 删除输入框内重复「用途」，行名「用途」保留 | 控件字 |
+| 固定收付／计算页确认 | 停掉「{名称}」？；停掉以后的；取消；停掉（复用、确认锚点及角色修正） | 确认标题／控件字 |
+| 导入核对 | 流出 {N} 笔；流入 {N} 笔（替换原支出／收入汇总标签）；{来源} · {日期范围} · {N} 笔（仅改字体） | 数字和事实／标题 |
+| 存储空间／快速记账 | 存储空间；Apple Pay 付完就记（仅改字体） | 标题 |
+| tab bar | 现在；洞察；账目；我；记一笔（仅统一缩放） | 控件字 |
+
+日历日期本身没有新增中文后缀；KB／MB 为原单位。原有 accessibilityLabel／Hint、SF Symbols 和系统取消动作保留完整，不拿可见文案限制删读屏信息。
+
+### 本次验证与待验收
+
+- 改动的 15 个 App Swift 文件及 `Tests/YubaiUITests/AppFlowTests.swift`：`swiftc -frontend -parse -target arm64-apple-ios26.0-simulator -D DEBUG <file>` 全部通过；同一批 App 文件在 `arm64-apple-macosx14.0` 下也全部通过。仅语法解析，没有 Apple SDK 类型检查。
+- 直接提取并编译 `InterfaceVocabularyTests.swift` 中的原 SwiftStringScanner 和禁用词表，离线扫描全部 35 个 App Swift 文件：0 处违规；这不是运行整个 XCTest suite。
+- `git diff --check` 通过。起始 47 个测试方法全部保留，现为 49 个，无新增 skip。新增无密钥禁用与已买心愿两例；扩充欢迎按钮几何、确认取消、我页存储入口位于浮栏上方、导入 40.00 流入断言；旧存储说明断言改为「账单原件」「不删」两个元素。测试源码已解析，UI 测试尚未实跑。
+- 本次 Core／Core 测试、Package 文件、Xcode 工程、依赖与归档画板无差异；未运行 swift build／swift test、Actions 或任何付费／云端 API，未提交、未推送。
+- 本环境无 Apple SDK／模拟器，iOS 26.4 的按钮、动作表、左滑首中末行、我页末行、字体、无障碍 XL／VoiceOver 与深色实际呈现仍待重新截图验收。第 7、8 项及第 14 项旧 header／今日行问题明确保留；Figma、旧原型和分发包未同步。

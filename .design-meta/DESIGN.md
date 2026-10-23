@@ -24,6 +24,8 @@ owner 已在本轮明确确认规则与 11 张页面／片段板，并授权在 
 
 验证边界：改动的 24 个 App Swift 文件 iOS 26／macOS 14 条件语法解析通过，UI 测试 iOS 26 语法解析通过，最终复验详见交付总结。Linux swift test 结果见交付总结。Apple SDK 类型检查、UI 实跑与设备验收待做。工程／依赖和存档格式未改；未运行 Actions、未访问付费模型 API、未提交／推送；Figma 与旧原型／分发包未同步。
 
+同日截图复查续作：按 owner 的 14 项清单及 main `18889f8` 差异修正欢迎禁用底色、Debug 显式模拟密钥、消费观行尾箭头、我页计数／实际滚动底部留白、心愿列表空态与已买状态、用途空占位、行级停掉确认、iOS 固定收付独立滑动按钮、导入流出／流入展示、存储／快速记账字体及 tab 图标缩放。固定收付左滑与 tab bar 旧问题依 owner 明确例外修复；账户详情／计算页旧布局、push 页多余完成、现在页旧 header／今日行按本轮组件范围保留，依据与可见中文见[截图复查修正](no-explanatory-copy-v16.md#截图复查修正)。15 个 App 文件与 UI 测试 iOS 26 DEBUG 条件语法解析、App macOS 14 条件解析通过；保留原 47 个测试方法并新增 2 个，35 个 App 文件通过原禁用词扫描。本次未改 Core／存档／依赖／原稿，未构建／提交／推送；Apple 类型检查、49 个测试方法实跑及 iOS 26.4 截图／无障碍复验待做。
+
 ## 2026-10-23 · 少写字，让版式说话
 
 owner 在项目规则「设计驱动代码」下新增：“Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 设计系统 README 第一节改为同名规则（四种可写的字、六步替换顺序、不写的东西、例外、实现检查），`EmptyState` 去说明行、`InlineNote` 去解释卡和脚注、`EditorForm` 去「例如」和「（可选）」。设计稿新增「第十六轮 · 少写字」：规则、按 main `18889f8` 逐屏审计的 54 处说明文字及改法、11 张改后画板。前几轮画板中与本轮冲突的说明文字以第十六轮为准。owner 确认画板后在 `feat/no-explanatory-copy` 实现（见上一节）；实现约束同时写入根目录 `AGENTS.md`。

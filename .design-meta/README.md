@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-23 第十六轮截图复查修正**：继续在 `feat/no-explanatory-copy` 按 main `18889f8` 核对归属，修正欢迎禁用按钮、无密钥状态、消费观／我页、已买心愿、用途占位、停掉确认与左滑、导入流向汇总、字体及 tab 图标缩放。账户详情／计算页旧布局、push 页多余完成按钮、现在页旧 header／今日行按范围保留。[逐项结果、可见中文与验证](no-explanatory-copy-v16.md#截图复查修正)。15 个 App 文件与 UI 测试 iOS 26 DEBUG 条件解析通过，App 的 macOS 14 解析通过；词汇扫描 35 个文件无违规，49 个原有／新增测试方法未实跑。Core／存档／依赖无本次改动，未构建、提交或推送，iOS 26.4 截图复验待做。
+
 **2026-10-23 第十六轮「少写字，让版式说话」**：owner 确认的 11 张页面／片段板与 1 张规则板已[原样归档](mockups/no-explanatory-copy-v16/README.md)，在 `feat/no-explanatory-copy` 保留中断前工作并补完 SwiftUI；采用范围见[设计登记](DESIGN.md#2026-10-23--第十六轮少写字让版式说话)、[owner 决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-23--第十六轮少写字让版式说话owner-确认稿)。[交付总结](no-explanatory-copy-v16.md)列出全部 54 项和可见中文：53 项代码已改，系统入口图示 1 项按授权降级为静态缩略图／名称；快捷指令按钮按授权打开系统 App。24 个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 条件语法解析通过，原 47 个 UI 测试方法保留。Linux swift test 结果见交付总结；Apple 类型检查、UI 实跑与设备验收待做。Core 仅一条显示字符串和对应参考断言变化；模型／算法／格式／依赖保持。未提交、未推送、未运行 Actions、未访问付费模型 API；Figma／旧原型／分发包未同步。
 
 

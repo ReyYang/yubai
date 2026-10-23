@@ -5,12 +5,22 @@ import YubaiCore
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
 enum UITestSupport {
+    /// Scripted replies alone do not imply that a key is configured.
+    /// UI tests can explicitly simulate either state without changing Keychain.
+    static var configuredKeyOverride: Bool? {
+        guard script != nil else { return nil }
+        switch ProcessInfo.processInfo.environment["YUBAI_UI_TEST_CONFIGURED_KEY"] {
+        case "1": return true
+        case "0": return false
+        default: return nil
+        }
+    }
     static var script: String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated"].contains(name) else { return nil }
+              ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "wish-bought"].contains(name) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -43,6 +53,13 @@ enum UITestSupport {
         }
         if script == "restrain" {
             ledger.profile.restrain = [ProfileArea(title: "咖啡", match: AreaMatch(keywords: ["咖啡"]), softLimit: SoftLimit(perMonthAmount: 3000))]
+        }
+        if script == "wish-bought" {
+            let entry = Entry(date: now, amount: 3200, accountID: account.id, title: "合成水壶", category: "日用")
+            ledger.entries = [entry]
+            var wish = WishItem(title: "合成水壶", amount: entry.amount)
+            wish.status = .bought; wish.boughtEntryID = entry.id; wish.followUpAt = Dates.addMonths(1, to: now)
+            ledger.wishlist = [wish]
         }
         if script.hasPrefix("bills") {
             var rent = Plan(title: "房租", amount: 30_000, dueDate: Dates.day(now))

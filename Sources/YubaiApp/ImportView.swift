@@ -299,16 +299,18 @@ struct ImportView: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    Text("\(ImportStatementText.source(p.source)) · " + ImportStatementText.range(p.rows.compactMap { $0.entry?.date }) + " · \(p.rows.count) 笔").yubaiFont(YubaiFont.heroLabel)
+                    Text("\(ImportStatementText.source(p.source)) · " + ImportStatementText.range(p.rows.compactMap { $0.entry?.date }) + " · \(p.rows.count) 笔").yubaiFont(YubaiFont.rowTitle)
                     sourcePill(p)
                 }
                 Card(style: .compact) {
                     VStack(spacing: YubaiSpace.gapGroup) {
                         HStack(spacing: YubaiSpace.gapGroup) { countPill("将导入", p.selectedEntries.count); countPill("已经记过", p.duplicateCount); countPill("要你选", p.rows.filter(needsDecision).count) }
-                        let expenses = p.selectedEntries.filter { $0.nature == .expense }, income = p.selectedEntries.filter { $0.nature == .income }
+                        // Review totals follow the same direction as each row's amount sign.
+                        // Nature (income, refund, unknown incoming, etc.) stays unchanged.
+                        let outgoing = p.selectedEntries.filter { !$0.nature.inflow }, incoming = p.selectedEntries.filter { $0.nature.inflow }
                         ViewThatFits(in: .horizontal) {
-                            HStack(spacing: YubaiSpace.gapGroup) { total("支出", entries: expenses); Spacer(); total("收入", entries: income) }
-                            VStack(alignment: .leading, spacing: YubaiSpace.space8) { total("支出", entries: expenses); total("收入", entries: income) }
+                            HStack(spacing: YubaiSpace.gapGroup) { total("流出", entries: outgoing); Spacer(); total("流入", entries: incoming) }
+                            VStack(alignment: .leading, spacing: YubaiSpace.space8) { total("流出", entries: outgoing); total("流入", entries: incoming) }
                         }
                     }
                 }
@@ -336,7 +338,7 @@ struct ImportView: View {
         HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(entries.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
             AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.current.preferences.hideAmounts, role: .small, sign: .none, fractionDigits: 2)
-        }
+        }.accessibilityElement(children: .combine).accessibilityIdentifier("importTotal_" + title)
     }
     private var accountPicker: some View {
         Picker("没写账户的记到", selection: $accountID) {

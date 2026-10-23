@@ -178,15 +178,19 @@ struct UpcomingPaymentsView: View {
                         VStack(alignment: .leading, spacing: YubaiSpace.space8) { title(item); amount(item) }
                     }
                     if canEnd(item) {
-                        Button("结束这个安排") { ending = item }.yubaiFont(YubaiFont.caption)
-                            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("endArrangement_" + item.id)
+                        endButton(item)
                     }
                 }.padding(.vertical, YubaiSpace.space8)
             }
-        }.confirmationDialog("停掉「\(ending?.title ?? "这个安排")」",
-                             isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } }), titleVisibility: .visible) {
+        }
+    }
+    private func endButton(_ item: Occurrence) -> some View {
+        Button("结束这个安排") { ending = item }.yubaiFont(YubaiFont.caption)
+            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("endArrangement_" + item.id)
+            .confirmationDialog("停掉「\(item.title)」？",
+                             isPresented: Binding(get: { ending?.id == item.id }, set: { if !$0 { ending = nil } }), titleVisibility: .visible) {
             Button("停掉以后的", role: .destructive) {
-                if let item = ending, let id = item.planID ?? item.rentID {
+                if let id = item.planID ?? item.rentID {
                     let change = ChangeSet(source: "用户操作", reason: "从现在起结束「\(item.title)」", items: [.endPlan(id, Date())])
                     store.apply(change, label: "结束安排")
                 }

@@ -519,13 +519,15 @@ struct RootView: View {
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .title3) private var scaledIconSize = YubaiSize.tabIcon
+    @ScaledMetric(relativeTo: .title2) private var scaledAddSize = YubaiFont.addIcon.size
     @Namespace private var selection
     var select: (Destination) -> Void
     var body: some View {
         HStack(spacing: YubaiSpace.none) {
             tab(.overview); tab(.insights)
             Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
-                Image(systemName: "plus").yubaiFont(YubaiFont.addIcon).foregroundStyle(YubaiColor.white)
+                Image(systemName: "plus").font(.system(size: min(scaledAddSize, YubaiFont.amountLarge.size), weight: YubaiFont.addIcon.weight)).foregroundStyle(YubaiColor.white)
                     .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background(YubaiColor.brand, in: Circle())
                     .shadow(color: YubaiColor.brandInk.opacity(0.3), radius: 6, y: 4)
             }.buttonStyle(.plain).padding(.horizontal, YubaiSpace.space8)
@@ -540,13 +542,16 @@ private struct FloatingTabBar: View {
     }
     private func tab(_ d: Destination) -> some View {
         let selected = store.destination == d
+        let iconSize = min(scaledIconSize, YubaiSize.barMax)
         return Button { select(d) } label: {
             VStack(spacing: YubaiSpace.space4) {
                 Group {
-                    if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit().frame(width: YubaiSize.tabIcon, height: YubaiSize.tabIcon) }
-                    else { Image(systemName: d.symbol).symbolVariant(.none).yubaiFont(YubaiFont.tabIcon, weight: selected ? .semibold : .regular).frame(height: YubaiSize.tabIcon) }
+                    if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit() }
+                    else { Image(systemName: d.symbol).symbolVariant(.none).font(.system(size: iconSize, weight: selected ? .semibold : .regular)) }
                 }
+                .frame(width: iconSize, height: iconSize)
                 Text(d.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .semibold : .regular).lineLimit(1)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity).frame(height: YubaiSize.tabSelectionHeight)
                 .contentShape(RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius))

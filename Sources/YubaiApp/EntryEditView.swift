@@ -56,7 +56,7 @@ private struct EntryEditForm: View {
                     Card(style: .list) {
                         VStack(spacing: YubaiSpace.none) {
                             EntryFormRow(title: "用途") {
-                                TextField("用途", text: $purpose).multilineTextAlignment(.trailing).accessibilityLabel("用途")
+                                TextField("", text: $purpose).multilineTextAlignment(.trailing).accessibilityLabel("用途")
                             }
                             RecentPurposeChips(selection: $purpose)
                             EntryFormDivider()

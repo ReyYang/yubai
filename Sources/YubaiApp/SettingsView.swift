@@ -10,22 +10,25 @@ struct SettingsView: View {
     private var thinkingCount: Int { store.current.wishlist.filter { $0.status == .thinking }.count }
     private var followUpCount: Int { store.current.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= Date() } == true }.count }
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup, bottomPadding: YubaiSpace.gapSection + YubaiSize.rootBottomPadding) {
             TabRootHeader(title: "我")
             NavigationLink { ProfileView() } label: {
                 Card {
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                        HStack(spacing: YubaiSpace.gapGroup) { Text("我的消费观").yubaiFont(YubaiFont.cardTitle); Spacer(); chevron }
+                        HStack(spacing: YubaiSpace.gapGroup) {
+                            Text("我的消费观").yubaiFont(YubaiFont.cardTitle)
+                            Spacer(minLength: YubaiSpace.space8)
+                            Text("\(store.current.memories.count) 条").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                                .accessibilityLabel("余白记得的，" + memoryCount)
+                            chevron
+                        }
                         profileLine("想克制", store.current.profile.restrain.map(\.title).joined(separator: "、"))
                         profileLine("愿意多花", store.current.profile.generous.map(\.title).joined(separator: "、"))
                         if let floor = store.current.profile.floorAmount { profileLine("始终留着", store.current.preferences.hideAmounts ? "••••" : Money.text(floor, currency: false)) }
-                        Text("余白记得的 · " + memoryCount).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                        if store.current.profile.restrain.isEmpty && store.current.profile.generous.isEmpty && store.current.profile.floorAmount == nil {
-                            Text("还没写消费观。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
-                        }
                     }
                 }
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
+                .accessibilityHint(store.current.profile.restrain.isEmpty && store.current.profile.generous.isEmpty && store.current.profile.floorAmount == nil ? "还没写消费观，可进入添加" : "查看和编辑消费观")
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     NavigationLink { WishlistView() } label: {
@@ -33,7 +36,7 @@ struct SettingsView: View {
                             HStack(spacing: YubaiSpace.gapGroup) { wishlistTitle; Spacer(); followUp; chevron }
                             VStack(alignment: .leading, spacing: YubaiSpace.space8) { wishlistTitle; followUp }
                         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-                    }
+                    }.accessibilityIdentifier("openWishlist")
                     separator
                     NavigationLink { LettersView() } label: { row("每周来信", detail: latestLetter) }
                 }
@@ -64,13 +67,14 @@ struct SettingsView: View {
                     NavigationLink { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
             }.buttonStyle(PressButtonStyle())
-        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().navigationTitle("我")
+        }.amountPrivacy(store.current.preferences.hideAmounts).navigationTitle("我")
             .task(id: store.current.updatedAt) {
                 let repository = store.localRepository
                 do { storageSize = StorageSize.text(try await Task.detached(priority: .utility) { try repository.storageUsage() }.value.totalBytes) }
                 catch { storageSize = nil }
             }
             #if os(iOS)
+            .scrollEdgeEffectHidden(true, for: .bottom)
             .toolbar(.hidden, for: .navigationBar)
             #endif
     }

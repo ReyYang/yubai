@@ -113,13 +113,15 @@ struct AskYubaiView: View {
                             Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.gapGroup)
                                 .frame(minHeight: YubaiSize.tapMin)
                                 .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
-                        }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.55)
+                        }.foregroundStyle(enabled ? YubaiColor.label : YubaiColor.labelSecondary)
+                            .buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.55)
                     }
                 }
             }
             if !configured {
                 NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "还没配密钥 ›", variant: .amber, showsDot: false) }
                     .buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity).accessibilityHint("打开智能与隐私，配置密钥")
+                    .accessibilityIdentifier("configureAskKey")
             } else if !connectivity.connected {
                 Pill(text: "没联网", variant: .amber, showsDot: false).frame(maxWidth: .infinity)
             } else if !store.current.preferences.cloudAIEnabled {

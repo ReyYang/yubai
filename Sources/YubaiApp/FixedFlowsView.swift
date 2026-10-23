@@ -3,7 +3,6 @@ import YubaiCore
 
 struct FixedFlowsView: View {
     @Environment(AppStore.self) private var store
-    @State private var ending: FixedFlowOccurrence?
     var body: some View {
         let ledger = store.current
         let month = store.fixedFlowMonth
@@ -40,16 +39,6 @@ struct FixedFlowsView: View {
                 Button { store.sheetSource = nil; store.sheet = .addPlan } label: { Image(systemName: "plus") }
                     .accessibilityLabel("添加安排").accessibilityIdentifier("addFixedFlow")
             } }
-            .confirmationDialog("停掉「\(ending?.title ?? "这个安排")」？", isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } }), titleVisibility: .visible) {
-                Button("停掉以后的") {
-                    if let ending, let id = ending.planID {
-                        let change = ChangeSet(source: "用户操作", reason: "从今天起停掉「\(ending.title)」", items: [.endPlan(id, Date())])
-                        if store.apply(change, label: "停掉安排") { store.toast = "已停掉" }
-                    }
-                    ending = nil
-                }.accessibilityHint("只停以后的，已到期账单和付过的记录保留")
-                Button("取消", role: .cancel) { ending = nil }
-            }
     }
     private func stoppedBills(_ rows: [FixedFlowArrangement]) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -84,12 +73,17 @@ struct FixedFlowsView: View {
         if !rows.isEmpty {
             VStack(spacing: YubaiSpace.none) {
                 ForEach(rows) { row in
-                    FixedFlowBillRow(row: row, ending: { ending = row })
+                    FixedFlowBillRow(row: row, isFirst: row.id == rows.first?.id, isLast: row.id == rows.last?.id)
+                    #if os(macOS)
                     if row.id != rows.last?.id { EntryFormDivider().padding(.horizontal, YubaiSpace.insetCard) }
+                    #endif
                 }
-            }.padding(.vertical, YubaiSpace.insetCard)
+            }
+                #if os(macOS)
+                .padding(.vertical, YubaiSpace.insetCard)
                 .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
                 .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card))
+                #endif
         }
     }
     private func calendar(_ month: FixedFlowMonth) -> some View {
@@ -139,18 +133,22 @@ struct FixedFlowDot: View {
 private struct FixedFlowBillRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(macOS)
     @GestureState private var dragging = false
     @State private var horizontal: Bool?
+    #endif
     @State private var offset: CGFloat = 0
     @State private var resting: CGFloat = 0
+    @State private var confirmingStop = false
     let row: FixedFlowOccurrence
-    let ending: () -> Void
+    let isFirst: Bool
+    let isLast: Bool
     private let revealDistance = YubaiSize.swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapGroup
     private var canEnd: Bool { store.current.plans.contains { $0.id == row.planID && $0.active && $0.endDate == nil } }
     var body: some View {
         Group {
             if canEnd {
-                content.offset(x: offset).background(alignment: .trailing) {
+                surface.offset(x: offset).background(alignment: .trailing) {
                     Button(action: stop) {
                         Text("停掉")
                             #if os(iOS)
@@ -165,7 +163,16 @@ private struct FixedFlowBillRow: View {
                         .frame(width: revealDistance - YubaiSpace.gapGroup).frame(maxHeight: .infinity).background(YubaiColor.neutralStrong)
                         #endif
                         .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
-                }.clipped().contentShape(Rectangle())
+                }.contentShape(Rectangle())
+                    #if os(iOS)
+                    .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
+                        offset = max(-revealDistance, min(0, resting + distance))
+                    }, ended: { distance, _ in
+                        resting = resting < 0 ? (distance > 0 ? 0 : -revealDistance) : (offset < -revealDistance * 0.43 ? -revealDistance : 0)
+                        reset()
+                    }, cancelled: reset))
+                    #else
+                    .clipped()
                     .simultaneousGesture(DragGesture(minimumDistance: 18)
                         .updating($dragging) { _, state, _ in state = true }
                         .onChanged { value in
@@ -177,11 +184,38 @@ private struct FixedFlowBillRow: View {
                             resting = offset < -revealDistance * 0.43 ? -revealDistance : 0; reset()
                         })
                     .onChange(of: dragging) { _, active in if !active { reset() } }
+                    #endif
                     .onChange(of: canEnd) { _, value in if !value { resting = 0; reset() } }
+                    .onDisappear { resting = 0; reset() }
                     .accessibilityAction(named: "停掉", stop)
-            } else { content }
+            } else { surface }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("fixedFlow_" + row.id)
             .accessibilityValue(FixedFlowPresentation.state(row.state, inflow: row.inflow))
+            .confirmationDialog("停掉「\(row.title)」？", isPresented: $confirmingStop, titleVisibility: .visible) {
+                Button("停掉以后的", role: .destructive) {
+                    if let id = row.planID {
+                        let change = ChangeSet(source: "用户操作", reason: "从今天起停掉「\(row.title)」", items: [.endPlan(id, Date())])
+                        if store.apply(change, label: "停掉安排") { store.toast = "已停掉" }
+                    }
+                }.accessibilityHint("只停以后的，已到期账单和付过的记录保留")
+                Button("取消", role: .cancel) { confirmingStop = false }
+            }
+    }
+    @ViewBuilder private var surface: some View {
+        #if os(iOS)
+        VStack(spacing: YubaiSpace.none) {
+            content
+            if !isLast { EntryFormDivider().padding(.horizontal, YubaiSpace.insetCard) }
+        }.padding(.top, isFirst ? YubaiSpace.insetCard : YubaiSpace.none)
+            .padding(.bottom, isLast ? YubaiSpace.insetCard : YubaiSpace.none)
+            .background(YubaiColor.card, in: UnevenRoundedRectangle(
+                topLeadingRadius: isFirst ? YubaiRadius.card : YubaiSpace.none,
+                bottomLeadingRadius: isLast ? YubaiRadius.card : YubaiSpace.none,
+                bottomTrailingRadius: isLast ? YubaiRadius.card : YubaiSpace.none,
+                topTrailingRadius: isFirst ? YubaiRadius.card : YubaiSpace.none))
+        #else
+        content
+        #endif
     }
     private var content: some View {
         HStack(spacing: YubaiSpace.gapGroup) {
@@ -199,11 +233,19 @@ private struct FixedFlowBillRow: View {
                 FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount, inflow: row.inflow, state: row.state)
             }
         }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble)
-            .opacity(row.state == .paid ? 0.6 : 1).background(YubaiColor.card)
+            .opacity(row.state == .paid ? 0.6 : 1)
+            #if os(macOS)
+            .background(YubaiColor.card)
+            #endif
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: row.state)
     }
-    private func reset() { horizontal = nil; withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = resting } }
-    private func stop() { resting = 0; reset(); ending() }
+    private func reset() {
+        #if os(macOS)
+        horizontal = nil
+        #endif
+        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = resting }
+    }
+    private func stop() { resting = 0; reset(); confirmingStop = true }
 }
 
 struct FixedFlowCheck: View {

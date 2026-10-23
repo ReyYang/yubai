@@ -542,13 +542,14 @@ extension View {
 
 struct PrimaryButtonStyle: ButtonStyle {
     var compact = false
+    var disabledBackground = Color.clear
     @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(compact ? YubaiFont.callout : YubaiFont.button)
             .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.gapSection).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .frame(maxWidth: .infinity, minHeight: compact ? YubaiSize.rowIcon : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.onBrand : YubaiColor.labelSecondary)
-            .background(isEnabled ? YubaiColor.brand : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
+            .background(isEnabled ? YubaiColor.brand : disabledBackground, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
             .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
@@ -571,14 +572,15 @@ struct Page<Content: View>: View {
     let content: Content
     var spacing: CGFloat
     var topPadding: CGFloat
-    init(spacing: CGFloat = YubaiSpace.gapSection, topPadding: CGFloat = YubaiSpace.insetPage, @ViewBuilder content: () -> Content) {
-        self.content = content(); self.spacing = spacing; self.topPadding = topPadding
+    var bottomPadding: CGFloat
+    init(spacing: CGFloat = YubaiSpace.gapSection, topPadding: CGFloat = YubaiSpace.insetPage, bottomPadding: CGFloat = YubaiSpace.gapSection, @ViewBuilder content: () -> Content) {
+        self.content = content(); self.spacing = spacing; self.topPadding = topPadding; self.bottomPadding = bottomPadding
     }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: spacing) { content }
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, topPadding)
-                .padding(.bottom, YubaiSpace.gapSection)
+                .padding(.bottom, bottomPadding)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
     }
@@ -1271,10 +1273,10 @@ struct WelcomeView: View {
                     }.padding(.top, YubaiSpace.gapSection)
                 }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity)
             }
-            Button("开始", action: start).buttonStyle(PrimaryButtonStyle())
+            Button("开始", action: start).buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.brandTint))
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
                 .accessibilityIdentifier("startLedger")
-        }.padding(YubaiSpace.insetPage).yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
+        }.frame(maxHeight: .infinity).padding(YubaiSpace.insetPage).yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
     }
     private func start() {
         do {
