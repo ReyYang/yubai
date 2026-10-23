@@ -106,6 +106,7 @@ struct OverviewView: View {
                         HStack(spacing: YubaiSpace.gapGroup) { Text("还有 \(rows.count - 2) 笔 ›"); Spacer() }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
                             .frame(minHeight: YubaiSize.tapMin)
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("moreDueBills")
+                        .accessibilityLabel("还有 \(rows.count - 2) 笔").accessibilityValue(String(rows.count - 2))
                 }
             }
         }.accessibilityIdentifier("dueBills")

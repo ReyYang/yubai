@@ -38,7 +38,7 @@ struct ProfileView: View {
                         SectionHeading(title: "愿意多花的")
                         Card {
                             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
+                                ChipFlow {
                                     ForEach(profile.generous) { area in
                                         Text(area.title).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8).background(YubaiColor.raised, in: Capsule())
                                     }
@@ -155,7 +155,9 @@ struct ProfileView: View {
         HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 Text(area.title).yubaiFont(YubaiFont.rowTitle)
-                if !area.note.isEmpty { Text(area.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
+                if showsNote(area, stance: stance) {
+                    Text(area.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                }
                 if stance == .restrain { areaUsage(area) }
             }
             Spacer(minLength: YubaiSpace.none)
@@ -167,8 +169,20 @@ struct ProfileView: View {
             } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除" + area.title) }
         }.padding(.vertical, YubaiSpace.space8)
     }
+    private func showsNote(_ area: ProfileArea, stance: ProfileStance) -> Bool {
+        guard !area.note.isEmpty else { return false }
+        guard stance == .restrain, let limit = area.softLimit else { return true }
+        let note = area.note.hasPrefix(area.title) ? String(area.note.dropFirst(area.title.count)) : area.note
+        return normalizedLimit(note) != normalizedLimit(limit.text)
+    }
+    private func normalizedLimit(_ text: String) -> String {
+        var result = text
+        for part in [".00", "最多", "¥", "￥", "元", " ", "\n", "·", "，", "。"] {
+            result = result.replacingOccurrences(of: part, with: "")
+        }
+        return result
+    }
     @ViewBuilder private func areaUsage(_ area: ProfileArea) -> some View {
-        if let limit = area.softLimit, !limit.text.isEmpty { Text(limit.text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) }
         if !store.current.preferences.hideAmounts {
             Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             if let progress = progress(area) {

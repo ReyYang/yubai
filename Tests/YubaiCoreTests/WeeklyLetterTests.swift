@@ -27,6 +27,12 @@ final class WeeklyLetterTests: XCTestCase {
         XCTAssertEqual(facts.availableChange, facts.series.last!.available - Finance.funds(ledger, now: start.addingTimeInterval(-0.001)).available)
         XCTAssertEqual(facts.numbers.count, 3)
     }
+    func testUnchangedAvailableUsesGrammaticalWeeklyComparison() throws {
+        var ledger = seed(); ledger.entries = []
+        let candidate = try XCTUnwrap(WeeklyLetter.candidate(ledger, now: Dates.addDays(1, to: sunday)))
+        XCTAssertEqual(candidate.letter?.availableChange, 0)
+        XCTAssertEqual(candidate.body, "这一周消费 ¥0.00。还能花和上周持平。")
+    }
     func testLaterReconciliationIsRewoundAndFuturePaymentNotMarkedPaidEarly() {
         var ledger = seed(); let end = Dates.parse("2026-06-14 23:59")!
         let old = Finance.funds(ledger, now: end).available

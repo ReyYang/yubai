@@ -181,7 +181,7 @@ struct IntelligencePrivacyView: View {
                     }
                 }
             }
-        }.navigationTitle("智能与隐私").yubaiNavigation().onAppear {
+        }.navigationTitle("智能与隐私").yubaiNavigation().accessibilityIdentifier("intelligencePrivacyPage").onAppear {
             IntelligenceRuntime.cloud.refresh(); hasKey = APIKeyStore.shared.hasKeychainKey
             configured = IntelligenceRuntime.isConfigured; sendCount = SendLog.shared.totalCount
         }

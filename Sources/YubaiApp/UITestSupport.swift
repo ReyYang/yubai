@@ -111,7 +111,9 @@ enum UITestSupport {
                                droppedWish(title: "合成咖啡机", amount: 248_000, at: weekStart.addingTimeInterval(-60))]
             ledger.plans = [("视频会员", Int64(2500)), ("网盘", 1200), ("健身 App", 3000)].enumerated().map { index, item in
                 let (title, amount) = item
-                var plan = Plan(title: title, amount: amount, dueDate: Dates.addDays(1, to: Dates.day(now)), frequency: .monthly, category: "娱乐旅行")
+                let month = Dates.calendar.dateInterval(of: .month, for: now)!.start
+                let dueDate = Dates.addDays([3, 12, 24][index] - 1, to: month)
+                var plan = Plan(title: title, amount: amount, dueDate: dueDate, frequency: .monthly, category: "娱乐旅行")
                 plan.id = UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!
                 plan.accountID = account.id
                 return plan
@@ -176,7 +178,14 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         if script.hasPrefix("judge-") { return try purchaseReply(request) }
-        if script == "profile-revisit", request.purpose == "消费观对话" { return profileReply(request) }
+        if script == "profile-revisit", request.purpose == "消费观对话" {
+            let reply = profileReply(request)
+            if reply.toolCalls == nil, request.messages.contains(where: { $0.role == .assistant && $0.toolCalls == nil }),
+               let delay = Double(ProcessInfo.processInfo.environment["YUBAI_UI_PROFILE_REPLY_DELAY"] ?? ""), delay > 0 {
+                try await Task.sleep(for: .seconds(min(delay, 5)))
+            }
+            return reply
+        }
         if script == "memory" {
             if request.messages.last?.role == .tool { return ChatMessage(role: .assistant, content: "记下了这个计划。") }
             return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "remember-plan", name: "remember",

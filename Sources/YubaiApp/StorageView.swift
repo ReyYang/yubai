@@ -162,6 +162,7 @@ private struct StoragePhotosSheet: View {
             StorageSummaryCard(rows: [("截图", "\(selected.count) 张"), ("腾出", StorageSize.text(Int64(selected.reduce(0) { $0 + $1.byteCount }))), ("账目", "都留着")])
                 .padding(.top, YubaiSpace.gapSection)
             StorageSummaryCard(rows: [("账单原件", "不删")], muted: true)
+                .accessibilityIdentifier("storageOriginalsPreserved")
                 .disabled(true).accessibilityLabel("账单原件不删，导入记录里仍可撤销")
                 .padding(.top, YubaiSpace.gapGroup)
             Button("删除 \(selected.count) 张截图") {

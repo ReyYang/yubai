@@ -36,9 +36,9 @@ struct EntryDetailView: View {
     private func classificationCard(_ entry: Entry) -> some View {
         Card {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                LabeledContent("时间", value: Dates.text(entry.date, time: true))
-                LabeledContent("账户", value: store.current.accountName(entry.accountID))
-                if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.current.accountName(other)) }
+                LabeledContent("时间", value: Dates.text(entry.date, time: true)).frame(minHeight: YubaiSize.rowSingle)
+                LabeledContent("账户", value: store.current.accountName(entry.accountID)).frame(minHeight: YubaiSize.rowSingle)
+                if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.current.accountName(other)).frame(minHeight: YubaiSize.rowSingle) }
                 EntrySubcategoryRow(entry: entry)
                 if !entry.note.isEmpty { Text(entry.note) }
                 if let id = entry.planID, let plan = store.current.plans.first(where: { $0.id == id }) { Text("已关联：" + plan.title) }
@@ -54,7 +54,9 @@ struct EntryDetailView: View {
                 LabeledContent("来源", value: entry.source)
                 if let row = entry.sourceRow { LabeledContent("原文件行号", value: String(row)) }
                 if !entry.externalID.isEmpty { LabeledContent("交易单号", value: entry.externalID).textSelection(.enabled) }
-                Text(entry.classificationReason).foregroundStyle(YubaiColor.labelSecondary)
+                if !entry.classificationReason.isEmpty && !(entry.source == "手动" && entry.classificationReason == "手动选择") {
+                    Text(entry.classificationReason).foregroundStyle(YubaiColor.labelSecondary)
+                }
             }.yubaiFont(YubaiFont.callout)
         }
     }

@@ -50,14 +50,16 @@ struct ProfileConversationView: View {
             if proposal == nil || revising {
                 ChatInputBar(text: $input, placeholder: revising ? "想改哪里？" : "写下你的想法…",
                     accessibilityLabel: "告诉余白你的消费观", inputID: "profileInput", sendID: "sendProfile",
-                    busy: busy, send: ask, leading: { Color.clear.frame(width: YubaiSpace.space8).accessibilityHidden(true) }, accessory: { EmptyView() })
+                    busy: busy, send: ask, leading: { Color.clear.frame(width: YubaiSpace.space8, height: 0).accessibilityHidden(true) }, accessory: { EmptyView() })
                     .padding(YubaiSpace.insetPage)
             }
         }.paperBackground().navigationTitle("和余白聊聊").yubaiNavigation()
             .toolbar {
-                CloseButton()
+                ToolbarItem(placement: .confirmationAction) { CloseButton() }
                 if !revisit && proposal == nil && !messages.isEmpty {
-                    Button("先跳过") { input = "暂时没想好，先跳过"; ask() }.disabled(busy).frame(minHeight: YubaiSize.tapMin)
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("先跳过") { input = "暂时没想好，先跳过"; ask() }.disabled(busy).frame(minHeight: YubaiSize.tapMin)
+                    }
                 }
             }
             .task {
@@ -100,6 +102,7 @@ struct ProfileConversationView: View {
             if message.role == .assistant { assistantHeading }
             Text(message.content ?? "").yubaiFont(user ? YubaiFont.body : YubaiFont.cardTitle)
                 .foregroundStyle(user ? YubaiColor.onBrand : YubaiColor.label).textSelection(.enabled)
+                .accessibilityIdentifier(user ? "profileUserMessage_\(index)" : "profileAssistantMessage_\(index)")
             if showsStarters(message, index: index) { starters }
         }.padding(YubaiSpace.insetCard).frame(maxWidth: .infinity, alignment: .leading)
             .background(user ? YubaiColor.brand : YubaiColor.card, in: shape)

@@ -72,6 +72,7 @@ struct ButlerCardView: View {
                     #endif
                     .opacity(swipe < 0 ? 1 : 0).allowsHitTesting(swipe < 0)
                     .accessibilityHidden(swipe == 0)
+                    .accessibilityIdentifier("dismissButler_" + card.kind.rawValue)
             }
             .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).contentShape(Rectangle())
             .overlay { GeometryReader { geometry in
@@ -317,13 +318,17 @@ struct WeeklyLetterCard: View {
     @Environment(\.dynamicTypeSize) private var textSize
     let card: ButlerCard
     @State private var reviewProposal: ChangeSet?
+    private var letterBody: String {
+        guard let facts = card.letter else { return card.body }
+        return WeeklyLetter.displayBody(card.body, facts: facts)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             if let facts = card.letter {
                 Text(Dates.addDays(-6, to: facts.weekEnding).formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))) + " – " + facts.weekEnding.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))))
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
-            Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : card.body).yubaiFont(YubaiFont.quote)
+            Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : letterBody).yubaiFont(YubaiFont.quote).accessibilityIdentifier("letterBody")
             if let facts = card.letter { LetterSavingsTiles(facts: facts) }
             if let subscriptions = card.letter?.subscriptions, !subscriptions.isEmpty {
                 LetterSubscriptionCard(candidates: subscriptions, letterDate: card.createdAt)
