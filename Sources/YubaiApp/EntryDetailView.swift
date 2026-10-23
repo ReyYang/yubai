@@ -18,7 +18,7 @@ struct EntryDetailView: View {
                         LabeledContent("时间", value: Dates.text(entry.date, time: true))
                         LabeledContent("账户", value: store.current.accountName(entry.accountID))
                         if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.current.accountName(other)) }
-                        LabeledContent("分类", value: Classification.displayCategory(entry.category))
+                        EntrySubcategoryRow(entry: entry)
                         if !entry.note.isEmpty { Text(entry.note) }
                         if let id = entry.planID, let plan = store.current.plans.first(where: { $0.id == id }) { Text("已关联：" + plan.title) }
                         if let id = entry.rentID, let rent = store.current.rents.first(where: { $0.id == id }) { Text("已关联：" + rent.title) }

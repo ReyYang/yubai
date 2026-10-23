@@ -163,7 +163,7 @@ struct AskYubaiView: View {
             }
         } else if let reply = message.reply {
             if let statement = reply.pastedStatement { AskPastedStatementCard(statement: statement) }
-            else if reply.purchaseJudgment == nil && !isEntryDraftReply(reply) { AssistantCard { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            else if reply.purchaseJudgment == nil && (reply.purchaseQuestions ?? []).isEmpty && !isEntryDraftReply(reply) { AssistantCard { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                 Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
                 if let chart = reply.chart, !store.current.preferences.hideAmounts { AnswerChartView(chart: chart) }
@@ -188,7 +188,13 @@ struct AskYubaiView: View {
                 else { AskChangeCard(change: change) }
             }
             if isEntryDraftReply(reply) { RememberedRows(notes: reply.rememberedNotes + reply.updatedNotes.map(\.note)) }
-            if let purchase = reply.purchaseJudgment { AskPurchaseCard(purchase: purchase, evidence: reply.evidenceEntryIDs, snapshot: reply.unverifiedAmounts.isEmpty ? reply.text : "这次回答有金额尚未核实，请重新查阅。", notes: reply.rememberedNotes + reply.updatedNotes.map(\.note)) }
+            if let questions = reply.purchaseQuestions, !questions.isEmpty {
+                PurchaseQuestionsCard(questions: questions, busy: busy, active: messages.last?.id == message.id,
+                    send: { input = $0; send() }, notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
+            } else if let purchase = reply.purchaseJudgment {
+                SavingPurchaseCard(purchase: purchase, verdict: reply.purchaseVerdict, evidence: reply.evidenceEntryIDs,
+                    notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
+            }
         }
     }
     private func isEntryDraftReply(_ reply: AssistantReply) -> Bool {
@@ -482,88 +488,6 @@ private struct AskDraftEditor: View {
         }.editorForm().navigationTitle("编辑这一笔").yubaiNavigation().toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) { Button("改好了") { save(draft); dismiss() }.disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("saveDraftEdit") }
-        }
-    }
-}
-
-private struct AskPurchaseCard: View {
-    @Environment(AppStore.self) private var store
-    let purchase: PurchaseJudgment
-    let evidence: [UUID]
-    let snapshot: String
-    let notes: [MemoryNote]
-    @State private var wishID: UUID?
-    @State private var linking = false
-    private func save() -> UUID? {
-        if let wishID { return wishID }
-        let wish = WishItem(title: purchase.title, amount: purchase.amount, purpose: purchase.category ?? "", judgment: String(snapshot.prefix(1000)))
-        guard store.update("加入心愿单", { $0.wishlist.append(wish) }) else { return nil }
-        wishID = wish.id; return wish.id
-    }
-    var body: some View {
-        AssistantCard {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
-                HStack(spacing: YubaiSpace.gapGroup) { Text(purchase.title).yubaiFont(YubaiFont.rowTitle); Spacer(); AmountLabel(cents: purchase.amount, hide: store.current.preferences.hideAmounts) }
-                judgmentRow("付得起吗", affordability)
-                Divider().overlay(YubaiColor.separator)
-                judgmentRow("和你平时比", habit)
-                if purchase.hasProfile, let values = purchase.facts["values"] {
-                    Divider().overlay(YubaiColor.separator)
-                    judgmentRow("和你在乎的比", quotes(values))
-                } else { Text("还不知道你在乎什么，可以在『我的消费观』里补上。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
-                NavigationLink("明细：\(evidence.count) 笔 ›") { AskEvidenceView(ids: evidence) }
-                    .yubaiFont(YubaiFont.caption).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("answerEvidence")
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: YubaiSpace.space8) { actions }
-                    VStack(spacing: YubaiSpace.space8) { actions }
-                }
-                if linking, let wishID { NavigationLink("选择对应的支出记录") { WishEntryPicker(wishID: wishID) }.frame(minHeight: YubaiSize.tapMin) }
-                RememberedRows(notes: notes)
-            }
-        }
-    }
-    private func judgmentRow(_ title: String, _ text: String) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : text).yubaiFont(YubaiFont.body)
-        }.padding(.vertical, YubaiSpace.space8)
-    }
-    private var affordability: String {
-        let facts = purchase.facts["affordability"]
-        let after = facts?["available_after_purchase"]?["text"]?.stringValue
-        let warnings = facts?["warnings"]?.arrayValue?.compactMap(\.stringValue) ?? []
-        return (after.map { "买了以后还能花 " + $0 } ?? "还缺少明细。") + warnings.joined(separator: " ")
-    }
-    private var habit: String {
-        guard let average = purchase.facts["habit"]?["average"]?["text"]?.stringValue else { return "近 90 天还没有足够的同类消费记录。" }
-        return "过去 90 天，同类消费平均一次 " + average + "。"
-    }
-    private func quotes(_ values: JSONValue) -> String {
-        func quote(_ text: String, date: JSONValue?) -> String {
-            let at = date?.stringValue.flatMap(Dates.parse)
-            let prefix = at.map { "你 " + String(Dates.calendar.component(.month, from: $0)) + " 月写过" } ?? "你写过（时间未记录）"
-            let old = at.map { Dates.addDays(180, to: $0) < Date() } ?? false
-            return prefix + "「" + text + "」" + (old ? "，这可能已经变了" : "")
-        }
-        var lines = (values["principles"]?.arrayValue ?? []).compactMap { row -> String? in
-            guard let text = row["text"]?.stringValue ?? row.stringValue else { return nil }
-            return quote(text, date: row["confirmed_at"])
-        }
-        for (key, label) in [("generous", "愿意多花"), ("restrain", "想克制")] {
-            for area in values[key]?.arrayValue ?? [] {
-                if let title = area["title"]?.stringValue {
-                    let text = area["quote"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? title
-                    lines.append(label + "：" + quote(text, date: area["confirmed_at"]))
-                }
-            }
-        }
-        return lines.isEmpty ? "这件还没有对应到你写下的消费观。" : lines.joined(separator: "。")
-    }
-    private var actions: some View {
-        Group {
-            Button(wishID == nil ? "放进心愿单" : "已放进心愿单") { _ = save() }.buttonStyle(PrimaryButtonStyle(compact: true)).disabled(wishID != nil)
-            Button("已经买了") { if save() != nil { linking = true } }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
         }
     }
 }

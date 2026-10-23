@@ -72,6 +72,7 @@ struct ProfileView: View {
                 }.buttonStyle(PressButtonStyle())
             }
             memories
+            ProfileChatEntry(prominent: true)
         }.navigationTitle("我的消费观").yubaiNavigation()
             .toolbar { Button(editing ? "完成" : "编辑") { editing.toggle() }.frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("editProfile") }
             .onAppear { configured = IntelligenceRuntime.isConfigured; loadFloor() }
@@ -147,7 +148,7 @@ struct ProfileView: View {
                             if !store.current.preferences.hideAmounts {
                                 Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                                 if let progress = progress(area) {
-                                    ProgressView(value: progress).tint(YubaiColor.brand).accessibilityLabel(area.title + " · " + usage(area))
+                                    SavingProgressBar(ratio: progress, amber: progress >= 0.8).accessibilityLabel(area.title + " · " + usage(area))
                                 }
                             }
                         }
@@ -165,10 +166,7 @@ struct ProfileView: View {
         }
     }
     private func progress(_ area: ProfileArea) -> Double? {
-        let usage = area.usage(in: store.current)
-        if let count = area.softLimit?.perWeekCount, count > 0 { return min(1, Double(usage.weekCount) / Double(count)) }
-        if let amount = area.softLimit?.perMonthAmount, amount > 0 { return min(1, Double(usage.monthAmount) / Double(amount)) }
-        return nil
+        RestrainProgress.current(ledger: store.current).first { $0.areaID == area.id }?.ratio
     }
     private func usage(_ area: ProfileArea) -> String {
         let value = area.usage(in: store.current)
@@ -306,7 +304,7 @@ private struct ProfileAreaEditor: View {
             let amount: Int64? = monthly.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : try Money.parse(monthly)
             let words = keywords.components(separatedBy: CharacterSet(charactersIn: "、,，\n")).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
             var updated = area; updated.title = clean; updated.note = note
-            updated.match = AreaMatch(categories: categories.sorted(), keywords: words)
+            updated.match = AreaMatch(categories: categories.sorted(), keywords: words, subcategories: area.match.subcategories)
             updated.softLimit = stance == .restrain && (count != nil || amount != nil) ? SoftLimit(perWeekCount: count, perMonthAmount: amount) : nil
             if store.update("修改消费观", { ledger in
                 let old = ledger.profile

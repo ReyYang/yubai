@@ -6,6 +6,8 @@ struct WishlistView: View {
     var focusedWishID: UUID? = nil
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
+            SavingsHeader()
+            WishlistCooldownCards()
             if store.current.wishlist.isEmpty { EmptyState("heart", "心愿单还是空的", "问问余白：该不该买？") }
             if let focusedWishID, let wish = store.current.wishlist.first(where: { $0.id == focusedWishID }) { wishRow(wish) }
             let due = store.current.wishlist.filter { $0.id != focusedWishID && followUpVisible($0) }
@@ -29,6 +31,9 @@ struct WishlistView: View {
                     }
                 }
             }
+            ForEach(store.current.wishlist.filter { $0.followUpAnswer?.hasPrefix(FollowUpChoice.regret.rawValue) == true }) { wish in
+                WishRegretEntry(wish: wish)
+            }
             let thinking = store.current.wishlist.filter { $0.status == .thinking && $0.id != focusedWishID }.sorted { $0.createdAt > $1.createdAt }
             if !thinking.isEmpty {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -41,7 +46,7 @@ struct WishlistView: View {
                 NavigationLink {
                     Page { ForEach(past.sorted { $0.createdAt > $1.createdAt }) { wish in wishRow(wish) } }.navigationTitle("过去的心愿").yubaiNavigation()
                 } label: {
-                    HStack(spacing: YubaiSpace.gapGroup) { Text("已经买了 \(past.filter { $0.status == .bought }.count) 件 · 不买了 \(past.filter { $0.status == .dropped }.count) 件"); Spacer(); Image(systemName: "chevron.right") }
+                    HStack(spacing: YubaiSpace.gapGroup) { Text("买了 \(past.filter { $0.status == .bought }.count) 件 · 划掉 \(past.filter { $0.status == .dropped }.count) 件"); Spacer(); Image(systemName: "chevron.right") }
                         .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: 18))
                 }.buttonStyle(PressButtonStyle())
             }
@@ -57,10 +62,11 @@ struct WishlistView: View {
     }
     private func wishContent(_ wish: WishItem) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            HStack(spacing: YubaiSpace.gapGroup) { Text(wish.title).yubaiFont(YubaiFont.cardTitle); Spacer(); AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts) }
-            if !wish.judgment.isEmpty { Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
+            HStack(spacing: YubaiSpace.gapGroup) { Text(wish.title).yubaiFont(YubaiFont.rowTitle); Spacer(); AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts) }
             let days = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(Date())).day ?? 0)
-            Text(wish.status == .thinking ? "已经想了 \(days) 天" : "加入 \(days) 天 · " + Dates.text(wish.createdAt)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            let remaining = wish.coolUntil.map { max($0 > Date() ? 1 : 0, Dates.calendar.dateComponents([.day], from: Dates.day(Date()), to: Dates.day($0)).day ?? 0) }
+            Text(wish.status == .thinking ? (remaining.map { "冷静中 · 还有 \($0) 天" } ?? "放了 \(days) 天") : "加入 \(days) 天 · " + Dates.text(wish.createdAt)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            if !wish.judgment.isEmpty { Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.space8) { wishActions(wish) }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) { wishActions(wish) }
@@ -79,7 +85,11 @@ struct WishlistView: View {
         if wish.status == .thinking {
             NavigationLink("已经买了") { WishEntryPicker(wishID: wish.id) }
             Button("不买了") { store.update("放下心愿") { ledger in
-                if let i = ledger.wishlist.firstIndex(where: { $0.id == wish.id }) { ledger.wishlist[i].status = .dropped }
+                if let i = ledger.wishlist.firstIndex(where: { $0.id == wish.id && $0.status == .thinking }) {
+                    ledger.wishlist[i].status = .dropped
+                    ledger.wishlist[i].droppedAt = Date(); ledger.wishlist[i].coolUntil = nil
+                    for j in ledger.cards.indices where ledger.cards[j].dedupeKey == "cooldown:\(wish.id)" { ledger.cards[j].dismissedAt = Date() }
+                }
             } }
         }
         NavigationLink("再问一次") { AskYubaiView(initialText: "我还想再看看「\(wish.title)」，\(Money.input(wish.amount))元，该不该买？") }

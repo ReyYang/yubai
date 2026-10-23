@@ -70,7 +70,7 @@ public enum SubcategoryClassifier {
     }
     public static func isUnclassified(_ category: String) -> Bool { ["其他支出", "其他收入", "没分类", Classification.pendingCategory, ""].contains(category) }
     public static func valid(_ choice: SubcategoryChoice, in ledger: Ledger, nature: Nature) -> Bool {
-        ledger.categories.contains { $0.name == choice.category && $0.income == nature.inflow && $0.subcategories.contains(choice.subcategory) }
+        ledger.categories.contains { $0.name == choice.category && $0.income == (nature == .refund ? false : nature.inflow) && $0.subcategories.contains(choice.subcategory) }
     }
     public static func local(_ entry: Entry, _ ledger: Ledger) -> SubcategoryChoice? {
         let category = ledger.resolveCategory(entry.category)

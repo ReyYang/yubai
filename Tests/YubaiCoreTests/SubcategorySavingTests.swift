@@ -27,6 +27,18 @@ final class SubcategorySavingTests: XCTestCase {
         XCTAssertEqual(ManualBookkeeping.defaults(for: .expense).count, 5)
         XCTAssertTrue(ManualBookkeeping.defaults(for: .expense).allSatisfy { name in categories.contains { $0.name == name } })
     }
+    func testEditingUnlinkedRefundSubcategoryUsesExpenseCategoriesAndRemembersChoice() throws {
+        var ledger = seed()
+        var refund = entry(ledger, title: "退回鞋款", category: "购物")
+        refund.nature = .refund
+        ledger.entries = [refund]
+        try SubcategoryClassifier.set("运动户外", entryID: refund.id, in: &ledger)
+        XCTAssertEqual(ledger.entries[0].subcategory, "运动户外")
+        XCTAssertTrue(ledger.entries[0].subcategoryUserEdited)
+        XCTAssertEqual(ledger.subcategoryMemory[CategoryMemory.key(refund.title)], "购物/运动户外")
+        XCTAssertFalse(SubcategoryClassifier.valid(.init(category: "工资奖金", subcategory: "工资"), in: ledger, nature: .refund))
+        try ledger.validate()
+    }
     func testLegacyCategoriesMigrateEntriesMemoriesAliasesProfileAndKeepCustom() throws {
         var old = seed(); let names = ["日用购物", "日用", "购物", "娱乐", "工资", "奖金", "兼职", "理财收益", "自定义主项"]
         old.categories = names.map { Category($0, income: ["工资", "奖金", "兼职", "理财收益"].contains($0)) }

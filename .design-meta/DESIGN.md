@@ -439,3 +439,14 @@ owner 本轮只授权非界面能力与输入条复用／消费观发送反馈�
 必要的数据适配：`CloudAssistantViews` 只替换两个模型说明键名；`IntelligenceRuntime` 挂接云端启用时的小项批处理；`ButlerViews` 仅为新增 `CardKind.cooldownDue` 补「心愿单」枚举标签，保证穷举编译完整，没有新增卡片样式或按钮。
 
 [公开 API、文件清单、设计阶段七项注意及验证](../docs/SAVING-CORE-PHASE1.md)。Linux Core build 与448项测试通过，新增42项；5个改动 App 文件的 iOS 26／macOS 14 条件语法解析通过。SwiftUI 类型检查、输入／失败回填／语音／多行的设备与无障碍验收尚未做。HTML、Figma、截图与分发包没有同步，不把本轮数据接口视为已完成界面设计或设备验收。
+
+
+## 2026-10-23 · 第十五轮「帮你省钱」界面
+
+owner 指定 设计稿画布「第十五轮 · 帮你省钱」 的 12 张 `V15-*.dc.html`、NOTE.txt 与 DS-README.md 为本轮唯一依据，允许 App 接线，不提交、不联网调 API。采用记录见 [第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-23--第十五轮帮你省钱界面owner-指定稿)。取代上一节「留待设计」的界面缺口，不追改历史验证结论。
+
+[交付记录](../docs/SAVING-UI-V15.md)逐稿登记源码、完整修改文件及新增可见文字：`SavingPurchaseViews` 承载 Ask／Wait／Buy／Skip；`SavingViews` 承载 Wishlist／Letter／Profile／Revisit／Entries／Restrain 的共享入口和数字；`SubcategoryViews` 承载 Entry-Sub／Insights-Sub。原页面只接线；旧文案清理分支的行保持，只有整块替换的旧购买卡与 owner 指定的消费观思考／进度例外。
+
+复用现有 DesignSystem 颜色与字体，26px 衬线结论取 lead 22px，40px 数字取 amountInput 38px 并取整，未新造 token。近限额一行取 RestrainProgress 的较大比例、最多一条；≥80% 琥珀，over 仍用原卡。三处再聊带对应上下文，消费观内容决定冷启动／再聊，已开始模式保持；未配云端入口仅禁用。洞察保持所选期间，未归小项并入其他，和上月比取完整上月；首页合并扇区仍进原记录列表。来信原图、三个数字、记忆和提醒开关保留，新增成对省钱数字与订阅卡放在正文后。心愿邀请的「不用了」收起本次页面邀请。
+
+Linux build／449 项测试通过（新增 1 项独立退款小项回归），全部 App 文件的 iOS 26／macOS 14 条件语法解析、工程引用、token 与保护文案核对通过。没有 Apple SDK 类型检查、UI 实跑或设备视觉验收；完整待验项见交付记录。HTML 原稿保留给定位置且未改，Figma、旧原型、截图和分发包未同步，未提交／推送。

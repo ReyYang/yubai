@@ -68,6 +68,7 @@ struct OverviewView: View {
                          reserved: funds.goals + funds.emergency + funds.living + funds.uncertainInflow,
                          hideAmount: store.current.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
                          onDetails: { store.sheet = .fundsCalculation })
+                RestrainNearRow()
                 todayRow
                 if !dueBills.isEmpty { dueCard }
             }

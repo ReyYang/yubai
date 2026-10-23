@@ -6,7 +6,7 @@ struct ButlerSection: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        let cards = ButlerCards.visible(store.current)
+        let cards = SavingCardVisibility.visible(in: store.current)
         VStack(spacing: YubaiSpace.gapGroup) {
             if let first = cards.first {
                 ButlerCardView(card: first, additionalCount: cards.count - 1).id(first.id)
@@ -20,7 +20,7 @@ struct ButlerListView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        let cards = ButlerCards.visible(store.current)
+        let cards = SavingCardVisibility.visible(in: store.current)
         Page(spacing: YubaiSpace.gapGroup) {
             ForEach(cards) { card in ButlerCardView(card: card).transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion)) }
             if !store.current.mutedTopics.isEmpty {
@@ -42,7 +42,7 @@ struct ButlerCardView: View {
     let card: ButlerCard
     var additionalCount = 0
     private var hidden: Bool { store.current.preferences.hideAmounts }
-    private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) }
+    private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) || (card.kind == .restrain && RestrainProgress.current(ledger: store.current).contains { $0.areaID == card.areaID && $0.status == .over }) }
     private var ink: Color { amber ? YubaiColor.amberInk : YubaiColor.labelSecondary }
     var body: some View {
         cardContent
@@ -120,6 +120,10 @@ struct ButlerCardView: View {
                     Text(evidenceText)
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).multilineTextAlignment(.leading)
                 }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin, alignment: .leading)
+                if card.kind == .restrain,
+                   RestrainProgress.current(ledger: store.current).contains(where: { $0.areaID == card.areaID && $0.status == .over }) {
+                    ProfileChatEntry(title: "调一下额度", context: .restrainExceeded(card.title + " · " + card.body))
+                }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: YubaiSpace.gapGroup) { actions; Spacer(minLength: YubaiSpace.none); more }
                     VStack(alignment: .leading, spacing: YubaiSpace.space4) { actions; more }
@@ -317,6 +321,10 @@ struct WeeklyLetterCard: View {
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
             Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : card.body).yubaiFont(YubaiFont.quote)
+            if let facts = card.letter { LetterSavingsTiles(facts: facts) }
+            if let subscriptions = card.letter?.subscriptions, !subscriptions.isEmpty {
+                LetterSubscriptionCard(candidates: subscriptions, letterDate: card.createdAt)
+            }
             if let facts = card.letter, !store.current.preferences.hideAmounts {
                 Card {
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -326,7 +334,7 @@ struct WeeklyLetterCard: View {
                 }
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.gapGroup)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
                 layout {
-                    ForEach(Array(facts.numbers.enumerated()), id: \.offset) { _, fact in
+                    ForEach(Array(facts.numbers.prefix(3).enumerated()), id: \.offset) { _, fact in
                         Card(style: .compact) {
                             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                                 Text(fact.label).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
@@ -373,6 +381,7 @@ struct WeeklyLetterCard: View {
                     Task { await store.setWeeklyLetterPush(value) }
                 })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: YubaiSize.rowSingle)
             }
+            ProfileChatEntry(title: "想聊聊这周吗？", context: .weeklyLetter(card.body))
         }.sheet(item: $reviewProposal) { change in
             NavigationStack { ButlerProposalView(changeID: change.id) }.appErrors()
         }

@@ -59,7 +59,13 @@ struct InsightsView: View {
                     if slices.isEmpty { Text("还没有收支记录").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, YubaiSpace.gapSection) }
                     VStack(spacing: YubaiSpace.none) {
                         ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
-                            NavigationLink { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range).yubaiZoomDestination("category-\(rank)") } label: {
+                            NavigationLink {
+                                if slice.categories.count == 1, let category = slice.categories.first {
+                                    SubcategoryInsightsView(category: category, income: income, interval: range, periodTitle: categoryPeriodTitle).yubaiZoomDestination("category-\(rank)")
+                                } else {
+                                    FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range).yubaiZoomDestination("category-\(rank)")
+                                }
+                            } label: {
                                 legend(slice, rank: rank, slices: slices).yubaiZoomSource("category-\(rank)")
                             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
                             if slice.id != slices.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
@@ -92,6 +98,12 @@ struct InsightsView: View {
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("看这段时间") { store.pickingInsightDates = false } } }
                 }.presentationDragIndicator(.visible)
             }
+    }
+    private var categoryPeriodTitle: String {
+        if window == .month {
+            return Dates.calendar.isDate(anchor, equalTo: Date(), toGranularity: .month) ? "本月" : "\(Dates.calendar.component(.month, from: anchor))月"
+        }
+        return dateLabel
     }
     private var dateLabel: String {
         let last = min(Date(), fullInterval.end.addingTimeInterval(-1))
