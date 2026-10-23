@@ -125,11 +125,23 @@ final class SubscriptionSavingTests: XCTestCase {
         let candidate = try XCTUnwrap(WeeklyLetter.candidate(ledger, now: now))
         let transport = ScriptedChatTransport([ChatMessage(role: .assistant, content: #"{"cards":[{"key":"c0","title":"每周来信","body":"这些还在用吗？"}]}"#)])
         let worded = await ButlerWording.word([candidate], ledger: ledger, transport: transport, now: now)
+        XCTAssertEqual(worded.first?.body, candidate.body)
+        for duplicate in ["本周省下", "累计省下", "这些还在用吗"] { XCTAssertFalse(candidate.body.contains(duplicate)) }
         XCTAssertEqual(worded.first?.letter?.weeklySavings, 30_000)
         let requests = await transport.recorded()
         let payload = try JSONValue.parse(try XCTUnwrap(requests.first?.messages.last?.content))
         XCTAssertEqual(payload.arrayValue?.first?["letter"]?["total_savings"], .money(30_000))
         XCTAssertEqual(payload.arrayValue?.first?["letter"]?["subscriptions"]?.arrayValue?.first?["title"], .string("合成会员"))
+    }
+    func testSavedLetterHidesOnlyTemplateDuplicatesWhenCardsExist() throws {
+        var ledger = seed(); ledger.plans = [plan(ledger)]
+        var wish = WishItem(title: "鞋子", amount: 30_000); wish.status = .dropped; wish.droppedAt = Dates.parse("2026-06-13")!; ledger.wishlist = [wish]
+        let candidate = try XCTUnwrap(WeeklyLetter.candidate(ledger, now: now))
+        var facts = try XCTUnwrap(candidate.letter)
+        let original = "还能花比上周保持原样。本周省下 ¥300.00。累计省下 ¥300.00。这些还在用吗？合成会员。外卖 3 次。"
+        XCTAssertEqual(WeeklyLetter.displayBody(original, facts: facts), "还能花和上周持平。外卖 3 次。")
+        facts.weeklySavings = nil; facts.totalSavings = nil; facts.subscriptions = nil
+        XCTAssertEqual(WeeklyLetter.displayBody(original, facts: facts), original.replacingOccurrences(of: "还能花比上周保持原样", with: "还能花和上周持平"))
     }
     func testFutureSavingsAreExcludedAndScheduledEndCanBeShortened() throws {
         var ledger = seed(); var member = plan(ledger); member.endDate = Dates.parse("2026-12-01")!; ledger.plans = [member]

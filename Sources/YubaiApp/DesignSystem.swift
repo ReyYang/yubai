@@ -427,7 +427,10 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
             guard let scroll = other.view as? UIScrollView, other === scroll.panGestureRecognizer else { return false }
-            return scroll.isPagingEnabled || scroll.contentSize.width > scroll.bounds.width + 1
+            if allowsSubgestures, let view = gestureRecognizer.view, scroll.isDescendant(of: view) { return false }
+            // Decide direction before either the vertical list or root pager
+            // begins. A vertical pan fails our direction gate immediately.
+            return true
         }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
             guard allowsSubgestures, let view = gestureRecognizer.view, let otherView = other.view else { return false }
@@ -494,8 +497,11 @@ private struct MessageEntrance: ViewModifier {
     @State private var visible = false
     let user: Bool
     func body(content: Content) -> some View {
-        content.opacity(visible ? 1 : 0).offset(y: reduceMotion || visible ? 0 : (user ? YubaiSpace.gapGroup : YubaiSpace.space8))
-            .onAppear { withAnimation(user ? YubaiMotion.control(reduceMotion: reduceMotion) : YubaiMotion.entrance(reduceMotion: reduceMotion)) { visible = true } }
+        content.opacity(user || visible ? 1 : 0).offset(y: user || reduceMotion || visible ? 0 : YubaiSpace.space8)
+            .onAppear {
+                guard !user else { return }
+                withAnimation(YubaiMotion.entrance(reduceMotion: reduceMotion)) { visible = true }
+            }
     }
 }
 
@@ -1173,7 +1179,7 @@ struct Toast: View {
     }
     private var surface: some View {
         HStack(spacing: YubaiSpace.gapGroup) {
-            Text(text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).frame(maxWidth: .infinity, alignment: .leading)
+            Text(text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("toastMessage")
             if let onUndo {
                 Text("·").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).accessibilityHidden(true)
                 Button(undoTitle, action: onUndo).yubaiFont(YubaiFont.row, weight: .semibold).foregroundStyle(YubaiColor.brandInk)

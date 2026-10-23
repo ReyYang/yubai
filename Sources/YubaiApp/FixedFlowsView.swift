@@ -159,6 +159,7 @@ private struct FixedFlowBillRow: View {
                             .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                             #endif
                     }.yubaiFont(YubaiFont.callout, weight: .medium)
+                        .accessibilityIdentifier("stopFixedFlow_" + row.id)
                         #if os(iOS)
                         .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
                         #else
@@ -166,6 +167,14 @@ private struct FixedFlowBillRow: View {
                         #endif
                         .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
                 }.clipped().contentShape(Rectangle())
+                    #if os(iOS)
+                    .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
+                        offset = max(-revealDistance, min(0, resting + distance))
+                    }, ended: { _, _ in
+                        resting = offset < -revealDistance * 0.43 ? -revealDistance : 0
+                        reset()
+                    }, cancelled: reset))
+                    #else
                     .simultaneousGesture(DragGesture(minimumDistance: 18)
                         .updating($dragging) { _, state, _ in state = true }
                         .onChanged { value in
@@ -177,6 +186,7 @@ private struct FixedFlowBillRow: View {
                             resting = offset < -revealDistance * 0.43 ? -revealDistance : 0; reset()
                         })
                     .onChange(of: dragging) { _, active in if !active { reset() } }
+                    #endif
                     .onChange(of: canEnd) { _, value in if !value { resting = 0; reset() } }
                     .accessibilityAction(named: "停掉", stop)
             } else { content }

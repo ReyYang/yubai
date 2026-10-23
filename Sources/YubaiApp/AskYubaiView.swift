@@ -62,7 +62,9 @@ struct AskYubaiView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        ForEach(messages) { message in messageView(message).messageEntrance(user: message.isUser) }
+                        ForEach(messages) { message in
+                            messageView(message).messageEntrance(user: message.isUser).id(message.id)
+                        }
                         if busy || reading {
                             HStack(spacing: YubaiSpace.gapGroup) { AssistantMark(thinking: true); Text(reading ? "正在读截图…" : "正在查阅…").yubaiFont(YubaiFont.callout) }
                         }
@@ -70,7 +72,11 @@ struct AskYubaiView: View {
                         if !voice.errorText.isEmpty && !voice.permissionDenied { InlineNote(text: voice.errorText) }
                         Color.clear.frame(height: 1).id("latest")
                     }.padding(YubaiSpace.space20).frame(maxWidth: 760).frame(maxWidth: .infinity)
-                }.onChange(of: messages.count) { _, _ in proxy.scrollTo("latest", anchor: .bottom) }
+                }.onChange(of: messages.count) { _, _ in
+                    if let last = messages.last, !(last.reply?.purchaseQuestions ?? []).isEmpty {
+                        proxy.scrollTo(last.id, anchor: .top)
+                    } else { proxy.scrollTo("latest", anchor: .bottom) }
+                }
             }
             inputBar
         }.amountPrivacy(store.current.preferences.hideAmounts).paperBackground().navigationTitle("问余白").yubaiNavigation().toolbar { CloseButton() }
@@ -543,12 +549,12 @@ struct ChatInputBar<Leading: View, Accessory: View>: View {
     @ViewBuilder var accessory: () -> Accessory
     var body: some View {
         HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
-            leading()
+            leading().frame(height: YubaiSize.iconButton)
             TextField(placeholder, text: $text, axis: .vertical)
                 .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
                 .padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.iconButton)
                 .accessibilityIdentifier(inputID).accessibilityLabel(accessibilityLabel)
-            accessory()
+            accessory().frame(height: YubaiSize.iconButton)
             if showSend {
                 Button(action: send) {
                     Image(systemName: "arrow.up").fontWeight(.semibold)
@@ -559,6 +565,7 @@ struct ChatInputBar<Leading: View, Accessory: View>: View {
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.disabled(!enabled || busy).padding(YubaiSpace.space8).frame(minHeight: YubaiSize.buttonHeight)
+            .fixedSize(horizontal: false, vertical: true)
             .buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
             .opacity(enabled ? 1 : 0.6)
     }

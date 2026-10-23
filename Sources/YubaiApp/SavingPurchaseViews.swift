@@ -19,9 +19,9 @@ struct PurchaseQuestionsCard: View {
                     question(index)
                 }
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: YubaiSpace.space8) { actions }
+                    HStack(spacing: YubaiSpace.space8) { actions }.fixedSize(horizontal: true, vertical: false)
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) { actions }
-                }
+                }.lineLimit(1)
                 RememberedRows(notes: notes)
             }
         }.accessibilityIdentifier("purchaseQuestions")
@@ -105,9 +105,9 @@ struct SavingPurchaseCard: View {
                 Text(hidden ? "金额已隐藏" : reason).yubaiFont(YubaiFont.body)
                 if showsMoneyBound { moneyBoundTag }
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: YubaiSpace.space8) { actions }
+                    HStack(spacing: YubaiSpace.space8) { actions }.fixedSize(horizontal: true, vertical: false)
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) { actions }
-                }.padding(.top, YubaiSpace.space8)
+                }.lineLimit(1).padding(.top, YubaiSpace.space8)
                 EntryFormDivider()
                 detailsLink
                 RememberedRows(notes: notes)

@@ -63,7 +63,7 @@ struct SavingsHeader: View {
         Group {
             AmountLabel(cents: Savings.total(ledger: store.current), hide: store.current.preferences.hideAmounts, role: .input, fractionDigits: 0)
             if !store.current.preferences.hideAmounts {
-                Text("这个月 +" + Money.text(increase, currency: false)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                Text("这个月 +" + AmountLabel.text(increase, decimals: 0)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
             }
         }
     }

@@ -312,6 +312,7 @@ struct RootView: View {
     @State private var hiddenTabBars: [Destination: Bool] = [:]
     @State private var keyboardVisible = false
     @State private var visibleTab: Destination = .overview
+    @State private var pagingPhase: ScrollPhase = .idle
     #endif
     var body: some View {
         @Bindable var store = store
@@ -408,7 +409,11 @@ struct RootView: View {
                 .background(YubaiColor.canvas.ignoresSafeArea())
                 .onScrollGeometryChange(for: Destination.self) { tab(at: $0) } action: { _, next in
                     visibleTab = next
-                    if store.destination != next { store.destination = next }
+                    if pagingPhase == .idle && store.destination != next { store.destination = next }
+                }
+                .onScrollPhaseChange { _, phase in
+                    pagingPhase = phase
+                    if phase == .idle && store.destination != visibleTab { store.destination = visibleTab }
                 }
                 .onChange(of: store.destination) { _, next in
                     if next != visibleTab { scrollTo(next, using: proxy) }

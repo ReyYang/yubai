@@ -50,7 +50,7 @@ struct WishlistView: View {
         Card(style: .compact, background: YubaiColor.amberTint) {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 HStack(spacing: YubaiSpace.gapGroup) {
-                    Text("买了一个月 · 用得怎么样？").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
+                    Text("买了一个月").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk).accessibilityIdentifier("wishFollowUpAge")
                     Spacer()
                     if let card = store.current.cards.first(where: { $0.dedupeKey == "follow:\(wish.id)" }) {
                         Menu {
@@ -62,15 +62,16 @@ struct WishlistView: View {
                 }
                 Text(wish.title + "，用得怎么样？").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.amberStrong)
                 if !wish.purpose.isEmpty { Text("当时说「" + wish.purpose + "」").yubaiFont(YubaiFont.callout) }
-                WishFollowUpView(wishID: wish.id)
+                WishFollowUpView(wishID: wish.id, showsTitle: false)
             }
         }
     }
-    private func ageText(_ wish: WishItem) -> String {
+    private func ageText(_ wish: WishItem) -> String? {
         let now: Date = Date()
         let days: Int = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(now)).day ?? 0)
         guard wish.status == .thinking else { return "加入 \(days) 天 · " + Dates.text(wish.createdAt) }
         guard let until = wish.coolUntil else { return "放了 \(days) 天" }
+        guard until > now else { return nil }
         let remaining: Int = max(until > now ? 1 : 0, Dates.calendar.dateComponents([.day], from: Dates.day(now), to: Dates.day(until)).day ?? 0)
         return "冷静中 · 还有 \(remaining) 天"
     }
@@ -85,7 +86,7 @@ struct WishlistView: View {
     private func wishContent(_ wish: WishItem) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             HStack(spacing: YubaiSpace.gapGroup) { Text(wish.title).yubaiFont(YubaiFont.rowTitle); Spacer(); AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts) }
-            Text(ageText(wish)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            if let age = ageText(wish) { Text(age).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             if !wish.judgment.isEmpty { Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.space8) { wishActions(wish) }
@@ -148,10 +149,11 @@ struct WishEntryPicker: View {
 private struct WishFollowUpView: View {
     @Environment(AppStore.self) private var store
     let wishID: UUID
+    var showsTitle = true
     @State private var text = ""
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            Text("用得怎么样？").yubaiFont(YubaiFont.rowTitle)
+            if showsTitle { Text("用得怎么样？").yubaiFont(YubaiFont.rowTitle) }
             DisclosureGroup("更多") {
                 TextField("补充", text: $text, axis: .vertical).lineLimit(1...4)
             }

@@ -96,15 +96,27 @@ public enum WeeklyLetter {
             let subscriptions = SubscriptionCheck.candidates(ledger: ledger, now: now)
             facts.subscriptions = subscriptions.isEmpty ? nil : subscriptions
         }
-        let direction = facts.availableChange > 0 ? "增加了" : (facts.availableChange < 0 ? "减少了" : "保持原样")
-        var body = "这一周消费 \(Money.text(facts.spending))。还能花比上周\(direction)。"
-        if let saved = facts.weeklySavings { body += "本周省下 \(Money.text(saved))。" }
-        if let total = facts.totalSavings { body += "累计省下 \(Money.text(total))。" }
-        if let subscriptions = facts.subscriptions { body += "这些还在用吗？" + subscriptions.map(\.title).joined(separator: "、") + "。" }
+        let change = facts.availableChange == 0 ? "和上周持平" : (facts.availableChange > 0 ? "比上周增加了" : "比上周减少了")
+        let body = "这一周消费 \(Money.text(facts.spending))。还能花\(change)。"
         var candidate = CardCandidate(kind: .weeklyLetter, dedupeKey: key, evidence: facts.evidence,
             facts: facts.numbers + facts.series.map { CardFact(Dates.text($0.date), cents: $0.available) }, title: "每周来信", body: body, action: .openEvidence, priority: 6)
         candidate.letter = facts
         return candidate
+    }
+    /// Omit exact template duplicates in older saved letters beside their UI cards.
+    public static func displayBody(_ body: String, facts: LetterFacts) -> String {
+        var result = body.replacingOccurrences(of: "还能花比上周保持原样", with: "还能花和上周持平")
+        if let saved = facts.weeklySavings, saved > 0 {
+            result = result.replacingOccurrences(of: "本周省下 \(Money.text(saved))。", with: "")
+        }
+        if let total = facts.totalSavings, total > 0 {
+            result = result.replacingOccurrences(of: "累计省下 \(Money.text(total))。", with: "")
+        }
+        if let subscriptions = facts.subscriptions, !subscriptions.isEmpty {
+            result = result.replacingOccurrences(of: "这些还在用吗？" + subscriptions.map(\.title).joined(separator: "、") + "。", with: "")
+            result = result.replacingOccurrences(of: "这些还在用吗？", with: "")
+        }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     public static func isFresh(_ card: ButlerCard, now: Date) -> Bool {
         let weekday = ButlerCards.calendar.component(.weekday, from: now)
