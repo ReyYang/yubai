@@ -42,7 +42,7 @@
 
 **当前选定稿（2026-10-20）**：owner 已批准第三轮 `V3-*.dc.html` 与配套 DS；已在 `refactor/v2-design-alignment` 按稿实现（现在／洞察／我、根页浮动导航与问余白、相关子页），仅静态核查，未编译、未验证真机。以下两 tab 与候选视觉描述保留为本次对齐前的历史状态。
 
-更新：**2026-10-20**。当前目标为「余白 2.0 · 管家」：AI 做事，代码算数，用户决定。`feat/yubai-2-butler` 的步骤 1–9 与 TestFlight 准备已落地源码，步骤 10 同步长期记录；2.0 **仅做静态检查，未编译或运行**。决定来源为 owner 的[产品评审](https://claude.ai/code/artifact/21365038-7478-4933-9c2c-0358b054f5a4)与[规格](https://claude.ai/code/artifact/9e7ad27e-85a3-478d-911e-aa58843ec4d3)，本轮使用 owner 提供的决定摘录，artifact 正文无法读取。用户决定、Agent 实现选择和差异见[第 13 票归档](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。
+更新：**2026-10-20**。当前目标为「余白 2.0 · 管家」：AI 做事，代码算数，用户决定。`feat/yubai-2-butler` 的步骤 1–9 与 TestFlight 准备已落地源码，步骤 10 同步长期记录；2.0 **仅做静态检查，未编译或运行**。决定来源为 owner 的产品评审与规格，本轮使用 owner 提供的决定摘录，artifact 正文无法读取。用户决定、Agent 实现选择和差异见[第 13 票归档](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。
 
 2026-10-20 后续按 owner 明确任务改进[AI 记忆与画像](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--ai-记忆与画像改进owner-明确决定)：去掉AI次数上限，增加重复调用复用、字符预算压缩、画像时间、对称反馈、分类记忆和同步记忆合并。只改core、测试、文档及App的时间戳／合并调用，未改视觉、布局或交互，设计资源状态保持。实现与验证边界见[助手文档](../docs/ASSISTANT.md)；无Swift工具链，未编译、运行或提交。
 
@@ -50,7 +50,7 @@
 
 当前入口为 iPhone 两个 tab「现在／我」和 iPhone／Mac 底部常驻「问余白」；Mac 侧栏同样只保留现在与我。云端智能仅用 DeepSeek 轻量 harness，本机模型已移除；旧账本、安排、洞察等独立维护页和应用内示例已删除，示例数据只留测试夹具，旧用户存档字段保持兼容。图表保留在来信与问答中。使用说明见 [README](../README.md)。
 
-当前 UI 由 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift) 组件构建，属于**候选视觉，并非最终定稿**。2026-10-19 的[390pt 页面稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)早于 2.0，需要「同步设计稿」；现有 Figma、HTML 原型、截图与发布包也未同步。消费观画像页、冷启动对话、心愿单、每周来信、导入问题、推送、问余白回答卡片均**尚无对应 2.0 画板**，缺口和源码入口见 [DESIGN.md](DESIGN.md#20-设计资源与缺口2026-10-20)。下一步先补齐这些页面与状态的设计映射，保留候选与最终验收的区别；本轮仅登记缺口，未绘制新稿。
+当前 UI 由 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift) 组件构建，属于**候选视觉，并非最终定稿**。2026-10-19 的390pt 页面稿早于 2.0，需要「同步设计稿」；现有 Figma、HTML 原型、截图与发布包也未同步。消费观画像页、冷启动对话、心愿单、每周来信、导入问题、推送、问余白回答卡片均**尚无对应 2.0 画板**，缺口和源码入口见 [DESIGN.md](DESIGN.md#20-设计资源与缺口2026-10-20)。下一步先补齐这些页面与状态的设计映射，保留候选与最终验收的区别；本轮仅登记缺口，未绘制新稿。
 
 iCloud 已实现，构建默认 `YUBAI_ICLOUD = NO`；付费团队配置好容器后可在本机配置改一行启用，应用内仍需在「我 → 备份与同步」主动选择。账本附件使用同目录文件，冲突保留各版本并由用户选择，恢复历史与设备锁留本机。采用边界见[第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md#icloud-账本的采用边界)，开关见 [DEVELOPMENT.md](../docs/DEVELOPMENT.md#可选-icloud-账本)。
 
@@ -60,7 +60,7 @@ owner 于 2026-10-20 决定暂不加入付费 Apple Developer Program：先用�
 
 ## 历史迁移与安装节点
 
-2026-10-19 续作：按用户指定的[暖纸设计系统](https://claude.ai/artifact/Pz2z4mQNoCqTNLGRafY9v5)与[390pt 页面设计稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)迁移已有页面，并完成 Step 3 评审修复。已采用移除三套颜色主题（`Preferences.colorTheme` 仅保留旧存储兼容、界面忽略）、不打包字体而用系统 rounded / serif 回退，以及因暂无助手页面保留原生 `TabView`。本次仅有静态验证；没有 Swift 工具链，未验证 iOS / Mac 编译与真机效果。采用范围与未同步资源见 [DESIGN.md 的迁移记录](DESIGN.md#2026-10-19--设计系统迁移)。下方安装和测试结果保留原日期，不适用于本次迁移。
+2026-10-19 续作：按用户指定的暖纸设计系统与390pt 页面设计稿迁移已有页面，并完成 Step 3 评审修复。已采用移除三套颜色主题（`Preferences.colorTheme` 仅保留旧存储兼容、界面忽略）、不打包字体而用系统 rounded / serif 回退，以及因暂无助手页面保留原生 `TabView`。本次仅有静态验证；没有 Swift 工具链，未验证 iOS / Mac 编译与真机效果。采用范围与未同步资源见 [DESIGN.md 的迁移记录](DESIGN.md#2026-10-19--设计系统迁移)。下方安装和测试结果保留原日期，不适用于本次迁移。
 
 2026-10-08 当时阶段：**原生 iPhone / Mac 应用已实现；余白 1.0.0 已签名安装到本人 iPhone，本人完成信任并在 Wi-Fi 下验证后已打开应用，业务实际使用核验尚未完成。** 该记录不覆盖 2.0。
 
@@ -107,7 +107,7 @@ owner 于 2026-10-20 决定暂不加入付费 Apple Developer Program：先用�
 | 产品知识 | [决策地图](../.scratch/yubai-product/map.md)、[第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md) | 已对齐 2.0 目的地、owner 决定和 Agent 实现选择；额外发言触发、脱敏覆盖与升级数值仍有待对齐／验证项 |
 | 领域词汇 | [CONTEXT.md](../CONTEXT.md) | 已补齐管家、消费观、来信、心愿与提案等；旧规则、洞察 tab、应用内示例、本机模型标为历史 |
 | 设计约定 | [DESIGN.md](DESIGN.md) | 2.0 组件实现为候选视觉，七类新增页面／状态尚无画板；需要「同步设计稿」 |
-| 参考与页面稿 | [2026-10-19 页面稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)、上方暖纸设计系统；历史[分类调研](../.scratch/yubai-product/research/transaction-categorization.md) | 页面稿早于 2.0，不能充当新增页面定稿；本轮 artifact 无法读取，未绘制或导出 |
+| 参考与页面稿 | 2026-10-19 页面稿、上方暖纸设计系统；历史[分类调研](../.scratch/yubai-product/research/transaction-categorization.md) | 页面稿早于 2.0，不能充当新增页面定稿；本轮 artifact 无法读取，未绘制或导出 |
 | 历史候选 | [导入结果原型](../.scratch/yubai-product/prototypes/import-result.prototype.html)、[首页 v1](prototypes/home-v1/README.md) | 合成内存交互，保留原位置；行为、导航与视觉均未同步 2.0 |
 | 样式与组件 | [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift)、[源码登记](DESIGN.md#当前应用设计) | 已有原生 token 与共用组件，2.0 新页面据此构建；编译、视觉、大字号与辅助功能待 Mac 验证 |
 | 工具与画布 | [Figma 全动作稿](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=13-3367)、[浏览基线](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=40-6983) | 1.0 派生资源已登记，未同步 2.0；本轮未调用绘图工具，也未切换设计面 |
