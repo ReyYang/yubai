@@ -56,30 +56,18 @@ struct AskYubaiView: View {
     @State private var voiceTask: Task<Void, Never>?
     @State private var appeared = false
     @State private var configured = IntelligenceRuntime.isConfigured
+    @FocusState private var inputFocused: Bool
     private var enabled: Bool { store.current.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        ForEach(messages) { message in
-                            messageView(message).messageEntrance(user: message.isUser).id(message.id)
-                        }
-                        if busy || reading {
-                            HStack(spacing: YubaiSpace.gapGroup) { AssistantMark(thinking: true); Text(reading ? "正在读截图…" : "正在查阅…").yubaiFont(YubaiFont.callout) }
-                        }
-                        if !errorText.isEmpty { InlineNote(text: errorText, style: .attention) }
-                        if !voice.errorText.isEmpty && !voice.permissionDenied { InlineNote(text: voice.errorText) }
-                        Color.clear.frame(height: 1).id("latest")
-                    }.padding(YubaiSpace.space20).frame(maxWidth: 760).frame(maxWidth: .infinity)
-                }.onChange(of: messages.count) { _, _ in
-                    if let last = messages.last, !(last.reply?.purchaseQuestions ?? []).isEmpty {
-                        proxy.scrollTo(last.id, anchor: .top)
-                    } else { proxy.scrollTo("latest", anchor: .bottom) }
-                }
-            }
+            conversation
             inputBar
-        }.amountPrivacy(store.current.preferences.hideAmounts).paperBackground().navigationTitle("问余白").yubaiNavigation().toolbar { CloseButton() }
+        }.amountPrivacy(store.current.preferences.hideAmounts).paperBackground().navigationTitle("问余白").yubaiNavigation()
+            #if os(iOS)
+            .toolbarBackground(YubaiColor.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            #endif
+            .toolbar { CloseButton() }
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
                 do {
@@ -109,6 +97,28 @@ struct AskYubaiView: View {
             .onChange(of: store.current.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
             .onChange(of: store.locked) { _, value in if value { cancel(); messages = []; originalImage = nil; session = AskYubaiSession() } }
     }
+    private var conversation: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                    ForEach(messages) { message in
+                        messageView(message, proxy: proxy).messageEntrance(user: message.isUser).id(message.id)
+                    }
+                    if busy || reading {
+                        HStack(spacing: YubaiSpace.gapGroup) { AssistantMark(thinking: true); Text(reading ? "正在读截图…" : "正在查阅…").yubaiFont(YubaiFont.callout) }
+                    }
+                    if !errorText.isEmpty { InlineNote(text: errorText, style: .attention) }
+                    if !voice.errorText.isEmpty && !voice.permissionDenied { InlineNote(text: voice.errorText) }
+                    Color.clear.frame(height: 1).id("latest")
+                }.padding(YubaiSpace.space20).frame(maxWidth: 760).frame(maxWidth: .infinity)
+            }.onChange(of: messages.count) { _, _ in
+                if let last = messages.last, !(last.reply?.purchaseQuestions ?? []).isEmpty {
+                    inputFocused = false
+                    proxy.scrollTo(last.id, anchor: .top)
+                } else { proxy.scrollTo("latest", anchor: .bottom) }
+            }
+        }
+    }
     private var inputBar: some View {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         return VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
@@ -126,7 +136,7 @@ struct AskYubaiView: View {
             availabilityStatus
             ChatInputBar(text: $input, placeholder: messages.isEmpty ? "问点什么…" : "接着问…",
                 accessibilityLabel: enabled ? "问余白" : "问余白（暂不可用）", inputID: "askInput", sendID: "sendAsk",
-                enabled: enabled, busy: busy || reading, showSend: !(voice.recording || (trimmed.isEmpty && (voice.available || voice.permissionDenied))), send: send) {
+                enabled: enabled, busy: busy || reading, showSend: !(voice.recording || (trimmed.isEmpty && (voice.available || voice.permissionDenied))), focus: $inputFocused, send: send) {
                 Menu {
                     Button("从照片选择截图") { photoPicker = true }
                     Button("选择图片文件") { filePicker = true }
@@ -169,7 +179,7 @@ struct AskYubaiView: View {
             }.foregroundStyle(YubaiColor.amberInk)
         }
     }
-    @ViewBuilder private func messageView(_ message: AskMessage) -> some View {
+    @ViewBuilder private func messageView(_ message: AskMessage, proxy: ScrollViewProxy) -> some View {
         if message.isUser {
             HStack(spacing: YubaiSpace.gapGroup) {
                 Spacer(minLength: YubaiSpace.gapSection)
@@ -185,13 +195,19 @@ struct AskYubaiView: View {
             }
             if isEntryDraftReply(reply) { RememberedRows(notes: reply.rememberedNotes + reply.updatedNotes.map(\.note)) }
             if let questions = reply.purchaseQuestions, !questions.isEmpty {
-                PurchaseQuestionsCard(questions: questions, busy: busy, active: messages.last?.id == message.id,
-                    send: { input = $0; send() }, notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
+                purchaseQuestions(questions, reply: reply, message: message, proxy: proxy)
             } else if let purchase = reply.purchaseJudgment {
                 SavingPurchaseCard(purchase: purchase, verdict: reply.purchaseVerdict, evidence: reply.evidenceEntryIDs,
                     notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
             }
         }
+    }
+    private func purchaseQuestions(_ questions: [PurchaseQuestion], reply: AssistantReply, message: AskMessage, proxy: ScrollViewProxy) -> some View {
+        let actionsID = "purchaseActions_" + message.id.uuidString
+        return PurchaseQuestionsCard(questions: questions, busy: busy, active: messages.last?.id == message.id,
+            actionsID: actionsID, dismissInput: { inputFocused = false },
+            selectionChanged: { proxy.scrollTo(actionsID, anchor: .bottom) },
+            send: { input = $0; send() }, notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
     }
     private func showsStandardReply(_ reply: AssistantReply) -> Bool {
         reply.purchaseJudgment == nil && (reply.purchaseQuestions ?? []).isEmpty && !isEntryDraftReply(reply)
@@ -544,13 +560,16 @@ struct ChatInputBar<Leading: View, Accessory: View>: View {
     var enabled = true
     var busy = false
     var showSend = true
+    var focus: FocusState<Bool>.Binding? = nil
     var send: () -> Void
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var accessory: () -> Accessory
+    @FocusState private var localFocus: Bool
     var body: some View {
         HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
             leading().frame(height: YubaiSize.iconButton)
             TextField(placeholder, text: $text, axis: .vertical)
+                .focused(focus ?? $localFocus)
                 .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
                 .padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.iconButton)
                 .accessibilityIdentifier(inputID).accessibilityLabel(accessibilityLabel)
