@@ -55,7 +55,7 @@ private struct SubcategoryPicker: View {
             }
         }.navigationTitle((category ?? entry?.category ?? "") + "里的哪一类").yubaiNavigation()
             .toolbar {
-                CloseButton()
+                ToolbarItem(placement: .cancellationAction) { CloseButton() }
                 ToolbarItem(placement: .confirmationAction) {
                     Menu("换主项") {
                         if let entry {

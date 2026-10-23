@@ -1,5 +1,11 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-23 · Simulator 27.1 toolbar 编译修复
+
+按 owner 的报错与明确位置要求，`SubcategoryViews.swift:58` 将 CloseButton 包进 `.cancellationAction` 的 ToolbarItem，「完成」位于左侧；「换主项」继续使用右侧 `.confirmationAction`。两个子项统一为 ToolbarContent，避免与裸 View 混用引发 `.toolbar` 重载推断失败。沿用 V15-Entry-Sub 右上换主项的规则，按钮动作、保存逻辑、文案、样式和其他页面保持，未改原稿。
+
+[本轮逐文件检查与验证](../docs/APP-COMPILE-AUDIT.md)覆盖相对 main 的全部 37 个 Swift App 文件及 5 个资源。Linux 449 项测试（445 通过、4 原有跳过、0 失败）、全部 38 个现有 App 文件的 iOS 26／27.1 模拟器与 macOS 14 语法解析通过；当前无 Apple SDK，Xcode 类型检查与 UI 实跑仍待做。Figma／HTML／分发包未同步，未联网调 API、未提交。
+
 ## 2026-10-22 · 分页同步与右滑归属复验
 
 来源为 owner 在 `fix/tabbar-gesture-regression`／`bd8b1b2` 的 vphone 复测：账目右滑到洞察后点账目、现在左滑到洞察后点现在，出现只切高亮、不切页面；其余手势已通过，本轮只修这两条同步路径及明确调整的右滑规则，macOS 保持。
