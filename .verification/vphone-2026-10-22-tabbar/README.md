@@ -69,3 +69,14 @@
 | push-06-record-detail-* | 管家卡片明细里点记录推入「记录详情」 |
 | push-07-record-edge-cancel-* | 记录详情左边缘侧滑一半后取消 |
 | push-08-record-back-* | 记录详情点返回 |
+
+## 标签栏隐藏改由导航路径决定：fix/insights-push-inset（0a156c8，vphone 当前外观：深色、文字大一档、粗体）
+
+| 文件 | 内容 |
+|---|---|
+| push2-01-category-* | 洞察点「其他支出」推入（毫秒数为点击后时间） |
+| push2-02-category-after-edge-cancel | 左边缘侧滑一半取消后：标签栏仍隐藏 |
+| push2-03-third-level-key | 我 → 智能与隐私 → 密钥（三级页） |
+| push2-04-back-to-second-level | 从三级页返回二级页：标签栏仍隐藏 |
+| push2-05-back-to-root | 返回「我」根页：标签栏出现 |
+| push2-06 / push2-07 | 根页面横滑翻页（现在→洞察→账目） |
