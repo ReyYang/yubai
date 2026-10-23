@@ -68,17 +68,13 @@ public extension ProfileArea {
         usageTotals(in: ledger, from: start, through: end, countFrom: start, amountFrom: start)
     }
     private func usageTotals(in ledger: Ledger, from start: Date, through end: Date, countFrom: Date, amountFrom: Date) -> (count: Int, amount: Int64) {
-        let categories = Set(match.categories.map { ledger.resolveCategory($0) })
-        let keywords = match.keywords.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         var count = 0; var amount: Int64 = 0
         for entry in ledger.activeEntries where entry.date >= start && entry.date <= end {
             guard entry.nature == .expense || entry.nature == .refund else { continue }
             let original = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } : nil
             let source = original ?? entry
-            let category = ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: byID))
-            let text = source.title + " " + (source.purpose ?? "") + " " + source.note
-            guard categories.contains(category) || keywords.contains(where: { text.localizedCaseInsensitiveContains($0) }) else { continue }
+            guard ButlerCards.matches(self, entry: source, ledger: ledger) else { continue }
             if entry.date >= countFrom && entry.nature == .expense { count += 1 }
             if entry.date >= amountFrom { amount += Finance.spendingAmount(entry, ledger: ledger) }
         }

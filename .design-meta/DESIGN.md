@@ -428,3 +428,14 @@ owner 本轮明确确认八张记忆与智能设置画板，按当前 `feat/ai-m
 验证：`git diff --check` 通过；临时只读源码核对覆盖 25 个改动 Swift 文件，确认写入路径符合本轮限制、旧 token 名称全部保留、间距／尺寸 token 引用均有定义、显式布局调用无裸数字间距、旧 2／6／10／18 间距 token 引用为零；Swift 字符串字面量、颜色和字体定义保持，H1 三处左滑按钮背景及露出常量在解析 token 后与修改前一致。未修改 YubaiCore、业务测试断言或依赖，未提交。
 
 已尝试对全部改动文件执行 `swiftc -parse`，但本会话容器未安装 `swiftc`（`command not found`），也没有历史记录中的 `/opt/swift-rootfs/usr/bin/swiftc`；尝试从 Swift 官方站点取得工具链时，配置的网络代理不可达，直连 DNS 也不可用，因此语法解析未执行，不能记为通过。Apple SDK 类型检查、iOS／macOS 构建、设备视觉与点按区实测均待有工具链的环境完成。macOS 条件分支和既有平台行为保留；源码核对不等于编译或视觉验收。
+
+
+## 2026-10-23 · 帮你省钱第一阶段：输入组件与数据交接
+
+owner 本轮只授权非界面能力与输入条复用／消费观发送反馈，不制作购买结论、追问、冷静期、省下的钱、订阅体检、克制进度或两级分类的新画板与界面。采用决定与实现区分见 [第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-23--帮你省钱第一阶段非界面owner-明确任务)。
+
+指定交互：`AskYubaiView.swift` 中的文字框、发送按钮及其字体、行数、高度、内边距、颜色与按钮样式提为同文件内 `ChatInputBar`，问余白保留＋菜单和原语音／停止替换条件；消费观仅使用文字框与发送按钮，发送时即时清空、立即显示用户气泡，失败恢复输入，重试替换尚未成功的用户轮次。首次开场失败后也可直接输入。`ProfileConversationView` 标题／入口与旧三问提示保持，Core 自动再聊及三类开场上下文已可用，后续需按设计稿同步提示。此处按 owner 新要求复用，取代历史 DS-AskBar 中仅用于问余白的使用范围限制，原稿文件保留。
+
+必要的数据适配：`CloudAssistantViews` 只替换两个模型说明键名；`IntelligenceRuntime` 挂接云端启用时的小项批处理；`ButlerViews` 仅为新增 `CardKind.cooldownDue` 补「心愿单」枚举标签，保证穷举编译完整，没有新增卡片样式或按钮。
+
+[公开 API、文件清单、设计阶段七项注意及验证](../docs/SAVING-CORE-PHASE1.md)。Linux Core build 与448项测试通过，新增42项；5个改动 App 文件的 iOS 26／macOS 14 条件语法解析通过。SwiftUI 类型检查、输入／失败回填／语音／多行的设备与无障碍验收尚未做。HTML、Figma、截图与分发包没有同步，不把本轮数据接口视为已完成界面设计或设备验收。

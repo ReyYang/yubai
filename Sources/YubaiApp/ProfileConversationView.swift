@@ -47,12 +47,10 @@ struct ProfileConversationView: View {
                 }.padding(YubaiSpace.insetPage).frame(maxWidth: 680).frame(maxWidth: .infinity)
             }.scrollDismissesKeyboard(.interactively)
             if proposal == nil || revising {
-                HStack(spacing: YubaiSpace.space8) {
-                    TextField(revising ? "想改哪里？" : "写下你的想法…", text: $input, axis: .vertical).lineLimit(1...6)
-                        .accessibilityLabel("告诉余白你的消费观")
-                    Button { ask() } label: { Image(systemName: "arrow.up").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).background(YubaiColor.brand, in: Circle()).foregroundStyle(YubaiColor.onBrand) }
-                        .accessibilityLabel("发送").disabled(busy || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }.padding(YubaiSpace.space8).buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input).padding(YubaiSpace.insetPage)
+                ChatInputBar(text: $input, placeholder: revising ? "想改哪里？" : "写下你的想法…",
+                    accessibilityLabel: "告诉余白你的消费观", inputID: "profileInput", sendID: "sendProfile",
+                    busy: busy, send: ask, leading: { EmptyView() }, accessory: { EmptyView() })
+                    .padding(YubaiSpace.insetPage)
             }
         }.paperBackground().navigationTitle("和余白聊几句").yubaiNavigation()
             .toolbar {
@@ -75,17 +73,21 @@ struct ProfileConversationView: View {
         }
         var turn = messages
         let answer = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !messages.isEmpty {
-            guard !answer.isEmpty else { return }
+        if !answer.isEmpty {
             if pendingUserTurn, turn.last?.role == .user { turn.removeLast() }
             turn.append(ChatMessage(role: .user, content: answer))
-        }
+        } else if !messages.isEmpty { return }
         let conversation = turn
+        input = ""
         messages = conversation; pendingUserTurn = conversation.last?.role == .user
         let previousProposal = proposalID
         busy = true; errorText = ""
         runningTask = Task { @MainActor in
-            defer { busy = false }
+            var succeeded = false
+            defer {
+                busy = false
+                if !succeeded, pendingUserTurn { input = answer }
+            }
             do {
                 let reply = try await ProfileColdStart(transport: transport).next(ledger: before, messages: conversation)
                 try Task.checkCancellation()
@@ -108,7 +110,7 @@ struct ProfileConversationView: View {
                 } else {
                     messages = conversation + [ChatMessage(role: .assistant, content: reply.text)]
                 }
-                input = ""
+                succeeded = true
             } catch is CancellationError { errorText = "对话已暂停，可以重试。" }
             catch { errorText = error.localizedDescription }
         }

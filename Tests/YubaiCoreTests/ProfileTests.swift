@@ -48,7 +48,8 @@ final class ProfileTests: XCTestCase {
         XCTAssertEqual(next["principles"], .array([])); XCTAssertEqual(next["floor_amount"], .money(600_000))
         XCTAssertEqual(next["restrain"], .array([]))
         XCTAssertFalse(try next.jsonText().contains("超过 2,000 等 48 小时"))
-        XCTAssertFalse(try next.jsonText().contains("外卖"))
+        XCTAssertFalse(try next["generous"]!.jsonText().contains("外卖"))
+        XCTAssertNotNil(next["category_table"])
     }
     func testUsageCategoryOrKeywordAndCalendarBoundaries() throws {
         var ledger = seed(); ledger.categoryAliases["旧餐饮"] = "餐饮"

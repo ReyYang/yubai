@@ -128,7 +128,9 @@ struct AskYubaiView: View {
                 }
             }
             if voice.recording { Text("正在听，停下后可以修改再发送。").yubaiFont(YubaiFont.caption) }
-            HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
+            ChatInputBar(text: $input, placeholder: enabled ? (messages.isEmpty ? "问点什么…" : "接着问…") : "暂时还不能问",
+                accessibilityLabel: enabled ? "问余白" : "问余白（暂不可用）", inputID: "askInput", sendID: "sendAsk",
+                enabled: enabled, busy: busy || reading, showSend: !(voice.recording || (trimmed.isEmpty && voice.available)), send: send) {
                 Menu {
                     Button("从照片选择截图") { photoPicker = true }
                     Button("选择图片文件") { filePicker = true }
@@ -136,10 +138,7 @@ struct AskYubaiView: View {
                     Image(systemName: "plus").frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
                         .yubaiHitTarget()
                 }.accessibilityLabel("添加截图或照片")
-                TextField(enabled ? (messages.isEmpty ? "问点什么…" : "接着问…") : "暂时还不能问", text: $input, axis: .vertical)
-                    .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
-                    .padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.iconButton)
-                    .accessibilityIdentifier("askInput").accessibilityLabel(enabled ? "问余白" : "问余白（暂不可用）")
+            } accessory: {
                 if voice.recording || (trimmed.isEmpty && voice.available) {
                     Button {
                         if voice.recording { voice.stop() }
@@ -150,17 +149,8 @@ struct AskYubaiView: View {
                             .foregroundStyle(YubaiColor.label).background(YubaiColor.card, in: Circle())
                             .yubaiHitTarget()
                     }.accessibilityLabel(voice.recording ? "停止听写" : "语音输入")
-                } else {
-                    Button { send() } label: {
-                        Image(systemName: "arrow.up").fontWeight(.semibold)
-                            .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
-                            .foregroundStyle(Color.white).background(YubaiColor.brand, in: Circle())
-                            .yubaiHitTarget()
-                    }.accessibilityLabel("发送").accessibilityIdentifier("sendAsk").disabled(trimmed.isEmpty)
                 }
-            }.disabled(!enabled || busy || reading).padding(YubaiSpace.space8).frame(minHeight: YubaiSize.buttonHeight)
-                .buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
-                .opacity(enabled ? 1 : 0.6)
+            }
         }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.insetPage)
     }
     @ViewBuilder private func messageView(_ message: AskMessage) -> some View {
@@ -575,5 +565,41 @@ private struct AskPurchaseCard: View {
             Button(wishID == nil ? "放进心愿单" : "已放进心愿单") { _ = save() }.buttonStyle(PrimaryButtonStyle(compact: true)).disabled(wishID != nil)
             Button("已经买了") { if save() != nil { linking = true } }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
         }
+    }
+}
+
+/// Shared text field and send styling; callers supply screenshot and voice controls.
+struct ChatInputBar<Leading: View, Accessory: View>: View {
+    @Binding var text: String
+    var placeholder: String
+    var accessibilityLabel: String
+    var inputID: String
+    var sendID: String
+    var enabled = true
+    var busy = false
+    var showSend = true
+    var send: () -> Void
+    @ViewBuilder var leading: () -> Leading
+    @ViewBuilder var accessory: () -> Accessory
+    var body: some View {
+        HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
+            leading()
+            TextField(placeholder, text: $text, axis: .vertical)
+                .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
+                .padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.iconButton)
+                .accessibilityIdentifier(inputID).accessibilityLabel(accessibilityLabel)
+            accessory()
+            if showSend {
+                Button(action: send) {
+                    Image(systemName: "arrow.up").fontWeight(.semibold)
+                        .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
+                        .foregroundStyle(Color.white).background(YubaiColor.brand, in: Circle())
+                        .yubaiHitTarget()
+                }.accessibilityLabel("发送").accessibilityIdentifier(sendID)
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }.disabled(!enabled || busy).padding(YubaiSpace.space8).frame(minHeight: YubaiSize.buttonHeight)
+            .buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
+            .opacity(enabled ? 1 : 0.6)
     }
 }

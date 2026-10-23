@@ -167,6 +167,7 @@ struct ButlerCardView: View {
         case .answerQuestion: label = "有个问题"
         case .offCharacter: label = "比平时贵"
         case .followUp: label = "买了一个月 · 用得怎么样？"
+        case .cooldownDue: label = "心愿单"
         case .recurring: label = "像是固定收付"
         case .duplicate: label = "可能记重了"
         case .weeklyLetter: label = "每周来信"

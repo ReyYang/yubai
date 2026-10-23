@@ -29,6 +29,8 @@ Status: open
 
 2026-10-21 按 owner [存储合并任务](issues/13-complete-personal-release.md#2026-10-21--快速记账存储与五个概念合并owner-明确任务)整合快速记账、五个概念及存储空间，保留三路产品／设计记录。Linux build 与373项测试通过（369通过、4项原有跳过、0失败），Apple 验收待做；本轮不提交，不改变既有产品决定。
 
+2026-10-23 owner 明确授权[帮你省钱第一阶段非界面](issues/13-complete-personal-release.md#2026-10-23--帮你省钱第一阶段非界面owner-明确任务)：本机限定购买建议、冷静期与实际省下、克制进度、月度订阅体检、两级分类及每日 AI 小项归类、模型旧名迁移、消费观再聊；指定输入组件复用以外的业务界面留待新设计稿。Linux build／448 项测试通过，Apple 交互验收待做，未调用实网 API，未提交。
+
 ## Destination
 
 2026-10-22 owner 根据 main 真机验收要求修复[标签栏与分页回归](issues/13-complete-personal-release.md#2026-10-22--标签栏与分页回归owner-真机反馈)：采用实色暖纸浮栏、贯穿安全区的 canvas、仅四根页原生横向分页与页内横拖优先；[vphone 后续要求](issues/13-complete-personal-release.md#2026-10-22--页内横滑复验owner-vphone-反馈)已接入位移判向、横向分页等待、账目单行展开及关闭协调，macOS 保持，Apple 设备复验待做。

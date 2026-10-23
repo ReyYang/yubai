@@ -128,6 +128,7 @@ struct ActiveLedgerTransport: ChatTransport {
 @MainActor extension AppStore {
     func refreshButler() async {
         guard !locked, loadFailure == nil, organizingBatchID == nil, current.preferences.onboardingComplete else { return }
+        await classifySubcategoriesIfDue()
         await reflectMemoriesIfDue()
         guard !Task.isCancelled, !locked, organizingBatchID == nil else { return }
         let before = current; let now = Date()
@@ -140,6 +141,20 @@ struct ActiveLedgerTransport: ChatTransport {
         var next = before
         guard ButlerCards.refresh(&next, candidates: worded, now: now) else { return }
         update("更新管家卡片", recordUndo: false) { $0.cards = next.cards }
+    }
+    private func classifySubcategoriesIfDue() async {
+        guard !reflectingMemories, current.preferences.cloudAIEnabled, SubcategoryBatch.isDue(current),
+              !SubcategoryBatch.pending(current).isEmpty, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
+              let transport = assistantTransport(for: current) else { return }
+        let before = current; let now = Date()
+        reflectingMemories = true
+        defer { reflectingMemories = false }
+        do {
+            let result = try await SubcategoryBatch.run(transport: transport, ledger: before, now: now)
+            try Task.checkCancellation()
+            guard current == before, !locked, current.preferences.cloudAIEnabled else { return }
+            update("归小项", recordUndo: false) { try result.apply(to: &$0, now: now) }
+        } catch { /* Keep the local classification and retry the unpersisted round later. */ }
     }
     private func reflectMemoriesIfDue() async {
         guard !reflectingMemories, MemoryReflection.isDue(ledger: current),

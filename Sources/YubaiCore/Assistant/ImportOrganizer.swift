@@ -284,11 +284,7 @@ public struct ImportOrganizer: Sendable {
         guard ids.count == raw.count, ids.isSubset(of: visible), !ids.isDisjoint(with: targets), rows.count == ids.count,
               let first = rows.first, let latest = rows.last, [.expense, .income, .repayment].contains(first.nature),
               rows.allSatisfy({ $0.accountID == first.accountID && $0.nature == first.nature && $0.rentID == nil && $0.planID == nil && $0.relatedEntryID == nil && ($0.otherAccountID == nil || $0.nature == .repayment) }) else { return [] }
-        for (index, row) in rows.enumerated() {
-            let expected = frequency.advance(Dates.day(first.date), by: index)
-            let gap = Dates.calendar.dateComponents([.day], from: expected, to: Dates.day(row.date)).day ?? 99
-            guard abs(gap) <= 3 else { return [] }
-        }
+        guard RecurringDetection.matches(rows, frequency: frequency) else { return [] }
         // Avoid another plan for the same evidence on subsequent chunks / imports.
         guard !ledger.plans.contains(where: { $0.active && $0.accountID == first.accountID && $0.amount == latest.amount && $0.frequency == frequency && $0.title == title }) else { return [] }
         var plan = Plan(title: title, amount: latest.amount, dueDate: Dates.day(first.date), frequency: frequency,

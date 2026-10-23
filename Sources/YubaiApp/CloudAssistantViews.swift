@@ -82,8 +82,8 @@ struct CloudModelMenu: View {
     }
     private func description(_ model: String) -> String? {
         switch model {
-        case "deepseek-chat": "快，日常记账和问答"
-        case "deepseek-reasoner": "会多想一会，适合该不该买"
+        case "deepseek-v4-flash": "快，日常记账和问答"
+        case "deepseek-v4-pro": "会多想一会，适合该不该买"
         default: nil
         }
     }

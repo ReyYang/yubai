@@ -19,6 +19,7 @@ public struct AIBenchFixture: Codable, Equatable, Sendable {
         public var title: String
         public var purpose: String
         public var values: String
+        public var verdict: PurchaseVerdict?
         public var assessmentTitle: String
         /// Substrings that must appear; response must not contain bare currency amounts like ¥12.00 rewriting.
         public var mustContain: [String]
@@ -114,7 +115,7 @@ public enum AIBenchRunner {
                     title: sample.title,
                     purpose: sample.purpose,
                     values: sample.values,
-                    assessmentTitle: sample.assessmentTitle
+                    assessmentTitle: sample.assessmentTitle, verdict: sample.verdict ?? .wait
                 )
                 let okContains = sample.mustContain.allSatisfy { text.localizedCaseInsensitiveContains($0) }
                 let amountOk: Bool = {

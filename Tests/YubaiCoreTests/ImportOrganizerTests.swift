@@ -307,7 +307,7 @@ final class CategoryMemoryTests: XCTestCase {
         XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "餐饮")
         change.source = "回答整理问题"; change.items = [.setCategory(entry: entry.id, category: "日用购物")]
         try change.apply(to: &ledger)
-        XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "日用购物")
+        XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "购物")
         try LedgerOperations.bulkEdit([entry.id], category: "餐饮", nature: nil, in: &ledger)
         XCTAssertEqual(ledger.categoryMemory[CategoryMemory.key(entry.title)], "餐饮")
         XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)).categoryMemory, ledger.categoryMemory)

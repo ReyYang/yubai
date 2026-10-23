@@ -49,7 +49,7 @@ public enum LedgerCodec {
         do {
             var ledger = try JSONDecoder().decode(Ledger.self, from: data); try ledger.validate()
             try validateAttachments(ledger, requirePayloads: false)
-            if try JSONDecoder().decode(LedgerHeader.self, from: data).schema == 1 { ledger.preMigrationData = data }
+            if try JSONDecoder().decode(LedgerHeader.self, from: data).schema < 3 { ledger.preMigrationData = data }
             return ledger
         }
         catch let error as YubaiError { throw error }

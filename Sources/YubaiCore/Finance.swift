@@ -63,6 +63,8 @@ public struct CashFlowSummary: Sendable {
 }
 
 public struct PurchaseAssessment: Sendable {
+    public var verdict: PurchaseVerdict = .buy
+    public var reason: String = ""
     public var title: String; public var explanation: String; public var afterPurchase: Int64
     public var severity: Int; public var facts: [String]; public var questions: [String]
 }
@@ -263,14 +265,28 @@ public enum Finance {
         return CashFlowSummary(income: review.income, spending: review.spending,
                                incomeByCategory: income, spendingByCategory: spending)
     }
-    public static func assessPurchase(_ ledger: Ledger, amount: Int64, now: Date = Date()) -> PurchaseAssessment {
+    public static func subcategoryBreakdown(_ ledger: Ledger, category: String, during interval: DateInterval) -> [Breakdown] {
+        let byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        let income = ledger.categories.first { $0.name == ledger.resolveCategory(category) }?.income ?? false
+        let rows = ledger.activeEntries.filter { $0.date >= interval.start && $0.date < interval.end && (income ? $0.nature == .income : ($0.nature == .expense || $0.nature == .refund)) && ledger.resolveCategory(spendingCategory($0, entriesByID: byID)) == ledger.resolveCategory(category) }
+        let grouped = Dictionary(grouping: rows) { entry in
+            let original = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } : nil
+            return (original ?? entry).subcategory ?? "没分类"
+        }
+        return grouped.map { sub, rows in Breakdown(category: sub, amount: rows.reduce(0) { $0 + (income ? $1.amount : spendingAmount($1, ledger: ledger)) }, count: rows.filter { $0.nature == .expense || $0.nature == .income }.count) }
+            .sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
+    }
+    public static func assessPurchase(_ ledger: Ledger, amount: Int64, title purchaseTitle: String = "", category: String? = nil, subcategory: String? = nil, now: Date = Date()) -> PurchaseAssessment {
         let f = funds(ledger, now: now); let after = f.available - amount
         let incomplete = ledger.accounts.isEmpty || ledger.accounts.contains { !$0.reconciled } || !f.warnings.isEmpty
         let severity = after < 0 ? 2 : (incomplete || amount > max(0, f.available) / 3 ? 1 : 0)
         let title = after < 0 ? "这笔购买会挤占已安排的资金" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
         let explanation = after < 0 ? "还差 \(Money.text(-after))，可以少花一些或晚点再买。" : "买了以后还能花 \(Money.text(after))。"
         let horizon = f.payday == nil ? "到 \(Dates.calendar.component(.month, from: f.horizonEnd))月\(Dates.calendar.component(.day, from: f.horizonEnd))日已知付款" : "发工资前已知付款"
-        return PurchaseAssessment(title: title, explanation: explanation, afterPurchase: after, severity: severity,
+        let bounds = PurchaseBounds.compute(ledger: ledger, amount: amount, title: purchaseTitle, category: category, subcategory: subcategory, now: now)
+        let verdict: PurchaseVerdict = after < 0 ? .skip : !bounds.allowedVerdicts.contains(.buy) || amount > max(0, f.available) / 3 ? .wait : .buy
+        let reason = !bounds.allowedVerdicts.contains(.buy) ? bounds.boundReason : verdict == .wait ? "这笔 \(Money.text(amount)) 超过当前还能花 \(Money.text(f.available)) 的三分之一。" : bounds.boundReason
+        return PurchaseAssessment(verdict: verdict, reason: reason, title: title, explanation: explanation, afterPurchase: after, severity: severity,
                                   facts: ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱、始终留着与日常开销 \(Money.text(f.goals + f.emergency + f.living))"] + f.warnings,
                                   questions: ["它具体解决什么经常发生的问题？", "现有物品能否满足同样需要？", "如果等 48 小时，还会同样想买吗？"])
     }

@@ -87,7 +87,7 @@ final class QuickCaptureTests: XCTestCase {
         try QuickCapture.remember(merchant: " shop ", category: "日用", in: &ledger)
         XCTAssertEqual(ledger.preferences.quickCapture.merchantCategories.count, 1)
         let entry = try QuickCapture.applePay(merchant: "Shop", amount: "1", card: "卡", date: now, in: &ledger, now: now).entry
-        XCTAssertEqual(entry.category, "日用"); XCTAssertEqual(entry.accountID, ledger.accounts[0].id)
+        XCTAssertEqual(entry.category, "购物"); XCTAssertEqual(entry.subcategory, "日用百货"); XCTAssertEqual(entry.accountID, ledger.accounts[0].id)
         XCTAssertThrowsError(try QuickCapture.remember(merchant: "", category: "餐饮", in: &ledger))
     }
     func testPreferencesAndEntryOldJSONCompatibilityAndRoundTrip() throws {

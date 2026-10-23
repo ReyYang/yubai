@@ -105,6 +105,8 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var nature: Nature; public var accountID: UUID; public var otherAccountID: UUID?
     public var title: String; public var category: String; public var note: String = ""
     public var purpose: String?
+    public var subcategory: String?
+    public var subcategoryUserEdited = false
     public var displayTitle: String { purpose.flatMap { $0.isEmpty ? nil : $0 } ?? title }
     public var source: String = "手动"; public var externalID: String = ""; public var batchID: UUID?
     public var sourceIdentity: String = ""
@@ -117,6 +119,42 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var otherDate: Date?; public var mergedIntoID: UUID?; public var personalExpense: Int64?
     public init(date: Date = Date(), amount: Int64, nature: Nature = .expense, accountID: UUID, title: String, category: String = "其他支出") {
         self.date = date; self.amount = amount; self.nature = nature; self.accountID = accountID; self.title = title; self.category = category
+    }
+    private enum CodingKeys: String, CodingKey { case id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        date = try c.decode(Date.self, forKey: .date)
+        amount = try c.decode(Int64.self, forKey: .amount)
+        recordedAt = try c.decodeIfPresent(Date.self, forKey: .recordedAt)
+        nature = try c.decode(Nature.self, forKey: .nature)
+        accountID = try c.decode(UUID.self, forKey: .accountID)
+        otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
+        title = try c.decode(String.self, forKey: .title)
+        category = try c.decode(String.self, forKey: .category)
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+        purpose = try c.decodeIfPresent(String.self, forKey: .purpose)
+        subcategory = try c.decodeIfPresent(String.self, forKey: .subcategory)
+        subcategoryUserEdited = try c.decodeIfPresent(Bool.self, forKey: .subcategoryUserEdited) ?? false
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? "手动"
+        externalID = try c.decodeIfPresent(String.self, forKey: .externalID) ?? ""
+        batchID = try c.decodeIfPresent(UUID.self, forKey: .batchID)
+        sourceIdentity = try c.decodeIfPresent(String.self, forKey: .sourceIdentity) ?? ""
+        quickCapture = try c.decodeIfPresent(QuickCaptureOrigin.self, forKey: .quickCapture)
+        sourceRow = try c.decodeIfPresent(Int.self, forKey: .sourceRow)
+        fingerprint = try c.decodeIfPresent(String.self, forKey: .fingerprint) ?? ""
+        userEdited = try c.decodeIfPresent(Bool.self, forKey: .userEdited) ?? false
+        deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
+        relatedEntryID = try c.decodeIfPresent(UUID.self, forKey: .relatedEntryID)
+        planID = try c.decodeIfPresent(UUID.self, forKey: .planID)
+        occurrence = try c.decodeIfPresent(Date.self, forKey: .occurrence)
+        rentID = try c.decodeIfPresent(UUID.self, forKey: .rentID)
+        rentPeriod = try c.decodeIfPresent(Date.self, forKey: .rentPeriod)
+        attachmentID = try c.decodeIfPresent(UUID.self, forKey: .attachmentID)
+        classificationReason = try c.decodeIfPresent(String.self, forKey: .classificationReason) ?? "手动选择"
+        otherDate = try c.decodeIfPresent(Date.self, forKey: .otherDate)
+        mergedIntoID = try c.decodeIfPresent(UUID.self, forKey: .mergedIntoID)
+        personalExpense = try c.decodeIfPresent(Int64.self, forKey: .personalExpense)
     }
     public func delta(for account: UUID) -> Int64 {
         if accountID == account { return nature.inflow ? amount : -amount }
@@ -203,13 +241,33 @@ public struct Rent: Codable, Identifiable, Equatable, Sendable {
 }
 public struct Category: Codable, Identifiable, Equatable, Sendable {
     public var name: String; public var symbol: String; public var income: Bool
+    public var subcategories: [String]
     public var id: String { name }
-    public init(_ name: String, _ symbol: String = "square.grid.2x2", income: Bool = false) { self.name = name; self.symbol = symbol; self.income = income }
+    public init(_ name: String, _ symbol: String = "square.grid.2x2", income: Bool = false, subcategories: [String] = []) {
+        self.name = name; self.symbol = symbol; self.income = income
+        self.subcategories = subcategories.filter { $0 != "其他" } + ["其他"]
+    }
+    private enum CodingKeys: String, CodingKey { case name, symbol, income, subcategories }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name); symbol = try c.decode(String.self, forKey: .symbol)
+        income = try c.decode(Bool.self, forKey: .income)
+        subcategories = try c.decodeIfPresent([String].self, forKey: .subcategories) ?? ["其他"]
+    }
     public static let defaults: [Category] = [
-        .init("餐饮", "fork.knife"), .init("居住", "house"), .init("交通", "tram"), .init("日用购物", "bag"),
-        .init("医疗健康", "cross.case"), .init("学习工作", "book"), .init("娱乐旅行", "sparkles"), .init("人情家庭", "gift"),
-        .init("利息手续费", "percent"), .init("其他支出", "ellipsis"), .init("工资奖金", "briefcase", income: true),
-        .init("兼职劳务", "hammer", income: true), .init("礼金赠与", "gift", income: true), .init("投资收益", "chart.line.uptrend.xyaxis", income: true), .init("其他收入", "ellipsis", income: true)
+        .init("餐饮", "fork.knife", subcategories: ["早餐", "午餐", "晚餐", "外卖", "咖啡饮品", "零食水果", "聚餐"]),
+        .init("居住", "house", subcategories: ["房租", "水电燃气", "物业", "网费话费", "维修"]),
+        .init("交通", "tram", subcategories: ["公共交通", "打车", "加油停车", "火车飞机", "共享单车"]),
+        .init("购物", "bag", subcategories: ["服饰鞋包", "数码电器", "家居家电", "美妆个护", "日用百货", "书和文具", "运动户外"]),
+        .init("医疗健康", "cross.case", subcategories: ["看病", "药品", "体检"]),
+        .init("学习工作", "book", subcategories: ["课程", "书籍", "软件工具", "办公用品"]),
+        .init("娱乐旅行", "sparkles", subcategories: ["电影演出", "游戏", "旅行住宿", "会员订阅", "运动健身"]),
+        .init("人情家庭", "gift", subcategories: ["红包礼物", "给家人", "孩子", "宠物"]),
+        .init("利息手续费", "percent", subcategories: ["手续费", "利息"]), .init("其他支出", "ellipsis"),
+        .init("工资奖金", "briefcase", income: true, subcategories: ["工资", "奖金", "补贴"]),
+        .init("兼职劳务", "hammer", income: true), .init("礼金赠与", "gift", income: true),
+        .init("投资收益", "chart.line.uptrend.xyaxis", income: true, subcategories: ["利息", "基金股票"]),
+        .init("其他收入", "ellipsis", income: true)
     ]
 }
 public struct Attachment: Codable, Identifiable, Equatable, Sendable {
@@ -316,8 +374,17 @@ public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
     public init(title: String, amount: Int64, result: String, note: String) { self.title = title; self.amount = amount; self.result = result; self.note = note }
 }
 public struct AreaMatch: Codable, Equatable, Sendable {
-    public var categories: [String]; public var keywords: [String]
-    public init(categories: [String] = [], keywords: [String] = []) { self.categories = categories; self.keywords = keywords }
+    public var categories: [String]; public var keywords: [String]; public var subcategories: [String]
+    public init(categories: [String] = [], keywords: [String] = [], subcategories: [String] = []) {
+        self.categories = categories; self.keywords = keywords; self.subcategories = subcategories
+    }
+    private enum CodingKeys: String, CodingKey { case categories, keywords, subcategories }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        categories = try c.decodeIfPresent([String].self, forKey: .categories) ?? []
+        keywords = try c.decodeIfPresent([String].self, forKey: .keywords) ?? []
+        subcategories = try c.decodeIfPresent([String].self, forKey: .subcategories) ?? []
+    }
 }
 public struct SoftLimit: Codable, Equatable, Sendable {
     public var perWeekCount: Int?; public var perMonthAmount: Int64?
@@ -406,11 +473,11 @@ public enum CategoryMemory {
     }
     public static func remember(_ entry: Entry, in ledger: inout Ledger) {
         let normalized = key(entry.title)
-        if !normalized.isEmpty { ledger.categoryMemory[normalized] = entry.category }
+        if !normalized.isEmpty { ledger.categoryMemory[normalized] = CategoryMigration.canonical(ledger.resolveCategory(entry.category)).category }
     }
 }
 public enum CardKind: String, Codable, CaseIterable, Sendable {
-    case answerQuestion, restrain, shortfall, unknownInflow, staleBalance, recurring, duplicate, offCharacter, followUp, weeklyLetter
+    case answerQuestion, restrain, shortfall, unknownInflow, staleBalance, recurring, duplicate, offCharacter, followUp, cooldownDue, weeklyLetter
 }
 public enum CardAction: Codable, Equatable, Sendable {
     case openEvidence, confirmChangeSet(UUID), reconcileAccount(UUID), answerQuestion, openWish(UUID)
@@ -438,6 +505,11 @@ public struct WishItem: Codable, Identifiable, Equatable, Sendable {
     public var createdAt = Date(); public var status: WishStatus = .thinking; public var judgment: String
     public var boughtEntryID: UUID?; public var followUpAt: Date?; public var followUpAnswer: String?
     public var followUpAnsweredAt: Date?
+    public var coolUntil: Date?
+    public var droppedAt: Date?
+    public var source: String?
+    public var category: String?
+    public var subcategory: String?
     public init(title: String, amount: Int64, purpose: String = "", judgment: String = "") {
         self.title = title; self.amount = amount; self.purpose = purpose; self.judgment = judgment
     }
@@ -447,13 +519,17 @@ public struct WishItem: Codable, Identifiable, Equatable, Sendable {
     }
 }
 public struct Ledger: Codable, Equatable, Sendable {
-    public var schema = 2; public var id = UUID(); public var updatedAt = Date()
+    public var schema = 3; public var id = UUID(); public var updatedAt = Date()
     public var isSample = false
     public var accounts: [Account] = []; public var entries: [Entry] = []; public var plans: [Plan] = []
     public var goals: [Goal] = []; public var rents: [Rent] = []
     public var categories = Category.defaults; public var imports: [ImportBatch] = []; public var attachments: [Attachment] = []
     public var categoryAliases: [String: String] = [:]
     public var categoryMemory: [String: String] = [:]
+    public var subcategoryMemory: [String: String] = [:]
+    public var lastSubcategoryBatchDay: String?
+    public var subscriptionChecks: [String: String] = [:]
+    public var stoppedSubscriptions: [StoppedSubscription] = []
     public var memories: [MemoryNote] = []
     public var lastReflectionWeek: String?
     public var preferences = Preferences()
@@ -475,14 +551,15 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, categoryMemory, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, categoryMemory, subcategoryMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schema = try c.decode(Int.self, forKey: .schema)
-        guard schema == 1 || schema == 2 else { throw YubaiError.invalid("这个账本来自更新版本，请先更新余白。") }
+        guard (1...3).contains(schema) else { throw YubaiError.invalid("这个账本来自更新版本，请先更新余白。") }
         let legacy = schema == 1
+        let needsCategoryMigration = schema < 3
         id = try c.decode(UUID.self, forKey: .id)
         updatedAt = try c.decode(Date.self, forKey: .updatedAt)
         isSample = try c.decodeIfPresent(Bool.self, forKey: .isSample) ?? isSample
@@ -497,6 +574,10 @@ public struct Ledger: Codable, Equatable, Sendable {
         attachments = try c.decode([Attachment].self, forKey: .attachments)
         categoryAliases = try c.decodeIfPresent([String: String].self, forKey: .categoryAliases) ?? categoryAliases
         categoryMemory = try c.decodeIfPresent([String: String].self, forKey: .categoryMemory) ?? [:]
+        subcategoryMemory = try c.decodeIfPresent([String: String].self, forKey: .subcategoryMemory) ?? [:]
+        lastSubcategoryBatchDay = try c.decodeIfPresent(String.self, forKey: .lastSubcategoryBatchDay)
+        subscriptionChecks = try c.decodeIfPresent([String: String].self, forKey: .subscriptionChecks) ?? [:]
+        stoppedSubscriptions = try c.decodeIfPresent([StoppedSubscription].self, forKey: .stoppedSubscriptions) ?? []
         memories = try c.decodeIfPresent([MemoryNote].self, forKey: .memories) ?? []
         lastReflectionWeek = try c.decodeIfPresent(String.self, forKey: .lastReflectionWeek)
         preferences = try c.decode(Preferences.self, forKey: .preferences)
@@ -518,11 +599,12 @@ public struct Ledger: Codable, Equatable, Sendable {
            !profile.principles.contains(preferences.purchaseValues) {
             profile.principles.insert(preferences.purchaseValues, at: 0)
         }
-        schema = 2
+        if needsCategoryMigration { CategoryMigration.apply(to: &self) }
+        schema = 3
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(2, forKey: .schema)
+        try c.encode(3, forKey: .schema)
         try c.encode(id, forKey: .id)
         try c.encode(updatedAt, forKey: .updatedAt)
         try c.encode(isSample, forKey: .isSample)
@@ -536,6 +618,10 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(attachments, forKey: .attachments)
         try c.encode(categoryAliases, forKey: .categoryAliases)
         try c.encode(categoryMemory, forKey: .categoryMemory)
+        try c.encode(subcategoryMemory, forKey: .subcategoryMemory)
+        try c.encodeIfPresent(lastSubcategoryBatchDay, forKey: .lastSubcategoryBatchDay)
+        try c.encode(subscriptionChecks, forKey: .subscriptionChecks)
+        try c.encode(stoppedSubscriptions, forKey: .stoppedSubscriptions)
         try c.encode(memories, forKey: .memories)
         try c.encodeIfPresent(lastReflectionWeek, forKey: .lastReflectionWeek)
         try c.encode(preferences, forKey: .preferences)
@@ -560,6 +646,10 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.attachments == rhs.attachments &&
         lhs.categoryAliases == rhs.categoryAliases &&
         lhs.categoryMemory == rhs.categoryMemory &&
+        lhs.subcategoryMemory == rhs.subcategoryMemory &&
+        lhs.lastSubcategoryBatchDay == rhs.lastSubcategoryBatchDay &&
+        lhs.subscriptionChecks == rhs.subscriptionChecks &&
+        lhs.stoppedSubscriptions == rhs.stoppedSubscriptions &&
         lhs.memories == rhs.memories &&
         lhs.lastReflectionWeek == rhs.lastReflectionWeek &&
         lhs.preferences == rhs.preferences &&
@@ -573,7 +663,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     public func accountName(_ id: UUID?) -> String { accounts.first { $0.id == id }?.name ?? "未指定账户" }
     public func resolveCategory(_ category: String) -> String { categoryAliases[category] ?? category }
     public func validate() throws {
-        guard schema == 1 || schema == 2 else { throw YubaiError.invalid("这个账本来自更新版本，请先更新余白。") }
+        guard (1...3).contains(schema) else { throw YubaiError.invalid("这个账本来自更新版本，请先更新余白。") }
         guard accounts.count <= 1000, entries.count <= 200_000, plans.count <= 1000, rents.count <= 100,
               goals.count <= 1000, attachments.count <= 5000, cards.count <= 5000,
               pendingChanges.count <= 100, wishlist.count <= 5000, mutedTopics.count <= 5000 else { throw YubaiError.invalid("账本超出安全容量，请分卷备份。") }
@@ -595,12 +685,29 @@ public struct Ledger: Codable, Equatable, Sendable {
         }
         guard categoryMemory.allSatisfy({ !$0.key.isEmpty && $0.key.count <= 4000 && CategoryMemory.key($0.key) == $0.key &&
             !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.value.count <= 200 }) else { throw YubaiError.invalid("分类对照表无效。") }
+        if let day = lastSubcategoryBatchDay {
+            guard Dates.parse(day).map({ Dates.text($0) == day }) ?? false else { throw YubaiError.invalid("小项归类日期无效。") }
+        }
+        guard subcategoryMemory.allSatisfy({ !$0.key.isEmpty && $0.key.count <= 4000 && CategoryMemory.key($0.key) == $0.key && $0.value.split(separator: "/", omittingEmptySubsequences: false).count == 2 }),
+              subscriptionChecks.allSatisfy({ item in !item.key.isEmpty && item.key.count <= 200 && item.value.count == 7 && Dates.parse(item.value + "-01").map { String(Dates.text($0).prefix(7)) == item.value } == true }) else { throw YubaiError.invalid("小项或固定收付对照表无效。") }
+        guard stoppedSubscriptions.count <= 5000, Set(stoppedSubscriptions.map(\.id)).count == stoppedSubscriptions.count else { throw YubaiError.invalid("停掉的固定收付记录无效。") }
+        for stopped in stoppedSubscriptions {
+            let p = stopped.plan
+            guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map(dateValid) ?? true,
+                  p.installments.map({ $0 > 0 }) ?? true, dateValid(stopped.stoppedAt), stopped.resumedAt.map({ dateValid($0) && $0 >= stopped.stoppedAt }) ?? true else { throw YubaiError.invalid("停掉的固定收付日期或金额无效。") }
+        }
+        for category in categories {
+            guard category.subcategories.contains("其他"),
+                  Set(category.subcategories).count == category.subcategories.count,
+                  category.subcategories.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 200 && !$0.contains("/") }) else { throw YubaiError.invalid("主项和小项只支持两级，且都需要保留其他。") }
+        }
         guard Set(categoryNames).count == categoryNames.count else { throw YubaiError.invalid("分类名称不能重复。") }
         for a in accounts { guard !a.name.trimmingCharacters(in: .whitespaces).isEmpty, a.anchorBalance >= -Money.limit, a.anchorBalance <= Money.limit, (0...Money.limit).contains(a.creditLimit), dateValid(a.anchorDate) else { throw YubaiError.invalid("账户信息无效。") } }
         for e in entries {
             guard ids.contains(e.accountID), e.amount > 0, e.amount <= Money.limit, !e.title.isEmpty,
                   dateValid(e.date), e.recordedAt.map(dateValid) ?? true, e.otherDate.map(dateValid) ?? true,
                   e.occurrence.map(dateValid) ?? true, e.rentPeriod.map(dateValid) ?? true,
+                  e.subcategory.map({ !$0.isEmpty && $0.count <= 200 && !$0.contains("/") }) ?? true,
                   (e.purpose?.count ?? 0) <= 4000 else { throw YubaiError.invalid("交易金额、日期或账户无效。") }
             if let other = e.otherAccountID { guard ids.contains(other), other != e.accountID, e.nature.paired else { throw YubaiError.invalid("转账的两个账户必须不同且存在。") } }
             if e.nature.paired, let other = e.otherAccountID, let kind = accounts.first(where: { $0.id == other })?.kind, e.nature != .transfer {
@@ -650,7 +757,7 @@ private extension Ledger {
         for a in areas {
             guard text(a.title), a.note.count <= 4000, a.match.categories.count <= 200, a.match.keywords.count <= 200,
                   a.confirmedAt.map(date) ?? true,
-                  a.match.categories.allSatisfy(text), a.match.keywords.allSatisfy(text),
+                  a.match.categories.allSatisfy(text), a.match.keywords.allSatisfy(text), a.match.subcategories.allSatisfy(text),
                   (a.softLimit?.perWeekCount).map({ (0...10_000).contains($0) }) ?? true,
                   (a.softLimit?.perMonthAmount).map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("消费领域、次数或金额无效。") }
         }
@@ -670,7 +777,7 @@ private extension Ledger {
         for w in wishlist {
             guard text(w.title), (0...Money.limit).contains(w.amount), w.purpose.count <= 4000,
                   w.judgment.count <= 16_000, date(w.createdAt), w.followUpAt.map(date) ?? true,
-                  w.followUpAnsweredAt.map(date) ?? true,
+                  w.followUpAnsweredAt.map(date) ?? true, w.coolUntil.map(date) ?? true, w.droppedAt.map(date) ?? true,
                   (w.followUpAnswer?.count ?? 0) <= 4000 else { throw YubaiError.invalid("心愿记录无效。") }
         }
     }

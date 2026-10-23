@@ -217,10 +217,20 @@ public enum BillImporter {
                 let mappedAccount = isTransfer ? (fromAccount ?? accountID) : (accountMappings[method] ?? accountID)
                 let needsMapping = isTransfer ? (fromAccount == nil || toAccount == nil) : (requireAccountMapping && !method.isEmpty && accountMappings[method] == nil)
                 if isTransfer, let fromAccount, let toAccount, fromAccount == toAccount { throw YubaiError.invalid("转账的两个账户必须不同，请核对原账单或账户对应。") }
-                let rawCategory = field(subcategoryCol).isEmpty ? field(categoryCol) : field(subcategoryCol)
+                let rawMain = field(categoryCol), rawSub = field(subcategoryCol)
+                let rawCategory = rawSub.isEmpty ? rawMain : rawSub
                 let sourceCategory = ledger.resolveCategory(rawCategory.isEmpty ? classification.category : rawCategory)
-                let category = categoryMappings[rawCategory] ?? categoryMappings[sourceCategory] ?? sourceCategory
-                var entry = Entry(date: date, amount: abs(signed), nature: explicitNature ?? classification.nature, accountID: mappedAccount, title: title, category: ledger.resolveCategory(clean(category)))
+                let explicitCategory = categoryMappings[rawCategory] ?? categoryMappings[sourceCategory]
+                let main = CategoryMigration.canonical(ledger.resolveCategory(rawMain)).category
+                let knownMain = ledger.categories.contains { $0.name == main }
+                let category = explicitCategory ?? (knownMain ? main : sourceCategory)
+                let normalized = CategoryMigration.canonical(ledger.resolveCategory(clean(category))).category
+                var entry = Entry(date: date, amount: abs(signed), nature: explicitNature ?? classification.nature, accountID: mappedAccount, title: title, category: normalized)
+                if let table = ledger.categories.first(where: { $0.name == normalized }), table.subcategories.contains(rawSub) { entry.subcategory = rawSub }
+                else {
+                    let legacy = CategoryMigration.canonical(rawCategory)
+                    if legacy.category == normalized { entry.subcategory = legacy.subcategory }
+                }
                 if isTransfer { entry.otherAccountID = toAccount }
                 entry.note = [field(noteCol), status.isEmpty ? "" : "原账单状态：" + status, method.isEmpty ? "" : "收付款方式：" + method].filter { !$0.isEmpty }.joined(separator: "\n"); entry.source = source; entry.sourceRow = line; entry.externalID = field(idCol).replacingOccurrences(of: "\t", with: "")
                 if isTransfer {
@@ -230,6 +240,7 @@ public enum BillImporter {
                 if categoryMappings[rawCategory] != nil || categoryMappings[sourceCategory] != nil {
                     entry.userEdited = true
                 }
+                SubcategoryClassifier.classify(&entry, ledger: ledger)
                 let baseIdentity = [source, String(date.timeIntervalSince1970), Money.input(entry.amount), inflow ? "+" : "-", title, mappedAccount.uuidString].joined(separator: "|") + (isTransfer ? "|to:" + (toAccount?.uuidString ?? toName) : "")
                 let ordinal = occurrences[baseIdentity, default: 0]; occurrences[baseIdentity] = ordinal + 1
                 // Distinct stable IDs are distinct events. Without IDs, retain duplicate-looking rows within a file by occurrence count.
@@ -294,6 +305,7 @@ public enum BillImporter {
         for var entry in preview.selectedEntries {
             guard !existing.contains(entry.id) else { throw YubaiError.invalid("这一批记录已保存，请重新读取文件。") }
             guard entry.externalID.isEmpty || !existingSourceIDs.contains(sourceKey(entry)), entry.fingerprint.isEmpty || !existingHashes.contains(entry.fingerprint) else { throw YubaiError.invalid("账本在预览后发生变化，已有重复记录。请重新预览，再确认导入。") }
+            SubcategoryClassifier.classify(&entry, ledger: ledger)
             existing.insert(entry.id); entry.batchID = batch.id; entry.attachmentID = attachment.id; ledger.entries.append(entry)
         }
         ledger.attachments.append(attachment); ledger.imports.append(batch); try ledger.validate(); return batch

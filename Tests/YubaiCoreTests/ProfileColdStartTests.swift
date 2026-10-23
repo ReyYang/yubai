@@ -16,13 +16,13 @@ final class ProfileColdStartTests: XCTestCase {
         var messages: [ChatMessage] = []
         let original = try LedgerCodec.encode(ctx.ledger)
         for answer in ["学习、读书值得多花。", "外卖每周最多三次，每月五百。大件先等两天。", "五千元。"] {
-            let reply = try await coldStart.next(ledger: ctx.ledger, messages: messages, now: ctx.now)
+            let reply = try await coldStart.next(ledger: ctx.ledger, messages: messages, mode: .coldStart, now: ctx.now)
             XCTAssertTrue(reply.proposedChangeSets.isEmpty)
             XCTAssertLessThanOrEqual(reply.text.filter { $0 == "？" || $0 == "?" }.count, 1)
             messages.append(ChatMessage(role: .assistant, content: reply.text))
             messages.append(ChatMessage(role: .user, content: answer))
         }
-        let final = try await coldStart.next(ledger: ctx.ledger, messages: messages, now: ctx.now)
+        let final = try await coldStart.next(ledger: ctx.ledger, messages: messages, mode: .coldStart, now: ctx.now)
         XCTAssertEqual(final.proposedChangeSets.count, 1)
         let change = try XCTUnwrap(final.proposedChangeSets.first)
         XCTAssertTrue(change.isProfileOnly); XCTAssertEqual(change.items.count, 4)
@@ -51,7 +51,7 @@ final class ProfileColdStartTests: XCTestCase {
         let messages = ["愿意多花的？", "想克制的？", "底线多少？"].flatMap { question in
             [ChatMessage(role: .assistant, content: question), ChatMessage(role: .user, content: "暂时没想好")]
         } + [ChatMessage(role: .user, content: "学习可以多花，外卖每周三次每月五百，底线五千，大件先等两天。")]
-        let reply = try await ProfileColdStart(transport: script).next(ledger: ctx.ledger, messages: messages, now: ctx.now)
+        let reply = try await ProfileColdStart(transport: script).next(ledger: ctx.ledger, messages: messages, mode: .coldStart, now: ctx.now)
         XCTAssertEqual(reply.proposedChangeSets.count, 1)
         let requests = await script.recorded()
         XCTAssertTrue(requests[0].messages[0].content?.contains("不再提问") == true)
@@ -64,7 +64,7 @@ final class ProfileColdStartTests: XCTestCase {
             ChatMessage(role: .assistant, content: "请确认。")])
         let messages = (0..<3).flatMap { _ in [ChatMessage(role: .assistant, content: "一个问题？"), ChatMessage(role: .user, content: "好")] }
         do {
-            _ = try await ProfileColdStart(transport: script).next(ledger: AssistantFixtures.context().ledger, messages: messages)
+            _ = try await ProfileColdStart(transport: script).next(ledger: AssistantFixtures.context().ledger, messages: messages, mode: .coldStart)
             XCTFail("must return exactly one proposal")
         } catch { XCTAssertTrue(error is YubaiError) }
     }

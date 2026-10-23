@@ -55,6 +55,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         ["start_date": field("string", "起始日 yyyy-MM-dd（包含）"),
          "end_date": field("string", "结束日 yyyy-MM-dd（包含）"),
          "category": field("string", "分类全名，退款跟随原支出分类"),
+         "subcategory": field("string", "小项名，配合category；退款跟随原支出小项"),
          "nature": .object(["type": .string("string"), "enum": .strings(["spending", "income", "transfer"])]),
          "keyword": field("string", "标题或备注子串"), "min_amount": amountSchema, "max_amount": amountSchema,
          "limit": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(50)])]
@@ -72,9 +73,9 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             fields["offset"] = .object(["type": .string("integer"), "minimum": .number(0)])
         case .summarize:
             fields = Self.filters
-            fields["group_by"] = .object(["type": .string("string"), "enum": .strings(["day", "week", "month", "category"])])
+            fields["group_by"] = .object(["type": .string("string"), "enum": .strings(["day", "week", "month", "category", "subcategory"])])
         case .compareToHabit:
-            fields = ["category": Self.field("string", "分类，与keyword至少提供一项；两项同时给出取交集"),
+            fields = ["subcategory": Self.field("string", "有小项时优先按小项比较"), "category": Self.field("string", "分类，与keyword至少提供一项；两项同时给出取交集"),
                       "keyword": Self.field("string", "标题或备注子串"), "amount": Self.amountSchema]
         }
         return .object(["type": .string("object"), "properties": .object(fields), "additionalProperties": .bool(false)])
@@ -117,8 +118,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
     private func profile(_ ctx: ToolContext) -> JSONValue {
         func area(_ a: ProfileArea) -> JSONValue {
             var row: [String: JSONValue] = ["id": .string(a.id.uuidString), "title": .string(a.title),
-                "match": .object(["categories": .strings(a.match.categories), "keywords": .strings(a.match.keywords)]),
-                "categories": .strings(a.match.categories), "keywords": .strings(a.match.keywords), "note": .string(a.note),
+                "match": .object(["categories": .strings(a.match.categories), "subcategories": .strings(a.match.subcategories), "keywords": .strings(a.match.keywords)]),
+                "categories": .strings(a.match.categories), "subcategories": .strings(a.match.subcategories), "keywords": .strings(a.match.keywords), "note": .string(a.note),
                 "confirmed_at": a.confirmedAt.map { .string(Dates.text($0)) } ?? .null,
                 "days_since_confirmed": a.confirmedAt.map { .number(Double(Dates.calendar.dateComponents([.day], from: Dates.day($0), to: Dates.day(ctx.now)).day ?? 0)) } ?? .null,
                 "soft_line": .string(a.softLimit?.text ?? "")]
@@ -159,6 +160,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "target": .money($0.target), "saved": .money($0.reserved), "reserved": .money($0.reserved),
                 "date": $0.dueDate.map { .string(Dates.text($0)) } ?? .null]) })]
         if let account = ctx.entryAccountHint { fields["entry_account_hint"] = .string(account.uuidString) }
+        fields["category_table"] = .array(ctx.ledger.categories.map { .object(["category": .string($0.name), "subcategories": .strings($0.subcategories)]) })
         fields["parsed_entries"] = .array(ctx.parsedEntries.map { .object(["text": .string($0.text), "amount": .money($0.amount)]) })
         fields["parsed_entry_amounts"] = .array(ctx.parsedEntryAmounts.map { .money($0) })
         if let amount = ctx.confirmedEntryAmount { fields["confirmed_entry_amount"] = .money(amount) }
@@ -197,7 +199,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         guard Set(fields.keys).isSubset(of: allowed) else { throw YubaiError.invalid("汇总参数包含未声明的字段。") }
         let filter = try Filter(fields)
         let group = try Self.optionalString(fields["group_by"]) ?? "category"
-        guard ["day", "week", "month", "category"].contains(group) else { throw YubaiError.invalid("group_by必须是day/week/month/category。") }
+        guard ["day", "week", "month", "category", "subcategory"].contains(group) else { throw YubaiError.invalid("group_by必须是day/week/month/category/subcategory。") }
         let all = filter.entries(ctx)
         let rows = filter.limit.map { Array(all.prefix($0)) } ?? all
         let byID = ctx.entriesByID
@@ -208,6 +210,9 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             case "week":
                 var calendar = Dates.calendar; calendar.firstWeekday = 2; calendar.minimumDaysInFirstWeek = 4
                 return Dates.text(calendar.dateInterval(of: .weekOfYear, for: entry.date)?.start ?? Dates.day(entry.date))
+            case "subcategory":
+                let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry
+                return ctx.ledger.resolveCategory(source.category) + "/" + (source.subcategory ?? "没分类")
             default: return ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: byID))
             }
         }
@@ -220,7 +225,19 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         var result = totals(rows)
         result["group_by"] = .string(group)
         result["groups"] = .array(grouped.keys.sorted().map { key in
-            var values = totals(grouped[key] ?? []); values["group"] = .string(key); return .object(values)
+            let groupRows = grouped[key] ?? []
+            var values = totals(groupRows); values["group"] = .string(key)
+            if group == "category" || group == "subcategory" {
+                let small = Dictionary(grouping: groupRows) { entry -> String in
+                    let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry
+                    return source.subcategory ?? "没分类"
+                }
+                values["subcategories"] = .array(small.keys.sorted().map { name in
+                    var row = totals(small[name] ?? []); row["subcategory"] = name == "没分类" ? .null : .string(name); return .object(row)
+                })
+                if group == "subcategory" { values["subcategory"] = groupRows.first.flatMap { entry in (entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry).subcategory }.map(JSONValue.string) ?? .null }
+            }
+            return .object(values)
         })
         result["matched_count"] = .number(Double(all.count)); result["truncated"] = .bool(rows.count < all.count)
         // Keep payloads bounded; totals cover every row, evidence is a representative recent sample.
@@ -229,14 +246,16 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         let points = grouped.keys.sorted().map { key in
             AnswerChart.Point(label: ctx.redactor.text(key), cents: (grouped[key] ?? []).reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ctx.ledger) })
         }
-        return (ctx.redactor.value(.object(result)), AnswerChart(kind: group == "category" ? .bar : .line, title: "消费汇总（元）", points: points))
+        return (ctx.redactor.value(.object(result)), AnswerChart(kind: ["category", "subcategory"].contains(group) ? .bar : .line, title: "消费汇总（元）", points: points))
     }
 
     private func habit(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {
         let category = try Self.optionalString(fields["category"])
         let keyword = try Self.optionalString(fields["keyword"])
-        guard category != nil || keyword != nil else { throw YubaiError.invalid("请提供category或keyword。") }
+        let subcategory = try Self.optionalString(fields["subcategory"])
+        guard category != nil || keyword != nil || subcategory != nil else { throw YubaiError.invalid("请提供category或keyword。") }
         var filters = fields; filters.removeValue(forKey: "amount"); filters["nature"] = .string("spending")
+        if subcategory != nil { filters.removeValue(forKey: "keyword") }
         let start = Dates.addDays(-89, to: Dates.day(ctx.now))
         let matching = try Filter(filters).entries(ctx).filter { $0.nature == .expense }
         let rows = matching.filter { $0.date >= start && $0.date <= ctx.now }
@@ -252,7 +271,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                     "average": .money(prior.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ctx.ledger) } / Int64(prior.count))])
             }
         }
-        let sample = Entry(date: ctx.now, amount: 1, accountID: UUID(), title: keyword ?? "", category: category ?? "")
+        var sample = Entry(date: ctx.now, amount: 1, accountID: UUID(), title: keyword ?? "", category: category ?? "")
+        sample.subcategory = subcategory
         let areas = ctx.ledger.profile.restrain.filter { ButlerCards.matches($0, entry: sample, ledger: ctx.ledger) }
         if !areas.isEmpty {
             result["soft_limits"] = .array(areas.map { area in .object(["id": .string(area.id.uuidString), "title": .string(area.title),
@@ -283,17 +303,19 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             "amount": .money(entry.amount), "spending_amount": .money(Finance.spendingAmount(entry, ledger: ctx.ledger)),
             "direction": .string(entry.nature.paired ? "transfer" : (entry.nature.inflow ? "income" : "spending")),
             "nature": .string(entry.nature.rawValue), "title": .string(entry.displayTitle), "category": .string(ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: ctx.entriesByID))),
+            "subcategory": (entry.nature == .refund ? entry.relatedEntryID.flatMap { ctx.entriesByID[$0] } ?? entry : entry).subcategory.map(JSONValue.string) ?? .null,
             "account": .string(entry.accountID.uuidString),
             "account_kind": .string(ctx.ledger.accounts.first { $0.id == entry.accountID }?.kind.rawValue ?? "unknown")])
     }
 
     private struct Filter {
-        var start: Date?; var end: Date?; var category: String?; var nature: String?; var keyword: String?
+        var start: Date?; var end: Date?; var category: String?; var subcategory: String?; var nature: String?; var keyword: String?
         var minimum: Int64?; var maximum: Int64?; var limit: Int?
         init(_ fields: [String: JSONValue]) throws {
             start = try fields["start_date"].map { try ReadOnlyTool.date($0) }
             end = try fields["end_date"].map { Dates.addDays(1, to: try ReadOnlyTool.date($0)) }
             category = try ReadOnlyTool.optionalString(fields["category"])
+            subcategory = try ReadOnlyTool.optionalString(fields["subcategory"])
             nature = try ReadOnlyTool.optionalString(fields["nature"])
             keyword = try ReadOnlyTool.optionalString(fields["keyword"])
             minimum = try fields["min_amount"].map { try ReadOnlyTool.amount($0) }
@@ -309,6 +331,10 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 if let start, e.date < start { return false }
                 if let end, e.date >= end { return false }
                 if let category, ctx.ledger.resolveCategory(Finance.spendingCategory(e, entriesByID: byID)) != ctx.ledger.resolveCategory(category) { return false }
+                if let subcategory {
+                    let source = e.nature == .refund ? e.relatedEntryID.flatMap { byID[$0] } ?? e : e
+                    if source.subcategory != subcategory { return false }
+                }
                 if let keyword {
                     let text = e.title + " " + (e.purpose ?? "") + " " + e.note
                     if !text.localizedCaseInsensitiveContains(keyword) && !ctx.redactor.text(text).localizedCaseInsensitiveContains(keyword) { return false }

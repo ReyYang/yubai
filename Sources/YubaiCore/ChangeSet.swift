@@ -143,7 +143,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     CategoryMemory.remember(confirmed, in: &next)
                 }
                 if next.entries[i].category == category { skip(position); continue }
-                next.entries[i].category = category; touch(i)
+                next.entries[i].category = category; next.entries[i].subcategory = nil; next.entries[i].subcategoryUserEdited = false
+                SubcategoryClassifier.classify(&next.entries[i], ledger: ledger)
+                touch(i)
                 if next.entries[i].nature == .expense { changedExpenseCategories[id] = category }
             case .setNature(let id, let nature, let other):
                 guard let i = active(id) else { skip(position); continue }
@@ -174,7 +176,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                       next.entries[i].rentID == nil, next.entries[i].otherAccountID == nil else { skip(position); continue }
                 guard refund != original, next.entries[i].nature.inflow, next.entries[j].nature == .expense else { throw YubaiError.invalid("退款需要关联不同的原始支出，且不能改变资金流向。") }
                 next.entries[i].nature = .refund; next.entries[i].relatedEntryID = original
-                next.entries[i].category = next.entries[j].category
+                next.entries[i].category = next.entries[j].category; next.entries[i].subcategory = next.entries[j].subcategory
                 var refundEntry = next.entries[i]; LedgerOperations.recordPersonalShare(&refundEntry, ledger: next)
                 next.entries[i] = refundEntry; touch(i); touch(j)
             case .linkPlan(let id, let plan, let occurrence):
@@ -213,7 +215,10 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 // A not-yet-started arrangement can be cancelled without inventing
                 // an end date before its original start. Keep all stored records.
                 if let i = next.plans.firstIndex(where: { $0.id == id }) {
-                    guard next.plans[i].active, next.plans[i].endDate == nil else { skip(position); continue }
+                    guard next.plans[i].active, next.plans[i].stoppedAt == nil, next.plans[i].endDate.map({ date < $0 }) ?? true else { skip(position); continue }
+                    var snapshot = next.plans[i]
+                    snapshot.amount = FixedFlowPayments(in: next).amount(for: snapshot)
+                    if SubscriptionCheck.eligible(snapshot, ledger: next) { next.stoppedSubscriptions.append(StoppedSubscription(plan: snapshot, stoppedAt: date)) }
                     next.plans[i].stoppedAt = date
                     if date < next.plans[i].dueDate { next.plans[i].active = false }
                     else { next.plans[i].endDate = date }
@@ -227,6 +232,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 if let i = next.plans.firstIndex(where: { $0.id == id }) {
                     let plan = next.plans[i]
                     guard (plan.stoppedAt ?? plan.endDate).map({ $0 <= createdAt }) ?? !plan.active else { skip(position); continue }
+                    for j in next.stoppedSubscriptions.indices where next.stoppedSubscriptions[j].plan.id == id && next.stoppedSubscriptions[j].resumedAt == nil { next.stoppedSubscriptions[j].resumedAt = createdAt }
                     next.plans[i].active = true; next.plans[i].endDate = nil; next.plans[i].stoppedAt = nil
                 } else if let i = next.rents.firstIndex(where: { $0.id == id }) {
                     let rent = next.rents[i]
@@ -249,6 +255,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     e.planID = id; e.occurrence = Dates.day(occurrence)
                 } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
                 e.source = source; e.classificationReason = stamp; e.userEdited = true
+                SubcategoryClassifier.classify(&e, ledger: next)
                 next.entries.append(e)
             case .profile(let change):
                 switch change {
@@ -272,7 +279,10 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         }
         for i in next.entries.indices where next.entries[i].nature == .refund {
             if let original = next.entries[i].relatedEntryID, let category = changedExpenseCategories[original],
-               next.entries[i].category != category { next.entries[i].category = category; touch(i) }
+               let expense = next.entries.first(where: { $0.id == original }),
+               next.entries[i].category != category || next.entries[i].subcategory != expense.subcategory {
+                next.entries[i].category = category; next.entries[i].subcategory = expense.subcategory; touch(i)
+            }
         }
         let originals = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         for i in next.entries.indices {
