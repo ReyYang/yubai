@@ -776,7 +776,6 @@ struct EntryRow: View {
 
 struct EntryLink: View {
     @Environment(AppStore.self) private var store
-    @Namespace private var namespace
     let entry: Entry
     var hideAmount = false
     var editable = false
@@ -788,9 +787,9 @@ struct EntryLink: View {
             }.buttonStyle(PressButtonStyle())
         } else {
             NavigationLink {
-                EntryDetailView(entryID: entry.id).yubaiZoomDestination("entry-" + entry.id.uuidString).environment(\.yubaiZoomNamespace, namespace)
+                EntryDetailView(entryID: entry.id)
             } label: {
-                EntryRow(entry: entry, hideAmount: hideAmount).yubaiZoomSource("entry-" + entry.id.uuidString).environment(\.yubaiZoomNamespace, namespace)
+                EntryRow(entry: entry, hideAmount: hideAmount)
             }.buttonStyle(PressButtonStyle())
         }
     }
