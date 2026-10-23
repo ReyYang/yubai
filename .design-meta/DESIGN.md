@@ -70,6 +70,22 @@ UI 测试全部改为 app.buttons[identifier]，沿用 isSelected；保留全部
 
 ## 2026-10-22 · 固定收付「会回来的账单」
 
+### 第十四轮 · 状态与停掉
+
+owner 已确认 `/tmp/claude-0/-home-user-yubai/6e32a199-4f05-5193-b31e-1a97e336dde7/scratchpad/r14canvas/project/` 的 `V14-Bills.dc.html`、`V14-Bills-Stop.dc.html`、`V14-Bills-After.dc.html` 与 `canvas.json / notes.v14n`。本轮在 `fix/fixed-bills-clarity` 采用以下规则，原稿只读保留；下方第十一轮日期点和圆形结清按钮作为历史记录。
+
+`FixedFlowsView.swift` 移除顶部日期点和账单行状态点；分区为「要付／要收／已停掉」。副标题统一「日期 · 状态」，当天到期写「22日 · 今天到期」／「22日 · 今天该收到」，其余为还没到、已付／已收到或「过了 N 天还没记／还没收到」，逾期两种流向均用 amberInk，保留账户、自动、分期和大约。已记的自动标志按实际记账来源，手动结算显示记下日期。只有到期未处理的 Plan 行显示透明描边「付了／收到了」胶囊；已处理为 neutralSoft 灰底勾、整行 0.7 不透明度；提前标记放在未到行的长按菜单。结算继续复用 `settle → store.apply`、长按改金额、提示与快照撤销；VoiceOver 读取状态、副标题、操作名及恢复名称。标题金额下在同一琥珀色行显示「其中 120 已过期 · 5,000 过期没收到」，只有收入逾期时为「5,000 过期没收到」，金额用数字字体并遵循隐藏设置。Core `FixedFlowMonth.overdueInflow` 与支出同源，计算本月未收余额及已停掉旧期，扣除部分已收、排除已收／跳过／今天／未来。页面 20pt、卡片内容 16pt、分区标题内缩 16pt、列表上下 4pt、同组 12pt、区块 24pt、点按区至少 44pt，颜色和字体沿用 token。
+
+停掉统一用 `.sheet(item:)` 底部呈现 `FixedFlowStopSheet`，替换 vphone 发现会指向首行且缺取消的 `confirmationDialog`。按内容测量高度设置 `presentationDetents`，raised 背景、28pt 圆角、serif 20 semibold 标题「停掉「X」？」。有到期未处理项时，正文显示「10月16日这期还没记。」或「还有 N 期没记。」，全宽 50pt 胶囊依次为品牌绿底白字「付了／收到了，记一笔再停」、card 底「没付／没收到，这期也不要了」、labelSecondary 文字「取消」；没有未记期时正文「只停以后的，付过的记录保留。」，保留主按钮「停掉」与「取消」。跨月与今天稍晚的发生时刻均按日纳入。`FixedFlows.stop` 将所有待处理期的结算或跳过与 `endPlan` 合为一个 ChangeSet，失败不部分写入，可整体撤销。`Plan.skippedOccurrences` 缺省为空、兼容旧存档；新增 `skipOccurrence` 验证发生日、保留已有部分付款，已付不作废，跳过不生成账目且拒绝重新关联。月汇总、预测／还能花、自动记、手动匹配与下次发薪复用跳过结果，恢复仍保留跳过。已停掉安排不再生成本月行，停止副标题显示实际停止日期与最近一期「已记／没要」。
+
+适配与差异：sheet 使用系统拖拽条与安全区，内容可滚动、标题与正文高度随字号测量；未到行长按可提前标记。保留全部原 accessibility identifier，新增 `fixedFlowStopSheet`、`fixedFlowStopConfirm`、`fixedFlowStopSkip`、`fixedFlowStopCancel`。专用 rentID 合租记录沿用此前只读边界。旧版 `endPlan` 遗留的到期未结算期（含跨月）归并到唯一的已停掉行，副标题和金额显示全部待处理期，行内「收到了／付了」「不要了」通过 `settle`／`skipOccurrence` 一次处理全部，完成后只留结果与恢复，头部与该行共用余额，Finance 的未付预留／预期收入随之清零，未收款不提前增加还能花；新停掉流程仍在停止前处理全部到期未结算期。示例日期、名字和金额都取实际账本，HTML／Figma／分发包未同步。
+
+验证：指定 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，413 项、409 通过／4 项原有实网 opt-in 跳过／0 失败；固定收付 35 项，其中新增 7 项，覆盖日历天数／夏令时、逾期余额、收支两种停掉分支、跨月多期／部分付款、跳过持久化／恢复／幂等／原子性及当天时刻。Core 原有 28 个、UI 原有 47 个测试方法全部保留，UI 新增 3 个并更新已记状态及停止断言。两个改动 App 文件通过 iOS 26／macOS 14 条件语法解析，UI 测试通过 iOS 26 条件语法解析；`git diff --check` 通过。当前 Linux 环境没有 Apple SDK，App 类型检查／iOS 与 Mac 构建、UI 实跑和设备视觉／VoiceOver 验收仍待做。没有新增依赖，没有修改 `docs/` 或设计稿，未提交／推送。
+
+同日 vphone 三处对齐（本轮）：按 owner 反馈，只修停掉 sheet、当天副标题和逾期收入提示；只读核对 `/tmp/claude-0/r11/canvas14/project/V14-Bills-Stop.dc.html`。指定 swift test 退出 0，419 项、415 通过／4 项原有跳过／0 失败。Core 原有 39 个测试全部保留，新增 2 个覆盖逾期收入余额及合租分摊，扩充当天收付与已停掉跨月／部分收款的断言；UI 原有 50 个测试全部保留，更新 sheet／取消／50pt 全宽按钮、多期文案及收入单独逾期断言。全部 App 与 UI 测试文件均通过 `swiftc -frontend -parse -target arm64-apple-ios26.0`，diff 检查通过；Apple SDK 类型检查、UI 实跑及设备视觉仍待做。仅改相关源码、测试与本设计记录，未提交／推送。
+
+### 第十一轮历史实现
+
 来源为 owner 本轮明确确认的 `/tmp/claude-0/r11/canvas/project/` 四张 HTML 与便签规则；只读引用，不复制或修改原稿。本轮接入已合入的 #25 Core，不改变其规则，取代第四轮固定收付的 90 天汇总、到什么时候与点行结束菜单；保留此前第十一轮交互、系统玻璃＋、TabView 和我页副标题。
 
 | 选定稿 | 采用源码与行为 |

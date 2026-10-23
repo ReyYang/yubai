@@ -139,7 +139,7 @@ public enum Finance {
         return ledger.plans.filter { $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once }.compactMap { plan -> (date: Date, title: String)? in
             for offset in 1...observationDays {
                 let day = Dates.addDays(offset, to: today)
-                if let index = plan.occurrenceIndex(on: day), plan.endDate.map({ plan.frequency.advance(plan.dueDate, by: index) <= $0 }) ?? true { return (day, plan.title) }
+                if let index = plan.occurrenceIndex(on: day), !plan.isSkipped(on: day), plan.endDate.map({ plan.frequency.advance(plan.dueDate, by: index) <= $0 }) ?? true { return (day, plan.title) }
             }
             return nil
         }.min { $0.date == $1.date ? $0.title < $1.title : $0.date < $1.date }

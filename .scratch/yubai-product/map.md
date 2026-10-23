@@ -31,6 +31,8 @@ Status: open
 
 ## Destination
 
+2026-10-22 owner 确认[固定收付 V14 状态与停掉规则](issues/13-complete-personal-release.md#2026-10-22--固定收付状态与停掉owner-确认-v14)：每行写明状态、仅到期未处理项有描边操作、停止前结算或跳过全部到期未记期，已停掉只列一次；Core 与语法验证完成，Apple UI 验收待做。
+
 2026-10-22 owner 根据 main 真机验收要求修复[标签栏与分页回归](issues/13-complete-personal-release.md#2026-10-22--标签栏与分页回归owner-真机反馈)：采用实色暖纸浮栏、贯穿安全区的 canvas、仅四根页原生横向分页与页内横拖优先；[vphone 后续要求](issues/13-complete-personal-release.md#2026-10-22--页内横滑复验owner-vphone-反馈)已接入位移判向、横向分页等待、账目单行展开及关闭协调，macOS 保持，Apple 设备复验待做。
 
 2026-10-22 owner 的 [bd8b1b2 复测规则](issues/13-complete-personal-release.md#2026-10-22--分页同步与右滑归属owner-vphone-复测)：tab 点击直接滚动、实际分页位置同步高亮；未展开账目行与管家卡只接左滑、右滑让给分页，展开行仍双向处理并锁页，其余已通过手势及 macOS 保持。源码与 4 个 UI 用例已补，Linux 406 项、0 失败，Apple UI 复验待做。
