@@ -14,7 +14,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated"].contains(name)) else { return nil }
+              (screenshotScripts.contains(name) || ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple"].contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -70,6 +70,23 @@ enum UITestSupport {
             if script == "bills-estimated" {
                 var power = Plan(title: "电费", amount: 12_000, dueDate: Dates.day(now))
                 power.accountID = account.id; power.estimated = true; ledger.plans = [power]
+            }
+            if script == "bills-clarity" {
+                let month = Dates.calendar.dateInterval(of: .month, for: now)!
+                ledger.plans[0].dueDate = month.start
+                ledger.plans[1].dueDate = max(month.start, Dates.addDays(-6, to: Dates.day(now)))
+                var phone = Plan(title: "话费", amount: 5800, dueDate: Dates.day(month.end.addingTimeInterval(-1)))
+                phone.accountID = account.id
+                var video = Plan(title: "视频会员", amount: 2500, dueDate: month.start)
+                video.accountID = account.id; video.autoPay = true
+                ledger.plans += [phone, video]
+                var entry = Entry(date: now, amount: video.amount, accountID: account.id, title: video.title)
+                entry.planID = video.id; entry.occurrence = video.dueDate; entry.source = "自动扣款"; entry.recordedAt = now
+                ledger.entries = [entry]
+            }
+            if script == "bills-multiple" {
+                var plan = Plan(title: "每周订阅", amount: 1000, dueDate: Dates.addDays(-35, to: Dates.day(now)), frequency: .weekly)
+                plan.accountID = account.id; plan.installments = 7; ledger.plans = [plan]
             }
         }
         try repository.save(ledger, reason: "合成测试夹具")

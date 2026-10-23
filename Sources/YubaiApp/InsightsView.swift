@@ -92,9 +92,15 @@ struct InsightsView: View {
             }
     }
     private func categoryLink(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice], range: DateInterval) -> some View {
-        NavigationLink { categoryDestination(slice, range: range).yubaiZoomDestination("category-\(rank)") } label: {
-            legend(slice, rank: rank, slices: slices).yubaiZoomSource("category-\(rank)")
+        TabNavigationLink(categoryRoute(slice, range: range)) { categoryDestination(slice, range: range) } label: {
+            legend(slice, rank: rank, slices: slices)
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
+    }
+    private func categoryRoute(_ slice: CashFlowSlice, range: DateInterval) -> TabRoute {
+        if slice.categories.count == 1, let category = slice.categories.first {
+            return .subcategoryInsights(category: category, income: income, interval: range, periodTitle: categoryPeriodTitle)
+        }
+        return .flowRecords(categories: slice.categories, title: slice.title, income: income, interval: range)
     }
     @ViewBuilder private func categoryDestination(_ slice: CashFlowSlice, range: DateInterval) -> some View {
         if slice.categories.count == 1, let category = slice.categories.first {
@@ -243,7 +249,7 @@ private struct DonutSlice: Shape {
     }
 }
 
-private struct FlowRecordsView: View {
+struct FlowRecordsView: View {
     @Environment(AppStore.self) private var store
     let categories: [String]
     let title: String

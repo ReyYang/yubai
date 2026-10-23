@@ -1,5 +1,15 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-23 · main 与省钱分支合并
+
+owner 要求将 `origin/main`／`9703831` 合入 `feat/butler-saving-core` 的当前 merge，保留 #32 固定收付、#35 标准推入与取消侧滑返回修复，以及本分支 V15／V16、八个夹具、编译与显示修复；本轮仅合并已有采用决定，不新增视觉方案。下方两边历史记录及原验证范围全部保留。
+
+`InsightsView.categoryLink` 使用 `TabNavigationLink`，单一主项经新增 `TabRoute.subcategoryInsights` 推入原 `SubcategoryInsightsView`，仍传当前收支方向、期间和标题；合并扇区使用 `flowRecords`。分类入口移除成对 zoom，记录详情保留 main 的标准推入与本分支小项行。`RootView` 每个 tab 独立 `NavigationPath` 决定浮栏与分页锁定，同时保留本分支 `pagingPhase` 停稳同步；取消侧滑返回不会依赖出现回调，sheet／macOS 保持原目的视图导航。问余白纸色实底、追问移焦点及滚至按钮行的修复保留。
+
+固定收付采用 main 的 V14 状态、逾期金额、已停掉旧期原地处理和 `FixedFlowStopSheet`，覆盖下方 V16 历史中的单一「停掉以后的」确认。保留本分支 iOS `HorizontalPan` 和停止按钮 identifier；停止调用 `FixedFlows.stop`，继续经过省钱分支的 `endPlan` 停订快照和恢复逻辑。文案只合入已有 V14 标题、事实、状态及结果按钮；[完整可见中文清单及八文件取舍](../docs/MERGE-MAIN-SAVING-CORE.md)。
+
+验证：Linux 指定 swift test 退出 0，464 项、460 通过／4 原有实网 opt-in 跳过／0 失败；38 个 App 文件分别通过 iOS 26／27.1 模拟器 Debug、iOS 26 设备 Release、macOS 14 Debug 的 `swiftc -frontend -parse`，UI 文件通过两组模拟器条件解析。两边 UI 方法并集 62 个，无遗漏或重名，main 新增测试的标题／状态入口已对齐 V15／V16，固定收付用例共用慢拖及 `isHittable` 查询。实际合并后的 UITestSupport 通过离线 Core 类型检查，八个截图脚本及 `bills-clarity`／`bills-multiple` 执行通过；diff 与源码标记／私有链接检查通过。Apple SDK 类型检查、UI 实跑及视觉仍待 Mac，原稿／Figma／分发包未同步。未提交、未终止 merge、未联网调 API；暂存因 `.git` 只读失败，索引仍有八个未合并文件，命令见交付记录。
+
 ## 2026-10-23 · 问余白追问与导航遮挡修复
 
 来源为 owner 对 `feat/butler-saving-core`／`2a51c45` 的两处显示反馈及两处 UI 测试查询错误。沿用 V15 追问卡与 V16 少写字规则，本次新增／改动可见中文字符串：无。
@@ -60,6 +70,16 @@ owner 已在本轮明确确认规则与 11 张页面／片段板，并授权在 
 
 owner 在项目规则「设计驱动代码」下新增：“Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 设计系统 README 第一节改为同名规则（四种可写的字、六步替换顺序、不写的东西、例外、实现检查），`EmptyState` 去说明行、`InlineNote` 去解释卡和脚注、`EditorForm` 去「例如」和「（可选）」。设计稿新增「第十六轮 · 少写字」：规则、按 main `18889f8` 逐屏审计的 54 处说明文字及改法、11 张改后画板。前几轮画板中与本轮冲突的说明文字以第十六轮为准。owner 确认画板后在 `feat/no-explanatory-copy` 实现（见上一节）；实现约束同时写入根目录 `AGENTS.md`。
 
+## 2026-10-23 · 取消侧滑返回的标签栏修复
+
+来源为 owner 在 `fix/insights-push-inset`／HEAD `0838156` 的 vphone 反馈：洞察分类明细等二级页左边缘返回到一半后取消，浮栏错误留在二级页；明确要求修复状态来源、保持 push 锁分页及 sheet 隔离、macOS 不变，补 UI 回归且不删／跳旧测试，不提交／推送。既有实色浮栏、留白与原稿保持，本轮没有新增视觉选择。
+
+Agent 实现选择：`YubaiApp.swift / RootView` 为四个常驻 NavigationStack 分别绑定 `NavigationPath`，`tabBarHidden` 直接读取当前 tab 路径是否非空，同时供 FloatingTabBar 条件与外层 `.scrollDisabled` 使用。`OverviewView`、`InsightsView`、`SettingsView` 和根页管家卡的全部首层 push 改用 `TabRoute` 值导航；普通目的视图链接不会加入可观察路径，所以不能只给原有 NavigationStack 增加 path 绑定。首层值保留在路径底部，深层普通链接或 Boolean 导航返回时仍保持隐藏；只有回到根页才恢复浮栏及分页。macOS 和 sheet 中的 `TabNavigationLink` 沿用原目的视图闭包，sheet 的 NavigationStack 不绑定 tab 路径。依据 [Apple 导航栈说明](https://developer.apple.com/documentation/swiftui/understanding-the-navigation-stack)，值目的地与上层视图目的地可以组合。
+
+`DesignSystem.swift` 删除 `TabBarVisibility`、环境绑定和出现回调写入，`EntriesView` 移除旧隐藏参数，`FlowRecordsView` 调整为模块内可见以供集中路由使用。取消交互返回不再依赖根页／二级页的 onAppear、onDisappear 顺序；系统导航决定路径，浮栏与分页只派生状态。
+
+验证：指定 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，406 项、402 通过／4 项原有实网 opt-in 跳过／0 失败。全部 App 文件在 `arm64-apple-ios26.0`／`arm64-apple-macosx14.0`、UI 测试在 iOS 26 下通过 `swiftc -frontend -parse`，`git diff --check` 通过。原 47 个 UI 测试方法全部保留，新增 4 个：洞察反复取消返回后浮栏隐藏且双向横拖不翻页、深层 Boolean 导航取消／完成返回到我页、现在页完成返回才恢复浮栏及 tab 切换、sheet 内取消／完成返回后根页浮栏与分页正常。用 XCUICoordinate 从左边缘慢拖至 42% 并停住释放触发取消，95% 拖动覆盖完成返回；同时覆盖导航按钮返回。当前没有 Xcode／vphone 工具，Apple SDK 类型检查及 UI 实跑待做，语法解析不等于设备手势验收。未改 Core、依赖、`docs/`、HTML 原稿、Figma 或分发包，未提交／推送。
+
 ## 2026-10-22 · 分页同步与右滑归属复验
 
 来源为 owner 在 `fix/tabbar-gesture-regression`／`bd8b1b2` 的 vphone 复测：账目右滑到洞察后点账目、现在左滑到洞察后点现在，出现只切高亮、不切页面；其余手势已通过，本轮只修这两条同步路径及明确调整的右滑规则，macOS 保持。
@@ -119,6 +139,22 @@ Apple 官方签名已核对：[glassEffect(_:in:)](https://developer.apple.com/d
 UI 测试全部改为 app.buttons[identifier]，沿用 isSelected；保留全部原用例，补充 push 隐藏／返回恢复、导航分组／按钮顺序、键盘隐藏／恢复、最后一行可见与切换后滚动位置保持。Linux swift test 退出 0：401 项、397 通过、4 项原有实网 opt-in 跳过、0 失败，未改 Core。App 在 arm64-apple-ios26.0／arm64-apple-macosx14.0、UI 测试在 iOS 26 条件下语法解析通过；Apple SDK 类型检查、UI 实跑、玻璃／深色／降低透明度／Reduce Motion／VoiceOver 与导航生命周期设备验收仍待做。`docs/`、HTML 原稿、Figma 与分发包未改，未提交／推送。
 
 ## 2026-10-22 · 固定收付「会回来的账单」
+
+### 第十四轮 · 状态与停掉
+
+owner 已确认 `/tmp/claude-0/-home-user-yubai/6e32a199-4f05-5193-b31e-1a97e336dde7/scratchpad/r14canvas/project/` 的 `V14-Bills.dc.html`、`V14-Bills-Stop.dc.html`、`V14-Bills-After.dc.html` 与 `canvas.json / notes.v14n`。本轮在 `fix/fixed-bills-clarity` 采用以下规则，原稿只读保留；下方第十一轮日期点和圆形结清按钮作为历史记录。
+
+`FixedFlowsView.swift` 移除顶部日期点和账单行状态点；分区为「要付／要收／已停掉」。副标题统一「日期 · 状态」，当天到期写「22日 · 今天到期」／「22日 · 今天该收到」，其余为还没到、已付／已收到或「过了 N 天还没记／还没收到」，逾期两种流向均用 amberInk，保留账户、自动、分期和大约。已记的自动标志按实际记账来源，手动结算显示记下日期。只有到期未处理的 Plan 行显示透明描边「付了／收到了」胶囊；已处理为 neutralSoft 灰底勾、整行 0.7 不透明度；提前标记放在未到行的长按菜单。结算继续复用 `settle → store.apply`、长按改金额、提示与快照撤销；VoiceOver 读取状态、副标题、操作名及恢复名称。标题金额下在同一琥珀色行显示「其中 120 已过期 · 5,000 过期没收到」，只有收入逾期时为「5,000 过期没收到」，金额用数字字体并遵循隐藏设置。Core `FixedFlowMonth.overdueInflow` 与支出同源，计算本月未收余额及已停掉旧期，扣除部分已收、排除已收／跳过／今天／未来。页面 20pt、卡片内容 16pt、分区标题内缩 16pt、列表上下 4pt、同组 12pt、区块 24pt、点按区至少 44pt，颜色和字体沿用 token。
+
+停掉统一用 `.sheet(item:)` 底部呈现 `FixedFlowStopSheet`，替换 vphone 发现会指向首行且缺取消的 `confirmationDialog`。按内容测量高度设置 `presentationDetents`，raised 背景、28pt 圆角、serif 20 semibold 标题「停掉「X」？」。有到期未处理项时，正文显示「10月16日这期还没记。」或「还有 N 期没记。」，全宽 50pt 胶囊依次为品牌绿底白字「付了／收到了，记一笔再停」、card 底「没付／没收到，这期也不要了」、labelSecondary 文字「取消」；没有未记期时正文「只停以后的，付过的记录保留。」，保留主按钮「停掉」与「取消」。跨月与今天稍晚的发生时刻均按日纳入。`FixedFlows.stop` 将所有待处理期的结算或跳过与 `endPlan` 合为一个 ChangeSet，失败不部分写入，可整体撤销。`Plan.skippedOccurrences` 缺省为空、兼容旧存档；新增 `skipOccurrence` 验证发生日、保留已有部分付款，已付不作废，跳过不生成账目且拒绝重新关联。月汇总、预测／还能花、自动记、手动匹配与下次发薪复用跳过结果，恢复仍保留跳过。已停掉安排不再生成本月行，停止副标题显示实际停止日期与最近一期「已记／没要」。
+
+适配与差异：sheet 使用系统拖拽条与安全区，内容可滚动、标题与正文高度随字号测量；未到行长按可提前标记。保留全部原 accessibility identifier，新增 `fixedFlowStopSheet`、`fixedFlowStopConfirm`、`fixedFlowStopSkip`、`fixedFlowStopCancel`。专用 rentID 合租记录沿用此前只读边界。旧版 `endPlan` 遗留的到期未结算期（含跨月）归并到唯一的已停掉行，副标题和金额显示全部待处理期，行内「收到了／付了」「不要了」通过 `settle`／`skipOccurrence` 一次处理全部，完成后只留结果与恢复，头部与该行共用余额，Finance 的未付预留／预期收入随之清零，未收款不提前增加还能花；新停掉流程仍在停止前处理全部到期未结算期。示例日期、名字和金额都取实际账本，HTML／Figma／分发包未同步。
+
+验证：指定 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，413 项、409 通过／4 项原有实网 opt-in 跳过／0 失败；固定收付 35 项，其中新增 7 项，覆盖日历天数／夏令时、逾期余额、收支两种停掉分支、跨月多期／部分付款、跳过持久化／恢复／幂等／原子性及当天时刻。Core 原有 28 个、UI 原有 47 个测试方法全部保留，UI 新增 3 个并更新已记状态及停止断言。两个改动 App 文件通过 iOS 26／macOS 14 条件语法解析，UI 测试通过 iOS 26 条件语法解析；`git diff --check` 通过。当前 Linux 环境没有 Apple SDK，App 类型检查／iOS 与 Mac 构建、UI 实跑和设备视觉／VoiceOver 验收仍待做。没有新增依赖，没有修改 `docs/` 或设计稿，未提交／推送。
+
+同日 vphone 三处对齐（本轮）：按 owner 反馈，只修停掉 sheet、当天副标题和逾期收入提示；只读核对 `/tmp/claude-0/r11/canvas14/project/V14-Bills-Stop.dc.html`。指定 swift test 退出 0，419 项、415 通过／4 项原有跳过／0 失败。Core 原有 39 个测试全部保留，新增 2 个覆盖逾期收入余额及合租分摊，扩充当天收付与已停掉跨月／部分收款的断言；UI 原有 50 个测试全部保留，更新 sheet／取消／50pt 全宽按钮、多期文案及收入单独逾期断言。全部 App 与 UI 测试文件均通过 `swiftc -frontend -parse -target arm64-apple-ios26.0`，diff 检查通过；Apple SDK 类型检查、UI 实跑及设备视觉仍待做。仅改相关源码、测试与本设计记录，未提交／推送。
+
+### 第十一轮历史实现
 
 来源为 owner 本轮明确确认的 `/tmp/claude-0/r11/canvas/project/` 四张 HTML 与便签规则；只读引用，不复制或修改原稿。本轮接入已合入的 #25 Core，不改变其规则，取代第四轮固定收付的 90 天汇总、到什么时候与点行结束菜单；保留此前第十一轮交互、系统玻璃＋、TabView 和我页副标题。
 
@@ -267,6 +303,7 @@ owner 本轮明确批准 motion v2 与 iOS 26 Liquid Glass，按所附 README �
 - `DesignSystem.swift`：集中三种 spring、时长与曲线；数字用 numericText，隐藏金额／减少动态效果用 160ms 淡入淡出或终态。首现图表与水位按进程登记，离开时结束；预测线横向揭示，低点下落与单次外圈，环图逐段长出／角度变形、柱从基线生长。环图着色放在动画 mask 外，避免颜色渐变。
 - `YubaiApp.swift`：iOS 系统 TabView 三页，search role 作为问余白动作，selection binding 保留原页；新根页方向偏移 12pt，首开无入场。保留 `tab_*` 标签标识，UI 测试按系统标签文字查找。Mac 侧栏与旧版安全留白保持；系统栏接管 iOS 底部安全区。
 - 浮层：顶栏圆钮、提示条、助手输入条和 Mac 问余白圆钮用系统 glassEffect；顶栏组合使用 GlassEffectContainer。sheet 容器不再强盖 canvas，内卡／列表仍为暖纸；iOS 系统导航提供返回控件，内容详情用 matchedTransitionSource／zoom，设置列表继续 push。所有新增玻璃 API 均有 macOS 26 可用性分支。
+- 2026-10-23：洞察分类明细真机出现 zoom 期间首行被导航栏遮挡、结束后回落，源码排查指向目标 ScrollView 的导航栏安全区更新时序（尚无设备 inset 采样）；为避开该路径，仅分类明细及同结构的记录详情移除成对 zoom、回退标准 push，sheet zoom、分页与 macOS 行为保持，首帧稳定性及返回仍待真机复验，旧稿／Figma／分发包未同步。
 - 保存：持久化成功后识别实际新增／删除记录；sheet 收起后英雄数字换位、水带 keyframe 单次晃动与成功触感，380ms 后提示条入场，名义时长至 680ms。撤销只换回数字与轻触感；整批撤销抑制删除触感。替换账本或锁屏会取消待播反馈。行插入／删除让位、首次新行洗色、管家收起、分段滑块、助手消息入场和 4 秒提示条下滑关闭已接线。
 - 新增 `MotionState.swift` 的 Foundation 逻辑测试，直接与 App 共用源文件编入 UI 测试 bundle；新增问余白保留当前页的 UI 流程。工程生成器同步 iOS 26 与源文件引用；PackageDescription 升到 6.2 以使用 `.iOS(.v26)`，Swift 5 语言模式、macOS 14 与 Linux Core 排除 App 的规则保持。
 

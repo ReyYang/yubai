@@ -58,7 +58,7 @@ struct EntriesView: View {
             .onChange(of: store.sheet?.id) { _, _ in revealedEntryID = nil }
             .onDisappear { revealedEntryID = nil; store.pagingLocked = false }
             #endif
-            .navigationTitle("账目").yubaiNavigation(hidesTabBar: false)
+            .navigationTitle("账目").yubaiNavigation()
     }
     private var monthPicker: some View {
         HStack(spacing: YubaiSpace.space4) {

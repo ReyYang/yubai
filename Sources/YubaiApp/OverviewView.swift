@@ -72,13 +72,13 @@ struct OverviewView: View {
                 if chartHeight > 0 && !store.current.preferences.hideAmounts {
                     ForecastChart(funds: funds, height: chartHeight)
                 } else {
-                    NavigationLink { Page { ForecastChart(funds: funds, height: 150) }.navigationTitle("现金会怎么走").yubaiNavigation() } label: {
+                    TabNavigationLink(.forecast) { Page { ForecastChart(funds: funds, height: 150) }.navigationTitle("现金会怎么走").yubaiNavigation() } label: {
                         HStack(spacing: YubaiSpace.gapGroup) { Text("现金会怎么走").yubaiFont(YubaiFont.cardTitle); Spacer(); Image(systemName: "chevron.right") }
                             .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.rowSingle).background(YubaiColor.card, in: RoundedRectangle(cornerRadius: 18))
                     }.buttonStyle(PressButtonStyle())
                 }
                 if dueBills.isEmpty, let next = funds.occurrences.first(where: { !$0.inflow }) {
-                    NavigationLink { Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation() } label: {
+                    TabNavigationLink(.upcomingPayments) { Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation() } label: {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: YubaiSpace.gapGroup) { nextTitle(next); Spacer(); nextAmount(next); Image(systemName: "chevron.right") }
                             VStack(alignment: .leading, spacing: YubaiSpace.space8) { nextTitle(next); nextAmount(next) }
@@ -102,7 +102,7 @@ struct OverviewView: View {
                     if row.id != rows.prefix(2).last?.id { EntryFormDivider() }
                 }
                 if rows.count > 2 {
-                    NavigationLink { FixedFlowsView() } label: {
+                    TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: {
                         HStack(spacing: YubaiSpace.gapGroup) { Text("还有 \(rows.count - 2) 笔 ›"); Spacer() }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
                             .frame(minHeight: YubaiSize.tapMin)
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("moreDueBills")

@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-23 main／省钱分支合并**：按 owner 要求合入 `origin/main`／`9703831`，保留固定收付 V14、标准推入与导航路径控制浮栏，以及 V15 省钱 Core／界面、小项、少写字、八个截图夹具和显示／编译修复。洞察单一主项进入原小项页，采用值导航的标准推入；停掉采用 main 的结算／跳过 sheet。[八个冲突的取舍、全部改动可见中文与验证](../docs/MERGE-MAIN-SAVING-CORE.md)。Linux 464 项测试，460 通过／4 原有实网跳过／0 失败；38 个 App 文件四组条件解析、UI 两组条件解析及十个夹具离线验证通过。两边 UI 测试并集 62 个方法，无丢失／重名；源文件无冲突标记，私有页面链接无检出。Apple 类型检查、UI 实跑及视觉待 Mac 复验，设计原稿／Figma／分发包未同步。未提交、未终止 merge、未联网调 API；`git add` 因 `.git/index.lock` 所在文件系统只读退出 128，索引仍有八个未合并文件，暂存命令见交付记录。
+
 **2026-10-23 问余白追问与导航遮挡修复**：按 owner 对 `2a51c45` 的反馈，进入追问卡／点选芯片时移开输入焦点，选择变化后滚到卡片按钮行；仅问余白的 iOS 导航栏覆盖为纸色实底。固定收付两处查询谓词改用 `isHittable`，无新增／改动可见中文。[源码与验证边界](DESIGN.md#2026-10-23--问余白追问与导航遮挡修复)。Linux 451 项测试，447 通过／4 原有实网跳过／0 失败；全部 38 个 App 文件与 UI 测试条件语法解析、`git diff --check` 通过。Apple 类型检查、UI 实跑与视觉仍待 Mac 复验；原稿／Figma／分发包未同步，未提交、未联网调 API。
 
 **2026-10-23 V15 模拟器显示与 UI 测试修复**：逐张核对 owner 的 15 张模拟器截图及 12 张 V15 稿，修复输入条、即时气泡、追问滚动、按钮折行、心愿／来信／消费观去重与详情行高；修正 iOS 页内判向等待、固定收付横拖及根分页停稳同步。[八项改动、全部 55 条 UI 用例逐项判断及可见中文](../docs/V15-SIMULATOR-FIXES.md)。Linux 451 项测试，447 通过／4 原有实网跳过／0 失败；38 个 App 文件多平台条件解析、UI 测试解析和八个截图夹具离线 Core 类型检查／执行通过。owner 提供的基线 Xcode 编译通过／UI 34 过 21 失败为修前证据；修后 Apple 类型检查、55 项 UI 实跑与截图待 Mac 复验。未提交、未联网调 API，HTML／Figma／分发包未同步。
@@ -20,6 +22,12 @@
 
 **2026-10-23 第十六轮「少写字，让版式说话」**：owner 确认的 11 张页面／片段板与 1 张规则板已[原样归档](mockups/no-explanatory-copy-v16/README.md)，在 `feat/no-explanatory-copy` 保留中断前工作并补完 SwiftUI；采用范围见[设计登记](DESIGN.md#2026-10-23--第十六轮少写字让版式说话)、[owner 决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-23--第十六轮少写字让版式说话owner-确认稿)。[交付总结](no-explanatory-copy-v16.md)列出全部 54 项和可见中文：53 项代码已改，系统入口图示 1 项按授权降级为静态缩略图／名称；快捷指令按钮按授权打开系统 App。24 个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 条件语法解析通过，原 47 个 UI 测试方法保留。Linux swift test 结果见交付总结；Apple 类型检查、UI 实跑与设备验收待做。Core 仅一条显示字符串和对应参考断言变化；模型／算法／格式／依赖保持。未提交、未推送、未运行 Actions、未访问付费模型 API；Figma／旧原型／分发包未同步。
 
+
+**2026-10-23 取消侧滑返回的标签栏修复**：按 owner 对 `fix/insights-push-inset`／`0838156` 的 vphone 反馈，每个 tab 绑定独立导航路径，全部根页 push 入口使用值导航；当前路径非空同时隐藏浮栏、锁定分页，移除出现回调写入。sheet 导航独立，macOS 沿用原目的视图。[源码与验证边界](DESIGN.md#2026-10-23--取消侧滑返回的标签栏修复)、[owner 要求](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-23--取消侧滑返回的标签栏owner-vphone-反馈)。指定 swift test：406 项、402 通过／4 项原有跳过／0 失败；App iOS 26／macOS 14 与 UI 测试 iOS 26 语法解析通过。保留原 47 个 UI 测试并新增 4 个，Apple SDK 类型检查及 UI 实跑待做；设计稿与分发包未同步，未提交／推送。
+
+**2026-10-22 V14 旧期补修**：已停掉行原地显示并结算／跳过全部到期未结算期（含跨月、部分已付），头部与该行共用余额，处理后保留结果与恢复；还能花的未付预留与预期收入同源更新，详见[设计记录](DESIGN.md#第十四轮--状态与停掉)及 [owner 补充](../.scratch/yubai-product/issues/13-complete-personal-release.md#同日补充--已停掉旧期原地处理owner-明确要求)。指定 swift test：417 项、413 通过／4 项原有跳过／0 失败；新增 4 项 Core 回归，App 全文件 iOS 26／改动文件 macOS 14 语法解析通过，Apple SDK 类型检查与 UI 实跑待做，原稿／Figma／分发包未同步，未提交／推送。
+
+**2026-10-22 固定收付第十四轮**：owner 确认 V14 三张稿与 `notes.v14n`；已采用明确状态副标题、逾期金额、描边「付了／收到了」、已记灰勾、未到长按提前标记及停止前结算／跳过全部到期未记期。[源码映射、旧数据边界与差异](DESIGN.md#第十四轮--状态与停掉)、[owner 决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--固定收付状态与停掉owner-确认-v14)。停掉只在「已停掉」出现，跳过持久化且恢复不重生。指定 swift test：413 项、409 通过／4 项原有跳过／0 失败；App 改动通过 iOS 26／macOS 14、UI 测试通过 iOS 26 条件语法解析。新增 7 项 Core／3 项 UI 测试，原测试全部保留；Apple SDK 构建、UI 实跑和设备验收待做。`docs/`、设计稿和依赖未改，未提交／推送。
 
 **2026-10-22 分页同步与右滑归属复验**：按 owner 对 `bd8b1b2` 的 vphone 反馈，tab 点击改为每次直接滚动，实际分页偏移回写当前页与高亮；未展开账目行及管家卡只接左滑，右滑交给分页，账目展开后双向处理与锁页保持。[实现与验证边界](DESIGN.md#2026-10-22--分页同步与右滑归属复验)、[owner 规则](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--分页同步与右滑归属owner-vphone-复测)。指定 swift test：406 项、402 通过／4 项原有跳过／0 失败；四个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 语法解析通过，保留原 43 个测试方法并新增 4 个。Apple SDK 类型检查、UI 实跑待做，其余手势、macOS、`docs/` 和设计稿保持，未提交／推送。
 

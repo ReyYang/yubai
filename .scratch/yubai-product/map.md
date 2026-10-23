@@ -31,7 +31,11 @@ Status: open
 
 2026-10-23 owner 明确授权[帮你省钱第一阶段非界面](issues/13-complete-personal-release.md#2026-10-23--帮你省钱第一阶段非界面owner-明确任务)：本机限定购买建议、冷静期与实际省下、克制进度、月度订阅体检、两级分类及每日 AI 小项归类、模型旧名迁移、消费观再聊；指定输入组件复用以外的业务界面留待新设计稿。Linux build／448 项测试通过，Apple 交互验收待做，未调用实网 API，未提交。
 
+2026-10-23 按 owner [main 与省钱分支合并要求](issues/13-complete-personal-release.md#2026-10-23--main-与省钱分支合并owner-明确任务)，同时保留固定收付 V14、导航路径控制浮栏、V15 省钱／小项及少写字；主项小项页采用标准推入。Linux 464 项测试、App／UI 条件解析与十个夹具离线验证通过，Apple 验收待做；工作树已解决，`.git` 只读导致暂存未完成，未提交。
+
 ## Destination
+
+2026-10-22 owner 确认[固定收付 V14 状态与停掉规则](issues/13-complete-personal-release.md#2026-10-22--固定收付状态与停掉owner-确认-v14)：每行写明状态、仅到期未处理项有描边操作、停止前结算或跳过全部到期未记期，已停掉只列一次；Core 与语法验证完成，Apple UI 验收待做。
 
 2026-10-22 owner 根据 main 真机验收要求修复[标签栏与分页回归](issues/13-complete-personal-release.md#2026-10-22--标签栏与分页回归owner-真机反馈)：采用实色暖纸浮栏、贯穿安全区的 canvas、仅四根页原生横向分页与页内横拖优先；[vphone 后续要求](issues/13-complete-personal-release.md#2026-10-22--页内横滑复验owner-vphone-反馈)已接入位移判向、横向分页等待、账目单行展开及关闭协调，macOS 保持，Apple 设备复验待做。
 

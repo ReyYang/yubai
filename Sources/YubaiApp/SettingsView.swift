@@ -12,7 +12,7 @@ struct SettingsView: View {
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             TabRootHeader(title: "我")
-            NavigationLink { ProfileView() } label: {
+            TabNavigationLink(.profile) { ProfileView() } label: {
                 Card {
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                         HStack(spacing: YubaiSpace.gapGroup) { Text("我的消费观").yubaiFont(YubaiFont.cardTitle); Spacer(); chevron }
@@ -28,28 +28,28 @@ struct SettingsView: View {
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    NavigationLink { WishlistView() } label: {
+                    TabNavigationLink(.wishlist) { WishlistView() } label: {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: YubaiSpace.gapGroup) { wishlistTitle; Spacer(); followUp; chevron }
                             VStack(alignment: .leading, spacing: YubaiSpace.space8) { wishlistTitle; followUp }
                         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
                     }
                     separator
-                    NavigationLink { LettersView() } label: { row("每周来信", detail: latestLetter) }
+                    TabNavigationLink(.letters) { LettersView() } label: { row("每周来信", detail: latestLetter) }
                 }
             }.buttonStyle(PressButtonStyle())
-            NavigationLink { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
+            TabNavigationLink(.accounts) { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
-                NavigationLink { FixedFlowsView() } label: { row("固定收付", detail: fixedFlowsDetail) }
+                TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { row("固定收付", detail: fixedFlowsDetail) }
                     .accessibilityIdentifier("openFixedFlows")
             }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    NavigationLink { QuickCaptureSettingsView() } label: { row("快速记账") }.accessibilityIdentifier("openQuickCapture")
+                    TabNavigationLink(.quickCapture) { QuickCaptureSettingsView() } label: { row("快速记账") }.accessibilityIdentifier("openQuickCapture")
                     separator
-                    NavigationLink { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")
+                    TabNavigationLink(.importHistory) { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")
                     separator
-                    NavigationLink { IntelligencePrivacyView() } label: {
+                    TabNavigationLink(.intelligencePrivacy) { IntelligencePrivacyView() } label: {
                         HStack(spacing: YubaiSpace.gapGroup) {
                             Text("智能与隐私").yubaiFont(YubaiFont.row); Spacer()
                             if store.current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured {
@@ -59,9 +59,9 @@ struct SettingsView: View {
                         }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
                     }.accessibilityIdentifier("openIntelligencePrivacy")
                     separator
-                    NavigationLink { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
+                    TabNavigationLink(.backup) { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
                     separator
-                    NavigationLink { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
+                    TabNavigationLink(.storage) { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
             }.buttonStyle(PressButtonStyle())
         }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().navigationTitle("我")
