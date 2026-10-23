@@ -61,6 +61,22 @@ final class AppFlowTests: XCTestCase {
         app.buttons["addEntry"]
     }
 
+    private func dragBack(_ app: XCUIApplication, to progress: CGFloat) {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.45))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: progress, dy: 0.45)), withVelocity: .slow, thenHoldForDuration: 0.5)
+    }
+
+    private func assertPushedPage(_ title: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let bar = app.navigationBars[title]
+        XCTAssertTrue(bar.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertTrue(bar.isHittable, file: file, line: line)
+        XCTAssertEqual(bar.frame.minX, app.frame.minX, accuracy: 1, file: file, line: line)
+        assertGone(app.otherElements["mainNavigation"], file: file, line: line)
+        for identifier in ["tab_overview", "tab_insights", "addEntry", "tab_entries", "tab_settings"] {
+            assertGone(app.buttons[identifier], file: file, line: line)
+        }
+    }
+
     private func openFixedBills(_ app: XCUIApplication) {
         tap(app.buttons["tab_settings"], in: app)
         tap(app.buttons["openFixedFlows"], in: app)
@@ -319,6 +335,83 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["tab_settings"].isSelected)
         left.press(forDuration: 0.05, thenDragTo: right)
         assertSelectedTab("tab_entries", in: app)
+    }
+
+    func testCancelledInsightBackKeepsTabBarHiddenAndPagingLocked() {
+        let app = application("ask"); app.launch()
+        tap(app.buttons["tab_insights"], in: app)
+        tap(app.buttons["insightCategory_0"], in: app)
+        assertPushedPage("餐饮", in: app)
+        for _ in 0..<3 {
+            dragBack(app, to: 0.42)
+            assertPushedPage("餐饮", in: app)
+            let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
+            let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.4))
+            right.press(forDuration: 0.05, thenDragTo: left)
+            assertPushedPage("餐饮", in: app)
+            left.press(forDuration: 0.05, thenDragTo: right)
+            assertPushedPage("餐饮", in: app)
+        }
+        snapshot("insight-back-cancelled", app)
+        tap(app.navigationBars.buttons["洞察"], in: app)
+        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2)))
+        assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
+    }
+
+    func testCancelledNestedBackKeepsTabBarHiddenUntilSettingsRoot() {
+        let app = application("ask"); app.launch()
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons["openIntelligencePrivacy"], in: app)
+        tap(app.buttons["editCloudModel"], in: app)
+        tap(app.buttons["customCloudModel"], in: app)
+        assertPushedPage("模型", in: app)
+        dragBack(app, to: 0.42)
+        assertPushedPage("模型", in: app)
+        XCTAssertTrue(app.textFields["cloudModelName"].isHittable)
+        dragBack(app, to: 0.95)
+        assertPushedPage("智能与隐私", in: app)
+        for _ in 0..<2 {
+            dragBack(app, to: 0.42)
+            assertPushedPage("智能与隐私", in: app)
+        }
+        dragBack(app, to: 0.95)
+        assertCurrentTab("tab_settings", content: "openIntelligencePrivacy", in: app)
+        tap(app.buttons["tab_overview"], in: app)
+        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+    }
+
+    func testCancelledOverviewBackRestoresTabBarOnlyAfterCompletedPop() {
+        let app = application("bills-overdue"); app.launch()
+        tap(app.buttons["moreDueBills"], in: app)
+        assertPushedPage("固定收付", in: app)
+        for _ in 0..<2 {
+            dragBack(app, to: 0.42)
+            assertPushedPage("固定收付", in: app)
+        }
+        dragBack(app, to: 0.95)
+        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+        tap(app.buttons["tab_insights"], in: app)
+        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        tap(app.buttons["tab_overview"], in: app)
+        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+    }
+
+    func testSheetNavigationDoesNotHideRootTabBarAfterDismissal() {
+        let app = application("manual"); app.launch()
+        tap(app.buttons["tab_insights"], in: app)
+        tap(app.buttons["askYubai"], in: app)
+        tap(app.buttons["去配好密钥"], in: app)
+        XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
+        dragBack(app, to: 0.42)
+        XCTAssertTrue(app.navigationBars["智能与隐私"].isHittable)
+        dragBack(app, to: 0.95)
+        tap(app.buttons["closeSheet"], in: app)
+        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2)))
+        assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
     }
 
     func testTabButtonsScrollToNonadjacentPagesAndPreservePageState() {

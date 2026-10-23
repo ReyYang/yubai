@@ -1,5 +1,15 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-23 · 取消侧滑返回的标签栏修复
+
+来源为 owner 在 `fix/insights-push-inset`／HEAD `0838156` 的 vphone 反馈：洞察分类明细等二级页左边缘返回到一半后取消，浮栏错误留在二级页；明确要求修复状态来源、保持 push 锁分页及 sheet 隔离、macOS 不变，补 UI 回归且不删／跳旧测试，不提交／推送。既有实色浮栏、留白与原稿保持，本轮没有新增视觉选择。
+
+Agent 实现选择：`YubaiApp.swift / RootView` 为四个常驻 NavigationStack 分别绑定 `NavigationPath`，`tabBarHidden` 直接读取当前 tab 路径是否非空，同时供 FloatingTabBar 条件与外层 `.scrollDisabled` 使用。`OverviewView`、`InsightsView`、`SettingsView` 和根页管家卡的全部首层 push 改用 `TabRoute` 值导航；普通目的视图链接不会加入可观察路径，所以不能只给原有 NavigationStack 增加 path 绑定。首层值保留在路径底部，深层普通链接或 Boolean 导航返回时仍保持隐藏；只有回到根页才恢复浮栏及分页。macOS 和 sheet 中的 `TabNavigationLink` 沿用原目的视图闭包，sheet 的 NavigationStack 不绑定 tab 路径。依据 [Apple 导航栈说明](https://developer.apple.com/documentation/swiftui/understanding-the-navigation-stack)，值目的地与上层视图目的地可以组合。
+
+`DesignSystem.swift` 删除 `TabBarVisibility`、环境绑定和出现回调写入，`EntriesView` 移除旧隐藏参数，`FlowRecordsView` 调整为模块内可见以供集中路由使用。取消交互返回不再依赖根页／二级页的 onAppear、onDisappear 顺序；系统导航决定路径，浮栏与分页只派生状态。
+
+验证：指定 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，406 项、402 通过／4 项原有实网 opt-in 跳过／0 失败。全部 App 文件在 `arm64-apple-ios26.0`／`arm64-apple-macosx14.0`、UI 测试在 iOS 26 下通过 `swiftc -frontend -parse`，`git diff --check` 通过。原 47 个 UI 测试方法全部保留，新增 4 个：洞察反复取消返回后浮栏隐藏且双向横拖不翻页、深层 Boolean 导航取消／完成返回到我页、现在页完成返回才恢复浮栏及 tab 切换、sheet 内取消／完成返回后根页浮栏与分页正常。用 XCUICoordinate 从左边缘慢拖至 42% 并停住释放触发取消，95% 拖动覆盖完成返回；同时覆盖导航按钮返回。当前没有 Xcode／vphone 工具，Apple SDK 类型检查及 UI 实跑待做，语法解析不等于设备手势验收。未改 Core、依赖、`docs/`、HTML 原稿、Figma 或分发包，未提交／推送。
+
 ## 2026-10-22 · 分页同步与右滑归属复验
 
 来源为 owner 在 `fix/tabbar-gesture-regression`／`bd8b1b2` 的 vphone 复测：账目右滑到洞察后点账目、现在左滑到洞察后点现在，出现只切高亮、不切页面；其余手势已通过，本轮只修这两条同步路径及明确调整的右滑规则，macOS 保持。

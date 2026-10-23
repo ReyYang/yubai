@@ -371,28 +371,12 @@ struct ChartSegments<Content: View>: View {
 
 private struct SheetSurfaceKey: EnvironmentKey { static let defaultValue = false }
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
-#if os(iOS)
-private struct TabBarHiddenKey: EnvironmentKey { static let defaultValue: Binding<Bool>? = nil }
-#endif
 extension EnvironmentValues {
     var yubaiSheetSurface: Bool { get { self[SheetSurfaceKey.self] } set { self[SheetSurfaceKey.self] = newValue } }
     var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
-    #if os(iOS)
-    var yubaiTabBarHidden: Binding<Bool>? { get { self[TabBarHiddenKey.self] } set { self[TabBarHiddenKey.self] = newValue } }
-    #endif
 }
 
 #if os(iOS)
-struct TabBarVisibility: ViewModifier {
-    @Environment(\.yubaiTabBarHidden) private var tabBarHidden
-    @Environment(\.yubaiSheetSurface) private var inSheet
-    let hidden: Bool
-    func body(content: Content) -> some View {
-        content.onAppear { update() }.onChange(of: hidden) { _, _ in update() }
-    }
-    private func update() { if !inSheet { tabBarHidden?.wrappedValue = hidden } }
-}
-
 struct HorizontalPan: UIGestureRecognizerRepresentable {
     var allowsSubgestures = false
     var shouldBegin: (CGFloat) -> Bool = { _ in true }
@@ -1204,14 +1188,13 @@ extension View {
             .environment(\.defaultMinListRowHeight, YubaiSize.rowSingle).scrollDismissesKeyboard(.interactively)
             .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).tint(YubaiColor.brand).buttonStyle(.automatic)
     }
-    func yubaiNavigation(hidesTabBar: Bool = true) -> some View {
+    func yubaiNavigation() -> some View {
         self.paperBackground().tint(YubaiColor.brandInk)
             #if os(iOS)
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
-            .modifier(TabBarVisibility(hidden: hidesTabBar))
             #elseif os(macOS)
             .toolbarBackground(YubaiColor.canvas, for: .windowToolbar).toolbarBackground(.visible, for: .windowToolbar)
             #endif
