@@ -5,6 +5,7 @@ feat/butler-saving-core（2a51c45），Debug，iOS 模拟器 iPhone 17 Pro / iOS
 | 文件 | 内容 | 来源 |
 |---|---|---|
 | judge-ask | 问余白 · 徒步鞋 → 三道追问卡 | testJudgeAskScreenshotFixture |
+| judge-ask-answered | 三题选完后（键盘已收起，「就这样回答」可见），bb81a8c | 测试运行时 simctl 录屏抽帧 |
 | judge-wait | 结论：等等再说 | testJudgeWaitScreenshotFixture |
 | judge-buy | 结论：买吧 | testJudgeBuyScreenshotFixture |
 | judge-skip | 结论：先别买（降噪耳机，差 620） | testJudgeSkipScreenshotFixture |
@@ -20,4 +21,4 @@ feat/butler-saving-core（2a51c45），Debug，iOS 模拟器 iPhone 17 Pro / iOS
 | entry-subcategory-row | 记录详情的分类行 | testSubcategoryScreenshotFixture |
 | subcategory-picker | 小项选择 | testSubcategoryScreenshotFixture |
 
-judge-ask 截于三道题出现时；该测试随后在点「就这样回答」时失败（见报告）。
+judge-ask、judge-wait、judge-ask-answered 于 bb81a8c 重截（问余白导航栏改为纸色实底），其余仍为 2a51c45。
