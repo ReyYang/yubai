@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-23 · 问余白追问与导航遮挡修复
+
+来源为 owner 对 `feat/butler-saving-core`／`2a51c45` 的两处显示反馈及两处 UI 测试查询错误。沿用 V15 追问卡与 V16 少写字规则，本次新增／改动可见中文字符串：无。
+
+`AskYubaiView.swift` 拆出 conversation 子视图，共用 `ChatInputBar` 接受可选焦点绑定。追问卡进入时先移开输入焦点再保持卡顶定位；`SavingPurchaseViews.swift / PurchaseQuestionsCard` 每次点选芯片先移开焦点，所选状态变化后通过按钮行的独立稳定 id 滚至 `.bottom`，覆盖「就这样回答」「直接给结论」。仅问余白在 `yubaiNavigation()` 后覆盖 iOS 导航栏的纸色实底与可见背景，共用导航样式及其他页面不变。`AppFlowTests.swift` 的两个固定收付停止按钮查询改为 `isHittable == true`，原截图流程与业务断言保留。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0，451 项、447 通过／4 原有实网跳过／0 失败；38 个 App 文件逐一通过 iOS 26／27.1 模拟器 Debug、iOS 26 设备 Release、macOS 14 Debug 的 `swiftc -frontend -parse`，UI 测试文件通过 iOS 26／27.1 模拟器 Debug 条件解析；`git diff --check` 通过。Linux 没有 Apple SDK，SwiftUI 类型检查、`testJudgeAskScreenshotFixture` 与固定收付 UI 实跑、键盘时序和导航视觉待 Mac 复验。原稿／Figma／分发包未同步，未提交、未联网调 API。
+
 ## 2026-10-23 · V15 模拟器显示与 UI 测试修复
 
 来源为 owner 在 `57ac7bf` 的 15 张模拟器截图、12 张 V15 原稿及本轮八项明确修正，继续遵守少写字。输入条槽位限高、用户气泡即时可见、追问卡顶部定位、购买按钮按完整文字测量后横／竖切换；心愿冷静到期状态、买后问题、来信合计／订阅与克制额度去重，愿意多花的复用 8pt ChipFlow，记录分类与其他行等高。原稿不修改，采用本轮截图反馈修正；[逐项源码映射与可见中文](../docs/V15-SIMULATOR-FIXES.md)。

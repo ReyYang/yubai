@@ -5,6 +5,9 @@ struct PurchaseQuestionsCard: View {
     let questions: [PurchaseQuestion]
     let busy: Bool
     let active: Bool
+    let actionsID: String
+    let dismissInput: () -> Void
+    let selectionChanged: () -> Void
     let send: (String) -> Void
     let notes: [MemoryNote]
     @State private var selected: [Int: String] = [:]
@@ -21,10 +24,11 @@ struct PurchaseQuestionsCard: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: YubaiSpace.space8) { actions }.fixedSize(horizontal: true, vertical: false)
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) { actions }
-                }.lineLimit(1)
+                }.lineLimit(1).id(actionsID)
                 RememberedRows(notes: notes)
             }
         }.accessibilityIdentifier("purchaseQuestions")
+            .onChange(of: selected) { _, _ in selectionChanged() }
     }
     @ViewBuilder private func question(_ index: Int) -> some View {
         if index > 0 { EntryFormDivider() }
@@ -41,7 +45,10 @@ struct PurchaseQuestionsCard: View {
     private var answerDisabled: Bool { selected.count != questions.count || disabled }
     private func options(_ index: Int) -> some View {
         ForEach(questions[index].options, id: \.self) { option in
-            PurchaseOptionChip(option: option, chosen: selected[index] == option) { selected[index] = option }
+            PurchaseOptionChip(option: option, chosen: selected[index] == option) {
+                dismissInput()
+                selected[index] = option
+            }
                 .disabled(disabled)
         }
     }

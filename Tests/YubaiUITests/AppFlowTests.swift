@@ -276,7 +276,7 @@ final class AppFlowTests: XCTestCase {
         tap(check, in: app)
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' AND value == '已收到'")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5)); swipeRow(row)
-        tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stopFixedFlow_' AND hittable == true")).firstMatch, in: app)
+        tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stopFixedFlow_' AND isHittable == true")).firstMatch, in: app)
         tap(app.buttons["停掉以后的"], in: app)
         XCTAssertTrue(check.exists); XCTAssertFalse(check.isEnabled)
         XCTAssertFalse(app.buttons["结束这个安排"].exists)
@@ -294,7 +294,7 @@ final class AppFlowTests: XCTestCase {
         let restore = app.buttons["resumeFixedFlow_" + planID]
         func stop() {
             swipeRow(row)
-            tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stopFixedFlow_' AND hittable == true")).firstMatch, in: app); tap(app.buttons["停掉以后的"], in: app)
+            tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stopFixedFlow_' AND isHittable == true")).firstMatch, in: app); tap(app.buttons["停掉以后的"], in: app)
             XCTAssertTrue(restore.waitForExistence(timeout: 5))
             XCTAssertTrue(app.staticTexts.matching(identifier: "已停掉").firstMatch.exists)
         }
