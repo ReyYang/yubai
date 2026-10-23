@@ -2,7 +2,7 @@
 
 ## 2026-10-23 · 少写字，让版式说话
 
-owner 在项目规则「设计驱动代码」下新增：“Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 设计系统 README 第一节改为同名规则（四种可写的字、六步替换顺序、不写的东西、例外、实现检查），`EmptyState` 去说明行、`InlineNote` 去解释卡和脚注、`EditorForm` 去「例如」和「（可选）」。设计稿新增「第十六轮 · 少写字」：规则、按 main `18889f8` 逐屏审计的 54 处说明文字及改法、11 张改后画板。前几轮画板中与本轮冲突的说明文字以第十六轮为准。代码改动待 owner 确认画板后另开分支实现；实现约束同时写入根目录 `AGENTS.md`。
+owner 在项目规则「设计驱动代码」下新增：“Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 设计系统与设计稿已同步更新（第十六轮），细节不进仓库。代码改动待 owner 确认画板后另开分支实现；实现约束同时写入根目录 `AGENTS.md`。
 
 ## 2026-10-22 · 分页同步与右滑归属复验
 
