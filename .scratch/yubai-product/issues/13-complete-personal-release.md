@@ -269,3 +269,10 @@ owner 明确采用本轮 12 张 V15 HTML（购买 Ask／Wait／Buy／Skip、Wish
 Agent 实现选择：新增三个 App 组件文件降低原视图冲突；购买按默认天数按钮（不启用可选发薪日写法），坚持购买直达手动记账预填；三项观察进明细页；近限额卡在 UI 显示前过滤，超额原卡保留；来信保留原图和记忆等既有内容；洞察下钻沿用当前期间、比较完整上月、缺失小项并入其他，合并扇区沿原记录入口；心愿再聊邀请可在当前页面收起。小项接线发现独立退款被识别为收入，修正有效性检查并加一项回归。手动改消费观领域保留已有小项匹配。
 
 [设计映射](../../../.design-meta/DESIGN.md#2026-10-23--第十五轮帮你省钱界面)、[完整文件、全部可见文字逐条分类和验证](../../../docs/SAVING-UI-V15.md)。Linux Core build／449 项测试通过：445 通过、4 项原有实网 opt-in 跳过、0 失败；全部 App 文件的 iOS 26／macOS 14 语法解析通过。Apple SDK 类型检查和设备交互／视觉／无障碍未验，不把源码接线视为正式设备验收。原稿、Figma、分发包未改，未提交／推送，本票保持 in-progress。
+
+
+## 2026-10-23 · PR #34 编译与截图复验准备（owner 明确任务）
+
+owner 提供 iPhone 17 Pro／iOS 26 SDK 的分类参数标签和 SwiftUI 类型推断报错，要求修复并通读本轮 App 改动、预防性拆分表达式，保持行为、外观及「少写字」。按 owner 提供的 2026-10-23 官方模型说明，采用默认 deepseek-flash，内置列表 deepseek-flash／deepseek-v4-pro；deepseek-chat、deepseek-v4-flash 迁移至 deepseek-flash，deepseek-reasoner 至 deepseek-v4-pro。另明确授权八个 Debug 模拟器截图夹具及必要的最小 UI 测试，不提交、不联网调 API。
+
+已完成参数标签修复、视图拆分和 Core 接口核对、模型与测试更新、八脚本及八个截图流程。[完整文件／启动方式／入口／证据](../../../docs/SAVING-UI-V15.md#2026-10-23--pr-34-编译修复与截图夹具)。Linux build 与 449 项测试通过（445 通过、4 原有实网跳过、0 失败），八脚本离线真实工具链通过；App iOS／macOS、UI 测试 iOS 语法解析通过。没有 Apple SDK 真编译与 UI 实跑证据，本票保持 in-progress；设计原稿和分发资源不变，未提交／推送。

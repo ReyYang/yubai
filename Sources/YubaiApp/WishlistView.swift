@@ -12,24 +12,7 @@ struct WishlistView: View {
             if let focusedWishID, let wish = store.current.wishlist.first(where: { $0.id == focusedWishID }) { wishRow(wish) }
             let due = store.current.wishlist.filter { $0.id != focusedWishID && followUpVisible($0) }
             ForEach(due) { wish in
-                Card(style: .compact, background: YubaiColor.amberTint) {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                        HStack(spacing: YubaiSpace.gapGroup) {
-                            Text("买了一个月 · 用得怎么样？").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
-                            Spacer()
-                            if let card = store.current.cards.first(where: { $0.dedupeKey == "follow:\(wish.id)" }) {
-                                Menu {
-                                    Button("知道了") { store.dismissCard(card.id) }
-                                    Button("以后别提") { store.muteCard(card.id) }
-                                } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
-                                    .accessibilityLabel("更多：知道了、以后别提")
-                            }
-                        }
-                        Text(wish.title + "，用得怎么样？").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.amberStrong)
-                        if !wish.purpose.isEmpty { Text("当时说「" + wish.purpose + "」").yubaiFont(YubaiFont.callout) }
-                        WishFollowUpView(wishID: wish.id)
-                    }
-                }
+                followUpCard(wish)
             }
             ForEach(store.current.wishlist.filter { $0.followUpAnswer?.hasPrefix(FollowUpChoice.regret.rawValue) == true }) { wish in
                 WishRegretEntry(wish: wish)
@@ -52,6 +35,34 @@ struct WishlistView: View {
             }
         }.navigationTitle("心愿单").yubaiNavigation()
     }
+    private func followUpCard(_ wish: WishItem) -> some View {
+        Card(style: .compact, background: YubaiColor.amberTint) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                HStack(spacing: YubaiSpace.gapGroup) {
+                    Text("买了一个月 · 用得怎么样？").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
+                    Spacer()
+                    if let card = store.current.cards.first(where: { $0.dedupeKey == "follow:\(wish.id)" }) {
+                        Menu {
+                            Button("知道了") { store.dismissCard(card.id) }
+                            Button("以后别提") { store.muteCard(card.id) }
+                        } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
+                            .accessibilityLabel("更多：知道了、以后别提")
+                    }
+                }
+                Text(wish.title + "，用得怎么样？").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.amberStrong)
+                if !wish.purpose.isEmpty { Text("当时说「" + wish.purpose + "」").yubaiFont(YubaiFont.callout) }
+                WishFollowUpView(wishID: wish.id)
+            }
+        }
+    }
+    private func ageText(_ wish: WishItem) -> String {
+        let now: Date = Date()
+        let days: Int = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(now)).day ?? 0)
+        guard wish.status == .thinking else { return "加入 \(days) 天 · " + Dates.text(wish.createdAt) }
+        guard let until = wish.coolUntil else { return "放了 \(days) 天" }
+        let remaining: Int = max(until > now ? 1 : 0, Dates.calendar.dateComponents([.day], from: Dates.day(now), to: Dates.day(until)).day ?? 0)
+        return "冷静中 · 还有 \(remaining) 天"
+    }
     private func followUpVisible(_ wish: WishItem) -> Bool {
         guard wish.status == .bought, wish.followUpAnswer == nil, wish.followUpAt.map({ $0 <= Date() }) == true else { return false }
         let key = "follow:\(wish.id)"
@@ -63,9 +74,7 @@ struct WishlistView: View {
     private func wishContent(_ wish: WishItem) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             HStack(spacing: YubaiSpace.gapGroup) { Text(wish.title).yubaiFont(YubaiFont.rowTitle); Spacer(); AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts) }
-            let days = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(Date())).day ?? 0)
-            let remaining = wish.coolUntil.map { max($0 > Date() ? 1 : 0, Dates.calendar.dateComponents([.day], from: Dates.day(Date()), to: Dates.day($0)).day ?? 0) }
-            Text(wish.status == .thinking ? (remaining.map { "冷静中 · 还有 \($0) 天" } ?? "放了 \(days) 天") : "加入 \(days) 天 · " + Dates.text(wish.createdAt)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            Text(ageText(wish)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             if !wish.judgment.isEmpty { Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.space8) { wishActions(wish) }

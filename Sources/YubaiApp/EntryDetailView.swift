@@ -13,27 +13,8 @@ struct EntryDetailView: View {
                 Text(entry.displayTitle).yubaiFont(YubaiFont.lead).accessibilityIdentifier("entryDetailTitle")
                 AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts, role: .display,
                             sign: entry.nature.inflow ? .inflow : .outflow, fractionDigits: 2)
-                Card {
-                    VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        LabeledContent("时间", value: Dates.text(entry.date, time: true))
-                        LabeledContent("账户", value: store.current.accountName(entry.accountID))
-                        if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.current.accountName(other)) }
-                        EntrySubcategoryRow(entry: entry)
-                        if !entry.note.isEmpty { Text(entry.note) }
-                        if let id = entry.planID, let plan = store.current.plans.first(where: { $0.id == id }) { Text("已关联：" + plan.title) }
-                        if let id = entry.rentID, let rent = store.current.rents.first(where: { $0.id == id }) { Text("已关联：" + rent.title) }
-                    }.yubaiFont(YubaiFont.row)
-                }
-                Card {
-                    VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                        SectionHeading(title: "明细")
-                        Text(entry.title)
-                        LabeledContent("来源", value: entry.source)
-                        if let row = entry.sourceRow { LabeledContent("原文件行号", value: String(row)) }
-                        if !entry.externalID.isEmpty { LabeledContent("交易单号", value: entry.externalID).textSelection(.enabled) }
-                        Text(entry.classificationReason).foregroundStyle(YubaiColor.labelSecondary)
-                    }.yubaiFont(YubaiFont.callout)
-                }
+                classificationCard(entry)
+                sourceCard(entry)
                 if entry.deletedAt == nil {
                     Button("删除记录", role: .destructive) { deleting = true }.frame(minHeight: YubaiSize.tapMin)
                 } else {
@@ -50,4 +31,30 @@ struct EntryDetailView: View {
                 }
             }
     }
+    private func classificationCard(_ entry: Entry) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                LabeledContent("时间", value: Dates.text(entry.date, time: true))
+                LabeledContent("账户", value: store.current.accountName(entry.accountID))
+                if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.current.accountName(other)) }
+                EntrySubcategoryRow(entry: entry)
+                if !entry.note.isEmpty { Text(entry.note) }
+                if let id = entry.planID, let plan = store.current.plans.first(where: { $0.id == id }) { Text("已关联：" + plan.title) }
+                if let id = entry.rentID, let rent = store.current.rents.first(where: { $0.id == id }) { Text("已关联：" + rent.title) }
+            }.yubaiFont(YubaiFont.row)
+        }
+    }
+    private func sourceCard(_ entry: Entry) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                SectionHeading(title: "明细")
+                Text(entry.title)
+                LabeledContent("来源", value: entry.source)
+                if let row = entry.sourceRow { LabeledContent("原文件行号", value: String(row)) }
+                if !entry.externalID.isEmpty { LabeledContent("交易单号", value: entry.externalID).textSelection(.enabled) }
+                Text(entry.classificationReason).foregroundStyle(YubaiColor.labelSecondary)
+            }.yubaiFont(YubaiFont.callout)
+        }
+    }
+
 }

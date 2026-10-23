@@ -26,48 +26,11 @@ struct ProfileConversationView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        if !revisit {
-                            HStack(spacing: YubaiSpace.space8) {
-                                ForEach(0..<3, id: \.self) { index in
-                                    Circle().fill(index < max(1, messages.filter { $0.role == .assistant }.count) ? YubaiColor.brand : YubaiColor.neutralSoft)
-                                        .frame(width: YubaiSpace.space8, height: YubaiSpace.space8)
-                                }
-                            }.frame(maxWidth: .infinity).accessibilityElement(children: .ignore)
-                                .accessibilityLabel("消费观，三个问题，第 \(min(3, max(1, messages.filter { $0.role == .assistant }.count))) 个")
-                        }
+                        if !revisit { progressDots }
                         ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
-                            HStack(spacing: YubaiSpace.gapGroup) {
-                                if message.role == .user { Spacer(minLength: YubaiSpace.messageIndent) }
-                                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                                    if message.role == .assistant {
-                                        HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
-                                    }
-                                    Text(message.content ?? "").yubaiFont(message.role == .user ? YubaiFont.body : YubaiFont.cardTitle)
-                                        .foregroundStyle(message.role == .user ? YubaiColor.onBrand : YubaiColor.label).textSelection(.enabled)
-                                    if revisit, index == 0, message.role == .assistant, !messages.contains(where: { $0.role == .user }) {
-                                        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                                            ForEach(["最近花钱的感觉变了", "加一条想克制的", "看看这个月我做得怎么样"], id: \.self) { starter in
-                                                Button { input = starter; ask() } label: {
-                                                    Text(starter).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup)
-                                                        .frame(minHeight: YubaiSize.chipHeight).background(YubaiColor.raised, in: Capsule()).yubaiHitTarget()
-                                                }.buttonStyle(PressButtonStyle()).disabled(busy)
-                                            }
-                                        }
-                                    }
-                                }.padding(YubaiSpace.insetCard).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(message.role == .user ? YubaiColor.brand : YubaiColor.card,
-                                                in: UnevenRoundedRectangle(topLeadingRadius: message.role == .user ? 18 : 6, bottomLeadingRadius: 22, bottomTrailingRadius: message.role == .user ? 6 : 22, topTrailingRadius: 22))
-                                if message.role == .assistant { Spacer(minLength: YubaiSpace.gapSection) }
-                            }.messageEntrance(user: message.role == .user)
+                            messageRow(message, index: index)
                         }
-                        if busy {
-                            HStack(spacing: YubaiSpace.space8) {
-                                AssistantMark(thinking: true).accessibilityHidden(true)
-                                HStack(spacing: YubaiSpace.space4) {
-                                    ForEach(0..<3, id: \.self) { _ in Circle().fill(YubaiColor.labelMuted).frame(width: 4, height: 4) }
-                                }
-                            }.accessibilityElement(children: .ignore).accessibilityLabel("余白正在思考")
-                        }
+                        if busy { thinking }
                         RememberedRows(notes: notes)
                         if let proposal, !revising {
                             ProfileProposalCard(change: proposal, confirm: {
@@ -106,6 +69,67 @@ struct ProfileConversationView: View {
             .onChange(of: store.current.id) { _, _ in runningTask?.cancel(); dismiss() }
             .onChange(of: store.locked) { _, locked in if locked { runningTask?.cancel(); dismiss() } }
             .onChange(of: store.current.preferences.cloudAIEnabled) { _, enabled in if !enabled { runningTask?.cancel(); dismiss() } }
+    }
+    private var assistantCount: Int { messages.filter { $0.role == .assistant }.count }
+    private var progressDots: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            ForEach(0..<3, id: \.self) { index in progressDot(index) }
+        }.frame(maxWidth: .infinity).accessibilityElement(children: .ignore)
+            .accessibilityLabel("消费观，三个问题，第 \(min(3, max(1, assistantCount))) 个")
+    }
+    private func progressDot(_ index: Int) -> some View {
+        let reached: Bool = index < max(1, assistantCount)
+        return Circle().fill(reached ? YubaiColor.brand : YubaiColor.neutralSoft)
+            .frame(width: YubaiSpace.space8, height: YubaiSpace.space8)
+    }
+    private func showsStarters(_ message: ChatMessage, index: Int) -> Bool {
+        revisit && index == 0 && message.role == .assistant && !messages.contains { $0.role == .user }
+    }
+    private func messageRow(_ message: ChatMessage, index: Int) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            if message.role == .user { Spacer(minLength: YubaiSpace.messageIndent) }
+            messageBubble(message, index: index)
+            if message.role == .assistant { Spacer(minLength: YubaiSpace.gapSection) }
+        }.messageEntrance(user: message.role == .user)
+    }
+    private func messageBubble(_ message: ChatMessage, index: Int) -> some View {
+        let user: Bool = message.role == .user
+        let shape: UnevenRoundedRectangle = UnevenRoundedRectangle(topLeadingRadius: user ? 18 : 6, bottomLeadingRadius: 22,
+            bottomTrailingRadius: user ? 6 : 22, topTrailingRadius: 22)
+        return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            if message.role == .assistant { assistantHeading }
+            Text(message.content ?? "").yubaiFont(user ? YubaiFont.body : YubaiFont.cardTitle)
+                .foregroundStyle(user ? YubaiColor.onBrand : YubaiColor.label).textSelection(.enabled)
+            if showsStarters(message, index: index) { starters }
+        }.padding(YubaiSpace.insetCard).frame(maxWidth: .infinity, alignment: .leading)
+            .background(user ? YubaiColor.brand : YubaiColor.card, in: shape)
+    }
+    private var assistantHeading: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            AssistantMark(size: 14).accessibilityHidden(true)
+            Text("余白").yubaiFont(YubaiFont.meta)
+        }.foregroundStyle(YubaiColor.brandInk)
+    }
+    private var starters: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+            ForEach(["最近花钱的感觉变了", "加一条想克制的", "看看这个月我做得怎么样"], id: \.self) { starter in
+                starterChip(starter)
+            }
+        }
+    }
+    private func starterChip(_ starter: String) -> some View {
+        Button { input = starter; ask() } label: {
+            Text(starter).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup)
+                .frame(minHeight: YubaiSize.chipHeight).background(YubaiColor.raised, in: Capsule()).yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).disabled(busy)
+    }
+    private var thinking: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            AssistantMark(thinking: true).accessibilityHidden(true)
+            HStack(spacing: YubaiSpace.space4) {
+                ForEach(0..<3, id: \.self) { _ in Circle().fill(YubaiColor.labelMuted).frame(width: 4, height: 4) }
+            }
+        }.accessibilityElement(children: .ignore).accessibilityLabel("余白正在思考")
     }
     @MainActor private func ask() {
         guard !busy else { return }

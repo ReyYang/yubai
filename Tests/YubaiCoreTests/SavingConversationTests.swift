@@ -5,14 +5,14 @@ final class SavingConversationTests: XCTestCase {
     func testLegacyModelMappingForSavedEnvironmentAndDirectConfiguration() throws {
         let suite = "SavingModelTests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { defaults.removePersistentDomain(forName: suite) }
-        for (old, new) in [("deepseek-chat", "deepseek-v4-flash"), ("deepseek-flash", "deepseek-v4-flash"), ("deepseek-reasoner", "deepseek-v4-pro")] {
+        for (old, new) in [("deepseek-chat", "deepseek-flash"), ("deepseek-v4-flash", "deepseek-flash"), ("deepseek-flash", "deepseek-flash"), ("deepseek-reasoner", "deepseek-v4-pro")] {
             defaults.set(old, forKey: DeepSeekConfiguration.modelPreferenceKey)
             XCTAssertEqual(DeepSeekConfiguration.modelName(environment: [:], defaults: defaults), new)
             XCTAssertEqual(DeepSeekConfiguration.modelName(environment: ["DEEPSEEK_MODEL": " " + old + " "], defaults: defaults), new)
             XCTAssertEqual(DeepSeekConfiguration(apiKey: "fake", model: old).model, new)
         }
-        XCTAssertEqual(DeepSeekConfiguration.defaultModel, "deepseek-v4-flash")
-        XCTAssertEqual(DeepSeekClient.fallbackModels, ["deepseek-v4-flash", "deepseek-v4-pro"])
+        XCTAssertEqual(DeepSeekConfiguration.defaultModel, "deepseek-flash")
+        XCTAssertEqual(DeepSeekClient.fallbackModels, ["deepseek-flash", "deepseek-v4-pro"])
         XCTAssertEqual(DeepSeekConfiguration.canonicalModel("private-future-model"), "private-future-model")
     }
     func testPurchaseReflectionReceivesCodeVerdictThroughFakeTransport() async throws {

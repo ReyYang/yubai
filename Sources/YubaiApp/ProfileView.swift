@@ -139,30 +139,34 @@ struct ProfileView: View {
             SectionHeading(title: title)
             if rows.isEmpty { Text("还没有写下，想到时再添。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             CardRows(rows) { area in
-                HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                        Text(area.title).yubaiFont(YubaiFont.rowTitle)
-                        if !area.note.isEmpty { Text(area.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
-                        if stance == .restrain {
-                            if let limit = area.softLimit, !limit.text.isEmpty { Text(limit.text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) }
-                            if !store.current.preferences.hideAmounts {
-                                Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                                if let progress = progress(area) {
-                                    SavingProgressBar(ratio: progress, amber: progress >= 0.8).accessibilityLabel(area.title + " · " + usage(area))
-                                }
-                            }
-                        }
-                    }
-                    Spacer(minLength: YubaiSpace.none)
-                    if editing { Menu {
-                        Button("编辑") { sheet = .area(area, stance) }
-                        Button("删除", role: .destructive) {
-                            edit { $0.generous.removeAll { $0.id == area.id }; $0.restrain.removeAll { $0.id == area.id } }
-                        }
-                    } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除" + area.title) }
-                }.padding(.vertical, YubaiSpace.space8)
+                areaRow(area, stance: stance)
             }
             if editing { Button("添加" + title) { sheet = .area(ProfileArea(title: ""), stance) }.frame(minHeight: YubaiSize.tapMin) }
+        }
+    }
+    private func areaRow(_ area: ProfileArea, stance: ProfileStance) -> some View {
+        HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                Text(area.title).yubaiFont(YubaiFont.rowTitle)
+                if !area.note.isEmpty { Text(area.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
+                if stance == .restrain { areaUsage(area) }
+            }
+            Spacer(minLength: YubaiSpace.none)
+            if editing { Menu {
+                Button("编辑") { sheet = .area(area, stance) }
+                Button("删除", role: .destructive) {
+                    edit { $0.generous.removeAll { $0.id == area.id }; $0.restrain.removeAll { $0.id == area.id } }
+                }
+            } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除" + area.title) }
+        }.padding(.vertical, YubaiSpace.space8)
+    }
+    @ViewBuilder private func areaUsage(_ area: ProfileArea) -> some View {
+        if let limit = area.softLimit, !limit.text.isEmpty { Text(limit.text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) }
+        if !store.current.preferences.hideAmounts {
+            Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            if let progress = progress(area) {
+                SavingProgressBar(ratio: progress, amber: progress >= 0.8).accessibilityLabel(area.title + " · " + usage(area))
+            }
         }
     }
     private func progress(_ area: ProfileArea) -> Double? {
@@ -178,40 +182,46 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             SectionHeading(title: "原则")
             ForEach(profile.principles, id: \.self) { text in
-                Card {
-                    HStack(spacing: YubaiSpace.gapGroup) {
-                        Text(text).yubaiFont(YubaiFont.body)
-                        Spacer(minLength: YubaiSpace.none)
-                        Menu {
-                            Button("编辑") { sheet = .principle(text) }
-                            Button("删除", role: .destructive) { edit { $0.principles.removeAll { $0 == text } } }
-                        } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除原则：" + text)
-                    }
-                }
+                principleCard(text)
             }
             Button("添加原则") { sheet = .principle(nil) }.accessibilityIdentifier("addPrinciple")
+        }
+    }
+    private func principleCard(_ text: String) -> some View {
+        Card {
+            HStack(spacing: YubaiSpace.gapGroup) {
+                Text(text).yubaiFont(YubaiFont.body)
+                Spacer(minLength: YubaiSpace.none)
+                Menu {
+                    Button("编辑") { sheet = .principle(text) }
+                    Button("删除", role: .destructive) { edit { $0.principles.removeAll { $0 == text } } }
+                } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除原则：" + text)
+            }
         }
     }
     private var goals: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             SectionHeading(title: "在存钱")
             CardRows(store.current.goals) { goal in
-                HStack(spacing: YubaiSpace.gapGroup) {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                        Text("为 " + goal.title + " 存").yubaiFont(YubaiFont.rowTitle)
-                        Text("已存 " + Money.text(goal.reserved) + " / " + Money.text(goal.target)).yubaiFont(YubaiFont.amountSmall)
-                        if let date = goal.dueDate { Text("期待在 " + Dates.text(date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-                        if !goal.note.isEmpty { Text(goal.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
-                    }
-                    Spacer(minLength: YubaiSpace.none)
-                    Menu {
-                        Button("调整存钱") { sheet = .goal(goal) }
-                        Button("不存了", role: .destructive) { store.update("修改消费观") { $0.goals.removeAll { $0.id == goal.id } } }
-                    } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("调整或移除" + goal.title)
-                }.padding(.vertical, YubaiSpace.space8)
+                goalRow(goal)
             }
             Button("添加存钱的事") { sheet = .goal(nil) }
         }
+    }
+    private func goalRow(_ goal: Goal) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                Text("为 " + goal.title + " 存").yubaiFont(YubaiFont.rowTitle)
+                Text("已存 " + Money.text(goal.reserved) + " / " + Money.text(goal.target)).yubaiFont(YubaiFont.amountSmall)
+                if let date = goal.dueDate { Text("期待在 " + Dates.text(date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                if !goal.note.isEmpty { Text(goal.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
+            }
+            Spacer(minLength: YubaiSpace.none)
+            Menu {
+                Button("调整存钱") { sheet = .goal(goal) }
+                Button("不存了", role: .destructive) { store.update("修改消费观") { $0.goals.removeAll { $0.id == goal.id } } }
+            } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("调整或移除" + goal.title)
+        }.padding(.vertical, YubaiSpace.space8)
     }
     private var floorSection: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {

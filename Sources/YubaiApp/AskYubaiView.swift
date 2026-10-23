@@ -163,29 +163,9 @@ struct AskYubaiView: View {
             }
         } else if let reply = message.reply {
             if let statement = reply.pastedStatement { AskPastedStatementCard(statement: statement) }
-            else if reply.purchaseJudgment == nil && (reply.purchaseQuestions ?? []).isEmpty && !isEntryDraftReply(reply) { AssistantCard { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
-                Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
-                if let chart = reply.chart, !store.current.preferences.hideAmounts { AnswerChartView(chart: chart) }
-                if !message.protectedEdit {
-                NavigationLink("明细：\(reply.evidenceEntryIDs.count) 笔 ›") { AskEvidenceView(ids: reply.evidenceEntryIDs) }.yubaiFont(YubaiFont.caption).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("answerEvidence")
-                }
-                if !reply.unverifiedAmounts.isEmpty {
-                    InlineNote(text: store.current.preferences.hideAmounts ? "回答中有金额尚未核实，请核对记录。" : "这些金额尚未核实：" + reply.unverifiedAmounts.joined(separator: "、"), style: .attention)
-                }
-                if message.protectedEdit {
-                    if message.protectedRecords.count == 1, let id = message.protectedRecords.first {
-                        NavigationLink("核对这笔 · 记录详情 ›") { EntryDetailView(entryID: id) }.frame(minHeight: YubaiSize.tapMin).yubaiFont(YubaiFont.caption)
-                    } else {
-                        NavigationLink("核对相关记录 ›") { AskRecordLookupView(ids: message.protectedRecords) }.frame(minHeight: YubaiSize.tapMin).yubaiFont(YubaiFont.caption)
-                    }
-                }
-                RememberedRows(notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
-            } } }
+            else if showsStandardReply(reply) { standardReplyCard(reply, message: message) }
             ForEach(reply.proposedChangeSets) { change in
-                let drafts = change.items.compactMap { item -> EntryDraft? in if case .addEntry(let draft) = item { return draft }; return nil }
-                if !drafts.isEmpty && drafts.count == change.items.count { AskEntryDraftCard(change: change, drafts: drafts, image: message.image) }
-                else { AskChangeCard(change: change) }
+                changeCard(change, message: message)
             }
             if isEntryDraftReply(reply) { RememberedRows(notes: reply.rememberedNotes + reply.updatedNotes.map(\.note)) }
             if let questions = reply.purchaseQuestions, !questions.isEmpty {
@@ -195,6 +175,48 @@ struct AskYubaiView: View {
                 SavingPurchaseCard(purchase: purchase, verdict: reply.purchaseVerdict, evidence: reply.evidenceEntryIDs,
                     notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
             }
+        }
+    }
+    private func showsStandardReply(_ reply: AssistantReply) -> Bool {
+        reply.purchaseJudgment == nil && (reply.purchaseQuestions ?? []).isEmpty && !isEntryDraftReply(reply)
+    }
+    @ViewBuilder private func changeCard(_ change: ChangeSet, message: AskMessage) -> some View {
+        let drafts: [EntryDraft] = change.items.compactMap { item in
+            guard case .addEntry(let draft) = item else { return nil }
+            return draft
+        }
+        if !drafts.isEmpty && drafts.count == change.items.count { AskEntryDraftCard(change: change, drafts: drafts, image: message.image) }
+        else { AskChangeCard(change: change) }
+    }
+    private func standardReplyCard(_ reply: AssistantReply, message: AskMessage) -> some View {
+        AssistantCard {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
+                if let chart = reply.chart, !store.current.preferences.hideAmounts { AnswerChartView(chart: chart) }
+                replyEvidence(reply, message: message)
+                unverifiedAmounts(reply)
+                if message.protectedEdit { protectedRecords(message) }
+                RememberedRows(notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
+            }
+        }
+    }
+    @ViewBuilder private func replyEvidence(_ reply: AssistantReply, message: AskMessage) -> some View {
+        if !message.protectedEdit {
+            NavigationLink("明细：\(reply.evidenceEntryIDs.count) 笔 ›") { AskEvidenceView(ids: reply.evidenceEntryIDs) }
+                .yubaiFont(YubaiFont.caption).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("answerEvidence")
+        }
+    }
+    @ViewBuilder private func unverifiedAmounts(_ reply: AssistantReply) -> some View {
+        if !reply.unverifiedAmounts.isEmpty {
+            InlineNote(text: store.current.preferences.hideAmounts ? "回答中有金额尚未核实，请核对记录。" : "这些金额尚未核实：" + reply.unverifiedAmounts.joined(separator: "、"), style: .attention)
+        }
+    }
+    @ViewBuilder private func protectedRecords(_ message: AskMessage) -> some View {
+        if message.protectedRecords.count == 1, let id = message.protectedRecords.first {
+            NavigationLink("核对这笔 · 记录详情 ›") { EntryDetailView(entryID: id) }.frame(minHeight: YubaiSize.tapMin).yubaiFont(YubaiFont.caption)
+        } else {
+            NavigationLink("核对相关记录 ›") { AskRecordLookupView(ids: message.protectedRecords) }.frame(minHeight: YubaiSize.tapMin).yubaiFont(YubaiFont.caption)
         }
     }
     private func isEntryDraftReply(_ reply: AssistantReply) -> Bool {

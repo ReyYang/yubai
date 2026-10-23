@@ -10,26 +10,35 @@ struct EntrySubcategoryRow: View {
         return entry
     }
     private var editable: Bool { entry.deletedAt == nil && [.expense, .income, .refund].contains(entry.nature) }
+    private var categoryTitle: String {
+        let main: String = Classification.displayCategory(classificationEntry.category)
+        return main + (classificationEntry.subcategory.map { " · " + $0 } ?? "")
+    }
+    private var classificationID: UUID {
+        guard entry.nature == .refund else { return entry.id }
+        return entry.relatedEntryID ?? entry.id
+    }
     var body: some View {
-        Button { selecting = true } label: {
-            HStack(spacing: YubaiSpace.space8) {
-                Text("分类")
-                Spacer(minLength: YubaiSpace.none)
-                Text(Classification.displayCategory(classificationEntry.category) + (classificationEntry.subcategory.map { " · " + $0 } ?? ""))
-                    .multilineTextAlignment(.trailing)
-                if classificationEntry.subcategory != nil && !classificationEntry.subcategoryUserEdited {
-                    AssistantMark(size: 14).accessibilityLabel("余白归的")
-                }
-                if editable { Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption) }
-            }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).disabled(!editable).accessibilityIdentifier("entrySubcategory")
+        Button { selecting = true } label: { label }
+            .buttonStyle(PressButtonStyle()).disabled(!editable).accessibilityIdentifier("entrySubcategory")
             .sheet(isPresented: $selecting) {
-                NavigationStack { SubcategoryPicker(entryID: entry.nature == .refund ? entry.relatedEntryID ?? entry.id : entry.id) }
+                NavigationStack { SubcategoryPicker(entryID: classificationID) }
                     .environment(store).appErrors()
                     #if os(macOS)
                     .frame(minWidth: 460, minHeight: 400)
                     #endif
             }
+    }
+    private var label: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            Text("分类")
+            Spacer(minLength: YubaiSpace.none)
+            Text(categoryTitle).multilineTextAlignment(.trailing)
+            if classificationEntry.subcategory != nil && !classificationEntry.subcategoryUserEdited {
+                AssistantMark(size: 14).accessibilityLabel("余白归的")
+            }
+            if editable { Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption) }
+        }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
     }
 }
 
@@ -42,20 +51,7 @@ private struct SubcategoryPicker: View {
     var body: some View {
         Page {
             if let entry {
-                let main = category ?? store.current.resolveCategory(entry.category)
-                Card(background: YubaiColor.raised) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        ForEach(store.current.categories.first(where: { $0.name == main })?.subcategories ?? [], id: \.self) { sub in
-                            let selected = main == entry.category && sub == entry.subcategory
-                            Button { save(main: main, sub: sub) } label: {
-                                Text(sub).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
-                                    .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
-                                    .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
-                                    .background(selected ? YubaiColor.brand : YubaiColor.card, in: Capsule()).yubaiHitTarget()
-                            }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
-                        }
-                    }
-                }
+                choices(for: entry)
             }
         }.navigationTitle((category ?? entry?.category ?? "") + "里的哪一类").yubaiNavigation()
             .toolbar {
@@ -63,7 +59,7 @@ private struct SubcategoryPicker: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Menu("换主项") {
                         if let entry {
-                            ForEach(store.current.categories.filter { $0.income == (entry.nature == .income) }) { main in
+                            ForEach(mainCategories(for: entry)) { main in
                                 Button(Classification.displayCategory(main.name)) { category = main.name }
                             }
                         }
@@ -71,14 +67,44 @@ private struct SubcategoryPicker: View {
                 }
             }
     }
+    private func mainCategories(for entry: Entry) -> [Category] {
+        store.current.categories.filter { $0.income == (entry.nature == .income) }
+    }
+    private func choices(for entry: Entry) -> some View {
+        let main: String = category ?? store.current.resolveCategory(entry.category)
+        let subcategories: [String] = store.current.categories.first { $0.name == main }?.subcategories ?? []
+        return Card(background: YubaiColor.raised) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                ForEach(subcategories, id: \.self) { sub in
+                    SubcategoryChoiceChip(entry: entry, main: main, sub: sub) { save(main: main, sub: sub) }
+                }
+            }
+        }
+    }
     private func save(main: String, sub: String) {
         if store.update("修改分类", showToast: false, { ledger in
             if let entry = ledger.activeEntries.first(where: { $0.id == entryID }), entry.category != main {
-                let change = ChangeSet(source: "用户操作", reason: "修改分类", items: [.setCategory(entryID, main)])
+                let change = ChangeSet(source: "用户操作", reason: "修改分类", items: [.setCategory(entry: entryID, category: main)])
                 try change.apply(to: &ledger)
             }
             try SubcategoryClassifier.set(sub, entryID: entryID, in: &ledger)
         }) { dismiss() }
+    }
+}
+
+private struct SubcategoryChoiceChip: View {
+    let entry: Entry
+    let main: String
+    let sub: String
+    let save: () -> Void
+    private var selected: Bool { main == entry.category && entry.subcategory == sub }
+    var body: some View {
+        Button(action: save) {
+            Text(sub).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
+                .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
+                .background(selected ? YubaiColor.brand : YubaiColor.card, in: Capsule()).yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -96,58 +122,77 @@ struct SubcategoryInsightsView: View {
     let interval: DateInterval
     var periodTitle = "本月"
     private var lines: [SubcategoryLine] {
-        let rows = Finance.subcategoryBreakdown(store.current, category: category, during: interval)
-        let grouped = Dictionary(grouping: rows) { $0.category == "没分类" || $0.category.isEmpty ? "其他" : $0.category }
-        return grouped.map { name, rows in
-            SubcategoryLine(title: name, amount: rows.reduce(0) { $0 + $1.amount }, count: rows.reduce(0) { $0 + $1.count })
-        }.sorted { $0.amount == $1.amount ? $0.title < $1.title : $0.amount > $1.amount }
+        let rows: [Breakdown] = Finance.subcategoryBreakdown(store.current, category: category, during: interval)
+        let grouped: [String: [Breakdown]] = Dictionary(grouping: rows) { row in
+            row.category == "没分类" || row.category.isEmpty ? "其他" : row.category
+        }
+        let totals: [SubcategoryLine] = grouped.map { name, rows in
+            let amount: Int64 = rows.reduce(0) { $0 + $1.amount }
+            let count: Int = rows.reduce(0) { $0 + $1.count }
+            return SubcategoryLine(title: name, amount: amount, count: count)
+        }
+        return totals.sorted {
+            if $0.amount == $1.amount { return $0.title < $1.title }
+            return $0.amount > $1.amount
+        }
     }
     private var previousInterval: DateInterval {
         let month = Dates.calendar.dateInterval(of: .month, for: interval.start)!
         return DateInterval(start: Dates.addMonths(-1, to: month.start), end: month.start)
     }
     var body: some View {
-        let rows = lines
-        let total = rows.reduce(Int64(0)) { $0 + $1.amount }
-        let count = rows.reduce(0) { $0 + $1.count }
-        let summary = Finance.cashFlow(store.current, during: interval)
-        let denominator = income ? summary.income : summary.spending
-        let previous = Finance.subcategoryBreakdown(store.current, category: category, during: previousInterval).reduce(Int64(0)) { $0 + $1.amount }
+        let rows: [SubcategoryLine] = lines
+        let total: Int64 = rows.reduce(0) { $0 + $1.amount }
         Page {
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text(rangeText + " · \(count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                AmountLabel(cents: total, hide: store.current.preferences.hideAmounts, role: .input, fractionDigits: 0)
-                if !store.current.preferences.hideAmounts {
-                    Text(shareText(total, denominator) + " · " + comparison(total - previous))
-                        .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                }
-            }
+            summary(rows: rows, total: total)
             Card(style: .list) {
                 VStack(alignment: .leading, spacing: YubaiSpace.none) {
                     Text("按小项").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).frame(minHeight: YubaiSize.iconButton)
                     ForEach(rows) { row in
                         EntryFormDivider()
-                        NavigationLink { SubcategoryRecordsView(category: category, subcategory: row.title, income: income, interval: interval) } label: {
-                            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                                    Text(row.title).yubaiFont(YubaiFont.row)
-                                    if restrained(row.title) { Text("想克制").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
-                                    Spacer(minLength: YubaiSpace.none)
-                                    AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts)
-                                    if !store.current.preferences.hideAmounts {
-                                        Text(percent(row.amount, total)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                                    }
-                                }
-                                if !store.current.preferences.hideAmounts {
-                                    SavingProgressBar(ratio: total > 0 ? max(0, Double(row.amount) / Double(total) * 2) : 0)
-                                }
-                            }.padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-                        }.buttonStyle(PressButtonStyle())
+                        line(row, total: total)
                     }
                 }
             }
         }.navigationTitle(Classification.displayCategory(category) + " · " + periodTitle).yubaiNavigation()
             .accessibilityIdentifier("subcategoryInsights")
+    }
+    private func summary(rows: [SubcategoryLine], total: Int64) -> some View {
+        let count: Int = rows.reduce(0) { $0 + $1.count }
+        let flow: CashFlowSummary = Finance.cashFlow(store.current, during: interval)
+        let denominator: Int64 = income ? flow.income : flow.spending
+        let previousRows: [Breakdown] = Finance.subcategoryBreakdown(store.current, category: category, during: previousInterval)
+        let previous: Int64 = previousRows.reduce(0) { $0 + $1.amount }
+        let comparisonText: String = shareText(total, denominator) + " · " + comparison(total - previous)
+        return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text(rangeText + " · \(count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            AmountLabel(cents: total, hide: store.current.preferences.hideAmounts, role: .input, fractionDigits: 0)
+            if !store.current.preferences.hideAmounts {
+                Text(comparisonText).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            }
+        }
+    }
+    private func line(_ row: SubcategoryLine, total: Int64) -> some View {
+        let ratio: Double = total > 0 ? max(0, Double(row.amount) / Double(total) * 2) : 0
+        return NavigationLink {
+            SubcategoryRecordsView(category: category, subcategory: row.title, income: income, interval: interval)
+        } label: {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                lineHeading(row, total: total)
+                if !store.current.preferences.hideAmounts { SavingProgressBar(ratio: ratio) }
+            }.padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle())
+    }
+    private func lineHeading(_ row: SubcategoryLine, total: Int64) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+            Text(row.title).yubaiFont(YubaiFont.row)
+            if restrained(row.title) { Text("想克制").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
+            Spacer(minLength: YubaiSpace.none)
+            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts)
+            if !store.current.preferences.hideAmounts {
+                Text(percent(row.amount, total)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            }
+        }
     }
     private var rangeText: String {
         FixedFlowPresentation.monthDay(interval.start) + " – " + FixedFlowPresentation.monthDay(max(interval.start, interval.end.addingTimeInterval(-0.001)))
@@ -175,15 +220,18 @@ private struct SubcategoryRecordsView: View {
     let subcategory: String
     let income: Bool
     let interval: DateInterval
-    var body: some View {
-        let byID = Dictionary(uniqueKeysWithValues: store.current.entries.map { ($0.id, $0) })
-        let rows = store.sortedEntries.filter { entry in
+    private var rows: [Entry] {
+        let byID: [UUID: Entry] = Dictionary(uniqueKeysWithValues: store.current.entries.map { ($0.id, $0) })
+        return store.sortedEntries.filter { entry in
+            let matchesNature: Bool = income ? entry.nature == .income : [.expense, .refund].contains(entry.nature)
             guard entry.deletedAt == nil, entry.date >= interval.start, entry.date < interval.end,
-                  income ? entry.nature == .income : (entry.nature == .expense || entry.nature == .refund),
+                  matchesNature,
                   store.current.resolveCategory(Finance.spendingCategory(entry, entriesByID: byID)) == store.current.resolveCategory(category) else { return false }
             let original = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } : nil
             return ((original ?? entry).subcategory ?? "其他") == subcategory
         }
+    }
+    var body: some View {
         Page { CardRows(rows) { entry in EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts, editable: true) } }
             .navigationTitle(subcategory).yubaiNavigation()
     }

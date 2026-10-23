@@ -67,6 +67,121 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["固定收付"].waitForExistence(timeout: 5))
     }
 
+    private func openPurchaseFixture(_ fixture: String, question: String = "想买双徒步鞋 899，该不该买？") -> XCUIApplication {
+        let app = application(fixture); app.launch()
+        tap(app.buttons["askYubai"], in: app)
+        let input = app.descendants(matching: .any).matching(identifier: "askInput").firstMatch
+        tap(input, in: app); input.typeText(question)
+        tap(app.buttons["sendAsk"], in: app)
+        return app
+    }
+
+    private func assertPurchaseVerdict(_ label: String, in app: XCUIApplication) {
+        let verdict = app.staticTexts["purchaseVerdict"]
+        XCTAssertTrue(verdict.waitForExistence(timeout: 10))
+        XCTAssertEqual(verdict.label, label)
+    }
+
+    func testJudgeAskScreenshotFixture() {
+        let app = openPurchaseFixture("judge-ask")
+        XCTAssertTrue(app.staticTexts["最近三个月徒步过几次？"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["有双跑鞋"].exists)
+        XCTAssertTrue(app.buttons["会，旧鞋磨脚"].exists)
+        snapshot("purchase-questions", app)
+        tap(app.buttons["还没怎么去"], in: app)
+        tap(app.buttons["有双跑鞋"], in: app)
+        tap(app.buttons["说不好"], in: app)
+        tap(app.buttons["就这样回答"], in: app)
+        assertPurchaseVerdict("等等再说", in: app)
+    }
+
+    func testJudgeWaitScreenshotFixture() {
+        let app = openPurchaseFixture("judge-wait")
+        assertPurchaseVerdict("等等再说", in: app)
+        XCTAssertTrue(app.buttons["放进心愿单 · 3 天后再问我"].exists)
+        snapshot("purchase-wait", app)
+    }
+
+    func testJudgeBuyScreenshotFixture() {
+        let app = openPurchaseFixture("judge-buy")
+        assertPurchaseVerdict("买吧", in: app)
+        XCTAssertTrue(app.buttons["买了，记一笔"].exists)
+        snapshot("purchase-buy", app)
+    }
+
+    func testJudgeSkipScreenshotFixture() {
+        let app = openPurchaseFixture("judge-skip", question: "想买个 1,899 的降噪耳机，该不该买？")
+        assertPurchaseVerdict("先别买", in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '买了以后还能花' AND label CONTAINS '620'")).firstMatch.exists)
+        snapshot("purchase-skip", app)
+    }
+
+    func testWishlistCoolScreenshotFixture() {
+        let app = application("wishlist-cool"); app.launch()
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "心愿单")).firstMatch, in: app)
+        XCTAssertTrue(app.staticTexts["没买，省下的"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["冷静了 7 天"].exists)
+        XCTAssertTrue(app.buttons["还想要"].exists)
+        XCTAssertTrue(app.staticTexts["冷静中 · 还有 2 天"].exists)
+        XCTAssertTrue(app.staticTexts["放了 12 天"].exists)
+        XCTAssertTrue(app.staticTexts["买了一个月 · 用得怎么样？"].exists)
+        snapshot("wishlist-cooldown", app)
+    }
+
+    func testLetterSavingScreenshotFixture() {
+        let app = application("letter-saving"); app.launch()
+        // The profile tab always keeps the letter reachable, including Thu–Sun.
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "每周来信")).firstMatch, in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "每周来信")).firstMatch, in: app)
+        XCTAssertTrue(app.staticTexts["这些还在用吗？"].waitForExistence(timeout: 5))
+        for title in ["视频会员", "网盘", "健身 App", "这周省下", "一共省下"] { XCTAssertTrue(app.staticTexts[title].exists) }
+        snapshot("letter-saving-subscriptions", app)
+    }
+
+    func testProfileRevisitScreenshotFixture() {
+        let app = application("profile-revisit"); app.launch()
+        XCTAssertTrue(app.buttons["restrainNear"].waitForExistence(timeout: 5))
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons["openProfile"], in: app)
+        snapshot("profile-progress", app)
+        tap(app.buttons["profileChatEntry"], in: app)
+        XCTAssertTrue(app.buttons["最近花钱的感觉变了"].waitForExistence(timeout: 10))
+        snapshot("profile-revisit-opening", app)
+        let input = app.descendants(matching: .any).matching(identifier: "profileInput").firstMatch
+        tap(input, in: app); input.typeText("外卖这周到上限了，但加班那几天真没办法")
+        tap(app.buttons["sendProfile"], in: app)
+        XCTAssertTrue(app.staticTexts["外卖这周已经 3 次了，加班的日子想怎么安排？"].waitForExistence(timeout: 10))
+        snapshot("profile-revisit-reply", app)
+    }
+
+    func testSubcategoryScreenshotFixture() {
+        let app = application("subcategory"); app.launch()
+        tap(app.buttons["tab_insights"], in: app)
+        tap(app.buttons["insightCategory_0"], in: app)
+        XCTAssertTrue(app.navigationBars["购物 · 本月"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["其他"].exists)
+        snapshot("shopping-subcategories", app)
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "运动户外")).firstMatch, in: app)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "徒步鞋")).firstMatch.waitForExistence(timeout: 5))
+        snapshot("outdoor-records", app)
+        tap(app.navigationBars.buttons["购物 · 本月"], in: app)
+        tap(app.navigationBars.buttons["洞察"], in: app)
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "心愿单")).firstMatch, in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "买了 1 件")).firstMatch, in: app)
+        tap(app.buttons["购买记录"], in: app)
+        XCTAssertTrue(app.staticTexts["entryDetailTitle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["entryDetailTitle"].label, "徒步鞋 · 京东")
+        XCTAssertTrue(app.buttons["entrySubcategory"].label.contains("运动户外"))
+        snapshot("entry-subcategory", app)
+        tap(app.buttons["entrySubcategory"], in: app)
+        XCTAssertTrue(app.buttons["运动户外"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["换主项"].exists)
+        snapshot("subcategory-picker", app)
+    }
+
     func testFixedBillCheckMarksPaidAndUndoRestoresIt() {
         let app = application("bills"); app.launch()
         XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))

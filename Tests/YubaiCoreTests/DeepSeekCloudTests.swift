@@ -25,7 +25,7 @@ final class DeepSeekCloudTests: XCTestCase {
             do { _ = try await stub.listModels(); XCTFail("invalid model list must fail") }
             catch { XCTAssertFalse(error.localizedDescription.contains("test-key")) }
         }
-        XCTAssertEqual(DeepSeekClient.fallbackModels, ["deepseek-v4-flash", "deepseek-v4-pro"])
+        XCTAssertEqual(DeepSeekClient.fallbackModels, ["deepseek-flash", "deepseek-v4-pro"])
     }
 
     func testModelsPreservesVersionedBaseAndNormalizesCompletionURL() async throws {
@@ -82,7 +82,7 @@ final class DeepSeekCloudTests: XCTestCase {
         ])
         XCTAssertEqual(config?.apiKey, "test-key-not-real")
         XCTAssertEqual(config?.baseURL.absoluteString, "https://example.test/v1")
-        XCTAssertEqual(config?.model, "deepseek-v4-flash")
+        XCTAssertEqual(config?.model, "deepseek-flash")
         XCTAssertFalse(config?.diagnosticsLabel.contains("test-key") ?? true)
         XCTAssertEqual(
             DeepSeekClient.chatCompletionsURL(baseURL: URL(string: "https://api.deepseek.com")!).absoluteString,

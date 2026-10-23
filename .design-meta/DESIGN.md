@@ -450,3 +450,10 @@ owner 指定 设计稿画布「第十五轮 · 帮你省钱」 的 12 张 `V15-*
 复用现有 DesignSystem 颜色与字体，26px 衬线结论取 lead 22px，40px 数字取 amountInput 38px 并取整，未新造 token。近限额一行取 RestrainProgress 的较大比例、最多一条；≥80% 琥珀，over 仍用原卡。三处再聊带对应上下文，消费观内容决定冷启动／再聊，已开始模式保持；未配云端入口仅禁用。洞察保持所选期间，未归小项并入其他，和上月比取完整上月；首页合并扇区仍进原记录列表。来信原图、三个数字、记忆和提醒开关保留，新增成对省钱数字与订阅卡放在正文后。心愿邀请的「不用了」收起本次页面邀请。
 
 Linux build／449 项测试通过（新增 1 项独立退款小项回归），全部 App 文件的 iOS 26／macOS 14 条件语法解析、工程引用、token 与保护文案核对通过。没有 Apple SDK 类型检查、UI 实跑或设备视觉验收；完整待验项见交付记录。HTML 原稿保留给定位置且未改，Figma、旧原型、截图和分发包未同步，未提交／推送。
+
+
+## 2026-10-23 · PR #34 编译修复与截图夹具
+
+沿用第十五轮已采用稿与「少写字」规则，不新增页面、外观或说明文字。按 owner 的 Xcode 真编译错误修正分类枚举调用标签、抽出小项网格选择芯片，并逐个复核 SavingPurchaseViews、SavingViews、SubcategoryViews 及八个接线页面；把复杂选择状态、筛选／汇总、聊天气泡、行和导航拆开，让 SwiftUI 分别求类型。Core 签名／访问与可选性逐项对照定义。模型名按 owner 提供的官方原文更正为 deepseek-flash／deepseek-v4-pro。
+
+新增 judge-ask／judge-wait／judge-buy／judge-skip／wishlist-cool／letter-saving／profile-revisit／subcategory 八个合成截图脚本，限制仍为 Debug＋模拟器＋UUID 测试账本。问答继续通过脚本 transport 执行真实工具；来信通过真实 candidate 生成首封并保持未静音，周四以后从我页打开。截图入口、全部文件和验证见[交付续记](../docs/SAVING-UI-V15.md#2026-10-23--pr-34-编译修复与截图夹具)。Linux 449 项测试（445 通过／4 原有跳过／0 失败）、8 脚本离线 Core 执行及 App iOS／macOS 语法解析通过；新增 8 个 UI 流程仅静态检查，Apple 真编译／UI 实跑及截图验收待做。HTML、Figma 和分发包未改，无提交／推送。

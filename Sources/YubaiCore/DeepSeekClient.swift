@@ -13,12 +13,12 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
     public static let defaultBaseURL = URL(string: "https://api.deepseek.com")!
     /// Prefer a fast chat model; override with `DEEPSEEK_MODEL` when needed.
     /// Legacy saved names are mapped when reading configuration.
-    public static let defaultModel = "deepseek-v4-flash"
+    public static let defaultModel = "deepseek-flash"
     public static let modelPreferenceKey = "DeepSeek.model"
 
     public static func canonicalModel(_ name: String) -> String {
         switch name {
-        case "deepseek-chat", "deepseek-flash": return "deepseek-v4-flash"
+        case "deepseek-chat", "deepseek-v4-flash": return "deepseek-flash"
         case "deepseek-reasoner": return "deepseek-v4-pro"
         default: return name
         }
@@ -87,7 +87,7 @@ public enum DeepSeekError: Error, LocalizedError, Equatable, Sendable {
 
 /// Minimal OpenAI-compatible chat client for DeepSeek. Does not print credentials.
 public struct DeepSeekClient: ChatTransport {
-    public static let fallbackModels = ["deepseek-v4-flash", "deepseek-v4-pro"]
+    public static let fallbackModels = ["deepseek-flash", "deepseek-v4-pro"]
     public var configuration: DeepSeekConfiguration
     private let redactor: Redactor
     private let sendLog: SendLog

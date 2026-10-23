@@ -103,18 +103,7 @@ struct OverviewView: View {
         return Card(style: .list, background: YubaiColor.amberTint) {
             VStack(spacing: YubaiSpace.none) {
                 ForEach(Array(rows.prefix(2))) { row in
-                    HStack(spacing: YubaiSpace.gapGroup) {
-                        FixedFlowDot(state: .due)
-                        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                            Text(row.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
-                            Text(dueDetail(row)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, fractionDigits: row.amount % 100 == 0 ? 0 : 2,
-                                    ink: YubaiColor.amberStrong)
-                        if let id = row.planID {
-                            FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount)
-                        }
-                    }.frame(minHeight: YubaiSize.rowDouble)
+                    dueRow(row)
                     if row.id != rows.prefix(2).last?.id { EntryFormDivider() }
                 }
                 if rows.count > 2 {
@@ -125,6 +114,20 @@ struct OverviewView: View {
                 }
             }
         }.accessibilityIdentifier("dueBills")
+    }
+    private func dueRow(_ row: Occurrence) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            FixedFlowDot(state: .due)
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text(row.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
+                Text(dueDetail(row)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, fractionDigits: row.amount % 100 == 0 ? 0 : 2,
+                        ink: YubaiColor.amberStrong)
+            if let id = row.planID {
+                FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount)
+            }
+        }.frame(minHeight: YubaiSize.rowDouble)
     }
     private func dueDetail(_ row: Occurrence) -> String {
         let date = Dates.day(row.date) == Dates.day(Date()) ? "今天到期" : FixedFlowPresentation.monthDay(row.date) + "到期"
@@ -178,16 +181,7 @@ struct UpcomingPaymentsView: View {
             if payments.isEmpty { Text("没有待完成的付款。")
                 .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             CardRows(payments) { item in
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: YubaiSpace.gapGroup) { title(item); Spacer(); amount(item) }
-                        VStack(alignment: .leading, spacing: YubaiSpace.space8) { title(item); amount(item) }
-                    }
-                    if canEnd(item) {
-                        Button("结束这个安排") { ending = item }.yubaiFont(YubaiFont.caption)
-                            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("endArrangement_" + item.id)
-                    }
-                }.padding(.vertical, YubaiSpace.space8)
+                paymentRow(item)
             }
         }.confirmationDialog("结束「\(ending?.title ?? "这个安排")」？已到期付款和历史记录继续保留。",
                              isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } })) {
@@ -209,6 +203,18 @@ struct UpcomingPaymentsView: View {
     }
     private func amount(_ item: Occurrence) -> some View {
         AmountLabel(cents: item.amount, hide: store.current.preferences.hideAmounts, sign: .outflow)
+    }
+    private func paymentRow(_ item: Occurrence) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: YubaiSpace.gapGroup) { title(item); Spacer(); amount(item) }
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) { title(item); amount(item) }
+            }
+            if canEnd(item) {
+                Button("结束这个安排") { ending = item }.yubaiFont(YubaiFont.caption)
+                    .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("endArrangement_" + item.id)
+            }
+        }.padding(.vertical, YubaiSpace.space8)
     }
     private func canEnd(_ item: Occurrence) -> Bool {
         if let id = item.planID, let plan = store.current.plans.first(where: { $0.id == id }) { return plan.endDate == nil }
