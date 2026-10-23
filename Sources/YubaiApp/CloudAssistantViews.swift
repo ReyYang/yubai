@@ -9,28 +9,28 @@ import AppKit
 struct CloudAISettingsSection: View {
     @State private var key = ""
     @State private var configured = APIKeyStore.shared.isConfigured
+    @State private var hasKey = APIKeyStore.shared.hasKeychainKey
     @State private var status = ""
     @State private var testing = false
     var body: some View {
         Section("DeepSeek 密钥") {
-            Text(configured ? "已配置" : "未配置").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+            LabeledContent("密钥", value: hasKey ? "钥匙串 ✓" : (configured ? "环境变量" : "未配置"))
+                .accessibilityLabel(hasKey ? "密钥已保存在本机钥匙串，不进入账本或备份" : (configured ? "使用开发环境的密钥" : "还没配置密钥"))
             SecureField("DeepSeek API 密钥", text: $key).autocorrectionDisabled().privacySensitive()
             Button("保存或替换密钥") { saveKey() }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("删除密钥", role: .destructive) { deleteKey() }
-            Text("密钥仅保存在本机钥匙串，不进入账本或备份。删除后，开发环境仍可使用环境变量中的密钥。")
-                .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             Button(testing ? "正在连接…" : "测试连接") { testConnection() }.disabled(!configured || testing)
             if !status.isEmpty { Text(status).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-            .onAppear { configured = APIKeyStore.shared.isConfigured }
+            .onAppear { configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey }
             .onDisappear { key = "" }
     }
     @MainActor private func saveKey() {
-        do { try APIKeyStore.shared.save(key); key = ""; configured = APIKeyStore.shared.isConfigured; IntelligenceRuntime.cloud.refresh(); status = "密钥已保存。" }
+        do { try APIKeyStore.shared.save(key); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已保存" }
         catch { status = error.localizedDescription }
     }
     @MainActor private func deleteKey() {
-        do { try APIKeyStore.shared.delete(); key = ""; configured = APIKeyStore.shared.isConfigured; IntelligenceRuntime.cloud.refresh(); status = "钥匙串中的密钥已删除。" }
+        do { try APIKeyStore.shared.delete(); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已删除" }
         catch { status = error.localizedDescription }
     }
     @MainActor private func testConnection() {
@@ -60,7 +60,6 @@ struct CloudModelMenu: View {
                     catch { store.error = error.localizedDescription }
                 } label: {
                     Text(model)
-                    if let description = description(model) { Text(description) }
                     if IntelligenceRuntime.cloud.model == model { Image(systemName: "checkmark") }
                 }.accessibilityIdentifier("cloudModel_" + model)
                     .accessibilityAddTraits(IntelligenceRuntime.cloud.model == model ? .isSelected : [])
@@ -79,13 +78,6 @@ struct CloudModelMenu: View {
         }.accessibilityIdentifier("editCloudModel")
             .navigationDestination(isPresented: $editing) { CloudModelEditor() }
             .task { await fetchModels() }
-    }
-    private func description(_ model: String) -> String? {
-        switch model {
-        case "deepseek-chat": "快，日常记账和问答"
-        case "deepseek-reasoner": "会多想一会，适合该不该买"
-        default: nil
-        }
     }
     private func fetchModels() async {
         #if DEBUG && targetEnvironment(simulator)
@@ -128,11 +120,12 @@ struct CloudModelEditor: View {
 struct ModelUnavailableNote: View {
     let model: String
     var body: some View {
-        (Text("模型「\(model)」现在用不了。").foregroundColor(YubaiColor.amberInk).fontWeight(.medium)
-         + Text("请到「模型」换个名字再试。"))
+        Text("模型「\(model)」不可用")
+            .foregroundStyle(YubaiColor.amberInk)
             .yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
             .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .accessibilityHint("使用下方模型菜单选择其他模型")
             .accessibilityIdentifier("modelUnavailable")
     }
 }
@@ -167,8 +160,10 @@ struct CloudSendLogView: View {
     var body: some View {
         Page {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text("本次打开后发了 \(sentCount) 次，共 " + CloudLogText.bytes(sentBytes)).yubaiFont(YubaiFont.lead).accessibilityIdentifier("cloudSendSummary")
-                Text("只存在本机内存，关掉应用就清空").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                SectionHeading(title: "本次打开")
+                Text("\(sentCount) 次 · " + CloudLogText.bytes(sentBytes)).yubaiFont(YubaiFont.lead).accessibilityIdentifier("cloudSendSummary")
+                    .accessibilityLabel("本次打开后发送 \(sentCount) 次，共 " + CloudLogText.bytes(sentBytes))
+                    .accessibilityHint("发送记录只存在本机内存，关掉应用就清空；汇总图仅包含保留的记录")
             }
             if groups.isEmpty {
                 Card { Text("还没有发送记录。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted).accessibilityIdentifier("emptyCloudSendLog") }
@@ -181,9 +176,6 @@ struct CloudSendLogView: View {
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("cloudLogGroup_" + group.id.uuidString)
                 }
                 if visible.isEmpty { Text("没有没成功的记录。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
-                if groups.reduce(0, { $0 + $1.requestCount }) < sentCount {
-                    Text("较早的记录已移出；按保留的记录汇总。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                }
             }
             Button("清空这份记录") { SendLog.shared.clear(); reload() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("clearCloudSendLog")
         }.amountPrivacy(store.current.preferences.hideAmounts).navigationTitle("发给云端的内容").yubaiNavigation()

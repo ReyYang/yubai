@@ -57,12 +57,7 @@ struct OverviewView: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("freshLetter")
             }
             if store.current.accounts.isEmpty {
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text("从真实余额开始").yubaiFont(YubaiFont.heroLabel)
-                    Text("先添加账户，填写此刻真实余额。").yubaiFont(YubaiFont.callout)
-                    Button("添加第一个账户") { store.sheet = .account(nil) }
-                        .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addFirstAccount")
-                }
+                EmptyAccountState { store.sheet = .account(nil) }
             } else {
                 HeroCard(available: funds.available, payable: funds.debt + funds.committed,
                          reserved: funds.goals + funds.emergency + funds.living + funds.uncertainInflow,
@@ -188,15 +183,16 @@ struct UpcomingPaymentsView: View {
                     }
                 }.padding(.vertical, YubaiSpace.space8)
             }
-        }.confirmationDialog("结束「\(ending?.title ?? "这个安排")」？已到期付款和历史记录继续保留。",
-                             isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } })) {
-            Button("结束这个安排", role: .destructive) {
+        }.confirmationDialog("停掉「\(ending?.title ?? "这个安排")」",
+                             isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } }), titleVisibility: .visible) {
+            Button("停掉以后的", role: .destructive) {
                 if let item = ending, let id = item.planID ?? item.rentID {
                     let change = ChangeSet(source: "用户操作", reason: "从现在起结束「\(item.title)」", items: [.endPlan(id, Date())])
                     store.apply(change, label: "结束安排")
                 }
                 ending = nil
-            }
+            }.accessibilityHint("只停以后的，已到期付款和历史记录保留")
+            Button("取消", role: .cancel) { ending = nil }
         }
     }
     private func title(_ item: Occurrence) -> some View {

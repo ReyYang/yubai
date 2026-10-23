@@ -28,12 +28,7 @@ struct QuickEntryView: View {
                     ManualSheetHeader(title: "记一笔", actionTitle: "导入", actionImage: "photo", primary: false,
                                       cancel: { dismiss() }, action: { store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports })
                     if accounts.isEmpty {
-                        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                            Text("从真实余额开始").yubaiFont(YubaiFont.heroLabel)
-                            Text("先添加账户，填写此刻真实余额。").yubaiFont(YubaiFont.callout)
-                            Button("添加第一个账户") { store.sheet = .account(nil) }
-                                .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addFirstAccount")
-                        }
+                        EmptyAccountState { store.sheet = .account(nil) }
                         Spacer(minLength: YubaiSpace.none)
                     } else {
                         Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature)
@@ -131,9 +126,10 @@ struct QuickEntryView: View {
         Card(style: .list) {
             VStack(spacing: YubaiSpace.none) {
                 EntryFormRow(title: "用途") {
-                    TextField("午饭、打车…（可不填）", text: $purpose).multilineTextAlignment(.trailing)
+                    TextField("用途", text: $purpose).multilineTextAlignment(.trailing)
                         .focused($purposeFocused).accessibilityIdentifier("entryPurpose").accessibilityLabel("用途")
                 }
+                RecentPurposeChips(selection: $purpose)
                 EntryFormDivider()
                 EntryFormRow(title: "账户") { EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, showsBalance: true) }
                 if nature == .transfer {

@@ -6,7 +6,18 @@ struct WishlistView: View {
     var focusedWishID: UUID? = nil
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
-            if store.current.wishlist.isEmpty { EmptyState("heart", "心愿单还是空的", "问问余白：该不该买？") }
+            if store.current.wishlist.isEmpty {
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        ForEach(0..<2) { index in
+                            if index > 0 { EntryFormDivider() }
+                            HStack(spacing: YubaiSpace.gapSection) { DashedPlaceholder(); Spacer(); DashedPlaceholder().frame(width: YubaiSize.rowSingle) }
+                                .frame(minHeight: YubaiSize.rowDouble)
+                        }
+                    }
+                }.accessibilityHidden(true)
+                EmptyState("heart", "心愿单还是空的", showsPlaceholder: false, action: "该不该买", onAction: { store.sheet = .ask("该不该买？") })
+            }
             if let focusedWishID, let wish = store.current.wishlist.first(where: { $0.id == focusedWishID }) { wishRow(wish) }
             let due = store.current.wishlist.filter { $0.id != focusedWishID && followUpVisible($0) }
             ForEach(due) { wish in
@@ -71,7 +82,11 @@ struct WishlistView: View {
                 }
                 if let answer = wish.followUpAnswer { Text("一个月后的感受：" + answer).yubaiFont(YubaiFont.callout) }
                 else if let due = wish.followUpAt, due <= Date() { WishFollowUpView(wishID: wish.id) }
-                else if let due = wish.followUpAt { Text("到 \(Dates.text(due))，再聊聊用下来的感受。").yubaiFont(YubaiFont.caption) }
+                else if let due = wish.followUpAt {
+                    Label(Dates.text(due), systemImage: "calendar.badge.clock")
+                        .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        .accessibilityLabel("\(Dates.text(due)) 问你用得怎么样")
+                }
             }
         }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
     }

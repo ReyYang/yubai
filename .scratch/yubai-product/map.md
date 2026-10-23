@@ -63,6 +63,8 @@ Status: open
 
 ## Decisions so far
 
+- [第十六轮少写字，让版式说话](issues/13-complete-personal-release.md#2026-10-23--第十六轮少写字让版式说话owner-确认稿) — owner 确认 V16 规则与画板，54 项按文案／布局接线；系统入口图示按授权降级。语法解析已做，Linux swift test 结果见交付总结，Apple 验收待做；未提交／推送。
+
 - [Figma 全动作 UI / UX](issues/14-figma-action-atlas.md) — 按用户 2026-10-02 请求，从当前实现绘制手机全部业务流程、共用状态、Mac 适配与组件参考；设计交付完成，原型逐路径点击及用户视觉审阅不冒充已验收。
 - [余白个人完整版本](issues/13-complete-personal-release.md) — 保留 1.0 交付历史，并承载 2026-10-20「2.0 · 管家」的用户决定、Agent 实现选择与未验证项；当前只有静态检查，owner 的两端组合验收待完成。
 - [现有记账软件怎样分类和自动整理交易](issues/10-category-research.md) — 官方资料支持稳定类别、自动匹配、批量纠正及其他兜底的候选方向，批量 AI 实际效果仍待样本验证。

@@ -1,5 +1,8 @@
 # 余白 · 产品与设计入口
 
+**2026-10-23 第十六轮「少写字，让版式说话」**：owner 确认的 11 张页面／片段板与 1 张规则板已[原样归档](mockups/no-explanatory-copy-v16/README.md)，在 `feat/no-explanatory-copy` 保留中断前工作并补完 SwiftUI；采用范围见[设计登记](DESIGN.md#2026-10-23--第十六轮少写字让版式说话)、[owner 决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-23--第十六轮少写字让版式说话owner-确认稿)。[交付总结](no-explanatory-copy-v16.md)列出全部 54 项和可见中文：53 项代码已改，系统入口图示 1 项按授权降级为静态缩略图／名称；快捷指令按钮按授权打开系统 App。24 个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 条件语法解析通过，原 47 个 UI 测试方法保留。Linux swift test 结果见交付总结；Apple 类型检查、UI 实跑与设备验收待做。Core 仅一条显示字符串和对应参考断言变化；模型／算法／格式／依赖保持。未提交、未推送、未运行 Actions、未访问付费模型 API；Figma／旧原型／分发包未同步。
+
+
 **2026-10-22 分页同步与右滑归属复验**：按 owner 对 `bd8b1b2` 的 vphone 反馈，tab 点击改为每次直接滚动，实际分页偏移回写当前页与高亮；未展开账目行及管家卡只接左滑，右滑交给分页，账目展开后双向处理与锁页保持。[实现与验证边界](DESIGN.md#2026-10-22--分页同步与右滑归属复验)、[owner 规则](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--分页同步与右滑归属owner-vphone-复测)。指定 swift test：406 项、402 通过／4 项原有跳过／0 失败；四个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 语法解析通过，保留原 43 个测试方法并新增 4 个。Apple SDK 类型检查、UI 实跑待做，其余手势、macOS、`docs/` 和设计稿保持，未提交／推送。
 
 **2026-10-22 页内横滑复验修复**：按 owner 的 vphone 反馈，`HorizontalPan` 改用位移判方向，仅让可横滚／paging 的 UIScrollView pan 等待页内手势失败，不再依赖 UIKit 子视图关系；账目共享 `revealedEntryID`，重复左滑保持、右滑收回，另一行左滑、点按、竖滚、切页／sheet 时关闭。[实现与验证边界](DESIGN.md#2026-10-22--页内横滑复验修复)、[owner 要求](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--页内横滑复验owner-vphone-反馈)。管家原有 25%／快速左扫阈值及 macOS 行为保持。Linux swift test：406 项、402 通过／4 项原有实网跳过／0 失败；改动 App 文件 iOS 26／macOS 14、UI 测试 iOS 26 语法解析通过。原 38 个测试方法保留并新增 4 个，UI 实跑与设备复验待做。`docs/`、设计稿、依赖和分发包未改，未提交／推送。

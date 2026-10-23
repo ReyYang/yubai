@@ -154,25 +154,20 @@ struct IntelligencePrivacyView: View {
                         CloudModelMenu()
                         separator
                         NavigationLink { Form { CloudAISettingsSection() }.editorForm().navigationTitle("密钥").yubaiNavigation() } label: {
-                            settingsRow("密钥", detail: hasKey ? "已存在本机钥匙串" : (configured ? "使用环境变量" : "未配好"), chevron: true)
-                        }
+                            settingsRow("密钥", detail: hasKey ? "钥匙串 ✓" : (configured ? "环境变量" : "未配好"), chevron: true)
+                        }.accessibilityLabel(hasKey ? "密钥，保存在本机钥匙串，不进入账本或备份" : (configured ? "密钥，使用环境变量" : "密钥，未配好"))
                     }.buttonStyle(PressButtonStyle())
                 }
             }
-            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                heading("隐私")
-                Card(style: .list) {
-                    NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开后发了 \(sendCount) 次", chevron: true) }
-                        .buttonStyle(PressButtonStyle())
-                }
-                Text("发送：问题、金额、日期、分类、商户和备注。不发送：账户名、卡号、交易单号、附件；转账姓名以「联系人A」显示。")
-                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard)
+            privacyChips("会发给云端", values: ["问题", "金额", "日期", "分类", "商户", "备注", "转账姓名 → 联系人A"])
+            privacyChips("不发", values: ["账户名", "卡号", "交易单号", "附件"], excluded: true)
+            Card(style: .list) {
+                NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开 \(sendCount) 次", chevron: true) }
+                    .buttonStyle(PressButtonStyle())
             }
             // Retain the existing device and notification preferences below the cloud/privacy groups.
             Card(style: .list) {
-                Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { enabled in
-                    Task { await store.setWeeklyLetterPush(enabled) }
-                })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: YubaiSize.headerHeight)
+                WeeklyLetterReminder()
             }
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 heading("设备与界面")
@@ -191,6 +186,22 @@ struct IntelligencePrivacyView: View {
             configured = IntelligenceRuntime.isConfigured; sendCount = SendLog.shared.totalCount
         }
         .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.totalCount }
+    }
+    private func privacyChips(_ title: String, values: [String], excluded: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+            heading(title)
+            Card {
+                ChipFlow {
+                    ForEach(values, id: \.self) { value in
+                        Text(value).yubaiFont(YubaiFont.caption).strikethrough(excluded)
+                            .foregroundStyle(excluded ? YubaiColor.labelSecondary : YubaiColor.label)
+                            .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
+                            .background(excluded ? Color.clear : YubaiColor.raised, in: Capsule())
+                            .overlay { if excluded { Capsule().strokeBorder(YubaiColor.borderDashed) } }
+                    }
+                }
+            }.accessibilityElement(children: .combine).accessibilityLabel(title + "：" + values.joined(separator: "、"))
+        }
     }
     private func heading(_ text: String) -> some View { Text(text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard) }
     private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
@@ -227,6 +238,8 @@ struct BackupView: View {
     @State private var exporting = false; @State private var importing = false; @State private var exportName = ""
     @State private var pendingRestore: Ledger?; @State private var restoreData: Data?; @State private var busy = false; @State private var message: String?
     @State private var exportedLedgerID: UUID?; @State private var exportedAt: Date?
+    @State private var encryptedRestore = false
+    private struct BackupHeader: Decodable { let format: String; let version: Int; let encrypted: Bool }
     private enum PasswordField: Hashable { case export, restore }
     @FocusState private var passwordFocus: PasswordField?
     var body: some View {
@@ -240,8 +253,8 @@ struct BackupView: View {
                 Section("已验证的备份") {
                     Text("\(pendingRestore.accounts.count) 个账户 · \(pendingRestore.activeEntries.count) 笔有效记录 · \(pendingRestore.attachments.count) 份附件")
                     Text("最后修改：\(Dates.text(pendingRestore.updatedAt, time: true))").yubaiFont(YubaiFont.caption)
-                    Button("确认恢复这份账本") { if store.restore(pendingRestore) { self.pendingRestore = nil; restoreData = nil; message = "恢复操作已完成，原账本保留在本地恢复历史。" } }
-                    Button("取消恢复", role: .cancel) { self.pendingRestore = nil; restoreData = nil }
+                    Button("确认恢复这份账本") { if store.restore(pendingRestore) { self.pendingRestore = nil; restoreData = nil; encryptedRestore = false; restorePassword = ""; message = "恢复操作已完成，原账本保留在本地恢复历史。" } }
+                    Button("取消恢复", role: .cancel) { self.pendingRestore = nil; restoreData = nil; encryptedRestore = false; restorePassword = "" }
                 }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             }
             Section { NavigationLink("恢复版本") { RecoveryVersionsView() } }.listRowBackground(YubaiColor.card)
@@ -261,7 +274,17 @@ struct BackupView: View {
             .onAppear { if let url = store.importedURL, url.pathExtension.lowercased() == "yubaibackup" { store.importedURL = nil; acceptBackup(url) } }
     }
     func acceptBackup(_ url: URL) {
-        do { let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0; guard size <= LedgerCodec.backupCapacity else { throw YubaiError.invalid("备份文件过大。") }; restoreData = try Data(contentsOf: url); readBackup() } catch { message = error.localizedDescription }
+        pendingRestore = nil; restoreData = nil; restorePassword = ""; encryptedRestore = false; message = nil
+        do {
+            let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size <= LedgerCodec.backupCapacity else { throw YubaiError.invalid("备份文件过大。") }
+            let data = try Data(contentsOf: url)
+            restoreData = data
+            if let header = try? JSONDecoder().decode(BackupHeader.self, from: data), header.format == "yubai-backup", header.version == 1, header.encrypted {
+                encryptedRestore = true; passwordFocus = .restore
+            } else { readBackup() }
+        } catch { message = error.localizedDescription }
     }
     func exportBackup() {
         passwordFocus = nil
@@ -284,10 +307,12 @@ struct BackupView: View {
     }
     private var restoreSection: some View {
         Section("恢复到这台设备") {
-            SecureField("如果备份已加密，填写密码", text: $restorePassword).focused($passwordFocus, equals: .restore)
             Button("选择备份文件") { passwordFocus = nil; importing = true }.disabled(busy)
-            if restoreData != nil { Button("使用当前密码重新读取", action: readBackup).disabled(busy) }
-            Text("请选择备份文件，核对后确认恢复。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            if encryptedRestore {
+                SecureField("备份密码", text: $restorePassword).focused($passwordFocus, equals: .restore)
+                    .accessibilityHint("填写创建这份加密备份时使用的密码")
+                Button("读取备份", action: readBackup).disabled(busy || restorePassword.isEmpty)
+            }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
 }

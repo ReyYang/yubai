@@ -251,3 +251,12 @@ owner 在 `fix/tabbar-gesture-regression`／HEAD `bd8b1b2` 复测发现：账目
 Agent 实现选择：移除同时承担命令与位置报告的 `scrolledTab` 绑定，每次 tab 点击直接 `ScrollViewReader.scrollTo`，由实际分页偏移回写 destination；外部 destination 跳转保留，位置报告阻止反馈循环。`HorizontalPan` 增加起手方向闭包并动态更新协调器，复用全部既有左滑阈值和展开协调；[源码映射](../../../.design-meta/DESIGN.md#2026-10-22--分页同步与右滑归属复验)。未将系统 ID 回写滞后的具体触发因素当作设备已证实的结论。
 
 指定 Linux swift test 退出 0：406 项、402 通过／4 项原有实网跳过／0 失败；四个 App 文件通过 iOS 26／macOS 14、UI 测试通过 iOS 26 语法解析。原 43 个测试方法保留，新增 4 个覆盖两条点回路径（含实际内容屏内位置）、账目收回前后右滑及管家快慢右滑的首页边界／后续分页。无 Xcode／vphone，Apple SDK 类型检查与 UI 实跑待做，本票保持 in-progress；docs／原稿／Figma／分发包未改，未提交／推送。
+
+
+## 2026-10-23 · 第十六轮少写字，让版式说话（owner 确认稿）
+
+**owner 明确决定与范围**：采用 “Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 的完整规则及本轮 V16 画板；按 main `18889f8` 的 54 项逐屏审计接入 SwiftUI。欢迎页直接建首账户，可选字段收起，空态标题＋动作、状态／计数／芯片／版式替代说明；删除可撤销记录不再确认，停掉按钮写「停掉以后的」。只动文案与对应布局，Core 仅可改指定显示字符串及对应测试，不改计算／数据模型／存档；完整读屏保留；不加依赖，不提交／推送，不用 Actions 或付费 API。
+
+**实现选择与授权降级**：欢迎页复用 store 更新与现有账户数据结构；新增的网络、语音、通知权限观察只驱动界面状态。ShortcutsLink 文档提供的是 App 动作列表，本轮采用 owner 允许的 `shortcuts://` 打开系统 App 回退，不假定钱包自动化已建立。三种系统入口只保留原生缩略图／名称，无设置图示页、无可点击箭头，按 owner 明确允许的降级记为一项部分完成。备份只在 App 读取原 envelope 标记以决定显示密码框，原恢复校验不变；同步对比只做视图数字展示。
+
+**实现与证据**：[选定稿原样归档](../../../.design-meta/mockups/no-explanatory-copy-v16/README.md)、[源码映射](../../../.design-meta/DESIGN.md#2026-10-23--第十六轮少写字让版式说话)、[54 项结果和全部可见中文](../../../.design-meta/no-explanatory-copy-v16.md)。原 47 个 UI 测试方法保留，无新增 skip；24 个 App 文件 iOS 26／macOS 14、UI 测试 iOS 26 条件语法解析通过，最终检查见交付总结。Linux swift test 结果见交付总结；Apple 编译、UI 实跑与设备验收尚待完成。该状态不改变整票的长期交付状态；没有提交／推送，Figma、旧原型和分发包未同步。

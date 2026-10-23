@@ -1,5 +1,30 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-23 · 第十六轮：少写字，让版式说话
+
+owner 已在本轮明确确认规则与 11 张页面／片段板，并授权在 `feat/no-explanatory-copy` 接入 SwiftUI。另有 1 张规则板；[完整规则、原始 54 项审计及 HTML 原样归档](mockups/no-explanatory-copy-v16/README.md)。取代下方历史界面中的常驻导语、副标题、操作路径与步骤说明；业务计算、数据模型和存档格式保持，以下历史执行证据仍属于原日期。
+
+本轮规则：可见文字只有标题、数字和事实、控件字、状态。先删，再用层级／控件／状态表达，再挪到发生时；仍无法表达才保留一行事实。不可撤销确认的一句后果、带按钮的错误原因、完整读屏文字和系统权限说明为例外。可选字段收到更多，空态只保留标题与动作；EmptyState 的说明默认 nil。建议芯片是可直接填值的控件，不是常驻的「例如」。
+
+| 选定稿／范围 | 源码映射 |
+|---|---|
+| V16-Welcome | `DesignSystem.swift / WelcomeView`：欢迎页直接输入首个账户余额／名称，按开始走原 store 更新链；既有恢复备份入口保留。 |
+| V16-Lock | `YubaiApp.swift`：水位与两个解锁控件，后台只留水位；手机密码／Mac 设备密码调用既有 LAContext。 |
+| V16-Ask-Offline | `AskYubaiView.swift`、`AskCapture.swift`：禁用输入条、可处理的状态胶囊，原生网络状态监测与语音权限刷新；未调用云端测试。 |
+| V16-Import | `ImportView.swift`：截图专用列表、勾框／›、所选计数与金额，保留原图确认与账户选择；来源胶囊可查看本机事实／原发送记录。 |
+| V16-Profile-Empty／V16-Wishlist-Empty | `ProfileView.swift`、`WishlistView.swift`：虚线添加／条形占位，密钥状态聊天行，心愿空态主动作。 |
+| V16-AI | `SettingsView.swift`、`CloudAssistantViews.swift`：钥匙串状态、两组隐私芯片、模型菜单去副标题、发送记录本次打开分组。 |
+| V16-Quick | `QuickCaptureSettingsView.swift`：添加到快捷指令打开系统 App；三种系统入口暂为缩略图与名称的不可点静态行，设置图示未实现，属于任务允许的降级；映射与截图导入入口保持。 |
+| V16-Storage | `StorageView.swift`：占用＋真实体积，原件不删使用灰色行。 |
+| V16-Forms | `Editors.swift`、`ProfileView.swift`、`FixedFlowsView.swift`、`OverviewView.swift`：建议／关键词芯片、更多、停掉以后的按钮。 |
+| V16-Moments | `ButlerViews.swift`、`AskYubaiView.swift`、`ProfileConversationView.swift`：新记得的 N 条与来源日期、实时听写、进度点和思考水波；降低动态效果沿用既有实现。 |
+| 无独立画板的其余审计 | `EntriesView.swift`、`EntryDetailView.swift`、`EntryEditView.swift`、`EntryFormComponents.swift`、`QuickEntryView.swift`、`WeeklyPush.swift`、`SyncVersionsView.swift` 及上述页面：只保留事实和动作，相关信息保留在读屏。Core 仅一条 Finance 空账户字符串与参考测试同步。 |
+
+[交付总结](no-explanatory-copy-v16.md)逐条列出 54 项：53 项源码已改，1 项按授权部分完成（系统入口图示）；并列出全部新增／改动可见中文及其规则分类。所有 47 个 UI 测试方法保留，旧文案、欢迎直接输入与停掉／删除流程断言已同步；未新增 skip。
+
+验证边界：改动的 24 个 App Swift 文件 iOS 26／macOS 14 条件语法解析通过，UI 测试 iOS 26 语法解析通过，最终复验详见交付总结。Linux swift test 结果见交付总结。Apple SDK 类型检查、UI 实跑与设备验收待做。工程／依赖和存档格式未改；未运行 Actions、未访问付费模型 API、未提交／推送；Figma 与旧原型／分发包未同步。
+
+
 ## 2026-10-22 · 分页同步与右滑归属复验
 
 来源为 owner 在 `fix/tabbar-gesture-regression`／`bd8b1b2` 的 vphone 复测：账目右滑到洞察后点账目、现在左滑到洞察后点现在，出现只切高亮、不切页面；其余手势已通过，本轮只修这两条同步路径及明确调整的右滑规则，macOS 保持。

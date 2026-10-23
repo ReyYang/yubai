@@ -17,8 +17,14 @@ struct ProfileConversationView: View {
         VStack(spacing: YubaiSpace.none) {
             ScrollView {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                    Text("三个问题 · 第 \(min(3, max(1, messages.filter { $0.role == .assistant }.count))) 个")
-                        .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).frame(maxWidth: .infinity)
+                    let step = min(3, max(1, messages.filter { $0.role == .assistant }.count))
+                    HStack(spacing: YubaiSpace.space4) {
+                        ForEach(1...3, id: \.self) { index in
+                            Capsule().fill(index <= step ? YubaiColor.brand : YubaiColor.neutralSoft)
+                                .frame(width: index == step ? YubaiSpace.gapGroup + YubaiSpace.space8 : YubaiSize.marker, height: YubaiSize.marker)
+                        }
+                    }.frame(maxWidth: .infinity).accessibilityElement(children: .ignore)
+                        .accessibilityLabel("第 \(step) 题，共 3 题")
                     ForEach(Array(messages.enumerated()), id: \.offset) { _, message in
                         HStack(spacing: YubaiSpace.gapGroup) {
                             if message.role == .user { Spacer(minLength: YubaiSpace.messageIndent) }
@@ -34,7 +40,14 @@ struct ProfileConversationView: View {
                             if message.role == .assistant { Spacer(minLength: YubaiSpace.gapSection) }
                         }.messageEntrance(user: message.role == .user)
                     }
-                    if busy { HStack(spacing: YubaiSpace.gapGroup) { AssistantMark(thinking: true); Text("余白在听，也在想…").yubaiFont(YubaiFont.callout) } }
+                    if busy {
+                        HStack(spacing: YubaiSpace.gapGroup) {
+                            AssistantMark(thinking: true)
+                            ForEach(0..<3) { index in Circle().fill(YubaiColor.brand.opacity(1 - Double(index) * 0.3)).frame(width: YubaiSize.marker, height: YubaiSize.marker) }
+                        }.padding(YubaiSpace.insetCard).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+                            .accessibilityElement(children: .ignore).accessibilityLabel("余白正在思考")
+                    }
                     if let proposal, !revising {
                         ProfileProposalCard(change: proposal, confirm: {
                             if store.apply(proposal, label: "修改消费观") { dismiss() }

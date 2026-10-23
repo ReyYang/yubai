@@ -176,3 +176,21 @@ struct EntryDateChip: View {
         }
     }
 }
+
+struct RecentPurposeChips: View {
+    @Environment(AppStore.self) private var store
+    @Binding var selection: String
+    private var recent: [String] {
+        var seen = Set<String>()
+        return Array(store.sortedEntries.filter { $0.deletedAt == nil }.compactMap { entry -> String? in
+            let text = (entry.purpose ?? entry.title).trimmingCharacters(in: .whitespacesAndNewlines)
+            return !text.isEmpty && seen.insert(text).inserted ? text : nil
+        }.prefix(3))
+    }
+    var body: some View {
+        if !recent.isEmpty {
+            SuggestionChips(values: recent, selected: selection) { selection = $0 }
+                .padding(.vertical, YubaiSpace.space8).accessibilityLabel("最近用过的用途")
+        }
+    }
+}

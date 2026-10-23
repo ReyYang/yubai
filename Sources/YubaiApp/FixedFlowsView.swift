@@ -41,15 +41,15 @@ struct FixedFlowsView: View {
                     .accessibilityLabel("添加安排").accessibilityIdentifier("addFixedFlow")
             } }
             .confirmationDialog("停掉「\(ending?.title ?? "这个安排")」？", isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } }), titleVisibility: .visible) {
-                Button("停掉") {
+                Button("停掉以后的") {
                     if let ending, let id = ending.planID {
                         let change = ChangeSet(source: "用户操作", reason: "从今天起停掉「\(ending.title)」", items: [.endPlan(id, Date())])
                         if store.apply(change, label: "停掉安排") { store.toast = "已停掉" }
                     }
                     ending = nil
-                }
+                }.accessibilityHint("只停以后的，已到期账单和付过的记录保留")
                 Button("取消", role: .cancel) { ending = nil }
-            } message: { Text("只停以后的，已到期账单和付过的记录保留。") }
+            }
     }
     private func stoppedBills(_ rows: [FixedFlowArrangement]) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
