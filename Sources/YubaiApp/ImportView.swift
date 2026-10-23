@@ -671,7 +671,7 @@ struct ImportView: View {
         var batch: ImportBatch?
         if store.update("导入账单", { ledger in
             for entry in preview.selectedEntries where !ledger.categories.contains(where: { $0.name == entry.category }) && entry.category != Classification.pendingCategory {
-                ledger.categories.append(Category(entry.category, income: entry.nature == .income))
+                ledger.categories.append(YubaiCore.Category(entry.category, income: entry.nature == .income))
             }
             batch = try BillImporter.commit(preview, data: data, to: &ledger)
         }) {

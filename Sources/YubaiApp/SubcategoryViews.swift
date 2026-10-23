@@ -67,7 +67,7 @@ private struct SubcategoryPicker: View {
                 }
             }
     }
-    private func mainCategories(for entry: Entry) -> [Category] {
+    private func mainCategories(for entry: Entry) -> [YubaiCore.Category] {
         store.current.categories.filter { $0.income == (entry.nature == .income) }
     }
     private func choices(for entry: Entry) -> some View {
