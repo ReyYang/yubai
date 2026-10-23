@@ -145,6 +145,7 @@ struct SubcategoryInsightsView: View {
         let total: Int64 = rows.reduce(0) { $0 + $1.amount }
         Page {
             summary(rows: rows, total: total)
+                .accessibilityElement(children: .contain).accessibilityIdentifier("subcategoryInsightsSummary")
             Card(style: .list) {
                 VStack(alignment: .leading, spacing: YubaiSpace.none) {
                     Text("按小项").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).frame(minHeight: YubaiSize.iconButton)

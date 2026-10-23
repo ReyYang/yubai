@@ -106,7 +106,21 @@ final class AppFlowTests: XCTestCase {
 
     private func openFixedBillStop(_ row: XCUIElement, in app: XCUIApplication) {
         swipeRow(row)
-        tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stopFixedFlow_' AND isHittable == true")).firstMatch, in: app)
+        let actions = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stopFixedFlow_'"))
+        guard let action = actions.allElementsBoundByIndex.first(where: { $0.isHittable }) else {
+            XCTFail("No visible fixed-flow stop action")
+            return
+        }
+        tap(action, in: app)
+    }
+
+    private func tapUndo(messagePrefix: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let undo = app.buttons["undoLastChange"]
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            undo.isHittable && app.staticTexts["toastMessage"].label.hasPrefix(messagePrefix)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 3), .completed, file: file, line: line)
+        undo.tap()
     }
 
     private func openPurchaseFixture(_ fixture: String, question: String = "想买双徒步鞋 899，该不该买？") -> XCUIApplication {
@@ -422,16 +436,18 @@ final class AppFlowTests: XCTestCase {
         }
     }
 
-    func testUpcomingPaymentStopUsesAlertAndSupportsCancelAndConfirm() {
+    func testUpcomingPaymentStopUsesAlertAndSupportsCancelAndUndo() {
         let app = application("bills"); app.launch()
         tap(app.buttons["fundsFormula"], in: app)
+        let calculation = app.navigationBars["还能花是怎么算的"]
+        XCTAssertTrue(calculation.waitForExistence(timeout: 5))
         let end = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'endArrangement_' ")).firstMatch
         XCTAssertTrue(end.waitForExistence(timeout: 5))
         let identifier = end.identifier
         tap(end, in: app)
-        let confirmation = app.alerts.firstMatch
+        let confirmation = app.alerts["停掉「房租」？"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        XCTAssertTrue(confirmation.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '停掉「' AND label ENDSWITH '」？'")).firstMatch.exists)
+        XCTAssertEqual(app.popovers.count, 0)
         XCTAssertTrue(confirmation.buttons["停掉以后的"].isHittable)
         XCTAssertTrue(confirmation.buttons["取消"].isHittable)
         snapshot("upcoming-payment-stop-alert", app)
@@ -441,25 +457,10 @@ final class AppFlowTests: XCTestCase {
         tap(confirmation.buttons["停掉以后的"], in: app)
         assertGone(confirmation)
         assertGone(app.buttons[identifier])
-    }
-
-    func testUpcomingPaymentStopUsesAlertAndSupportsCancelAndUndo() {
-        let app = application("bills"); app.launch()
-        tap(app.buttons["fundsFormula"], in: app)
-        let end = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'endArrangement_' ")).firstMatch
-        XCTAssertTrue(end.waitForExistence(timeout: 5))
-        let identifier = end.identifier
-        tap(end, in: app)
-        let confirmation = app.alerts.firstMatch
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        tap(confirmation.buttons["取消"], in: app); assertGone(confirmation)
-        XCTAssertTrue(app.buttons[identifier].exists)
-        tap(app.buttons[identifier], in: app)
-        tap(confirmation.buttons["停掉以后的"], in: app)
-        assertGone(confirmation)
         // Undo belongs to the root overlay, behind the calculation sheet.
-        tap(app.buttons["closeSheet"], in: app)
-        tap(app.buttons["撤销"], in: app)
+        calculation.buttons["closeSheet"].tap()
+        tapUndo(messagePrefix: "结束安排", in: app)
+        assertGone(calculation)
         tap(app.buttons["fundsFormula"], in: app)
         XCTAssertTrue(app.buttons[identifier].waitForExistence(timeout: 5))
     }
@@ -558,8 +559,11 @@ final class AppFlowTests: XCTestCase {
         if !Calendar.current.isDate(Date(), inSameDayAs: month.end.addingTimeInterval(-1)) {
             XCTAssertFalse(app.buttons["付了 话费"].exists); XCTAssertTrue(row.exists)
             row.press(forDuration: 0.8); tap(app.buttons["提前标记付了"], in: app)
-            XCTAssertTrue(app.images["已付 话费"].waitForExistence(timeout: 5))
-            tap(app.buttons["撤销"], in: app); XCTAssertFalse(app.images["已付 话费"].exists)
+            // Check the matching receipt and undo together before the four-second toast expires.
+            tapUndo(messagePrefix: "话费 ", in: app)
+            assertGone(app.images["已付 话费"])
+            XCTAssertTrue(row.exists)
+            XCTAssertFalse(app.buttons["付了 话费"].exists)
         }
         snapshot("bill-states", app)
     }
@@ -852,11 +856,17 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_insights"], in: app)
         tap(app.buttons["insightCategory_0"], in: app)
         assertPushedPage("餐饮 · 本月", in: app)
+        let summary = app.descendants(matching: .any).matching(identifier: "subcategoryInsightsSummary").firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(summary.isHittable)
         for _ in 0..<3 {
             dragBack(app, to: 0.42)
             assertPushedPage("餐饮 · 本月", in: app)
-            let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
-            let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.4))
+            // V15 adds tappable subcategory rows below this noninteractive summary.
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let summaryY = summary.frame.midY - app.frame.minY
+            let left = origin.withOffset(CGVector(dx: app.frame.width * 0.2, dy: summaryY))
+            let right = origin.withOffset(CGVector(dx: app.frame.width * 0.8, dy: summaryY))
             right.press(forDuration: 0.05, thenDragTo: left)
             assertPushedPage("餐饮 · 本月", in: app)
             left.press(forDuration: 0.05, thenDragTo: right)
@@ -864,9 +874,13 @@ final class AppFlowTests: XCTestCase {
         }
         snapshot("insight-back-cancelled", app)
         tap(app.navigationBars.buttons["洞察"], in: app)
-        assertCurrentTab("tab_insights", content: "支出", in: app)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2)))
+        assertCurrentTab("tab_insights", content: "insightCategory_0", in: app)
+        let header = app.staticTexts["rootHeaderTitle"]
+        XCTAssertTrue(header.isHittable)
+        let headerY = header.frame.midY - app.frame.minY
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        origin.withOffset(CGVector(dx: app.frame.width * 0.8, dy: headerY))
+            .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: app.frame.width * 0.2, dy: headerY)))
         assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
     }
 
@@ -894,18 +908,28 @@ final class AppFlowTests: XCTestCase {
 
     func testCancelledOverviewBackRestoresTabBarOnlyAfterCompletedPop() {
         let app = application("bills-overdue"); app.launch()
-        tap(app.buttons["moreDueBills"], in: app)
+        let more = app.buttons["moreDueBills"], navigation = app.otherElements["mainNavigation"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        XCTAssertTrue(navigation.waitForExistence(timeout: 5))
+        for _ in 0..<8 {
+            if more.isHittable && more.frame.maxY <= navigation.frame.minY { break }
+            let scroll = app.scrollViews["overviewScroll"]
+            XCTAssertTrue(scroll.exists)
+            scroll.swipeUp()
+        }
+        XCTAssertLessThanOrEqual(more.frame.maxY, navigation.frame.minY)
+        tap(more, in: app)
         assertPushedPage("固定收付", in: app)
         for _ in 0..<2 {
             dragBack(app, to: 0.42)
             assertPushedPage("固定收付", in: app)
         }
         dragBack(app, to: 0.95)
-        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+        assertCurrentTab("tab_overview", content: "moreDueBills", in: app)
         tap(app.buttons["tab_insights"], in: app)
         assertCurrentTab("tab_insights", content: "支出", in: app)
         tap(app.buttons["tab_overview"], in: app)
-        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+        assertCurrentTab("tab_overview", content: "moreDueBills", in: app)
     }
 
     func testSheetNavigationDoesNotHideRootTabBarAfterDismissal() {

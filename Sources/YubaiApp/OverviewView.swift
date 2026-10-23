@@ -15,15 +15,14 @@ struct OverviewView: View {
     var body: some View {
         Group {
             if textSize > .xxLarge {
-                ScrollView { content(chartHeight: 0).padding(.horizontal, YubaiSpace.insetPage) }
-                    .rootScrollContentMargins().accessibilityIdentifier("overviewScroll")
+                scrollingContent
             } else {
                 ViewThatFits(in: .vertical) {
-                    content(chartHeight: 150).fixedSize(horizontal: false, vertical: true)
-                    content(chartHeight: 96).fixedSize(horizontal: false, vertical: true)
-                    content(chartHeight: 0).fixedSize(horizontal: false, vertical: true)
-                }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    fittedContent(chartHeight: 150)
+                    fittedContent(chartHeight: 96)
+                    fittedContent(chartHeight: 0)
+                    scrollingContent
+                }.frame(maxHeight: .infinity, alignment: .top)
             }
         }.rootPageHeader { TabRootHeader(title: "现在", showsAmountVisibility: true) }
             .frame(maxWidth: 680).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -36,6 +35,14 @@ struct OverviewView: View {
                 if !store.pendingEntrySave || store.sheet == nil { displayedToday = TodayEntries(in: store.current) }
             }
             .onChange(of: store.entrySaveTrigger) { _, _ in displayedToday = TodayEntries(in: store.current) }
+    }
+    private var scrollingContent: some View {
+        ScrollView { content(chartHeight: 0).padding(.horizontal, YubaiSpace.insetPage) }
+            .rootScrollContentMargins().accessibilityIdentifier("overviewScroll")
+    }
+    private func fittedContent(chartHeight: CGFloat) -> some View {
+        content(chartHeight: chartHeight).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding)
     }
     private func content(chartHeight: CGFloat) -> some View {
         let funds = store.funds
