@@ -15,17 +15,18 @@ struct OverviewView: View {
     var body: some View {
         Group {
             if textSize > .xxLarge {
-                ScrollView { content(chartHeight: 0).padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup) }
+                ScrollView { content(chartHeight: 0).padding(.horizontal, YubaiSpace.insetPage) }
                     .rootScrollContentMargins().accessibilityIdentifier("overviewScroll")
             } else {
                 ViewThatFits(in: .vertical) {
                     content(chartHeight: 150).fixedSize(horizontal: false, vertical: true)
                     content(chartHeight: 96).fixedSize(horizontal: false, vertical: true)
                     content(chartHeight: 0).fixedSize(horizontal: false, vertical: true)
-                }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSize.rootBottomPadding)
+                }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
-        }.frame(maxWidth: 680).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }.rootPageHeader { header }
+            .frame(maxWidth: 680).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(YubaiColor.canvas).navigationTitle("现在")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
@@ -36,18 +37,20 @@ struct OverviewView: View {
             }
             .onChange(of: store.entrySaveTrigger) { _, _ in displayedToday = TodayEntries(in: store.current) }
     }
+    private var header: some View {
+        GlassGroup { HStack(spacing: YubaiSpace.gapGroup) {
+            HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
+                Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
+                    .font(.system(size: size))
+            }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
+                .accessibilityIdentifier("toggleAmountVisibility")
+            Spacer(); Text("现在").yubaiFont(YubaiFont.navTitle).accessibilityIdentifier("rootHeaderTitle"); Spacer()
+            AskToolbarButton()
+        }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.rowSingle) }
+    }
     private func content(chartHeight: CGFloat) -> some View {
         let funds = store.funds
         return VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-            GlassGroup { HStack(spacing: YubaiSpace.gapGroup) {
-                HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
-                    Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
-                        .font(.system(size: size))
-                }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
-                    .accessibilityIdentifier("toggleAmountVisibility")
-                Spacer(); Text("现在").yubaiFont(YubaiFont.navTitle).accessibilityIdentifier("rootHeaderTitle"); Spacer()
-                AskToolbarButton()
-            }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.rowSingle) }
             if let letter = freshLetter {
                 Button { store.sheet = .letter(letter.id) } label: {
                     HStack(spacing: YubaiSpace.space8) {

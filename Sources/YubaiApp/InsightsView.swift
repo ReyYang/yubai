@@ -35,8 +35,7 @@ struct InsightsView: View {
         let range = interval
         let summary = Finance.cashFlow(store.current, during: range)
         let slices = summary.slices(income: income)
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-            TabRootHeader(title: "洞察")
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.none) {
             Segmented(choices: Window.allCases.map { ($0, $0.rawValue) }, selection: $window)
             if window == .custom { Button("选择日期范围") { store.pickingInsightDates = true }.frame(minHeight: YubaiSize.tapMin) }
             HStack(spacing: YubaiSpace.gapGroup) {
@@ -71,7 +70,8 @@ struct InsightsView: View {
                 Text("本期有跨期退款。")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }
-        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("insightsScroll").navigationTitle("洞察")
+        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("insightsScroll")
+            .rootPageHeader { TabRootHeader(title: "洞察") }.navigationTitle("洞察")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
