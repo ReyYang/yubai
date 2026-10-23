@@ -20,7 +20,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "wish-bought"].contains(name) else { return nil }
+              ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "wish-bought", "overview-xl"].contains(name) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -44,7 +44,9 @@ enum UITestSupport {
         ledger.mutedTopics = ["letter"] // Keep scripted flows independent of the weekday.
         let account = Account(name: "合成银行卡", balance: 100_000, at: now)
         ledger.accounts = [account]
-        if script == "ask" || script == "restrain" {
+        if script == "overview-xl" {
+            ledger.entries = [Entry(date: now, amount: 3200, accountID: account.id, title: "合成测试的午饭和日用品以及下周旅行准备", category: "日用")]
+        } else if script == "ask" || script == "restrain" {
             ledger.entries = [Entry(date: now, amount: 3200, accountID: account.id, title: "合成咖啡", category: "餐饮")]
         } else if script == "import" {
             ledger.entries = [Entry(date: now.addingTimeInterval(-60), amount: 1600, accountID: account.id, title: "原有午饭", category: "餐饮")]

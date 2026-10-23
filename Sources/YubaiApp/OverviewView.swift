@@ -16,7 +16,7 @@ struct OverviewView: View {
         Group {
             if textSize > .xxLarge {
                 ScrollView { content(chartHeight: 0).padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup) }
-                    .rootScrollContentMargins()
+                    .rootScrollContentMargins().accessibilityIdentifier("overviewScroll")
             } else {
                 ViewThatFits(in: .vertical) {
                     content(chartHeight: 150).fixedSize(horizontal: false, vertical: true)
@@ -40,12 +40,12 @@ struct OverviewView: View {
         let funds = store.funds
         return VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
             GlassGroup { HStack(spacing: YubaiSpace.gapGroup) {
-                Button { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } } label: {
+                HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
                     Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
-                        .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).floatingSurface(in: Circle())
-                        .yubaiHitTarget()
+                        .font(.system(size: size))
                 }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
-                Spacer(); Text("现在").yubaiFont(YubaiFont.navTitle); Spacer()
+                    .accessibilityIdentifier("toggleAmountVisibility")
+                Spacer(); Text("现在").yubaiFont(YubaiFont.navTitle).accessibilityIdentifier("rootHeaderTitle"); Spacer()
                 AskToolbarButton()
             }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.rowSingle) }
             if let letter = freshLetter {
@@ -127,21 +127,29 @@ struct OverviewView: View {
     }
     private var todayRow: some View {
         let today = store.pendingEntrySave ? (displayedToday ?? TodayEntries(in: store.current)) : TodayEntries(in: store.current)
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
         return Button { store.destination = .entries } label: {
-            HStack(spacing: YubaiSpace.space8) {
+            layout {
                 Text("今天").yubaiFont(YubaiFont.row, weight: .medium)
                 Text(today.count == 0 ? "还没记" : "\(today.count) 笔 · \(today.latest?.displayTitle ?? "")")
-                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
-                Spacer(minLength: YubaiSpace.none)
-                if today.count == 0 {
-                    Text("账目").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                } else {
-                    AmountLabel(cents: today.net, hide: store.current.preferences.hideAmounts, role: .small,
-                                sign: today.net > 0 ? .inflow : .automatic, fractionDigits: 2)
-                        .layoutPriority(1)
+                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    .lineLimit(textSize.isAccessibilitySize ? nil : 1).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("todayEntrySummary")
+                if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+                HStack(spacing: YubaiSpace.space8) {
+                    if today.count == 0 {
+                        Text("账目").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    } else {
+                        AmountLabel(cents: today.net, hide: store.current.preferences.hideAmounts, role: .small,
+                                    sign: today.net > 0 ? .inflow : .automatic, fractionDigits: 2)
+                    }
+                    if textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.rowSingle).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                .layoutPriority(1)
+            }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, textSize.isAccessibilitySize ? YubaiSpace.space8 : YubaiSpace.none)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle, alignment: .leading)
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("todayEntries")
     }
     private func nextTitle(_ item: Occurrence) -> some View {
@@ -187,8 +195,8 @@ struct UpcomingPaymentsView: View {
     private func endButton(_ item: Occurrence) -> some View {
         Button("结束这个安排") { ending = item }.yubaiFont(YubaiFont.caption)
             .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("endArrangement_" + item.id)
-            .confirmationDialog("停掉「\(item.title)」？",
-                             isPresented: Binding(get: { ending?.id == item.id }, set: { if !$0 { ending = nil } }), titleVisibility: .visible) {
+            .alert("停掉「\(item.title)」？",
+                   isPresented: Binding(get: { ending?.id == item.id }, set: { if !$0 { ending = nil } })) {
             Button("停掉以后的", role: .destructive) {
                 if let id = item.planID ?? item.rentID {
                     let change = ChangeSet(source: "用户操作", reason: "从现在起结束「\(item.title)」", items: [.endPlan(id, Date())])

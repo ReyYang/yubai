@@ -64,7 +64,6 @@ struct StorageView: View {
                     .background(YubaiColor.canvas)
             }
             .navigationTitle("存储空间").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .principal) { Text("存储空间").yubaiFont(YubaiFont.navTitle, weight: .semibold) } }
             .task(id: store.current.updatedAt) { await refreshUsage() }
             .confirmationDialog("清除恢复历史？", isPresented: $clearing, titleVisibility: .visible) {
                 Button("清除 \(usage?.recoveryCount ?? 0) 份恢复历史", role: .destructive) {

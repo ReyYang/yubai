@@ -206,3 +206,56 @@
 - `git diff --check` 通过。起始 47 个测试方法全部保留，现为 49 个，无新增 skip。新增无密钥禁用与已买心愿两例；扩充欢迎按钮几何、确认取消、我页存储入口位于浮栏上方、导入 40.00 流入断言；旧存储说明断言改为「账单原件」「不删」两个元素。测试源码已解析，UI 测试尚未实跑。
 - 本次 Core／Core 测试、Package 文件、Xcode 工程、依赖与归档画板无差异；未运行 swift build／swift test、Actions 或任何付费／云端 API，未提交、未推送。
 - 本环境无 Apple SDK／模拟器，iOS 26.4 的按钮、动作表、左滑首中末行、我页末行、字体、无障碍 XL／VoiceOver 与深色实际呈现仍待重新截图验收。第 7、8 项及第 14 项旧 header／今日行问题明确保留；Figma、旧原型和分发包未同步。
+
+
+## 第二次截图复查修正
+
+2026-10-23，依据 owner 对 iOS 26.4 模拟器复查 `65928a9` 的六项反馈，在干净的 `feat/no-explanatory-copy` 继续修正。以下是源码处理结果；未在本环境重新运行模拟器，不把语法解析当作截图验收。本节取代上一节对应项的实现说明，原记录保留历史语义。
+
+### 逐项处理与原因
+
+| # | 处理结果 | 原因与结构 |
+|---|---|---|
+| 1 固定收付左滑 | 已改；与账目共用 `CardRows` 和新抽出的 `SwipeActionRow` | 先核对设备已验收的 `EntriesView.LedgerEntryRow`：固定卡片底色与圆角由 `Card` 持有，分隔线在 `CardRows`，行背景随原宽内容 offset，动作按钮在 offset 之后的 background 层，最后按行裁切。移除上轮各行的 UnevenRoundedRectangle、首末额外 padding 和随行移动的分隔线；固定收付使用完全相同的卡片／行／动作层级。共用容器先填满原行宽，再整体 offset，不把按钮和文字放进会互相挤压的 HStack。按钮沿用 78pt、尾内缩 6pt、内容与按钮间距 12pt，总露出 96pt。账目的手势、展开协调与删除逻辑保持；两页都使用同一个展示组件，避免再次分叉。 |
+| 2 停掉确认 | 固定收付和 `OverviewView.UpcomingPaymentsView` 均改为系统 `.alert` | 去掉行／按钮上的 confirmationDialog，避免 iPhone 以 popover 盖住页头。标题统一「停掉「{名称}」？」；destructive「停掉以后的」与 cancel「取消」。核对现有 `FixedFlows.resume`、已停掉列表的「恢复」和账本撤销：该操作可以恢复，因此按 owner 本轮条件不写 alert message。完整后果 hint 保留给读屏；未改停掉／恢复业务逻辑。 |
+| 3 根页顶部／底部 | 恢复 main 的 Page 和我页滚动余量路径；四根页一并核对 | 对照 `git diff 65928a9~1 65928a9` 及 main `18889f8`：ProfileView 上轮只改消费观入口；YubaiApp 只改 tab 图标缩放，没有顶部安全区变更。实际偏移在 SettingsView：上轮删除 rootScrollContentMargins，改用了 Page.bottomPadding。本次移除该新增参数，恢复 Page 原来的 section 底 padding，我页重新使用 `.contentMargins(.bottom, rootBottomPadding, for: .scrollContent)`。iOS 共用 rootScrollContentMargins 明确 `.clipped()`，把滚动内容限制在根页布局边界，阻止隐藏导航栏的滚动 header 绘制到状态栏；状态栏区域继续由原 canvas 背景覆盖。洞察、账目、大字号现在页走同一修饰符，普通字号现在页仍沿用原非滚动布局；保留原导航栏显隐与安全区，不增加顶部负 margin 或 ignoresSafeArea。 |
+| 4 欢迎与键盘 | ScrollView 内容＋底部 safeAreaInset 按钮 | 移除外层 VStack 对内容与按钮的竞争布局；将「开始」放入底部 inset，沿用 insetPage 和 canvas。系统键盘缩小可用安全区后，按钮跟随键盘，ScrollView 获得扣除按钮后的 viewport，账户卡片及芯片可滚到按钮之上。金额／名称校验和禁用底色保持。 |
+| 5 无障碍 XL 现在页 | header 图标统一缩放；今天行允许换行 | 眼睛和问余白共用 `HeaderIconButton` 的 @ScaledMetric（相对 body），图标限制在 22–32pt，圆形容器按图标＋两侧 8pt 计算且至少 40pt，点击区至少 44pt。显式 SF Symbol 字体尺寸防止眼睛继续按继承的大字号溢出；AssistantMark 使用同一个缩放值。accessibility 字号下今天行切为纵向，摘要不限行且使用实际所需高度，金额与箭头独立成行；普通字号仍为单行。所有按钮完整 label 保留。 |
+| 6 存储空间标题 | 删除自定义 principal，恢复系统 navigationTitle | 对照快速记账、智能与隐私等 push 页，均使用 `.navigationTitle(...).yubaiNavigation()`。本页现在使用完全相同的方式，不再用自定义字体近似系统导航标题。 |
+
+共用 token：`YubaiSize.swipeRevealDistance` 只收拢原有 `78 + 6 + 12` 的计算；新增 `headerIcon = 22` 和 `headerIconMax = 32`，集中定义 header 图标基准及无障碍上限。容器尺寸、内边距、分组间距均复用现有 token，没有在页面中添加裸数字间距，也没有新依赖或 Core 修改。
+
+### UI 测试同步
+
+- 原 49 个测试方法全部保留，新增 4 个，未删测试、未新增 skip。固定收付既有停掉／取消／恢复／撤销测试改查 `app.alerts`，并验证取消按钮可点击；新增计算页同类 alert 的取消、确认和撤销流程。
+- 新增分组首／中／末行左滑检查：卡片边界和行高度不变、结清按钮原宽平移 96pt、动作宽 78pt／间距 12pt、动作位于卡片内、文字标签完整，逐行保存截图。
+- 欢迎既有流程增加数字键盘、开始按钮位于键盘之上、滚动后全部账户芯片及卡片底部位于按钮之上的断言与截图。
+- 新增四根页 accessibility XL 滚动安全区与滚动后我页打开记一笔的截图／交互检查；新增 header 容器随字号增长且一致、金额开关仍可用、长用途摘要多行完整展示的检查。只在 DEBUG 模拟器夹具新增 `overview-xl`，不修改真实账本。
+- 存储原有测试继续检查系统导航栏「存储空间」，并保留快速记账与存储所有原测试。
+
+### 本次可见中文清单
+
+正式界面没有新增或改写文案；下列原文随控件、字体或布局变更复用。用户账单名称、账户、金额、日期和笔数仍来自原数据。
+
+| 位置 | 复用的可见中文 | 分类 |
+|---|---|---|
+| 固定收付／计算页 | 停掉；停掉「{名称}」？；停掉以后的；取消；结束这个安排 | 控件字／确认标题 |
+| 账目共用滑动按钮 | 删除 | 控件字 |
+| 欢迎 | 余白；现在手里有；微信零钱；支付宝；招行储蓄卡；＋ 别的；名称；开始；恢复备份 | 标题／控件字 |
+| 根页 header／现在今天行 | 现在；洞察；我；今天；还没记；{N} 笔 · {用途}；账目 | 标题／状态／数字和事实／控件字 |
+| 存储 | 存储空间 | 系统导航标题 |
+| 仅 DEBUG 模拟器测试夹具 | 合成测试的午饭和日用品以及下周旅行准备 | 合成账目的用途事实，仅用于验证长文本换行 |
+
+图标的「显示金额／隐藏金额／问余白」仍是完整 accessibilityLabel，没有增加常驻可见说明。停掉可以恢复，因而没有新增需要不可撤销确认例外的 message；本次没有四类之外的新可见正文。
+
+### 本次验证与保留项
+
+- 改动的 8 个 App Swift 文件：`swiftc -frontend -parse` 在 `arm64-apple-ios26.0`、`arm64-apple-ios26.0-simulator -D DEBUG`、`arm64-apple-macosx14.0` 条件下全部通过；UI 测试在 iOS 26 simulator DEBUG 条件下解析通过。仅语法解析，没有 Apple SDK 类型检查。
+- 直接运行仓库已有的 `.build/x86_64-unknown-linux-gnu/debug/YubaiPackageTests.xctest YubaiCoreTests.InterfaceVocabularyTests`，3 项通过、0 失败。该已编译测试中的原扫描器读取本次工作区 App 源码，包含新增夹具；Core 与测试源码未改。本轮没有重建，也没有把它当作全量测试结果。
+- 原 49 个 UI 测试方法全部保留，新增 4 个，现为 53 个；没有新增 skip。UI 测试只做语法解析，尚未实跑。
+- `git diff --check` 通过；Core、Core 测试、Package 文件和 Xcode 工程无本轮差异。未运行 swift build／swift test、网络服务、Actions 或付费 API。HEAD 保持 `65928a9`，未提交、未推送。
+- 本机原始检查输出位于 `.verification/v16-second-review/checks.log`、`vocabulary.log`，按既有忽略规则保留。
+
+- 按 owner 授权保持快速记账「小组件／控制中心／轻点背面」静态行，无值无 ›；账户详情、来信页旧导航问题保持。
+- Apple SDK 类型检查、UI 测试实跑、iOS 26.4 首中末行／键盘／滚动 sheet／无障碍 XL 复截图，以及 VoiceOver、深色与 Reduce Motion 设备验收待做。
+- 原始画板、外部设计系统、Figma、旧原型及分发包未同步；本轮约定和实际 SwiftUI 结构以本节及 DesignSystem.swift 为准。没有写入外部链接、提交或推送。

@@ -71,19 +71,10 @@ struct FixedFlowsView: View {
     }
     @ViewBuilder private func bills(_ rows: [FixedFlowOccurrence]) -> some View {
         if !rows.isEmpty {
-            VStack(spacing: YubaiSpace.none) {
-                ForEach(rows) { row in
-                    FixedFlowBillRow(row: row, isFirst: row.id == rows.first?.id, isLast: row.id == rows.last?.id)
-                    #if os(macOS)
-                    if row.id != rows.last?.id { EntryFormDivider().padding(.horizontal, YubaiSpace.insetCard) }
-                    #endif
-                }
-            }
-                #if os(macOS)
-                .padding(.vertical, YubaiSpace.insetCard)
-                .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
-                .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card))
-                #endif
+            CardRows(rows) { row in
+                FixedFlowBillRow(row: row)
+            }.accessibilityElement(children: .contain)
+                .accessibilityIdentifier(rows[0].inflow ? "fixedFlowIncomeCard" : "fixedFlowExpenseCard")
         }
     }
     private func calendar(_ month: FixedFlowMonth) -> some View {
@@ -141,29 +132,13 @@ private struct FixedFlowBillRow: View {
     @State private var resting: CGFloat = 0
     @State private var confirmingStop = false
     let row: FixedFlowOccurrence
-    let isFirst: Bool
-    let isLast: Bool
-    private let revealDistance = YubaiSize.swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapGroup
+    private let revealDistance = YubaiSize.swipeRevealDistance
     private var canEnd: Bool { store.current.plans.contains { $0.id == row.planID && $0.active && $0.endDate == nil } }
     var body: some View {
         Group {
             if canEnd {
-                surface.offset(x: offset).background(alignment: .trailing) {
-                    Button(action: stop) {
-                        Text("停掉")
-                            #if os(iOS)
-                            .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
-                            .background(YubaiColor.neutralStrong, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                            #endif
-                    }.yubaiFont(YubaiFont.callout, weight: .medium)
-                        #if os(iOS)
-                        .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
-                        #else
-                        .frame(width: revealDistance - YubaiSpace.gapGroup).frame(maxHeight: .infinity).background(YubaiColor.neutralStrong)
-                        #endif
-                        .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
-                }.contentShape(Rectangle())
+                SwipeActionRow(offset: offset, title: "停掉", tint: YubaiColor.neutralStrong, ink: YubaiColor.label, weight: .medium,
+                               actionIdentifier: "stopFixedFlow_" + row.id, action: stop) { content }
                     #if os(iOS)
                     .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
                         offset = max(-revealDistance, min(0, resting + distance))
@@ -172,7 +147,6 @@ private struct FixedFlowBillRow: View {
                         reset()
                     }, cancelled: reset))
                     #else
-                    .clipped()
                     .simultaneousGesture(DragGesture(minimumDistance: 18)
                         .updating($dragging) { _, state, _ in state = true }
                         .onChanged { value in
@@ -188,10 +162,10 @@ private struct FixedFlowBillRow: View {
                     .onChange(of: canEnd) { _, value in if !value { resting = 0; reset() } }
                     .onDisappear { resting = 0; reset() }
                     .accessibilityAction(named: "停掉", stop)
-            } else { surface }
+            } else { content }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("fixedFlow_" + row.id)
             .accessibilityValue(FixedFlowPresentation.state(row.state, inflow: row.inflow))
-            .confirmationDialog("停掉「\(row.title)」？", isPresented: $confirmingStop, titleVisibility: .visible) {
+            .alert("停掉「\(row.title)」？", isPresented: $confirmingStop) {
                 Button("停掉以后的", role: .destructive) {
                     if let id = row.planID {
                         let change = ChangeSet(source: "用户操作", reason: "从今天起停掉「\(row.title)」", items: [.endPlan(id, Date())])
@@ -200,22 +174,6 @@ private struct FixedFlowBillRow: View {
                 }.accessibilityHint("只停以后的，已到期账单和付过的记录保留")
                 Button("取消", role: .cancel) { confirmingStop = false }
             }
-    }
-    @ViewBuilder private var surface: some View {
-        #if os(iOS)
-        VStack(spacing: YubaiSpace.none) {
-            content
-            if !isLast { EntryFormDivider().padding(.horizontal, YubaiSpace.insetCard) }
-        }.padding(.top, isFirst ? YubaiSpace.insetCard : YubaiSpace.none)
-            .padding(.bottom, isLast ? YubaiSpace.insetCard : YubaiSpace.none)
-            .background(YubaiColor.card, in: UnevenRoundedRectangle(
-                topLeadingRadius: isFirst ? YubaiRadius.card : YubaiSpace.none,
-                bottomLeadingRadius: isLast ? YubaiRadius.card : YubaiSpace.none,
-                bottomTrailingRadius: isLast ? YubaiRadius.card : YubaiSpace.none,
-                topTrailingRadius: isFirst ? YubaiRadius.card : YubaiSpace.none))
-        #else
-        content
-        #endif
     }
     private var content: some View {
         HStack(spacing: YubaiSpace.gapGroup) {
@@ -232,11 +190,9 @@ private struct FixedFlowBillRow: View {
             if let id = row.planID {
                 FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount, inflow: row.inflow, state: row.state)
             }
-        }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble)
+        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
             .opacity(row.state == .paid ? 0.6 : 1)
-            #if os(macOS)
             .background(YubaiColor.card)
-            #endif
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: row.state)
     }
     private func reset() {

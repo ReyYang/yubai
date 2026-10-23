@@ -26,6 +26,8 @@ owner 已在本轮明确确认规则与 11 张页面／片段板，并授权在 
 
 同日截图复查续作：按 owner 的 14 项清单及 main `18889f8` 差异修正欢迎禁用底色、Debug 显式模拟密钥、消费观行尾箭头、我页计数／实际滚动底部留白、心愿列表空态与已买状态、用途空占位、行级停掉确认、iOS 固定收付独立滑动按钮、导入流出／流入展示、存储／快速记账字体及 tab 图标缩放。固定收付左滑与 tab bar 旧问题依 owner 明确例外修复；账户详情／计算页旧布局、push 页多余完成、现在页旧 header／今日行按本轮组件范围保留，依据与可见中文见[截图复查修正](no-explanatory-copy-v16.md#截图复查修正)。15 个 App 文件与 UI 测试 iOS 26 DEBUG 条件语法解析、App macOS 14 条件解析通过；保留原 47 个测试方法并新增 2 个，35 个 App 文件通过原禁用词扫描。本次未改 Core／存档／依赖／原稿，未构建／提交／推送；Apple 类型检查、49 个测试方法实跑及 iOS 26.4 截图／无障碍复验待做。
 
+同日第二次截图复查：owner 要求修复 `65928a9` 的六项设备问题，取代上一段对应项的实现状态。固定收付回到与账目相同的 CardRows 固定卡片，二者共用 SwipeActionRow 的原宽 offset／行裁切／独立按钮层；停掉确认统一系统 alert（现有恢复／撤销可用，按本轮条件不写 message）。Page 与我页恢复 main 原滚动底部 margin 路径，根页滚动内容明确裁切；欢迎用底部 safeAreaInset 为键盘与按钮保留滚动空间；共用 HeaderIconButton 以 ScaledMetric 限制图标 22–32pt、容器随动，今天行在 accessibility 字号换行；存储空间移除 principal，使用与快速记账完全相同的系统导航标题。[逐项原因、token、测试与可见中文](no-explanatory-copy-v16.md#第二次截图复查修正)。快速记账三静态行、账户详情／来信旧导航继续保留。8 个 App 文件 iOS 26／macOS 14 和 UI 测试 iOS 26 条件解析通过；既有测试产物运行 InterfaceVocabularyTests 3 项通过，原 49 个 UI 方法保留并新增 4 个。Apple 类型检查／53 个 UI 方法实跑／iOS 26.4 截图复验待做；Core、工程、依赖与原始画板未改，外部资源未同步，未构建／提交／推送。
+
 ## 2026-10-23 · 少写字，让版式说话
 
 owner 在项目规则「设计驱动代码」下新增：“Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 设计系统 README 第一节改为同名规则（四种可写的字、六步替换顺序、不写的东西、例外、实现检查），`EmptyState` 去说明行、`InlineNote` 去解释卡和脚注、`EditorForm` 去「例如」和「（可选）」。设计稿新增「第十六轮 · 少写字」：规则、按 main `18889f8` 逐屏审计的 54 处说明文字及改法、11 张改后画板。前几轮画板中与本轮冲突的说明文字以第十六轮为准。owner 确认画板后在 `feat/no-explanatory-copy` 实现（见上一节）；实现约束同时写入根目录 `AGENTS.md`。

@@ -178,6 +178,8 @@ enum YubaiRadius {
 enum YubaiSize {
     static let tapMin: CGFloat = 44
     static let headerHeight: CGFloat = 48
+    static let headerIcon: CGFloat = 22
+    static let headerIconMax: CGFloat = 32
     static let iconButton: CGFloat = 40
     static let buttonHeight: CGFloat = 52
     static let chipHeight: CGFloat = 32
@@ -188,6 +190,7 @@ enum YubaiSize {
     static let segmentedPill: CGFloat = 32
     static let segmentedHitOutset = (tapMin - segmentedHeight) / 2
     static let swipeActionWidth: CGFloat = 78
+    static let swipeRevealDistance = swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapGroup
     static let tabBarHeight: CGFloat = 66
     static let tabSelectionHeight = tabBarHeight - YubaiSpace.space8 * 2
     static let tabSelectionRadius = tabSelectionHeight / 2
@@ -522,6 +525,8 @@ extension View {
         #if os(iOS)
         self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
             .scrollEdgeEffectHidden(true, for: .bottom)
+            // Keep scrolled headers inside the root page's top safe area.
+            .clipped()
         #else
         self.safeAreaPadding(.bottom, YubaiSize.rootBottomPadding)
         #endif
@@ -572,15 +577,14 @@ struct Page<Content: View>: View {
     let content: Content
     var spacing: CGFloat
     var topPadding: CGFloat
-    var bottomPadding: CGFloat
-    init(spacing: CGFloat = YubaiSpace.gapSection, topPadding: CGFloat = YubaiSpace.insetPage, bottomPadding: CGFloat = YubaiSpace.gapSection, @ViewBuilder content: () -> Content) {
-        self.content = content(); self.spacing = spacing; self.topPadding = topPadding; self.bottomPadding = bottomPadding
+    init(spacing: CGFloat = YubaiSpace.gapSection, topPadding: CGFloat = YubaiSpace.insetPage, @ViewBuilder content: () -> Content) {
+        self.content = content(); self.spacing = spacing; self.topPadding = topPadding
     }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: spacing) { content }
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, topPadding)
-                .padding(.bottom, bottomPadding)
+                .padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
     }
@@ -624,6 +628,45 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
                 }
             }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: rows.map(\.id))
         }
+    }
+}
+
+/// The card and dividers stay in CardRows. Only the full-width row content moves.
+/// An offset preserves its layout proposal; revealing an action never narrows text.
+struct SwipeActionRow<Content: View>: View {
+    let offset: CGFloat
+    let title: String
+    let tint: Color
+    let ink: Color
+    let weight: Font.Weight
+    let actionIdentifier: String
+    let action: () -> Void
+    let content: Content
+    init(offset: CGFloat, title: String, tint: Color, ink: Color, weight: Font.Weight = .semibold,
+         actionIdentifier: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.offset = offset; self.title = title; self.tint = tint; self.ink = ink; self.weight = weight
+        self.actionIdentifier = actionIdentifier; self.action = action; self.content = content()
+    }
+    var body: some View {
+        content.frame(maxWidth: .infinity, alignment: .leading)
+            .offset(x: offset)
+            .background(alignment: .trailing) {
+                Button(action: action) {
+                    Text(title)
+                        #if os(iOS)
+                        .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
+                        .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        #endif
+                }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
+                    #if os(iOS)
+                    .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
+                    #else
+                    .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapGroup).frame(maxHeight: .infinity).background(tint)
+                    #endif
+                    .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
+                    .accessibilityIdentifier(actionIdentifier)
+            }.clipped().contentShape(Rectangle())
     }
 }
 
@@ -1244,39 +1287,41 @@ struct WelcomeView: View {
     @State private var amount = ""
     @State private var customName = false
     var body: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: YubaiSpace.insetCard) {
-                    BrandMark(size: YubaiSize.iconButton + YubaiSpace.gapSection)
-                        .padding(.top, YubaiSpace.gapSection + YubaiSpace.space8)
-                    Text("余白").yubaiFont(YubaiFont.welcome)
-                    Card {
-                        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                            Text("现在手里有").yubaiFont(YubaiFont.heroLabel)
-                            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                                Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-                                TextField("0.00", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay)
-                                    .accessibilityLabel("现在手里的余额，元").accessibilityIdentifier("accountBalance")
-                            }
-                            ChipFlow {
-                                ForEach(["微信零钱", "支付宝", "招行储蓄卡"], id: \.self) { value in
-                                    SuggestionChip(value: value, selected: !customName && name == value) { name = value; customName = false }
-                                }
-                                SuggestionChip(value: "＋ 别的", selected: customName) { name = ""; customName = true }
-                                    .accessibilityIdentifier("welcomeOtherAccount")
-                            }.padding(.top, YubaiSpace.space8)
-                            if customName {
-                                TextField("名称", text: $name).accessibilityIdentifier("accountName")
-                                    .accessibilityLabel("账户名称")
-                            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.insetCard) {
+                BrandMark(size: YubaiSize.iconButton + YubaiSpace.gapSection)
+                    .padding(.top, YubaiSpace.gapSection + YubaiSpace.space8)
+                Text("余白").yubaiFont(YubaiFont.welcome)
+                Card {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                        Text("现在手里有").yubaiFont(YubaiFont.heroLabel)
+                        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                            Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
+                            TextField("0.00", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay)
+                                .accessibilityLabel("现在手里的余额，元").accessibilityIdentifier("accountBalance")
                         }
-                    }.padding(.top, YubaiSpace.gapSection)
-                }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity)
-            }
+                        ChipFlow {
+                            ForEach(["微信零钱", "支付宝", "招行储蓄卡"], id: \.self) { value in
+                                SuggestionChip(value: value, selected: !customName && name == value) { name = value; customName = false }
+                            }
+                            SuggestionChip(value: "＋ 别的", selected: customName) { name = ""; customName = true }
+                                .accessibilityIdentifier("welcomeOtherAccount")
+                        }.padding(.top, YubaiSpace.space8)
+                        if customName {
+                            TextField("名称", text: $name).accessibilityIdentifier("accountName")
+                                .accessibilityLabel("账户名称")
+                        }
+                    }
+                }.padding(.top, YubaiSpace.gapSection).accessibilityElement(children: .contain).accessibilityIdentifier("welcomeBalanceCard")
+            }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity)
+                .padding(YubaiSpace.insetPage)
+        }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("welcomeScroll")
+        .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
             Button("开始", action: start).buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.brandTint))
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
                 .accessibilityIdentifier("startLedger")
-        }.frame(maxHeight: .infinity).padding(YubaiSpace.insetPage).yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
+                .padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
+        }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
     }
     private func start() {
         do {
@@ -1458,14 +1503,31 @@ struct AddEntryButton: View {
     }
 }
 
+/// Shared scaling keeps the eye and assistant glyphs inside matching circles.
+struct HeaderIconButton<Icon: View>: View {
+    @ScaledMetric(relativeTo: .body) private var scaledSize = YubaiSize.headerIcon
+    let action: () -> Void
+    let icon: (CGFloat) -> Icon
+    init(action: @escaping () -> Void, @ViewBuilder icon: @escaping (CGFloat) -> Icon) {
+        self.action = action; self.icon = icon
+    }
+    var body: some View {
+        let iconSize = min(max(scaledSize, YubaiSize.headerIcon), YubaiSize.headerIconMax)
+        let side = max(YubaiSize.iconButton, iconSize + YubaiSpace.space8 * 2)
+        Button(action: action) {
+            icon(iconSize).accessibilityHidden(true)
+                .frame(width: side, height: side).floatingSurface(in: Circle())
+                .yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle())
+    }
+}
+
 struct AskToolbarButton: View {
     @Environment(AppStore.self) private var store
     var body: some View {
-        Button { store.present(.ask(""), from: "ask") } label: {
-            AssistantMark(size: 22, color: YubaiColor.brandInk).accessibilityHidden(true)
-                .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).floatingSurface(in: Circle())
-                .yubaiHitTarget()
-        }.buttonStyle(PressButtonStyle()).yubaiZoomSource("ask")
+        HeaderIconButton(action: { store.present(.ask(""), from: "ask") }) { size in
+            AssistantMark(size: size, color: YubaiColor.brandInk)
+        }.yubaiZoomSource("ask")
             .accessibilityLabel("问余白").accessibilityIdentifier("askYubai")
     }
 }
@@ -1475,7 +1537,7 @@ struct TabRootHeader: View {
     var body: some View {
         GlassGroup {
             ZStack {
-                Text(title).yubaiFont(YubaiFont.navTitle)
+                Text(title).yubaiFont(YubaiFont.navTitle).accessibilityIdentifier("rootHeaderTitle")
                 HStack(spacing: YubaiSpace.gapGroup) { Color.clear.frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin); Spacer(); AskToolbarButton() }
             }.frame(minHeight: YubaiSize.headerHeight)
         }
