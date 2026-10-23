@@ -12,6 +12,30 @@ enum Destination: String, CaseIterable, Identifiable {
     var title: String { switch self { case .overview: "现在"; case .insights: "洞察"; case .entries: "账目"; case .settings: "我" } }
     var symbol: String { switch self { case .overview: "water.waves"; case .insights: "chart.pie"; case .entries: "list.bullet"; case .settings: "person" } }
 }
+enum TabRoute: Hashable {
+    case forecast, upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
+    case quickCapture, importHistory, intelligencePrivacy, backup, storage
+    case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
+}
+
+struct TabNavigationLink<Content: View, Label: View>: View {
+    @Environment(\.yubaiSheetSurface) private var inSheet
+    let route: TabRoute
+    let destination: () -> Content
+    let label: () -> Label
+    init(_ route: TabRoute, @ViewBuilder destination: @escaping () -> Content, @ViewBuilder label: @escaping () -> Label) {
+        self.route = route; self.destination = destination; self.label = label
+    }
+    var body: some View {
+        #if os(iOS)
+        if inSheet { NavigationLink(destination: destination, label: label) }
+        else { NavigationLink(value: route, label: label) }
+        #else
+        NavigationLink(destination: destination, label: label)
+        #endif
+    }
+}
+
 enum AppSheet: Identifiable {
     case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions, addEntry, addPlan
     case editEntry(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
@@ -301,9 +325,10 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var motionNamespace
     #if os(iOS)
-    @State private var hiddenTabBars: [Destination: Bool] = [:]
+    @State private var tabPaths: [Destination: NavigationPath] = [:]
     @State private var keyboardVisible = false
     @State private var visibleTab: Destination = .overview
+    private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     #endif
     var body: some View {
         @Bindable var store = store
@@ -395,7 +420,7 @@ struct RootView: View {
                 }.scrollTargetLayout()
             }.scrollTargetBehavior(.paging)
                 .scrollIndicators(.hidden)
-                .scrollDisabled(store.pagingLocked || hiddenTabBars[store.destination] == true || store.sheet != nil || store.pickingInsightDates)
+                .scrollDisabled(store.pagingLocked || tabBarHidden || store.sheet != nil || store.pickingInsightDates)
                 .scrollClipDisabled()
                 .background(YubaiColor.canvas.ignoresSafeArea())
                 .onScrollGeometryChange(for: Destination.self) { tab(at: $0) } action: { _, next in
@@ -407,7 +432,7 @@ struct RootView: View {
                 }
                 .onAppear { proxy.scrollTo(store.destination, anchor: .leading) }
                 .overlay(alignment: .bottom) {
-                    if hiddenTabBars[store.destination] != true {
+                    if !tabBarHidden {
                         FloatingTabBar { scrollTo($0, using: proxy) }
                             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.floatingTabbarBottom)
                             .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
@@ -428,13 +453,31 @@ struct RootView: View {
         withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo(d, anchor: .leading) }
     }
     private func tabNavigation(_ d: Destination) -> some View {
-        NavigationStack {
+        NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: { tabPaths[d] = $0 })) {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
+                .navigationDestination(for: TabRoute.self) { tabDestination($0) }
         }.toolbarBackground(.hidden, for: .navigationBar)
-            .environment(\.yubaiTabBarHidden, Binding(get: { hiddenTabBars[d] ?? false }, set: { hiddenTabBars[d] = $0 }))
             .environment(\.isScrollEnabled, true)
             .scrollClipDisabled(false)
             .background(YubaiColor.canvas.ignoresSafeArea())
+    }
+    @ViewBuilder private func tabDestination(_ route: TabRoute) -> some View {
+        switch route {
+        case .forecast: Page { ForecastChart(funds: store.funds, height: 150) }.navigationTitle("现金会怎么走").yubaiNavigation()
+        case .upcomingPayments: Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation()
+        case .fixedFlows: FixedFlowsView()
+        case .butlerCards: ButlerListView()
+        case .profile: ProfileView()
+        case .wishlist: WishlistView()
+        case .letters: LettersView()
+        case .accounts: AccountsView()
+        case .quickCapture: QuickCaptureSettingsView()
+        case .importHistory: ImportHistoryView()
+        case .intelligencePrivacy: IntelligencePrivacyView()
+        case .backup: BackupView()
+        case .storage: StorageView()
+        case let .flowRecords(categories, title, income, interval): FlowRecordsView(categories: categories, title: title, income: income, interval: interval)
+        }
     }
     #endif
     private func tabRoot(_ d: Destination) -> some View {
@@ -450,7 +493,6 @@ struct RootView: View {
         }.background(YubaiColor.canvas)
         #else
         destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            .modifier(TabBarVisibility(hidden: false))
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {

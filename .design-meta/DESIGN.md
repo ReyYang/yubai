@@ -1,5 +1,15 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-23 · 取消侧滑返回的标签栏修复
+
+来源为 owner 在 `fix/insights-push-inset`／HEAD `0838156` 的 vphone 反馈：洞察分类明细等二级页左边缘返回到一半后取消，浮栏错误留在二级页；明确要求修复状态来源、保持 push 锁分页及 sheet 隔离、macOS 不变，补 UI 回归且不删／跳旧测试，不提交／推送。既有实色浮栏、留白与原稿保持，本轮没有新增视觉选择。
+
+Agent 实现选择：`YubaiApp.swift / RootView` 为四个常驻 NavigationStack 分别绑定 `NavigationPath`，`tabBarHidden` 直接读取当前 tab 路径是否非空，同时供 FloatingTabBar 条件与外层 `.scrollDisabled` 使用。`OverviewView`、`InsightsView`、`SettingsView` 和根页管家卡的全部首层 push 改用 `TabRoute` 值导航；普通目的视图链接不会加入可观察路径，所以不能只给原有 NavigationStack 增加 path 绑定。首层值保留在路径底部，深层普通链接或 Boolean 导航返回时仍保持隐藏；只有回到根页才恢复浮栏及分页。macOS 和 sheet 中的 `TabNavigationLink` 沿用原目的视图闭包，sheet 的 NavigationStack 不绑定 tab 路径。依据 [Apple 导航栈说明](https://developer.apple.com/documentation/swiftui/understanding-the-navigation-stack)，值目的地与上层视图目的地可以组合。
+
+`DesignSystem.swift` 删除 `TabBarVisibility`、环境绑定和出现回调写入，`EntriesView` 移除旧隐藏参数，`FlowRecordsView` 调整为模块内可见以供集中路由使用。取消交互返回不再依赖根页／二级页的 onAppear、onDisappear 顺序；系统导航决定路径，浮栏与分页只派生状态。
+
+验证：指定 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0，406 项、402 通过／4 项原有实网 opt-in 跳过／0 失败。全部 App 文件在 `arm64-apple-ios26.0`／`arm64-apple-macosx14.0`、UI 测试在 iOS 26 下通过 `swiftc -frontend -parse`，`git diff --check` 通过。原 47 个 UI 测试方法全部保留，新增 4 个：洞察反复取消返回后浮栏隐藏且双向横拖不翻页、深层 Boolean 导航取消／完成返回到我页、现在页完成返回才恢复浮栏及 tab 切换、sheet 内取消／完成返回后根页浮栏与分页正常。用 XCUICoordinate 从左边缘慢拖至 42% 并停住释放触发取消，95% 拖动覆盖完成返回；同时覆盖导航按钮返回。当前没有 Xcode／vphone 工具，Apple SDK 类型检查及 UI 实跑待做，语法解析不等于设备手势验收。未改 Core、依赖、`docs/`、HTML 原稿、Figma 或分发包，未提交／推送。
+
 ## 2026-10-22 · 分页同步与右滑归属复验
 
 来源为 owner 在 `fix/tabbar-gesture-regression`／`bd8b1b2` 的 vphone 复测：账目右滑到洞察后点账目、现在左滑到洞察后点现在，出现只切高亮、不切页面；其余手势已通过，本轮只修这两条同步路径及明确调整的右滑规则，macOS 保持。
@@ -223,6 +233,7 @@ owner 本轮明确批准 motion v2 与 iOS 26 Liquid Glass，按所附 README �
 - `DesignSystem.swift`：集中三种 spring、时长与曲线；数字用 numericText，隐藏金额／减少动态效果用 160ms 淡入淡出或终态。首现图表与水位按进程登记，离开时结束；预测线横向揭示，低点下落与单次外圈，环图逐段长出／角度变形、柱从基线生长。环图着色放在动画 mask 外，避免颜色渐变。
 - `YubaiApp.swift`：iOS 系统 TabView 三页，search role 作为问余白动作，selection binding 保留原页；新根页方向偏移 12pt，首开无入场。保留 `tab_*` 标签标识，UI 测试按系统标签文字查找。Mac 侧栏与旧版安全留白保持；系统栏接管 iOS 底部安全区。
 - 浮层：顶栏圆钮、提示条、助手输入条和 Mac 问余白圆钮用系统 glassEffect；顶栏组合使用 GlassEffectContainer。sheet 容器不再强盖 canvas，内卡／列表仍为暖纸；iOS 系统导航提供返回控件，内容详情用 matchedTransitionSource／zoom，设置列表继续 push。所有新增玻璃 API 均有 macOS 26 可用性分支。
+- 2026-10-23：洞察分类明细真机出现 zoom 期间首行被导航栏遮挡、结束后回落，源码排查指向目标 ScrollView 的导航栏安全区更新时序（尚无设备 inset 采样）；为避开该路径，仅分类明细及同结构的记录详情移除成对 zoom、回退标准 push，sheet zoom、分页与 macOS 行为保持，首帧稳定性及返回仍待真机复验，旧稿／Figma／分发包未同步。
 - 保存：持久化成功后识别实际新增／删除记录；sheet 收起后英雄数字换位、水带 keyframe 单次晃动与成功触感，380ms 后提示条入场，名义时长至 680ms。撤销只换回数字与轻触感；整批撤销抑制删除触感。替换账本或锁屏会取消待播反馈。行插入／删除让位、首次新行洗色、管家收起、分段滑块、助手消息入场和 4 秒提示条下滑关闭已接线。
 - 新增 `MotionState.swift` 的 Foundation 逻辑测试，直接与 App 共用源文件编入 UI 测试 bundle；新增问余白保留当前页的 UI 流程。工程生成器同步 iOS 26 与源文件引用；PackageDescription 升到 6.2 以使用 `.iOS(.v26)`，Swift 5 语言模式、macOS 14 与 Linux Core 排除 App 的规则保持。
 

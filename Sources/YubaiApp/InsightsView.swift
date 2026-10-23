@@ -59,8 +59,8 @@ struct InsightsView: View {
                     if slices.isEmpty { Text("还没有收支记录").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, YubaiSpace.gapSection) }
                     VStack(spacing: YubaiSpace.none) {
                         ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
-                            NavigationLink { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range).yubaiZoomDestination("category-\(rank)") } label: {
-                                legend(slice, rank: rank, slices: slices).yubaiZoomSource("category-\(rank)")
+                            TabNavigationLink(.flowRecords(categories: slice.categories, title: slice.title, income: income, interval: range)) { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range) } label: {
+                                legend(slice, rank: rank, slices: slices)
                             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
                             if slice.id != slices.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
                         }
@@ -220,7 +220,7 @@ private struct DonutSlice: Shape {
     }
 }
 
-private struct FlowRecordsView: View {
+struct FlowRecordsView: View {
     @Environment(AppStore.self) private var store
     let categories: [String]
     let title: String

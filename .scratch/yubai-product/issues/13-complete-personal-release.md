@@ -252,6 +252,14 @@ Agent 实现选择：移除同时承担命令与位置报告的 `scrolledTab` �
 
 指定 Linux swift test 退出 0：406 项、402 通过／4 项原有实网跳过／0 失败；四个 App 文件通过 iOS 26／macOS 14、UI 测试通过 iOS 26 语法解析。原 43 个测试方法保留，新增 4 个覆盖两条点回路径（含实际内容屏内位置）、账目收回前后右滑及管家快慢右滑的首页边界／后续分页。无 Xcode／vphone，Apple SDK 类型检查与 UI 实跑待做，本票保持 in-progress；docs／原稿／Figma／分发包未改，未提交／推送。
 
+## 2026-10-23 · 取消侧滑返回的标签栏（owner vphone 反馈）
+
+owner 在 `fix/insights-push-inset`／HEAD `0838156` 发现二级页左边缘返回到一半再取消后，自绘标签栏留在二级页。明确要求从导航状态修复根因，保留 push 时不翻 tab、sheet 导航不影响浮栏和 macOS 行为；补 UI 回归，不删除／跳过已有测试，代码不加注释，运行指定 swift test 及 App／UI 测试 iOS 26 语法解析，不提交／推送。
+
+Agent 选择每个 tab 独立 NavigationPath，全部根页 push 使用值路由，以当前路径非空同时决定浮栏隐藏与分页锁定；去掉 TabBarVisibility 及 onAppear 顺序依赖。macOS 和 sheet 保留原目的视图链接，深层普通／Boolean 导航仍位于首层值路由上方。原因和[源码映射](../../../.design-meta/DESIGN.md#2026-10-23--取消侧滑返回的标签栏修复)已登记；没有新增产品规则或视觉决定。
+
+指定 swift test 退出 0：406 项、402 通过／4 项原有实网 opt-in 跳过／0 失败。App 全部 Swift 的 iOS 26／macOS 14 与 UI 测试 iOS 26 语法解析通过，原 47 个 UI 方法保留且新增 4 个，覆盖重复取消、深层返回、完成返回恢复浮栏／分页及 sheet 隔离。当前无 Xcode／vphone，Apple SDK 类型检查及 UI 实跑待做，本票保持 in-progress；docs／原稿／Figma／分发包未改，未提交／推送。
+
 ## 2026-10-22 · 固定收付状态与停掉（owner 确认 V14）
 
 owner 已确认 r14canvas 的 `V14-Bills`、`V14-Bills-Stop`、`V14-Bills-After` 三稿与 `canvas.json / notes.v14n`，要求解决未处理项实心勾像已付、停掉工资重复、同状态收支样式不同及顶部日期点无意义。采用每行明确状态与 Calendar 逾期天数、到期未处理行的描边「付了／收到了」、已记灰勾／淡化、未到无按钮、逾期未付金额、要付／要收／已停掉三个分区及第十三轮 20／16 留白。停掉前对今天及以前的全部未结算期提供结算后停／跳过后停／取消；停后只在已停掉出现并写最近一期已记或没要。没有未结算期沿用普通确认。

@@ -152,7 +152,7 @@ struct ButlerCardView: View {
     }
     @ViewBuilder private var more: some View {
         if additionalCount > 0 {
-            NavigationLink { ButlerListView() } label: { Text("还有 \(additionalCount) 件 ›").yubaiFont(YubaiFont.caption) }
+            TabNavigationLink(.butlerCards) { ButlerListView() } label: { Text("还有 \(additionalCount) 件 ›").yubaiFont(YubaiFont.caption) }
                 .buttonStyle(PressButtonStyle()).foregroundStyle(ink).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("allButlerCards")
         }
     }
