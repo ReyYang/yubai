@@ -30,6 +30,8 @@ owner 已在本轮明确确认规则与 11 张页面／片段板，并授权在 
 
 同日第三次截图复查：按 owner 对 `205edde` 的反馈，进一步修正欢迎页与根页结构。欢迎原先已经有 safeAreaInset，但系统只保证金额输入框可见；本次给账户卡片独立滚动 ID，聚焦和安全区可用尺寸变化时用 ScrollViewReader 对齐卡片底部，保留键盘上方的底部按钮与完整读屏。根页原先把 header 放在滚动内容里，再对整体 `.clipped()`，少量滚动也会切到圆钮；现在／洞察／我改用共用 rootPageHeader，把 header 放在 ScrollView 之外，仅裁切其下正文，保持原顶部／组间 token 与底部滚动 margin；账目仍用系统 navigationTitle。固定收付／账目 96pt 左滑不改。[第三次截图复查修正](no-explanatory-copy-v16.md#第三次截图复查修正)区分源码修正与待做的设备验收，并说明计算页撤销原在 sheet 后方，测试仅保留取消／确认。4 个 App 文件三平台条件解析、UI 测试 iOS 26 解析及禁用词 3 项通过；53 个 UI 方法未实跑，Apple 类型检查与 iOS 26.4 复截图待做；Core／依赖／工程／原画板未改，外部资源未同步，未提交／推送。
 
+同日第四次截图复查：按 owner 对 `0acb32b` 的六项反馈，选择让账目也使用 TabRootHeader／rootPageHeader，以原自定义 header 为基准统一四页标题；现在的眼睛按钮并入同一组件。账目月份／搜索／筛选／行及各 tab 的 NavigationStack 保留，push 页继续使用系统返回。header 用页面 `canvas` 实色底，正文顶部复用 `space8` 做同色短渐隐，无玻璃底板、无新增 token。固定收付 40pt 勾选圆钮在 44pt 框内右对齐并保留完整点击区，消除多余 2pt，与账目共用 `gapAction = 12`；96pt 左移、标题裁切和原 12±1 测试断言保持。记一笔键盘／保存移入底部 safeAreaInset，独立滚动表单容纳用途芯片。[第四次截图复查修正](no-explanatory-copy-v16.md#第四次截图复查修正)记录六项处理、可见中文和验证边界。5 个 App 文件 iOS 26／macOS 14、UI 测试 iOS 26 条件解析及禁用词 3 项通过，diff 检查通过；54 个 UI 方法未实跑。Apple 类型检查、iOS 26.4 视觉与读屏／键盘验收待做；Core／依赖／工程／夹具／原画板未改，外部资源未同步，未提交／推送。
+
 ## 2026-10-23 · 少写字，让版式说话
 
 owner 在项目规则「设计驱动代码」下新增：“Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 设计系统 README 第一节改为同名规则（四种可写的字、六步替换顺序、不写的东西、例外、实现检查），`EmptyState` 去说明行、`InlineNote` 去解释卡和脚注、`EditorForm` 去「例如」和「（可选）」。设计稿新增「第十六轮 · 少写字」：规则、按 main `18889f8` 逐屏审计的 54 处说明文字及改法、11 张改后画板。前几轮画板中与本轮冲突的说明文字以第十六轮为准。owner 确认画板后在 `feat/no-explanatory-copy` 实现（见上一节）；实现约束同时写入根目录 `AGENTS.md`。

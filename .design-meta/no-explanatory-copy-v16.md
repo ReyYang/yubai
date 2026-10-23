@@ -299,3 +299,30 @@
 - `git diff --check` 通过；核对 53 个 UI 方法、无新增 skip、无 `app.statusBars` 调用。Core、依赖／Package、工程、UITestSupport 夹具、固定收付和账目行源码无本轮改动。
 - 本机原始检查输出保留在 `.verification/v16-third-review/parse.log`、`vocabulary.log` 与 `checks.log`，沿用既有忽略规则。未运行构建、Actions、网络或付费 API，HEAD 保持 `205edde`，未提交、未推送。
 - 待 Apple 环境复验：iOS 26.4 欢迎数字键盘输入 1000／切换账户／窄屏滚动、四根页普通字号及 XL 滚到底、问余白圆钮完整形状、我页滚动后记一笔 sheet、三项失败用例与相关欢迎测试；VoiceOver／Reduce Motion／深色仍需设备验收。原始画板、外部设计资源、旧原型及分发包未同步。
+
+## 第四次截图复查修正
+
+2026-10-23，依据 owner 对 iOS 26.4 模拟器复查 `0acb32b` 的六项反馈，在起始工作区干净的 `feat/no-explanatory-copy` 修正。owner 已确认欢迎键盘、四根页 header 的状态栏安全区、洞察按钮和记一笔顶部通过；本次沿用这些结果。以下是源码与静态验证记录，本环境没有 Apple SDK／模拟器，新增布局仍须设备复验。
+
+### 逐项处理与 token
+
+| 项目 | 原因与本次处理 |
+|---|---|
+| 1 固定收付左滑 14pt → 12pt | 共用展开几何原本已经是 `78 + 6 + 12 = 96pt`；末尾 FixedFlowCheck 的 40pt 圆形居中放在 44pt 点击框内，右边额外留出 `(44 − 40) / 2 = 2pt`，使可见内容到停掉按钮变成 14pt。本次圆形在 44pt 框内靠右对齐，并明确整个框的矩形点击区；预计可见边缘和点击框右缘都距动作 12pt。固定收付和账目继续共用 SwipeActionRow／swipeRevealDistance，间距统一引用现有 `YubaiSpace.gapAction`（12），展开距离 96、动作宽 78、动作内缩 6 保持。`testFixedBillGroupedSwipesKeepCardAndContentGeometry` 全方法保持，原第 229 行仍断言 12±1。 |
+| 2 根页安全区测试 | 移除所有 `scroll.frame.minY` 断言，不把铺满屏幕的 ScrollView frame 当作实际裁切区域。四页均检查标题和问余白按钮 `minY >= safeTop`、可点击、完整处于 window 内，以及滚动前后位置／高度稳定。首次可见正文控件位于 header 下方；滚动后完全进入 header 上方的正文按钮必须不可点击，正文仍有可点击项，避免误用部分裁切行的完整无障碍 frame。因为账目也改成自定义 header，safeTop 改从我页 push 的固定收付系统导航栏读取，并通过系统「我」返回验证原生返回链路。 |
+| 3 固定 header 暖纸背景 | 共用 rootPageHeader 的标题、按钮及上下留白铺 `YubaiColor.canvas`，和页面暖纸底一致；正文顶部叠同色到透明的 8pt 短渐隐，覆盖裁切边，内容滚动时逐渐滑入 header 下方。高度复用 `YubaiSpace.space8`，没有新增 token。渐隐不接收点按、不进入读屏树；header 底板与渐隐均未使用玻璃材质。原有悬浮圆钮继续使用既有组件。 |
+| 4 四根页标题基线 | 选择以现在／洞察／我的自定义 header 为准：四页统一使用 TabRootHeader 和 rootPageHeader，账目根页隐藏系统导航栏、保留 navigationTitle 作为导航语义。现在的眼睛按钮并入共用组件，字号／读屏／金额切换行为保持；四页使用同一标题字体、居中布局、48pt 最小高度、顶部 12pt 与底部 24pt 留白。账目只移除正文原有重复顶部 12pt，月份条、汇总、筛选、搜索、分日行与左滑不改；各 tab 仍是原 NavigationStack，push 页照旧恢复系统导航与返回。测试分别在普通字号和 accessibility XL 比较四页标题位置（±1pt）。 |
+| 5 记一笔底部安全区 | 移除外层 GeometryReader 与强撑可用高度的 minHeight，将自定义键盘、主保存键和「记下，再记一笔」放到 `.safeAreaInset(edge: .bottom, spacing: YubaiSpace.none)`，上下内边距复用 `gapGroup`（12），左右用 `insetPage`（20）。用途建议芯片、账户／日期、固定收付关联等留在独立 ScrollView，表单增长时自行滚动；底部操作区保持在底部安全区上方。原顶部 12pt、导入／取消、保存后清空并继续记账等行为保留，没有写入 home indicator 或键盘高度常量。新增回归用既有 entries 夹具的用途芯片验证操作区位置、表单滚动后的稳定性和继续记账。 |
+| 6 左滑标题裁切 | 按 owner 要求保持：卡片／分隔线固定，行保留原宽并整体左移 96pt，标题左端由原 SwipeActionRow 裁切；没有压缩标题、修改行宽或移除裁切。 |
+
+### 本次可见中文清单
+
+没有新增、删除或改写可见中文措辞。布局复用的「现在／洞察／账目／我」均为标题；「记下，再记一笔」和原「记下 {金额} 元」仍为结果按钮。账目标题从系统导航栏移到共用 header；账目右侧新增与其他根页相同的问余白图标入口，其「问余白」为完整读屏标签。现在的显示／隐藏金额读屏标签、各页控件、数字键盘和用途／账户／日期的完整读屏内容保留。没有新增四类之外的可见说明。
+
+### 本次验证与待验收
+
+- 5 个改动 App 文件：DesignSystem.swift、EntriesView.swift、FixedFlowsView.swift、OverviewView.swift、QuickEntryView.swift，分别通过 `swiftc -frontend -parse -target arm64-apple-ios26.0`、`arm64-apple-ios26.0-simulator -D DEBUG`、`arm64-apple-macosx14.0`。AppFlowTests.swift 的 iOS 26 device／simulator DEBUG 条件解析通过。这是语法解析，未作 Apple SDK 类型检查。
+- 运行既有 `.build/x86_64-unknown-linux-gnu/debug/YubaiPackageTests.xctest YubaiCoreTests.InterfaceVocabularyTests`：3 项通过、0 失败，原扫描器读取当前 App 源码；未重建测试产物，不计作全量 Core 验证。
+- `git diff --check` 通过；原 53 个 UI 方法全部保留，新增底部安全区回归 1 个，共 54 个；无新增 skip，固定收付 12±1 断言保持。UI 测试仅解析，尚未实跑。
+- 检查原始输出在 `.verification/v16-fourth-review/parse.log`、`vocabulary.log`、`checks.log`（沿用忽略规则）。Core／Core 测试、依赖、工程、UITestSupport 夹具、欢迎页与原始画板未改；HEAD 仍为 `0acb32b`，未提交、未推送。
+- 待 Apple 环境复验：固定收付首／末行停掉间距 12pt、原宽左移与标题裁切；四根页普通字号／XL 的标题对齐、暖纸渐隐与状态栏边界；账目月份／搜索／筛选及 push 返回；用途芯片、系统用途键盘、窄屏／XL 下表单滚动及两个保存动作与 home indicator 的间距；VoiceOver、Reduce Motion、深色。原始画板、外部设计系统、Figma、旧原型与分发包未同步。

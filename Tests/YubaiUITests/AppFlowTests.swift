@@ -361,24 +361,37 @@ final class AppFlowTests: XCTestCase {
         for category in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryAccessibilityXL"] {
             app.launchArguments = arguments + ["-UIPreferredContentSizeCategoryName", category]
             app.launch()
-            // Use the app's visible native navigation region; iOS 26 has no statusBars element.
-            tap(app.buttons["tab_entries"], in: app)
-            let navigationBar = app.navigationBars["账目"]
+            // Measure the native navigation region on a pushed page, then verify system back.
+            // All four roots use the custom header; iOS 26 has no statusBars element.
+            openFixedBills(app)
+            let navigationBar = app.navigationBars["固定收付"]
             XCTAssertTrue(navigationBar.waitForExistence(timeout: 5))
             let window = app.windows.firstMatch
             XCTAssertTrue(window.exists)
             let safeTop = navigationBar.frame.minY
             XCTAssertGreaterThan(safeTop, window.frame.minY)
-            for (tab, scrollID) in [("tab_overview", "overviewScroll"), ("tab_insights", "insightsScroll"), ("tab_entries", "entriesScroll"), ("tab_settings", "settingsScroll")] {
+            tap(navigationBar.buttons["我"], in: app)
+            assertSelectedTab("tab_settings", in: app)
+            var titleY: CGFloat?
+            for (tab, scrollID, firstContentID) in [("tab_overview", "overviewScroll", "fundsFormula"), ("tab_insights", "insightsScroll", "本周"), ("tab_entries", "entriesScroll", "entriesPreviousMonth"), ("tab_settings", "settingsScroll", "openProfile")] {
                 tap(app.buttons[tab], in: app)
                 let scroll = app.scrollViews[scrollID]
                 let scrolls = tab != "tab_overview" || category == "UICTContentSizeCategoryAccessibilityXL"
-                if scrolls {
-                    XCTAssertTrue(scroll.waitForExistence(timeout: 5))
-                    XCTAssertGreaterThanOrEqual(scroll.frame.minY, safeTop)
-                }
-                let headers = tab == "tab_entries" ? [navigationBar] : [app.staticTexts["rootHeaderTitle"], app.buttons["askYubai"]]
+                if scrolls { XCTAssertTrue(scroll.waitForExistence(timeout: 5)) }
+                let headers = [app.staticTexts["rootHeaderTitle"], app.buttons["askYubai"]]
                 for header in headers { XCTAssertTrue(header.isHittable) }
+                if let titleY { XCTAssertEqual(headers[0].frame.minY, titleY, accuracy: 1) }
+                else { titleY = headers[0].frame.minY }
+                let headerBottom = max(headers[0].frame.maxY, headers[1].frame.maxY)
+                let firstContent = app.buttons[firstContentID]
+                if scrolls {
+                    for _ in 0..<8 {
+                        if firstContent.isHittable && firstContent.frame.minY >= headerBottom { break }
+                        scroll.swipeDown()
+                    }
+                }
+                XCTAssertTrue(firstContent.isHittable)
+                XCTAssertGreaterThanOrEqual(firstContent.frame.minY, headerBottom)
                 let originalFrames = headers.map(\.frame)
                 if scrolls { for _ in 0..<4 { scroll.swipeUp() } }
                 for (header, originalFrame) in zip(headers, originalFrames) {
@@ -387,7 +400,15 @@ final class AppFlowTests: XCTestCase {
                     XCTAssertTrue(window.frame.contains(header.frame))
                     XCTAssertEqual(header.frame.minY, originalFrame.minY, accuracy: 1)
                     XCTAssertEqual(header.frame.height, originalFrame.height, accuracy: 1)
-                    if scrolls { XCTAssertLessThanOrEqual(header.frame.maxY, scroll.frame.minY) }
+                }
+                if scrolls {
+                    // Accessibility frames can include the clipped part of a partially visible row.
+                    // Fully covered content must not be tappable, while the body remains usable.
+                    let content = scroll.descendants(matching: .button).allElementsBoundByIndex
+                    XCTAssertTrue(content.contains { $0.isHittable })
+                    for element in content where element.frame.maxY <= headerBottom {
+                        XCTAssertFalse(element.isHittable)
+                    }
                 }
                 snapshot("\(category)-\(tab)-scrolled-safe-area", app)
             }
@@ -399,6 +420,35 @@ final class AppFlowTests: XCTestCase {
         snapshot("scrolled-me-entry-sheet", app)
         tap(app.buttons["cancelManualSheet"], in: app)
         assertSelectedTab("tab_settings", in: app)
+    }
+
+    func testEntrySheetWithPurposeSuggestionsKeepsActionsAboveHomeIndicator() {
+        let app = application("entries"); app.launch()
+        let navigation = app.otherElements["mainNavigation"]
+        XCTAssertTrue(navigation.waitForExistence(timeout: 5))
+        // The floating bar ends 8pt above the bottom safe-area boundary.
+        let safeBottom = navigation.frame.maxY + 8
+        tap(addEntryTab(app), in: app)
+        let form = app.scrollViews["entryFormScroll"]
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+        let recent = app.buttons["合成账目 0"]
+        for _ in 0..<8 { if recent.isHittable { break }; form.swipeUp() }
+        XCTAssertTrue(recent.isHittable)
+        tap(recent, in: app)
+        tap(app.buttons["keypad_3"], in: app)
+        let save = app.buttons["saveQuickEntry"], again = app.buttons["saveAndAddAnother"]
+        XCTAssertTrue(save.isHittable); XCTAssertTrue(again.isHittable)
+        XCTAssertLessThanOrEqual(save.frame.maxY, again.frame.minY)
+        XCTAssertLessThanOrEqual(again.frame.maxY, safeBottom - 12)
+        let originalFrame = again.frame
+        form.swipeUp()
+        XCTAssertTrue(again.isHittable)
+        XCTAssertEqual(again.frame.minY, originalFrame.minY, accuracy: 1)
+        XCTAssertLessThanOrEqual(again.frame.maxY, safeBottom - 12)
+        snapshot("entry-purpose-chips-safe-bottom", app)
+        tap(again, in: app)
+        XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "0")
+        XCTAssertTrue(again.exists); XCTAssertFalse(again.isEnabled)
     }
 
     func testOverviewAccessibilityXLScalesHeaderAndWrapsTodaySummary() {

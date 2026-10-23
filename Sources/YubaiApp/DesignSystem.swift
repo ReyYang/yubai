@@ -190,7 +190,7 @@ enum YubaiSize {
     static let segmentedPill: CGFloat = 32
     static let segmentedHitOutset = (tapMin - segmentedHeight) / 2
     static let swipeActionWidth: CGFloat = 78
-    static let swipeRevealDistance = swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapGroup
+    static let swipeRevealDistance = swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapAction
     static let tabBarHeight: CGFloat = 66
     static let tabSelectionHeight = tabBarHeight - YubaiSpace.space8 * 2
     static let tabSelectionRadius = tabSelectionHeight / 2
@@ -536,7 +536,13 @@ extension View {
             header()
                 .padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+                .background(YubaiColor.canvas)
             self
+                .overlay(alignment: .top) {
+                    LinearGradient(colors: [YubaiColor.canvas, YubaiColor.canvas.opacity(0)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: YubaiSpace.space8)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
         }
     }
     func pageLocalHorizontalGestures() -> some View {
@@ -670,7 +676,7 @@ struct SwipeActionRow<Content: View>: View {
                     #if os(iOS)
                     .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
                     #else
-                    .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapGroup).frame(maxHeight: .infinity).background(tint)
+                    .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
                     #endif
                     .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
                     .accessibilityIdentifier(actionIdentifier)
@@ -1564,12 +1570,23 @@ struct AskToolbarButton: View {
 }
 
 struct TabRootHeader: View {
+    @Environment(AppStore.self) private var store
     let title: String
+    var showsAmountVisibility = false
     var body: some View {
         GlassGroup {
             ZStack {
                 Text(title).yubaiFont(YubaiFont.navTitle).accessibilityIdentifier("rootHeaderTitle")
-                HStack(spacing: YubaiSpace.gapGroup) { Color.clear.frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin); Spacer(); AskToolbarButton() }
+                HStack(spacing: YubaiSpace.gapGroup) {
+                    if showsAmountVisibility {
+                        HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
+                            Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
+                                .font(.system(size: size))
+                        }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
+                            .accessibilityIdentifier("toggleAmountVisibility")
+                    } else { Color.clear.frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
+                    Spacer(); AskToolbarButton()
+                }
             }.frame(minHeight: YubaiSize.headerHeight)
         }
     }

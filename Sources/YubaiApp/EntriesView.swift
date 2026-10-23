@@ -46,7 +46,7 @@ struct EntriesView: View {
                     }
                 }
             }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.entryDeleteTrigger)
-                .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+                .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 780).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).amountPrivacy(store.current.preferences.hideAmounts).accessibilityIdentifier("entriesScroll")
             #if os(iOS)
@@ -58,7 +58,11 @@ struct EntriesView: View {
             .onChange(of: store.sheet?.id) { _, _ in revealedEntryID = nil }
             .onDisappear { revealedEntryID = nil; store.pagingLocked = false }
             #endif
+            .rootPageHeader { TabRootHeader(title: "账目") }
             .navigationTitle("账目").yubaiNavigation(hidesTabBar: false)
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
     }
     private var monthPicker: some View {
         HStack(spacing: YubaiSpace.space4) {

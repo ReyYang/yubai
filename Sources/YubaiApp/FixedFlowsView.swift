@@ -224,7 +224,10 @@ struct FixedFlowCheck: View {
                 .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
                 .background(state == .paid ? YubaiColor.brandTint : filled ? YubaiColor.amberDot : YubaiColor.card.opacity(0), in: Circle())
                 .overlay { if state == .upcoming || (inflow && state != .paid) { Circle().strokeBorder(inflow ? YubaiColor.brand : YubaiColor.neutralStrong, lineWidth: 1.5) } }
-                .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
+                // Keep the visible circle flush with the row's trailing edge;
+                // centering 40pt in 44pt adds 2pt to the shared action gap.
+                .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin, alignment: .trailing)
+                .contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).disabled(state == .paid).accessibilityLabel(label)
             .accessibilityValue(FixedFlowPresentation.state(state, inflow: inflow))
             .accessibilityIdentifier("settleFixedFlow_" + planID.uuidString + "_" + Dates.text(occurrence))

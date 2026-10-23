@@ -22,39 +22,42 @@ struct QuickEntryView: View {
     private var canSave: Bool { keypad.canSave && accountID != nil && (nature != .transfer || (otherAccountID != nil && otherAccountID != accountID)) }
     var body: some View {
         let available = previewAvailable
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                    ManualSheetHeader(title: "记一笔", actionTitle: "导入", actionImage: "photo", primary: false,
-                                      cancel: { dismiss() }, action: { store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports })
-                    if accounts.isEmpty {
-                        EmptyAccountState { store.sheet = .account(nil) }
-                        Spacer(minLength: YubaiSpace.none)
-                    } else {
-                        Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature)
-                        amountDisplay
-                        EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
-                                           all: ManualBookkeeping.categories(in: store.current, nature: nature), selection: $category,
-                                           didSelect: { userChoseCategory = true })
-                        form
-                        HStack(spacing: YubaiSpace.gapGroup) {
-                            Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                            Spacer()
-                            AmountLabel(cents: available, hide: store.current.preferences.hideAmounts, currency: true, fractionDigits: available % 100 == 0 ? 0 : 2)
-                                .accessibilityIdentifier("afterEntryAvailable")
-                        }
-                        Spacer(minLength: YubaiSpace.gapGroup)
-                        if let suggestion { matchChip(suggestion) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                ManualSheetHeader(title: "记一笔", actionTitle: "导入", actionImage: "photo", primary: false,
+                                  cancel: { dismiss() }, action: { store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports })
+                if accounts.isEmpty {
+                    EmptyAccountState { store.sheet = .account(nil) }
+                } else {
+                    Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature)
+                    amountDisplay
+                    EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
+                                       all: ManualBookkeeping.categories(in: store.current, nature: nature), selection: $category,
+                                       didSelect: { userChoseCategory = true })
+                    form
+                    HStack(spacing: YubaiSpace.gapGroup) {
+                        Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        Spacer()
+                        AmountLabel(cents: available, hide: store.current.preferences.hideAmounts, currency: true, fractionDigits: available % 100 == 0 ? 0 : 2)
+                            .accessibilityIdentifier("afterEntryAvailable")
+                    }
+                    if let suggestion { matchChip(suggestion) }
+                }
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapGroup)
+                .frame(maxWidth: 620).frame(maxWidth: .infinity)
+        }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("entryFormScroll")
+            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+                if !accounts.isEmpty {
+                    VStack(spacing: YubaiSpace.gapGroup) {
                         EntryKeypadView(keypad: $keypad, canSave: canSave, save: { save(again: false) }, onKey: { purposeFocused = false })
                         Button("记下，再记一笔") { save(again: true) }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
                             .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle()).disabled(!canSave)
                             .accessibilityIdentifier("saveAndAddAnother")
-                    }
-                }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
-                    .frame(minHeight: geometry.size.height, alignment: .top)
-                    .frame(maxWidth: 620).frame(maxWidth: .infinity)
-            }.scrollDismissesKeyboard(.interactively)
-        }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+                    }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapGroup)
+                        .frame(maxWidth: 620).frame(maxWidth: .infinity)
+                }
+            }
+            .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
             #if os(iOS)
             .presentationDetents([.large])
             .toolbar(.hidden, for: .navigationBar)
