@@ -46,7 +46,7 @@ struct EntriesView: View {
                     }
                 }
             }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.entryDeleteTrigger)
-                .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+                .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 780).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).amountPrivacy(store.current.preferences.hideAmounts).accessibilityIdentifier("entriesScroll")
             #if os(iOS)
@@ -58,7 +58,11 @@ struct EntriesView: View {
             .onChange(of: store.sheet?.id) { _, _ in revealedEntryID = nil }
             .onDisappear { revealedEntryID = nil; store.pagingLocked = false }
             #endif
+            .rootPageHeader { TabRootHeader(title: "账目") }
             .navigationTitle("账目").yubaiNavigation()
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
     }
     private var monthPicker: some View {
         HStack(spacing: YubaiSpace.space4) {
@@ -85,8 +89,8 @@ struct EntriesView: View {
     private var searchField: some View {
         HStack(spacing: YubaiSpace.space8) {
             Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-            TextField("找一笔：备注、分类、金额", text: $search).yubaiFont(YubaiFont.row).focused($searchFocused)
-                .accessibilityLabel("搜索账目").accessibilityIdentifier("entriesSearch")
+            TextField("搜索", text: $search).yubaiFont(YubaiFont.row).focused($searchFocused)
+                .accessibilityLabel("搜索账目").accessibilityHint("可按备注、分类或金额搜索").accessibilityIdentifier("entriesSearch")
         }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin)
             .background(YubaiColor.raised, in: Capsule())
     }
@@ -153,41 +157,27 @@ private struct LedgerEntryRow: View {
     let entry: Entry
     let category: String
     let symbol: String
-    private let revealDistance = YubaiSize.swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapGroup
+    private let revealDistance = YubaiSize.swipeRevealDistance
     private var uncategorized: Bool { EntryTimeline.isUncategorized(entry) }
     private var categoryName: String { uncategorized ? "没分类" : Classification.displayCategory(category) }
     private var note: String { entry.note.isEmpty ? (entry.displayTitle == categoryName ? "" : entry.displayTitle) : entry.note }
     var body: some View {
-        Button {
-            #if os(macOS)
-            guard !tapsBlocked, !dragging else { return }
-            #endif
-            if resting != 0 {
-                #if os(iOS)
-                revealedEntryID = nil
+        SwipeActionRow(offset: offset, title: "删除", tint: YubaiColor.amberTint, ink: YubaiColor.amberInk,
+                       actionIdentifier: "deleteLedgerEntry_" + entry.id.uuidString, action: delete) {
+            Button {
+                #if os(macOS)
+                guard !tapsBlocked, !dragging else { return }
                 #endif
-                resting = 0; reset(); return
-            }
-            store.sheetSource = nil; store.sheet = .editEntry(entry.id)
-        } label: { content }
-            .buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
-            .offset(x: offset).background(alignment: .trailing) {
-                Button(action: delete) {
-                    Text("删除")
-                        #if os(iOS)
-                        .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
-                        .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                        #endif
-                }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.amberInk)
+                if resting != 0 {
                     #if os(iOS)
-                    .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
-                    #else
-                    .frame(width: revealDistance - YubaiSpace.gapGroup).frame(maxHeight: .infinity).background(YubaiColor.amberTint)
+                    revealedEntryID = nil
                     #endif
-                    .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
-                    .accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
-            }.clipped().contentShape(Rectangle())
+                    resting = 0; reset(); return
+                }
+                store.sheetSource = nil; store.sheet = .editEntry(entry.id)
+            } label: { content }
+                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+        }
             #if os(iOS)
             .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
                 if distance < 0 { revealedEntryID = entry.id }

@@ -1,13 +1,45 @@
 import Foundation
 
 public enum FollowUpChoice: String, CaseIterable, Sendable { case worth = "值得", neutral = "一般", regret = "有点后悔" }
+public enum CooldownChoice: String, Sendable { case keep, drop }
 public enum Wishlist {
+    public static func defaultCooldownDays(amount: Int64) -> Int { amount < 20_000 ? 0 : amount <= 100_000 ? 3 : 7 }
+    @discardableResult public static func add(fromVerdict verdict: SubmittedPurchaseVerdict, title: String, amount: Int64,
+        category: String? = nil, subcategory: String? = nil, purpose: String = "", in ledger: inout Ledger, now: Date = Date()) throws -> WishItem {
+        guard amount > 0, amount <= Money.limit, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw YubaiError.invalid("请核对心愿单的名称和金额。") }
+        var wish = WishItem(title: title, amount: amount, purpose: purpose, judgment: verdict.verdict.label + "：" + verdict.reason)
+        wish.createdAt = now; wish.source = "fromVerdict"; wish.category = category; wish.subcategory = subcategory
+        let days = defaultCooldownDays(amount: amount)
+        wish.coolUntil = days == 0 ? nil : Dates.addDays(days, to: now)
+        var next = ledger; next.wishlist.append(wish); next.updatedAt = max(now, next.updatedAt)
+        try next.validate(); ledger = next; return wish
+    }
+    public static func cooldownDue(_ ledger: Ledger, now: Date) -> [CardCandidate] {
+        ledger.wishlist.compactMap { wish in
+            guard wish.status == .thinking, let due = wish.coolUntil, due <= now else { return nil }
+            return CardCandidate(kind: .cooldownDue, dedupeKey: "cooldown:\(wish.id)", evidence: [],
+                facts: [CardFact("心愿单", wish.title), CardFact("金额", cents: wish.amount), CardFact("日期", Dates.text(due))],
+                title: "\(wish.title)，还想要吗？", body: "还想要，或是不要了？", action: .openWish(wish.id), priority: 2)
+        }
+    }
+    public static func answerCooldown(_ wishID: UUID, choice: CooldownChoice, in ledger: inout Ledger, now: Date) throws {
+        guard let i = ledger.wishlist.firstIndex(where: { $0.id == wishID && $0.status == .thinking }),
+              let due = ledger.wishlist[i].coolUntil, due <= now else { throw YubaiError.invalid("这件心愿还没到日期，或已经回答过了。") }
+        ledger.wishlist[i].coolUntil = nil
+        if choice == .drop { ledger.wishlist[i].status = .dropped; ledger.wishlist[i].droppedAt = now }
+        for j in ledger.cards.indices where ledger.cards[j].dedupeKey == "cooldown:\(wishID)" { ledger.cards[j].dismissedAt = now }
+        ledger.updatedAt = max(now, ledger.updatedAt)
+    }
+
     public static func matches(_ wish: WishItem, entry: Entry, now: Date) -> Bool {
         guard wish.status == .thinking, wish.amount > 0, entry.deletedAt == nil, entry.nature == .expense,
               entry.date >= Dates.day(wish.createdAt), entry.date <= Dates.addDays(60, to: wish.createdAt), entry.date <= now,
               abs(entry.amount - wish.amount) <= wish.amount / 10 else { return false }
+        return similarTitles(wish.title, entry.displayTitle)
+    }
+    static func similarTitles(_ first: String, _ second: String) -> Bool {
         func normalize(_ text: String) -> String { text.lowercased().filter { $0.isLetter || $0.isNumber } }
-        let a = normalize(wish.title), b = normalize(entry.displayTitle)
+        let a = normalize(first), b = normalize(second)
         guard a.count >= 2, b.count >= 2 else { return a == b && !a.isEmpty }
         if a.contains(b) || b.contains(a) { return true }
         func pairs(_ value: String) -> Set<String> {
@@ -25,8 +57,9 @@ public enum Wishlist {
         guard let i = ledger.wishlist.firstIndex(where: { $0.id == wishID && $0.status == .thinking }),
               let entry = ledger.activeEntries.first(where: { $0.id == entryID && $0.nature == .expense }),
               !ledger.wishlist.contains(where: { $0.id != wishID && $0.boughtEntryID == entryID }) else { throw YubaiError.invalid("请选择一笔尚未关联心愿的支出记录。") }
-        ledger.wishlist[i].status = .bought; ledger.wishlist[i].boughtEntryID = entryID
+        ledger.wishlist[i].coolUntil = nil; ledger.wishlist[i].status = .bought; ledger.wishlist[i].boughtEntryID = entryID
         ledger.wishlist[i].followUpAt = Dates.addDays(30, to: entry.date)
+        for j in ledger.cards.indices where ledger.cards[j].dedupeKey == "cooldown:\(wishID)" { ledger.cards[j].dismissedAt = entry.date }
     }
     /// Only newly imported/added rows are eligible. Ambiguity requires a manual choice.
     public static func autoLink(_ ledger: inout Ledger, addedEntryIDs: Set<UUID>, now: Date) {

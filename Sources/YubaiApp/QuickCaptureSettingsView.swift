@@ -1,84 +1,118 @@
 import SwiftUI
 import YubaiCore
-#if os(iOS)
-import UserNotifications
-#endif
 
 struct QuickCaptureSettingsView: View {
     @Environment(AppStore.self) private var store
+    @State private var notificationStatus = ""
     private var recent: [Entry] {
         let start = Dates.addDays(-6, to: Dates.day(Date()))
         return store.current.activeEntries.filter { $0.quickCapture != nil && ($0.recordedAt ?? $0.date) >= start && ($0.recordedAt ?? $0.date) <= Date() }
     }
     var body: some View {
         Page {
-            Text("近 7 天").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space4) {
-                Text("\(recent.count)").yubaiFont(YubaiFont.amountAccount)
-                Text("笔，\(recent.filter { $0.quickCapture?.withoutOpeningApp == true }.count) 笔没打开 App").yubaiFont(YubaiFont.callout)
+            HStack(alignment: .top, spacing: YubaiSpace.gapSection) {
+                statistic("近 7 天", count: recent.count)
+                Spacer()
+                statistic("没打开 App", count: recent.filter { $0.quickCapture?.withoutOpeningApp == true }.count)
             }
-            Card(style: .list) {
-                NavigationLink { ApplePaySetupView() } label: { line("Apple Pay 付款后自动记", "在快捷指令的「自动化 › 钱包」里建一次", detail: "去设置") }
+            Card {
+                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                    HStack(spacing: YubaiSpace.space8) {
+                        Text("Apple Pay 付完就记").yubaiFont(YubaiFont.rowTitle)
+                        Spacer()
+                        #if os(iOS)
+                        Button {
+                            Task { notificationStatus = await CaptureNotifications.requestPermission() ? "通知已开启" : "通知没开" }
+                        } label: { Image(systemName: "bell").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
+                            .accessibilityLabel("开启记账通知")
+                        #endif
+                    }
+                    Link("添加到快捷指令", destination: URL(string: "shortcuts://")!)
+                        .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addCaptureShortcut")
+                        .accessibilityHint("打开快捷指令 App，可添加余白的 Apple Pay 记一笔动作；仍需在快捷指令中配置交易自动化")
+                    if !notificationStatus.isEmpty { Text(notificationStatus).yubaiFont(YubaiFont.caption) }
+                }
             }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     NavigationLink { CaptureRulesView(kind: .card) } label: {
-                        line("卡对应的账户", cardSummary, detail: "\(store.current.preferences.quickCapture.cardAccounts.count) 张")
+                        line("卡对应的账户", detail: "\(store.current.preferences.quickCapture.cardAccounts.count) 张", navigates: true)
                     }
                     EntryFormDivider()
                     NavigationLink { CaptureRulesView(kind: .merchant) } label: {
-                        line("商户记到哪个分类", merchantSummary, detail: "\(store.current.preferences.quickCapture.merchantCategories.count) 条")
+                        line("商户记到哪个分类", detail: "\(store.current.preferences.quickCapture.merchantCategories.count) 条", navigates: true)
                     }
                 }
             }
-            Text("其他入口").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
-                    line("Siri 和快捷指令", "说「余白记一笔，午饭 32」", detail: "已可用")
-                    EntryFormDivider()
-                    line("锁屏和主屏小组件", "长按锁屏或主屏 › 添加小组件 › 余白")
-                    EntryFormDivider()
-                    line("控制中心和操作按钮", "记一笔、截图记")
-                    EntryFormDivider()
-                    line("轻点背面截图记", "辅助功能 › 触控 › 轻点背面 › 余白 · 截图记")
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                SectionHeading(title: "其他入口")
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        Link(destination: URL(string: "shortcuts://")!) {
+                            line("Siri", detail: "「余白记一笔，午饭 32」", thumbnail: .siri, navigates: true)
+                        }.accessibilityHint("打开快捷指令 App，查看余白的动作")
+                        EntryFormDivider()
+                        line("小组件", thumbnail: .widget)
+                            .accessibilityLabel("锁屏和主屏小组件，设置图示暂不可用")
+                        EntryFormDivider()
+                        line("控制中心", thumbnail: .control)
+                            .accessibilityLabel("控制中心和操作按钮，设置图示暂不可用")
+                        EntryFormDivider()
+                        line("轻点背面", thumbnail: .backTap)
+                            .accessibilityLabel("轻点背面截图记，设置图示暂不可用")
+                    }
                 }
             }
-            Text("支付宝、微信付款不经过钱包，用截图记。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-        }.navigationTitle("快速记账").yubaiNavigation()
-    }
-    private var cardSummary: String {
-        let rules = store.current.preferences.quickCapture.cardAccounts
-        return rules.keys.sorted().prefix(2).map { $0 + " → " + store.current.accountName(rules[$0]) }.joined(separator: "；")
-    }
-    private var merchantSummary: String {
-        let rules = store.current.preferences.quickCapture.merchantCategories
-        return rules.keys.sorted().prefix(2).map { $0 + " → " + Classification.displayCategory(rules[$0]!) }.joined(separator: "，")
-    }
-    private func line(_ title: String, _ subtitle: String, detail: String? = nil) -> some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text(title).yubaiFont(YubaiFont.rowTitle)
-                if !subtitle.isEmpty { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            Card(style: .list) {
+                NavigationLink { ImportView() } label: { line("支付宝、微信付款", detail: "截图记", navigates: true) }
             }
+        }.buttonStyle(PressButtonStyle()).navigationTitle("快速记账").yubaiNavigation()
+    }
+    private func statistic(_ title: String, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+            Text("\(count) 笔").yubaiFont(YubaiFont.amountAccount)
+        }
+    }
+    private func line(_ title: String, detail: String? = nil, thumbnail: CaptureThumbnail.Kind? = nil, navigates: Bool = false) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            if let thumbnail { CaptureThumbnail(kind: thumbnail) }
+            Text(title).yubaiFont(YubaiFont.row)
             Spacer(minLength: YubaiSpace.space4)
             if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-        }.padding(.vertical, YubaiSpace.space4).frame(minHeight: subtitle.isEmpty ? YubaiSize.rowSingle : YubaiSize.rowDouble).contentShape(Rectangle())
+            if navigates {
+                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+            } else {
+                Color.clear.frame(width: YubaiFont.meta.size, height: YubaiFont.meta.lineHeight).accessibilityHidden(true)
+            }
+        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
     }
 }
-private struct ApplePaySetupView: View {
-    @State private var notificationStatus = ""
+
+private struct CaptureThumbnail: View {
+    enum Kind { case siri, widget, control, backTap }
+    let kind: Kind
     var body: some View {
-        Page {
-            Text("Apple Pay 付款后自动记").yubaiFont(YubaiFont.cardTitle)
-            Text("1. 打开快捷指令，选择「自动化」，添加「交易」钱包触发器。")
-            Text("2. 选择付款卡，设为立即运行，添加「余白 · Apple Pay 记一笔」。")
-            Text("3. 商户、金额、卡名分别选择交易的商户、金额、卡；付款时间可选交易日期。")
-            #if os(iOS)
-            Link("打开快捷指令", destination: URL(string: "shortcuts://")!).buttonStyle(PrimaryButtonStyle())
-            Button("开启记账通知") { Task { notificationStatus = await CaptureNotifications.requestPermission() ? "通知已开启" : "通知未开启" } }.buttonStyle(SecondaryButtonStyle())
-            if !notificationStatus.isEmpty { Text(notificationStatus).yubaiFont(YubaiFont.caption) }
-            #endif
-        }.navigationTitle("Apple Pay").yubaiNavigation()
+        ZStack {
+            RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.canvas)
+            switch kind {
+            case .siri:
+                AssistantMark(size: YubaiSize.barMax)
+            case .widget:
+                VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                    Capsule().fill(YubaiColor.labelSecondary).frame(width: YubaiSpace.gapGroup, height: YubaiSpace.space2)
+                    Capsule().fill(YubaiColor.label).frame(width: YubaiSpace.insetCard, height: YubaiSpace.space4)
+                    Capsule().fill(YubaiColor.brand).frame(height: YubaiSpace.space8)
+                }.padding(YubaiSpace.space8)
+            case .control:
+                Image(systemName: "plus").yubaiFont(YubaiFont.caption)
+                    .foregroundStyle(YubaiColor.onBrand).frame(width: YubaiSize.barMax, height: YubaiSize.barMax)
+                    .background(YubaiColor.brand, in: Circle())
+            case .backTap:
+                Image(systemName: "iphone").yubaiFont(YubaiFont.lead).foregroundStyle(YubaiColor.label)
+                    .overlay { Circle().fill(YubaiColor.brand).frame(width: YubaiSpace.space4, height: YubaiSpace.space4) }
+            }
+        }.frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon).accessibilityHidden(true)
     }
 }
 private enum CaptureRuleKind { case card, merchant; var title: String { self == .card ? "卡对应的账户" : "商户记到哪个分类" } }

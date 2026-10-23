@@ -15,7 +15,7 @@ final class ImportTests: XCTestCase {
         XCTAssertEqual(p.rows.filter { $0.status == .skipped }.count, 1)
         XCTAssertEqual(p.rows.filter { $0.status == .invalid }.count, 1)
         XCTAssertEqual(p.selectedEntries.first?.amount, 2800)
-        XCTAssertEqual(p.selectedEntries.first?.category, "待整理")
+        XCTAssertEqual(p.selectedEntries.first?.category, "餐饮"); XCTAssertEqual(p.selectedEntries.first?.subcategory, "午餐")
         XCTAssertEqual(p.selectedEntries.last?.nature, .unknownIn)
     }
     func testReimportKeepsUserEditsAndDeletedTombstones() throws {

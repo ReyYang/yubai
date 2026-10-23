@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>表单与确认 · 不写例如和后果说明</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yubai/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600&amp;family=Noto+Sans+SC:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1330px; height: 420px; box-sizing: border-box; padding: 40px; background: var(--card, #ede6d3); color: var(--label, #382f1f); font-family: var(--font-sans, 'Noto Sans SC', sans-serif); display: flex; gap: 40px; align-items: flex-start">
+<div style="width: 390px; box-sizing: border-box; padding: 20px; border-radius: 28px; background: var(--canvas, #f5f1e5); display: flex; flex-direction: column; gap: 12px; flex: none"><div style="font-size: 13px; color: var(--label-secondary, #6a604f)">账户名称 · 建议芯片代替“例如：…”</div><div style="border-radius: 22px; background: var(--card, #ede6d3); padding: 4px 16px"><div style="display: flex; align-items: center; justify-content: space-between; min-height: 48px; font-size: 15px"><label for="v16f-name">名称</label><input id="v16f-name" style="width: 180px; border: 0; background: transparent; text-align: right; font: inherit; font-size: 15px; color: var(--label, #382f1f)"></div></div>
+<div role="group" aria-label="常用账户" style="display: flex; flex-wrap: wrap; column-gap: 8px; row-gap: 12px"><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">微信零钱</button><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">支付宝</button><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">招行储蓄卡</button><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">信用卡</button></div></div><div style="width: 390px; box-sizing: border-box; padding: 20px; border-radius: 28px; background: var(--canvas, #f5f1e5); display: flex; flex-direction: column; gap: 12px; flex: none"><div style="font-size: 13px; color: var(--label-secondary, #6a604f)">想克制的 · 关键词直接加，不写“用顿号分开”</div><div style="border-radius: 22px; background: var(--card, #ede6d3); padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center"><span style="font-size: 15px; margin-right: 4px">关键词</span><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">外卖 ×</button><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--raised, #fefbea); color: var(--label, #382f1f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">美团 ×</button><input aria-label="添加关键词" style="flex: 1; min-width: 60px; height: 32px; border: 0; background: transparent; font: inherit; font-size: 15px"></div>
+<div role="group" aria-label="常见领域" style="display: flex; flex-wrap: wrap; column-gap: 8px; row-gap: 12px"><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: transparent; box-shadow: inset 0 0 0 1px var(--border-dashed, #cfc3ae); color: var(--label-secondary, #6a604f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">饿了么</button><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: transparent; box-shadow: inset 0 0 0 1px var(--border-dashed, #cfc3ae); color: var(--label-secondary, #6a604f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">奶茶</button><button aria-pressed="false" style="height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: transparent; box-shadow: inset 0 0 0 1px var(--border-dashed, #cfc3ae); color: var(--label-secondary, #6a604f); font-family: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">打车</button></div></div><div style="width: 390px; box-sizing: border-box; padding: 20px; border-radius: 28px; background: var(--canvas, #f5f1e5); display: flex; flex-direction: column; gap: 12px; flex: none"><div style="font-size: 13px; color: var(--label-secondary, #6a604f)">停掉确认 · 按钮写结果，不写“只停以后的，…保留”</div><div role="dialog" aria-label="停掉房租" style="border-radius: 22px; background: var(--raised, #fefbea); overflow: hidden; box-shadow: var(--shadow-float, 0 6px 20px #4a40301f)"><div style="padding: 16px; text-align: center; font-size: 15px; font-weight: 600">停掉「房租」</div><button style="width: 100%; height: 52px; border: 0; border-top: 1px solid var(--separator, #e0d8c9); background: transparent; font: inherit; font-size: 16px; color: var(--amber-ink, #7a5320); font-weight: 500">停掉以后的</button><button style="width: 100%; height: 52px; border: 0; border-top: 1px solid var(--separator, #e0d8c9); background: transparent; font: inherit; font-size: 16px; color: var(--label, #382f1f)">取消</button></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1330,"height":420}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

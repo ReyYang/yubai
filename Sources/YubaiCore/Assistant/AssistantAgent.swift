@@ -12,6 +12,8 @@ public struct AssistantReply: Equatable, Sendable {
     public var memoryLedgerID: UUID? = nil
     public var memoryLedgerUpdatedAt: Date? = nil
     public var chart: AnswerChart? = nil
+    public var purchaseVerdict: SubmittedPurchaseVerdict? = nil
+    public var purchaseQuestions: [PurchaseQuestion]? = nil
     public var purchaseJudgment: PurchaseJudgment? = nil
     public var pastedStatement: PastedStatement? = nil
     public let proposedChangeSets: [ChangeSet]
@@ -39,12 +41,33 @@ public struct AssistantAgent: Sendable {
         var proposed: [ChangeSet] = []
         var chart: AnswerChart?
         var judgment: PurchaseJudgment?
+        var verdict: SubmittedPurchaseVerdict?
+        var purchaseQuestions: [PurchaseQuestion]?
         var memoryLedger = context.ledger
         var current = context
         var usedMemoryIDs = Set<UUID>()
         var rememberedResults: [String: JSONValue] = [:]
         var previousResults: [String: JSONValue] = [:]
         let ledgerIDs = Set(context.ledger.activeEntries.map(\.id))
+        func makeReply(text: String, unverified: [String] = []) -> AssistantReply {
+            var answer = AssistantReply(proposedChangeSets: proposed, text: text, evidenceEntryIDs: evidence, toolTrace: trace, unverifiedAmounts: unverified)
+            answer.chart = chart; answer.purchaseJudgment = judgment
+            answer.purchaseVerdict = verdict; answer.purchaseQuestions = purchaseQuestions
+            answer.memoryLedgerID = context.ledger.id; answer.memoryLedgerUpdatedAt = context.ledger.updatedAt
+            let originals = Dictionary(uniqueKeysWithValues: context.ledger.memories.map { ($0.id, $0) })
+            for note in memoryLedger.memories {
+                if let old = originals[note.id] {
+                    if !Memory.sameContent(old, note) {
+                        var updated = note; updated.previousText = old.text
+                        answer.updatedNotes.append(MemoryUpdate(previous: old, note: updated))
+                    }
+                } else {
+                    var added = note; added.previousText = nil; answer.rememberedNotes.append(added)
+                }
+            }
+            answer.usedMemoryIDs = usedMemoryIDs.sorted { $0.uuidString < $1.uuidString }
+            return answer
+        }
         while true {
             try Task.checkCancellation()
             AssistantContextBudget.compactTools(&conversation, limit: characterBudget)
@@ -53,6 +76,11 @@ public struct AssistantAgent: Sendable {
             guard reply.role == .assistant else { throw YubaiError.invalid("云端未返回助手消息。") }
             let calls = reply.toolCalls ?? []
             if calls.isEmpty {
+                if judgment != nil && verdict == nil {
+                    conversation.append(clean(reply))
+                    conversation.append(ChatMessage(role: .system, content: "先用submit_verdict提交allowed_verdicts内的结论，或用ask_purchase_questions追问，再结束本轮。"))
+                    continue
+                }
                 var text = reply.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 guard !text.isEmpty else { throw YubaiError.invalid("云端返回空内容。") }
                 var unverified = AssistantAmountGuard.unverified(in: text, results: results)
@@ -71,22 +99,7 @@ public struct AssistantAgent: Sendable {
                 if let judgment, !judgment.hasProfile, !text.contains("还不知道你在乎什么") {
                     text += "\n还不知道你在乎什么，可以在『我的消费观』里补上"
                 }
-                var answer = AssistantReply(proposedChangeSets: proposed, text: text, evidenceEntryIDs: evidence, toolTrace: trace, unverifiedAmounts: unverified)
-                answer.chart = chart; answer.purchaseJudgment = judgment
-                answer.memoryLedgerID = context.ledger.id; answer.memoryLedgerUpdatedAt = context.ledger.updatedAt
-                let originals = Dictionary(uniqueKeysWithValues: context.ledger.memories.map { ($0.id, $0) })
-                for note in memoryLedger.memories {
-                    if let old = originals[note.id] {
-                        if !Memory.sameContent(old, note) {
-                            var updated = note; updated.previousText = old.text
-                            answer.updatedNotes.append(MemoryUpdate(previous: old, note: updated))
-                        }
-                    } else {
-                        var added = note; added.previousText = nil; answer.rememberedNotes.append(added)
-                    }
-                }
-                answer.usedMemoryIDs = usedMemoryIDs.sorted { $0.uuidString < $1.uuidString }
-                return answer
+                return makeReply(text: text, unverified: unverified)
             }
             guard Set(calls.map(\.id)).count == calls.count,
                   calls.allSatisfy({ !$0.id.isEmpty && $0.type == "function" }) else { throw YubaiError.invalid("云端工具调用格式无效。") }
@@ -99,7 +112,7 @@ public struct AssistantAgent: Sendable {
                 let key = call.function.name + "\n" + normalized
                 trace.append(AssistantToolTrace(name: call.function.name, args: args.map { redactor.value($0) } ?? .null))
                 let result: JSONValue
-                if let cached = rememberedResults[key] ?? previousResults[key] { result = cached; repeated = true }
+                if !["judge_purchase", "submit_verdict", "ask_purchase_questions"].contains(call.function.name), let cached = rememberedResults[key] ?? previousResults[key] { result = cached; repeated = true }
                 else {
                     do {
                         guard let tool = tools.first(where: { $0.name == call.function.name }) else { throw YubaiError.invalid("没有这个工具，请使用已声明的工具。") }
@@ -108,8 +121,17 @@ public struct AssistantAgent: Sendable {
                             guard chart == nil else { throw YubaiError.invalid("每个答复只能展示一张图。") }
                             let built = try chartTool.build(args, context); chart = built.chart; result = built.result
                         } else if let purchaseTool = tool as? JudgePurchaseTool {
-                            let purchase = try purchaseTool.judge(args, current); judgment = purchase; result = purchase.facts
+                            let purchase = try purchaseTool.judge(args, current); judgment = purchase; verdict = nil; result = purchase.facts
                             usedMemoryIDs.formUnion(purchase.usedMemoryIDs)
+                        } else if let submit = tool as? SubmitVerdictTool {
+                            guard let judgment else { throw YubaiError.invalid("请先调用judge_purchase获取本机边界。") }
+                            let submitted = try submit.submit(args, judgment: judgment, context: current, userFacts: messages.filter { $0.role == .user }.compactMap(\.content))
+                            verdict = submitted; usedMemoryIDs.formUnion(submitted.usedMemoryIDs)
+                            result = redactor.value(.object(["verdict": .string(submitted.verdict.rawValue), "reason": .string(submitted.reason), "bound_reason": .string(submitted.boundReason)]))
+                        } else if let ask = tool as? AskPurchaseQuestionsTool {
+                            guard !(messages.last(where: { $0.role == .user })?.content?.contains("直接给结论") ?? false) else { throw YubaiError.invalid("用户要求直接给结论，请跳过提问并提交结论。") }
+                            purchaseQuestions = try ask.questions(args); verdict = nil
+                            result = try ask.run(args, current)
                         } else if let memoryTool = tool as? MemoryTool {
                             if memoryTool == .remember {
                                 let note = try memoryTool.note(args, current)
@@ -139,6 +161,9 @@ public struct AssistantAgent: Sendable {
                 results.append(result)
                 for id in Self.evidence(in: result) where ledgerIDs.contains(id) && !evidence.contains(id) { evidence.append(id) }
                 conversation.append(ChatMessage(role: .tool, content: try result.jsonText(), toolCallID: call.id))
+                if let purchaseQuestions {
+                    return makeReply(text: purchaseQuestions.map(\.text).joined(separator: "\n"))
+                }
             }
             previousResults = currentResults
             if repeated { conversation.append(ChatMessage(role: .system, content: "这个调用刚执行过，结果相同；请换个查询或直接回答")) }

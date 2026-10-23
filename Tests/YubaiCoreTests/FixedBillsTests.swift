@@ -261,7 +261,7 @@ final class FixedBillsTests: XCTestCase {
         let change = try FixedFlows.settle(planID: plan.id, occurrence: plan.dueDate, in: ledger, now: now)
         XCTAssertEqual(change.reason, "「工资」10月10日这期收到了")
         try change.apply(to: &ledger)
-        XCTAssertEqual(ledger.entries[0].nature, .income); XCTAssertEqual(ledger.entries[0].category, "工资")
+        XCTAssertEqual(ledger.entries[0].nature, .income); XCTAssertEqual(ledger.entries[0].category, "工资奖金"); XCTAssertEqual(ledger.entries[0].subcategory, "工资")
         XCTAssertEqual(Finance.funds(ledger, now: now).cash, before.cash + plan.amount)
         XCTAssertEqual(Finance.funds(ledger, now: now).available, before.available + plan.amount)
         XCTAssertTrue(Finance.occurrences(in: ledger, now: now).isEmpty)

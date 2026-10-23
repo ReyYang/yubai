@@ -31,12 +31,18 @@ struct AccountEditor: View {
     }
 
     private var accountSection: some View {
-        Section("账户") { TextField("名称，例如：微信零钱 / 招商银行卡", text: $name).accessibilityIdentifier("accountName"); Picker("账户类型", selection: $kind) { ForEach(AccountKind.allCases) { Text($0.label).tag($0) } }.disabled(account != nil); if kind == .credit { TextField("信用额度（可选）", text: $limit).numericInput().yubaiFont(YubaiFont.amountInput) } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+        Section("账户") {
+            TextField("名称", text: $name).accessibilityIdentifier("accountName").accessibilityLabel("账户名称")
+            SuggestionChips(values: ["微信零钱", "支付宝", "招行储蓄卡", "信用卡"], selected: name) { name = $0 }
+            Picker("账户类型", selection: $kind) { ForEach(AccountKind.allCases) { Text($0.label).tag($0) } }.disabled(account != nil)
+        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var balanceSection: some View {
         Section(kind == .credit ? "当前待还款" : kind == .investment ? "当前市值" : "对一下余额") {
             if account != nil { Toggle("本次重新核对真实余额", isOn: $reconcileNow).tint(YubaiColor.toggleOn) }
-            TextField(kind == .credit ? "待还总额，填写正数" : "余额", text: $amount).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityIdentifier("accountBalance").disabled(account != nil && !reconcileNow)
+            TextField(kind == .credit ? "当前待还款" : "余额", text: $amount).numericInput().yubaiFont(YubaiFont.amountInput)
+                .accessibilityIdentifier("accountBalance").disabled(account != nil && !reconcileNow)
+                .accessibilityHint(kind == .credit ? "填写实际欠款，单位元，填写正数" : "填写此刻的真实余额，单位元")
             if account == nil || reconcileNow {
                 DatePicker("上次对账", selection: $at, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                 Toggle("已与真实账户核对", isOn: $verified).tint(YubaiColor.toggleOn)
@@ -45,11 +51,15 @@ struct AccountEditor: View {
                     LabeledContent("与账本计算余额的差额", value: Money.text(actual - Finance.balance(a, in: store.current, at: at)))
                 }
             }
-            Text(kind == .credit ? "请填写实际欠款" : "请填写此刻的余额") .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var noteSection: some View {
-        Section { TextField("备注（可选）", text: $note, axis: .vertical) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+        Section {
+            DisclosureGroup("更多") {
+                if kind == .credit { TextField("信用额度", text: $limit).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityHint("单位元，可留空") }
+                TextField("备注", text: $note, axis: .vertical)
+            }
+        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
 }
 
@@ -116,7 +126,7 @@ struct GoalEditor: View {
     }
 
     private var goalSection: some View {
-        Section { TextField("真正想做的事", text: $title); TextField("想存多少（元）", text: $target).numericInput().yubaiFont(YubaiFont.amountInput); TextField("已存多少（元）", text: $reserved).numericInput().yubaiFont(YubaiFont.amountInput); Toggle("设定期待日期", isOn: $hasDate).tint(YubaiColor.toggleOn); if hasDate { DatePicker("期待日期", selection: $date, displayedComponents: .date) }; TextField("为什么重要（可选）", text: $note, axis: .vertical) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+        Section { TextField("真正想做的事", text: $title); TextField("想存多少（元）", text: $target).numericInput().yubaiFont(YubaiFont.amountInput); TextField("已存多少（元）", text: $reserved).numericInput().yubaiFont(YubaiFont.amountInput); Toggle("设定期待日期", isOn: $hasDate).tint(YubaiColor.toggleOn); if hasDate { DatePicker("期待日期", selection: $date, displayedComponents: .date) }; DisclosureGroup("更多") { TextField("为什么重要", text: $note, axis: .vertical) } }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var reservationSection: some View {
         EmptyView()

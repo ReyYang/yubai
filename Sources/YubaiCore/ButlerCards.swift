@@ -61,7 +61,7 @@ public enum ButlerCards {
     public static func matches(_ area: ProfileArea, entry: Entry, ledger: Ledger) -> Bool {
         let category = ledger.resolveCategory(entry.category)
         let text = entry.title + " " + (entry.purpose ?? "") + " " + entry.note
-        return area.match.categories.contains { ledger.resolveCategory($0) == category } || area.match.keywords.contains {
+        return area.match.subcategories.contains { $0 == category + "/" + (entry.subcategory ?? "") } || area.match.categories.contains { ledger.resolveCategory($0) == category } || area.match.keywords.contains {
             let word = $0.trimmingCharacters(in: .whitespacesAndNewlines)
             return !word.isEmpty && text.localizedCaseInsensitiveContains(word)
         }
@@ -129,6 +129,7 @@ public enum ButlerCards {
                 title: "对一下余额", body: "「\(String(account.name.prefix(12)))」上次对账已超过一个月，之后有新的账目。", action: .reconcileAccount(account.id), priority: 4))
         }
         result += Wishlist.followUps(ledger, now: now)
+        result += Wishlist.cooldownDue(ledger, now: now)
         let existing = Set(ledger.cards.map(\.dedupeKey))
         return result.filter { !existing.contains($0.dedupeKey) && !isMuted($0.dedupeKey, in: ledger) }.sorted { a, b in
             a.priority == b.priority ? a.dedupeKey < b.dedupeKey : a.priority < b.priority

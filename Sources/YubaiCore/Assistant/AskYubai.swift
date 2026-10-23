@@ -44,6 +44,7 @@ public struct PurchaseJudgment: Equatable, Sendable {
     public let title: String
     public let amount: Int64
     public let category: String?
+    public var subcategory: String? = nil
     public let hasProfile: Bool
     public let facts: JSONValue
 }
@@ -53,12 +54,12 @@ public struct JudgePurchaseTool: AssistantTool {
     public let description = "购买前判断，返回本机计算的付得起吗、和平时比、和你在乎的比。第三维仅引用画像原话；没有画像时不可猜测偏好。金额单位元。"
     public var parameters: JSONValue { .object(["type": .string("object"), "properties": .object([
         "title": .object(["type": .string("string")]), "amount": .object(["type": .string("string")]),
-        "category": .object(["type": .string("string")]), "date": .object(["type": .string("string"), "description": .string("yyyy-MM-dd，默认今天")]),
+        "subcategory": .object(["type": .string("string")]), "category": .object(["type": .string("string")]), "date": .object(["type": .string("string"), "description": .string("yyyy-MM-dd，默认今天")]),
         "memory_ids": .object(["type": .string("array"), "items": .object(["type": .string("string")]), "description": .string("本次判断实际引用的记忆ID，先从背景或recall读取，不引用时留空。")])]),
         "required": .strings(["title", "amount"]), "additionalProperties": .bool(false)]) }
     public func run(_ args: JSONValue, _ ctx: ToolContext) throws -> JSONValue { try judge(args, ctx).facts }
     public func judge(_ args: JSONValue, _ ctx: ToolContext) throws -> PurchaseJudgment {
-        guard let fields = args.objectValue, Set(fields.keys).isSubset(of: Set(["title", "amount", "category", "date", "memory_ids"])),
+        guard let fields = args.objectValue, Set(fields.keys).isSubset(of: Set(["title", "amount", "category", "subcategory", "date", "memory_ids"])),
               let title = args["title"]?.stringValue, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.count <= 200,
               let raw = args["amount"]?.stringValue else { throw YubaiError.invalid("请提供购买名称和金额。") }
         let amount = try Money.parse(raw)
@@ -76,13 +77,17 @@ public struct JudgePurchaseTool: AssistantTool {
         if let date = fields["date"] { forecastArgs["date"] = date } else { forecastArgs["days"] = .number(0) }
         let forecast = try ReadOnlyTool.forecast.run(.object(forecastArgs), ctx)
         let funds = Finance.funds(ctx.ledger, now: ctx.now)
-        let habitArgs: JSONValue = .object([category == nil ? "keyword" : "category": .string(category ?? title), "amount": .string(raw)])
+        var habitFields: [String: JSONValue] = [category == nil ? "keyword" : "category": .string(category ?? title), "amount": .string(raw)]
+        if let subcategory = args["subcategory"] { habitFields["subcategory"] = subcategory }
+        let habitArgs: JSONValue = .object(habitFields)
         let habit = try ReadOnlyTool.compareToHabit.run(habitArgs, ctx)
         let similar = try ReadOnlyTool.compareToHabit.run(.object(["keyword": .string(title), "amount": .string(raw)]), ctx)
         let profile = ctx.ledger.profile
         let hasProfile = !profile.generous.isEmpty || !profile.restrain.isEmpty || !profile.principles.isEmpty
         // Use the same matching rules as cards; quote only the user's stored words.
-        let sample = Entry(date: ctx.now, amount: amount, accountID: UUID(), title: title, category: category ?? "其他支出")
+        var sample = Entry(date: ctx.now, amount: amount, accountID: UUID(), title: title, category: category ?? "其他支出")
+        sample.subcategory = args["subcategory"]?.stringValue
+        let bounds = PurchaseBounds.compute(ledger: ctx.ledger, amount: amount, title: title, category: category, subcategory: sample.subcategory, now: ctx.now)
         func quotes(_ areas: [ProfileArea]) -> JSONValue { .array(areas.filter { ButlerCards.matches($0, entry: sample, ledger: ctx.ledger) }.map {
             .object(["title": .string($0.title), "quote": .string($0.note),
                 "confirmed_at": $0.confirmedAt.map { .string(Dates.text($0)) } ?? .null])
@@ -96,16 +101,30 @@ public struct JudgePurchaseTool: AssistantTool {
             "memory_instruction": .string(Memory.backgroundInstruction),
             "memories": Memory.context(ledger: ctx.ledger, now: ctx.now, characterBudget: ctx.memoryCharacterBudget),
             "referenced_memories": .array(ctx.ledger.memories.filter { used.contains($0.id) }.map { Memory.row($0, now: ctx.now) })]
+        facts["allowed_verdicts"] = .strings(PurchaseVerdict.allCases.filter { bounds.allowedVerdicts.contains($0) }.map(\.rawValue))
+        facts["bound_reason"] = .string(bounds.boundReason)
+        facts["similar_followups"] = .array(ctx.ledger.wishlist.filter { wish in
+            guard wish.followUpAnswer != nil else { return false }
+            let entry = wish.boughtEntryID.flatMap { ctx.entriesByID[$0] }
+            let sameCategory = category.map { ctx.ledger.resolveCategory(wish.category ?? entry?.category ?? "") == ctx.ledger.resolveCategory($0) } ?? false
+            return sameCategory || Wishlist.similarTitles(title, wish.title)
+        }.sorted {
+            let a = $0.followUpAnsweredAt ?? $0.followUpAt ?? $0.createdAt, b = $1.followUpAnsweredAt ?? $1.followUpAt ?? $1.createdAt
+            return a == b ? $0.id.uuidString < $1.id.uuidString : a > b
+        }.map { wish in
+            .object(["title": .string(wish.title), "answer": .string(wish.followUpAnswer?.components(separatedBy: "：").first ?? ""),
+                "date": .string(Dates.text(wish.followUpAnsweredAt ?? wish.followUpAt ?? wish.createdAt))])
+        })
         if hasProfile { facts["values"] = .object(["generous": quotes(profile.generous), "restrain": quotes(profile.restrain), "principles": .array(profile.principles.map { text in
             .object(["text": .string(text), "confirmed_at": profile.principleDates[text].map { .string(Dates.text($0)) } ?? .null]) })]) }
         else { facts["missing"] = .string("还不知道你在乎什么，可以在『我的消费观』里补上") }
         var judgment = PurchaseJudgment(title: title, amount: amount, category: category, hasProfile: hasProfile, facts: ctx.redactor.value(.object(facts)))
-        judgment.usedMemoryIDs = used; return judgment
+        judgment.subcategory = sample.subcategory; judgment.usedMemoryIDs = used; return judgment
     }
 }
 
 public enum AskYubai {
-    public static var tools: [any AssistantTool] { ReadOnlyTool.all + ProposalTool.all + [ShowChartTool() as any AssistantTool, JudgePurchaseTool() as any AssistantTool, MemoryTool.remember as any AssistantTool, MemoryTool.recall as any AssistantTool] }
+    public static var tools: [any AssistantTool] { ReadOnlyTool.all + ProposalTool.all + [ShowChartTool() as any AssistantTool, JudgePurchaseTool() as any AssistantTool, SubmitVerdictTool() as any AssistantTool, AskPurchaseQuestionsTool() as any AssistantTool, MemoryTool.remember as any AssistantTool, MemoryTool.recall as any AssistantTool] }
     public static func prompt(now: Date) -> String {
         """
         你是余白，一位平静、体贴的个人财务管家。用简体中文简短回应。今天是\(Dates.text(now))。
@@ -118,7 +137,7 @@ public enum AskYubai {
         逐字引用画像原话时说明写下的时间，例如「你 3 月写过」；confirmed_at为空时说明时间未记录，超过180天时提醒这可能已经变了。
         拒绝修改已有金额、主账户或原始日期，解释这些来自账单与账户，请用户去记录详情手动核对。
         记一笔或截图补记先get_profile查看账户、本机entry_account_hint、parsed_entries和parsed_entry_amounts，再propose_entry。金额只能选本机从本次原文解析的候选，不能猜；多笔时一次propose_entry用entries一次提出全部；只有金额或账户不明确的那几笔才问。同额候选可用次数以本机解析出现次数为准。补记仍要用户确认金额。
-        购买判断调用judge_purchase。按「付得起吗」「和你平时比」「和你在乎的比」陈述观察，后者逐字引用画像原话；没有画像时只给前两维，并说「还不知道你在乎什么，可以在『我的消费观』里补上」。不打分、不说教、不替用户决定。
+        购买判断先调用judge_purchase查看本机边界、习惯、消费观、记忆与similar_followups，再判断需求是否清楚。不清楚就用ask_purchase_questions问最多3题，每题2至3个短选项，针对这件东西围绕多久用一次、现有东西能否替代、能否先试先借、是否解决反复出现的问题现想；调用后立即结束本轮等用户回答。用户说「直接给结论」或记忆已经能回答时跳过提问。需求清楚后必须调用submit_verdict，从allowed_verdicts内选buy「买吧」、wait「等等再说」、skip「先别买」，配一句不超过60字、指向钱、习惯、用户原话或心愿单回答的具体理由，并标明need/want/unclear及实际引用的memory_ids。结论是建议，最后由用户决定。用户坚持要买时不说教，只问一句要不要放进心愿单冷静几天。用户回答有长期事实时（比如「打算长期徒步」）用remember记下；下次判断相关物品可以接着问，例如「上次你说想先走几次，后来去了吗？」；账本里的相关支出也可作证据。逐字引用我的消费观或记忆时带时间，不把历史习惯当成用户要求。
         """
     }
     public static func isProtectedEdit(_ text: String) -> Bool {
@@ -183,7 +202,7 @@ public actor AskYubaiSession {
         }
         let reply = try await AskYubai.answer(text, history: history, transport: transport, context: context, characterBudget: characterBudget)
         try Task.checkCancellation()
-        history += [ChatMessage(role: .user, content: context.redactor.text(text)), ChatMessage(role: .assistant, content: reply.text)]
+        history += [ChatMessage(role: .user, content: context.redactor.text(text)), ChatMessage(role: .assistant, content: reply.purchaseQuestions?.map { "\($0.text)（\($0.options.joined(separator: "／")))）" }.joined(separator: "\n") ?? reply.text)]
         return reply
     }
 }

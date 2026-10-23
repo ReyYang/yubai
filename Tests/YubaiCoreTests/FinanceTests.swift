@@ -95,7 +95,7 @@ final class FinanceTests: XCTestCase {
         for schema in [1, 2] {
             json["schema"] = schema
             let decoded = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
-            XCTAssertEqual(decoded.schema, 2); XCTAssertEqual(decoded.entries, [expected]); XCTAssertNil(decoded.entries[0].recordedAt)
+            XCTAssertEqual(decoded.schema, 3); XCTAssertEqual(decoded.entries, [expected]); XCTAssertNil(decoded.entries[0].recordedAt)
         }
         ledger.entries[0].recordedAt = Date(timeIntervalSince1970: 7_258_118_401)
         XCTAssertThrowsError(try ledger.validate())

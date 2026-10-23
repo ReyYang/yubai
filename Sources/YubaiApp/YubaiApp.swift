@@ -16,6 +16,7 @@ enum TabRoute: Hashable {
     case forecast, upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
+    case subcategoryInsights(category: String, income: Bool, interval: DateInterval, periodTitle: String)
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -281,9 +282,17 @@ enum AppSheet: Identifiable {
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
-    func unlock() async {
+    func unlock(useBiometrics: Bool = true) async {
         let context = LAContext()
-        do { if try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "解锁你的余白账本") { locked = false; if syncChoice != nil { sheet = .syncVersions } } }
+        context.localizedFallbackTitle = "用设备密码"
+        let policy: LAPolicy = useBiometrics ? .deviceOwnerAuthenticationWithBiometrics : .deviceOwnerAuthentication
+        var failure: NSError?
+        let available = context.canEvaluatePolicy(policy, error: &failure)
+        do {
+            if try await context.evaluatePolicy(available ? policy : .deviceOwnerAuthentication, localizedReason: "解锁你的余白账本") {
+                locked = false; if syncChoice != nil { sheet = .syncVersions }
+            }
+        } catch let error as LAError where error.code == .userFallback { await unlock(useBiometrics: false) }
         catch { self.error = "未能解锁。可以重试 Face ID、Touch ID 或设备密码。" }
     }
 
@@ -328,6 +337,7 @@ struct RootView: View {
     @State private var tabPaths: [Destination: NavigationPath] = [:]
     @State private var keyboardVisible = false
     @State private var visibleTab: Destination = .overview
+    @State private var pagingPhase: ScrollPhase = .idle
     private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     #endif
     var body: some View {
@@ -425,7 +435,11 @@ struct RootView: View {
                 .background(YubaiColor.canvas.ignoresSafeArea())
                 .onScrollGeometryChange(for: Destination.self) { tab(at: $0) } action: { _, next in
                     visibleTab = next
-                    if store.destination != next { store.destination = next }
+                    if pagingPhase == .idle && store.destination != next { store.destination = next }
+                }
+                .onScrollPhaseChange { _, phase in
+                    pagingPhase = phase
+                    if phase == .idle && store.destination != visibleTab { store.destination = visibleTab }
                 }
                 .onChange(of: store.destination) { _, next in
                     if next != visibleTab { scrollTo(next, using: proxy) }
@@ -477,6 +491,7 @@ struct RootView: View {
         case .backup: BackupView()
         case .storage: StorageView()
         case let .flowRecords(categories, title, income, interval): FlowRecordsView(categories: categories, title: title, income: income, interval: interval)
+        case let .subcategoryInsights(category, income, interval, periodTitle): SubcategoryInsightsView(category: category, income: income, interval: interval, periodTitle: periodTitle)
         }
     }
     #endif
@@ -526,15 +541,26 @@ struct RootView: View {
         }
     }
     var lockedView: some View {
-        VStack(spacing: YubaiSpace.gapSection) { BrandMark(); Image(systemName: "lock.shield").yubaiFont(YubaiFont.amountDisplay).foregroundStyle(YubaiColor.labelSecondary); Text("你的账本，只属于你").yubaiFont(YubaiFont.lead); Button("解锁余白") { Task { await store.unlock() } }.buttonStyle(PrimaryButtonStyle()) }.padding(YubaiSpace.gapSection)
+        VStack(spacing: YubaiSpace.space8) {
+            Spacer()
+            BrandMark(size: YubaiSize.tapMin * 2 + YubaiSpace.space8).accessibilityLabel("余白，账本已锁定")
+            Spacer()
+            Button("解锁") { Task { await store.unlock() } }.buttonStyle(PrimaryButtonStyle())
+            #if os(iOS)
+            Button("用手机密码") { Task { await store.unlock(useBiometrics: false) } }
+                .frame(minHeight: YubaiSize.tapMin).accessibilityHint("打开设备身份验证，可使用手机密码解锁")
+            #else
+            Button("用设备密码") { Task { await store.unlock(useBiometrics: false) } }.frame(minHeight: YubaiSize.tapMin)
+            #endif
+        }.padding(YubaiSpace.insetPage)
     }
     @ViewBuilder var privacyCover: some View {
         if (phase != .active || store.locked) && store.current.preferences.lockEnabled {
-            if phase != .active { ZStack { YubaiColor.canvas.ignoresSafeArea(); VStack(spacing: YubaiSpace.gapSection) { BrandMark(); Label("个人账本已保护", systemImage: "lock.shield").foregroundStyle(YubaiColor.labelSecondary) } } }
+            if phase != .active { ZStack { YubaiColor.canvas.ignoresSafeArea(); BrandMark(size: YubaiSize.tapMin * 2 + YubaiSpace.space8).accessibilityLabel("账本已保护") } }
         }
     }
     func recoveryView(_ message: String) -> some View {
-        VStack(spacing: YubaiSpace.gapSection) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Text("原文件已保留，请选择恢复记录。").yubaiFont(YubaiFont.callout); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.gapSection).frame(maxWidth: 540)
+        VStack(spacing: YubaiSpace.gapSection) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.gapSection).frame(maxWidth: 540)
     }
 }
 
@@ -542,13 +568,15 @@ struct RootView: View {
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .title3) private var scaledIconSize = YubaiSize.tabIcon
+    @ScaledMetric(relativeTo: .title2) private var scaledAddSize = YubaiFont.addIcon.size
     @Namespace private var selection
     var select: (Destination) -> Void
     var body: some View {
         HStack(spacing: YubaiSpace.none) {
             tab(.overview); tab(.insights)
             Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
-                Image(systemName: "plus").yubaiFont(YubaiFont.addIcon).foregroundStyle(YubaiColor.white)
+                Image(systemName: "plus").font(.system(size: min(scaledAddSize, YubaiFont.amountLarge.size), weight: YubaiFont.addIcon.weight)).foregroundStyle(YubaiColor.white)
                     .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background(YubaiColor.brand, in: Circle())
                     .shadow(color: YubaiColor.brandInk.opacity(0.3), radius: 6, y: 4)
             }.buttonStyle(.plain).padding(.horizontal, YubaiSpace.space8)
@@ -563,13 +591,16 @@ private struct FloatingTabBar: View {
     }
     private func tab(_ d: Destination) -> some View {
         let selected = store.destination == d
+        let iconSize = min(scaledIconSize, YubaiSize.barMax)
         return Button { select(d) } label: {
             VStack(spacing: YubaiSpace.space4) {
                 Group {
-                    if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit().frame(width: YubaiSize.tabIcon, height: YubaiSize.tabIcon) }
-                    else { Image(systemName: d.symbol).symbolVariant(.none).yubaiFont(YubaiFont.tabIcon, weight: selected ? .semibold : .regular).frame(height: YubaiSize.tabIcon) }
+                    if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit() }
+                    else { Image(systemName: d.symbol).symbolVariant(.none).font(.system(size: iconSize, weight: selected ? .semibold : .regular)) }
                 }
+                .frame(width: iconSize, height: iconSize)
                 Text(d.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .semibold : .regular).lineLimit(1)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity).frame(height: YubaiSize.tabSelectionHeight)
                 .contentShape(RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius))

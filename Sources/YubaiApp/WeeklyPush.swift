@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import SwiftUI
 import YubaiCore
 
 @MainActor enum WeeklyPush {
@@ -36,12 +37,37 @@ import YubaiCore
         if enabled {
             do {
                 let allowed = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert])
-                guard allowed else { error = "每周来信提醒尚未开启，可以在系统通知设置中允许余白发送通知。"; return }
+                guard allowed else { return }
             } catch { self.error = "暂时无法开启每周来信提醒。"; return }
         }
         guard current.id == id, !locked else { return }
         if update("保存每周来信提醒", { $0.preferences.weeklyLetterPush = enabled }) {
             await WeeklyPush.sync(enabled: enabled)
         }
+    }
+}
+
+struct WeeklyLetterReminder: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var denied = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { value in
+                Task { await store.setWeeklyLetterPush(value); await refresh() }
+            })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: YubaiSize.rowSingle)
+            if denied {
+                HStack(spacing: YubaiSpace.space8) {
+                    Text("通知没开").yubaiFont(YubaiFont.caption)
+                    Spacer()
+                    SystemSettingsButton(title: "去打开", pane: .notifications)
+                }.foregroundStyle(YubaiColor.amberInk)
+            }
+        }.task { await refresh() }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh() } } }
+    }
+    private func refresh() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        denied = settings.authorizationStatus == .denied
     }
 }

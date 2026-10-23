@@ -12,14 +12,21 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
 
     public static let defaultBaseURL = URL(string: "https://api.deepseek.com")!
     /// Prefer a fast chat model; override with `DEEPSEEK_MODEL` when needed.
-    /// Current DeepSeek catalog commonly exposes `deepseek-flash` / `deepseek-v4-pro`.
+    /// Legacy saved names are mapped when reading configuration.
     public static let defaultModel = "deepseek-flash"
     public static let modelPreferenceKey = "DeepSeek.model"
 
+    public static func canonicalModel(_ name: String) -> String {
+        switch name {
+        case "deepseek-chat", "deepseek-v4-flash": return "deepseek-flash"
+        case "deepseek-reasoner": return "deepseek-v4-pro"
+        default: return name
+        }
+    }
     public static func modelName(environment: [String: String] = ProcessInfo.processInfo.environment,
                                  defaults: UserDefaults = .standard) -> String {
         for value in [environment["DEEPSEEK_MODEL"], defaults.string(forKey: modelPreferenceKey)] {
-            if let name = value?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty { return name }
+            if let name = value?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty { return canonicalModel(name) }
         }
         return defaultModel
     }
@@ -32,7 +39,7 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
-        self.model = model
+        self.model = Self.canonicalModel(model)
         self.timeout = timeout
     }
 
@@ -80,7 +87,7 @@ public enum DeepSeekError: Error, LocalizedError, Equatable, Sendable {
 
 /// Minimal OpenAI-compatible chat client for DeepSeek. Does not print credentials.
 public struct DeepSeekClient: ChatTransport {
-    public static let fallbackModels = ["deepseek-chat", "deepseek-reasoner"]
+    public static let fallbackModels = ["deepseek-flash", "deepseek-v4-pro"]
     public var configuration: DeepSeekConfiguration
     private let redactor: Redactor
     private let sendLog: SendLog

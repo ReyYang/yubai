@@ -25,7 +25,7 @@ final class DeepSeekCloudTests: XCTestCase {
             do { _ = try await stub.listModels(); XCTFail("invalid model list must fail") }
             catch { XCTAssertFalse(error.localizedDescription.contains("test-key")) }
         }
-        XCTAssertEqual(DeepSeekClient.fallbackModels, ["deepseek-chat", "deepseek-reasoner"])
+        XCTAssertEqual(DeepSeekClient.fallbackModels, ["deepseek-flash", "deepseek-v4-pro"])
     }
 
     func testModelsPreservesVersionedBaseAndNormalizesCompletionURL() async throws {
@@ -117,7 +117,7 @@ final class DeepSeekCloudTests: XCTestCase {
         }
         defer { stub.close() }
         let text = try await stub.backend.reflectPurchase(
-            title: "耳机", purpose: "降噪", values: "专注", assessmentTitle: "资金上吃紧"
+            title: "耳机", purpose: "降噪", values: "专注", assessmentTitle: "资金上吃紧", verdict: .skip
         )
         XCTAssertTrue(text.contains("替代"))
         XCTAssertFalse(ModelAmountGuard.containsInventedAmount(text))
@@ -152,10 +152,10 @@ final class DeepSeekCloudTests: XCTestCase {
         }
         defer { stub.close() }
         let firstProfile = try ReadOnlyTool.getProfile.run(.object([:]), ToolContext(ledger: ledger))
-        let first = try await stub.backend.reflectPurchase(title: "耳机", purpose: "通勤", profile: firstProfile, assessmentTitle: "已知安排内，可以承受")
+        let first = try await stub.backend.reflectPurchase(title: "耳机", purpose: "通勤", profile: firstProfile, assessmentTitle: "已知安排内，可以承受", verdict: .buy)
         try ChangeSet(source: "用户", reason: "删除原则", items: [.profile(.removePrinciple("先看看家里有没有替代"))]).apply(to: &ledger)
         let nextProfile = try ReadOnlyTool.getProfile.run(.object([:]), ToolContext(ledger: ledger))
-        let next = try await stub.backend.reflectPurchase(title: "耳机", purpose: "通勤", profile: nextProfile, assessmentTitle: "已知安排内，可以承受")
+        let next = try await stub.backend.reflectPurchase(title: "耳机", purpose: "通勤", profile: nextProfile, assessmentTitle: "已知安排内，可以承受", verdict: .buy)
         XCTAssertNotEqual(first, next)
         XCTAssertFalse(next.contains("先看看家里有没有替代"))
     }
@@ -176,7 +176,7 @@ final class DeepSeekCloudTests: XCTestCase {
         defer { stub.close() }
         let backend = stub.backend
         do {
-            _ = try await backend.reflectPurchase(title: "耳机", purpose: "降噪", values: "专注", assessmentTitle: "资金上吃紧")
+            _ = try await backend.reflectPurchase(title: "耳机", purpose: "降噪", values: "专注", assessmentTitle: "资金上吃紧", verdict: .skip)
             XCTFail("offline reflection must fail")
         } catch {}
         do {

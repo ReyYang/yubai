@@ -15,17 +15,17 @@ struct OverviewView: View {
     var body: some View {
         Group {
             if textSize > .xxLarge {
-                ScrollView { content(chartHeight: 0).padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup) }
-                    .rootScrollContentMargins()
+                scrollingContent
             } else {
                 ViewThatFits(in: .vertical) {
-                    content(chartHeight: 150).fixedSize(horizontal: false, vertical: true)
-                    content(chartHeight: 96).fixedSize(horizontal: false, vertical: true)
-                    content(chartHeight: 0).fixedSize(horizontal: false, vertical: true)
-                }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSize.rootBottomPadding)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    fittedContent(chartHeight: 150)
+                    fittedContent(chartHeight: 96)
+                    fittedContent(chartHeight: 0)
+                    scrollingContent
+                }.frame(maxHeight: .infinity, alignment: .top)
             }
-        }.frame(maxWidth: 680).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }.rootPageHeader { TabRootHeader(title: "现在", showsAmountVisibility: true) }
+            .frame(maxWidth: 680).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(YubaiColor.canvas).navigationTitle("现在")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
@@ -36,18 +36,17 @@ struct OverviewView: View {
             }
             .onChange(of: store.entrySaveTrigger) { _, _ in displayedToday = TodayEntries(in: store.current) }
     }
+    private var scrollingContent: some View {
+        ScrollView { content(chartHeight: 0).padding(.horizontal, YubaiSpace.insetPage) }
+            .rootScrollContentMargins().accessibilityIdentifier("overviewScroll")
+    }
+    private func fittedContent(chartHeight: CGFloat) -> some View {
+        content(chartHeight: chartHeight).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding)
+    }
     private func content(chartHeight: CGFloat) -> some View {
         let funds = store.funds
         return VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-            GlassGroup { HStack(spacing: YubaiSpace.gapGroup) {
-                Button { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } } label: {
-                    Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
-                        .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).floatingSurface(in: Circle())
-                        .yubaiHitTarget()
-                }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
-                Spacer(); Text("现在").yubaiFont(YubaiFont.navTitle); Spacer()
-                AskToolbarButton()
-            }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.rowSingle) }
             if let letter = freshLetter {
                 Button { store.sheet = .letter(letter.id) } label: {
                     HStack(spacing: YubaiSpace.space8) {
@@ -57,17 +56,13 @@ struct OverviewView: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("freshLetter")
             }
             if store.current.accounts.isEmpty {
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text("从真实余额开始").yubaiFont(YubaiFont.heroLabel)
-                    Text("先添加账户，填写此刻真实余额。").yubaiFont(YubaiFont.callout)
-                    Button("添加第一个账户") { store.sheet = .account(nil) }
-                        .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addFirstAccount")
-                }
+                EmptyAccountState { store.sheet = .account(nil) }
             } else {
                 HeroCard(available: funds.available, payable: funds.debt + funds.committed,
                          reserved: funds.goals + funds.emergency + funds.living + funds.uncertainInflow,
                          hideAmount: store.current.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
                          onDetails: { store.sheet = .fundsCalculation })
+                RestrainNearRow()
                 todayRow
                 if !dueBills.isEmpty { dueCard }
             }
@@ -102,18 +97,7 @@ struct OverviewView: View {
         return Card(style: .list, background: YubaiColor.amberTint) {
             VStack(spacing: YubaiSpace.none) {
                 ForEach(Array(rows.prefix(2))) { row in
-                    HStack(spacing: YubaiSpace.gapGroup) {
-                        FixedFlowDot(state: .due)
-                        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                            Text(row.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
-                            Text(dueDetail(row)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, fractionDigits: row.amount % 100 == 0 ? 0 : 2,
-                                    ink: YubaiColor.amberStrong)
-                        if let id = row.planID {
-                            FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount)
-                        }
-                    }.frame(minHeight: YubaiSize.rowDouble)
+                    dueRow(row)
                     if row.id != rows.prefix(2).last?.id { EntryFormDivider() }
                 }
                 if rows.count > 2 {
@@ -121,9 +105,24 @@ struct OverviewView: View {
                         HStack(spacing: YubaiSpace.gapGroup) { Text("还有 \(rows.count - 2) 笔 ›"); Spacer() }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
                             .frame(minHeight: YubaiSize.tapMin)
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("moreDueBills")
+                        .accessibilityLabel("还有 \(rows.count - 2) 笔").accessibilityValue(String(rows.count - 2))
                 }
             }
         }.accessibilityIdentifier("dueBills")
+    }
+    private func dueRow(_ row: Occurrence) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            FixedFlowDot(state: .due)
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text(row.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
+                Text(dueDetail(row)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, fractionDigits: row.amount % 100 == 0 ? 0 : 2,
+                        ink: YubaiColor.amberStrong)
+            if let id = row.planID {
+                FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount)
+            }
+        }.frame(minHeight: YubaiSize.rowDouble)
     }
     private func dueDetail(_ row: Occurrence) -> String {
         let date = Dates.day(row.date) == Dates.day(Date()) ? "今天到期" : FixedFlowPresentation.monthDay(row.date) + "到期"
@@ -132,21 +131,29 @@ struct OverviewView: View {
     }
     private var todayRow: some View {
         let today = store.pendingEntrySave ? (displayedToday ?? TodayEntries(in: store.current)) : TodayEntries(in: store.current)
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
         return Button { store.destination = .entries } label: {
-            HStack(spacing: YubaiSpace.space8) {
+            layout {
                 Text("今天").yubaiFont(YubaiFont.row, weight: .medium)
                 Text(today.count == 0 ? "还没记" : "\(today.count) 笔 · \(today.latest?.displayTitle ?? "")")
-                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
-                Spacer(minLength: YubaiSpace.none)
-                if today.count == 0 {
-                    Text("账目").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                } else {
-                    AmountLabel(cents: today.net, hide: store.current.preferences.hideAmounts, role: .small,
-                                sign: today.net > 0 ? .inflow : .automatic, fractionDigits: 2)
-                        .layoutPriority(1)
+                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    .lineLimit(textSize.isAccessibilitySize ? nil : 1).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("todayEntrySummary")
+                if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+                HStack(spacing: YubaiSpace.space8) {
+                    if today.count == 0 {
+                        Text("账目").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    } else {
+                        AmountLabel(cents: today.net, hide: store.current.preferences.hideAmounts, role: .small,
+                                    sign: today.net > 0 ? .inflow : .automatic, fractionDigits: 2)
+                    }
+                    if textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.rowSingle).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                .layoutPriority(1)
+            }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, textSize.isAccessibilitySize ? YubaiSpace.space8 : YubaiSpace.none)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle, alignment: .leading)
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("todayEntries")
     }
     private func nextTitle(_ item: Occurrence) -> some View {
@@ -177,26 +184,23 @@ struct UpcomingPaymentsView: View {
             if payments.isEmpty { Text("没有待完成的付款。")
                 .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             CardRows(payments) { item in
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: YubaiSpace.gapGroup) { title(item); Spacer(); amount(item) }
-                        VStack(alignment: .leading, spacing: YubaiSpace.space8) { title(item); amount(item) }
-                    }
-                    if canEnd(item) {
-                        Button("结束这个安排") { ending = item }.yubaiFont(YubaiFont.caption)
-                            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("endArrangement_" + item.id)
-                    }
-                }.padding(.vertical, YubaiSpace.space8)
+                paymentRow(item)
             }
-        }.confirmationDialog("结束「\(ending?.title ?? "这个安排")」？已到期付款和历史记录继续保留。",
-                             isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } })) {
-            Button("结束这个安排", role: .destructive) {
-                if let item = ending, let id = item.planID ?? item.rentID {
+        }
+    }
+    private func endButton(_ item: Occurrence) -> some View {
+        Button("结束这个安排") { ending = item }.yubaiFont(YubaiFont.caption)
+            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("endArrangement_" + item.id)
+            .alert("停掉「\(item.title)」？",
+                   isPresented: Binding(get: { ending?.id == item.id }, set: { if !$0 { ending = nil } })) {
+            Button("停掉以后的", role: .destructive) {
+                if let id = item.planID ?? item.rentID {
                     let change = ChangeSet(source: "用户操作", reason: "从现在起结束「\(item.title)」", items: [.endPlan(id, Date())])
                     store.apply(change, label: "结束安排")
                 }
                 ending = nil
-            }
+            }.accessibilityHint("只停以后的，已到期付款和历史记录保留")
+            Button("取消", role: .cancel) { ending = nil }
         }
     }
     private func title(_ item: Occurrence) -> some View {
@@ -208,6 +212,17 @@ struct UpcomingPaymentsView: View {
     }
     private func amount(_ item: Occurrence) -> some View {
         AmountLabel(cents: item.amount, hide: store.current.preferences.hideAmounts, sign: .outflow)
+    }
+    private func paymentRow(_ item: Occurrence) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: YubaiSpace.gapGroup) { title(item); Spacer(); amount(item) }
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) { title(item); amount(item) }
+            }
+            if canEnd(item) {
+                endButton(item)
+            }
+        }.padding(.vertical, YubaiSpace.space8)
     }
     private func canEnd(_ item: Occurrence) -> Bool {
         if let id = item.planID, let plan = store.current.plans.first(where: { $0.id == id }) { return plan.endDate == nil }

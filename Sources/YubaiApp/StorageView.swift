@@ -21,13 +21,12 @@ struct StorageView: View {
     var body: some View {
         Page(spacing: YubaiSpace.gapSection) {
             VStack(alignment: .leading, spacing: YubaiSpace.none) {
-                Text("余白在这台手机上").yubaiFont(YubaiFont.lead)
+                Text("占用").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                    Text("占").yubaiFont(YubaiFont.lead)
                     if let usage {
                         let parts = StorageSize.text(usage.totalBytes).split(separator: " ")
-                        Text(String(parts[0])).yubaiFont(YubaiFont.amountDonut)
-                        Text(String(parts[1])).yubaiFont(YubaiFont.lead)
+                        Text(String(parts[0])).yubaiFont(YubaiFont.amountDisplay)
+                        Text(String(parts[1])).yubaiFont(YubaiFont.amountCard, weight: .regular).foregroundStyle(YubaiColor.labelSecondary)
                     }
                     else { Text("正在读取…").yubaiFont(YubaiFont.lead) }
                 }
@@ -65,7 +64,6 @@ struct StorageView: View {
                     .background(YubaiColor.canvas)
             }
             .navigationTitle("存储空间").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .principal) { Text("存储空间").yubaiFont(YubaiFont.navTitle) } }
             .task(id: store.current.updatedAt) { await refreshUsage() }
             .confirmationDialog("清除恢复历史？", isPresented: $clearing, titleVisibility: .visible) {
                 Button("清除 \(usage?.recoveryCount ?? 0) 份恢复历史", role: .destructive) {
@@ -162,7 +160,9 @@ private struct StoragePhotosSheet: View {
             }.padding(.top, YubaiSpace.space8).accessibilityElement(children: .contain).accessibilityLabel("删除多久以前的截图")
             StorageSummaryCard(rows: [("截图", "\(selected.count) 张"), ("腾出", StorageSize.text(Int64(selected.reduce(0) { $0 + $1.byteCount }))), ("账目", "都留着")])
                 .padding(.top, YubaiSpace.gapSection)
-            Text("账单原件不删，导入记录里仍可撤销。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            StorageSummaryCard(rows: [("账单原件", "不删")], muted: true)
+                .accessibilityIdentifier("storageOriginalsPreserved")
+                .disabled(true).accessibilityLabel("账单原件不删，导入记录里仍可撤销")
                 .padding(.top, YubaiSpace.gapGroup)
             Button("删除 \(selected.count) 张截图") {
                 if store.deleteOldScreenshots(months: months, now: now) { dismiss() }
@@ -252,6 +252,7 @@ private struct StorageEraseSheet: View {
 
 private struct StorageSummaryCard: View {
     let rows: [(String, String)]
+    var muted = false
     var body: some View {
         Card(style: .list) {
             VStack(spacing: YubaiSpace.none) {
@@ -260,7 +261,8 @@ private struct StorageSummaryCard: View {
                         Text(rows[i].0).yubaiFont(YubaiFont.row)
                         Spacer(minLength: YubaiSpace.space8)
                         Text(rows[i].1).yubaiFont(YubaiFont.row).fontDesign(.rounded).monospacedDigit().multilineTextAlignment(.trailing)
-                    }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
+                    }.foregroundStyle(muted ? YubaiColor.labelSecondary : YubaiColor.label)
+                        .frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
                 }
             }
         }

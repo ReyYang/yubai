@@ -52,6 +52,16 @@ private struct ImportDayGroup: Identifiable {
     let rows: [ImportRow]
 }
 
+/// Observe the existing mapper's sample count for the source pill; forward unchanged.
+private struct ImportSourceMapper: ImportColumnMapper {
+    let base: any ImportColumnMapper
+    let sampleCount: @MainActor @Sendable (Int) -> Void
+    func map(headers: [String], samples: [[String]]) async throws -> ImportColumnMapping {
+        await sampleCount(samples.count)
+        return try await base.map(headers: headers, samples: samples)
+    }
+}
+
 struct ImportView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
@@ -72,6 +82,7 @@ struct ImportView: View {
     @State private var queueTotal = 0
     @State private var processed = 0
     @State private var activeFileID: UUID?
+    @State private var cloudSampleCounts: [UUID: Int] = [:]
     @State private var reviewWhenReady = false
     @State private var localError: String?
     @State private var showAccount = false
@@ -108,6 +119,12 @@ struct ImportView: View {
         .amountPrivacy(store.current.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
         .toolbar {
             ToolbarItem(placement: .confirmationAction) { CloseButton() }
+            ToolbarItem(placement: .primaryAction) {
+                if screenshot && preview != nil {
+                    Menu { accountPicker; Button("添加账户") { showAccount = true } } label: { Image(systemName: "creditcard") }
+                        .accessibilityLabel("选择截图记账的账户").accessibilityValue(store.current.accountName(accountID))
+                }
+            }
             ToolbarItem(placement: .cancellationAction) {
                 if let result, let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) {
                     Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }
@@ -173,8 +190,8 @@ struct ImportView: View {
         VStack(spacing: YubaiSpace.none) {
             Page(spacing: YubaiSpace.gapSection) {
                 HStack(spacing: YubaiSpace.gapGroup) {
-                    intakeButton("截图", subtitle: "可以选多张", symbol: "photo.on.rectangle", identifier: "chooseBillScreenshots") { photoPicker = true }
-                    intakeButton("账单文件", subtitle: "CSV、Excel，可以选多份", symbol: "doc.badge.plus", identifier: "chooseBillFile") { filePicker = true }
+                    intakeButton("截图", symbol: "photo.on.rectangle", identifier: "chooseBillScreenshots") { photoPicker = true }
+                    intakeButton("账单文件", symbol: "doc.badge.plus", identifier: "chooseBillFile") { filePicker = true }
                 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text("认得这些导出").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -183,12 +200,10 @@ struct ImportView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], alignment: .leading, spacing: YubaiSpace.space8) { exportChips(["微信", "支付宝", "银行流水", "蜜蜂记账"]) }
                     }
                     HStack(spacing: YubaiSpace.space8) { exportChips(["随手记", "鲨鱼记账", "钱迹"]) }
-                    Text("其他表格：请核对表头与列。")
-                        .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }
                 if !queue.isEmpty {
                     VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                        SectionHeading(title: "选了 \(queue.count) 份", meta: "一份一份核对").padding(.horizontal, YubaiSpace.insetCard)
+                        SectionHeading(title: "选了 \(queue.count) 份").padding(.horizontal, YubaiSpace.insetCard)
                         CardRows(queue) { item in queueRow(item) }
                     }
                 }
@@ -202,13 +217,12 @@ struct ImportView: View {
                 .padding(YubaiSpace.insetPage)
         }
     }
-    private func intakeButton(_ title: String, subtitle: String, symbol: String, identifier: String, action: @escaping () -> Void) -> some View {
+    private func intakeButton(_ title: String, symbol: String, identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 Image(systemName: symbol).frame(minHeight: YubaiSize.barMax)
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     Text(title).yubaiFont(YubaiFont.rowTitle)
-                    Text(subtitle).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight, alignment: .leading)
                 .padding(YubaiSpace.insetCard).background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
@@ -241,24 +255,30 @@ struct ImportView: View {
             Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
                 previewHeader(p)
                 decisionCard(p)
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        accountPicker
-                        Divider().overlay(YubaiColor.separator)
-                        Button { showCategories = true } label: {
-                            HStack(spacing: YubaiSpace.gapGroup) { Text("分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
-                                .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
-                        if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
+                if !screenshot {
+                    Card(style: .list) {
+                        VStack(spacing: YubaiSpace.none) {
+                            accountPicker
+                            Divider().overlay(YubaiColor.separator)
+                            Button { showCategories = true } label: {
+                                HStack(spacing: YubaiSpace.gapGroup) { Text("分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
+                                    .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
+                            if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
+                        }
                     }
+                    Segmented(choices: [("全部", "全部 \(p.rows.count)"), ("要你选", "要你选 \(p.rows.filter(needsDecision).count)"), ("不导入", "不导入 \(p.rows.filter { !$0.included }.count)")], selection: $filter)
+                        .accessibilityIdentifier("importPreviewFilter")
                 }
-                Segmented(choices: [("全部", "全部 \(p.rows.count)"), ("要你选", "要你选 \(p.rows.filter(needsDecision).count)"), ("不导入", "不导入 \(p.rows.filter { !$0.included }.count)")], selection: $filter)
-                    .accessibilityIdentifier("importPreviewFilter")
                 if busy { ProgressView("正在核对…").yubaiFont(YubaiFont.caption) }
-                ForEach(groupedRows(p)) { group in
-                    VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                        Text(group.title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard)
-                        CardRows(group.rows) { row in previewRow(row) }
+                if screenshot {
+                    CardRows(p.rows) { row in previewRow(row) }
+                } else {
+                    ForEach(groupedRows(p)) { group in
+                        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                            Text(group.title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard)
+                            CardRows(group.rows) { row in previewRow(row) }
+                        }
                     }
                 }
                 if screenshot {
@@ -271,21 +291,41 @@ struct ImportView: View {
     }
     private func previewHeader(_ p: ImportPreview) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text("\(ImportStatementText.source(p.source)) · " + ImportStatementText.range(p.rows.compactMap { $0.entry?.date }) + " · \(p.rows.count) 笔").yubaiFont(YubaiFont.heroLabel)
-                Text(p.columnMapping == nil ? "在本机读完，没有发给云端" : "已发送表头和 5 行脱敏样例")
-                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityIdentifier("importPrivacySummary")
-            }
-            Card(style: .compact) {
-                VStack(spacing: YubaiSpace.gapGroup) {
-                    HStack(spacing: YubaiSpace.gapGroup) { countPill("将导入", p.selectedEntries.count); countPill("已经记过", p.duplicateCount); countPill("要你选", p.rows.filter(needsDecision).count) }
-                    let expenses = p.selectedEntries.filter { $0.nature == .expense }, income = p.selectedEntries.filter { $0.nature == .income }
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: YubaiSpace.gapGroup) { total("支出", entries: expenses); Spacer(); total("收入", entries: income) }
-                        VStack(alignment: .leading, spacing: YubaiSpace.space8) { total("支出", entries: expenses); total("收入", entries: income) }
+            if screenshot {
+                HStack(spacing: YubaiSpace.gapGroup) {
+                    Text("截图 · \(p.rows.count) 笔").yubaiFont(YubaiFont.heroLabel)
+                    Spacer()
+                    sourcePill(p)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                    Text("\(ImportStatementText.source(p.source)) · " + ImportStatementText.range(p.rows.compactMap { $0.entry?.date }) + " · \(p.rows.count) 笔").yubaiFont(YubaiFont.rowTitle)
+                    sourcePill(p)
+                }
+                Card(style: .compact) {
+                    VStack(spacing: YubaiSpace.gapGroup) {
+                        HStack(spacing: YubaiSpace.gapGroup) { countPill("将导入", p.selectedEntries.count); countPill("已经记过", p.duplicateCount); countPill("要你选", p.rows.filter(needsDecision).count) }
+                        // Review totals follow the same direction as each row's amount sign.
+                        // Nature (income, refund, unknown incoming, etc.) stays unchanged.
+                        let outgoing = p.selectedEntries.filter { !$0.nature.inflow }, incoming = p.selectedEntries.filter { $0.nature.inflow }
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: YubaiSpace.gapGroup) { total("流出", entries: outgoing); Spacer(); total("流入", entries: incoming) }
+                            VStack(alignment: .leading, spacing: YubaiSpace.space8) { total("流出", entries: outgoing); total("流入", entries: incoming) }
+                        }
                     }
                 }
             }
+        }
+    }
+    @ViewBuilder private func sourcePill(_ p: ImportPreview) -> some View {
+        if p.columnMapping == nil {
+            LocalSourcePill().accessibilityIdentifier("importPrivacySummary")
+        } else {
+            let count = activeFileID.flatMap { cloudSampleCounts[$0] }
+            NavigationLink { CloudSendLogView() } label: { Pill(text: count.map { "云端 · \($0) 行 ›" } ?? "云端 ›", variant: .amber, showsDot: false) }
+                .buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
+                .accessibilityLabel(count.map { "已发送表头和 \($0) 行脱敏样例，查看发送内容" } ?? "已发送脱敏表头和样例，查看发送内容")
+                .accessibilityIdentifier("importPrivacySummary")
         }
     }
     private func countPill(_ label: String, _ count: Int) -> some View {
@@ -298,7 +338,7 @@ struct ImportView: View {
         HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(entries.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
             AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.current.preferences.hideAmounts, role: .small, sign: .none, fractionDigits: 2)
-        }
+        }.accessibilityElement(children: .combine).accessibilityIdentifier("importTotal_" + title)
     }
     private var accountPicker: some View {
         Picker("没写账户的记到", selection: $accountID) {
@@ -339,11 +379,10 @@ struct ImportView: View {
         let methods = p.paymentMethods
         let possible = p.rows.filter { $0.status == .possibleDuplicate && rowSelections[$0.line] == nil }
         let invalid = p.rows.filter { [.invalid, .conflict].contains($0.status) }
-        if !unknown.isEmpty || !methods.isEmpty || !possible.isEmpty || !invalid.isEmpty || screenshot {
+        if !unknown.isEmpty || !methods.isEmpty || !possible.isEmpty || !invalid.isEmpty {
             Card(style: .compact, background: YubaiColor.amberTint) {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     Text("要你决定的事").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
-                    if screenshot { Text("选出要记的几笔，点一笔可以核对日期和收支。").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberStrong) }
                     ForEach(unknown, id: \.self) { name in
                         let count = p.rows.filter { $0.sourceCategory == name }.count
                         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -408,8 +447,8 @@ struct ImportView: View {
         HStack(spacing: YubaiSpace.space8) {
             if row.entry != nil && [.ready, .possibleDuplicate].contains(row.status) {
                 Button { select(row, included: !row.included) } label: {
-                    Image(systemName: row.included ? "checkmark.circle.fill" : "circle").foregroundStyle(row.included ? YubaiColor.brand : YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel(row.included ? "不导入这一行" : "导入这一行").accessibilityIdentifier("selectImportRow_" + String(row.line))
+                    Image(systemName: row.included ? "checkmark.square.fill" : "square").foregroundStyle(row.included ? YubaiColor.brand : YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel(row.included ? "不导入这一行" : "导入这一行").accessibilityValue(row.included ? "已选" : "未选").accessibilityIdentifier("selectImportRow_" + String(row.line))
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(row.entry?.title ?? "第 \(row.line) 行").yubaiFont(YubaiFont.row).lineLimit(textSize.isAccessibilitySize ? nil : 2)
@@ -417,7 +456,7 @@ struct ImportView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             if let entry = row.entry { AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .none) }
             if screenshot, row.entry != nil {
-                Button { editingScreenshotRow = row } label: { Image(systemName: "pencil").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
+                Button { editingScreenshotRow = row } label: { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                     .buttonStyle(PressButtonStyle()).accessibilityLabel("核对这一笔").accessibilityIdentifier("editScreenshotRow_" + String(row.line))
             }
         }.opacity(row.status == .duplicate ? 0.6 : 1).padding(.vertical, YubaiSpace.space4)
@@ -436,11 +475,20 @@ struct ImportView: View {
     }
     private func previewActions(_ p: ImportPreview) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.gapGroup)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-        return layout {
-            Button("跳过这份") { finishFile(); preview = nil; readNext() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("skipImportFile")
-            Button("导入 \(p.selectedEntries.count) 笔", action: commit).buttonStyle(PrimaryButtonStyle())
-                .disabled(busy || accountID == nil || p.selectedEntries.isEmpty || p.rows.contains { $0.included && needsDecision($0) } || (screenshot && !screenshotConfirmed))
-                .accessibilityIdentifier("commitImport")
+        return VStack(spacing: YubaiSpace.gapGroup) {
+            if screenshot {
+                HStack(spacing: YubaiSpace.gapGroup) {
+                    Text("选了 \(p.selectedEntries.count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    Spacer()
+                    AmountLabel(cents: p.selectedEntries.filter { !$0.nature.inflow }.reduce(0) { $0 + $1.amount }, hide: store.current.preferences.hideAmounts, sign: .outflow)
+                }.padding(.horizontal, YubaiSpace.insetCard)
+            }
+            layout {
+                Button("跳过这份") { finishFile(); preview = nil; readNext() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("skipImportFile")
+                Button("导入 \(p.selectedEntries.count) 笔", action: commit).buttonStyle(PrimaryButtonStyle())
+                    .disabled(busy || accountID == nil || p.selectedEntries.isEmpty || p.rows.contains { $0.included && needsDecision($0) } || (screenshot && !screenshotConfirmed))
+                    .accessibilityIdentifier("commitImport")
+            }
         }.padding(YubaiSpace.insetPage)
     }
     @ViewBuilder func resultView(_ savedBatch: ImportBatch) -> some View {
@@ -481,19 +529,17 @@ struct ImportView: View {
                 }
                 if batch.needsOrganization == true {
                     Card { VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        Text(store.organizationErrors[batch.id] ?? "记录已保存，请稍后继续整理。").yubaiFont(YubaiFont.callout)
+                        Text(store.organizationErrors[batch.id] ?? "记录已保存").yubaiFont(YubaiFont.callout)
                         Button("现在整理") { Task { await store.organizeImport(batch.id) } }
                             .buttonStyle(SecondaryButtonStyle()).disabled(store.organizingBatchID != nil || store.assistantTransport(for: store.current) == nil)
                     } }
                 }
-                Text("还没答的问题，请到「现在」补上。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 if !queue.isEmpty { Button("继续下一份") { result = nil; readNext() }.buttonStyle(PrimaryButtonStyle()).disabled(store.organizingBatchID != nil) }
                 Button("回到现在") { store.destination = .overview; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
             }
         } else {
-            Page { EmptyState("arrow.uturn.backward", "这一批已撤销", "整理产生的关联与安排也已还原。")
+            Page { EmptyState("arrow.uturn.backward", "这一批已撤销", action: "继续导入", onAction: { result = nil; preview = nil; data = nil })
                 Text("有效记录 \(store.current.activeEntries.count) 笔").accessibilityIdentifier("activeEntryCount")
-                Button("继续导入") { result = nil; preview = nil; data = nil }
             }
         }
     }
@@ -507,7 +553,12 @@ struct ImportView: View {
         let covered = Set(question.entryIDs)
         return Card(style: .compact, background: YubaiColor.amberTint) { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             Text(store.current.preferences.hideAmounts ? "有几笔记录要你核对" : question.text).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("importQuestion")
-            Pill(text: "\(question.entryIDs.count) 笔 · 可以稍后回答", variant: .neutral, showsDot: false)
+            HStack(spacing: YubaiSpace.space8) {
+                Pill(text: "\(question.entryIDs.count) 笔", variant: .neutral, showsDot: false)
+                Spacer()
+                Button("稍后") { store.destination = .overview; store.sheet = nil }
+                    .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+            }
             DisclosureGroup("看看这几笔") {
                 LazyVStack(spacing: YubaiSpace.gapGroup) { ForEach(store.sortedEntries.filter { covered.contains($0.id) }) { EntryRow(entry: $0) } }
             }
@@ -523,7 +574,7 @@ struct ImportView: View {
                 TextField("用自己的话补充用途", text: Binding(get: { questionText[question.id] ?? "" }, set: { questionText[question.id] = $0 }))
                 Button("记下用途") { store.describeImportQuestion(question, batchID: batchID, text: questionText[question.id] ?? "") }
                     .disabled((questionText[question.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Text("还没写用途，可以稍后补上。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                Text("没写用途").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
         } }
     }
@@ -573,9 +624,12 @@ struct ImportView: View {
                     let ledger = previewLedger()
                     guard let account = accountID ?? ledger.accounts.last?.id else { throw YubaiError.invalid("请选择导入账户。") }
                     let transport = store.assistantTransport(for: store.current)
+                    let mapper = transport.map { transport in
+                        ImportSourceMapper(base: AIImportColumnMapper(transport: transport), sampleCount: { count in cloudSampleCounts[id] = count })
+                    }
                     let worker = Task.detached(priority: .userInitiated) {
-                        if let transport {
-                            return try await BillImporter.preview(data: table, filename: name, accountID: account, ledger: ledger, requireAccountMapping: true, columnMapper: AIImportColumnMapper(transport: transport))
+                        if let mapper {
+                            return try await BillImporter.preview(data: table, filename: name, accountID: account, ledger: ledger, requireAccountMapping: true, columnMapper: mapper)
                         }
                         return try BillImporter.preview(data: table, filename: name, accountID: account, ledger: ledger, requireAccountMapping: true)
                     }
@@ -671,7 +725,7 @@ struct ImportView: View {
         var batch: ImportBatch?
         if store.update("导入账单", { ledger in
             for entry in preview.selectedEntries where !ledger.categories.contains(where: { $0.name == entry.category }) && entry.category != Classification.pendingCategory {
-                ledger.categories.append(Category(entry.category, income: entry.nature == .income))
+                ledger.categories.append(YubaiCore.Category(entry.category, income: entry.nature == .income))
             }
             batch = try BillImporter.commit(preview, data: data, to: &ledger)
         }) {

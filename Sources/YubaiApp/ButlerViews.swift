@@ -6,7 +6,7 @@ struct ButlerSection: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        let cards = ButlerCards.visible(store.current)
+        let cards = SavingCardVisibility.visible(in: store.current)
         VStack(spacing: YubaiSpace.gapGroup) {
             if let first = cards.first {
                 ButlerCardView(card: first, additionalCount: cards.count - 1).id(first.id)
@@ -20,7 +20,7 @@ struct ButlerListView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        let cards = ButlerCards.visible(store.current)
+        let cards = SavingCardVisibility.visible(in: store.current)
         Page(spacing: YubaiSpace.gapGroup) {
             ForEach(cards) { card in ButlerCardView(card: card).transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion)) }
             if !store.current.mutedTopics.isEmpty {
@@ -42,7 +42,11 @@ struct ButlerCardView: View {
     let card: ButlerCard
     var additionalCount = 0
     private var hidden: Bool { store.current.preferences.hideAmounts }
-    private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) }
+    private var exceedsRestraint: Bool {
+        guard card.kind == .restrain else { return false }
+        return RestrainProgress.current(ledger: store.current).contains { $0.areaID == card.areaID && $0.status == .over }
+    }
+    private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) || exceedsRestraint }
     private var ink: Color { amber ? YubaiColor.amberInk : YubaiColor.labelSecondary }
     var body: some View {
         cardContent
@@ -68,6 +72,7 @@ struct ButlerCardView: View {
                     #endif
                     .opacity(swipe < 0 ? 1 : 0).allowsHitTesting(swipe < 0)
                     .accessibilityHidden(swipe == 0)
+                    .accessibilityIdentifier("dismissButler_" + card.kind.rawValue)
             }
             .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).contentShape(Rectangle())
             .overlay { GeometryReader { geometry in
@@ -120,6 +125,9 @@ struct ButlerCardView: View {
                     Text(evidenceText)
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).multilineTextAlignment(.leading)
                 }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin, alignment: .leading)
+                if exceedsRestraint {
+                    ProfileChatEntry(title: "调一下额度", context: .restrainExceeded(card.title + " · " + card.body))
+                }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: YubaiSpace.gapGroup) { actions; Spacer(minLength: YubaiSpace.none); more }
                     VStack(alignment: .leading, spacing: YubaiSpace.space4) { actions; more }
@@ -167,6 +175,7 @@ struct ButlerCardView: View {
         case .answerQuestion: label = "有个问题"
         case .offCharacter: label = "比平时贵"
         case .followUp: label = "买了一个月 · 用得怎么样？"
+        case .cooldownDue: label = "心愿单"
         case .recurring: label = "像是固定收付"
         case .duplicate: label = "可能记重了"
         case .weeklyLetter: label = "每周来信"
@@ -276,7 +285,7 @@ struct ButlerProposalView: View {
     var body: some View {
         Page {
             if let change = store.current.pendingChanges.first(where: { $0.id == changeID }) {
-                ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? ["金额已隐藏，请显示金额后核对。"] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: Set(change.items.flatMap(\.entryIDs)).isEmpty ? "改好这 \(change.items.count) 项" : "改好这 \(Set(change.items.flatMap(\.entryIDs)).count) 笔", canConfirm: !store.current.preferences.hideAmounts, confirm: {
+                ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: Set(change.items.flatMap(\.entryIDs)).isEmpty ? "改好这 \(change.items.count) 项" : "改好这 \(Set(change.items.flatMap(\.entryIDs)).count) 笔", canConfirm: !store.current.preferences.hideAmounts, confirm: {
                     if store.apply(change, label: "余白想这样改") { dismiss() }
                 }, cancel: {
                     if store.update("不改了", { $0.pendingChanges.removeAll { $0.id == change.id } }) { dismiss() }
@@ -309,31 +318,24 @@ struct WeeklyLetterCard: View {
     @Environment(\.dynamicTypeSize) private var textSize
     let card: ButlerCard
     @State private var reviewProposal: ChangeSet?
+    private var letterBody: String {
+        guard let facts = card.letter else { return card.body }
+        return WeeklyLetter.displayBody(card.body, facts: facts)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             if let facts = card.letter {
                 Text(Dates.addDays(-6, to: facts.weekEnding).formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))) + " – " + facts.weekEnding.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))))
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
-            Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : card.body).yubaiFont(YubaiFont.quote)
+            Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : letterBody).yubaiFont(YubaiFont.quote).accessibilityIdentifier("letterBody")
+            if let facts = card.letter { LetterSavingsTiles(facts: facts) }
+            if let subscriptions = card.letter?.subscriptions, !subscriptions.isEmpty {
+                LetterSubscriptionCard(candidates: subscriptions, letterDate: card.createdAt)
+            }
             if let facts = card.letter, !store.current.preferences.hideAmounts {
-                Card {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                        SectionHeading(title: "还能花这一周", meta: "每日收盘回算")
-                        ChartGrow(key: "letter-chart-" + card.id.uuidString) { progress in LetterChart(points: facts.series, progress: progress) }
-                    }
-                }
-                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.gapGroup)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-                layout {
-                    ForEach(Array(facts.numbers.enumerated()), id: \.offset) { _, fact in
-                        Card(style: .compact) {
-                            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                                Text(fact.label).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                                Text(fact.value).yubaiFont(YubaiFont.amountCard).numberTransition(value: Double(fact.cents ?? 0) / 100)
-                            }
-                        }
-                    }
-                }
+                letterChart(facts)
+                letterNumbers(facts)
             }
             Button("明细：\(card.evidence.count) 笔 ›") { store.sheet = .cardEvidence(card.id) }
                 .yubaiFont(YubaiFont.caption).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin).background(YubaiColor.raised, in: Capsule())
@@ -342,11 +344,17 @@ struct WeeklyLetterCard: View {
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                         HStack(spacing: YubaiSpace.space8) {
                             AssistantMark(size: 14).accessibilityHidden(true)
-                            Text("这周我对你多了解了一点").yubaiFont(YubaiFont.caption)
+                            Text("新记得的 \(learned.count) 条").yubaiFont(YubaiFont.caption)
                         }.foregroundStyle(YubaiColor.brandInk)
                         ForEach(Array(learned.enumerated()), id: \.offset) { _, line in
                             HStack(alignment: .top, spacing: YubaiSpace.space8) {
-                                Text(line.text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandTintStrong).frame(maxWidth: .infinity, alignment: .leading)
+                                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                                    Text(line.text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandTintStrong)
+                                    if let memory = store.current.memories.first(where: { $0.id == line.memoryID }) {
+                                        Text(Dates.text(memory.updatedAt) + " · " + memory.source.label)
+                                            .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading)
                                 Button("不对") { store.update("纠正每周来信记忆") { Memory.reject(lineMemoryID: line.memoryID, in: &$0) } }
                                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin)
                                     .buttonStyle(PressButtonStyle()).accessibilityLabel("不对：" + line.text)
@@ -368,12 +376,34 @@ struct WeeklyLetterCard: View {
                 }
             }
             Card(style: .list) {
-                Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { value in
-                    Task { await store.setWeeklyLetterPush(value) }
-                })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: YubaiSize.rowSingle)
+                WeeklyLetterReminder()
             }
+            ProfileChatEntry(title: "聊聊这周", context: .weeklyLetter(card.body))
         }.sheet(item: $reviewProposal) { change in
             NavigationStack { ButlerProposalView(changeID: change.id) }.appErrors()
+        }
+    }
+    private func letterChart(_ facts: LetterFacts) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                SectionHeading(title: "还能花这一周", meta: "每日收盘回算")
+                ChartGrow(key: "letter-chart-" + card.id.uuidString) { progress in LetterChart(points: facts.series, progress: progress) }
+            }
+        }
+    }
+    private func letterNumbers(_ facts: LetterFacts) -> some View {
+        let layout: AnyLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.gapGroup)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+        let numbers: [CardFact] = Array(facts.numbers.prefix(3))
+        return layout {
+            ForEach(Array(numbers.enumerated()), id: \.offset) { _, fact in letterNumber(fact) }
+        }
+    }
+    private func letterNumber(_ fact: CardFact) -> some View {
+        Card(style: .compact) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text(fact.label).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                Text(fact.value).yubaiFont(YubaiFont.amountCard).numberTransition(value: Double(fact.cents ?? 0) / 100)
+            }
         }
     }
     private func reviewActions(_ review: ProfileReviewCandidate) -> some View {

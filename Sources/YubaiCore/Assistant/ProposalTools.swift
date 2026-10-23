@@ -66,6 +66,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         return ["operation": Self.choice(["upsert_area", "remove_area", "add_principle", "edit_principle", "remove_principle", "set_floor", "clear_floor"]),
                 "id": Self.string("本地UUID，从查询结果取"), "stance": Self.choice(["generous", "restrain"]), "title": Self.string("领域名"),
                 "categories": .object(["type": .string("array"), "items": Self.string("分类名")]),
+                "subcategories": .object(["type": .string("array"), "items": Self.string("主项/小项")]),
                 "keywords": .object(["type": .string("array"), "items": Self.string("关键词")]),
                 "note": Self.string("领域说明"), "per_week_count": .object(["type": .string("integer"), "minimum": .number(0), "maximum": .number(10000)]),
                 "per_month_amount": Self.string("人民币元，最多两位小数"), "text": Self.string("消费原则"), "old_text": Self.string("原消费原则"), "amount": Self.string("人民币元，最多两位小数")
@@ -78,7 +79,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
             guard let stance = ProfileStance(rawValue: try a.text("stance")) else { throw YubaiError.invalid("请选择愿意多花或想克制。") }
             let count: Int? = a.fields["per_week_count"] == nil ? nil : try a.integer("per_week_count", fallback: 0, range: 0...10000)
             let monthly: Int64? = a.fields["per_month_amount"] == nil ? nil : try a.amount("per_month_amount")
-            var area = ProfileArea(title: try a.text("title"), match: AreaMatch(categories: try a.strings("categories"), keywords: try a.strings("keywords")),
+            var area = ProfileArea(title: try a.text("title"), match: AreaMatch(categories: try a.strings("categories"), keywords: try a.strings("keywords"), subcategories: try a.strings("subcategories")),
                                    note: try a.optionalText("note") ?? "", softLimit: count == nil && monthly == nil ? nil : SoftLimit(perWeekCount: count, perMonthAmount: monthly))
             if let id = try a.optionalUUID("id") { area.id = id }
             change = .upsertArea(area, stance: stance)

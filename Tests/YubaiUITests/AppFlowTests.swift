@@ -17,6 +17,7 @@ final class AppFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
+        app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         currentApp = app; snapshotNumber = 0
         return app
@@ -30,12 +31,32 @@ final class AppFlowTests: XCTestCase {
         add(attachment)
     }
     private func tap(_ element: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(element.waitForExistence(timeout: 10), file: file, line: line)
-        for _ in 0..<8 { if element.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(element.isHittable, file: file, line: line)
+        scrollToVisible(element, in: app, file: file, line: line)
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: element)
         XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 10), .completed, file: file, line: line)
         element.tap()
+    }
+    private func scrollToVisible(_ element: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        _ = element.waitForExistence(timeout: 5)
+        for _ in 0..<8 {
+            if element.exists && element.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.exists && element.isHittable, file: file, line: line)
+    }
+    private func swipeRow(_ element: XCUIElement, left: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(element.isHittable, file: file, line: line)
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: left ? 0.85 : 0.15, dy: 0.5))
+        let end = element.coordinate(withNormalizedOffset: CGVector(dx: left ? 0.15 : 0.85, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+    }
+    private func assertState(_ element: XCUIElement, value: String, enabled: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let state = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@ AND enabled == %@", value, NSNumber(value: enabled)), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [state], timeout: 5), .completed, file: file, line: line)
+    }
+    private func assertNotHittable(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == false"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, file: file, line: line)
     }
     private func assertGone(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
@@ -83,6 +104,191 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["固定收付"].waitForExistence(timeout: 5))
     }
 
+    private func openFixedBillStop(_ row: XCUIElement, in app: XCUIApplication) {
+        swipeRow(row)
+        let actions = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stopFixedFlow_'"))
+        guard let action = actions.allElementsBoundByIndex.first(where: { $0.isHittable }) else {
+            XCTFail("No visible fixed-flow stop action")
+            return
+        }
+        tap(action, in: app)
+    }
+
+    private func tapUndo(messagePrefix: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let undo = app.buttons["undoLastChange"]
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            undo.isHittable && app.staticTexts["toastMessage"].label.hasPrefix(messagePrefix)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 3), .completed, file: file, line: line)
+        undo.tap()
+    }
+
+    private func openPurchaseFixture(_ fixture: String, question: String = "想买双徒步鞋 899，该不该买？") -> XCUIApplication {
+        let app = application(fixture); app.launch()
+        tap(app.buttons["askYubai"], in: app)
+        let input = app.descendants(matching: .any).matching(identifier: "askInput").firstMatch
+        tap(input, in: app); input.typeText(question)
+        tap(app.buttons["sendAsk"], in: app)
+        return app
+    }
+
+    private func assertPurchaseVerdict(_ label: String, in app: XCUIApplication) {
+        let verdict = app.staticTexts["purchaseVerdict"]
+        XCTAssertTrue(verdict.waitForExistence(timeout: 10))
+        XCTAssertEqual(verdict.label, label)
+    }
+
+    func testJudgeAskScreenshotFixture() {
+        let app = openPurchaseFixture("judge-ask")
+        XCTAssertTrue(app.staticTexts["最近三个月徒步过几次？"].waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(app.staticTexts["最近三个月徒步过几次？"].frame.minY, app.navigationBars.firstMatch.frame.maxY)
+        XCTAssertTrue(app.buttons["有双跑鞋"].exists)
+        XCTAssertTrue(app.buttons["会，旧鞋磨脚"].exists)
+        snapshot("purchase-questions", app)
+        tap(app.buttons["还没怎么去"], in: app)
+        tap(app.buttons["有双跑鞋"], in: app)
+        tap(app.buttons["说不好"], in: app)
+        tap(app.buttons["就这样回答"], in: app)
+        assertPurchaseVerdict("等等再说", in: app)
+    }
+
+    func testJudgeWaitScreenshotFixture() {
+        let app = openPurchaseFixture("judge-wait")
+        assertPurchaseVerdict("等等再说", in: app)
+        XCTAssertTrue(app.buttons["放进心愿单 · 3 天后再问我"].exists)
+        XCTAssertLessThanOrEqual(app.buttons["放进心愿单 · 3 天后再问我"].frame.height, 56)
+        snapshot("purchase-wait", app)
+    }
+
+    func testJudgeBuyScreenshotFixture() {
+        let app = openPurchaseFixture("judge-buy")
+        assertPurchaseVerdict("买吧", in: app)
+        XCTAssertTrue(app.buttons["买了，记一笔"].exists)
+        snapshot("purchase-buy", app)
+    }
+
+    func testJudgeSkipScreenshotFixture() {
+        let app = openPurchaseFixture("judge-skip", question: "想买个 1,899 的降噪耳机，该不该买？")
+        assertPurchaseVerdict("先别买", in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '买了以后还能花' AND label CONTAINS '620'")).firstMatch.exists)
+        snapshot("purchase-skip", app)
+    }
+
+    func testWishlistCoolScreenshotFixture() {
+        let app = application("wishlist-cool"); app.launch()
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "心愿单")).firstMatch, in: app)
+        XCTAssertTrue(app.staticTexts["没买，省下的"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["冷静了 7 天"].exists)
+        XCTAssertTrue(app.buttons["还想要"].exists)
+        XCTAssertTrue(app.staticTexts["冷静中 · 还有 2 天"].exists)
+        XCTAssertTrue(app.staticTexts["wishFollowUpAge"].exists)
+        XCTAssertEqual(app.staticTexts["wishFollowUpAge"].label, "买了一个月")
+        XCTAssertFalse(app.staticTexts["冷静中 · 还有 0 天"].exists)
+        snapshot("wishlist-cooldown", app)
+        scrollToVisible(app.staticTexts["放了 12 天"], in: app)
+        XCTAssertTrue(app.staticTexts["放了 12 天"].exists)
+    }
+
+    func testLetterSavingScreenshotFixture() {
+        let app = application("letter-saving"); app.launch()
+        // The profile tab always keeps the letter reachable, including Thu–Sun.
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "每周来信")).firstMatch, in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "每周来信")).firstMatch, in: app)
+        XCTAssertTrue(app.staticTexts["这些还在用吗？"].waitForExistence(timeout: 5))
+        for title in ["视频会员", "网盘", "健身 App", "这周省下", "一共省下"] { XCTAssertTrue(app.staticTexts[title].exists) }
+        let body = app.staticTexts["letterBody"].label
+        XCTAssertTrue(body.contains("还能花"))
+        XCTAssertFalse(body.contains("比上周保持原样"))
+        for duplicate in ["本周省下", "累计省下", "这些还在用吗"] { XCTAssertFalse(body.contains(duplicate)) }
+        for day in [3, 12, 24] { XCTAssertTrue(app.staticTexts["每月 \(day) 日"].exists) }
+        snapshot("letter-saving-subscriptions", app)
+    }
+
+    func testProfileRevisitScreenshotFixture() {
+        let app = application("profile-revisit")
+        app.launchEnvironment["YUBAI_UI_PROFILE_REPLY_DELAY"] = "3"
+        app.launch()
+        XCTAssertTrue(app.buttons["restrainNear"].waitForExistence(timeout: 5))
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons["openProfile"], in: app)
+        snapshot("profile-progress", app)
+        tap(app.buttons["profileChatEntry"], in: app)
+        XCTAssertTrue(app.buttons["最近花钱的感觉变了"].waitForExistence(timeout: 10))
+        snapshot("profile-revisit-opening", app)
+        let input = app.descendants(matching: .any).matching(identifier: "profileInput").firstMatch
+        tap(input, in: app); input.typeText("外卖这周到上限了，但加班那几天真没办法")
+        XCTAssertLessThanOrEqual(input.frame.height, 100)
+        tap(app.buttons["sendProfile"], in: app)
+        XCTAssertTrue(app.staticTexts["profileUserMessage_1"].waitForExistence(timeout: 1))
+        XCTAssertEqual(app.staticTexts["profileUserMessage_1"].label, "外卖这周到上限了，但加班那几天真没办法")
+        XCTAssertFalse((input.value as? String ?? "").contains("外卖这周"))
+        XCTAssertFalse(app.staticTexts["profileAssistantMessage_2"].exists)
+        snapshot("profile-revisit-just-sent", app)
+        XCTAssertTrue(app.staticTexts["外卖这周已经 3 次了，加班的日子想怎么安排？"].waitForExistence(timeout: 10))
+        snapshot("profile-revisit-reply", app)
+    }
+
+    func testSubcategoryScreenshotFixture() {
+        let app = application("subcategory"); app.launch()
+        tap(app.buttons["tab_insights"], in: app)
+        tap(app.buttons["insightCategory_0"], in: app)
+        assertPushedPage("购物 · 本月", in: app)
+        XCTAssertTrue(app.staticTexts["其他"].exists)
+        snapshot("shopping-subcategories", app)
+        tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "运动户外")).firstMatch, in: app)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "徒步鞋")).firstMatch.waitForExistence(timeout: 5))
+        snapshot("outdoor-records", app)
+        tap(app.navigationBars.buttons["购物 · 本月"], in: app)
+        tap(app.navigationBars.buttons["洞察"], in: app)
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "心愿单")).firstMatch, in: app)
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "买了 1 件")).firstMatch, in: app)
+        tap(app.buttons["购买记录"], in: app)
+        XCTAssertTrue(app.staticTexts["entryDetailTitle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["entryDetailTitle"].label, "徒步鞋 · 京东")
+        XCTAssertTrue(app.buttons["entrySubcategory"].label.contains("运动户外"))
+        snapshot("entry-subcategory", app)
+        tap(app.buttons["entrySubcategory"], in: app)
+        XCTAssertTrue(app.buttons["运动户外"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["换主项"].exists)
+        snapshot("subcategory-picker", app)
+    }
+
+    func testAskWithoutKeyDisablesComposerEvenWithScriptedReplies() {
+        let app = application("ask")
+        app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "0"
+        app.launch()
+        tap(app.buttons["askYubai"], in: app)
+        let input = app.descendants(matching: .any).matching(identifier: "askInput").firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 5)); XCTAssertFalse(input.isEnabled)
+        for title in ["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，该不该买？"] {
+            XCTAssertTrue(app.buttons[title].exists); XCTAssertFalse(app.buttons[title].isEnabled)
+        }
+        let configure = app.buttons["configureAskKey"]
+        XCTAssertTrue(configure.exists); XCTAssertTrue(configure.isEnabled)
+        snapshot("ask-missing-key", app)
+        tap(configure, in: app)
+        XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.switches["打开云端智能"].value as? String, "1")
+    }
+
+    func testBoughtWishShowsStatusAndDateWithoutAskAgain() {
+        let app = application("wish-bought"); app.launch()
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons["openWishlist"], in: app)
+        XCTAssertTrue(app.staticTexts["心愿单还是空的"].exists)
+        XCTAssertTrue(app.buttons["该不该买"].exists)
+        tap(app.buttons["pastWishes"], in: app)
+        XCTAssertTrue(app.navigationBars["过去的心愿"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["已买"].exists)
+        let date = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'wishFollowUpDate_' ")).firstMatch
+        XCTAssertTrue(date.exists); XCTAssertTrue(date.label.contains("问你用得怎么样"))
+        XCTAssertFalse(app.buttons["再问一次"].exists)
+        snapshot("wish-bought", app)
+    }
+
     func testFixedBillCheckMarksPaidAndUndoRestoresIt() {
         let app = application("bills"); app.launch()
         XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
@@ -91,9 +297,10 @@ final class AppFlowTests: XCTestCase {
         let check = app.buttons["付了 房租"]
         tap(check, in: app)
         assertGone(check); XCTAssertTrue(app.images["已付 房租"].exists)
-        XCTAssertTrue(app.staticTexts["房租 300 已记下"].exists)
+        XCTAssertTrue(app.staticTexts["toastMessage"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["toastMessage"].label, "房租 300 已记下")
         tap(app.buttons["撤销"], in: app)
-        XCTAssertTrue(check.isEnabled); XCTAssertEqual(check.value as? String, "已到期")
+        assertState(check, value: "已到期", enabled: true)
         tap(check, in: app)
         assertGone(check); XCTAssertTrue(app.images["已付 房租"].exists)
         snapshot("bill-paid", app)
@@ -139,14 +346,19 @@ final class AppFlowTests: XCTestCase {
         let planID = String(check.identifier.split(separator: "_")[1])
         tap(check, in: app)
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' AND value == '已收到'")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5)); row.swipeLeft()
-        tap(app.buttons["停掉"], in: app)
-        XCTAssertTrue(app.staticTexts["只停以后的，付过的记录保留。"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["fixedFlowStopSkip"].exists)
-        tap(app.buttons["fixedFlowStopCancel"], in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 5)); openFixedBillStop(row, in: app)
+        let confirmation = app.alerts["停掉「工资」？"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirmation.buttons["取消"].isHittable)
+        XCTAssertTrue(confirmation.buttons["停掉以后的"].isHittable)
+        XCTAssertFalse(confirmation.staticTexts["只停以后的，付过的记录保留。"].exists)
+        XCTAssertFalse(confirmation.buttons["fixedFlowStopSkip"].exists)
+        tap(confirmation.buttons["取消"], in: app)
+        assertGone(confirmation)
         XCTAssertTrue(row.exists); XCTAssertFalse(app.buttons["resumeFixedFlow_" + planID].exists)
-        row.swipeLeft(); tap(app.buttons["停掉"], in: app)
-        tap(app.buttons["fixedFlowStopConfirm"], in: app)
+        openFixedBillStop(row, in: app)
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        tap(confirmation.buttons["停掉以后的"], in: app)
         XCTAssertFalse(check.exists); XCTAssertFalse(row.exists)
         XCTAssertTrue(app.buttons["resumeFixedFlow_" + planID].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '那期已记'")).firstMatch.exists)
@@ -164,9 +376,17 @@ final class AppFlowTests: XCTestCase {
         let planID = String(check.identifier.split(separator: "_")[1])
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID)).firstMatch
         let restore = app.buttons["resumeFixedFlow_" + planID]
+        openFixedBillStop(row, in: app)
+        let confirmation = app.alerts["停掉「工资」？"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirmation.staticTexts["停掉「工资」？"].exists)
+        tap(confirmation.buttons["取消"], in: app)
+        assertGone(confirmation)
+        XCTAssertTrue(check.isEnabled)
         func stop() {
-            row.swipeLeft()
-            tap(app.buttons["停掉"], in: app); tap(app.buttons["收到了，记一笔再停"], in: app)
+            openFixedBillStop(row, in: app)
+            XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+            tap(confirmation.buttons["收到了，记一笔再停"], in: app)
             XCTAssertTrue(restore.waitForExistence(timeout: 5))
             XCTAssertTrue(app.staticTexts.matching(identifier: "已停掉").firstMatch.exists)
         }
@@ -178,6 +398,71 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["撤销"], in: app)
         XCTAssertTrue(restore.waitForExistence(timeout: 5))
         snapshot("bill-stopped-restorable", app)
+    }
+
+    func testFixedBillGroupedSwipesKeepCardAndContentGeometry() {
+        let app = application("bills-overdue"); app.launch(); openFixedBills(app)
+        let card = app.descendants(matching: .any).matching(identifier: "fixedFlowExpenseCard").firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        let rows = card.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' ")).allElementsBoundByIndex
+        XCTAssertGreaterThanOrEqual(rows.count, 2)
+        for index in [0, rows.count - 1] {
+            let row = rows[index]
+            for _ in 0..<8 { if row.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(row.isHittable)
+            let check = row.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'settleFixedFlow_' ")).firstMatch
+            let originalCard = card.frame, originalRow = row.frame, originalCheck = check.frame
+            let labels = row.staticTexts.allElementsBoundByIndex.map(\.label)
+            swipeRow(row)
+            let action = app.buttons[row.identifier.replacingOccurrences(of: "fixedFlow_", with: "stopFixedFlow_")]
+            XCTAssertTrue(action.waitForExistence(timeout: 5)); XCTAssertTrue(action.isHittable)
+            XCTAssertEqual(card.frame.minX, originalCard.minX, accuracy: 1)
+            XCTAssertEqual(card.frame.minY, originalCard.minY, accuracy: 1)
+            XCTAssertEqual(card.frame.width, originalCard.width, accuracy: 1)
+            XCTAssertEqual(card.frame.height, originalCard.height, accuracy: 1)
+            XCTAssertEqual(row.frame.width, originalRow.width, accuracy: 1)
+            XCTAssertEqual(row.frame.height, originalRow.height, accuracy: 1)
+            XCTAssertEqual(check.frame.width, originalCheck.width, accuracy: 1)
+            XCTAssertEqual(check.frame.minX, originalCheck.minX - 96, accuracy: 1)
+            XCTAssertEqual(action.frame.width, 78, accuracy: 1)
+            XCTAssertEqual(action.frame.minX - check.frame.maxX, 12, accuracy: 1)
+            XCTAssertTrue(originalCard.contains(action.frame))
+            XCTAssertEqual(row.staticTexts.allElementsBoundByIndex.map(\.label).filter { $0 != "停掉" }, labels)
+            snapshot("fixed-bill-group-row-\(index)-revealed", app)
+            swipeRow(row, left: false)
+            let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == false"), object: action)
+            XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
+            XCTAssertEqual(check.frame.minX, originalCheck.minX, accuracy: 1)
+        }
+    }
+
+    func testUpcomingPaymentStopUsesAlertAndSupportsCancelAndUndo() {
+        let app = application("bills"); app.launch()
+        tap(app.buttons["fundsFormula"], in: app)
+        let calculation = app.navigationBars["还能花是怎么算的"]
+        XCTAssertTrue(calculation.waitForExistence(timeout: 5))
+        let end = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'endArrangement_' ")).firstMatch
+        XCTAssertTrue(end.waitForExistence(timeout: 5))
+        let identifier = end.identifier
+        tap(end, in: app)
+        let confirmation = app.alerts["停掉「房租」？"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.popovers.count, 0)
+        XCTAssertTrue(confirmation.buttons["停掉以后的"].isHittable)
+        XCTAssertTrue(confirmation.buttons["取消"].isHittable)
+        snapshot("upcoming-payment-stop-alert", app)
+        tap(confirmation.buttons["取消"], in: app); assertGone(confirmation)
+        XCTAssertTrue(app.buttons[identifier].exists)
+        tap(app.buttons[identifier], in: app)
+        tap(confirmation.buttons["停掉以后的"], in: app)
+        assertGone(confirmation)
+        assertGone(app.buttons[identifier])
+        // Undo belongs to the root overlay, behind the calculation sheet.
+        calculation.buttons["closeSheet"].tap()
+        tapUndo(messagePrefix: "结束安排", in: app)
+        assertGone(calculation)
+        tap(app.buttons["fundsFormula"], in: app)
+        XCTAssertTrue(app.buttons[identifier].waitForExistence(timeout: 5))
     }
 
     func testFixedBillEditorUsesInstallmentsAndAccountGatesAutomaticRecording() {
@@ -209,7 +494,8 @@ final class AppFlowTests: XCTestCase {
         let app = application("bills-overdue"); app.launch()
         XCTAssertTrue(app.buttons["付了 上月账单"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '付了 '")).count, 2)
-        XCTAssertEqual(app.buttons["moreDueBills"].label, "还有 1 笔 ›")
+        XCTAssertTrue(app.buttons["moreDueBills"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["moreDueBills"].value as? String, "1")
         tap(app.buttons["付了 上月账单"], in: app)
         XCTAssertFalse(app.buttons["付了 上月账单"].exists)
         XCTAssertTrue(app.buttons["todayEntries"].label.contains("还没记"))
@@ -273,8 +559,11 @@ final class AppFlowTests: XCTestCase {
         if !Calendar.current.isDate(Date(), inSameDayAs: month.end.addingTimeInterval(-1)) {
             XCTAssertFalse(app.buttons["付了 话费"].exists); XCTAssertTrue(row.exists)
             row.press(forDuration: 0.8); tap(app.buttons["提前标记付了"], in: app)
-            XCTAssertTrue(app.images["已付 话费"].waitForExistence(timeout: 5))
-            tap(app.buttons["撤销"], in: app); XCTAssertFalse(app.images["已付 话费"].exists)
+            // Check the matching receipt and undo together before the four-second toast expires.
+            tapUndo(messagePrefix: "话费 ", in: app)
+            assertGone(app.images["已付 话费"])
+            XCTAssertTrue(row.exists)
+            XCTAssertFalse(app.buttons["付了 话费"].exists)
         }
         snapshot("bill-states", app)
     }
@@ -286,23 +575,25 @@ final class AppFlowTests: XCTestCase {
         let planID = String(check.identifier.split(separator: "_")[1])
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID)).firstMatch
         let restore = app.buttons["resumeFixedFlow_" + planID]
-        row.swipeLeft(); tap(app.buttons["停掉"], in: app)
+        openFixedBillStop(row, in: app)
         XCTAssertTrue(app.buttons["收到了，记一笔再停"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["没收到，这期也不要了"].exists)
-        let sheet = app.descendants(matching: .any).matching(identifier: "fixedFlowStopSheet").firstMatch
-        XCTAssertTrue(sheet.exists); XCTAssertEqual(app.popovers.count, 0)
-        XCTAssertTrue(app.staticTexts["停掉「工资」？"].exists)
-        let confirm = app.buttons["fixedFlowStopConfirm"], skip = app.buttons["fixedFlowStopSkip"], cancel = app.buttons["fixedFlowStopCancel"]
+        let confirmation = app.alerts["停掉「工资」？"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5)); XCTAssertEqual(app.popovers.count, 0)
+        XCTAssertTrue(confirmation.staticTexts["停掉「工资」？"].exists)
+        XCTAssertFalse(confirmation.buttons["停掉以后的"].exists)
+        let confirm = confirmation.buttons["fixedFlowStopConfirm"], skip = confirmation.buttons["fixedFlowStopSkip"], cancel = confirmation.buttons["fixedFlowStopCancel"]
         for button in [confirm, skip, cancel] {
-            XCTAssertTrue(button.isHittable); XCTAssertEqual(button.frame.height, 50, accuracy: 1)
-            XCTAssertEqual(button.frame.width, confirm.frame.width, accuracy: 1)
+            XCTAssertTrue(button.isHittable)
+            XCTAssertTrue(button.isEnabled)
+            XCTAssertTrue(confirmation.frame.contains(button.frame))
         }
-        tap(cancel, in: app); assertGone(sheet); XCTAssertTrue(check.exists); XCTAssertFalse(restore.exists)
-        row.swipeLeft(); tap(app.buttons["停掉"], in: app); tap(app.buttons["没收到，这期也不要了"], in: app)
+        tap(cancel, in: app); assertGone(confirmation); XCTAssertTrue(check.exists); XCTAssertFalse(restore.exists)
+        openFixedBillStop(row, in: app); tap(app.buttons["没收到，这期也不要了"], in: app)
         XCTAssertTrue(restore.waitForExistence(timeout: 5)); assertGone(row)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '那期没要'")).firstMatch.exists)
         tap(app.buttons["撤销"], in: app); assertGone(restore); XCTAssertTrue(check.exists)
-        row.swipeLeft(); tap(app.buttons["停掉"], in: app); tap(app.buttons["没收到，这期也不要了"], in: app)
+        openFixedBillStop(row, in: app); tap(app.buttons["没收到，这期也不要了"], in: app)
         app.terminate(); app.launch(); openFixedBills(app)
         XCTAssertTrue(restore.waitForExistence(timeout: 5)); XCTAssertFalse(row.exists)
         tap(restore, in: app); XCTAssertFalse(check.exists)
@@ -315,7 +606,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(check.waitForExistence(timeout: 5))
         let planID = String(check.identifier.split(separator: "_")[1])
         let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID))
-        rows.firstMatch.swipeLeft(); tap(app.buttons["停掉"], in: app)
+        openFixedBillStop(rows.firstMatch, in: app)
         XCTAssertTrue(app.staticTexts["还有 6 期没记。"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["没付，这期也不要了"].exists)
         tap(app.buttons["付了，记一笔再停"], in: app)
@@ -328,6 +619,14 @@ final class AppFlowTests: XCTestCase {
     func testStorageEntryAndOverviewOpenFromMe() {
         let app = application("ask"); app.launch()
         tap(app.buttons["tab_settings"], in: app)
+        let storage = app.buttons["openStorage"]
+        let navigation = app.otherElements["mainNavigation"]
+        for _ in 0..<8 {
+            if storage.isHittable && storage.frame.maxY <= navigation.frame.minY { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(storage.isHittable)
+        XCTAssertLessThanOrEqual(storage.frame.maxY, navigation.frame.minY)
         tap(app.buttons["openStorage"], in: app)
         XCTAssertTrue(app.navigationBars["存储空间"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "storageHeadline").firstMatch.exists)
@@ -337,9 +636,138 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(addEntryTab(app).isHittable)
         snapshot("storage-overview", app)
         tap(app.buttons["openStoragePhotos"], in: app)
-        XCTAssertTrue(app.staticTexts["账单原件不删，导入记录里仍可撤销。"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "storageOriginalsPreserved").firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["账单原件"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["不删"].exists)
         XCTAssertTrue(app.buttons["半年前"].isSelected)
         snapshot("storage-photos", app)
+    }
+
+    func testScrolledRootHeadersStayInsideSafeAreaWhenOpeningEntrySheet() {
+        let app = application("entries")
+        let arguments = app.launchArguments
+        for category in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryAccessibilityXL"] {
+            app.launchArguments = arguments + ["-UIPreferredContentSizeCategoryName", category]
+            app.launch()
+            // Measure the native navigation region on a pushed page, then verify system back.
+            // All four roots use the custom header; iOS 26 has no statusBars element.
+            openFixedBills(app)
+            let navigationBar = app.navigationBars["固定收付"]
+            XCTAssertTrue(navigationBar.waitForExistence(timeout: 5))
+            let window = app.windows.firstMatch
+            XCTAssertTrue(window.exists)
+            let safeTop = navigationBar.frame.minY
+            XCTAssertGreaterThan(safeTop, window.frame.minY)
+            tap(navigationBar.buttons["我"], in: app)
+            assertSelectedTab("tab_settings", in: app)
+            var titleY: CGFloat?
+            for (tab, scrollID, firstContentID) in [("tab_overview", "overviewScroll", "fundsFormula"), ("tab_insights", "insightsScroll", "本周"), ("tab_entries", "entriesScroll", "entriesPreviousMonth"), ("tab_settings", "settingsScroll", "openProfile")] {
+                tap(app.buttons[tab], in: app)
+                let scroll = app.scrollViews[scrollID]
+                let scrolls = tab != "tab_overview" || category == "UICTContentSizeCategoryAccessibilityXL"
+                if scrolls { XCTAssertTrue(scroll.waitForExistence(timeout: 5)) }
+                let headers = [app.staticTexts["rootHeaderTitle"], app.buttons["askYubai"]]
+                for header in headers { XCTAssertTrue(header.isHittable) }
+                if let titleY { XCTAssertEqual(headers[0].frame.minY, titleY, accuracy: 1) }
+                else { titleY = headers[0].frame.minY }
+                let headerBottom = max(headers[0].frame.maxY, headers[1].frame.maxY)
+                let firstContent = app.buttons[firstContentID]
+                if scrolls {
+                    for _ in 0..<8 {
+                        if firstContent.isHittable && firstContent.frame.minY >= headerBottom { break }
+                        scroll.swipeDown()
+                    }
+                }
+                XCTAssertTrue(firstContent.isHittable)
+                XCTAssertGreaterThanOrEqual(firstContent.frame.minY, headerBottom)
+                let originalFrames = headers.map(\.frame)
+                if scrolls { for _ in 0..<4 { scroll.swipeUp() } }
+                for (header, originalFrame) in zip(headers, originalFrames) {
+                    XCTAssertTrue(header.isHittable)
+                    XCTAssertGreaterThanOrEqual(header.frame.minY, safeTop)
+                    XCTAssertTrue(window.frame.contains(header.frame))
+                    XCTAssertEqual(header.frame.minY, originalFrame.minY, accuracy: 1)
+                    XCTAssertEqual(header.frame.height, originalFrame.height, accuracy: 1)
+                }
+                if scrolls {
+                    // Accessibility frames can include the clipped part of a partially visible row.
+                    // Fully covered content must not be tappable, while the body remains usable.
+                    let content = scroll.descendants(matching: .button).allElementsBoundByIndex
+                    XCTAssertTrue(content.contains { $0.isHittable })
+                    for element in content where element.frame.maxY <= headerBottom {
+                        XCTAssertFalse(element.isHittable)
+                    }
+                }
+                snapshot("\(category)-\(tab)-scrolled-safe-area", app)
+            }
+            if category == "UICTContentSizeCategoryL" { app.terminate() }
+        }
+        tap(addEntryTab(app), in: app)
+        XCTAssertTrue(app.buttons["importFromEntry"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["askYubai"].isHittable)
+        snapshot("scrolled-me-entry-sheet", app)
+        tap(app.buttons["cancelManualSheet"], in: app)
+        assertSelectedTab("tab_settings", in: app)
+    }
+
+    func testEntrySheetWithPurposeSuggestionsKeepsActionsAboveHomeIndicator() {
+        let app = application("entries"); app.launch()
+        let navigation = app.otherElements["mainNavigation"]
+        XCTAssertTrue(navigation.waitForExistence(timeout: 5))
+        // The floating bar ends 8pt above the bottom safe-area boundary.
+        let safeBottom = navigation.frame.maxY + 8
+        tap(addEntryTab(app), in: app)
+        let form = app.scrollViews["entryFormScroll"]
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+        let recent = app.buttons["合成账目 0"]
+        for _ in 0..<8 { if recent.isHittable { break }; form.swipeUp() }
+        XCTAssertTrue(recent.isHittable)
+        tap(recent, in: app)
+        tap(app.buttons["keypad_3"], in: app)
+        let save = app.buttons["saveQuickEntry"], again = app.buttons["saveAndAddAnother"]
+        XCTAssertTrue(save.isHittable); XCTAssertTrue(again.isHittable)
+        XCTAssertLessThanOrEqual(save.frame.maxY, again.frame.minY)
+        XCTAssertLessThanOrEqual(again.frame.maxY, safeBottom - 12)
+        let originalFrame = again.frame
+        form.swipeUp()
+        XCTAssertTrue(again.isHittable)
+        XCTAssertEqual(again.frame.minY, originalFrame.minY, accuracy: 1)
+        XCTAssertLessThanOrEqual(again.frame.maxY, safeBottom - 12)
+        snapshot("entry-purpose-chips-safe-bottom", app)
+        tap(again, in: app)
+        XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "0")
+        XCTAssertTrue(again.exists); XCTAssertFalse(again.isEnabled)
+    }
+
+    func testOverviewAccessibilityXLScalesHeaderAndWrapsTodaySummary() {
+        let app = application("overview-xl")
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL"]
+        app.launch()
+        let eye = app.buttons["toggleAmountVisibility"], ask = app.buttons["askYubai"]
+        XCTAssertTrue(eye.waitForExistence(timeout: 5)); XCTAssertTrue(ask.exists)
+        let normalEye = eye.frame.size, normalAsk = ask.frame.size
+        app.terminate()
+        app.launchArguments = Array(app.launchArguments.dropLast(2)) + ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+        app.launch()
+        XCTAssertTrue(app.scrollViews["overviewScroll"].waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(eye.frame.width, normalEye.width)
+        XCTAssertGreaterThan(ask.frame.width, normalAsk.width)
+        XCTAssertEqual(eye.frame.width, ask.frame.width, accuracy: 1)
+        XCTAssertEqual(eye.frame.height, ask.frame.height, accuracy: 1)
+        XCTAssertLessThanOrEqual(eye.frame.width, 48)
+        tap(eye, in: app); XCTAssertEqual(eye.label, "显示金额")
+        tap(eye, in: app); XCTAssertEqual(eye.label, "隐藏金额")
+        snapshot("overview-xl-header", app)
+        let today = app.buttons["todayEntries"], summary = app.staticTexts["todayEntrySummary"]
+        for _ in 0..<8 { if summary.isHittable { break }; app.scrollViews["overviewScroll"].swipeUp() }
+        XCTAssertTrue(summary.isHittable)
+        XCTAssertEqual(summary.label, "1 笔 · 合成测试的午饭和日用品以及下周旅行准备")
+        XCTAssertGreaterThan(summary.frame.height, eye.frame.height)
+        XCTAssertGreaterThanOrEqual(summary.frame.minX, today.frame.minX)
+        XCTAssertLessThanOrEqual(summary.frame.maxX, today.frame.maxX)
+        XCTAssertLessThanOrEqual(summary.frame.maxY, today.frame.maxY)
+        snapshot("overview-xl-today-wrapped", app)
+        tap(today, in: app); assertSelectedTab("tab_entries", in: app)
     }
 
     func testDonutSelectionChangesSummaryAndCanBeCleared() {
@@ -363,7 +791,8 @@ final class AppFlowTests: XCTestCase {
         tap(summary, in: app)
         XCTAssertTrue(summary.label.contains("支出合计"))
         tap(app.buttons["insightCategory_0"], in: app)
-        XCTAssertTrue(app.navigationBars["餐饮"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "subcategoryInsights").firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["餐饮 · 本月"].exists)
     }
 
     func testModelMenuSelectsInlineAndKeepsCustomEditor() {
@@ -371,13 +800,13 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_settings"], in: app)
         tap(app.buttons["openIntelligencePrivacy"], in: app)
         tap(app.buttons["editCloudModel"], in: app)
-        XCTAssertTrue(app.buttons["cloudModel_deepseek-chat"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["cloudModel_deepseek-reasoner"].exists)
+        XCTAssertTrue(app.buttons["cloudModel_deepseek-flash"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["cloudModel_deepseek-v4-pro"].exists)
         XCTAssertTrue(app.buttons["customCloudModel"].exists)
         XCTAssertFalse(app.textFields["cloudModelName"].exists)
         snapshot("model-menu", app)
-        tap(app.buttons["cloudModel_deepseek-reasoner"], in: app)
-        XCTAssertTrue(app.buttons["editCloudModel"].label.contains("deepseek-reasoner"))
+        tap(app.buttons["cloudModel_deepseek-v4-pro"], in: app)
+        XCTAssertTrue(app.buttons["editCloudModel"].label.contains("deepseek-v4-pro"))
         tap(app.buttons["editCloudModel"], in: app)
         tap(app.buttons["customCloudModel"], in: app)
         XCTAssertTrue(app.textFields["cloudModelName"].waitForExistence(timeout: 5))
@@ -403,6 +832,7 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_settings"], in: app)
         assertSelectedTab("tab_settings", in: app)
         tap(app.buttons["openIntelligencePrivacy"], in: app)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "intelligencePrivacyPage").firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
         assertGone(app.buttons["tab_settings"]); assertGone(addEntryTab(app))
         let middleLeft = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
@@ -425,22 +855,32 @@ final class AppFlowTests: XCTestCase {
         let app = application("ask"); app.launch()
         tap(app.buttons["tab_insights"], in: app)
         tap(app.buttons["insightCategory_0"], in: app)
-        assertPushedPage("餐饮", in: app)
+        assertPushedPage("餐饮 · 本月", in: app)
+        let summary = app.descendants(matching: .any).matching(identifier: "subcategoryInsightsSummary").firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(summary.isHittable)
         for _ in 0..<3 {
             dragBack(app, to: 0.42)
-            assertPushedPage("餐饮", in: app)
-            let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
-            let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.4))
+            assertPushedPage("餐饮 · 本月", in: app)
+            // V15 adds tappable subcategory rows below this noninteractive summary.
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let summaryY = summary.frame.midY - app.frame.minY
+            let left = origin.withOffset(CGVector(dx: app.frame.width * 0.2, dy: summaryY))
+            let right = origin.withOffset(CGVector(dx: app.frame.width * 0.8, dy: summaryY))
             right.press(forDuration: 0.05, thenDragTo: left)
-            assertPushedPage("餐饮", in: app)
+            assertPushedPage("餐饮 · 本月", in: app)
             left.press(forDuration: 0.05, thenDragTo: right)
-            assertPushedPage("餐饮", in: app)
+            assertPushedPage("餐饮 · 本月", in: app)
         }
         snapshot("insight-back-cancelled", app)
         tap(app.navigationBars.buttons["洞察"], in: app)
-        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2)))
+        assertCurrentTab("tab_insights", content: "insightCategory_0", in: app)
+        let header = app.staticTexts["rootHeaderTitle"]
+        XCTAssertTrue(header.isHittable)
+        let headerY = header.frame.midY - app.frame.minY
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        origin.withOffset(CGVector(dx: app.frame.width * 0.8, dy: headerY))
+            .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: app.frame.width * 0.2, dy: headerY)))
         assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
     }
 
@@ -468,31 +908,41 @@ final class AppFlowTests: XCTestCase {
 
     func testCancelledOverviewBackRestoresTabBarOnlyAfterCompletedPop() {
         let app = application("bills-overdue"); app.launch()
-        tap(app.buttons["moreDueBills"], in: app)
+        let more = app.buttons["moreDueBills"], navigation = app.otherElements["mainNavigation"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        XCTAssertTrue(navigation.waitForExistence(timeout: 5))
+        for _ in 0..<8 {
+            if more.isHittable && more.frame.maxY <= navigation.frame.minY { break }
+            let scroll = app.scrollViews["overviewScroll"]
+            XCTAssertTrue(scroll.exists)
+            scroll.swipeUp()
+        }
+        XCTAssertLessThanOrEqual(more.frame.maxY, navigation.frame.minY)
+        tap(more, in: app)
         assertPushedPage("固定收付", in: app)
         for _ in 0..<2 {
             dragBack(app, to: 0.42)
             assertPushedPage("固定收付", in: app)
         }
         dragBack(app, to: 0.95)
-        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+        assertCurrentTab("tab_overview", content: "moreDueBills", in: app)
         tap(app.buttons["tab_insights"], in: app)
-        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        assertCurrentTab("tab_insights", content: "支出", in: app)
         tap(app.buttons["tab_overview"], in: app)
-        assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
+        assertCurrentTab("tab_overview", content: "moreDueBills", in: app)
     }
 
     func testSheetNavigationDoesNotHideRootTabBarAfterDismissal() {
         let app = application("manual"); app.launch()
         tap(app.buttons["tab_insights"], in: app)
         tap(app.buttons["askYubai"], in: app)
-        tap(app.buttons["去配好密钥"], in: app)
+        tap(app.buttons["云端智能没开 ›"], in: app)
         XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
         dragBack(app, to: 0.42)
         XCTAssertTrue(app.navigationBars["智能与隐私"].isHittable)
         dragBack(app, to: 0.95)
         tap(app.buttons["closeSheet"], in: app)
-        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        assertCurrentTab("tab_insights", content: "支出", in: app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2)))
         assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
@@ -500,7 +950,7 @@ final class AppFlowTests: XCTestCase {
 
     func testTabButtonsScrollToNonadjacentPagesAndPreservePageState() {
         let app = application("ask"); app.launch()
-        for (identifier, content) in [("tab_settings", "openProfile"), ("tab_overview", "fundsFormula"), ("tab_entries", "entriesSearchButton"), ("tab_insights", "支出 · 按类型"), ("tab_entries", "entriesSearchButton")] {
+        for (identifier, content) in [("tab_settings", "openProfile"), ("tab_overview", "fundsFormula"), ("tab_entries", "entriesSearchButton"), ("tab_insights", "支出"), ("tab_entries", "entriesSearchButton")] {
             tap(app.buttons[identifier], in: app)
             assertSelectedTab(identifier, in: app)
             XCTAssertTrue(app.buttons[content].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons[content].isHittable)
@@ -523,7 +973,7 @@ final class AppFlowTests: XCTestCase {
         for _ in 0..<3 {
             let start = app.staticTexts["本月支出"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: app.frame.width * 0.6, dy: 0)))
-            assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+            assertCurrentTab("tab_insights", content: "支出", in: app)
             tap(app.buttons["tab_entries"], in: app)
             assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
         }
@@ -538,7 +988,7 @@ final class AppFlowTests: XCTestCase {
         let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
         for _ in 0..<3 {
             right.press(forDuration: 0.05, thenDragTo: left)
-            assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+            assertCurrentTab("tab_insights", content: "支出", in: app)
             tap(app.buttons["tab_overview"], in: app)
             assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
         }
@@ -574,7 +1024,7 @@ final class AppFlowTests: XCTestCase {
         assertSelectedTab("tab_overview", in: app)
         let start = card.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.35))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -card.frame.width * 0.15, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
-        assertGone(app.buttons["知道了"])
+        assertNotHittable(app.buttons["dismissButler_restrain"])
         XCTAssertTrue(title.exists)
         assertSelectedTab("tab_overview", in: app)
         let dismiss = card.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.35))
@@ -605,7 +1055,7 @@ final class AppFlowTests: XCTestCase {
         assertGone(title)
         assertSelectedTab("tab_overview", in: app)
         XCTAssertTrue(app.buttons["fundsFormula"].isHittable)
-        XCTAssertFalse(app.buttons["支出 · 按类型"].exists)
+        XCTAssertFalse(app.buttons["支出"].exists)
     }
 
     func testButlerRightSwipeAtFirstPagePreservesCardAndPaging() {
@@ -617,12 +1067,12 @@ final class AppFlowTests: XCTestCase {
             let start = card.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.35))
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: card.frame.width * 0.7, dy: 0)), withVelocity: velocity, thenHoldForDuration: 0)
             assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
-            XCTAssertTrue(title.isHittable); assertGone(app.buttons["知道了"])
+            XCTAssertTrue(title.isHittable); assertNotHittable(app.buttons["dismissButler_restrain"])
         }
         let left = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2))
         let right = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
         right.press(forDuration: 0.05, thenDragTo: left)
-        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        assertCurrentTab("tab_insights", content: "支出", in: app)
         left.press(forDuration: 0.05, thenDragTo: right)
         assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
         XCTAssertTrue(title.isHittable)
@@ -633,19 +1083,19 @@ final class AppFlowTests: XCTestCase {
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         let delete = app.buttons[row.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
-        row.swipeRight()
-        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        swipeRow(row, left: false)
+        assertCurrentTab("tab_insights", content: "支出", in: app)
         XCTAssertFalse(app.textFields["editEntryAmount"].exists)
         tap(app.buttons["tab_entries"], in: app)
         assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
-        assertGone(delete)
-        row.swipeLeft()
+        assertNotHittable(delete)
+        swipeRow(row)
         XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
-        row.swipeRight()
-        assertGone(delete)
+        swipeRow(row, left: false)
+        assertNotHittable(delete)
         assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
-        row.swipeRight()
-        assertCurrentTab("tab_insights", content: "支出 · 按类型", in: app)
+        swipeRow(row, left: false)
+        assertCurrentTab("tab_insights", content: "支出", in: app)
         XCTAssertFalse(app.textFields["editEntryAmount"].exists)
     }
 
@@ -654,7 +1104,7 @@ final class AppFlowTests: XCTestCase {
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         let delete = app.buttons[row.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
-        row.swipeLeft()
+        swipeRow(row)
         XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
         for element in [row, delete] {
             let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -664,7 +1114,7 @@ final class AppFlowTests: XCTestCase {
         }
         let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 30, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
-        assertGone(delete)
+        assertNotHittable(delete)
         assertSelectedTab("tab_entries", in: app)
         XCTAssertFalse(app.textFields["editEntryAmount"].exists)
         tap(row, in: app)
@@ -679,18 +1129,18 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(first.isHittable); XCTAssertTrue(second.isHittable)
         let firstDelete = app.buttons[first.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
         let secondDelete = app.buttons[second.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
-        first.swipeLeft()
+        swipeRow(first)
         XCTAssertTrue(firstDelete.waitForExistence(timeout: 5))
-        second.swipeLeft()
-        assertGone(firstDelete)
+        swipeRow(second)
+        assertNotHittable(firstDelete)
         XCTAssertTrue(secondDelete.waitForExistence(timeout: 5)); XCTAssertTrue(secondDelete.isHittable)
-        first.swipeLeft()
-        assertGone(secondDelete)
+        swipeRow(first)
+        assertNotHittable(secondDelete)
         XCTAssertTrue(firstDelete.waitForExistence(timeout: 5)); XCTAssertTrue(firstDelete.isHittable)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'deleteLedgerEntry_' ")).count, 1)
         assertSelectedTab("tab_entries", in: app)
         app.staticTexts["本月收入"].tap()
-        assertGone(firstDelete)
+        assertNotHittable(firstDelete)
         XCTAssertFalse(app.textFields["editEntryAmount"].exists)
     }
 
@@ -699,7 +1149,7 @@ final class AppFlowTests: XCTestCase {
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         let delete = app.buttons[row.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
-        row.swipeLeft()
+        swipeRow(row)
         XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
         for _ in 0..<3 {
             let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
@@ -707,8 +1157,8 @@ final class AppFlowTests: XCTestCase {
             assertSelectedTab("tab_entries", in: app)
             XCTAssertTrue(delete.isHittable); XCTAssertFalse(app.textFields["editEntryAmount"].exists)
         }
-        row.swipeRight()
-        assertGone(delete)
+        swipeRow(row, left: false)
+        assertNotHittable(delete)
         let start = app.staticTexts["本月收入"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)))
         assertSelectedTab("tab_settings", in: app)
@@ -719,21 +1169,21 @@ final class AppFlowTests: XCTestCase {
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         let delete = app.buttons[row.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
-        row.swipeLeft()
+        swipeRow(row)
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
         tap(app.buttons["tab_overview"], in: app); tap(app.buttons["tab_entries"], in: app)
-        assertSelectedTab("tab_entries", in: app); assertGone(delete)
-        row.swipeLeft()
+        assertSelectedTab("tab_entries", in: app); assertNotHittable(delete)
+        swipeRow(row)
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
         let start = app.staticTexts["本月收入"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)))
         assertSelectedTab("tab_entries", in: app); XCTAssertTrue(delete.isHittable)
         app.staticTexts["本月收入"].tap()
-        assertGone(delete)
+        assertNotHittable(delete)
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)))
         assertSelectedTab("tab_settings", in: app)
         tap(app.buttons["tab_entries"], in: app)
-        assertSelectedTab("tab_entries", in: app); assertGone(delete)
+        assertSelectedTab("tab_entries", in: app); assertNotHittable(delete)
         XCTAssertFalse(app.textFields["editEntryAmount"].exists)
     }
 
@@ -750,7 +1200,7 @@ final class AppFlowTests: XCTestCase {
         start.press(forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
         XCTAssertTrue(app.buttons["tab_entries"].isSelected)
         XCTAssertFalse(app.textFields["editEntryAmount"].exists)
-        row.swipeRight()
+        swipeRow(row, left: false)
         let heading = app.staticTexts["本月收入"]
         let tabSwipe = heading.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         tabSwipe.press(forDuration: 0.05, thenDragTo: tabSwipe.withOffset(CGVector(dx: -180, dy: 0)))
@@ -798,7 +1248,7 @@ final class AppFlowTests: XCTestCase {
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         let identifier = row.identifier
-        row.swipeLeft()
+        swipeRow(row)
         XCTAssertFalse(app.textFields["editEntryAmount"].exists)
         tap(app.buttons[identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")], in: app)
         assertGone(app.buttons[identifier])
@@ -819,6 +1269,18 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_insights"], in: app)
         XCTAssertTrue(summary.waitForExistence(timeout: 5)); XCTAssertTrue(summary.label.contains("支出合计"))
         XCTAssertFalse(app.buttons["donutSlice_0"].isSelected)
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "subcategoryInsights").firstMatch.exists)
+        XCTAssertFalse(app.navigationBars["餐饮 · 本月"].exists)
+        // The legend now opens subcategories. A horizontal drag must still page,
+        // without activating that NavigationLink on release.
+        let category = app.buttons["insightCategory_0"]
+        XCTAssertTrue(category.isHittable)
+        swipeRow(category)
+        assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
+        tap(app.buttons["tab_insights"], in: app)
+        XCTAssertTrue(category.isHittable)
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "subcategoryInsights").firstMatch.exists)
+        XCTAssertFalse(app.buttons["donutSlice_0"].isSelected)
     }
 
     func testLedgerRowsStillScrollVerticallyAndOpenWithTap() {
@@ -828,12 +1290,12 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
         let first = app.buttons[rows.firstMatch.identifier]
         let delete = app.buttons[first.identifier.replacingOccurrences(of: "ledgerEntry_", with: "deleteLedgerEntry_")]
-        first.swipeLeft()
+        swipeRow(first)
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
         let start = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)))
         XCTAssertTrue(app.buttons["tab_entries"].isSelected); XCTAssertFalse(app.textFields["editEntryAmount"].exists)
-        assertGone(delete)
+        assertNotHittable(delete)
         XCTAssertFalse(first.isHittable)
         let visible = rows.allElementsBoundByIndex.first { $0.isHittable }
         XCTAssertNotNil(visible)
@@ -866,14 +1328,42 @@ final class AppFlowTests: XCTestCase {
     func testFirstLaunchEmptyLedgerAccountAndAvailableFunds() {
         let app = application("empty"); app.launch()
         snapshot("welcome", app)
-        tap(app.buttons["startLedger"], in: app)
-        XCTAssertTrue(app.staticTexts["从真实余额开始"].waitForExistence(timeout: 5))
-        snapshot("empty-ledger", app)
-        tap(app.buttons["addFirstAccount"], in: app)
-        snapshot("add-account", app)
-        tap(app.textFields["accountName"], in: app); app.textFields["accountName"].typeText("UI Bank")
+        XCTAssertFalse(app.buttons["startLedger"].isEnabled)
+        XCTAssertGreaterThan(app.buttons["startLedger"].frame.width, app.frame.width * 0.8)
+        XCTAssertGreaterThan(app.buttons["startLedger"].frame.minY, app.frame.midY)
         tap(app.textFields["accountBalance"], in: app); app.textFields["accountBalance"].typeText("1000")
-        tap(app.buttons["saveAccount"], in: app)
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        let scroll = app.scrollViews["welcomeScroll"]
+        let start = app.buttons["startLedger"]
+        let chips = ["微信零钱", "支付宝", "招行储蓄卡", "welcomeOtherAccount"].map { app.buttons[$0] }
+        let card = app.descendants(matching: .any).matching(identifier: "welcomeBalanceCard").firstMatch
+        func assertKeyboardLayout() {
+            // No swipe first: focusing the field must reveal the card's chips automatically.
+            let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                chips.allSatisfy { $0.isHittable && $0.frame.minY >= scroll.frame.minY && $0.frame.maxY <= start.frame.minY }
+                    && card.frame.maxY <= start.frame.minY && start.frame.maxY <= keyboard.frame.minY
+            }, object: scroll)
+            XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed)
+            XCTAssertTrue(keyboard.exists)
+            XCTAssertTrue(start.isHittable)
+            XCTAssertLessThanOrEqual(start.frame.maxY, keyboard.frame.minY)
+            for chip in chips {
+                XCTAssertTrue(chip.isHittable)
+                XCTAssertGreaterThanOrEqual(chip.frame.minY, scroll.frame.minY)
+                XCTAssertLessThanOrEqual(chip.frame.maxY, start.frame.minY)
+            }
+            XCTAssertLessThanOrEqual(card.frame.maxY, start.frame.minY)
+        }
+        assertKeyboardLayout()
+        snapshot("welcome-default-account-keyboard", app)
+        tap(app.buttons["welcomeOtherAccount"], in: app)
+        tap(app.textFields["accountName"], in: app); app.textFields["accountName"].typeText("UI Bank")
+        snapshot("welcome-account", app)
+        tap(app.textFields["accountBalance"], in: app)
+        assertKeyboardLayout()
+        snapshot("welcome-keyboard-chips", app)
+        tap(app.buttons["startLedger"], in: app)
         let funds = app.buttons["fundsFormula"]
         XCTAssertTrue(funds.waitForExistence(timeout: 10))
         // A newly opened ledger has no known obligations or spending estimate.
@@ -893,7 +1383,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(addEntryTab(app).exists); XCTAssertTrue(app.buttons["askYubai"].exists)
         snapshot("overview", app)
         tap(app.buttons["tab_insights"], in: app)
-        XCTAssertTrue(app.buttons["支出 · 按类型"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["支出"].waitForExistence(timeout: 5))
         snapshot("insights", app)
         tap(app.buttons["tab_overview"], in: app)
         tap(funds, in: app)
@@ -913,7 +1403,7 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["closeSheet"], in: app)
         XCTAssertTrue(app.buttons["tab_insights"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["tab_insights"].isSelected)
-        XCTAssertTrue(app.buttons["支出 · 按类型"].exists)
+        XCTAssertTrue(app.buttons["支出"].exists)
         for identifier in ["tab_overview", "tab_insights", "tab_entries", "tab_settings"] {
             let tab = app.buttons[identifier]
             tap(tab, in: app)
@@ -981,7 +1471,6 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.textFields["editEntryAmount"].waitForExistence(timeout: 5))
         snapshot("manual-edit", app)
         tap(app.buttons["deleteEntry"], in: app)
-        tap(app.buttons["confirmDeleteEntry"], in: app)
         assertGone(row)
         snapshot("manual-deleted", app)
         tap(app.buttons["tab_overview"], in: app)
@@ -998,6 +1487,11 @@ final class AppFlowTests: XCTestCase {
         tap(addEntryTab(app), in: app)
         tap(app.buttons["importFromEntry"], in: app)
         snapshot("import-preview", app)
+        let incoming = app.descendants(matching: .any).matching(identifier: "importTotal_流入").firstMatch
+        XCTAssertTrue(incoming.waitForExistence(timeout: 5))
+        XCTAssertTrue(incoming.label.contains("1 笔")); XCTAssertTrue(incoming.label.contains("40.00"))
+        let outgoing = app.descendants(matching: .any).matching(identifier: "importTotal_流出").firstMatch
+        XCTAssertTrue(outgoing.label.contains("1 笔")); XCTAssertTrue(outgoing.label.contains("32.00"))
         tap(app.buttons["commitImport"], in: app)
         let question = app.staticTexts["importQuestion"]
         XCTAssertTrue(question.waitForExistence(timeout: 10)); XCTAssertEqual(question.label, "这笔来款是什么用途？")
@@ -1086,6 +1580,8 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["openBackup"], in: app)
         XCTAssertTrue(app.navigationBars["备份与恢复"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.secureTextFields["备份密码（至少 8 位）"].exists)
+        XCTAssertFalse(app.secureTextFields["备份密码"].exists)
+        XCTAssertTrue(app.buttons["选择备份文件"].exists)
         XCTAssertFalse(addEntryTab(app).isHittable)
         XCTAssertFalse(app.buttons["tab_settings"].isHittable)
         snapshot("backup", app)

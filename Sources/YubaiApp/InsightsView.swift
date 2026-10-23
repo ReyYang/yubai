@@ -35,8 +35,7 @@ struct InsightsView: View {
         let range = interval
         let summary = Finance.cashFlow(store.current, during: range)
         let slices = summary.slices(income: income)
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-            TabRootHeader(title: "洞察")
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.none) {
             Segmented(choices: Window.allCases.map { ($0, $0.rawValue) }, selection: $window)
             if window == .custom { Button("选择日期范围") { store.pickingInsightDates = true }.frame(minHeight: YubaiSize.tapMin) }
             HStack(spacing: YubaiSpace.gapGroup) {
@@ -52,16 +51,14 @@ struct InsightsView: View {
             }
             Card(style: .compact) {
                 VStack(spacing: YubaiSpace.gapGroup) {
-                    Segmented(choices: [(false, "支出 · 按类型"), (true, "收入 · 按类型")], selection: $income, background: YubaiColor.canvas)
+                    Segmented(choices: [(false, "支出"), (true, "收入")], selection: $income, background: YubaiColor.canvas)
                     if !store.current.preferences.hideAmounts {
                         donut(slices, total: income ? summary.income : summary.spending)
                     }
                     if slices.isEmpty { Text("还没有收支记录").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, YubaiSpace.gapSection) }
                     VStack(spacing: YubaiSpace.none) {
                         ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
-                            TabNavigationLink(.flowRecords(categories: slice.categories, title: slice.title, income: income, interval: range)) { FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range) } label: {
-                                legend(slice, rank: rank, slices: slices)
-                            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
+                            categoryLink(slice, rank: rank, slices: slices, range: range)
                             if slice.id != slices.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
                         }
                     }
@@ -71,7 +68,8 @@ struct InsightsView: View {
                 Text("本期有跨期退款。")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }
-        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().navigationTitle("洞察")
+        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("insightsScroll")
+            .rootPageHeader { TabRootHeader(title: "洞察") }.navigationTitle("洞察")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
@@ -92,6 +90,30 @@ struct InsightsView: View {
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("看这段时间") { store.pickingInsightDates = false } } }
                 }.presentationDragIndicator(.visible)
             }
+    }
+    private func categoryLink(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice], range: DateInterval) -> some View {
+        TabNavigationLink(categoryRoute(slice, range: range)) { categoryDestination(slice, range: range) } label: {
+            legend(slice, rank: rank, slices: slices)
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
+    }
+    private func categoryRoute(_ slice: CashFlowSlice, range: DateInterval) -> TabRoute {
+        if slice.categories.count == 1, let category = slice.categories.first {
+            return .subcategoryInsights(category: category, income: income, interval: range, periodTitle: categoryPeriodTitle)
+        }
+        return .flowRecords(categories: slice.categories, title: slice.title, income: income, interval: range)
+    }
+    @ViewBuilder private func categoryDestination(_ slice: CashFlowSlice, range: DateInterval) -> some View {
+        if slice.categories.count == 1, let category = slice.categories.first {
+            SubcategoryInsightsView(category: category, income: income, interval: range, periodTitle: categoryPeriodTitle)
+        } else {
+            FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range)
+        }
+    }
+    private var categoryPeriodTitle: String {
+        if window == .month {
+            return Dates.calendar.isDate(anchor, equalTo: Date(), toGranularity: .month) ? "本月" : "\(Dates.calendar.component(.month, from: anchor))月"
+        }
+        return dateLabel
     }
     private var dateLabel: String {
         let last = min(Date(), fullInterval.end.addingTimeInterval(-1))
@@ -119,25 +141,12 @@ struct InsightsView: View {
         return colors[min(normalRank, colors.count - 1)]
     }
     private func donut(_ slices: [CashFlowSlice], total: Int64) -> some View {
-        let positiveTotal = slices.reduce(0.0) { $0 + max(0, Double($1.amount)) }
-        let selected = slices.first { $0.id == selectedSlice }
+        let positiveTotal: Double = slices.reduce(0.0) { $0 + max(0, Double($1.amount)) }
+        let selected: CashFlowSlice? = slices.first { $0.id == selectedSlice }
         return ChartSegments(key: "insights-donut", count: slices.count) { progress in
             ZStack {
                 ForEach(Array(slices.enumerated()), id: \.element.id) { rank, slice in
-                    let start = positiveTotal > 0 ? slices.prefix(rank).reduce(0.0) { $0 + max(0, Double($1.amount)) } / positiveTotal : 0
-                    let share = positiveTotal > 0 ? max(0, Double(slice.amount)) / positiveTotal : 0
-                    let shape = DonutSlice(start: start, end: start + share * progress[min(rank, 5)], outerRadius: selectedSlice == slice.id ? 100 : 90)
-                    if share > 0 {
-                        Button { select(slice.id) } label: {
-                            shape.fill(color(slice, rank: rank, slices: slices))
-                                .opacity(selectedSlice == nil || selectedSlice == slice.id ? 1 : 0.3)
-                                .contentShape(shape)
-                        }.buttonStyle(.plain)
-                            .accessibilityLabel(slice.title + " · " + percentage(slice))
-                            .accessibilityValue(Money.text(slice.amount))
-                            .accessibilityAddTraits(selectedSlice == slice.id ? .isSelected : [])
-                            .accessibilityIdentifier("donutSlice_\(rank)")
-                    }
+                    donutSlice(slice, rank: rank, slices: slices, positiveTotal: positiveTotal, progress: progress[min(rank, 5)])
                 }
                 Button { select(nil) } label: {
                     VStack(spacing: YubaiSpace.space4) {
@@ -153,6 +162,22 @@ struct InsightsView: View {
         }
             .frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapGroup)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: slices.map(\.amount))
+    }
+    @ViewBuilder private func donutSlice(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice], positiveTotal: Double, progress: Double) -> some View {
+        let start: Double = positiveTotal > 0 ? slices.prefix(rank).reduce(0.0) { $0 + max(0, Double($1.amount)) } / positiveTotal : 0
+        let share: Double = positiveTotal > 0 ? max(0, Double(slice.amount)) / positiveTotal : 0
+        let shape: DonutSlice = DonutSlice(start: start, end: start + share * progress, outerRadius: selectedSlice == slice.id ? 100 : 90)
+        if share > 0 {
+            Button { select(slice.id) } label: {
+                shape.fill(color(slice, rank: rank, slices: slices))
+                    .opacity(selectedSlice == nil || selectedSlice == slice.id ? 1 : 0.3)
+                    .contentShape(shape)
+            }.buttonStyle(.plain)
+                .accessibilityLabel(slice.title + " · " + percentage(slice))
+                .accessibilityValue(Money.text(slice.amount))
+                .accessibilityAddTraits(selectedSlice == slice.id ? .isSelected : [])
+                .accessibilityIdentifier("donutSlice_\(rank)")
+        }
     }
     private func percentage(_ slice: CashFlowSlice) -> String { String(format: "%.0f%%", slice.share * 100) }
     private func select(_ id: [String]?) {
@@ -172,7 +197,7 @@ struct InsightsView: View {
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
             HStack(spacing: YubaiSpace.gapGroup) {
                 AmountLabel(cents: slice.amount, hide: store.current.preferences.hideAmounts, role: .small)
-                Text(store.current.preferences.hideAmounts ? "" : (slice.amount < 0 ? "—" : String(format: "%.0f%%", slice.share * 100)))
+                Text(legendPercentage(slice))
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).numberTransition(value: slice.share * 100, enabled: !store.current.preferences.hideAmounts)
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
             }
@@ -184,6 +209,10 @@ struct InsightsView: View {
                 }
             }
             .opacity(selectedSlice == nil || selectedSlice == slice.id ? 1 : 0.55).contentShape(Rectangle())
+    }
+    private func legendPercentage(_ slice: CashFlowSlice) -> String {
+        if store.current.preferences.hideAmounts { return "" }
+        return slice.amount < 0 ? "—" : percentage(slice)
     }
     private func move(_ direction: Int) {
         switch window {

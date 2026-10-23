@@ -130,6 +130,7 @@ final class MemoryTests: XCTestCase {
         ledger.memories = [home, plan]
         let script = ScriptedChatTransport([try call("recall", "recall", .object(["keyword": .string("合租")])),
             try call("judge", "judge_purchase", .object(["title": .string("旅行箱"), "amount": .string("100"), "memory_ids": .strings([plan.id.uuidString])])),
+            try call("verdict", "submit_verdict", .object(["verdict": .string("wait"), "need": .string("want"), "reason": .string("你说过每年想去旅行，可以先确认使用计划。"), "memory_ids": .strings([plan.id.uuidString])])),
             ChatMessage(role: .assistant, content: "可以结合你的旅行计划考虑。")])
         let reply = try await AskYubai.answer("买个旅行箱怎么样", transport: script, context: ToolContext(ledger: ledger, now: now))
         XCTAssertEqual(Set(reply.usedMemoryIDs), Set([home.id, plan.id])); XCTAssertTrue(reply.updatedNotes.isEmpty)

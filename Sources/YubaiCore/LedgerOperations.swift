@@ -2,15 +2,11 @@ import Foundation
 
 public enum LedgerOperations {
     /// Keep stored refund categories aligned with their original expenses.
-    public static func syncLinkedRefundCategories(in ledger: inout Ledger) {
-        var expenseCategories: [UUID: String] = [:]
-        for entry in ledger.entries where entry.nature == .expense {
-            expenseCategories[entry.id] = entry.category
-        }
+    public static func syncLinkedRefundCategories(in ledger: inout Ledger, expenseIDs: Set<UUID>? = nil) {
+        let expenses = Dictionary(uniqueKeysWithValues: ledger.entries.filter { $0.nature == .expense }.map { ($0.id, $0) })
         for i in ledger.entries.indices where ledger.entries[i].nature == .refund {
-            guard let id = ledger.entries[i].relatedEntryID, let category = expenseCategories[id],
-                  ledger.entries[i].category != category else { continue }
-            ledger.entries[i].category = category
+            guard let id = ledger.entries[i].relatedEntryID, expenseIDs?.contains(id) ?? true, let original = expenses[id] else { continue }
+            ledger.entries[i].category = original.category; ledger.entries[i].subcategory = original.subcategory
         }
     }
     public static func bulkEdit(_ ids: Set<UUID>, category: String?, nature: Nature?, in ledger: inout Ledger) throws {
@@ -25,7 +21,10 @@ public enum LedgerOperations {
                 candidate.entries[i].nature = nature
                 candidate.entries[i].personalExpense = nil
             }
-            if let category { candidate.entries[i].category = category }
+            if let category, category != candidate.entries[i].category {
+                candidate.entries[i].category = category; candidate.entries[i].subcategory = nil; candidate.entries[i].subcategoryUserEdited = false
+                SubcategoryClassifier.classify(&candidate.entries[i], ledger: ledger)
+            }
             candidate.entries[i].userEdited = true; candidate.entries[i].classificationReason = "用户批量纠正"
         }
         syncLinkedRefundCategories(in: &candidate)

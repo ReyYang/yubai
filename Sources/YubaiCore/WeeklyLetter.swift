@@ -6,6 +6,9 @@ public struct LetterPoint: Codable, Equatable, Identifiable, Sendable {
     public var id: Date { date }
 }
 public struct LetterFacts: Codable, Equatable, Sendable {
+    public var weeklySavings: Int64? = nil
+    public var totalSavings: Int64? = nil
+    public var subscriptions: [SubscriptionCandidate]? = nil
     public var learned: [LearnedLine]? = nil
     public var review: ProfileReviewCandidate? = nil
     public var weekEnding: Date
@@ -16,6 +19,8 @@ public struct LetterFacts: Codable, Equatable, Sendable {
     public var evidence: [UUID]
     public var numbers: [CardFact] {
         [CardFact("本周消费", cents: spending), CardFact("还能花比上周", cents: availableChange), comparison]
+            + (weeklySavings.map { [CardFact("本周省下", cents: $0)] } ?? [])
+            + (totalSavings.map { [CardFact("累计省下", cents: $0)] } ?? [])
     }
 }
 
@@ -74,7 +79,11 @@ public enum WeeklyLetter {
             comparison = limited.isEmpty ? CardFact("想克制的领域", "\(ledger.profile.restrain.count) 个 · 没写次数或金额") : CardFact("达到你写的次数或金额", "\(count) 个 / \(limited.count) 个")
         }
         let evidence = ledger.activeEntries.filter { $0.date >= start && $0.date < end && ($0.nature == .expense || $0.nature == .refund) }.map(\.id)
-        return LetterFacts(weekEnding: lastDay, series: series, spending: review.spending, availableChange: change, comparison: comparison, evidence: Array(evidence.prefix(1000)))
+        var facts = LetterFacts(weekEnding: lastDay, series: series, spending: review.spending, availableChange: change, comparison: comparison, evidence: Array(evidence.prefix(1000)))
+        let saved = Savings.summary(ledger: ledger, from: start, to: end, now: close).total
+        let total = Savings.total(ledger: ledger, now: close)
+        facts.weeklySavings = saved > 0 ? saved : nil; facts.totalSavings = total > 0 ? total : nil
+        return facts
     }
     public static func candidate(_ ledger: Ledger, now: Date) -> CardCandidate? {
         let key = "letter:" + ButlerCards.isoWeek(now)
@@ -82,12 +91,32 @@ public enum WeeklyLetter {
         let monday = ButlerCards.calendar.dateInterval(of: .weekOfYear, for: now)!.start
         var facts = facts(ledger, weekEnding: Dates.addDays(-1, to: monday))
         facts.review = ProfileReview.candidate(ledger: ledger, now: now)
-        let direction = facts.availableChange > 0 ? "增加了" : (facts.availableChange < 0 ? "减少了" : "保持原样")
-        let body = "这一周消费 \(Money.text(facts.spending))。还能花比上周\(direction)。"
+        let month = String(Dates.text(now).prefix(7))
+        if !ledger.cards.contains(where: { $0.kind == .weeklyLetter && String(Dates.text($0.createdAt).prefix(7)) == month }) {
+            let subscriptions = SubscriptionCheck.candidates(ledger: ledger, now: now)
+            facts.subscriptions = subscriptions.isEmpty ? nil : subscriptions
+        }
+        let change = facts.availableChange == 0 ? "和上周持平" : (facts.availableChange > 0 ? "比上周增加了" : "比上周减少了")
+        let body = "这一周消费 \(Money.text(facts.spending))。还能花\(change)。"
         var candidate = CardCandidate(kind: .weeklyLetter, dedupeKey: key, evidence: facts.evidence,
             facts: facts.numbers + facts.series.map { CardFact(Dates.text($0.date), cents: $0.available) }, title: "每周来信", body: body, action: .openEvidence, priority: 6)
         candidate.letter = facts
         return candidate
+    }
+    /// Omit exact template duplicates in older saved letters beside their UI cards.
+    public static func displayBody(_ body: String, facts: LetterFacts) -> String {
+        var result = body.replacingOccurrences(of: "还能花比上周保持原样", with: "还能花和上周持平")
+        if let saved = facts.weeklySavings, saved > 0 {
+            result = result.replacingOccurrences(of: "本周省下 \(Money.text(saved))。", with: "")
+        }
+        if let total = facts.totalSavings, total > 0 {
+            result = result.replacingOccurrences(of: "累计省下 \(Money.text(total))。", with: "")
+        }
+        if let subscriptions = facts.subscriptions, !subscriptions.isEmpty {
+            result = result.replacingOccurrences(of: "这些还在用吗？" + subscriptions.map(\.title).joined(separator: "、") + "。", with: "")
+            result = result.replacingOccurrences(of: "这些还在用吗？", with: "")
+        }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     public static func isFresh(_ card: ButlerCard, now: Date) -> Bool {
         let weekday = ButlerCards.calendar.component(.weekday, from: now)

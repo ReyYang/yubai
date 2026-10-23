@@ -3,7 +3,6 @@ import YubaiCore
 
 struct FixedFlowsView: View {
     @Environment(AppStore.self) private var store
-    @State private var ending: FixedFlowOccurrence?
     var body: some View {
         let ledger = store.current
         let month = store.fixedFlowMonth
@@ -59,29 +58,10 @@ struct FixedFlowsView: View {
                 Button { store.sheetSource = nil; store.sheet = .addPlan } label: { Image(systemName: "plus") }
                     .accessibilityLabel("添加安排").accessibilityIdentifier("addFixedFlow")
             } }
-            .sheet(item: $ending) { row in
-                FixedFlowStopSheet(title: row.title, inflow: row.inflow, message: stopMessage, hasPending: !pendingEnding.isEmpty,
-                                   stop: stop, cancel: { ending = nil })
-            }
     }
     private func overdueAmount(_ amount: Int64) -> some View {
         AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts,
                     fractionDigits: amount % 100 == 0 ? 0 : 2, ink: YubaiColor.amberInk)
-    }
-    private var pendingEnding: [Occurrence] { ending?.planID.map { FixedFlows.unsettled(planID: $0, in: store.current) } ?? [] }
-    private var stopMessage: String {
-        let pending = pendingEnding
-        if pending.count > 1 { return "还有 \(pending.count) 期没记。" }
-        if let row = pending.first { return FixedFlowPresentation.monthDay(row.date) + "这期还没记。" }
-        return "只停以后的，付过的记录保留。"
-    }
-    private func stop(_ resolution: FixedFlowStopResolution? = nil) {
-        defer { ending = nil }
-        guard let id = ending?.planID else { return }
-        do {
-            let change = try FixedFlows.stop(planID: id, resolution: resolution, in: store.current)
-            if store.apply(change, label: "停掉安排") { store.cancelEntrySaveMotion(); store.toast = "已停掉" }
-        } catch { store.error = error.localizedDescription }
     }
     private func stoppedBills(_ rows: [FixedFlowArrangement]) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -141,49 +121,11 @@ struct FixedFlowsView: View {
     }
     @ViewBuilder private func bills(_ rows: [FixedFlowOccurrence]) -> some View {
         if !rows.isEmpty {
-            VStack(spacing: YubaiSpace.none) {
-                ForEach(rows) { row in
-                    FixedFlowBillRow(row: row, ending: { ending = row })
-                    if row.id != rows.last?.id { EntryFormDivider().padding(.horizontal, YubaiSpace.insetCard) }
-                }
-            }.padding(.vertical, YubaiSpace.space4)
-                .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
-                .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card))
+            CardRows(rows) { row in
+                FixedFlowBillRow(row: row)
+            }.accessibilityElement(children: .contain)
+                .accessibilityIdentifier(rows[0].inflow ? "fixedFlowIncomeCard" : "fixedFlowExpenseCard")
         }
-    }
-}
-
-private struct FixedFlowStopSheet: View {
-    let title: String; let inflow: Bool; let message: String; let hasPending: Bool
-    let stop: (FixedFlowStopResolution?) -> Void; let cancel: () -> Void
-    @State private var contentHeight: CGFloat = 320
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                Text("停掉「\(title)」？").yubaiFont(YubaiFont.quote).accessibilityAddTraits(.isHeader)
-                Text(message).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted)
-                action(hasPending ? (inflow ? "收到了，记一笔再停" : "付了，记一笔再停") : "停掉",
-                       ink: YubaiColor.white, background: YubaiColor.brand, id: "fixedFlowStopConfirm") { stop(hasPending ? .settle : nil) }
-                if hasPending {
-                    action(inflow ? "没收到，这期也不要了" : "没付，这期也不要了",
-                           ink: YubaiColor.label, background: YubaiColor.card, id: "fixedFlowStopSkip") { stop(.skip) }
-                }
-                action("取消", ink: YubaiColor.labelSecondary, background: .clear, id: "fixedFlowStopCancel", perform: cancel)
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapSection)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-        }.scrollBounceBehavior(.basedOnSize).foregroundStyle(YubaiColor.label).background(YubaiColor.raised)
-            .presentationDetents([.height(contentHeight)]).presentationDragIndicator(.visible)
-            .presentationBackground(YubaiColor.raised).presentationCornerRadius(28)
-            .accessibilityElement(children: .contain).accessibilityIdentifier("fixedFlowStopSheet")
-            #if os(macOS)
-            .frame(minWidth: 420)
-            #endif
-    }
-    private func action(_ title: String, ink: Color, background: Color, id: String, perform: @escaping () -> Void) -> some View {
-        Button(action: perform) {
-            Text(title).yubaiFont(YubaiFont.rowTitle, weight: .semibold).foregroundStyle(ink)
-                .frame(maxWidth: .infinity).frame(height: 50).background(background, in: Capsule()).contentShape(Capsule())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(id)
     }
 }
 
@@ -221,33 +163,35 @@ struct FixedFlowDot: View {
 private struct FixedFlowBillRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(macOS)
     @GestureState private var dragging = false
     @State private var horizontal: Bool?
+    #endif
     @State private var offset: CGFloat = 0
     @State private var resting: CGFloat = 0
+    @State private var confirmingStop = false
     let row: FixedFlowOccurrence
-    let ending: () -> Void
-    private let revealDistance = YubaiSize.swipeActionWidth + YubaiSpace.swipeActionInset + YubaiSpace.gapGroup
+    private let revealDistance = YubaiSize.swipeRevealDistance
     private var canEnd: Bool { store.current.plans.contains { $0.id == row.planID && $0.active && $0.endDate == nil } }
+    private var pendingStop: [Occurrence] { row.planID.map { FixedFlows.unsettled(planID: $0, in: store.current) } ?? [] }
+    private var pendingStopMessage: String? {
+        let pending = pendingStop
+        if pending.count > 1 { return "还有 \(pending.count) 期没记。" }
+        return pending.first.map { FixedFlowPresentation.monthDay($0.date) + "这期还没记。" }
+    }
     var body: some View {
         Group {
             if canEnd {
-                content.offset(x: offset).background(alignment: .trailing) {
-                    Button(action: stop) {
-                        Text("停掉")
-                            #if os(iOS)
-                            .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
-                            .background(YubaiColor.neutralStrong, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                            #endif
-                    }.yubaiFont(YubaiFont.callout, weight: .medium)
-                        #if os(iOS)
-                        .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
-                        #else
-                        .frame(width: revealDistance - YubaiSpace.gapGroup).frame(maxHeight: .infinity).background(YubaiColor.neutralStrong)
-                        #endif
-                        .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
-                }.clipped().contentShape(Rectangle())
+                SwipeActionRow(offset: offset, title: "停掉", tint: YubaiColor.neutralStrong, ink: YubaiColor.label, weight: .medium,
+                               actionIdentifier: "stopFixedFlow_" + row.id, action: stop) { content }
+                    #if os(iOS)
+                    .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
+                        offset = max(-revealDistance, min(0, resting + distance))
+                    }, ended: { distance, _ in
+                        resting = resting < 0 ? (distance > 0 ? 0 : -revealDistance) : (offset < -revealDistance * 0.43 ? -revealDistance : 0)
+                        reset()
+                    }, cancelled: reset))
+                    #else
                     .simultaneousGesture(DragGesture(minimumDistance: 18)
                         .updating($dragging) { _, state, _ in state = true }
                         .onChanged { value in
@@ -259,7 +203,9 @@ private struct FixedFlowBillRow: View {
                             resting = offset < -revealDistance * 0.43 ? -revealDistance : 0; reset()
                         })
                     .onChange(of: dragging) { _, active in if !active { reset() } }
+                    #endif
                     .onChange(of: canEnd) { _, value in if !value { resting = 0; reset() } }
+                    .onDisappear { resting = 0; reset() }
                     .accessibilityAction(named: "停掉", stop)
             } else { content }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("fixedFlow_" + row.id)
@@ -271,6 +217,31 @@ private struct FixedFlowBillRow: View {
                     }
                 }
             }
+            .alert("停掉「\(row.title)」？", isPresented: $confirmingStop) {
+                stopActions
+            } message: {
+                if let message = pendingStopMessage { Text(message) }
+            }
+    }
+    @ViewBuilder private var stopActions: some View {
+        if pendingStop.isEmpty {
+            Button("停掉以后的", role: .destructive) { performStop() }
+                .accessibilityIdentifier("fixedFlowStopConfirm")
+                .accessibilityHint("只停以后的，已到期账单和付过的记录保留")
+        } else {
+            Button(row.inflow ? "收到了，记一笔再停" : "付了，记一笔再停") { performStop(.settle) }
+                .accessibilityIdentifier("fixedFlowStopConfirm")
+            Button(row.inflow ? "没收到，这期也不要了" : "没付，这期也不要了", role: .destructive) { performStop(.skip) }
+                .accessibilityIdentifier("fixedFlowStopSkip")
+        }
+        Button("取消", role: .cancel) { confirmingStop = false }.accessibilityIdentifier("fixedFlowStopCancel")
+    }
+    private func performStop(_ resolution: FixedFlowStopResolution? = nil) {
+        guard let id = row.planID else { return }
+        do {
+            let change = try FixedFlows.stop(planID: id, resolution: resolution, in: store.current)
+            if store.apply(change, label: "停掉安排") { store.cancelEntrySaveMotion(); store.toast = "已停掉" }
+        } catch { store.error = error.localizedDescription }
     }
     private var content: some View {
         HStack(spacing: YubaiSpace.gapGroup) {
@@ -288,12 +259,17 @@ private struct FixedFlowBillRow: View {
                 FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount, inflow: row.inflow, state: row.state)
             } else if row.state == .paid { FixedFlowPaidMark(inflow: row.inflow, title: row.title) }
             else { Color.clear.frame(width: YubaiSize.rowIcon).accessibilityHidden(true) }
-        }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowDouble)
+        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
             .opacity(row.state == .paid ? 0.7 : 1).background(YubaiColor.card)
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: row.state)
     }
-    private func reset() { horizontal = nil; withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = resting } }
-    private func stop() { resting = 0; reset(); ending() }
+    private func reset() {
+        #if os(macOS)
+        horizontal = nil
+        #endif
+        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = resting }
+    }
+    private func stop() { resting = 0; reset(); confirmingStop = true }
 }
 
 private struct FixedFlowPaidMark: View {
@@ -329,7 +305,8 @@ struct FixedFlowCheck: View {
                         .foregroundStyle(inflow ? YubaiColor.brandInk : YubaiColor.amberInk)
                         .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowIcon)
                         .overlay { Capsule().strokeBorder(inflow ? YubaiColor.brandInk : YubaiColor.amberInk, lineWidth: 1.5) }
-                        .yubaiHitTarget()
+                        // Keep the visible control flush with the shared swipe action gap.
+                        .yubaiHitTarget(alignment: .trailing)
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel(label)
                     .accessibilityValue(FixedFlowPresentation.state(state, inflow: inflow))
                     .accessibilityIdentifier("settleFixedFlow_" + planID.uuidString + "_" + Dates.text(occurrence))

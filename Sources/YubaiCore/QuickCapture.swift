@@ -93,6 +93,7 @@ public enum QuickCapture {
         entry.externalID = identity + ":" + String(date.timeIntervalSince1970)
         entry.classificationReason = category == nil ? "没分类" : (rule == nil ? "本机分类" : "商户分类")
         entry.quickCapture = QuickCaptureOrigin(merchant: merchant, card: card, transactionDate: date, withoutOpeningApp: true)
+        SubcategoryClassifier.classify(&entry, ledger: ledger)
         var next = ledger; next.entries.append(entry); try next.validate(); ledger = next; return (entry, true)
     }
     public static func undo(entryID: UUID, in ledger: inout Ledger, now: Date = Date()) {
