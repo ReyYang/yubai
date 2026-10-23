@@ -85,8 +85,8 @@ struct EntriesView: View {
     private var searchField: some View {
         HStack(spacing: YubaiSpace.space8) {
             Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-            TextField("找一笔：备注、分类、金额", text: $search).yubaiFont(YubaiFont.row).focused($searchFocused)
-                .accessibilityLabel("搜索账目").accessibilityIdentifier("entriesSearch")
+            TextField("搜索", text: $search).yubaiFont(YubaiFont.row).focused($searchFocused)
+                .accessibilityLabel("搜索账目").accessibilityHint("可按备注、分类或金额搜索").accessibilityIdentifier("entriesSearch")
         }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin)
             .background(YubaiColor.raised, in: Capsule())
     }

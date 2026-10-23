@@ -1,5 +1,9 @@
 # 余白 · 产品与设计入口
 
+**2026-10-23 少写字／帮你省钱合并**：按 owner 明确任务保留 V15 省钱 Core、界面、编译修复与八个截图夹具，同时采用 V16 删除说明文字的规则。八个冲突文件与自动合并入口已核对，消费观仅留页底一处聊天入口；心愿后悔与来信入口按钮写结果。[逐文件取舍、文案与验证](../docs/MERGE-NO-EXPLANATORY-COPY.md)。Linux 449 项测试，445 通过／4 原有实网跳过／0 失败，包含词汇检查 3 项；38 个 App 文件 iOS 26／27.1／macOS 14 条件语法解析通过，55 个 UI 测试方法保留。Apple 编译与 UI 实跑待做；未提交、未终止 merge、未联网调 API，外部设计资源／分发包未同步。
+
+本轮 `git add` 因 `.git/index.lock` 所在文件系统只读退出 128；工作树已解决，索引仍有 8 个未合并文件，须在可写环境按合并报告中的命令暂存。
+
 **2026-10-23 Simulator 27.1 编译排查**：小项选择页将「完成」包进左侧 cancellationAction ToolbarItem，右侧「换主项」保持 confirmationAction，消除同一 toolbar 混用 View／ToolbarContent 的推断错误。相对 main 的 37 个 Swift App 文件及 5 个资源已逐项静态核对；[逐文件结果、预防约定与验证边界](../docs/APP-COMPILE-AUDIT.md)。Linux 449 项测试（445 通过、4 原有实网跳过、0 失败）与全部 38 个 App 文件的 iOS 26／27.1 模拟器、macOS 14 语法解析通过；Apple SDK 真编译仍待做。没有其他行为／外观变化，未联网调 API、未提交。
 
 **2026-10-23 PR #34 编译修复与截图夹具**：按 owner 的 Xcode 报错补齐分类参数标签、拆小 SwiftUI 表达式，逐个核对本轮 11 个业务 App 文件与 Core 签名；模型默认名修正为 `deepseek-flash`。新增 8 个 Debug 模拟器脚本与 8 个截图 UI 流程，[文件清单、启动参数／环境变量和入口](../docs/SAVING-UI-V15.md#2026-10-23--pr-34-编译修复与截图夹具)。Linux build／449 项测试全绿（445 通过、4 项原有实网跳过），夹具通过离线类型检查及真实 Core 工具链；全部 App 的 iOS／macOS 语法解析通过。Apple SDK 真编译与 UI 实跑仍待复验；不改外观、行为或产品说明文案，未联网调 API、未提交。
@@ -8,6 +12,10 @@
 
 
 **2026-10-23 帮你省钱第一阶段 Core**：按 owner 明确任务接入购买结论边界／追问、冷静期、省下的钱、克制进度、订阅体检、两级分类及批量归类、模型旧名映射和消费观再聊；账本升为 schema 3 并兼容旧存档。[采用记录](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-23--帮你省钱第一阶段非界面owner-明确任务)、[完整文件与公开 API／设计交接](../docs/SAVING-CORE-PHASE1.md)、[界面改动边界](DESIGN.md#2026-10-23--帮你省钱第一阶段输入组件与数据交接)。只共用输入条并修复消费观即时气泡／失败回填，没有制作本轮业务新界面。Linux build／448 项测试通过（444 通过、4 项原有实网跳过、0 失败），五个 App 文件 iOS／macOS 语法解析通过；Apple 类型检查与设备交互待做。未调用实网 API、未提交／推送，原稿／Figma／分发包未同步。
+
+
+**2026-10-23 第十六轮「少写字，让版式说话」**：owner 确认的 11 张页面／片段板与 1 张规则板已[原样归档](mockups/no-explanatory-copy-v16/README.md)，在 `feat/no-explanatory-copy` 保留中断前工作并补完 SwiftUI；采用范围见[设计登记](DESIGN.md#2026-10-23--第十六轮少写字让版式说话)、[owner 决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-23--第十六轮少写字让版式说话owner-确认稿)。[交付总结](no-explanatory-copy-v16.md)列出全部 54 项和可见中文：53 项代码已改，系统入口图示 1 项按授权降级为静态缩略图／名称；快捷指令按钮按授权打开系统 App。24 个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 条件语法解析通过，原 47 个 UI 测试方法保留。Linux swift test 结果见交付总结；Apple 类型检查、UI 实跑与设备验收待做。Core 仅一条显示字符串和对应参考断言变化；模型／算法／格式／依赖保持。未提交、未推送、未运行 Actions、未访问付费模型 API；Figma／旧原型／分发包未同步。
+
 
 **2026-10-22 分页同步与右滑归属复验**：按 owner 对 `bd8b1b2` 的 vphone 反馈，tab 点击改为每次直接滚动，实际分页偏移回写当前页与高亮；未展开账目行及管家卡只接左滑，右滑交给分页，账目展开后双向处理与锁页保持。[实现与验证边界](DESIGN.md#2026-10-22--分页同步与右滑归属复验)、[owner 规则](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-22--分页同步与右滑归属owner-vphone-复测)。指定 swift test：406 项、402 通过／4 项原有跳过／0 失败；四个 App 文件 iOS 26／macOS 14 与 UI 测试 iOS 26 语法解析通过，保留原 43 个测试方法并新增 4 个。Apple SDK 类型检查、UI 实跑待做，其余手势、macOS、`docs/` 和设计稿保持，未提交／推送。
 
@@ -48,7 +56,7 @@
 
 **当前选定稿（2026-10-20）**：owner 已批准第三轮 `V3-*.dc.html` 与配套 DS；已在 `refactor/v2-design-alignment` 按稿实现（现在／洞察／我、根页浮动导航与问余白、相关子页），仅静态核查，未编译、未验证真机。以下两 tab 与候选视觉描述保留为本次对齐前的历史状态。
 
-更新：**2026-10-20**。当前目标为「余白 2.0 · 管家」：AI 做事，代码算数，用户决定。`feat/yubai-2-butler` 的步骤 1–9 与 TestFlight 准备已落地源码，步骤 10 同步长期记录；2.0 **仅做静态检查，未编译或运行**。决定来源为 owner 的[产品评审](https://claude.ai/code/artifact/21365038-7478-4933-9c2c-0358b054f5a4)与[规格](https://claude.ai/code/artifact/9e7ad27e-85a3-478d-911e-aa58843ec4d3)，本轮使用 owner 提供的决定摘录，artifact 正文无法读取。用户决定、Agent 实现选择和差异见[第 13 票归档](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。
+更新：**2026-10-20**。当前目标为「余白 2.0 · 管家」：AI 做事，代码算数，用户决定。`feat/yubai-2-butler` 的步骤 1–9 与 TestFlight 准备已落地源码，步骤 10 同步长期记录；2.0 **仅做静态检查，未编译或运行**。决定来源为 owner 的产品评审与规格，本轮使用 owner 提供的决定摘录，artifact 正文无法读取。用户决定、Agent 实现选择和差异见[第 13 票归档](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。
 
 2026-10-20 后续按 owner 明确任务改进[AI 记忆与画像](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-20--ai-记忆与画像改进owner-明确决定)：去掉AI次数上限，增加重复调用复用、字符预算压缩、画像时间、对称反馈、分类记忆和同步记忆合并。只改core、测试、文档及App的时间戳／合并调用，未改视觉、布局或交互，设计资源状态保持。实现与验证边界见[助手文档](../docs/ASSISTANT.md)；无Swift工具链，未编译、运行或提交。
 
@@ -56,7 +64,7 @@
 
 当前入口为 iPhone 两个 tab「现在／我」和 iPhone／Mac 底部常驻「问余白」；Mac 侧栏同样只保留现在与我。云端智能仅用 DeepSeek 轻量 harness，本机模型已移除；旧账本、安排、洞察等独立维护页和应用内示例已删除，示例数据只留测试夹具，旧用户存档字段保持兼容。图表保留在来信与问答中。使用说明见 [README](../README.md)。
 
-当前 UI 由 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift) 组件构建，属于**候选视觉，并非最终定稿**。2026-10-19 的[390pt 页面稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)早于 2.0，需要「同步设计稿」；现有 Figma、HTML 原型、截图与发布包也未同步。消费观画像页、冷启动对话、心愿单、每周来信、导入问题、推送、问余白回答卡片均**尚无对应 2.0 画板**，缺口和源码入口见 [DESIGN.md](DESIGN.md#20-设计资源与缺口2026-10-20)。下一步先补齐这些页面与状态的设计映射，保留候选与最终验收的区别；本轮仅登记缺口，未绘制新稿。
+当前 UI 由 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift) 组件构建，属于**候选视觉，并非最终定稿**。2026-10-19 的390pt 页面稿早于 2.0，需要「同步设计稿」；现有 Figma、HTML 原型、截图与发布包也未同步。消费观画像页、冷启动对话、心愿单、每周来信、导入问题、推送、问余白回答卡片均**尚无对应 2.0 画板**，缺口和源码入口见 [DESIGN.md](DESIGN.md#20-设计资源与缺口2026-10-20)。下一步先补齐这些页面与状态的设计映射，保留候选与最终验收的区别；本轮仅登记缺口，未绘制新稿。
 
 iCloud 已实现，构建默认 `YUBAI_ICLOUD = NO`；付费团队配置好容器后可在本机配置改一行启用，应用内仍需在「我 → 备份与同步」主动选择。账本附件使用同目录文件，冲突保留各版本并由用户选择，恢复历史与设备锁留本机。采用边界见[第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md#icloud-账本的采用边界)，开关见 [DEVELOPMENT.md](../docs/DEVELOPMENT.md#可选-icloud-账本)。
 
@@ -66,7 +74,7 @@ owner 于 2026-10-20 决定暂不加入付费 Apple Developer Program：先用�
 
 ## 历史迁移与安装节点
 
-2026-10-19 续作：按用户指定的[暖纸设计系统](https://claude.ai/artifact/Pz2z4mQNoCqTNLGRafY9v5)与[390pt 页面设计稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)迁移已有页面，并完成 Step 3 评审修复。已采用移除三套颜色主题（`Preferences.colorTheme` 仅保留旧存储兼容、界面忽略）、不打包字体而用系统 rounded / serif 回退，以及因暂无助手页面保留原生 `TabView`。本次仅有静态验证；没有 Swift 工具链，未验证 iOS / Mac 编译与真机效果。采用范围与未同步资源见 [DESIGN.md 的迁移记录](DESIGN.md#2026-10-19--设计系统迁移)。下方安装和测试结果保留原日期，不适用于本次迁移。
+2026-10-19 续作：按用户指定的暖纸设计系统与390pt 页面设计稿迁移已有页面，并完成 Step 3 评审修复。已采用移除三套颜色主题（`Preferences.colorTheme` 仅保留旧存储兼容、界面忽略）、不打包字体而用系统 rounded / serif 回退，以及因暂无助手页面保留原生 `TabView`。本次仅有静态验证；没有 Swift 工具链，未验证 iOS / Mac 编译与真机效果。采用范围与未同步资源见 [DESIGN.md 的迁移记录](DESIGN.md#2026-10-19--设计系统迁移)。下方安装和测试结果保留原日期，不适用于本次迁移。
 
 2026-10-08 当时阶段：**原生 iPhone / Mac 应用已实现；余白 1.0.0 已签名安装到本人 iPhone，本人完成信任并在 Wi-Fi 下验证后已打开应用，业务实际使用核验尚未完成。** 该记录不覆盖 2.0。
 
@@ -113,7 +121,7 @@ owner 于 2026-10-20 决定暂不加入付费 Apple Developer Program：先用�
 | 产品知识 | [决策地图](../.scratch/yubai-product/map.md)、[第 13 票](../.scratch/yubai-product/issues/13-complete-personal-release.md) | 已对齐 2.0 目的地、owner 决定和 Agent 实现选择；额外发言触发、脱敏覆盖与升级数值仍有待对齐／验证项 |
 | 领域词汇 | [CONTEXT.md](../CONTEXT.md) | 已补齐管家、消费观、来信、心愿与提案等；旧规则、洞察 tab、应用内示例、本机模型标为历史 |
 | 设计约定 | [DESIGN.md](DESIGN.md) | 2.0 组件实现为候选视觉，七类新增页面／状态尚无画板；需要「同步设计稿」 |
-| 参考与页面稿 | [2026-10-19 页面稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)、上方暖纸设计系统；历史[分类调研](../.scratch/yubai-product/research/transaction-categorization.md) | 页面稿早于 2.0，不能充当新增页面定稿；本轮 artifact 无法读取，未绘制或导出 |
+| 参考与页面稿 | 2026-10-19 页面稿、上方暖纸设计系统；历史[分类调研](../.scratch/yubai-product/research/transaction-categorization.md) | 页面稿早于 2.0，不能充当新增页面定稿；本轮 artifact 无法读取，未绘制或导出 |
 | 历史候选 | [导入结果原型](../.scratch/yubai-product/prototypes/import-result.prototype.html)、[首页 v1](prototypes/home-v1/README.md) | 合成内存交互，保留原位置；行为、导航与视觉均未同步 2.0 |
 | 样式与组件 | [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift)、[源码登记](DESIGN.md#当前应用设计) | 已有原生 token 与共用组件，2.0 新页面据此构建；编译、视觉、大字号与辅助功能待 Mac 验证 |
 | 工具与画布 | [Figma 全动作稿](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=13-3367)、[浏览基线](https://www.figma.com/design/vIJH4tq6ZMNOJeRzUsI2Z7?node-id=40-6983) | 1.0 派生资源已登记，未同步 2.0；本轮未调用绘图工具，也未切换设计面 |

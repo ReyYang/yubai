@@ -3,11 +3,12 @@ import YubaiCore
 
 struct EntryEditView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     let entryID: UUID
     var body: some View {
         if let entry = store.current.entries.first(where: { $0.id == entryID && $0.deletedAt == nil }) {
             EntryEditForm(entry: entry).id(entryID)
-        } else { EmptyState("doc.questionmark", "记录已不存在", "") }
+        } else { EmptyState("doc.questionmark", "记录已不存在", action: "返回", onAction: { dismiss() }) }
     }
 }
 
@@ -17,7 +18,6 @@ private struct EntryEditForm: View {
     @State private var draft: Entry
     @State private var amount: String
     @State private var purpose: String
-    @State private var deleting = false
     @State private var remembered = false
     @State private var choseCategory = false
     @State private var balances: [UUID: Int64] = [:]
@@ -56,8 +56,9 @@ private struct EntryEditForm: View {
                     Card(style: .list) {
                         VStack(spacing: YubaiSpace.none) {
                             EntryFormRow(title: "用途") {
-                                TextField("午饭、打车…（可不填）", text: $purpose).multilineTextAlignment(.trailing).accessibilityLabel("用途")
+                                TextField("用途", text: $purpose).multilineTextAlignment(.trailing).accessibilityLabel("用途")
                             }
+                            RecentPurposeChips(selection: $purpose)
                             EntryFormDivider()
                             EntryFormRow(title: "账户") {
                                 EntryAccountMenu(accounts: accounts, balances: balances,
@@ -123,18 +124,15 @@ private struct EntryEditForm: View {
                 draft.otherAccountID = nature == .transfer ? accounts.first { $0.id != draft.accountID }?.id : nil
                 draft.category = ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true).first ?? draft.category
             }
-            .confirmationDialog("删除这笔？", isPresented: $deleting, titleVisibility: .visible) {
-                Button("删除这笔", role: .destructive) {
-                    if store.update("删除这笔", { ledger in
-                        guard let index = ledger.entries.firstIndex(where: { $0.id == draft.id }) else { return }
-                        ledger.entries[index].deletedAt = Date()
-                    }) { dismiss() }
-                }.accessibilityIdentifier("confirmDeleteEntry")
-                Button("取消", role: .cancel) {}
-            }
+
     }
     private var deleteButton: some View {
-        Button("删除这笔") { deleting = true }.yubaiFont(YubaiFont.button).foregroundStyle(YubaiColor.amberInk)
+        Button("删除这笔") {
+            if store.update("删除这笔", { ledger in
+                guard let index = ledger.entries.firstIndex(where: { $0.id == draft.id }) else { return }
+                ledger.entries[index].deletedAt = Date()
+            }) { dismiss() }
+        }.yubaiFont(YubaiFont.button).foregroundStyle(YubaiColor.amberInk)
             .frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight).background(YubaiColor.card, in: Capsule())
             .buttonStyle(PressButtonStyle()).accessibilityIdentifier("deleteEntry")
     }

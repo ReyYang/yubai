@@ -2,11 +2,37 @@ import Foundation
 import Observation
 import AVFoundation
 import Speech
+import Network
+
+@MainActor @Observable final class AskConnectivity {
+    var connected = true
+    private var monitor: NWPathMonitor?
+    private var generation = UUID()
+    func start() {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { connected = true; return }
+        #endif
+        guard monitor == nil else { return }
+        let token = UUID(); generation = token
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let connected = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self, self.generation == token else { return }
+                self.connected = connected
+            }
+        }
+        self.monitor = monitor
+        monitor.start(queue: DispatchQueue(label: "app.yubai.connectivity"))
+    }
+    func stop() { generation = UUID(); monitor?.cancel(); monitor = nil }
+}
 
 @MainActor @Observable final class AskVoiceCapture {
     var transcript = ""
     var recording = false
     var errorText = ""
+    var permissionDenied = false
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
     private let engine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -14,17 +40,24 @@ import Speech
     private var tapped = false
     private var generation = UUID()
     var available: Bool { recognizer?.isAvailable == true && AVCaptureDevice.default(for: .audio) != nil }
+    func refreshPermissions() {
+        let speech = SFSpeechRecognizer.authorizationStatus()
+        let microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+        permissionDenied = speech == .denied || speech == .restricted || microphone == .denied || microphone == .restricted
+    }
     func start() async {
         stop(); let token = UUID(); generation = token; errorText = ""; transcript = ""
         let speech = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
         }
         guard generation == token, !Task.isCancelled else { return }
-        guard speech else { errorText = "语音识别尚未获准，可以在系统设置中开启，也可以直接打字。"; return }
+        refreshPermissions()
+        guard speech else { return }
         let mic = await AVCaptureDevice.requestAccess(for: .audio)
         guard generation == token, !Task.isCancelled else { return }
-        guard mic else { errorText = "麦克风尚未获准，可以在系统设置中开启。"; return }
-        guard let recognizer, recognizer.isAvailable else { errorText = "语音暂时不可用，可以直接打字。"; return }
+        refreshPermissions()
+        guard mic else { return }
+        guard let recognizer, recognizer.isAvailable else { errorText = "语音暂时不可用"; return }
         do {
             #if os(iOS)
             try AVAudioSession.sharedInstance().setCategory(.record, mode: .measurement)

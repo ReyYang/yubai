@@ -1,10 +1,48 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-23 · 少写字与帮你省钱合并
+
+按 owner 本轮合并任务，同时采用下方 V15 功能与 V16 文案规则，历史记录与验证边界全部保留。[八个冲突文件的取舍与可见文字](../docs/MERGE-NO-EXPLANATORY-COPY.md)。保留 `ChatInputBar`、拆分子视图、小项 `ToolbarItem`／`YubaiCore.Category` 和八个截图夹具；将 V16 状态／控件落实到本分支子视图，未恢复被删的说明句或旧购买卡。消费观合并成页底一处品牌浅底聊天行，无密钥／云端未开／模型不可用显示状态并进入设置；覆盖下方 V15 当时“入口仅禁用”的历史记录。
+
+心愿后悔卡删除邀请句，动作改“写进消费观”／“收起”，仍传原上下文；来信动作改“聊聊这周”。买后日期用日历图标与日期事实，可选补充收到更多，操作说明移入读屏；冷静期、省钱、订阅、克制进度、再聊及三处入口、小项与洞察行为保持。全部文案按四类复核，词汇测试通过；原稿未改，Figma／分发资源未同步。
+
+Linux swift test：449 项，445 通过、4 原有实网跳过、0 失败，包含 3 项词汇检查；全部 38 个 App 文件通过 iOS 26／27.1 模拟器 Debug、iOS 26 设备 Debug／Release、macOS 14 Debug 语法解析；55 个 UI 测试方法保留并通过 iOS 26 语法解析。Apple SDK 类型检查与 UI 实跑待做。本轮不提交、不终止 merge、不调用实网 API。
+
+验证后 `git add` 因 `.git` 文件系统只读失败，索引仍有 8 个未合并文件；源文件无冲突标记，暂存命令见合并报告。
+
 ## 2026-10-23 · Simulator 27.1 toolbar 编译修复
 
 按 owner 的报错与明确位置要求，`SubcategoryViews.swift:58` 将 CloseButton 包进 `.cancellationAction` 的 ToolbarItem，「完成」位于左侧；「换主项」继续使用右侧 `.confirmationAction`。两个子项统一为 ToolbarContent，避免与裸 View 混用引发 `.toolbar` 重载推断失败。沿用 V15-Entry-Sub 右上换主项的规则，按钮动作、保存逻辑、文案、样式和其他页面保持，未改原稿。
 
 [本轮逐文件检查与验证](../docs/APP-COMPILE-AUDIT.md)覆盖相对 main 的全部 37 个 Swift App 文件及 5 个资源。Linux 449 项测试（445 通过、4 原有跳过、0 失败）、全部 38 个现有 App 文件的 iOS 26／27.1 模拟器与 macOS 14 语法解析通过；当前无 Apple SDK，Xcode 类型检查与 UI 实跑仍待做。Figma／HTML／分发包未同步，未联网调 API、未提交。
+
+## 2026-10-23 · 第十六轮：少写字，让版式说话
+
+owner 已在本轮明确确认规则与 11 张页面／片段板，并授权在 `feat/no-explanatory-copy` 接入 SwiftUI。另有 1 张规则板；[完整规则、原始 54 项审计及 HTML 原样归档](mockups/no-explanatory-copy-v16/README.md)。取代下方历史界面中的常驻导语、副标题、操作路径与步骤说明；业务计算、数据模型和存档格式保持，以下历史执行证据仍属于原日期。
+
+本轮规则：可见文字只有标题、数字和事实、控件字、状态。先删，再用层级／控件／状态表达，再挪到发生时；仍无法表达才保留一行事实。不可撤销确认的一句后果、带按钮的错误原因、完整读屏文字和系统权限说明为例外。可选字段收到更多，空态只保留标题与动作；EmptyState 的说明默认 nil。建议芯片是可直接填值的控件，不是常驻的「例如」。
+
+| 选定稿／范围 | 源码映射 |
+|---|---|
+| V16-Welcome | `DesignSystem.swift / WelcomeView`：欢迎页直接输入首个账户余额／名称，按开始走原 store 更新链；既有恢复备份入口保留。 |
+| V16-Lock | `YubaiApp.swift`：水位与两个解锁控件，后台只留水位；手机密码／Mac 设备密码调用既有 LAContext。 |
+| V16-Ask-Offline | `AskYubaiView.swift`、`AskCapture.swift`：禁用输入条、可处理的状态胶囊，原生网络状态监测与语音权限刷新；未调用云端测试。 |
+| V16-Import | `ImportView.swift`：截图专用列表、勾框／›、所选计数与金额，保留原图确认与账户选择；来源胶囊可查看本机事实／原发送记录。 |
+| V16-Profile-Empty／V16-Wishlist-Empty | `ProfileView.swift`、`WishlistView.swift`：虚线添加／条形占位，密钥状态聊天行，心愿空态主动作。 |
+| V16-AI | `SettingsView.swift`、`CloudAssistantViews.swift`：钥匙串状态、两组隐私芯片、模型菜单去副标题、发送记录本次打开分组。 |
+| V16-Quick | `QuickCaptureSettingsView.swift`：添加到快捷指令打开系统 App；三种系统入口暂为缩略图与名称的不可点静态行，设置图示未实现，属于任务允许的降级；映射与截图导入入口保持。 |
+| V16-Storage | `StorageView.swift`：占用＋真实体积，原件不删使用灰色行。 |
+| V16-Forms | `Editors.swift`、`ProfileView.swift`、`FixedFlowsView.swift`、`OverviewView.swift`：建议／关键词芯片、更多、停掉以后的按钮。 |
+| V16-Moments | `ButlerViews.swift`、`AskYubaiView.swift`、`ProfileConversationView.swift`：新记得的 N 条与来源日期、实时听写、进度点和思考水波；降低动态效果沿用既有实现。 |
+| 无独立画板的其余审计 | `EntriesView.swift`、`EntryDetailView.swift`、`EntryEditView.swift`、`EntryFormComponents.swift`、`QuickEntryView.swift`、`WeeklyPush.swift`、`SyncVersionsView.swift` 及上述页面：只保留事实和动作，相关信息保留在读屏。Core 仅一条 Finance 空账户字符串与参考测试同步。 |
+
+[交付总结](no-explanatory-copy-v16.md)逐条列出 54 项：53 项源码已改，1 项按授权部分完成（系统入口图示）；并列出全部新增／改动可见中文及其规则分类。所有 47 个 UI 测试方法保留，旧文案、欢迎直接输入与停掉／删除流程断言已同步；未新增 skip。
+
+验证边界：改动的 24 个 App Swift 文件 iOS 26／macOS 14 条件语法解析通过，UI 测试 iOS 26 语法解析通过，最终复验详见交付总结。Linux swift test 结果见交付总结。Apple SDK 类型检查、UI 实跑与设备验收待做。工程／依赖和存档格式未改；未运行 Actions、未访问付费模型 API、未提交／推送；Figma 与旧原型／分发包未同步。
+
+## 2026-10-23 · 少写字，让版式说话
+
+owner 在项目规则「设计驱动代码」下新增：“Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 设计系统 README 第一节改为同名规则（四种可写的字、六步替换顺序、不写的东西、例外、实现检查），`EmptyState` 去说明行、`InlineNote` 去解释卡和脚注、`EditorForm` 去「例如」和「（可选）」。设计稿新增「第十六轮 · 少写字」：规则、按 main `18889f8` 逐屏审计的 54 处说明文字及改法、11 张改后画板。前几轮画板中与本轮冲突的说明文字以第十六轮为准。owner 确认画板后在 `feat/no-explanatory-copy` 实现（见上一节）；实现约束同时写入根目录 `AGENTS.md`。
 
 ## 2026-10-22 · 分页同步与右滑归属复验
 
@@ -245,7 +283,7 @@ owner 本轮明确确认八张记忆与智能设置画板，按当前 `feat/ai-m
 
 ## 2.0 设计资源与缺口（2026-10-20）
 
-2026-10-19 的[390pt 页面稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)早于 2.0；它与[暖纸设计系统](https://claude.ai/artifact/Pz2z4mQNoCqTNLGRafY9v5)提供既有风格依据，不覆盖 2.0 的全部页面。当前 UI 使用 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift) 的 token、Card、Page、按钮、文字与图表组件直接构建，是实现候选，不能记为最终视觉。旧 Figma、HTML 原型、截图和发布包均未同步。本轮未绘图，页面稿 artifact 无法通过浏览工具读取，来源与日期沿用既有记录。
+2026-10-19 的390pt 页面稿早于 2.0；它与暖纸设计系统提供既有风格依据，不覆盖 2.0 的全部页面。当前 UI 使用 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift) 的 token、Card、Page、按钮、文字与图表组件直接构建，是实现候选，不能记为最终视觉。旧 Figma、HTML 原型、截图和发布包均未同步。本轮未绘图，页面稿 artifact 无法通过浏览工具读取，来源与日期沿用既有记录。
 
 以下七类均**尚无对应的 2.0 画板**；源码存在只说明实现已写，不表示布局与交互已通过验证。
 
@@ -265,7 +303,7 @@ owner 本轮明确确认八张记忆与智能设置画板，按当前 `feat/ai-m
 
 ## 2026-10-19 · 设计系统迁移
 
-- 本次采用的视觉依据是[暖纸设计系统](https://claude.ai/artifact/Pz2z4mQNoCqTNLGRafY9v5)与[390pt 页面设计稿](https://claude.ai/artifact/FD6H6cqc6qAjsfZqiP8F6p)；生产样式的长期权威仍是 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift)。
+- 本次采用的视觉依据是暖纸设计系统与390pt 页面设计稿；生产样式的长期权威仍是 [DesignSystem.swift](../Sources/YubaiApp/DesignSystem.swift)。
 - 已将 `Sources/YubaiApp` 的现有页面、编辑器与子页面迁移到 `YubaiColor` / `YubaiFont` / 间距与尺寸 token；移除兼容主题与图标方块。首页采用 `HeroCard`，分类占比改横条，现金预测采用台阶线，导入与购买结果使用水位记号，反馈使用 `Toast`。长列表用带分隔线的惰性列表卡；编辑器保留系统 Form。
 - 已采用：按设计系统 SwiftUI 对照移除三套颜色主题，`Preferences.colorTheme` 仅为旧存储兼容保留，界面忽略其值；不打包字体，数字用系统 rounded 等宽数字、衬线用系统 serif、正文用系统字体。助手页面尚未实现，因此保留五项原生 `TabView` 与 Mac 侧栏；原有操作和数据流程不变，聊天、语音、自动备份不纳入本次迁移。
 - Step 3 修复按钮样式作用域、购买水位映射、待明确记录元信息、金额精度与 Mac 底部留白；拆分图表表达式，洞察汇总每次渲染只计算一次。预计收入仍以虚线预测路径与直接文字标签显示。

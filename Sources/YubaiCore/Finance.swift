@@ -191,7 +191,7 @@ public enum Finance {
         let available = cash - debt - committed - goals - emergency - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
-        if accounts.isEmpty { warnings.append("先添加账户，对一下余额。") }
+        if accounts.isEmpty { warnings.append("还没有账户") }
         if accounts.contains(where: { !$0.reconciled }) { warnings.append("有账户还没对过账。") }
         if accounts.contains(where: { now.timeIntervalSince($0.anchorDate) > 14 * 86400 }) { warnings.append("部分账户上次对账已超过 14 天，请补齐账单。") }
         if entries.contains(where: { $0.nature.uncertain }) { warnings.append("有账目没写用途，请补上。") }

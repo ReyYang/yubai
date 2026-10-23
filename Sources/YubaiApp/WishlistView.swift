@@ -8,7 +8,18 @@ struct WishlistView: View {
         Page(topPadding: YubaiSpace.space8) {
             SavingsHeader()
             WishlistCooldownCards()
-            if store.current.wishlist.isEmpty { EmptyState("heart", "心愿单还是空的", "问问余白：该不该买？") }
+            if store.current.wishlist.isEmpty {
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        ForEach(0..<2) { index in
+                            if index > 0 { EntryFormDivider() }
+                            HStack(spacing: YubaiSpace.gapSection) { DashedPlaceholder(); Spacer(); DashedPlaceholder().frame(width: YubaiSize.rowSingle) }
+                                .frame(minHeight: YubaiSize.rowDouble)
+                        }
+                    }
+                }.accessibilityHidden(true)
+                EmptyState("heart", "心愿单还是空的", showsPlaceholder: false, action: "该不该买", onAction: { store.sheet = .ask("该不该买？") })
+            }
             if let focusedWishID, let wish = store.current.wishlist.first(where: { $0.id == focusedWishID }) { wishRow(wish) }
             let due = store.current.wishlist.filter { $0.id != focusedWishID && followUpVisible($0) }
             ForEach(due) { wish in
@@ -86,7 +97,11 @@ struct WishlistView: View {
                 }
                 if let answer = wish.followUpAnswer { Text("一个月后的感受：" + answer).yubaiFont(YubaiFont.callout) }
                 else if let due = wish.followUpAt, due <= Date() { WishFollowUpView(wishID: wish.id) }
-                else if let due = wish.followUpAt { Text("到 \(Dates.text(due))，再聊聊用下来的感受。").yubaiFont(YubaiFont.caption) }
+                else if let due = wish.followUpAt {
+                    Label(Dates.text(due), systemImage: "calendar.badge.clock")
+                        .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        .accessibilityLabel("\(Dates.text(due)) 问你用得怎么样")
+                }
             }
         }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
     }
@@ -114,16 +129,15 @@ struct WishEntryPicker: View {
     var body: some View {
         Page {
             if let wish = store.current.wishlist.first(where: { $0.id == wishID && $0.status == .thinking }) {
-                Text("选一笔已经记下的支出。").yubaiFont(YubaiFont.callout)
                 let matches = Wishlist.candidates(for: wish, in: store.current, now: Date())
                 let used = Set(store.current.wishlist.compactMap(\.boughtEntryID))
                 let rows = all ? store.sortedEntries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.date <= Date() && !used.contains($0.id) } : matches
-                if rows.isEmpty { Text("还没有匹配的支出，先记一笔。") }
+                if rows.isEmpty { Text("没有匹配的支出") }
                 CardRows(rows) { entry in
                     Button {
                         if store.update("关联心愿购买记录", { try Wishlist.markBought(wishID, entryID: entry.id, in: &$0) }) { dismiss() }
                     } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }.buttonStyle(PressButtonStyle())
-                }
+                }.accessibilityLabel("选择已经记下的支出")
                 Toggle("查看全部支出", isOn: $all).tint(YubaiColor.toggleOn)
                 NavigationLink("先记下购买") { AskYubaiView(initialText: "记一笔：\(wish.title) \(Money.input(wish.amount))元") }
             } else { Text("这条心愿已经处理过了。") }
@@ -138,7 +152,9 @@ private struct WishFollowUpView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             Text("用得怎么样？").yubaiFont(YubaiFont.rowTitle)
-            TextField("想补充的话（可选）", text: $text, axis: .vertical).lineLimit(1...4)
+            DisclosureGroup("更多") {
+                TextField("补充", text: $text, axis: .vertical).lineLimit(1...4)
+            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.gapGroup) { choices }
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) { choices }

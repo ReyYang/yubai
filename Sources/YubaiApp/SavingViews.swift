@@ -135,9 +135,8 @@ struct WishRegretEntry: View {
                         AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts)
                         Text("· 有点后悔").yubaiFont(YubaiFont.callout)
                     }
-                    Text("要把这次的感受写进消费观吗？").yubaiFont(YubaiFont.cardTitle)
-                    ProfileChatEntry(title: "和余白说说", context: .wishRegret(wish.title + " · " + (wish.followUpAnswer ?? "有点后悔")))
-                    Button("不用了") { dismissed = true }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+                    ProfileChatEntry(title: "写进消费观", context: .wishRegret(wish.title + " · " + (wish.followUpAnswer ?? "有点后悔")))
+                    Button("收起") { dismissed = true }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
                 }
             }
         }

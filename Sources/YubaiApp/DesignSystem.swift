@@ -1134,18 +1134,22 @@ struct InlineNote: View {
 struct EmptyState: View {
     var icon: String
     var title: String
-    var message: String
+    var message: String?
     var action: String? = nil
     var onAction: (() -> Void)?
-    init(_ icon: String, _ title: String, _ message: String, action: String? = nil, onAction: (() -> Void)? = nil) {
-        self.icon = icon; self.title = title; self.message = message; self.action = action; self.onAction = onAction
+    var showsPlaceholder: Bool
+    init(_ icon: String, _ title: String, _ message: String? = nil, showsPlaceholder: Bool = true, action: String? = nil, onAction: (() -> Void)? = nil) {
+        self.icon = icon; self.title = title; self.message = message; self.showsPlaceholder = showsPlaceholder; self.action = action; self.onAction = onAction
     }
     var body: some View {
         VStack(spacing: YubaiSpace.gapGroup) {
-            Circle().stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])).frame(width: 120, height: 120).accessibilityHidden(true)
+            if showsPlaceholder {
+                Circle().stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
+                    .frame(width: YubaiSize.iconButton * 3, height: YubaiSize.iconButton * 3).accessibilityHidden(true)
+            }
             VStack(spacing: YubaiSpace.space8) {
                 Text(title).yubaiFont(YubaiFont.lead).foregroundStyle(YubaiColor.label)
-                Text(message).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(maxWidth: 410)
+                if let message, !message.isEmpty { Text(message).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(maxWidth: 410) }
             }.multilineTextAlignment(.center)
             if let action, let onAction { Button(action, action: onAction).buttonStyle(PrimaryButtonStyle()) }
         }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection).padding(.horizontal, YubaiSpace.insetPage)
@@ -1234,15 +1238,173 @@ private struct AppErrorPresenter: ViewModifier {
 
 struct WelcomeView: View {
     @Environment(AppStore.self) private var store
+    @State private var name = "微信零钱"
+    @State private var amount = ""
+    @State private var customName = false
     var body: some View {
-        Page {
-            VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-                BrandMark(size: 88).padding(.top, YubaiSpace.gapSection)
-                Text("余白").yubaiFont(YubaiFont.welcome)
-                Text("先记下此刻的余额").yubaiFont(YubaiFont.lead).fixedSize(horizontal: false, vertical: true)
-                Button("开始我的账本") { store.update("建立账本") { $0.preferences.onboardingComplete = true } }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("startLedger")
-            }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity).padding(.bottom, YubaiSpace.gapSection)
-        }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
+        VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: YubaiSpace.insetCard) {
+                    BrandMark(size: YubaiSize.iconButton + YubaiSpace.gapSection)
+                        .padding(.top, YubaiSpace.gapSection + YubaiSpace.space8)
+                    Text("余白").yubaiFont(YubaiFont.welcome)
+                    Card {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                            Text("现在手里有").yubaiFont(YubaiFont.heroLabel)
+                            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                                Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
+                                TextField("0.00", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay)
+                                    .accessibilityLabel("现在手里的余额，元").accessibilityIdentifier("accountBalance")
+                            }
+                            ChipFlow {
+                                ForEach(["微信零钱", "支付宝", "招行储蓄卡"], id: \.self) { value in
+                                    SuggestionChip(value: value, selected: !customName && name == value) { name = value; customName = false }
+                                }
+                                SuggestionChip(value: "＋ 别的", selected: customName) { name = ""; customName = true }
+                                    .accessibilityIdentifier("welcomeOtherAccount")
+                            }.padding(.top, YubaiSpace.space8)
+                            if customName {
+                                TextField("名称", text: $name).accessibilityIdentifier("accountName")
+                                    .accessibilityLabel("账户名称")
+                            }
+                        }
+                    }.padding(.top, YubaiSpace.gapSection)
+                }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity)
+            }
+            Button("开始", action: start).buttonStyle(PrimaryButtonStyle())
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
+                .accessibilityIdentifier("startLedger")
+        }.padding(YubaiSpace.insetPage).yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
+    }
+    private func start() {
+        do {
+            let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty else { throw YubaiError.invalid("请给账户起一个名称。") }
+            guard !store.current.accounts.contains(where: { $0.name == clean }) else { throw YubaiError.invalid("已有同名账户，请使用容易区分的名称。") }
+            let cents = try Money.parse(amount, allowNegative: true)
+            let kind: AccountKind = ["微信零钱", "支付宝"].contains(clean) ? .cash : .bank
+            let account = Account(name: clean, kind: kind, balance: cents, at: Date(), reconciled: true)
+            store.update("建立账本") { ledger in
+                ledger.accounts.append(account)
+                ledger.preferences.onboardingComplete = true
+            }
+        } catch { store.error = error.localizedDescription }
+    }
+}
+
+/// Suggestions are controls; their content becomes the user's editable value.
+struct SuggestionChips: View {
+    let values: [String]
+    var selected: String? = nil
+    let choose: (String) -> Void
+    var body: some View {
+        ChipFlow { chips }
+    }
+    private var chips: some View {
+        ForEach(values, id: \.self) { value in
+            SuggestionChip(value: value, selected: selected == value) { choose(value) }
+        }
+    }
+}
+
+struct SuggestionChip: View {
+    let value: String
+    var selected = false
+    let choose: () -> Void
+    var body: some View {
+        Button(action: choose) {
+            Text(value).yubaiFont(YubaiFont.caption)
+                .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
+                .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
+                .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
+                .frame(minHeight: YubaiSize.tapMin)
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+struct ChipFlow: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrangement(width: proposal.width ?? .infinity, subviews: subviews).size
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arrangement(width: bounds.width, subviews: subviews)
+        for (index, subview) in subviews.enumerated() {
+            let frame = result.frames[index]
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: frame.width, height: frame.height))
+        }
+    }
+    private func arrangement(width: CGFloat, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, usedWidth: CGFloat = 0
+        var frames: [CGRect] = []
+        for subview in subviews {
+            let ideal = subview.sizeThatFits(.unspecified)
+            let size = subview.sizeThatFits(ProposedViewSize(width: min(width, ideal.width), height: nil))
+            if x > 0 && x + size.width > width { x = 0; y += rowHeight + YubaiSpace.space8; rowHeight = 0 }
+            frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
+            usedWidth = max(usedWidth, x + size.width); rowHeight = max(rowHeight, size.height)
+            x += size.width + YubaiSpace.space8
+        }
+        return (CGSize(width: usedWidth, height: y + rowHeight), frames)
+    }
+}
+
+struct LocalSourcePill: View {
+    @State private var details = false
+    var body: some View {
+        Button { details = true } label: { Pill(text: "本机", variant: .neutral, showsDot: false) }
+            .buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
+            .accessibilityLabel("在本机读取，没有发给云端").accessibilityHint("查看来源详情")
+            .popover(isPresented: $details) {
+                VStack(spacing: YubaiSpace.gapGroup) {
+                    LabeledContent("读取", value: "本机")
+                    LabeledContent("云端发送", value: "0 行")
+                }.yubaiFont(YubaiFont.callout).padding(YubaiSpace.insetPage).presentationCompactAdaptation(.popover)
+            }
+    }
+}
+
+struct DashedPlaceholder: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: YubaiRadius.bar)
+            .stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            .frame(height: YubaiSpace.gapGroup).accessibilityHidden(true)
+    }
+}
+
+struct SystemSettingsButton: View {
+    enum Pane { case speech, notifications }
+    @Environment(\.openURL) private var openURL
+    let title: String
+    let pane: Pane
+    var body: some View {
+        Button(title) {
+            #if os(iOS)
+            let address = pane == .notifications ? UIApplication.openNotificationSettingsURLString : UIApplication.openSettingsURLString
+            if let url = URL(string: address) { openURL(url) }
+            #elseif os(macOS)
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+            #endif
+        }.frame(minHeight: YubaiSize.tapMin).accessibilityHint("打开系统设置，调整余白的权限")
+    }
+}
+
+struct EmptyAccountState: View {
+    let add: () -> Void
+    var body: some View {
+        VStack(spacing: YubaiSpace.gapSection) {
+            let size = YubaiSize.tapMin * 2
+            let geometry = WaterGeometry(size: size, variant: .mark, bands: 3)
+            ZStack {
+                MarkCircle(radius: geometry.ringRadius).stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                ForEach(0..<geometry.count, id: \.self) { index in
+                    WaterBand(index: index, geometry: geometry).stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        .clipShape(MarkCircle(radius: geometry.clipRadius))
+                }
+            }.frame(width: size, height: size).accessibilityHidden(true)
+            Button("添加第一个账户", action: add).buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addFirstAccount")
+        }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
+            .accessibilityElement(children: .contain).accessibilityLabel("还没有账户")
     }
 }
 
@@ -1359,6 +1521,7 @@ struct Segmented<Value: Hashable>: View {
 }
 
 struct ProposalCard: View {
+    @Environment(AppStore.self) private var store
     let title: String
     let lines: [String]
     let primaryTitle: String
@@ -1387,7 +1550,12 @@ struct ProposalCard: View {
     }
     private var actions: some View {
         Group {
-            Button(primaryTitle, action: confirm).buttonStyle(PrimaryButtonStyle(compact: true)).disabled(!canConfirm)
+            if store.current.preferences.hideAmounts {
+                Button("显示金额") { store.update("显示金额", recordUndo: false) { $0.preferences.hideAmounts = false } }
+                    .buttonStyle(PrimaryButtonStyle(compact: true)).accessibilityHint("显示金额后可核对并确认修改")
+            } else {
+                Button(primaryTitle, action: confirm).buttonStyle(PrimaryButtonStyle(compact: true)).disabled(!canConfirm)
+            }
             Button(secondaryTitle, action: cancel).buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
         }
     }

@@ -1,5 +1,7 @@
 # 第十五轮「帮你省钱」界面交付
 
+当前合并状态见 [少写字与帮你省钱合并核对](MERGE-NO-EXPLANATORY-COPY.md)：保留本页全部功能、拆分与夹具，采用 V16 文案；下列 V15 原始邀请句与“入口仅禁用”的历史描述由合并记录覆盖。
+
 2026-10-23，`feat/butler-saving-core`。按 owner 指定的 12 张 V15 HTML、NOTE.txt、DS-README.md 实现；原稿位于 设计稿画布「第十五轮 · 帮你省钱」，保持原样。没有调用实网 API，没有 git commit／推送。
 
 ## 实现

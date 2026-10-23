@@ -52,7 +52,7 @@ struct InsightsView: View {
             }
             Card(style: .compact) {
                 VStack(spacing: YubaiSpace.gapGroup) {
-                    Segmented(choices: [(false, "支出 · 按类型"), (true, "收入 · 按类型")], selection: $income, background: YubaiColor.canvas)
+                    Segmented(choices: [(false, "支出"), (true, "收入")], selection: $income, background: YubaiColor.canvas)
                     if !store.current.preferences.hideAmounts {
                         donut(slices, total: income ? summary.income : summary.spending)
                     }

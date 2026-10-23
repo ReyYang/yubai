@@ -71,7 +71,7 @@ owner 本轮明确批准全部 `V3-*.dc.html` 及配套 DS，要求设计驱动�
 
 ### 用户决定
 
-以下均由 owner 于 **2026-10-20** 决定，来源为[产品评审](https://claude.ai/code/artifact/21365038-7478-4933-9c2c-0358b054f5a4)与[2.0 规格](https://claude.ai/code/artifact/9e7ad27e-85a3-478d-911e-aa58843ec4d3)。本次无法通过浏览工具读取这两个 artifact 正文，按 owner 在步骤 10 中提供的明确摘录归档，未声称重新审阅了原文。
+以下均由 owner 于 **2026-10-20** 决定，来源为产品评审与2.0 规格。本次无法通过浏览工具读取这两个 artifact 正文，按 owner 在步骤 10 中提供的明确摘录归档，未声称重新审阅了原文。
 
 - **方向**：「余白 2.0 · 管家」，AI 做事，代码算数，用户决定。消费观区分愿意多花的、想克制的、软线、原则与底线；主动消费提醒只谈用户想克制的领域，或钱不足以覆盖付款的情况。
 - **智能与隐私**：放弃本机模型，只保留云端 DeepSeek，通过轻量 harness 共用工具与修改边界。商户名、备注允许发送；人名、卡号、订单号须在外发前剥离或脱敏。原始账单与图片留在本机。
@@ -276,3 +276,21 @@ Agent 实现选择：新增三个 App 组件文件降低原视图冲突；购买
 owner 提供 iPhone 17 Pro／iOS 26 SDK 的分类参数标签和 SwiftUI 类型推断报错，要求修复并通读本轮 App 改动、预防性拆分表达式，保持行为、外观及「少写字」。按 owner 提供的 2026-10-23 官方模型说明，采用默认 deepseek-flash，内置列表 deepseek-flash／deepseek-v4-pro；deepseek-chat、deepseek-v4-flash 迁移至 deepseek-flash，deepseek-reasoner 至 deepseek-v4-pro。另明确授权八个 Debug 模拟器截图夹具及必要的最小 UI 测试，不提交、不联网调 API。
 
 已完成参数标签修复、视图拆分和 Core 接口核对、模型与测试更新、八脚本及八个截图流程。[完整文件／启动方式／入口／证据](../../../docs/SAVING-UI-V15.md#2026-10-23--pr-34-编译修复与截图夹具)。Linux build 与 449 项测试通过（445 通过、4 原有实网跳过、0 失败），八脚本离线真实工具链通过；App iOS／macOS、UI 测试 iOS 语法解析通过。没有 Apple SDK 真编译与 UI 实跑证据，本票保持 in-progress；设计原稿和分发资源不变，未提交／推送。
+
+## 2026-10-23 · 第十六轮少写字，让版式说话（owner 确认稿）
+
+**owner 明确决定与范围**：采用 “Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.” 的完整规则及本轮 V16 画板；按 main `18889f8` 的 54 项逐屏审计接入 SwiftUI。欢迎页直接建首账户，可选字段收起，空态标题＋动作、状态／计数／芯片／版式替代说明；删除可撤销记录不再确认，停掉按钮写「停掉以后的」。只动文案与对应布局，Core 仅可改指定显示字符串及对应测试，不改计算／数据模型／存档；完整读屏保留；不加依赖，不提交／推送，不用 Actions 或付费 API。
+
+**实现选择与授权降级**：欢迎页复用 store 更新与现有账户数据结构；新增的网络、语音、通知权限观察只驱动界面状态。ShortcutsLink 文档提供的是 App 动作列表，本轮采用 owner 允许的 `shortcuts://` 打开系统 App 回退，不假定钱包自动化已建立。三种系统入口只保留原生缩略图／名称，无设置图示页、无可点击箭头，按 owner 明确允许的降级记为一项部分完成。备份只在 App 读取原 envelope 标记以决定显示密码框，原恢复校验不变；同步对比只做视图数字展示。
+
+**实现与证据**：[选定稿原样归档](../../../.design-meta/mockups/no-explanatory-copy-v16/README.md)、[源码映射](../../../.design-meta/DESIGN.md#2026-10-23--第十六轮少写字让版式说话)、[54 项结果和全部可见中文](../../../.design-meta/no-explanatory-copy-v16.md)。原 47 个 UI 测试方法保留，无新增 skip；24 个 App 文件 iOS 26／macOS 14、UI 测试 iOS 26 条件语法解析通过，最终检查见交付总结。Linux swift test 结果见交付总结；Apple 编译、UI 实跑与设备验收尚待完成。该状态不改变整票的长期交付状态；没有提交／推送，Figma、旧原型和分发包未同步。
+
+## 2026-10-23 · 少写字与帮你省钱合并（owner 明确任务）
+
+owner 要求在当前未完成 merge 中合入 `origin/feat/no-explanatory-copy`：两边内容都保留，说明文字保持删除，省钱功能、拆分子视图、ToolbarItem、`YubaiCore.Category` 与八个 UI 夹具不丢失，模型采用本分支 `deepseek-flash`；不提交、不终止 merge、不联网调 API，验证后暂存。
+
+实现选择：消费观合并为页底一处聊天入口，不可用时显示状态并进设置；后悔入口去邀请句，改“写进消费观”／“收起”，来信按钮改“聊聊这周”，各自开场上下文保留。心愿可选补充收到更多，旧操作提示用控件／读屏承接。文档两边 owner 决定、实现选择与未验证项全部保留，详见[逐文件取舍、文案与验证](../../../docs/MERGE-NO-EXPLANATORY-COPY.md)。
+
+Linux 449 项测试，445 通过、4 原有实网 opt-in 跳过、0 失败，包含词汇检查 3 项；38 个 App 文件通过 iOS 26／27.1 模拟器、iOS 26 设备及 macOS 14 条件语法解析。55 个 UI 测试方法与八个截图流程保留，Apple 真编译／UI 实跑待做；本票保持 in-progress，原稿／Figma／分发包未同步，未提交或联网调 API。
+
+验证后按 owner 要求执行暂存，`git add` 因 `.git/index.lock` 所在文件系统只读退出 128。工作树冲突已解决且无标记，索引仍有 8 个未合并文件；可写环境的完整暂存命令保存在合并报告。

@@ -284,7 +284,7 @@ struct ButlerProposalView: View {
     var body: some View {
         Page {
             if let change = store.current.pendingChanges.first(where: { $0.id == changeID }) {
-                ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? ["金额已隐藏，请显示金额后核对。"] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: Set(change.items.flatMap(\.entryIDs)).isEmpty ? "改好这 \(change.items.count) 项" : "改好这 \(Set(change.items.flatMap(\.entryIDs)).count) 笔", canConfirm: !store.current.preferences.hideAmounts, confirm: {
+                ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: Set(change.items.flatMap(\.entryIDs)).isEmpty ? "改好这 \(change.items.count) 项" : "改好这 \(Set(change.items.flatMap(\.entryIDs)).count) 笔", canConfirm: !store.current.preferences.hideAmounts, confirm: {
                     if store.apply(change, label: "余白想这样改") { dismiss() }
                 }, cancel: {
                     if store.update("不改了", { $0.pendingChanges.removeAll { $0.id == change.id } }) { dismiss() }
@@ -339,11 +339,17 @@ struct WeeklyLetterCard: View {
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                         HStack(spacing: YubaiSpace.space8) {
                             AssistantMark(size: 14).accessibilityHidden(true)
-                            Text("这周我对你多了解了一点").yubaiFont(YubaiFont.caption)
+                            Text("新记得的 \(learned.count) 条").yubaiFont(YubaiFont.caption)
                         }.foregroundStyle(YubaiColor.brandInk)
                         ForEach(Array(learned.enumerated()), id: \.offset) { _, line in
                             HStack(alignment: .top, spacing: YubaiSpace.space8) {
-                                Text(line.text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandTintStrong).frame(maxWidth: .infinity, alignment: .leading)
+                                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                                    Text(line.text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandTintStrong)
+                                    if let memory = store.current.memories.first(where: { $0.id == line.memoryID }) {
+                                        Text(Dates.text(memory.updatedAt) + " · " + memory.source.label)
+                                            .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading)
                                 Button("不对") { store.update("纠正每周来信记忆") { Memory.reject(lineMemoryID: line.memoryID, in: &$0) } }
                                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin)
                                     .buttonStyle(PressButtonStyle()).accessibilityLabel("不对：" + line.text)
@@ -365,11 +371,9 @@ struct WeeklyLetterCard: View {
                 }
             }
             Card(style: .list) {
-                Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { value in
-                    Task { await store.setWeeklyLetterPush(value) }
-                })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: YubaiSize.rowSingle)
+                WeeklyLetterReminder()
             }
-            ProfileChatEntry(title: "想聊聊这周吗？", context: .weeklyLetter(card.body))
+            ProfileChatEntry(title: "聊聊这周", context: .weeklyLetter(card.body))
         }.sheet(item: $reviewProposal) { change in
             NavigationStack { ButlerProposalView(changeID: change.id) }.appErrors()
         }

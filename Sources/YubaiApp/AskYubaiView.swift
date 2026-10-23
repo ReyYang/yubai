@@ -41,6 +41,8 @@ struct AskYubaiView: View {
     @State private var messages: [AskMessage] = []
     @State private var session = AskYubaiSession()
     @State private var voice = AskVoiceCapture()
+    @State private var connectivity = AskConnectivity()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var voicePrefix = ""
     @State private var busy = false
     @State private var reading = false
@@ -54,31 +56,18 @@ struct AskYubaiView: View {
     @State private var voiceTask: Task<Void, Never>?
     @State private var appeared = false
     @State private var configured = IntelligenceRuntime.isConfigured
-    private var enabled: Bool { store.current.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil }
+    private var enabled: Bool { store.current.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        if let model = IntelligenceRuntime.cloud.unavailableModel {
-                            InlineNote(text: "模型「\(model)」现在用不了，请到智能与隐私换一个模型名字再试。", style: .attention)
-                            NavigationLink("去智能与隐私") { IntelligencePrivacyView() }.buttonStyle(SecondaryButtonStyle())
-                        } else if !enabled {
-                            VStack(spacing: YubaiSpace.gapGroup) {
-                                AssistantMark(size: 56).accessibilityHidden(true)
-                                Text("联网并配好密钥后，\n余白才能回答").yubaiFont(YubaiFont.quote).multilineTextAlignment(.center)
-                                NavigationLink("去配好密钥") { IntelligencePrivacyView() }
-                                    .buttonStyle(PrimaryButtonStyle()).frame(maxWidth: 240)
-                            }.frame(maxWidth: .infinity).padding(.top, YubaiSpace.emptyTop)
-                        } else if messages.isEmpty {
-                            Text("问点什么").yubaiFont(YubaiFont.lead).padding(.top, YubaiSpace.space20)
-                        }
                         ForEach(messages) { message in messageView(message).messageEntrance(user: message.isUser) }
                         if busy || reading {
                             HStack(spacing: YubaiSpace.gapGroup) { AssistantMark(thinking: true); Text(reading ? "正在读截图…" : "正在查阅…").yubaiFont(YubaiFont.callout) }
                         }
                         if !errorText.isEmpty { InlineNote(text: errorText, style: .attention) }
-                        if !voice.errorText.isEmpty { InlineNote(text: voice.errorText) }
+                        if !voice.errorText.isEmpty && !voice.permissionDenied { InlineNote(text: voice.errorText) }
                         Color.clear.frame(height: 1).id("latest")
                     }.padding(YubaiSpace.space20).frame(maxWidth: 760).frame(maxWidth: .infinity)
                 }.onChange(of: messages.count) { _, _ in proxy.scrollTo("latest", anchor: .bottom) }
@@ -106,9 +95,10 @@ struct AskYubaiView: View {
                 }
             }
             .onChange(of: voice.transcript) { _, text in input = voicePrefix + text }
-            .onAppear { IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; input = initialText; if let initialImage { recognize(initialImage) } } }
+            .onAppear { connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; input = initialText; if let initialImage { recognize(initialImage) } } }
             .onChange(of: IntelligenceRuntime.cloud.unavailableModel) { _, model in if model == nil { errorText = "" } }
-            .onDisappear { cancel() }
+            .onDisappear { cancel(); connectivity.stop() }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
             .onChange(of: store.current.id) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
             .onChange(of: store.current.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
             .onChange(of: store.locked) { _, value in if value { cancel(); messages = []; originalImage = nil; session = AskYubaiSession() } }
@@ -116,21 +106,21 @@ struct AskYubaiView: View {
     private var inputBar: some View {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         return VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            if enabled && messages.isEmpty && !busy && !reading {
+            if messages.isEmpty && !busy && !reading {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     ForEach(["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，该不该买？"], id: \.self) { question in
                         Button { input = question; send() } label: {
                             Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.gapGroup)
                                 .frame(minHeight: YubaiSize.tapMin)
                                 .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
-                        }.buttonStyle(PressButtonStyle())
+                        }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.55)
                     }
                 }
             }
-            if voice.recording { Text("正在听，停下后可以修改再发送。").yubaiFont(YubaiFont.caption) }
-            ChatInputBar(text: $input, placeholder: enabled ? (messages.isEmpty ? "问点什么…" : "接着问…") : "暂时还不能问",
+            availabilityStatus
+            ChatInputBar(text: $input, placeholder: messages.isEmpty ? "问点什么…" : "接着问…",
                 accessibilityLabel: enabled ? "问余白" : "问余白（暂不可用）", inputID: "askInput", sendID: "sendAsk",
-                enabled: enabled, busy: busy || reading, showSend: !(voice.recording || (trimmed.isEmpty && voice.available)), send: send) {
+                enabled: enabled, busy: busy || reading, showSend: !(voice.recording || (trimmed.isEmpty && (voice.available || voice.permissionDenied))), send: send) {
                 Menu {
                     Button("从照片选择截图") { photoPicker = true }
                     Button("选择图片文件") { filePicker = true }
@@ -139,19 +129,39 @@ struct AskYubaiView: View {
                         .yubaiHitTarget()
                 }.accessibilityLabel("添加截图或照片")
             } accessory: {
-                if voice.recording || (trimmed.isEmpty && voice.available) {
+                if voice.recording || (trimmed.isEmpty && (voice.available || voice.permissionDenied)) {
                     Button {
                         if voice.recording { voice.stop() }
                         else { voicePrefix = input.isEmpty ? "" : input + " "; voiceTask = Task { await voice.start() } }
                     } label: {
                         Image(systemName: voice.recording ? "stop.fill" : "mic")
                             .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
-                            .foregroundStyle(YubaiColor.label).background(YubaiColor.card, in: Circle())
+                            .foregroundStyle(voice.recording ? YubaiColor.onBrand : YubaiColor.label).background(voice.recording ? YubaiColor.brand : YubaiColor.card, in: Circle())
                             .yubaiHitTarget()
-                    }.accessibilityLabel(voice.recording ? "停止听写" : "语音输入")
+                    }.accessibilityLabel(voice.recording ? "停止听写" : "语音输入").disabled(voice.permissionDenied)
                 }
             }
         }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.insetPage)
+    }
+    @ViewBuilder private var availabilityStatus: some View {
+        if !configured {
+            NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "还没配密钥 ›", variant: .amber, showsDot: false) }
+                .buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity).accessibilityHint("打开智能与隐私，配置密钥")
+        } else if !connectivity.connected {
+            Pill(text: "没联网", variant: .amber, showsDot: false).frame(maxWidth: .infinity)
+        } else if !store.current.preferences.cloudAIEnabled {
+            NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "云端智能没开 ›", variant: .amber, showsDot: false) }
+                .buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity)
+        } else if let model = IntelligenceRuntime.cloud.unavailableModel {
+            NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "模型不可用 ›", variant: .amber, showsDot: false) }
+                .buttonStyle(PressButtonStyle()).accessibilityLabel("模型「\(model)」不可用，换个模型")
+        }
+        if voice.permissionDenied {
+            HStack(spacing: YubaiSpace.space4) {
+                Text("没开语音权限").yubaiFont(YubaiFont.caption)
+                SystemSettingsButton(title: "去设置", pane: .speech)
+            }.foregroundStyle(YubaiColor.amberInk)
+        }
     }
     @ViewBuilder private func messageView(_ message: AskMessage) -> some View {
         if message.isUser {
@@ -209,7 +219,11 @@ struct AskYubaiView: View {
     }
     @ViewBuilder private func unverifiedAmounts(_ reply: AssistantReply) -> some View {
         if !reply.unverifiedAmounts.isEmpty {
-            InlineNote(text: store.current.preferences.hideAmounts ? "回答中有金额尚未核实，请核对记录。" : "这些金额尚未核实：" + reply.unverifiedAmounts.joined(separator: "、"), style: .attention)
+            HStack(spacing: YubaiSpace.space8) {
+                Text(store.current.preferences.hideAmounts ? "••••" : reply.unverifiedAmounts.joined(separator: "、"))
+                    .yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.amberInk)
+                NavigationLink { AskRecordLookupView(ids: reply.evidenceEntryIDs) } label: { Pill(text: "核对 ›", variant: .amber, showsDot: false) }
+            }.accessibilityElement(children: .contain).accessibilityLabel("回答中有金额尚未核实")
         }
     }
     @ViewBuilder private func protectedRecords(_ message: AskMessage) -> some View {
@@ -313,8 +327,8 @@ private struct AskRecordLookupView: View {
     @State private var search = ""
     var body: some View {
         Page {
-            Text("请在记录详情核对原始账单。").yubaiFont(YubaiFont.callout)
-            TextField("找一笔记录", text: $search).frame(minHeight: YubaiSize.tapMin)
+            TextField("搜索", text: $search).frame(minHeight: YubaiSize.tapMin)
+                .accessibilityLabel("搜索核对记录").accessibilityHint("打开记录详情，可核对原始账单")
             let rows = store.sortedEntries.filter { $0.deletedAt == nil && (ids.isEmpty || ids.contains($0.id)) && (search.isEmpty || $0.displayTitle.localizedCaseInsensitiveContains(search)) }
             CardRows(rows) { entry in
                 EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts)
@@ -331,7 +345,7 @@ private struct AskChangeCard: View {
         if let status { Text(status).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin) }
         else {
             let count = Set(change.items.flatMap(\.entryIDs)).count
-            ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? ["请显示金额后核对。"] : change.preview(in: store.current, showPreviousValues: true),
+            ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
                          primaryTitle: count > 0 ? "改好这 \(count) 笔" : "改好这 \(change.items.count) 项", canConfirm: !store.current.preferences.hideAmounts, confirm: {
                 if store.apply(change, label: "问余白修改") {
                     status = "已改好，可撤销上一项修改。" + (store.toast?.contains("；") == true ? (store.toast ?? "") : "")
@@ -356,19 +370,19 @@ private struct AskPastedStatementCard: View {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                     if let summary = statement.summary {
-                        Text("这是一份\(ImportStatementText.source(summary.source))导出，\(count) 笔").yubaiFont(YubaiFont.cardTitle)
-                        Text(ImportStatementText.range(start: summary.startDate, end: summary.endDate) + " · 在本机读完，没有发给云端")
+                        Text("\(ImportStatementText.source(summary.source))导出 · \(count) 笔").yubaiFont(YubaiFont.cardTitle)
+                        Text(ImportStatementText.range(start: summary.startDate, end: summary.endDate))
                             .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: YubaiSpace.gapGroup) { total("支出", count: summary.expenseCount, amount: summary.expenseTotal); Spacer(); total("收入", count: summary.incomeCount, amount: summary.incomeTotal) }
                             VStack(alignment: .leading, spacing: YubaiSpace.space8) { total("支出", count: summary.expenseCount, amount: summary.expenseTotal); total("收入", count: summary.incomeCount, amount: summary.incomeTotal) }
                         }
                     } else {
-                        Text("这是一份账单表格，\(count) 笔").yubaiFont(YubaiFont.cardTitle)
-                        Text("在本机读完，没有发给云端").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        Text("账单表格 · \(count) 笔").yubaiFont(YubaiFont.cardTitle)
                         Text(statement.needsColumnMapping ? "请核对表头" : (statement.previewError ?? "日期待核对"))
                             .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
                     }
+                    LocalSourcePill()
                     HStack(spacing: YubaiSpace.space8) {
                         Button("不导入") { cancelled = true }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("cancelPastedImport")
                         Button("核对 \(count) 笔") { reviewing = true }.buttonStyle(PrimaryButtonStyle(compact: true)).accessibilityIdentifier("reviewPastedStatement")
@@ -432,7 +446,6 @@ private struct AskEntryDraftCard: View {
                             }
                         }
                     }
-                    Text("点一笔可以改").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("合计").yubaiFont(YubaiFont.row)
                         Spacer()
@@ -469,6 +482,7 @@ private struct AskEntryDraftCard: View {
                         Text(Classification.displayCategory(draft.category)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .none)
+                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("editDraft_" + draft.id.uuidString)
         }

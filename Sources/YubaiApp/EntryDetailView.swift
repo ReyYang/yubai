@@ -6,7 +6,6 @@ struct EntryDetailView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let entryID: UUID
-    @State private var deleting = false
     var body: some View {
         Page {
             if let entry = store.current.entries.first(where: { $0.id == entryID }) {
@@ -16,20 +15,23 @@ struct EntryDetailView: View {
                 classificationCard(entry)
                 sourceCard(entry)
                 if entry.deletedAt == nil {
-                    Button("删除记录", role: .destructive) { deleting = true }.frame(minHeight: YubaiSize.tapMin)
+                    Button("删除记录", role: .destructive) { delete() }.frame(minHeight: YubaiSize.tapMin)
                 } else {
-                    Text("这笔记录已删除，不计入汇总。需要恢复时，请使用撤销或恢复版本。")
-                        .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    Text("已删除").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                        .accessibilityLabel("这笔记录已删除，不计入汇总")
+                    Button("恢复") {
+                        store.update("恢复记录") { ledger in
+                            if let i = ledger.entries.firstIndex(where: { $0.id == entryID }) { ledger.entries[i].deletedAt = nil }
+                        }
+                    }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("restoreEntry")
                 }
-            } else { EmptyState("doc.questionmark", "记录已不存在", "可能已恢复了另一份账本。") }
+            } else { EmptyState("doc.questionmark", "记录已不存在", action: "返回", onAction: { dismiss() }) }
         }.navigationTitle("记录详情").yubaiNavigation()
-            .confirmationDialog("删除这笔记录？可通过撤销或恢复版本找回。", isPresented: $deleting) {
-                Button("删除记录", role: .destructive) {
-                    if store.update("删除记录", { ledger in
-                        if let i = ledger.entries.firstIndex(where: { $0.id == entryID }) { ledger.entries[i].deletedAt = Date() }
-                    }) { dismiss() }
-                }
-            }
+    }
+    private func delete() {
+        if store.update("删除记录", { ledger in
+            if let i = ledger.entries.firstIndex(where: { $0.id == entryID }) { ledger.entries[i].deletedAt = Date() }
+        }) { dismiss() }
     }
     private func classificationCard(_ entry: Entry) -> some View {
         Card {
