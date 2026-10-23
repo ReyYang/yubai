@@ -30,6 +30,7 @@ public enum ChangeItem: Codable, Equatable, Sendable {
     case linkRent(entry: UUID, rent: UUID, period: Date)
     case markDuplicate(entry: UUID, of: UUID)
     case addPlan(Plan), endPlan(UUID, Date), resumePlan(UUID), addRent(Rent), addEntry(EntryDraft)
+    case skipOccurrence(UUID, Date)
     case profile(ProfileChange)
 
     public var entryIDs: [UUID] {
@@ -86,6 +87,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
             case .resumePlan(let id): return "恢复「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」"
+            case .skipOccurrence(let id, let date): return "跳过「\(ledger.plans.first { $0.id == id }?.title ?? "资金安排")」\(Dates.text(date))这期"
             case .addRent(let r): return "新增「\(r.title)」，月租 \(Money.text(r.monthlyTotal))，个人承担 \(Money.text(r.personalShare))，每 \(r.monthsPerPayment) 月支付，从 \(Dates.text(r.startDate)) 起，首付 \(Dates.text(r.nextDueDate))，每月 \(r.receiveDay) 日收分摊" + (r.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .addEntry(let d):
                 let link = d.planID.flatMap { id in d.occurrence.map { "，关联为 \(Dates.text($0)) \(ledger.plans.first { $0.id == id }?.title ?? d.title)" } } ?? ""
@@ -182,7 +184,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard let i = active(id), let p = next.plans.first(where: { $0.id == plan }) else { skip(position); continue }
                 guard next.entries[i].planID == nil, next.entries[i].rentID == nil, next.entries[i].relatedEntryID == nil else { skip(position); continue }
                 guard next.entries[i].nature == p.nature, p.accountID == nil || p.accountID == next.entries[i].accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
-                guard p.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
+                guard p.occurrenceIndex(on: occurrence) != nil, !p.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
                 next.entries[i].planID = plan; next.entries[i].occurrence = Dates.day(occurrence); touch(i)
             case .linkRent(let id, let rent, let period):
                 guard validDate(period) else { throw YubaiError.invalid("房租月份无效。") }
@@ -208,6 +210,12 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard p.accountID == nil || next.accounts.contains(where: { $0.id == p.accountID }) else { throw YubaiError.invalid("资金安排的账户不存在。") }
                 guard validDate(p.dueDate) else { throw YubaiError.invalid("资金安排的日期无效。") }
                 next.plans.append(p)
+            case .skipOccurrence(let id, let date):
+                guard validDate(date), let i = next.plans.firstIndex(where: { $0.id == id }),
+                      next.plans[i].occurrenceIndex(on: date) != nil else { throw YubaiError.invalid("找不到这期固定收付。") }
+                let day = Dates.day(date); let plan = next.plans[i]
+                guard !plan.isSkipped(on: day), FixedFlowPayments(in: next).remaining(for: plan, on: day) > 0 else { skip(position); continue }
+                next.plans[i].skippedOccurrences.append(day)
             case .endPlan(let id, let date):
                 guard validDate(date) else { throw YubaiError.invalid("结束日期无效。") }
                 // A not-yet-started arrangement can be cancelled without inventing
@@ -244,7 +252,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
                 e.id = draft.id; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
                 if let id = draft.planID, let occurrence = draft.occurrence {
-                    guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
+                    guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,
+                          !plan.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
                     guard e.nature == plan.nature, plan.accountID == nil || plan.accountID == e.accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
                     e.planID = id; e.occurrence = Dates.day(occurrence)
                 } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
