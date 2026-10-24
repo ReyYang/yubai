@@ -122,6 +122,21 @@ private struct YubaiTextStyle: ViewModifier {
 }
 
 extension View {
+    @ViewBuilder func uiTestAccessibilityValue(_ value: @autoclosure () -> String) -> some View {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { self.accessibilityValue(value()) } else { self }
+        #else
+        self
+        #endif
+    }
+    @ViewBuilder func uiTestAccessibilityValue(_ value: @autoclosure () -> String, appendingTo productionValue: String) -> some View {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { self.accessibilityValue(productionValue + "; " + value()) }
+        else { self.accessibilityValue(productionValue) }
+        #else
+        self.accessibilityValue(productionValue)
+        #endif
+    }
     func yubaiFont(_ style: YubaiFont.Style, weight: Font.Weight? = nil) -> some View { modifier(YubaiTextStyle(style, weight: weight)) }
 
     /// Apply inside a Button/Menu label, after its visual background, so transparent space is tappable.
@@ -639,6 +654,7 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
 /// An offset preserves its layout proposal; revealing an action never narrows text.
 struct SwipeActionRow<Content: View>: View {
     let offset: CGFloat
+    let revealed: Bool
     let title: String
     let tint: Color
     let ink: Color
@@ -646,9 +662,9 @@ struct SwipeActionRow<Content: View>: View {
     let actionIdentifier: String
     let action: () -> Void
     let content: Content
-    init(offset: CGFloat, title: String, tint: Color, ink: Color, weight: Font.Weight = .semibold,
+    init(offset: CGFloat, revealed: Bool, title: String, tint: Color, ink: Color, weight: Font.Weight = .semibold,
          actionIdentifier: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
-        self.offset = offset; self.title = title; self.tint = tint; self.ink = ink; self.weight = weight
+        self.offset = offset; self.revealed = revealed; self.title = title; self.tint = tint; self.ink = ink; self.weight = weight
         self.actionIdentifier = actionIdentifier; self.action = action; self.content = content()
     }
     var body: some View {
@@ -662,14 +678,14 @@ struct SwipeActionRow<Content: View>: View {
                         .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                         .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                         #endif
-                }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
+                }.accessibilityHidden(!revealed).accessibilityIdentifier(actionIdentifier)
+                    .buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
                     #if os(iOS)
                     .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
                     #else
                     .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
                     #endif
-                    .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
-                    .accessibilityIdentifier(actionIdentifier)
+                    .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0)
             }.clipped().contentShape(Rectangle())
     }
 }
@@ -1215,6 +1231,9 @@ struct Toast: View {
         Group { if visible { surface } }
             .task(id: text) {
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
+                #if DEBUG && targetEnvironment(simulator)
+                if onUndo != nil && UITestSupport.keepsUndoReceipt { return }
+                #endif
                 do { try await Task.sleep(for: .seconds(YubaiMotion.toastLifetime)) } catch { return }
                 withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() }
             }
@@ -1369,13 +1388,14 @@ struct WelcomeView: View {
 struct SuggestionChips: View {
     let values: [String]
     var selected: String? = nil
+    var identifierPrefix = "suggestion_"
     let choose: (String) -> Void
     var body: some View {
         ChipFlow { chips }
     }
     private var chips: some View {
         ForEach(values, id: \.self) { value in
-            SuggestionChip(value: value, selected: selected == value) { choose(value) }
+            SuggestionChip(value: value, selected: selected == value, identifier: identifierPrefix + value) { choose(value) }
         }
     }
 }
@@ -1383,6 +1403,7 @@ struct SuggestionChips: View {
 struct SuggestionChip: View {
     let value: String
     var selected = false
+    var identifier = ""
     let choose: () -> Void
     var body: some View {
         Button(action: choose) {
@@ -1391,7 +1412,7 @@ struct SuggestionChip: View {
                 .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
                 .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
                 .frame(minHeight: YubaiSize.tapMin)
-        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier(identifier)
     }
 }
 

@@ -1,5 +1,10 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-24 · UI 测试观测与稳定性
+
+按 `619564f` 的 23 项失败调整[测试](../Tests/YubaiUITests/AppFlowTests.swift)等待、手势与撤销；展开值／pager 值及撤销保留仅限 Debug 模拟器、有效 UUID 测试账本与白名单脚本，保留另需 `YUBAI_UI_TEST_KEEP_UNDO=1`。生产账目／管家卡不加 AX 值，固定收付保持原财务值，测试时才追加展开状态；财务查询用前缀匹配。
+`rootPage_*` 先 `.accessibilityElement(children: .contain)` 再标识；`fixedFlowsScroll` 沿用 settings／insights 的 Page→ScrollView 标识方式，`rootPager` 标识原生 ScrollView，保留内部标识。原 69 项测试保留，新增 1 项覆盖原 4 秒提示；条件解析／静态核对通过，Apple 编译与 AX／UI 实跑待 Mac。布局、可见中文、动画、业务与外部设计资源无变化；未提交。
+
 ## 2026-10-23 · PR #34 名单外 UI 失败修复
 
 按 owner 的 Mac 验证报告，在 `4b7c0f7` 逐个核对 `a23e179` 的测试名与准确失败点。[全部测试的判断、改法与验证](../docs/PR34-NEW-UI-FAILURES.md)。`OverviewView` 的三档静态内容均放不下时，新增复用大字号 ScrollView 的最终兜底，固定 header、暖纸渐隐和底部 margin 沿用既有组件；避免「还有 N 笔」落入浮栏下且无法滚到。导航路径／分页同步保持，报告没有证明取消侧滑后浮栏状态回归。

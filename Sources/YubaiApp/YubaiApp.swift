@@ -428,7 +428,7 @@ struct RootView: View {
                             .accessibilityHidden(store.destination != d)
                     }
                 }.scrollTargetLayout()
-            }.scrollTargetBehavior(.paging)
+            }.accessibilityIdentifier("rootPager").scrollTargetBehavior(.paging)
                 .scrollIndicators(.hidden)
                 .scrollDisabled(store.pagingLocked || tabBarHidden || store.sheet != nil || store.pickingInsightDates)
                 .scrollClipDisabled()
@@ -448,6 +448,7 @@ struct RootView: View {
                 .overlay(alignment: .bottom) {
                     if !tabBarHidden {
                         FloatingTabBar { scrollTo($0, using: proxy) }
+                            .uiTestAccessibilityValue("destination=\(store.destination.rawValue); visible=\(visibleTab.rawValue); phase=\(pagingPhase == .idle ? "idle" : "moving"); locked=\(store.pagingLocked ? 1 : 0)")
                             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.floatingTabbarBottom)
                             .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
                     }
@@ -471,6 +472,7 @@ struct RootView: View {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
                 .navigationDestination(for: TabRoute.self) { tabDestination($0) }
         }.toolbarBackground(.hidden, for: .navigationBar)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
             .environment(\.isScrollEnabled, true)
             .scrollClipDisabled(false)
             .background(YubaiColor.canvas.ignoresSafeArea())

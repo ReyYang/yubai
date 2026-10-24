@@ -199,8 +199,8 @@ struct UpcomingPaymentsView: View {
                     store.apply(change, label: "结束安排")
                 }
                 ending = nil
-            }.accessibilityHint("只停以后的，已到期付款和历史记录保留")
-            Button("取消", role: .cancel) { ending = nil }
+            }.accessibilityIdentifier("endArrangementConfirm").accessibilityHint("只停以后的，已到期付款和历史记录保留")
+            Button("取消", role: .cancel) { ending = nil }.accessibilityIdentifier("endArrangementCancel")
         }
     }
     private func title(_ item: Occurrence) -> some View {

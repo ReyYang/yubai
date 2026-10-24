@@ -53,7 +53,7 @@ struct FixedFlowsView: View {
                 }
             }
             if !stopped.isEmpty { stoppedBills(stopped) }
-        }.amountPrivacy(ledger.preferences.hideAmounts).navigationTitle("固定收付").yubaiNavigation()
+        }.amountPrivacy(ledger.preferences.hideAmounts).accessibilityIdentifier("fixedFlowsScroll").navigationTitle("固定收付").yubaiNavigation()
             .toolbar { ToolbarItem(placement: .primaryAction) {
                 Button { store.sheetSource = nil; store.sheet = .addPlan } label: { Image(systemName: "plus") }
                     .accessibilityLabel("添加安排").accessibilityIdentifier("addFixedFlow")
@@ -182,7 +182,7 @@ private struct FixedFlowBillRow: View {
     var body: some View {
         Group {
             if canEnd {
-                SwipeActionRow(offset: offset, title: "停掉", tint: YubaiColor.neutralStrong, ink: YubaiColor.label, weight: .medium,
+                SwipeActionRow(offset: offset, revealed: resting < 0, title: "停掉", tint: YubaiColor.neutralStrong, ink: YubaiColor.label, weight: .medium,
                                actionIdentifier: "stopFixedFlow_" + row.id, action: stop) { content }
                     #if os(iOS)
                     .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
@@ -209,7 +209,7 @@ private struct FixedFlowBillRow: View {
                     .accessibilityAction(named: "停掉", stop)
             } else { content }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("fixedFlow_" + row.id)
-            .accessibilityValue(FixedFlowPresentation.state(row.state, inflow: row.inflow))
+            .uiTestAccessibilityValue(resting < 0 ? "revealed" : "closed", appendingTo: FixedFlowPresentation.state(row.state, inflow: row.inflow))
             .contextMenu {
                 if row.state == .upcoming, let id = row.planID {
                     Button(row.inflow ? "提前标记收到了" : "提前标记付了") {

@@ -162,7 +162,7 @@ private struct LedgerEntryRow: View {
     private var categoryName: String { uncategorized ? "没分类" : Classification.displayCategory(category) }
     private var note: String { entry.note.isEmpty ? (entry.displayTitle == categoryName ? "" : entry.displayTitle) : entry.note }
     var body: some View {
-        SwipeActionRow(offset: offset, title: "删除", tint: YubaiColor.amberTint, ink: YubaiColor.amberInk,
+        SwipeActionRow(offset: offset, revealed: resting < 0, title: "删除", tint: YubaiColor.amberTint, ink: YubaiColor.amberInk,
                        actionIdentifier: "deleteLedgerEntry_" + entry.id.uuidString, action: delete) {
             Button {
                 #if os(macOS)
@@ -177,6 +177,7 @@ private struct LedgerEntryRow: View {
                 store.sheetSource = nil; store.sheet = .editEntry(entry.id)
             } label: { content }
                 .buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+                .uiTestAccessibilityValue(resting < 0 ? "revealed" : "closed")
         }
             #if os(iOS)
             .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in

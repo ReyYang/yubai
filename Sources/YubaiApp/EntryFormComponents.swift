@@ -189,7 +189,7 @@ struct RecentPurposeChips: View {
     }
     var body: some View {
         if !recent.isEmpty {
-            SuggestionChips(values: recent, selected: selection) { selection = $0 }
+            SuggestionChips(values: recent, selected: selection, identifierPrefix: "recentPurpose_") { selection = $0 }
                 .padding(.vertical, YubaiSpace.space8).accessibilityLabel("最近用过的用途")
         }
     }

@@ -63,7 +63,8 @@ struct ButlerCardView: View {
                         .background(YubaiColor.neutralSoft, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                         .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                         #endif
-                }.yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
+                }.accessibilityHidden(swipe == 0).accessibilityIdentifier("dismissButler_" + card.kind.rawValue)
+                    .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
                     #if os(iOS)
                     .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
                     #else
@@ -71,8 +72,6 @@ struct ButlerCardView: View {
                     .frame(maxHeight: .infinity).background(YubaiColor.neutralSoft)
                     #endif
                     .opacity(swipe < 0 ? 1 : 0).allowsHitTesting(swipe < 0)
-                    .accessibilityHidden(swipe == 0)
-                    .accessibilityIdentifier("dismissButler_" + card.kind.rawValue)
             }
             .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).contentShape(Rectangle())
             .overlay { GeometryReader { geometry in
@@ -107,6 +106,7 @@ struct ButlerCardView: View {
             #endif
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("butlerCard_" + card.kind.rawValue)
+            .uiTestAccessibilityValue(swipe < 0 ? "revealed" : "closed")
             .accessibilityAction(named: "知道了") { store.dismissCard(card.id) }
     }
     private func resetSwipe() { withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { swipe = 0 } }
