@@ -6,7 +6,12 @@ public struct EntryKeypad: Equatable, Sendable {
     public init() {}
     public var amount: Int64? { try? Self.evaluate(expression) }
     public var canSave: Bool { amount.map { $0 > 0 && $0 <= Money.limit } ?? false }
-    public var resultText: String { Money.input(amount ?? 0) }
+    public var resultText: String {
+        let cents = amount ?? 0
+        let magnitude = cents.magnitude
+        let fraction = magnitude % 100
+        return "\(cents < 0 ? "-" : "")\(magnitude / 100).\(fraction < 10 ? "0" : "")\(fraction)"
+    }
     public var displayText: String {
         expression.dropFirst().contains(where: { $0 == "+" || $0 == "-" }) ? resultText : expression
     }
