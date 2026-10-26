@@ -10,6 +10,16 @@ public struct EntryKeypad: Equatable, Sendable {
     public var displayText: String {
         expression.dropFirst().contains(where: { $0 == "+" || $0 == "-" }) ? resultText : expression
     }
+    public var pendingOperator: String? {
+        guard expression.count > 1, let last = expression.last, last == "+" || last == "-" else { return nil }
+        return last == "-" ? "−" : "+"
+    }
+    public var expressionText: String? {
+        guard expression.dropFirst().contains(where: { $0 == "+" || $0 == "-" }) else { return nil }
+        let first = expression.prefix(1).replacingOccurrences(of: "-", with: "−")
+        let rest = expression.dropFirst().replacingOccurrences(of: "+", with: " + ").replacingOccurrences(of: "-", with: " − ")
+        return (first + rest).trimmingCharacters(in: .whitespaces)
+    }
     public mutating func reset() { expression = "0" }
     @discardableResult public mutating func resolve() -> Int64? {
         guard let amount else { return nil }

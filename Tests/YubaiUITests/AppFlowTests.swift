@@ -1447,6 +1447,28 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 5), .completed)
     }
 
+    func testManualKeypadOperatorsAndPurposeKeyboard() {
+        let app = application("manual"); app.launch()
+        tap(addEntryTab(app), in: app)
+        tap(app.buttons["keypad_1"], in: app); tap(app.buttons["keypad_2"], in: app); tap(app.buttons["keypad_+"], in: app)
+        XCTAssertTrue(app.buttons["keypad_+"].isSelected)
+        XCTAssertEqual(app.staticTexts["entryKeypadExpression"].label, "12 +")
+        let purpose = app.textFields["entryPurpose"]
+        tap(purpose, in: app); purpose.typeText("Lunch")
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        assertGone(app.buttons["keypad_+"]); assertGone(app.buttons["saveQuickEntry"]); assertGone(app.buttons["saveAndAddAnother"])
+        XCTAssertTrue(purpose.isHittable); XCTAssertLessThanOrEqual(purpose.frame.maxY, keyboard.frame.minY)
+        purpose.typeText("\n")
+        assertGone(keyboard)
+        XCTAssertTrue(app.buttons["keypad_+"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["keypad_+"].isSelected)
+        tap(app.buttons["keypad_3"], in: app)
+        XCTAssertFalse(app.buttons["keypad_+"].isSelected)
+        XCTAssertEqual(app.staticTexts["entryKeypadExpression"].label, "12 + 3")
+        XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "15")
+        XCTAssertEqual(app.buttons["saveQuickEntry"].label, "记下 15 元")
+    }
+
     func testManualKeypadSaveTodayEditAndDelete() {
         let app = application("manual"); app.launch()
         let funds = app.buttons["fundsFormula"]
