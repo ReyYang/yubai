@@ -13,12 +13,24 @@ final class ManualBookkeepingTests: XCTestCase {
         XCTAssertFalse(pad.canSave)
         ["3", "2", "+", "1", "8", ".", "5", "0", "9"].forEach { pad.press($0) }
         XCTAssertEqual(pad.expression, "32+18.50"); XCTAssertEqual(pad.amount, 5050)
-        XCTAssertEqual(pad.displayText, "50.5")
+        XCTAssertEqual(pad.displayText, "50.50")
         pad.press("⌫"); XCTAssertEqual(pad.expression, "32+18.5")
         pad.press("−"); pad.press("2"); XCTAssertEqual(pad.resolve(), 4850)
         XCTAssertEqual(pad.expression, "48.5"); pad.reset(); XCTAssertEqual(pad.expression, "0")
         pad.press("."); pad.press("5"); pad.press("."); pad.press("2"); pad.press("3")
         XCTAssertEqual(pad.amount, 52)
+    }
+    func testKeypadResultTextUsesTwoDecimalsWithoutChangingTypedInput() {
+        for (input, result) in [("0", "0.00"), ("32", "32.00"), ("38", "38.00"), ("38.", "38.00"),
+                                ("38.5", "38.50"), ("38.50", "38.50"), ("0.05", "0.05"),
+                                ("1234.56", "1234.56"), ("99999999999.99", "99999999999.99")] {
+            var pad = EntryKeypad()
+            input.forEach { pad.press(String($0)) }
+            XCTAssertEqual(pad.resultText, result)
+            XCTAssertEqual(pad.displayText, input)
+            XCTAssertEqual(pad.expression, input)
+            XCTAssertNil(pad.expressionText)
+        }
     }
     func testKeypadBoundsOperatorReplacementAndNonpositiveResults() throws {
         XCTAssertEqual(try EntryKeypad.evaluate("0.1+0.2"), 30)
@@ -32,14 +44,15 @@ final class ManualBookkeepingTests: XCTestCase {
         pad.press("+"); pad.press("1"); XCTAssertEqual(pad.amount, Money.limit)
         pad.reset(); ["3", "+", "−", "5"].forEach { pad.press($0) }
         XCTAssertEqual(pad.amount, -200); XCTAssertFalse(pad.canSave)
+        XCTAssertEqual(pad.resultText, "-2.00"); XCTAssertEqual(pad.displayText, "-2.00")
         pad.press("+"); pad.press("7"); XCTAssertEqual(pad.resolve(), 500)
     }
     func testKeypadPendingOperatorClearsOnDigitAndDecimalPoint() {
         var pad = EntryKeypad()
         XCTAssertNil(pad.pendingOperator)
         pad.press("1"); pad.press("2"); pad.press("+")
-        XCTAssertEqual(pad.pendingOperator, "+"); XCTAssertEqual(pad.displayText, "12")
-        pad.press("3"); XCTAssertNil(pad.pendingOperator); XCTAssertEqual(pad.displayText, "15")
+        XCTAssertEqual(pad.pendingOperator, "+"); XCTAssertEqual(pad.displayText, "12.00")
+        pad.press("3"); XCTAssertNil(pad.pendingOperator); XCTAssertEqual(pad.displayText, "15.00")
         pad.press("−"); XCTAssertEqual(pad.pendingOperator, "−")
         pad.press("."); XCTAssertNil(pad.pendingOperator); XCTAssertEqual(pad.expressionText, "12 + 3 − 0.")
     }
@@ -59,8 +72,9 @@ final class ManualBookkeepingTests: XCTestCase {
         "38.50".forEach { pad.press(String($0)) }
         XCTAssertNil(pad.expressionText)
         pad.press("+"); XCTAssertEqual(pad.expressionText, "38.50 +")
+        XCTAssertEqual(pad.resultText, "38.50"); XCTAssertEqual(pad.displayText, "38.50")
         "12".forEach { pad.press(String($0)) }
-        XCTAssertEqual(pad.expressionText, "38.50 + 12"); XCTAssertEqual(pad.resultText, "50.5")
+        XCTAssertEqual(pad.expressionText, "38.50 + 12"); XCTAssertEqual(pad.resultText, "50.50")
         pad.press("-"); XCTAssertEqual(pad.pendingOperator, "−"); XCTAssertEqual(pad.expressionText, "38.50 + 12 −")
         "0.25".forEach { pad.press(String($0)) }
         XCTAssertEqual(pad.expressionText, "38.50 + 12 − 0.25"); XCTAssertEqual(pad.displayText, "50.25")
@@ -70,6 +84,7 @@ final class ManualBookkeepingTests: XCTestCase {
         var pad = EntryKeypad()
         ["3", "−", "5"].forEach { pad.press($0) }
         XCTAssertEqual(pad.resolve(), -200); XCTAssertEqual(pad.expression, "-2")
+        XCTAssertEqual(pad.resultText, "-2.00"); XCTAssertEqual(pad.displayText, "-2")
         XCTAssertNil(pad.expressionText); XCTAssertNil(pad.pendingOperator)
         pad.press("+"); XCTAssertEqual(pad.expressionText, "−2 +"); XCTAssertEqual(pad.pendingOperator, "+")
         pad.reset(); XCTAssertEqual(pad.expression, "0"); XCTAssertNil(pad.expressionText); XCTAssertNil(pad.pendingOperator)

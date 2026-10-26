@@ -1670,8 +1670,8 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["keypad_3"], in: app)
         XCTAssertFalse(app.buttons["keypad_+"].isSelected)
         XCTAssertEqual(app.staticTexts["entryKeypadExpression"].label, "12 + 3")
-        XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "15")
-        XCTAssertEqual(app.buttons["saveQuickEntry"].label, "记下 15 元")
+        XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "15.00")
+        XCTAssertEqual(app.buttons["saveQuickEntry"].label, "记下 15.00 元")
     }
 
     func testManualKeypadSaveTodayEditAndDelete() {
