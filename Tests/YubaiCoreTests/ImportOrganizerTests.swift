@@ -314,7 +314,7 @@ final class CategoryMemoryTests: XCTestCase {
     }
     func testRememberedCategoryIsAcceptedBeforeModelAndConflictsAreIgnored() async throws {
         let ctx = AssistantFixtures.context(); var ledger = ctx.ledger
-        ledger.entries = [Entry(date: ctx.now, amount: 2000, accountID: ledger.accounts[0].id, title: "美团123!", category: "其他支出")]
+        ledger.entries = [Entry(date: ctx.now, amount: 2000, accountID: ledger.accounts[0].id, title: "美团123!", category: Classification.pendingCategory)]
         ledger.categoryMemory[CategoryMemory.key("美团456")] = "餐饮"
         let entry = ledger.entries[0]
         let result = JSONValue.object(["rows": .array([.object(["entry": .string(entry.id.uuidString), "category": .string("日用购物"), "nature": .string("expense"), "confident": .bool(true)])]),
@@ -327,7 +327,7 @@ final class CategoryMemoryTests: XCTestCase {
         let input = try JSONValue.parse(try XCTUnwrap(requests[0].messages.last?.content))
         XCTAssertEqual(input["known_categories"], .array([.object(["title": .string(entry.title), "category": .string("餐饮")])]))
         XCTAssertEqual(input["batch"]?.arrayValue?.first?["category"], .string("餐饮"))
-        XCTAssertTrue(requests[0].messages.first?.content?.contains("known_categories 是用户确认过的分类") == true)
+        XCTAssertTrue(requests[0].messages.first?.content?.contains("known_categories 是用户记忆、已有主项或分类表已确定的分类") == true)
         let memory = ledger.categoryMemory
         try organized.changeSet.apply(to: &ledger)
         XCTAssertEqual(ledger.entries[0].category, "餐饮"); XCTAssertEqual(ledger.categoryMemory, memory)

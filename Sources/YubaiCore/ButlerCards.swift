@@ -59,9 +59,10 @@ public enum ButlerCards {
         }
     }
     public static func matches(_ area: ProfileArea, entry: Entry, ledger: Ledger) -> Bool {
-        let category = ledger.resolveCategory(entry.category)
+        let choice = ledger.normalizedCategory(for: entry)
+        let category = choice.category
         let text = entry.title + " " + (entry.purpose ?? "") + " " + entry.note
-        return area.match.subcategories.contains { $0 == category + "/" + (entry.subcategory ?? "") } || area.match.categories.contains { ledger.resolveCategory($0) == category } || area.match.keywords.contains {
+        return area.match.subcategories.contains { ledger.categoryAssignment(category: CategoryAssignment(path: $0).category, subcategory: CategoryAssignment(path: $0).subcategory).path == choice.path } || area.match.categories.contains { ledger.resolveCategory($0) == category } || area.match.keywords.contains {
             let word = $0.trimmingCharacters(in: .whitespacesAndNewlines)
             return !word.isEmpty && text.localizedCaseInsensitiveContains(word)
         }

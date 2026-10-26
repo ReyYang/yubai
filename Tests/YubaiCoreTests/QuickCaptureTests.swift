@@ -21,7 +21,7 @@ final class QuickCaptureTests: XCTestCase {
         let result = try drafts("咖啡 18 和面包 12")
         XCTAssertEqual(result.map(\.title), ["咖啡", "面包"]); XCTAssertEqual(result.first?.category, "餐饮")
         XCTAssertEqual(try drafts("打车24").first?.category, "交通")
-        XCTAssertEqual(try drafts("32").first?.title, "其他支出")
+        XCTAssertEqual(try drafts("32").first?.title, Classification.displayCategory(Classification.pendingCategory))
     }
     func testFollowUpAndMissingAccountAreDistinct() throws {
         for text in ["", "午饭", "2026-10-21 12:31", "买了3件", "1234567890123"] {
@@ -54,7 +54,7 @@ final class QuickCaptureTests: XCTestCase {
         XCTAssertEqual(first.entry.source, "Apple Pay"); XCTAssertFalse(first.entry.externalID.isEmpty)
         XCTAssertEqual(first.entry.quickCapture?.card, "招行"); XCTAssertFalse(first.entry.hasNoCaptureCategory)
         let unknown = try QuickCapture.applePay(merchant: "某某商户", amount: "58", card: "未映射", date: now, in: &ledger, now: now)
-        XCTAssertEqual(unknown.entry.category, "其他支出"); XCTAssertTrue(unknown.entry.hasNoCaptureCategory)
+        XCTAssertEqual(unknown.entry.category, Classification.pendingCategory); XCTAssertTrue(unknown.entry.hasNoCaptureCategory)
         XCTAssertEqual(unknown.entry.accountID, ledger.accounts[1].id)
     }
     func testDedupAcrossBoundaryAndAfterUndo() throws {
@@ -85,7 +85,7 @@ final class QuickCaptureTests: XCTestCase {
         ledger.preferences.quickCapture.cardAccounts["卡"] = ledger.accounts[1].id
         try QuickCapture.remember(merchant: "SHOP", category: "购物", in: &ledger)
         try QuickCapture.remember(merchant: " shop ", category: "日用", in: &ledger)
-        XCTAssertEqual(ledger.preferences.quickCapture.merchantCategories.count, 1)
+        XCTAssertEqual(ledger.classificationMemory.count, 1)
         let entry = try QuickCapture.applePay(merchant: "Shop", amount: "1", card: "卡", date: now, in: &ledger, now: now).entry
         XCTAssertEqual(entry.category, "购物"); XCTAssertEqual(entry.subcategory, "日用百货"); XCTAssertEqual(entry.accountID, ledger.accounts[0].id)
         XCTAssertThrowsError(try QuickCapture.remember(merchant: "", category: "餐饮", in: &ledger))

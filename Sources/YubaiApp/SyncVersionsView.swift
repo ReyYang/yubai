@@ -77,7 +77,7 @@ struct SyncVersionsView: View {
             ("附件", changed(a.attachments, b.attachments)),
             ("导入记录", changed(a.imports, b.imports)),
             ("分类", changed(a.categories, b.categories)),
-            ("分类规则", a.categoryAliases == b.categoryAliases && a.categoryMemory == b.categoryMemory ? 0 : 1),
+            ("分类规则", a.categoryAliases == b.categoryAliases && a.classificationMemory == b.classificationMemory ? 0 : 1),
             ("余白记得的", changed(a.memories, b.memories)),
             ("心愿单", changed(a.wishlist, b.wishlist)),
             ("提醒", changed(a.cards, b.cards)),

@@ -85,7 +85,7 @@ public struct JudgePurchaseTool: AssistantTool {
         let profile = ctx.ledger.profile
         let hasProfile = !profile.generous.isEmpty || !profile.restrain.isEmpty || !profile.principles.isEmpty
         // Use the same matching rules as cards; quote only the user's stored words.
-        var sample = Entry(date: ctx.now, amount: amount, accountID: UUID(), title: title, category: category ?? "其他支出")
+        var sample = Entry(date: ctx.now, amount: amount, accountID: UUID(), title: title, category: category ?? Classification.pendingCategory)
         sample.subcategory = args["subcategory"]?.stringValue
         let bounds = PurchaseBounds.compute(ledger: ctx.ledger, amount: amount, title: title, category: category, subcategory: sample.subcategory, now: ctx.now)
         func quotes(_ areas: [ProfileArea]) -> JSONValue { .array(areas.filter { ButlerCards.matches($0, entry: sample, ledger: ctx.ledger) }.map {

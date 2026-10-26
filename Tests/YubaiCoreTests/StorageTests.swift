@@ -40,7 +40,7 @@ final class StorageTests: XCTestCase {
             var expected = original
             expected.preferences.cloudAIEnabled = testCase.expected
             XCTAssertEqual(restored, expected)
-            XCTAssertEqual(restored.schema, 3)
+            XCTAssertEqual(restored.schema, 4)
             let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encode(restored)) as? [String: Any])
             let current = try XCTUnwrap(encoded["preferences"] as? [String: Any])
             XCTAssertEqual(current["cloudAIEnabled"] as? Bool, testCase.expected)

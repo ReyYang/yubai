@@ -82,9 +82,10 @@ final class ManualBookkeepingTests: XCTestCase {
         var deleted = Entry(amount: 100, accountID: id, title: "书", category: "学习"); deleted.deletedAt = now
         ledger.entries.append(deleted)
         ledger.entries.append(Entry(amount: 100, nature: .income, accountID: id, title: "工资", category: "工资"))
-        XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense, frequentOnly: true), ["交通", "餐饮", "购物", "娱乐旅行", "居住"])
+        XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense, frequentOnly: true), ["餐饮", "购物", "交通", "居住", "医疗健康"])
         XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .income, frequentOnly: true).first, "工资奖金")
         XCTAssertEqual(ManualBookkeeping.guessCategory("午饭", nature: .expense, in: ledger), "餐饮")
+        ledger.categories.append(Category("工作餐"))
         ledger.categoryMemory[CategoryMemory.key("午饭")] = "工作餐"
         XCTAssertEqual(ManualBookkeeping.guessCategory("午饭", nature: .expense, in: ledger), "工作餐")
         XCTAssertNil(ManualBookkeeping.guessCategory("午饭", nature: .income, in: fixture()))

@@ -22,7 +22,7 @@ public enum ProfileHabits {
         for entry in ledger.activeEntries where entry.date >= start && entry.date <= now {
             guard entry.nature == .expense || entry.nature == .refund else { continue }
             let original = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } : nil
-            let category = ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: byID))
+            let category = ledger.normalizedCategory(for: entry, entriesByID: byID).category
             let merchant = (original ?? entry).title.trimmingCharacters(in: .whitespacesAndNewlines)
             for (kind, title) in [(HabitLine.Kind.category, category), (.merchant, merchant)] where !title.isEmpty {
                 let key = kind.rawValue + ":" + title

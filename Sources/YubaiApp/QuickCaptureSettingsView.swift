@@ -40,7 +40,7 @@ struct QuickCaptureSettingsView: View {
                     }
                     EntryFormDivider()
                     NavigationLink { CaptureRulesView(kind: .merchant) } label: {
-                        line("商户记到哪个分类", detail: "\(store.current.preferences.quickCapture.merchantCategories.count) 条", navigates: true)
+                        line("商户记到哪个分类", detail: "\(store.current.classificationMemory.count) 条", navigates: true)
                     }
                 }
             }
@@ -121,7 +121,7 @@ private struct CaptureRulesView: View {
     let kind: CaptureRuleKind
     @State private var editing: CaptureRuleSelection?
     private var names: [String] {
-        kind == .card ? store.current.preferences.quickCapture.cardAccounts.keys.sorted() : store.current.preferences.quickCapture.merchantCategories.keys.sorted()
+        kind == .card ? store.current.preferences.quickCapture.cardAccounts.keys.sorted() : store.current.classificationMemory.keys.sorted()
     }
     var body: some View {
         List {
@@ -134,7 +134,7 @@ private struct CaptureRulesView: View {
                 store.update("删除映射") { ledger in
                     for name in deleted {
                         if kind == .card { ledger.preferences.quickCapture.cardAccounts.removeValue(forKey: name) }
-                        else { ledger.preferences.quickCapture.merchantCategories.removeValue(forKey: name) }
+                        else { ledger.classificationMemory.removeValue(forKey: name) }
                     }
                 }
             }
@@ -145,7 +145,7 @@ private struct CaptureRulesView: View {
     }
     private func value(_ name: String) -> String {
         if kind == .card { return store.current.accountName(store.current.preferences.quickCapture.cardAccounts[name]) }
-        return Classification.displayCategory(store.current.preferences.quickCapture.merchantCategories[name] ?? "")
+        return Classification.displayCategory(store.current.resolveCategory(store.current.classificationMemory[name] ?? ""))
     }
 }
 private struct CaptureRuleSelection: Identifiable { var id = UUID(); var name: String? }
@@ -174,19 +174,19 @@ private struct CaptureRuleEditor: View {
             .onAppear {
                 name = original ?? ""
                 account = original.flatMap { store.current.preferences.quickCapture.cardAccounts[$0] }.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first?.id
-                category = original.flatMap { store.current.preferences.quickCapture.merchantCategories[$0] } ?? "餐饮"
+                category = original.flatMap { store.current.classificationMemory[$0] }.map { store.current.resolveCategory($0) } ?? "餐饮"
             }
     }
     private func remove(_ name: String, in ledger: inout Ledger) {
         if kind == .card { ledger.preferences.quickCapture.cardAccounts.removeValue(forKey: name) }
-        else { ledger.preferences.quickCapture.merchantCategories.removeValue(forKey: name) }
+        else { ledger.classificationMemory.removeValue(forKey: name) }
     }
     private func save() {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if store.update("保存映射", { ledger in
             if let original { remove(original, in: &ledger) }
             if kind == .card, let account {
-                let old = ledger.preferences.quickCapture.cardAccounts.keys.filter { QuickCapture.key($0) == QuickCapture.key(clean) }
+                let old = ledger.preferences.quickCapture.cardAccounts.keys.filter { QuickCapture.cardKey($0) == QuickCapture.cardKey(clean) }
                 for name in old { ledger.preferences.quickCapture.cardAccounts.removeValue(forKey: name) }
                 ledger.preferences.quickCapture.cardAccounts[clean] = account
             } else { try QuickCapture.remember(merchant: clean, category: category, in: &ledger) }
