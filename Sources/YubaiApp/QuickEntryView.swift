@@ -5,6 +5,7 @@ struct QuickEntryView: View {
     var prefill: QuickEntryPrefill? = nil
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var keypad = EntryKeypad()
     @State private var nature = Nature.expense
     @State private var category = "餐饮"
@@ -33,7 +34,8 @@ struct QuickEntryView: View {
                     amountDisplay
                     EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
                                        all: ManualBookkeeping.categories(in: store.current, nature: nature), selection: $category,
-                                       didSelect: { userChoseCategory = true })
+                                       didSelect: { purposeFocused = false; userChoseCategory = true })
+                        .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
                     form
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -47,7 +49,7 @@ struct QuickEntryView: View {
                 .frame(maxWidth: 620).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("entryFormScroll")
             .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
-                if !accounts.isEmpty {
+                if !accounts.isEmpty && !purposeFocused {
                     VStack(spacing: YubaiSpace.gapGroup) {
                         EntryKeypadView(keypad: $keypad, canSave: canSave, save: { save(again: false) }, onKey: { purposeFocused = false })
                         Button("记下，再记一笔") { save(again: true) }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
@@ -55,8 +57,11 @@ struct QuickEntryView: View {
                             .accessibilityIdentifier("saveAndAddAnother")
                     }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapGroup)
                         .frame(maxWidth: 620).frame(maxWidth: .infinity)
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                        .ignoresSafeArea(.keyboard, edges: .bottom)
                 }
             }
+            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: purposeFocused)
             .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
             #if os(iOS)
             .presentationDetents([.large])
@@ -116,14 +121,19 @@ struct QuickEntryView: View {
         suggestion = first
     }
     private var amountDisplay: some View {
-        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-            Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-            Text(keypad.displayText.replacingOccurrences(of: "-", with: "−")).yubaiFont(YubaiFont.amountDisplay)
-                .numberTransition(value: Double(keypad.amount ?? 0) / 100)
-                .lineLimit(1).minimumScaleFactor(0.5).accessibilityIdentifier("entryKeypadAmount")
-            Rectangle().fill(YubaiColor.brand).frame(width: 2, height: YubaiSize.rowIcon).accessibilityHidden(true)
-            Spacer(minLength: YubaiSpace.none)
-        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle()).onTapGesture { purposeFocused = false }
+        VStack(alignment: .leading, spacing: YubaiSpace.none) {
+            Text(keypad.expressionText ?? "").yubaiFont(YubaiFont.amount, weight: .regular).foregroundStyle(YubaiColor.labelSecondary)
+                .lineLimit(1).minimumScaleFactor(0.5).frame(height: YubaiFont.amount.lineHeight)
+                .accessibilityIdentifier("entryKeypadExpression").accessibilityHidden(keypad.expressionText == nil)
+            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
+                Text(keypad.displayText.replacingOccurrences(of: "-", with: "−")).yubaiFont(YubaiFont.amountDisplay)
+                    .numberTransition(value: Double(keypad.amount ?? 0) / 100)
+                    .lineLimit(1).minimumScaleFactor(0.5).accessibilityIdentifier("entryKeypadAmount")
+                Rectangle().fill(YubaiColor.brand).frame(width: 2, height: YubaiSize.rowIcon).accessibilityHidden(true)
+                Spacer(minLength: YubaiSpace.none)
+            }.frame(minHeight: YubaiSize.rowDouble)
+        }.contentShape(Rectangle()).onTapGesture { purposeFocused = false }
     }
     private var form: some View {
         Card(style: .list) {
@@ -131,16 +141,25 @@ struct QuickEntryView: View {
                 EntryFormRow(title: "用途") {
                     TextField("", text: $purpose).multilineTextAlignment(.trailing)
                         .focused($purposeFocused).accessibilityIdentifier("entryPurpose").accessibilityLabel("用途")
+                        .submitLabel(.done).onSubmit { purposeFocused = false }
                 }
                 RecentPurposeChips(selection: $purpose)
                 EntryFormDivider()
-                EntryFormRow(title: "账户") { EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, showsBalance: true) }
+                EntryFormRow(title: "账户") {
+                    EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, showsBalance: true)
+                        .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+                }
                 if nature == .transfer {
                     EntryFormDivider()
-                    EntryFormRow(title: "转入") { EntryAccountMenu(accounts: accounts.filter { $0.id != accountID }, balances: balances, selection: $otherAccountID, showsBalance: true) }
+                    EntryFormRow(title: "转入") {
+                        EntryAccountMenu(accounts: accounts.filter { $0.id != accountID }, balances: balances, selection: $otherAccountID, showsBalance: true)
+                            .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+                    }
                 }
                 EntryFormDivider()
-                EntryFormRow(title: "日期") { EntryDateChip(date: $date) }
+                EntryFormRow(title: "日期") {
+                    EntryDateChip(date: $date).simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+                }
             }
         }
     }
@@ -199,14 +218,18 @@ private struct EntryKeypadView: View {
     }
     private func keyButton(_ key: String) -> some View {
         let operation = ["⌫", "+", "−"].contains(key)
+        let selected = keypad.pendingOperator == key
         return Button { onKey(); keypad.press(key) } label: {
             Group {
                 if key == "⌫" { Image(systemName: "delete.left") }
                 else { Text(key) }
             }.yubaiFont(YubaiFont.amountDonut, weight: .regular)
+                .foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.label)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight)
-                .background(operation ? YubaiColor.card : YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .background(selected ? YubaiColor.brandTint : operation ? YubaiColor.card : YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .overlay { if selected { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
         }.accessibilityLabel(key == "⌫" ? "删除一位" : key == "+" ? "加" : key == "−" ? "减" : key == "." ? "小数点" : key)
             .accessibilityIdentifier("keypad_" + key)
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
