@@ -122,7 +122,7 @@ struct QuickEntryView: View {
     }
     private var amountDisplay: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.none) {
-            Text(keypad.expressionText ?? "").yubaiFont(YubaiFont.amount).foregroundStyle(YubaiColor.labelSecondary)
+            Text(keypad.expressionText ?? "").yubaiFont(YubaiFont.amount, weight: .regular).foregroundStyle(YubaiColor.labelSecondary)
                 .lineLimit(1).minimumScaleFactor(0.5).frame(height: YubaiFont.amount.lineHeight)
                 .accessibilityIdentifier("entryKeypadExpression").accessibilityHidden(keypad.expressionText == nil)
             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
