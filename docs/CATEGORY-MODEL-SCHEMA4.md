@@ -101,3 +101,31 @@
 - 新 Core API 错误信息（原因／状态，尚无新界面入口）：分类名称无效、这个分类不能修改、分类名称已存在、只能合并同一收支方向的不同分类、小项已存在、小项不存在或名称重复、小项不存在、分类顺序无效。现有校验错误去掉“需要保留其他”限制；新增快速捕获无效分类提示「请选择已有分类。」、批量响应校验「小项格式无效。」。不属于说明文案；只在失败时返回原因。
 
 风险：Apple SDK 真编译与 UI 实跑待 Mac；schema 4 保存后旧 App 不支持降级读取，升级前原始文件仍按仓库存档机制保留；旧词／别名映射按规则确定，未使用真实账单证明分类准确率。设计稿、原型、分发包没有同步，本轮没有修改视觉。
+
+## PR #41 · Xcode 27.1 编译修复与 App 复核
+
+2026-10-26，owner 报告 `SubcategoryViews.swift:102:22: cannot find 'store' in scope`。这纠正了上文人工接线检查的遗漏；此前 Linux 条件解析通过不代表 SwiftUI 类型检查通过。本轮沿用 `refactor/category-model` 当前工作区，不改 Core、工程、依赖、视觉、文案或行为，不提交 Git。
+
+范围通过 `git diff origin/main --stat -- Sources/YubaiApp Sources/YubaiWidgets` 确认：全部 8 个 App Swift 文件，Widgets 无 PR 改动。逐处核对修改及其所属类型的 store／环境声明、Core 参数标签与顺序、可选性、返回类型、访问级别、actor／Sendable 边界与表达式推断。
+
+| 文件 | 复核内容与本轮修改 |
+|---|---|
+| `SubcategoryViews.swift` | `EntrySubcategoryRow`、`SubcategoryPicker`、记录下钻均已有 store。唯一缺失的是 `SubcategoryChoiceChip.selected`；父视图现在一次取得显式 `CategoryAssignment`，用原来的主项与小项比较式算好 `Bool`，芯片仅接收 `sub`、`selected` 和保存闭包，不新增环境或 store 注入。选中样式、无障碍 selected trait、保存／关闭路径保持。复核 `selectableCategories`、两种 normalizedCategory 调用及 resolveCategory 的返回类型。 |
+| `AskYubaiView.swift` | 编辑草稿类型已有 store／dismiss，`categoryUserEdited` 为公开 `Bool?`，清小项与写用户纠正标记的顺序保持。将分类 selection 拆为 `Binding<String>` 属性，分类列表拆为 `[String]` 属性，保留 Set 去重、排序、当前分类及 Picker tag。 |
+| `ImportView.swift` | 主视图与截图编辑器均已有 store。逐处核对 CategoryMapping 的可选结果、isPending 重载、分类列表的 including／income 标签、确认集合的 Set<String> 类型、按钮／Binding 的 Void 返回、队列保存／恢复及改选时清除确认的接线。commit 参数依次为 preview、data、confirmedNewCategories、to，抛错同步交给 store.update；返回 ImportBatch，再由原 MainActor Task 整理。本轮给对应 Picker 写明 `Binding<String>`，提前计算 `[String]`，截图编辑器分类数组拆为显式类型属性。 |
+| `InsightsView.swift` | FlowRecordsView 已有 store。退款／收入归一读取 `normalizedCategory(for:entriesByID:)` 的非可选 CategoryAssignment.category；categories.contains 的闭包返回 Bool。为索引、记录数组、收支判断与分类名分别写明 `[UUID: Entry]`、`[Entry]`、`Bool`、`String`。 |
+| `ProfileView.swift` | ProfileAreaEditor 已有 store；selectableCategories 为公开 `[YubaiCore.Category]`，income 为 Bool，元素满足 Identifiable，Toggle 的 Binding 与 Set<String> 更新匹配。不需修改。 |
+| `QuickCaptureSettingsView.swift` | 主视图、规则列表与编辑器各自已有 store，编辑器另有 dismiss。classificationMemory 为公开 `[String: String]`，字典读取得 String?，resolveCategory 得 String，原 flatMap／map 链和默认值类型相符。cardKey 为公开 String → String，remember 的 merchant／category／in 标签及 throws 与 update 相符。未新增跨 actor 捕获，不需修改。 |
+| `CaptureNotifications.swift` | PR 改动仅为既有 category 局部值中的状态字面量，不引用 store／环境；hasNoCaptureCategory 为公开 Bool，另一路 displayCategory 返回 String。原委托使用 MainActor Task 访问 AppStore，通知异步边界没有本轮新增捕获；不需修改。 |
+| `SyncVersionsView.swift` | 分类规则比较两份公开 `[String: String]`，相等比较返回 Bool，三元结果为 Int。本轮把大数组与 filter 分开，为数组写明 `[(title: String, count: Int)]`，使用具名 count 过滤，原顺序、标题、数值不变。 |
+
+`CategoryAssignment`、`CategoryMapping.match`、`QuickCapture.cardKey`／remember、BillImporter.commit 和相关模型字段均可从普通 `import YubaiCore` 访问。selectableCategories、categoryNames、normalizedCategory 在 `public extension Ledger` 中，访问级别为 public，无须再添加冗余修饰。App 内新 helper 留在所属 private 类型中，没有扩大可见性。
+
+验证：
+
+- `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test` 退出 0：496 项、492 通过、4 项原有实网测试跳过、0 失败。沿用 `/tmp/yubai-clang-cache` 和 `/tmp/yubai-swift-cache` 两个缓存环境变量；没有启用实网测试。
+- 38 个 App 文件与 1 个 Widget 文件逐一通过 `swiftc -frontend -parse -swift-version 5`，共 156 次解析：iOS 26／27.1 模拟器 Debug、iOS 26 设备 Release、macOS 14 Debug。Swift 5 是当前 Package／Xcode target 的语言模式；Debug 组显式设置 DEBUG。
+- 临时 `/tmp/yubai-pr41-api-audit.swift` 使用普通 `import YubaiCore`，没有 `@testable`。分类列表、归一／匹配、草稿纠正、统一记忆、导入 commit、小项保存的调用以显式类型交给真实已构建 Core 模块检查，`-swift-version 6 -strict-concurrency=complete -warnings-as-errors` 类型检查退出 0；同时用泛型 Sendable 约束检查 Ledger、Entry、EntryDraft、ImportPreview、ImportBatch、CategoryAssignment、分类数组、确认集合与记忆字典。此项只证明相关 Core 调用与值类型，不包含 SwiftUI 或 Apple 通知模块。
+- `git diff --check` 通过。没有新增或改动可见中文字符串，没有更改布局、样式、按钮动作或数据处理规则；原稿／原型／分发包不需同步本次内部接线修正。
+
+当前 Linux 无 Apple SDK，仍须在 Mac 上重新执行 Xcode 27.1 App 真编译；SwiftUI 类型检查和 UI 实跑尚未验证。本轮没有把条件语法解析或 Core API 检查计为 Apple 编译成功。

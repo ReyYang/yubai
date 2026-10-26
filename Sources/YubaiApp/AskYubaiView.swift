@@ -536,6 +536,16 @@ private struct AskDraftEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var draft: EntryDraft
     let save: (EntryDraft) -> Void
+    private var categorySelection: Binding<String> {
+        Binding(get: { draft.category }, set: { category in
+            draft.category = category
+            draft.subcategory = nil
+            draft.categoryUserEdited = true
+        })
+    }
+    private var categoryNames: [String] {
+        Set(store.current.categoryNames(including: draft.category)).sorted()
+    }
     var body: some View {
         Form {
             Section {
@@ -543,7 +553,9 @@ private struct AskDraftEditor: View {
                 AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts)
                 DatePicker("日期", selection: $draft.date, displayedComponents: .date)
                 Picker("账户", selection: $draft.accountID) { ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag($0.id) } }
-                Picker("分类", selection: Binding(get: { draft.category }, set: { draft.category = $0; draft.subcategory = nil; draft.categoryUserEdited = true })) { ForEach(Set(store.current.categoryNames(including: draft.category)).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) } }
+                Picker("分类", selection: categorySelection) {
+                    ForEach(categoryNames, id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
+                }
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("编辑这一笔").yubaiNavigation().toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
