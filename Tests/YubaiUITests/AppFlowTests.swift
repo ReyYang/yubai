@@ -440,7 +440,7 @@ final class AppFlowTests: XCTestCase {
         let started = ProcessInfo.processInfo.systemUptime
         check.tap()
         XCTAssertTrue(undo.waitForExistence(timeout: 2)); XCTAssertTrue(undo.isHittable)
-        XCTAssertEqual(message.label, "房租 300 已记下")
+        XCTAssertEqual(message.label, "房租 300.00 已记下")
         let early = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !undo.exists }, object: nil)
         early.isInverted = true
         let earlyWindow = max(0.01, 2 - (ProcessInfo.processInfo.systemUptime - started))
