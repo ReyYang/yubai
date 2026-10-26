@@ -1,0 +1,69 @@
+Attributes: Application, 0x1186ac000, pid: 61210, label: '余白'
+Element subtree:
+ →Application, 0x1186ac000, pid: 61210, label: '余白'
+    Window (Main), 0x1186af340, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x1186ad680, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x1186aca00, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x1186acc80, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x1186aea80, {{0.0, 0.0}, {440.0, 956.0}}
+              ScrollView, 0x1186af700, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPager'
+                Other, 0x1186af840, {{-880.0, 0.0}, {1760.0, 922.0}}
+                  Other, 0x1186af980, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPage_entries'
+                    Other, 0x1186afac0, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x1186afc00, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1186afd40, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x1186ab700, {{0.0, 0.0}, {440.0, 956.0}}
+                            Other, 0x1186aabc0, {{0.0, 0.0}, {440.0, 956.0}}
+                              StaticText, 0x1186abd40, {{205.0, 89.0}, {30.0, 18.0}}, identifier: 'rootHeaderTitle', label: '账目'
+                              Button, 0x1186abc00, {{376.0, 76.0}, {44.0, 44.0}}, identifier: 'askYubai', label: '问余白'
+                                Other, 0x1186aa580, {{376.0, 76.0}, {44.0, 44.0}}, label: '余白'
+                              ScrollView, 0x1186aa6c0, {{0.0, 146.0}, {440.0, 810.0}}, identifier: 'entriesScroll'
+                                Other, 0x1186aa800, {{0.0, 146.0}, {440.0, 331.0}}
+                                  Other, 0x1186aa940, {{4.0, 146.0}, {416.0, 302.3}}
+                                    Button, 0x1186aaa80, {{4.0, 146.0}, {44.0, 44.0}}, identifier: 'entriesPreviousMonth', label: '上个月'
+                                    StaticText, 0x1186abac0, {{52.0, 159.0}, {95.0, 18.0}}, identifier: 'entriesMonth', label: '2026 年 10 月'
+                                    Button, 0x1186aae40, {{151.0, 146.0}, {44.0, 44.0}}, identifier: 'entriesNextMonth', label: '下个月'
+                                    Button, 0x1186aaf80, {{376.0, 146.0}, {44.0, 44.0}}, identifier: 'entriesSearchButton', label: '搜索账目'
+                                    StaticText, 0x1186ab0c0, {{36.0, 218.0}, {48.0, 14.3}}, label: '本月支出'
+                                    StaticText, 0x1186ab200, {{36.0, 236.3}, {28.7, 26.3}}, label: '32.00'
+                                    StaticText, 0x1186ab340, {{242.0, 218.0}, {48.0, 14.3}}, label: '本月收入'
+                                    StaticText, 0x1186ab480, {{242.0, 236.3}, {28.7, 26.3}}, label: '+0.00'
+                                    ScrollView, 0x1186ab5c0, {{20.0, 290.7}, {400.0, 44.0}}, label: '筛选账目'
+                                      Other, 0x1186aad00, {{20.0, 290.7}, {269.0, 44.0}}
+                                        Button, 0x1186abe80, {{20.0, 290.7}, {58.0, 44.0}}, identifier: 'entriesFilter_全部', label: '全部', Selected
+                                        Button, 0x1186ab840, {{86.0, 290.7}, {58.0, 44.0}}, identifier: 'entriesFilter_支出', label: '支出'
+                                        Button, 0x1186ab980, {{152.0, 290.7}, {58.0, 44.0}}, identifier: 'entriesFilter_收入', label: '收入'
+                                        Button, 0x1186b0000, {{218.0, 290.7}, {71.0, 44.0}}, identifier: 'entriesFilter_没分类', label: '没分类'
+                                    StaticText, 0x1186b0140, {{36.0, 362.3}, {28.0, 17.0}}, label: '今天'
+                                    StaticText, 0x1186b0280, {{341.7, 358.7}, {62.3, 21.7}}, label: '−32.00'
+                                    Other, 0x1186b03c0, {{36.0, 392.3}, {368.0, 56.0}}
+                                      Button, 0x1186b0500, {{320.0, 398.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_07814805-47E9-47EA-A61D-434C9CC5898D', label: '删除'
+                                      Button, 0x1186b0640, {{36.0, 392.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_07814805-47E9-47EA-A61D-434C9CC5898D', label: '餐饮、合成咖啡、−32.00', value: closed
+                                        Image, 0x1186b0780, {{36.0, 402.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1186b08c0, {{84.0, 402.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1186b0a00, {{84.0, 424.2}, {48.0, 14.3}}, label: '合成咖啡'
+                                        StaticText, 0x1186b0b40, {{349.7, 411.3}, {54.3, 18.0}}, label: '−32.00'
+                              Other, 0x1186b0c80, {{0.0, 146.0}, {440.0, 8.0}}
+                      Other, 0x1186b0dc0, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1186b0f00, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x1186b1040, {{20.0, 848.0}, {400.0, 66.0}}, identifier: 'mainNavigation', label: '主导航', value: destination=entrie...
+                Button, 0x1186b1180, {{28.0, 856.0}, {78.7, 50.0}}, identifier: 'tab_overview', label: '现在'
+                  Image, 0x1186b12c0, {{57.3, 863.0}, {20.0, 20.0}}, label: 'TabWaterMark'
+                  StaticText, 0x1186b1400, {{57.2, 887.0}, {20.0, 12.0}}, label: '现在'
+                Button, 0x1186b1540, {{106.7, 856.0}, {78.3, 50.0}}, identifier: 'tab_insights', label: '洞察'
+                  Image, 0x1186b1680, {{135.7, 863.0}, {20.0, 20.0}}, identifier: 'chart.pie', label: '图表饼图'
+                  StaticText, 0x1186b17c0, {{135.8, 887.0}, {20.0, 12.0}}, label: '洞察'
+                Button, 0x1186b1900, {{193.0, 854.0}, {54.0, 54.0}}, identifier: 'addEntry', label: '记一笔'
+                Button, 0x1186b1a40, {{255.0, 856.0}, {78.7, 50.0}}, identifier: 'tab_entries', label: '账目', Selected
+                  Image, 0x1186b1b80, {{284.0, 865.3}, {20.7, 15.3}}, identifier: 'list.bullet', label: '列表'
+                  StaticText, 0x1186b1cc0, {{284.2, 887.0}, {20.0, 12.0}}, label: '账目'
+                Button, 0x1186b1e00, {{333.7, 856.0}, {78.3, 50.0}}, identifier: 'tab_settings', label: '我'
+                  Image, 0x1186b1f40, {{364.0, 864.0}, {17.3, 18.3}}, identifier: 'person', label: 'person'
+                  StaticText, 0x1186b2080, {{367.8, 887.0}, {10.0, 12.0}}, label: '我'
+Path to element:
+ →Application, 0x1186ac000, pid: 61210, label: '余白'
+Query chain:
+ →Find: Target Application 'app.yubai.personal'
+  Output: {
+    Application, 0x1186b21c0, pid: 61210, label: '余白'
+  }

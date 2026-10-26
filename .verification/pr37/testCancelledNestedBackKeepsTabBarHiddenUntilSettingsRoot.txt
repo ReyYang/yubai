@@ -1,0 +1,83 @@
+Attributes: Application, 0x112203d40, pid: 66507, label: '余白'
+Element subtree:
+ →Application, 0x112203d40, pid: 66507, label: '余白'
+    Window (Main), 0x112202bc0, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x112202300, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x112201180, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x112201680, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x112203700, {{0.0, 0.0}, {440.0, 956.0}}
+              ScrollView, 0x1122017c0, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPager'
+                Other, 0x1122021c0, {{-1320.0, 0.0}, {1760.0, 922.0}}
+                  Other, 0x112203c00, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPage_settings'
+                    Other, 0x112201cc0, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x112203e80, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x112201b80, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x1122030c0, {{0.0, 0.0}, {440.0, 956.0}}
+                            Other, 0x112203200, {{0.0, 0.0}, {440.0, 956.0}}
+                              StaticText, 0x112201f40, {{212.5, 89.0}, {15.0, 18.0}}, identifier: 'rootHeaderTitle', label: '我'
+                              Button, 0x1122026c0, {{376.0, 76.0}, {44.0, 44.0}}, identifier: 'askYubai', label: '问余白'
+                                Other, 0x112203840, {{376.0, 76.0}, {44.0, 44.0}}, label: '余白'
+                              ScrollView, 0x1122035c0, {{0.0, 146.0}, {440.0, 810.0}}, identifier: 'settingsScroll'
+                                Other, 0x112203ac0, {{0.0, 146.0}, {440.0, 695.0}}
+                                  Button, 0x112202580, {{20.0, 146.0}, {400.0, 51.3}}, identifier: 'openProfile', label: '我的消费观、余白记得的，0 条 · 这周新记了 0 条'
+                                    StaticText, 0x112201e00, {{36.0, 162.0}, {79.7, 19.3}}, label: '我的消费观'
+                                    StaticText, 0x112202080, {{361.0, 164.5}, {23.0, 14.3}}, label: '余白记得的，0 条 · 这周新记了 0 条'
+                                    Image, 0x112203980, {{398.0, 167.0}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                  Button, 0x1122012c0, {{36.0, 225.3}, {368.0, 56.0}}, identifier: 'openWishlist', label: '心愿单、0 件在想'
+                                    StaticText, 0x112202940, {{36.0, 235.7}, {44.7, 18.0}}, label: '心愿单'
+                                    StaticText, 0x112200dc0, {{36.0, 257.7}, {43.0, 13.3}}, label: '0 件在想'
+                                    Image, 0x112201900, {{398.0, 248.7}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                  Button, 0x112202440, {{36.0, 282.3}, {368.0, 48.0}}, label: '每周来信'
+                                    StaticText, 0x112200a00, {{36.0, 297.8}, {55.7, 17.0}}, label: '每周来信'
+                                    Image, 0x112200c80, {{398.0, 301.7}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                  Button, 0x112202800, {{20.0, 358.3}, {400.0, 102.7}}, label: '账户、1 个账户、1,000.00、现金分布：合成银行卡 ¥1,000.00'
+                                    StaticText, 0x112201040, {{36.0, 374.3}, {30.0, 18.0}}, label: '账户'
+                                    StaticText, 0x112202d00, {{342.7, 376.7}, {41.3, 13.3}}, label: '1 个账户'
+                                    Image, 0x112200f00, {{398.0, 378.7}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                    StaticText, 0x112201540, {{36.0, 400.3}, {69.0, 28.7}}, label: '1,000.00'
+                                    Other, 0x112201a40, {{36.0, 437.0}, {368.0, 8.0}}, label: '现金分布：合成银行卡 ¥1,000.00'
+                                  Button, 0x112202e40, {{36.0, 489.0}, {368.0, 48.0}}, identifier: 'openFixedFlows', label: '固定收付、0 项'
+                                    StaticText, 0x112200b40, {{36.0, 504.5}, {55.7, 17.0}}, label: '固定收付'
+                                    StaticText, 0x1123d6440, {{361.0, 505.8}, {23.0, 14.3}}, label: '0 项'
+                                    Image, 0x1123d4a00, {{398.0, 508.3}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                  Button, 0x1123d4c80, {{36.0, 569.0}, {368.0, 48.0}}, identifier: 'openQuickCapture', label: '快速记账'
+                                    StaticText, 0x1123d5900, {{36.0, 584.5}, {55.7, 17.0}}, label: '快速记账'
+                                    Image, 0x1123d5540, {{398.0, 588.3}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                  Button, 0x1123d7840, {{36.0, 618.0}, {368.0, 48.0}}, identifier: 'openImportHistory', label: '导入记录'
+                                    StaticText, 0x1123d5680, {{36.0, 633.5}, {55.7, 17.0}}, label: '导入记录'
+                                    Image, 0x1123d6d00, {{398.0, 637.3}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                  Button, 0x1123d6580, {{36.0, 667.0}, {368.0, 48.0}}, identifier: 'openIntelligencePrivacy', label: '智能与隐私、DeepSeek · 已配好'
+                                    StaticText, 0x1123d48c0, {{36.0, 682.5}, {69.7, 17.0}}, label: '智能与隐私'
+                                    StaticText, 0x1123d6300, {{278.0, 684.3}, {98.0, 13.3}}, label: 'DeepSeek · 已配好'
+                                    Image, 0x1123d52c0, {{398.0, 686.3}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                  Button, 0x1123d7480, {{36.0, 716.0}, {368.0, 48.0}}, identifier: 'openBackup', label: '备份与恢复'
+                                    StaticText, 0x1123d7e80, {{36.0, 731.5}, {69.7, 17.0}}, label: '备份与恢复'
+                                    Image, 0x1123d7200, {{398.0, 735.3}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                                  Button, 0x1123d4500, {{36.0, 765.0}, {368.0, 48.0}}, identifier: 'openStorage', label: '存储空间、3.3 KB'
+                                    StaticText, 0x1123d5040, {{36.0, 780.5}, {55.7, 17.0}}, label: '存储空间'
+                                    StaticText, 0x1123d7980, {{346.7, 781.8}, {37.3, 14.3}}, label: '3.3 KB'
+                                    Image, 0x1123d5e00, {{398.0, 784.3}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                              Other, 0x1123d7c00, {{0.0, 146.0}, {440.0, 8.0}}
+                      Other, 0x1123d4dc0, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1123d4640, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x1123d4b40, {{20.0, 848.0}, {400.0, 66.0}}, identifier: 'mainNavigation', label: '主导航', value: destination=settin...
+                Button, 0x1123d70c0, {{28.0, 856.0}, {78.7, 50.0}}, identifier: 'tab_overview', label: '现在'
+                  Image, 0x1123d75c0, {{57.3, 863.0}, {20.0, 20.0}}, label: 'TabWaterMark'
+                  StaticText, 0x1123d7700, {{57.2, 887.0}, {20.0, 12.0}}, label: '现在'
+                Button, 0x1123d5a40, {{106.7, 856.0}, {78.3, 50.0}}, identifier: 'tab_insights', label: '洞察'
+                  Image, 0x1123d4140, {{135.7, 863.0}, {20.0, 20.0}}, identifier: 'chart.pie', label: '图表饼图'
+                  StaticText, 0x1123d5400, {{135.8, 887.0}, {20.0, 12.0}}, label: '洞察'
+                Button, 0x1123d6940, {{193.0, 854.0}, {54.0, 54.0}}, identifier: 'addEntry', label: '记一笔'
+                Button, 0x1123d6e40, {{255.0, 856.0}, {78.7, 50.0}}, identifier: 'tab_entries', label: '账目'
+                  Image, 0x1123d5180, {{284.3, 866.0}, {20.0, 14.3}}, identifier: 'list.bullet', label: '列表'
+                  StaticText, 0x1123d6800, {{284.2, 887.0}, {20.0, 12.0}}, label: '账目'
+                Button, 0x1123d5b80, {{333.7, 856.0}, {78.3, 50.0}}, identifier: 'tab_settings', label: '我', Selected
+                  Image, 0x1123d7ac0, {{364.0, 863.7}, {17.3, 18.7}}, identifier: 'person', label: 'person'
+                  StaticText, 0x1123d4000, {{367.8, 887.0}, {10.0, 12.0}}, label: '我'
+Path to element:
+ →Application, 0x112203d40, pid: 66507, label: '余白'
+Query chain:
+ →Find: Target Application 'app.yubai.personal'
+  Output: {
+    Application, 0x1123d57c0, pid: 66507, label: '余白'
+  }

@@ -1,0 +1,123 @@
+Attributes: Application, 0x1179ae800, pid: 54361, label: '余白'
+Element subtree:
+ →Application, 0x1179ae800, pid: 54361, label: '余白'
+    Window (Main), 0x1179ae940, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x1179aea80, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x1179aebc0, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x1179aed00, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x1179aee40, {{0.0, 0.0}, {440.0, 956.0}}
+              ScrollView, 0x1179aef80, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPager'
+                Other, 0x1179af0c0, {{-1320.0, 0.0}, {1760.0, 922.0}}
+                  Other, 0x1179af200, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPage_settings'
+                    Other, 0x1179af340, {{0.0, 0.0}, {440.0, 956.0}}
+                      NavigationBar, 0x1179af480, {{0.0, 62.0}, {440.0, 54.0}}, identifier: '固定收付'
+                        Button, 0x1179af5c0, {{20.0, 62.0}, {44.0, 44.0}}, identifier: 'BackButton', label: '我'
+                        StaticText, 0x1179af700, {{186.0, 73.7}, {67.7, 20.7}}, label: '固定收付'
+                        Other, 0x1179af840, {{380.0, 66.0}, {36.0, 36.0}}, identifier: 'addFixedFlow', label: '添加安排'
+                          Other, 0x1179af980, {{380.0, 66.0}, {36.0, 36.0}}
+                            Button, 0x1179afac0, {{386.0, 66.0}, {24.3, 36.0}}, identifier: 'addFixedFlow', label: '添加安排'
+                      Other, 0x1179afc00, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1179afd40, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x1179afe80, {{0.0, 0.0}, {440.0, 956.0}}
+                            Other, 0x117930140, {{0.0, 0.0}, {440.0, 956.0}}
+                              ScrollView, 0x117930280, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'fixedFlowsScroll'
+                                Other, 0x1179303c0, {{0.0, 0.0}, {440.0, 956.0}}
+                                  Other, 0x1179308c0, {{0.0, 0.0}, {440.0, 170.8}}
+                                Other, 0x117930a00, {{0.0, 0.0}, {440.0, 956.0}}
+                                Other, 0x117930500, {{0.0, 116.0}, {440.0, 416.3}}
+                                  StaticText, 0x117930640, {{20.0, 128.0}, {86.7, 20.3}}, label: '10月还要付'
+                                  StaticText, 0x117930780, {{374.7, 133.0}, {24.0, 14.3}}, label: '要收'
+                                  StaticText, 0x117930000, {{402.7, 132.3}, {17.3, 15.7}}, label: '+0.00'
+                                  StaticText, 0x11797abc0, {{20.0, 152.3}, {53.3, 52.7}}, identifier: 'fixedFlowRemaining', label: '40.00'
+                                  StaticText, 0x11797b200, {{20.0, 209.0}, {98.0, 18.0}}, identifier: 'fixedFlowOverdue', label: '其中、30.00、已过期'
+                                    StaticText, 0x11797b700, {{20.0, 209.5}, {28.0, 17.0}}, label: '其中'
+                                    StaticText, 0x11797b340, {{52.0, 209.0}, {20.0, 18.0}}, label: '30.00'
+                                    StaticText, 0x11797b480, {{76.0, 209.5}, {42.0, 17.0}}, label: '已过期'
+                                  StaticText, 0x11797b5c0, {{36.0, 251.0}, {24.0, 14.3}}, label: '要付'
+                                  Other, 0x11797be80, {{20.0, 273.3}, {400.0, 235.0}}, identifier: 'fixedFlowExpenseCard'
+                                    Other, 0x11797b0c0, {{36.0, 277.3}, {368.0, 56.0}}, identifier: 'fixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682-1791129600.0', value: 已到期; closed
+                                      Button, 0x11797ad00, {{320.0, 283.3}, {78.0, 44.0}}, identifier: 'stopFixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682-1791129600.0', label: '停掉'
+                                        StaticText, 0x11797ae40, {{320.0, 283.3}, {78.0, 44.0}}, label: '停掉'
+                                      StaticText, 0x11797bc00, {{36.0, 287.2}, {59.7, 18.0}}, label: '每周订阅'
+                                      StaticText, 0x11797bd40, {{36.0, 309.2}, {241.3, 14.3}}, label: '5日 · 过了 21 天还没记 · 合成银行卡 · 3/7 期'
+                                      StaticText, 0x11797b980, {{320.0, 296.3}, {20.0, 18.0}}, label: '10.00'
+                                      Button, 0x11797bac0, {{352.0, 283.3}, {52.0, 44.0}}, identifier: 'settleFixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682_2026-10-05', label: '付了 每周订阅', value: 已到期
+                                    Other, 0x11797af80, {{36.0, 333.3}, {368.0, 1.0}}
+                                    Other, 0x11797b840, {{36.0, 334.3}, {368.0, 56.0}}, identifier: 'fixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682-1791734400.0', value: 已到期; closed
+                                      Button, 0x11797a940, {{320.0, 340.3}, {78.0, 44.0}}, identifier: 'stopFixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682-1791734400.0', label: '停掉'
+                                        StaticText, 0x11797aa80, {{320.0, 340.3}, {78.0, 44.0}}, label: '停掉'
+                                      StaticText, 0x11797a580, {{36.0, 344.2}, {59.7, 18.0}}, label: '每周订阅'
+                                      StaticText, 0x11797a440, {{36.0, 366.2}, {247.7, 14.3}}, label: '12日 · 过了 14 天还没记 · 合成银行卡 · 4/7 期'
+                                      StaticText, 0x11797a800, {{320.0, 353.3}, {20.0, 18.0}}, label: '10.00'
+                                      Button, 0x11797a6c0, {{352.0, 340.3}, {52.0, 44.0}}, identifier: 'settleFixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682_2026-10-12', label: '付了 每周订阅', value: 已到期
+                                    Other, 0x117934000, {{36.0, 390.3}, {368.0, 1.0}}
+                                    Other, 0x1178ccf00, {{36.0, 391.3}, {368.0, 56.0}}, identifier: 'fixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682-1792339200.0', value: 已到期; closed
+                                      Button, 0x1178cda40, {{320.0, 397.3}, {78.0, 44.0}}, identifier: 'stopFixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682-1792339200.0', label: '停掉'
+                                        StaticText, 0x1178cd180, {{320.0, 397.3}, {78.0, 44.0}}, label: '停掉'
+                                      StaticText, 0x1178cd2c0, {{36.0, 401.2}, {59.7, 18.0}}, label: '每周订阅'
+                                      StaticText, 0x1178cde00, {{36.0, 423.2}, {241.3, 14.3}}, label: '19日 · 过了 7 天还没记 · 合成银行卡 · 5/7 期'
+                                      StaticText, 0x1178cc3c0, {{320.0, 410.3}, {20.0, 18.0}}, label: '10.00'
+                                      Button, 0x1178cf200, {{352.0, 397.3}, {52.0, 44.0}}, identifier: 'settleFixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682_2026-10-19', label: '付了 每周订阅', value: 已到期
+                                    Other, 0x1178cca00, {{36.0, 447.3}, {368.0, 1.0}}
+                                    Other, 0x1178cef80, {{36.0, 448.3}, {368.0, 56.0}}, identifier: 'fixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682-1792944000.0', value: 已到期; closed
+                                      Button, 0x1178cd040, {{320.0, 454.3}, {78.0, 44.0}}, identifier: 'stopFixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682-1792944000.0', label: '停掉'
+                                        StaticText, 0x1178cfac0, {{320.0, 454.3}, {78.0, 44.0}}, label: '停掉'
+                                      StaticText, 0x1178cfe80, {{36.0, 458.2}, {59.7, 18.0}}, label: '每周订阅'
+                                      StaticText, 0x1178cd400, {{36.0, 480.2}, {205.7, 14.3}}, label: '26日 · 今天到期 · 合成银行卡 · 6/7 期'
+                                      StaticText, 0x1178cf5c0, {{320.0, 467.3}, {20.0, 18.0}}, label: '10.00'
+                                      Button, 0x1178cf980, {{352.0, 454.3}, {52.0, 44.0}}, identifier: 'settleFixedFlow_827B7E24-6FF2-4096-8AD5-ABABE87F1682_2026-10-26', label: '付了 每周订阅', value: 已到期
+                      Other, 0x1178cfd40, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1178ce300, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x1178cc000, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x1178cd900, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x1178cc8c0, {{0.0, 0.0}, {440.0, 956.0}}
+        Alert, 0x1178ce1c0, {{60.0, 360.0}, {320.0, 264.0}}, label: '停掉「每周订阅」？'
+          Other, 0x1178cf0c0, {{60.0, 360.0}, {320.0, 264.0}}
+            Other, 0x1178cdf40, {{60.0, 360.0}, {320.0, 264.0}}
+              Other, 0x1178ce080, {{60.0, 360.0}, {320.0, 264.0}}
+              Other, 0x1178cc500, {{60.0, 360.0}, {320.0, 264.0}}
+                ScrollView, 0x1178cfc00, {{60.0, 360.0}, {320.0, 72.0}}
+                  Other, 0x1178d3840, {{60.0, 360.0}, {320.0, 72.0}}
+                    StaticText, 0x1178d2e40, {{90.0, 382.0}, {260.0, 20.3}}, label: '停掉「每周订阅」？'
+                    StaticText, 0x1178d2d00, {{90.0, 409.7}, {260.0, 18.0}}, label: '还有 6 期没记。'
+                  Other, 0x1178d3700, {{60.0, 430.0}, {320.0, 2.0}}
+                  Other, 0x1178d35c0, {{347.0, 360.0}, {30.0, 72.0}}, label: '垂直滚动条, 2页', value: 0%
+                    Other, 0x1178d3d40, {{374.0, 321.0}, {3.0, 36.0}}
+                  Other, 0x1178d3e80, {{60.0, 399.0}, {320.0, 30.0}}, label: '水平滚动条, 1页', value: 0%
+                    Other, 0x1178d3c00, {{21.0, 426.0}, {36.0, 3.0}}
+                  Other, 0x1178d3980, {{347.0, 360.0}, {30.0, 72.0}}, label: '垂直滚动条, 2页', value: 0%
+                    Other, 0x1178d3ac0, {{374.0, 321.0}, {3.0, 36.0}}
+                  Other, 0x1178d2bc0, {{60.0, 399.0}, {320.0, 30.0}}, label: '水平滚动条, 1页', value: 0%
+                    Other, 0x1178317c0, {{21.0, 426.0}, {36.0, 3.0}}
+                ScrollView, 0x117832f80, {{60.0, 432.0}, {320.0, 192.0}}
+                  Other, 0x117833ac0, {{60.0, 432.0}, {320.0, 192.0}}
+                    Other, 0x117830280, {{76.0, 448.0}, {288.0, 160.0}}
+                      Button, 0x117830140, {{76.0, 448.0}, {288.0, 48.0}}, identifier: 'fixedFlowStopConfirm', label: '付了，记一笔再停'
+                        Button, 0x117830000, {{76.0, 448.0}, {288.0, 48.0}}, identifier: 'fixedFlowStopConfirm', label: '付了，记一笔再停'
+                      Button, 0x117833480, {{76.0, 504.0}, {288.0, 48.0}}, identifier: 'fixedFlowStopSkip', label: '没付，这期也不要了'
+                        Button, 0x1178330c0, {{76.0, 504.0}, {288.0, 48.0}}, identifier: 'fixedFlowStopSkip', label: '没付，这期也不要了'
+                      Button, 0x117830780, {{76.0, 560.0}, {288.0, 48.0}}, identifier: 'fixedFlowStopCancel', label: '取消'
+                        Button, 0x11792f700, {{76.0, 560.0}, {288.0, 48.0}}, identifier: 'fixedFlowStopCancel', label: '取消'
+                  Other, 0x11792f840, {{347.0, 432.0}, {30.0, 192.0}}, label: '垂直滚动条, 1页', value: 0%
+                    Other, 0x11792f980, {{374.0, 522.0}, {3.0, 7.0}}
+                  Other, 0x11792fe80, {{60.0, 591.0}, {320.0, 30.0}}, label: '水平滚动条, 1页', value: 0%
+                    Other, 0x11792e300, {{150.0, 618.0}, {7.0, 3.0}}
+                  Other, 0x11792ebc0, {{347.0, 432.0}, {30.0, 192.0}}, label: '垂直滚动条, 1页', value: 0%
+                    Other, 0x11792ea80, {{374.0, 522.0}, {3.0, 7.0}}
+                  Other, 0x11792e940, {{60.0, 591.0}, {320.0, 30.0}}, label: '水平滚动条, 1页', value: 0%
+                    Other, 0x11792e080, {{150.0, 618.0}, {7.0, 3.0}}
+          Other, 0x11792df40, {{60.0, 360.0}, {320.0, 264.0}}
+            Other, 0x11792c8c0, {{60.0, 360.0}, {320.0, 264.0}}
+              Other, 0x11792cb40, {{60.0, 360.0}, {320.0, 264.0}}
+                Other, 0x11792d2c0, {{60.0, 360.0}, {320.0, 264.0}}
+                  Other, 0x11792d400, {{60.0, 360.0}, {320.0, 264.0}}
+                    Other, 0x11792cf00, {{60.0, 360.0}, {440.0, 956.0}}
+                Other, 0x11792da40, {{60.0, 360.0}, {320.0, 264.0}}
+                  Other, 0x11792c640, {{60.0, 360.0}, {440.0, 956.0}}
+Path to element:
+ →Application, 0x1179ae800, pid: 54361, label: '余白'
+Query chain:
+ →Find: Target Application 'app.yubai.personal'
+  Output: {
+    Application, 0x11792cc80, pid: 54361, label: '余白'
+  }

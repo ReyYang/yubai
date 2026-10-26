@@ -1,0 +1,58 @@
+Attributes: Application, 0x1176ad400, pid: 51333, label: '余白'
+Element subtree:
+ →Application, 0x1176ad400, pid: 51333, label: '余白'
+    Window (Main), 0x1176acc80, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x1176afc00, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x1176ad2c0, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x1176afac0, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x1176af0c0, {{0.0, 0.0}, {440.0, 956.0}}
+              ScrollView, 0x1176aed00, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPager'
+                Other, 0x1176af480, {{-1320.0, 0.0}, {1760.0, 922.0}}
+                  Other, 0x1176af5c0, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPage_settings'
+                    Other, 0x1176af700, {{0.0, 0.0}, {440.0, 956.0}}
+                      NavigationBar, 0x1176af840, {{0.0, 62.0}, {440.0, 54.0}}, identifier: '固定收付'
+                        Button, 0x1176af980, {{20.0, 62.0}, {44.0, 44.0}}, identifier: 'BackButton', label: '我'
+                        StaticText, 0x1176aca00, {{186.0, 73.7}, {67.7, 20.7}}, label: '固定收付'
+                        Other, 0x1176afe80, {{380.0, 66.0}, {36.0, 36.0}}, identifier: 'addFixedFlow', label: '添加安排'
+                          Other, 0x1176acdc0, {{380.0, 66.0}, {36.0, 36.0}}
+                            Button, 0x1176adb80, {{386.0, 66.0}, {24.3, 36.0}}, identifier: 'addFixedFlow', label: '添加安排'
+                      Other, 0x1176ae800, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1176ad680, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x1176af200, {{0.0, 0.0}, {440.0, 956.0}}
+                            Other, 0x1176ada40, {{0.0, 0.0}, {440.0, 956.0}}
+                              ScrollView, 0x1176ae300, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'fixedFlowsScroll'
+                                Other, 0x1176ad040, {{0.0, 0.0}, {440.0, 956.0}}
+                                  Other, 0x1176ac780, {{0.0, 0.0}, {440.0, 170.8}}
+                                Other, 0x1176ad7c0, {{0.0, 0.0}, {440.0, 956.0}}
+                                Other, 0x1176ac640, {{0.0, 116.0}, {440.0, 333.7}}
+                                  StaticText, 0x1176ac280, {{20.0, 128.0}, {86.7, 20.3}}, label: '10月还要付'
+                                  StaticText, 0x1176ac3c0, {{357.7, 133.0}, {24.0, 14.3}}, label: '要收'
+                                  StaticText, 0x1176af340, {{385.7, 132.3}, {34.3, 15.7}}, label: '+500.00'
+                                  StaticText, 0x1176a8000, {{20.0, 152.3}, {26.7, 52.7}}, identifier: 'fixedFlowRemaining', label: '0.00'
+                                  StaticText, 0x1176a8140, {{36.0, 229.0}, {24.0, 14.3}}, label: '要付'
+                                  Other, 0x1176a8280, {{20.0, 251.3}, {400.0, 64.0}}, identifier: 'fixedFlowExpenseCard'
+                                    Other, 0x1176a83c0, {{36.0, 255.3}, {368.0, 56.0}}, identifier: 'fixedFlow_4D49F473-2934-4476-BAB4-8BF6F36B5AAA-1792944000.0', value: 已付; closed
+                                      Button, 0x1176a8500, {{320.0, 261.3}, {78.0, 44.0}}, identifier: 'stopFixedFlow_4D49F473-2934-4476-BAB4-8BF6F36B5AAA-1792944000.0', label: '停掉'
+                                        StaticText, 0x1176a8640, {{320.0, 261.3}, {78.0, 44.0}}, label: '停掉'
+                                      StaticText, 0x1176a8780, {{36.0, 265.2}, {30.0, 18.0}}, label: '房租'
+                                      StaticText, 0x1176a88c0, {{36.0, 287.2}, {193.3, 14.3}}, label: '26日 · 已付 · 10/26记 · 合成银行卡'
+                                      StaticText, 0x1176a8a00, {{326.0, 274.3}, {30.0, 18.0}}, label: '300.00'
+                                      Image, 0x1176a8b40, {{368.0, 265.3}, {36.0, 36.0}}, identifier: 'settledFixedFlow_4D49F473-2934-4476-BAB4-8BF6F36B5AAA_2026-10-26', label: '已付 房租', Selected
+                                  StaticText, 0x1176a8c80, {{36.0, 339.3}, {24.0, 14.3}}, label: '要收'
+                                  Other, 0x1176a8dc0, {{20.0, 361.7}, {400.0, 64.0}}, identifier: 'fixedFlowIncomeCard'
+                                    Other, 0x1176a8f00, {{36.0, 365.7}, {368.0, 56.0}}, identifier: 'fixedFlow_C87C62D4-CEAE-4633-9EC9-C3755DAA67C4-1792944000.0', value: 已到期; closed
+                                      Button, 0x1176a9040, {{320.0, 371.7}, {78.0, 44.0}}, identifier: 'stopFixedFlow_C87C62D4-CEAE-4633-9EC9-C3755DAA67C4-1792944000.0', label: '停掉'
+                                        StaticText, 0x1176a9180, {{320.0, 371.7}, {78.0, 44.0}}, label: '停掉'
+                                      StaticText, 0x1176a92c0, {{36.0, 375.5}, {30.0, 18.0}}, label: '工资'
+                                      StaticText, 0x1176a9400, {{36.0, 397.5}, {171.7, 14.3}}, label: '26日 · 今天该收到 · 合成银行卡'
+                                      StaticText, 0x1176a9540, {{286.3, 384.7}, {39.7, 18.0}}, label: '+500.00'
+                                      Button, 0x1176a9680, {{338.0, 371.7}, {66.0, 44.0}}, identifier: 'settleFixedFlow_C87C62D4-CEAE-4633-9EC9-C3755DAA67C4_2026-10-26', label: '收到了 工资', value: 已到期
+                      Other, 0x1176a97c0, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1176a9900, {{0.0, 0.0}, {440.0, 956.0}}
+Path to element:
+ →Application, 0x1176ad400, pid: 51333, label: '余白'
+Query chain:
+ →Find: Target Application 'app.yubai.personal'
+  Output: {
+    Application, 0x1176a9a40, pid: 51333, label: '余白'
+  }

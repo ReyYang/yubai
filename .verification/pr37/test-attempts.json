@@ -1,0 +1,2339 @@
+{
+  "run1": {
+    "testAskMemoryCanBeOpenedEditedAndDeletedFromMe": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 83.811
+      }
+    ],
+    "testAskNumericAnswerEvidenceAndEntryDetail": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 29.686
+      }
+    ],
+    "testAskWithoutKeyDisablesComposerEvenWithScriptedReplies": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 15.333
+      }
+    ],
+    "testAutomaticBillsRecordOnceOnLaunchWithoutToast": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 21.442
+      }
+    ],
+    "testBoughtWishShowsStatusAndDateWithoutAskAgain": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 18.796
+      }
+    ],
+    "testButlerFastLongSwipeDismissesWithoutPaging": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 8.958
+      }
+    ],
+    "testButlerFastShortSwipeDismisses": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 8.715
+      }
+    ],
+    "testButlerRightSwipeAtFirstPagePreservesCardAndPaging": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 32.7
+      }
+    ],
+    "testButlerSwipeDismissesWithoutSwitchingTabs": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 24.766
+      }
+    ],
+    "testCancelledInsightBackKeepsTabBarHiddenAndPagingLocked": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 110.693
+      }
+    ],
+    "testCancelledNestedBackKeepsTabBarHiddenUntilSettingsRoot": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 85.853
+      }
+    ],
+    "testCancelledOverviewBackRestoresTabBarOnlyAfterCompletedPop": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1075,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 16.46
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1075,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 16.566
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1075,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 16.54
+      }
+    ],
+    "testClosedLedgerRowPagesRightAndRevealedRowClosesFirst": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1251,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.072
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1251,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.159
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1251,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 17.98
+      }
+    ],
+    "testDonutSelectionChangesSummaryAndCanBeCleared": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 22.637
+      }
+    ],
+    "testDonutSwipeDoesNotSelectSlice": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 30.927
+      }
+    ],
+    "testDueCardIncludesPreviousMonthAndLinksOverflowToBills": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 637,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 17.524
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 637,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 17.643
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 637,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 17.487
+      }
+    ],
+    "testEntrySheetWithPurposeSuggestionsKeepsActionsAboveHomeIndicator": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 20.803
+      }
+    ],
+    "testFirstLaunchEmptyLedgerAccountAndAvailableFunds": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 49.023
+      }
+    ],
+    "testFixedBillCheckMarksPaidAndUndoRestoresIt": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 411,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 22.471
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 411,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 22.756
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 411,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 22.905
+      }
+    ],
+    "testFixedBillEditorUsesInstallmentsAndAccountGatesAutomaticRecording": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 76.084
+      }
+    ],
+    "testFixedBillGroupedSwipesKeepCardAndContentGeometry": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 565,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 32.614
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 565,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 32.575
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 565,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 32.836
+      }
+    ],
+    "testFixedBillLongPressChangesAmountBeforeRecording": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 37.033
+      }
+    ],
+    "testFixedBillsStateTextAndUpcomingHasOnlyContextAction": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 709,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 33.014
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 709,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 32.934
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 709,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 32.956
+      }
+    ],
+    "testFixedBillStopAndResumeBothSupportUndo": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 512,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c04c30>."
+          }
+        ],
+        "duration": 28.2
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 512,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c05130>."
+          }
+        ],
+        "duration": 27.928
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 512,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c05590>."
+          }
+        ],
+        "duration": 27.8
+      }
+    ],
+    "testFixedBillStopHandlesEveryUnsettledPeriod": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 763,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c05860>."
+          }
+        ],
+        "duration": 24.893
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 763,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c05c20>."
+          }
+        ],
+        "duration": 24.728
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 763,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c06030>."
+          }
+        ],
+        "duration": 24.57
+      }
+    ],
+    "testFixedBillSwipeStopsFutureOccurrencesAndKeepsPaidRow": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 481,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 30.012
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 481,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 30.007
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 481,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 30.099
+      }
+    ],
+    "testFixedIncomeCheckIncreasesAvailableAndPersists": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 46.504
+      }
+    ],
+    "testFixedIncomeStopSkipCancelPersistenceAndUndo": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 730,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c06f30>."
+          }
+        ],
+        "duration": 25.573
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 730,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c074d0>."
+          }
+        ],
+        "duration": 25.617
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 730,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x115c07a70>."
+          }
+        ],
+        "duration": 25.722
+      }
+    ],
+    "testFloatingNavigationHidesForKeyboardAndLeavesLastLedgerRowVisible": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1621,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 35.025
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1621,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 35.123
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1621,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 35.197
+      }
+    ],
+    "testForecastHoldAndDragKeepsTheCurrentTab": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 6.18
+      }
+    ],
+    "testHorizontalFiltersKeepPagingAndVerticalScrollingSeparate": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 19.779
+      }
+    ],
+    "testImportOrganizeAnswerAndUndoEntireBatch": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 78.265
+      }
+    ],
+    "testJudgeAskScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 36.608
+      }
+    ],
+    "testJudgeBuyScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 19.499
+      }
+    ],
+    "testJudgeSkipScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 19.883
+      }
+    ],
+    "testJudgeWaitScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 19.749
+      }
+    ],
+    "testLedgerMonthFiltersAndSearchToggle": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 51.696
+      }
+    ],
+    "testLedgerRevealClosesAfterTabSelectionAndPaging": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1351,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.177
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1351,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.128
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1351,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.146
+      }
+    ],
+    "testLedgerRowsStillScrollVerticallyAndOpenWithTap": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 23.316
+      }
+    ],
+    "testLedgerRowSwipesDoNotOpenEditorAndTapStillWorks": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 44.312
+      }
+    ],
+    "testLedgerSwipeDeleteAndUndoRestoresRow": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1438,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 22.596
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1438,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 22.642
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1438,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 22.351
+      }
+    ],
+    "testLetterSavingScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 18.646
+      }
+    ],
+    "testManualAndAskActionsPreserveTheSelectedPage": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1605,
+            "message": "Failed to swipe right NavigationBar (First Match): No matches found for first query match sequence: `Descendants matching type NavigationBar`, given input App element pid: 59152"
+          }
+        ],
+        "duration": 38.741
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1605,
+            "message": "Failed to swipe right NavigationBar (First Match): No matches found for first query match sequence: `Descendants matching type NavigationBar`, given input App element pid: 59236"
+          }
+        ],
+        "duration": 38.717
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1605,
+            "message": "Failed to swipe right NavigationBar (First Match): No matches found for first query match sequence: `Descendants matching type NavigationBar`, given input App element pid: 59333"
+          }
+        ],
+        "duration": 38.744
+      }
+    ],
+    "testManualBillSuggestionRequiresSelectionAndCanBeCancelled": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 56.467
+      }
+    ],
+    "testManualKeypadSaveTodayEditAndDelete": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 42.165
+      }
+    ],
+    "testModelMenuSelectsInlineAndKeepsCustomEditor": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 35.201
+      }
+    ],
+    "testOnlyOneLedgerRowRevealsDeleteAndOutsideTapClosesIt": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1303,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 19.02
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1303,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 19.021
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1303,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.961
+      }
+    ],
+    "testOverviewAccessibilityXLScalesHeaderAndWrapsTodaySummary": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 24.349
+      }
+    ],
+    "testOverviewRowSwipeAtTabBoundaryDoesNotTapRow": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 10.716
+      }
+    ],
+    "testProfilePrinciplePersistsAndBackupOpens": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 61.937
+      }
+    ],
+    "testProfileRevisitScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 37.688
+      }
+    ],
+    "testRestrainCardCanBeMutedAcrossLaunches": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 20.709
+      }
+    ],
+    "testRevealedLedgerRowConsumesSwipesInBothDirections": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1273,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.182
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1273,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.252
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1273,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.141
+      }
+    ],
+    "testRevealedLedgerRowSlowLeftSwipeKeepsCurrentTab": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1327,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.241
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1327,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.118
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1327,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 18.103
+      }
+    ],
+    "testRootSwipeSkipsAddTabAndPushedPageKeepsSystemBack": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 55.326
+      }
+    ],
+    "testScrolledRootHeadersStayInsideSafeAreaWhenOpeningEntrySheet": [
+      {
+        "iteration": 1,
+        "result": "interrupted",
+        "errors": [],
+        "message": "Test crashed with signal term.",
+        "duration": 173.40499997138977
+      }
+    ],
+    "testSheetNavigationDoesNotHideRootTabBarAfterDismissal": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 37.296
+      }
+    ],
+    "testStorageEntryAndOverviewOpenFromMe": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 23.364
+      }
+    ],
+    "testSubcategoryScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 57.999
+      }
+    ],
+    "testTabButtonsScrollToNonadjacentPagesAndPreservePageState": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 69.569
+      }
+    ],
+    "testTabTapReturnsToLedgerAfterRightSwipe": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1136,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 68.111
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1136,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 67.735
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1136,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ],
+        "duration": 67.998
+      }
+    ],
+    "testTabTapReturnsToOverviewAfterLeftSwipe": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 66.969
+      }
+    ],
+    "testUndoReceiptDismissesAfterProductionLifetime": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 428,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 17.389
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 428,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 17.291
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 428,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 17.275
+      }
+    ],
+    "testUpcomingPaymentStopUsesAlertAndSupportsCancelAndUndo": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 582,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 15.386
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 582,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 15.269
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 582,
+            "message": "XCTAssertTrue failed"
+          }
+        ],
+        "duration": 16.283
+      }
+    ],
+    "testWishlistCoolScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 17.298
+      }
+    ],
+    "testChartClaimsSurviveViewLifetimesAndStayIndependent": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 0.055
+      }
+    ],
+    "testForecastPlaysOncePerVisitAcrossScrollingAndViewLifetimes": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 0.047
+      }
+    ],
+    "testOnlyNewActiveEntriesTriggerSaveAndMissingActiveEntriesTriggerDeletion": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 0.044
+      }
+    ],
+    "testReducedMotionSkipsPlaybackAndDoesNotReplayDuringSameVisit": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 0.042
+      }
+    ],
+    "testTabDirectionAndReselection": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "errors": [],
+        "duration": 0.039
+      }
+    ]
+  },
+  "run2": {
+    "testAskMemoryCanBeOpenedEditedAndDeletedFromMe": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 83.87831497192383,
+        "errors": []
+      }
+    ],
+    "testAskNumericAnswerEvidenceAndEntryDetail": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 29.671896934509277,
+        "errors": []
+      }
+    ],
+    "testAskWithoutKeyDisablesComposerEvenWithScriptedReplies": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 15.248288035392761,
+        "errors": []
+      }
+    ],
+    "testAutomaticBillsRecordOnceOnLaunchWithoutToast": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 21.66197693347931,
+        "errors": []
+      }
+    ],
+    "testBoughtWishShowsStatusAndDateWithoutAskAgain": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 18.664345026016235,
+        "errors": []
+      }
+    ],
+    "testButlerFastLongSwipeDismissesWithoutPaging": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 8.926617980003357,
+        "errors": []
+      }
+    ],
+    "testButlerFastShortSwipeDismisses": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 8.763355016708374,
+        "errors": []
+      }
+    ],
+    "testButlerRightSwipeAtFirstPagePreservesCardAndPaging": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 32.75373101234436,
+        "errors": []
+      }
+    ],
+    "testButlerSwipeDismissesWithoutSwitchingTabs": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 24.79352307319641,
+        "errors": []
+      }
+    ],
+    "testCancelledInsightBackKeepsTabBarHiddenAndPagingLocked": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 111.7391459941864,
+        "errors": []
+      }
+    ],
+    "testCancelledNestedBackKeepsTabBarHiddenUntilSettingsRoot": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 59.16685903072357,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1062,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "passed",
+        "duration": 87.30826997756958,
+        "errors": []
+      }
+    ],
+    "testCancelledOverviewBackRestoresTabBarOnlyAfterCompletedPop": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 16.484452962875366,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1075,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 16.5156888961792,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1075,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 16.645803928375244,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1075,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testClosedLedgerRowPagesRightAndRevealedRowClosesFirst": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 18.395523071289062,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1251,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 18.38167691230774,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1251,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 18.32720196247101,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1251,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testDonutSelectionChangesSummaryAndCanBeCleared": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 23.020809054374695,
+        "errors": []
+      }
+    ],
+    "testDonutSwipeDoesNotSelectSlice": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 31.57369601726532,
+        "errors": []
+      }
+    ],
+    "testDueCardIncludesPreviousMonthAndLinksOverflowToBills": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 17.660706043243408,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 637,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 17.662840008735657,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 637,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 17.737331986427307,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 637,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testEntrySheetWithPurposeSuggestionsKeepsActionsAboveHomeIndicator": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 21.350701928138733,
+        "errors": []
+      }
+    ],
+    "testFirstLaunchEmptyLedgerAccountAndAvailableFunds": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 49.52461898326874,
+        "errors": []
+      }
+    ],
+    "testFixedBillCheckMarksPaidAndUndoRestoresIt": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 22.897024989128113,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 411,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 22.864650011062622,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 411,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 22.935385942459106,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 411,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testFixedBillEditorUsesInstallmentsAndAccountGatesAutomaticRecording": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 75.95502507686615,
+        "errors": []
+      }
+    ],
+    "testFixedBillGroupedSwipesKeepCardAndContentGeometry": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 32.93053901195526,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 565,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 33.027649998664856,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 565,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 32.852084040641785,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 565,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testFixedBillLongPressChangesAmountBeforeRecording": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 37.63716900348663,
+        "errors": []
+      }
+    ],
+    "testFixedBillsStateTextAndUpcomingHasOnlyContextAction": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 33.756242990493774,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 709,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 33.50223100185394,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 709,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 33.54774498939514,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 709,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testFixedBillStopAndResumeBothSupportUndo": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 28.07893395423889,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 512,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a4e60>.\nSparse tree of matches:\n→Application, pid: 69606, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「工资」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopCancel', label: '取消'\n                      ↳Button, identifier: 'fixedFlowStopCancel', label: '取消'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 28.19663906097412,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 512,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a5360>.\nSparse tree of matches:\n→Application, pid: 69698, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「工资」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopCancel', label: '取消'\n                      ↳Button, identifier: 'fixedFlowStopCancel', label: '取消'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 28.295427918434143,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 512,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a57c0>.\nSparse tree of matches:\n→Application, pid: 69749, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「工资」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopCancel', label: '取消'\n                      ↳Button, identifier: 'fixedFlowStopCancel', label: '取消'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      }
+    ],
+    "testFixedBillStopHandlesEveryUnsettledPeriod": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 25.132959961891174,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 763,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a5a90>.\nSparse tree of matches:\n→Application, pid: 69788, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「每周订阅」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopSkip', label: '没付，这期也不要了'\n                      ↳Button, identifier: 'fixedFlowStopSkip', label: '没付，这期也不要了'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 25.057832956314087,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 763,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a5e50>.\nSparse tree of matches:\n→Application, pid: 69837, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「每周订阅」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopSkip', label: '没付，这期也不要了'\n                      ↳Button, identifier: 'fixedFlowStopSkip', label: '没付，这期也不要了'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 25.02778697013855,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 763,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a6210>.\nSparse tree of matches:\n→Application, pid: 69878, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「每周订阅」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopSkip', label: '没付，这期也不要了'\n                      ↳Button, identifier: 'fixedFlowStopSkip', label: '没付，这期也不要了'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      }
+    ],
+    "testFixedBillSwipeStopsFutureOccurrencesAndKeepsPaidRow": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 30.40324091911316,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 481,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 30.436933994293213,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 481,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 30.605376958847046,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 481,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      }
+    ],
+    "testFixedIncomeCheckIncreasesAvailableAndPersists": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 47.15807795524597,
+        "errors": []
+      }
+    ],
+    "testFixedIncomeStopSkipCancelPersistenceAndUndo": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 25.852305054664612,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 730,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a7160>.\nSparse tree of matches:\n→Application, pid: 70126, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「工资」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopConfirm', label: '收到了，记一笔再停'\n                      ↳Button, identifier: 'fixedFlowStopConfirm', label: '收到了，记一笔再停'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 25.932660937309265,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 730,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a7700>.\nSparse tree of matches:\n→Application, pid: 70256, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「工资」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopConfirm', label: '收到了，记一笔再停'\n                      ↳Button, identifier: 'fixedFlowStopConfirm', label: '收到了，记一笔再停'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 26.00287699699402,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 730,
+            "message": "Failed to get matching snapshot: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x1122a7c50>.\nSparse tree of matches:\n→Application, pid: 70296, label: '余白'\n  ↳Window (Main)\n    ↳Other\n      ↳Alert, label: '停掉「工资」？'\n        ↳Other\n          ↳Other\n            ↳Other\n              ↳ScrollView\n                ↳Other\n                  ↳Other\n                    ↳Button, identifier: 'fixedFlowStopConfirm', label: '收到了，记一笔再停'\n                      ↳Button, identifier: 'fixedFlowStopConfirm', label: '收到了，记一笔再停'\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Alert from legacy attributes vs Sheet from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 3;\n    \"XC_kAXXCAttributeElementBaseType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeElementType\" = \"_UIAlertControllerPhoneTVMacView\";\n    \"XC_kAXXCAttributeTraits\" = 72057602627862528;\n}\nSee test report attachments for more detail."
+          }
+        ]
+      }
+    ],
+    "testFloatingNavigationHidesForKeyboardAndLeavesLastLedgerRowVisible": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 35.266533970832825,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1621,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 35.54538607597351,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1621,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 35.45279097557068,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1621,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testForecastHoldAndDragKeepsTheCurrentTab": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 6.169080018997192,
+        "errors": []
+      }
+    ],
+    "testHorizontalFiltersKeepPagingAndVerticalScrollingSeparate": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 19.7605299949646,
+        "errors": []
+      }
+    ],
+    "testImportOrganizeAnswerAndUndoEntireBatch": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 79.41687989234924,
+        "errors": []
+      }
+    ],
+    "testJudgeAskScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 37.42790901660919,
+        "errors": []
+      }
+    ],
+    "testJudgeBuyScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 19.808053970336914,
+        "errors": []
+      }
+    ],
+    "testJudgeSkipScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 20.05459499359131,
+        "errors": []
+      }
+    ],
+    "testJudgeWaitScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 19.935513973236084,
+        "errors": []
+      }
+    ],
+    "testLedgerMonthFiltersAndSearchToggle": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 53.57071101665497,
+        "errors": []
+      }
+    ],
+    "testLedgerRevealClosesAfterTabSelectionAndPaging": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 18.30924105644226,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1351,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 18.44334101676941,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1351,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 18.215021014213562,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1351,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testLedgerRowsStillScrollVerticallyAndOpenWithTap": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 23.601701021194458,
+        "errors": []
+      }
+    ],
+    "testLedgerRowSwipesDoNotOpenEditorAndTapStillWorks": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 44.90881097316742,
+        "errors": []
+      }
+    ],
+    "testLedgerSwipeDeleteAndUndoRestoresRow": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 22.929481983184814,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1438,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 22.899450063705444,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1438,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 22.912243962287903,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1438,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testLetterSavingScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 18.992069959640503,
+        "errors": []
+      }
+    ],
+    "testManualAndAskActionsPreserveTheSelectedPage": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 39.51278901100159,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1605,
+            "message": "Failed to swipe right NavigationBar (First Match): No matches found for first query match sequence: `Descendants matching type NavigationBar`, given input App element pid: 71538"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 39.63743007183075,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1605,
+            "message": "Failed to swipe right NavigationBar (First Match): No matches found for first query match sequence: `Descendants matching type NavigationBar`, given input App element pid: 71711"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 38.83656096458435,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1605,
+            "message": "Failed to swipe right NavigationBar (First Match): No matches found for first query match sequence: `Descendants matching type NavigationBar`, given input App element pid: 71817"
+          }
+        ]
+      }
+    ],
+    "testManualBillSuggestionRequiresSelectionAndCanBeCancelled": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 56.79237699508667,
+        "errors": []
+      }
+    ],
+    "testManualKeypadSaveTodayEditAndDelete": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 41.97845101356506,
+        "errors": []
+      }
+    ],
+    "testModelMenuSelectsInlineAndKeepsCustomEditor": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 35.42403697967529,
+        "errors": []
+      }
+    ],
+    "testOnlyOneLedgerRowRevealsDeleteAndOutsideTapClosesIt": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 18.966547966003418,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1303,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 18.948531985282898,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1303,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 18.932808995246887,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1303,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testOverviewAccessibilityXLScalesHeaderAndWrapsTodaySummary": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 24.23764395713806,
+        "errors": []
+      }
+    ],
+    "testOverviewRowSwipeAtTabBoundaryDoesNotTapRow": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 10.704505920410156,
+        "errors": []
+      }
+    ],
+    "testProfilePrinciplePersistsAndBackupOpens": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 62.4638649225235,
+        "errors": []
+      }
+    ],
+    "testProfileRevisitScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 37.09090507030487,
+        "errors": []
+      }
+    ],
+    "testRestrainCardCanBeMutedAcrossLaunches": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 21.11879599094391,
+        "errors": []
+      }
+    ],
+    "testRevealedLedgerRowConsumesSwipesInBothDirections": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 18.118146061897278,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1273,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 18.12813699245453,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1273,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 18.281226992607117,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1273,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testRevealedLedgerRowSlowLeftSwipeKeepsCurrentTab": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 18.142940044403076,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1327,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 18.169636964797974,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1327,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 18.255791068077087,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1327,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testRootSwipeSkipsAddTabAndPushedPageKeepsSystemBack": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 55.25017189979553,
+        "errors": []
+      }
+    ],
+    "testScrolledRootHeadersStayInsideSafeAreaWhenOpeningEntrySheet": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 180.30561590194702,
+        "errors": []
+      }
+    ],
+    "testSheetNavigationDoesNotHideRootTabBarAfterDismissal": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 37.484615087509155,
+        "errors": []
+      }
+    ],
+    "testStorageEntryAndOverviewOpenFromMe": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 23.182306051254272,
+        "errors": []
+      }
+    ],
+    "testSubcategoryScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 58.777047991752625,
+        "errors": []
+      }
+    ],
+    "testTabButtonsScrollToNonadjacentPagesAndPreservePageState": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 70.0453690290451,
+        "errors": []
+      }
+    ],
+    "testTabTapReturnsToLedgerAfterRightSwipe": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 68.26273000240326,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1136,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 68.48766601085663,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1136,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 68.10997700691223,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 1136,
+            "message": "XCTAssertEqual failed: (\"XCTWaiterResult(rawValue: 2)\") is not equal to (\"XCTWaiterResult(rawValue: 1)\")"
+          }
+        ]
+      }
+    ],
+    "testTabTapReturnsToOverviewAfterLeftSwipe": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 67.18874096870422,
+        "errors": []
+      }
+    ],
+    "testUndoReceiptDismissesAfterProductionLifetime": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 17.341792941093445,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 428,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 17.36391806602478,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 428,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 17.25465190410614,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 428,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      }
+    ],
+    "testUpcomingPaymentStopUsesAlertAndSupportsCancelAndUndo": [
+      {
+        "iteration": 1,
+        "result": "failed",
+        "duration": 15.46143090724945,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 582,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      },
+      {
+        "iteration": 2,
+        "result": "failed",
+        "duration": 16.446197986602783,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 582,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      },
+      {
+        "iteration": 3,
+        "result": "failed",
+        "duration": 15.465074062347412,
+        "errors": [
+          {
+            "file": "/Users/yang/deepresearch/yubai/Tests/YubaiUITests/AppFlowTests.swift",
+            "line": 582,
+            "message": "XCTAssertTrue failed"
+          }
+        ]
+      }
+    ],
+    "testWishlistCoolScreenshotFixture": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 17.374197006225586,
+        "errors": []
+      }
+    ],
+    "testChartClaimsSurviveViewLifetimesAndStayIndependent": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 0.05666792392730713,
+        "errors": []
+      }
+    ],
+    "testForecastPlaysOncePerVisitAcrossScrollingAndViewLifetimes": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 0.047271013259887695,
+        "errors": []
+      }
+    ],
+    "testOnlyNewActiveEntriesTriggerSaveAndMissingActiveEntriesTriggerDeletion": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 0.04255497455596924,
+        "errors": []
+      }
+    ],
+    "testReducedMotionSkipsPlaybackAndDoesNotReplayDuringSameVisit": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 0.04150402545928955,
+        "errors": []
+      }
+    ],
+    "testTabDirectionAndReselection": [
+      {
+        "iteration": 1,
+        "result": "passed",
+        "duration": 0.04206109046936035,
+        "errors": []
+      }
+    ]
+  }
+}

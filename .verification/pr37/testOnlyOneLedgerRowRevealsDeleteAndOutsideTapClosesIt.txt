@@ -1,0 +1,217 @@
+Attributes: Application, 0x1185d6e40, pid: 60193, label: '余白'
+Element subtree:
+ →Application, 0x1185d6e40, pid: 60193, label: '余白'
+    Window (Main), 0x1185d6f80, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x1185d57c0, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x1185d4140, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x1185d4280, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x1185d43c0, {{0.0, 0.0}, {440.0, 956.0}}
+              ScrollView, 0x1185d4500, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPager'
+                Other, 0x1185d4640, {{-880.0, 0.0}, {1760.0, 922.0}}
+                  Other, 0x1185d4780, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPage_entries'
+                    Other, 0x1185d4a00, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x1185d4b40, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1185d4c80, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x1185d4dc0, {{0.0, 0.0}, {440.0, 956.0}}
+                            Other, 0x1185d4f00, {{0.0, 0.0}, {440.0, 956.0}}
+                              StaticText, 0x1185d5040, {{205.0, 89.0}, {30.0, 18.0}}, identifier: 'rootHeaderTitle', label: '账目'
+                              Button, 0x1185d5180, {{376.0, 76.0}, {44.0, 44.0}}, identifier: 'askYubai', label: '问余白'
+                                Other, 0x1185d52c0, {{376.0, 76.0}, {44.0, 44.0}}, label: '余白'
+                              ScrollView, 0x1185d5400, {{0.0, 146.0}, {440.0, 810.0}}, identifier: 'entriesScroll'
+                                Other, 0x1185d5540, {{0.0, 146.0}, {440.0, 3185.0}}
+                                  Other, 0x1185d5680, {{4.0, 146.0}, {416.0, 1500.3}}
+                                    Button, 0x1185d6080, {{4.0, 146.0}, {44.0, 44.0}}, identifier: 'entriesPreviousMonth', label: '上个月'
+                                    StaticText, 0x1185d61c0, {{52.0, 159.0}, {95.0, 18.0}}, identifier: 'entriesMonth', label: '2026 年 10 月'
+                                    Button, 0x1185d6300, {{151.0, 146.0}, {44.0, 44.0}}, identifier: 'entriesNextMonth', label: '下个月'
+                                    Button, 0x1185d6440, {{376.0, 146.0}, {44.0, 44.0}}, identifier: 'entriesSearchButton', label: '搜索账目'
+                                    StaticText, 0x1185d6580, {{36.0, 218.0}, {48.0, 14.3}}, label: '本月支出'
+                                    StaticText, 0x1185d66c0, {{36.0, 236.3}, {63.3, 26.3}}, label: '1,600.00'
+                                    StaticText, 0x1185d6800, {{242.0, 218.0}, {48.0, 14.3}}, label: '本月收入'
+                                    StaticText, 0x1185d6940, {{242.0, 236.3}, {28.7, 26.3}}, label: '+0.00'
+                                    ScrollView, 0x1185d6a80, {{20.0, 290.7}, {400.0, 44.0}}, label: '筛选账目'
+                                      Other, 0x1185d1540, {{20.0, 290.7}, {269.0, 44.0}}
+                                        Button, 0x1185d21c0, {{20.0, 290.7}, {58.0, 44.0}}, identifier: 'entriesFilter_全部', label: '全部', Selected
+                                        Button, 0x1185d2300, {{86.0, 290.7}, {58.0, 44.0}}, identifier: 'entriesFilter_支出', label: '支出'
+                                        Button, 0x1185d2440, {{152.0, 290.7}, {58.0, 44.0}}, identifier: 'entriesFilter_收入', label: '收入'
+                                        Button, 0x1185d2580, {{218.0, 290.7}, {71.0, 44.0}}, identifier: 'entriesFilter_没分类', label: '没分类'
+                                    StaticText, 0x1185d3c00, {{36.0, 362.3}, {28.0, 17.0}}, label: '今天'
+                                    StaticText, 0x1185d3e80, {{314.0, 358.7}, {90.0, 21.7}}, label: '−1,600.00'
+                                    Other, 0x1185d1900, {{36.0, 392.3}, {368.0, 1254.0}}
+                                      Button, 0x1185d0a00, {{320.0, 398.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_6999A844-5187-4143-9705-97F07C51F752', label: '删除'
+                                      Button, 0x1185d0280, {{36.0, 392.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_6999A844-5187-4143-9705-97F07C51F752', label: '餐饮、合成账目 0、−32.00', value: closed
+                                        Image, 0x1185d03c0, {{36.0, 402.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185d0500, {{84.0, 402.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185d0c80, {{84.0, 424.2}, {58.7, 14.3}}, label: '合成账目 0'
+                                        StaticText, 0x1185d0f00, {{349.7, 411.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185d1180, {{84.0, 448.3}, {320.0, 1.0}}
+                                      Button, 0x1185d3200, {{320.0, 455.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_00DA630C-669F-4EEA-AE10-7254A936126C', label: '删除'
+                                      Button, 0x1185d3ac0, {{36.0, 449.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_00DA630C-669F-4EEA-AE10-7254A936126C', label: '餐饮、合成账目 1、−32.00', value: closed
+                                        Image, 0x1185d2940, {{36.0, 459.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185d2a80, {{84.0, 459.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185d2bc0, {{84.0, 481.2}, {56.7, 14.3}}, label: '合成账目 1'
+                                        StaticText, 0x1185d2d00, {{349.7, 468.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185d8000, {{84.0, 505.3}, {320.0, 1.0}}
+                                      Button, 0x1185d8140, {{320.0, 512.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_8194494D-ED4F-49B5-BB97-C0AD52C6E0C3', label: '删除'
+                                      Button, 0x1185d8280, {{36.0, 506.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_8194494D-ED4F-49B5-BB97-C0AD52C6E0C3', label: '餐饮、合成账目 2、−32.00', value: closed
+                                        Image, 0x1185d83c0, {{36.0, 516.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185d8500, {{84.0, 516.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185d8640, {{84.0, 538.2}, {58.3, 14.3}}, label: '合成账目 2'
+                                        StaticText, 0x1185d8780, {{349.7, 525.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185d88c0, {{84.0, 562.3}, {320.0, 1.0}}
+                                      Button, 0x1185d8a00, {{320.0, 569.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_6B6FBD8F-FC5A-4589-BD64-16E70C5FD1A0', label: '删除'
+                                      Button, 0x1185d8b40, {{36.0, 563.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_6B6FBD8F-FC5A-4589-BD64-16E70C5FD1A0', label: '餐饮、合成账目 3、−32.00', value: closed
+                                        Image, 0x1185d8c80, {{36.0, 573.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185d8dc0, {{84.0, 573.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185d8f00, {{84.0, 595.2}, {58.7, 14.3}}, label: '合成账目 3'
+                                        StaticText, 0x1185d9040, {{349.7, 582.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185d9180, {{84.0, 619.3}, {320.0, 1.0}}
+                                      Button, 0x1185d92c0, {{320.0, 626.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_13495D37-C912-43B7-AAB5-07661F78321C', label: '删除'
+                                      Button, 0x1185d9400, {{36.0, 620.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_13495D37-C912-43B7-AAB5-07661F78321C', label: '餐饮、合成账目 4、−32.00', value: closed
+                                        Image, 0x1185d9540, {{36.0, 630.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185d9680, {{84.0, 630.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185d97c0, {{84.0, 652.2}, {59.0, 14.3}}, label: '合成账目 4'
+                                        StaticText, 0x1185d9900, {{349.7, 639.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185d9a40, {{84.0, 676.3}, {320.0, 1.0}}
+                                      Button, 0x1185d9b80, {{320.0, 683.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_11DA8BFA-1643-4774-B70F-42BD5BE6E0FB', label: '删除'
+                                      Button, 0x1185d9cc0, {{36.0, 677.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_11DA8BFA-1643-4774-B70F-42BD5BE6E0FB', label: '餐饮、合成账目 5、−32.00', value: closed
+                                        Image, 0x1185d9e00, {{36.0, 687.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185d9f40, {{84.0, 687.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185da080, {{84.0, 709.2}, {58.7, 14.3}}, label: '合成账目 5'
+                                        StaticText, 0x1185da1c0, {{349.7, 696.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185da300, {{84.0, 733.3}, {320.0, 1.0}}
+                                      Button, 0x1185da440, {{320.0, 740.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_4C663713-B96B-44D0-82C8-97D829EEFFC1', label: '删除'
+                                      Button, 0x1185da580, {{36.0, 734.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_4C663713-B96B-44D0-82C8-97D829EEFFC1', label: '餐饮、合成账目 6、−32.00', value: closed
+                                        Image, 0x1185da6c0, {{36.0, 744.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185da800, {{84.0, 744.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185da940, {{84.0, 766.2}, {59.0, 14.3}}, label: '合成账目 6'
+                                        StaticText, 0x1185daa80, {{349.7, 753.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185dabc0, {{84.0, 790.3}, {320.0, 1.0}}
+                                      Button, 0x1185dad00, {{320.0, 797.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_1C5EA39F-7E55-4736-9FA6-6B3175BCA1E9', label: '删除'
+                                      Button, 0x1185dae40, {{36.0, 791.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_1C5EA39F-7E55-4736-9FA6-6B3175BCA1E9', label: '餐饮、合成账目 7、−32.00', value: closed
+                                        Image, 0x1185daf80, {{36.0, 801.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185db0c0, {{84.0, 801.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185db200, {{84.0, 823.2}, {58.0, 14.3}}, label: '合成账目 7'
+                                        StaticText, 0x1185db340, {{349.7, 810.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185db480, {{84.0, 847.3}, {320.0, 1.0}}
+                                      Button, 0x1185db5c0, {{320.0, 854.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_D62B70EF-75AC-4F36-A3F6-09BDC243EDBB', label: '删除'
+                                      Button, 0x1185db700, {{36.0, 848.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_D62B70EF-75AC-4F36-A3F6-09BDC243EDBB', label: '餐饮、合成账目 8、−32.00', value: closed
+                                        Image, 0x1185db840, {{36.0, 858.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185db980, {{84.0, 858.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185dbac0, {{84.0, 880.2}, {59.0, 14.3}}, label: '合成账目 8'
+                                        StaticText, 0x1185dbc00, {{349.7, 867.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185dbd40, {{84.0, 904.3}, {320.0, 1.0}}
+                                      Button, 0x1185dbe80, {{320.0, 911.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_E9056DD4-D339-476C-94F9-A30A971F2BA5', label: '删除'
+                                      Button, 0x1185e8000, {{36.0, 905.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_E9056DD4-D339-476C-94F9-A30A971F2BA5', label: '餐饮、合成账目 9、−32.00', value: closed
+                                        Image, 0x1185e8140, {{36.0, 915.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185e8280, {{84.0, 915.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185e83c0, {{84.0, 937.2}, {59.0, 14.3}}, label: '合成账目 9'
+                                        StaticText, 0x1185e8500, {{349.7, 924.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185e8640, {{84.0, 961.3}, {320.0, 1.0}}
+                                      Button, 0x1185e8780, {{320.0, 968.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_337503FF-90D3-4217-8299-2122650EA770', label: '删除'
+                                      Button, 0x1185e88c0, {{36.0, 962.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_337503FF-90D3-4217-8299-2122650EA770', label: '餐饮、合成账目 10、−32.00', value: closed
+                                        Image, 0x1185e8a00, {{36.0, 972.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185e8b40, {{84.0, 972.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185e8c80, {{84.0, 994.2}, {64.3, 14.3}}, label: '合成账目 10'
+                                        StaticText, 0x1185e8dc0, {{349.7, 981.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185e8f00, {{84.0, 1018.3}, {320.0, 1.0}}
+                                      Button, 0x1185e9040, {{320.0, 1025.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_3154DF0A-B7B0-42B7-B34E-68FBAFA1B899', label: '删除'
+                                      Button, 0x1185e9180, {{36.0, 1019.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_3154DF0A-B7B0-42B7-B34E-68FBAFA1B899', label: '餐饮、合成账目 11、−32.00', value: closed
+                                        Image, 0x1185e92c0, {{36.0, 1029.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185e9400, {{84.0, 1029.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185e9540, {{84.0, 1051.2}, {62.3, 14.3}}, label: '合成账目 11'
+                                        StaticText, 0x1185e9680, {{349.7, 1038.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185e97c0, {{84.0, 1075.3}, {320.0, 1.0}}
+                                      Button, 0x1185e9900, {{320.0, 1082.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_8599117E-3F18-4481-A655-58C2BEE3580D', label: '删除'
+                                      Button, 0x1185e9a40, {{36.0, 1076.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_8599117E-3F18-4481-A655-58C2BEE3580D', label: '餐饮、合成账目 12、−32.00', value: closed
+                                        Image, 0x1185e9b80, {{36.0, 1086.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185e9cc0, {{84.0, 1086.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185e9e00, {{84.0, 1108.2}, {64.0, 14.3}}, label: '合成账目 12'
+                                        StaticText, 0x1185e9f40, {{349.7, 1095.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185ea080, {{84.0, 1132.3}, {320.0, 1.0}}
+                                      Button, 0x1185ea1c0, {{320.0, 1139.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_09F054CD-39E2-4F37-A2AF-1E5B6A5BF793', label: '删除'
+                                      Button, 0x1185ea300, {{36.0, 1133.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_09F054CD-39E2-4F37-A2AF-1E5B6A5BF793', label: '餐饮、合成账目 13、−32.00', value: closed
+                                        Image, 0x1185ea440, {{36.0, 1143.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185ea580, {{84.0, 1143.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185ea6c0, {{84.0, 1165.2}, {64.3, 14.3}}, label: '合成账目 13'
+                                        StaticText, 0x1185ea800, {{349.7, 1152.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185ea940, {{84.0, 1189.3}, {320.0, 1.0}}
+                                      Button, 0x1185eaa80, {{320.0, 1196.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_06DEE8D7-6A8D-4C98-B488-37A03D41AAAF', label: '删除'
+                                      Button, 0x1185eabc0, {{36.0, 1190.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_06DEE8D7-6A8D-4C98-B488-37A03D41AAAF', label: '餐饮、合成账目 14、−32.00', value: closed
+                                        Image, 0x1185ead00, {{36.0, 1200.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185eae40, {{84.0, 1200.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185eaf80, {{84.0, 1222.2}, {64.7, 14.3}}, label: '合成账目 14'
+                                        StaticText, 0x1185eb0c0, {{349.7, 1209.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185eb200, {{84.0, 1246.3}, {320.0, 1.0}}
+                                      Button, 0x1185eb340, {{320.0, 1253.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_1CAC6D2C-8D5A-4B71-A7EA-E599D8E8493C', label: '删除'
+                                      Button, 0x1185eb480, {{36.0, 1247.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_1CAC6D2C-8D5A-4B71-A7EA-E599D8E8493C', label: '餐饮、合成账目 15、−32.00', value: closed
+                                        Image, 0x1185eb5c0, {{36.0, 1257.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185eb700, {{84.0, 1257.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185eb840, {{84.0, 1279.2}, {64.3, 14.3}}, label: '合成账目 15'
+                                        StaticText, 0x1185eb980, {{349.7, 1266.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185ebac0, {{84.0, 1303.3}, {320.0, 1.0}}
+                                      Button, 0x1185ebc00, {{320.0, 1310.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_7A2149AC-3595-44A8-97D2-79746558F028', label: '删除'
+                                      Button, 0x1185ebd40, {{36.0, 1304.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_7A2149AC-3595-44A8-97D2-79746558F028', label: '餐饮、合成账目 16、−32.00', value: closed
+                                        Image, 0x1185ebe80, {{36.0, 1314.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185ec000, {{84.0, 1314.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185ec140, {{84.0, 1336.2}, {64.3, 14.3}}, label: '合成账目 16'
+                                        StaticText, 0x1185ec280, {{349.7, 1323.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185ec3c0, {{84.0, 1360.3}, {320.0, 1.0}}
+                                      Button, 0x1185ec500, {{320.0, 1367.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_E16F4AED-D99F-4151-B390-D4574E8C64D8', label: '删除'
+                                      Button, 0x1185ec640, {{36.0, 1361.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_E16F4AED-D99F-4151-B390-D4574E8C64D8', label: '餐饮、合成账目 17、−32.00', value: closed
+                                        Image, 0x1185ec780, {{36.0, 1371.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185ec8c0, {{84.0, 1371.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185eca00, {{84.0, 1393.2}, {63.7, 14.3}}, label: '合成账目 17'
+                                        StaticText, 0x1185ecb40, {{349.7, 1380.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185ecc80, {{84.0, 1417.3}, {320.0, 1.0}}
+                                      Button, 0x1185ecdc0, {{320.0, 1424.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_47E38891-2926-4429-8BA1-A0CC51E4E925', label: '删除'
+                                      Button, 0x1185ecf00, {{36.0, 1418.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_47E38891-2926-4429-8BA1-A0CC51E4E925', label: '餐饮、合成账目 18、−32.00', value: closed
+                                        Image, 0x1185ed040, {{36.0, 1428.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185ed180, {{84.0, 1428.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185ed2c0, {{84.0, 1450.2}, {64.3, 14.3}}, label: '合成账目 18'
+                                        StaticText, 0x1185ed400, {{349.7, 1437.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185ed540, {{84.0, 1474.3}, {320.0, 1.0}}
+                                      Button, 0x1185ed680, {{320.0, 1481.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_D656D3EF-39D2-4B4F-A785-A63B9C7B9D8F', label: '删除'
+                                      Button, 0x1185ed7c0, {{36.0, 1475.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_D656D3EF-39D2-4B4F-A785-A63B9C7B9D8F', label: '餐饮、合成账目 19、−32.00', value: closed
+                                        Image, 0x1185ed900, {{36.0, 1485.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185eda40, {{84.0, 1485.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185edb80, {{84.0, 1507.2}, {64.3, 14.3}}, label: '合成账目 19'
+                                        StaticText, 0x1185edcc0, {{349.7, 1494.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185ede00, {{84.0, 1531.3}, {320.0, 1.0}}
+                                      Button, 0x1185edf40, {{320.0, 1538.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_7D42393E-387F-4830-ACFE-9E0A6439E576', label: '删除'
+                                      Button, 0x1185ee080, {{36.0, 1532.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_7D42393E-387F-4830-ACFE-9E0A6439E576', label: '餐饮、合成账目 20、−32.00', value: closed
+                                        Image, 0x1185ee1c0, {{36.0, 1542.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185ee300, {{84.0, 1542.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185ee440, {{84.0, 1564.2}, {66.0, 14.3}}, label: '合成账目 20'
+                                        StaticText, 0x1185ee580, {{349.7, 1551.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185ee6c0, {{84.0, 1588.3}, {320.0, 1.0}}
+                                      Button, 0x1185ee800, {{320.0, 1595.3}, {78.0, 44.0}}, identifier: 'deleteLedgerEntry_2FAE4820-96F3-4F37-B03D-6FB85AD4C73B', label: '删除'
+                                      Button, 0x1185ee940, {{36.0, 1589.3}, {368.0, 56.0}}, identifier: 'ledgerEntry_2FAE4820-96F3-4F37-B03D-6FB85AD4C73B', label: '餐饮、合成账目 21、−32.00', value: closed
+                                        Image, 0x1185eea80, {{36.0, 1599.3}, {36.0, 36.0}}, identifier: 'fork.knife', label: '食物'
+                                        StaticText, 0x1185eebc0, {{84.0, 1599.2}, {30.0, 18.0}}, label: '餐饮'
+                                        StaticText, 0x1185eed00, {{84.0, 1621.2}, {64.0, 14.3}}, label: '合成账目 21'
+                                        StaticText, 0x1185eee40, {{349.7, 1608.3}, {54.3, 18.0}}, label: '−32.00'
+                                      Other, 0x1185eef80, {{84.0, 1645.3}, {320.0, 1.0}}
+                              Other, 0x1185ef0c0, {{0.0, 146.0}, {440.0, 8.0}}
+                      Other, 0x1185ef200, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x1185ef340, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x1185ef480, {{20.0, 848.0}, {400.0, 66.0}}, identifier: 'mainNavigation', label: '主导航', value: destination=entrie...
+                Button, 0x1185ef5c0, {{28.0, 856.0}, {78.7, 50.0}}, identifier: 'tab_overview', label: '现在'
+                  Image, 0x1185ef700, {{57.3, 863.0}, {20.0, 20.0}}, label: 'TabWaterMark'
+                  StaticText, 0x1185ef840, {{57.2, 887.0}, {20.0, 12.0}}, label: '现在'
+                Button, 0x1185ef980, {{106.7, 856.0}, {78.3, 50.0}}, identifier: 'tab_insights', label: '洞察'
+                  Image, 0x1185efac0, {{135.7, 863.0}, {20.0, 20.0}}, identifier: 'chart.pie', label: '图表饼图'
+                  StaticText, 0x1185efc00, {{135.8, 887.0}, {20.0, 12.0}}, label: '洞察'
+                Button, 0x1185efd40, {{193.0, 854.0}, {54.0, 54.0}}, identifier: 'addEntry', label: '记一笔'
+                Button, 0x1185efe80, {{255.0, 856.0}, {78.7, 50.0}}, identifier: 'tab_entries', label: '账目', Selected
+                  Image, 0x1185f0000, {{284.0, 865.3}, {20.7, 15.3}}, identifier: 'list.bullet', label: '列表'
+                  StaticText, 0x1185f0140, {{284.2, 887.0}, {20.0, 12.0}}, label: '账目'
+                Button, 0x1185f0280, {{333.7, 856.0}, {78.3, 50.0}}, identifier: 'tab_settings', label: '我'
+                  Image, 0x1185f03c0, {{364.0, 864.0}, {17.3, 18.3}}, identifier: 'person', label: 'person'
+                  StaticText, 0x1185f0500, {{367.8, 887.0}, {10.0, 12.0}}, label: '我'
+Path to element:
+ →Application, 0x1185d6e40, pid: 60193, label: '余白'
+Query chain:
+ →Find: Target Application 'app.yubai.personal'
+  Output: {
+    Application, 0x1185f0640, pid: 60193, label: '余白'
+  }

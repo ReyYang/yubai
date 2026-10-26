@@ -1,0 +1,5 @@
+第一次失败证据缺口
+第 1 轮第一次执行：Test crashed with signal term.
+xcresult 无失败源码位置，无名称包含 failure 的截图，也无 failure-hierarchy 文本附件。
+不能确认失败瞬间屏幕状态；普通步骤截图不能替代首次失败截图。
+第 2 轮第一次执行通过，不覆盖第 1 轮的中断。
