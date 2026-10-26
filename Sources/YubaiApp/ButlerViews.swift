@@ -55,23 +55,27 @@ struct ButlerCardView: View {
             #endif
             .offset(x: swipe)
             .background(alignment: .trailing) {
-                Button { store.dismissCard(card.id) } label: {
-                    Text("知道了")
+                // Keep the closed card's zero-width action out of AX without sizing content.
+                if swipe != 0 {
+                    Button { store.dismissCard(card.id) } label: {
+                        Text("知道了")
+                            #if os(iOS)
+                            .padding(.trailing, YubaiSpace.swipeLabelTrailing).frame(width: max(0, -swipe - YubaiSpace.swipeActionInset - YubaiSpace.gapGroup), alignment: .trailing).clipped()
+                            .frame(maxHeight: .infinity)
+                            .background(YubaiColor.neutralSoft, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            #endif
+                    }.accessibilityHidden(swipe == 0).accessibilityIdentifier("dismissButler_" + card.kind.rawValue)
+                        .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
                         #if os(iOS)
-                        .padding(.trailing, YubaiSpace.swipeLabelTrailing).frame(width: max(0, -swipe - YubaiSpace.swipeActionInset - YubaiSpace.gapGroup), alignment: .trailing).clipped()
-                        .frame(maxHeight: .infinity)
-                        .background(YubaiColor.neutralSoft, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
+                        #else
+                        .padding(.trailing, YubaiSpace.swipeLabelTrailing).frame(width: max(0, -swipe - YubaiSpace.gapGroup), alignment: .trailing).clipped()
+                        .frame(maxHeight: .infinity).background(YubaiColor.neutralSoft)
                         #endif
-                }.accessibilityHidden(swipe == 0).accessibilityIdentifier("dismissButler_" + card.kind.rawValue)
-                    .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
-                    #if os(iOS)
-                    .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
-                    #else
-                    .padding(.trailing, YubaiSpace.swipeLabelTrailing).frame(width: max(0, -swipe - YubaiSpace.gapGroup), alignment: .trailing).clipped()
-                    .frame(maxHeight: .infinity).background(YubaiColor.neutralSoft)
-                    #endif
-                    .opacity(swipe < 0 ? 1 : 0).allowsHitTesting(swipe < 0)
+                        .opacity(swipe < 0 ? 1 : 0).allowsHitTesting(swipe < 0)
+                        .transition(.identity)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).contentShape(Rectangle())
             .overlay { GeometryReader { geometry in

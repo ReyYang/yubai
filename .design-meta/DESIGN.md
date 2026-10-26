@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-26 · PR #37 第三轮证据修复
+
+基于 `fix/flaky-ui-tests`／`287ffec`，先读合并验证全部 8 份相关失败层级，再逐项核对测试失败行与截图：5 项账目停在初始关闭检查，固定收付停在展开几何检查通过后的收回检查，2 项管家停在右滑后的关闭检查。均为 `assertGone(action)` 的 AX 不存在等待，未发生展开等待失败。管家 `closed` 卡仍导出宽 0 的「知道了」，账目／固定收付仍导出 78pt 的删除／停掉；这证明上一轮移动 `.accessibilityHidden` 没有解决实际 AX 节点残留，覆盖上一节对该修复效果的推定。
+
+`SwipeActionRow` 仅在 `offset != 0 || revealed` 时挂载背景 Button，`ButlerCardView` 仅在 `swipe != 0` 时挂载背景 Button；两处加 `.transition(.identity)`，不额外引入默认插入过渡。原内容决定布局大小，动作保留在 `.background(alignment: .trailing)`，原 frame、padding、opacity、偏移、裁切、颜色／字体和点击条件保持；没有增加占位尺寸，现有手势／动画调用及 Reduce Motion tokens 保持。现有中文读屏动作及生产 AX 值门控不变，无新英文生产 VoiceOver 输出。
+
+全部 70 项 UI 测试文件原样保留，不改手势坐标／断言／等待或 `testUndoReceiptDismissesAfterProductionLifetime` 的金额文字。两个改动文件的 iOS 26／27.1 Debug 模拟器、iOS 26 Release 设备和 macOS 14 Debug 共 8 组条件语法解析通过，静态比对除条件挂载／identity transition／注释缩进外相同，字符串不变。此环境没有 Apple SDK／模拟器，AX 消失、实际几何及拖动／收回动画仍待 Mac 实跑与视觉比较；选定稿／Figma／分发资源保持，新增／改动可见中文无，未提交。
+
 ## 2026-10-26 · PR #37 第二轮证据修复
 
 owner 在 `1821b9b` 的 Mac 两轮验证为 20 项稳定失败、2 项时好时坏；已逐份读完 21 份现有失败层级／截图及中断证据缺口。账目 `closed` 行仍暴露删除 Button，固定收付同样暴露停掉：共用 `SwipeActionRow` 的 identifier／hidden 移到全部 frame、padding、opacity、hit-testing 之后，关闭断言加强为 AX 中不存在；原按钮仍挂载，所有视觉与手势修饰不变。待付 Card 增加 `.contain`，阻止 `dueBills` 传播覆盖 `moreDueBills` 与各期按钮标识；不加 label／value。
