@@ -2,6 +2,20 @@ import XCTest
 @testable import YubaiCore
 
 final class AssistantTransportTests: XCTestCase {
+    func testThinkingSwitchIsEncodedOnlyWhenSpecified() async throws {
+        for thinking in [false, true, nil] as [Bool?] {
+            let stub = CloudTestStub { request in
+                let payload = try CloudTestStub.payload(in: request)
+                if let thinking { XCTAssertEqual(payload["thinking"] as? [String: String], ["type": thinking ? "enabled" : "disabled"]) }
+                else { XCTAssertNil(payload["thinking"]) }
+                return "连接正常"
+            }
+            defer { stub.close() }
+            let reply = try await stub.send(ChatRequest(messages: [ChatMessage(role: .user, content: "你好")], thinking: thinking))
+            XCTAssertEqual(reply.content, "连接正常")
+        }
+    }
+
     func testModelUnavailableErrorsAreRecognizableWithoutEchoingResponseBodies() async throws {
         for (status, body) in [(400, #"{"error":{"message":"Invalid model: secret-key"}}"#),
                                (404, #"{"error":{"message":"MODEL does not exist"}}"#),
@@ -31,6 +45,7 @@ final class AssistantTransportTests: XCTestCase {
         let stub = CloudTestStub(rawResponse: true) { request in
             let payload = try CloudTestStub.payload(in: request)
             XCTAssertEqual(payload["model"] as? String, DeepSeekConfiguration.defaultModel)
+            XCTAssertNil(payload["thinking"])
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-key")
             let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
             XCTAssertEqual(messages.compactMap { $0["role"] as? String }, ["system", "user", "assistant", "tool"])
