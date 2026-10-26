@@ -111,10 +111,10 @@ public struct DeepSeekClient: ChatTransport {
     }
 
     public func chat(system: String, user: String, temperature: Double = 0.2, maxTokens: Int = 400,
-                     purpose: String = "云端智能", session: URLSession = .shared) async throws -> String {
+                     thinking: Bool? = nil, purpose: String = "云端智能", session: URLSession = .shared) async throws -> String {
         let reply = try await send(ChatRequest(messages: [ChatMessage(role: .system, content: system),
             ChatMessage(role: .user, content: user)], temperature: temperature, maxTokens: maxTokens,
-            purpose: purpose), session: session)
+            thinking: thinking, purpose: purpose), session: session)
         guard let text = reply.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
             throw YubaiError.invalid("云端返回空内容。")
         }
@@ -161,6 +161,7 @@ public struct DeepSeekClient: ChatTransport {
         struct Payload: Encodable {
             var model: String; var messages: [ChatMessage]; var tools: [ChatToolDefinition]?
             var temperature: Double; var max_tokens: Int; var response_format: JSONValue?
+            var thinking: [String: String]?
         }
         var messages = input.messages
         for i in messages.indices {
@@ -176,7 +177,8 @@ public struct DeepSeekClient: ChatTransport {
             definitions[i].function.parameters = redactor.value(definitions[i].function.parameters)
         }
         let payload = Payload(model: configuration.model, messages: messages,
-            tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens, response_format: input.responseFormat)
+            tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens, response_format: input.responseFormat,
+            thinking: input.thinking.map { ["type": $0 ? "enabled" : "disabled"] })
         let body = try JSONEncoder().encode(payload)
         var request = URLRequest(url: Self.chatCompletionsURL(baseURL: configuration.baseURL), timeoutInterval: configuration.timeout)
         request.httpMethod = "POST"; request.httpBody = body
