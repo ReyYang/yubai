@@ -136,16 +136,18 @@ final class AppFlowTests: XCTestCase {
                 XCTAssertEqual(row.frame.width, closedFrame.width, accuracy: 1, file: file, line: line)
                 XCTAssertEqual(row.frame.height, closedFrame.height, accuracy: 1, file: file, line: line)
             }
-            assertNotHittable(action, file: file, line: line)
+            // A covered action is still a VoiceOver defect if it remains in AX at all.
+            assertGone(action, file: file, line: line)
         }
     }
     private func assertSelectedTab(_ identifier: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let page = rootPage(identifier, in: app), anchor = page.staticTexts["rootHeaderTitle"]
+        let navigation = app.otherElements["mainNavigation"]
         let destination = identifier.replacingOccurrences(of: "tab_", with: "")
         var previous = CGRect.null, stableSince = Date()
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard app.buttons[identifier].exists && app.buttons[identifier].isSelected && page.exists && anchor.exists else { stableSince = Date(); return false }
-            let state = app.otherElements["mainNavigation"].value as? String ?? ""
+            let state = navigation.value as? String ?? ""
             let viewport = app.windows.firstMatch.frame.intersection(app.frame), frame = anchor.frame
             guard state.contains("destination=\(destination);") && state.contains("visible=\(destination);") && state.contains("phase=idle;"),
                   anchor.isHittable && viewport.contains(frame),
@@ -153,7 +155,8 @@ final class AppFlowTests: XCTestCase {
             if frame != previous { previous = frame; stableSince = Date(); return false }
             return Date().timeIntervalSince(stableSince) >= 0.35
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed, file: file, line: line)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed,
+                       "Tab \(identifier): \(String(describing: navigation.value)); page=\(page.frame); anchor=\(anchor.frame)", file: file, line: line)
     }
     private func assertPagingLocked(_ locked: Bool, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let state = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
@@ -209,12 +212,17 @@ final class AppFlowTests: XCTestCase {
         point(action, x: 0.5, in: app, file: file, line: line).tap()
         XCTAssertTrue(app.alerts["停掉「\(title)」？"].waitForExistence(timeout: 5), file: file, line: line)
     }
+    private func alertButton(_ identifier: String, in alert: XCUIElement) -> XCUIElement {
+        // iOS 26 exports nested copies with the same identifier, label and frame.
+        alert.buttons.matching(identifier: identifier).firstMatch
+    }
     private func tapAlertButton(_ identifier: String, label: String, in alert: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(alert.waitForExistence(timeout: 5), file: file, line: line)
-        let button = alert.buttons[identifier]
+        let button = alertButton(identifier, in: alert)
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in button.exists && button.isEnabled && button.isHittable }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, file: file, line: line)
         XCTAssertEqual(button.label, label, file: file, line: line)
+        XCTAssertTrue(alert.frame.contains(button.frame), file: file, line: line)
         button.tap()
     }
     private func tapUndo(messagePrefix: String, exact: Bool = false, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
@@ -229,7 +237,13 @@ final class AppFlowTests: XCTestCase {
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5), file: file, line: line)
         let origin = app.coordinate(withNormalizedOffset: .zero), frame = scroll.frame.intersection(app.windows.firstMatch.frame)
-        let start = origin.withOffset(CGVector(dx: frame.midX - app.frame.minX, dy: keyboard.frame.minY - app.frame.minY - 24))
+        // The Chinese candidate/assistant area begins above the Keyboard AX frame.
+        let inputTops = [keyboard, app.otherElements.matching(identifier: "inputView").firstMatch, app.otherElements.matching(identifier: "SystemInputAssistantView").firstMatch]
+            .filter { $0.exists && !$0.frame.isEmpty }.map { $0.frame.minY }
+        let inputTop = inputTops.min() ?? keyboard.frame.minY
+        let startY = min(inputTop, frame.maxY) - 24
+        XCTAssertGreaterThan(startY, frame.minY, file: file, line: line)
+        let start = origin.withOffset(CGVector(dx: frame.midX - app.frame.minX, dy: startY - app.frame.minY))
         let end = origin.withOffset(CGVector(dx: frame.midX - app.frame.minX, dy: app.windows.firstMatch.frame.maxY - app.frame.minY - 24))
         start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
         assertGone(keyboard, file: file, line: line)
@@ -478,10 +492,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5)); openFixedBillStop(row, title: "工资", in: app)
         let confirmation = app.alerts["停掉「工资」？"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        XCTAssertTrue(confirmation.buttons["取消"].isHittable)
-        XCTAssertTrue(confirmation.buttons["停掉以后的"].isHittable)
+        XCTAssertTrue(alertButton("fixedFlowStopCancel", in: confirmation).isHittable)
+        XCTAssertTrue(alertButton("fixedFlowStopConfirm", in: confirmation).isHittable)
         XCTAssertFalse(confirmation.staticTexts["只停以后的，付过的记录保留。"].exists)
-        XCTAssertFalse(confirmation.buttons["fixedFlowStopSkip"].exists)
+        XCTAssertFalse(alertButton("fixedFlowStopSkip", in: confirmation).exists)
         tapAlertButton("fixedFlowStopCancel", label: "取消", in: confirmation)
         assertGone(confirmation)
         XCTAssertTrue(row.exists); XCTAssertFalse(app.buttons["resumeFixedFlow_" + planID].exists)
@@ -579,8 +593,8 @@ final class AppFlowTests: XCTestCase {
         let confirmation = app.alerts["停掉「房租」？"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         XCTAssertEqual(app.popovers.count, 0)
-        XCTAssertTrue(confirmation.buttons["停掉以后的"].isHittable)
-        XCTAssertTrue(confirmation.buttons["取消"].isHittable)
+        XCTAssertTrue(alertButton("endArrangementConfirm", in: confirmation).isHittable)
+        XCTAssertTrue(alertButton("endArrangementCancel", in: confirmation).isHittable)
         snapshot("upcoming-payment-stop-alert", app)
         tapAlertButton("endArrangementCancel", label: "取消", in: confirmation); assertGone(confirmation)
         XCTAssertTrue(app.buttons[identifier].exists)
@@ -725,8 +739,8 @@ final class AppFlowTests: XCTestCase {
         let confirmation = app.alerts["停掉「工资」？"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5)); XCTAssertEqual(app.popovers.count, 0)
         XCTAssertTrue(confirmation.staticTexts["停掉「工资」？"].exists)
-        XCTAssertFalse(confirmation.buttons["停掉以后的"].exists)
-        let confirm = confirmation.buttons["fixedFlowStopConfirm"], skip = confirmation.buttons["fixedFlowStopSkip"], cancel = confirmation.buttons["fixedFlowStopCancel"]
+        XCTAssertFalse(confirmation.buttons.matching(NSPredicate(format: "label == %@", "停掉以后的")).firstMatch.exists)
+        let confirm = alertButton("fixedFlowStopConfirm", in: confirmation), skip = alertButton("fixedFlowStopSkip", in: confirmation), cancel = alertButton("fixedFlowStopCancel", in: confirmation)
         XCTAssertEqual(confirm.label, "收到了，记一笔再停"); XCTAssertEqual(skip.label, "没收到，这期也不要了")
         for button in [confirm, skip, cancel] {
             XCTAssertTrue(button.isHittable)
@@ -760,7 +774,7 @@ final class AppFlowTests: XCTestCase {
         openFixedBillStop(rows.firstMatch, title: "每周订阅", in: app)
         let confirmation = app.alerts["停掉「每周订阅」？"]
         XCTAssertTrue(confirmation.staticTexts["还有 6 期没记。"].exists)
-        XCTAssertEqual(confirmation.buttons["fixedFlowStopSkip"].label, "没付，这期也不要了")
+        XCTAssertEqual(alertButton("fixedFlowStopSkip", in: confirmation).label, "没付，这期也不要了")
         tapAlertButton("fixedFlowStopConfirm", label: "付了，记一笔再停", in: confirmation)
         tapUndo(messagePrefix: "已停掉", in: app)
         XCTAssertTrue(check.waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, originalCount)
@@ -1052,13 +1066,13 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["editCloudModel"], in: app)
         tap(app.buttons["customCloudModel"], in: app)
         assertPushedPage("模型", in: app)
-        dragBack(app, to: 0.42)
+        dragBack(app, to: 0.18)
         assertPushedPage("模型", in: app)
         XCTAssertTrue(app.textFields["cloudModelName"].isHittable)
         dragBack(app, to: 0.95)
         assertPushedPage("智能与隐私", in: app)
         for _ in 0..<2 {
-            dragBack(app, to: 0.42)
+            dragBack(app, to: 0.18)
             assertPushedPage("智能与隐私", in: app)
         }
         dragBack(app, to: 0.95)
@@ -1077,7 +1091,7 @@ final class AppFlowTests: XCTestCase {
         tap(more, in: app)
         assertPushedPage("固定收付", in: app)
         for _ in 0..<2 {
-            dragBack(app, to: 0.42)
+            dragBack(app, to: 0.18)
             assertPushedPage("固定收付", in: app)
         }
         dragBack(app, to: 0.95)
@@ -1602,7 +1616,10 @@ final class AppFlowTests: XCTestCase {
             }
             tap(addEntryTab(app), in: app)
             XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
-            app.navigationBars.firstMatch.swipeRight()
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let headerY = app.buttons["cancelManualSheet"].frame.midY - app.frame.minY
+            origin.withOffset(CGVector(dx: app.frame.width * 0.3, dy: headerY))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: app.frame.width * 0.7, dy: headerY)))
             tap(app.buttons["cancelManualSheet"], in: app)
             assertSelectedTab(identifier, in: app)
         }

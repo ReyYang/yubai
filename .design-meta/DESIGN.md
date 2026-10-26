@@ -1,5 +1,15 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-26 · PR #37 第二轮证据修复
+
+owner 在 `1821b9b` 的 Mac 两轮验证为 20 项稳定失败、2 项时好时坏；已逐份读完 21 份现有失败层级／截图及中断证据缺口。账目 `closed` 行仍暴露删除 Button，固定收付同样暴露停掉：共用 `SwipeActionRow` 的 identifier／hidden 移到全部 frame、padding、opacity、hit-testing 之后，关闭断言加强为 AX 中不存在；原按钮仍挂载，所有视觉与手势修饰不变。待付 Card 增加 `.contain`，阻止 `dueBills` 传播覆盖 `moreDueBills` 与各期按钮标识；不加 label／value。
+
+撤销缺失属于真实应用缺陷：`1d84959` 引入初始为空的 `Group`，`.task` 无宿主却负责设置显示状态；`062f4fa` 将其接入根 overlay。改为单子项 `ZStack` 生命周期宿主，保留原 surface、overlay、计时、transition、颜色与文案，恢复既定提示条；没有把提示条移入 sheet。生产 4 秒测试原样保留，测试保留开关及生产 AX 值门控保持。没有证据将缺失归因于 PR #34／#36 的遮挡。
+
+原生 alert 的同 ID 父子 Button 用 scoped `.firstMatch`，保留标签、启用、可点击和边界断言；键盘拖动从 inputView／assistant 区上方开始；记一笔横拖以现存自定义 header 定位；取消返回改短拖，完整 pop 和导航栏断言保留。已选、可见、idle 且几何对齐时，根 pager 不再发起没有位移的 scrollTo，其他滚动继续原动画；原失败层级截断 pager 值，具体失配状态仍需 Mac 验证，新诊断会输出完整值。无新增英文生产 VoiceOver 值。
+
+70 项测试保留，无跳过／禁用／预期失败；一个 signal term 用例缺少失败截图和层级，保持原用例且不推定原因。Linux 条件解析、语言级核对与静态不变量见交付记录，不能代替 Apple SDK 类型检查、UI／VoiceOver 或像素验证。选定稿、Figma、分发资源未改变；新增／改动可见中文无，未提交。
+
 ## 2026-10-24 · UI 测试观测与稳定性
 
 按 `619564f` 的 23 项失败调整[测试](../Tests/YubaiUITests/AppFlowTests.swift)等待、手势与撤销；展开值／pager 值及撤销保留仅限 Debug 模拟器、有效 UUID 测试账本与白名单脚本，保留另需 `YUBAI_UI_TEST_KEEP_UNDO=1`。生产账目／管家卡不加 AX 值，固定收付保持原财务值，测试时才追加展开状态；财务查询用前缀匹配。

@@ -108,7 +108,7 @@ struct OverviewView: View {
                         .accessibilityLabel("还有 \(rows.count - 2) 笔").accessibilityValue(String(rows.count - 2))
                 }
             }
-        }.accessibilityIdentifier("dueBills")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("dueBills")
     }
     private func dueRow(_ row: Occurrence) -> some View {
         HStack(spacing: YubaiSpace.gapGroup) {

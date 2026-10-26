@@ -678,14 +678,15 @@ struct SwipeActionRow<Content: View>: View {
                         .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                         .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                         #endif
-                }.accessibilityHidden(!revealed).accessibilityIdentifier(actionIdentifier)
-                    .buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
+                }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
                     #if os(iOS)
                     .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
                     #else
                     .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
                     #endif
                     .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0)
+                    // Hide the complete action wrapper, including the AX node made by its identifier.
+                    .accessibilityIdentifier(actionIdentifier).accessibilityHidden(!revealed)
             }.clipped().contentShape(Rectangle())
     }
 }
@@ -1228,7 +1229,9 @@ struct Toast: View {
     var onUndo: (() -> Void)? = nil
     var onDismiss: (() -> Void)? = nil
     var body: some View {
-        Group { if visible { surface } }
+        // A concrete host must exist before visible becomes true. An empty Group has no
+        // child on which to run the task that inserts the receipt in the first place.
+        ZStack { if visible { surface } }
             .task(id: text) {
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
                 #if DEBUG && targetEnvironment(simulator)
