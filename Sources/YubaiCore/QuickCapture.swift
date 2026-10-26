@@ -2,8 +2,19 @@ import Foundation
 
 public struct QuickCapturePreferences: Codable, Equatable, Sendable {
     public var cardAccounts: [String: UUID] = [:]
-    public var merchantCategories: [String: String] = [:]
+    // Decode-only legacy payload, consumed and cleared by Ledger.init(from:).
+    var merchantCategories: [String: String] = [:]
     public init() {}
+    private enum CodingKeys: String, CodingKey { case cardAccounts, merchantCategories }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        cardAccounts = try c.decodeIfPresent([String: UUID].self, forKey: .cardAccounts) ?? [:]
+        merchantCategories = try c.decodeIfPresent([String: String].self, forKey: .merchantCategories) ?? [:]
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(cardAccounts, forKey: .cardAccounts)
+    }
 }
 public struct QuickCaptureOrigin: Codable, Equatable, Sendable {
     public var merchant: String?; public var card: String?; public var transactionDate: Date?; public var withoutOpeningApp: Bool
@@ -51,9 +62,10 @@ public enum QuickCapture {
             var purpose = item.text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             // 金额解析仍只使用 EntryAmountParser；这里仅清理连接词。
             while let first = purpose.first, "和与及".contains(first) { purpose.removeFirst(); purpose = purpose.trimmingCharacters(in: .whitespaces) }
-            let category = ManualBookkeeping.guessCategory(purpose, nature: .expense, in: ledger) ?? "其他支出"
+            let choice = CategoryGuesser.guess(purpose, nature: .expense, date: now, in: ledger)
+            let category = choice?.category ?? Classification.pendingCategory
             return EntryDraft(date: now, amount: item.amount, amountConfirmed: true, accountID: account.id,
-                              title: purpose.isEmpty ? category : purpose, category: category, purpose: purpose.isEmpty ? nil : purpose)
+                              title: purpose.isEmpty ? Classification.displayCategory(category) : purpose, category: category, subcategory: choice?.subcategory, purpose: purpose.isEmpty ? nil : purpose)
         })
     }
     public static func available(in ledger: Ledger, now: Date = Date()) -> Int64 { Finance.funds(ledger, now: now).available }
@@ -65,7 +77,7 @@ public enum QuickCapture {
         let ids = Set(drafts.map(\.id))
         for i in next.entries.indices where ids.contains(next.entries[i].id) {
             next.entries[i].quickCapture = QuickCaptureOrigin(withoutOpeningApp: withoutOpeningApp)
-            if drafts.first(where: { $0.id == next.entries[i].id })?.category == "其他支出" { next.entries[i].classificationReason = "没分类" }
+            if Classification.isPending(next.entries[i]) { next.entries[i].classificationReason = "没分类" }
         }
         try next.validate(); ledger = next; return drafts.map(\.id)
     }
@@ -81,19 +93,20 @@ public enum QuickCapture {
         let merchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines), card = card.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !merchant.isEmpty, !card.isEmpty else { throw YubaiError.invalid("请填写商户和卡名。") }
         // 不按两分钟时间桶分组，跨桶重触发也能识别。软删除仍保留去重凭据。
-        let identity = "apple-pay:" + LedgerCodec.checksum(try JSONEncoder().encode([key(card), key(merchant), String(cents)]))
+        let identity = "apple-pay:" + LedgerCodec.checksum(try JSONEncoder().encode([cardKey(card), cardKey(merchant), String(cents)]))
         if let duplicate = ledger.entries.first(where: { $0.source == "Apple Pay" && $0.sourceIdentity == identity && abs(($0.quickCapture?.transactionDate ?? $0.date).timeIntervalSince(date)) <= 120 }) { return (duplicate, false) }
-        let mapped = ledger.preferences.quickCapture.cardAccounts.first { key($0.key) == key(card) }?.value
+        let mapped = ledger.preferences.quickCapture.cardAccounts.first { cardKey($0.key) == cardKey(card) }?.value
         let account = mapped.flatMap { id in ledger.accounts.first { $0.id == id && !$0.archived } } ?? ManualBookkeeping.defaultAccount(in: ledger)
         guard let account else { throw YubaiError.invalid("请先添加账户。") }
-        let rule = ledger.preferences.quickCapture.merchantCategories.first { key($0.key) == key(merchant) }?.value
-        let category = rule.map(ledger.resolveCategory) ?? ManualBookkeeping.guessCategory(merchant, nature: .expense, in: ledger)
-        var entry = Entry(date: date, amount: cents, accountID: account.id, title: merchant, category: category ?? "其他支出")
+        let rule = ledger.classificationMemory[key(merchant)]
+        let choice = CategoryGuesser.guess(merchant, nature: .expense, date: date, in: ledger)
+        let category = choice?.category
+        var entry = Entry(date: date, amount: cents, accountID: account.id, title: merchant, category: category ?? Classification.pendingCategory)
+        entry.subcategory = choice?.subcategory
         entry.purpose = merchant; entry.recordedAt = now; entry.source = "Apple Pay"; entry.sourceIdentity = identity
         entry.externalID = identity + ":" + String(date.timeIntervalSince1970)
         entry.classificationReason = category == nil ? "没分类" : (rule == nil ? "本机分类" : "商户分类")
         entry.quickCapture = QuickCaptureOrigin(merchant: merchant, card: card, transactionDate: date, withoutOpeningApp: true)
-        SubcategoryClassifier.classify(&entry, ledger: ledger)
         var next = ledger; next.entries.append(entry); try next.validate(); ledger = next; return (entry, true)
     }
     public static func undo(entryID: UUID, in ledger: inout Ledger, now: Date = Date()) {
@@ -103,13 +116,15 @@ public enum QuickCapture {
     public static func remember(merchant: String, category: String, in ledger: inout Ledger) throws {
         let merchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines), category = category.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !merchant.isEmpty, !category.isEmpty else { throw YubaiError.invalid("请填写商户和分类。") }
-        let old = ledger.preferences.quickCapture.merchantCategories.keys.filter { key($0) == key(merchant) }
-        for name in old { ledger.preferences.quickCapture.merchantCategories.removeValue(forKey: name) }
-        ledger.preferences.quickCapture.merchantCategories[merchant] = ledger.resolveCategory(category)
+        let normalized = key(merchant)
+        let choice = CategoryMapping.match(category, in: ledger) ?? ledger.categoryAssignment(category: category)
+        guard !normalized.isEmpty, ledger.selectableCategories.contains(where: { $0.name == choice.category }) else { throw YubaiError.invalid("请选择已有分类。") }
+        ledger.classificationMemory[normalized] = choice.path
     }
-    public static func key(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+    public static func key(_ text: String) -> String { CategoryMemory.key(text) }
+    public static func cardKey(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
 }
-extension Entry { public var hasNoCaptureCategory: Bool { classificationReason == "没分类" } }
+extension Entry { public var hasNoCaptureCategory: Bool { Classification.isPending(self) } }
 
 /// Vision 只提供文字行；金额、用途与日期的启发式在这里共用，导入与截图记保持一致。
 public enum ReceiptTextParser {
@@ -117,8 +132,9 @@ public enum ReceiptTextParser {
         public var date: Date; public var amount: Int64; public var title: String; public var nature: Nature
         public var dateNeedsReview: Bool; public var directionNeedsReview: Bool
         public func entryDraft(in ledger: Ledger, accountID: UUID) -> EntryDraft {
-            EntryDraft(date: date, amount: amount, amountConfirmed: true, nature: nature, accountID: accountID,
-                       title: title, category: ManualBookkeeping.guessCategory(title, nature: nature, in: ledger) ?? (nature.inflow ? "其他收入" : "其他支出"), purpose: title)
+            let choice = CategoryGuesser.guess(title, nature: nature, date: date, in: ledger)
+            return EntryDraft(date: date, amount: amount, amountConfirmed: true, nature: nature, accountID: accountID,
+                       title: title, category: choice?.category ?? Classification.pendingCategory, subcategory: choice?.subcategory, purpose: title)
         }
     }
     public static func drafts(lines: [String], now: Date = Date()) -> [Draft] {

@@ -41,6 +41,7 @@ private struct ImportQueueFile: Identifiable {
     var screenshot = false
     var accountMappings: [String: UUID] = [:]
     var categoryMappings: [String: String] = [:]
+    var confirmedNewCategories: Set<String> = []
     var selections: [Int: Bool] = [:]
     var edits: [Int: Entry] = [:]
     var screenshotConfirmed = false
@@ -89,6 +90,7 @@ struct ImportView: View {
     @State private var showCategories = false
     @State private var accountMappings: [String: UUID] = [:]
     @State private var categoryMappings: [String: String] = [:]
+    @State private var confirmedNewCategories: Set<String> = []
     @State private var rowSelections: [Int: Bool] = [:]
     @State private var parseID = UUID()
     @State private var questionText: [UUID: String] = [:]
@@ -359,12 +361,11 @@ struct ImportView: View {
         }.navigationTitle("原图").yubaiNavigation().toolbar { CloseButton() }
     }
     private func unknownCategories(_ p: ImportPreview) -> [String] {
-        let known = Set(store.current.categories.map(\.name))
-        return Set(p.rows.map(\.sourceCategory).filter { !$0.isEmpty && $0 != Classification.pendingCategory && !known.contains($0) }).sorted()
+        return Set(p.rows.map(\.sourceCategory).filter { !Classification.isPending($0) && CategoryMapping.match($0, in: store.current) == nil }).sorted()
     }
     private func directCategoryCount(_ p: ImportPreview) -> Int {
         Set(p.rows.map(\.sourceCategory).filter { name in
-            name != Classification.pendingCategory && (categoryMappings[name] != nil || store.current.categories.contains { $0.name == name })
+            name != Classification.pendingCategory && (categoryMappings[name] != nil || CategoryMapping.match(name, in: store.current) != nil)
         }).count
     }
     private func needsDecision(_ row: ImportRow) -> Bool {
@@ -372,7 +373,7 @@ struct ImportView: View {
         if row.status == .duplicate || row.status == .skipped { return false }
         if row.status == .possibleDuplicate && rowSelections[row.line] == nil { return true }
         if screenshot && rowEdits[row.line] == nil && row.entry?.note.contains("待核对") == true { return true }
-        return !row.sourceCategory.isEmpty && row.sourceCategory != Classification.pendingCategory && !store.current.categories.contains { $0.name == row.sourceCategory } && categoryMappings[row.sourceCategory] == nil
+        return !row.sourceCategory.isEmpty && row.sourceCategory != Classification.pendingCategory && CategoryMapping.match(row.sourceCategory, in: store.current) == nil && categoryMappings[row.sourceCategory] == nil
     }
     @ViewBuilder private func decisionCard(_ p: ImportPreview) -> some View {
         let unknown = unknownCategories(p)
@@ -415,10 +416,10 @@ struct ImportView: View {
     private func categoryChoices(_ name: String, preview p: ImportPreview) -> some View {
         let fallback = p.rows.first { $0.sourceCategory == name }?.entry?.nature == .income ? "其他收入" : "其他支出"
         return Group {
-            Button("新建「\(name)」") { categoryMappings[name] = name }
-                .buttonStyle(SecondaryButtonStyle(background: categoryMappings[name] == name ? YubaiColor.selected : YubaiColor.raised, compact: true))
-                .accessibilityAddTraits(categoryMappings[name] == name ? .isSelected : []).accessibilityIdentifier("createImportCategory_" + name)
-            Button("归到「\(fallback)」") { categoryMappings[name] = fallback }
+            Button("新建「\(name)」") { confirmedNewCategories.insert(name); categoryMappings[name] = name }
+                .buttonStyle(SecondaryButtonStyle(background: confirmedNewCategories.contains(name) ? YubaiColor.selected : YubaiColor.raised, compact: true))
+                .accessibilityAddTraits(confirmedNewCategories.contains(name) ? .isSelected : []).accessibilityIdentifier("createImportCategory_" + name)
+            Button("归到「\(fallback)」") { confirmedNewCategories.remove(name); categoryMappings[name] = fallback }
                 .buttonStyle(SecondaryButtonStyle(background: categoryMappings[name] == fallback ? YubaiColor.selected : YubaiColor.raised, compact: true))
                 .accessibilityAddTraits(categoryMappings[name] == fallback ? .isSelected : []).accessibilityIdentifier("fallbackImportCategory_" + name)
         }
@@ -428,8 +429,8 @@ struct ImportView: View {
             if let preview {
                 ForEach(Set(preview.rows.map(\.sourceCategory).filter { !$0.isEmpty }).sorted(), id: \.self) { name in
                     Card(style: .list) {
-                        Picker(name, selection: Binding(get: { categoryMappings[name] ?? name }, set: { categoryMappings[name] = $0 })) {
-                            ForEach(Set(store.current.categories.map(\.name) + [name]).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
+                        Picker(name, selection: Binding(get: { categoryMappings[name] ?? name }, set: { confirmedNewCategories.remove(name); categoryMappings[name] = $0 })) {
+                            ForEach(Set(store.current.categoryNames(including: name)).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
                         }.frame(minHeight: YubaiSize.tapMin)
                     }
                 }
@@ -664,6 +665,7 @@ struct ImportView: View {
         guard let item = queue.first(where: { $0.id == id }), let prepared = item.preview else { return }
         activeFileID = id; data = item.original; tableData = item.table; filename = item.name
         result = nil; localError = nil; accountMappings = item.accountMappings; categoryMappings = item.categoryMappings; rowSelections = item.selections; rowEdits = item.edits
+        confirmedNewCategories = item.confirmedNewCategories
         screenshot = item.screenshot; screenshotConfirmed = item.screenshotConfirmed; filter = "全部"; preview = prepared
         refreshPreview()
     }
@@ -713,6 +715,7 @@ struct ImportView: View {
         guard let activeFileID else { return }
         updateQueue(activeFileID) {
             $0.preview = preview; $0.accountMappings = accountMappings; $0.categoryMappings = categoryMappings
+            $0.confirmedNewCategories = confirmedNewCategories
             $0.selections = rowSelections; $0.edits = rowEdits; $0.screenshotConfirmed = screenshotConfirmed
         }
     }
@@ -724,10 +727,7 @@ struct ImportView: View {
               !preview.rows.contains(where: { $0.included && needsDecision($0) }), !screenshot || screenshotConfirmed else { return }
         var batch: ImportBatch?
         if store.update("导入账单", { ledger in
-            for entry in preview.selectedEntries where !ledger.categories.contains(where: { $0.name == entry.category }) && entry.category != Classification.pendingCategory {
-                ledger.categories.append(YubaiCore.Category(entry.category, income: entry.nature == .income))
-            }
-            batch = try BillImporter.commit(preview, data: data, to: &ledger)
+            batch = try BillImporter.commit(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &ledger)
         }) {
             result = batch; self.preview = nil; finishFile()
             if let batch { Task { await store.organizeImport(batch.id) } }
@@ -755,7 +755,7 @@ private struct ImportScreenshotEntryEditor: View {
                 DatePicker("日期", selection: $entry.date, displayedComponents: [.date, .hourAndMinute])
                 Picker("收支", selection: $entry.nature) { Text("支出").tag(Nature.expense); Text("收入").tag(Nature.income) }
                 Picker("分类", selection: $entry.category) {
-                    ForEach(Set(store.current.categories.filter { $0.income == entry.nature.inflow }.map(\.name) + [entry.category]).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
+                    ForEach(Set(store.current.categoryNames(including: entry.category, income: entry.nature.inflow)).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
                 }
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("核对这一笔").yubaiNavigation().toolbar {

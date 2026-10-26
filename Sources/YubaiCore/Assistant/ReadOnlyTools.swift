@@ -147,7 +147,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "confirmed_at": ctx.ledger.profile.principleDates[text].map { .string(Dates.text($0)) } ?? .null]) }),
             "recent_followups": .array(recent),
             "memories": Memory.context(ledger: ctx.ledger, now: ctx.now, characterBudget: ctx.memoryCharacterBudget),
-            "categories": .strings(ctx.ledger.categories.filter { !$0.income }.map(\.name)),
+            "categories": .strings(ctx.ledger.selectableCategories.filter { !$0.income }.map(\.name)),
             "floor_amount": ctx.ledger.profile.floorAmount.map { .money($0) } ?? .null,
             "habits": .object(["label": .string("你常花的"), "meaning": .string("这是从账本里看到的，不是你的要求；分类与商户可能重叠，不可相加。"),
                 "window_days": .number(90), "lines": .array(ProfileHabits.summary(ctx.ledger, now: ctx.now).map {
@@ -160,7 +160,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "target": .money($0.target), "saved": .money($0.reserved), "reserved": .money($0.reserved),
                 "date": $0.dueDate.map { .string(Dates.text($0)) } ?? .null]) })]
         if let account = ctx.entryAccountHint { fields["entry_account_hint"] = .string(account.uuidString) }
-        fields["category_table"] = .array(ctx.ledger.categories.map { .object(["category": .string($0.name), "subcategories": .strings($0.subcategories)]) })
+        fields["category_policy"] = .string("自动归类仅待整理（没分类）可改主项；其他支出、其他收入是主动选择，不可改动。")
+        fields["category_table"] = .array(ctx.ledger.selectableCategories.map { .object(["category": .string($0.name), "subcategories": .strings($0.subcategories)]) })
         fields["parsed_entries"] = .array(ctx.parsedEntries.map { .object(["text": .string($0.text), "amount": .money($0.amount)]) })
         fields["parsed_entry_amounts"] = .array(ctx.parsedEntryAmounts.map { .money($0) })
         if let amount = ctx.confirmedEntryAmount { fields["confirmed_entry_amount"] = .money(amount) }
@@ -211,9 +212,9 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 var calendar = Dates.calendar; calendar.firstWeekday = 2; calendar.minimumDaysInFirstWeek = 4
                 return Dates.text(calendar.dateInterval(of: .weekOfYear, for: entry.date)?.start ?? Dates.day(entry.date))
             case "subcategory":
-                let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry
-                return ctx.ledger.resolveCategory(source.category) + "/" + (source.subcategory ?? "没分类")
-            default: return ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: byID))
+                let choice = ctx.ledger.normalizedCategory(for: entry, entriesByID: byID)
+                return choice.category + "/" + (choice.subcategory ?? "没分类")
+            default: return ctx.ledger.normalizedCategory(for: entry, entriesByID: byID).category
             }
         }
         func totals(_ entries: [Entry]) -> [String: JSONValue] {
@@ -229,13 +230,12 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             var values = totals(groupRows); values["group"] = .string(key)
             if group == "category" || group == "subcategory" {
                 let small = Dictionary(grouping: groupRows) { entry -> String in
-                    let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry
-                    return source.subcategory ?? "没分类"
+                    return ctx.ledger.normalizedCategory(for: entry, entriesByID: byID).subcategory ?? "没分类"
                 }
                 values["subcategories"] = .array(small.keys.sorted().map { name in
                     var row = totals(small[name] ?? []); row["subcategory"] = name == "没分类" ? .null : .string(name); return .object(row)
                 })
-                if group == "subcategory" { values["subcategory"] = groupRows.first.flatMap { entry in (entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry).subcategory }.map(JSONValue.string) ?? .null }
+                if group == "subcategory" { values["subcategory"] = groupRows.first.flatMap { entry in ctx.ledger.normalizedCategory(for: entry, entriesByID: byID).subcategory }.map(JSONValue.string) ?? .null }
             }
             return .object(values)
         })
@@ -302,8 +302,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         .object(["id": .string(entry.id.uuidString), "date": .string(Dates.text(entry.date)),
             "amount": .money(entry.amount), "spending_amount": .money(Finance.spendingAmount(entry, ledger: ctx.ledger)),
             "direction": .string(entry.nature.paired ? "transfer" : (entry.nature.inflow ? "income" : "spending")),
-            "nature": .string(entry.nature.rawValue), "title": .string(entry.displayTitle), "category": .string(ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: ctx.entriesByID))),
-            "subcategory": (entry.nature == .refund ? entry.relatedEntryID.flatMap { ctx.entriesByID[$0] } ?? entry : entry).subcategory.map(JSONValue.string) ?? .null,
+            "nature": .string(entry.nature.rawValue), "title": .string(entry.displayTitle), "category": .string(ctx.ledger.normalizedCategory(for: entry, entriesByID: ctx.entriesByID).category),
+            "subcategory": ctx.ledger.normalizedCategory(for: entry, entriesByID: ctx.entriesByID).subcategory.map(JSONValue.string) ?? .null,
             "account": .string(entry.accountID.uuidString),
             "account_kind": .string(ctx.ledger.accounts.first { $0.id == entry.accountID }?.kind.rawValue ?? "unknown")])
     }
@@ -330,10 +330,9 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             return ctx.ledger.activeEntries.filter { e in
                 if let start, e.date < start { return false }
                 if let end, e.date >= end { return false }
-                if let category, ctx.ledger.resolveCategory(Finance.spendingCategory(e, entriesByID: byID)) != ctx.ledger.resolveCategory(category) { return false }
+                if let category, ctx.ledger.normalizedCategory(for: e, entriesByID: byID).category != ctx.ledger.resolveCategory(category) { return false }
                 if let subcategory {
-                    let source = e.nature == .refund ? e.relatedEntryID.flatMap { byID[$0] } ?? e : e
-                    if source.subcategory != subcategory { return false }
+                    if ctx.ledger.normalizedCategory(for: e, entriesByID: byID).subcategory != subcategory { return false }
                 }
                 if let keyword {
                     let text = e.title + " " + (e.purpose ?? "") + " " + e.note

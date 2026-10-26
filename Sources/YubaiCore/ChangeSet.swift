@@ -11,12 +11,15 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64; public var amountConfirmed: Bool
     public var nature: Nature; public var accountID: UUID; public var title: String; public var category: String
     public var purpose: String?
+    public var subcategory: String?
+    /// Set by review editors only when a user changes the proposed category.
+    public var categoryUserEdited: Bool?
     public var otherAccountID: UUID?
     public var planID: UUID?; public var occurrence: Date?
     public init(date: Date, amount: Int64, amountConfirmed: Bool = false, nature: Nature = .expense,
-                accountID: UUID, title: String, category: String = "其他支出", purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil) {
+                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil) {
         self.date = date; self.amount = amount; self.amountConfirmed = amountConfirmed; self.nature = nature
-        self.accountID = accountID; self.title = title; self.category = category; self.purpose = purpose
+        self.accountID = accountID; self.title = title; self.category = category; self.subcategory = subcategory; self.purpose = purpose
         self.planID = planID; self.occurrence = occurrence
     }
 }
@@ -136,18 +139,22 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         func skip(_ index: Int) { skipped.append("已跳过：" + lines[index] + "（记录已移除、已关联或已处理）") }
         for (position, item) in items.enumerated() {
             switch item {
-            case .setCategory(let id, let category):
+            case .setCategory(let id, let rawCategory):
                 guard let i = active(id) else { skip(position); continue }
+                guard !rawCategory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, rawCategory.count <= 200 else { throw YubaiError.invalid("分类不能为空或过长。") }
+                let assignment = CategoryMapping.match(rawCategory, in: next) ?? next.categoryAssignment(category: rawCategory)
+                let category = assignment.category
+                if source == "导入整理", !Classification.isPending(next.entries[i]), next.resolveCategory(next.entries[i].category) != category { skip(position); continue }
                 guard !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, category.count <= 200 else { throw YubaiError.invalid("分类不能为空或过长。") }
                 guard next.entries[i].nature != .refund || next.entries[i].relatedEntryID == nil else { skip(position); continue }
-                if source != "导入整理" {
-                    var confirmed = next.entries[i]; confirmed.category = category
-                    CategoryMemory.remember(confirmed, in: &next)
+                if next.entries[i].category == category {
+                    if source != "导入整理" { CategoryMemory.remember(next.entries[i], in: &next) }
+                    skip(position); continue
                 }
-                if next.entries[i].category == category { skip(position); continue }
-                next.entries[i].category = category; next.entries[i].subcategory = nil; next.entries[i].subcategoryUserEdited = false
+                next.entries[i].category = category; next.entries[i].subcategory = assignment.subcategory; next.entries[i].subcategoryUserEdited = false
                 SubcategoryClassifier.classify(&next.entries[i], ledger: ledger)
                 touch(i)
+                if source != "导入整理" { CategoryMemory.remember(next.entries[i], in: &next) }
                 if next.entries[i].nature == .expense { changedExpenseCategories[id] = category }
             case .setNature(let id, let nature, let other):
                 guard let i = active(id) else { skip(position); continue }
@@ -256,7 +263,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard !next.entries.contains(where: { $0.id == draft.id }) else { skip(position); continue }
                 guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
-                e.id = draft.id; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
+                e.id = draft.id; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
                 if let id = draft.planID, let occurrence = draft.occurrence {
                     guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,
                           !plan.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
@@ -266,6 +273,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 e.source = source; e.classificationReason = stamp; e.userEdited = true
                 SubcategoryClassifier.classify(&e, ledger: next)
                 next.entries.append(e)
+                if source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(e, in: &next) }
             case .profile(let change):
                 switch change {
                 case .upsertArea(let area, let stance):

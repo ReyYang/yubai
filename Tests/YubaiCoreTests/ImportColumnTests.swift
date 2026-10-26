@@ -78,7 +78,7 @@ final class ImportColumnTests: XCTestCase {
             let result = try await BillImporter.preview(data: bytes, filename: "unknown.csv", accountID: ledger.accounts[0].id, ledger: ledger, columnMapper: mapper)
             XCTAssertEqual(result.selectedEntries.first?.nature, .income)
             XCTAssertEqual(result.selectedEntries.first?.title, "奖金")
-            XCTAssertEqual(result.selectedEntries.first?.category, "职业收入")
+            XCTAssertEqual(result.selectedEntries.first?.category, "工资奖金")
         }
     }
 

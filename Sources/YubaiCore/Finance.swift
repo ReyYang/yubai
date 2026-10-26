@@ -242,7 +242,7 @@ public enum Finance {
         let rows = ledger.activeEntries.filter { $0.date >= from && $0.date < end }
         let prior = ledger.activeEntries.filter { $0.date >= from.addingTimeInterval(-end.timeIntervalSince(from)) && $0.date < from }
         let entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-        let categories = Dictionary(grouping: rows.filter { $0.nature == .expense || $0.nature == .refund }, by: { spendingCategory($0, entriesByID: entriesByID) })
+        let categories = Dictionary(grouping: rows.filter { $0.nature == .expense || $0.nature == .refund }, by: { ledger.normalizedCategory(for: $0, entriesByID: entriesByID).category })
         let byCategory = categories.map { name, entries in Breakdown(category: name, amount: entries.reduce(0) { $0 + spendingAmount($1, ledger: ledger) }, count: entries.count) }.sorted { $0.amount > $1.amount }
         return Review(spending: byCategory.reduce(0) { $0 + $1.amount }, income: rows.filter { $0.nature == .income }.reduce(0) { $0 + $1.amount },
                       refunds: rows.filter { $0.nature == .refund }.reduce(0) { $0 + $1.amount }, byCategory: byCategory,
@@ -253,7 +253,7 @@ public enum Finance {
     public static func cashFlow(_ ledger: Ledger, during interval: DateInterval) -> CashFlowSummary {
         let review = review(ledger, from: interval.start, through: interval.end)
         let incomeRows = ledger.activeEntries.filter { $0.nature == .income && $0.date >= interval.start && $0.date < interval.end }
-        let incomeGroups = Dictionary(grouping: incomeRows, by: \.category)
+        let incomeGroups = Dictionary(grouping: incomeRows) { ledger.normalizedCategory(for: $0).category }
         let incomeBreakdown: [Breakdown] = incomeGroups.map { category, rows in
             let amount = rows.reduce(Int64(0)) { $0 + $1.amount }
             return Breakdown(category: category, amount: amount, count: rows.count)
@@ -268,10 +268,9 @@ public enum Finance {
     public static func subcategoryBreakdown(_ ledger: Ledger, category: String, during interval: DateInterval) -> [Breakdown] {
         let byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         let income = ledger.categories.first { $0.name == ledger.resolveCategory(category) }?.income ?? false
-        let rows = ledger.activeEntries.filter { $0.date >= interval.start && $0.date < interval.end && (income ? $0.nature == .income : ($0.nature == .expense || $0.nature == .refund)) && ledger.resolveCategory(spendingCategory($0, entriesByID: byID)) == ledger.resolveCategory(category) }
+        let rows = ledger.activeEntries.filter { $0.date >= interval.start && $0.date < interval.end && (income ? $0.nature == .income : ($0.nature == .expense || $0.nature == .refund)) && ledger.normalizedCategory(for: $0, entriesByID: byID).category == ledger.resolveCategory(category) }
         let grouped = Dictionary(grouping: rows) { entry in
-            let original = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } : nil
-            return (original ?? entry).subcategory ?? "没分类"
+            return ledger.normalizedCategory(for: entry, entriesByID: byID).subcategory ?? "没分类"
         }
         return grouped.map { sub, rows in Breakdown(category: sub, amount: rows.reduce(0) { $0 + (income ? $1.amount : spendingAmount($1, ledger: ledger)) }, count: rows.filter { $0.nature == .expense || $0.nature == .income }.count) }
             .sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }

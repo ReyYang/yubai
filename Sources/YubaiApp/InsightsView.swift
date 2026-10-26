@@ -260,8 +260,8 @@ struct FlowRecordsView: View {
         let rows = store.sortedEntries.filter { entry in
             guard entry.deletedAt == nil, entry.date >= interval.start, entry.date < interval.end else { return false }
             let natureMatches = income ? entry.nature == .income : (entry.nature == .expense || entry.nature == .refund)
-            let category = income ? entry.category : Finance.spendingCategory(entry, entriesByID: entriesByID)
-            return natureMatches && categories.contains(category)
+            let category = store.current.normalizedCategory(for: entry, entriesByID: entriesByID).category
+            return natureMatches && categories.contains { store.current.resolveCategory($0) == category }
         }
         Page {
             CardRows(rows) { entry in

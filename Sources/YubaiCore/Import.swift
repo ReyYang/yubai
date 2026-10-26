@@ -13,6 +13,12 @@ import CArchive
 public struct Classification: Sendable {
     public static let pendingCategory = "待整理"
     public static func displayCategory(_ category: String) -> String { category == pendingCategory ? "没分类" : category }
+    public static func isPending(_ category: String) -> Bool {
+        ["", "没分类", pendingCategory].contains(category.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+    public static func isPending(_ entry: Entry) -> Bool {
+        isPending(entry.category) || (entry.category == "其他支出" && entry.classificationReason == "没分类")
+    }
     public var category: String; public var nature: Nature; public var reason: String
 }
 /// Only explicit bill type fields supply deterministic nature hints. No merchant rules.
@@ -219,25 +225,22 @@ public enum BillImporter {
                 if isTransfer, let fromAccount, let toAccount, fromAccount == toAccount { throw YubaiError.invalid("转账的两个账户必须不同，请核对原账单或账户对应。") }
                 let rawMain = field(categoryCol), rawSub = field(subcategoryCol)
                 let rawCategory = rawSub.isEmpty ? rawMain : rawSub
-                let sourceCategory = ledger.resolveCategory(rawCategory.isEmpty ? classification.category : rawCategory)
-                let explicitCategory = categoryMappings[rawCategory] ?? categoryMappings[sourceCategory]
-                let main = CategoryMigration.canonical(ledger.resolveCategory(rawMain)).category
-                let knownMain = ledger.categories.contains { $0.name == main }
-                let category = explicitCategory ?? (knownMain ? main : sourceCategory)
-                let normalized = CategoryMigration.canonical(ledger.resolveCategory(clean(category))).category
-                var entry = Entry(date: date, amount: abs(signed), nature: explicitNature ?? classification.nature, accountID: mappedAccount, title: title, category: normalized)
-                if let table = ledger.categories.first(where: { $0.name == normalized }), table.subcategories.contains(rawSub) { entry.subcategory = rawSub }
-                else {
-                    let legacy = CategoryMigration.canonical(rawCategory)
-                    if legacy.category == normalized { entry.subcategory = legacy.subcategory }
-                }
+                let sourceCategory = rawCategory.isEmpty ? classification.category : rawCategory
+                let explicitCategory = categoryMappings[rawCategory] ?? categoryMappings[ledger.resolveCategory(sourceCategory)] ?? categoryMappings[rawMain]
+                let nature = explicitNature ?? classification.nature
+                var entry = Entry(date: date, amount: abs(signed), nature: nature, accountID: mappedAccount, title: title, category: Classification.pendingCategory)
+                let label = rawSub.isEmpty ? rawMain : rawMain + "/" + rawSub
+                let hint = explicitCategory.flatMap { CategoryMapping.match($0, in: ledger, income: nature != .refund && nature.inflow) }
+                    ?? CategoryGuesser.guess(entry, in: ledger, billLabel: label)
+                if let hint { entry.category = hint.category; entry.subcategory = hint.subcategory }
+                if isTransfer { entry.category = "内部移动" }
                 if isTransfer { entry.otherAccountID = toAccount }
                 entry.note = [field(noteCol), status.isEmpty ? "" : "原账单状态：" + status, method.isEmpty ? "" : "收付款方式：" + method].filter { !$0.isEmpty }.joined(separator: "\n"); entry.source = source; entry.sourceRow = line; entry.externalID = field(idCol).replacingOccurrences(of: "\t", with: "")
                 if isTransfer {
                     entry.note += "\n转出账户：" + fromName + "；转入账户：" + toName
                 }
                 entry.classificationReason = classification.reason
-                if categoryMappings[rawCategory] != nil || categoryMappings[sourceCategory] != nil {
+                if explicitCategory != nil {
                     entry.userEdited = true
                 }
                 SubcategoryClassifier.classify(&entry, ledger: ledger)
@@ -287,9 +290,21 @@ public enum BillImporter {
         }
         return result
     }
-    public static func commit(_ preview: ImportPreview, data: Data, to ledger: inout Ledger) throws -> ImportBatch {
+    /// Only an explicit new-category choice can create a main, and only for
+    /// selected source rows. Category creation and the import commit together.
+    public static func commit(_ preview: ImportPreview, data: Data, confirmedNewCategories: Set<String> = [], to ledger: inout Ledger) throws -> ImportBatch {
         var candidate = ledger
-        let batch = try commitValidated(preview, data: data, to: &candidate)
+        var confirmed = preview
+        for name in confirmedNewCategories.sorted() {
+            guard let entry = confirmed.rows.first(where: { $0.included && $0.sourceCategory == name && $0.entry != nil })?.entry else { continue }
+            try CategoryModel.add(Category(name, income: entry.nature != .refund && entry.nature.inflow), in: &candidate)
+            for i in confirmed.rows.indices where confirmed.rows[i].included && confirmed.rows[i].sourceCategory == name {
+                confirmed.rows[i].entry?.category = clean(name)
+                confirmed.rows[i].entry?.subcategory = nil
+                confirmed.rows[i].entry?.userEdited = true
+            }
+        }
+        let batch = try commitValidated(confirmed, data: data, to: &candidate)
         ledger = candidate
         return batch
     }
@@ -302,10 +317,29 @@ public enum BillImporter {
         var existing = Set(ledger.entries.map(\.id))
         let existingSourceIDs = Set(ledger.entries.filter { !$0.externalID.isEmpty }.map(sourceKey))
         let existingHashes = Set(ledger.entries.map(\.fingerprint).filter { !$0.isEmpty })
+        for row in preview.rows where row.included {
+            guard let entry = row.entry else { continue }
+            for label in [row.sourceCategory] where !Classification.isPending(label) {
+                if let mapped = CategoryMapping.match(label, in: ledger, income: entry.nature != .refund && entry.nature.inflow) {
+                    if label != mapped.category { ledger.categoryAliases[label] = mapped.category }
+                } else if entry.userEdited, ledger.selectableCategories.contains(where: { $0.name == entry.category }) {
+                    ledger.categoryAliases[label] = entry.category
+                }
+            }
+        }
         for var entry in preview.selectedEntries {
+            // Unconfirmed review labels must resolve to an existing main.
+            let choice = ledger.categoryAssignment(category: entry.category, subcategory: entry.subcategory)
+            if entry.nature == .transfer { entry.category = "内部移动"; entry.subcategory = nil }
+            else if ledger.categories.contains(where: { $0.name == choice.category && !$0.system }) {
+                entry.category = choice.category; entry.subcategory = choice.subcategory
+            } else {
+                entry.category = Classification.pendingCategory; entry.subcategory = nil
+            }
             guard !existing.contains(entry.id) else { throw YubaiError.invalid("这一批记录已保存，请重新读取文件。") }
             guard entry.externalID.isEmpty || !existingSourceIDs.contains(sourceKey(entry)), entry.fingerprint.isEmpty || !existingHashes.contains(entry.fingerprint) else { throw YubaiError.invalid("账本在预览后发生变化，已有重复记录。请重新预览，再确认导入。") }
             SubcategoryClassifier.classify(&entry, ledger: ledger)
+            if entry.userEdited { CategoryMemory.remember(entry, in: &ledger) }
             existing.insert(entry.id); entry.batchID = batch.id; entry.attachmentID = attachment.id; ledger.entries.append(entry)
         }
         ledger.attachments.append(attachment); ledger.imports.append(batch); try ledger.validate(); return batch

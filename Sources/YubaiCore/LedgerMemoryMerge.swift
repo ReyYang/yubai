@@ -45,8 +45,7 @@ public enum LedgerMemoryMerge {
                 result.cards[i] = merged
             }
             for topic in other.mutedTopics where !result.mutedTopics.contains(topic) { result.mutedTopics.append(topic) }
-            for (key, choice) in other.subcategoryMemory where result.subcategoryMemory[key] == nil { result.subcategoryMemory[key] = choice }
-            for (key, category) in other.categoryMemory where result.categoryMemory[key] == nil { result.categoryMemory[key] = category }
+            for (key, choice) in other.classificationMemory where result.classificationMemory[key] == nil { result.classificationMemory[key] = choice }
         }
         result.profile.generous = areas.filter { $0.1 == .generous }.map { $0.0 }
         result.profile.restrain = areas.filter { $0.1 == .restrain }.map { $0.0 }

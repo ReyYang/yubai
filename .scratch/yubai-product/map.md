@@ -95,3 +95,8 @@ Status: open
 
 
 2026-10-23 owner 指定[第十五轮「帮你省钱」界面](issues/13-complete-personal-release.md#2026-10-23--第十五轮帮你省钱界面owner-指定稿)：按 12 张 V15 稿接购买结论／追问、冷静期、省钱／订阅、消费观再聊与顺手入口、近限额单行、两级分类下钻；全部新增文字逐条分类登记。[源码、文案和验证交付](../../docs/SAVING-UI-V15.md)：Linux 449 项测试、445 通过／4 跳过／0 失败，全部 App iOS／macOS 语法解析通过；Apple SDK 类型检查与设备验收待做，未联网调 API、未提交。
+
+
+2026-10-26 owner 明确确认[分类模型 schema 4](issues/13-complete-personal-release.md#2026-10-26--分类模型-schema-4owner-明确任务)：一张表、一种没分类、一份记忆、固定快选和统一统计；导入不建主项，分类维护仅 Core API。迁移／验证／界面边界见交付记录，Apple 运行验证待做，未提交。
+
+同日 owner 确认「允许自己加主项」：导入明确点击「新建」后才创建，自动流程仍不建主项，通知改为事实状态「没分类」，见[第 13 票续记](issues/13-complete-personal-release.md#2026-10-26--分类模型-schema-4owner-明确任务)。

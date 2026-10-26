@@ -35,7 +35,7 @@ enum CaptureNotifications {
         let privateResult = ledger.preferences.lockEnabled || ledger.preferences.hideAmounts
         if privateResult { content.body = "已记下 " + (ledger.preferences.hideAmounts ? "••••" : Money.text(entry.amount)) }
         else {
-            let category = entry.hasNoCaptureCategory ? "先放在 其他支出" : Classification.displayCategory(entry.category)
+            let category = entry.hasNoCaptureCategory ? "没分类" : Classification.displayCategory(entry.category)
             content.body = "已记下 " + entry.displayTitle + " " + Money.text(entry.amount) + " · " + category + " · " + ledger.accountName(entry.accountID)
         }
         content.body += "\n还能花 " + (ledger.preferences.hideAmounts ? "••••" : Money.text(QuickCapture.available(in: ledger))) + " · 轻点改一下"

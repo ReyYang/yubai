@@ -5,7 +5,7 @@ final class ChangeSetTests: XCTestCase {
     private let day = Dates.parse("2026-10-03")!
     private func ledger() -> Ledger {
         var l = Ledger(); l.accounts = [Account(name: "银行卡", at: day), Account(name: "零钱", kind: .cash, at: day)]
-        l.entries = [Entry(date: day, amount: 4250, accountID: l.accounts[0].id, title: "美团", category: "其他支出"),
+        l.entries = [Entry(date: day, amount: 4250, accountID: l.accounts[0].id, title: "美团", category: Classification.pendingCategory),
                      Entry(date: day, amount: 150000, nature: .unknownIn, accountID: l.accounts[0].id, title: "联系人A 转入")]
         return l
     }
