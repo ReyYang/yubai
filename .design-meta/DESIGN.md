@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-26 · PR #37 第三轮证据修复
+
+基于 `fix/flaky-ui-tests`／`287ffec`，先读合并验证全部 8 份相关失败层级，再逐项核对测试失败行与截图：5 项账目停在初始关闭检查，固定收付停在展开几何检查通过后的收回检查，2 项管家停在右滑后的关闭检查。均为 `assertGone(action)` 的 AX 不存在等待，未发生展开等待失败。管家 `closed` 卡仍导出宽 0 的「知道了」，账目／固定收付仍导出 78pt 的删除／停掉；这证明上一轮移动 `.accessibilityHidden` 没有解决实际 AX 节点残留，覆盖上一节对该修复效果的推定。
+
+`SwipeActionRow` 仅在 `offset != 0 || revealed` 时挂载背景 Button，`ButlerCardView` 仅在 `swipe != 0` 时挂载背景 Button；两处加 `.transition(.identity)`，不额外引入默认插入过渡。原内容决定布局大小，动作保留在 `.background(alignment: .trailing)`，原 frame、padding、opacity、偏移、裁切、颜色／字体和点击条件保持；没有增加占位尺寸，现有手势／动画调用及 Reduce Motion tokens 保持。现有中文读屏动作及生产 AX 值门控不变，无新英文生产 VoiceOver 输出。
+
+全部 70 项 UI 测试文件原样保留，不改手势坐标／断言／等待或 `testUndoReceiptDismissesAfterProductionLifetime` 的金额文字。两个改动文件的 iOS 26／27.1 Debug 模拟器、iOS 26 Release 设备和 macOS 14 Debug 共 8 组条件语法解析通过，静态比对除条件挂载／identity transition／注释缩进外相同，字符串不变。此环境没有 Apple SDK／模拟器，AX 消失、实际几何及拖动／收回动画仍待 Mac 实跑与视觉比较；选定稿／Figma／分发资源保持，新增／改动可见中文无，未提交。
+
 ## 2026-10-26 · 金额固定两位小数
 
 owner 明确要求所有金额展示固定两位小数：整额写 `12.00`，带分写 `12.50`，不进位为整元、不省略分。`DesignSystem.swift / AmountLabel` 删除按角色选择精度、`fractionDigits`／`decimals` 参数及整元进位分支，显示与读屏共用同一文本；保留千位分隔、正负号、币种符号和隐藏金额行为。余额、固定收付、还能花、日／月汇总、洞察／小项、省钱和快捷指令调用点移除精度参数；心愿生成的两处提问改用 `Money.text(..., currency: false)`。

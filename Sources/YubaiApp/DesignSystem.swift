@@ -671,22 +671,25 @@ struct SwipeActionRow<Content: View>: View {
         content.frame(maxWidth: .infinity, alignment: .leading)
             .offset(x: offset)
             .background(alignment: .trailing) {
-                Button(action: action) {
-                    Text(title)
+                // The background never sizes the row. Omit fully hidden Buttons from AX.
+                if offset != 0 || revealed {
+                    Button(action: action) {
+                        Text(title)
+                            #if os(iOS)
+                            .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
+                            .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            #endif
+                    }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
                         #if os(iOS)
-                        .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
-                        .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
+                        #else
+                        .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
                         #endif
-                }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
-                    #if os(iOS)
-                    .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
-                    #else
-                    .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
-                    #endif
-                    .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0)
-                    // Hide the complete action wrapper, including the AX node made by its identifier.
-                    .accessibilityIdentifier(actionIdentifier).accessibilityHidden(!revealed)
+                        .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0)
+                        .accessibilityIdentifier(actionIdentifier).accessibilityHidden(!revealed)
+                        .transition(.identity)
+                }
             }.clipped().contentShape(Rectangle())
     }
 }

@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-26 PR #37 第三轮取证修复**：逐份读完合并验证的 8 份相关层级并核对失败行，均为关闭动作仍存在于 AX，非展开失败；第二轮仅移动 hidden 修饰未生效。共用左滑与管家背景动作在完全隐藏时不挂载 Button，使用 identity transition，保留原布局／样式／手势／动画参数。全部 70 项 UI 测试源码及生产时长金额断言保持，新增／改动可见中文无；8 组条件解析通过，Mac AX／视觉／动画复验待做，未提交。[实现与验证边界](DESIGN.md#2026-10-26--pr-37-第三轮证据修复)。
+
 **2026-10-26 PR #41 Xcode 编译修复**：按 owner 的 Xcode 27.1 报错，将小项芯片的 `selected: Bool` 改由已有 store 的父视图计算；相对 `origin/main` 的全部 8 个 App 文件逐处复核，Widgets 无改动。拆开分类 Picker／版本差异数组并补显式类型，不改视觉、文案或行为。[逐文件复核与验证边界](../docs/CATEGORY-MODEL-SCHEMA4.md#pr-41--xcode-271-编译修复与-app-复核)。Linux 496 项测试，492 通过／4 原有实网跳过／0 失败；38 个 App 与 1 个 Widget 文件四组条件解析通过，相关 Core API 的普通模块导入在 Swift 6 严格并发下类型检查通过。Apple SDK 真编译与 UI 实跑仍待 Mac；无新增／改动可见中文，未提交。
 
 **2026-10-26 分类模型 schema 4**：owner 明确授权 Core 为主重构，统一分类表／记忆／猜测／统计，导入不建主项，固定快选，提供自定义分类 API；App 仅接线，不改视觉、布局、静态文案和动效。[迁移、测试调整、验证边界与保留文案债务](../docs/CATEGORY-MODEL-SCHEMA4.md)、[采用决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-26--分类模型-schema-4owner-明确任务)。Linux build／490 项测试通过（486 通过、4 原有实网跳过、0 失败），App／UI 条件解析通过；Apple 编译和 UI 实跑待 Mac；原稿／原型／分发包未同步，未提交。
