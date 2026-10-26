@@ -127,7 +127,7 @@ struct WishlistView: View {
                 }
             } }
         }
-        NavigationLink("再问一次") { AskYubaiView(initialText: "我还想再看看「\(wish.title)」，\(Money.input(wish.amount))元，该不该买？") }
+        NavigationLink("再问一次") { AskYubaiView(initialText: "我还想再看看「\(wish.title)」，\(Money.text(wish.amount, currency: false))元，该不该买？") }
     }
 
 }
@@ -150,7 +150,7 @@ struct WishEntryPicker: View {
                     } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }.buttonStyle(PressButtonStyle())
                 }.accessibilityLabel("选择已经记下的支出")
                 Toggle("查看全部支出", isOn: $all).tint(YubaiColor.toggleOn)
-                NavigationLink("先记下购买") { AskYubaiView(initialText: "记一笔：\(wish.title) \(Money.input(wish.amount))元") }
+                NavigationLink("先记下购买") { AskYubaiView(initialText: "记一笔：\(wish.title) \(Money.text(wish.amount, currency: false))元") }
             } else { Text("这条心愿已经处理过了。") }
         }.navigationTitle("对应哪一笔").yubaiNavigation()
     }

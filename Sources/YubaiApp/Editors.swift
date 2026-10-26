@@ -75,8 +75,8 @@ struct AccountsView: View {
                         CardRows(accounts) { a in
                             NavigationLink { accountDetail(a) } label: {
                                 ViewThatFits(in: .horizontal) {
-                                    HStack(spacing: YubaiSpace.gapGroup) { accountName(a); Spacer(); AmountLabel(cents: Finance.balance(a, in: store.current), fractionDigits: 2) }
-                                    VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); AmountLabel(cents: Finance.balance(a, in: store.current), fractionDigits: 2) }
+                                    HStack(spacing: YubaiSpace.gapGroup) { accountName(a); Spacer(); AmountLabel(cents: Finance.balance(a, in: store.current)) }
+                                    VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); AmountLabel(cents: Finance.balance(a, in: store.current)) }
                                 }.padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
                             }.buttonStyle(PressButtonStyle())
                         }
@@ -91,7 +91,7 @@ struct AccountsView: View {
     }
     func accountDetail(_ a: Account) -> some View {
         Page {
-            AmountLabel(cents: Finance.balance(a, in: store.current), role: .display, fractionDigits: 2)
+            AmountLabel(cents: Finance.balance(a, in: store.current), role: .display)
             Card(style: .list) { VStack(spacing: YubaiSpace.none) {
                 LabeledContent("类型", value: a.kind.label).frame(minHeight: YubaiSize.rowSingle)
                 Divider().overlay(YubaiColor.separator)

@@ -61,9 +61,9 @@ struct SavingsHeader: View {
     }
     private func numbers(_ increase: Int64) -> some View {
         Group {
-            AmountLabel(cents: Savings.total(ledger: store.current), hide: store.current.preferences.hideAmounts, role: .input, fractionDigits: 0)
+            AmountLabel(cents: Savings.total(ledger: store.current), hide: store.current.preferences.hideAmounts, role: .input)
             if !store.current.preferences.hideAmounts {
-                Text("这个月 +" + AmountLabel.text(increase, decimals: 0)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                Text("这个月 +" + AmountLabel.text(increase)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
             }
         }
     }

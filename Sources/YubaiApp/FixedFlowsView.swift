@@ -14,12 +14,10 @@ struct FixedFlowsView: View {
                     Spacer(minLength: YubaiSpace.space4)
                     HStack(spacing: YubaiSpace.space4) {
                         Text("要收").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                        AmountLabel(cents: month.remainingInflow, hide: ledger.preferences.hideAmounts, role: .small, sign: .inflow,
-                                    fractionDigits: month.remainingInflow % 100 == 0 ? 0 : 2, ink: YubaiColor.brandInk)
+                        AmountLabel(cents: month.remainingInflow, hide: ledger.preferences.hideAmounts, role: .small, sign: .inflow, ink: YubaiColor.brandInk)
                     }
                 }
-                AmountLabel(cents: month.remainingOutflow, hide: ledger.preferences.hideAmounts, role: .display,
-                            fractionDigits: month.remainingOutflow % 100 == 0 ? 0 : 2).accessibilityIdentifier("fixedFlowRemaining")
+                AmountLabel(cents: month.remainingOutflow, hide: ledger.preferences.hideAmounts, role: .display).accessibilityIdentifier("fixedFlowRemaining")
                 if month.overdueOutflow > 0 || month.overdueInflow > 0 {
                     HStack(spacing: YubaiSpace.space4) {
                         if month.overdueOutflow > 0 {
@@ -60,8 +58,7 @@ struct FixedFlowsView: View {
             } }
     }
     private func overdueAmount(_ amount: Int64) -> some View {
-        AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts,
-                    fractionDigits: amount % 100 == 0 ? 0 : 2, ink: YubaiColor.amberInk)
+        AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, ink: YubaiColor.amberInk)
     }
     private func stoppedBills(_ rows: [FixedFlowArrangement]) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -77,7 +74,7 @@ struct FixedFlowsView: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                             let amount = row.pending.isEmpty ? row.amount : row.pendingAmount
                             AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts,
-                                        sign: row.inflow ? .inflow : .none, fractionDigits: amount % 100 == 0 ? 0 : 2, ink: YubaiColor.labelSecondary)
+                                        sign: row.inflow ? .inflow : .none, ink: YubaiColor.labelSecondary)
                                 .fixedSize(horizontal: true, vertical: false)
                         }.foregroundStyle(YubaiColor.labelSecondary).opacity(row.pending.isEmpty ? 0.7 : 1)
                         Button("恢复") { resume(row) }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
@@ -252,8 +249,7 @@ private struct FixedFlowBillRow: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: YubaiSpace.none) {
                 if row.estimated { Text("~").yubaiFont(YubaiFont.amount) }
-                AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none,
-                            fractionDigits: row.amount % 100 == 0 ? 0 : 2, ink: row.state == .paid ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.label)
+                AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none, ink: row.state == .paid ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.label)
             }.foregroundStyle(row.state == .paid ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.label).fixedSize(horizontal: true, vertical: false)
             if let id = row.planID, row.state != .upcoming {
                 FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount, inflow: row.inflow, state: row.state)
@@ -341,7 +337,7 @@ struct FixedFlowCheck: View {
             let change = try FixedFlows.settle(planID: planID, occurrence: occurrence, amount: override, in: store.current)
             guard store.apply(change, label: (inflow ? "收到了 " : "付了 ") + title) else { return false }
             store.cancelEntrySaveMotion(); store.fixedFlowSettleTrigger &+= 1
-            let value = store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(amount, decimals: amount % 100 == 0 ? 0 : 2)
+            let value = store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(amount)
             store.toast = title + " " + value + " 已记下"
             return true
         } catch { store.error = error.localizedDescription; return false }

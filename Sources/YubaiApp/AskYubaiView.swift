@@ -419,7 +419,7 @@ private struct AskPastedStatementCard: View {
     private func total(_ title: String, count: Int, amount: Int64) -> some View {
         HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
-            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .small, sign: .none, fractionDigits: 2)
+            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .small, sign: .none)
         }
     }
 }
@@ -473,7 +473,7 @@ private struct AskEntryDraftCard: View {
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("合计").yubaiFont(YubaiFont.row)
                         Spacer()
-                        if let sum { AmountLabel(cents: sum, hide: store.current.preferences.hideAmounts, role: .small, sign: .none, fractionDigits: 2) }
+                        if let sum { AmountLabel(cents: sum, hide: store.current.preferences.hideAmounts, role: .small, sign: .none) }
                         else { Text("金额超出范围").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
                     }
                     Toggle("金额和原文对得上", isOn: $amountsConfirmed).tint(YubaiColor.toggleOn).yubaiFont(YubaiFont.row).accessibilityIdentifier("confirmDraftAmounts")

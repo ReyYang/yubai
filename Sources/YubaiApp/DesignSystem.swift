@@ -742,14 +742,9 @@ struct AmountLabel: View {
     var role: Role? = nil
     var sign: Sign = .automatic
     var currency: Bool? = nil
-    var fractionDigits: Int? = nil
     var ink: Color = YubaiColor.label
     private var resolvedRole: Role { role ?? (large ? .display : .amount) }
-    private var decimals: Int {
-        if let fractionDigits { return fractionDigits == 0 ? 0 : 2 }
-        return resolvedRole == .amount || resolvedRole == .input ? 2 : 0
-    }
-    private var text: String { Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: decimals) }
+    private var text: String { Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero)) }
     private var numericValue: Double {
         switch sign { case .automatic: Double(cents) / 100; case .inflow, .none: abs(Double(cents)) / 100; case .outflow: -abs(Double(cents)) / 100 }
     }
@@ -760,12 +755,12 @@ struct AmountLabel: View {
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
         }.yubaiFont(font).foregroundStyle(ink)
             .minimumScaleFactor(resolvedRole == .summary || resolvedRole == .donut ? 0.25 : 0.55).lineLimit(1)
-            .accessibilityLabel(hide ? "金额已隐藏" : Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: 2))
+            .accessibilityLabel(hide ? "金额已隐藏" : text)
             .animation(YubaiMotion.quick, value: hide)
     }
-    static func text(_ cents: Int64, sign: Sign = .automatic, currency: Bool = false, decimals: Int = 0) -> String {
+    static func text(_ cents: Int64, sign: Sign = .automatic, currency: Bool = false) -> String {
         let magnitude = cents.magnitude
-        let units = magnitude / 100 + (decimals == 0 && magnitude % 100 >= 50 ? 1 : 0)
+        let units = magnitude / 100
         let digits = String(units)
         let grouped = digits.enumerated().map { index, digit in (index > 0 && (digits.count - index) % 3 == 0 ? "," : "") + String(digit) }.joined()
         let prefix: String
@@ -773,8 +768,7 @@ struct AmountLabel: View {
         let fraction = magnitude % 100
         let currencyText = currency ? "¥" : ""
         let fractionText = fraction < 10 ? "0" + String(fraction) : String(fraction)
-        let suffix = decimals == 0 ? "" : "." + fractionText
-        return prefix + currencyText + grouped + suffix
+        return prefix + currencyText + grouped + "." + fractionText
     }
 }
 

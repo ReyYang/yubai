@@ -418,17 +418,17 @@ final class AppFlowTests: XCTestCase {
     func testFixedBillCheckMarksPaidAndUndoRestoresIt() {
         let app = application("bills", keepingUndo: true); app.launch()
         XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700"))
+        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700.00"))
         openFixedBills(app)
         let check = app.buttons["付了 房租"]
         tap(check, in: app)
-        tapUndo(messagePrefix: "房租 300 已记下", exact: true, in: app)
+        tapUndo(messagePrefix: "房租 300.00 已记下", exact: true, in: app)
         assertState(check, value: "已到期", enabled: true)
         tap(check, in: app)
         assertGone(check); XCTAssertTrue(app.images["已付 房租"].exists)
         snapshot("bill-paid", app)
         tap(app.navigationBars.buttons["我"], in: app); tap(app.buttons["tab_overview"], in: app)
-        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700"))
+        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700.00"))
         XCTAssertTrue(app.buttons["todayEntries"].label.contains("1 笔"))
     }
 
@@ -455,13 +455,13 @@ final class AppFlowTests: XCTestCase {
     func testFixedIncomeCheckIncreasesAvailableAndPersists() {
         let app = application("bills"); app.launch()
         XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700"))
+        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700.00"))
         openFixedBills(app)
         let check = app.buttons["收到了 工资"]
         tap(check, in: app)
         assertGone(check); XCTAssertTrue(app.images["已收到 工资"].exists)
         tap(app.navigationBars.buttons["我"], in: app); tap(app.buttons["tab_overview"], in: app)
-        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '¥1,200'"), object: app.buttons["fundsFormula"])
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '¥1,200.00'"), object: app.buttons["fundsFormula"])
         XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
         snapshot("income-received", app)
         app.terminate(); app.launch(); openFixedBills(app)
@@ -478,7 +478,7 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["saveManualSheet"], in: app)
         assertGone(check); XCTAssertTrue(app.images["已付 电费"].exists)
         tap(app.navigationBars.buttons["我"], in: app); tap(app.buttons["tab_overview"], in: app)
-        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥900"))
+        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥900.00"))
         XCTAssertTrue(app.buttons["todayEntries"].label.contains("1 笔"))
     }
 
@@ -1569,7 +1569,7 @@ final class AppFlowTests: XCTestCase {
         let funds = app.buttons["fundsFormula"]
         XCTAssertTrue(funds.waitForExistence(timeout: 10))
         // A newly opened ledger has no known obligations or spending estimate.
-        XCTAssertTrue(funds.label.contains("还能花")); XCTAssertTrue(funds.label.contains("1,000"))
+        XCTAssertTrue(funds.label.contains("还能花")); XCTAssertTrue(funds.label.contains("1,000.00"))
         let identifiers = ["tab_overview", "tab_insights", "addEntry", "tab_entries", "tab_settings"]
         let tabs = app.buttons.matching(NSPredicate(format: "identifier IN %@", identifiers)).allElementsBoundByIndex
         XCTAssertEqual(tabs.count, 5)
@@ -1656,7 +1656,7 @@ final class AppFlowTests: XCTestCase {
         let app = application("manual"); app.launch()
         let funds = app.buttons["fundsFormula"]
         XCTAssertTrue(funds.waitForExistence(timeout: 10))
-        XCTAssertTrue(funds.label.contains("1,000"))
+        XCTAssertTrue(funds.label.contains("1,000.00"))
         tap(addEntryTab(app), in: app)
         tap(app.buttons["keypad_3"], in: app); tap(app.buttons["keypad_2"], in: app)
         XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "32")
@@ -1666,7 +1666,7 @@ final class AppFlowTests: XCTestCase {
         let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '−32.00'"), object: today)
         XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 10), .completed)
         XCTAssertTrue(today.label.contains("1 笔"))
-        let decreased = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '968'"), object: funds)
+        let decreased = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '968.00'"), object: funds)
         XCTAssertEqual(XCTWaiter.wait(for: [decreased], timeout: 10), .completed)
         snapshot("manual-saved", app)
         tap(today, in: app)
@@ -1680,7 +1680,7 @@ final class AppFlowTests: XCTestCase {
         snapshot("manual-deleted", app)
         tap(app.buttons["tab_overview"], in: app)
         XCTAssertTrue(app.buttons["todayEntries"].label.contains("还没记"))
-        XCTAssertTrue(funds.label.contains("1,000"))
+        XCTAssertTrue(funds.label.contains("1,000.00"))
     }
 
     func testImportOrganizeAnswerAndUndoEntireBatch() {

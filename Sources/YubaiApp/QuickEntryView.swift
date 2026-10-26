@@ -38,7 +38,7 @@ struct QuickEntryView: View {
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                         Spacer()
-                        AmountLabel(cents: available, hide: store.current.preferences.hideAmounts, currency: true, fractionDigits: available % 100 == 0 ? 0 : 2)
+                        AmountLabel(cents: available, hide: store.current.preferences.hideAmounts, currency: true)
                             .accessibilityIdentifier("afterEntryAvailable")
                     }
                     if let suggestion { matchChip(suggestion) }
@@ -165,7 +165,7 @@ struct QuickEntryView: View {
             guard store.apply(change, label: "记一笔") else { return }
             let title = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
             let sign: AmountLabel.Sign = nature.inflow ? .inflow : .outflow
-            let amount = store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(keypad.amount ?? 0, sign: sign, decimals: 2)
+            let amount = store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(keypad.amount ?? 0, sign: sign)
             store.setEntrySaveToast("已记下 · " + (title.isEmpty ? category : title) + " " + amount + " · " + store.current.accountName(accountID))
             if again {
                 keypad.reset(); purpose = ""; userChoseCategory = false; selectedMatchID = nil

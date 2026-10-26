@@ -337,7 +337,7 @@ struct ImportView: View {
     private func total(_ title: String, entries: [Entry]) -> some View {
         HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(entries.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
-            AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.current.preferences.hideAmounts, role: .small, sign: .none, fractionDigits: 2)
+            AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.current.preferences.hideAmounts, role: .small, sign: .none)
         }.accessibilityElement(children: .combine).accessibilityIdentifier("importTotal_" + title)
     }
     private var accountPicker: some View {

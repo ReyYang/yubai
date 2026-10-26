@@ -117,7 +117,7 @@ struct OverviewView: View {
                 Text(row.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
                 Text(dueDetail(row)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, fractionDigits: row.amount % 100 == 0 ? 0 : 2,
+            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts,
                         ink: YubaiColor.amberStrong)
             if let id = row.planID {
                 FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount)
@@ -145,7 +145,7 @@ struct OverviewView: View {
                         Text("账目").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     } else {
                         AmountLabel(cents: today.net, hide: store.current.preferences.hideAmounts, role: .small,
-                                    sign: today.net > 0 ? .inflow : .automatic, fractionDigits: 2)
+                                    sign: today.net > 0 ? .inflow : .automatic)
                     }
                     if textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
                     Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)

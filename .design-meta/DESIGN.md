@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-26 · 金额固定两位小数
+
+owner 明确要求所有金额展示固定两位小数：整额写 `12.00`，带分写 `12.50`，不进位为整元、不省略分。`DesignSystem.swift / AmountLabel` 删除按角色选择精度、`fractionDigits`／`decimals` 参数及整元进位分支，显示与读屏共用同一文本；保留千位分隔、正负号、币种符号和隐藏金额行为。余额、固定收付、还能花、日／月汇总、洞察／小项、省钱和快捷指令调用点移除精度参数；心愿生成的两处提问改用 `Money.text(..., currency: false)`。
+
+Core 使用 Int64 分计算，`Money.text`、助手金额对象及小组件已固定两位，核查后无需修改。输入解析／编辑中的原始金额与键盘表达式保持；百分比、图表坐标缩放、次数、文件大小和布局／字体／颜色保持。新增／改动可见中文措辞：无；既有提示如「房租 300 已记下」只将数字改为「房租 300.00 已记下」，既有两处心愿提问同样只改插值金额。
+
+验证：通过 `/opt/swift-rootfs/usr/bin` 工具链、`/tmp` 可写缓存运行 Core build 与 `YUBAI_LIVE_EVAL=0 swift test`，464 项中 460 通过、4 项原有实网跳过、0 失败。直接提取实际 `AmountLabel.text`／`Money.text` 执行 357 项检查，覆盖零、整额、分、半元边界、正负号／币种符号、千位分隔、Money.limit 和 Int64 极值；未新增 Core 测试。38 个 App 文件、小组件及 UI 测试共 40 个文件通过 iOS 26 模拟器／macOS 14 Debug 条件语法解析；已有 UI 金额断言更新为两位，输入断言保留。`git diff --check` 通过。Apple SDK 类型检查、UI 实跑与长金额实际显示仍待 Mac；原稿／Figma／历史原型及分发包未同步，未提交。
+
 ## 2026-10-26 · PR #37 第二轮证据修复
 
 owner 在 `1821b9b` 的 Mac 两轮验证为 20 项稳定失败、2 项时好时坏；已逐份读完 21 份现有失败层级／截图及中断证据缺口。账目 `closed` 行仍暴露删除 Button，固定收付同样暴露停掉：共用 `SwipeActionRow` 的 identifier／hidden 移到全部 frame、padding、opacity、hit-testing 之后，关闭断言加强为 AX 中不存在；原按钮仍挂载，所有视觉与手势修饰不变。待付 Card 增加 `.contain`，阻止 `dueBills` 传播覆盖 `moreDueBills` 与各期按钮标识；不加 label／value。

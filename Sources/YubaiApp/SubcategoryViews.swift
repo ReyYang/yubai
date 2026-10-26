@@ -167,7 +167,7 @@ struct SubcategoryInsightsView: View {
         let comparisonText: String = shareText(total, denominator) + " · " + comparison(total - previous)
         return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(rangeText + " · \(count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: total, hide: store.current.preferences.hideAmounts, role: .input, fractionDigits: 0)
+            AmountLabel(cents: total, hide: store.current.preferences.hideAmounts, role: .input)
             if !store.current.preferences.hideAmounts {
                 Text(comparisonText).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             }
