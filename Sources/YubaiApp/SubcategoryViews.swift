@@ -72,12 +72,14 @@ private struct SubcategoryPicker: View {
         store.current.selectableCategories.filter { $0.income == (entry.nature == .income) }
     }
     private func choices(for entry: Entry) -> some View {
-        let main: String = category ?? store.current.normalizedCategory(for: entry).category
+        let choice: CategoryAssignment = store.current.normalizedCategory(for: entry)
+        let main: String = category ?? choice.category
         let subcategories: [String] = store.current.selectableCategories.first { $0.name == main }?.subcategories ?? []
         return Card(background: YubaiColor.raised) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 ForEach(subcategories, id: \.self) { sub in
-                    SubcategoryChoiceChip(entry: entry, main: main, sub: sub) { save(main: main, sub: sub) }
+                    let selected: Bool = main == choice.category && choice.subcategory == sub
+                    SubcategoryChoiceChip(sub: sub, selected: selected) { save(main: main, sub: sub) }
                 }
             }
         }
@@ -94,14 +96,9 @@ private struct SubcategoryPicker: View {
 }
 
 private struct SubcategoryChoiceChip: View {
-    let entry: Entry
-    let main: String
     let sub: String
+    let selected: Bool
     let save: () -> Void
-    private var selected: Bool {
-        let choice = store.current.normalizedCategory(for: entry)
-        return main == choice.category && choice.subcategory == sub
-    }
     var body: some View {
         Button(action: save) {
             Text(sub).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)

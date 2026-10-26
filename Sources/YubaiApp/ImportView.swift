@@ -428,9 +428,10 @@ struct ImportView: View {
         Page {
             if let preview {
                 ForEach(Set(preview.rows.map(\.sourceCategory).filter { !$0.isEmpty }).sorted(), id: \.self) { name in
+                    let categoryNames: [String] = Set(store.current.categoryNames(including: name)).sorted()
                     Card(style: .list) {
-                        Picker(name, selection: Binding(get: { categoryMappings[name] ?? name }, set: { confirmedNewCategories.remove(name); categoryMappings[name] = $0 })) {
-                            ForEach(Set(store.current.categoryNames(including: name)).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
+                        Picker(name, selection: Binding<String>(get: { categoryMappings[name] ?? name }, set: { confirmedNewCategories.remove(name); categoryMappings[name] = $0 })) {
+                            ForEach(categoryNames, id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
                         }.frame(minHeight: YubaiSize.tapMin)
                     }
                 }
@@ -747,6 +748,9 @@ private struct ImportScreenshotEntryEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var entry: Entry
     let save: (Entry) -> Void
+    private var categoryNames: [String] {
+        Set(store.current.categoryNames(including: entry.category, income: entry.nature.inflow)).sorted()
+    }
     var body: some View {
         Form {
             Section {
@@ -755,7 +759,7 @@ private struct ImportScreenshotEntryEditor: View {
                 DatePicker("日期", selection: $entry.date, displayedComponents: [.date, .hourAndMinute])
                 Picker("收支", selection: $entry.nature) { Text("支出").tag(Nature.expense); Text("收入").tag(Nature.income) }
                 Picker("分类", selection: $entry.category) {
-                    ForEach(Set(store.current.categoryNames(including: entry.category, income: entry.nature.inflow)).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
+                    ForEach(categoryNames, id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
                 }
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("核对这一笔").yubaiNavigation().toolbar {
