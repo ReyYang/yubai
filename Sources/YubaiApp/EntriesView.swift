@@ -37,7 +37,7 @@ struct EntriesView: View {
                         HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
                             Text(dayLabel(day.date)).yubaiFont(YubaiFont.row, weight: .semibold)
                             Spacer(minLength: YubaiSpace.space8)
-                            AmountLabel(cents: -day.spending, hide: store.current.preferences.hideAmounts, role: .day, fractionDigits: 2)
+                            AmountLabel(cents: -day.spending, hide: store.current.preferences.hideAmounts, role: .day)
                         }.foregroundStyle(YubaiColor.label).padding(.horizontal, YubaiSpace.insetCard)
                         CardRows(day.entries, hasLeadingIcon: true, rowHeight: YubaiSize.rowDouble) { entry in
                             let category = store.current.resolveCategory(entry.category)
@@ -118,7 +118,7 @@ struct EntriesView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             AmountLabel(cents: cents, hide: store.current.preferences.hideAmounts, role: .donut,
-                        sign: inflow ? .inflow : .automatic, fractionDigits: cents % 100 == 0 ? 0 : 2,
+                        sign: inflow ? .inflow : .automatic,
                         ink: inflow ? YubaiColor.brandInk : YubaiColor.label)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
             .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))

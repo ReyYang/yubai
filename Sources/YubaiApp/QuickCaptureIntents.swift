@@ -40,7 +40,7 @@ private struct CaptureSnippetView: View {
                     HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
                         if !privateResult { Text(entry.displayTitle).yubaiFont(YubaiFont.cardTitle) }
                         Spacer()
-                        AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow, fractionDigits: entry.amount % 100 == 0 ? 0 : 2)
+                        AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow)
                     }
                     if !privateResult {
                         Text(Classification.displayCategory(entry.category) + " · " + ledger.accountName(entry.accountID) + " · " + ManualBookkeeping.dayLabel(entry.date) + " " + entry.date.formatted(.dateTime.hour().minute()))
