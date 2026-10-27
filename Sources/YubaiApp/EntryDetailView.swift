@@ -11,7 +11,7 @@ struct EntryDetailView: View {
             if let entry = store.current.entries.first(where: { $0.id == entryID }) {
                 Text(entry.displayTitle).yubaiFont(YubaiFont.lead).accessibilityIdentifier("entryDetailTitle")
                 AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts, role: .display,
-                            sign: entry.nature.inflow ? .inflow : .outflow, fractionDigits: 2)
+                            sign: entry.nature.inflow ? .inflow : .outflow)
                 classificationCard(entry)
                 sourceCard(entry)
                 if entry.deletedAt == nil {

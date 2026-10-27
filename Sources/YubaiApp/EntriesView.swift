@@ -37,7 +37,7 @@ struct EntriesView: View {
                         HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
                             Text(dayLabel(day.date)).yubaiFont(YubaiFont.row, weight: .semibold)
                             Spacer(minLength: YubaiSpace.space8)
-                            AmountLabel(cents: -day.spending, hide: store.current.preferences.hideAmounts, role: .day, fractionDigits: 2)
+                            AmountLabel(cents: -day.spending, hide: store.current.preferences.hideAmounts, role: .day)
                         }.foregroundStyle(YubaiColor.label).padding(.horizontal, YubaiSpace.insetCard)
                         CardRows(day.entries, hasLeadingIcon: true, rowHeight: YubaiSize.rowDouble) { entry in
                             let category = store.current.resolveCategory(entry.category)
@@ -118,7 +118,7 @@ struct EntriesView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             AmountLabel(cents: cents, hide: store.current.preferences.hideAmounts, role: .donut,
-                        sign: inflow ? .inflow : .automatic, fractionDigits: cents % 100 == 0 ? 0 : 2,
+                        sign: inflow ? .inflow : .automatic,
                         ink: inflow ? YubaiColor.brandInk : YubaiColor.label)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
             .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
@@ -162,7 +162,7 @@ private struct LedgerEntryRow: View {
     private var categoryName: String { uncategorized ? "没分类" : Classification.displayCategory(category) }
     private var note: String { entry.note.isEmpty ? (entry.displayTitle == categoryName ? "" : entry.displayTitle) : entry.note }
     var body: some View {
-        SwipeActionRow(offset: offset, title: "删除", tint: YubaiColor.amberTint, ink: YubaiColor.amberInk,
+        SwipeActionRow(offset: offset, revealed: resting < 0, title: "删除", tint: YubaiColor.amberTint, ink: YubaiColor.amberInk,
                        actionIdentifier: "deleteLedgerEntry_" + entry.id.uuidString, action: delete) {
             Button {
                 #if os(macOS)
@@ -177,6 +177,7 @@ private struct LedgerEntryRow: View {
                 store.sheetSource = nil; store.sheet = .editEntry(entry.id)
             } label: { content }
                 .buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+                .uiTestAccessibilityValue(resting < 0 ? "revealed" : "closed")
         }
             #if os(iOS)
             .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in

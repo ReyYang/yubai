@@ -47,16 +47,17 @@ public struct ChatRequest: Sendable {
     public var tools: [ChatToolDefinition]
     public var temperature: Double
     public var maxTokens: Int
+    public var thinking: Bool?
     public var purpose: String
     public var responseFormat: JSONValue?
     /// Local log metadata only; never encoded into the HTTP payload.
     public var groupID: UUID?
     public var groupTitle: String?
     public init(messages: [ChatMessage], tools: [ChatToolDefinition] = [], temperature: Double = 0.2,
-                maxTokens: Int = 4096, purpose: String = "财务管家", responseFormat: JSONValue? = nil,
+                maxTokens: Int = 4096, thinking: Bool? = nil, purpose: String = "财务管家", responseFormat: JSONValue? = nil,
                 groupID: UUID? = nil, groupTitle: String? = nil) {
         self.messages = messages; self.tools = tools; self.temperature = temperature
-        self.maxTokens = maxTokens; self.purpose = purpose; self.responseFormat = responseFormat
+        self.maxTokens = maxTokens; self.thinking = thinking; self.purpose = purpose; self.responseFormat = responseFormat
         self.groupID = groupID; self.groupTitle = groupTitle
     }
 }

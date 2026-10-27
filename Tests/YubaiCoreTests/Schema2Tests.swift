@@ -8,7 +8,7 @@ final class Schema2Tests: XCTestCase {
     }
     func testMigrationAndStableSchema2RoundTrip() throws {
         let old = try fixture(); let ledger = try LedgerCodec.decode(old)
-        XCTAssertEqual(ledger.schema, 3)
+        XCTAssertEqual(ledger.schema, 4)
         XCTAssertEqual(ledger.goals.first?.reserved, 180000)
         XCTAssertEqual(ledger.rents.first?.monthlyTotal, 480000)
         XCTAssertEqual(ledger.profile.principles, ["超过 2,000 的东西等 48 小时"])
@@ -21,7 +21,7 @@ final class Schema2Tests: XCTestCase {
         XCTAssertEqual(ledger.advice.first?.result, wish.judgment)
         let bytes = try LedgerCodec.encode(ledger)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
-        XCTAssertEqual(json["schema"] as? Int, 3); XCTAssertNil(json["advice"]); XCTAssertNil(json["rules"])
+        XCTAssertEqual(json["schema"] as? Int, 4); XCTAssertNil(json["advice"]); XCTAssertNil(json["rules"])
         let again = try LedgerCodec.decode(bytes)
         XCTAssertEqual(again, ledger); XCTAssertEqual(try LedgerCodec.encode(again), bytes)
         // Old purchase UI writes through the compatibility property into persistent wishes.
@@ -55,7 +55,7 @@ final class Schema2Tests: XCTestCase {
         XCTAssertTrue(ledger.profile.principles.isEmpty); XCTAssertTrue(ledger.cards.isEmpty)
         XCTAssertTrue(ledger.pendingChanges.isEmpty); XCTAssertTrue(ledger.mutedTopics.isEmpty)
         var legacy = ledger; legacy.schema = 1; XCTAssertNoThrow(try legacy.validate())
-        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(legacy)).schema, 3)
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(legacy)).schema, 4)
     }
     func testFirstMigrationSavePreservesExactOriginalAndOnlyLabelsOnce() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-migrate-\(UUID())")
@@ -113,17 +113,17 @@ final class Schema2Tests: XCTestCase {
         XCTAssertThrowsError(try invalid.validate())
         invalid = ledger; invalid.cards = Array(repeating: card, count: 5001); XCTAssertThrowsError(try invalid.validate())
     }
-    func testFinanceFloorOverridesEmergencyEverywhereAndGoalsStayReserved() throws {
+    func testFinanceMigratedFloorStaysATargetAndGoalsStayReserved() throws {
         var ledger = try LedgerCodec.decode(fixture()); let now = ledger.updatedAt
         let before = Finance.funds(ledger, now: now)
         ledger.profile.floorAmount = 150000
         let after = Finance.funds(ledger, now: now)
         XCTAssertEqual(after.emergency, 150000); XCTAssertEqual(after.goals, before.goals)
-        XCTAssertEqual(after.available, before.available - 100000)
+        XCTAssertEqual(after.available, before.available); XCTAssertEqual(after.floorRoom, after.available - 150000)
         for (a, b) in zip(after.points, before.points) {
-            XCTAssertEqual(a.conservative, b.conservative - 100000); XCTAssertEqual(a.expected, b.expected - 100000)
+            XCTAssertEqual(a.conservative, b.conservative); XCTAssertEqual(a.expected, b.expected)
         }
         ledger.profile.floorAmount = 0; XCTAssertEqual(Finance.funds(ledger, now: now).emergency, 0)
-        ledger.profile.floorAmount = nil; XCTAssertEqual(Finance.funds(ledger, now: now).available, before.available + before.emergency)
+        ledger.profile.floorAmount = nil; XCTAssertEqual(Finance.funds(ledger, now: now).available, before.available)
     }
 }

@@ -2,6 +2,20 @@ import XCTest
 @testable import YubaiCore
 
 final class DeepSeekCloudTests: XCTestCase {
+    func testShortCloudTasksDisableThinking() async throws {
+        let log = SendLog()
+        let stub = CloudTestStub(sendLog: log) { request in
+            let payload = try CloudTestStub.payload(in: request)
+            XCTAssertEqual(payload["thinking"] as? [String: String], ["type": "disabled"])
+            return "先看看替代选项"
+        }
+        defer { stub.close() }
+        _ = try await stub.backend.reflectPurchase(title: "耳机", purpose: "降噪", assessmentTitle: "资金上吃紧", verdict: .skip)
+        _ = try await stub.backend.narrateInsights(facts: InsightFactPack(factLines: ["近期支出稳定。"], protectedAmountTexts: []))
+        _ = try await stub.backend.expandSearchQuery("耳机")
+        XCTAssertEqual(log.totalCount, 3)
+    }
+
     func testModelsUsesAuthenticatedGETAndKeepsUnknownIDsWithoutChatRequest() async throws {
         let log = SendLog()
         let before = log.totalCount

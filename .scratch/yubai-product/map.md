@@ -7,6 +7,8 @@ Status: open
 
 ## 余白 2.0 · 管家（2026-10-20 当前方向）
 
+2026-10-27 owner 明确[始终留着改为目标](issues/13-complete-personal-release.md#2026-10-27--始终留着改为目标owner-明确决定)：属于消费观，不从还能花或预测扣除；购买低于目标最多「等等再说」，真实资金不足仍「先别买」。同日批准[第十九轮 UI](issues/13-complete-personal-release.md#2026-10-27--第十九轮始终留着owner-批准-ui)：Hero 目标分段、现在页目标／状态行与消费观导航、计算页公式下共用目标行已接线；Apple 类型检查与视觉验收待 Mac，未提交。
+
 目标是「AI 做事，代码算数，用户决定」：从手工维护账本转向整理、消费观与有依据的判断。当前范围以 owner 的 2.0 规格和产品评审为依据；最新入口为现在／洞察／我及问余白，仅用云端 DeepSeek 轻量 harness，移除本机模型；owner 于 2026-10-20 批准第三轮稿，要求恢复洞察为收支按类型（见第 13 票），图表也保留在来信与回答。商户、备注可发送，人名、卡号、订单号须脱敏；主动消费提醒只针对用户想克制的领域或付款缺口。
 
 `feat/yubai-2-butler` 的步骤 1–9 及 TestFlight 准备已落地源码，尚未编译或运行。用户决定与 Agent 实现选择、当前实现差异统一记录在[第 13 票](issues/13-complete-personal-release.md#2026-10-20--余白-20管家决策归档)。Mac 保留；iCloud 已实现且构建默认关闭，可单行配置启用。owner 暂不加入付费开发者计划，先用 Xcode 免费团队直接安装，TestFlight 留待以后；最后仅提交一个到 main 的 PR，由 owner 在 Mac 按[组合清单](../../docs/V2-TEST-CHECKLIST.md)一次验收。本轮步骤 10 只同步记录，不创建提交或推送。owner 同日补充采用[AI 记忆与画像改进](issues/13-complete-personal-release.md#2026-10-20--ai-记忆与画像改进owner-明确决定)：取消AI次数上限、画像带时间、60天对称反馈、确认分类记忆，以及选定交易版本后的记忆合并；本轮只改非界面代码与文档，未编译或运行。以下保留 1.0 历史语境。
@@ -73,6 +75,8 @@ Status: open
 
 ## Decisions so far
 
+- [金额固定两位小数](issues/13-complete-personal-release.md#2026-10-26--金额固定两位小数owner-明确要求) — owner 要求金额展示保留分，整额也显示 `.00`，移除整元进位；仅改 App 格式化与既有 UI 断言，Core／输入算法保持，Apple 界面验收待做。
+
 - [第十六轮少写字，让版式说话](issues/13-complete-personal-release.md#2026-10-23--第十六轮少写字让版式说话owner-确认稿) — owner 确认 V16 规则与画板，54 项按文案／布局接线；系统入口图示按授权降级。语法解析已做，Linux swift test 结果见交付总结，Apple 验收待做；未提交／推送。
 
 - [Figma 全动作 UI / UX](issues/14-figma-action-atlas.md) — 按用户 2026-10-02 请求，从当前实现绘制手机全部业务流程、共用状态、Mac 适配与组件参考；设计交付完成，原型逐路径点击及用户视觉审阅不冒充已验收。
@@ -95,3 +99,8 @@ Status: open
 
 
 2026-10-23 owner 指定[第十五轮「帮你省钱」界面](issues/13-complete-personal-release.md#2026-10-23--第十五轮帮你省钱界面owner-指定稿)：按 12 张 V15 稿接购买结论／追问、冷静期、省钱／订阅、消费观再聊与顺手入口、近限额单行、两级分类下钻；全部新增文字逐条分类登记。[源码、文案和验证交付](../../docs/SAVING-UI-V15.md)：Linux 449 项测试、445 通过／4 跳过／0 失败，全部 App iOS／macOS 语法解析通过；Apple SDK 类型检查与设备验收待做，未联网调 API、未提交。
+
+
+2026-10-26 owner 明确确认[分类模型 schema 4](issues/13-complete-personal-release.md#2026-10-26--分类模型-schema-4owner-明确任务)：一张表、一种没分类、一份记忆、固定快选和统一统计；导入不建主项，分类维护仅 Core API。迁移／验证／界面边界见交付记录，Apple 运行验证待做，未提交。
+
+同日 owner 确认「允许自己加主项」：导入明确点击「新建」后才创建，自动流程仍不建主项，通知改为事实状态「没分类」，见[第 13 票续记](issues/13-complete-personal-release.md#2026-10-26--分类模型-schema-4owner-明确任务)。

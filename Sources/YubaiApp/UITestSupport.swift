@@ -5,6 +5,9 @@ import YubaiCore
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
 enum UITestSupport {
+    static var keepsUndoReceipt: Bool {
+        script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_KEEP_UNDO"] == "1"
+    }
     static let screenshotScripts: Set<String> = [
         "judge-ask", "judge-wait", "judge-buy", "judge-skip", "wishlist-cool",
         "letter-saving", "profile-revisit", "subcategory"

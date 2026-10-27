@@ -39,7 +39,7 @@ struct CloudAISettingsSection: View {
         Task {
             defer { testing = false }
             do {
-                _ = try await client.chat(system: "请只回复：连接正常。", user: "你好", maxTokens: 16, purpose: "测试连接")
+                _ = try await client.chat(system: "请只回复：连接正常。", user: "你好", maxTokens: 64, thinking: false, purpose: "测试连接")
                 IntelligenceRuntime.cloud.succeeded(model: client.configuration.model)
                 status = "连接正常。"
             } catch { IntelligenceRuntime.cloud.failed(error, model: client.configuration.model); status = error.localizedDescription }

@@ -160,7 +160,7 @@ final class AssistantTests: XCTestCase {
         let script = ScriptedChatTransport([
             ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "funds", name: "get_funds")]),
             ChatMessage(role: .assistant, content: "可动用999元。"),
-            ChatMessage(role: .assistant, content: "可动用 ¥785.00。")])
+            ChatMessage(role: .assistant, content: "可动用 ¥805.00。")])
         let reply = try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "", messages: [], tools: ReadOnlyTool.all)
         XCTAssertTrue(reply.unverifiedAmounts.isEmpty)
     }

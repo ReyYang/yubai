@@ -146,7 +146,7 @@ struct EntryAccountMenu: View {
     }
     @Environment(AppStore.self) private var store
     private func balanceText(_ id: UUID) -> String {
-        store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(balances[id] ?? 0, decimals: (balances[id] ?? 0) % 100 == 0 ? 0 : 2)
+        store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(balances[id] ?? 0)
     }
 }
 
@@ -189,7 +189,7 @@ struct RecentPurposeChips: View {
     }
     var body: some View {
         if !recent.isEmpty {
-            SuggestionChips(values: recent, selected: selection) { selection = $0 }
+            SuggestionChips(values: recent, selected: selection, identifierPrefix: "recentPurpose_") { selection = $0 }
                 .padding(.vertical, YubaiSpace.space8).accessibilityLabel("最近用过的用途")
         }
     }

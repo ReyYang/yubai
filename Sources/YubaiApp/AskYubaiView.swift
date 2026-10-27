@@ -419,7 +419,7 @@ private struct AskPastedStatementCard: View {
     private func total(_ title: String, count: Int, amount: Int64) -> some View {
         HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
-            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .small, sign: .none, fractionDigits: 2)
+            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .small, sign: .none)
         }
     }
 }
@@ -473,7 +473,7 @@ private struct AskEntryDraftCard: View {
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("合计").yubaiFont(YubaiFont.row)
                         Spacer()
-                        if let sum { AmountLabel(cents: sum, hide: store.current.preferences.hideAmounts, role: .small, sign: .none, fractionDigits: 2) }
+                        if let sum { AmountLabel(cents: sum, hide: store.current.preferences.hideAmounts, role: .small, sign: .none) }
                         else { Text("金额超出范围").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
                     }
                     Toggle("金额和原文对得上", isOn: $amountsConfirmed).tint(YubaiColor.toggleOn).yubaiFont(YubaiFont.row).accessibilityIdentifier("confirmDraftAmounts")
@@ -536,6 +536,16 @@ private struct AskDraftEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var draft: EntryDraft
     let save: (EntryDraft) -> Void
+    private var categorySelection: Binding<String> {
+        Binding(get: { draft.category }, set: { category in
+            draft.category = category
+            draft.subcategory = nil
+            draft.categoryUserEdited = true
+        })
+    }
+    private var categoryNames: [String] {
+        Set(store.current.categoryNames(including: draft.category)).sorted()
+    }
     var body: some View {
         Form {
             Section {
@@ -543,7 +553,9 @@ private struct AskDraftEditor: View {
                 AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts)
                 DatePicker("日期", selection: $draft.date, displayedComponents: .date)
                 Picker("账户", selection: $draft.accountID) { ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag($0.id) } }
-                Picker("分类", selection: $draft.category) { ForEach(Set(store.current.categories.map(\.name) + [draft.category]).sorted(), id: \.self) { Text(Classification.displayCategory($0)).tag($0) } }
+                Picker("分类", selection: categorySelection) {
+                    ForEach(categoryNames, id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
+                }
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("编辑这一笔").yubaiNavigation().toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }

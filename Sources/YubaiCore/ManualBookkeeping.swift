@@ -6,9 +6,24 @@ public struct EntryKeypad: Equatable, Sendable {
     public init() {}
     public var amount: Int64? { try? Self.evaluate(expression) }
     public var canSave: Bool { amount.map { $0 > 0 && $0 <= Money.limit } ?? false }
-    public var resultText: String { Money.input(amount ?? 0) }
+    public var resultText: String {
+        let cents = amount ?? 0
+        let magnitude = cents.magnitude
+        let fraction = magnitude % 100
+        return "\(cents < 0 ? "-" : "")\(magnitude / 100).\(fraction < 10 ? "0" : "")\(fraction)"
+    }
     public var displayText: String {
         expression.dropFirst().contains(where: { $0 == "+" || $0 == "-" }) ? resultText : expression
+    }
+    public var pendingOperator: String? {
+        guard expression.count > 1, let last = expression.last, last == "+" || last == "-" else { return nil }
+        return last == "-" ? "−" : "+"
+    }
+    public var expressionText: String? {
+        guard expression.dropFirst().contains(where: { $0 == "+" || $0 == "-" }) else { return nil }
+        let first = expression.prefix(1).replacingOccurrences(of: "-", with: "−")
+        let rest = expression.dropFirst().replacingOccurrences(of: "+", with: " + ").replacingOccurrences(of: "-", with: " − ")
+        return (first + rest).trimmingCharacters(in: .whitespaces)
     }
     public mutating func reset() { expression = "0" }
     @discardableResult public mutating func resolve() -> Int64? {
@@ -64,42 +79,18 @@ public struct EntryKeypad: Equatable, Sendable {
 
 public enum ManualBookkeeping {
     public static func defaults(for nature: Nature) -> [String] {
-        if nature == .transfer { return ["内部移动"] }
-        let names = nature.inflow ? ["工资奖金", "兼职劳务", "礼金赠与", "投资收益", "其他收入"] : ["餐饮", "交通", "购物", "娱乐旅行", "居住"]
-        return names.filter { name in Category.defaults.contains { $0.name == name && $0.income == nature.inflow } }
+        guard nature != .transfer else { return [] }
+        return Category.defaults.filter { !$0.system && !$0.hidden && $0.income == (nature != .refund && nature.inflow) }.map(\.name)
     }
     public static func categories(in ledger: Ledger, nature: Nature, frequentOnly: Bool = false) -> [String] {
-        var counts: [String: Int] = [:]; var latest: [String: Date] = [:]
-        for entry in ledger.entries where entry.deletedAt == nil && entry.nature == nature && !entry.category.isEmpty && entry.category != "待整理" {
-            let category = CategoryMigration.canonical(ledger.resolveCategory(entry.category)).category
-            counts[category, default: 0] += 1
-            latest[category] = max(latest[category] ?? .distantPast, entry.date)
-        }
-        let ranked = counts.keys.sorted {
-            if counts[$0] != counts[$1] { return counts[$0, default: 0] > counts[$1, default: 0] }
-            if latest[$0] != latest[$1] { return latest[$0, default: .distantPast] > latest[$1, default: .distantPast] }
-            return $0 < $1
-        }
-        var seen = Set<String>(); var result: [String] = []
-        let all = ranked + defaults(for: nature) + (frequentOnly ? [] : ledger.categories.filter { $0.income == nature.inflow }.map(\.name))
-        for name in all where seen.insert(name).inserted { result.append(name) }
-        return frequentOnly ? Array(result.prefix(5)) : result
+        guard nature != .transfer else { return [] }
+        let allowed = ledger.selectableCategories.filter { $0.income == (nature != .refund && nature.inflow) }.map(\.name)
+        var seen = Set<String>()
+        let ordered = (ledger.preferences.categoryOrder + allowed).filter { allowed.contains($0) && seen.insert($0).inserted }
+        return frequentOnly ? Array(ordered.prefix(5)) : ordered
     }
     public static func guessCategory(_ purpose: String, nature: Nature, in ledger: Ledger) -> String? {
-        guard nature != .transfer else { return "内部移动" }
-        let key = CategoryMemory.key(purpose)
-        guard !key.isEmpty else { return nil }
-        if let remembered = ledger.categoryMemory[key] { return ledger.resolveCategory(remembered) }
-        let rules: [(String, [String])] = nature.inflow ? [
-            ("工资奖金", ["工资", "薪水", "薪资"]), ("工资奖金", ["奖金", "年终奖"]), ("兼职劳务", ["兼职", "稿费"])
-        ] : [
-            ("餐饮", ["早饭", "早餐", "午饭", "午餐", "晚饭", "晚餐", "吃饭", "外卖", "咖啡", "奶茶", "餐厅"]),
-            ("交通", ["打车", "出租车", "滴滴", "地铁", "公交", "车票", "加油"]),
-            ("购物", ["日用", "纸巾", "洗衣", "洗发", "超市", "罗森"]),
-            ("购物", ["买衣", "衣服", "买鞋", "购物", "淘宝", "京东"]),
-            ("娱乐旅行", ["电影", "游戏", "演唱会", "娱乐"])
-        ]
-        return rules.first { $0.1.contains(where: purpose.contains) }?.0
+        CategoryGuesser.guess(purpose, nature: nature, in: ledger)?.category
     }
     public static func defaultAccount(in ledger: Ledger) -> Account? {
         let accounts = ledger.accounts.filter { !$0.archived }
@@ -142,8 +133,7 @@ public enum ManualBookkeeping {
                 SubcategoryClassifier.classify(&entry, ledger: next)
             } else { entry.subcategoryUserEdited = true }
             if let sub = entry.subcategory, !SubcategoryClassifier.valid(.init(category: entry.category, subcategory: sub), in: next, nature: entry.nature) { throw YubaiError.invalid("这个小项不属于该主项。") }
-            if entry.subcategory == nil { for key in SubcategoryClassifier.keys(entry) { next.subcategoryMemory.removeValue(forKey: key) } }
-            else { SubcategoryClassifier.remember(entry, in: &next) }
+            CategoryMemory.remember(entry, in: &next)
         }
         next.entries[index] = entry
         LedgerOperations.syncLinkedRefundCategories(in: &next)
@@ -190,8 +180,7 @@ public enum EntryTimeline {
         }
     }
     public static func isUncategorized(_ entry: Entry) -> Bool {
-        entry.hasNoCaptureCategory || entry.category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || entry.category == Classification.pendingCategory
+        Classification.isPending(entry)
     }
     public static func months(sortedEntries: [Entry], ledger: Ledger, search: String = "", filter: Filter = .all) -> [EntryMonth] {
         let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0.name) })

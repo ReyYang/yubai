@@ -338,6 +338,11 @@ struct RootView: View {
     @State private var keyboardVisible = false
     @State private var visibleTab: Destination = .overview
     @State private var pagingPhase: ScrollPhase = .idle
+    @State private var pagingAligned = false
+    private struct PagingPosition: Equatable {
+        let destination: Destination
+        let aligned: Bool
+    }
     private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     #endif
     var body: some View {
@@ -428,14 +433,20 @@ struct RootView: View {
                             .accessibilityHidden(store.destination != d)
                     }
                 }.scrollTargetLayout()
-            }.scrollTargetBehavior(.paging)
+            }.accessibilityIdentifier("rootPager").scrollTargetBehavior(.paging)
                 .scrollIndicators(.hidden)
                 .scrollDisabled(store.pagingLocked || tabBarHidden || store.sheet != nil || store.pickingInsightDates)
                 .scrollClipDisabled()
                 .background(YubaiColor.canvas.ignoresSafeArea())
-                .onScrollGeometryChange(for: Destination.self) { tab(at: $0) } action: { _, next in
-                    visibleTab = next
-                    if pagingPhase == .idle && store.destination != next { store.destination = next }
+                .onScrollGeometryChange(for: PagingPosition.self) { geometry in
+                    let destination = tab(at: geometry)
+                    let width = geometry.containerSize.width
+                    let offset = geometry.contentOffset.x + geometry.contentInsets.leading
+                    let index = Destination.allCases.firstIndex(of: destination) ?? 0
+                    return PagingPosition(destination: destination, aligned: width > 0 && abs(offset - CGFloat(index) * width) <= 1)
+                } action: { _, next in
+                    visibleTab = next.destination; pagingAligned = next.aligned
+                    if pagingPhase == .idle && store.destination != next.destination { store.destination = next.destination }
                 }
                 .onScrollPhaseChange { _, phase in
                     pagingPhase = phase
@@ -448,6 +459,7 @@ struct RootView: View {
                 .overlay(alignment: .bottom) {
                     if !tabBarHidden {
                         FloatingTabBar { scrollTo($0, using: proxy) }
+                            .uiTestAccessibilityValue("destination=\(store.destination.rawValue); visible=\(visibleTab.rawValue); phase=\(pagingPhase == .idle ? "idle" : "moving"); locked=\(store.pagingLocked ? 1 : 0)")
                             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.floatingTabbarBottom)
                             .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
                     }
@@ -464,6 +476,8 @@ struct RootView: View {
         return Destination.allCases[max(0, min(Destination.allCases.count - 1, index))]
     }
     private func scrollTo(_ d: Destination, using proxy: ScrollViewProxy) {
+        // Reselecting an already settled page has no scroll transition to perform.
+        guard d != store.destination || d != visibleTab || pagingPhase != .idle || !pagingAligned else { return }
         withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo(d, anchor: .leading) }
     }
     private func tabNavigation(_ d: Destination) -> some View {
@@ -471,6 +485,7 @@ struct RootView: View {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
                 .navigationDestination(for: TabRoute.self) { tabDestination($0) }
         }.toolbarBackground(.hidden, for: .navigationBar)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
             .environment(\.isScrollEnabled, true)
             .scrollClipDisabled(false)
             .background(YubaiColor.canvas.ignoresSafeArea())

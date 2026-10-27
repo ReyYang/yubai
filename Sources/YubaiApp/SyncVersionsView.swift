@@ -63,7 +63,7 @@ struct SyncVersionsView: View {
         return Set(a.keys).union(b.keys).filter { a[$0] != b[$0] }.count
     }
     private func differences(_ a: Ledger, _ b: Ledger) -> [(title: String, count: Int)] {
-        [
+        let metrics: [(title: String, count: Int)] = [
             ("账目", changed(a.entries, b.entries)),
             ("账户", changed(a.accounts, b.accounts)),
             ("想克制的", changed(a.profile.restrain, b.profile.restrain)),
@@ -77,7 +77,7 @@ struct SyncVersionsView: View {
             ("附件", changed(a.attachments, b.attachments)),
             ("导入记录", changed(a.imports, b.imports)),
             ("分类", changed(a.categories, b.categories)),
-            ("分类规则", a.categoryAliases == b.categoryAliases && a.categoryMemory == b.categoryMemory ? 0 : 1),
+            ("分类规则", a.categoryAliases == b.categoryAliases && a.classificationMemory == b.classificationMemory ? 0 : 1),
             ("余白记得的", changed(a.memories, b.memories)),
             ("心愿单", changed(a.wishlist, b.wishlist)),
             ("提醒", changed(a.cards, b.cards)),
@@ -86,7 +86,8 @@ struct SyncVersionsView: View {
             ("不再提醒", Set(a.mutedTopics).symmetricDifference(Set(b.mutedTopics)).count),
             ("每周来信", a.lastReflectionWeek == b.lastReflectionWeek ? 0 : 1),
             ("账本资料", a.schema == b.schema && a.id == b.id && a.isSample == b.isSample ? 0 : 1)
-        ].filter { $0.1 > 0 }
+        ]
+        return metrics.filter { $0.count > 0 }
     }
 }
 

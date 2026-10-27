@@ -13,12 +13,24 @@ final class ManualBookkeepingTests: XCTestCase {
         XCTAssertFalse(pad.canSave)
         ["3", "2", "+", "1", "8", ".", "5", "0", "9"].forEach { pad.press($0) }
         XCTAssertEqual(pad.expression, "32+18.50"); XCTAssertEqual(pad.amount, 5050)
-        XCTAssertEqual(pad.displayText, "50.5")
+        XCTAssertEqual(pad.displayText, "50.50")
         pad.press("⌫"); XCTAssertEqual(pad.expression, "32+18.5")
         pad.press("−"); pad.press("2"); XCTAssertEqual(pad.resolve(), 4850)
         XCTAssertEqual(pad.expression, "48.5"); pad.reset(); XCTAssertEqual(pad.expression, "0")
         pad.press("."); pad.press("5"); pad.press("."); pad.press("2"); pad.press("3")
         XCTAssertEqual(pad.amount, 52)
+    }
+    func testKeypadResultTextUsesTwoDecimalsWithoutChangingTypedInput() {
+        for (input, result) in [("0", "0.00"), ("32", "32.00"), ("38", "38.00"), ("38.", "38.00"),
+                                ("38.5", "38.50"), ("38.50", "38.50"), ("0.05", "0.05"),
+                                ("1234.56", "1234.56"), ("99999999999.99", "99999999999.99")] {
+            var pad = EntryKeypad()
+            input.forEach { pad.press(String($0)) }
+            XCTAssertEqual(pad.resultText, result)
+            XCTAssertEqual(pad.displayText, input)
+            XCTAssertEqual(pad.expression, input)
+            XCTAssertNil(pad.expressionText)
+        }
     }
     func testKeypadBoundsOperatorReplacementAndNonpositiveResults() throws {
         XCTAssertEqual(try EntryKeypad.evaluate("0.1+0.2"), 30)
@@ -32,7 +44,52 @@ final class ManualBookkeepingTests: XCTestCase {
         pad.press("+"); pad.press("1"); XCTAssertEqual(pad.amount, Money.limit)
         pad.reset(); ["3", "+", "−", "5"].forEach { pad.press($0) }
         XCTAssertEqual(pad.amount, -200); XCTAssertFalse(pad.canSave)
+        XCTAssertEqual(pad.resultText, "-2.00"); XCTAssertEqual(pad.displayText, "-2.00")
         pad.press("+"); pad.press("7"); XCTAssertEqual(pad.resolve(), 500)
+    }
+    func testKeypadPendingOperatorClearsOnDigitAndDecimalPoint() {
+        var pad = EntryKeypad()
+        XCTAssertNil(pad.pendingOperator)
+        pad.press("1"); pad.press("2"); pad.press("+")
+        XCTAssertEqual(pad.pendingOperator, "+"); XCTAssertEqual(pad.displayText, "12.00")
+        pad.press("3"); XCTAssertNil(pad.pendingOperator); XCTAssertEqual(pad.displayText, "15.00")
+        pad.press("−"); XCTAssertEqual(pad.pendingOperator, "−")
+        pad.press("."); XCTAssertNil(pad.pendingOperator); XCTAssertEqual(pad.expressionText, "12 + 3 − 0.")
+    }
+    func testKeypadOperatorSwapAndBackspaceAfterOperator() {
+        var pad = EntryKeypad()
+        ["3", "8", "+", "−"].forEach { pad.press($0) }
+        XCTAssertEqual(pad.pendingOperator, "−"); XCTAssertEqual(pad.expressionText, "38 −")
+        pad.press("+"); XCTAssertEqual(pad.pendingOperator, "+"); XCTAssertEqual(pad.expressionText, "38 +")
+        pad.press("⌫"); XCTAssertNil(pad.pendingOperator); XCTAssertNil(pad.expressionText)
+        XCTAssertEqual(pad.expression, "38"); XCTAssertEqual(pad.amount, 3800)
+        ["−", "2", "+", "⌫"].forEach { pad.press($0) }
+        XCTAssertNil(pad.pendingOperator); XCTAssertEqual(pad.expressionText, "38 − 2"); XCTAssertEqual(pad.amount, 3600)
+    }
+    func testKeypadExpressionTextPreservesDecimalsAndFormatsOperators() {
+        var pad = EntryKeypad()
+        XCTAssertNil(pad.expressionText)
+        "38.50".forEach { pad.press(String($0)) }
+        XCTAssertNil(pad.expressionText)
+        pad.press("+"); XCTAssertEqual(pad.expressionText, "38.50 +")
+        XCTAssertEqual(pad.resultText, "38.50"); XCTAssertEqual(pad.displayText, "38.50")
+        "12".forEach { pad.press(String($0)) }
+        XCTAssertEqual(pad.expressionText, "38.50 + 12"); XCTAssertEqual(pad.resultText, "50.50")
+        pad.press("-"); XCTAssertEqual(pad.pendingOperator, "−"); XCTAssertEqual(pad.expressionText, "38.50 + 12 −")
+        "0.25".forEach { pad.press(String($0)) }
+        XCTAssertEqual(pad.expressionText, "38.50 + 12 − 0.25"); XCTAssertEqual(pad.displayText, "50.25")
+        XCTAssertEqual(pad.resolve(), 5025); XCTAssertNil(pad.expressionText); XCTAssertNil(pad.pendingOperator)
+    }
+    func testKeypadLeadingNegativeIsNotAnOperatorAndResetClearsState() {
+        var pad = EntryKeypad()
+        ["3", "−", "5"].forEach { pad.press($0) }
+        XCTAssertEqual(pad.resolve(), -200); XCTAssertEqual(pad.expression, "-2")
+        XCTAssertEqual(pad.resultText, "-2.00"); XCTAssertEqual(pad.displayText, "-2")
+        XCTAssertNil(pad.expressionText); XCTAssertNil(pad.pendingOperator)
+        pad.press("+"); XCTAssertEqual(pad.expressionText, "−2 +"); XCTAssertEqual(pad.pendingOperator, "+")
+        pad.reset(); XCTAssertEqual(pad.expression, "0"); XCTAssertNil(pad.expressionText); XCTAssertNil(pad.pendingOperator)
+        ["3", "−", "5"].forEach { pad.press($0) }; pad.resolve(); pad.press("⌫")
+        XCTAssertEqual(pad.expression, "-"); XCTAssertNil(pad.expressionText); XCTAssertNil(pad.pendingOperator)
     }
     func testFrequentCategoriesIgnoreDeletedAndOtherNaturesAndFillDefaults() {
         var ledger = fixture(); let id = ledger.accounts[0].id
@@ -40,9 +97,10 @@ final class ManualBookkeepingTests: XCTestCase {
         var deleted = Entry(amount: 100, accountID: id, title: "书", category: "学习"); deleted.deletedAt = now
         ledger.entries.append(deleted)
         ledger.entries.append(Entry(amount: 100, nature: .income, accountID: id, title: "工资", category: "工资"))
-        XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense, frequentOnly: true), ["交通", "餐饮", "购物", "娱乐旅行", "居住"])
+        XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense, frequentOnly: true), ["餐饮", "购物", "交通", "居住", "医疗健康"])
         XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .income, frequentOnly: true).first, "工资奖金")
         XCTAssertEqual(ManualBookkeeping.guessCategory("午饭", nature: .expense, in: ledger), "餐饮")
+        ledger.categories.append(Category("工作餐"))
         ledger.categoryMemory[CategoryMemory.key("午饭")] = "工作餐"
         XCTAssertEqual(ManualBookkeeping.guessCategory("午饭", nature: .expense, in: ledger), "工作餐")
         XCTAssertNil(ManualBookkeeping.guessCategory("午饭", nature: .income, in: fixture()))

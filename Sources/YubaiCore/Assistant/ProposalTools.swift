@@ -138,7 +138,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                 let frequencyText = try a.optionalText("frequency") ?? "once"
                 guard let frequency = Frequency(rawValue: frequencyText) else { throw YubaiError.invalid("安排周期无效。") }
                 var plan = Plan(title: try a.text("title"), amount: try a.amount("amount"), dueDate: try a.date("date"),
-                                frequency: frequency, inflow: nature.inflow, category: try a.optionalText("category") ?? "其他支出", nature: nature)
+                                frequency: frequency, inflow: nature.inflow, category: try a.optionalText("category") ?? Classification.pendingCategory, nature: nature)
                 plan.accountID = try a.optionalUUID("account"); items = [.addPlan(plan)]
             case "end_plan": items = [.endPlan(try a.uuid("id"), try a.date("date"))]
             case "add_rent":
@@ -172,7 +172,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                 if confirmed { confirmedAvailable = false }
                 return .addEntry(EntryDraft(date: try row.date("date"), amount: amount, amountConfirmed: confirmed,
                     nature: try row.nature(default: .expense), accountID: try row.uuid("account"), title: try row.text("title"),
-                    category: try row.optionalText("category") ?? "其他支出", purpose: try row.optionalText("purpose")))
+                    category: try row.optionalText("category") ?? Classification.pendingCategory, purpose: try row.optionalText("purpose")))
             }
         case .profile:
             if let rows = a.fields["items"]?.arrayValue {

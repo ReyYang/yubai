@@ -26,7 +26,7 @@ final class BeeCountImportTests: XCTestCase {
         XCTAssertEqual(entries.map(\.amount), [2350, 1280, 45025, 1200000, 8990, 30000, 200, 2350])
         XCTAssertEqual(entries.map(\.nature), [.expense, .expense, .income, .income, .expense, .transfer, .expense, .expense])
         XCTAssertEqual(entries.map(\.title), ["餐饮", "豆浆套餐", "春季奖励", "工资", "键盘腕托", "日常备用金", "公交", "餐饮"])
-        XCTAssertEqual(entries.map(\.category), ["餐饮", "餐饮", "工资奖金", "工资奖金", "购物", "账户往来", "交通", "餐饮"])
+        XCTAssertEqual(entries.map(\.category), ["餐饮", "餐饮", "工资奖金", "工资奖金", "购物", "内部移动", "交通", "餐饮"])
         XCTAssertEqual(entries[1].subcategory, "早餐"); XCTAssertEqual(entries[2].subcategory, "奖金"); XCTAssertEqual(entries[3].subcategory, "工资")
         XCTAssertTrue(entries.allSatisfy { $0.source == "BeeCount" && $0.accountID == ledger.accounts[0].id })
         XCTAssertEqual(entries[0].date, Dates.parse("2026-04-03 08:10:30"))
@@ -82,7 +82,7 @@ extension BeeCountImportTests {
         let mapped = try BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
             ledger: ledger, categoryMappings: ["旅行": "其他支出"])
         XCTAssertEqual(original.selectedEntries[0].category, "旅行")
-        XCTAssertEqual(mapped.rows.map(\.sourceCategory), ["旅行", "礼金赠与"])
+        XCTAssertEqual(mapped.rows.map(\.sourceCategory), ["周游", "礼金赠与"])
         XCTAssertEqual(mapped.selectedEntries.map(\.category), ["其他支出", "礼金赠与"])
         XCTAssertTrue(mapped.selectedEntries[0].userEdited); XCTAssertFalse(mapped.selectedEntries[1].userEdited)
         XCTAssertEqual(original.selectedEntries.map(\.fingerprint), mapped.selectedEntries.map(\.fingerprint))
@@ -96,12 +96,11 @@ extension BeeCountImportTests {
         XCTAssertThrowsError(try BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
             ledger: ledger, categoryMappings: ["旅行": " "]))
     }
-    func testNewCategoryAndKnownExportOverridesStayLocal() async throws {
+    func testKnownCategoryAndKnownExportOverridesStayLocal() async throws {
         var ledger = Ledger(); ledger.accounts = [Account(name: "银行卡")]
         let bytes = Data("日期,收支,金额,用途,分类\n2026-10-01,支出,24.80,车票,旅行\n".utf8)
         let preview = try await BillImporter.preview(data: bytes, filename: "a.csv", accountID: ledger.accounts[0].id,
             ledger: ledger, categoryMappings: ["旅行": "旅行"], columnMapper: FailingColumnMapper())
-        ledger.categories.append(Category("旅行"))
         _ = try BillImporter.commit(preview, data: bytes, to: &ledger)
         XCTAssertEqual(ledger.entries.first?.category, "旅行"); XCTAssertTrue(ledger.entries.first?.userEdited == true)
     }

@@ -14,6 +14,8 @@ public struct Funds: Sendable {
     public var committed: Int64; public var goals: Int64; public var emergency: Int64; public var living: Int64
     public var uncertainInflow: Int64; public var available: Int64; public var expectedIncome: Int64
     public var occurrences: [Occurrence]; public var points: [ForecastPoint]; public var warnings: [String]
+    /// Horizon remainder above the floor target; negative is a gap, nil means no target.
+    public var floorRoom: Int64? = nil
     public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Date()))
     public var horizonDays: Int = Finance.observationDays; public var payday: Date? = nil; public var paydayTitle: String? = nil
 }
@@ -188,7 +190,7 @@ public enum Finance {
             e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) } == true
         }.reduce(Int64(0)) { $0 + $1.amount }
         let emergency = ledger.profile.floorAmount ?? 0
-        let available = cash - debt - committed - goals - emergency - living - uncertain
+        let available = cash - debt - committed - goals - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("还没有账户") }
@@ -197,7 +199,7 @@ public enum Finance {
         if entries.contains(where: { $0.nature.uncertain }) { warnings.append("有账目没写用途，请补上。") }
         if occurrences.contains(where: \.overdue) { warnings.append("有固定收付已到期，请确认是否已付。") }
         if entries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有转账没选另一账户，请补上。") }
-        let baseline = cash - debt - goals - emergency - uncertain
+        let baseline = cash - debt - goals - uncertain
         var points: [ForecastPoint] = []
         let start = Dates.day(now); let occurrenceDays = occurrences.map { Dates.day($0.date) }
         var cursor = 0; var out: Int64 = 0; var incoming: Int64 = 0
@@ -215,7 +217,7 @@ public enum Finance {
         return Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
                      livingEstimated: true, committed: committed, goals: goals, emergency: emergency, living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
-                     occurrences: occurrences, points: points, warnings: warnings,
+                     occurrences: occurrences, points: points, warnings: warnings, floorRoom: ledger.profile.floorAmount.map { available - $0 },
                      horizonEnd: horizonEnd, horizonDays: horizonDays, payday: payday?.date, paydayTitle: payday?.title)
     }
     public static func spendingAmount(_ entry: Entry, ledger: Ledger) -> Int64 {
@@ -242,7 +244,7 @@ public enum Finance {
         let rows = ledger.activeEntries.filter { $0.date >= from && $0.date < end }
         let prior = ledger.activeEntries.filter { $0.date >= from.addingTimeInterval(-end.timeIntervalSince(from)) && $0.date < from }
         let entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-        let categories = Dictionary(grouping: rows.filter { $0.nature == .expense || $0.nature == .refund }, by: { spendingCategory($0, entriesByID: entriesByID) })
+        let categories = Dictionary(grouping: rows.filter { $0.nature == .expense || $0.nature == .refund }, by: { ledger.normalizedCategory(for: $0, entriesByID: entriesByID).category })
         let byCategory = categories.map { name, entries in Breakdown(category: name, amount: entries.reduce(0) { $0 + spendingAmount($1, ledger: ledger) }, count: entries.count) }.sorted { $0.amount > $1.amount }
         return Review(spending: byCategory.reduce(0) { $0 + $1.amount }, income: rows.filter { $0.nature == .income }.reduce(0) { $0 + $1.amount },
                       refunds: rows.filter { $0.nature == .refund }.reduce(0) { $0 + $1.amount }, byCategory: byCategory,
@@ -253,7 +255,7 @@ public enum Finance {
     public static func cashFlow(_ ledger: Ledger, during interval: DateInterval) -> CashFlowSummary {
         let review = review(ledger, from: interval.start, through: interval.end)
         let incomeRows = ledger.activeEntries.filter { $0.nature == .income && $0.date >= interval.start && $0.date < interval.end }
-        let incomeGroups = Dictionary(grouping: incomeRows, by: \.category)
+        let incomeGroups = Dictionary(grouping: incomeRows) { ledger.normalizedCategory(for: $0).category }
         let incomeBreakdown: [Breakdown] = incomeGroups.map { category, rows in
             let amount = rows.reduce(Int64(0)) { $0 + $1.amount }
             return Breakdown(category: category, amount: amount, count: rows.count)
@@ -268,10 +270,9 @@ public enum Finance {
     public static func subcategoryBreakdown(_ ledger: Ledger, category: String, during interval: DateInterval) -> [Breakdown] {
         let byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         let income = ledger.categories.first { $0.name == ledger.resolveCategory(category) }?.income ?? false
-        let rows = ledger.activeEntries.filter { $0.date >= interval.start && $0.date < interval.end && (income ? $0.nature == .income : ($0.nature == .expense || $0.nature == .refund)) && ledger.resolveCategory(spendingCategory($0, entriesByID: byID)) == ledger.resolveCategory(category) }
+        let rows = ledger.activeEntries.filter { $0.date >= interval.start && $0.date < interval.end && (income ? $0.nature == .income : ($0.nature == .expense || $0.nature == .refund)) && ledger.normalizedCategory(for: $0, entriesByID: byID).category == ledger.resolveCategory(category) }
         let grouped = Dictionary(grouping: rows) { entry in
-            let original = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } : nil
-            return (original ?? entry).subcategory ?? "没分类"
+            return ledger.normalizedCategory(for: entry, entriesByID: byID).subcategory ?? "没分类"
         }
         return grouped.map { sub, rows in Breakdown(category: sub, amount: rows.reduce(0) { $0 + (income ? $1.amount : spendingAmount($1, ledger: ledger)) }, count: rows.filter { $0.nature == .expense || $0.nature == .income }.count) }
             .sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
@@ -286,8 +287,10 @@ public enum Finance {
         let bounds = PurchaseBounds.compute(ledger: ledger, amount: amount, title: purchaseTitle, category: category, subcategory: subcategory, now: now)
         let verdict: PurchaseVerdict = after < 0 ? .skip : !bounds.allowedVerdicts.contains(.buy) || amount > max(0, f.available) / 3 ? .wait : .buy
         let reason = !bounds.allowedVerdicts.contains(.buy) ? bounds.boundReason : verdict == .wait ? "这笔 \(Money.text(amount)) 超过当前还能花 \(Money.text(f.available)) 的三分之一。" : bounds.boundReason
+        var facts = ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱与日常开销 \(Money.text(f.goals + f.living))"]
+        if let room = f.floorRoom { facts.append("想始终留着 \(Money.text(f.emergency))，" + (room >= 0 ? "按现在能留住" : "还差 \(Money.text(-room))")) }
         return PurchaseAssessment(verdict: verdict, reason: reason, title: title, explanation: explanation, afterPurchase: after, severity: severity,
-                                  facts: ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱、始终留着与日常开销 \(Money.text(f.goals + f.emergency + f.living))"] + f.warnings,
+                                  facts: facts + f.warnings,
                                   questions: ["它具体解决什么经常发生的问题？", "现有物品能否满足同样需要？", "如果等 48 小时，还会同样想买吗？"])
     }
 }

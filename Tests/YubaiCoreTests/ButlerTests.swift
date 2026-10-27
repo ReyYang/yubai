@@ -41,18 +41,30 @@ final class ButlerTests: XCTestCase {
         ledger.entries.append(refund)
         XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
     }
-    func testRentShortfallExactlyOnceAndFloorIsNotSubtractedTwice() {
+    func testRentShortfallUsesCashOnlyEvenWhenRemainderIsBelowFloor() {
         var ledger = seed(); ledger.accounts[0].anchorBalance = 100_000
         ledger.profile.floorAmount = 20_000
         ledger.plans = [Plan(title: "房租", amount: 110_000, dueDate: Dates.addDays(5, to: now))]
         ledger.preferences.horizonDays = 7 // Detection still looks 30 days ahead.
         let cards = ButlerCards.detect(ledger, now: now)
         XCTAssertEqual(cards.count, 1); XCTAssertEqual(cards.first?.kind, .shortfall)
-        XCTAssertEqual(cards.first?.facts.first { $0.label == "付款前及当天最少还能花" }?.cents, -30_000)
-        ledger.plans[0].amount = 70_000
-        XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty, "余量一万仍高于已扣过的底线")
+        XCTAssertEqual(cards.first?.facts.first { $0.label == "付款前及当天最少还能花" }?.cents, -10_000)
+        for amount: Int64 in [70_000, 90_000, 100_000] {
+            ledger.plans[0].amount = amount
+            XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty, "现金仍不小于零；低于始终留着目标不触发缺口卡")
+        }
         ledger.plans[0].dueDate = Dates.addDays(31, to: now); ledger.plans[0].amount = 200_000
         XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
+    }
+    func testShortfallFloorFactIsContextOnlyAndRequiresAnExplicitTarget() throws {
+        var ledger = seed(); ledger.accounts[0].anchorBalance = 100_000
+        ledger.plans = [Plan(title: "房租", amount: 110_000, dueDate: Dates.addDays(5, to: now))]
+        for floor: Int64? in [nil, 0, 20_000] {
+            ledger.profile.floorAmount = floor
+            let card = try XCTUnwrap(ButlerCards.detect(ledger, now: now).first { $0.kind == .shortfall })
+            XCTAssertEqual(card.facts.first { $0.label == "付款前及当天最少还能花" }?.cents, -10_000)
+            XCTAssertEqual(card.facts.first { $0.label == "始终留着" }?.cents, floor)
+        }
     }
     func testUpkeepAgingAndActivity() {
         var ledger = seed(); ledger.accounts[0].anchorDate = Dates.addDays(-31, to: now)

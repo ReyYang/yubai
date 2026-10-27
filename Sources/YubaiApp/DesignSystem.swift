@@ -122,6 +122,21 @@ private struct YubaiTextStyle: ViewModifier {
 }
 
 extension View {
+    @ViewBuilder func uiTestAccessibilityValue(_ value: @autoclosure () -> String) -> some View {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { self.accessibilityValue(value()) } else { self }
+        #else
+        self
+        #endif
+    }
+    @ViewBuilder func uiTestAccessibilityValue(_ value: @autoclosure () -> String, appendingTo productionValue: String) -> some View {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { self.accessibilityValue(productionValue + "; " + value()) }
+        else { self.accessibilityValue(productionValue) }
+        #else
+        self.accessibilityValue(productionValue)
+        #endif
+    }
     func yubaiFont(_ style: YubaiFont.Style, weight: Font.Weight? = nil) -> some View { modifier(YubaiTextStyle(style, weight: weight)) }
 
     /// Apply inside a Button/Menu label, after its visual background, so transparent space is tappable.
@@ -639,6 +654,7 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
 /// An offset preserves its layout proposal; revealing an action never narrows text.
 struct SwipeActionRow<Content: View>: View {
     let offset: CGFloat
+    let revealed: Bool
     let title: String
     let tint: Color
     let ink: Color
@@ -646,30 +662,34 @@ struct SwipeActionRow<Content: View>: View {
     let actionIdentifier: String
     let action: () -> Void
     let content: Content
-    init(offset: CGFloat, title: String, tint: Color, ink: Color, weight: Font.Weight = .semibold,
+    init(offset: CGFloat, revealed: Bool, title: String, tint: Color, ink: Color, weight: Font.Weight = .semibold,
          actionIdentifier: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
-        self.offset = offset; self.title = title; self.tint = tint; self.ink = ink; self.weight = weight
+        self.offset = offset; self.revealed = revealed; self.title = title; self.tint = tint; self.ink = ink; self.weight = weight
         self.actionIdentifier = actionIdentifier; self.action = action; self.content = content()
     }
     var body: some View {
         content.frame(maxWidth: .infinity, alignment: .leading)
             .offset(x: offset)
             .background(alignment: .trailing) {
-                Button(action: action) {
-                    Text(title)
+                // The background never sizes the row. Omit fully hidden Buttons from AX.
+                if offset != 0 || revealed {
+                    Button(action: action) {
+                        Text(title)
+                            #if os(iOS)
+                            .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
+                            .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            #endif
+                    }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
                         #if os(iOS)
-                        .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
-                        .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
+                        #else
+                        .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
                         #endif
-                }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
-                    #if os(iOS)
-                    .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
-                    #else
-                    .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
-                    #endif
-                    .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0).accessibilityHidden(offset == 0)
-                    .accessibilityIdentifier(actionIdentifier)
+                        .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0)
+                        .accessibilityIdentifier(actionIdentifier).accessibilityHidden(!revealed)
+                        .transition(.identity)
+                }
             }.clipped().contentShape(Rectangle())
     }
 }
@@ -725,14 +745,9 @@ struct AmountLabel: View {
     var role: Role? = nil
     var sign: Sign = .automatic
     var currency: Bool? = nil
-    var fractionDigits: Int? = nil
     var ink: Color = YubaiColor.label
     private var resolvedRole: Role { role ?? (large ? .display : .amount) }
-    private var decimals: Int {
-        if let fractionDigits { return fractionDigits == 0 ? 0 : 2 }
-        return resolvedRole == .amount || resolvedRole == .input ? 2 : 0
-    }
-    private var text: String { Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: decimals) }
+    private var text: String { Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero)) }
     private var numericValue: Double {
         switch sign { case .automatic: Double(cents) / 100; case .inflow, .none: abs(Double(cents)) / 100; case .outflow: -abs(Double(cents)) / 100 }
     }
@@ -743,12 +758,12 @@ struct AmountLabel: View {
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
         }.yubaiFont(font).foregroundStyle(ink)
             .minimumScaleFactor(resolvedRole == .summary || resolvedRole == .donut ? 0.25 : 0.55).lineLimit(1)
-            .accessibilityLabel(hide ? "金额已隐藏" : Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero), decimals: 2))
+            .accessibilityLabel(hide ? "金额已隐藏" : text)
             .animation(YubaiMotion.quick, value: hide)
     }
-    static func text(_ cents: Int64, sign: Sign = .automatic, currency: Bool = false, decimals: Int = 0) -> String {
+    static func text(_ cents: Int64, sign: Sign = .automatic, currency: Bool = false) -> String {
         let magnitude = cents.magnitude
-        let units = magnitude / 100 + (decimals == 0 && magnitude % 100 >= 50 ? 1 : 0)
+        let units = magnitude / 100
         let digits = String(units)
         let grouped = digits.enumerated().map { index, digit in (index > 0 && (digits.count - index) % 3 == 0 ? "," : "") + String(digit) }.joined()
         let prefix: String
@@ -756,8 +771,7 @@ struct AmountLabel: View {
         let fraction = magnitude % 100
         let currencyText = currency ? "¥" : ""
         let fractionText = fraction < 10 ? "0" + String(fraction) : String(fraction)
-        let suffix = decimals == 0 ? "" : "." + fractionText
-        return prefix + currencyText + grouped + suffix
+        return prefix + currencyText + grouped + "." + fractionText
     }
 }
 
@@ -1043,6 +1057,7 @@ struct HeroCard: View {
     var available: Int64
     var payable: Int64
     var reserved: Int64
+    var floor: Int64? = nil
     var attentionCount = 0
     var hideAmount = false
     var title = "还能花"
@@ -1098,6 +1113,17 @@ struct HeroCard: View {
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
+    private var compositionFloor: Int64? {
+        guard let floor, available >= floor else { return nil }
+        return max(0, min(floor, available))
+    }
+    private var compositionAccessibilityLabel: String {
+        var label = "还能花 \(AmountLabel.text(available))"
+        if let floor = compositionFloor, floor > 0 {
+            label += "，其中始终留着 \(AmountLabel.text(floor))"
+        }
+        return label + "，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))"
+    }
     private func composition(_ progress: Double) -> some View {
         let values = [max(0, Double(available)), max(0, Double(payable)), max(0, Double(reserved))]
         let total = values.reduce(0, +)
@@ -1109,11 +1135,20 @@ struct HeroCard: View {
                 ForEach(indices, id: \.self) { index in
                     let ratio: Double = total > 0 ? values[index] / total : 0
                     let animatedRatio: Double = ratio * progress
-                    colors[index].frame(width: width * CGFloat(animatedRatio))
+                    let segmentWidth = width * CGFloat(animatedRatio)
+                    if index == 0, let floor = compositionFloor {
+                        let floorRatio = Double(floor) / values[index]
+                        HStack(spacing: YubaiSpace.none) {
+                            YubaiColor.brand.frame(width: segmentWidth * CGFloat(floorRatio))
+                            YubaiColor.brand.opacity(0.55).frame(width: segmentWidth * CGFloat(1 - floorRatio))
+                        }
+                    } else {
+                        colors[index].frame(width: segmentWidth)
+                    }
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).background(total == 0 ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
         }.frame(height: YubaiSpace.gapGroup).accessibilityElement(children: .ignore)
-            .accessibilityLabel("还能花 \(AmountLabel.text(available))，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))")
+            .accessibilityLabel(compositionAccessibilityLabel)
     }
     private func legend(_ title: String, _ cents: Int64, _ color: Color) -> some View {
         HStack(spacing: YubaiSpace.space4) {
@@ -1212,9 +1247,14 @@ struct Toast: View {
     var onUndo: (() -> Void)? = nil
     var onDismiss: (() -> Void)? = nil
     var body: some View {
-        Group { if visible { surface } }
+        // A concrete host must exist before visible becomes true. An empty Group has no
+        // child on which to run the task that inserts the receipt in the first place.
+        ZStack { if visible { surface } }
             .task(id: text) {
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
+                #if DEBUG && targetEnvironment(simulator)
+                if onUndo != nil && UITestSupport.keepsUndoReceipt { return }
+                #endif
                 do { try await Task.sleep(for: .seconds(YubaiMotion.toastLifetime)) } catch { return }
                 withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() }
             }
@@ -1369,13 +1409,14 @@ struct WelcomeView: View {
 struct SuggestionChips: View {
     let values: [String]
     var selected: String? = nil
+    var identifierPrefix = "suggestion_"
     let choose: (String) -> Void
     var body: some View {
         ChipFlow { chips }
     }
     private var chips: some View {
         ForEach(values, id: \.self) { value in
-            SuggestionChip(value: value, selected: selected == value) { choose(value) }
+            SuggestionChip(value: value, selected: selected == value, identifier: identifierPrefix + value) { choose(value) }
         }
     }
 }
@@ -1383,6 +1424,7 @@ struct SuggestionChips: View {
 struct SuggestionChip: View {
     let value: String
     var selected = false
+    var identifier = ""
     let choose: () -> Void
     var body: some View {
         Button(action: choose) {
@@ -1391,7 +1433,7 @@ struct SuggestionChip: View {
                 .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
                 .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
                 .frame(minHeight: YubaiSize.tapMin)
-        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier(identifier)
     }
 }
 

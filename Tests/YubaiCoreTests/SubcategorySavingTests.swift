@@ -19,12 +19,12 @@ final class SubcategorySavingTests: XCTestCase {
         }
         return ChatMessage(role: .assistant, content: try JSONValue.object(["items": .array(items)]).jsonText())
     }
-    func testUnifiedCategoryTableHasTwoLevelsAndOtherForEveryMain() {
+    func testUnifiedCategoryTableHasTwoLevelsWithoutAutomaticOther() {
         let categories = Category.defaults
-        XCTAssertEqual(categories.filter { !$0.income }.map(\.name), ["餐饮", "居住", "交通", "购物", "医疗健康", "学习工作", "娱乐旅行", "人情家庭", "利息手续费", "其他支出"])
+        XCTAssertEqual(categories.filter { !$0.income && !$0.system }.map(\.name), ["餐饮", "购物", "交通", "居住", "医疗健康", "娱乐", "旅行", "会员订阅", "学习成长", "人情家庭", "利息手续费", "其他支出"])
         XCTAssertEqual(categories.filter(\.income).map(\.name), ["工资奖金", "兼职劳务", "礼金赠与", "投资收益", "其他收入"])
-        XCTAssertTrue(categories.allSatisfy { $0.subcategories.last == "其他" && !$0.subcategories.contains(where: { $0.contains("/") }) })
-        XCTAssertEqual(ManualBookkeeping.defaults(for: .expense).count, 5)
+        XCTAssertTrue(categories.allSatisfy { !$0.subcategories.contains("其他") && !$0.subcategories.contains(where: { $0.contains("/") }) })
+        XCTAssertEqual(ManualBookkeeping.defaults(for: .expense).count, 12)
         XCTAssertTrue(ManualBookkeeping.defaults(for: .expense).allSatisfy { name in categories.contains { $0.name == name } })
     }
     func testEditingUnlinkedRefundSubcategoryUsesExpenseCategoriesAndRemembersChoice() throws {
@@ -50,8 +50,8 @@ final class SubcategorySavingTests: XCTestCase {
         json["categories"] = (json["categories"] as! [[String: Any]]).map { row -> [String: Any] in var row = row; row.removeValue(forKey: "subcategories"); return row }
         json["entries"] = (json["entries"] as! [[String: Any]]).map { row -> [String: Any] in var row = row; row.removeValue(forKey: "subcategory"); row.removeValue(forKey: "subcategoryUserEdited"); return row }
         let ledger = try JSONDecoder().decode(Ledger.self, from: JSONSerialization.data(withJSONObject: json))
-        XCTAssertEqual(ledger.schema, 3)
-        XCTAssertEqual(ledger.entries.map(\.category), ["购物", "购物", "购物", "娱乐旅行", "工资奖金", "工资奖金", "兼职劳务", "投资收益", "自定义主项"])
+        XCTAssertEqual(ledger.schema, 4)
+        XCTAssertEqual(ledger.entries.map(\.category), ["购物", "购物", "购物", "娱乐", "工资奖金", "工资奖金", "兼职劳务", "投资收益", "自定义主项"])
         XCTAssertEqual(ledger.entries[0].subcategory, "日用百货"); XCTAssertEqual(ledger.entries[4].subcategory, "工资"); XCTAssertEqual(ledger.entries[5].subcategory, "奖金")
         XCTAssertEqual(ledger.categoryMemory["用途"], "购物"); XCTAssertEqual(ledger.subcategoryMemory["用途"], "购物/日用百货")
         XCTAssertEqual(ledger.resolveCategory("旧购物"), "购物"); XCTAssertEqual(ledger.profile.restrain[0].match.categories, ["购物"])
@@ -72,11 +72,11 @@ final class SubcategorySavingTests: XCTestCase {
         XCTAssertTrue(decoded.subscriptionChecks.isEmpty); XCTAssertTrue(decoded.stoppedSubscriptions.isEmpty)
         XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(decoded)), decoded)
     }
-    func testLocalKeywordsDontGuessMarketplacesAndRespectMainCategory() {
+    func testLocalKeywordsCanGuessMainWithoutSmallItemAndRespectMainCategory() {
         let ledger = seed()
         XCTAssertEqual(SubcategoryClassifier.local(entry(ledger, title: "美团外卖"), ledger), .init(category: "餐饮", subcategory: "外卖"))
-        XCTAssertEqual(SubcategoryClassifier.local(entry(ledger, title: "滴滴", category: "其他支出"), ledger), .init(category: "交通", subcategory: "打车"))
-        XCTAssertNil(SubcategoryClassifier.local(entry(ledger, title: "京东淘宝", category: "购物"), ledger))
+        XCTAssertEqual(SubcategoryClassifier.local(entry(ledger, title: "滴滴", category: Classification.pendingCategory), ledger), .init(category: "交通", subcategory: "打车"))
+        XCTAssertEqual(SubcategoryClassifier.local(entry(ledger, title: "京东淘宝", category: "购物"), ledger), .init(category: "购物"))
         XCTAssertNil(SubcategoryClassifier.local(entry(ledger, title: "外卖", category: "交通"), ledger))
         XCTAssertEqual(SubcategoryClassifier.local(entry(ledger, title: "京东纸巾", category: "购物"), ledger)?.subcategory, "日用百货")
     }
@@ -113,7 +113,7 @@ final class SubcategorySavingTests: XCTestCase {
         XCTAssertEqual(ledger.entries.last?.subcategory, "外卖")
     }
     func testBatchChunksAllRowsAndLogsRedactedAllowlistedPayloadOncePerDay() async throws {
-        var ledger = seed(); ledger.entries = (0..<161).map { _ in entry(ledger, title: "转账给张三 6222021234567890", category: "其他支出") }
+        var ledger = seed(); ledger.entries = (0..<161).map { _ in entry(ledger, title: "转账给张三 6222021234567890", category: Classification.pendingCategory) }
         let replies = try stride(from: 0, to: 161, by: 80).map { try response(Array(ledger.entries.dropFirst($0).prefix(80)), category: "餐饮") }
         let transport = ScriptedChatTransport(replies)
         let result = try await SubcategoryBatch.run(transport: transport, ledger: ledger, now: now)
@@ -148,7 +148,7 @@ final class SubcategorySavingTests: XCTestCase {
             do { _ = try await SubcategoryBatch.run(transport: transport, ledger: ledger, now: now); XCTFail(text) } catch { }
             XCTAssertEqual(ledger, baseWithEntry(base, row)); XCTAssertNil(ledger.lastSubcategoryBatchDay)
         }
-        ledger.entries[0].category = "其他支出"
+        ledger.entries[0].category = Classification.pendingCategory
         let transport = ScriptedChatTransport([try response(ledger.entries, category: "工资奖金", sub: "工资")])
         do { _ = try await SubcategoryBatch.run(transport: transport, ledger: ledger, now: now); XCTFail("wrong income") } catch { }
     }

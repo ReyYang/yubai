@@ -11,8 +11,9 @@ struct EntrySubcategoryRow: View {
     }
     private var editable: Bool { entry.deletedAt == nil && [.expense, .income, .refund].contains(entry.nature) }
     private var categoryTitle: String {
-        let main: String = Classification.displayCategory(classificationEntry.category)
-        return main + (classificationEntry.subcategory.map { " · " + $0 } ?? "")
+        let choice = store.current.normalizedCategory(for: entry)
+        let main: String = Classification.displayCategory(choice.category)
+        return main + (choice.subcategory.map { " · " + $0 } ?? "")
     }
     private var classificationID: UUID {
         guard entry.nature == .refund else { return entry.id }
@@ -68,15 +69,17 @@ private struct SubcategoryPicker: View {
             }
     }
     private func mainCategories(for entry: Entry) -> [YubaiCore.Category] {
-        store.current.categories.filter { $0.income == (entry.nature == .income) }
+        store.current.selectableCategories.filter { $0.income == (entry.nature == .income) }
     }
     private func choices(for entry: Entry) -> some View {
-        let main: String = category ?? store.current.resolveCategory(entry.category)
-        let subcategories: [String] = store.current.categories.first { $0.name == main }?.subcategories ?? []
+        let choice: CategoryAssignment = store.current.normalizedCategory(for: entry)
+        let main: String = category ?? choice.category
+        let subcategories: [String] = store.current.selectableCategories.first { $0.name == main }?.subcategories ?? []
         return Card(background: YubaiColor.raised) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 ForEach(subcategories, id: \.self) { sub in
-                    SubcategoryChoiceChip(entry: entry, main: main, sub: sub) { save(main: main, sub: sub) }
+                    let selected: Bool = main == choice.category && choice.subcategory == sub
+                    SubcategoryChoiceChip(sub: sub, selected: selected) { save(main: main, sub: sub) }
                 }
             }
         }
@@ -93,11 +96,9 @@ private struct SubcategoryPicker: View {
 }
 
 private struct SubcategoryChoiceChip: View {
-    let entry: Entry
-    let main: String
     let sub: String
+    let selected: Bool
     let save: () -> Void
-    private var selected: Bool { main == entry.category && entry.subcategory == sub }
     var body: some View {
         Button(action: save) {
             Text(sub).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
@@ -167,7 +168,7 @@ struct SubcategoryInsightsView: View {
         let comparisonText: String = shareText(total, denominator) + " · " + comparison(total - previous)
         return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(rangeText + " · \(count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: total, hide: store.current.preferences.hideAmounts, role: .input, fractionDigits: 0)
+            AmountLabel(cents: total, hide: store.current.preferences.hideAmounts, role: .input)
             if !store.current.preferences.hideAmounts {
                 Text(comparisonText).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             }
@@ -227,9 +228,8 @@ private struct SubcategoryRecordsView: View {
             let matchesNature: Bool = income ? entry.nature == .income : [.expense, .refund].contains(entry.nature)
             guard entry.deletedAt == nil, entry.date >= interval.start, entry.date < interval.end,
                   matchesNature,
-                  store.current.resolveCategory(Finance.spendingCategory(entry, entriesByID: byID)) == store.current.resolveCategory(category) else { return false }
-            let original = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } : nil
-            return ((original ?? entry).subcategory ?? "其他") == subcategory
+                  store.current.normalizedCategory(for: entry, entriesByID: byID).category == store.current.resolveCategory(category) else { return false }
+            return (store.current.normalizedCategory(for: entry, entriesByID: byID).subcategory ?? "其他") == subcategory
         }
     }
     var body: some View {

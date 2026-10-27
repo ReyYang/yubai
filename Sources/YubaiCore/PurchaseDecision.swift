@@ -11,7 +11,11 @@ public struct PurchaseBounds: Equatable, Sendable {
     public static func compute(ledger: Ledger, amount: Int64, title: String, category: String? = nil, subcategory: String? = nil, now: Date = Date()) -> PurchaseBounds {
         let after = Finance.funds(ledger, now: now).available - amount
         if after < 0 { return PurchaseBounds(allowedVerdicts: [.skip], boundReason: "买了以后还能花 \(Money.text(after))。") }
-        var sample = Entry(date: now, amount: amount, accountID: UUID(), title: title, category: category ?? "其他支出"); sample.subcategory = subcategory
+        // Cash shortfall takes precedence; the floor precedes equally strict restrain limits.
+        if let floor = ledger.profile.floorAmount, after < floor {
+            return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: "买了以后离始终留着的 \(Money.text(floor)) 还差 \(Money.text(floor - after))。")
+        }
+        var sample = Entry(date: now, amount: amount, accountID: UUID(), title: title, category: category ?? Classification.pendingCategory); sample.subcategory = subcategory
         for area in ledger.profile.restrain where ButlerCards.matches(area, entry: sample, ledger: ledger) {
             let usage = area.usage(in: ledger, now: now)
             if let count = area.softLimit?.perWeekCount, usage.weekCount >= count {

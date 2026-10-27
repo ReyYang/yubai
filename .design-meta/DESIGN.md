@@ -1,5 +1,64 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-27 · 第十九轮「始终留着」
+
+来源为 owner 本轮提供的已批准第十九轮逐项文字规格；本轮未附独立 HTML／图片或私有原稿链接。此节接续下方同日 Core 记录，首页目标行不再等待设计。
+
+- `DesignSystem.swift`：HeroCard 增加默认 nil 的 `floor` 参数。已设目标且 `available >= floor` 时，原还能花段内领先部分为实色 brand，余量为 brand 的 0.55 透明度，两部分相接；要付与原 reserved 段及间隔保持。未达目标／未设置沿用单一实色段；明确 0 仍为已设目标。实色目标段存在时，无障碍说明加入「其中始终留着 X」。隐藏金额仍无条与图例。
+- `OverviewView.swift`：Hero 与目标行放在无额外间距的同组内，普通字号只增加 `tapMin = 44pt`，不替换既有内容；沿用 150／96／0pt 图表适配及原有滚动兜底。共用 `FloorLine` 使用 8pt 状态点、callout／caption、numeric 金额与两位小数，达到目标为 brand／brandInk「能留住」，不足为 amberDot／amberInk「还差 X」。金额隐藏时目标为「••••」，不足状态为「还差一点」；差额通过 AmountLabel 的 `.none` 显示绝对值，不出现负号。
+- 现在页以既有 `TabNavigationLink(.profile)` 推入 `ProfileView`，有 chevron 与 `floorLine` 标识；计算页公式 Card 下面复用同一行，采用只读、无 chevron，也有 `floorLine` 标识。辅助功能字号纵排，触控区域不小于 44pt。计算式不加目标扣减行，购买判断 UI 与 Core 均不改。
+
+本次新增／改动可见中文：行名「始终留着」（控件字／事实）、金额及缺口数字（事实）、状态「能留住」「还差 X」「还差一点」。没有新增说明句；「其中始终留着 X」仅用于无障碍标签。
+
+验证：`swift build` 通过，`swift test` 471 项、467 通过／4 项原有实网跳过／0 失败，含 InterfaceVocabularyTests 3 项；两份改动 App 文件通过 iOS 26 设备／模拟器与 macOS 14 条件语法解析，使用的颜色／字号／尺寸 token 均在现有设计系统中核对。已检索 `Tests/YubaiUITests` 的「始终留着／emergency」，无匹配，不改也不加 UI 测试；diff 检查通过。Linux 无 Apple SDK，SwiftUI 类型检查、设备单屏适配、VoiceOver 与 UI 实跑尚未验证。文字规格已落实，无已知功能偏离；原稿／Figma／截图／分发包未同步，未提交。
+
+## 2026-10-27 · 始终留着改为目标
+
+依据 owner 明确任务，沿用 V16 的少写字规则，只从 `OverviewView` 的 HeroCard `reserved` 合计移除 `funds.emergency`，并删除计算页「始终留着」扣减行，使显示公式与 Core 一致。不新增行、视图或视觉方案；首页目标与差额新行等待设计稿。消费观现有展示／编辑保持。Core 的购买事实与目标缺口理由均为金额事实，[全部可见中文及口径](../docs/DEVELOPMENT.md#始终留着是目标2026-10-27)。原稿、Figma、截图与分发包未同步；改动 Swift 文件共 19 项条件语法解析通过，含 OverviewView 的 iOS 26 设备／模拟器及 macOS 14；Core 单测因依赖下载受阻未运行，Apple SDK 编译与设备验收待 Mac。
+
+## 2026-10-27 · 第十八轮单账户转账
+
+来源为 owner 本轮明确批准的 `V18-Transfer-One.dc.html` 与 `V18-Transfer-Added.dc.html`（设计稿「第十八轮 · 转账」）。此处覆盖记一笔的转账账户行与分类芯片呈现，不改变 Core 转账校验或入账规则。
+
+`QuickEntryView.swift`：转账账户行采用「转出／转入」；没有其他未归档账户时，转入行显示 SF Symbol `plus` 与「添加账户」，复用 `brandInk`／`raised`／`chipHeight`／`yubaiHitTarget`。通过独立嵌套 sheet 和 NavigationStack 呈现现有 AccountEditor，保留金额、用途、日期与性质。关闭编辑器后比较打开前的账户 ID，仅选中新建的未归档账户；取消不改草稿。转入行复用 `brandTint`、`YubaiMotion.claim` 和 `YubaiMotion.wash(reduceMotion:)` 洗色一次。两个保存入口在转入有效前继续禁用；已有其他账户时沿用默认选择。转账隐藏 EntryCategoryChips，内部分类保持原实现。账户菜单区分转出／转入读屏标签，添加按钮标识为 `transferAddAccount`、读屏标签为「添加账户」。
+
+新增／改动可见中文：「账户」在转账页改为「转出」（标题），新增「＋ 添加账户」（控件；＋为图标）；转账页移除分类芯片。没有新增说明文字；原有 AccountEditor 文案保持。
+
+`AppFlowTests.testTransferWithOneAccountCanAddDestinationWithoutLosingDraft` 复用单账户 `manual` 夹具，覆盖两个保存入口禁用、分类芯片隐藏、取消保留草稿、添加后自动选中、保存后读回金额／转账性质／两个账户，以及后续转账默认选中第二账户。无新测试钩子、依赖或 Core 改动，未提取 Core 纯逻辑。
+
+验证：Linux 按指定 PATH 执行 `swift test`，464 项、460 通过／4 项原有实网跳过／0 失败；iOS 26 模拟器 Debug 的改动 App／UI 文件及 macOS 14 Debug 的 QuickEntryView 条件语法解析、`git diff --check` 通过。Linux 无 Apple SDK，Apple 类型检查、UI 实跑、洗色视觉与 VoiceOver 验收待 Mac；语法解析不代表 Apple 编译通过。原稿未改写或导出，Figma、历史原型与分发包未同步。按指定提交信息尝试提交时，`git add` 因 `.git/index.lock` 所在文件系统只读退出 128；四个相关文件保留为工作区修改，未提交、未推送。
+
+## 2026-10-26 · PR #37 第三轮证据修复
+
+基于 `fix/flaky-ui-tests`／`287ffec`，先读合并验证全部 8 份相关失败层级，再逐项核对测试失败行与截图：5 项账目停在初始关闭检查，固定收付停在展开几何检查通过后的收回检查，2 项管家停在右滑后的关闭检查。均为 `assertGone(action)` 的 AX 不存在等待，未发生展开等待失败。管家 `closed` 卡仍导出宽 0 的「知道了」，账目／固定收付仍导出 78pt 的删除／停掉；这证明上一轮移动 `.accessibilityHidden` 没有解决实际 AX 节点残留，覆盖上一节对该修复效果的推定。
+
+`SwipeActionRow` 仅在 `offset != 0 || revealed` 时挂载背景 Button，`ButlerCardView` 仅在 `swipe != 0` 时挂载背景 Button；两处加 `.transition(.identity)`，不额外引入默认插入过渡。原内容决定布局大小，动作保留在 `.background(alignment: .trailing)`，原 frame、padding、opacity、偏移、裁切、颜色／字体和点击条件保持；没有增加占位尺寸，现有手势／动画调用及 Reduce Motion tokens 保持。现有中文读屏动作及生产 AX 值门控不变，无新英文生产 VoiceOver 输出。
+
+全部 70 项 UI 测试文件原样保留，不改手势坐标／断言／等待或 `testUndoReceiptDismissesAfterProductionLifetime` 的金额文字。两个改动文件的 iOS 26／27.1 Debug 模拟器、iOS 26 Release 设备和 macOS 14 Debug 共 8 组条件语法解析通过，静态比对除条件挂载／identity transition／注释缩进外相同，字符串不变。此环境没有 Apple SDK／模拟器，AX 消失、实际几何及拖动／收回动画仍待 Mac 实跑与视觉比较；选定稿／Figma／分发资源保持，新增／改动可见中文无，未提交。
+
+## 2026-10-26 · 金额固定两位小数
+
+owner 明确要求所有金额展示固定两位小数：整额写 `12.00`，带分写 `12.50`，不进位为整元、不省略分。`DesignSystem.swift / AmountLabel` 删除按角色选择精度、`fractionDigits`／`decimals` 参数及整元进位分支，显示与读屏共用同一文本；保留千位分隔、正负号、币种符号和隐藏金额行为。余额、固定收付、还能花、日／月汇总、洞察／小项、省钱和快捷指令调用点移除精度参数；心愿生成的两处提问改用 `Money.text(..., currency: false)`。
+
+Core 使用 Int64 分计算，`Money.text`、助手金额对象及小组件已固定两位，核查后无需修改。输入解析／编辑中的原始金额与键盘表达式保持；百分比、图表坐标缩放、次数、文件大小和布局／字体／颜色保持。新增／改动可见中文措辞：无；既有提示如「房租 300 已记下」只将数字改为「房租 300.00 已记下」，既有两处心愿提问同样只改插值金额。
+
+验证：通过 `/opt/swift-rootfs/usr/bin` 工具链、`/tmp` 可写缓存运行 Core build 与 `YUBAI_LIVE_EVAL=0 swift test`，464 项中 460 通过、4 项原有实网跳过、0 失败。直接提取实际 `AmountLabel.text`／`Money.text` 执行 357 项检查，覆盖零、整额、分、半元边界、正负号／币种符号、千位分隔、Money.limit 和 Int64 极值；未新增 Core 测试。38 个 App 文件、小组件及 UI 测试共 40 个文件通过 iOS 26 模拟器／macOS 14 Debug 条件语法解析；已有 UI 金额断言更新为两位，输入断言保留。`git diff --check` 通过。Apple SDK 类型检查、UI 实跑与长金额实际显示仍待 Mac；原稿／Figma／历史原型及分发包未同步，未提交。
+
+## 2026-10-26 · PR #37 第二轮证据修复
+
+owner 在 `1821b9b` 的 Mac 两轮验证为 20 项稳定失败、2 项时好时坏；已逐份读完 21 份现有失败层级／截图及中断证据缺口。账目 `closed` 行仍暴露删除 Button，固定收付同样暴露停掉：共用 `SwipeActionRow` 的 identifier／hidden 移到全部 frame、padding、opacity、hit-testing 之后，关闭断言加强为 AX 中不存在；原按钮仍挂载，所有视觉与手势修饰不变。待付 Card 增加 `.contain`，阻止 `dueBills` 传播覆盖 `moreDueBills` 与各期按钮标识；不加 label／value。
+
+撤销缺失属于真实应用缺陷：`1d84959` 引入初始为空的 `Group`，`.task` 无宿主却负责设置显示状态；`062f4fa` 将其接入根 overlay。改为单子项 `ZStack` 生命周期宿主，保留原 surface、overlay、计时、transition、颜色与文案，恢复既定提示条；没有把提示条移入 sheet。生产 4 秒测试原样保留，测试保留开关及生产 AX 值门控保持。没有证据将缺失归因于 PR #34／#36 的遮挡。
+
+原生 alert 的同 ID 父子 Button 用 scoped `.firstMatch`，保留标签、启用、可点击和边界断言；键盘拖动从 inputView／assistant 区上方开始；记一笔横拖以现存自定义 header 定位；取消返回改短拖，完整 pop 和导航栏断言保留。已选、可见、idle 且几何对齐时，根 pager 不再发起没有位移的 scrollTo，其他滚动继续原动画；原失败层级截断 pager 值，具体失配状态仍需 Mac 验证，新诊断会输出完整值。无新增英文生产 VoiceOver 值。
+
+70 项测试保留，无跳过／禁用／预期失败；一个 signal term 用例缺少失败截图和层级，保持原用例且不推定原因。Linux 条件解析、语言级核对与静态不变量见交付记录，不能代替 Apple SDK 类型检查、UI／VoiceOver 或像素验证。选定稿、Figma、分发资源未改变；新增／改动可见中文无，未提交。
+
+## 2026-10-24 · UI 测试观测与稳定性
+
+按 `619564f` 的 23 项失败调整[测试](../Tests/YubaiUITests/AppFlowTests.swift)等待、手势与撤销；展开值／pager 值及撤销保留仅限 Debug 模拟器、有效 UUID 测试账本与白名单脚本，保留另需 `YUBAI_UI_TEST_KEEP_UNDO=1`。生产账目／管家卡不加 AX 值，固定收付保持原财务值，测试时才追加展开状态；财务查询用前缀匹配。
+`rootPage_*` 先 `.accessibilityElement(children: .contain)` 再标识；`fixedFlowsScroll` 沿用 settings／insights 的 Page→ScrollView 标识方式，`rootPager` 标识原生 ScrollView，保留内部标识。原 69 项测试保留，新增 1 项覆盖原 4 秒提示；条件解析／静态核对通过，Apple 编译与 AX／UI 实跑待 Mac。布局、可见中文、动画、业务与外部设计资源无变化；未提交。
+
 ## 2026-10-23 · PR #34 名单外 UI 失败修复
 
 按 owner 的 Mac 验证报告，在 `4b7c0f7` 逐个核对 `a23e179` 的测试名与准确失败点。[全部测试的判断、改法与验证](../docs/PR34-NEW-UI-FAILURES.md)。`OverviewView` 的三档静态内容均放不下时，新增复用大字号 ScrollView 的最终兜底，固定 header、暖纸渐隐和底部 margin 沿用既有组件；避免「还有 N 笔」落入浮栏下且无法滚到。导航路径／分页同步保持，报告没有证明取消侧滑后浮栏状态回归。

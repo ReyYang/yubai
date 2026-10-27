@@ -40,7 +40,7 @@ final class LedgerSyncTests: XCTestCase {
             XCTAssertEqual(try local.load(), original)
             let stored = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: local.file)) as? [String: Any])
             let metadata = try XCTUnwrap((stored["attachments"] as? [[String: Any]])?.first)
-            XCTAssertEqual(stored["schema"] as? Int, 3); XCTAssertNil(metadata["data"])
+            XCTAssertEqual(stored["schema"] as? Int, 4); XCTAssertNil(metadata["data"])
             XCTAssertEqual(metadata["byteCount"] as? Int, 4); XCTAssertNotNil(metadata["checksum"])
             let payload = local.directory.appendingPathComponent("Attachments/" + original.attachments[0].id.uuidString)
             XCTAssertEqual(try Data(contentsOf: payload), original.attachments[0].data)

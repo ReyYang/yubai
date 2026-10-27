@@ -334,7 +334,7 @@ private struct ProfileAreaEditor: View {
                 DisclosureGroup("更多") { TextField("说明", text: $note, axis: .vertical) }
             }
             Section("相关分类") {
-                ForEach(store.current.categories.filter { !$0.income }) { category in
+                ForEach(store.current.selectableCategories.filter { !$0.income }) { category in
                     Toggle(category.name, isOn: Binding(get: { categories.contains(category.name) }, set: { value in
                         if value { categories.insert(category.name) } else { categories.remove(category.name) }
                     })).tint(YubaiColor.toggleOn)

@@ -37,12 +37,12 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
     public var name: String { rawValue }
     public var description: String {
         switch self {
-        case .getFunds: return "本机计算的还能花与各项预留、预计收入和警示。还能花看到下次发工资，包含发工资当天的付款；没有固定工资时看未来90天，预计收入仍看90天。"
+        case .getFunds: return "本机计算的还能花与各项预留、始终留着目标、预计收入和警示。还能花看到下次发工资，包含发工资当天的付款；没有固定工资时看未来90天，预计收入仍看90天。"
         case .forecast: return "从今天预测指定日期的保守/预计余额及此前已知付款；可比较一笔金额。最远365天，预计收入不算保守资金。"
         case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，每页最多50条。offset从0开始，用next_offset继续查询。日期边界均包含当天，金额过滤用原始金额。"
         case .summarize: return "按日/周(周一开始)/月/分类汇总匹配记录；默认全部，不受查询默认条数限制。消费退款抵扣，房租只计个人承担。"
         case .compareToHabit: return "近90个自然日同类实际消费的均值、中位数、每周频次和最近记录；有数据时附last_year去年同期90天均值和次数，以及匹配的想克制领域柔性线soft_limits。不含未来记录或退款，可比较金额位置。"
-        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、底线和储蓄目标。附生活背景memories（可能过时，省略时用recall检索）和最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
+        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、始终留着目标和储蓄目标。附生活背景memories（可能过时，省略时用recall检索）和最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
         }
     }
     private static func field(_ type: String, _ description: String) -> JSONValue {
@@ -91,7 +91,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         case .getFunds:
             let f = Finance.funds(ctx.ledger, now: ctx.now)
             var fields: [String: JSONValue] = ["available": .money(f.available), "cash": .money(f.cash), "debt": .money(f.debt),
-                "committed": .money(f.committed), "goals": .money(f.goals), "emergency": .money(f.emergency),
+                "committed": .money(f.committed), "goals": .money(f.goals), "floor_target": ctx.ledger.profile.floorAmount.map { .money($0) } ?? .null,
+                "floor_room": f.floorRoom.map { .money($0) } ?? .null,
                 "living": .money(f.living), "uncertain": .money(f.uncertainInflow), "expected_income": .money(f.expectedIncome),
                 "horizon_days": .number(Double(f.horizonDays)), "warnings": .strings(f.warnings)]
             if let payday = f.payday { fields["payday"] = .string(Dates.text(payday)) }
@@ -147,7 +148,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "confirmed_at": ctx.ledger.profile.principleDates[text].map { .string(Dates.text($0)) } ?? .null]) }),
             "recent_followups": .array(recent),
             "memories": Memory.context(ledger: ctx.ledger, now: ctx.now, characterBudget: ctx.memoryCharacterBudget),
-            "categories": .strings(ctx.ledger.categories.filter { !$0.income }.map(\.name)),
+            "categories": .strings(ctx.ledger.selectableCategories.filter { !$0.income }.map(\.name)),
             "floor_amount": ctx.ledger.profile.floorAmount.map { .money($0) } ?? .null,
             "habits": .object(["label": .string("你常花的"), "meaning": .string("这是从账本里看到的，不是你的要求；分类与商户可能重叠，不可相加。"),
                 "window_days": .number(90), "lines": .array(ProfileHabits.summary(ctx.ledger, now: ctx.now).map {
@@ -160,7 +161,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "target": .money($0.target), "saved": .money($0.reserved), "reserved": .money($0.reserved),
                 "date": $0.dueDate.map { .string(Dates.text($0)) } ?? .null]) })]
         if let account = ctx.entryAccountHint { fields["entry_account_hint"] = .string(account.uuidString) }
-        fields["category_table"] = .array(ctx.ledger.categories.map { .object(["category": .string($0.name), "subcategories": .strings($0.subcategories)]) })
+        fields["category_policy"] = .string("自动归类仅待整理（没分类）可改主项；其他支出、其他收入是主动选择，不可改动。")
+        fields["category_table"] = .array(ctx.ledger.selectableCategories.map { .object(["category": .string($0.name), "subcategories": .strings($0.subcategories)]) })
         fields["parsed_entries"] = .array(ctx.parsedEntries.map { .object(["text": .string($0.text), "amount": .money($0.amount)]) })
         fields["parsed_entry_amounts"] = .array(ctx.parsedEntryAmounts.map { .money($0) })
         if let amount = ctx.confirmedEntryAmount { fields["confirmed_entry_amount"] = .money(amount) }
@@ -211,9 +213,9 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 var calendar = Dates.calendar; calendar.firstWeekday = 2; calendar.minimumDaysInFirstWeek = 4
                 return Dates.text(calendar.dateInterval(of: .weekOfYear, for: entry.date)?.start ?? Dates.day(entry.date))
             case "subcategory":
-                let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry
-                return ctx.ledger.resolveCategory(source.category) + "/" + (source.subcategory ?? "没分类")
-            default: return ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: byID))
+                let choice = ctx.ledger.normalizedCategory(for: entry, entriesByID: byID)
+                return choice.category + "/" + (choice.subcategory ?? "没分类")
+            default: return ctx.ledger.normalizedCategory(for: entry, entriesByID: byID).category
             }
         }
         func totals(_ entries: [Entry]) -> [String: JSONValue] {
@@ -229,13 +231,12 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             var values = totals(groupRows); values["group"] = .string(key)
             if group == "category" || group == "subcategory" {
                 let small = Dictionary(grouping: groupRows) { entry -> String in
-                    let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry
-                    return source.subcategory ?? "没分类"
+                    return ctx.ledger.normalizedCategory(for: entry, entriesByID: byID).subcategory ?? "没分类"
                 }
                 values["subcategories"] = .array(small.keys.sorted().map { name in
                     var row = totals(small[name] ?? []); row["subcategory"] = name == "没分类" ? .null : .string(name); return .object(row)
                 })
-                if group == "subcategory" { values["subcategory"] = groupRows.first.flatMap { entry in (entry.nature == .refund ? entry.relatedEntryID.flatMap { byID[$0] } ?? entry : entry).subcategory }.map(JSONValue.string) ?? .null }
+                if group == "subcategory" { values["subcategory"] = groupRows.first.flatMap { entry in ctx.ledger.normalizedCategory(for: entry, entriesByID: byID).subcategory }.map(JSONValue.string) ?? .null }
             }
             return .object(values)
         })
@@ -302,8 +303,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         .object(["id": .string(entry.id.uuidString), "date": .string(Dates.text(entry.date)),
             "amount": .money(entry.amount), "spending_amount": .money(Finance.spendingAmount(entry, ledger: ctx.ledger)),
             "direction": .string(entry.nature.paired ? "transfer" : (entry.nature.inflow ? "income" : "spending")),
-            "nature": .string(entry.nature.rawValue), "title": .string(entry.displayTitle), "category": .string(ctx.ledger.resolveCategory(Finance.spendingCategory(entry, entriesByID: ctx.entriesByID))),
-            "subcategory": (entry.nature == .refund ? entry.relatedEntryID.flatMap { ctx.entriesByID[$0] } ?? entry : entry).subcategory.map(JSONValue.string) ?? .null,
+            "nature": .string(entry.nature.rawValue), "title": .string(entry.displayTitle), "category": .string(ctx.ledger.normalizedCategory(for: entry, entriesByID: ctx.entriesByID).category),
+            "subcategory": ctx.ledger.normalizedCategory(for: entry, entriesByID: ctx.entriesByID).subcategory.map(JSONValue.string) ?? .null,
             "account": .string(entry.accountID.uuidString),
             "account_kind": .string(ctx.ledger.accounts.first { $0.id == entry.accountID }?.kind.rawValue ?? "unknown")])
     }
@@ -330,10 +331,9 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             return ctx.ledger.activeEntries.filter { e in
                 if let start, e.date < start { return false }
                 if let end, e.date >= end { return false }
-                if let category, ctx.ledger.resolveCategory(Finance.spendingCategory(e, entriesByID: byID)) != ctx.ledger.resolveCategory(category) { return false }
+                if let category, ctx.ledger.normalizedCategory(for: e, entriesByID: byID).category != ctx.ledger.resolveCategory(category) { return false }
                 if let subcategory {
-                    let source = e.nature == .refund ? e.relatedEntryID.flatMap { byID[$0] } ?? e : e
-                    if source.subcategory != subcategory { return false }
+                    if ctx.ledger.normalizedCategory(for: e, entriesByID: byID).subcategory != subcategory { return false }
                 }
                 if let keyword {
                     let text = e.title + " " + (e.purpose ?? "") + " " + e.note
