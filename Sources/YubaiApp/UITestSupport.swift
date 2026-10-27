@@ -27,15 +27,16 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl"].contains(name)) else { return nil }
+              (screenshotScripts.contains(name) || ["empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl"].contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
-        guard script == "import", let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
+        guard ["import", "welcome-import"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1])
             .appendingPathComponent("合成账单.csv")
     }
+    static var welcomeStatementURL: URL? { script == "welcome-import" ? statementURL : nil }
     static func prepare(_ repository: LedgerRepository) throws {
         guard let script else { return }
         if let url = statementURL, let encoded = ProcessInfo.processInfo.environment["YUBAI_UI_STATEMENT"],
@@ -43,7 +44,7 @@ enum UITestSupport {
             try FileManager.default.createDirectory(at: repository.directory, withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
         }
-        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
+        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty", script != "welcome-import" else { return }
         let now = Date()
         if screenshotScripts.contains(script) {
             try repository.save(screenshotLedger(script, now: now), reason: "合成截图夹具")

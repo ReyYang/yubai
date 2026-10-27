@@ -68,6 +68,8 @@ struct ImportView: View {
     @Environment(\.dynamicTypeSize) private var textSize
     var pasted: PastedStatement? = nil
     var initialScreenshot: Data? = nil
+    /// Welcome reviews a local draft; account creation and commit belong to Start.
+    private var welcomeReview: Binding<ImportPreview>? = nil
     @State private var accountID: UUID?
     @State private var filePicker = false
     @State private var photoPicker = false
@@ -104,7 +106,10 @@ struct ImportView: View {
     @State private var rowEdits: [Int: Entry] = [:]
     @State private var editingScreenshotRow: ImportRow?
     @State private var showScreenshot = false
-    init(pasted: PastedStatement? = nil, initialScreenshot: Data? = nil) { self.pasted = pasted; self.initialScreenshot = initialScreenshot }
+    init(pasted: PastedStatement? = nil, initialScreenshot: Data? = nil, welcomeReview: Binding<ImportPreview>? = nil) {
+        self.pasted = pasted; self.initialScreenshot = initialScreenshot; self.welcomeReview = welcomeReview
+        _preview = State(initialValue: welcomeReview?.wrappedValue)
+    }
     private var resultTitle: String {
         guard let result else { return preview == nil ? "导入" : "核对 \(processed + 1)/\(max(queueTotal, 1))" }
         guard let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) else { return "这一批已撤销" }
@@ -131,7 +136,7 @@ struct ImportView: View {
                 if let result, let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) {
                     Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }
                         .disabled(store.organizingBatchID == batch.id).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportResult")
-                } else if preview != nil {
+                } else if preview != nil && welcomeReview == nil {
                     Button("导入", action: returnToIntake)
                 }
             }
@@ -169,6 +174,7 @@ struct ImportView: View {
         .onChange(of: categoryMappings) { _, _ in refreshPreview() }
         .onDisappear { parsingTask?.cancel(); queueTask?.cancel() }
         .onAppear {
+            guard welcomeReview == nil else { return }
             if !appeared, let initialScreenshot { enqueue([ImportQueueFile(input: .screenshot(initialScreenshot), name: "截图.png")]); reviewWhenReady = true }
             if appeared {
                 if queueTask == nil || queueTask?.isCancelled == true {
@@ -245,7 +251,7 @@ struct ImportView: View {
             if item.preview != nil {
                 Button { open(item.id) } label: { Pill(text: "读好了", height: YubaiSize.tagHeight, showsDot: false) }.buttonStyle(PressButtonStyle())
             } else if item.reading {
-                ProgressView(value: item.progress, total: 3).tint(YubaiColor.brand).frame(width: YubaiSize.buttonHeight).accessibilityLabel("读取进度")
+                ImportReadingProgress(value: item.progress)
             } else {
                 Button { queue.removeAll { $0.id == item.id }; queueTotal = max(processed, queueTotal - 1) } label: { Image(systemName: "xmark").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                     .buttonStyle(PressButtonStyle()).accessibilityLabel("移除" + item.name).accessibilityIdentifier("removeImport_" + item.id.uuidString)
@@ -256,17 +262,19 @@ struct ImportView: View {
         VStack(spacing: YubaiSpace.none) {
             Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
                 previewHeader(p)
-                decisionCard(p)
+                if welcomeReview == nil { decisionCard(p) }
                 if !screenshot {
-                    Card(style: .list) {
-                        VStack(spacing: YubaiSpace.none) {
-                            accountPicker
-                            Divider().overlay(YubaiColor.separator)
-                            Button { showCategories = true } label: {
-                                HStack(spacing: YubaiSpace.gapGroup) { Text("分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
-                                    .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
-                            if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
+                    if welcomeReview == nil {
+                        Card(style: .list) {
+                            VStack(spacing: YubaiSpace.none) {
+                                accountPicker
+                                Divider().overlay(YubaiColor.separator)
+                                Button { showCategories = true } label: {
+                                    HStack(spacing: YubaiSpace.gapGroup) { Text("分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
+                                        .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
+                                if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
+                            }
                         }
                     }
                     Segmented(choices: [("全部", "全部 \(p.rows.count)"), ("要你选", "要你选 \(p.rows.filter(needsDecision).count)"), ("不导入", "不导入 \(p.rows.filter { !$0.included }.count)")], selection: $filter)
@@ -288,7 +296,7 @@ struct ImportView: View {
                     Toggle("金额和原图对得上", isOn: $screenshotConfirmed).tint(YubaiColor.toggleOn).accessibilityIdentifier("confirmScreenshotAmounts")
                 }
             }
-            previewActions(p)
+            if welcomeReview == nil { previewActions(p) }
         }
     }
     private func previewHeader(_ p: ImportPreview) -> some View {
@@ -583,6 +591,7 @@ struct ImportView: View {
     private func select(_ row: ImportRow, included: Bool) {
         guard let index = preview?.rows.firstIndex(where: { $0.id == row.id }) else { return }
         rowSelections[row.line] = included; preview?.rows[index].included = included
+        if let welcomeReview, let preview { welcomeReview.wrappedValue = preview }
     }
     private func enqueue(_ files: [ImportQueueFile]) {
         localError = nil; queue.append(contentsOf: files); queueTotal += files.count

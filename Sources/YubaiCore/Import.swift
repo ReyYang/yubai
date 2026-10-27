@@ -43,10 +43,16 @@ public struct ImportRow: Identifiable, Sendable {
     /// Category after the ledger's aliases, before this import's explicit choices.
     public var sourceCategory: String = ""
 }
+public struct ImportBalance: Sendable, Equatable {
+    public var amount: Int64
+    public var date: Date
+}
 public struct ImportPreview: Sendable {
     public var filename: String; public var source: String; public var rows: [ImportRow]; public var warnings: [String]
     public var columnMapping: ImportColumnMapping? = nil
     public var mappedHeader: Int? = nil
+    /// Statement evidence, independent of row selection and duplicate status.
+    public var latestBalance: ImportBalance? = nil
     public var selectedEntries: [Entry] { rows.filter(\.included).compactMap(\.entry) }
     public var readyCount: Int { rows.filter { $0.status == .ready }.count }
     public var duplicateCount: Int { rows.filter { $0.status == .duplicate }.count }
@@ -106,6 +112,7 @@ public enum BillImporter {
     static func normalized(_ s: String) -> String { clean(s).lowercased().replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "（", with: "(").replacingOccurrences(of: "）", with: ")") }
     static let dateNames = ["交易时间", "交易创建时间", "记账日期", "交易日期", "日期", "时间", "date", "datetime", "入账日期", "记账时间", "发生时间", "发生日期", "账单日期"]
     static let amountNames = ["金额(元)", "金额", "交易金额", "交易金额(元)", "发生额", "amount", "支出金额", "收入金额", "借方发生额", "贷方发生额"]
+    static let balanceNames = ["余额", "账户余额", "联机余额", "可用余额", "当前余额", "交易后余额", "余额(元)", "balance"]
     static func sourceKey(_ entry: Entry) -> String {
         if !entry.sourceIdentity.isEmpty { return entry.sourceIdentity }
         let source = entry.source == "文件" ? entry.source + ":" + entry.accountID.uuidString : entry.source
@@ -126,6 +133,14 @@ public enum BillImporter {
         func index(_ aliases: [String]) -> Int? { headers.firstIndex { aliases.map(normalized).contains($0) } }
         if let mapping { try mapping.validate(headers: table[headerIndex], samples: Array(table.dropFirst(headerIndex + 1).prefix(5)), date1904: workbook?.date1904) }
         let dateCol = mapping?.date ?? index(dateNames)!, amountCol = mapping?.amount ?? (mapping == nil ? index(amountNames) : nil)
+        let balanceCol = index(balanceNames)
+        func parseDate(_ raw: String) -> Date? {
+            if let date = Dates.parse(raw) { return date }
+            if let workbook, let serial = Double(raw), (1...100000).contains(serial) {
+                return Dates.excel(serial, date1904: workbook.date1904)
+            }
+            return nil
+        }
         let debitCol = mapping?.outflow ?? (mapping == nil ? index(["支出金额", "借方发生额"]) : nil), creditCol = mapping?.inflow ?? (mapping == nil ? index(["收入金额", "贷方发生额"]) : nil)
         let namedDirectionCol = mapping == nil ? index(["收/支", "收支", "收支类型", "收入/支出", "direction", "借贷标志", "收支方向"]) : nil
         let directionWords = Set(["收入", "收", "贷", "in", "income", "credit", "支出", "支", "借", "out", "expense", "debit", "转账", "transfer", Nature.transfer.label])
@@ -164,10 +179,25 @@ public enum BillImporter {
             if !entry.fingerprint.isEmpty { knownHashes.insert(entry.fingerprint) }
         }
         var rows: [ImportRow] = []; var occurrences: [String: Int] = [:]
+        var firstDate: Date?, lastDate: Date?
+        var firstLatestBalance: ImportBalance?, lastLatestBalance: ImportBalance?
         for (offset, row) in table.dropFirst(headerIndex + 1).enumerated() {
             let line = headerIndex + offset + 2
             func field(_ col: Int?) -> String { guard let col, row.indices.contains(col) else { return "" }; return clean(row[col]) }
             let rawDate = field(dateCol) + (mapping?.time.map { " " + field($0) } ?? "")
+            // Read before validation/skipping/deduplication: a dated balance is
+            // statement evidence even when its transaction will not be imported.
+            let balanceDate = balanceCol == nil ? nil : parseDate(rawDate)
+            if let date = balanceDate {
+                if firstDate == nil { firstDate = date }
+                lastDate = date
+                if let amount = try? Money.parse(field(balanceCol), allowNegative: true) {
+                    let balance = ImportBalance(amount: amount, date: date)
+                    if firstLatestBalance == nil || date > firstLatestBalance!.date {
+                        firstLatestBalance = balance; lastLatestBalance = balance
+                    } else if date == firstLatestBalance?.date { lastLatestBalance = balance }
+                }
+            }
             var rawAmount = field(amountCol), inferredDirection = ""
             if debitCol != nil && creditCol != nil {
                 let debit = field(debitCol), credit = field(creditCol)
@@ -187,7 +217,7 @@ public enum BillImporter {
                 let currency = field(currencyCol).uppercased()
                 guard currency.isEmpty || ["CNY", "RMB", "人民币", "元", "156"].contains(currency) else { throw YubaiError.invalid("当前仅支持人民币，此行币种为 \(currency)，未换汇入账") }
                 let date: Date
-                if let parsed = Dates.parse(rawDate) { date = parsed }
+                if let parsed = balanceDate ?? Dates.parse(rawDate) { date = parsed }
                 else if filename.lowercased().hasSuffix(".xlsx"), let serial = Double(rawDate), (1...100000).contains(serial) {
                     guard let excelDate = Dates.excel(serial, date1904: workbook?.date1904 ?? false) else { throw YubaiError.invalid("Excel 日期无效") }; date = excelDate
                 } else { throw YubaiError.invalid("无法识别日期“\(rawDate)”") }
@@ -271,7 +301,12 @@ public enum BillImporter {
         var warnings = ["按实际收付款账户入账。未填写收付款方式的行归入所选默认账户。"]
         if rows.contains(where: { $0.status == .needsAccount }) { warnings.append("账单包含不同收付款方式，请在上方逐组选择对应账户；未对应的行暂不入账。") }
         if rows.contains(where: { $0.status == .invalid }) { warnings.append("有行无法识别，详情已保留；这些行不会悄悄计入账本。") }
-        return ImportPreview(filename: filename, source: source, rows: rows, warnings: warnings, columnMapping: mapping, mappedHeader: mapping == nil ? nil : headerIndex)
+        // Infer overall direction from the first and last valid dates, including
+        // rows with blank balances. For the latest timestamp, ascending files
+        // take the last occurrence; descending files take the first. If all
+        // timestamps are equal (or direction is ambiguous), use file order.
+        let descending = firstDate.map { first in lastDate.map { first > $0 } ?? false } ?? false
+        return ImportPreview(filename: filename, source: source, rows: rows, warnings: warnings, columnMapping: mapping, mappedHeader: mapping == nil ? nil : headerIndex, latestBalance: descending ? firstLatestBalance : lastLatestBalance)
     }
     /// OCR can miss a date; its provisional date must not make the same image a
     /// new transaction tomorrow. Keep each candidate's identity tied to the
