@@ -1453,7 +1453,7 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["keypad_5"], in: app)
         tap(app.buttons["keypad_0"], in: app); tap(app.buttons["keypad_0"], in: app)
         let purpose = app.textFields["entryPurpose"]
-        tap(purpose, in: app); purpose.typeText("UI Transfer")
+        tap(purpose, in: app); purpose.typeText("UI Transfer"); purpose.typeText("\n")
         tap(app.buttons["转账"], in: app)
         let save = app.buttons["saveQuickEntry"], again = app.buttons["saveAndAddAnother"]
         let addAccount = app.buttons["transferAddAccount"]
