@@ -194,7 +194,7 @@ private struct FloorLine: View {
                 Circle().fill(canKeep ? YubaiColor.brand : YubaiColor.amberDot)
                     .frame(width: YubaiSize.marker, height: YubaiSize.marker).accessibilityHidden(true)
                 Text("始终留着").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                AmountLabel(cents: floor, hide: hideAmounts, role: .small, sign: .none, fractionDigits: 2)
+                AmountLabel(cents: floor, hide: hideAmounts, role: .small, sign: .none)
             }
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
             HStack(spacing: YubaiSpace.space8) {
@@ -217,7 +217,7 @@ private struct FloorLine: View {
         } else {
             HStack(spacing: YubaiSpace.space4) {
                 Text("还差").yubaiFont(YubaiFont.caption)
-                AmountLabel(cents: floorRoom, role: .small, sign: .none, fractionDigits: 2, ink: statusInk)
+                AmountLabel(cents: floorRoom, role: .small, sign: .none, ink: statusInk)
             }.foregroundStyle(statusInk)
         }
     }

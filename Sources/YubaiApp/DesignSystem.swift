@@ -1120,7 +1120,7 @@ struct HeroCard: View {
     private var compositionAccessibilityLabel: String {
         var label = "还能花 \(AmountLabel.text(available))"
         if let floor = compositionFloor, floor > 0 {
-            label += "，其中始终留着 \(AmountLabel.text(floor, decimals: 2))"
+            label += "，其中始终留着 \(AmountLabel.text(floor))"
         }
         return label + "，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))"
     }
