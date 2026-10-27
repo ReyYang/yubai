@@ -1043,6 +1043,7 @@ struct HeroCard: View {
     var available: Int64
     var payable: Int64
     var reserved: Int64
+    var floor: Int64? = nil
     var attentionCount = 0
     var hideAmount = false
     var title = "还能花"
@@ -1098,6 +1099,17 @@ struct HeroCard: View {
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
+    private var compositionFloor: Int64? {
+        guard let floor, available >= floor else { return nil }
+        return max(0, min(floor, available))
+    }
+    private var compositionAccessibilityLabel: String {
+        var label = "还能花 \(AmountLabel.text(available))"
+        if let floor = compositionFloor, floor > 0 {
+            label += "，其中始终留着 \(AmountLabel.text(floor, decimals: 2))"
+        }
+        return label + "，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))"
+    }
     private func composition(_ progress: Double) -> some View {
         let values = [max(0, Double(available)), max(0, Double(payable)), max(0, Double(reserved))]
         let total = values.reduce(0, +)
@@ -1109,11 +1121,20 @@ struct HeroCard: View {
                 ForEach(indices, id: \.self) { index in
                     let ratio: Double = total > 0 ? values[index] / total : 0
                     let animatedRatio: Double = ratio * progress
-                    colors[index].frame(width: width * CGFloat(animatedRatio))
+                    let segmentWidth = width * CGFloat(animatedRatio)
+                    if index == 0, let floor = compositionFloor {
+                        let floorRatio = Double(floor) / values[index]
+                        HStack(spacing: YubaiSpace.none) {
+                            YubaiColor.brand.frame(width: segmentWidth * CGFloat(floorRatio))
+                            YubaiColor.brand.opacity(0.55).frame(width: segmentWidth * CGFloat(1 - floorRatio))
+                        }
+                    } else {
+                        colors[index].frame(width: segmentWidth)
+                    }
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).background(total == 0 ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
         }.frame(height: YubaiSpace.gapGroup).accessibilityElement(children: .ignore)
-            .accessibilityLabel("还能花 \(AmountLabel.text(available))，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))")
+            .accessibilityLabel(compositionAccessibilityLabel)
     }
     private func legend(_ title: String, _ cents: Int64, _ color: Color) -> some View {
         HStack(spacing: YubaiSpace.space4) {

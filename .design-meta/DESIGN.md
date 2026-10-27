@@ -1,5 +1,17 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-27 · 第十九轮「始终留着」
+
+来源为 owner 本轮提供的已批准第十九轮逐项文字规格；本轮未附独立 HTML／图片或私有原稿链接。此节接续下方同日 Core 记录，首页目标行不再等待设计。
+
+- `DesignSystem.swift`：HeroCard 增加默认 nil 的 `floor` 参数。已设目标且 `available >= floor` 时，原还能花段内领先部分为实色 brand，余量为 brand 的 0.55 透明度，两部分相接；要付与原 reserved 段及间隔保持。未达目标／未设置沿用单一实色段；明确 0 仍为已设目标。实色目标段存在时，无障碍说明加入「其中始终留着 X」。隐藏金额仍无条与图例。
+- `OverviewView.swift`：Hero 与目标行放在无额外间距的同组内，普通字号只增加 `tapMin = 44pt`，不替换既有内容；沿用 150／96／0pt 图表适配及原有滚动兜底。共用 `FloorLine` 使用 8pt 状态点、callout／caption、numeric 金额与两位小数，达到目标为 brand／brandInk「能留住」，不足为 amberDot／amberInk「还差 X」。金额隐藏时目标为「••••」，不足状态为「还差一点」；差额通过 AmountLabel 的 `.none` 显示绝对值，不出现负号。
+- 现在页以既有 `TabNavigationLink(.profile)` 推入 `ProfileView`，有 chevron 与 `floorLine` 标识；计算页公式 Card 下面复用同一行，采用只读、无 chevron，也有 `floorLine` 标识。辅助功能字号纵排，触控区域不小于 44pt。计算式不加目标扣减行，购买判断 UI 与 Core 均不改。
+
+本次新增／改动可见中文：行名「始终留着」（控件字／事实）、金额及缺口数字（事实）、状态「能留住」「还差 X」「还差一点」。没有新增说明句；「其中始终留着 X」仅用于无障碍标签。
+
+验证：`swift build` 通过，`swift test` 471 项、467 通过／4 项原有实网跳过／0 失败，含 InterfaceVocabularyTests 3 项；两份改动 App 文件通过 iOS 26 设备／模拟器与 macOS 14 条件语法解析，使用的颜色／字号／尺寸 token 均在现有设计系统中核对。已检索 `Tests/YubaiUITests` 的「始终留着／emergency」，无匹配，不改也不加 UI 测试；diff 检查通过。Linux 无 Apple SDK，SwiftUI 类型检查、设备单屏适配、VoiceOver 与 UI 实跑尚未验证。文字规格已落实，无已知功能偏离；原稿／Figma／截图／分发包未同步，未提交。
+
 ## 2026-10-27 · 始终留着改为目标
 
 依据 owner 明确任务，沿用 V16 的少写字规则，只从 `OverviewView` 的 HeroCard `reserved` 合计移除 `funds.emergency`，并删除计算页「始终留着」扣减行，使显示公式与 Core 一致。不新增行、视图或视觉方案；首页目标与差额新行等待设计稿。消费观现有展示／编辑保持。Core 的购买事实与目标缺口理由均为金额事实，[全部可见中文及口径](../docs/DEVELOPMENT.md#始终留着是目标2026-10-27)。原稿、Figma、截图与分发包未同步；改动 Swift 文件共 19 项条件语法解析通过，含 OverviewView 的 iOS 26 设备／模拟器及 macOS 14；Core 单测因依赖下载受阻未运行，Apple SDK 编译与设备验收待 Mac。
