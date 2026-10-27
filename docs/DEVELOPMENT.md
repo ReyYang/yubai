@@ -2,8 +2,8 @@
 
 Xcode 26 / Apple SDK，Swift 5 语言模式；最低 iOS 18 / macOS 14。Linux 的 Core 构建与单元测试使用下方 SwiftPM 路径；Apple 应用与 UI 仍须在 Xcode 验证，历史 1.0 的验证报告不覆盖 2.0。
 
-- `Sources/YubaiApp`：两项导航「现在／我」，底部常驻按钮「问余白」。首页复用 Finance 的待付款期次；依据打开精简记录详情。ProfileView 负责消费观、目标与底线。SettingsView 负责「我」的入口、导入记录、备份、恢复版本和指南。
-- `Sources/YubaiCore`：schema 2（兼容 schema 1）、财务计算、导入解析与去重、ChangeSet、助手工具、管家与来信、加密备份和原子存储。默认资金观察期固定 90 天，底线取 `profile.floorAmount ?? 0`，日常预留自动估算。旧 horizonDays / emergencyReserve / dailyLiving / isSample 等字段保留解码与往返，不再控制 UI 或资金默认值。主动问答的指定日期预测通过函数参数传入范围。
+- `Sources/YubaiApp`：两项导航「现在／我」，底部常驻按钮「问余白」。首页复用 Finance 的待付款期次；依据打开精简记录详情。ProfileView 负责消费观、储蓄目标与「始终留着」目标。SettingsView 负责「我」的入口、导入记录、备份、恢复版本和指南。
+- `Sources/YubaiCore`：schema 2（兼容 schema 1）、财务计算、导入解析与去重、ChangeSet、助手工具、管家与来信、加密备份和原子存储。默认资金观察期固定 90 天，「始终留着」目标取 `profile.floorAmount`，不扣减还能花或预测余额，日常预留自动估算。旧 horizonDays / emergencyReserve / dailyLiving / isSample 等字段保留解码与往返，不再控制 UI 或资金默认值。主动问答的指定日期预测通过函数参数传入范围。
 - `Tests/YubaiCoreTests`：计算、兼容、整理、撤销、隐私和备份测试；SampleData.swift 仅属于测试目标。Fixtures 是合成资料；SPM 和 Xcode 原生测试目标使用同一份文件。
 - `Tests/YubaiUITests`：五条离线流程：空账本开户、CSV 整理问答与整批撤销、克制卡片静音、数字问答到依据详情、消费原则持久化与备份入口。
 - `scripts/generate-project.py`：生成 app、CoreTests 和 UITests 的工程引用与共享 scheme，包括签名配置和平台权限文件。源文件移动或删除后运行；生成结果纳入版本管理。
@@ -27,6 +27,24 @@ xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
 模拟器名称按本机列表调整。UI 测试同时传入 `--test-ledger <UUID>` 与 `YUBAI_UI_TEST_SCRIPT=empty|import|restrain|ask|profile`，只读写缓存目录中的独立账本，脚本传输仍调用真实助手工具／整理器。导入测试以 `YUBAI_UI_STATEMENT` 的 base64 CSV 注入文件，经过与文件打开相同的预览和保存路径；这五条测试不覆盖系统文件选择器。两个条件缺一则不启用夹具。该入口仅编译进 Debug simulator，设备与 Release 不包含脚本传输，也不需要向 Keychain 写假密钥。
 
 正常云端配置位于「我 → 智能与隐私」，密钥进入 Keychain，开发启动可回退 `DEEPSEEK_API_KEY`。`DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 可覆盖配置。测试默认为离线；实网评测须显式设置 `YUBAI_LIVE_EVAL=1`，见 [台架说明](ai-bench/README.md)。共享助手与外发边界见 [ASSISTANT.md](ASSISTANT.md)。
+
+## 始终留着是目标（2026-10-27）
+
+owner 明确「始终留着」属于消费观，是希望在资金观察期末留住的金额，未达到很正常。`Finance.funds()` 的口径为：
+
+```text
+available = cash - debt - committed - goals - living - uncertainInflow
+baseline = cash - debt - goals - uncertainInflow
+conservative = baseline - 截至预测日已知付款 - 此前日常开销
+```
+
+`Funds.emergency` 保留为 `profile.floorAmount ?? 0` 的目标值；`floorRoom` 在目标未设置时为 nil，否则为 `available - floorAmount`。正值是期末仍留住目标时还能多花的金额，负值是距目标的缺口；明确设为 0 与未设置区分。资金工具与购买工具的 affordability 返回可空的 `floor_target`／`floor_room`（当前购买前差额），替代 `emergency`／`floor_already_reserved`；消费观工具保留 `floor_amount`。
+
+购买后 `after = available - amount`：小于 0 仅允许 skip；否则低于已设目标允许 wait／skip；达到目标时继续核对原有克制次数／金额规则。优先级为实际缺口、目标缺口、克制规则；目标与克制规则同为 wait／skip 时保留较早的目标理由。付款缺口卡只看保守路径小于 0，已设目标仅作背景事实；每周来信沿用不扣目标的 Finance 结果。AI 平静陈述目标与差额，不责备。
+
+App 本轮只从首页 HeroCard 的 reserved 合计移除目标、删除计算页「始终留着」扣减行；不新增行或视图，首页目标新行等待设计稿。新增／改动可见中文模板为「在存钱与日常开销 X」「想始终留着 X，按现在能留住」「想始终留着 X，还差 Y」「买了以后离始终留着的 X 还差 Y。」；均为金额事实。原稿、Figma、截图与分发包未同步。
+
+本轮使用 Swift 6.2.4，改动 Swift 文件的 19 项条件语法解析、夹具 JSON、新增链接与 `git diff --check` 通过。`swift test` 将缓存改至可写的 `/tmp` 后，因 `swift-crypto`／`swift-asn1` 未缓存、代理不可连接及 GitHub DNS 不可用，停在依赖下载；未构建／运行单测。Apple SDK 编译与 UI 实跑仍待 Mac。
 
 ## Linux Core 构建与测试
 

@@ -58,10 +58,17 @@ struct OverviewView: View {
             if store.current.accounts.isEmpty {
                 EmptyAccountState { store.sheet = .account(nil) }
             } else {
-                HeroCard(available: funds.available, payable: funds.debt + funds.committed,
-                         reserved: funds.goals + funds.emergency + funds.living + funds.uncertainInflow,
-                         hideAmount: store.current.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
-                         onDetails: { store.sheet = .fundsCalculation })
+                VStack(alignment: .leading, spacing: YubaiSpace.none) {
+                    HeroCard(available: funds.available, payable: funds.debt + funds.committed,
+                             reserved: funds.goals + funds.living + funds.uncertainInflow, floor: store.current.profile.floorAmount,
+                             hideAmount: store.current.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
+                             onDetails: { store.sheet = .fundsCalculation })
+                    if let floor = store.current.profile.floorAmount, let room = funds.floorRoom {
+                        TabNavigationLink(.profile) { ProfileView() } label: {
+                            FloorLine(floor: floor, floorRoom: room, hideAmounts: store.current.preferences.hideAmounts, showsChevron: true)
+                        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("floorLine")
+                    }
+                }
                 RestrainNearRow()
                 todayRow
                 if !dueBills.isEmpty { dueCard }
@@ -172,6 +179,50 @@ struct OverviewView: View {
     }
 }
 
+private struct FloorLine: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    let floor: Int64
+    let floorRoom: Int64
+    var hideAmounts = false
+    var showsChevron = false
+    private var canKeep: Bool { floorRoom >= 0 }
+    private var statusInk: Color { canKeep ? YubaiColor.brandInk : YubaiColor.amberInk }
+    var body: some View {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
+        layout {
+            HStack(spacing: YubaiSpace.space8) {
+                Circle().fill(canKeep ? YubaiColor.brand : YubaiColor.amberDot)
+                    .frame(width: YubaiSize.marker, height: YubaiSize.marker).accessibilityHidden(true)
+                Text("始终留着").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                AmountLabel(cents: floor, hide: hideAmounts, role: .small, sign: .none, fractionDigits: 2)
+            }
+            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
+            HStack(spacing: YubaiSpace.space8) {
+                status
+                if textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+                if showsChevron {
+                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                }
+            }
+        }.padding(.horizontal, YubaiSpace.insetCard)
+            .padding(.vertical, textSize.isAccessibilitySize ? YubaiSpace.space8 : YubaiSpace.none)
+            .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
+            .contentShape(Rectangle()).accessibilityElement(children: .combine)
+    }
+    @ViewBuilder private var status: some View {
+        if canKeep {
+            Text("能留住").yubaiFont(YubaiFont.caption).foregroundStyle(statusInk)
+        } else if hideAmounts {
+            Text("还差一点").yubaiFont(YubaiFont.caption).foregroundStyle(statusInk)
+        } else {
+            HStack(spacing: YubaiSpace.space4) {
+                Text("还差").yubaiFont(YubaiFont.caption)
+                AmountLabel(cents: floorRoom, role: .small, sign: .none, fractionDigits: 2, ink: statusInk)
+            }.foregroundStyle(statusInk)
+        }
+    }
+}
+
 /// The same Finance occurrences appear on Now and under the funds breakdown.
 struct UpcomingPaymentsView: View {
     @Environment(AppStore.self) private var store
@@ -241,10 +292,14 @@ struct FundsCalculationView: View {
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     formula("现金", funds.cash); formula("信用卡要还", -funds.debt); formula("接下来要付", -funds.committed)
-                    formula("在存钱", -funds.goals); formula("始终留着", -funds.emergency); formula("日常开销", -funds.living)
+                    formula("在存钱", -funds.goals); formula("日常开销", -funds.living)
                     if funds.uncertainInflow > 0 { formula("没写用途的进账", -funds.uncertainInflow) }
                     formula("= 还能花", funds.available)
                 }
+            }
+            if let floor = store.current.profile.floorAmount, let room = funds.floorRoom {
+                FloorLine(floor: floor, floorRoom: room, hideAmounts: store.current.preferences.hideAmounts)
+                    .accessibilityIdentifier("floorLine")
             }
             ForEach(funds.warnings, id: \.self) { InlineNote(text: $0, style: .attention) }
             UpcomingPaymentsView(throughHorizon: true)

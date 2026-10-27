@@ -1,6 +1,6 @@
 [
-  {"id":"funds","question":"现在保守可动用的钱有多少？","expected_tools":["get_funds"],"expected_numbers":["¥785.00"],"scripted_calls":[{"name":"get_funds","args":{}}]},
-  {"id":"forecast","question":"五天后想买800元的东西，保守资金够吗？差多少？","expected_tools":["forecast"],"expected_numbers":["¥785.00","¥15.00"],"scripted_calls":[{"name":"forecast","args":{"days":5,"amount":"800"}}]},
+  {"id":"funds","question":"现在保守可动用的钱有多少？","expected_tools":["get_funds"],"expected_numbers":["¥805.00"],"scripted_calls":[{"name":"get_funds","args":{}}]},
+  {"id":"forecast","question":"五天后想买800元的东西，保守资金够吗？差多少？","expected_tools":["forecast"],"expected_numbers":["¥805.00","¥0.00"],"scripted_calls":[{"name":"forecast","args":{"days":5,"amount":"800"}}]},
   {"id":"query","question":"最近买咖啡的记录有哪些？只看实际支出。","expected_tools":["query_entries"],"expected_numbers":["¥20.00","¥30.00"],"scripted_calls":[{"name":"query_entries","args":{"keyword":"咖啡","nature":"spending","min_amount":"10"}}]},
   {"id":"summary","question":"账本中的消费按分类合计，退款抵扣后多少？","expected_tools":["summarize"],"expected_numbers":["¥85.00","¥45.00","¥40.00"],"scripted_calls":[{"name":"summarize","args":{"nature":"spending","group_by":"category"}}]},
   {"id":"habit","question":"近90天餐饮的单笔均价和中位数？30元处在什么位置？","expected_tools":["compare_to_habit"],"expected_numbers":["¥25.00","¥30.00"],"scripted_calls":[{"name":"compare_to_habit","args":{"category":"餐饮","amount":"30"}}]},

@@ -55,7 +55,8 @@ final class FixedBillsTests: XCTestCase {
             XCTAssertNil(funds.payday); XCTAssertNil(funds.paydayTitle)
             XCTAssertEqual(funds.horizonDays, days); XCTAssertEqual(funds.horizonEnd, Dates.addDays(days, to: Dates.day(now)))
             XCTAssertEqual(funds.committed, committed); XCTAssertEqual(funds.living, living)
-            XCTAssertEqual(funds.available, funds.cash - funds.debt - committed - funds.goals - funds.emergency - living - funds.uncertainInflow)
+            XCTAssertEqual(funds.available, funds.cash - funds.debt - committed - funds.goals - living - funds.uncertainInflow)
+            XCTAssertEqual(funds.floorRoom, funds.available - 50_000)
             XCTAssertEqual(funds.points.last!.conservative, funds.available)
         }
         XCTAssertTrue(Finance.assessPurchase(ledger, amount: 100, now: now).facts.contains { $0.hasPrefix("到 1月20日已知付款 ") })

@@ -14,22 +14,25 @@ final class AssistantToolTests: XCTestCase {
         let output = try run(.getFunds)
         let f = Finance.funds(ctx.ledger, now: ctx.now)
         let expected = ["available": f.available, "cash": f.cash, "debt": f.debt, "committed": f.committed,
-                        "goals": f.goals, "emergency": f.emergency, "living": f.living, "uncertain": f.uncertainInflow, "expected_income": f.expectedIncome]
+                        "goals": f.goals, "floor_target": f.emergency, "living": f.living, "uncertain": f.uncertainInflow, "expected_income": f.expectedIncome]
         for (key, amount) in expected {
             XCTAssertEqual(cents(output[key]), amount, key)
             XCTAssertEqual(output[key]?["text"]?.stringValue, Money.text(amount), key)
         }
+        XCTAssertEqual(output["floor_room"], f.floorRoom.map { .money($0) } ?? .null); XCTAssertNil(output["emergency"])
         XCTAssertEqual(output["warnings"], .strings(f.warnings))
-        XCTAssertEqual(f.available, 78500)
+        XCTAssertEqual(f.available, 80500)
     }
     func testForecastMatchesFinanceAndShortfall() throws {
         let output = try run(.forecast, #"{"days":5,"amount":"800"}"#)
         let f = Finance.funds(ctx.ledger, now: ctx.now, days: 6)
         XCTAssertEqual(cents(output["conservative"]), f.points[5].conservative)
         XCTAssertEqual(cents(output["expected"]), f.points[5].expected)
-        XCTAssertEqual(cents(output["expected"]), 98500) // Income at noon on the target day is included.
-        XCTAssertEqual(cents(output["short_by"]), 1500)
-        XCTAssertEqual(output["enough"], .bool(false))
+        XCTAssertEqual(cents(output["expected"]), 100500) // Income at noon on the target day is included.
+        XCTAssertEqual(cents(output["short_by"]), 0)
+        XCTAssertEqual(output["enough"], .bool(true))
+        let shortfall = try run(.forecast, #"{"days":5,"amount":"810"}"#)
+        XCTAssertEqual(cents(shortfall["short_by"]), 500); XCTAssertEqual(shortfall["enough"], .bool(false))
         XCTAssertEqual(output["known_payments"]?.arrayValue?.count, f.occurrences.filter { !$0.inflow }.count)
         XCTAssertEqual(try run(.forecast, #"{"date":"2026-06-20","amount":"800"}"#), output)
         XCTAssertThrowsError(try run(.forecast, #"{"days":366}"#))
