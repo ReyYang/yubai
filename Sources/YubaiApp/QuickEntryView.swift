@@ -12,6 +12,9 @@ struct QuickEntryView: View {
     @State private var purpose = ""
     @State private var accountID: UUID?
     @State private var otherAccountID: UUID?
+    @State private var showingTransferAccountEditor = false
+    @State private var accountIDsBeforeAdding: Set<UUID> = []
+    @State private var transferAccountHighlighted = false
     @State private var date = Date()
     @State private var userChoseCategory = false
     @State private var loaded = false
@@ -20,6 +23,7 @@ struct QuickEntryView: View {
     @State private var selectedMatchID: String?
     @FocusState private var purposeFocused: Bool
     private var accounts: [Account] { store.current.accounts.filter { !$0.archived } }
+    private var transferAccounts: [Account] { accounts.filter { $0.id != accountID } }
     private var canSave: Bool { keypad.canSave && accountID != nil && (nature != .transfer || (otherAccountID != nil && otherAccountID != accountID)) }
     var body: some View {
         let available = previewAvailable
@@ -32,10 +36,12 @@ struct QuickEntryView: View {
                 } else {
                     Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature)
                     amountDisplay
-                    EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
-                                       all: ManualBookkeeping.categories(in: store.current, nature: nature), selection: $category,
-                                       didSelect: { purposeFocused = false; userChoseCategory = true })
-                        .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+                    if nature != .transfer {
+                        EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
+                                           all: ManualBookkeeping.categories(in: store.current, nature: nature), selection: $category,
+                                           didSelect: { purposeFocused = false; userChoseCategory = true })
+                            .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+                    }
                     form
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -67,6 +73,11 @@ struct QuickEntryView: View {
             .presentationDetents([.large])
             .toolbar(.hidden, for: .navigationBar)
             #endif
+            .sheet(isPresented: $showingTransferAccountEditor, onDismiss: selectAddedTransferAccount) {
+                NavigationStack { AccountEditor(account: nil) }
+                    .environment(store).tint(YubaiColor.brandInk).appErrors()
+                    .presentationDragIndicator(.visible).frame(minWidth: 340, minHeight: 520)
+            }
             .onAppear {
                 guard !loaded else { return }; loaded = true
                 accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
@@ -145,15 +156,30 @@ struct QuickEntryView: View {
                 }
                 RecentPurposeChips(selection: $purpose)
                 EntryFormDivider()
-                EntryFormRow(title: "账户") {
+                EntryFormRow(title: nature == .transfer ? "转出" : "账户") {
                     EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, showsBalance: true)
+                        .accessibilityLabel(nature == .transfer ? "转出" : "账户")
                         .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
                 }
                 if nature == .transfer {
                     EntryFormDivider()
                     EntryFormRow(title: "转入") {
-                        EntryAccountMenu(accounts: accounts.filter { $0.id != accountID }, balances: balances, selection: $otherAccountID, showsBalance: true)
-                            .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+                        if transferAccounts.isEmpty {
+                            addTransferAccountChip
+                        } else {
+                            EntryAccountMenu(accounts: transferAccounts, balances: balances, selection: $otherAccountID, showsBalance: true)
+                                .accessibilityLabel("转入").accessibilityIdentifier("transferDestinationAccount")
+                                .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+                        }
+                    }
+                    .background {
+                        YubaiColor.brandTint.opacity(transferAccountHighlighted ? 1 : 0)
+                            .padding(.horizontal, -YubaiSpace.insetCard)
+                    }
+                    .task(id: otherAccountID) {
+                        guard transferAccountHighlighted, let otherAccountID,
+                              YubaiMotion.claim("new-row-transfer-" + otherAccountID.uuidString) else { return }
+                        withAnimation(YubaiMotion.wash(reduceMotion: reduceMotion)) { transferAccountHighlighted = false }
                     }
                 }
                 EntryFormDivider()
@@ -162,6 +188,26 @@ struct QuickEntryView: View {
                 }
             }
         }
+    }
+    private var addTransferAccountChip: some View {
+        Button {
+            purposeFocused = false
+            accountIDsBeforeAdding = Set(store.current.accounts.map(\.id))
+            showingTransferAccountEditor = true
+        } label: {
+            HStack(spacing: YubaiSpace.space4) {
+                Image(systemName: "plus")
+                Text("添加账户")
+            }.yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
+                .background(YubaiColor.raised, in: Capsule()).yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("transferAddAccount").accessibilityLabel("添加账户")
+    }
+    private func selectAddedTransferAccount() {
+        defer { accountIDsBeforeAdding.removeAll() }
+        guard let added = transferAccounts.first(where: { !accountIDsBeforeAdding.contains($0.id) }) else { return }
+        otherAccountID = added.id
+        transferAccountHighlighted = true
     }
     private func draftChange(now: Date) throws -> ChangeSet {
         guard let accountID, let amount = keypad.amount else { throw YubaiError.invalid("请选择账户并填写金额。") }

@@ -1,5 +1,17 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-27 · 第十八轮单账户转账
+
+来源为 owner 本轮明确批准的 `V18-Transfer-One.dc.html` 与 `V18-Transfer-Added.dc.html`（设计稿「第十八轮 · 转账」）。此处覆盖记一笔的转账账户行与分类芯片呈现，不改变 Core 转账校验或入账规则。
+
+`QuickEntryView.swift`：转账账户行采用「转出／转入」；没有其他未归档账户时，转入行显示 SF Symbol `plus` 与「添加账户」，复用 `brandInk`／`raised`／`chipHeight`／`yubaiHitTarget`。通过独立嵌套 sheet 和 NavigationStack 呈现现有 AccountEditor，保留金额、用途、日期与性质。关闭编辑器后比较打开前的账户 ID，仅选中新建的未归档账户；取消不改草稿。转入行复用 `brandTint`、`YubaiMotion.claim` 和 `YubaiMotion.wash(reduceMotion:)` 洗色一次。两个保存入口在转入有效前继续禁用；已有其他账户时沿用默认选择。转账隐藏 EntryCategoryChips，内部分类保持原实现。账户菜单区分转出／转入读屏标签，添加按钮标识为 `transferAddAccount`、读屏标签为「添加账户」。
+
+新增／改动可见中文：「账户」在转账页改为「转出」（标题），新增「＋ 添加账户」（控件；＋为图标）；转账页移除分类芯片。没有新增说明文字；原有 AccountEditor 文案保持。
+
+`AppFlowTests.testTransferWithOneAccountCanAddDestinationWithoutLosingDraft` 复用单账户 `manual` 夹具，覆盖两个保存入口禁用、分类芯片隐藏、取消保留草稿、添加后自动选中、保存后读回金额／转账性质／两个账户，以及后续转账默认选中第二账户。无新测试钩子、依赖或 Core 改动，未提取 Core 纯逻辑。
+
+验证：Linux 按指定 PATH 执行 `swift test`，464 项、460 通过／4 项原有实网跳过／0 失败；iOS 26 模拟器 Debug 的改动 App／UI 文件及 macOS 14 Debug 的 QuickEntryView 条件语法解析、`git diff --check` 通过。Linux 无 Apple SDK，Apple 类型检查、UI 实跑、洗色视觉与 VoiceOver 验收待 Mac；语法解析不代表 Apple 编译通过。原稿未改写或导出，Figma、历史原型与分发包未同步。按指定提交信息尝试提交时，`git add` 因 `.git/index.lock` 所在文件系统只读退出 128；四个相关文件保留为工作区修改，未提交、未推送。
+
 ## 2026-10-26 · PR #37 第三轮证据修复
 
 基于 `fix/flaky-ui-tests`／`287ffec`，先读合并验证全部 8 份相关失败层级，再逐项核对测试失败行与截图：5 项账目停在初始关闭检查，固定收付停在展开几何检查通过后的收回检查，2 项管家停在右滑后的关闭检查。均为 `assertGone(action)` 的 AX 不存在等待，未发生展开等待失败。管家 `closed` 卡仍导出宽 0 的「知道了」，账目／固定收付仍导出 78pt 的删除／停掉；这证明上一轮移动 `.accessibilityHidden` 没有解决实际 AX 节点残留，覆盖上一节对该修复效果的推定。

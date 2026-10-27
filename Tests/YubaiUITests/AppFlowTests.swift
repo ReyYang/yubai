@@ -1674,6 +1674,72 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(app.buttons["saveQuickEntry"].label, "记下 15.00 元")
     }
 
+    func testTransferWithOneAccountCanAddDestinationWithoutLosingDraft() {
+        let app = application("manual"); app.launch() // One active account, no entries.
+        tap(addEntryTab(app), in: app)
+        tap(app.buttons["keypad_5"], in: app)
+        tap(app.buttons["keypad_0"], in: app); tap(app.buttons["keypad_0"], in: app)
+        let purpose = app.textFields["entryPurpose"]
+        tap(purpose, in: app); purpose.typeText("UI Transfer"); purpose.typeText("\n")
+        tap(app.buttons["转账"], in: app)
+        let save = app.buttons["saveQuickEntry"], again = app.buttons["saveAndAddAnother"]
+        let addAccount = app.buttons["transferAddAccount"]
+        XCTAssertTrue(addAccount.waitForExistence(timeout: 5))
+        XCTAssertEqual(addAccount.label, "添加账户")
+        XCTAssertTrue(app.staticTexts["转出"].exists); XCTAssertTrue(app.staticTexts["转入"].exists)
+        XCTAssertFalse(app.buttons["内部移动"].exists)
+        XCTAssertFalse(save.isEnabled); XCTAssertFalse(again.isEnabled)
+
+        tap(addAccount, in: app)
+        let accountEditor = app.navigationBars["添加账户"]
+        XCTAssertTrue(accountEditor.waitForExistence(timeout: 5))
+        tap(app.textFields["accountName"], in: app); app.textFields["accountName"].typeText("Cancelled Bank")
+        tap(accountEditor.buttons["取消"], in: app)
+        assertGone(accountEditor)
+        XCTAssertTrue(addAccount.exists)
+        XCTAssertFalse(save.isEnabled); XCTAssertFalse(again.isEnabled)
+        XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "500")
+        XCTAssertEqual(purpose.value as? String, "UI Transfer")
+        XCTAssertTrue(app.buttons["转账"].isSelected); XCTAssertTrue(app.buttons["今天"].exists)
+
+        tap(addAccount, in: app)
+        XCTAssertTrue(accountEditor.waitForExistence(timeout: 5))
+        tap(app.textFields["accountName"], in: app); app.textFields["accountName"].typeText("UI Transfer Bank")
+        tap(app.textFields["accountBalance"], in: app); app.textFields["accountBalance"].typeText("0")
+        tap(app.buttons["saveAccount"], in: app)
+        assertGone(accountEditor)
+        let destination = app.buttons["transferDestinationAccount"]
+        assertState(destination, value: "UI Transfer Bank", enabled: true)
+        assertGone(addAccount)
+        XCTAssertTrue(save.isEnabled); XCTAssertTrue(again.isEnabled)
+        XCTAssertEqual(app.staticTexts["entryKeypadAmount"].label, "500")
+        XCTAssertEqual(purpose.value as? String, "UI Transfer")
+        XCTAssertTrue(app.buttons["转账"].isSelected); XCTAssertTrue(app.buttons["今天"].exists)
+        tap(save, in: app)
+        assertGone(save)
+
+        tap(app.buttons["tab_entries"], in: app)
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_'"))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertTrue(rows.firstMatch.label.contains("UI Transfer"))
+        tap(rows.firstMatch, in: app)
+        XCTAssertTrue(app.textFields["editEntryAmount"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.textFields["editEntryAmount"].value as? String, "500")
+        XCTAssertTrue(app.buttons["转账"].isSelected)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "value == %@", "合成银行卡")).firstMatch.exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "value == %@", "UI Transfer Bank")).firstMatch.exists)
+        tap(app.buttons["cancelManualSheet"], in: app)
+
+        // A later transfer uses the existing second account without opening the editor.
+        tap(addEntryTab(app), in: app); tap(app.buttons["转账"], in: app)
+        assertState(destination, value: "UI Transfer Bank", enabled: true)
+        XCTAssertFalse(addAccount.exists)
+        tap(app.buttons["keypad_1"], in: app)
+        XCTAssertTrue(save.isEnabled)
+        tap(app.buttons["cancelManualSheet"], in: app)
+    }
+
     func testManualKeypadSaveTodayEditAndDelete() {
         let app = application("manual"); app.launch()
         let funds = app.buttons["fundsFormula"]
