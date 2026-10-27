@@ -1,0 +1,50 @@
+Attributes: Application, 0x114c80a00, pid: 16597, label: '余白'
+Element subtree:
+ →Application, 0x114c80a00, pid: 16597, label: '余白'
+    Window (Main), 0x114c83200, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x114c81cc0, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x114c808c0, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x114c80500, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x114c803c0, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x114c81900, {{0.0, 0.0}, {440.0, 956.0}}
+                NavigationBar, 0x114c83980, {{0.0, 62.0}, {440.0, 54.0}}, identifier: '_TtGC7SwiftUI32NavigationStackHosting'
+                  Other, 0x114c80640, {{332.3, 66.0}, {83.7, 36.0}}, label: '恢复备份'
+                    Other, 0x114c83480, {{332.3, 66.0}, {83.7, 36.0}}
+                      Button, 0x114c80b40, {{332.3, 66.0}, {83.7, 36.0}}, label: '恢复备份'
+                Other, 0x114c812c0, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x114c83ac0, {{0.0, 0.0}, {440.0, 956.0}}
+                    Other, 0x114c80000, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x114c81400, {{0.0, 0.0}, {440.0, 956.0}}
+                        ScrollView, 0x114c83e80, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'welcomeScroll'
+                          Other, 0x114c80140, {{0.0, 0.0}, {440.0, 956.0}}
+                            Other, 0x114c80dc0, {{0.0, 0.0}, {440.0, 170.8}}
+                          Other, 0x114c821c0, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x114c82440, {{0.0, 116.0}, {440.0, 482.3}}
+                            Other, 0x114c80f00, {{20.0, 168.0}, {64.0, 64.0}}, label: '余白'
+                            StaticText, 0x114c817c0, {{20.0, 248.0}, {75.7, 48.0}}, label: '余白'
+                            Other, 0x114c81e00, {{20.0, 336.0}, {400.0, 242.3}}, identifier: 'welcomeBalanceCard'
+                              StaticText, 0x114c83840, {{36.0, 352.0}, {84.3, 20.3}}, label: '现在手里有'
+                              StaticText, 0x114c82940, {{36.0, 399.7}, {15.7, 28.7}}, label: '¥'
+                              TextField, 0x114c826c0, {{59.7, 380.3}, {344.3, 53.0}}, identifier: 'accountBalance', label: '现在手里的余额，元', placeholderValue: '0.00'
+                              Button, 0x114c81f40, {{36.0, 456.3}, {72.0, 30.0}}, label: '微信零钱'
+                              Button, 0x114c82800, {{116.0, 456.3}, {60.0, 30.0}}, label: '支付宝'
+                              Button, 0x114c81540, {{184.0, 456.3}, {83.7, 30.0}}, label: '招行储蓄卡', Selected
+                              Button, 0x114c81180, {{275.7, 456.3}, {63.3, 30.0}}, identifier: 'welcomeOtherAccount', label: '＋ 别的'
+                              Button, 0x114c81680, {{36.0, 510.3}, {368.0, 52.0}}, identifier: 'welcomeImportStatement', label: '导入这张卡的流水'
+                                Image, 0x114c82080, {{33.7, 527.3}, {16.7, 18.3}}, identifier: 'doc.badge.plus', label: 'doc.badge.plus'
+                                StaticText, 0x114c82a80, {{36.0, 510.3}, {368.0, 52.0}}, label: '导入这张卡的流水'
+                                Image, 0x107002940, {{397.3, 531.3}, {6.0, 10.3}}, identifier: 'chevron.right', label: '前进'
+                          Other, 0x1070008c0, {{407.0, 116.0}, {30.0, 714.0}}, label: '垂直滚动条, 1页', value: 0%
+                            Other, 0x107000140, {{434.0, 419.7}, {3.0, 407.3}}
+                          Other, 0x107001f40, {{407.0, 116.0}, {30.0, 714.0}}, label: '垂直滚动条, 1页', value: 0%
+                            Other, 0x107001040, {{434.0, 419.7}, {3.0, 407.3}}
+                        Button, 0x107000000, {{20.0, 850.0}, {400.0, 52.0}}, identifier: 'startLedger', label: '开始', Disabled
+                Other, 0x107000c80, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x1070035c0, {{0.0, 0.0}, {440.0, 956.0}}
+Path to element:
+ →Application, 0x114c80a00, pid: 16597, label: '余白'
+Query chain:
+ →Find: Target Application 'app.yubai.personal'
+  Output: {
+    Application, 0x107003340, pid: 16597, label: '余白'
+  }
