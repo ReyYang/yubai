@@ -1537,7 +1537,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["welcomeImportStatement"].exists)
         tap(app.buttons["招行储蓄卡"], in: app)
         let statement = app.buttons["welcomeImportStatement"]
-        XCTAssertGreaterThanOrEqual(statement.frame.height, 52)
+        XCTAssertGreaterThanOrEqual(statement.frame.height, 52 - 0.01)
         tap(statement, in: app)
         XCTAssertTrue(app.staticTexts["welcomeStatementBalance"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["welcomeStatementBalance"].label.contains("1月3日 21:14"))

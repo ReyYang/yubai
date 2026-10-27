@@ -1498,7 +1498,7 @@ struct WelcomeView: View {
                 }.value
                 guard !Task.isCancelled, importRequest == request else { return }
                 statement = WelcomeStatement(accountID: account.id, data: bytes, preview: parsed)
-                amount = parsed.latestBalance.map { Money.input($0.amount) } ?? ""
+                amount = parsed.latestBalance.map { Money.editableText($0.amount) } ?? ""
                 balanceIsFromStatement = parsed.latestBalance != nil
                 importProgress = 3
                 focusedField = parsed.latestBalance == nil ? .balance : nil
