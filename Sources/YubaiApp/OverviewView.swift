@@ -59,7 +59,7 @@ struct OverviewView: View {
                 EmptyAccountState { store.sheet = .account(nil) }
             } else {
                 HeroCard(available: funds.available, payable: funds.debt + funds.committed,
-                         reserved: funds.goals + funds.emergency + funds.living + funds.uncertainInflow,
+                         reserved: funds.goals + funds.living + funds.uncertainInflow,
                          hideAmount: store.current.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
                          onDetails: { store.sheet = .fundsCalculation })
                 RestrainNearRow()
@@ -241,7 +241,7 @@ struct FundsCalculationView: View {
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     formula("现金", funds.cash); formula("信用卡要还", -funds.debt); formula("接下来要付", -funds.committed)
-                    formula("在存钱", -funds.goals); formula("始终留着", -funds.emergency); formula("日常开销", -funds.living)
+                    formula("在存钱", -funds.goals); formula("日常开销", -funds.living)
                     if funds.uncertainInflow > 0 { formula("没写用途的进账", -funds.uncertainInflow) }
                     formula("= 还能花", funds.available)
                 }

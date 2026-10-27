@@ -4,6 +4,37 @@ import XCTest
 final class FinanceTests: XCTestCase {
     let now = Dates.parse("2026-10-01 12:00:00")!
     func basic() -> Ledger { var l = Ledger(); l.accounts = [Account(name: "银行", balance: 1_000_000, at: Dates.parse("2026-10-01 00:00:00")!), Account(name: "零钱", kind: .cash, balance: 0, at: Dates.parse("2026-10-01 00:00:00")!), Account(name: "信用卡", kind: .credit, balance: -200_000, at: Dates.parse("2026-10-01 00:00:00")!)]; return l }
+    func testFloorTargetDoesNotChangeAvailableOrForecastAndRoomUsesHorizonRemainder() {
+        var ledger = basic()
+        ledger.plans = [Plan(title: "付款", amount: 70_000, dueDate: Dates.addDays(5, to: now)), Plan(title: "进账", amount: 20_000, dueDate: Dates.addDays(10, to: now), inflow: true)]
+        ledger.goals = [Goal(title: "旅行", target: 100_000, reserved: 30_000)]
+        ledger.entries = [Entry(date: now, amount: 5000, nature: .unknownIn, accountID: ledger.accounts[0].id, title: "进账")]
+        let before = Finance.funds(ledger, now: now)
+        XCTAssertEqual(before.available, 700_000); XCTAssertNil(before.floorRoom)
+        XCTAssertEqual(before.points.first?.conservative, 770_000); XCTAssertEqual(before.points.last?.conservative, 700_000)
+        XCTAssertEqual(before.points.last?.expected, 720_000)
+        for floor: Int64? in [nil, 0, 100_000, 700_000, 800_000] {
+            ledger.profile.floorAmount = floor
+            let funds = Finance.funds(ledger, now: now)
+            XCTAssertEqual(funds.available, before.available); XCTAssertEqual(funds.emergency, floor ?? 0)
+            XCTAssertEqual(funds.floorRoom, floor.map { 700_000 - $0 })
+            XCTAssertEqual(funds.points.map(\.date), before.points.map(\.date))
+            XCTAssertEqual(funds.points.map(\.conservative), before.points.map(\.conservative))
+            XCTAssertEqual(funds.points.map(\.expected), before.points.map(\.expected))
+        }
+    }
+    func testPurchaseFactsSeparateFloorTargetFromReservations() {
+        var ledger = basic(); ledger.goals = [Goal(title: "旅行", target: 100_000, reserved: 30_000)]
+        let reserved = "在存钱与日常开销 \(Money.text(30_000))"
+        XCTAssertTrue(Finance.assessPurchase(ledger, amount: 1000, now: now).facts.contains(reserved))
+        XCTAssertFalse(Finance.assessPurchase(ledger, amount: 1000, now: now).facts.contains { $0.contains("始终留着") })
+        ledger.profile.floorAmount = 100_000
+        let positive = Finance.assessPurchase(ledger, amount: 1000, now: now)
+        XCTAssertTrue(positive.facts.contains(reserved)); XCTAssertTrue(positive.facts.contains("想始终留着 \(Money.text(100_000))，按现在能留住"))
+        ledger.profile.floorAmount = 800_000
+        let negative = Finance.assessPurchase(ledger, amount: 1000, now: now)
+        XCTAssertTrue(negative.facts.contains(reserved)); XCTAssertTrue(negative.facts.contains("想始终留着 \(Money.text(800_000))，还差 \(Money.text(30_000))"))
+    }
     private func record(_ ledger: inout Ledger, date: Date, at recordedAt: Date, nature: Nature = .expense) throws {
         let draft = EntryDraft(date: date, amount: 3200, amountConfirmed: true, nature: nature, accountID: ledger.accounts[0].id, title: "补记")
         var change = ChangeSet(source: "问余白", reason: "用户补记", items: [.addEntry(draft)]); change.createdAt = recordedAt

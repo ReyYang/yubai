@@ -35,6 +35,43 @@ final class PurchaseSavingTests: XCTestCase {
         XCTAssertEqual(over.allowedVerdicts, [.wait, .skip]); XCTAssertTrue(over.boundReason.contains("本月已花"))
         XCTAssertEqual(PurchaseBounds.compute(ledger: ledger, amount: 2001, title: "午餐", category: "餐饮", subcategory: "午餐", now: now).allowedVerdicts, Set(PurchaseVerdict.allCases))
     }
+    func testPurchaseBoundsFloorTargetCapsAtWaitUntilRealCashRunsOut() {
+        var ledger = seed(balance: 10_000); ledger.profile.floorAmount = 8000
+        func bounds(_ amount: Int64) -> PurchaseBounds { PurchaseBounds.compute(ledger: ledger, amount: amount, title: "咖啡", now: now) }
+        let below = bounds(2001)
+        XCTAssertEqual(below.allowedVerdicts, [.wait, .skip])
+        XCTAssertEqual(below.boundReason, "买了以后离始终留着的 \(Money.text(8000)) 还差 \(Money.text(1))。")
+        XCTAssertEqual(bounds(10_000).allowedVerdicts, [.wait, .skip])
+        XCTAssertEqual(bounds(10_001).allowedVerdicts, [.skip]); XCTAssertEqual(bounds(10_001).boundReason, "买了以后还能花 \(Money.text(-1))。")
+        for amount: Int64 in [1999, 2000] { XCTAssertEqual(bounds(amount).allowedVerdicts, Set(PurchaseVerdict.allCases)) }
+        XCTAssertEqual(Finance.assessPurchase(ledger, amount: 2001, now: now).verdict, .wait)
+        XCTAssertEqual(Finance.assessPurchase(ledger, amount: 2001, now: now).reason, below.boundReason)
+        for floor: Int64? in [nil, 0] {
+            ledger.profile.floorAmount = floor
+            XCTAssertEqual(bounds(10_000).allowedVerdicts, Set(PurchaseVerdict.allCases))
+        }
+    }
+    func testBoundsPrecedenceIsCashThenFloorThenEquallyStrictRestrainLimits() {
+        var ledger = seed(balance: 10_000); ledger.profile.floorAmount = 8000
+        ledger.profile.restrain = [ProfileArea(title: "咖啡", match: .init(keywords: ["咖啡"]), softLimit: .init(perWeekCount: 0, perMonthAmount: 1000))]
+        func bounds(_ amount: Int64) -> PurchaseBounds { PurchaseBounds.compute(ledger: ledger, amount: amount, title: "咖啡", now: now) }
+        // Both floor and restrain allow wait/skip; the earlier floor rule keeps its reason.
+        XCTAssertEqual(bounds(2001).allowedVerdicts, [.wait, .skip]); XCTAssertEqual(bounds(2001).boundReason, "买了以后离始终留着的 \(Money.text(8000)) 还差 \(Money.text(1))。")
+        XCTAssertEqual(bounds(10_001).allowedVerdicts, [.skip]); XCTAssertFalse(bounds(10_001).boundReason.contains("始终留着"))
+        XCTAssertEqual(bounds(2000).allowedVerdicts, [.wait, .skip]); XCTAssertTrue(bounds(2000).boundReason.contains("每周最多 0 次"))
+        ledger.profile.restrain[0].softLimit?.perWeekCount = nil
+        XCTAssertEqual(bounds(2000).allowedVerdicts, [.wait, .skip]); XCTAssertTrue(bounds(2000).boundReason.contains("本月已花"))
+    }
+    func testFloorGapReasonCanBeSubmittedButBuyIsRejected() throws {
+        var ledger = seed(balance: 10_000); ledger.profile.floorAmount = 8000
+        let judgment = try judge(ledger, amount: "20.01"); let ctx = ToolContext(ledger: ledger, now: now)
+        XCTAssertEqual(judgment.facts["allowed_verdicts"], .strings(["wait", "skip"]))
+        let reason = try XCTUnwrap(judgment.facts["bound_reason"]?.stringValue)
+        for verdict in ["wait", "skip"] {
+            XCTAssertNoThrow(try SubmitVerdictTool().submit(.object(["verdict": .string(verdict), "need": .string("want"), "reason": .string(reason)]), judgment: judgment, context: ctx))
+        }
+        XCTAssertThrowsError(try SubmitVerdictTool().submit(.object(["verdict": .string("buy"), "need": .string("want"), "reason": .string(reason)]), judgment: judgment, context: ctx))
+    }
     func testRuleVerdictsUseMoneySoftLimitThenOneThird() {
         var ledger = seed(balance: 9000)
         XCTAssertEqual(Finance.assessPurchase(ledger, amount: 9001, now: now).verdict, .skip)

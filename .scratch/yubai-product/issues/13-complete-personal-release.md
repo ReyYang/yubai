@@ -366,3 +366,11 @@ owner 要求解决 `origin/feat/no-explanatory-copy`／`86524fd` → 省钱分�
 实现选择：固定 header、暖纸底／渐隐、欢迎自动滚动及记一笔底部 inset 采用对方方案；保留本分支值导航签名与 profile 路由。固定收付保留 main 描边结果按钮／已记灰勾，将靠右对齐应用到原点击区，共用 CardRows／SwipeActionRow、96pt 原宽左移和 12pt gapAction；旧期结算／跳过、恢复、撤销及系统 alert 保留。文档两边历史完整保留，[五个冲突的取舍、可见中文与验证](../../../docs/MERGE-V16-THIRD-FOURTH-FIXES.md)。没有新增业务决定或可见中文措辞。
 
 Linux swift test：464 项、460 通过／4 原有实网跳过／0 失败；38 个 App 文件四组、UI 两组条件语法解析通过。UI 方法严格等于 HEAD 68 与 incoming 54 的并集 70 个，无遗漏／重名，包含分开的计算页停止确认及关闭 sheet 后撤销验证；24 个夹具保持，本轮未重跑夹具流程。Apple 类型检查、UI 实跑和视觉仍待 Mac，整票长期状态保持，原稿／Figma／分发包未同步；未提交、未终止 merge、未联网调 API。git add 因 .git 只读退出 128，索引仍有五个未合并文件，暂存命令见交付记录。
+
+## 2026-10-27 · 始终留着改为目标（owner 明确决定）
+
+owner 明确「始终留着」（`profile.floorAmount`，`Funds.emergency`）是消费观中希望在资金观察期末留住的金额，未达到很正常；取代历史硬扣减与「底线已扣除」的算法口径。还能花不再减它，预测 baseline／conservative 同步；新增可空 `Funds.floorRoom = available - floorAmount`，保留明确 0 与未设置的区别，不改变存档字段或迁移。
+
+购买后还能花小于 0 仍仅允许 skip，否则低于目标允许 wait／skip，达到目标仍受原克制规则限制。同样严格时按实际资金缺口、目标、克制的顺序保留较早理由，并用测试固定。付款缺口卡只在预测小于 0 时出现，已设「始终留着」只作背景事实。问余白／资金工具改为可空的 `floor_target`／`floor_room`，消费观工具保留 `floor_amount`；提示词明确未达目标正常、不说教。
+
+owner 限定 App 只修首页 HeroCard 预留合计与删除计算页扣减行；不加新行或视图，首页目标差额等待设计稿。[开发口径与全部可见中文](../../../docs/DEVELOPMENT.md#始终留着是目标2026-10-27)、[设计边界](../../../.design-meta/DESIGN.md#2026-10-27--始终留着改为目标)。Swift 6.2.4 的 19 项条件语法解析、夹具 JSON 与新增链接检查通过；`swift test` 因 swift-crypto／swift-asn1 未缓存、代理不可连接及 GitHub DNS 不可用停在依赖下载，未构建／运行单测。Apple 编译与 UI 待 Mac；原稿／Figma／截图／分发包未同步，整票长期状态保持，未提交。

@@ -75,7 +75,7 @@ final class DailyLivingTests: XCTestCase {
         for row in original { ledger.entries.append(Entry(date: row.date, amount: 1000, nature: .refund, accountID: account, title: "未关联退款")) }
         XCTAssertEqual(Finance.estimatedDailyLiving(ledger, now: now), 1000)
     }
-    func testFundsAndForecastIgnoreLegacyPreferencesAndUseProfileFloor() {
+    func testFundsAndForecastIgnoreLegacyPreferencesAndTreatProfileFloorAsTarget() {
         var ledger = dailyLedger()
         ledger.profile.floorAmount = 12345
         let estimated = Finance.funds(ledger, now: now)
@@ -91,7 +91,10 @@ final class DailyLivingTests: XCTestCase {
         XCTAssertEqual(chosen.points.count, 91)
         XCTAssertEqual(chosen.points.first!.conservative - chosen.points.last!.conservative, 3000 * 90)
         ledger.profile.floorAmount = nil
-        XCTAssertEqual(Finance.funds(ledger, now: now).emergency, 0)
+        let unset = Finance.funds(ledger, now: now)
+        XCTAssertEqual(unset.emergency, 0); XCTAssertNil(unset.floorRoom); XCTAssertEqual(unset.available, estimated.available)
+        XCTAssertEqual(unset.points.map(\.conservative), estimated.points.map(\.conservative))
+        XCTAssertEqual(unset.points.map(\.expected), estimated.points.map(\.expected))
     }
     func testEmptySparseAndDeletedHistory() {
         var ledger = Ledger(); XCTAssertEqual(Finance.estimatedDailyLiving(ledger, now: now), 0)

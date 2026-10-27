@@ -61,6 +61,7 @@ final class FinanceScaleTests: XCTestCase {
         XCTAssertEqual(Finance.occurrences(in: ledger, now: now), expected.occurrences)
         XCTAssertEqual(actual.occurrences, expected.occurrences)
         XCTAssertEqual([actual.cash, actual.debt, actual.investments, actual.receivables, actual.netWorth, actual.committed, actual.goals, actual.emergency, actual.living, actual.uncertainInflow, actual.available, actual.expectedIncome], [expected.cash, expected.debt, expected.investments, expected.receivables, expected.netWorth, expected.committed, expected.goals, expected.emergency, expected.living, expected.uncertainInflow, expected.available, expected.expectedIncome])
+        XCTAssertEqual(actual.floorRoom, expected.floorRoom)
         XCTAssertEqual(actual.warnings, expected.warnings)
         XCTAssertEqual(actual.points.map(\.date), expected.points.map(\.date))
         XCTAssertEqual(actual.points.map(\.conservative), expected.points.map(\.conservative))
@@ -133,7 +134,7 @@ private enum ReferenceFinance {
         let uncertain = ledger.activeEntries.filter { e in
             e.nature == .unknownIn && e.date <= now && accounts.contains { $0.id == e.accountID && $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) }
         }.reduce(Int64(0)) { $0 + $1.amount }
-        let available = cash - debt - committed - goals - (ledger.profile.floorAmount ?? 0) - living - uncertain
+        let available = cash - debt - committed - goals - living - uncertain
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("还没有账户") }
@@ -142,7 +143,7 @@ private enum ReferenceFinance {
         if ledger.activeEntries.contains(where: { $0.nature.uncertain }) { warnings.append("有账目没写用途，请补上。") }
         if occurrences.contains(where: \.overdue) { warnings.append("有固定收付已到期，请确认是否已付。") }
         if ledger.activeEntries.contains(where: { $0.nature.paired && $0.otherAccountID == nil }) { warnings.append("有转账没选另一账户，请补上。") }
-        let baseline = cash - debt - goals - (ledger.profile.floorAmount ?? 0) - uncertain
+        let baseline = cash - debt - goals - uncertain
         var points: [ForecastPoint] = []
         for offset in 0...90 {
             let date = Dates.addDays(offset, to: Dates.day(now))
@@ -154,6 +155,6 @@ private enum ReferenceFinance {
         return Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
                      livingEstimated: true, committed: committed, goals: goals, emergency: (ledger.profile.floorAmount ?? 0), living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
-                     occurrences: occurrences, points: points, warnings: warnings)
+                     occurrences: occurrences, points: points, warnings: warnings, floorRoom: ledger.profile.floorAmount.map { available - $0 })
     }
 }
