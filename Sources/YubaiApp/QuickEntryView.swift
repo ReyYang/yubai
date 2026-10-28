@@ -63,6 +63,7 @@ struct QuickEntryView: View {
                             .accessibilityIdentifier("saveAndAddAnother")
                     }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapGroup)
                         .frame(maxWidth: 620).frame(maxWidth: .infinity)
+                        .background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
                         .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                         .ignoresSafeArea(.keyboard, edges: .bottom)
                 }
@@ -71,6 +72,7 @@ struct QuickEntryView: View {
             .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
             #if os(iOS)
             .presentationDetents([.large])
+            .presentationBackground(YubaiColor.canvas)
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .sheet(isPresented: $showingTransferAccountEditor, onDismiss: selectAddedTransferAccount) {

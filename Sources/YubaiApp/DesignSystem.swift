@@ -1558,9 +1558,11 @@ struct SuggestionChips: View {
     let values: [String]
     var selected: String? = nil
     var identifierPrefix = "suggestion_"
+    var singleLine = false
     let choose: (String) -> Void
     var body: some View {
-        ChipFlow { chips }
+        let layout = singleLine ? AnyLayout(ChipRow()) : AnyLayout(ChipFlow(rowSpacing: YubaiSpace.gapGroup))
+        layout { chips }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var chips: some View {
         ForEach(values, id: \.self) { value in
@@ -1576,7 +1578,7 @@ struct SuggestionChip: View {
     let choose: () -> Void
     var body: some View {
         Button(action: choose) {
-            Text(value).yubaiFont(YubaiFont.caption)
+            Text(value).yubaiFont(YubaiFont.caption).lineLimit(1).truncationMode(.tail)
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
                 .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
@@ -1585,7 +1587,37 @@ struct SuggestionChip: View {
     }
 }
 
+struct ChipRow: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrangement(width: proposal.width ?? .infinity, subviews: subviews).size
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arrangement(width: bounds.width, subviews: subviews)
+        for (index, subview) in subviews.enumerated() {
+            let frame = result.frames[index]
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: frame.width, height: frame.height))
+        }
+    }
+    private func arrangement(width: CGFloat, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let spacing = CGFloat(max(0, subviews.count - 1)) * YubaiSpace.space8
+        let widths = ChipWidthAllocation.widths(naturalWidths: sizes.map(\.width), availableWidth: width,
+                                               spacing: YubaiSpace.space8)
+        var x: CGFloat = 0, height: CGFloat = 0
+        var frames: [CGRect] = []
+        for (index, subview) in subviews.enumerated() {
+            let itemWidth = widths[index]
+            let size = subview.sizeThatFits(ProposedViewSize(width: itemWidth, height: nil))
+            frames.append(CGRect(x: x, y: 0, width: itemWidth, height: size.height))
+            x += itemWidth + YubaiSpace.space8; height = max(height, size.height)
+        }
+        return (CGSize(width: widths.reduce(0, +) + spacing, height: height), frames)
+    }
+}
+
 struct ChipFlow: Layout {
+    var rowSpacing: CGFloat = YubaiSpace.space8
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         arrangement(width: proposal.width ?? .infinity, subviews: subviews).size
     }
@@ -1603,7 +1635,7 @@ struct ChipFlow: Layout {
         for subview in subviews {
             let ideal = subview.sizeThatFits(.unspecified)
             let size = subview.sizeThatFits(ProposedViewSize(width: min(width, ideal.width), height: nil))
-            if x > 0 && x + size.width > width { x = 0; y += rowHeight + YubaiSpace.space8; rowHeight = 0 }
+            if x > 0 && x + size.width > width { x = 0; y += rowHeight + rowSpacing; rowHeight = 0 }
             frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
             usedWidth = max(usedWidth, x + size.width); rowHeight = max(rowHeight, size.height)
             x += size.width + YubaiSpace.space8
