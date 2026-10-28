@@ -1,6 +1,12 @@
 #if DEBUG && targetEnvironment(simulator)
 import Foundation
+import Observation
 import YubaiCore
+
+@MainActor @Observable final class UITestRequestLog {
+    static let shared = UITestRequestLog()
+    var count = 0
+}
 
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
@@ -10,7 +16,7 @@ enum UITestSupport {
     }
     static let screenshotScripts: Set<String> = [
         "judge-ask", "judge-wait", "judge-buy", "judge-skip", "wishlist-cool",
-        "letter-saving", "profile-revisit", "subcategory"
+        "letter-saving", "profile-revisit", "subcategory", "salary"
     ]
     /// Scripted replies alone do not imply that a key is configured.
     /// UI tests can explicitly simulate either state without changing Keychain.
@@ -46,6 +52,10 @@ enum UITestSupport {
         }
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty", script != "welcome-import" else { return }
         let now = Date()
+        if script == "salary" {
+            try repository.save(salaryLedger(now: now), reason: "合成工资夹具")
+            return
+        }
         if screenshotScripts.contains(script) {
             try repository.save(screenshotLedger(script, now: now), reason: "合成截图夹具")
             return
@@ -113,6 +123,34 @@ enum UITestSupport {
             }
         }
         try repository.save(ledger, reason: "合成测试夹具")
+    }
+    static func salaryLedger(now: Date) -> Ledger {
+        var ledger = Ledger()
+        ledger.preferences.onboardingComplete = true
+        ledger.preferences.cloudAIEnabled = false
+        ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
+        ledger.lastSubcategoryBatchDay = Dates.text(now)
+        ledger.mutedTopics = ["letter"]
+        let account = Account(name: "合成工资卡", balance: 200_000, at: now)
+        ledger.accounts = [account]
+        let month = Dates.calendar.dateInterval(of: .month, for: now)!.start
+        let latestMonth = Dates.calendar.component(.day, from: now) >= 10 ? month : Dates.addMonths(-1, to: month)
+        var batch = ImportBatch(filename: "合成工资流水.csv", importedCount: 6, duplicateCount: 0, skippedCount: 0)
+        batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
+        ledger.imports = [batch]
+        for offset in -2...0 {
+            var entry = Entry(date: Dates.addDays(9, to: Dates.addMonths(offset, to: latestMonth)), amount: 800_000,
+                              nature: .income, accountID: account.id, title: "合成公司", category: "工资奖金")
+            entry.batchID = batch.id; entry.source = "文件"
+            ledger.entries.append(entry)
+        }
+        for day in 1...90 {
+            var entry = Entry(date: Dates.addDays(-day, to: Dates.day(now)), amount: 5_000, accountID: account.id,
+                              title: "合成日常支出", category: day <= 3 ? Classification.pendingCategory : "餐饮")
+            if day <= 3 { entry.batchID = batch.id; entry.source = "文件" }
+            ledger.entries.append(entry)
+        }
+        return ledger
     }
     /// Fresh, synthetic data only. Dates follow the simulator clock.
     static func screenshotLedger(_ script: String, now: Date) throws -> Ledger {
@@ -217,6 +255,18 @@ enum UITestSupport {
 struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
+        await MainActor.run { UITestRequestLog.shared.count += 1 }
+        if script == "salary", request.purpose == "导入整理" {
+            let payload = try JSONValue.parse(request.messages.last?.content ?? "")
+            let rows: [JSONValue] = (payload["batch"]?.arrayValue ?? []).compactMap { row in
+                guard let id = row["id"]?.stringValue else { return nil }
+                let income = row["inflow"] == .bool(true)
+                return .object(["entry": .string(id), "category": .string(income ? "工资奖金" : "餐饮"),
+                                "nature": .string(income ? "income" : "expense"), "confident": .bool(true)])
+            }
+            return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array(rows), "items": .array([]),
+                "series": .array([]), "questions": .array([])]).jsonText())
+        }
         if script.hasPrefix("judge-") { return try purchaseReply(request) }
         if script == "profile-revisit", request.purpose == "消费观对话" {
             let reply = profileReply(request)

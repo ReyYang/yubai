@@ -38,7 +38,7 @@ struct TabNavigationLink<Content: View, Label: View>: View {
 }
 
 enum AppSheet: Identifiable {
-    case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions, addEntry, addPlan
+    case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions, addEntry, addPlan, intelligencePrivacy
     case editEntry(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
     case ask(String), capture(Data), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, letter(UUID), reconcile(UUID)
@@ -124,6 +124,10 @@ enum AppSheet: Identifiable {
     var errorHosts: [UUID] = []
     var pickingInsightDates = false
     var organizingBatchID: UUID?
+    var organizingPendingImports = false
+    var hiddenSalaryKeys: Set<String> = []
+    var entryFilterRequest: UUID?
+    var entryFilterDate: Date?
     var reflectingMemories = false
     var updatingWeeklyPush = false
     var organizationErrors: [UUID: String] = [:]
@@ -389,9 +393,6 @@ struct RootView: View {
         #endif
         .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
         .task { await store.configureSync(); store.autoSettleFixedFlows() }
-        .task(id: "\(store.current.id)-\(store.current.preferences.cloudAIEnabled)-\(store.locked)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
-            if phase == .active { await store.organizePendingImports() }
-        }
         .task(id: "\(store.current.id)-\(store.current.updatedAt)-\(store.locked)-\(store.organizingBatchID != nil)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
             if phase == .active { await store.refreshButler() }
         }
@@ -546,6 +547,7 @@ struct RootView: View {
         case .history: RecoveryVersionsView()
         case .syncVersions: SyncVersionsView()
         case .fundsCalculation: FundsCalculationView()
+        case .intelligencePrivacy: IntelligencePrivacyView().toolbar { CloseButton() }
         case .cardEvidence(let id): ButlerEvidenceView(cardID: id)
         case .cardQuestion(let id): ButlerQuestionView(cardID: id)
         case .cardProposal(let id): ButlerProposalView(changeID: id)

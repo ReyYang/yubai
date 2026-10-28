@@ -3,17 +3,7 @@ import Charts
 import YubaiCore
 
 struct ButlerSection: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var body: some View {
-        let cards = SavingCardVisibility.visible(in: store.current)
-        VStack(spacing: YubaiSpace.gapGroup) {
-            if let first = cards.first {
-                ButlerCardView(card: first, additionalCount: cards.count - 1).id(first.id)
-                    .transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion))
-            }
-        }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: cards.map(\.id))
-    }
+    var body: some View { NowCardsSection() }
 }
 
 struct ButlerListView: View {
@@ -41,6 +31,9 @@ struct ButlerCardView: View {
     @State private var width: CGFloat = 1
     let card: ButlerCard
     var additionalCount = 0
+    var pageNumber: String? = nil
+    var paging = false
+    var isCurrentPage = true
     private var hidden: Bool { store.current.preferences.hideAmounts }
     private var exceedsRestraint: Bool {
         guard card.kind == .restrain else { return false }
@@ -83,7 +76,7 @@ struct ButlerCardView: View {
             }.allowsHitTesting(false) }
             .onPreferenceChange(ButlerCardWidth.self) { width = $0 }
             #if os(iOS)
-            .gesture(HorizontalPan(shouldBegin: { $0 < 0 }, changed: { distance in
+            .gesture(HorizontalPan(shouldBegin: { !paging && $0 < 0 }, changed: { distance in
                 swipe = max(-width, min(0, distance))
             }, ended: { distance, velocity in
                 if -distance > width * 0.25 || (velocity < -650 && distance < -20) { store.dismissCard(card.id) }
@@ -94,6 +87,7 @@ struct ButlerCardView: View {
             .simultaneousGesture(DragGesture(minimumDistance: 18)
                 .updating($dragging) { _, state, _ in state = true }
                 .onChanged { value in
+                    guard !paging else { return }
                     if horizontal == nil { horizontal = value.translation.width < 0 && abs(value.translation.width) > abs(value.translation.height) * 1.3 }
                     guard horizontal == true else { return }
                     swipe = max(-width, min(0, value.translation.width))
@@ -121,6 +115,7 @@ struct ButlerCardView: View {
                     if amber { Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true) }
                     Text(meta).yubaiFont(YubaiFont.meta).foregroundStyle(ink)
                     Spacer(minLength: YubaiSpace.none)
+                    if let pageNumber { Text(pageNumber).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
                 }.frame(minHeight: YubaiSize.pillHeight).padding(.trailing, YubaiSize.cardActionClearance)
                 Text(hidden ? "需要留意" : card.title).yubaiFont(YubaiFont.cardTitle).padding(.trailing, YubaiSize.cardActionClearance)
                     .foregroundStyle(amber ? YubaiColor.amberStrong : YubaiColor.label)
@@ -146,7 +141,9 @@ struct ButlerCardView: View {
                 }.accessibilityLabel("更多：知道了、以后别提").accessibilityIdentifier("butlerOptions_" + card.kind.rawValue)
             }
         }.yubaiZoomSource("card-" + card.id.uuidString)
-            .onAppear { if card.kind == .shortfall, YubaiMotion.claim("floor-alert-" + card.id.uuidString) { store.floorWarningTrigger &+= 1 } }
+            .onChange(of: isCurrentPage, initial: true) { _, visible in
+                if visible, card.kind == .shortfall, YubaiMotion.claim("floor-alert-" + card.id.uuidString) { store.floorWarningTrigger &+= 1 }
+            }
     }
     @ViewBuilder private var actions: some View {
         if card.kind == .offCharacter {

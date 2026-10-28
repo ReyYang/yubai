@@ -1,5 +1,51 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 第二十三轮固定收付「以后」
+
+来源为 owner 本轮明确确认的第二十三轮文字规格；未附独立 HTML／图片或私有页面链接。此轮扩展第十一轮仅显示当月期次的边界，原月内要付／要收、逾期及还能花算法保持。
+
+`FixedFlows.swift` 为 `FixedFlowMonth` 增加 `later: [FixedFlowUpcoming]`，包含 Plan ID、标题、金额、收支方向、频率、下一期及原排期锚点。只纳入 active、未停掉、仍有未来期且本月无任何排期的 Plan；本月已收付或跳过的期也阻止重复。下一期复用 `Plan.scheduledDate`，遵循分期数、结束日期、跳过及 monthlyDay 的月底夹取；无 90 天截断。按下一期日期、同日 Plan ID 排序，金额复用估额规则，独立于当月汇总。`ManualBookkeeping.swift` 的既有频率文案补可选 monthlyDay，旧调用保持；`Models.swift` 恢复到 HEAD，scheduledDate 保持原可见性。
+
+`FixedFlowsView.swift` 在要收之后、已停掉之前采用同一 `CardRows` 卡片与内分隔线，基础行高 52pt，次行用 13pt callout／labelSecondary；实际字号放大可撑高。进账 brandInk 带 +，支出 label，金额固定两位，行尾无操作按钮，保留 36pt 空位。有以后内容即隐藏月空态。分组标识 `fixedFlowLater`、行标识 `fixedFlowLater_<planID>`；分组含标题与行，分别保留 AX 容器。
+
+owner 同日跟进明确收窄范围：现有 App 没有编辑安排页面，编辑页设计未经确认，本轮不加。撤回上一轮自行新增的 `AppSheet.editPlan`、`FixedFlowEditor(original:)` 及初始化／保存分支、本月行 summary 点按；`YubaiApp.swift`、`FixedFlowBillRow` 与完整 `FixedFlowEditor` 均恢复到 HEAD。表单的 monthlyDay 排期文案参数和 scheduledDate 预览也一并撤回；添加场景没有原工资锚点可复用，沿用原添加行为。「以后」行仅展示，移除 onTapGesture、contentShape 与 isButton trait，保留内容、布局和 AX 容器／标识。
+
+新增／改动可见中文：标题「以后」；事实「每月N日」「每年M月D日」「X月X日起」「明年X月X日起」，组合为「频率 · 日期起」。其他频率复用既有「每周X」「每季N日」和一次性日期文案，仅按稿收紧空格；安排名复用原标题。均为标题、日期／频率事实，无文案例外。本次收窄不新增可见中文，添加表单标题恢复「添加」（标题），其余可见文字保持。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0，561 项、557 通过／4 项原有实网 opt-in 跳过／0 失败。新增 9 项 FixedBillsTests 覆盖下月工资、月内已付／未付／未到／跳过去重、停掉／结束／期数耗尽、次年与同年年费、日期排序、31 日跨短月／闰二月、其他频率及未来跳过边界。本次收窄后重新执行同一完整命令，退出 0，仍为 561 项、557 通过／4 项原有实网 opt-in 跳过／0 失败。对照 HEAD 确认编辑表单、本月行、App 路由、Models、salary 夹具与其余全部 UI 测试保持原样。改动 App 文件通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析；`git diff --check` 通过。另从实际未改动的 salaryLedger 提取夹具方法，链接当前 Core 离线执行 2026 年及闰年 2028 年全部 731 个日历日，验证工资识别／确认后在 10 日前进入要收、10 日及之后进入以后且不重复。该检查验证夹具与 Core 分组，不代替 Apple UI 实跑。
+
+新增 `testConfirmedSalaryAppearsInFixedFlowsLaterGroup`：salary → 是工资 → 既有固定收付入口。沿用未改动的 salary 夹具与公历／模拟器时区：当月 10 日及之后，断言以后组工资一行、+8,000.00、每月10日、要收无工资，并检查点击后仍在固定收付且未打开表单；10 日前，断言要收卡片工资一行、+8,000.00、10 日排期，以后无工资且分组不显示。两支都无月空态；撤回打开编辑和保存的测试断言，原工资确认／撤销等用例保持。UI 未实跑，Apple SDK 编译、AX／VoiceOver、视觉与手势待 Mac 复验；Figma、截图与分发包未同步。未提交、未推送、未调用 DeepSeek 或任何付费 API。
+
+## 2026-10-28 · PR #48 现在页卡片无障碍容器修复
+
+按 owner 提供的 iOS 26.5 层级现象，对比 `main` 的 `ButlerSection` 与本分支 `NowCardsSection`：main 直接呈现带 `.contain`／`butlerCard_<kind>` 的卡片；本分支外层又加 `.contain`／`nowCards`，非当前页则隐藏于 AX。[SwiftUI 的 `.contain` 规则](https://developer.apple.com/documentation/swiftui/accessibilitychildbehavior/contain)明确，唯一子元素已有子项时会复用该元素，而不创建新父容器。结合层级中只剩 `nowCards`、内部按钮／文字仍在的现象，原因是当前卡片容器被外层复用并覆盖标识，而非测试查错元素类型；只移动 offset／opacity 或重复加 `.contain` 不能保证独立节点。
+
+`NowActionCards.swift` 在原 ZStack 上叠加独立的页码 AX 元素（透明、1pt、不参与布局或触摸），使外层始终有「当前卡片＋页码」两个 AX 子元素，按上述规则创建独立的 `nowCards` 父容器。工资／待整理／管家卡原有 `.contain`、标识、按钮、动作及测试值保留；非当前卡继续隐藏于 AX。外层显式设置页码 value，保留「下一张卡片／上一张卡片」动作。原源码未单独设置 `nowCards` value，复用节点上的 `closed`／`requests=0` 属于卡片测试值，修复后留在相应卡片。卡片内视觉页码不再单独导出 AX，由分页层统一朗读同一页码事实；`ButlerViews.swift` 仅相应隐藏视觉页码的 AX。原卡片尺寸、offset／opacity、动画、手势门控与滑动阈值保持。
+
+四项管家测试的 `descendants(matching: .any).matching(identifier: "butlerCard_restrain").firstMatch` 与 main 一致；待整理／工资测试沿用同一查询方式，无需调整。所有既有测试源码保持，未放松断言。新增／改动可见中文字符串：无；仅调整原有页码事实的 AX 归属。
+
+验证：设置 `YUBAI_LIVE_EVAL=0` 后执行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test`，退出 0，552 项、548 通过／4 项原有实网 opt-in 跳过／0 失败。两份改动 App 文件通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析；main 查询对照及 diff 检查通过。Apple SDK 编译、六项原失败 UI 测试及工资翻页用例、实际层级／VoiceOver 仍须 Mac 复验，不能把语法解析当作 Apple 类型检查或 AX 实测。选定稿、Figma、截图与分发包保持；未提交、未推送、未调用付费 API。
+
+## 2026-10-28 · 第二十一轮工资与整理入口
+
+来源为 owner 本轮明确确认的第二十一轮逐项文字规格；未附独立 HTML／图片或私有原稿链接。本轮直接按文字规格实现，继续遵守少写字，不将条件语法解析视为原生视觉验收。
+
+| 源码 | 采用行为 |
+|---|---|
+| `SalaryDetection.swift`、`Models.swift`、`Finance.swift` | 本机纯函数按付款方、26–35 日间隔、日号偏差不超过 3 日和中位数金额 ±10% 识别；月底按当月天数夹取，众数平票取较晚日。只认未删除、截至当前的 income，最近金额最大者优先；已有 active 每月收入 Plan 则不提示。拒绝 key 作为账本集合持久化，旧账缺字段为空，不提升 schema。确认创建「工资」Plan，金额／账户取最近一笔，优先工资收入分类、否则其他收入；下次日期严格晚于今天。可空 `monthlyDay` 保留 31 日锚点，首次 2 月 28 日后仍排 3 月 31 日，旧 Plan 缺字段保持原排期。 |
+| `PendingImportOrganization.swift` | 汇总未撤销且 needsOrganization 的批次；条数采用仍可整理的未手改记录，加上手改后仍没分类的记录；删除记录不计入。账户按批次顺序去重，日期范围汇总全部有效记录。 |
+| `NowActionCards.swift`、`ButlerViews.swift`、`OverviewView.swift` | 还能花／目标行下的同一容器按工资、待分类、既有管家卡排序；横向翻页、右上页码、非当前卡隐藏于 AX，保留 DS 字体／颜色／动效。工资底色 brandTint、标题 serif 16、事实 13／日期 12、金额 num 15 两位小数、按钮可见高 36／触控高 44。确认用 store.update 整本撤销，指定提示条；拒绝不再提醒该付款方。单独工资卡左滑本次隐藏，多卡横滑翻页；无障碍另有本次收起动作。既有单张管家卡保留原收起手势，多卡翻页时用原菜单收起；隐藏缺口卡不提前触发触觉反馈。 |
+| `EntriesView.swift`、`YubaiApp.swift` | 「自己分」进入账目并选没分类，月份定位到最新未分类导入记录（无则最新导入日期）。复用智能与隐私 sheet、关闭按钮和根页撤销条；欢迎阶段不要求先有账户。 |
+| `DesignSystem.swift`、`CloudAssistantViews.swift` | Welcome leading 为 cloud＋云端智能（15pt label），已启用并配好时附 brandInk 勾，读屏「已开」；trailing 恢复备份保留。设置沿用既有钥匙串保存与 ledger.preferences.cloudAIEnabled，无 onboarding 限制；欢迎、云端未开或有待整理批次时不自动取模型列表。 |
+| `IntelligenceRuntime.swift` | 删除根页前台 organizePendingImports task；同名方法只供现在页「整理」点击，逐批调用 organizeImport，期间 ProgressView、失败保留卡片。待整理批次存在时，仅在自动小项归类／记忆回看各自入口跳过云端任务，卡片润色传 nil transport、沿用本机候选文案；ButlerCards.detect、每周来信本机候选与 ButlerCards.refresh 照常执行，防止这批流水绕过点击发送，同时保持本机提醒刷新。保留导入页「现在整理」与用户提交导入后两处调用；没有其他后台导入整理调用。 |
+| `UITestSupport.swift`、测试、工程 | 新增 `salary`：一个账户、最近三个月每月 10 日 8,000.00、90 天日常支出、一个 needsOrganization 批次；提供本机 fake 回复。现有 Debug 模拟器＋UUID 账本＋脚本门控保持，零请求断言只在测试 AX 暴露。App 新文件与 Core 测试新文件已登记工程；Core 源码沿用本地 Swift Package 自动发现。 |
+
+本轮新增／改动的可见中文：标题「这是工资吗？」「N 笔还没分类」；控件「是工资」「不是」「打开云端智能」「自己分」「整理」「云端智能」「撤销」（沿用）；事实「每月 N 日」、付款方／账户名、「N 个账户」、日期范围／最近日期、正向金额和页码；状态「工资已加到会回来的账单」；Plan 标题「工资」。既有「到 X月X日发工资」随资金期限显示，未新增该模板。勾为图标，「已开」仅用于读屏。错误原因沿用现有整理错误，不新增说明句或文案例外。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0，552 项、548 通过／4 原有实网 opt-in 跳过／0 失败，其中 SalaryDetectionTests 14 项。App／UI 的 iOS 26 模拟器 Debug、App 的 iOS 26 设备 Release／macOS 14 Debug 条件语法解析通过；实际 UITestSupport 去平台外壳后通过 Swift 6 严格并发类型检查，离线执行 4 个日历时点的 salary 夹具校验、确认前后资金及 fake 导入整理通过。工程引用、链接与 diff 检查通过。新增 5 项 UI 测试源码覆盖确认／撤销、拒绝后重启、待分类卡翻页及设置零请求／手动筛选、fake 点击整理／重启、欢迎偏好跨建账保留，尚未实跑。Apple SDK 类型检查、UI／视觉、VoiceOver、字号与手势设备验收待 Mac；原稿／Figma／截图／分发包未同步。未提交、未推送、未调用 DeepSeek 或任何付费 API。
+
+同日本机刷新回归小修验证：设置 `YUBAI_LIVE_EVAL=0` 后按要求运行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test`，退出 0，552 项、548 通过／4 原有实网跳过／0 失败，包含现有 nil transport 本机文案兜底测试。Linux 不编译 AppStore，本次不新增无法覆盖实际入口的 Core 测试；49 份既有 Core／UI 测试源码与本次修改前哈希一致。改动 runtime 通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析；UI 实跑与 Apple SDK 类型检查仍待 Mac。同步修正上表与产品票的行为记录；新增／改动可见中文字符串无，未提交／推送，未调用付费 API。
+
 ## 2026-10-28 · 最近用途短芯片 M6 修复
 
 来源为 owner 的 Mac 验证 M6 FAIL：两个长用途与「午饭」同排时，原同比压缩使短芯片只显示「午」。按本轮明确要求，`ChipRow.arrangement` 改用 `YubaiCore.ChipWidthAllocation` 纯函数：扣除 8pt 固定间距后，求共同宽度上限 cap，逐项取 `min(natural, cap)`；放得下时保留全部自然宽度。排序仅用于求 cap，返回宽度与排布顺序仍沿用原顺序，保持靠左、单行、长文本尾部省略，样式／点按／无障碍保持。

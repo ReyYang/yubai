@@ -33,7 +33,7 @@ struct FixedFlowsView: View {
                     }.foregroundStyle(YubaiColor.amberInk).accessibilityElement(children: .combine).accessibilityIdentifier("fixedFlowOverdue")
                 }
             }
-            if month.occurrences.isEmpty && stopped.isEmpty {
+            if month.occurrences.isEmpty && month.later.isEmpty && stopped.isEmpty {
                 Text("这个月还没有固定收付").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             }
             let expenses = month.occurrences.filter { !$0.inflow }
@@ -50,6 +50,7 @@ struct FixedFlowsView: View {
                     bills(income)
                 }
             }
+            if !month.later.isEmpty { laterBills(month.later) }
             if !stopped.isEmpty { stoppedBills(stopped) }
         }.amountPrivacy(ledger.preferences.hideAmounts).accessibilityIdentifier("fixedFlowsScroll").navigationTitle("固定收付").yubaiNavigation()
             .toolbar { ToolbarItem(placement: .primaryAction) {
@@ -59,6 +60,24 @@ struct FixedFlowsView: View {
     }
     private func overdueAmount(_ amount: Int64) -> some View {
         AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, ink: YubaiColor.amberInk)
+    }
+    private func laterBills(_ rows: [FixedFlowUpcoming]) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+            Text("以后").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.leading, YubaiSpace.insetCard)
+            CardRows(rows, rowHeight: 52) { row in
+                HStack(spacing: YubaiSpace.gapGroup) {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                        Text(row.title).yubaiFont(YubaiFont.rowTitle)
+                        Text(row.detail()).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none,
+                                ink: row.inflow ? YubaiColor.brandInk : YubaiColor.label).fixedSize(horizontal: true, vertical: false)
+                    Color.clear.frame(width: YubaiSize.rowIcon).accessibilityHidden(true)
+                }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: 52)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("fixedFlowLater_" + row.planID.uuidString)
+            }
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("fixedFlowLater")
     }
     private func stoppedBills(_ rows: [FixedFlowArrangement]) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {

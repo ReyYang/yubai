@@ -83,6 +83,9 @@ struct CloudModelMenu: View {
         #if DEBUG && targetEnvironment(simulator)
         if UITestSupport.script != nil { return }
         #endif
+        // Opening settings during setup or before organizing an import is local.
+        guard store.current.preferences.onboardingComplete, store.current.preferences.cloudAIEnabled,
+              PendingImportOrganization(in: store.current).batchIDs.isEmpty else { return }
         guard let client = DeepSeekClient.configured() else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
         do {
             let result = try await client.listModels()

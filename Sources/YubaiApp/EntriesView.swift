@@ -60,6 +60,11 @@ struct EntriesView: View {
             #endif
             .rootPageHeader { TabRootHeader(title: "账目") }
             .navigationTitle("账目").yubaiNavigation()
+            .onChange(of: store.entryFilterRequest, initial: true) { _, request in
+                guard request != nil else { return }
+                filter = .uncategorized; search = ""; showingSearch = false
+                month = Dates.calendar.dateInterval(of: .month, for: store.entryFilterDate ?? Date())!.start
+            }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
