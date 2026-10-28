@@ -124,6 +124,8 @@ enum AppSheet: Identifiable {
     var errorHosts: [UUID] = []
     var pickingInsightDates = false
     var organizingBatchID: UUID?
+    /// Current explicit organization run; no UI consumes this yet.
+    var organizationProgress: (completed: Int, total: Int)?
     var organizingPendingImports = false
     var hiddenSalaryKeys: Set<String> = []
     var entryFilterRequest: UUID?
@@ -182,6 +184,33 @@ enum AppSheet: Identifiable {
             }
             return true
         } catch { if reportError { self.error = error.localizedDescription }; return false }
+    }
+    /// Prepare the full import off the main actor, then publish one atomic update.
+    func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = [],
+                      account: Account? = nil, completingOnboarding: Bool = false) async throws -> ImportBatch? {
+        let before = current
+        let preparation = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            var next = before
+            if let account { next.accounts.append(account) }
+            let batch: ImportBatch?
+            if let preview, let data, !preview.selectedEntries.isEmpty {
+                batch = try BillImporter.commit(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &next)
+            } else { batch = nil }
+            if completingOnboarding { next.preferences.onboardingComplete = true }
+            try next.validate()
+            try Task.checkCancellation()
+            return (ledger: next, batch: batch)
+        }
+        let prepared = try await withTaskCancellationHandler {
+            try await preparation.value
+        } onCancel: { preparation.cancel() }
+        try Task.checkCancellation()
+        guard current == before, !locked else {
+            throw YubaiError.invalid("账本刚有变化，请重试这一步。")
+        }
+        guard update(completingOnboarding ? "建立账本" : "导入账单", { $0 = prepared.ledger }) else { return nil }
+        return prepared.batch
     }
     @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
         var skipped: [String] = []

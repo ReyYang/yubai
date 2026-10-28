@@ -1540,14 +1540,15 @@ struct WelcomeView: View {
             let anchorDate = balanceIsFromStatement && balance?.amount == cents ? (balance?.date ?? Date()) : Date()
             var account = Account(name: clean, kind: kind, balance: cents, at: anchorDate, reconciled: true)
             if let statement { account.id = statement.accountID }
-            store.update("建立账本") { ledger in
-                ledger.accounts.append(account)
-                // Deselecting every row leaves account-only onboarding; the
-                // existing importer intentionally does not create empty batches.
-                if let statement, !statement.preview.selectedEntries.isEmpty {
-                    _ = try BillImporter.commit(statement.preview, data: statement.data, to: &ledger)
-                }
-                ledger.preferences.onboardingComplete = true
+            let statement = statement
+            let preparedAccount = account
+            importTask = Task { @MainActor in
+                defer { importTask = nil }
+                do {
+                    _ = try await store.commitImport(statement?.preview, data: statement?.data,
+                                                     account: preparedAccount, completingOnboarding: true)
+                } catch is CancellationError { }
+                catch { store.error = error.localizedDescription }
             }
         } catch { store.error = error.localizedDescription }
     }

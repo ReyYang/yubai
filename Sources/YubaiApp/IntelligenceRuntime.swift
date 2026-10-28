@@ -47,10 +47,14 @@ import YubaiCore
 struct ActiveLedgerTransport: ChatTransport {
     let base: any ChatTransport
     var model: String? = nil
+    var staleMessage: String? = nil
     let isCurrent: @MainActor @Sendable () -> Bool
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         try Task.checkCancellation()
-        guard await isCurrent() else { throw CancellationError() }
+        guard await isCurrent() else {
+            if let staleMessage { throw YubaiError.invalid(staleMessage) }
+            throw CancellationError()
+        }
         let reply: ChatMessage
         do {
             reply = try await base.send(request)
@@ -59,22 +63,25 @@ struct ActiveLedgerTransport: ChatTransport {
             if let model { await IntelligenceRuntime.cloud.failed(error, model: model) }
             throw error
         }
-        guard await isCurrent() else { throw CancellationError() }
+        guard await isCurrent() else {
+            if let staleMessage { throw YubaiError.invalid(staleMessage) }
+            throw CancellationError()
+        }
         return reply
     }
 }
 
 @MainActor extension AppStore {
-    func assistantTransport(for snapshot: Ledger) -> (any ChatTransport)? {
+    func assistantTransport(for snapshot: Ledger, reportingLedgerChanges: Bool = false) -> (any ChatTransport)? {
         guard snapshot.preferences.cloudAIEnabled, !locked, IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
         #if DEBUG && targetEnvironment(simulator)
         if let script = UITestSupport.script {
             guard IntelligenceRuntime.isConfigured else { return nil }
-            return ActiveLedgerTransport(base: UITestTransport(script: script)) { self.current == snapshot && !self.locked }
+            return ActiveLedgerTransport(base: UITestTransport(script: script), staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) { self.current == snapshot && !self.locked }
         }
         #endif
         guard let client = DeepSeekClient.configured(redactor: Redactor(ledger: snapshot)) else { return nil }
-        return ActiveLedgerTransport(base: client, model: client.configuration.model) {
+        return ActiveLedgerTransport(base: client, model: client.configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
             self.current == snapshot && !self.locked && APIKeyStore.shared.configuration() == client.configuration
         }
     }
@@ -94,22 +101,39 @@ struct ActiveLedgerTransport: ChatTransport {
         guard organizingBatchID == nil, !locked,
               let batch = current.imports.first(where: { $0.id == batchID }), batch.needsOrganization == true,
               batch.undoneAt == nil, current.preferences.cloudAIEnabled,
-              let transport = assistantTransport(for: current) else { return }
+              assistantTransport(for: current) != nil else { return }
         let before = current
+        let ids = ImportOrganizer.pendingEntryIDs(in: before, batchID: batchID)
         organizingBatchID = batchID; organizationErrors[batchID] = nil
-        defer { organizingBatchID = nil }
+        organizationProgress = (completed: 0, total: ids.count)
+        defer { organizingBatchID = nil; organizationProgress = nil }
         do {
-            let ids = before.activeEntries.filter { $0.batchID == batchID && !$0.userEdited }.map(\.id)
-            let result = try await ImportOrganizer(transport: transport).organize(ledger: before, entryIDs: ids)
-            try Task.checkCancellation()
-            guard current == before, !locked else {
-                organizationErrors[batchID] = "账本已更新，本次整理未写入。可以点「现在整理」再试。"; return
+            let organizer = ImportOrganizer { snapshot in
+                try await MainActor.run {
+                    guard self.current == snapshot, !self.locked,
+                          let transport = self.assistantTransport(for: snapshot, reportingLedgerChanges: true) else {
+                        throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
+                    }
+                    return transport
+                }
             }
-            if apply(result.changeSet, label: "导入整理", finishing: { ledger in
-                result.finish(batchID: batchID, before: before, in: &ledger)
-            }), !result.skipped.isEmpty { toast = "整理完成；" + result.skipped.joined(separator: "；") }
+            _ = try await organizer.organize(ledger: before, entryIDs: ids) { result, completedIDs, snapshot in
+                try Task.checkCancellation()
+                return try await MainActor.run {
+                    guard self.current == snapshot, !self.locked else {
+                        throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
+                    }
+                    guard self.apply(result.changeSet, label: "导入整理", silently: true, finishing: { ledger in
+                        result.finish(batchID: batchID, before: snapshot, in: &ledger, entryIDs: completedIDs)
+                    }) else { throw YubaiError.invalid(self.error ?? ImportOrganizer.ledgerChangedMessage) }
+                    self.organizationProgress = (completed: (self.organizationProgress?.completed ?? 0) + completedIDs.count, total: ids.count)
+                    return self.current
+                }
+            }
+            let skipped = current.imports.first { $0.id == batchID }?.organization?.skipped ?? []
+            toast = skipped.isEmpty ? "导入整理完成" : "整理完成；" + skipped.joined(separator: "；")
         } catch is CancellationError { }
-        catch { organizationErrors[batchID] = "记录已保存，整理暂未完成。联网后可再试。" }
+        catch { organizationErrors[batchID] = ImportOrganizer.failureMessage(error) }
     }
     func answerImportQuestion(_ question: ImportQuestion, batchID: UUID, option: Int) {
         guard let change = question.answer(option, in: current) else { return }

@@ -735,12 +735,16 @@ struct ImportView: View {
     private func commit() {
         guard !busy, accountID != nil, let preview, let data, !preview.selectedEntries.isEmpty,
               !preview.rows.contains(where: { $0.included && needsDecision($0) }), !screenshot || screenshotConfirmed else { return }
-        var batch: ImportBatch?
-        if store.update("导入账单", { ledger in
-            batch = try BillImporter.commit(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &ledger)
-        }) {
-            result = batch; self.preview = nil; finishFile()
-            if let batch { Task { await store.organizeImport(batch.id) } }
+        let categories = confirmedNewCategories
+        busy = true
+        parsingTask = Task { @MainActor in
+            defer { busy = false }
+            do {
+                guard let batch = try await store.commitImport(preview, data: data, confirmedNewCategories: categories) else { return }
+                result = batch; self.preview = nil; parsingTask = nil; finishFile()
+                Task { await store.organizeImport(batch.id) }
+            } catch is CancellationError { }
+            catch { localError = error.localizedDescription }
         }
     }
     /// OCR stays on device. Only decimal money candidates become selectable rows;

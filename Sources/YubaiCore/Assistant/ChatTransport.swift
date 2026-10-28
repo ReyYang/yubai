@@ -53,12 +53,13 @@ public struct ChatRequest: Sendable {
     /// Local log metadata only; never encoded into the HTTP payload.
     public var groupID: UUID?
     public var groupTitle: String?
+    public var timeout: TimeInterval?
     public init(messages: [ChatMessage], tools: [ChatToolDefinition] = [], temperature: Double = 0.2,
                 maxTokens: Int = 4096, thinking: Bool? = nil, purpose: String = "财务管家", responseFormat: JSONValue? = nil,
-                groupID: UUID? = nil, groupTitle: String? = nil) {
+                groupID: UUID? = nil, groupTitle: String? = nil, timeout: TimeInterval? = nil) {
         self.messages = messages; self.tools = tools; self.temperature = temperature
         self.maxTokens = maxTokens; self.thinking = thinking; self.purpose = purpose; self.responseFormat = responseFormat
-        self.groupID = groupID; self.groupTitle = groupTitle
+        self.groupID = groupID; self.groupTitle = groupTitle; self.timeout = timeout
     }
 }
 

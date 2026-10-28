@@ -372,6 +372,9 @@ public struct ImportBatch: Codable, Identifiable, Equatable, Sendable {
     public var importedCount: Int; public var duplicateCount: Int; public var skippedCount: Int
     public var attachmentID: UUID?; public var undoneAt: Date?
     public var needsOrganization: Bool?
+    /// Successful request coverage, including rows intentionally left uncertain.
+    /// Missing in older ledgers; classification alone is not a completion marker.
+    public var organizedEntryIDs: Set<UUID>?
     public var organization: ImportOrganization?
     public var undo: ImportUndo?
     public init(filename: String, importedCount: Int, duplicateCount: Int, skippedCount: Int) { self.filename = filename; self.importedCount = importedCount; self.duplicateCount = duplicateCount; self.skippedCount = skippedCount }

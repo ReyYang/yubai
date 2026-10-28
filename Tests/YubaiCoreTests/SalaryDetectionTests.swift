@@ -25,6 +25,31 @@ final class SalaryDetectionTests: XCTestCase {
         XCTAssertNotNil(SalaryDetection.candidate(in: ledger(amounts: [720_000, 800_000, 880_000]), now: now))
         XCTAssertNil(SalaryDetection.candidate(in: ledger(amounts: [719_999, 800_000, 880_000]), now: now))
     }
+    func testTwelveSalariesIgnoreFourIrregularSmallRemittances() throws {
+        let dates = ["2025-11-15", "2025-12-15", "2026-01-15", "2026-02-13", "2026-03-13", "2026-04-15", "2026-05-15", "2026-06-15", "2026-07-15", "2026-08-14", "2026-09-15", "2026-10-15"]
+        let amounts: [Int64] = (0..<12).map { 1_600_000 + Int64($0) * 5000 }
+        var ledger = ledger(amounts: amounts, dates: dates)
+        let salaryIDs = ledger.entries.map(\.id)
+        ledger.entries += zip(["2026-04-23", "2026-07-22", "2026-09-15", "2026-10-20"], [150_000, 123_000, 47_800, 60_000] as [Int64]).map {
+            Entry(date: date($0), amount: $1, nature: .income, accountID: ledger.accounts[0].id, title: "合成公司")
+        }
+        let candidate = try XCTUnwrap(SalaryDetection.candidate(in: ledger, now: now))
+        XCTAssertEqual(candidate.entryIDs, salaryIDs)
+        XCTAssertEqual(candidate.dayOfMonth, 15)
+        XCTAssertEqual(candidate.amount, amounts.last)
+        for i in 0..<12 { ledger.entries[i].amount = [1_280_000, 1_600_000, 1_920_000][i % 3] }
+        XCTAssertNil(SalaryDetection.candidate(in: ledger, now: now))
+    }
+    func testStableRunMayStartAfterAnEarlyAmountOutlierButMustCoverMostMonths() throws {
+        let dates = (1...10).map { String(format: "2026-%02d-15", $0) }
+        var ledger = ledger(amounts: [1_400_000] + Array(repeating: 1_750_000, count: 9), dates: dates)
+        let candidate = try XCTUnwrap(SalaryDetection.candidate(in: ledger, now: now))
+        XCTAssertEqual(candidate.entryIDs, ledger.entries.dropFirst().map(\.id))
+        // A couple of similar months cannot rescue a volatile payment history.
+        ledger.entries[2].amount = 2_200_000
+        ledger.entries[5].amount = 1_200_000
+        XCTAssertNil(SalaryDetection.candidate(in: ledger, now: now))
+    }
     func testOnePaymentDoesNotQualify() {
         XCTAssertNil(SalaryDetection.candidate(in: ledger(amounts: [800_000], dates: ["2026-10-10"]), now: now))
     }
