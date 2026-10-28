@@ -2,6 +2,18 @@ import Foundation
 
 /// Schema 1/2 legacy names and schema 3 split categories migrate together once.
 public enum CategoryMigration {
+    /// Default vocabulary is additive data; apply on every load without reviving removed small items.
+    public static func upgradeKeywords(to ledger: inout Ledger) {
+        for i in ledger.categories.indices where !ledger.categories[i].system {
+            guard let defaults = Category.defaults.first(where: { !$0.system && $0.name == ledger.categories[i].name }) else { continue }
+            for word in defaults.keywords where !ledger.categories[i].keywords.contains(word) { ledger.categories[i].keywords.append(word) }
+            for sub in ledger.categories[i].subcategories {
+                for word in defaults.subcategoryKeywords[sub] ?? [] where !(ledger.categories[i].subcategoryKeywords[sub] ?? []).contains(word) {
+                    ledger.categories[i].subcategoryKeywords[sub, default: []].append(word)
+                }
+            }
+        }
+    }
     public static func canonical(_ name: String) -> (category: String, subcategory: String?) {
         switch name {
         case "日用购物", "日用": return ("购物", "日用百货")

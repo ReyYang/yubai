@@ -35,6 +35,39 @@ final class CategoryModelTests: XCTestCase {
         let previous = ["工资", "薪水", "薪资", "奖金", "年终奖", "兼职", "稿费", "早饭", "早餐", "午饭", "午餐", "晚饭", "晚餐", "吃饭", "外卖", "咖啡", "奶茶", "餐厅", "打车", "出租车", "滴滴", "地铁", "公交", "车票", "加油", "日用", "纸巾", "洗衣", "洗发", "超市", "罗森", "买衣", "衣服", "买鞋", "购物", "淘宝", "京东", "电影", "游戏", "演唱会", "娱乐", "饿了么", "美团外卖", "饮品", "零食", "水果", "聚餐", "停车", "火车", "机票", "高铁", "共享单车", "洗衣液", "鞋包", "登山杖", "登山鞋", "帐篷", "房租", "水费", "电费", "燃气", "会员", "订阅"]
         XCTAssertTrue(Set(previous).isSubset(of: words), "丢失：\(Set(previous).subtracting(words))")
     }
+    func testKeywordUpgradeOnSchema4LoadIsAdditiveAndIdempotent() throws {
+        var ledger = seed()
+        ledger.categories = [Category("餐饮", subcategories: ["咖啡饮品", "自定小项"], keywords: ["自定主词", "餐厅"],
+            subcategoryKeywords: ["咖啡饮品": ["自定饮品", "咖啡"], "自定小项": ["自定小词"]]),
+            Category("购物", subcategories: ["服饰鞋包"], keywords: ["自定购物"]),
+            Category("自定义", keywords: ["私人词"]), Category("交通", keywords: ["系统词"], system: true)]
+        let upgraded = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        XCTAssertEqual(upgraded.schema, 4); XCTAssertEqual(upgraded.categories.map(\.name), ledger.categories.map(\.name))
+        let dining = upgraded.categories[0], defaults = Category.defaults.first { $0.name == "餐饮" }!
+        XCTAssertEqual(dining.keywords, ["自定主词", "餐厅"] + defaults.keywords.filter { !["自定主词", "餐厅"].contains($0) })
+        XCTAssertEqual(dining.subcategoryKeywords["咖啡饮品"], ["自定饮品", "咖啡"] + defaults.subcategoryKeywords["咖啡饮品"]!.filter { !["自定饮品", "咖啡"].contains($0) })
+        XCTAssertEqual(dining.subcategories, ["咖啡饮品", "自定小项"]); XCTAssertEqual(dining.subcategoryKeywords["自定小项"], ["自定小词"])
+        XCTAssertNil(upgraded.categories[1].subcategoryKeywords["日用百货"])
+        XCTAssertEqual(Array(upgraded.categories.suffix(2)), Array(ledger.categories.suffix(2)))
+        var again = upgraded; CategoryMigration.upgradeKeywords(to: &again); XCTAssertEqual(again, upgraded)
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(upgraded)), upgraded)
+        XCTAssertEqual(CategoryGuesser.guess("COFFEE", nature: .expense, in: upgraded), .init(category: "餐饮", subcategory: "咖啡饮品"))
+    }
+    func testGenericVocabularyAndLongestEvidence() {
+        let ledger = seed()
+        for word in ["烧烤", "小吃", "面馆", "麻辣烫", "饭店", "餐饮", "烧麦", "火锅", "快餐"] {
+            XCTAssertEqual(CategoryGuesser.guess(word, nature: .expense, in: ledger)?.category, "餐饮", word)
+        }
+        for (words, category, sub) in [(["coffee", "CAFE", "茶饮"], "餐饮", "咖啡饮品"),
+            (["便利店", "超市", "商店", "百货", "菜市场", "生鲜"], "购物", "日用百货"),
+            (["高速", "加油站", "停车场", "etc"], "交通", "加油停车"),
+            (["地铁", "公交"], "交通", "公共交通"), (["药房"], "医疗健康", "药品"), (["诊所"], "医疗健康", "看病")] {
+            for word in words { XCTAssertEqual(CategoryGuesser.guess(word, nature: .expense, in: ledger), .init(category: category, subcategory: sub), word) }
+        }
+        XCTAssertNil(CategoryGuesser.guess("蚂蚁（杭州）基金销售有限公司", nature: .expense, in: ledger))
+        XCTAssertEqual(CategoryGuesser.guess("便利店 COFFEE", nature: .expense, in: ledger), .init(category: "餐饮", subcategory: "咖啡饮品"))
+        XCTAssertEqual(CategoryGuesser.guess("电影会员", nature: .expense, in: ledger), .init(category: "会员订阅", subcategory: "影音会员"))
+    }
     func testSchema3MigrationEverySplitAndOtherAndIdempotence() throws {
         var ledger = seed()
         let cases: [(String, String?, String, String?)] = [
@@ -136,7 +169,8 @@ final class CategoryModelTests: XCTestCase {
             XCTAssertEqual(CategoryGuesser.guess(text, nature: .expense, in: ledger), .init(category: main, subcategory: sub), text)
         }
         XCTAssertEqual(CategoryGuesser.guess("京东淘宝", nature: .expense, in: ledger), .init(category: "购物"))
-        XCTAssertNil(CategoryGuesser.guess("未知商店", nature: .expense, in: ledger))
+        XCTAssertEqual(CategoryGuesser.guess("未知商店", nature: .expense, in: ledger), .init(category: "购物", subcategory: "日用百货"))
+        XCTAssertNil(CategoryGuesser.guess("未知商户", nature: .expense, in: ledger))
         XCTAssertEqual(CategoryGuesser.guess("工资", nature: .income, in: ledger)?.subcategory, "工资")
     }
     func testMemoryWinsOverKeywordsAndPurposeMerchantTitleUseOneKey() throws {
