@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 记一笔 sheet 还原
+
+来源为 owner 本轮提供的「记一笔 · 数字键盘」设计事实与真机问题说明。`QuickEntryView.swift` 在 iOS 的 `.presentationDetents` 旁显式设置 canvas 呈现背景；底部键盘与「记下，再记一笔」在全宽 frame 后铺 canvas，延伸到底部安全区。现有上下内边距 `YubaiSpace.gapGroup` 已为 12，保持不变；全局 PaperBackground 与其他 sheet 源码保持。
+
+`DesignSystem.swift` 的 SuggestionChips 占满可用宽度并左对齐，SuggestionChip 的文字限制单行并尾部省略；ChipFlow 保留 `min(width, ideal.width)` 测量约束，列间距仍为 8。已核对全部调用：消费观「愿意多花的」在 [V15 修复记录](../docs/V15-SIMULATOR-FIXES.md)中明确采用 8pt 横纵间距，因此新增默认 8 的 `rowSpacing` 参数，仅 SuggestionChips 指定 `YubaiSpace.gapGroup`（12）；其余调用保持原行距。
+
+静态核对确认 token 数值、背景修饰符顺序、宽度约束及全部 Swift 字符串字面量不变，`git diff --check` 通过。当前环境无 swiftc／Apple SDK，未构建或执行 UI 测试；iOS 26 真机底色、滚动遮挡、长文本省略与大字号效果待验证。原稿／Figma／分发资源未同步；新增／改动可见中文无，未提交／推送。
+
 ## 2026-10-27 · PR #45 欢迎页 Mac 验证修复
 
 按 owner 反馈，`WelcomeView.readStatement` 余额回填改用新增的 `Money.editableText`：用整数分生成固定两位、无千分位的可编辑字符串，负五分为 `-0.05`。`Money.input`、余额来源标记与开始时的金额／日期判断保持；`Money.parse` 可还原原分值。流水行高度的 UI 断言保留，增加 `0.01pt` 容差。

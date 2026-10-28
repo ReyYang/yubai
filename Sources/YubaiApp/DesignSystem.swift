@@ -1546,7 +1546,7 @@ struct SuggestionChips: View {
     var identifierPrefix = "suggestion_"
     let choose: (String) -> Void
     var body: some View {
-        ChipFlow { chips }
+        ChipFlow(rowSpacing: YubaiSpace.gapGroup) { chips }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var chips: some View {
         ForEach(values, id: \.self) { value in
@@ -1562,7 +1562,7 @@ struct SuggestionChip: View {
     let choose: () -> Void
     var body: some View {
         Button(action: choose) {
-            Text(value).yubaiFont(YubaiFont.caption)
+            Text(value).yubaiFont(YubaiFont.caption).lineLimit(1).truncationMode(.tail)
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
                 .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
@@ -1572,6 +1572,7 @@ struct SuggestionChip: View {
 }
 
 struct ChipFlow: Layout {
+    var rowSpacing: CGFloat = YubaiSpace.space8
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         arrangement(width: proposal.width ?? .infinity, subviews: subviews).size
     }
@@ -1589,7 +1590,7 @@ struct ChipFlow: Layout {
         for subview in subviews {
             let ideal = subview.sizeThatFits(.unspecified)
             let size = subview.sizeThatFits(ProposedViewSize(width: min(width, ideal.width), height: nil))
-            if x > 0 && x + size.width > width { x = 0; y += rowHeight + YubaiSpace.space8; rowHeight = 0 }
+            if x > 0 && x + size.width > width { x = 0; y += rowHeight + rowSpacing; rowHeight = 0 }
             frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
             usedWidth = max(usedWidth, x + size.width); rowHeight = max(rowHeight, size.height)
             x += size.width + YubaiSpace.space8

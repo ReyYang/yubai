@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-10-28 记一笔 sheet 还原**：按 owner 提供的「记一笔 · 数字键盘」设计事实修复 sheet 与底部键盘 canvas 底色；建议芯片左对齐、单行尾部省略，列间距 8／行间距 12，其余 ChipFlow 保持原 8pt 行距。[源码与验证边界](DESIGN.md#2026-10-28--记一笔-sheet-还原)。静态核对与 diff 检查通过；当前环境无 swiftc／Apple SDK，编译与真机视觉待验证，原稿／Figma／分发资源未同步。新增／改动可见中文无，未提交／推送。
+
 **2026-10-27 第十九轮「始终留着」UI**：按 owner 本轮提供的已批准文字规格，Hero 的还能花在达到目标时分为实色目标与 0.55 透明度余量；现在页图例下增加 44pt 目标／状态行，沿用 `TabNavigationLink(.profile)` 打开我的消费观，计算页公式卡片下复用只读行。隐藏金额用「••••／还差一点」，差额显示正数及两位小数；不加说明句。[采用与源码映射](DESIGN.md#2026-10-27--第十九轮始终留着)、[owner 决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-27--第十九轮始终留着owner-批准-ui)。本轮验证结果见设计登记；Apple 类型检查、单屏视觉与 UI 实跑待 Mac，未提供独立第十九轮原稿，Figma／截图／分发包未同步，未提交。
 
 **2026-10-27 始终留着改为目标**：owner 明确它是消费观中希望留住的金额；Core 的还能花／预测不再扣减，新增 `floorRoom`，购买低于目标最多「等等再说」，真实缺口仍「先别买」。App 仅修首页预留合计与删除计算页扣减行，首页目标新行等设计稿。[规则与文案](../docs/DEVELOPMENT.md#始终留着是目标2026-10-27)、[采用决定](../.scratch/yubai-product/issues/13-complete-personal-release.md#2026-10-27--始终留着改为目标owner-明确决定)。19 项 Swift 语法解析、夹具 JSON 与新增链接检查通过；`swift test` 因依赖未缓存且代理／DNS 不可用而停在下载，未运行单测。Apple 编译／UI 待 Mac；原稿／Figma／分发包未同步，未提交。
