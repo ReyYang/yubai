@@ -1,5 +1,29 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 最近用途短芯片 M6 修复
+
+来源为 owner 的 Mac 验证 M6 FAIL：两个长用途与「午饭」同排时，原同比压缩使短芯片只显示「午」。按本轮明确要求，`ChipRow.arrangement` 改用 `YubaiCore.ChipWidthAllocation` 纯函数：扣除 8pt 固定间距后，求共同宽度上限 cap，逐项取 `min(natural, cap)`；放得下时保留全部自然宽度。排序仅用于求 cap，返回宽度与排布顺序仍沿用原顺序，保持靠左、单行、长文本尾部省略，样式／点按／无障碍保持。
+
+新增 `ChipWidthAllocationTests` 六项 Core 测试，覆盖 M6 长长短的三种顺序、放得下／刚好／无约束、多个短项、全长项、分数宽度、空行／单项／空间耗尽；仅将新测试登记进 Xcode 测试 target，保留原有测试引用。
+
+验证：指定 PATH 后执行 `swift test`，退出 0，544 项、540 通过／4 项原有实网 opt-in 跳过／0 失败，新增六项全部通过；进程显式设 `YUBAI_LIVE_EVAL=0`，未调用付费 API。改动 App 文件通过 iOS 26 设备 Release／模拟器 Debug、macOS 14 Debug 条件语法解析；纯函数通过 Swift 6 严格并发类型检查，App 字符串字面量不变，`git diff --check` 通过。当前为 Linux，无 Apple SDK，iOS 26 真编译、Mac 验证 M6 视觉复验与大字号仍待 Mac。原稿／Figma／分发资源未同步；新增／改动可见中文字符串：无，未提交／推送。
+
+## 2026-10-28 · 最近用途固定单行
+
+本节保留首版记录；同比压缩已由上方 M6 修复的水位线分配取代。
+
+采用 owner 本轮已确认规格：`DesignSystem.swift` 新增 `ChipRow`，用未约束测量取得自然宽度，扣除固定 8pt 列间距后同比压缩，单行左排、高度取最高子视图；`SuggestionChips.singleLine` 默认关闭，仅 `EntryFormComponents.swift` 的 `RecentPurposeChips` 开启。最多三个、用途行下的位置、上下 8pt、单行尾省略、样式、选中态、填值行为、无障碍标识与标签、最小点按高度均保持。
+
+静态核对与 `git diff --check` 通过，未编译；环境无 Apple SDK，iOS 26 真机长文本／大字号与点按区域待验证。原稿／Figma／分发资源未同步；新增／改动可见中文无，未提交／推送。
+
+## 2026-10-28 · 记一笔 sheet 还原
+
+来源为 owner 本轮提供的「记一笔 · 数字键盘」设计事实与真机问题说明。`QuickEntryView.swift` 在 iOS 的 `.presentationDetents` 旁显式设置 canvas 呈现背景；底部键盘与「记下，再记一笔」在全宽 frame 后铺 canvas，延伸到底部安全区。现有上下内边距 `YubaiSpace.gapGroup` 已为 12，保持不变；全局 PaperBackground 与其他 sheet 源码保持。
+
+`DesignSystem.swift` 的 SuggestionChips 占满可用宽度并左对齐，SuggestionChip 的文字限制单行并尾部省略；ChipFlow 保留 `min(width, ideal.width)` 测量约束，列间距仍为 8。已核对全部调用：消费观「愿意多花的」在 [V15 修复记录](../docs/V15-SIMULATOR-FIXES.md)中明确采用 8pt 横纵间距，因此新增默认 8 的 `rowSpacing` 参数，仅 SuggestionChips 指定 `YubaiSpace.gapGroup`（12）；其余调用保持原行距。
+
+静态核对确认 token 数值、背景修饰符顺序、宽度约束及全部 Swift 字符串字面量不变，`git diff --check` 通过。当前环境无 swiftc／Apple SDK，未构建或执行 UI 测试；iOS 26 真机底色、滚动遮挡、长文本省略与大字号效果待验证。原稿／Figma／分发资源未同步；新增／改动可见中文无，未提交／推送。
+
 ## 2026-10-27 · PR #45 欢迎页 Mac 验证修复
 
 按 owner 反馈，`WelcomeView.readStatement` 余额回填改用新增的 `Money.editableText`：用整数分生成固定两位、无千分位的可编辑字符串，负五分为 `-0.05`。`Money.input`、余额来源标记与开始时的金额／日期判断保持；`Money.parse` 可还原原分值。流水行高度的 UI 断言保留，增加 `0.01pt` 容差。
