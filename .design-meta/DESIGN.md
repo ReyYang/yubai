@@ -1,5 +1,11 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-27 · PR #45 欢迎页 Mac 验证修复
+
+按 owner 反馈，`WelcomeView.readStatement` 余额回填改用新增的 `Money.editableText`：用整数分生成固定两位、无千分位的可编辑字符串，负五分为 `-0.05`。`Money.input`、余额来源标记与开始时的金额／日期判断保持；`Money.parse` 可还原原分值。流水行高度的 UI 断言保留，增加 `0.01pt` 容差。
+
+验证：`YUBAI_LIVE_EVAL=0 swift test --disable-automatic-resolution --filter FinanceTests` 31 项通过，新增一项覆盖正数、负数、整额、零与正负金额上限共 9 组格式及解析往返；改动 App 文件通过 macOS 14／iOS 26 模拟器 Debug 条件语法解析，UI 测试文件通过 iOS 26 模拟器 Debug 条件语法解析，diff 检查通过。Apple 编译与 UI 实跑待 Mac；原稿／Figma／分发包未同步。新增／改动可见中文字符串无，仅金额数字格式变化；未提交、未推送、未调用付费 API。
+
 ## 2026-10-27 · 第十九轮「始终留着」
 
 来源为 owner 本轮提供的已批准第十九轮逐项文字规格；本轮未附独立 HTML／图片或私有原稿链接。此节接续下方同日 Core 记录，首页目标行不再等待设计。

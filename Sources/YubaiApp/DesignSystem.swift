@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import UniformTypeIdentifiers
 import YubaiCore
 #if os(macOS)
 import AppKit
@@ -1331,7 +1332,21 @@ struct WelcomeView: View {
     @State private var name = "微信零钱"
     @State private var amount = ""
     @State private var customName = false
+    @State private var statement: WelcomeStatement?
+    @State private var balanceIsFromStatement = false
+    @State private var filePicker = false
+    @State private var reviewStatement = false
+    @State private var importProgress = 0.0
+    @State private var importRequest = UUID()
+    @State private var importTask: Task<Void, Never>?
     @FocusState private var focusedField: Field?
+    private var isBank: Bool { customName || !["微信零钱", "支付宝"].contains(name) }
+    private var amountInput: Binding<String> {
+        Binding(get: { amount }, set: { value in
+            if value != amount { balanceIsFromStatement = false }
+            amount = value
+        })
+    }
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -1344,21 +1359,37 @@ struct WelcomeView: View {
                             Text("现在手里有").yubaiFont(YubaiFont.heroLabel)
                             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                                 Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-                                TextField("0.00", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay)
+                                TextField("0.00", text: amountInput).numericInput().yubaiFont(YubaiFont.amountDisplay)
                                     .focused($focusedField, equals: .balance)
                                     .accessibilityLabel("现在手里的余额，元").accessibilityIdentifier("accountBalance")
                             }
+                            if let statement {
+                                if let balance = statement.preview.latestBalance {
+                                    Text("流水 \(ImportStatementText.balanceDate(balance.date)) 的余额")
+                                        .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                                        .accessibilityIdentifier("welcomeStatementBalance")
+                                } else {
+                                    HStack(spacing: YubaiSpace.space8) {
+                                        Circle().fill(YubaiColor.amberDot).frame(width: YubaiSpace.space4, height: YubaiSpace.space4).accessibilityHidden(true)
+                                        Text("这份流水没有余额").yubaiFont(YubaiFont.caption)
+                                    }.foregroundStyle(YubaiColor.amberInk).accessibilityIdentifier("welcomeStatementNoBalance")
+                                }
+                            }
                             ChipFlow {
                                 ForEach(["微信零钱", "支付宝", "招行储蓄卡"], id: \.self) { value in
-                                    SuggestionChip(value: value, selected: !customName && name == value) { name = value; customName = false }
+                                    SuggestionChip(value: value, selected: !customName && name == value) { chooseAccount(value, custom: false) }
                                 }
-                                SuggestionChip(value: "＋ 别的", selected: customName) { name = ""; customName = true; focusedField = .name }
+                                SuggestionChip(value: "＋ 别的", selected: customName) { chooseAccount("", custom: true); focusedField = .name }
                                     .accessibilityIdentifier("welcomeOtherAccount")
                             }.padding(.top, YubaiSpace.space8)
                             if customName {
                                 TextField("名称", text: $name).accessibilityIdentifier("accountName")
                                     .focused($focusedField, equals: .name)
                                     .accessibilityLabel("账户名称")
+                            }
+                            if isBank {
+                                Rectangle().fill(YubaiColor.separator).frame(height: 1)
+                                statementRow
                             }
                         }
                     }.padding(.top, YubaiSpace.gapSection).id("welcomeBalanceCard")
@@ -1377,11 +1408,105 @@ struct WelcomeView: View {
                 }
                 .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
                     Button("开始", action: start).buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.brandTint))
-                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
+                        .disabled(importTask != nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
                         .accessibilityIdentifier("startLedger")
                         .padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
                 }
         }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
+            .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: false) { selection in
+                switch selection {
+                case .success(let urls): if let url = urls.first { readStatement(url) }
+                case .failure(let error): store.error = error.localizedDescription
+                }
+            }
+            .sheet(isPresented: $reviewStatement) {
+                if let statement {
+                    NavigationStack {
+                        ImportView(welcomeReview: Binding(get: { self.statement?.preview ?? statement.preview }, set: { self.statement?.preview = $0 }))
+                    }.environment(store).appErrors()
+                }
+            }
+            .onDisappear { importTask?.cancel() }
+    }
+    private var statementRow: some View {
+        Button {
+            focusedField = nil
+            if statement != nil { reviewStatement = true }
+            else { chooseStatement() }
+        } label: {
+            HStack(spacing: YubaiSpace.gapGroup) {
+                Image(systemName: statement == nil ? "doc.badge.plus" : "checkmark").foregroundStyle(YubaiColor.brandInk)
+                    .accessibilityHidden(true)
+                if let statement {
+                    let entries = statement.preview.selectedEntries
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                        Text("已导入 \(entries.count) 笔").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
+                        if !entries.isEmpty { Text(ImportStatementText.range(entries.map(\.date))).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                    }
+                } else if importTask != nil {
+                    Text("读取中").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                } else {
+                    Text("导入这张卡的流水").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.brandInk)
+                }
+                Spacer(minLength: YubaiSpace.space8)
+                if importTask != nil { ImportReadingProgress(value: importProgress) }
+                else { Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
+            }.frame(minHeight: YubaiSize.rowSingle + YubaiSpace.space4).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).disabled(importTask != nil)
+            .accessibilityHint(statement == nil ? "选择账单文件，在本机读取这张银行卡的流水和余额" : "核对已读取的流水，可取消选择不导入的记录")
+            .accessibilityIdentifier("welcomeImportStatement")
+    }
+    private func chooseAccount(_ value: String, custom: Bool) {
+        guard name != value || customName != custom else { return }
+        invalidateStatement()
+        name = value; customName = custom
+    }
+    private func invalidateStatement() {
+        if statement != nil { amount = "" }
+        statement = nil; balanceIsFromStatement = false; reviewStatement = false
+        importRequest = UUID(); importTask?.cancel(); importTask = nil
+        filePicker = false
+    }
+    private func chooseStatement() {
+        #if DEBUG && targetEnvironment(simulator)
+        if let url = UITestSupport.welcomeStatementURL { readStatement(url); return }
+        #endif
+        filePicker = true
+    }
+    private func readStatement(_ url: URL) {
+        guard isBank else { return }
+        importTask?.cancel()
+        let request = UUID(); importRequest = request; importProgress = 0
+        let account = Account(name: name, kind: .bank)
+        var temporary = store.current; temporary.accounts.append(account)
+        let ledger = temporary
+        importTask = Task { @MainActor in
+            defer { if importRequest == request { importTask = nil } }
+            do {
+                importProgress = 1
+                let bytes = try await Task.detached(priority: .userInitiated) {
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个文件请小于 50 MB。") }
+                    return try Data(contentsOf: url)
+                }.value
+                guard !Task.isCancelled, importRequest == request else { return }
+                importProgress = 2
+                // Deliberately use only the local parser; no column-mapping AI.
+                let parsed = try await Task.detached(priority: .userInitiated) {
+                    try BillImporter.preview(data: bytes, filename: url.lastPathComponent, accountID: account.id, ledger: ledger)
+                }.value
+                guard !Task.isCancelled, importRequest == request else { return }
+                statement = WelcomeStatement(accountID: account.id, data: bytes, preview: parsed)
+                amount = parsed.latestBalance.map { Money.editableText($0.amount) } ?? ""
+                balanceIsFromStatement = parsed.latestBalance != nil
+                importProgress = 3
+                focusedField = parsed.latestBalance == nil ? .balance : nil
+            } catch {
+                guard !Task.isCancelled, importRequest == request else { return }
+                store.error = error.localizedDescription
+            }
+        }
     }
     private func revealBalanceCard(using proxy: ScrollViewProxy) {
         guard focusedField != nil else { return }
@@ -1390,15 +1515,24 @@ struct WelcomeView: View {
         }
     }
     private func start() {
+        guard importTask == nil else { return }
         do {
             let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !clean.isEmpty else { throw YubaiError.invalid("请给账户起一个名称。") }
             guard !store.current.accounts.contains(where: { $0.name == clean }) else { throw YubaiError.invalid("已有同名账户，请使用容易区分的名称。") }
             let cents = try Money.parse(amount, allowNegative: true)
-            let kind: AccountKind = ["微信零钱", "支付宝"].contains(clean) ? .cash : .bank
-            let account = Account(name: clean, kind: kind, balance: cents, at: Date(), reconciled: true)
+            let kind: AccountKind = isBank ? .bank : .cash
+            let balance = statement?.preview.latestBalance
+            let anchorDate = balanceIsFromStatement && balance?.amount == cents ? (balance?.date ?? Date()) : Date()
+            var account = Account(name: clean, kind: kind, balance: cents, at: anchorDate, reconciled: true)
+            if let statement { account.id = statement.accountID }
             store.update("建立账本") { ledger in
                 ledger.accounts.append(account)
+                // Deselecting every row leaves account-only onboarding; the
+                // existing importer intentionally does not create empty batches.
+                if let statement, !statement.preview.selectedEntries.isEmpty {
+                    _ = try BillImporter.commit(statement.preview, data: statement.data, to: &ledger)
+                }
                 ledger.preferences.onboardingComplete = true
             }
         } catch { store.error = error.localizedDescription }

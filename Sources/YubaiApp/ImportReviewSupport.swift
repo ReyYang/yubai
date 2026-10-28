@@ -1,5 +1,21 @@
 import Foundation
+import SwiftUI
 import YubaiCore
+
+struct WelcomeStatement: Sendable {
+    let accountID: UUID
+    let data: Data
+    var preview: ImportPreview
+}
+
+/// Shared with the import queue, including its three local reading stages.
+struct ImportReadingProgress: View {
+    let value: Double
+    var body: some View {
+        ProgressView(value: value, total: 3).tint(YubaiColor.brand)
+            .frame(width: YubaiSize.buttonHeight).accessibilityLabel("读取进度")
+    }
+}
 
 /// Shared wording for file review and pasted-table cards.
 enum ImportStatementText {
@@ -21,5 +37,8 @@ enum ImportStatementText {
     static func time(_ date: Date) -> String {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.timeZone = Dates.calendar.timeZone; formatter.dateFormat = "HH:mm"
         return formatter.string(from: date)
+    }
+    static func balanceDate(_ date: Date) -> String {
+        range([date]) + " " + time(date)
     }
 }

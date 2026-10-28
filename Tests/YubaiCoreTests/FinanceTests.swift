@@ -137,6 +137,18 @@ final class FinanceTests: XCTestCase {
         XCTAssertEqual(try Money.parse("-1.50", allowNegative: true), -150)
         for bad in ["1.001", "NaN", "1e6", "12,34.00", "", "-4"] { XCTAssertThrowsError(try Money.parse(bad), bad) }
     }
+    func testMoneyEditableTextPreservesCentsWithTwoDecimals() throws {
+        let cases: [(Int64, String)] = [
+            (123_456, "1234.56"), (5, "0.05"), (-5, "-0.05"), (-123_456, "-1234.56"),
+            (1_298_600, "12986.00"), (116_800, "1168.00"), (0, "0.00"),
+            (Money.limit, "99999999999.99"), (-Money.limit, "-99999999999.99")
+        ]
+        for (cents, expected) in cases {
+            let text = Money.editableText(cents)
+            XCTAssertEqual(text, expected)
+            XCTAssertEqual(try Money.parse(text, allowNegative: true), cents)
+        }
+    }
     func testHistoricalAndFutureImportsDoNotChangeCurrentAnchor() {
         var l = basic(); let a = l.accounts[0]
         l.entries = [Entry(date: Dates.addDays(-5, to: now), amount: 50000, nature: .income, accountID: a.id, title: "旧工资"), Entry(date: now, amount: 1234, accountID: a.id, title: "午餐"), Entry(date: Dates.addDays(2, to: now), amount: 99999, accountID: a.id, title: "未来")]

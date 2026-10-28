@@ -1527,6 +1527,74 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(chart.exists)
     }
 
+    func testWelcomeStatementBalanceReviewAndCommit() {
+        let app = application("welcome-import")
+        let csv = "时间,收支,金额,名称,余额\n2001-01-02 12:00:00,支出,32.00,合成午餐,968.00\n2001-01-03 21:14:00,收入,200.00,合成工资,1168.00\n"
+        app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(csv.utf8).base64EncodedString()
+        app.launch()
+        XCTAssertFalse(app.buttons["welcomeImportStatement"].exists)
+        tap(app.buttons["支付宝"], in: app)
+        XCTAssertFalse(app.buttons["welcomeImportStatement"].exists)
+        tap(app.buttons["招行储蓄卡"], in: app)
+        let statement = app.buttons["welcomeImportStatement"]
+        XCTAssertGreaterThanOrEqual(statement.frame.height, 52 - 0.01)
+        tap(statement, in: app)
+        XCTAssertTrue(app.staticTexts["welcomeStatementBalance"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["welcomeStatementBalance"].label.contains("1月3日 21:14"))
+        XCTAssertEqual(app.textFields["accountBalance"].value as? String, "1168.00")
+        XCTAssertTrue(statement.label.contains("已导入 2 笔"))
+        XCTAssertTrue(app.buttons["startLedger"].isEnabled)
+        snapshot("welcome-statement-balance", app)
+        tap(app.buttons["微信零钱"], in: app)
+        XCTAssertFalse(statement.exists)
+        XCTAssertFalse(app.staticTexts["welcomeStatementBalance"].exists)
+        XCTAssertFalse(app.buttons["startLedger"].isEnabled)
+        tap(app.buttons["招行储蓄卡"], in: app)
+        tap(statement, in: app)
+        XCTAssertTrue(app.staticTexts["welcomeStatementBalance"].waitForExistence(timeout: 10))
+        tap(statement, in: app)
+        XCTAssertTrue(app.buttons["selectImportRow_3"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["commitImport"].exists)
+        XCTAssertFalse(app.pickers["importDefaultAccount"].exists)
+        tap(app.buttons["selectImportRow_3"], in: app)
+        tap(app.buttons["closeSheet"], in: app)
+        XCTAssertTrue(statement.label.contains("已导入 1 笔"))
+        XCTAssertEqual(app.textFields["accountBalance"].value as? String, "1168.00")
+        tap(app.buttons["startLedger"], in: app)
+        let funds = app.buttons["fundsFormula"]
+        XCTAssertTrue(funds.waitForExistence(timeout: 10))
+        // These old fixture rows cannot change the 90-day spending estimate.
+        XCTAssertTrue(funds.label.contains("1,168.00"))
+        tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons["openImportHistory"], in: app)
+        XCTAssertTrue(app.staticTexts["合成账单.csv"].waitForExistence(timeout: 5))
+    }
+
+    func testWelcomeStatementWithoutBalanceAndAccountSwitch() {
+        let app = application("welcome-import")
+        let csv = "时间,收支,金额,名称\n2001-01-02 12:00:00,支出,32.00,合成午餐\n"
+        app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(csv.utf8).base64EncodedString()
+        app.launch()
+        tap(app.buttons["welcomeOtherAccount"], in: app)
+        app.textFields["accountName"].typeText("UI Bank")
+        tap(app.buttons["welcomeImportStatement"], in: app)
+        XCTAssertTrue(app.staticTexts["这份流水没有余额"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["welcomeImportStatement"].label.contains("已导入 1 笔"))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["startLedger"].isEnabled)
+        app.textFields["accountBalance"].typeText("1000")
+        XCTAssertTrue(app.buttons["startLedger"].isEnabled)
+        snapshot("welcome-statement-no-balance", app)
+        tap(app.buttons["微信零钱"], in: app)
+        XCTAssertFalse(app.buttons["welcomeImportStatement"].exists)
+        XCTAssertFalse(app.staticTexts["这份流水没有余额"].exists)
+        XCTAssertFalse(app.buttons["startLedger"].isEnabled)
+        tap(app.buttons["招行储蓄卡"], in: app)
+        XCTAssertFalse(app.staticTexts["welcomeStatementBalance"].exists)
+        XCTAssertTrue(app.buttons["welcomeImportStatement"].label.contains("导入这张卡的流水"))
+        XCTAssertFalse(app.buttons["startLedger"].isEnabled)
+    }
+
     func testFirstLaunchEmptyLedgerAccountAndAvailableFunds() {
         let app = application("empty"); app.launch()
         snapshot("welcome", app)

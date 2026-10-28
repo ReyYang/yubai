@@ -31,6 +31,12 @@ public enum Money {
         return f.string(from: NSDecimalNumber(decimal: Decimal(cents) / 100)) ?? "0.00"
     }
     public static func input(_ cents: Int64) -> String { NSDecimalNumber(decimal: Decimal(cents) / 100).stringValue }
+    /// Ungrouped text with exactly two decimal places for editable amounts.
+    public static func editableText(_ cents: Int64) -> String {
+        let magnitude = cents.magnitude
+        let fraction = magnitude % 100
+        return "\(cents < 0 ? "-" : "")\(magnitude / 100).\(fraction < 10 ? "0" : "")\(fraction)"
+    }
 }
 
 public enum Dates {
