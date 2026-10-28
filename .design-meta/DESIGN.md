@@ -1,5 +1,25 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 第二十一轮工资与整理入口
+
+来源为 owner 本轮明确确认的第二十一轮逐项文字规格；未附独立 HTML／图片或私有原稿链接。本轮直接按文字规格实现，继续遵守少写字，不将条件语法解析视为原生视觉验收。
+
+| 源码 | 采用行为 |
+|---|---|
+| `SalaryDetection.swift`、`Models.swift`、`Finance.swift` | 本机纯函数按付款方、26–35 日间隔、日号偏差不超过 3 日和中位数金额 ±10% 识别；月底按当月天数夹取，众数平票取较晚日。只认未删除、截至当前的 income，最近金额最大者优先；已有 active 每月收入 Plan 则不提示。拒绝 key 作为账本集合持久化，旧账缺字段为空，不提升 schema。确认创建「工资」Plan，金额／账户取最近一笔，优先工资收入分类、否则其他收入；下次日期严格晚于今天。可空 `monthlyDay` 保留 31 日锚点，首次 2 月 28 日后仍排 3 月 31 日，旧 Plan 缺字段保持原排期。 |
+| `PendingImportOrganization.swift` | 汇总未撤销且 needsOrganization 的批次；条数采用仍可整理的未手改记录，加上手改后仍没分类的记录；删除记录不计入。账户按批次顺序去重，日期范围汇总全部有效记录。 |
+| `NowActionCards.swift`、`ButlerViews.swift`、`OverviewView.swift` | 还能花／目标行下的同一容器按工资、待分类、既有管家卡排序；横向翻页、右上页码、非当前卡隐藏于 AX，保留 DS 字体／颜色／动效。工资底色 brandTint、标题 serif 16、事实 13／日期 12、金额 num 15 两位小数、按钮可见高 36／触控高 44。确认用 store.update 整本撤销，指定提示条；拒绝不再提醒该付款方。单独工资卡左滑本次隐藏，多卡横滑翻页；无障碍另有本次收起动作。既有单张管家卡保留原收起手势，多卡翻页时用原菜单收起；隐藏缺口卡不提前触发触觉反馈。 |
+| `EntriesView.swift`、`YubaiApp.swift` | 「自己分」进入账目并选没分类，月份定位到最新未分类导入记录（无则最新导入日期）。复用智能与隐私 sheet、关闭按钮和根页撤销条；欢迎阶段不要求先有账户。 |
+| `DesignSystem.swift`、`CloudAssistantViews.swift` | Welcome leading 为 cloud＋云端智能（15pt label），已启用并配好时附 brandInk 勾，读屏「已开」；trailing 恢复备份保留。设置沿用既有钥匙串保存与 ledger.preferences.cloudAIEnabled，无 onboarding 限制；欢迎、云端未开或有待整理批次时不自动取模型列表。 |
+| `IntelligenceRuntime.swift` | 删除根页前台 organizePendingImports task；同名方法只供现在页「整理」点击，逐批调用 organizeImport，期间 ProgressView、失败保留卡片。待整理批次存在时，仅在自动小项归类／记忆回看各自入口跳过云端任务，卡片润色传 nil transport、沿用本机候选文案；ButlerCards.detect、每周来信本机候选与 ButlerCards.refresh 照常执行，防止这批流水绕过点击发送，同时保持本机提醒刷新。保留导入页「现在整理」与用户提交导入后两处调用；没有其他后台导入整理调用。 |
+| `UITestSupport.swift`、测试、工程 | 新增 `salary`：一个账户、最近三个月每月 10 日 8,000.00、90 天日常支出、一个 needsOrganization 批次；提供本机 fake 回复。现有 Debug 模拟器＋UUID 账本＋脚本门控保持，零请求断言只在测试 AX 暴露。App 新文件与 Core 测试新文件已登记工程；Core 源码沿用本地 Swift Package 自动发现。 |
+
+本轮新增／改动的可见中文：标题「这是工资吗？」「N 笔还没分类」；控件「是工资」「不是」「打开云端智能」「自己分」「整理」「云端智能」「撤销」（沿用）；事实「每月 N 日」、付款方／账户名、「N 个账户」、日期范围／最近日期、正向金额和页码；状态「工资已加到会回来的账单」；Plan 标题「工资」。既有「到 X月X日发工资」随资金期限显示，未新增该模板。勾为图标，「已开」仅用于读屏。错误原因沿用现有整理错误，不新增说明句或文案例外。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0，552 项、548 通过／4 原有实网 opt-in 跳过／0 失败，其中 SalaryDetectionTests 14 项。App／UI 的 iOS 26 模拟器 Debug、App 的 iOS 26 设备 Release／macOS 14 Debug 条件语法解析通过；实际 UITestSupport 去平台外壳后通过 Swift 6 严格并发类型检查，离线执行 4 个日历时点的 salary 夹具校验、确认前后资金及 fake 导入整理通过。工程引用、链接与 diff 检查通过。新增 5 项 UI 测试源码覆盖确认／撤销、拒绝后重启、待分类卡翻页及设置零请求／手动筛选、fake 点击整理／重启、欢迎偏好跨建账保留，尚未实跑。Apple SDK 类型检查、UI／视觉、VoiceOver、字号与手势设备验收待 Mac；原稿／Figma／截图／分发包未同步。未提交、未推送、未调用 DeepSeek 或任何付费 API。
+
+同日本机刷新回归小修验证：设置 `YUBAI_LIVE_EVAL=0` 后按要求运行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test`，退出 0，552 项、548 通过／4 原有实网跳过／0 失败，包含现有 nil transport 本机文案兜底测试。Linux 不编译 AppStore，本次不新增无法覆盖实际入口的 Core 测试；49 份既有 Core／UI 测试源码与本次修改前哈希一致。改动 runtime 通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析；UI 实跑与 Apple SDK 类型检查仍待 Mac。同步修正上表与产品票的行为记录；新增／改动可见中文字符串无，未提交／推送，未调用付费 API。
+
 ## 2026-10-27 · PR #45 欢迎页 Mac 验证修复
 
 按 owner 反馈，`WelcomeView.readStatement` 余额回填改用新增的 `Money.editableText`：用整数分生成固定两位、无千分位的可编辑字符串，负五分为 `-0.05`。`Money.input`、余额来源标记与开始时的金额／日期判断保持；`Money.parse` 可还原原分值。流水行高度的 UI 断言保留，增加 `0.01pt` 容差。

@@ -78,12 +78,16 @@ struct ActiveLedgerTransport: ChatTransport {
             self.current == snapshot && !self.locked && APIKeyStore.shared.configuration() == client.configuration
         }
     }
+    // Called only by the now-page's explicit organization button.
     func organizePendingImports() async {
-        guard !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
+        guard !organizingPendingImports, !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
+        organizingPendingImports = true
+        defer { organizingPendingImports = false }
         let ids = current.imports.filter { $0.needsOrganization == true && $0.undoneAt == nil }.map(\.id)
         for id in ids {
             guard !Task.isCancelled else { return }
             await organizeImport(id)
+            if organizationErrors[id] != nil { return }
         }
     }
     func organizeImport(_ batchID: UUID) async {
@@ -128,7 +132,8 @@ struct ActiveLedgerTransport: ChatTransport {
 
 @MainActor extension AppStore {
     func refreshButler() async {
-        guard !locked, loadFailure == nil, organizingBatchID == nil, current.preferences.onboardingComplete else { return }
+        guard !locked, loadFailure == nil, organizingBatchID == nil, !organizingPendingImports, current.preferences.onboardingComplete else { return }
+        // Pending imports pause automatic cloud work, while local cards still refresh.
         await classifySubcategoriesIfDue()
         await reflectMemoriesIfDue()
         guard !Task.isCancelled, !locked, organizingBatchID == nil else { return }
@@ -136,7 +141,7 @@ struct ActiveLedgerTransport: ChatTransport {
         var candidates = ButlerCards.detect(before, now: now)
         if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
         guard !candidates.isEmpty else { return }
-        let transport = assistantTransport(for: before)
+        let transport = PendingImportOrganization(in: before).batchIDs.isEmpty ? assistantTransport(for: before) : nil
         let worded = await ButlerWording.word(candidates, ledger: before, transport: transport)
         guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil else { return }
         var next = before
@@ -144,7 +149,8 @@ struct ActiveLedgerTransport: ChatTransport {
         update("更新管家卡片", recordUndo: false) { $0.cards = next.cards }
     }
     private func classifySubcategoriesIfDue() async {
-        guard !reflectingMemories, current.preferences.cloudAIEnabled, SubcategoryBatch.isDue(current),
+        guard !reflectingMemories, PendingImportOrganization(in: current).batchIDs.isEmpty,
+              current.preferences.cloudAIEnabled, SubcategoryBatch.isDue(current),
               !SubcategoryBatch.pending(current).isEmpty, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
               let transport = assistantTransport(for: current) else { return }
         let before = current; let now = Date()
@@ -158,7 +164,8 @@ struct ActiveLedgerTransport: ChatTransport {
         } catch { /* Keep the local classification and retry the unpersisted round later. */ }
     }
     private func reflectMemoriesIfDue() async {
-        guard !reflectingMemories, MemoryReflection.isDue(ledger: current),
+        guard !reflectingMemories, PendingImportOrganization(in: current).batchIDs.isEmpty,
+              MemoryReflection.isDue(ledger: current),
               syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
               let transport = assistantTransport(for: current) else { return }
         let before = current

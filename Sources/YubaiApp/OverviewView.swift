@@ -69,11 +69,11 @@ struct OverviewView: View {
                         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("floorLine")
                     }
                 }
+                ButlerSection()
                 RestrainNearRow()
                 todayRow
                 if !dueBills.isEmpty { dueCard }
             }
-            ButlerSection()
             if !store.current.accounts.isEmpty {
                 if chartHeight > 0 && !store.current.preferences.hideAmounts {
                     ForecastChart(funds: funds, height: chartHeight)

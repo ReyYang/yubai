@@ -1412,7 +1412,21 @@ struct WelcomeView: View {
                         .accessibilityIdentifier("startLedger")
                         .padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
                 }
-        }.yubaiNavigation().toolbar { Button("恢复备份") { store.sheet = .backup } }
+        }.yubaiNavigation().toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button { store.sheet = .intelligencePrivacy } label: {
+                    HStack(spacing: YubaiSpace.space4) {
+                        Image(systemName: "cloud").accessibilityHidden(true)
+                        Text("云端智能")
+                        if store.cloudAIReady {
+                            Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk).accessibilityLabel("已开")
+                        }
+                    }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
+                }.accessibilityIdentifier("welcomeCloudAI")
+                    .accessibilityLabel(store.cloudAIReady ? "云端智能，已开" : "云端智能")
+            }
+            ToolbarItem(placement: .confirmationAction) { Button("恢复备份") { store.sheet = .backup } }
+        }
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: false) { selection in
                 switch selection {
                 case .success(let urls): if let url = urls.first { readStatement(url) }

@@ -28,6 +28,98 @@ final class AppFlowTests: XCTestCase {
         currentApp = app; snapshotNumber = 0
         return app
     }
+    func testSalaryConfirmationChangesHorizonAndUndoRestoresCard() {
+        let app = application("salary", keepingUndo: true); app.launch()
+        XCTAssertTrue(app.buttons["confirmSalary"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["这是工资吗？"].exists)
+        snapshot("salary-candidate", app)
+        tap(app.buttons["confirmSalary"], in: app)
+        assertGone(app.buttons["confirmSalary"])
+        let funds = app.buttons["fundsFormula"]
+        let payday = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in funds.exists && funds.label.contains("发工资") }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [payday], timeout: 5), .completed)
+        tapUndo(messagePrefix: "工资已加到会回来的账单", exact: true, in: app)
+        XCTAssertTrue(app.buttons["confirmSalary"].waitForExistence(timeout: 5))
+        XCTAssertFalse(funds.label.contains("发工资"))
+    }
+
+    func testRejectedSalaryStaysDismissedAfterRelaunch() {
+        let app = application("salary"); app.launch()
+        tap(app.buttons["rejectSalary"], in: app)
+        assertGone(app.buttons["confirmSalary"])
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["openCloudAI"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["confirmSalary"].exists)
+        XCTAssertTrue(app.staticTexts["6 笔还没分类"].exists)
+    }
+
+    func testPendingImportsPageOpensCloudSettingsWithoutRequests() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "0"
+        app.launch()
+        let salary = app.descendants(matching: .any).matching(identifier: "salaryCard").firstMatch
+        XCTAssertTrue(salary.waitForExistence(timeout: 10))
+        let start = point(salary, x: 0.85, y: 0.35, in: app)
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -salary.frame.width * 0.65, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(app.buttons["openCloudAI"].waitForExistence(timeout: 5))
+        assertSelectedTab("tab_overview", in: app)
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        XCTAssertEqual(pending.value as? String, "requests=0")
+        snapshot("pending-imports-cloud-off", app)
+        tap(app.buttons["openCloudAI"], in: app)
+        XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
+        tap(app.buttons["closeSheet"], in: app)
+        XCTAssertEqual(pending.value as? String, "requests=0")
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "organizingImports").firstMatch.exists)
+        tap(app.buttons["classifyImportsManually"], in: app)
+        assertSelectedTab("tab_entries", in: app)
+        XCTAssertTrue(app.buttons["entriesFilter_没分类"].isSelected)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch.exists)
+    }
+
+    func testPendingImportsOrganizesOnlyAfterTapWithFakeTransport() {
+        let app = application("salary"); app.launch()
+        tap(app.buttons["rejectSalary"], in: app)
+        tap(app.buttons["openCloudAI"], in: app)
+        tap(app.switches["打开云端智能"], in: app)
+        tap(app.buttons["closeSheet"], in: app)
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        XCTAssertTrue(app.buttons["organizeImports"].waitForExistence(timeout: 5))
+        XCTAssertEqual(pending.value as? String, "requests=0")
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["organizeImports"].waitForExistence(timeout: 10))
+        XCTAssertEqual(pending.value as? String, "requests=0")
+        tap(app.buttons["organizeImports"], in: app)
+        assertGone(pending)
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 10))
+        XCTAssertFalse(pending.exists)
+    }
+
+    func testWelcomeCloudSettingsPersistThroughStatementOnboarding() {
+        let app = application("welcome-import")
+        let csv = "时间,收支,金额,名称,余额\n2001-01-02 12:00:00,支出,32.00,合成午餐,968.00\n"
+        app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(csv.utf8).base64EncodedString()
+        app.launch()
+        let cloud = app.buttons["welcomeCloudAI"]
+        tap(cloud, in: app)
+        XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
+        tap(app.switches["打开云端智能"], in: app)
+        tap(app.buttons["closeSheet"], in: app)
+        XCTAssertTrue(cloud.label.contains("已开"))
+        XCTAssertFalse(app.buttons["tab_overview"].exists)
+        app.terminate(); app.launch()
+        XCTAssertTrue(cloud.waitForExistence(timeout: 10)); XCTAssertTrue(cloud.label.contains("已开"))
+        tap(app.buttons["招行储蓄卡"], in: app)
+        tap(app.buttons["welcomeImportStatement"], in: app)
+        XCTAssertTrue(app.staticTexts["welcomeStatementBalance"].waitForExistence(timeout: 10))
+        tap(app.buttons["startLedger"], in: app)
+        XCTAssertTrue(app.buttons["organizeImports"].waitForExistence(timeout: 10))
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        XCTAssertEqual(pending.value as? String, "requests=0")
+        XCTAssertFalse(app.buttons["openCloudAI"].exists)
+    }
+
     private func snapshot(_ name: String, _ app: XCUIApplication) {
         snapshotNumber += 1
         let test = app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] ?? "app-flow"
