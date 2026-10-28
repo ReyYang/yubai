@@ -1,5 +1,11 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 最近用途固定单行
+
+采用 owner 本轮已确认规格：`DesignSystem.swift` 新增 `ChipRow`，用未约束测量取得自然宽度，扣除固定 8pt 列间距后同比压缩，单行左排、高度取最高子视图；`SuggestionChips.singleLine` 默认关闭，仅 `EntryFormComponents.swift` 的 `RecentPurposeChips` 开启。最多三个、用途行下的位置、上下 8pt、单行尾省略、样式、选中态、填值行为、无障碍标识与标签、最小点按高度均保持。
+
+静态核对与 `git diff --check` 通过，未编译；环境无 Apple SDK，iOS 26 真机长文本／大字号与点按区域待验证。原稿／Figma／分发资源未同步；新增／改动可见中文无，未提交／推送。
+
 ## 2026-10-28 · 记一笔 sheet 还原
 
 来源为 owner 本轮提供的「记一笔 · 数字键盘」设计事实与真机问题说明。`QuickEntryView.swift` 在 iOS 的 `.presentationDetents` 旁显式设置 canvas 呈现背景；底部键盘与「记下，再记一笔」在全宽 frame 后铺 canvas，延伸到底部安全区。现有上下内边距 `YubaiSpace.gapGroup` 已为 12，保持不变；全局 PaperBackground 与其他 sheet 源码保持。
