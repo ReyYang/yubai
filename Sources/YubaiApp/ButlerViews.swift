@@ -115,7 +115,7 @@ struct ButlerCardView: View {
                     if amber { Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true) }
                     Text(meta).yubaiFont(YubaiFont.meta).foregroundStyle(ink)
                     Spacer(minLength: YubaiSpace.none)
-                    if let pageNumber { Text(pageNumber).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+                    if let pageNumber { Text(pageNumber).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
                 }.frame(minHeight: YubaiSize.pillHeight).padding(.trailing, YubaiSize.cardActionClearance)
                 Text(hidden ? "需要留意" : card.title).yubaiFont(YubaiFont.cardTitle).padding(.trailing, YubaiSize.cardActionClearance)
                     .foregroundStyle(amber ? YubaiColor.amberStrong : YubaiColor.label)

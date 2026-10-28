@@ -54,6 +54,7 @@ struct NowCardsSection: View {
         let pages = self.pages
         let index = pages.firstIndex { $0.id == selected } ?? 0
         let ids = pages.map(\.id)
+        let pageValue = pages.isEmpty ? "" : "\(index + 1) / \(pages.count)"
         ZStack(alignment: .top) {
             ForEach(Array(pages.enumerated()), id: \.element.id) { position, page in
                 card(page, number: "\(position + 1) / \(pages.count)", paging: pages.count > 1, active: position == index)
@@ -64,7 +65,19 @@ struct NowCardsSection: View {
                     .accessibilityHidden(position != index)
                     .transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion))
             }
-        }.clipped().contentShape(Rectangle())
+        }
+            // With only one visible card, .contain reuses that card's AX container.
+            // A separate page-status element makes nowCards a new parent instead
+            // of overwriting the card's identifier/value, without changing layout.
+            .overlay(alignment: .topTrailing) {
+                if !pages.isEmpty {
+                    Color.clear.frame(width: 1, height: 1)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("第 \(index + 1) 张，共 \(pages.count) 张卡片")
+                        .allowsHitTesting(false)
+                }
+            }
+            .clipped().contentShape(Rectangle())
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = max(1, $0) }
             #if os(iOS)
             .gesture(HorizontalPan(shouldBegin: { _ in pages.count > 1 || isSalary(pages.first) }, changed: { distance in
@@ -88,6 +101,7 @@ struct NowCardsSection: View {
             }
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: ids)
             .accessibilityElement(children: .contain).accessibilityIdentifier("nowCards")
+            .accessibilityValue(pageValue)
             .accessibilityAction(named: "下一张卡片") { move(1, in: pages, index: index) }
             .accessibilityAction(named: "上一张卡片") { move(-1, in: pages, index: index) }
     }
@@ -199,7 +213,7 @@ private struct NowCardHeading: View {
             Text(title).yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.label)
             Spacer(minLength: YubaiSpace.none)
             Text(pageNumber).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                .accessibilityLabel("第 " + pageNumber.replacingOccurrences(of: " / ", with: " 张，共 ") + " 张卡片")
+                .accessibilityHidden(true) // The pager exposes this status outside the card's AX container.
         }
     }
 }

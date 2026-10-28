@@ -23,6 +23,17 @@
 `DesignSystem.swift` 的 SuggestionChips 占满可用宽度并左对齐，SuggestionChip 的文字限制单行并尾部省略；ChipFlow 保留 `min(width, ideal.width)` 测量约束，列间距仍为 8。已核对全部调用：消费观「愿意多花的」在 [V15 修复记录](../docs/V15-SIMULATOR-FIXES.md)中明确采用 8pt 横纵间距，因此新增默认 8 的 `rowSpacing` 参数，仅 SuggestionChips 指定 `YubaiSpace.gapGroup`（12）；其余调用保持原行距。
 
 静态核对确认 token 数值、背景修饰符顺序、宽度约束及全部 Swift 字符串字面量不变，`git diff --check` 通过。当前环境无 swiftc／Apple SDK，未构建或执行 UI 测试；iOS 26 真机底色、滚动遮挡、长文本省略与大字号效果待验证。原稿／Figma／分发资源未同步；新增／改动可见中文无，未提交／推送。
+
+## 2026-10-28 · PR #48 现在页卡片无障碍容器修复
+
+按 owner 提供的 iOS 26.5 层级现象，对比 `main` 的 `ButlerSection` 与本分支 `NowCardsSection`：main 直接呈现带 `.contain`／`butlerCard_<kind>` 的卡片；本分支外层又加 `.contain`／`nowCards`，非当前页则隐藏于 AX。[SwiftUI 的 `.contain` 规则](https://developer.apple.com/documentation/swiftui/accessibilitychildbehavior/contain)明确，唯一子元素已有子项时会复用该元素，而不创建新父容器。结合层级中只剩 `nowCards`、内部按钮／文字仍在的现象，原因是当前卡片容器被外层复用并覆盖标识，而非测试查错元素类型；只移动 offset／opacity 或重复加 `.contain` 不能保证独立节点。
+
+`NowActionCards.swift` 在原 ZStack 上叠加独立的页码 AX 元素（透明、1pt、不参与布局或触摸），使外层始终有「当前卡片＋页码」两个 AX 子元素，按上述规则创建独立的 `nowCards` 父容器。工资／待整理／管家卡原有 `.contain`、标识、按钮、动作及测试值保留；非当前卡继续隐藏于 AX。外层显式设置页码 value，保留「下一张卡片／上一张卡片」动作。原源码未单独设置 `nowCards` value，复用节点上的 `closed`／`requests=0` 属于卡片测试值，修复后留在相应卡片。卡片内视觉页码不再单独导出 AX，由分页层统一朗读同一页码事实；`ButlerViews.swift` 仅相应隐藏视觉页码的 AX。原卡片尺寸、offset／opacity、动画、手势门控与滑动阈值保持。
+
+四项管家测试的 `descendants(matching: .any).matching(identifier: "butlerCard_restrain").firstMatch` 与 main 一致；待整理／工资测试沿用同一查询方式，无需调整。所有既有测试源码保持，未放松断言。新增／改动可见中文字符串：无；仅调整原有页码事实的 AX 归属。
+
+验证：设置 `YUBAI_LIVE_EVAL=0` 后执行 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && swift test`，退出 0，552 项、548 通过／4 项原有实网 opt-in 跳过／0 失败。两份改动 App 文件通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析；main 查询对照及 diff 检查通过。Apple SDK 编译、六项原失败 UI 测试及工资翻页用例、实际层级／VoiceOver 仍须 Mac 复验，不能把语法解析当作 Apple 类型检查或 AX 实测。选定稿、Figma、截图与分发包保持；未提交、未推送、未调用付费 API。
+
 ## 2026-10-28 · 第二十一轮工资与整理入口
 
 来源为 owner 本轮明确确认的第二十一轮逐项文字规格；未附独立 HTML／图片或私有原稿链接。本轮直接按文字规格实现，继续遵守少写字，不将条件语法解析视为原生视觉验收。
