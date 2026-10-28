@@ -136,6 +136,78 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(pending.exists)
     }
 
+    func testPendingImportsStopKeepsCompletedChunkAndRemainingCount() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "stop-second"
+        app.launch()
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        XCTAssertTrue(pending.waitForExistence(timeout: 10))
+        XCTAssertTrue(pending.staticTexts["70 笔还没分类"].exists)
+        assertImportRequestState(pending, requests: 0, entries: 70, classified: 0)
+        let details = pending.staticTexts.matching(NSPredicate(format: "label CONTAINS '合成工资卡'")).firstMatch.label
+        tap(app.buttons["organizeImports"], in: app)
+        let progress = app.descendants(matching: .any).matching(identifier: "organizeProgress").firstMatch
+        let checkpoint = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '30/70'"), object: progress)
+        XCTAssertEqual(XCTWaiter.wait(for: [checkpoint], timeout: 10), .completed)
+        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
+        XCTAssertTrue(pending.staticTexts["30 / 70"].exists)
+        XCTAssertTrue(pending.staticTexts["整理时别离开余白"].exists)
+        XCTAssertTrue(pending.staticTexts[details].exists)
+        XCTAssertFalse(app.buttons["classifyImportsManually"].exists)
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "organizingImports").firstMatch.exists)
+        assertImportRequestState(pending, requests: 2, entries: 70, classified: 30)
+        snapshot("organization-progress", app)
+        tap(app.buttons["stopOrganizing"], in: app)
+        assertGone(progress)
+        XCTAssertTrue(app.buttons["organizeImports"].isEnabled)
+        XCTAssertTrue(app.buttons["classifyImportsManually"].exists)
+        XCTAssertFalse(app.staticTexts["organizeError"].exists)
+        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
+        assertImportRequestState(pending, requests: 2, entries: 70, classified: 30)
+        app.terminate(); app.launch()
+        XCTAssertTrue(pending.waitForExistence(timeout: 10))
+        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
+        assertImportRequestState(pending, requests: 0, entries: 70, classified: 30)
+    }
+
+    func testPendingImportsSecondChunkFailureShowsReasonAndRetriesOnlyRemaining() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "fail-second"
+        app.launch()
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        XCTAssertTrue(pending.waitForExistence(timeout: 10))
+        let details = pending.staticTexts.matching(NSPredicate(format: "label CONTAINS '合成工资卡'")).firstMatch.label
+        tap(app.buttons["organizeImports"], in: app)
+        let error = app.staticTexts["organizeError"]
+        XCTAssertTrue(error.waitForExistence(timeout: 10))
+        XCTAssertEqual(error.label, "云端服务返回错误（HTTP 503）。本机计算结果已保留。")
+        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
+        XCTAssertTrue(pending.staticTexts[details].exists)
+        XCTAssertTrue(app.buttons["organizeImports"].isEnabled)
+        XCTAssertTrue(app.buttons["classifyImportsManually"].isEnabled)
+        assertImportRequestState(pending, requests: 2, entries: 70, classified: 30)
+        snapshot("organization-second-chunk-error", app)
+        tap(app.buttons["organizeImports"], in: app)
+        assertGone(error)
+        let progress = app.descendants(matching: .any).matching(identifier: "organizeProgress").firstMatch
+        let checkpoint = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '30/40'"), object: progress)
+        XCTAssertEqual(XCTWaiter.wait(for: [checkpoint], timeout: 15), .completed)
+        XCTAssertTrue(pending.staticTexts["10 笔还没分类"].exists)
+        // Retry sends 30 + 10, and never requests an already completed ID.
+        assertImportRequestState(pending, requests: 4, entries: 70, classified: 60)
+        assertGone(pending)
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 10))
+        XCTAssertFalse(pending.exists)
+    }
+
+    private func assertImportRequestState(_ card: XCUIElement, requests: Int, entries: Int, classified: Int,
+                                          file: StaticString = #filePath, line: UInt = #line) {
+        let value = "requests=\(requests);entries=\(entries);classified=\(classified);resent=0"
+        let state = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: card)
+        XCTAssertEqual(XCTWaiter.wait(for: [state], timeout: 5), .completed, file: file, line: line)
+    }
+
     func testWelcomeCloudSettingsPersistThroughStatementOnboarding() {
         let app = application("welcome-import")
         let csv = "时间,收支,金额,名称,余额\n2001-01-02 12:00:00,支出,32.00,合成午餐,968.00\n"
@@ -1675,6 +1747,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["welcomeStatementBalance"].label.contains("1月3日 21:14"))
         XCTAssertEqual(app.textFields["accountBalance"].value as? String, "1168.00")
         XCTAssertTrue(statement.label.contains("已导入 2 笔"))
+        XCTAssertFalse(app.buttons["welcomeImportRecent"].exists)
         XCTAssertTrue(app.buttons["startLedger"].isEnabled)
         snapshot("welcome-statement-balance", app)
         tap(app.buttons["微信零钱"], in: app)
@@ -1700,6 +1773,71 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_settings"], in: app)
         tap(app.buttons["openImportHistory"], in: app)
         XCTAssertTrue(app.staticTexts["合成账单.csv"].waitForExistence(timeout: 5))
+    }
+
+    func testWelcomeAnnualStatementDefaultsToRecentThreeMonthsAndCommitsSelectedCount() {
+        verifyAnnualWelcomeImport(selectAll: false)
+    }
+
+    func testWelcomeAnnualStatementAllRangeCommitsFullCount() {
+        verifyAnnualWelcomeImport(selectAll: true)
+    }
+
+    private func verifyAnnualWelcomeImport(selectAll: Bool) {
+        let app = application("welcome-import")
+        let lines = (1...12).map { month in
+            String(format: "2001-%02d-15 12:00:00,支出,1.00,合成日常,1000.00", month)
+        } + ["2002-01-15 12:00:00,支出,1.00,合成日常,1234.56"]
+        let csv = (["时间,收支,金额,名称,余额"] + lines).joined(separator: "\n")
+        app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(csv.utf8).base64EncodedString()
+        app.launchEnvironment["YUBAI_UI_TEST_IMPORT_STATE"] = "1"
+        app.launch()
+        tap(app.buttons["招行储蓄卡"], in: app)
+        let statement = app.buttons["welcomeImportStatement"]
+        tap(statement, in: app)
+        let recent = app.buttons["welcomeImportRecent"], all = app.buttons["welcomeImportAll"]
+        XCTAssertTrue(recent.waitForExistence(timeout: 10))
+        XCTAssertTrue(recent.isSelected); XCTAssertFalse(all.isSelected)
+        XCTAssertTrue(recent.label.contains("4 笔")); XCTAssertTrue(all.label.contains("13 笔"))
+        XCTAssertTrue(statement.label.contains("已导入 4 笔"))
+        XCTAssertTrue(statement.label.contains("2001年10月15日–2002年1月15日"))
+        XCTAssertLessThanOrEqual(recent.frame.maxY, statement.frame.minY)
+        XCTAssertEqual(app.textFields["accountBalance"].value as? String, "1234.56")
+        tap(all, in: app)
+        XCTAssertTrue(all.isSelected); XCTAssertFalse(recent.isSelected)
+        XCTAssertTrue(statement.label.contains("已导入 13 笔"))
+        XCTAssertTrue(statement.label.contains("2001年1月15日–2002年1月15日"))
+        XCTAssertEqual(app.textFields["accountBalance"].value as? String, "1234.56")
+        if !selectAll {
+            tap(recent, in: app)
+            XCTAssertTrue(statement.label.contains("已导入 4 笔"))
+            tap(statement, in: app)
+            XCTAssertTrue(app.buttons["selectImportRow_14"].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["selectImportRow_2"].exists)
+            XCTAssertFalse(app.buttons["welcomeImportRecent"].exists)
+            tap(app.buttons["selectImportRow_14"], in: app)
+            tap(app.buttons["closeSheet"], in: app)
+            XCTAssertTrue(statement.label.contains("已导入 3 笔"))
+            tap(all, in: app)
+            XCTAssertTrue(statement.label.contains("已导入 12 笔"))
+            tap(recent, in: app)
+            tap(statement, in: app)
+            tap(app.buttons["selectImportRow_14"], in: app)
+            tap(app.buttons["closeSheet"], in: app)
+            XCTAssertTrue(statement.label.contains("已导入 4 笔"))
+            XCTAssertEqual(app.textFields["accountBalance"].value as? String, "1234.56")
+        }
+        snapshot(selectAll ? "welcome-import-all" : "welcome-import-recent", app)
+        tap(app.buttons["startLedger"], in: app)
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        XCTAssertTrue(pending.waitForExistence(timeout: 10))
+        let count = selectAll ? 13 : 4
+        XCTAssertTrue(pending.staticTexts["\(count) 笔还没分类"].exists)
+        assertImportRequestState(pending, requests: 0, entries: count, classified: 0)
+        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("1,234.56"))
+        app.terminate(); app.launch()
+        XCTAssertTrue(pending.waitForExistence(timeout: 10))
+        assertImportRequestState(pending, requests: 0, entries: count, classified: 0)
     }
 
     func testWelcomeStatementWithoutBalanceAndAccountSwitch() {

@@ -124,9 +124,11 @@ enum AppSheet: Identifiable {
     var errorHosts: [UUID] = []
     var pickingInsightDates = false
     var organizingBatchID: UUID?
-    /// Current explicit organization run; no UI consumes this yet.
+    /// Progress across all batches in the current explicit run.
     var organizationProgress: (completed: Int, total: Int)?
     var organizingPendingImports = false
+    @ObservationIgnored var pendingOrganizationTask: Task<Void, Never>?
+    @ObservationIgnored var importOrganizationTask: Task<Void, Never>?
     var hiddenSalaryKeys: Set<String> = []
     var entryFilterRequest: UUID?
     var entryFilterDate: Date?

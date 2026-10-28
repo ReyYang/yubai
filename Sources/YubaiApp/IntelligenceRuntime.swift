@@ -86,11 +86,24 @@ struct ActiveLedgerTransport: ChatTransport {
         }
     }
     // Called only by the now-page's explicit organization button.
+    func startOrganizingPendingImports() {
+        guard pendingOrganizationTask == nil, !organizingPendingImports, organizingBatchID == nil else { return }
+        pendingOrganizationTask = Task { @MainActor in
+            defer { pendingOrganizationTask = nil }
+            await organizePendingImports()
+        }
+    }
+    func stopOrganizingImports() {
+        pendingOrganizationTask?.cancel()
+        importOrganizationTask?.cancel()
+    }
     func organizePendingImports() async {
-        guard !organizingPendingImports, !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
-        organizingPendingImports = true
-        defer { organizingPendingImports = false }
+        guard !Task.isCancelled, !organizingPendingImports, organizingBatchID == nil,
+              !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
         let ids = current.imports.filter { $0.needsOrganization == true && $0.undoneAt == nil }.map(\.id)
+        organizingPendingImports = true
+        organizationProgress = (completed: 0, total: ids.reduce(0) { $0 + ImportOrganizer.pendingEntryIDs(in: current, batchID: $1).count })
+        defer { organizingPendingImports = false; organizationProgress = nil }
         for id in ids {
             guard !Task.isCancelled else { return }
             await organizeImport(id)
@@ -98,15 +111,27 @@ struct ActiveLedgerTransport: ChatTransport {
         }
     }
     func organizeImport(_ batchID: UUID) async {
-        guard organizingBatchID == nil, !locked,
+        guard !Task.isCancelled, importOrganizationTask == nil else { return }
+        let task = Task { @MainActor in await performImportOrganization(batchID) }
+        importOrganizationTask = task
+        defer { importOrganizationTask = nil }
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: { task.cancel() }
+    }
+    private func performImportOrganization(_ batchID: UUID) async {
+        guard !Task.isCancelled, organizingBatchID == nil, !locked,
               let batch = current.imports.first(where: { $0.id == batchID }), batch.needsOrganization == true,
               batch.undoneAt == nil, current.preferences.cloudAIEnabled,
               assistantTransport(for: current) != nil else { return }
         let before = current
         let ids = ImportOrganizer.pendingEntryIDs(in: before, batchID: batchID)
         organizingBatchID = batchID; organizationErrors[batchID] = nil
-        organizationProgress = (completed: 0, total: ids.count)
-        defer { organizingBatchID = nil; organizationProgress = nil }
+        if !organizingPendingImports { organizationProgress = (completed: 0, total: ids.count) }
+        defer {
+            organizingBatchID = nil
+            if !organizingPendingImports { organizationProgress = nil }
+        }
         do {
             let organizer = ImportOrganizer { snapshot in
                 try await MainActor.run {
@@ -120,20 +145,24 @@ struct ActiveLedgerTransport: ChatTransport {
             _ = try await organizer.organize(ledger: before, entryIDs: ids) { result, completedIDs, snapshot in
                 try Task.checkCancellation()
                 return try await MainActor.run {
+                    try Task.checkCancellation()
                     guard self.current == snapshot, !self.locked else {
                         throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
                     }
                     guard self.apply(result.changeSet, label: "导入整理", silently: true, finishing: { ledger in
                         result.finish(batchID: batchID, before: snapshot, in: &ledger, entryIDs: completedIDs)
                     }) else { throw YubaiError.invalid(self.error ?? ImportOrganizer.ledgerChangedMessage) }
-                    self.organizationProgress = (completed: (self.organizationProgress?.completed ?? 0) + completedIDs.count, total: ids.count)
+                    self.organizationProgress = (completed: (self.organizationProgress?.completed ?? 0) + completedIDs.count,
+                                                 total: self.organizationProgress?.total ?? ids.count)
                     return self.current
                 }
             }
             let skipped = current.imports.first { $0.id == batchID }?.organization?.skipped ?? []
             toast = skipped.isEmpty ? "导入整理完成" : "整理完成；" + skipped.joined(separator: "；")
         } catch is CancellationError { }
-        catch { organizationErrors[batchID] = ImportOrganizer.failureMessage(error) }
+        catch {
+            if !Task.isCancelled { organizationErrors[batchID] = ImportOrganizer.failureMessage(error) }
+        }
     }
     func answerImportQuestion(_ question: ImportQuestion, batchID: UUID, option: Int) {
         guard let change = question.answer(option, in: current) else { return }
