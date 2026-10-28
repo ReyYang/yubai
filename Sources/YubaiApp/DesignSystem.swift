@@ -1588,17 +1588,17 @@ struct ChipRow: Layout {
     private func arrangement(width: CGFloat, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
         let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
         let spacing = CGFloat(max(0, subviews.count - 1)) * YubaiSpace.space8
-        let naturalWidth = sizes.reduce(0) { $0 + $1.width }
-        let scale = naturalWidth > 0 ? min(1, max(0, width - spacing) / naturalWidth) : 1
+        let widths = ChipWidthAllocation.widths(naturalWidths: sizes.map(\.width), availableWidth: width,
+                                               spacing: YubaiSpace.space8)
         var x: CGFloat = 0, height: CGFloat = 0
         var frames: [CGRect] = []
         for (index, subview) in subviews.enumerated() {
-            let itemWidth = sizes[index].width * scale
+            let itemWidth = widths[index]
             let size = subview.sizeThatFits(ProposedViewSize(width: itemWidth, height: nil))
             frames.append(CGRect(x: x, y: 0, width: itemWidth, height: size.height))
             x += itemWidth + YubaiSpace.space8; height = max(height, size.height)
         }
-        return (CGSize(width: naturalWidth * scale + spacing, height: height), frames)
+        return (CGSize(width: widths.reduce(0, +) + spacing, height: height), frames)
     }
 }
 

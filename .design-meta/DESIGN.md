@@ -1,6 +1,16 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 最近用途短芯片 M6 修复
+
+来源为 owner 的 Mac 验证 M6 FAIL：两个长用途与「午饭」同排时，原同比压缩使短芯片只显示「午」。按本轮明确要求，`ChipRow.arrangement` 改用 `YubaiCore.ChipWidthAllocation` 纯函数：扣除 8pt 固定间距后，求共同宽度上限 cap，逐项取 `min(natural, cap)`；放得下时保留全部自然宽度。排序仅用于求 cap，返回宽度与排布顺序仍沿用原顺序，保持靠左、单行、长文本尾部省略，样式／点按／无障碍保持。
+
+新增 `ChipWidthAllocationTests` 六项 Core 测试，覆盖 M6 长长短的三种顺序、放得下／刚好／无约束、多个短项、全长项、分数宽度、空行／单项／空间耗尽；仅将新测试登记进 Xcode 测试 target，保留原有测试引用。
+
+验证：指定 PATH 后执行 `swift test`，退出 0，544 项、540 通过／4 项原有实网 opt-in 跳过／0 失败，新增六项全部通过；进程显式设 `YUBAI_LIVE_EVAL=0`，未调用付费 API。改动 App 文件通过 iOS 26 设备 Release／模拟器 Debug、macOS 14 Debug 条件语法解析；纯函数通过 Swift 6 严格并发类型检查，App 字符串字面量不变，`git diff --check` 通过。当前为 Linux，无 Apple SDK，iOS 26 真编译、Mac 验证 M6 视觉复验与大字号仍待 Mac。原稿／Figma／分发资源未同步；新增／改动可见中文字符串：无，未提交／推送。
+
 ## 2026-10-28 · 最近用途固定单行
+
+本节保留首版记录；同比压缩已由上方 M6 修复的水位线分配取代。
 
 采用 owner 本轮已确认规格：`DesignSystem.swift` 新增 `ChipRow`，用未约束测量取得自然宽度，扣除固定 8pt 列间距后同比压缩，单行左排、高度取最高子视图；`SuggestionChips.singleLine` 默认关闭，仅 `EntryFormComponents.swift` 的 `RecentPurposeChips` 开启。最多三个、用途行下的位置、上下 8pt、单行尾省略、样式、选中态、填值行为、无障碍标识与标签、最小点按高度均保持。
 
