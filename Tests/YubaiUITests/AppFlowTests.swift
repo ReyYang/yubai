@@ -43,6 +43,46 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(funds.label.contains("发工资"))
     }
 
+    func testConfirmedSalaryAppearsInFixedFlowsLaterGroup() {
+        let app = application("salary"); app.launch()
+        tap(app.buttons["confirmSalary"], in: app)
+        assertGone(app.buttons["confirmSalary"])
+        let day = Calendar(identifier: .gregorian).component(.day, from: Date())
+        openFixedBills(app)
+        let later = app.descendants(matching: .any).matching(identifier: "fixedFlowLater").firstMatch
+        let income = app.descendants(matching: .any).matching(identifier: "fixedFlowIncomeCard").firstMatch
+        // Confirmation schedules the next payday strictly after today.
+        if day >= 10 {
+            XCTAssertTrue(later.waitForExistence(timeout: 5))
+            let rows = later.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlowLater_' "))
+            let row = rows.firstMatch
+            scrollToVisible(row, in: app, scroll: app.scrollViews["fixedFlowsScroll"])
+            XCTAssertEqual(rows.count, 1)
+            XCTAssertTrue(later.staticTexts["以后"].exists)
+            XCTAssertTrue(row.staticTexts["工资"].exists)
+            XCTAssertTrue(row.staticTexts["+8,000.00"].exists)
+            XCTAssertTrue(row.staticTexts.matching(NSPredicate(format: "label CONTAINS '每月10日'")).firstMatch.exists)
+            XCTAssertFalse(income.staticTexts["工资"].exists)
+            tap(row, in: app)
+            XCTAssertFalse(app.buttons["fixedFlowSchedule"].exists)
+            XCTAssertTrue(app.navigationBars["固定收付"].exists)
+        } else {
+            XCTAssertTrue(income.waitForExistence(timeout: 5))
+            let rows = income.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' "))
+            let row = rows.firstMatch
+            scrollToVisible(row, in: app, scroll: app.scrollViews["fixedFlowsScroll"])
+            XCTAssertEqual(rows.count, 1)
+            XCTAssertTrue(app.staticTexts["要收"].exists)
+            XCTAssertTrue(row.staticTexts["工资"].exists)
+            XCTAssertTrue(row.staticTexts["+8,000.00"].exists)
+            XCTAssertTrue(row.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '10日 · '")).firstMatch.exists)
+            XCTAssertFalse(later.staticTexts["工资"].exists)
+            XCTAssertFalse(later.exists)
+        }
+        XCTAssertFalse(app.staticTexts["这个月还没有固定收付"].exists)
+        snapshot(day >= 10 ? "salary-fixed-flows-later" : "salary-fixed-flows-income", app)
+    }
+
     func testRejectedSalaryStaysDismissedAfterRelaunch() {
         let app = application("salary"); app.launch()
         tap(app.buttons["rejectSalary"], in: app)

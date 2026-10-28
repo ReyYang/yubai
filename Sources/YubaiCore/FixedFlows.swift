@@ -49,11 +49,24 @@ public struct FixedFlowOccurrence: Identifiable, Sendable {
         return dateLabel + " · " + status
     }
 }
+public struct FixedFlowUpcoming: Identifiable, Sendable {
+    public var id: UUID { planID }
+    public var planID: UUID; public var title: String; public var amount: Int64; public var inflow: Bool
+    public var date: Date; public var frequency: Frequency; public var dueDate: Date; public var monthlyDay: Int?
+    public func detail(now: Date = Date()) -> String {
+        let calendar = Dates.calendar
+        let schedule = FixedFlowArrangement.schedule(frequency, date: dueDate, now: now, monthlyDay: monthlyDay).replacingOccurrences(of: " ", with: "")
+        let year = calendar.component(.year, from: date) == calendar.component(.year, from: now) + 1 ? "明年" : ""
+        let start = "\(year)\(calendar.component(.month, from: date))月\(calendar.component(.day, from: date))日起"
+        return schedule + " · " + start
+    }
+}
 public struct FixedFlowMonth: Sendable {
     public var date: Date; public var occurrences: [FixedFlowOccurrence]
     public var remainingOutflow: Int64; public var remainingInflow: Int64
     public var overdueOutflow: Int64 = 0; public var overdueInflow: Int64 = 0
     public var stopped: [FixedFlowArrangement] = []
+    public var later: [FixedFlowUpcoming] = []
 }
 
 extension FixedFlows {
@@ -166,8 +179,23 @@ extension FixedFlows {
                                             amount: paid > 0 && remaining == 0 ? paid : (paid > 0 ? remaining : amount), planID: planID, rentID: rentID, inflow: incoming, autoPay: autoPay,
                                             installment: installment, estimated: estimated))
         }
+        var later: [FixedFlowUpcoming] = []
         for plan in ledger.plans where plan.active {
-            for item in plan.schedule(through: end) where item.date >= interval.start && !plan.isSkipped(on: item.date) {
+            let schedule = plan.schedule(through: end)
+            // Paid or skipped periods still count as a period in this month.
+            if !stoppedIDs.contains(plan.id), plan.stoppedAt == nil, !schedule.contains(where: { $0.date >= interval.start }) {
+                for index in 0..<min(2400, max(0, plan.installments ?? 2400)) {
+                    let date = plan.scheduledDate(at: index)
+                    if plan.endDate.map({ date > $0 }) == true { break }
+                    if date >= interval.end && !plan.isSkipped(on: date) {
+                        later.append(FixedFlowUpcoming(planID: plan.id, title: plan.title, amount: payments.amount(for: plan), inflow: plan.inflow,
+                                                       date: date, frequency: plan.frequency, dueDate: plan.dueDate, monthlyDay: plan.monthlyDay))
+                        break
+                    }
+                    if plan.frequency == .once { break }
+                }
+            }
+            for item in schedule where item.date >= interval.start && !plan.isSkipped(on: item.date) {
                 let paid = payments.plans[FixedFlowPaymentKey(id: plan.id, day: Dates.day(item.date)), default: 0]
                 append(id: "\(plan.id)-\(item.date.timeIntervalSince1970)", title: plan.title, date: item.date, amount: payments.amount(for: plan), paid: paid,
                        remaining: payments.remaining(for: plan, on: item.date), incoming: plan.inflow, planID: plan.id, autoPay: plan.autoPay,
@@ -195,7 +223,8 @@ extension FixedFlows {
             }
         }
         rows.sort { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }
+        later.sort { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date }
         return FixedFlowMonth(date: interval.start, occurrences: rows, remainingOutflow: outflow, remainingInflow: inflow,
-                              overdueOutflow: overdueOutflow, overdueInflow: overdueInflow, stopped: stopped)
+                              overdueOutflow: overdueOutflow, overdueInflow: overdueInflow, stopped: stopped, later: later)
     }
 }

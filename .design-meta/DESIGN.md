@@ -1,5 +1,21 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 第二十三轮固定收付「以后」
+
+来源为 owner 本轮明确确认的第二十三轮文字规格；未附独立 HTML／图片或私有页面链接。此轮扩展第十一轮仅显示当月期次的边界，原月内要付／要收、逾期及还能花算法保持。
+
+`FixedFlows.swift` 为 `FixedFlowMonth` 增加 `later: [FixedFlowUpcoming]`，包含 Plan ID、标题、金额、收支方向、频率、下一期及原排期锚点。只纳入 active、未停掉、仍有未来期且本月无任何排期的 Plan；本月已收付或跳过的期也阻止重复。下一期复用 `Plan.scheduledDate`，遵循分期数、结束日期、跳过及 monthlyDay 的月底夹取；无 90 天截断。按下一期日期、同日 Plan ID 排序，金额复用估额规则，独立于当月汇总。`ManualBookkeeping.swift` 的既有频率文案补可选 monthlyDay，旧调用保持；`Models.swift` 恢复到 HEAD，scheduledDate 保持原可见性。
+
+`FixedFlowsView.swift` 在要收之后、已停掉之前采用同一 `CardRows` 卡片与内分隔线，基础行高 52pt，次行用 13pt callout／labelSecondary；实际字号放大可撑高。进账 brandInk 带 +，支出 label，金额固定两位，行尾无操作按钮，保留 36pt 空位。有以后内容即隐藏月空态。分组标识 `fixedFlowLater`、行标识 `fixedFlowLater_<planID>`；分组含标题与行，分别保留 AX 容器。
+
+owner 同日跟进明确收窄范围：现有 App 没有编辑安排页面，编辑页设计未经确认，本轮不加。撤回上一轮自行新增的 `AppSheet.editPlan`、`FixedFlowEditor(original:)` 及初始化／保存分支、本月行 summary 点按；`YubaiApp.swift`、`FixedFlowBillRow` 与完整 `FixedFlowEditor` 均恢复到 HEAD。表单的 monthlyDay 排期文案参数和 scheduledDate 预览也一并撤回；添加场景没有原工资锚点可复用，沿用原添加行为。「以后」行仅展示，移除 onTapGesture、contentShape 与 isButton trait，保留内容、布局和 AX 容器／标识。
+
+新增／改动可见中文：标题「以后」；事实「每月N日」「每年M月D日」「X月X日起」「明年X月X日起」，组合为「频率 · 日期起」。其他频率复用既有「每周X」「每季N日」和一次性日期文案，仅按稿收紧空格；安排名复用原标题。均为标题、日期／频率事实，无文案例外。本次收窄不新增可见中文，添加表单标题恢复「添加」（标题），其余可见文字保持。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0，561 项、557 通过／4 项原有实网 opt-in 跳过／0 失败。新增 9 项 FixedBillsTests 覆盖下月工资、月内已付／未付／未到／跳过去重、停掉／结束／期数耗尽、次年与同年年费、日期排序、31 日跨短月／闰二月、其他频率及未来跳过边界。本次收窄后重新执行同一完整命令，退出 0，仍为 561 项、557 通过／4 项原有实网 opt-in 跳过／0 失败。对照 HEAD 确认编辑表单、本月行、App 路由、Models、salary 夹具与其余全部 UI 测试保持原样。改动 App 文件通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析；`git diff --check` 通过。另从实际未改动的 salaryLedger 提取夹具方法，链接当前 Core 离线执行 2026 年及闰年 2028 年全部 731 个日历日，验证工资识别／确认后在 10 日前进入要收、10 日及之后进入以后且不重复。该检查验证夹具与 Core 分组，不代替 Apple UI 实跑。
+
+新增 `testConfirmedSalaryAppearsInFixedFlowsLaterGroup`：salary → 是工资 → 既有固定收付入口。沿用未改动的 salary 夹具与公历／模拟器时区：当月 10 日及之后，断言以后组工资一行、+8,000.00、每月10日、要收无工资，并检查点击后仍在固定收付且未打开表单；10 日前，断言要收卡片工资一行、+8,000.00、10 日排期，以后无工资且分组不显示。两支都无月空态；撤回打开编辑和保存的测试断言，原工资确认／撤销等用例保持。UI 未实跑，Apple SDK 编译、AX／VoiceOver、视觉与手势待 Mac 复验；Figma、截图与分发包未同步。未提交、未推送、未调用 DeepSeek 或任何付费 API。
+
 ## 2026-10-28 · PR #48 现在页卡片无障碍容器修复
 
 按 owner 提供的 iOS 26.5 层级现象，对比 `main` 的 `ButlerSection` 与本分支 `NowCardsSection`：main 直接呈现带 `.contain`／`butlerCard_<kind>` 的卡片；本分支外层又加 `.contain`／`nowCards`，非当前页则隐藏于 AX。[SwiftUI 的 `.contain` 规则](https://developer.apple.com/documentation/swiftui/accessibilitychildbehavior/contain)明确，唯一子元素已有子项时会复用该元素，而不创建新父容器。结合层级中只剩 `nowCards`、内部按钮／文字仍在的现象，原因是当前卡片容器被外层复用并覆盖标识，而非测试查错元素类型；只移动 offset／opacity 或重复加 `.contain` 不能保证独立节点。

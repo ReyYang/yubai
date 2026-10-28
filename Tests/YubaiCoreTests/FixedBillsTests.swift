@@ -15,6 +15,115 @@ final class FixedBillsTests: XCTestCase {
         var entry = Entry(date: day, amount: amount ?? plan.amount, nature: plan.nature, accountID: ledger.accounts[0].id, title: plan.title, category: plan.category)
         entry.planID = plan.id; entry.occurrence = Dates.day(day); return entry
     }
+    func testLaterIncludesSalaryStartingNextMonthWithoutChangingMonthTotals() throws {
+        var ledger = fixture()
+        var salary = salary(); salary.dueDate = date("2026-11-10"); salary.monthlyDay = 10
+        ledger.plans = [salary, Plan(title: "订阅", amount: 1200, dueDate: date("2026-11-15"), frequency: .monthly)]
+        let month = FixedFlows.month(containing: now, in: ledger)
+        let row = try XCTUnwrap(month.later.first)
+        XCTAssertEqual(row.id, salary.id); XCTAssertEqual(row.planID, salary.id)
+        XCTAssertEqual(row.title, "工资"); XCTAssertEqual(row.amount, 800_000); XCTAssertTrue(row.inflow)
+        XCTAssertEqual(row.date, date("2026-11-10")); XCTAssertEqual(row.frequency, .monthly)
+        XCTAssertEqual(row.detail(now: now), "每月10日 · 11月10日起")
+        XCTAssertEqual(month.later.count, 2); XCTAssertFalse(month.later[1].inflow)
+        XCTAssertTrue(month.occurrences.isEmpty)
+        XCTAssertEqual(month.remainingOutflow, 0); XCTAssertEqual(month.remainingInflow, 0)
+        XCTAssertEqual(month.overdueOutflow, 0); XCTAssertEqual(month.overdueInflow, 0)
+    }
+    func testLaterExcludesEveryPlanWithAMonthPeriodIncludingPaidAndSkipped() {
+        var ledger = fixture()
+        let due = salary()
+        var paid = salary(); paid.title = "已收工资"
+        var skipped = salary(); skipped.skippedOccurrences = [Dates.day(skipped.dueDate)]
+        let upcoming = Plan(title: "月末", amount: 1000, dueDate: date("2026-10-31"), frequency: .monthly)
+        ledger.plans = [due, paid, skipped, upcoming]
+        ledger.entries = [payment(paid, on: paid.dueDate, in: ledger)]
+        let month = FixedFlows.month(containing: now, in: ledger)
+        XCTAssertEqual(month.occurrences.count, 3); XCTAssertTrue(month.later.isEmpty)
+        XCTAssertEqual(month.remainingInflow, due.amount); XCTAssertEqual(month.remainingOutflow, upcoming.amount)
+    }
+    func testLaterExcludesInactiveStoppedEndedAndExhaustedPlans() {
+        var ledger = fixture()
+        var inactive = salary(); inactive.dueDate = date("2026-11-10"); inactive.active = false
+        var stopped = inactive; stopped.id = UUID(); stopped.active = true; stopped.stoppedAt = now
+        var ended = inactive; ended.id = UUID(); ended.active = true; ended.endDate = date("2026-10-01")
+        var endingBeforeNext = inactive; endingBeforeNext.id = UUID(); endingBeforeNext.active = true; endingBeforeNext.endDate = date("2026-11-01")
+        var exhausted = salary(); exhausted.dueDate = date("2026-08-10"); exhausted.installments = 2
+        let once = Plan(title: "已结束的一次", amount: 1000, dueDate: date("2026-09-10"))
+        ledger.plans = [inactive, stopped, ended, endingBeforeNext, exhausted, once]
+        XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).later.isEmpty)
+    }
+    func testLaterIncludesNextYearsAnnualPeriodBeyondForecastHorizon() throws {
+        var ledger = fixture()
+        let annual = Plan(title: "年费", amount: 9900, dueDate: date("2026-03-05"), frequency: .yearly)
+        ledger.plans = [annual]
+        let month = FixedFlows.month(containing: now, in: ledger)
+        let row = try XCTUnwrap(month.later.first)
+        XCTAssertEqual(row.planID, annual.id); XCTAssertEqual(row.frequency, .yearly)
+        XCTAssertEqual(row.date, date("2027-03-05")); XCTAssertEqual(row.detail(now: now), "每年3月5日 · 明年3月5日起")
+        XCTAssertTrue(month.occurrences.isEmpty); XCTAssertEqual(month.remainingOutflow, 0)
+    }
+    func testLaterAnnualPeriodInSameYearOmitsNextYearPrefix() throws {
+        var ledger = fixture()
+        ledger.plans = [Plan(title: "年费", amount: 9900, dueDate: date("2025-11-05"), frequency: .yearly)]
+        let row = try XCTUnwrap(FixedFlows.month(containing: now, in: ledger).later.first)
+        XCTAssertEqual(row.date, date("2026-11-05")); XCTAssertEqual(row.detail(now: now), "每年11月5日 · 11月5日起")
+    }
+    func testLaterSortsByNextPeriodWithStablePlanIDTieBreak() {
+        var ledger = fixture()
+        var first = Plan(title: "先", amount: 1000, dueDate: date("2026-11-01"))
+        var tied = first; tied.title = "同日"
+        first.id = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        tied.id = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let last = Plan(title: "后", amount: 1000, dueDate: date("2026-12-01"))
+        ledger.plans = [last, tied, first]
+        XCTAssertEqual(FixedFlows.month(containing: now, in: ledger).later.map(\.planID), [first.id, tied.id, last.id])
+    }
+    func testLaterKeepsDay31AcrossShortMonthsAndLeapFebruary() throws {
+        for (start, first, next) in [("2026-10-22", "2026-11-30", "2026-12-31"),
+                                      ("2026-01-22", "2026-02-28", "2026-03-31"),
+                                      ("2028-01-22", "2028-02-29", "2028-03-31")] {
+            var ledger = fixture()
+            var salary = salary(); salary.dueDate = date(first); salary.monthlyDay = 31
+            ledger.plans = [salary]
+            let row = try XCTUnwrap(FixedFlows.month(containing: date(start), in: ledger).later.first)
+            XCTAssertEqual(row.date, date(first)); XCTAssertTrue(row.detail(now: date(start)).hasPrefix("每月31日 · "))
+            XCTAssertEqual(salary.scheduledDate(at: 1), date(next))
+            let firstMonth = FixedFlows.month(containing: date(first), in: ledger)
+            XCTAssertTrue(firstMonth.later.isEmpty); XCTAssertEqual(firstMonth.occurrences.first?.date, date(first))
+            let nextMonth = FixedFlows.month(containing: date(next), in: ledger)
+            XCTAssertEqual(nextMonth.occurrences.first?.date, date(next))
+        }
+        var ledger = fixture()
+        let original = Plan(title: "原有月底", amount: 1000, dueDate: date("2026-01-31"), frequency: .quarterly)
+        ledger.plans = [original]
+        XCTAssertEqual(FixedFlows.month(containing: date("2026-03-15"), in: ledger).later.first?.date, date("2026-04-30"))
+    }
+    func testLaterReusesWeeklyQuarterlyAndOnceSchedules() throws {
+        var ledger = fixture()
+        let weekly = Plan(title: "每周", amount: 1000, dueDate: date("2026-11-02"), frequency: .weekly)
+        let quarterly = Plan(title: "每季", amount: 1000, dueDate: date("2026-02-28"), frequency: .quarterly)
+        let once = Plan(title: "一次", amount: 1000, dueDate: date("2026-11-03"))
+        ledger.plans = [quarterly, once, weekly]
+        let rows = FixedFlows.month(containing: now, in: ledger).later
+        XCTAssertEqual(rows.map(\.planID), [weekly.id, once.id, quarterly.id])
+        XCTAssertEqual(rows.first?.detail(now: now), "每周一 · 11月2日起")
+        XCTAssertEqual(rows.last?.detail(now: now), "每季28日 · 11月28日起")
+        XCTAssertEqual(rows[1].date, once.dueDate); XCTAssertEqual(rows[1].frequency, .once)
+    }
+    func testLaterSkipsFutureWaivedPeriodsAndRespectsInstallmentAndEndLimits() throws {
+        var ledger = fixture()
+        var salary = salary(); salary.dueDate = date("2026-11-10"); salary.skippedOccurrences = [salary.dueDate]
+        salary.estimated = true
+        ledger.plans = [salary]
+        ledger.entries = [payment(salary, on: salary.dueDate, amount: 810_000, in: ledger)]
+        let row = try XCTUnwrap(FixedFlows.month(containing: now, in: ledger).later.first)
+        XCTAssertEqual(row.date, date("2026-12-10")); XCTAssertEqual(row.amount, 810_000)
+        ledger.plans[0].installments = 1
+        XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).later.isEmpty)
+        ledger.plans[0].installments = nil; ledger.plans[0].endDate = date("2026-11-30")
+        XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).later.isEmpty)
+    }
     private func dailySpending(in ledger: inout Ledger) {
         ledger.entries += (1...90).map { Entry(date: Dates.addDays(-$0, to: Dates.day(now)), amount: 1000, accountID: ledger.accounts[0].id, title: "午饭") }
     }
