@@ -21,13 +21,13 @@ public struct Classification: Sendable {
     }
     public var category: String; public var nature: Nature; public var reason: String
 }
-/// Only explicit bill type fields supply deterministic nature hints. No merchant rules.
+/// Bill types and statement summaries supply nature hints. No merchant rules.
 public enum Classifier {
     public static func classify(inflow: Bool, hint: String = "") -> Classification {
         let text = hint.lowercased()
         let nature: Nature
         if inflow && ["退款", "退货", "refund"].contains(where: text.contains) { nature = .refund }
-        else if ["还信用卡", "信用卡还款", "花呗还款", "白条还款"].contains(where: text.contains) { nature = inflow ? .adjustmentIn : .repayment }
+        else if ["还信用卡", "还款"].contains(where: text.contains) { nature = inflow ? .adjustmentIn : .repayment }
         else if ["理财申购", "理财赎回", "余额宝", "零钱通"].contains(where: text.contains) { nature = inflow ? .investSell : .investBuy }
         else if ["转账", "提现", "充值", "红包", "收款"].contains(where: text.contains) { nature = inflow ? .unknownIn : .unknownOut }
         else { nature = inflow ? .income : .expense }
@@ -110,9 +110,12 @@ public enum CSV {
 public enum BillImporter {
     static func clean(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\u{FEFF}", with: "") }
     static func normalized(_ s: String) -> String { clean(s).lowercased().replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "（", with: "(").replacingOccurrences(of: "）", with: ")") }
-    static let dateNames = ["交易时间", "交易创建时间", "记账日期", "交易日期", "日期", "时间", "date", "datetime", "入账日期", "记账时间", "发生时间", "发生日期", "账单日期"]
-    static let amountNames = ["金额(元)", "金额", "交易金额", "交易金额(元)", "发生额", "amount", "支出金额", "收入金额", "借方发生额", "贷方发生额"]
+    static let dateNames = ["交易时间", "交易创建时间", "记账日期", "交易日期", "日期", "时间", "date", "datetime", "入账时间", "入账日期", "交易发生日期", "账务日期", "记账时间", "发生时间", "发生日期", "账单日期"]
+    static let amountNames = ["金额(元)", "金额", "交易金额", "交易金额(元)", "发生金额", "人民币金额", "发生额", "amount", "支出金额", "收入金额", "借方发生额", "贷方发生额"]
     static let balanceNames = ["余额", "账户余额", "联机余额", "可用余额", "当前余额", "交易后余额", "余额(元)", "balance"]
+    static func counterpartyTitle(_ raw: String) -> String {
+        clean(raw.replacingOccurrences(of: #"\s+[0-9*xX]{6,}$"#, with: "", options: .regularExpression))
+    }
     static func sourceKey(_ entry: Entry) -> String {
         if !entry.sourceIdentity.isEmpty { return entry.sourceIdentity }
         let source = entry.source == "文件" ? entry.source + ":" + entry.accountID.uuidString : entry.source
@@ -142,11 +145,17 @@ public enum BillImporter {
             return nil
         }
         let debitCol = mapping?.outflow ?? (mapping == nil ? index(["支出金额", "借方发生额"]) : nil), creditCol = mapping?.inflow ?? (mapping == nil ? index(["收入金额", "贷方发生额"]) : nil)
-        let namedDirectionCol = mapping == nil ? index(["收/支", "收支", "收支类型", "收入/支出", "direction", "借贷标志", "收支方向"]) : nil
-        let directionWords = Set(["收入", "收", "贷", "in", "income", "credit", "支出", "支", "借", "out", "expense", "debit", "转账", "transfer", Nature.transfer.label])
+        let namedDirectionCol = mapping == nil ? index(["收/支", "收/付", "收支", "收支类型", "收入/支出", "direction", "借贷", "借贷方向", "借贷标志", "资金方向", "资金流向", "交易方向", "出入账", "收支类别", "收支方向"]) : nil
+        let incomeWords = ["收入", "收", "贷", "收款", "贷方", "贷记", "入账", "入", "流入", "in", "income", "credit"]
+        let expenseWords = ["支出", "支", "借", "付", "付款", "借方", "借记", "出账", "出", "流出", "out", "expense", "debit"]
+        let directionWords = Set(incomeWords + expenseWords + ["转账", "transfer", Nature.transfer.label])
+        let titleCol = mapping?.description ?? (mapping == nil ? index(["商品", "商品说明", "商品名称", "交易摘要", "摘要", "交易说明", "交易描述", "交易用途", "用途", "附言", "交易附言", "说明", "交易内容", "描述", "description", "summary", "交易名称", "名称", "title", "交易备注"]) : nil)
+        let merchantCol = mapping?.counterparty ?? (mapping == nil ? index(["对手信息", "交易对手", "对方信息", "对方名称", "对方户名", "对方账户名", "对方账户名称", "收款方", "收款人", "付款方", "商户", "商户名称", "商户名", "交易对方", "对方", "counterparty", "payee", "merchant"]) : nil)
+        let summaryCol = index(["交易摘要", "摘要", "交易说明", "交易描述", "交易用途", "交易内容", "交易名称", "描述", "description", "summary"])
         // Only inspect values when header aliases cannot establish a direction column.
         // Stop at the first incompatible cell; no full-column copies are needed.
         let valueDirectionCol = mapping == nil && namedDirectionCol == nil ? headers.indices.first { col in
+            guard col != titleCol && col != merchantCol && col != summaryCol else { return false }
             var hasValue = false
             for row in table.dropFirst(headerIndex + 1) where row.indices.contains(col) {
                 let value = normalized(row[col])
@@ -158,13 +167,11 @@ public enum BillImporter {
         } : nil
         let directionCol = mapping?.direction ?? mapping?.type ?? namedDirectionCol ?? valueDirectionCol
             ?? (mapping == nil ? index(["类型", "交易类型", "type"]) : nil)
-        let titleCol = mapping?.description ?? (mapping == nil ? index(["商品", "商品说明", "商品名称", "摘要", "用途", "名称", "title", "交易备注"]) : nil)
-        let merchantCol = mapping?.counterparty ?? (mapping == nil ? index(["交易对方", "对方户名", "商户名称", "merchant"]) : nil)
         let typeCol = mapping?.type ?? index(["交易类型", "类型", "性质", "type"])
         let statusCol = index(["当前状态", "交易状态", "状态", "status"])
-        let idCol = index(["交易单号", "交易号", "流水号", "订单号", "交易订单号", "id"])
-        let noteCol = mapping?.note ?? (mapping == nil ? index(["备注", "说明", "附言", "memo", "notes", "note"]) : nil)
-        let categoryCol = mapping?.category ?? index(["分类", "一级分类", "类别", "分类名称", "category"])
+        let idCol = index(["交易单号", "交易号", "交易流水号", "流水号", "交易参考号", "凭证号", "交易序号", "订单号", "交易订单号", "id"]) ?? index(["商户单号"])
+        let noteCol = mapping?.note ?? (mapping == nil ? index(["备注", "memo", "notes", "note"]) : nil)
+        let categoryCol = mapping?.category ?? index(["分类", "交易分类", "消费分类", "账单分类", "收支分类", "一级分类", "类别", "分类名称", "category"])
         let subcategoryCol = mapping?.subcategory ?? index(["二级分类", "子分类", "子类别", "subcategory"])
         let fromAccountCol = index(["转出账户", "转出帐户", "支出账户", "from account"])
         let toAccountCol = index(["转入账户", "转入帐户", "收入账户", "to account"])
@@ -173,6 +180,14 @@ public enum BillImporter {
         let prefix = table.prefix(headerIndex + 1).flatMap { $0 }.joined()
         let isBeeCount = ["类型", "分类", "二级分类", "转出账户", "转入账户"].allSatisfy { headers.contains(normalized($0)) }
         let source = isBeeCount ? "BeeCount" : prefix.contains("微信") || headers.contains(normalized("商品")) && headers.contains(normalized("交易单号")) ? "微信" : (prefix.contains("支付宝") || headers.contains(normalized("交易创建时间")) ? "支付宝" : "文件")
+        let signedAmounts: Bool
+        if let amountCol {
+            signedAmounts = table.dropFirst(headerIndex + 1).contains { row in
+                guard row.indices.contains(amountCol),
+                      let amount = try? Money.parse(row[amountCol], allowNegative: true) else { return false }
+                return amount < 0
+            }
+        } else { signedAmounts = false }
         var knownIDs: [String: Entry] = [:]; var knownHashes: Set<String> = []
         for entry in ledger.entries {
             if !entry.externalID.isEmpty { knownIDs[sourceKey(entry)] = entry }
@@ -225,22 +240,27 @@ public enum BillImporter {
                 guard signed != 0 else { throw YubaiError.invalid("金额为零") }
                 let direction = inferredDirection.isEmpty ? field(directionCol) : inferredDirection
                 let type = field(typeCol)
+                let natureHint = type.isEmpty ? field(summaryCol) : type
                 let isTransfer = ["转账", "transfer", Nature.transfer.label].contains(direction.lowercased()) || type == Nature.transfer.label || ((fromAccountCol != nil || toAccountCol != nil) && ["转账", "transfer"].contains(type.lowercased()))
                 let explicitNature = isTransfer ? Nature.transfer : Nature.allCases.first { $0.label == type }
                 let inflow: Bool
                 if let explicitNature { inflow = explicitNature.inflow }
-                else if ["收入", "收", "贷", "in", "income", "credit"].contains(direction.lowercased()) { inflow = true }
-                else if ["支出", "支", "借", "out", "expense", "debit"].contains(direction.lowercased()) { inflow = false }
+                else if incomeWords.contains(direction.lowercased()) { inflow = true }
+                else if expenseWords.contains(direction.lowercased()) { inflow = false }
+                else if incomeWords.contains(type.lowercased()) { inflow = true }
+                else if expenseWords.contains(type.lowercased()) { inflow = false }
                 else if signed < 0 { inflow = false }
+                else if signedAmounts { inflow = true }
                 else if ["不计收支", "/", "中性交易"].contains(direction) {
-                    if type.contains("退款") { inflow = true }
-                    else if ["提现", "还款", "充值"].contains(where: type.contains) { inflow = false }
+                    if natureHint.contains("退款") { inflow = true }
+                    else if ["提现", "还款", "充值"].contains(where: natureHint.contains) { inflow = false }
                     else { throw YubaiError.invalid("不计收支记录方向不明，需要手动补记") }
                 } else { throw YubaiError.invalid("缺少收入/支出方向，请使用模板的收支列") }
-                let titleParts = [field(merchantCol), field(titleCol)].filter { !$0.isEmpty && $0 != "/" && $0 != "-" }
+                let rawCounterparty = field(merchantCol)
+                let titleParts = [counterpartyTitle(rawCounterparty), field(titleCol)].filter { !$0.isEmpty && $0 != "/" && $0 != "-" }
                 let fallbackTitle = [field(noteCol), field(subcategoryCol), field(categoryCol), type].first { !["", "/", "-"].contains($0) } ?? "账单记录"
                 let title = titleParts.isEmpty ? fallbackTitle : Array(NSOrderedSet(array: titleParts)).compactMap { $0 as? String }.joined(separator: " · ")
-                let classification = Classifier.classify(inflow: inflow, hint: type)
+                let classification = Classifier.classify(inflow: inflow, hint: natureHint)
                 let method = ["", "/", "-", "--"].contains(field(paymentCol)) ? "" : field(paymentCol)
                 func transferAccount(_ name: String) -> UUID? {
                     guard !name.isEmpty else { return nil }
@@ -265,7 +285,7 @@ public enum BillImporter {
                 if let hint { entry.category = hint.category; entry.subcategory = hint.subcategory }
                 if isTransfer { entry.category = "内部移动" }
                 if isTransfer { entry.otherAccountID = toAccount }
-                entry.note = [field(noteCol), status.isEmpty ? "" : "原账单状态：" + status, method.isEmpty ? "" : "收付款方式：" + method].filter { !$0.isEmpty }.joined(separator: "\n"); entry.source = source; entry.sourceRow = line; entry.externalID = field(idCol).replacingOccurrences(of: "\t", with: "")
+                entry.note = [field(noteCol), rawCounterparty.isEmpty ? "" : "对手信息：" + rawCounterparty, status.isEmpty ? "" : "原账单状态：" + status, method.isEmpty ? "" : "收付款方式：" + method].filter { !$0.isEmpty }.joined(separator: "\n"); entry.source = source; entry.sourceRow = line; entry.externalID = field(idCol).replacingOccurrences(of: "\t", with: "")
                 if isTransfer {
                     entry.note += "\n转出账户：" + fromName + "；转入账户：" + toName
                 }

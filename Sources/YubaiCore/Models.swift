@@ -277,20 +277,20 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
     /// belong to transport; recurring monthly/yearly services to subscriptions.
     public static let defaults: [Category] = [
         .init("餐饮", "fork.knife", subcategories: ["早餐", "午餐", "晚餐", "外卖", "咖啡饮品", "零食水果", "聚餐"],
-              keywords: ["吃饭", "饭", "食堂", "餐厅"], subcategoryKeywords: [
+              keywords: ["吃饭", "饭", "食堂", "餐厅", "烧烤", "小吃", "面馆", "麻辣烫", "饭店", "餐饮", "烧麦", "火锅", "快餐"], subcategoryKeywords: [
                 "早餐": ["早餐", "早饭"], "午餐": ["午餐", "午饭"], "晚餐": ["晚餐", "晚饭"],
-                "外卖": ["外卖", "饿了么", "美团外卖"], "咖啡饮品": ["咖啡", "奶茶", "饮品"], "零食水果": ["零食", "水果"], "聚餐": ["聚餐"]]),
+                "外卖": ["外卖", "饿了么", "美团外卖"], "咖啡饮品": ["咖啡", "奶茶", "饮品", "coffee", "cafe", "茶饮"], "零食水果": ["零食", "水果"], "聚餐": ["聚餐"]]),
         .init("购物", "bag", subcategories: ["日用百货", "服饰鞋包", "数码电器", "家居家电", "美妆个护", "运动户外", "书和文具"],
               keywords: ["购物", "淘宝", "京东"], subcategoryKeywords: [
-                "日用百货": ["日用", "纸巾", "洗衣", "洗衣液", "超市", "罗森"], "服饰鞋包": ["买衣", "衣服", "买鞋", "鞋包"],
+                "日用百货": ["日用", "纸巾", "洗衣", "洗衣液", "超市", "罗森", "便利店", "商店", "百货", "菜市场", "生鲜"], "服饰鞋包": ["买衣", "衣服", "买鞋", "鞋包"],
                 "数码电器": ["手机", "电脑", "数码", "电器"], "家居家电": ["家居", "家电", "家具"], "美妆个护": ["洗发", "美妆", "个护", "护肤"],
                 "运动户外": ["登山杖", "登山鞋", "帐篷", "运动装备", "户外装备"], "书和文具": ["书籍", "买书", "文具", "办公用品"]]),
         .init("交通", "tram", subcategories: ["公共交通", "打车", "加油停车", "共享单车", "火车飞机"], subcategoryKeywords: [
-                "公共交通": ["地铁", "公交"], "打车": ["滴滴", "打车", "出租车"], "加油停车": ["加油", "停车"],
+                "公共交通": ["地铁", "公交"], "打车": ["滴滴", "打车", "出租车"], "加油停车": ["加油", "停车", "高速", "加油站", "停车场", "ETC"],
                 "共享单车": ["共享单车"], "火车飞机": ["火车", "机票", "高铁", "车票", "飞机票"]]),
         .init("居住", "house", subcategories: ["房租", "水电燃气", "物业", "网费话费", "维修"], subcategoryKeywords: [
                 "房租": ["房租"], "水电燃气": ["水费", "电费", "燃气"], "物业": ["物业"], "网费话费": ["网费", "话费"], "维修": ["维修"]]),
-        .init("医疗健康", "cross.case", subcategories: ["看病", "药品", "体检"], subcategoryKeywords: ["看病": ["看病", "挂号", "医院"], "药品": ["药品", "买药", "药店"], "体检": ["体检"]]),
+        .init("医疗健康", "cross.case", subcategories: ["看病", "药品", "体检"], subcategoryKeywords: ["看病": ["看病", "挂号", "医院", "诊所"], "药品": ["药品", "买药", "药店", "药房"], "体检": ["体检"]]),
         .init("娱乐", "sparkles", subcategories: ["电影演出", "游戏", "运动健身", "兴趣爱好"], keywords: ["娱乐"], subcategoryKeywords: [
                 "电影演出": ["电影", "演唱会", "演出"], "游戏": ["游戏"], "运动健身": ["健身", "健身房", "球场"], "兴趣爱好": ["兴趣", "爱好"]]),
         .init("旅行", "suitcase", subcategories: ["住宿", "门票游玩", "跟团包价"], subcategoryKeywords: ["住宿": ["住宿", "酒店", "民宿"], "门票游玩": ["门票", "游玩"], "跟团包价": ["跟团", "包价"]]),
@@ -669,6 +669,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         classificationMemory = importedMemory
         preferences.quickCapture.merchantCategories = [:]
         if needsCategoryMigration { CategoryMigration.apply(to: &self) }
+        CategoryMigration.upgradeKeywords(to: &self)
         schema = 4
     }
     public func encode(to encoder: Encoder) throws {

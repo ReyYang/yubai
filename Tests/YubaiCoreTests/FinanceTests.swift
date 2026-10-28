@@ -135,6 +135,7 @@ final class FinanceTests: XCTestCase {
         XCTAssertEqual(try Money.parse("￥1,234.56"), 123456)
         XCTAssertEqual(try Money.parse("0.01"), 1)
         XCTAssertEqual(try Money.parse("-1.50", allowNegative: true), -150)
+        XCTAssertEqual(try Money.parse("+100.70", allowNegative: true), 10070)
         for bad in ["1.001", "NaN", "1e6", "12,34.00", "", "-4"] { XCTAssertThrowsError(try Money.parse(bad), bad) }
     }
     func testMoneyEditableTextPreservesCentsWithTwoDecimals() throws {
