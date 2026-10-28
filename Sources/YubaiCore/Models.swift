@@ -185,11 +185,13 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public var endDate: Date?; public var stoppedAt: Date?; public var note = ""
     public var autoPay = false; public var autoPaySince: Date?
     public var installments: Int?; public var estimated = false
+    // Preserve a detected payday when the first due date is clamped to a short month.
+    public var monthlyDay: Int?
     public var skippedOccurrences: [Date] = []
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = Classification.pendingCategory, nature: Nature = .expense) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
     }
-    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences }
+    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
@@ -203,18 +205,27 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         autoPay = try c.decodeIfPresent(Bool.self, forKey: .autoPay) ?? false
         autoPaySince = try c.decodeIfPresent(Date.self, forKey: .autoPaySince)
         installments = try c.decodeIfPresent(Int.self, forKey: .installments)
+        monthlyDay = try c.decodeIfPresent(Int.self, forKey: .monthlyDay)
         estimated = try c.decodeIfPresent(Bool.self, forKey: .estimated) ?? false
         skippedOccurrences = try c.decodeIfPresent([Date].self, forKey: .skippedOccurrences) ?? []
     }
     func schedule(through end: Date) -> [(index: Int, date: Date)] {
         var result: [(index: Int, date: Date)] = []
         for index in 0..<min(2400, max(0, installments ?? 2400)) {
-            let date = frequency.advance(dueDate, by: index)
+            let date = scheduledDate(at: index)
             if date > end || endDate.map({ date > $0 }) == true { break }
             result.append((index, date))
             if frequency == .once { break }
         }
         return result
+    }
+    func scheduledDate(at index: Int) -> Date {
+        let date = frequency.advance(dueDate, by: index)
+        guard frequency == .monthly, let monthlyDay else { return date }
+        let calendar = Dates.calendar
+        let month = calendar.dateInterval(of: .month, for: date)!.start
+        let last = calendar.range(of: .day, in: .month, for: date)!.count
+        return Dates.addDays(min(max(1, monthlyDay), last) - 1, to: month)
     }
     func isSkipped(on date: Date) -> Bool { skippedOccurrences.contains { Dates.day($0) == Dates.day(date) } }
     func occurrenceIndex(on date: Date) -> Int? {
@@ -230,7 +241,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
             count = months / (frequency == .monthly ? 1 : (frequency == .quarterly ? 3 : 12))
         }
         guard count >= 0, installments.map({ count < $0 }) ?? true,
-              Dates.day(frequency.advance(dueDate, by: count)) == day else { return nil }
+              Dates.day(scheduledDate(at: count)) == day else { return nil }
         return count
     }
 }
@@ -588,6 +599,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var lastSubcategoryBatchDay: String?
     public var subscriptionChecks: [String: String] = [:]
     public var stoppedSubscriptions: [StoppedSubscription] = []
+    public var dismissedSalaryKeys: Set<String> = []
     public var memories: [MemoryNote] = []
     public var lastReflectionWeek: String?
     public var preferences = Preferences()
@@ -609,7 +621,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -637,6 +649,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         lastSubcategoryBatchDay = try c.decodeIfPresent(String.self, forKey: .lastSubcategoryBatchDay)
         subscriptionChecks = try c.decodeIfPresent([String: String].self, forKey: .subscriptionChecks) ?? [:]
         stoppedSubscriptions = try c.decodeIfPresent([StoppedSubscription].self, forKey: .stoppedSubscriptions) ?? []
+        dismissedSalaryKeys = try c.decodeIfPresent(Set<String>.self, forKey: .dismissedSalaryKeys) ?? []
         memories = try c.decodeIfPresent([MemoryNote].self, forKey: .memories) ?? []
         lastReflectionWeek = try c.decodeIfPresent(String.self, forKey: .lastReflectionWeek)
         preferences = try c.decode(Preferences.self, forKey: .preferences)
@@ -691,6 +704,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encodeIfPresent(lastSubcategoryBatchDay, forKey: .lastSubcategoryBatchDay)
         try c.encode(subscriptionChecks, forKey: .subscriptionChecks)
         try c.encode(stoppedSubscriptions, forKey: .stoppedSubscriptions)
+        try c.encode(dismissedSalaryKeys.sorted(), forKey: .dismissedSalaryKeys)
         try c.encode(memories, forKey: .memories)
         try c.encodeIfPresent(lastReflectionWeek, forKey: .lastReflectionWeek)
         try c.encode(preferences, forKey: .preferences)
@@ -718,6 +732,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.lastSubcategoryBatchDay == rhs.lastSubcategoryBatchDay &&
         lhs.subscriptionChecks == rhs.subscriptionChecks &&
         lhs.stoppedSubscriptions == rhs.stoppedSubscriptions &&
+        lhs.dismissedSalaryKeys == rhs.dismissedSalaryKeys &&
         lhs.memories == rhs.memories &&
         lhs.lastReflectionWeek == rhs.lastReflectionWeek &&
         lhs.preferences == rhs.preferences &&
@@ -807,6 +822,7 @@ public struct Ledger: Codable, Equatable, Sendable {
             var schedule = p; schedule.endDate = nil
             guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true,
                               p.stoppedAt.map(dateValid) ?? true, p.autoPaySince.map(dateValid) ?? true, p.installments.map({ $0 > 0 }) ?? true,
+                              p.monthlyDay.map({ (1...31).contains($0) && p.frequency == .monthly }) ?? true,
                               Set(p.skippedOccurrences.map(Dates.day)).count == p.skippedOccurrences.count,
                               p.skippedOccurrences.allSatisfy({ dateValid($0) && schedule.occurrenceIndex(on: $0) != nil }) else { throw YubaiError.invalid("资金安排信息无效。") }
         }
