@@ -341,7 +341,7 @@ struct FixedFlowCheck: View {
                         .toolbar(.hidden, for: .navigationBar)
                         #endif
                         .onAppear { amountFocused = true }
-                }.environment(store).appErrors().presentationDragIndicator(.visible)
+                }.environment(store).appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()
                     #if os(iOS)
                     .presentationDetents([.medium])
                     #endif

@@ -152,9 +152,9 @@ struct ImportView: View {
             guard !selection.isEmpty else { return }
             enqueue(selection.enumerated().map { ImportQueueFile(input: .photo($0.element), name: "截图 \($0.offset + 1)") }); photos = []
         }
-        .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().frame(minWidth: 340, minHeight: 520) }
-        .sheet(isPresented: $showCategories) { NavigationStack { categoryCorrespondence }.environment(store) }
-        .sheet(isPresented: $showScreenshot) { NavigationStack { screenshotOriginal }.environment(store) }
+        .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().yubaiSheetBackground().frame(minWidth: 340, minHeight: 520) }
+        .sheet(isPresented: $showCategories) { NavigationStack { categoryCorrespondence }.environment(store).yubaiSheetBackground() }
+        .sheet(isPresented: $showScreenshot) { NavigationStack { screenshotOriginal }.environment(store).yubaiSheetBackground() }
         .sheet(item: $editingScreenshotRow) { row in
             if let entry = row.entry {
                 NavigationStack {
@@ -163,7 +163,7 @@ struct ImportView: View {
                         if let index = preview?.rows.firstIndex(where: { $0.id == row.id }) { preview?.rows[index].entry = edited }
                         screenshotConfirmed = false
                     }
-                }.environment(store)
+                }.environment(store).yubaiSheetBackground()
             }
         }
         .onChange(of: store.current.accounts.count) { _, _ in

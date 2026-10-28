@@ -413,7 +413,7 @@ private struct AskPastedStatementCard: View {
                     }
                 }
             }.accessibilityIdentifier("pastedStatementCard")
-                .sheet(isPresented: $reviewing) { NavigationStack { ImportView(pasted: statement) }.environment(store).appErrors() }
+                .sheet(isPresented: $reviewing) { NavigationStack { ImportView(pasted: statement) }.environment(store).appErrors().yubaiSheetBackground() }
         }
     }
     private func total(_ title: String, count: Int, amount: Int64) -> some View {
@@ -488,7 +488,7 @@ private struct AskEntryDraftCard: View {
                 .sheet(item: $editing) { selection in
                     NavigationStack { AskDraftEditor(draft: selection.draft) { edited in
                         if let index = drafts.firstIndex(where: { $0.id == edited.id }) { drafts[index] = edited; amountsConfirmed = false }
-                    } }.environment(store)
+                    } }.environment(store).yubaiSheetBackground()
                 }
         }
     }

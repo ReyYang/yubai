@@ -141,7 +141,7 @@ private struct CaptureRulesView: View {
         }.navigationTitle(kind.title).yubaiNavigation()
             .overlay { if names.isEmpty { ContentUnavailableView("还没有映射", systemImage: kind == .card ? "creditcard" : "tag") } }
             .toolbar { ToolbarItem(placement: .primaryAction) { Button("添加", systemImage: "plus") { editing = CaptureRuleSelection(name: nil) } } }
-            .sheet(item: $editing) { selected in NavigationStack { CaptureRuleEditor(kind: kind, original: selected.name) }.environment(store).appErrors() }
+            .sheet(item: $editing) { selected in NavigationStack { CaptureRuleEditor(kind: kind, original: selected.name) }.environment(store).appErrors().yubaiSheetBackground() }
     }
     private func value(_ name: String) -> String {
         if kind == .card { return store.current.accountName(store.current.preferences.quickCapture.cardAccounts[name]) }

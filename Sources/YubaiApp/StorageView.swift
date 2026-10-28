@@ -61,7 +61,7 @@ struct StorageView: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openStorageErase")
                     .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
                     .padding(.top, YubaiSpace.gapGroup).frame(maxWidth: 1080).frame(maxWidth: .infinity)
-                    .background(YubaiColor.canvas)
+                    .background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
             }
             .navigationTitle("存储空间").yubaiNavigation()
             .task(id: store.current.updatedAt) { await refreshUsage() }
@@ -72,6 +72,7 @@ struct StorageView: View {
                 Button("取消", role: .cancel) {}
             }
             .sheet(item: $sheet, onDismiss: { Task { await refreshUsage() } }) { destination in
+                // StorageSheet owns the raised background for both destinations.
                 Group {
                     switch destination {
                     case .photos: StoragePhotosSheet()
@@ -234,7 +235,7 @@ private struct StorageEraseSheet: View {
             catch { currentRecoveryCount = nil; store.error = error.localizedDescription }
         }.sheet(isPresented: $backingUp) {
             NavigationStack { BackupView() }.environment(store).environment(\.yubaiSheetSurface, true).appErrors()
-                .presentationDragIndicator(.visible)
+                .presentationDragIndicator(.visible).yubaiSheetBackground()
                 #if os(macOS)
                 .frame(minWidth: 540, minHeight: 600)
                 #endif

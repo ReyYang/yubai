@@ -37,7 +37,7 @@ struct ProfileChatEntry: View {
             .accessibilityIdentifier("profileChatEntry")
             .onAppear { configured = IntelligenceRuntime.isConfigured }
             .sheet(isPresented: $showing) {
-                NavigationStack { ProfileConversationView(openingContext: context) }.environment(store).appErrors()
+                NavigationStack { ProfileConversationView(openingContext: context) }.environment(store).appErrors().yubaiSheetBackground()
                     #if os(macOS)
                     .frame(minWidth: 540, minHeight: 600)
                     #endif

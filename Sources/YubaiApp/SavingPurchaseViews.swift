@@ -121,7 +121,7 @@ struct SavingPurchaseCard: View {
             }
         }.sheet(isPresented: $recording) {
             NavigationStack { QuickEntryView(prefill: QuickEntryPrefill(category: purchase.category, amount: purchase.amount, purpose: purchase.title)) }
-                .environment(store).appErrors()
+                .environment(store).appErrors().yubaiSheetBackground()
         }
     }
     private var heading: some View {

@@ -100,7 +100,7 @@ struct EntryCategoryChips: View {
                         }.listRowBackground(YubaiColor.card)
                     }.scrollContentBackground(.hidden).navigationTitle("分类").yubaiNavigation()
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { picking = false } } }
-                }.presentationDragIndicator(.visible)
+                }.presentationDragIndicator(.visible).yubaiSheetBackground()
             }
     }
 }

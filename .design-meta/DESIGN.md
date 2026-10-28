@@ -1,5 +1,15 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 全部 sheet 底色与底部遮挡修复
+
+按 owner 本轮明确要求，在 `DesignSystem.swift` 的 `paperBackground()` 旁增加 `yubaiSheetBackground()`，iOS／macOS 共用 `.presentationBackground(YubaiColor.canvas)`。逐项核对全部 21 处 `.sheet`：根部 `store.sheet` 及 19 处本地呈现内容根使用该修饰符，QuickEntryView 原有设色也改用同一修饰符。改一笔、固定收付添加、账户编辑、导入及问余白内部未发现白色／systemBackground 大底色；Form 已隐藏系统滚动背景。全仓白色检出仅为图标前景与白色 token，保持。
+
+存储删除旧截图／抹掉全部数据共用的另一处呈现保持 `StorageSheet` 原有 raised 背景，未在其外层叠加 canvas；嵌套备份 sheet 单独使用 canvas。本分支没有 `FixedFlowStopSheet`。[Apple 文档](https://developer.apple.com/documentation/swiftui/view/presentationbackground(_:))说明该修饰符设置所在 sheet 的呈现背景，未说明同一 sheet 内外多处设色的覆盖顺序；当前无 Apple 运行环境，未实测该优先级，本次通过避免不同底色叠加保留 raised。
+
+底部四处 `safeAreaInset` 均已核对：记一笔键盘沿用 #47；云端发送记录详情操作条、存储抹掉按钮区、欢迎页开始按钮区补齐 canvas 延伸至底部安全区。问余白／消费观聊天共用 `ChatInputBar` 的玻璃胶囊，以及既有提示条／浮动导航栏／圆钮保持，无浮层归属待定项。全部直接 `ChipFlow` 调用已有 leading 的 Card／VStack，故不加重复 frame；仅智能与隐私标签、消费观愿意多花的领域文字补单行尾部省略，SuggestionChip 已有同样限制。改一笔与记一笔的 RecentPurposeChips 都紧接用途行、在分隔线前，共享固定单行实现，位置保持。
+
+验证：静态审计覆盖 21 处呈现与 4 处底部 inset；17 份改动 Swift 文件的字符串字面量与 HEAD 完全一致，raised 共用实现与 HEAD 完全一致，`git diff --check` 通过。`/opt/swift-rootfs/usr/bin/swiftc` 不存在，PATH 也无 swiftc，未执行 `swiftc -frontend -parse`；Apple SDK 编译、UI／视觉／深色／大字号与安全区实测待 Mac。新增／改动可见中文：无；业务与动效保持。设计原稿／Figma／截图／分发包未同步，未提交、未推送。
+
 ## 2026-10-28 · 第二十三轮固定收付「以后」
 
 来源为 owner 本轮明确确认的第二十三轮文字规格；未附独立 HTML／图片或私有页面链接。此轮扩展第十一轮仅显示当月期次的边界，原月内要付／要收、逾期及还能花算法保持。

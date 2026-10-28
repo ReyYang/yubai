@@ -527,6 +527,7 @@ private struct ChipSelection: ViewModifier {
 extension View {
     func amountPrivacy(_ hidden: Bool) -> some View { contentTransition(.opacity).animation(YubaiMotion.quick, value: hidden) }
     func paperBackground() -> some View { modifier(PaperBackground()) }
+    func yubaiSheetBackground() -> some View { presentationBackground(YubaiColor.canvas) }
     func rootScrollContentMargins() -> some View {
         #if os(iOS)
         self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
@@ -1410,7 +1411,7 @@ struct WelcomeView: View {
                     Button("开始", action: start).buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.brandTint))
                         .disabled(importTask != nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
                         .accessibilityIdentifier("startLedger")
-                        .padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
+                        .padding(YubaiSpace.insetPage).background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
                 }
         }.yubaiNavigation().toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -1437,7 +1438,7 @@ struct WelcomeView: View {
                 if let statement {
                     NavigationStack {
                         ImportView(welcomeReview: Binding(get: { self.statement?.preview ?? statement.preview }, set: { self.statement?.preview = $0 }))
-                    }.environment(store).appErrors()
+                    }.environment(store).appErrors().yubaiSheetBackground()
                 }
             }
             .onDisappear { importTask?.cancel() }
