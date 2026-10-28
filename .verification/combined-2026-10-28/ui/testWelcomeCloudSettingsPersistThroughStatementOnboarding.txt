@@ -1,0 +1,93 @@
+Attributes: Application, 0x11a48e1c0, pid: 1741, label: '余白'
+Element subtree:
+ →Application, 0x11a48e1c0, pid: 1741, label: '余白'
+    Window (Main), 0x11a48e300, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x11a48e440, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x11a48e580, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x11a48e6c0, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x11a48e800, {{0.0, 0.0}, {440.0, 956.0}}
+              ScrollView, 0x11a48e940, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPager'
+                Other, 0x11a48ea80, {{0.0, 0.0}, {1760.0, 922.0}}
+                  Other, 0x11a48ebc0, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'rootPage_overview'
+                    Other, 0x11a48ed00, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x11a48ee40, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x11a48ef80, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x11a48f0c0, {{0.0, 0.0}, {440.0, 956.0}}
+                            Other, 0x11a48f200, {{0.0, 0.0}, {440.0, 956.0}}
+                              StaticText, 0x11a48f340, {{205.0, 89.0}, {30.0, 18.0}}, identifier: 'rootHeaderTitle', label: '现在'
+                              Button, 0x11a48f480, {{20.0, 76.0}, {44.0, 44.0}}, identifier: 'toggleAmountVisibility', label: '隐藏金额'
+                                Image, 0x11a48f5c0, {{20.0, 76.0}, {44.0, 44.0}}, identifier: 'eye', label: '显示'
+                              Button, 0x11a48f700, {{376.0, 76.0}, {44.0, 44.0}}, identifier: 'askYubai', label: '问余白'
+                                Other, 0x11a48f840, {{376.0, 76.0}, {44.0, 44.0}}, label: '余白'
+                              Button, 0x11a48f980, {{20.0, 153.0}, {238.3, 30.0}}, identifier: 'freshLetter', label: '每周来信 · 还能花比上周多 0.00'
+                                Image, 0x11a48fac0, {{33.3, 163.0}, {14.3, 10.3}}, identifier: 'envelope', label: '收取邮件'
+                                StaticText, 0x11a48fc00, {{57.0, 160.8}, {172.3, 14.3}}, label: '每周来信 · 还能花比上周多 0.00'
+                                Image, 0x11a48fd40, {{239.7, 163.0}, {6.0, 10.3}}, identifier: 'chevron.right', label: '前进'
+                              Button, 0x11a48fe80, {{20.0, 214.0}, {400.0, 141.3}}, identifier: 'fundsFormula', label: '还能花、接下来 90 天、¥968.00、还能花 968.00，要付 0.00，日常开销 0.00、还能花、968.00、要付、0.00、日常开销、0.00'
+                                StaticText, 0x11a60cdc0, {{20.0, 214.0}, {50.7, 20.3}}, label: '还能花'
+                                StaticText, 0x11a60cc80, {{78.7, 219.0}, {69.7, 14.3}}, label: '接下来 90 天'
+                                StaticText, 0x11a60cb40, {{20.0, 238.3}, {183.3, 57.3}}, label: '¥968.00'
+                                Other, 0x11a60ca00, {{376.0, 243.7}, {44.0, 44.0}}, label: '余白'
+                                Other, 0x11a60c640, {{20.0, 315.7}, {400.0, 12.0}}, label: '还能花 968.00，要付 0.00，日常开销 0.00'
+                                Other, 0x11a60c8c0, {{20.0, 343.7}, {8.0, 8.0}}
+                                StaticText, 0x11a60c780, {{32.0, 340.3}, {36.0, 14.3}}, label: '还能花'
+                                StaticText, 0x11a60c280, {{72.0, 339.7}, {47.0, 15.7}}, label: '968.00'
+                                Other, 0x11a60c500, {{131.0, 343.7}, {8.0, 8.0}}
+                                StaticText, 0x11a60c3c0, {{143.0, 340.3}, {24.0, 14.3}}, label: '要付'
+                                StaticText, 0x11a60c140, {{171.0, 339.7}, {29.7, 15.7}}, label: '0.00'
+                                Other, 0x11a60c000, {{212.7, 343.7}, {8.0, 8.0}}
+                                StaticText, 0x1183e1e00, {{224.7, 340.3}, {48.0, 14.3}}, label: '日常开销'
+                                StaticText, 0x1183e1a40, {{276.7, 339.7}, {29.7, 15.7}}, label: '0.00'
+                              Other, 0x1183e17c0, {{20.0, 379.3}, {400.0, 127.0}}, identifier: 'nowCards', value: requests=0
+                                StaticText, 0x118c2fe80, {{36.0, 395.3}, {90.3, 19.3}}, label: '1 笔还没分类'
+                                StaticText, 0x118c2fd40, {{383.7, 400.3}, {20.3, 13.3}}, label: '第 1 张，共 1 张卡片'
+                                StaticText, 0x118c2fac0, {{36.0, 422.7}, {119.0, 15.7}}, label: '招行储蓄卡 · 1月2日'
+                                Button, 0x118c2e6c0, {{36.0, 450.3}, {58.0, 36.0}}, identifier: 'organizeImports', label: '整理这 1 笔导入的账目'
+                                Button, 0x118c2f480, {{102.0, 460.7}, {39.0, 15.7}}, identifier: 'classifyImportsManually', label: '自己分类，打开账目中的没分类筛选'
+                              Button, 0x118c2e440, {{20.0, 530.3}, {400.0, 48.0}}, identifier: 'todayEntries', label: '今天、还没记、账目'
+                                StaticText, 0x118c2f840, {{36.0, 545.8}, {28.0, 17.0}}, label: '今天'
+                                StaticText, 0x118c2c500, {{72.0, 547.2}, {36.0, 14.3}}, identifier: 'todayEntrySummary', label: '还没记'
+                                StaticText, 0x118c2e800, {{364.0, 547.2}, {24.0, 14.3}}, label: '账目'
+                                Image, 0x118c2d900, {{398.0, 549.7}, {5.3, 9.3}}, identifier: 'chevron.right', label: '前进'
+                              StaticText, 0x118c2cf00, {{36.0, 618.3}, {95.3, 19.3}}, label: '现金会怎么走'
+                              StaticText, 0x118c2da40, {{339.7, 623.3}, {64.3, 13.3}}, label: '接下来 90 天'
+                              Other, 0x118c2f5c0, {{36.0, 645.7}, {368.0, 96.0}}, identifier: 'forecastChart', label: '还能花从 ¥968.00 起，2026-10-28 最低 ¥968.00，2027-01-26 ¥968.00。'
+                                Other, 0x118c2cb40, {{36.0, 645.7}, {368.0, 96.0}}
+                                  Other, 0x118c2ee40, {{36.0, 707.2}, {368.0, 1.0}}, value: 0
+                                  Other, 0x118c2f200, {{32.3, 645.7}, {54.8, 78.0}}, label: '2026年10月25日 0时到2026年11月8日 0时', value: 一直为968, 11个值
+                                  Other, 0x118c2d180, {{87.0, 645.7}, {54.8, 78.0}}, label: '2026年11月8日 0时到2026年11月22日 0时', value: 一直为968, 14个值
+                                  Other, 0x118c2d540, {{141.8, 645.7}, {54.8, 78.0}}, label: '2026年11月22日 0时到2026年12月6日 0时', value: 一直为968, 14个值
+                                  Other, 0x118c2ed00, {{196.5, 645.7}, {54.8, 78.0}}, label: '2026年12月6日 0时到2026年12月20日 0时', value: 一直为968, 14个值
+                                  Other, 0x118c2c000, {{251.3, 645.7}, {54.8, 78.0}}, label: '2026年12月20日 0时到2027年1月3日 0时', value: 一直为968, 14个值
+                                  Other, 0x118c2f700, {{306.0, 645.7}, {54.8, 78.0}}, label: '2027年1月3日 0时到2027年1月17日 0时', value: 一直为968, 14个值
+                                  Other, 0x118c2df40, {{360.8, 645.7}, {54.8, 78.0}}, label: '2027年1月17日 0时到2027年1月31日 0时', value: 一直为968, 11个值
+                                Other, 0x118c2d680, {{36.0, 645.7}, {368.0, 96.0}}
+                              StaticText, 0x118c2c640, {{20.0, 795.8}, {129.7, 15.7}}, label: '下一笔 · 还没有待付款'
+                              Other, 0x118c2ef80, {{0.0, 146.0}, {440.0, 8.0}}
+                      Other, 0x118c2e580, {{0.0, 0.0}, {440.0, 956.0}}
+                        Other, 0x118c2c780, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x118c2f0c0, {{20.0, 848.0}, {400.0, 66.0}}, identifier: 'mainNavigation', label: '主导航', value: destination=overvi...
+                Button, 0x118c2c140, {{28.0, 856.0}, {78.7, 50.0}}, identifier: 'tab_overview', label: '现在', Selected
+                  Image, 0x118c2cc80, {{57.3, 863.0}, {20.0, 20.0}}, label: 'TabWaterMark'
+                  StaticText, 0x118c2d7c0, {{57.2, 887.0}, {20.0, 12.0}}, label: '现在'
+                Button, 0x118c2f340, {{106.7, 856.0}, {78.3, 50.0}}, identifier: 'tab_insights', label: '洞察'
+                  Image, 0x118c2c280, {{135.7, 863.0}, {20.0, 20.0}}, identifier: 'chart.pie', label: '图表饼图'
+                  StaticText, 0x118c2d2c0, {{135.8, 887.0}, {20.0, 12.0}}, label: '洞察'
+                Button, 0x118c2ebc0, {{193.0, 854.0}, {54.0, 54.0}}, identifier: 'addEntry', label: '记一笔'
+                Button, 0x118c2c8c0, {{255.0, 856.0}, {78.7, 50.0}}, identifier: 'tab_entries', label: '账目'
+                  Image, 0x11980f980, {{284.3, 866.0}, {20.0, 14.3}}, identifier: 'list.bullet', label: '列表'
+                  StaticText, 0x11980e440, {{284.2, 887.0}, {20.0, 12.0}}, label: '账目'
+                Button, 0x11980dcc0, {{333.7, 856.0}, {78.3, 50.0}}, identifier: 'tab_settings', label: '我'
+                  Image, 0x11980d7c0, {{364.0, 864.0}, {17.3, 18.3}}, identifier: 'person', label: 'person'
+                  StaticText, 0x11980fe80, {{367.8, 887.0}, {10.0, 12.0}}, label: '我'
+              StaticText, 0x11980c640, {{36.0, 789.5}, {83.7, 17.0}}, identifier: 'toastMessage', label: '建立账本完成'
+              StaticText, 0x11980c8c0, {{285.0, 789.5}, {7.0, 17.0}}, label: '·'
+              Button, 0x11980fd40, {{316.0, 789.7}, {28.0, 17.0}}, identifier: 'undoLastChange', label: '撤销'
+              Button, 0x11980f5c0, {{385.3, 793.3}, {9.7, 9.7}}, identifier: 'xmark', label: '关闭提示'
+Path to element:
+ →Application, 0x11a48e1c0, pid: 1741, label: '余白'
+Query chain:
+ →Find: Target Application 'app.yubai.personal'
+  Output: {
+    Application, 0x11980cdc0, pid: 1741, label: '余白'
+  }
