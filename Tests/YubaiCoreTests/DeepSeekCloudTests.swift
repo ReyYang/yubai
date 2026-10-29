@@ -2,6 +2,39 @@ import XCTest
 @testable import YubaiCore
 
 final class DeepSeekCloudTests: XCTestCase {
+    func testImportErrorsKeepTheExistingSpecificReason() async throws {
+        let cases: [(Int, String, String)] = [
+            (401, "", "云端密钥无效或无权访问，请检查密钥设置。"),
+            (403, "", "云端密钥无效或无权访问，请检查密钥设置。"),
+            (503, "", "云端服务返回错误（HTTP 503）。本机计算结果已保留。"),
+            (404, #"{"error":{"code":"model_not_found"}}"#, DeepSeekError.modelUnavailable(DeepSeekConfiguration.defaultModel).localizedDescription),
+            (200, "malformed", "云端响应无法解析。")
+        ]
+        for (status, body, expected) in cases {
+            let stub = CloudTestStub(rawResponse: true, statusCode: status) { _ in body }
+            defer { stub.close() }
+            do { _ = try await stub.send(ChatRequest(messages: [])); XCTFail() }
+            catch { XCTAssertEqual(ImportOrganizer.failureMessage(error), expected) }
+        }
+        for code in [URLError.timedOut, .notConnectedToInternet] {
+            let stub = CloudTestStub { _ in throw URLError(code) }
+            defer { stub.close() }
+            do { _ = try await stub.send(ChatRequest(messages: [])); XCTFail() }
+            catch { XCTAssertEqual(ImportOrganizer.failureMessage(error), "云端请求失败：网络或超时。本机计算结果已保留，可稍后重试。") }
+        }
+    }
+    func testImportTimeoutOverrideDoesNotChangeOtherRequestsOrHTTPPayload() async throws {
+        for timeout in [nil, 180.0] as [Double?] {
+            let stub = CloudTestStub { request in
+                XCTAssertEqual(request.timeoutInterval, timeout ?? 60)
+                let payload = try CloudTestStub.payload(in: request)
+                XCTAssertNil(payload["timeout"])
+                return #"{"rows":[]}"#
+            }
+            defer { stub.close() }
+            _ = try await stub.send(ChatRequest(messages: [], timeout: timeout))
+        }
+    }
     func testShortCloudTasksDisableThinking() async throws {
         let log = SendLog()
         let stub = CloudTestStub(sendLog: log) { request in

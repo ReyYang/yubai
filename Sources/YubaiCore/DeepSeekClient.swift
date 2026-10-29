@@ -180,7 +180,7 @@ public struct DeepSeekClient: ChatTransport {
             tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens, response_format: input.responseFormat,
             thinking: input.thinking.map { ["type": $0 ? "enabled" : "disabled"] })
         let body = try JSONEncoder().encode(payload)
-        var request = URLRequest(url: Self.chatCompletionsURL(baseURL: configuration.baseURL), timeoutInterval: configuration.timeout)
+        var request = URLRequest(url: Self.chatCompletionsURL(baseURL: configuration.baseURL), timeoutInterval: input.timeout ?? configuration.timeout)
         request.httpMethod = "POST"; request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")

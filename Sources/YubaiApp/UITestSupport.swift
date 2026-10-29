@@ -6,11 +6,25 @@ import YubaiCore
 @MainActor @Observable final class UITestRequestLog {
     static let shared = UITestRequestLog()
     var count = 0
+    var organizationRequests = 0
+    var completedOrganizationIDs: Set<String> = []
+    var resentCompletedCount = 0
 }
 
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
 enum UITestSupport {
+    static var organizationScenario: String? {
+        guard script == "salary", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
+              ["stop-second", "fail-second"].contains(value) else { return nil }
+        return value
+    }
+    @MainActor static func importRequestState(in ledger: Ledger) -> String {
+        let log = UITestRequestLog.shared
+        let requests = "requests=\(log.count)"
+        guard script != nil, organizationScenario != nil || ProcessInfo.processInfo.environment["YUBAI_UI_TEST_IMPORT_STATE"] == "1" else { return requests }
+        return requests + ";entries=\(ledger.activeEntries.count);classified=\(ledger.activeEntries.filter { !Classification.isPending($0) }.count);resent=\(log.resentCompletedCount)"
+    }
     static var keepsUndoReceipt: Bool {
         script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_KEEP_UNDO"] == "1"
     }
@@ -53,7 +67,7 @@ enum UITestSupport {
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty", script != "welcome-import" else { return }
         let now = Date()
         if script == "salary" {
-            try repository.save(salaryLedger(now: now), reason: "合成工资夹具")
+            try repository.save(organizationScenario == nil ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
             return
         }
         if screenshotScripts.contains(script) {
@@ -149,6 +163,21 @@ enum UITestSupport {
                               title: "合成日常支出", category: day <= 3 ? Classification.pendingCategory : "餐饮")
             if day <= 3 { entry.batchID = batch.id; entry.source = "文件" }
             ledger.entries.append(entry)
+        }
+        return ledger
+    }
+    /// Three chunks, with no salary candidate or automatic cloud work.
+    static func organizationLedger(now: Date) -> Ledger {
+        var ledger = salaryLedger(now: now)
+        ledger.preferences.cloudAIEnabled = true
+        var batch = ImportBatch(filename: "合成大量流水.csv", importedCount: 70, duplicateCount: 0, skippedCount: 0)
+        batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
+        ledger.imports = [batch]
+        ledger.entries = (1...70).map { day in
+            var entry = Entry(date: Dates.addDays(-day, to: Dates.day(now)), amount: 100,
+                              accountID: ledger.accounts[0].id, title: "合成日常支出", category: Classification.pendingCategory)
+            entry.batchID = batch.id; entry.source = "文件"
+            return entry
         }
         return ledger
     }
@@ -258,12 +287,31 @@ struct UITestTransport: ChatTransport {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
         if script == "salary", request.purpose == "导入整理" {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
+            let ids = Set((payload["batch"]?.arrayValue ?? []).compactMap { $0["id"]?.stringValue })
+            let scenario = UITestSupport.organizationScenario
+            let number = await MainActor.run {
+                let log = UITestRequestLog.shared
+                log.organizationRequests += 1
+                log.resentCompletedCount += ids.intersection(log.completedOrganizationIDs).count
+                return log.organizationRequests
+            }
+            if scenario == "stop-second", number == 2 {
+                // Stay in a cancellable request until the UI presses Stop.
+                while true { try await Task.sleep(for: .seconds(1)) }
+            }
+            if scenario == "fail-second", number == 2 {
+                throw YubaiError.invalid("云端服务返回错误（HTTP 503）。本机计算结果已保留。")
+            }
+            if scenario == "fail-second", number >= 3 {
+                try await Task.sleep(for: .seconds(5)) // Let XCTest observe retry progress.
+            }
             let rows: [JSONValue] = (payload["batch"]?.arrayValue ?? []).compactMap { row in
                 guard let id = row["id"]?.stringValue else { return nil }
                 let income = row["inflow"] == .bool(true)
                 return .object(["entry": .string(id), "category": .string(income ? "工资奖金" : "餐饮"),
                                 "nature": .string(income ? "income" : "expense"), "confident": .bool(true)])
             }
+            await MainActor.run { UITestRequestLog.shared.completedOrganizationIDs.formUnion(ids) }
             return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array(rows), "items": .array([]),
                 "series": .array([]), "questions": .array([])]).jsonText())
         }

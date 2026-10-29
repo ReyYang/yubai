@@ -1,5 +1,28 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-28 · 第二十四轮大量流水导入界面
+
+来源为 owner 本轮明确确认的第二十四轮文字规格，在 `fix/large-import-organize` 的 `5409003` 上续作；未附独立 HTML／图片或私有原稿链接。继承上一轮认工资、错误映射、逐段保存与已完成 ID 记录，本轮完成范围选择和整理状态界面。
+
+`ImportPreview` 在 `Import.swift` 公开 `recentThreeMonthsStart` 与 `selectingEntries(onOrAfter:)`：以完整有效记录的最晚时间往前推三个公历月，仅最早时间严格早于阈值时提供范围选择；阈值包含在最近范围内。筛选只在副本取消范围外行的勾选，不重新选中手动取消或重复行，不改变 `latestBalance`。`WelcomeView` 在已导入行上方显示双行两段控件，neutralSoft 底、选中 raised 底与共用 knob 轻阴影，默认最近三个月，数字千分位；辅助功能字号改纵排。摘要和提交沿用所选副本，核对 sheet 只显示当前范围并按行 ID 合回勾选，切换范围保留范围外原选择。余额、锚点与保存的完整原件仍来自原始流水。`ImportView` 源码及其导入页保持，不增加范围控件。
+
+`PendingImportsCard` 标题沿用每段保存后刷新出的剩余计数，账户／完整批次日期范围保持。整理中替换原转圈与按钮区：6pt neutralSoft／brand 进度、圆角 3；下行 13pt 数字字体／labelSecondary 的千分位已整理／总数、12pt labelSecondary 提醒、raised 底 36pt「停下」（触控至少 44pt）。空间不足时进度数字与提醒／停下分行。进度 AX 标识 `organizeProgress`、value 为无空格的数字 `completed/total`，停止标识 `stopOrganizing`。失败原文放到详情之后、按钮之前，13pt amberInk，移除开头的「记录已保存。」时不改其余原因，标识 `organizeError`；按钮保留「整理」「自己分」。若原错误对应云端不可用，再点整理进入既有智能设置，配置恢复后仅发送剩余记录。
+
+`AppStore` 持有待整理任务与当前批次任务，停下取消两者；直接调用 `organizeImport` 的父任务取消也会传到子任务。取消不写失败原因，已持久化的段保留；保存前在 MainActor 再检查取消。待整理运行的总数汇总全部批次可整理 ID，批次之间不重置分子／分母；导入页单批次调用仍独立计数。失败原因继续用上一轮 `ImportOrganizer.failureMessage`，不更换错误映射或已完成 ID 规则。
+
+新增可见中文仅「最近 3 个月」「全部」「N 笔」「停下」「整理时别离开余白」。前两项与停下为控件，N 笔与进度为数字事实；既有「已导入 N 笔」「N 笔还没分类」仅随范围／保存更新数字，失败原文复用已有文案。提醒是 owner 本轮明确指定的稿内文字：删除会丢失整理期间的前台要求，分组／字重不能表达该要求，进度数字与停下控件也无法表达；已限于整理发生时显示，故按本轮确认稿保留这一句，不增加其他说明。
+
+测试沿用现有工程已登记的 `ImportBalanceTests.swift`、`AppFlowTests.swift`，没有新增 Swift 文件。新增 5 项 Core 覆盖跨年计数、严格三个月边界／空与单行、月底与闰二月、手动／重复勾选保留、两范围提交后的账目数／余额锚点／完整原件。扩展严格门控的 salary／welcome-import 脚本：70 笔、30＋30＋10 三段；第二请求可持续等待取消或抛出既有 HTTP 503 原文，重试时延迟回复便于观察进度。新增观察值仅在显式测试开关或整理场景下包含真实账目数／已分类数／重发已成功 ID 数，原脚本的 `requests=N` 保持。
+
+新增 UI 测试（源码，未在 Apple 平台实跑）：
+
+- `testWelcomeAnnualStatementDefaultsToRecentThreeMonthsAndCommitsSelectedCount`：一年 13 笔，默认最近 4 笔、切换 13 笔、范围内手动勾选跨切换保持、余额固定 1234.56，提交／重启后实际账目数为 4。
+- `testWelcomeAnnualStatementAllRangeCommitsFullCount`：相同流水选择全部，提交／重启后实际账目数为 13。
+- `testPendingImportsStopKeepsCompletedChunkAndRemainingCount`：30/70 进度、停下、剩余 40，30 笔已分类与重启持久化。
+- `testPendingImportsSecondChunkFailureShowsReasonAndRetriesOnlyRemaining`：第二段失败原文、剩余 40、详情不变，再点整理的分母 40／中途剩余 10；总请求 4 次且不重发已完成 ID，完成／重启不再出现卡片。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0，584 项、580 通过／4 原有实网 opt-in 跳过／0 失败。改动 App 文件通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析。另提取实际任务方法、实际 `ActiveLedgerTransport` 与 `UITestSupport`，移除平台门控后以 Swift 6 严格并发类型检查，并链接 Core、配持久化替身离线执行：停下保留 30／剩余 40、HTTP 503 后只重试 30＋10、无已完成 ID 重发、多批次 0→30→45→70 且分母始终 70、直接调用父任务取消传递均通过。该替身不代替完整 AppStore／Apple SDK 类型检查或 XCTest UI 实跑。`git diff --check` 通过；Apple 编译、AX／VoiceOver、字号与视觉验收待 Mac，Figma／截图／分发资源未同步。未提交、未推送，未调用 DeepSeek 或任何付费 API。
+
 ## 2026-10-28 · 第二十三轮固定收付「以后」
 
 来源为 owner 本轮明确确认的第二十三轮文字规格；未附独立 HTML／图片或私有页面链接。此轮扩展第十一轮仅显示当月期次的边界，原月内要付／要收、逾期及还能花算法保持。
