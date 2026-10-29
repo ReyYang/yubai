@@ -29,12 +29,13 @@ public enum ButlerWording {
         返回纯JSON：{"cards":[{"key":"原key","title":"标题","body":"正文"}]}。
         """ + (select ? "从给定候选中选最有依据的2至3张卡片；不足时少选。" : "逐张改写其他候选。")
         do {
+            // At most 12 cards: 256 tokens each for key, 14-character title and 60-character body, plus framing.
             let reply = try await transport.send(ChatRequest(messages: [ChatMessage(role: .system, content: prompt),
                 ChatMessage(role: .system, content: Memory.prompt(ledger: ledger, now: now)),
-                ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 3000, purpose: select ? "导入短评" : "管家卡片与来信",
+                ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 256 + requested.count * 256, thinking: false, purpose: select ? "导入短评" : "管家卡片与来信",
                 groupID: UUID(), groupTitle: select ? "导入短评" : "管家卡片与每周来信"))
             guard reply.role == .assistant, let text = reply.content,
-                  let rows = try JSONValue.parse(text)["cards"]?.arrayValue, !rows.isEmpty else { return fallback }
+                  let rows = try JSONValue.parseModelResponse(text)["cards"]?.arrayValue, !rows.isEmpty else { return fallback }
             var output = select ? [] : candidates
             var seen = Set<String>()
             for row in rows {
