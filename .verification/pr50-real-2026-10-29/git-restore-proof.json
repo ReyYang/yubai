@@ -1,0 +1,11 @@
+{
+  "original_branch": true,
+  "main_head_unchanged": true,
+  "status_with_untracked_all_identical": true,
+  "stashes_identical": true,
+  "diff_identical": true,
+  "signing_file_bytes_identical": true,
+  "package_resolved_bytes_identical": true,
+  "test_branch_removed": true,
+  "status_display_note": "default short status folds the untracked Package.resolved into its workspace directory; full untracked paths exactly match initial snapshot"
+}

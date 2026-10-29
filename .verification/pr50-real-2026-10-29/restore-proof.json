@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-29T13:15:49.547619+08:00",
+  "simulator": "37FDA39F-AF08-48EA-9E35-0AAB017AAFE0",
+  "backup": "/Users/yang/yubai-sim-data-before-pr50-real-2026-10-29",
+  "restored_data_container": "/Users/yang/Library/Developer/CoreSimulator/Devices/37FDA39F-AF08-48EA-9E35-0AAB017AAFE0/data/Containers/Data/Application/051F63E8-E6DD-4E91-A0F7-A4D1BED2E986",
+  "file_count": 203,
+  "sha256_matches_original": true,
+  "key_decision": "owner confirmed retain for next test; no key access or deletion by Codex",
+  "app_relaunched_after_restore": false
+}
