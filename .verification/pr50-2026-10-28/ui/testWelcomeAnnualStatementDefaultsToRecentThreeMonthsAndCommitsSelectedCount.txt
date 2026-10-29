@@ -1,0 +1,134 @@
+Attributes: Application, 0x10b9c1a40, pid: 67570, label: '余白'
+Element subtree:
+ →Application, 0x10b9c1a40, pid: 67570, label: '余白'
+    Window (Main), 0x10b9c3840, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x10b9c3480, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x10b9c1e00, {{0.0, 0.0}, {440.0, 956.0}}
+          Other, 0x10b9c0500, {{-440.0, -956.0}, {1320.0, 2868.0}}
+          Other, 0x10b9c0280, {{0.0, 0.0}, {440.0, 956.0}}
+            Other, 0x10b9c1040, {{0.0, 0.0}, {440.0, 956.0}}
+              Other, 0x10b9c1180, {{0.0, 0.0}, {440.0, 956.0}}
+                NavigationBar, 0x10b9c2a80, {{0.0, 62.0}, {440.0, 54.0}}, identifier: '_TtGC7SwiftUI29PresentationHosting'
+                  Other, 0x10b9c08c0, {{24.0, 66.0}, {95.3, 36.0}}, identifier: 'welcomeCloudAI', label: '云端智能'
+                    Other, 0x10b9c2d00, {{24.0, 66.0}, {95.3, 36.0}}
+                      Button, 0x10b9c17c0, {{24.0, 66.0}, {95.3, 36.0}}, identifier: 'welcomeCloudAI', label: '云端智能'
+                        Image, 0x10b9c0a00, {{31.7, 77.0}, {21.0, 14.0}}, identifier: 'cloud', label: '大部多云'
+                        StaticText, 0x10b9c1540, {{24.0, 66.0}, {95.3, 36.0}}, label: '云端智能'
+                  Other, 0x10b9c0f00, {{332.3, 66.0}, {83.7, 36.0}}, label: '恢复备份'
+                    Other, 0x10b9c3200, {{332.3, 66.0}, {83.7, 36.0}}
+                      Button, 0x10b9c3700, {{332.3, 66.0}, {83.7, 36.0}}, label: '恢复备份'
+                Other, 0x10b9c0dc0, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x10b9c2580, {{0.0, 0.0}, {440.0, 956.0}}
+                    Other, 0x10b9c30c0, {{0.0, 0.0}, {440.0, 956.0}}
+                      Other, 0x10b9c21c0, {{0.0, 0.0}, {440.0, 956.0}}
+                        ScrollView, 0x10b9c35c0, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'welcomeScroll'
+                          Other, 0x10b9c0c80, {{0.0, 0.0}, {440.0, 956.0}}
+                            Other, 0x10b9c2080, {{0.0, 0.0}, {440.0, 170.8}}
+                          Other, 0x10b9c1680, {{0.0, 0.0}, {440.0, 956.0}}
+                          Other, 0x10b9c0640, {{0.0, 116.0}, {440.0, 582.0}}
+                            Other, 0x10b9c3c00, {{20.0, 168.0}, {64.0, 64.0}}, label: '余白'
+                            StaticText, 0x118261b80, {{20.0, 248.0}, {75.7, 48.0}}, label: '余白'
+                            Other, 0x1182630c0, {{20.0, 336.0}, {400.0, 342.0}}, identifier: 'welcomeBalanceCard'
+                              StaticText, 0x118263980, {{36.0, 352.0}, {84.3, 20.3}}, label: '现在手里有'
+                              StaticText, 0x118261400, {{36.0, 400.3}, {15.7, 28.7}}, label: '¥'
+                              TextField, 0x118262bc0, {{59.7, 380.3}, {344.3, 54.3}}, identifier: 'accountBalance', label: '现在手里的余额，元', placeholderValue: '0.00', value: 1234.56
+                              StaticText, 0x118261a40, {{36.0, 442.7}, {145.3, 14.3}}, identifier: 'welcomeStatementBalance', label: '流水 1月15日 12:00 的余额'
+                              Button, 0x118263d40, {{36.0, 480.0}, {72.0, 30.0}}, label: '微信零钱'
+                              Button, 0x118263c00, {{116.0, 480.0}, {60.0, 30.0}}, label: '支付宝'
+                              Button, 0x118260c80, {{184.0, 480.0}, {83.7, 30.0}}, label: '招行储蓄卡', Selected
+                              Button, 0x118263340, {{275.7, 480.0}, {63.3, 30.0}}, identifier: 'welcomeOtherAccount', label: '＋ 别的'
+                              Other, 0x118261e00, {{36.0, 534.0}, {368.0, 68.0}}, identifier: 'welcomeImportRange'
+                                Button, 0x118261540, {{40.0, 538.0}, {178.0, 60.0}}, identifier: 'welcomeImportRecent', label: '最近 3 个月、4 笔', Selected
+                                  StaticText, 0x118263840, {{93.0, 549.7}, {72.0, 17.0}}, label: '最近 3 个月'
+                                  StaticText, 0x10af5f480, {{116.7, 570.7}, {24.7, 15.7}}, label: '4 笔'
+                                Button, 0x10af5d180, {{294.5, 549.7}, {33.0, 36.7}}, identifier: 'welcomeImportAll', label: '全部、13 笔'
+                                  StaticText, 0x10af5fd40, {{297.0, 549.7}, {28.0, 17.0}}, label: '全部'
+                                  StaticText, 0x10af5e440, {{294.5, 570.7}, {33.0, 15.7}}, label: '13 笔'
+                              Button, 0x10af5fac0, {{36.0, 610.0}, {368.0, 52.0}}, identifier: 'welcomeImportStatement', label: '已导入 4 笔、2001年10月15日–2002年1月15日'
+                                Image, 0x10af5e6c0, {{38.0, 629.7}, {12.7, 12.7}}, identifier: 'checkmark', label: '已选择', Selected
+                                StaticText, 0x10af5d900, {{64.7, 617.8}, {77.0, 18.0}}, label: '已导入 4 笔'
+                                StaticText, 0x10af5f840, {{64.7, 639.8}, {189.7, 14.3}}, label: '2001年10月15日–2002年1月15日'
+                                Image, 0x10af5cdc0, {{397.3, 631.0}, {6.0, 10.3}}, identifier: 'chevron.right', label: '前进'
+                          Other, 0x10af5d040, {{407.0, 116.0}, {30.0, 714.0}}, label: '垂直滚动条, 1页', value: 0%
+                            Other, 0x10af5fe80, {{434.0, 251.0}, {3.0, 576.0}}
+                          Other, 0x10af5cc80, {{407.0, 116.0}, {30.0, 714.0}}, label: '垂直滚动条, 1页', value: 0%
+                            Other, 0x10af5da40, {{434.0, 251.0}, {3.0, 576.0}}
+                        Button, 0x10af5f0c0, {{20.0, 850.0}, {400.0, 52.0}}, identifier: 'startLedger', label: '开始'
+                Other, 0x10af5ef80, {{0.0, 0.0}, {440.0, 956.0}}
+                  Other, 0x10af5ca00, {{0.0, 0.0}, {440.0, 956.0}}
+      Other, 0x10af5ea80, {{0.0, 0.0}, {440.0, 956.0}}
+        Other, 0x10af5dcc0, {{-440.0, -956.0}, {1320.0, 2868.0}}
+        Other, 0x10af5d2c0, {{0.0, 62.0}, {440.0, 894.0}}
+          Other, 0x10af5cb40, {{0.0, 62.0}, {440.0, 894.0}}
+            Other, 0x10af5df40, {{0.0, 62.0}, {440.0, 894.0}}
+              Other, 0x10af5cf00, {{0.0, 62.0}, {440.0, 894.0}}
+                Other, 0x10af5e080, {{0.0, 62.0}, {440.0, 894.0}}
+                  Other, 0x10af5e1c0, {{0.0, 62.0}, {440.0, 894.0}}
+                    NavigationBar, 0x10af5f5c0, {{0.0, 82.0}, {440.0, 54.0}}, identifier: '核对 1/1'
+                      StaticText, 0x10af5e940, {{190.3, 93.7}, {59.0, 20.7}}, label: '核对 1/1'
+                      Other, 0x10af5f980, {{364.0, 86.0}, {52.0, 36.0}}, identifier: 'closeSheet', label: '完成'
+                        Other, 0x10af5c8c0, {{364.0, 86.0}, {52.0, 36.0}}
+                          Button, 0x10af5db80, {{364.0, 86.0}, {52.0, 36.0}}, identifier: 'closeSheet', label: '完成'
+                    Other, 0x10af5d7c0, {{0.0, 62.0}, {440.0, 894.0}}
+                      Other, 0x10af5f340, {{0.0, 62.0}, {440.0, 894.0}}
+                        Other, 0x10af5d540, {{0.0, 62.0}, {440.0, 894.0}}
+                          Other, 0x10af5d400, {{0.0, 62.0}, {440.0, 894.0}}
+                            ScrollView, 0x10b0e4000, {{0.0, 62.0}, {440.0, 894.0}}
+                              Other, 0x10b0e4140, {{0.0, 62.0}, {440.0, 894.0}}
+                                Other, 0x10b0e4280, {{0.0, 62.0}, {440.0, 128.8}}
+                              Other, 0x10b0e43c0, {{0.0, 62.0}, {440.0, 894.0}}
+                              Other, 0x10b0e4500, {{0.0, 136.0}, {440.0, 722.7}}
+                                StaticText, 0x10b0e4640, {{20.0, 148.0}, {355.3, 18.0}}, label: '账单表格 · 2001年10月15日–2002年1月15日 · 4 笔'
+                                Button, 0x10b0e4780, {{20.0, 178.0}, {48.0, 28.0}}, identifier: 'importPrivacySummary', label: '在本机读取，没有发给云端'
+                                StaticText, 0x10b0e48c0, {{36.0, 242.0}, {14.3, 26.3}}, label: '4'
+                                StaticText, 0x10b0e4a00, {{162.7, 242.0}, {14.3, 26.3}}, label: '0'
+                                StaticText, 0x10b0e4b40, {{289.3, 242.0}, {14.3, 26.3}}, label: '0'
+                                StaticText, 0x10b0e4c80, {{36.0, 272.3}, {33.0, 13.3}}, label: '将导入'
+                                StaticText, 0x10b0e4dc0, {{162.7, 272.3}, {44.0, 13.3}}, label: '已经记过'
+                                StaticText, 0x10b0e4f00, {{289.3, 272.3}, {33.0, 13.3}}, label: '要你选'
+                                StaticText, 0x10b0e5040, {{36.0, 297.7}, {88.0, 15.7}}, identifier: 'importTotal_流出', label: '流出 4 笔、4.00'
+                                  StaticText, 0x10b0e5180, {{36.0, 298.3}, {50.3, 14.3}}, label: '流出 4 笔'
+                                  StaticText, 0x10b0e52c0, {{94.3, 297.7}, {29.7, 15.7}}, label: '4.00'
+                                StaticText, 0x10b0e5400, {{316.0, 297.7}, {88.0, 15.7}}, identifier: 'importTotal_流入', label: '流入 0 笔、0.00'
+                                  StaticText, 0x10b0e5540, {{316.0, 298.3}, {50.3, 14.3}}, label: '流入 0 笔'
+                                  StaticText, 0x10b0e5680, {{374.3, 297.7}, {29.7, 15.7}}, label: '0.00'
+                                Button, 0x10b0e57c0, {{24.0, 353.3}, {130.7, 44.0}}, identifier: 'importPreviewFilter', label: '全部 4', Selected
+                                Button, 0x10b0e5900, {{154.7, 353.3}, {130.7, 44.0}}, identifier: 'importPreviewFilter', label: '要你选 0'
+                                Button, 0x10b0e5a40, {{285.3, 353.3}, {130.7, 44.0}}, identifier: 'importPreviewFilter', label: '不导入 0'
+                                StaticText, 0x10b0e5b80, {{36.0, 421.3}, {40.7, 13.3}}, label: '1月15日'
+                                Other, 0x10b0e5cc0, {{51.3, 457.5}, {352.7, 34.3}}
+                                  Button, 0x10b0e5e00, {{51.3, 468.0}, {13.7, 13.7}}, identifier: 'selectImportRow_14', label: '不导入这一行', value: 已选, Selected
+                                  StaticText, 0x10b0e5f40, {{88.0, 457.5}, {55.7, 17.0}}, label: '合成日常'
+                                  StaticText, 0x10b0e6080, {{88.0, 478.5}, {73.7, 13.3}}, label: '12:00 · 没分类'
+                                  StaticText, 0x10b0e61c0, {{369.7, 465.7}, {34.3, 18.0}}, label: '1.00'
+                                StaticText, 0x10b0e6300, {{36.0, 530.7}, {47.3, 13.3}}, label: '12月15日'
+                                Other, 0x10b0e6440, {{51.3, 566.8}, {352.7, 34.3}}
+                                  Button, 0x10b0e6580, {{51.3, 577.3}, {13.7, 13.7}}, identifier: 'selectImportRow_13', label: '不导入这一行', value: 已选, Selected
+                                  StaticText, 0x10b0e66c0, {{88.0, 566.8}, {55.7, 17.0}}, label: '合成日常'
+                                  StaticText, 0x10b0e6800, {{88.0, 587.8}, {73.7, 13.3}}, label: '12:00 · 没分类'
+                                  StaticText, 0x10b0e6940, {{369.7, 575.0}, {34.3, 18.0}}, label: '1.00'
+                                StaticText, 0x10b0e6a80, {{36.0, 640.0}, {45.7, 13.3}}, label: '11月15日'
+                                Other, 0x10b0e6bc0, {{51.3, 676.2}, {352.7, 34.3}}
+                                  Button, 0x10b0e6d00, {{51.3, 686.7}, {13.7, 13.7}}, identifier: 'selectImportRow_12', label: '不导入这一行', value: 已选, Selected
+                                  StaticText, 0x10b0e6e40, {{88.0, 676.2}, {55.7, 17.0}}, label: '合成日常'
+                                  StaticText, 0x10b0e6f80, {{88.0, 697.2}, {73.7, 13.3}}, label: '12:00 · 没分类'
+                                  StaticText, 0x10b0e70c0, {{369.7, 684.3}, {34.3, 18.0}}, label: '1.00'
+                                StaticText, 0x10b0e7200, {{36.0, 749.3}, {47.7, 13.3}}, label: '10月15日'
+                                Other, 0x10b0e7340, {{51.3, 785.5}, {352.7, 34.3}}
+                                  Button, 0x10b0e7480, {{51.3, 796.0}, {13.7, 13.7}}, identifier: 'selectImportRow_11', label: '不导入这一行', value: 已选, Selected
+                                  StaticText, 0x10b0e75c0, {{88.0, 785.5}, {55.7, 17.0}}, label: '合成日常'
+                                  StaticText, 0x10b0e7700, {{88.0, 806.5}, {73.7, 13.3}}, label: '12:00 · 没分类'
+                                  StaticText, 0x10b0e7840, {{369.7, 793.7}, {34.3, 18.0}}, label: '1.00'
+                              Other, 0x10b0e7980, {{407.0, 136.0}, {30.0, 758.0}}, label: '垂直滚动条, 1页', value: 0%
+                                Other, 0x10b0e7ac0, {{434.0, 202.3}, {3.0, 694.7}}
+                              Other, 0x10b0e7c00, {{407.0, 136.0}, {30.0, 758.0}}, label: '垂直滚动条, 1页', value: 0%
+                                Other, 0x10b0e7d40, {{434.0, 202.3}, {3.0, 694.7}}
+                    Other, 0x10b0e7e80, {{0.0, 62.0}, {440.0, 894.0}}
+                      Other, 0x11816c000, {{0.0, 62.0}, {440.0, 894.0}}
+Path to element:
+ →Application, 0x10b9c1a40, pid: 67570, label: '余白'
+Query chain:
+ →Find: Target Application 'app.yubai.personal'
+  Output: {
+    Application, 0x11816c140, pid: 67570, label: '余白'
+  }
