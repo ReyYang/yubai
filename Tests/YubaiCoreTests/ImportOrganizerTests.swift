@@ -98,6 +98,7 @@ private actor ResumableImportScript: ChatTransport {
         XCTAssertEqual(request.purpose, "导入整理")
         XCTAssertEqual(request.timeout, 180)
         XCTAssertEqual(request.maxTokens, 6000)
+        XCTAssertEqual(request.thinking, false)
         let input = try JSONValue.parse(request.messages.last!.content!)
         let rows = input["batch"]!.arrayValue!
         XCTAssertLessThanOrEqual(rows.count, 30)

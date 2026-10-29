@@ -265,8 +265,11 @@ public struct ImportOrganizer: Sendable {
                 "rents": .array(working.rents.filter(\.active).map { .object(["id": .string($0.id.uuidString), "title": .string($0.title), "start": .string(Dates.text($0.startDate)), "monthly_total": .money($0.monthlyTotal), "personal_share": .money($0.personalShare), "due": .string(Dates.text($0.nextDueDate))]) }),
                 "plans": .array(working.plans.filter(\.active).map { .object(["id": .string($0.id.uuidString), "title": .string($0.title), "amount": .money($0.amount), "nature": .string($0.nature.rawValue), "due": .string(Dates.text($0.dueDate)), "frequency": .string($0.frequency.rawValue)]) })
             ])
+            // Up to 30 rows need roughly 3,000 JSON tokens, including UUIDs and short purposes.
+            // Reserve another 3,000 for items, series and up to five questions with options.
+            // Disable thinking so the full 6,000-token budget is available for the JSON response.
             let reply = try await transport.send(ChatRequest(messages: [ChatMessage(role: .system, content: Self.systemPrompt),
-                ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 6000, purpose: "导入整理", groupID: groupID, groupTitle: "整理 \(batch.count) 笔导入记录", timeout: 180))
+                ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0, maxTokens: 6000, thinking: false, purpose: "导入整理", groupID: groupID, groupTitle: "整理 \(batch.count) 笔导入记录", timeout: 180))
             guard reply.role == .assistant, let text = reply.content, let output = (try? JSONValue.parse(text))?.objectValue,
                   output["rows"]?.arrayValue != nil else { throw YubaiError.invalid("整理结果格式无效，记录已保存，稍后可以再整理。") }
             let visible = Set(chunk.map(\.id) + context.map(\.id))
