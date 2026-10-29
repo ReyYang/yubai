@@ -11,44 +11,40 @@ struct EntriesView: View {
     @State private var revealedEntryID: UUID?
     @FocusState private var searchFocused: Bool
     var body: some View {
-        let end = Dates.addMonths(1, to: month)
-        let entries = store.sortedEntries.filter { $0.date >= month && $0.date < end }
-        let summary = EntryTimeline.months(sortedEntries: entries, ledger: store.current).first
-        let days = EntryTimeline.months(sortedEntries: entries, ledger: store.current, search: search, filter: filter).first?.days ?? []
-        let symbols = Dictionary(uniqueKeysWithValues: store.current.categories.map { ($0.name, $0.symbol) })
+        let timeline = store.entryTimeline(month: month, search: search, filter: filter)
+        let hideAmounts = store.current.preferences.hideAmounts
         ScrollView {
             LazyVStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
                 VStack(spacing: YubaiSpace.gapGroup) {
                     monthPicker
                     if showingSearch { searchField }
                     HStack(spacing: YubaiSpace.gapGroup) {
-                        total("本月支出", cents: summary?.spending ?? 0)
-                        total("本月收入", cents: summary?.income ?? 0, inflow: true)
+                        total("本月支出", cents: timeline.spending)
+                        total("本月收入", cents: timeline.income, inflow: true)
                     }
                     filters
                 }
-                if days.isEmpty {
+                if timeline.days.isEmpty {
                     Text(search.isEmpty ? (filter == .all ? "这个月还没有账目" : "还没有这类账目") : "没有找到这笔")
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                         .frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
                 }
-                ForEach(days) { day in
+                ForEach(timeline.days) { day in
                     VStack(spacing: YubaiSpace.gapHeading) {
                         HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
                             Text(dayLabel(day.date)).yubaiFont(YubaiFont.row, weight: .semibold)
                             Spacer(minLength: YubaiSpace.space8)
-                            AmountLabel(cents: -day.spending, hide: store.current.preferences.hideAmounts, role: .day)
+                            AmountLabel(cents: -day.spending, hide: hideAmounts, role: .day)
                         }.foregroundStyle(YubaiColor.label).padding(.horizontal, YubaiSpace.insetCard)
                         CardRows(day.entries, hasLeadingIcon: true, rowHeight: YubaiSize.rowDouble) { entry in
-                            let category = store.current.resolveCategory(entry.category)
-                            LedgerEntryRow(revealedEntryID: $revealedEntryID, entry: entry, category: category, symbol: symbols[category] ?? fallbackSymbol(category, nature: entry.nature))
+                            LedgerEntryRow(revealedEntryID: $revealedEntryID, entry: entry, hideAmounts: hideAmounts, isFresh: store.freshEntryIDs.contains(entry.id))
                         }
                     }
                 }
             }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.entryDeleteTrigger)
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 780).frame(maxWidth: .infinity)
-        }.scrollDismissesKeyboard(.interactively).amountPrivacy(store.current.preferences.hideAmounts).accessibilityIdentifier("entriesScroll")
+        }.scrollDismissesKeyboard(.interactively).amountPrivacy(hideAmounts).accessibilityIdentifier("entriesScroll")
             #if os(iOS)
             .rootScrollContentMargins()
             .simultaneousGesture(TapGesture().onEnded { revealedEntryID = nil })
@@ -129,16 +125,6 @@ struct EntriesView: View {
             .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
     }
     private func changeMonth(_ offset: Int) { searchFocused = false; month = Dates.addMonths(offset, to: month) }
-    private func fallbackSymbol(_ category: String, nature: Nature) -> String {
-        switch category {
-        case "日用", "购物": "bag"
-        case "娱乐": "sparkles"
-        case "工资", "奖金": "banknote"
-        case "兼职": "hammer"
-        case "理财收益": "chart.line.uptrend.xyaxis"
-        default: nature.symbol
-        }
-    }
     private func dayLabel(_ date: Date) -> String {
         let label = ManualBookkeeping.dayLabel(date)
         if label == "今天" || label == "昨天" { return label }
@@ -159,13 +145,10 @@ private struct LedgerEntryRow: View {
     @State private var resting: CGFloat = 0
     @State private var highlighted = true
     @Binding var revealedEntryID: UUID?
-    let entry: Entry
-    let category: String
-    let symbol: String
+    let entry: EntryTimeline.Row
+    let hideAmounts: Bool
+    let isFresh: Bool
     private let revealDistance = YubaiSize.swipeRevealDistance
-    private var uncategorized: Bool { EntryTimeline.isUncategorized(entry) }
-    private var categoryName: String { uncategorized ? "没分类" : Classification.displayCategory(category) }
-    private var note: String { entry.note.isEmpty ? (entry.displayTitle == categoryName ? "" : entry.displayTitle) : entry.note }
     var body: some View {
         SwipeActionRow(offset: offset, revealed: resting < 0, title: "删除", tint: YubaiColor.amberTint, ink: YubaiColor.amberInk,
                        actionIdentifier: "deleteLedgerEntry_" + entry.id.uuidString, action: delete) {
@@ -215,30 +198,30 @@ private struct LedgerEntryRow: View {
             .onDisappear { resting = 0; reset(); releaseTaps() }
             #endif
             .accessibilityAction(named: "删除这笔", delete)
-            .task(id: store.freshEntryIDs.contains(entry.id)) {
-                guard store.freshEntryIDs.contains(entry.id), YubaiMotion.claim("new-row-" + entry.id.uuidString) else { highlighted = false; return }
+            .task(id: isFresh) {
+                guard isFresh, YubaiMotion.claim("new-row-" + entry.id.uuidString) else { highlighted = false; return }
                 withAnimation(YubaiMotion.wash(reduceMotion: reduceMotion)) { highlighted = false }
             }
     }
     private var content: some View {
         HStack(spacing: YubaiSpace.gapGroup) {
-            Image(systemName: uncategorized ? "questionmark" : symbol).yubaiFont(YubaiFont.tabIcon)
-                .foregroundStyle(uncategorized ? YubaiColor.amberInk : entry.nature.inflow ? YubaiColor.brandInk : YubaiColor.labelMuted)
+            Image(systemName: entry.uncategorized ? "questionmark" : entry.symbol).yubaiFont(YubaiFont.tabIcon)
+                .foregroundStyle(entry.uncategorized ? YubaiColor.amberInk : entry.inflow ? YubaiColor.brandInk : YubaiColor.labelMuted)
                 .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
-                .background(uncategorized ? YubaiColor.amberTint : entry.nature.inflow ? YubaiColor.brandTint : YubaiColor.raised,
+                .background(entry.uncategorized ? YubaiColor.amberTint : entry.inflow ? YubaiColor.brandTint : YubaiColor.raised,
                             in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
             layout {
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    Text(categoryName).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
-                    if !note.isEmpty { Text(note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                    Text(entry.categoryName).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
+                    if !entry.note.isEmpty { Text(entry.note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                 }.lineLimit(textSize.isAccessibilitySize ? nil : 1).frame(maxWidth: .infinity, alignment: .leading)
-                AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts,
-                            sign: entry.nature.inflow ? .inflow : .outflow, ink: entry.nature.inflow ? YubaiColor.brandInk : YubaiColor.label)
+                AmountLabel(cents: entry.amount, hide: hideAmounts,
+                            sign: entry.inflow ? .inflow : .outflow, ink: entry.inflow ? YubaiColor.brandInk : YubaiColor.label)
                     .fixedSize(horizontal: true, vertical: false)
             }
-        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: note.isEmpty ? YubaiSize.rowSingle : YubaiSize.rowDouble).contentShape(Rectangle())
-            .background(store.freshEntryIDs.contains(entry.id) && highlighted ? YubaiColor.brandTint : YubaiColor.card)
+        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: entry.note.isEmpty ? YubaiSize.rowSingle : YubaiSize.rowDouble).contentShape(Rectangle())
+            .background(isFresh && highlighted ? YubaiColor.brandTint : YubaiColor.card)
     }
     private func reset() {
         #if os(macOS)
