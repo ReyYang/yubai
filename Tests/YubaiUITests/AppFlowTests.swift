@@ -1814,7 +1814,8 @@ final class AppFlowTests: XCTestCase {
             tap(statement, in: app)
             XCTAssertTrue(app.buttons["selectImportRow_14"].waitForExistence(timeout: 5))
             XCTAssertFalse(app.buttons["selectImportRow_2"].exists)
-            XCTAssertFalse(app.buttons["welcomeImportRecent"].exists)
+            // The welcome page can remain in the accessibility tree beneath the review sheet.
+            XCTAssertFalse(app.buttons["welcomeImportRecent"].isHittable)
             tap(app.buttons["selectImportRow_14"], in: app)
             tap(app.buttons["closeSheet"], in: app)
             XCTAssertTrue(statement.label.contains("已导入 3 笔"))
