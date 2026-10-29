@@ -1,0 +1,40 @@
+{
+  "read": [
+    {
+      "seconds": 1.334,
+      "ready": false
+    },
+    {
+      "seconds": 1.904,
+      "ready": false
+    },
+    {
+      "seconds": 2.48,
+      "ready": false
+    },
+    {
+      "seconds": 3.052,
+      "ready": false
+    },
+    {
+      "seconds": 3.62,
+      "ready": false
+    },
+    {
+      "seconds": 4.24,
+      "ready": true
+    }
+  ],
+  "commit": [
+    {
+      "seconds": 1.318,
+      "ready": false,
+      "committing": false
+    },
+    {
+      "seconds": 5.217,
+      "ready": true,
+      "committing": false
+    }
+  ]
+}

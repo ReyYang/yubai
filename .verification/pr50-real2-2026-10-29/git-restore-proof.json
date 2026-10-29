@@ -1,0 +1,9 @@
+{
+  "branch_restored": true,
+  "main_head_unchanged": true,
+  "status_with_untracked_all_identical": true,
+  "stashes_identical": true,
+  "diff_identical": true,
+  "signing_file_bytes_identical": true,
+  "package_bytes_identical": true
+}

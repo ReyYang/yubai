@@ -1,0 +1,8 @@
+{
+  "at": "2026-10-29T16:03:19.348350+08:00",
+  "backup": "/Users/yang/yubai-sim-data-before-pr50-real2-2026-10-29",
+  "data_container": "/Users/yang/Library/Developer/CoreSimulator/Devices/37FDA39F-AF08-48EA-9E35-0AAB017AAFE0/data/Containers/Data/Application/32725C27-91D4-492E-82FE-1585482C4D07",
+  "files": 203,
+  "sha256_matches_before_test": true,
+  "app_relaunched_after_restore": false
+}

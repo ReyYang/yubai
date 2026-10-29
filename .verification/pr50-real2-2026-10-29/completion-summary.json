@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-29T15:33:26.208819+08:00",
+  "elapsed_seconds": 2513.7,
+  "completed": 4200,
+  "total": 4200,
+  "remaining_to_process": 0,
+  "batch_needs_organization": false,
+  "pending_classification": 2157,
+  "eligible_pending": 2157,
+  "questions": [
+    {
+      "title": "这笔200元付给个人是什么用途？",
+      "count": 1
+    },
+    {
+      "title": "这几笔付给个人的小额款项是什么用途？",
+      "count": 3
+    },
+    {
+      "title": "这笔134.30元商户消费是什么用途？",
+      "count": 1
+    },
+    {
+      "title": "这笔100.70元科技服务公司来款是什么收入？",
+      "count": 1
+    },
+    {
+      "title": "其余这 2151 笔是什么钱？",
+      "count": 2151
+    }
+  ],
+  "questions_sum": 2157,
+  "questions_union": 2157,
+  "eligible_covered": 2157,
+  "eligible_uncovered": 0,
+  "loan_natures": {
+    "repayment": 20,
+    "unknownOut": 1
+  },
+  "ledger_saved_at": "2026-10-29T15:32:27.748165+08:00"
+}

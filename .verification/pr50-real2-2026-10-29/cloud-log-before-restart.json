@@ -1,0 +1,51 @@
+{
+  "total_count_before_restart": 147,
+  "note": "Transcribed metadata from send-log UI observed before UI hang; raw request bodies and key were not exported. Main group duration is an aggregate, not a single request.",
+  "visible_groups": [
+    {
+      "purpose": "小项归类",
+      "time": "15:35",
+      "requests": 1,
+      "seconds": 21.5,
+      "error": "云端回复被截断。请重试或调整模型输出空间。"
+    },
+    {
+      "purpose": "管家卡片与来信",
+      "time": "15:35",
+      "requests": 1,
+      "seconds": 4.4
+    },
+    {
+      "purpose": "小项归类",
+      "time": "15:34",
+      "requests": 1,
+      "seconds": 21.9,
+      "error": "云端回复被截断。请重试或调整模型输出空间。"
+    },
+    {
+      "purpose": "每周回看",
+      "time": "15:34",
+      "requests": 1,
+      "seconds": 12.0
+    },
+    {
+      "purpose": "小项归类",
+      "time": "15:34",
+      "requests": 1,
+      "seconds": 19.0,
+      "error": "云端回复被截断"
+    },
+    {
+      "purpose": "导入短评",
+      "time": "15:32",
+      "requests": 1,
+      "seconds": 5.8
+    },
+    {
+      "purpose": "导入整理",
+      "time": "15:25",
+      "retained_requests": 18,
+      "aggregate_seconds": 148.0
+    }
+  ]
+}

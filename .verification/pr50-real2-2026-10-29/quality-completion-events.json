@@ -1,0 +1,23 @@
+[
+  {
+    "sourceRow": 176,
+    "date": "2025-11-07",
+    "id": "1ABA7FAF-AD81-4F2C-BEE3-8AB10DA58363",
+    "ui_checked": true,
+    "evidence": "Completed checkEntry event emitted by exec cell 236 before it was interrupted; raw detail AX was not persisted at interruption"
+  },
+  {
+    "sourceRow": 313,
+    "date": "2025-11-15",
+    "id": "87857942-9002-4F4B-A6A6-8EE581786449",
+    "ui_checked": true,
+    "evidence": "Completed checkEntry event emitted by exec cell 236 before it was interrupted; raw detail AX was not persisted at interruption"
+  },
+  {
+    "sourceRow": 421,
+    "date": "2025-11-24",
+    "id": "181D6FA0-ECE5-4006-8E82-F4BE49A46136",
+    "ui_checked": true,
+    "evidence": "Completed checkEntry event emitted by exec cell 236 before it was interrupted; raw detail AX was not persisted at interruption"
+  }
+]
