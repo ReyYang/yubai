@@ -131,6 +131,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         try validateStructure(); try ledger.validate()
         var next = ledger; var skipped: [String] = []
         var changedExpenseCategories: [UUID: String] = [:]
+        var incomingTransfers: Set<UUID> = []
         func validDate(_ d: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(d.timeIntervalSince1970) }
         let lines = preview(in: ledger)
         let stamp = source + "：" + reason
@@ -162,8 +163,15 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 if e.nature == nature && e.otherAccountID == other { skip(position); continue }
                 guard e.planID == nil, e.rentID == nil, e.relatedEntryID == nil, e.otherAccountID == nil,
                       !next.activeEntries.contains(where: { $0.relatedEntryID == id || $0.mergedIntoID == id }) else { skip(position); continue }
-                guard nature.inflow == e.nature.inflow else { throw YubaiError.invalid("整理性质不能改变原始资金流向。") }
+                guard nature.inflow == e.nature.inflow || (nature == .transfer && other != nil) else { throw YubaiError.invalid("整理性质不能改变原始资金流向。") }
                 next.entries[i].nature = nature; next.entries[i].otherAccountID = other
+                // Transfer is stored from its outgoing account. An imported
+                // incoming leg keeps its original account's positive delta.
+                if nature == .transfer, e.nature.inflow, let other {
+                    next.entries[i].accountID = other; next.entries[i].otherAccountID = e.accountID
+                    next.entries[i].otherDate = e.date
+                    incomingTransfers.insert(id)
+                }
                 next.entries[i].personalExpense = nil; touch(i)
             case .setPurpose(let id, let text):
                 guard let i = active(id) else { skip(position); continue }
@@ -304,7 +312,13 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         let originals = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         for i in next.entries.indices {
             if let old = originals[next.entries[i].id], old != next.entries[i] {
-                guard old.amount == next.entries[i].amount, old.accountID == next.entries[i].accountID, old.date == next.entries[i].date else { throw YubaiError.invalid("不能修改已有记录的金额、账户或日期。") }
+                let entry = next.entries[i]
+                // A canonical incoming transfer changes the storage orientation,
+                // never its original account's amount, direction or posting day.
+                let sameIncomingLeg = incomingTransfers.contains(old.id) && old.nature.inflow && old.otherAccountID == nil &&
+                    entry.nature == .transfer && entry.otherAccountID == old.accountID &&
+                    entry.delta(for: old.accountID) == old.delta(for: old.accountID) && entry.postingDate(for: old.accountID) == old.date
+                guard old.amount == entry.amount, old.date == entry.date, old.accountID == entry.accountID || sameIncomingLeg else { throw YubaiError.invalid("不能修改已有记录的金额、账户或日期。") }
                 // Includes refund categories updated as a consequence of an original's category change.
                 if !next.entries[i].classificationReason.hasPrefix(stamp) { touch(i) }
             }

@@ -136,6 +136,59 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(pending.exists)
     }
 
+    func testOrganizedQuestionsPrecedeCollapsedUncoveredInflows() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        let question = app.staticTexts["importQuestion"]
+        let fallback = app.staticTexts["unsortedQuestionTitle"]
+        let summary = app.buttons["unknownInflowsSummary"]
+        XCTAssertTrue(question.waitForExistence(timeout: 15))
+        XCTAssertEqual(question.label, "这笔来款是什么用途？")
+        XCTAssertTrue(fallback.waitForExistence(timeout: 5)); XCTAssertEqual(fallback.label, "9 笔还没分类")
+        XCTAssertFalse(app.buttons["都是日常收支"].exists)
+        XCTAssertFalse(app.buttons["稍后写用途"].exists)
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(summary.label.contains("6 笔进账没说来源"), "The covered incoming record must not get a duplicate reminder")
+        XCTAssertLessThan(question.frame.minY, fallback.frame.minY)
+        XCTAssertLessThan(fallback.frame.minY, summary.frame.minY)
+        tap(summary, in: app)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "butlerCard_unknownInflow").firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["importQuestion"].exists)
+    }
+
+    func testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["groupUnsortedByParty"].waitForExistence(timeout: 15))
+        tap(app.buttons["groupUnsortedByParty"], in: app)
+        let count = app.staticTexts["unsortedEntryCount"]
+        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "9")
+        let firstGroup = app.buttons["unsortedGroup_out:合成对方甲"]
+        let secondGroup = app.buttons["unsortedGroup_out:合成对方乙"]
+        XCTAssertTrue(firstGroup.waitForExistence(timeout: 5)); XCTAssertTrue(secondGroup.exists)
+        tap(firstGroup, in: app)
+        let apply = app.buttons["applyUnsortedGroup"]
+        XCTAssertTrue(apply.waitForExistence(timeout: 5)); XCTAssertFalse(apply.isEnabled)
+        tap(app.buttons["unsortedUse_expense"], in: app)
+        XCTAssertFalse(apply.isEnabled)
+        tap(app.buttons["unsortedCategory_餐饮"], in: app)
+        XCTAssertTrue(apply.isEnabled); XCTAssertEqual(apply.label, "这 6 笔都这样记")
+        tap(apply, in: app)
+        let reduced = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '3'"), object: count)
+        XCTAssertEqual(XCTWaiter.wait(for: [reduced], timeout: 5), .completed)
+        XCTAssertFalse(firstGroup.exists); XCTAssertTrue(secondGroup.exists)
+        tap(app.navigationBars.buttons["现在"], in: app)
+        XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "3 笔还没分类")
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "3 笔还没分类")
+    }
+
     func testPendingImportsStopKeepsCompletedChunkAndRemainingCount() {
         let app = application("salary")
         app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "stop-second"

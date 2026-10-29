@@ -42,20 +42,44 @@ struct NowCardsSection: View {
     @State private var selected: String?
     @State private var width: CGFloat = 1
     @State private var drag: CGFloat = 0
+    private var butlerCards: [ButlerCard] { SavingCardVisibility.visible(in: store.current, collapsingInflows: true) }
     private var pages: [NowCardPage] {
         var result: [NowCardPage] = []
         if let salary = SalaryDetection.candidate(in: store.current), !store.hiddenSalaryKeys.contains(salary.key) { result.append(.salary(salary)) }
         let pending = PendingImportOrganization(in: store.current)
         if !pending.batchIDs.isEmpty { result.append(.imports(pending)) }
-        result += SavingCardVisibility.visible(in: store.current).map(NowCardPage.butler)
+        result += butlerCards.filter { $0.importQuestion == nil && $0.kind != .unknownInflow }.map(NowCardPage.butler)
         return result
     }
     var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+            if !pages.isEmpty { pagedCards }
+            ForEach(butlerCards.filter { $0.importQuestion != nil }) { card in
+                if let question = card.importQuestion, let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
+                    ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
+                }
+            }
+            let inflows = ButlerCards.queued(store.current).filter { $0.kind == .unknownInflow }
+            if inflows.count >= 2 {
+                TabNavigationLink(.unknownInflows) { ButlerListView(unknownInflowsOnly: true) } label: {
+                    HStack(spacing: YubaiSpace.gapGroup) {
+                        Text("\(inflows.count) 笔进账没说来源").yubaiFont(YubaiFont.row, weight: .medium)
+                        Spacer(minLength: YubaiSpace.none)
+                        Text("稍后").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin)
+                        .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("unknownInflowsSummary")
+            } else if let card = butlerCards.first(where: { $0.kind == .unknownInflow }) {
+                ButlerCardView(card: card)
+            }
+        }
+    }
+    private var pagedCards: some View {
         let pages = self.pages
         let index = pages.firstIndex { $0.id == selected } ?? 0
         let ids = pages.map(\.id)
         let pageValue = pages.isEmpty ? "" : "\(index + 1) / \(pages.count)"
-        ZStack(alignment: .top) {
+        return ZStack(alignment: .top) {
             ForEach(Array(pages.enumerated()), id: \.element.id) { position, page in
                 card(page, number: "\(position + 1) / \(pages.count)", paging: pages.count > 1, active: position == index)
                     .frame(maxWidth: .infinity)
@@ -268,7 +292,7 @@ private struct NowCardHeading: View {
     }
 }
 
-private struct NowCardButtonStyle: ButtonStyle {
+struct NowCardButtonStyle: ButtonStyle {
     var primary = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.callout, weight: .medium)
