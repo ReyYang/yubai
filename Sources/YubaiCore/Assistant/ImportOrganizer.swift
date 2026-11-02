@@ -10,9 +10,16 @@ public struct ImportQuestion: Codable, Identifiable, Equatable, Sendable {
     public var text: String
     public var entryIDs: [UUID]
     public var options: [ImportAnswer]
-    public init(text: String, entryIDs: [UUID], options: [ImportAnswer]) { self.text = text; self.entryIDs = entryIDs; self.options = options }
+    /// Optional so pre-V25 ledgers continue to decode without a migration.
+    public var groupsByParty: Bool?
+    public var isFallback: Bool {
+        groupsByParty == true || (text.hasPrefix("其余这") && options.map(\.title) == ["都是日常收支", "稍后写用途"])
+    }
+    public init(text: String, entryIDs: [UUID], options: [ImportAnswer], groupsByParty: Bool? = nil) {
+        self.text = text; self.entryIDs = entryIDs; self.options = options; self.groupsByParty = groupsByParty
+    }
     public func answer(_ option: Int, in ledger: Ledger? = nil) -> ChangeSet? {
-        guard options.indices.contains(option) else { return nil }
+        guard !isFallback, options.indices.contains(option) else { return nil }
         let items = options[option].items.compactMap { item -> ChangeItem? in
             if let ledger, case .setCategory(let id, let category) = item {
                 let name = ledger.resolveCategory(category)
@@ -27,7 +34,7 @@ public struct ImportQuestion: Codable, Identifiable, Equatable, Sendable {
     /// Save the free answer and its memory atomically, including the batch undo delta.
     public func describe(_ text: String, batchID: UUID, in ledger: inout Ledger, now: Date = Date()) throws {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, clean.count <= 80, !clean.contains(where: { $0.isNewline }),
+        guard !isFallback, !clean.isEmpty, clean.count <= 80, !clean.contains(where: { $0.isNewline }),
               let batch = ledger.imports.first(where: { $0.id == batchID && $0.undoneAt == nil }),
               batch.organization?.questions.contains(self) == true, !entryIDs.isEmpty,
               entryIDs.allSatisfy({ id in ledger.activeEntries.contains { $0.id == id } }) else {
@@ -397,21 +404,28 @@ public struct ImportOrganizer: Sendable {
     }
     private static func fallbackQuestion(for entries: [Entry]) -> ImportQuestion {
         let rows = entries.sorted { $0.id.uuidString < $1.id.uuidString }
-        let ordinary: [ChangeItem] = rows.map { .setNature(entry: $0.id, nature: $0.nature.inflow ? .income : .expense, otherAccount: nil) }
-        let pending: [ChangeItem] = rows.map { .setNature(entry: $0.id, nature: $0.nature.inflow ? .unknownIn : .unknownOut, otherAccount: nil) }
-        return ImportQuestion(text: "其余这 \(rows.count) 笔是什么钱？", entryIDs: rows.map(\.id),
-            options: [ImportAnswer(title: "都是日常收支", items: ordinary), ImportAnswer(title: "稍后写用途", items: pending)])
+        return ImportQuestion(text: "\(rows.count) 笔还没分类", entryIDs: rows.map(\.id), options: [], groupsByParty: true)
     }
     static func group(_ input: [ImportQuestion], ledger: Ledger) -> [ImportQuestion] {
         let entries = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         var result: [ImportQuestion] = []
         for question in input {
             guard let first = question.entryIDs.first.flatMap({ entries[$0] }) else { continue }
+            if question.isFallback {
+                if let i = result.firstIndex(where: \.isFallback) {
+                    result[i].entryIDs = Array(Set(result[i].entryIDs + question.entryIDs)).sorted { $0.uuidString < $1.uuidString }
+                    result[i].text = "\(result[i].entryIDs.count) 笔还没分类"
+                } else {
+                    var fallback = question
+                    fallback.groupsByParty = true; fallback.options = []
+                    fallback.text = "\(fallback.entryIDs.count) 笔还没分类"
+                    result.append(fallback)
+                }
+                continue
+            }
             let titles = question.options.map(\.title)
             if let i = result.firstIndex(where: { old in
-                guard old.options.map(\.title) == titles, let other = old.entryIDs.first.flatMap({ entries[$0] }) else { return false }
-                // Each fallback option handles the direction of every row individually.
-                if titles == ["都是日常收支", "稍后写用途"] { return true }
+                guard !old.isFallback, old.options.map(\.title) == titles, let other = old.entryIDs.first.flatMap({ entries[$0] }) else { return false }
                 let sameParty = first.title.components(separatedBy: " · ").first == other.title.components(separatedBy: " · ").first
                 return first.nature.inflow == other.nature.inflow && (sameParty || abs(first.amount - other.amount) <= max(100, other.amount / 20))
             }) {
@@ -428,10 +442,13 @@ public struct ImportOrganizer: Sendable {
                 if valid { result[i] = merged } else { result.append(question) }
             } else { result.append(question) }
         }
+        // Keep the one fallback after the specific questions, also across checkpoints.
+        result = result.filter { !$0.isFallback } + result.filter(\.isFallback)
         guard result.count > 5 else { return result }
         // Keep every remaining uncertain row reachable without exceeding five cards.
         let ids = Array(Set(result.dropFirst(4).flatMap(\.entryIDs))).sorted { $0.uuidString < $1.uuidString }
-        let remaining = fallbackQuestion(for: ids.compactMap { entries[$0] })
+        var remaining = fallbackQuestion(for: ids.compactMap { entries[$0] })
+        if let previous = result.first(where: \.isFallback) { remaining.id = previous.id }
         return Array(result.prefix(4)) + [remaining]
     }
 }

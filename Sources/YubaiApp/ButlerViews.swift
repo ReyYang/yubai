@@ -9,10 +9,15 @@ struct ButlerSection: View {
 struct ButlerListView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var unknownInflowsOnly = false
     var body: some View {
-        let cards = SavingCardVisibility.visible(in: store.current)
+        let cards = unknownInflowsOnly ? ButlerCards.queued(store.current).filter { $0.kind == .unknownInflow } : SavingCardVisibility.visible(in: store.current)
         Page(spacing: YubaiSpace.gapGroup) {
-            ForEach(cards) { card in ButlerCardView(card: card).transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion)) }
+            ForEach(cards) { card in
+                if let question = card.importQuestion, let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
+                    ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
+                } else { ButlerCardView(card: card).transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion)) }
+            }
             if !store.current.mutedTopics.isEmpty {
                 Text("说过「以后别提」的：\(store.current.mutedTopics.count) 类").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
@@ -255,27 +260,39 @@ struct ButlerQuestionView: View {
     let cardID: UUID
     @State private var text = ""
     @State private var describing = false
+    private var fallback: ImportQuestion? { store.current.cards.first { $0.id == cardID }?.importQuestion }
     var body: some View {
-        Page {
-            if let card = store.current.cards.first(where: { $0.id == cardID }), let question = card.importQuestion,
-               let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
-                Text(store.current.preferences.hideAmounts ? "这几笔是什么用途？" : question.text).yubaiFont(YubaiFont.lead)
-                ForEach(question.options.indices, id: \.self) { index in
-                    Button(question.options[index].title) {
-                        store.answerImportQuestion(question, batchID: batch.id, option: index); store.sheet = nil
-                    }.buttonStyle(SecondaryButtonStyle())
-                }
-                Button("都不是") { describing = true }.buttonStyle(SecondaryButtonStyle())
-                if describing {
-                    TextField("用自己的话补充用途", text: $text, axis: .vertical)
-                    Button("记下用途") {
-                        store.describeImportQuestion(question, batchID: batch.id, text: text); store.sheet = nil
-                    }.disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 80)
-                }
-                let rows = store.sortedEntries.filter { question.entryIDs.contains($0.id) }
-                CardRows(rows) { entry in EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }
-            } else { Text("这个问题已经处理过了。") }
-        }.navigationTitle("补充用途").yubaiNavigation().toolbar { CloseButton() }
+        Group {
+            if let fallback, fallback.isFallback { UnsortedGroupsView(questionID: fallback.id) }
+            else { questionContent.navigationTitle("补充用途").yubaiNavigation() }
+        }.toolbar { CloseButton() }
+    }
+    private var questionContent: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
+                if let card = store.current.cards.first(where: { $0.id == cardID }), let question = card.importQuestion,
+                   let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
+                    Text(store.current.preferences.hideAmounts ? "这几笔是什么用途？" : question.text).yubaiFont(YubaiFont.lead)
+                    ForEach(question.options.indices, id: \.self) { index in
+                        Button(question.options[index].title) {
+                            store.answerImportQuestion(question, batchID: batch.id, option: index); store.sheet = nil
+                        }.buttonStyle(SecondaryButtonStyle())
+                    }
+                    Button("都不是") { describing = true }.buttonStyle(SecondaryButtonStyle())
+                    if describing {
+                        TextField("用自己的话补充用途", text: $text, axis: .vertical)
+                        Button("记下用途") {
+                            store.describeImportQuestion(question, batchID: batch.id, text: text); store.sheet = nil
+                        }.disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 80)
+                    }
+                    let ids = Set(question.entryIDs)
+                    let rows = store.sortedEntries.filter { ids.contains($0.id) }
+                    CardRows(rows) { entry in EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }
+                        .accessibilityIdentifier("questionEntries")
+                } else { Text("这个问题已经处理过了。") }
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
+                .frame(maxWidth: 1080).frame(maxWidth: .infinity)
+        }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
     }
 }
 

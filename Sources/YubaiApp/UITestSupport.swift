@@ -16,7 +16,7 @@ import YubaiCore
 enum UITestSupport {
     static var organizationScenario: String? {
         guard script == "salary", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
-              ["stop-second", "fail-second"].contains(value) else { return nil }
+              ["stop-second", "fail-second", "by-party"].contains(value) else { return nil }
         return value
     }
     @MainActor static func importRequestState(in ledger: Ledger) -> String {
@@ -170,6 +170,25 @@ enum UITestSupport {
     static func organizationLedger(now: Date) -> Ledger {
         var ledger = salaryLedger(now: now)
         ledger.preferences.cloudAIEnabled = true
+        if organizationScenario == "by-party" {
+            var batch = ImportBatch(filename: "合成剩余流水.csv", importedCount: 10, duplicateCount: 0, skippedCount: 0)
+            batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
+            ledger.imports = [batch]
+            ledger.entries = (0..<10).map { index in
+                let title = index == 0 ? "合成个人 · 来款" : (index <= 6 ? "合成对方甲 · 明细" : "合成对方乙 · 明细")
+                var entry = Entry(date: Dates.addDays(-index - 5, to: now), amount: 100,
+                                  nature: index == 0 ? .unknownIn : .unknownOut, accountID: ledger.accounts[0].id, title: title)
+                entry.batchID = batch.id; entry.source = "文件"
+                return entry
+            }
+            // More than five unrelated reminders used to push all questions out.
+            for index in 0..<6 {
+                ledger.entries.append(Entry(date: Dates.addDays(-10, to: now), amount: 200,
+                                            nature: .unknownIn, accountID: ledger.accounts[0].id, title: "合成旧来款\(index)", category: "其他收入"))
+            }
+            ButlerCards.refresh(&ledger, now: now)
+            return ledger
+        }
         var batch = ImportBatch(filename: "合成大量流水.csv", importedCount: 70, duplicateCount: 0, skippedCount: 0)
         batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
         ledger.imports = [batch]
@@ -289,6 +308,19 @@ struct UITestTransport: ChatTransport {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
             let ids = Set((payload["batch"]?.arrayValue ?? []).compactMap { $0["id"]?.stringValue })
             let scenario = UITestSupport.organizationScenario
+            if scenario == "by-party" {
+                let incoming = (payload["batch"]?.arrayValue ?? []).first { $0["inflow"] == .bool(true) }
+                var questions: [JSONValue] = []
+                if let id = incoming?["id"]?.stringValue {
+                    let options: [JSONValue] = [("日常收入", "income"), ("收回借款", "loanRecovery")].map { title, nature in
+                        let item: JSONValue = .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string(nature)])
+                        return .object(["title": .string(title), "items": .array([item])])
+                    }
+                    questions = [.object(["text": .string("这笔来款是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array(options)])]
+                }
+                return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array([]), "items": .array([]),
+                    "series": .array([]), "questions": .array(questions)]).jsonText())
+            }
             let number = await MainActor.run {
                 let log = UITestRequestLog.shared
                 log.organizationRequests += 1

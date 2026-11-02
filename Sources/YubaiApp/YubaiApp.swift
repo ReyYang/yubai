@@ -15,6 +15,7 @@ enum Destination: String, CaseIterable, Identifiable {
 enum TabRoute: Hashable {
     case forecast, upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
+    case unsortedGroups(UUID), unknownInflows
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
     case subcategoryInsights(category: String, income: Bool, interval: DateInterval, periodTitle: String)
 }
@@ -537,6 +538,8 @@ struct RootView: View {
         case .upcomingPayments: Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation()
         case .fixedFlows: FixedFlowsView()
         case .butlerCards: ButlerListView()
+        case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)
+        case .unknownInflows: ButlerListView(unknownInflowsOnly: true)
         case .profile: ProfileView()
         case .wishlist: WishlistView()
         case .letters: LettersView()

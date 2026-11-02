@@ -178,6 +178,17 @@ struct ActiveLedgerTransport: ChatTransport {
     func describeImportQuestion(_ question: ImportQuestion, batchID: UUID, text: String) {
         update("回答整理问题") { try question.describe(text, batchID: batchID, in: &$0) }
     }
+    @discardableResult func applyUnsortedGroup(questionID: UUID, groupID: String, use: UnsortedUse,
+                                               category: String?, otherAccount: UUID?) -> Bool {
+        guard let batch = current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == questionID }) == true }),
+              let question = batch.organization?.questions.first(where: { $0.id == questionID }),
+              let change = UnsortedGroups.changeSet(groupID: groupID, question: question, use: use,
+                                                    category: category, otherAccount: otherAccount, in: current) else { return false }
+        let before = current
+        return apply(change, label: "整理") { ledger in
+            ImportOrganization.recordUndo(batchID: batch.id, before: before, in: &ledger)
+        }
+    }
     func undoImport(_ batchID: UUID) {
         if update("整批撤销", preservingUpdatedAt: true, entryMotion: false, { ledger in BillImporter.undo(batchID: batchID, in: &ledger) }) { cancelEntrySaveMotion(); undoTrigger &+= 1 }
     }

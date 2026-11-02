@@ -640,7 +640,8 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
         Card(style: .list) {
             LazyVStack(spacing: YubaiSpace.none) {
                 ForEach(rows) { row in
-                    // One child per stable ID lets the lazy stack index rows without enumerating conditional dividers.
+                    // One child per ID lets LazyVStack determine the row count
+                    // without constructing every row to inspect the divider.
                     VStack(spacing: YubaiSpace.none) {
                         content(row).frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
                         if row.id != rows.last?.id {

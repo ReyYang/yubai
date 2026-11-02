@@ -123,14 +123,18 @@ final class ButlerTests: XCTestCase {
         let priorities = [5, 4, 3, 2, 0, 1, 5]
         ledger.cards = kinds.enumerated().map { index, kind in
             var card = ButlerCard(kind: kind, title: "合成卡片", body: "观察", dedupeKey: "test:\(index)")
+            if kind == .unknownInflow {
+                let entry = Entry(date: now, amount: 100, nature: .unknownIn, accountID: ledger.accounts[0].id, title: "合成进账")
+                ledger.entries.append(entry); card.evidence = [entry.id]
+            }
             card.priority = priorities[index]; card.createdAt = now; return card
         }
-        XCTAssertEqual(ButlerCards.visible(ledger).map(\.priority), [0, 1, 2, 3, 4])
+        XCTAssertEqual(ButlerCards.visible(ledger).map(\.priority), [0, 1, 5, 2, 3])
         XCTAssertEqual(ledger.cards.filter { $0.dismissedAt == nil }.count, 7)
         let id = ButlerCards.visible(ledger)[0].id
         ledger.cards[ledger.cards.firstIndex { $0.id == id }!].dismissedAt = now
         XCTAssertEqual(ButlerCards.visible(ledger).count, 5)
-        XCTAssertEqual(ButlerCards.visible(ledger).last?.priority, 5)
+        XCTAssertEqual(ButlerCards.visible(ledger).last?.priority, 4)
     }
     func testFallbackAndUnverifiedAIAmountAndOneBatch() async throws {
         let ledger = restrained(); let candidates = ButlerCards.detect(ledger, now: now)

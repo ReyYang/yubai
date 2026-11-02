@@ -335,14 +335,11 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertEqual(ledger.entries[10].category, "餐饮")
         XCTAssertEqual(result.questions.count, 5)
         XCTAssertEqual(Set(result.questions.flatMap(\.entryIDs)), Set(ledger.activeEntries.filter(Classification.isPending).map(\.id)))
-        let fallback = try XCTUnwrap(result.questions.first { $0.options.map(\.title) == ["都是日常收支", "稍后写用途"] })
+        let fallback = try XCTUnwrap(result.questions.first(where: \.isFallback))
         XCTAssertTrue(Set(ids[6...9]).isSubset(of: Set(fallback.entryIDs)), "False/missing confidence, omitted rows and rejected questions must all remain reachable")
-        for option in fallback.options {
-            XCTAssertEqual(Set(option.items.flatMap(\.entryIDs)), Set(fallback.entryIDs))
-        }
-        var answered = ledger
-        try XCTUnwrap(fallback.answer(0)).apply(to: &answered)
-        XCTAssertTrue(answered.entries.filter { fallback.entryIDs.contains($0.id) }.allSatisfy { $0.nature == .expense })
+        XCTAssertTrue(fallback.options.isEmpty)
+        XCTAssertNil(fallback.answer(0, in: ledger))
+        XCTAssertEqual(Set(UnsortedGroups.groups(for: fallback, in: ledger).flatMap { $0.entries.map(\.id) }), Set(fallback.entryIDs))
     }
     func testFallbackExcludesLinkedClassifiedDeletedAndContextRows() async throws {
         let (_, imported, _) = try syntheticImport(count: 8)
@@ -388,14 +385,13 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertEqual(Set(result.questions.flatMap(\.entryIDs)), expected)
         XCTAssertEqual(Set(persisted.questions.flatMap(\.entryIDs)), expected)
         let question = try XCTUnwrap(persisted.questions.first)
-        XCTAssertEqual(question.options.map(\.title), ["都是日常收支", "稍后写用途"])
-        var answered = saved
-        try XCTUnwrap(question.answer(0)).apply(to: &answered)
-        XCTAssertTrue(answered.entries.prefix(ImportOrganizer.chunkSize).allSatisfy { $0.nature == .expense })
-        XCTAssertTrue(answered.entries.suffix(ImportOrganizer.chunkSize).allSatisfy { $0.nature == .income })
-        var pending = answered
-        try XCTUnwrap(question.answer(1)).apply(to: &pending)
-        XCTAssertEqual(pending.entries.map(\.nature), ledger.entries.map(\.nature))
+        XCTAssertTrue(question.isFallback)
+        XCTAssertTrue(question.options.isEmpty)
+        XCTAssertNil(question.answer(0, in: saved))
+        let groups = UnsortedGroups.groups(for: question, in: saved)
+        XCTAssertEqual(Set(groups.flatMap { $0.entries.map(\.id) }), expected)
+        XCTAssertTrue(groups.contains { $0.inflow })
+        XCTAssertTrue(groups.contains { !$0.inflow })
         await store.undo()
         let undone = await store.snapshot()
         XCTAssertEqual(undone, before)

@@ -526,10 +526,11 @@ struct ImportView: View {
                             }
                         }
                     } }
-                    if !organization.questions.isEmpty {
-                        Text("还有 \(min(5, organization.questions.count)) 个问题")
+                    let questions = organization.questions.filter { !$0.isFallback || !UnsortedGroups.entries(for: $0, in: store.current).isEmpty }
+                    if !questions.isEmpty {
+                        Text("还有 \(min(5, questions.count)) 个问题")
                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
-                        ForEach(Array(organization.questions.prefix(5))) { question in questionCard(question, batchID: batch.id) }
+                        ForEach(Array(questions.prefix(5))) { question in questionCard(question, batchID: batch.id) }
                     }
                     ForEach(organization.comments ?? []) { comment in
                         if let card = store.current.cards.first(where: { $0.dedupeKey == comment.dedupeKey }), card.dismissedAt == nil, !ButlerCards.isMuted(card.dedupeKey, in: store.current) {
@@ -559,7 +560,11 @@ struct ImportView: View {
             Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
         }
     }
-    private func questionCard(_ question: ImportQuestion, batchID: UUID) -> some View {
+    @ViewBuilder private func questionCard(_ question: ImportQuestion, batchID: UUID) -> some View {
+        if question.isFallback { ImportQuestionCard(question: question, batchID: batchID) }
+        else { ordinaryQuestionCard(question, batchID: batchID) }
+    }
+    private func ordinaryQuestionCard(_ question: ImportQuestion, batchID: UUID) -> some View {
         let covered = Set(question.entryIDs)
         return Card(style: .compact, background: YubaiColor.amberTint) { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             Text(store.current.preferences.hideAmounts ? "有几笔记录要你核对" : question.text).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("importQuestion")
