@@ -26,6 +26,8 @@
 <key>NSMicrophoneUsageDescription</key><string>听写你想问的话或想记的一笔，由你确认后发送。</string>
 <key>NSPhotoLibraryUsageDescription</key><string>选择账单截图，在设备上识别并整理交易。</string>
 <key>UILaunchScreen</key><dict/>
+<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>app.yubai.personal.organizeImports.*</string></array>
+<key>UIBackgroundModes</key><array><string>processing</string></array>
 <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 <key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>

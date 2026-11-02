@@ -2,6 +2,9 @@
 import Foundation
 import Observation
 import YubaiCore
+#if os(iOS)
+import UIKit
+#endif
 
 @MainActor @Observable final class UITestRequestLog {
     static let shared = UITestRequestLog()
@@ -14,16 +17,33 @@ import YubaiCore
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
 enum UITestSupport {
+    /// Opt in only with a valid, isolated UI script; replies remain offline.
+    static var allowsBackground: Bool {
+        script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_ALLOW_BACKGROUND"] == "1"
+    }
+    /// Select the same slow, cloud-enabled fixture for BG and foreground fallback checks.
+    /// Explicit organization scenarios keep their existing data and timing.
+    static var usesBackgroundFixture: Bool {
+        script == "salary" && organizationScenario == nil &&
+            ProcessInfo.processInfo.environment["YUBAI_UI_BACKGROUND_FIXTURE"] == "1"
+    }
     static var organizationScenario: String? {
         guard script == "salary", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
-              ["stop-second", "fail-second", "by-party"].contains(value) else { return nil }
+              ["stop-second", "fail-second", "by-party", "questions-complete", "questions-stop", "questions-fail"].contains(value) else { return nil }
         return value
     }
     @MainActor static func importRequestState(in ledger: Ledger) -> String {
         let log = UITestRequestLog.shared
         let requests = "requests=\(log.count)"
         guard script != nil, organizationScenario != nil || ProcessInfo.processInfo.environment["YUBAI_UI_TEST_IMPORT_STATE"] == "1" else { return requests }
-        return requests + ";entries=\(ledger.activeEntries.count);classified=\(ledger.activeEntries.filter { !Classification.isPending($0) }.count);resent=\(log.resentCompletedCount)"
+        var state = requests + ";entries=\(ledger.activeEntries.count);classified=\(ledger.activeEntries.filter { !Classification.isPending($0) }.count);resent=\(log.resentCompletedCount)"
+        if organizationScenario?.hasPrefix("questions-") == true {
+            state += ";questions=\(ledger.imports.flatMap { $0.organization?.questions ?? [] }.count)"
+            #if os(iOS)
+            state += ";idle=\(UIApplication.shared.isIdleTimerDisabled ? 1 : 0)"
+            #endif
+        }
+        return state
     }
     static var keepsUndoReceipt: Bool {
         script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_KEEP_UNDO"] == "1"
@@ -34,12 +54,13 @@ enum UITestSupport {
     ]
     /// Scripted replies alone do not imply that a key is configured.
     /// UI tests can explicitly simulate either state without changing Keychain.
+    /// The manual background fixture defaults to a configured fake key.
     static var configuredKeyOverride: Bool? {
         guard script != nil else { return nil }
         switch ProcessInfo.processInfo.environment["YUBAI_UI_TEST_CONFIGURED_KEY"] {
         case "1": return true
         case "0": return false
-        default: return nil
+        default: return usesBackgroundFixture ? true : nil
         }
     }
     static var script: String? {
@@ -67,7 +88,7 @@ enum UITestSupport {
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty", script != "welcome-import" else { return }
         let now = Date()
         if script == "salary" {
-            try repository.save(organizationScenario == nil ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
+            try repository.save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
             return
         }
         if screenshotScripts.contains(script) {
@@ -166,7 +187,8 @@ enum UITestSupport {
         }
         return ledger
     }
-    /// Three chunks, with no salary candidate or automatic cloud work.
+    /// Three chunks by default; the manual background fixture uses five slow chunks.
+    /// No salary candidate or automatic cloud work.
     static func organizationLedger(now: Date) -> Ledger {
         var ledger = salaryLedger(now: now)
         ledger.preferences.cloudAIEnabled = true
@@ -176,7 +198,7 @@ enum UITestSupport {
             ledger.imports = [batch]
             ledger.entries = (0..<10).map { index in
                 let title = index == 0 ? "合成个人 · 来款" : (index <= 6 ? "合成对方甲 · 明细" : "合成对方乙 · 明细")
-                var entry = Entry(date: Dates.addDays(-index - 5, to: now), amount: 100,
+                var entry = Entry(date: Dates.addDays(-index - 5, to: now), amount: index == 0 ? 99 : 100,
                                   nature: index == 0 ? .unknownIn : .unknownOut, accountID: ledger.accounts[0].id, title: title)
                 entry.batchID = batch.id; entry.source = "文件"
                 return entry
@@ -189,12 +211,15 @@ enum UITestSupport {
             ButlerCards.refresh(&ledger, now: now)
             return ledger
         }
-        var batch = ImportBatch(filename: "合成大量流水.csv", importedCount: 70, duplicateCount: 0, skippedCount: 0)
+        let count = usesBackgroundFixture ? 150 : 70
+        var batch = ImportBatch(filename: "合成大量流水.csv", importedCount: count, duplicateCount: 0, skippedCount: 0)
         batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
         ledger.imports = [batch]
-        ledger.entries = (1...70).map { day in
+        ledger.entries = (1...count).map { day in
             var entry = Entry(date: Dates.addDays(-day, to: Dates.day(now)), amount: 100,
-                              accountID: ledger.accounts[0].id, title: "合成日常支出", category: Classification.pendingCategory)
+                              // Distinct parties keep the stop/fail fixtures on
+                              // their original 30/30/10 (or 5×30) row checkpoints.
+                              accountID: ledger.accounts[0].id, title: "合成日常支出\(day)", category: Classification.pendingCategory)
             entry.batchID = batch.id; entry.source = "文件"
             return entry
         }
@@ -304,6 +329,45 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
+        if ["导入整理", "导入整理·按对方"].contains(request.purpose), UITestSupport.usesBackgroundFixture {
+            try await Task.sleep(for: .seconds(8))
+        }
+        if ["salary", "import"].contains(script), request.purpose == "导入整理·按对方" {
+            let payload = try JSONValue.parse(request.messages.last?.content ?? "")
+            let groups = payload["groups"]?.arrayValue ?? []
+            let keys = Set(groups.compactMap { group -> String? in
+                guard let party = group["party"]?.stringValue else { return nil }
+                return "group:" + party + (group["inflow"] == .bool(true) ? ":in" : ":out")
+            })
+            await MainActor.run {
+                let log = UITestRequestLog.shared
+                log.organizationRequests += 1
+                log.resentCompletedCount += keys.intersection(log.completedOrganizationIDs).count
+                log.completedOrganizationIDs.formUnion(keys)
+            }
+            // The remaining-by-party scenario still leaves all nine outgoing
+            // records on the real fallback card for the manual grouping tests.
+            if UITestSupport.organizationScenario == "by-party" {
+                return ChatMessage(role: .assistant, content: #"{"groups":[],"questions":[]}"#)
+            }
+            var results: [JSONValue] = [], questions: [JSONValue] = []
+            for group in groups {
+                guard let id = group["id"] else { continue }
+                let income = group["inflow"] == .bool(true)
+                if script == "import", income {
+                    questions.append(.object(["group": id, "text": .string("这笔来款是什么用途？"), "options": .array([
+                        .object(["title": .string("日常收入"), "items": .array([
+                            .object(["kind": .string("set_nature"), "nature": .string("income")]),
+                            .object(["kind": .string("set_category"), "category": .string("其他收入")])])]),
+                        .object(["title": .string("先留没写用途"), "items": .array([
+                            .object(["kind": .string("set_purpose"), "text": .string("待核对来款")])])])])]))
+                } else {
+                    results.append(.object(["group": id, "category": .string(income ? "工资奖金" : "餐饮"),
+                        "nature": .string(income ? "income" : "expense"), "confident": .bool(true)]))
+                }
+            }
+            return ChatMessage(role: .assistant, content: try JSONValue.object(["groups": .array(results), "questions": .array(questions)]).jsonText())
+        }
         if script == "salary", request.purpose == "导入整理" {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
             let ids = Set((payload["batch"]?.arrayValue ?? []).compactMap { $0["id"]?.stringValue })
@@ -327,6 +391,15 @@ struct UITestTransport: ChatTransport {
                 log.resentCompletedCount += ids.intersection(log.completedOrganizationIDs).count
                 return log.organizationRequests
             }
+            if scenario?.hasPrefix("questions-") == true, number == 2 {
+                if scenario == "questions-stop" {
+                    while true { try await Task.sleep(for: .seconds(1)) }
+                }
+                try await Task.sleep(for: .seconds(10)) // Observe a saved question while the next chunk is running.
+                if scenario == "questions-fail" {
+                    throw YubaiError.invalid("云端服务返回错误（HTTP 503）。本机计算结果已保留。")
+                }
+            }
             if scenario == "stop-second", number == 2 {
                 // Stay in a cancellable request until the UI presses Stop.
                 while true { try await Task.sleep(for: .seconds(1)) }
@@ -343,9 +416,20 @@ struct UITestTransport: ChatTransport {
                 return .object(["entry": .string(id), "category": .string(income ? "工资奖金" : "餐饮"),
                                 "nature": .string(income ? "income" : "expense"), "confident": .bool(true)])
             }
+            var questions: [JSONValue] = []
+            let asksQuestion = (scenario?.hasPrefix("questions-") == true && number == 1) ||
+                (UITestSupport.usesBackgroundFixture && number == 2)
+            if asksQuestion, let id = ids.sorted().first {
+                let options: [JSONValue] = [("日常支出", "expense"), ("还款", "repayment")].map { title, nature in
+                    .object(["title": .string(title), "items": .array([
+                        .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string(nature)])
+                    ])])
+                }
+                questions = [.object(["text": .string("这笔支出是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array(options)])]
+            }
             await MainActor.run { UITestRequestLog.shared.completedOrganizationIDs.formUnion(ids) }
             return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array(rows), "items": .array([]),
-                "series": .array([]), "questions": .array([])]).jsonText())
+                "series": .array([]), "questions": .array(questions)]).jsonText())
         }
         if script.hasPrefix("judge-") { return try purchaseReply(request) }
         if script == "profile-revisit", request.purpose == "消费观对话" {
@@ -367,20 +451,21 @@ struct UITestTransport: ChatTransport {
         if script == "import", request.purpose == "导入整理" {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
             let batch = payload["batch"]?.arrayValue ?? []
-            guard let incoming = batch.first(where: { $0["inflow"] == .bool(true) }), let id = incoming["id"]?.stringValue else {
-                throw YubaiError.invalid("合成导入夹具缺少来款。")
-            }
+            let id = batch.first(where: { $0["inflow"] == .bool(true) })?["id"]?.stringValue
             let rows: [JSONValue] = batch.compactMap { row in
                 guard let key = row["id"]?.stringValue, key != id else { return nil }
                 return .object(["entry": .string(key), "category": .string("餐饮"), "nature": .string("expense"), "confident": .bool(true)])
             }
-            let question: JSONValue = .object(["text": .string("这笔来款是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array([
+            var questions: [JSONValue] = []
+            if let id {
+                questions = [.object(["text": .string("这笔来款是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array([
                 .object(["title": .string("日常收入"), "items": .array([
                     .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string("income")]),
                     .object(["kind": .string("set_category"), "entry": .string(id), "category": .string("其他收入")])])]),
                 .object(["title": .string("先留没写用途"), "items": .array([
-                    .object(["kind": .string("set_purpose"), "entry": .string(id), "text": .string("待核对来款")])])])])])
-            let result = JSONValue.object(["rows": .array(rows), "items": .array([]), "series": .array([]), "questions": .array([question])])
+                    .object(["kind": .string("set_purpose"), "entry": .string(id), "text": .string("待核对来款")])])])])])]
+            }
+            let result = JSONValue.object(["rows": .array(rows), "items": .array([]), "series": .array([]), "questions": .array(questions)])
             return ChatMessage(role: .assistant, content: try result.jsonText())
         }
         if script == "ask" {

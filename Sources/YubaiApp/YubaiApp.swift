@@ -135,7 +135,10 @@ enum AppSheet: Identifiable {
     var pickingInsightDates = false
     var organizingBatchID: UUID?
     /// Progress across all batches in the current explicit run.
-    var organizationProgress: (completed: Int, total: Int)?
+    var organizationProgress: ImportOrganizationProgress?
+    var organizingImportBatchIDs: Set<UUID> = []
+    @ObservationIgnored var organizationExecution: ImportOrganizationExecution?
+    var organizationContinuesInBackground = false
     var organizingPendingImports = false
     @ObservationIgnored var pendingOrganizationTask: Task<Void, Never>?
     @ObservationIgnored var importOrganizationTask: Task<Void, Never>?
@@ -224,9 +227,11 @@ enum AppSheet: Identifiable {
         guard update(completingOnboarding ? "建立账本" : "导入账单", { $0 = prepared.ledger }) else { return nil }
         return prepared.batch
     }
-    @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
+    @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, continuingImportOrganization: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
         var skipped: [String] = []
-        let saved = update(label, entryMotion: !silently, showToast: !silently) { ledger in
+        let saved = update(label, entryMotion: !silently,
+                           allowLockedCapture: locked && continuingImportOrganization && organizationContinuesInBackground,
+                           showToast: !silently) { ledger in
             if !changeSet.items.isEmpty { skipped = try changeSet.apply(to: &ledger) }
             else if changeSet.source != "导入整理" { try changeSet.validateStructure() }
             try finishing(&ledger)

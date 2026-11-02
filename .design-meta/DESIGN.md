@@ -1,5 +1,56 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-02 · 导入整理先按对方分组
+
+来源为 owner 在 feat/organize-by-party-groups（基于 PR #53 的 feat/background-organize ccf336b）明确同意的数据层与 AI 输入改法。真实 DeepSeek 对 4,200 笔银行流水仍留 2,098 笔没分类，是本轮问题依据；未读取或发送用户真实流水。本轮不改界面外观、布局及固定文案，不提交、不增加第三方依赖。
+
+ImportOrganizer.swift 先按对方和收支方向生成本次待整理记录的组；UnsortedGroups.party(for:) 和 groups(entries:) 由整理器与剩余记录页面共用，仍取标题「 · 」之前部分，按笔数降序。至少 3 笔、没有关联候选的组先发摘要。已有主项、用户已改记录和不在目标集合的记录不进入批量结论；已有主项在原逐笔阶段的保护保持。摘要包含笔数、金额最小／中位／最大、众数及占比、首末日期、公历相邻间隔的中位天数、前三种摘要与备注及各自次数；从首／中／末取最多 3 笔样例，所有文本走与原行相同的 Redactor，不带逐笔 UUID、原件或来源标识。金额和统计由本机计算，偶数金额中位数保留半分精度。
+
+分批按摘要 UTF-8 字节数的一半估算输入 token，另留 2,000 给提示词／分类，输入约 12,000；输出按 512＋每组 640 估算，单请求不超过 8,192，因此短摘要通常每批 12 组，长摘要自动减少。此为请求预算，不是 AI 总组数／问题数限制。分组 purpose 为「导入整理·按对方」，逐笔仍为「导入整理」；两者都显式 thinking:false、json_object，使用 JSONValue.parseModelResponse，超时 180 秒。模型只回组 ID；问题的选项为不含 entry 的 set_category／set_nature／set_purpose 模板，由本机按组展开，再走已有 categoryItem、accept 和 ChangeSet 的分类、方向、关联校验。性质／用途的简单字段在 parseItem 解析后统一验证，避免每个 UUID 重建整个账本的 ToolContext／Redactor；关联项目继续复用 ProposalTool。
+
+1–2 笔、空对方、同金额反向记录、同对方 90 天内可能的部分退款、已有计划金额或房租月付／份额／他人份额／整期付款金额候选，以及可能的周／月／季／年周期，都留给原每段 30 笔的逐笔阶段，保留跨批配对、退款、房租和计划证据。每天固定小额扣款不属于现有 Plan 支持的频率，仍可走分组；规则只用结构与本机数据，没有新增商户关键词分类代码。模型也可用 needs_individual 把整组交还逐笔阶段；transfer／refund／contribution 结论自动交还，不提前记为完成。
+
+有把握的组和有效整组问题逐批 checkpoint；没有有效结论／问题的剩余记录沿用原兜底卡。只有本批实际处理的记录写入 organizedEntryIDs，组和逐笔均按 completedIDs.count 累加进度；停止／失败保留此前保存结果，续跑不重发已保存的组。整组问题与逐笔问题继续经 group() 合并，兜底身份／覆盖合并及排序保持；移除旧提示词与 group() 的五题截断，也移除问题覆盖 1,000 个 ID 的旧门槛，允许 1,088 笔作为一个问题。现有界面展示结构保持。
+
+两套 systemPrompt 共用新证据说明：可凭常识识别美团／饿了么、高德／滴滴／12306、盒马／小象超市／叮咚买菜、基金销售、保险及通信运营商，映射当前可用分类；同一对方高频固定金额本身是证据，不因「快捷支付」摘要一律拒绝判断。个人姓名或用途不明才提问；禁止编造金额、账户、日期，已知分类优先与已有主项保护保持。模型识别属于智能判断，不宣称这些平台的每笔交易都具有单一用途。
+
+请求数为估算：给出的前 10 组共 1,540 笔，若均符合分组条件，通常约 1 次分组请求；其余全部逐笔时为 1＋ceil(2,660/30)＝90 次，对比旧 140 次。按约 300 个对方、其中约 200 组覆盖 3,000 笔、余下 1,200 笔须逐笔的假设，约 ceil(200/12)＋ceil(1,200/30)＝57 次。方向拆分、长摘要、已有主项、关联候选及模型交还会增加请求；真实完整分布未知，不能保证该数值。两边均不计原有的可选导入短评请求。
+
+夹具：ImportOrganizerTests 新增 8 项 ScriptedChatTransport 测试，覆盖统计／脱敏／样例、批量落笔与已有主项／金额／日期／账户保护、1,088 笔整组问题及回答、组与单笔问题合并、单笔单独请求、分组停止后的 confident／问题持久化与续跑不重发、按记录数的连续进度、模型交还、反向／部分退款／周期／计划／整期房租分流、收支拆组与无效模板／分类拒绝，以及 thinking／JSON／预算。旧五题测试改为验证无上限；原逐段恢复／取消测试用不同合成对方，保留原段数和覆盖。UITestTransport 为 salary／import 增加新 purpose 的组回复，复用原问题和答案；import 的逐笔回复兼容来款已被分组处理。salary 大量流水改为不同对方，仍为 70 笔的 30＋30＋10，后台手动模式仍为 150 笔的五段；by-party 的单笔来款金额改为 0.99，避免误作同金额反向证据，两组出账保持 6／3 笔及原剩余数／手动操作语义。
+
+验证：指定 export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test 完整运行 616 项，612 通过／4 项原有实网 opt-in 跳过／0 失败。全部 App 源码通过 swiftc -frontend -parse 的 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，AppFlowTests 的模拟器 Debug 解析通过；git diff --check 通过。Linux 不执行 Apple SDK 类型检查或 XCTest UI。真 DeepSeek 待验证知名平台映射、5.88 定投的 confident／investBuy、个人往来提问质量、长摘要输出是否完整及实际请求／剩余数量。Apple 编译与 UI 实跑、真实后台进度和停止仍待 Mac；外部画布、截图与分发资源未同步，未调用真实智能 API。
+
+补充离线执行：提取实际 IntelligenceRuntime、AppStore.apply 与完整 UITestSupport／UITestTransport，链接真实 Core，以 Swift 6 严格并发编译；平台／持久化宿主与 UI 的 BG 门控用替身。完成／停止／失败三条原 questions 场景验证 30／70 保存与暂缓提问、收尾显示和常亮恢复；by-party 验证 1 次分组＋1 次逐笔请求、进度 0→9→10、6／3 笔兜底两组、手动归类后剩 3 笔及重读持久化。该执行不代替 Apple SDK 编译、XCTest UI 或系统后台实跑。
+
+同日合并 `feat/background-organize` 的夹具选择修正：UITestTransport 的「导入整理」与「导入整理·按对方」均用 `usesBackgroundFixture` 决定 8 秒延迟，与 `allowsBackground` 解耦。保留现有不同对方的 150 行夹具，无须调整数据或产品流程；第二块保存 1 个问题。重新提取实际源码（仅替换平台宿主／条件并省略 OSLog），链接真实 Core 以 Swift 6 严格并发离线执行：`salary`＋`BACKGROUND_FIXTURE=1`、清空场景，`ALLOW_BACKGROUND=0/1` 分别约 41.7／41.8 秒，均保存 30→60→90→120→150，问题中途已写盘但隐藏、完成及重读后显示；0 路径不提交 BG、满足既有前台提醒条件并常亮，完成后恢复。另验证分组 purpose 也延迟 8 秒、原六个显式整理场景优先且保留时序／重试语义、普通 salary 与无效开关不加延迟。指定全量测试仍为 616 项、612 通过／4 原有实网跳过／0 失败；全部 App 的 iOS 26 模拟器 Debug／设备 Release 与 UI 模拟器 Debug 语法解析通过。UI 测试源码与产品代码保持；Apple SDK／UI／系统后台实跑仍待 Mac，无新增／改动可见中文，未提交。手动命令已补齐独立夹具开关，见 README。
+
+新增／改动的固定界面可见中文：无。新增发送记录用途事实标签「导入整理·按对方」；生产问题与选项由模型生成。UI 夹具仅复用原问题／选项及合成数据，未新增生产说明句。
+
+
+## 2026-11-02 · 导入整理后台继续与提问延后
+
+来源为 owner 在 feat/background-organize（基于 main 2fa6b47）明确决定的两项行为变更；沿用当前样式、布局与逐段整理流程，不采用新视觉，不提交、不增加第三方依赖。
+
+IntelligenceRuntime.swift 的 ImportOrganizationExecution 管理一次用户发起的整理。现在页按钮在创建 async Task 前同步注册并提交 iOS 26 BGContinuedProcessingTaskRequest，导入结果页的 organizeImport 也在首次 await 前接入。Info.plist 使用 app.yubai.personal.organizeImports.* 通配许可，实际注册／提交使用相同前缀加本轮 UUID；strategy 为 .fail，无法立即执行就走前台回退，不排队另起一轮。launch handler 关联当前同一段 async 流程，接入时补报真实最新进度，每段成功保存后更新 progress.totalUnitCount／completedUnitCount 和 updateTitle；正常完成 setTaskCompleted(success: true)，取消或失败为 false。系统停止／expirationHandler 与卡片「停下」共用取消路径，保存前仍检查取消，完成段保留，重试只取剩余 ID；迟到回调和重复收尾也会结束系统任务。
+
+工程沿用 Sources/YubaiApp/Info.plist（GENERATE_INFOPLIST_FILE = NO），只加 processing Background Mode、BGTaskSchedulerPermittedIdentifiers 和 App target 的 Background Modes capability；不加 GPU、后台抓取或新的签名 entitlement。iOS 专属 API 均以 #if os(iOS) 隔离，最低 iOS 26／macOS 14 保持。代码注释记录前台用户动作立即提交、通配前缀与真实进度约束；已核对 Apple 官方持续处理说明及 initializer、updateTitle、expirationHandler、setTaskCompleted、strategy 的声明，Apple SDK 真正类型检查仍待 Mac。
+
+两条路径整理期间均临时关闭自动锁屏，完成、停下或失败恢复原有 isIdleTimerDisabled 值（包括原来就是 true）。注册／提交失败、系统不可用或当前不在前台时，保留卡片「整理时别离开余白」；提交成功时隐藏该句，其余外观保持。严格门控的 UITestSupport 脚本默认跳过真实 BG 注册／提交，仍执行常亮回退；仅 Debug 模拟器可显式开启下方手动验证模式。已获系统任务支持的当前整理可跨 App 自动锁定继续请求和保存；界面隐私锁和其他写入的校验保持。运行内存暂存本轮前台授权的云端配置，后台不重读 WhenUnlocked 钥匙串；前台恢复后重新检查实时配置，账本／智能设置变化仍使旧请求作废，不改钥匙串可访问性或持久化密钥。
+
+同日按 owner 要求补充手动测试开关：仅 `#if DEBUG && targetEnvironment(simulator)` 中，合法 `--test-ledger UUID`＋UI 脚本且 `YUBAI_UI_ALLOW_BACKGROUND=1` 才允许脚本提交真实 BG 请求，传输仍走 UITestTransport。该开关下所有「导入整理」假回复通过可取消的 Task.sleep 延迟约 2 秒；原场景自己的等待／失败规则保持。`salary`＋开关、不指定 organizationScenario，自动选大量流水夹具并仅本模式从 70 扩为 150 笔，沿用 Core 每段 30 笔，正好 5 段。未开启时工资／70 笔等夹具和所有时序保持，真机／Release 不编译开关。完整 simctl 命令与观察方法见 [README](../README.md#2026-11-02--导入整理后台继续与提问延后)。本次新增／改动可见中文字符串：无。
+
+开关增量验证：重新运行指定 `YUBAI_LIVE_EVAL=0 swift test`，608 项、604 通过／4 项原有实网跳过／0 失败；全部 App 的 iOS 26 模拟器 Debug／设备 Release 及 UI 测试的模拟器 Debug 语法解析通过。提取实际代码，仅替换平台条件及 UIKit／BGTaskScheduler／持久化宿主，以 Swift 6 严格并发编译并链接真实 Core：未设置／值为 0 或 2 时保留原夹具、跳过 BG 且不加延迟，缺合法隔离参数时忽略开关；开启后确认真实流程提交、150 笔的五次逐段等待与保存、后台 App 锁定后完成、停止在等待期间立即取消且保留 30／150、常亮恢复。以上为离线替身验证，Apple SDK 编译、模拟器系统进度条与系统停止的实跑仍待 Mac；未调用真实智能服务，未提交。
+
+Core ButlerCards.queued／visible 在五张窗口之前按运行中的批次集合暂缓这些批次的 ImportQuestion 卡片；整个多批次运行结束前，先完成批次的问题也保持暂缓。数据继续逐段写盘，问题覆盖的进账仍去重，其他批次的问题保持原规则。现在页与需要留意列表传入相同内存集合，完成、停下或失败收尾后一次释放；重启无运行集合，已保存问题直接显示，不重启云端整理。ImportOrganizationProgress 统一 App 与系统的千分位数字，回到前台使用同一 store 进度；系统结束或强退后，已完成段及剩余计数从保存结果恢复。
+
+本次生产可见中文新增：系统标题「整理导入记录」（标题）、副标题「已整理 N / N」（数字事实／状态，例如「已整理 150 / 4,200」）；既有「整理时别离开余白」仅改为回退时显示。该句沿用 owner 已明确指定的前台限制：删掉、层级、控件与数字均不能表达前台要求，且已限于发生整理的时刻，没有新增解释句。测试夹具另增加问题「这笔支出是什么用途？」及复用选项「日常支出／还款」，不进入生产数据。其他可见文字、token、动画与布局保持。
+
+验证：指定命令 export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test 退出 0；608 项、604 通过／4 项原有实网 opt-in 跳过／0 失败。新增 4 项 Core 测试覆盖逐段问题已保存但隐藏、完整运行结束才释放、停止／失败与重启恢复、已完成 ID 不重发、完整窗口与进账去重、其他批次不受影响及共享千分位文案。新增 4 项 AppFlowTests 源码，使用 salary + questions-complete／questions-stop／questions-fail 脚本，在第一段已保存一个问题、第二段等待时断言页面无问题／答案控件、常亮回退仍开启，随后覆盖完成、停下、失败、运行中强退重启后的问题可见与剩余计数；停下／失败检查常亮已恢复。既有问题顺序测试补等停止控件消失，按整理结束状态断言；无删除测试，原停止和只重试剩余用例保持。
+
+补充离线验证：提取实际 ImportOrganizationExecution、整理任务方法、ActiveLedgerTransport、apply 和完整 UITestSupport／UITestTransport，仅替换平台条件、UI 测试的 BG 跳过开关，以及 UIKit／BGTaskScheduler／持久化宿主，以 Swift 6 严格并发编译并链接真实 Core。协调器检查真实千分位进度、迟到回调、重复收尾、注册／提交拒绝、系统过期、常亮原值 false／true 恢复及后台缓存配置／前台实时复核通过；8 条脚本路径覆盖回退完成／停止／失败、模拟后台且 App 锁定后的完成／失败、系统过期取消、多批次进度 0→30→45→70、直接调用父任务取消。均确认提问在检查点已经写盘但运行中隐藏，收尾可见、无完成 ID 重发、结束状态与常亮恢复正确。替身检查不能代替 Apple SDK 类型检查或系统任务实际交付。
+
+全部 App 源码通过 swiftc -frontend -parse 的 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，AppFlowTests 通过 iOS 26 模拟器 Debug 解析；Info.plist 解析、工程登记与 git diff --check 通过。XCTest UI 实跑及 Apple SDK App／Mac 编译未在 Linux 执行。真机须验证通配许可和签名后实际交付、切 App／锁屏持续网络与逐段写盘、系统标题／千分位进度同步、系统停止／资源过期保留完成段并只重试剩余，以及提交受限时的提醒与常亮原值恢复。系统资源紧张或进度长期不动仍可能终止任务；强退不保证收到取消回调，恢复依靠已保存检查点。原稿、外部画布、截图与分发包未同步；未提交、未推送、未调用真实智能 API。
+
 ## 2026-10-29 · 第二十五轮「整理完剩下的」
 
 来源为 owner 本轮已确认的三张第二十五轮页面稿，上一轮整理中页面只作参照。本轮仅在本机只读核对，未复制原稿、私有地址或设计链接；不增加依赖、不提交。

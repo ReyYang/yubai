@@ -42,7 +42,9 @@ struct NowCardsSection: View {
     @State private var selected: String?
     @State private var width: CGFloat = 1
     @State private var drag: CGFloat = 0
-    private var butlerCards: [ButlerCard] { SavingCardVisibility.visible(in: store.current, collapsingInflows: true) }
+    private var butlerCards: [ButlerCard] {
+        SavingCardVisibility.visible(in: store.current, collapsingInflows: true, organizingBatchIDs: store.organizingImportBatchIDs)
+    }
     private var pages: [NowCardPage] {
         var result: [NowCardPage] = []
         if let salary = SalaryDetection.candidate(in: store.current), !store.hiddenSalaryKeys.contains(salary.key) { result.append(.salary(salary)) }
@@ -238,9 +240,8 @@ private struct PendingImportsCard: View {
             #endif
     }
     private var organizationProgress: some View {
-        let progress = store.organizationProgress ?? (completed: 0, total: pending.count)
+        let progress = store.organizationProgress ?? ImportOrganizationProgress(completed: 0, total: pending.count)
         let fraction = progress.total > 0 ? min(1, max(0, Double(progress.completed) / Double(progress.total))) : 0
-        let numberStyle = IntegerFormatStyle<Int>.number.locale(Locale(identifier: "en_US"))
         return VStack(spacing: YubaiSpace.space8) {
             GeometryReader { geometry in
                 RoundedRectangle(cornerRadius: 3).fill(YubaiColor.neutralSoft)
@@ -253,25 +254,27 @@ private struct PendingImportsCard: View {
                 .accessibilityValue("\(progress.completed)/\(progress.total)").accessibilityIdentifier("organizeProgress")
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.space8) {
-                    progressCount(progress, style: numberStyle)
+                    progressCount(progress)
                     Spacer(minLength: YubaiSpace.none)
                     organizingReminder
                     stopButton
                 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    progressCount(progress, style: numberStyle)
+                    progressCount(progress)
                     HStack(spacing: YubaiSpace.space8) { organizingReminder; Spacer(minLength: 0); stopButton }
                 }
             }
         }
     }
-    private func progressCount(_ progress: (completed: Int, total: Int), style: IntegerFormatStyle<Int>) -> some View {
-        Text(progress.completed.formatted(style) + " / " + progress.total.formatted(style))
+    private func progressCount(_ progress: ImportOrganizationProgress) -> some View {
+        Text(progress.countText)
             .yubaiFont(YubaiFont.amountSmall, weight: .regular).foregroundStyle(YubaiColor.labelSecondary)
             .fixedSize()
     }
-    private var organizingReminder: some View {
-        Text("整理时别离开余白").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize()
+    @ViewBuilder private var organizingReminder: some View {
+        if !store.organizationContinuesInBackground {
+            Text("整理时别离开余白").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize()
+        }
     }
     private var stopButton: some View {
         Button("停下") { store.stopOrganizingImports() }

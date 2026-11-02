@@ -2,7 +2,7 @@ import SwiftUI
 import YubaiCore
 
 enum SavingCardVisibility {
-    static func visible(in ledger: Ledger, collapsingInflows: Bool = false) -> [ButlerCard] {
+    static func visible(in ledger: Ledger, collapsingInflows: Bool = false, organizingBatchIDs: Set<UUID> = []) -> [ButlerCard] {
         let progress = RestrainProgress.current(ledger: ledger)
         var filtered = ledger
         filtered.cards.removeAll { card in
@@ -10,10 +10,10 @@ enum SavingCardVisibility {
                   let value = progress.first(where: { $0.areaID == areaID }) else { return false }
             return value.status != .over
         }
-        if collapsingInflows, ButlerCards.queued(filtered).filter({ $0.kind == .unknownInflow }).count >= 2 {
+        if collapsingInflows, ButlerCards.queued(filtered, organizingBatchIDs: organizingBatchIDs).filter({ $0.kind == .unknownInflow }).count >= 2 {
             filtered.cards.removeAll { $0.kind == .unknownInflow }
         }
-        return ButlerCards.visible(filtered)
+        return ButlerCards.visible(filtered, organizingBatchIDs: organizingBatchIDs)
     }
 }
 

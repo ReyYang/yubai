@@ -22,3 +22,18 @@ public struct PendingImportOrganization: Equatable, Sendable {
         dates = entries.map(\.date)
     }
 }
+
+/// Shared by the in-app card and the system's continued-processing activity.
+public struct ImportOrganizationProgress: Equatable, Sendable {
+    public let completed: Int
+    public let total: Int
+    public init(completed: Int, total: Int) {
+        self.total = max(0, total)
+        self.completed = min(max(0, completed), self.total)
+    }
+    public var countText: String {
+        let style = IntegerFormatStyle<Int>.number.locale(Locale(identifier: "en_US"))
+        return completed.formatted(style) + " / " + total.formatted(style)
+    }
+    public var subtitle: String { "已整理 " + countText }
+}

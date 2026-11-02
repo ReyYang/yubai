@@ -11,7 +11,7 @@ struct ButlerListView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var unknownInflowsOnly = false
     var body: some View {
-        let cards = unknownInflowsOnly ? ButlerCards.queued(store.current).filter { $0.kind == .unknownInflow } : SavingCardVisibility.visible(in: store.current)
+        let cards = unknownInflowsOnly ? ButlerCards.queued(store.current).filter { $0.kind == .unknownInflow } : SavingCardVisibility.visible(in: store.current, organizingBatchIDs: store.organizingImportBatchIDs)
         Page(spacing: YubaiSpace.gapGroup) {
             ForEach(cards) { card in
                 if let question = card.importQuestion, let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
