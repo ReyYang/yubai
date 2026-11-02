@@ -144,12 +144,17 @@ public enum ButlerCards {
     }
     /// The entire eligible queue, before the five-card window. Aggregation must
     /// use this queue so reminders beyond the window are still reachable.
-    public static func queued(_ ledger: Ledger) -> [ButlerCard] {
+    public static func queued(_ ledger: Ledger, organizingBatchIDs: Set<UUID> = []) -> [ButlerCard] {
+        // Visibility is run-local, never persisted: stopped or relaunched apps
+        // immediately expose the questions saved by completed checkpoints.
+        let deferredQuestions = Set(ledger.imports.filter { organizingBatchIDs.contains($0.id) }
+            .flatMap { $0.organization?.questions.map(\.id) ?? [] })
         let asked = questionEntryIDs(in: ledger)
         let active = Dictionary(uniqueKeysWithValues: ledger.activeEntries.map { ($0.id, $0) })
         return ledger.cards.filter { card in
             guard card.kind != .weeklyLetter, card.dismissedAt == nil,
                   !isMuted(card.dedupeKey, evidence: Array(offCharacterEntryIDs(card)), in: ledger) else { return false }
+            if let question = card.importQuestion, deferredQuestions.contains(question.id) { return false }
             if let question = card.importQuestion, question.isFallback {
                 return !UnsortedGroups.entries(for: question, in: ledger).isEmpty
             }
@@ -169,8 +174,8 @@ public enum ButlerCards {
         }
     }
     /// Overflow stays queued; dismissing a card reveals the next one.
-    public static func visible(_ ledger: Ledger) -> [ButlerCard] {
-        Array(queued(ledger).prefix(5))
+    public static func visible(_ ledger: Ledger, organizingBatchIDs: Set<UUID> = []) -> [ButlerCard] {
+        Array(queued(ledger, organizingBatchIDs: organizingBatchIDs).prefix(5))
     }
     private static func rank(_ card: ButlerCard) -> Int {
         if card.kind == .answerQuestion { return 2 }

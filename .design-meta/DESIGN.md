@@ -1,5 +1,29 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-02 · 导入整理后台继续与提问延后
+
+来源为 owner 在 feat/background-organize（基于 main 2fa6b47）明确决定的两项行为变更；沿用当前样式、布局与逐段整理流程，不采用新视觉，不提交、不增加第三方依赖。
+
+IntelligenceRuntime.swift 的 ImportOrganizationExecution 管理一次用户发起的整理。现在页按钮在创建 async Task 前同步注册并提交 iOS 26 BGContinuedProcessingTaskRequest，导入结果页的 organizeImport 也在首次 await 前接入。Info.plist 使用 app.yubai.personal.organizeImports.* 通配许可，实际注册／提交使用相同前缀加本轮 UUID；strategy 为 .fail，无法立即执行就走前台回退，不排队另起一轮。launch handler 关联当前同一段 async 流程，接入时补报真实最新进度，每段成功保存后更新 progress.totalUnitCount／completedUnitCount 和 updateTitle；正常完成 setTaskCompleted(success: true)，取消或失败为 false。系统停止／expirationHandler 与卡片「停下」共用取消路径，保存前仍检查取消，完成段保留，重试只取剩余 ID；迟到回调和重复收尾也会结束系统任务。
+
+工程沿用 Sources/YubaiApp/Info.plist（GENERATE_INFOPLIST_FILE = NO），只加 processing Background Mode、BGTaskSchedulerPermittedIdentifiers 和 App target 的 Background Modes capability；不加 GPU、后台抓取或新的签名 entitlement。iOS 专属 API 均以 #if os(iOS) 隔离，最低 iOS 26／macOS 14 保持。代码注释记录前台用户动作立即提交、通配前缀与真实进度约束；已核对 Apple 官方持续处理说明及 initializer、updateTitle、expirationHandler、setTaskCompleted、strategy 的声明，Apple SDK 真正类型检查仍待 Mac。
+
+两条路径整理期间均临时关闭自动锁屏，完成、停下或失败恢复原有 isIdleTimerDisabled 值（包括原来就是 true）。注册／提交失败、系统不可用或当前不在前台时，保留卡片「整理时别离开余白」；提交成功时隐藏该句，其余外观保持。严格门控的 UITestSupport 脚本默认跳过真实 BG 注册／提交，仍执行常亮回退；仅 Debug 模拟器可显式开启下方手动验证模式。已获系统任务支持的当前整理可跨 App 自动锁定继续请求和保存；界面隐私锁和其他写入的校验保持。运行内存暂存本轮前台授权的云端配置，后台不重读 WhenUnlocked 钥匙串；前台恢复后重新检查实时配置，账本／智能设置变化仍使旧请求作废，不改钥匙串可访问性或持久化密钥。
+
+同日按 owner 要求补充手动测试开关：仅 `#if DEBUG && targetEnvironment(simulator)` 中，合法 `--test-ledger UUID`＋UI 脚本且 `YUBAI_UI_ALLOW_BACKGROUND=1` 才允许脚本提交真实 BG 请求，传输仍走 UITestTransport。该开关下所有「导入整理」假回复通过可取消的 Task.sleep 延迟约 2 秒；原场景自己的等待／失败规则保持。`salary`＋开关、不指定 organizationScenario，自动选大量流水夹具并仅本模式从 70 扩为 150 笔，沿用 Core 每段 30 笔，正好 5 段。未开启时工资／70 笔等夹具和所有时序保持，真机／Release 不编译开关。完整 simctl 命令与观察方法见 [README](../README.md#2026-11-02--导入整理后台继续与提问延后)。本次新增／改动可见中文字符串：无。
+
+开关增量验证：重新运行指定 `YUBAI_LIVE_EVAL=0 swift test`，608 项、604 通过／4 项原有实网跳过／0 失败；全部 App 的 iOS 26 模拟器 Debug／设备 Release 及 UI 测试的模拟器 Debug 语法解析通过。提取实际代码，仅替换平台条件及 UIKit／BGTaskScheduler／持久化宿主，以 Swift 6 严格并发编译并链接真实 Core：未设置／值为 0 或 2 时保留原夹具、跳过 BG 且不加延迟，缺合法隔离参数时忽略开关；开启后确认真实流程提交、150 笔的五次逐段等待与保存、后台 App 锁定后完成、停止在等待期间立即取消且保留 30／150、常亮恢复。以上为离线替身验证，Apple SDK 编译、模拟器系统进度条与系统停止的实跑仍待 Mac；未调用真实智能服务，未提交。
+
+Core ButlerCards.queued／visible 在五张窗口之前按运行中的批次集合暂缓这些批次的 ImportQuestion 卡片；整个多批次运行结束前，先完成批次的问题也保持暂缓。数据继续逐段写盘，问题覆盖的进账仍去重，其他批次的问题保持原规则。现在页与需要留意列表传入相同内存集合，完成、停下或失败收尾后一次释放；重启无运行集合，已保存问题直接显示，不重启云端整理。ImportOrganizationProgress 统一 App 与系统的千分位数字，回到前台使用同一 store 进度；系统结束或强退后，已完成段及剩余计数从保存结果恢复。
+
+本次生产可见中文新增：系统标题「整理导入记录」（标题）、副标题「已整理 N / N」（数字事实／状态，例如「已整理 150 / 4,200」）；既有「整理时别离开余白」仅改为回退时显示。该句沿用 owner 已明确指定的前台限制：删掉、层级、控件与数字均不能表达前台要求，且已限于发生整理的时刻，没有新增解释句。测试夹具另增加问题「这笔支出是什么用途？」及复用选项「日常支出／还款」，不进入生产数据。其他可见文字、token、动画与布局保持。
+
+验证：指定命令 export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test 退出 0；608 项、604 通过／4 项原有实网 opt-in 跳过／0 失败。新增 4 项 Core 测试覆盖逐段问题已保存但隐藏、完整运行结束才释放、停止／失败与重启恢复、已完成 ID 不重发、完整窗口与进账去重、其他批次不受影响及共享千分位文案。新增 4 项 AppFlowTests 源码，使用 salary + questions-complete／questions-stop／questions-fail 脚本，在第一段已保存一个问题、第二段等待时断言页面无问题／答案控件、常亮回退仍开启，随后覆盖完成、停下、失败、运行中强退重启后的问题可见与剩余计数；停下／失败检查常亮已恢复。既有问题顺序测试补等停止控件消失，按整理结束状态断言；无删除测试，原停止和只重试剩余用例保持。
+
+补充离线验证：提取实际 ImportOrganizationExecution、整理任务方法、ActiveLedgerTransport、apply 和完整 UITestSupport／UITestTransport，仅替换平台条件、UI 测试的 BG 跳过开关，以及 UIKit／BGTaskScheduler／持久化宿主，以 Swift 6 严格并发编译并链接真实 Core。协调器检查真实千分位进度、迟到回调、重复收尾、注册／提交拒绝、系统过期、常亮原值 false／true 恢复及后台缓存配置／前台实时复核通过；8 条脚本路径覆盖回退完成／停止／失败、模拟后台且 App 锁定后的完成／失败、系统过期取消、多批次进度 0→30→45→70、直接调用父任务取消。均确认提问在检查点已经写盘但运行中隐藏，收尾可见、无完成 ID 重发、结束状态与常亮恢复正确。替身检查不能代替 Apple SDK 类型检查或系统任务实际交付。
+
+全部 App 源码通过 swiftc -frontend -parse 的 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，AppFlowTests 通过 iOS 26 模拟器 Debug 解析；Info.plist 解析、工程登记与 git diff --check 通过。XCTest UI 实跑及 Apple SDK App／Mac 编译未在 Linux 执行。真机须验证通配许可和签名后实际交付、切 App／锁屏持续网络与逐段写盘、系统标题／千分位进度同步、系统停止／资源过期保留完成段并只重试剩余，以及提交受限时的提醒与常亮原值恢复。系统资源紧张或进度长期不动仍可能终止任务；强退不保证收到取消回调，恢复依靠已保存检查点。原稿、外部画布、截图与分发包未同步；未提交、未推送、未调用真实智能 API。
+
 ## 2026-10-29 · 第二十五轮「整理完剩下的」
 
 来源为 owner 本轮已确认的三张第二十五轮页面稿，上一轮整理中页面只作参照。本轮仅在本机只读核对，未复制原稿、私有地址或设计链接；不增加依赖、不提交。

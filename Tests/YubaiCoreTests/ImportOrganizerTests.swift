@@ -396,6 +396,76 @@ final class ImportOrganizerTests: XCTestCase {
         let undone = await store.snapshot()
         XCTAssertEqual(undone, before)
     }
+    func testCheckpointQuestionsStaySavedButHiddenForAllBatchesInTheRun() async throws {
+        let (_, imported, batch) = try syntheticImport(count: 2 * ImportOrganizer.chunkSize)
+        let store = ImportCheckpointStore(imported, batchID: batch.id)
+        let script = ResumableImportScript(leaveUncertain: true)
+        _ = try await ImportOrganizer(transport: script).organize(ledger: imported, entryIDs: imported.entries.map(\.id)) { result, ids, before in
+            let saved = try await store.save(result, ids: ids, before: before)
+            XCTAssertFalse(saved.imports[0].organization?.questions.isEmpty ?? true)
+            XCTAssertFalse(saved.cards.filter { $0.importQuestion != nil }.isEmpty)
+            XCTAssertTrue(ButlerCards.queued(saved, organizingBatchIDs: [batch.id]).filter { $0.importQuestion != nil }.isEmpty)
+            XCTAssertTrue(ButlerCards.visible(saved, organizingBatchIDs: [batch.id]).filter { $0.importQuestion != nil }.isEmpty)
+            return saved
+        }
+        let saved = await store.snapshot()
+        XCTAssertEqual(saved.imports[0].needsOrganization, false)
+        // A finished batch remains deferred while another batch in this run works.
+        XCTAssertTrue(ButlerCards.visible(saved, organizingBatchIDs: [batch.id, UUID()]).isEmpty)
+        XCTAssertEqual(ButlerCards.visible(saved).filter { $0.importQuestion != nil }.count, 1)
+    }
+    func testStoppedOrFailedRunAndRelaunchExposeCheckpointQuestionsWithoutResendingCompletedIDs() throws {
+        let (_, imported, batch) = try syntheticImport(count: 2 * ImportOrganizer.chunkSize)
+        var saved = imported
+        let completed = Array(imported.entries.prefix(ImportOrganizer.chunkSize).map(\.id))
+        let question = ImportQuestion(text: "这笔是什么用途？", entryIDs: completed, options: [])
+        let checkpoint = ImportOrganization(changeSet: ChangeSet(source: "导入整理", reason: "合成检查点", items: []),
+                                            questions: [question], skipped: [])
+        checkpoint.finish(batchID: batch.id, before: imported, in: &saved, entryIDs: completed)
+        XCTAssertTrue(ButlerCards.visible(saved, organizingBatchIDs: [batch.id]).isEmpty)
+        let unchanged = saved
+        // Stop/failure clear only the in-memory run set; no ledger rewrite is needed.
+        XCTAssertEqual(ButlerCards.visible(saved).first?.importQuestion?.id, question.id)
+        XCTAssertEqual(saved, unchanged)
+        let restored = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(saved))
+        XCTAssertEqual(ButlerCards.visible(restored).first?.importQuestion?.id, question.id)
+        XCTAssertEqual(Set(ImportOrganizer.pendingEntryIDs(in: restored, batchID: batch.id)),
+                       Set(imported.entries.dropFirst(ImportOrganizer.chunkSize).map(\.id)))
+    }
+    func testDeferredQuestionsDoNotConsumeWindowOrReleaseCoveredInflowReminders() throws {
+        let (_, imported, batch) = try syntheticImport(count: 1)
+        var saved = imported
+        saved.entries[0].nature = .unknownIn
+        let id = saved.entries[0].id
+        let question = ImportQuestion(text: "这笔来款是什么？", entryIDs: [id], options: [])
+        let checkpoint = ImportOrganization(changeSet: ChangeSet(source: "导入整理", reason: "合成", items: []), questions: [question], skipped: [])
+        checkpoint.finish(batchID: batch.id, before: imported, in: &saved, entryIDs: [id])
+        let covered = ButlerCard(kind: .unknownInflow, title: "重复进账", body: "", evidence: [id], dedupeKey: "covered")
+        saved.cards.append(covered)
+        let other = (0..<6).map { ButlerCard(kind: .staleBalance, title: "余额", body: "", dedupeKey: "balance:\($0)") }
+        saved.cards += other
+        var previousBatch = ImportBatch(filename: "先前.csv", importedCount: 0, duplicateCount: 0, skippedCount: 0)
+        let previousQuestion = ImportQuestion(text: "先前的问题", entryIDs: [], options: [])
+        previousBatch.organization = ImportOrganization(changeSet: ChangeSet(source: "导入整理", reason: "先前", items: []),
+                                                        questions: [previousQuestion], skipped: [])
+        saved.imports.append(previousBatch)
+        var previousCard = ButlerCard(kind: .answerQuestion, title: "先前的问题", body: "", dedupeKey: "previous")
+        previousCard.importQuestion = previousQuestion
+        saved.cards.append(previousCard)
+        let visible = ButlerCards.visible(saved, organizingBatchIDs: [batch.id])
+        XCTAssertEqual(visible.count, 5)
+        XCTAssertEqual(visible.first?.id, previousCard.id, "Questions outside this run keep their existing visibility")
+        XCTAssertFalse(ButlerCards.queued(saved, organizingBatchIDs: [batch.id]).contains { $0.id == covered.id })
+        XCTAssertFalse(ButlerCards.detect(saved, now: Date()).contains { $0.kind == .unknownInflow && $0.evidence.contains(id) })
+    }
+    func testOrganizationProgressUsesSameThousandsSeparatedCountsForCardAndSystem() {
+        let progress = ImportOrganizationProgress(completed: 150, total: 4200)
+        XCTAssertEqual(progress.countText, "150 / 4,200")
+        XCTAssertEqual(progress.subtitle, "已整理 150 / 4,200")
+        XCTAssertEqual(ImportOrganizationProgress(completed: 1200, total: 4200).countText, "1,200 / 4,200")
+        XCTAssertEqual(ImportOrganizationProgress(completed: 4200, total: 4200).subtitle, "已整理 4,200 / 4,200")
+        XCTAssertEqual(ImportOrganizationProgress(completed: 10, total: 0).countText, "0 / 0")
+    }
     func testManualEditsStayExcludedEvenWithAnOldOrganizationReason() throws {
         let (_, imported, batch) = try syntheticImport(count: 2)
         var ledger = imported
