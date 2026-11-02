@@ -1,0 +1,20 @@
+[
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount",
+    "status": "passed",
+    "duration": "43.571 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testImportOrganizeAnswerAndUndoEntireBatch",
+    "status": "passed",
+    "duration": "78.304 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testOrganizedQuestionsPrecedeCollapsedUncoveredInflows",
+    "status": "passed",
+    "duration": "15.767 seconds"
+  }
+]
