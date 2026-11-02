@@ -234,3 +234,178 @@ extension SendLogTests {
         XCTAssertEqual(SendLogPresentation.toolName("unknown_tool"), "其他查阅")
     }
 }
+
+extension SendLogTests {
+    private func rawItem(_ text: String = "{}", messages: [ChatMessage] = [], response: SendLogResponse? = nil) -> SendLogItem {
+        var item = SendLogItem(id: UUID(), time: Date(timeIntervalSince1970: 1_700_000_000), purpose: "测试", model: "m",
+            byteSize: text.utf8.count, requestText: text)
+        item.messages = messages; item.response = response
+        return item
+    }
+
+    func testRawRulesSplitSystemParagraphsPreserveBlankLinesAndUseExistingSource() {
+        let text = "第一段\n\n第二段\n第三段\n"
+        let item = rawItem(messages: [.init(role: .system, content: text), .init(role: .system, content: text),
+            .init(role: .user, content: "资料正文")])
+        let rules = SendLogRawPresentation.rules(in: item)
+        XCTAssertEqual(rules.text, SendLogPresentation.rules(in: SendLogGroup(items: [item])).joined(separator: "\n\n"))
+        XCTAssertEqual(rules.preview, "第一段")
+        XCTAssertEqual(rules.paragraphs, ["第一段", "", "第二段", "第三段", ""])
+        XCTAssertEqual(rules.paragraphs.joined(separator: "\n"), text)
+        XCTAssertEqual(rules.count, text.count)
+        XCTAssertEqual(SendLogRawPresentation.requestSections(in: item).map(\.body), [.text("资料正文")])
+        XCTAssertTrue(SendLogRawPresentation.rules(in: rawItem()).text.isEmpty)
+    }
+
+    func testRawRequestGroupsHavePartyDirectionCountAndRetainOtherFields() throws {
+        let text = #"{"categories":[{"title":"餐饮"}],"other":null,"groups":[{"party":"浙江象鲜","inflow":false,"count":18,"id":"g0","amount":{"min":1290,"max":8820}},{"party":"公司","inflow":true,"count":3,"id":"g1","samples":[{"text":"工资"}]}]}"#
+        let sections = SendLogRawPresentation.requestSections(text)
+        XCTAssertEqual(sections.count, 2)
+        guard case .fields(let fields) = sections[0].body, case .groups(let groups) = sections[1].body else {
+            return XCTFail("Expected ordinary fields followed by party cards")
+        }
+        XCTAssertEqual(fields.map(\.name), ["categories", "other"])
+        XCTAssertEqual(sections[1].title, "groups · 2 组")
+        XCTAssertEqual(groups.map(\.party), ["浙江象鲜", "公司"])
+        XCTAssertEqual(groups.map(\.detail), ["支出 · 18 笔", "收入 · 3 笔"])
+        XCTAssertEqual(groups[0].fields.map(\.name), ["amount", "id"])
+        XCTAssertEqual(groups[0].fields.first?.value["min"], .number(1290))
+        XCTAssertEqual(groups[1].fields.last?.value.arrayValue?.first?["text"], .string("工资"))
+    }
+
+    func testRawGroupsWithoutPartyAndEmptyGroupsStayInFieldTree() {
+        for text in [#"{"groups":[{"party":"一组"},{"id":"g1","inflow":true,"count":2}]}"#, #"{"groups":[]}"#] {
+            let sections = SendLogRawPresentation.requestSections(text)
+            guard case .fields(let fields) = sections.first?.body else { return XCTFail("Must retain unrecognized groups") }
+            XCTAssertEqual(fields.map(\.name), ["groups"])
+            XCTAssertEqual(fields.first?.value, (try? JSONValue.parse(text))?["groups"])
+        }
+    }
+
+    func testRawLongArrayThresholdAppliesToScalarObjectAndPartyArraysWithoutTruncation() {
+        for count in [0, 8, 9, 40] {
+            let scalars = (0..<count).map { JSONValue.number(Double($0)) }
+            let objects = (0..<count).map { JSONValue.object(["title": .string("分类\($0)")]) }
+            XCTAssertEqual(SendLogRawPresentation.initiallyCollapsed(scalars), count > 8)
+            XCTAssertEqual(SendLogRawPresentation.initiallyCollapsed(objects), count > 8)
+            XCTAssertEqual(SendLogRawPresentation.initiallyCollapsed(count: count), count > 8)
+        }
+        let groups = (0..<40).map { JSONValue.object(["party": .string("对方\($0)"), "count": .number(1), "id": .string("g\($0)")]) }
+        let text = try! JSONValue.object(["groups": .array(groups)]).jsonText()
+        guard case .groups(let cards) = SendLogRawPresentation.requestSections(text).first?.body else { return XCTFail("Expected groups") }
+        XCTAssertEqual(cards.count, 40); XCTAssertEqual(cards.last?.party, "对方39")
+        let categories = try! JSONValue.object(["categories": .array(groups)]).jsonText()
+        guard case .fields(let fields) = SendLogRawPresentation.requestSections(categories).first?.body else { return XCTFail("Expected tree") }
+        XCTAssertEqual(fields.first?.value.arrayValue?.count, 40)
+        XCTAssertEqual(fields.first?.value.arrayValue?.last?["id"], .string("g39"))
+    }
+
+    func testRawNonJSONObjectRequestsAndNonJSONRepliesPreserveTextAndNewlines() {
+        for text in ["原始内容\n第二行\n", "{未完成\n", "[1,2,3]", "  普通文本  "] {
+            XCTAssertEqual(SendLogRawPresentation.requestSections(text).map(\.body), [.text(text)])
+        }
+        let text = "原始回复\n\n下一段\n"
+        let item = rawItem(response: .init(content: text, durationMilliseconds: 1))
+        XCTAssertEqual(SendLogRawPresentation.responseSections(in: item).map(\.body), [.text(text)])
+    }
+
+    func testRawToolMessagesAndCallsExposeArgumentsAsTreesAndMalformedArgumentsAsText() {
+        let item = rawItem(messages: [
+            .init(role: .assistant, toolCalls: [.init(id: "call1", name: "query_entries", arguments: #"{"limit":12,"filter":{"inflow":false}}"#),
+                .init(id: "call2", name: "remember", arguments: "未完成\n参数")]),
+            .init(role: .tool, content: #"{"rows":[{"title":"午餐","cents":3200}]}"#, toolCallID: "call1"),
+            .init(role: .tool, content: "工具回复\n原样", toolCallID: "call2")])
+        let sections = SendLogRawPresentation.requestSections(in: item)
+        XCTAssertEqual(sections.count, 4)
+        guard case .fields(let first) = sections[0].body, case .fields(let second) = sections[1].body,
+              case .fields(let third) = sections[2].body else { return XCTFail("Expected tool fields") }
+        XCTAssertEqual(first.first { $0.name == "id" }?.value, .string("call1"))
+        let function = first.first { $0.name == "function" }?.value
+        XCTAssertEqual(function?["name"], .string("query_entries"))
+        XCTAssertEqual(function?["arguments"]?["filter"]?["inflow"], .bool(false))
+        XCTAssertEqual(second.first { $0.name == "function" }?.value["arguments"], .string("未完成\n参数"))
+        XCTAssertEqual(third.first?.value.arrayValue?.first?["cents"], .number(3200))
+        XCTAssertEqual(sections[3].body, .text("工具回复\n原样"))
+    }
+
+    func testRawFencedReplyUsesModelParserAndTopLevelArrayUnits() {
+        let content = "```json\n{\"groups\":[{\"group\":\"g0\",\"confident\":true}],\"questions\":[{\"text\":\"用途？\"}],\"other\":[1,2],\"version\":1}\n```"
+        let item = rawItem(response: .init(content: content, toolCalls: ["get_profile"], durationMilliseconds: 1))
+        let sections = SendLogRawPresentation.responseSections(in: item)
+        XCTAssertEqual(sections.compactMap(\.title), ["groups · 1 组", "other · 2 项", "questions · 1 个"])
+        guard case .array(let name, let values) = sections[1].body else { return XCTFail("Expected reply array") }
+        XCTAssertEqual(name, "groups"); XCTAssertEqual(values.first?["confident"], .bool(true))
+        guard case .fields(let tools) = sections.last?.body else { return XCTFail("Expected response tools") }
+        XCTAssertEqual(tools.first?.name, "tool_calls"); XCTAssertEqual(tools.first?.value, .array([.string("get_profile")]))
+    }
+
+    func testRawReplyLongArraysKeepEveryElementAndEmptyContainers() {
+        let values = (0..<40).map { JSONValue.object(["id": .number(Double($0))]) }
+        let content = try! JSONValue.object(["groups": .array(values), "questions": .array([])]).jsonText()
+        let sections = SendLogRawPresentation.responseSections(in: rawItem(response: .init(content: content, durationMilliseconds: 1)))
+        guard case .array(_, let groups) = sections[0].body, case .array(_, let questions) = sections[1].body else {
+            return XCTFail("Expected both arrays")
+        }
+        XCTAssertEqual(groups.count, 40); XCTAssertEqual(groups.last?["id"], .number(39)); XCTAssertTrue(questions.isEmpty)
+        XCTAssertEqual(sections[1].title, "questions · 0 个")
+        for text in ["{}", "null", "[]"] {
+            XCTAssertFalse(SendLogRawPresentation.responseSections(in: rawItem(response: .init(content: text, durationMilliseconds: 1))).isEmpty)
+        }
+    }
+
+    func testRawReplyFailureReasonAndPendingStateRemainVisible() {
+        let cases: [(SendLogResponse, String)] = [
+            (.init(durationMilliseconds: 1, httpStatus: 503, errorDescription: "网络超时"), "网络超时"),
+            (.init(finishReason: "length", durationMilliseconds: 1, httpStatus: 200), "云端回复被截断"),
+            (.init(durationMilliseconds: 1, httpStatus: 401), "HTTP 401")]
+        for (response, reason) in cases {
+            XCTAssertEqual(SendLogRawPresentation.responseSections(in: rawItem(response: response)).map(\.body), [.text(reason)])
+        }
+        XCTAssertEqual(SendLogRawPresentation.responseSections(in: rawItem()).map(\.body), [.text("还在等待回复")])
+    }
+
+    func testRawScalarFormattingRetainsLiteralTypesAndFullStrings() {
+        let text = String(repeating: "完整内容\n", count: 1000)
+        XCTAssertEqual(SendLogRawPresentation.scalarText(.string(text)), text)
+        XCTAssertEqual(SendLogRawPresentation.scalarText(.bool(true)), "true")
+        XCTAssertEqual(SendLogRawPresentation.scalarText(.bool(false)), "false")
+        XCTAssertEqual(SendLogRawPresentation.scalarText(.null), "null")
+        XCTAssertEqual(SendLogRawPresentation.scalarText(.number(1234567890)), "1234567890")
+        XCTAssertFalse(SendLogRawPresentation.isScalar(.object([:])))
+        XCTAssertFalse(SendLogRawPresentation.isScalar(.array([])))
+        XCTAssertTrue(SendLogRawPresentation.isScalar(.null))
+    }
+
+    func testRawCopyPrettyPrintsOriginalRequestsAndRepliesWithoutEscapingSlashesOrLosingIntegers() throws {
+        let request = #"{"url":"https://example.test/path","large":9007199254740993,"messages":[{"role":"user","content":"{\"count\":2}"}]}"#
+        let reply = #"{"groups":[{"id":"g0","confident":true}],"questions":[]}"#
+        let item = rawItem(request, response: .init(content: reply, durationMilliseconds: 1))
+        let copy = SendLogRawPresentation.copyText(in: SendLogGroup(items: [item]))
+        let parts = copy.components(separatedBy: "\n\n第 1 次云端回\n")
+        XCTAssertEqual(parts.count, 2)
+        let prettyRequest = String(parts[0].dropFirst("第 1 次发出\n".count))
+        XCTAssertTrue(prettyRequest.contains("\n")); XCTAssertTrue(parts[1].contains("\n"))
+        XCTAssertTrue(prettyRequest.contains("https://example.test/path")); XCTAssertFalse(prettyRequest.contains("\\/"))
+        XCTAssertTrue(prettyRequest.contains("9007199254740993"))
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(prettyRequest.utf8)) as? [String: Any])
+        let messages = try XCTUnwrap(decoded["messages"] as? [[String: String]])
+        XCTAssertEqual(messages.first?["content"], #"{"count":2}"#)
+        XCTAssertEqual(try JSONValue.parse(parts[1]), try JSONValue.parse(reply))
+        XCTAssertEqual(item.requestText, request); XCTAssertEqual(item.response?.content, reply)
+    }
+
+    func testRawCopyMultipleRequestsKeepsOrderPlainTextFencesToolCallsAndFailure() {
+        let original = "不是 JSON\n原始第二行\n"
+        let fence = "```json\n{\"result\":true}\n```"
+        let first = rawItem(original, response: .init(content: fence, toolCalls: ["query_entries"], durationMilliseconds: 1))
+        var second = rawItem("second", response: .init(durationMilliseconds: 1, errorDescription: "失败原因"))
+        second = SendLogItem(id: second.id, time: first.time.addingTimeInterval(1), purpose: second.purpose, model: second.model,
+            byteSize: second.byteSize, requestText: second.requestText, response: second.response)
+        let text = SendLogRawPresentation.copyText(in: SendLogGroup(items: [second, first]))
+        XCTAssertTrue(text.hasPrefix("第 1 次发出\n" + original))
+        XCTAssertTrue(text.contains("第 1 次云端回\n" + fence))
+        XCTAssertTrue(text.contains("query_entries")); XCTAssertTrue(text.contains("tool_calls"))
+        XCTAssertTrue(text.hasSuffix("第 2 次发出\nsecond\n\n第 2 次云端回\n失败原因"))
+        XCTAssertEqual(SendLogRawPresentation.prettyPrinted(original), original)
+    }
+}

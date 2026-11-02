@@ -309,19 +309,271 @@ private struct CloudSendLogDetailView: View {
             if hidden { Text("金额已隐藏").yubaiFont(YubaiFont.callout) }
             else {
                 ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                    Text("第 \(index + 1) 次发出").yubaiFont(YubaiFont.rowTitle)
-                    Text(item.requestText).yubaiFont(YubaiFont.caption).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("cloudLogRequest_" + String(index + 1))
+                    CloudLogRawExchange(item: item, index: index)
                 }
             }
         }.navigationTitle("原文").yubaiNavigation().toolbar { CloseButton() }
     }
     private func copyRaw() {
         guard !hidden else { return }
-        let text = group.items.enumerated().map { "第 \($0.offset + 1) 次发出\n" + $0.element.requestText }.joined(separator: "\n\n")
+        let text = SendLogRawPresentation.copyText(in: group)
         #if os(iOS)
         UIPasteboard.general.string = text
         #elseif os(macOS)
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
         #endif
     }
+}
+
+private struct CloudLogRawExchange: View {
+    let item: SendLogItem
+    let index: Int
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                step(index * 2 + 1, title: "发出", outgoing: true)
+                CloudLogRawRules(rules: SendLogRawPresentation.rules(in: item))
+                heading("资料")
+                CloudLogRawSections(sections: SendLogRawPresentation.requestSections(in: item), outgoing: true)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("cloudLogRequest_" + String(index + 1))
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                step(index * 2 + 2, title: "云端回", outgoing: false)
+                CloudLogRawSections(sections: SendLogRawPresentation.responseSections(in: item), outgoing: false)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("cloudLogResponse_" + String(index + 1))
+        }
+    }
+    private func step(_ number: Int, title: String, outgoing: Bool) -> some View {
+        HStack(spacing: YubaiSpace.space8) {
+            Text(number.formatted()).yubaiFont(YubaiFont.code)
+                .foregroundStyle(outgoing ? YubaiColor.onBrand : YubaiColor.label)
+                .frame(width: YubaiSize.tagHeight, height: YubaiSize.tagHeight)
+                .background(outgoing ? YubaiColor.brand : YubaiColor.card, in: Circle())
+            Text(title).yubaiFont(YubaiFont.callout, weight: .medium)
+        }
+    }
+    private func heading(_ title: String) -> some View {
+        Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+    }
+}
+
+private struct CloudLogRawCard<Content: View>: View {
+    var outgoing = true
+    @ViewBuilder let content: Content
+    var body: some View {
+        content.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(outgoing ? YubaiColor.raised : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+    }
+}
+
+private struct CloudLogRawRules: View {
+    let rules: SendLogRawPresentation.Rules
+    @State private var expanded = false
+    var body: some View {
+        if !rules.text.isEmpty {
+            Text("给云端的规则说明").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            CloudLogRawCard {
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    Text(expanded ? rules.paragraphs.joined(separator: "\n") : rules.preview)
+                        .yubaiFont(YubaiFont.row).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    CloudLogRawSeparator()
+                    Button { expanded.toggle() } label: {
+                        CloudLogRawDisclosure(title: "全文 \(rules.count.formatted()) 字", expanded: expanded, color: YubaiColor.brand)
+                    }.buttonStyle(.plain).accessibilityValue(expanded ? "已展开" : "已折叠")
+                }
+            }
+        }
+    }
+}
+
+private struct CloudLogRawSections: View {
+    let sections: [SendLogRawSection]
+    let outgoing: Bool
+    var body: some View {
+        ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                if let title = section.title {
+                    Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                }
+                switch section.body {
+                case .groups(let groups): CloudLogRawGroups(groups: groups)
+                case .fields(let fields):
+                    CloudLogRawCard(outgoing: outgoing) { CloudLogRawTree(fields: fields) }
+                case .array(let name, let values):
+                    CloudLogRawCard(outgoing: outgoing) {
+                        CloudLogRawArray(name: name, values: values, showsHeading: false, indentElements: false)
+                    }
+                case .text(let text):
+                    CloudLogRawCard(outgoing: outgoing) {
+                        Text(text).yubaiFont(YubaiFont.row).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct CloudLogRawGroups: View {
+    let groups: [SendLogRawGroup]
+    @State private var expanded = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+            if SendLogRawPresentation.initiallyCollapsed(count: groups.count) {
+                CloudLogRawCard {
+                    Button { expanded.toggle() } label: {
+                        CloudLogRawDisclosure(title: SendLogRawPresentation.arrayTitle("groups", count: groups.count), expanded: expanded)
+                    }.buttonStyle(.plain)
+                }
+            }
+            if !SendLogRawPresentation.initiallyCollapsed(count: groups.count) || expanded {
+                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                    CloudLogRawCard {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
+                                Text(group.party).yubaiFont(YubaiFont.rowTitle)
+                                Spacer(minLength: YubaiSpace.none)
+                                Text(group.detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                            }
+                            CloudLogRawTree(fields: group.fields)
+                        }.textSelection(.enabled)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Keep the recursive boundary type-erased so nested objects do not produce an
+/// infinitely recursive SwiftUI body type. Every value remains available.
+private struct CloudLogRawTree: View {
+    let fields: [SendLogRawField]
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.none) {
+            ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
+                if index > 0 { CloudLogRawSeparator() }
+                CloudLogRawFieldRow(field: field).padding(.vertical, YubaiSpace.space4)
+            }
+        }
+    }
+}
+
+private struct CloudLogRawFieldRow: View {
+    let field: SendLogRawField
+    var body: some View {
+        switch field.value {
+        case .object(let object) where !object.isEmpty:
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                key(field.name)
+                CloudLogRawIndent { AnyView(CloudLogRawTree(fields: SendLogRawPresentation.fields(in: object))) }
+            }
+        case .array(let values):
+            if !SendLogRawPresentation.initiallyCollapsed(values), values.allSatisfy(SendLogRawPresentation.isScalar) {
+                row(name: "\(field.name) · \(values.count) 项", values: values)
+            } else {
+                CloudLogRawArray(name: field.name, values: values)
+            }
+        default: row(name: field.name, values: [field.value])
+        }
+    }
+    private func key(_ name: String) -> some View {
+        Text(name).yubaiFont(YubaiFont.code).foregroundStyle(YubaiColor.labelSecondary).textSelection(.enabled)
+    }
+    private func row(name: String, values: [JSONValue]) -> some View {
+        HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
+            key(name).frame(width: YubaiSize.rowDouble * 2, alignment: .leading)
+            CloudLogRawScalars(values: values).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct CloudLogRawArray: View {
+    let name: String
+    let values: [JSONValue]
+    var showsHeading = true
+    var indentElements = true
+    @State private var expanded = false
+    private var collapsible: Bool { SendLogRawPresentation.initiallyCollapsed(values) }
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            if collapsible {
+                Button { expanded.toggle() } label: {
+                    CloudLogRawDisclosure(title: "\(name) · \(values.count) 项", expanded: expanded)
+                }.buttonStyle(.plain).accessibilityValue(expanded ? "已展开" : "已折叠")
+            } else if showsHeading {
+                Text("\(name) · \(values.count) 项").yubaiFont(YubaiFont.code).foregroundStyle(YubaiColor.labelSecondary)
+            }
+            if !collapsible || expanded {
+                if values.allSatisfy(SendLogRawPresentation.isScalar) {
+                    CloudLogRawScalars(values: values)
+                } else {
+                    ForEach(Array(values.enumerated()), id: \.offset) { index, value in
+                        if index > 0 { CloudLogRawSeparator() }
+                        if indentElements { CloudLogRawIndent { element(value) } }
+                        else { element(value) }
+                    }
+                }
+            }
+        }
+    }
+    private func element(_ value: JSONValue) -> AnyView {
+        switch value {
+        case .object(let fields) where !fields.isEmpty:
+            AnyView(CloudLogRawTree(fields: SendLogRawPresentation.fields(in: fields)))
+        case .array(let values): AnyView(CloudLogRawArray(name: "", values: values))
+        default: AnyView(CloudLogRawScalars(values: [value]))
+        }
+    }
+}
+
+private struct CloudLogRawScalars: View {
+    let values: [JSONValue]
+    @ScaledMetric(relativeTo: .caption) private var codeSize = YubaiFont.code.size
+    var body: some View {
+        values.enumerated().reduce(Text("")) { text, element in
+            text + (element.offset == 0 ? Text("") : Text("、")) + scalar(element.element)
+        }.yubaiFont(YubaiFont.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+    }
+    private func scalar(_ value: JSONValue) -> Text {
+        let text = Text(SendLogRawPresentation.scalarText(value))
+        switch value {
+        case .number, .bool:
+            return text.font(.system(size: codeSize, weight: YubaiFont.code.weight, design: YubaiFont.code.design))
+                .foregroundColor(YubaiColor.brand)
+        case .null: return text.foregroundColor(YubaiColor.labelSecondary)
+        default: return text.foregroundColor(YubaiColor.label)
+        }
+    }
+}
+
+private struct CloudLogRawIndent<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        content.padding(.leading, YubaiSpace.gapGroup)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) { YubaiColor.separator.frame(width: YubaiSize.lineWidth) }
+            .padding(.leading, YubaiSpace.space4)
+    }
+}
+
+private struct CloudLogRawDisclosure: View {
+    let title: String
+    let expanded: Bool
+    var color = YubaiColor.labelSecondary
+    var body: some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            Text(title).yubaiFont(YubaiFont.code)
+            Spacer(minLength: YubaiSpace.none)
+            Image(systemName: expanded ? "chevron.down" : "chevron.right").yubaiFont(YubaiFont.caption)
+        }.foregroundStyle(color).contentShape(Rectangle()).yubaiHitTarget()
+    }
+}
+
+private struct CloudLogRawSeparator: View {
+    var body: some View { YubaiColor.separator.frame(height: YubaiSize.lineWidth / 2).accessibilityHidden(true) }
 }

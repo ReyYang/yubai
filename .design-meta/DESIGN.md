@@ -1,5 +1,23 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-02 · 第二十六轮「看原文」
+
+来源为 owner 本轮已确认的第二十六轮「看原文」HTML 及顶部／下滑两张渲染图；本轮已只读核对这四份资源。仅实现发送记录原文 sheet 与拷贝原文，不改变外发数据、记录存储或详情摘要。原稿保留在 owner 给定的位置，未复制进仓库、未写入设计稿链接；外部画布、历史原型、截图与分发包未同步。
+
+CloudAssistantViews.swift 的 CloudSendLogDetailView 保留「原文」标题／完成按钮和金额隐藏分支。每个 item 独立显示发出／云端回，圆点内的步骤数按 1、2、3、4 连续；发出标识仍为 cloudLogRequest_N，回复新增 cloudLogResponse_N，viewCloudLogRaw／copyCloudLogRaw 保持。当前 YubaiUITests 中没有使用这些标识的断言，本轮未修改 UI 测试或降低断言。
+
+规则沿用 SendLogPresentation.rules 的 system 数据来源，首段预览、全文字数按钮展开原始换行；每次请求单独投影。非 system 内容与工具调用参数能解析为对象时显示字段树，否则保留原文本及换行。资料中的 groups 对象数组按 party、inflow、count 生成卡头，其余字段递归展示；不符合结构的 groups 留在普通树中。回复复用 JSONValue.parseModelResponse 剥离围栏，顶层数组依次显示字段名与组／个／项计数，其余字段、工具调用名称及原有失败原因一并保留。超过 8 项的标量／对象／对方数组默认折叠，展开后保留全部元素，无其他数量截断。
+
+视觉继续以 DesignSystem.swift 为权威：发出卡用 raised、回复卡用 card，字段名用 labelSecondary，数字／布尔值用 brand，null 用 labelSecondary；字符串沿用正文字体。新增 YubaiFont.code（12pt、18pt 行高、系统 .monospaced 设计，随动态字号缩放），未引入字体文件。字段列取已有 rowDouble × 2（112pt），分隔横线取 lineWidth ÷ 2（1pt）、竖线取 lineWidth（2pt），其余颜色、间距、圆角、点按尺寸均用现有 token。
+
+SendLogPresentation.swift 旁的 SendLogRawPresentation 承载解析、system 分段、groups 识别／卡头、数组阈值及拷贝投影。拷贝依次写「第 N 次发出」和「第 N 次云端回」；请求和回复内容用 JSONSerialization 的 prettyPrinted／withoutEscapingSlashes 美化，不启用 sortedKeys，避免经 Double 转换损失原始整数。无法直接解析的文本与围栏原样保留；工具调用名称和失败原因也进入对应回复段。原始日志不改写，隐藏金额时不构建原文内容且仍禁用拷贝。
+
+新增／改动的可见中文：步骤标题「发出」「云端回」、规则按钮「全文 N 字」、小标题「资料」、数组计数「N 项」「N 组」「N 个」；组卡头复用「支出／收入 · N 笔」事实，规则小标题「给云端的规则说明」沿用。原文 sheet 移除旧的「第 N 次发出」标题，其格式保留于剪贴板，并新增剪贴板分段「第 N 次云端回」。等待、失败及金额隐藏文本均复用现有状态／原因；新增无障碍展开状态不属于可见文字。没有新增解释性文案，以上均为标题、数字／事实、控件或状态。
+
+验证：SendLogTests 新增 12 项，覆盖 system 段落／空行、groups 识别及收支卡头、8／9 项阈值与 40 项完整保留、非 JSON／非对象回退、工具消息／参数、回复围栏与数组单位、空容器、失败及等待、标量类型和长字符串、多次请求拷贝／原始换行／大整数／斜杠。指定 export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test 完整 628 项，624 通过／4 项原有实网 opt-in 跳过／0 失败；原文相关 22 项全部通过。40 个 App Swift 文件通过 iOS 26 模拟器 Debug、iOS 26 设备 Release、macOS 14 Debug 的 swiftc -frontend -parse；AppFlowTests 通过 iOS 26 模拟器 Debug 语法解析。token 引用、无新增设计稿链接、工程已有文件登记及 git diff --check 静态核对通过。
+
+当前 Linux 环境未做 Apple SDK 类型检查／编译、XCTest UI、长数组展开／滚动与动态字号的设备视觉验收、VoiceOver 和实际剪贴板验证；这些仍待 Mac。未提交、未推送、未新增第三方依赖，未调用真实智能服务。
+
 ## 2026-11-02 · 导入整理先按对方分组
 
 来源为 owner 在 feat/organize-by-party-groups（基于 PR #53 的 feat/background-organize ccf336b）明确同意的数据层与 AI 输入改法。真实 DeepSeek 对 4,200 笔银行流水仍留 2,098 笔没分类，是本轮问题依据；未读取或发送用户真实流水。本轮不改界面外观、布局及固定文案，不提交、不增加第三方依赖。

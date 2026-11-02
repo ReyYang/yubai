@@ -62,7 +62,7 @@ enum YubaiColor {
 }
 
 enum YubaiFont {
-    enum Family: Equatable { case num, serif, sans }
+    enum Family: Equatable { case num, serif, sans, code }
     struct Style {
         let size: CGFloat
         let lineHeight: CGFloat
@@ -70,7 +70,7 @@ enum YubaiFont {
         let family: Family
         var tracking: CGFloat = 0
         var relativeTo: Font.TextStyle = .body
-        var design: Font.Design { switch family { case .num: .rounded; case .serif: .serif; case .sans: .default } }
+        var design: Font.Design { switch family { case .num: .rounded; case .serif: .serif; case .sans: .default; case .code: .monospaced } }
     }
     static let amountHero = Style(size: 48, lineHeight: 54, weight: .semibold, family: .num, tracking: -2, relativeTo: .largeTitle)
     static let amountDisplay = Style(size: 44, lineHeight: 50, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
@@ -97,6 +97,7 @@ enum YubaiFont {
     static let row = Style(size: 14, lineHeight: 20, weight: .regular, family: .sans, tracking: 0, relativeTo: .body)
     static let callout = Style(size: 13, lineHeight: 20, weight: .regular, family: .sans, tracking: 0, relativeTo: .callout)
     static let caption = Style(size: 12, lineHeight: 18, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption)
+    static let code = Style(size: 12, lineHeight: 18, weight: .regular, family: .code, relativeTo: .caption)
     static let meta = Style(size: 11, lineHeight: 16, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption2)
     static let chartLabel = Style(size: 10, lineHeight: 12, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption2)
     static let tabLabel = Style(size: 10, lineHeight: 12, weight: .medium, family: .sans, tracking: 0, relativeTo: .caption2)
