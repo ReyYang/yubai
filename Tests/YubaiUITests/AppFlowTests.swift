@@ -141,7 +141,7 @@ final class AppFlowTests: XCTestCase {
         app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
         app.launch()
         tap(app.buttons["organizeImports"], in: app)
-        let question = app.staticTexts["importQuestion"]
+        let question = app.staticTexts["nowImportQuestion"]
         let fallback = app.staticTexts["unsortedQuestionTitle"]
         let summary = app.buttons["unknownInflowsSummary"]
         XCTAssertTrue(question.waitForExistence(timeout: 15))
@@ -155,7 +155,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertLessThan(fallback.frame.minY, summary.frame.minY)
         tap(summary, in: app)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "butlerCard_unknownInflow").firstMatch.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["importQuestion"].exists)
+        XCTAssertFalse(app.staticTexts["nowImportQuestion"].exists)
     }
 
     func testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount() {

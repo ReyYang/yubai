@@ -13,7 +13,7 @@ struct ImportQuestionCard: View {
             Card(style: .compact, background: YubaiColor.amberTint) {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text(title)
-                        .yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier(question.isFallback ? "unsortedQuestionTitle" : "importQuestion")
+                        .yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier(question.isFallback ? "unsortedQuestionTitle" : "nowImportQuestion")
                     if question.isFallback {
                         TabNavigationLink(.unsortedGroups(question.id)) { UnsortedGroupsView(questionID: question.id) } label: { Text("按对方分") }
                             .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("groupUnsortedByParty")
