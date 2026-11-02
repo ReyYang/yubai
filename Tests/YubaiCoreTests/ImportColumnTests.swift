@@ -66,6 +66,7 @@ final class ImportColumnTests: XCTestCase {
                 let payload = try CloudTestStub.payload(in: request)
                 XCTAssertEqual((payload["response_format"] as? [String: String])?["type"], "json_object")
                 XCTAssertEqual(payload["max_tokens"] as? Int, 4000)
+                XCTAssertEqual(payload["thinking"] as? [String: String], ["type": "disabled"])
                 return content
             }
             defer { stub.close() }

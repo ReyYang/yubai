@@ -124,10 +124,10 @@ public enum MemoryReflection {
         learned每句不超过40字，按add数组、再update数组的顺序逐一对应记忆，不能多于这两个数组的总数；只有删除时learned留空。每句话都须能由对应记忆支持，不以统计充当用户的意愿。
         """
         let message = try await transport.send(ChatRequest(messages: [ChatMessage(role: .system, content: prompt),
-            ChatMessage(role: .user, content: try input.jsonText())], temperature: 0, maxTokens: 4096, purpose: "每周回看", groupID: UUID(), groupTitle: "每周回看与记忆提炼"))
+            ChatMessage(role: .user, content: try input.jsonText())], temperature: 0, maxTokens: 4096, thinking: false, purpose: "每周回看", groupID: UUID(), groupTitle: "每周回看与记忆提炼"))
         try Task.checkCancellation()
         guard message.role == .assistant, message.toolCalls?.isEmpty ?? true, let content = message.content else { throw YubaiError.invalid("每周来信没有返回有效内容。") }
-        let json = try JSONValue.parse(content)
+        let json = try JSONValue.parseModelResponse(content)
         guard let fields = json.objectValue, Set(fields.keys) == Set(["add", "update", "remove", "learned"]),
               let adds = fields["add"]?.arrayValue, let updates = fields["update"]?.arrayValue,
               let removes = fields["remove"]?.arrayValue, let lines = fields["learned"]?.arrayValue else { throw YubaiError.invalid("每周来信格式无效。") }

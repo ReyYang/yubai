@@ -261,4 +261,86 @@ final class ManualBookkeepingTests: XCTestCase {
         let matching = EntryTimeline.months(sortedEntries: ledger.entries, ledger: ledger, search: "记录 19999")
         XCTAssertEqual(matching.flatMap(\.days).flatMap(\.entries).count, 1)
     }
+    func testSnapshotSearch4200RowsMatchesTimelineAndKeepsMonthlyTotals() throws {
+        var ledger = fixture(); let account = ledger.accounts[0].id
+        ledger.entries = (0..<4200).map { index -> Entry in
+            let date = Dates.addDays(-(index % 21), to: now).addingTimeInterval(-Double(index))
+            let amount: Int64 = index % 3 == 0 ? 500 : 1200
+            let nature: Nature = index % 7 == 0 ? .income : .expense
+            let category = index % 11 == 0 ? Classification.pendingCategory : "餐饮"
+            return Entry(date: date, amount: amount, nature: nature, accountID: account, title: "流水\(index)", category: category)
+        }
+        var deleted = ledger.entries[0]; deleted.id = UUID(); deleted.deletedAt = now
+        let outside = Entry(date: Dates.addMonths(-1, to: now), amount: 500, accountID: account, title: "上月")
+        ledger.entries += [deleted, outside]
+        let before = ledger
+        let sorted = ledger.entries.sorted { $0.date > $1.date }
+        let interval = try XCTUnwrap(Dates.calendar.dateInterval(of: .month, for: now))
+        let monthly = sorted.filter { $0.date >= interval.start && $0.date < interval.end }
+        let summary = try XCTUnwrap(EntryTimeline.months(sortedEntries: monthly, ledger: ledger).first)
+        let snapshot = EntryTimeline.snapshot(sortedEntries: sorted, ledger: ledger, month: now, search: "5.00")
+        let expectedIDs = sorted.filter { $0.deletedAt == nil && $0.id != outside.id && $0.amount == 500 }.map(\.id)
+        XCTAssertEqual(snapshot.days.flatMap(\.entries).map(\.id), expectedIDs)
+        XCTAssertEqual(expectedIDs.count, 1400)
+        XCTAssertEqual(Set(snapshot.days.flatMap(\.entries).map(\.id)).count, 1400)
+        XCTAssertEqual(snapshot.spending, summary.spending); XCTAssertEqual(snapshot.income, summary.income)
+        for filter in EntryTimeline.Filter.allCases {
+            for query in ["5.00", "−5.00", "-5.00", "¥5.00", "微信零钱", "没分类", "不存在"] {
+                let expected = EntryTimeline.months(sortedEntries: monthly, ledger: ledger, search: query, filter: filter).first?.days ?? []
+                let actual = EntryTimeline.snapshot(sortedEntries: sorted, ledger: ledger, month: now, search: query, filter: filter)
+                XCTAssertEqual(actual.days.map(\.id), expected.map(\.id))
+                XCTAssertEqual(actual.days.map(\.spending), expected.map(\.spending))
+                XCTAssertEqual(actual.days.flatMap(\.entries).map(\.id), expected.flatMap(\.entries).map(\.id))
+                XCTAssertEqual(actual.spending, summary.spending); XCTAssertEqual(actual.income, summary.income)
+            }
+        }
+        XCTAssertEqual(snapshot, EntryTimeline.snapshot(sortedEntries: sorted, ledger: ledger, month: now, search: "5.00"))
+        XCTAssertEqual(ledger, before)
+    }
+    func testSnapshotProjectsOnlyRowValuesAndUsesChangedLedgerWithoutTimestampChanges() throws {
+        var ledger = fixture(); let account = ledger.accounts[0].id
+        ledger.categoryAliases["旧餐饮"] = "餐饮"
+        ledger.entries = [Entry(date: now, amount: 500, accountID: account, title: "餐饮", category: "旧餐饮"),
+                          Entry(date: now.addingTimeInterval(-1), amount: 700, nature: .income, accountID: account, title: "原用途")]
+        ledger.entries[1].purpose = "新用途"; ledger.entries[1].note = "备注优先"
+        let first = EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now)
+        let rows = first.days.flatMap(\.entries)
+        XCTAssertEqual(rows[0].categoryName, "餐饮"); XCTAssertEqual(rows[0].note, "")
+        XCTAssertEqual(rows[0].symbol, ledger.categories.first { $0.name == "餐饮" }?.symbol)
+        XCTAssertFalse(rows[0].inflow); XCTAssertFalse(rows[0].uncategorized)
+        XCTAssertEqual(rows[1].categoryName, "没分类"); XCTAssertEqual(rows[1].note, "备注优先")
+        XCTAssertTrue(rows[1].inflow); XCTAssertTrue(rows[1].uncategorized)
+        let stamp = ledger.updatedAt
+        ledger.entries[0].amount = 600; ledger.entries[0].note = "改过"
+        let next = EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now, search: "6.00")
+        XCTAssertEqual(next.days.flatMap(\.entries).map(\.id), [rows[0].id])
+        XCTAssertEqual(next.days.first?.entries.first?.note, "改过")
+        XCTAssertEqual(next.spending, 600); XCTAssertEqual(first.spending, 500)
+        XCTAssertEqual(ledger.updatedAt, stamp)
+        ledger.accounts[0].name = "新账户"
+        XCTAssertTrue(EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now, search: "微信零钱").days.isEmpty)
+        ledger.categoryAliases["旧餐饮"] = "新主项"
+        XCTAssertEqual(EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now).days.first?.entries.first?.categoryName, "新主项")
+    }
+    func testSnapshotPreservesRentSharesRefundsAndMonthCalendarBoundaries() {
+        var ledger = fixture(); let account = ledger.accounts[0].id
+        let rent = Rent(monthlyTotal: 30_000, personalShare: 10_000, startDate: now, nextDueDate: now)
+        ledger.rents = [rent]
+        var payment = Entry(date: now, amount: 90_000, accountID: account, title: "房租", category: "居住"); payment.rentID = rent.id
+        var refund = Entry(date: now, amount: 1500, nature: .refund, accountID: account, title: "退回"); refund.personalExpense = 1000
+        let income = Entry(date: now, amount: 20_000, nature: .income, accountID: account, title: "收入")
+        let transfer = Entry(date: now, amount: 3000, nature: .transfer, accountID: account, title: "转账")
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let month = calendar.dateInterval(of: .month, for: now)!
+        let boundary = Entry(date: month.start, amount: 500, accountID: account, title: "月初")
+        let nextMonth = Entry(date: month.end, amount: 500, accountID: account, title: "下月")
+        ledger.entries = [payment, refund, income, transfer, boundary, nextMonth].sorted { $0.date > $1.date }
+        let value = EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now, search: "¥5.00", calendar: calendar)
+        XCTAssertEqual(value.spending, 29_500); XCTAssertEqual(value.income, 20_000)
+        XCTAssertEqual(value.days.flatMap(\.entries).map(\.id), [boundary.id])
+        XCTAssertEqual(value.days.first?.id, month.start)
+        var west = calendar; west.timeZone = TimeZone(secondsFromGMT: -8 * 3600)!
+        let shifted = EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now, search: "¥5.00", calendar: west)
+        XCTAssertEqual(shifted.days.flatMap(\.entries).map(\.id), [nextMonth.id])
+    }
 }

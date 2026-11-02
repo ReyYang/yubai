@@ -641,11 +641,15 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
         Card(style: .list) {
             LazyVStack(spacing: YubaiSpace.none) {
                 ForEach(rows) { row in
-                    content(row).frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading).transition(YubaiMotion.rowTransition(reduceMotion: reduceMotion))
-                    if row.id != rows.last?.id {
-                        Rectangle().fill(YubaiColor.separator).frame(height: 1)
-                            .padding(.leading, hasLeadingIcon ? YubaiSize.rowTextInset : YubaiSpace.none).accessibilityHidden(true)
-                    }
+                    // One child per ID lets LazyVStack determine the row count
+                    // without constructing every row to inspect the divider.
+                    VStack(spacing: YubaiSpace.none) {
+                        content(row).frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+                        if row.id != rows.last?.id {
+                            Rectangle().fill(YubaiColor.separator).frame(height: 1)
+                                .padding(.leading, hasLeadingIcon ? YubaiSize.rowTextInset : YubaiSpace.none).accessibilityHidden(true)
+                        }
+                    }.transition(YubaiMotion.rowTransition(reduceMotion: reduceMotion))
                 }
             }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: rows.map(\.id))
         }
@@ -1334,6 +1338,7 @@ struct WelcomeView: View {
     @State private var amount = ""
     @State private var customName = false
     @State private var statement: WelcomeStatement?
+    @State private var recentStatement = true
     @State private var balanceIsFromStatement = false
     @State private var filePicker = false
     @State private var reviewStatement = false
@@ -1390,6 +1395,11 @@ struct WelcomeView: View {
                             }
                             if isBank {
                                 Rectangle().fill(YubaiColor.separator).frame(height: 1)
+                                if let preview = statement?.preview, let start = preview.recentThreeMonthsStart {
+                                    WelcomeImportRange(recent: $recentStatement,
+                                                       recentCount: preview.selectingEntries(onOrAfter: start).selectedEntries.count,
+                                                       allCount: preview.selectedEntries.count)
+                                }
                                 statementRow
                             }
                         }
@@ -1437,7 +1447,8 @@ struct WelcomeView: View {
             .sheet(isPresented: $reviewStatement) {
                 if let statement {
                     NavigationStack {
-                        ImportView(welcomeReview: Binding(get: { self.statement?.preview ?? statement.preview }, set: { self.statement?.preview = $0 }))
+                        ImportView(welcomeReview: Binding(get: { reviewPreview(self.statement?.preview ?? statement.preview) },
+                                                          set: updateReviewedStatement))
                     }.environment(store).appErrors().yubaiSheetBackground()
                 }
             }
@@ -1453,7 +1464,7 @@ struct WelcomeView: View {
                 Image(systemName: statement == nil ? "doc.badge.plus" : "checkmark").foregroundStyle(YubaiColor.brandInk)
                     .accessibilityHidden(true)
                 if let statement {
-                    let entries = statement.preview.selectedEntries
+                    let entries = selectedPreview(statement.preview).selectedEntries
                     VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                         Text("已导入 \(entries.count) 笔").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
                         if !entries.isEmpty { Text(ImportStatementText.range(entries.map(\.date))).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
@@ -1471,6 +1482,25 @@ struct WelcomeView: View {
             .accessibilityHint(statement == nil ? "选择账单文件，在本机读取这张银行卡的流水和余额" : "核对已读取的流水，可取消选择不导入的记录")
             .accessibilityIdentifier("welcomeImportStatement")
     }
+    private func selectedPreview(_ preview: ImportPreview) -> ImportPreview {
+        guard recentStatement, let start = preview.recentThreeMonthsStart else { return preview }
+        return preview.selectingEntries(onOrAfter: start)
+    }
+    private func reviewPreview(_ preview: ImportPreview) -> ImportPreview {
+        var result = selectedPreview(preview)
+        if recentStatement, let start = preview.recentThreeMonthsStart {
+            result.rows.removeAll { ($0.entry?.date).map { $0 < start } ?? false }
+        }
+        return result
+    }
+    private func updateReviewedStatement(_ preview: ImportPreview) {
+        guard var statement else { return }
+        let reviewed = Dictionary(uniqueKeysWithValues: preview.rows.map { ($0.id, $0) })
+        for i in statement.preview.rows.indices {
+            if let row = reviewed[statement.preview.rows[i].id] { statement.preview.rows[i] = row }
+        }
+        self.statement = statement
+    }
     private func chooseAccount(_ value: String, custom: Bool) {
         guard name != value || customName != custom else { return }
         invalidateStatement()
@@ -1478,7 +1508,7 @@ struct WelcomeView: View {
     }
     private func invalidateStatement() {
         if statement != nil { amount = "" }
-        statement = nil; balanceIsFromStatement = false; reviewStatement = false
+        statement = nil; recentStatement = true; balanceIsFromStatement = false; reviewStatement = false
         importRequest = UUID(); importTask?.cancel(); importTask = nil
         filePicker = false
     }
@@ -1513,6 +1543,7 @@ struct WelcomeView: View {
                 }.value
                 guard !Task.isCancelled, importRequest == request else { return }
                 statement = WelcomeStatement(accountID: account.id, data: bytes, preview: parsed)
+                recentStatement = true
                 amount = parsed.latestBalance.map { Money.editableText($0.amount) } ?? ""
                 balanceIsFromStatement = parsed.latestBalance != nil
                 importProgress = 3
@@ -1541,16 +1572,59 @@ struct WelcomeView: View {
             let anchorDate = balanceIsFromStatement && balance?.amount == cents ? (balance?.date ?? Date()) : Date()
             var account = Account(name: clean, kind: kind, balance: cents, at: anchorDate, reconciled: true)
             if let statement { account.id = statement.accountID }
-            store.update("建立账本") { ledger in
-                ledger.accounts.append(account)
-                // Deselecting every row leaves account-only onboarding; the
-                // existing importer intentionally does not create empty batches.
-                if let statement, !statement.preview.selectedEntries.isEmpty {
-                    _ = try BillImporter.commit(statement.preview, data: statement.data, to: &ledger)
-                }
-                ledger.preferences.onboardingComplete = true
+            let statement = statement
+            let preview = statement.map { selectedPreview($0.preview) }
+            let preparedAccount = account
+            importTask = Task { @MainActor in
+                defer { importTask = nil }
+                do {
+                    _ = try await store.commitImport(preview, data: statement?.data,
+                                                     account: preparedAccount, completingOnboarding: true)
+                } catch is CancellationError { }
+                catch { store.error = error.localizedDescription }
             }
         } catch { store.error = error.localizedDescription }
+    }
+}
+
+/// The welcome-only range control uses the shared segmented surface and motion.
+private struct WelcomeImportRange: View {
+    @Binding var recent: Bool
+    let recentCount: Int
+    let allCount: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var textSize
+    @Namespace private var selectionNamespace
+    var body: some View {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
+        layout {
+            segment("最近 3 个月", count: recentCount, value: true, identifier: "welcomeImportRecent")
+            segment("全部", count: allCount, value: false, identifier: "welcomeImportAll")
+        }.padding(YubaiSpace.space4)
+            .background(YubaiColor.neutralSoft, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: recent)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("welcomeImportRange")
+    }
+    private func segment(_ title: String, count: Int, value: Bool, identifier: String) -> some View {
+        Button { recent = value } label: {
+            VStack(spacing: YubaiSpace.space4) {
+                Text(title).yubaiFont(YubaiFont.row, weight: recent == value ? .medium : .regular)
+                Text(count.formatted(.number.locale(Locale(identifier: "en_US"))) + " 笔")
+                    .yubaiFont(YubaiFont.amountSmall, weight: .regular).foregroundStyle(YubaiColor.labelSecondary)
+            }.foregroundStyle(recent == value ? YubaiColor.label : YubaiColor.labelSecondary)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
+                .padding(.vertical, YubaiSpace.space8)
+                .background {
+                    if recent == value {
+                        if reduceMotion { selectedSurface.transition(.opacity) }
+                        else { selectedSurface.matchedGeometryEffect(id: "selection", in: selectionNamespace) }
+                    }
+                }
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(recent == value ? .isSelected : [])
+            .accessibilityIdentifier(identifier)
+    }
+    private var selectedSurface: some View {
+        RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).yubaiShadow(YubaiShadow.knob)
     }
 }
 

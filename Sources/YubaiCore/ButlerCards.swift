@@ -117,7 +117,8 @@ public enum ButlerCards {
             result.append(CardCandidate(kind: .shortfall, dedupeKey: "shortfall:" + item.id, evidence: [], facts: facts,
                 title: String(item.title.prefix(9)) + "的缺口", body: "到这笔付款时，最少还能花 \(Money.text(low.conservative))。", action: .openEvidence, priority: 0))
         }
-        for entry in ledger.activeEntries where entry.nature == .unknownIn && entry.date < Dates.addDays(-3, to: now) {
+        let asked = questionEntryIDs(in: ledger)
+        for entry in ledger.activeEntries where entry.nature == .unknownIn && entry.date < Dates.addDays(-3, to: now) && !asked.contains(entry.id) {
             result.append(CardCandidate(kind: .unknownInflow, dedupeKey: "unknownIn:\(entry.id)", evidence: [entry.id],
                 facts: [CardFact("没写用途的进账", cents: entry.amount), CardFact("入账日", Dates.text(entry.date))], title: "这笔是什么？",
                 body: "\(Money.text(entry.amount)) 的用途还没记下，可以看看原始记录。", action: .openEvidence, priority: 3))
@@ -137,16 +138,42 @@ public enum ButlerCards {
             a.priority == b.priority ? a.dedupeKey < b.dedupeKey : a.priority < b.priority
         }
     }
-    /// Overflow stays queued; dismissing a card reveals the next one, including questions.
-    public static func visible(_ ledger: Ledger) -> [ButlerCard] {
-        Array(ledger.cards.filter { $0.kind != .weeklyLetter && $0.dismissedAt == nil && !isMuted($0.dedupeKey, evidence: Array(offCharacterEntryIDs($0)), in: ledger) }.sorted {
+    private static func questionEntryIDs(in ledger: Ledger) -> Set<UUID> {
+        Set(ledger.imports.filter { $0.undoneAt == nil }.flatMap { $0.organization?.questions ?? [] }.flatMap(\.entryIDs))
+            .union(ledger.cards.filter { $0.dismissedAt == nil }.flatMap { $0.importQuestion?.entryIDs ?? [] })
+    }
+    /// The entire eligible queue, before the five-card window. Aggregation must
+    /// use this queue so reminders beyond the window are still reachable.
+    public static func queued(_ ledger: Ledger) -> [ButlerCard] {
+        let asked = questionEntryIDs(in: ledger)
+        let active = Dictionary(uniqueKeysWithValues: ledger.activeEntries.map { ($0.id, $0) })
+        return ledger.cards.filter { card in
+            guard card.kind != .weeklyLetter, card.dismissedAt == nil,
+                  !isMuted(card.dedupeKey, evidence: Array(offCharacterEntryIDs(card)), in: ledger) else { return false }
+            if let question = card.importQuestion, question.isFallback {
+                return !UnsortedGroups.entries(for: question, in: ledger).isEmpty
+            }
+            if card.kind == .unknownInflow {
+                return card.evidence.contains { !asked.contains($0) && active[$0]?.nature == .unknownIn }
+            }
+            return true
+        }.sorted {
             let a = rank($0), b = rank($1)
             if a != b { return a < b }
+            if $0.kind == .answerQuestion, $1.kind == .answerQuestion {
+                let aFallback = $0.importQuestion?.isFallback == true, bFallback = $1.importQuestion?.isFallback == true
+                if aFallback != bFallback { return !aFallback }
+            }
             if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
             return $0.dedupeKey < $1.dedupeKey
-        }.prefix(5))
+        }
+    }
+    /// Overflow stays queued; dismissing a card reveals the next one.
+    public static func visible(_ ledger: Ledger) -> [ButlerCard] {
+        Array(queued(ledger).prefix(5))
     }
     private static func rank(_ card: ButlerCard) -> Int {
+        if card.kind == .answerQuestion { return 2 }
         if let priority = card.priority { return priority }
         switch card.kind { case .shortfall: return 0; case .restrain: return 1; case .unknownInflow: return 3; case .staleBalance: return 4; default: return 5 }
     }

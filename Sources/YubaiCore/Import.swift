@@ -59,6 +59,24 @@ public struct ImportPreview: Sendable {
     public var issueCount: Int { rows.filter { [.invalid, .conflict, .possibleDuplicate, .needsAccount].contains($0.status) }.count }
     public var paymentMethods: [String] { Array(Set(rows.map(\.paymentMethod).filter { !$0.isEmpty })).sorted() }
 
+    /// Calendar months, anchored to the statement rather than today's date.
+    /// Selection and balance evidence never change the available date span.
+    public var recentThreeMonthsStart: Date? {
+        let dates = rows.compactMap { $0.entry?.date }
+        guard let first = dates.min(), let last = dates.max() else { return nil }
+        let start = Dates.addMonths(-3, to: last)
+        return first < start ? start : nil
+    }
+
+    /// Keep the original preview for switching ranges and reviewing selections.
+    /// Balance evidence (including an unselected latest row) stays untouched.
+    public func selectingEntries(onOrAfter start: Date) -> ImportPreview {
+        var result = self
+        for i in result.rows.indices {
+            if let date = result.rows[i].entry?.date, date < start { result.rows[i].included = false }
+        }
+        return result
+    }
 }
 
 public enum CSV {

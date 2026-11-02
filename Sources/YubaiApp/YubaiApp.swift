@@ -15,6 +15,7 @@ enum Destination: String, CaseIterable, Identifiable {
 enum TabRoute: Hashable {
     case forecast, upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
+    case unsortedGroups(UUID), unknownInflows
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
     case subcategoryInsights(category: String, income: Bool, interval: DateInterval, periodTitle: String)
 }
@@ -62,6 +63,7 @@ enum AppSheet: Identifiable {
     // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
     @ObservationIgnored private var cachedEntries: [Entry]?
+    @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, calendar: Calendar, value: EntryTimeline.Snapshot)?
     var funds: Funds {
         _ = derivedRevision
         let now = Date(); let zone = TimeZone.current
@@ -85,7 +87,15 @@ enum AppSheet: Identifiable {
         let rows = current.entries.sorted { $0.date > $1.date }
         cachedEntries = rows; return rows
     }
-    private func invalidateDerived() { cachedEntries = nil; refreshTimeDerived() }
+    func entryTimeline(month: Date, search: String, filter: EntryTimeline.Filter) -> EntryTimeline.Snapshot {
+        _ = derivedRevision
+        let calendar = Dates.calendar
+        if let cached = cachedEntryTimeline, cached.month == month, cached.search == search, cached.filter == filter, cached.calendar == calendar { return cached.value }
+        let value = EntryTimeline.snapshot(sortedEntries: sortedEntries, ledger: current, month: month, search: search, filter: filter, calendar: calendar)
+        cachedEntryTimeline = (month, search, filter, calendar, value)
+        return value
+    }
+    private func invalidateDerived() { cachedEntries = nil; cachedEntryTimeline = nil; refreshTimeDerived() }
     func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
     var locations: LedgerLocations
@@ -124,7 +134,11 @@ enum AppSheet: Identifiable {
     var errorHosts: [UUID] = []
     var pickingInsightDates = false
     var organizingBatchID: UUID?
+    /// Progress across all batches in the current explicit run.
+    var organizationProgress: (completed: Int, total: Int)?
     var organizingPendingImports = false
+    @ObservationIgnored var pendingOrganizationTask: Task<Void, Never>?
+    @ObservationIgnored var importOrganizationTask: Task<Void, Never>?
     var hiddenSalaryKeys: Set<String> = []
     var entryFilterRequest: UUID?
     var entryFilterDate: Date?
@@ -182,6 +196,33 @@ enum AppSheet: Identifiable {
             }
             return true
         } catch { if reportError { self.error = error.localizedDescription }; return false }
+    }
+    /// Prepare the full import off the main actor, then publish one atomic update.
+    func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = [],
+                      account: Account? = nil, completingOnboarding: Bool = false) async throws -> ImportBatch? {
+        let before = current
+        let preparation = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            var next = before
+            if let account { next.accounts.append(account) }
+            let batch: ImportBatch?
+            if let preview, let data, !preview.selectedEntries.isEmpty {
+                batch = try BillImporter.commit(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &next)
+            } else { batch = nil }
+            if completingOnboarding { next.preferences.onboardingComplete = true }
+            try next.validate()
+            try Task.checkCancellation()
+            return (ledger: next, batch: batch)
+        }
+        let prepared = try await withTaskCancellationHandler {
+            try await preparation.value
+        } onCancel: { preparation.cancel() }
+        try Task.checkCancellation()
+        guard current == before, !locked else {
+            throw YubaiError.invalid("账本刚有变化，请重试这一步。")
+        }
+        guard update(completingOnboarding ? "建立账本" : "导入账单", { $0 = prepared.ledger }) else { return nil }
+        return prepared.batch
     }
     @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
         var skipped: [String] = []
@@ -497,6 +538,8 @@ struct RootView: View {
         case .upcomingPayments: Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation()
         case .fixedFlows: FixedFlowsView()
         case .butlerCards: ButlerListView()
+        case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)
+        case .unknownInflows: ButlerListView(unknownInflowsOnly: true)
         case .profile: ProfileView()
         case .wishlist: WishlistView()
         case .letters: LettersView()

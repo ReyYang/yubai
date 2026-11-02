@@ -42,20 +42,44 @@ struct NowCardsSection: View {
     @State private var selected: String?
     @State private var width: CGFloat = 1
     @State private var drag: CGFloat = 0
+    private var butlerCards: [ButlerCard] { SavingCardVisibility.visible(in: store.current, collapsingInflows: true) }
     private var pages: [NowCardPage] {
         var result: [NowCardPage] = []
         if let salary = SalaryDetection.candidate(in: store.current), !store.hiddenSalaryKeys.contains(salary.key) { result.append(.salary(salary)) }
         let pending = PendingImportOrganization(in: store.current)
         if !pending.batchIDs.isEmpty { result.append(.imports(pending)) }
-        result += SavingCardVisibility.visible(in: store.current).map(NowCardPage.butler)
+        result += butlerCards.filter { $0.importQuestion == nil && $0.kind != .unknownInflow }.map(NowCardPage.butler)
         return result
     }
     var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+            if !pages.isEmpty { pagedCards }
+            ForEach(butlerCards.filter { $0.importQuestion != nil }) { card in
+                if let question = card.importQuestion, let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
+                    ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
+                }
+            }
+            let inflows = ButlerCards.queued(store.current).filter { $0.kind == .unknownInflow }
+            if inflows.count >= 2 {
+                TabNavigationLink(.unknownInflows) { ButlerListView(unknownInflowsOnly: true) } label: {
+                    HStack(spacing: YubaiSpace.gapGroup) {
+                        Text("\(inflows.count) 笔进账没说来源").yubaiFont(YubaiFont.row, weight: .medium)
+                        Spacer(minLength: YubaiSpace.none)
+                        Text("稍后").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin)
+                        .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("unknownInflowsSummary")
+            } else if let card = butlerCards.first(where: { $0.kind == .unknownInflow }) {
+                ButlerCardView(card: card)
+            }
+        }
+    }
+    private var pagedCards: some View {
         let pages = self.pages
         let index = pages.firstIndex { $0.id == selected } ?? 0
         let ids = pages.map(\.id)
         let pageValue = pages.isEmpty ? "" : "\(index + 1) / \(pages.count)"
-        ZStack(alignment: .top) {
+        return ZStack(alignment: .top) {
             ForEach(Array(pages.enumerated()), id: \.element.id) { position, page in
                 card(page, number: "\(position + 1) / \(pages.count)", paging: pages.count > 1, active: position == index)
                     .frame(maxWidth: .infinity)
@@ -169,39 +193,89 @@ private struct PendingImportsCard: View {
     private var accounts: String {
         pending.accountIDs.count > 1 ? "\(pending.accountIDs.count) 个账户" : store.current.accountName(pending.accountIDs.first)
     }
+    private var organizationError: String? {
+        guard !busy, let error = pending.batchIDs.compactMap({ store.organizationErrors[$0] }).first else { return nil }
+        let prefix = "记录已保存。"
+        return error.hasPrefix(prefix) ? String(error.dropFirst(prefix.count)) : error
+    }
     var body: some View {
         Card(style: .compact) {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 NowCardHeading(title: "\(pending.count) 笔还没分类", pageNumber: pageNumber)
                 Text(accounts + (pending.dates.isEmpty ? "" : " · " + ImportStatementText.range(pending.dates)))
                     .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).lineLimit(1)
-                HStack(spacing: YubaiSpace.space8) {
-                    if busy {
-                        ProgressView().tint(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin)
-                            .accessibilityLabel("正在整理导入的账目").accessibilityIdentifier("organizingImports")
-                    } else if store.cloudAIReady {
-                        Button("整理") { Task { await store.organizePendingImports() } }
-                            .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("organizeImports")
-                            .accessibilityLabel("整理这 \(pending.count) 笔导入的账目")
-                    } else {
-                        Button("打开云端智能") { store.sheet = .intelligencePrivacy }
-                            .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("openCloudAI")
-                            .accessibilityLabel("打开云端智能设置")
+                if let error = organizationError {
+                    Text(error).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
+                        .accessibilityIdentifier("organizeError")
+                }
+                if busy {
+                    organizationProgress
+                } else {
+                    HStack(spacing: YubaiSpace.space8) {
+                        if store.cloudAIReady || organizationError != nil {
+                            Button("整理") {
+                                if store.cloudAIReady { store.startOrganizingPendingImports() }
+                                else { store.sheet = .intelligencePrivacy }
+                            }
+                                .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("organizeImports")
+                                .accessibilityLabel("整理这 \(pending.count) 笔导入的账目")
+                        } else {
+                            Button("打开云端智能") { store.sheet = .intelligencePrivacy }
+                                .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("openCloudAI")
+                                .accessibilityLabel("打开云端智能设置")
+                        }
+                        Button("自己分") { store.showUncategorizedImports(pending) }
+                            .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                            .buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
+                            .accessibilityLabel("自己分类，打开账目中的没分类筛选").accessibilityIdentifier("classifyImportsManually")
+                        Spacer(minLength: YubaiSpace.none)
                     }
-                    Button("自己分") { store.showUncategorizedImports(pending) }
-                        .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
-                        .buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
-                        .accessibilityLabel("自己分类，打开账目中的没分类筛选").accessibilityIdentifier("classifyImportsManually")
-                    Spacer(minLength: YubaiSpace.none)
-                }.disabled(busy)
-                if let error = pending.batchIDs.compactMap({ store.organizationErrors[$0] }).first {
-                    Text(error).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
                 }
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("pendingImportsCard")
             #if DEBUG && targetEnvironment(simulator)
-            .uiTestAccessibilityValue("requests=\(UITestRequestLog.shared.count)")
+            .uiTestAccessibilityValue(UITestSupport.importRequestState(in: store.current))
             #endif
+    }
+    private var organizationProgress: some View {
+        let progress = store.organizationProgress ?? (completed: 0, total: pending.count)
+        let fraction = progress.total > 0 ? min(1, max(0, Double(progress.completed) / Double(progress.total))) : 0
+        let numberStyle = IntegerFormatStyle<Int>.number.locale(Locale(identifier: "en_US"))
+        return VStack(spacing: YubaiSpace.space8) {
+            GeometryReader { geometry in
+                RoundedRectangle(cornerRadius: 3).fill(YubaiColor.neutralSoft)
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3).fill(YubaiColor.brand)
+                            .frame(width: geometry.size.width * fraction)
+                    }
+            }.frame(height: 6)
+                .accessibilityElement(children: .ignore).accessibilityLabel("正在整理导入的账目")
+                .accessibilityValue("\(progress.completed)/\(progress.total)").accessibilityIdentifier("organizeProgress")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: YubaiSpace.space8) {
+                    progressCount(progress, style: numberStyle)
+                    Spacer(minLength: YubaiSpace.none)
+                    organizingReminder
+                    stopButton
+                }
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                    progressCount(progress, style: numberStyle)
+                    HStack(spacing: YubaiSpace.space8) { organizingReminder; Spacer(minLength: 0); stopButton }
+                }
+            }
+        }
+    }
+    private func progressCount(_ progress: (completed: Int, total: Int), style: IntegerFormatStyle<Int>) -> some View {
+        Text(progress.completed.formatted(style) + " / " + progress.total.formatted(style))
+            .yubaiFont(YubaiFont.amountSmall, weight: .regular).foregroundStyle(YubaiColor.labelSecondary)
+            .fixedSize()
+    }
+    private var organizingReminder: some View {
+        Text("整理时别离开余白").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize()
+    }
+    private var stopButton: some View {
+        Button("停下") { store.stopOrganizingImports() }
+            .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("stopOrganizing")
     }
 }
 
@@ -218,7 +292,7 @@ private struct NowCardHeading: View {
     }
 }
 
-private struct NowCardButtonStyle: ButtonStyle {
+struct NowCardButtonStyle: ButtonStyle {
     var primary = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.callout, weight: .medium)

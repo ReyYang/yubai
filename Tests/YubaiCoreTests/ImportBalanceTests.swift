@@ -9,6 +9,79 @@ final class ImportBalanceTests: XCTestCase {
         return try BillImporter.preview(data: Data(text.utf8), filename: "bank.csv", accountID: account.id, ledger: ledger)
     }
 
+    func testAnnualStatementRangeCountsAndPreservesOriginalSelection() throws {
+        let lines = (0...12).map { offset in
+            Dates.text(Dates.addMonths(offset, to: Dates.parse("2025-10-28")!)) + ",支出,10,100"
+        }
+        let all = try preview((["时间,收支,金额,余额"] + lines).joined(separator: "\n"))
+        let start = try XCTUnwrap(all.recentThreeMonthsStart)
+        XCTAssertEqual(start, Dates.parse("2026-07-28"))
+        let recent = all.selectingEntries(onOrAfter: start)
+        XCTAssertEqual(recent.selectedEntries.count, 4)
+        XCTAssertEqual(recent.selectedEntries.map(\.date).min(), start)
+        XCTAssertEqual(recent.selectedEntries.map(\.date).max(), Dates.parse("2026-10-28"))
+        XCTAssertEqual(all.selectedEntries.count, 13)
+        XCTAssertEqual(recent.rows.count, all.rows.count)
+        XCTAssertEqual(recent.latestBalance, all.latestBalance)
+    }
+
+    func testRangeControlRequiresStrictlyMoreThanThreeCalendarMonths() throws {
+        let header = "时间,收支,金额,余额\n"
+        XCTAssertNil(try preview(header + "2026-07-28 12:00:00,支出,10,100\n2026-10-28 12:00:00,支出,10,90").recentThreeMonthsStart)
+        XCTAssertNil(try preview(header + "2026-10-28,支出,10,100").recentThreeMonthsStart)
+        var empty = try preview(header + "2026-10-28,支出,10,100")
+        empty.rows = []
+        XCTAssertNil(empty.recentThreeMonthsStart)
+        let longer = try preview(header + "2026-07-28 11:59:59,支出,10,100\n2026-10-28 12:00:00,支出,10,90")
+        XCTAssertEqual(longer.recentThreeMonthsStart, Dates.parse("2026-07-28 12:00:00"))
+    }
+
+    func testRangeClampsCalendarMonthEndIncludingLeapDay() throws {
+        for (year, februaryDay) in [(2026, 28), (2028, 29)] {
+            let cutoff = "\(year)-02-\(februaryDay) 12:00:00"
+            let all = try preview("时间,收支,金额,余额\n\(year)-02-01,支出,10,100\n\(year)-02-\(februaryDay) 11:59:59,支出,10,90\n\(cutoff),支出,10,80\n\(year)-05-31 12:00:00,支出,10,70")
+            let start = try XCTUnwrap(all.recentThreeMonthsStart)
+            XCTAssertEqual(start, Dates.parse(cutoff))
+            let recent = all.selectingEntries(onOrAfter: start)
+            XCTAssertEqual(recent.selectedEntries.count, 2)
+            XCTAssertEqual(recent.selectedEntries.first?.date, Dates.parse(cutoff))
+            XCTAssertEqual(recent.latestBalance, all.latestBalance)
+        }
+    }
+
+    func testRangeNeverReselectsReviewedOrDuplicateRowsOrChangesBalanceEvidence() throws {
+        var all = try preview("时间,收支,金额,余额\n2025-10-28,支出,10,100\n2026-08-01,支出,10,90\n2026-09-01,支出,10,80\n2026-10-28,支出,10,70")
+        all.rows[1].status = .duplicate; all.rows[1].included = false
+        all.rows[3].included = false // The latest row is manually unchecked.
+        let start = try XCTUnwrap(all.recentThreeMonthsStart)
+        let recent = all.selectingEntries(onOrAfter: start)
+        XCTAssertEqual(recent.rows.map(\.included), [false, false, true, false])
+        XCTAssertEqual(recent.selectedEntries.count, 1)
+        XCTAssertEqual(recent.latestBalance?.amount, 7000)
+        XCTAssertEqual(recent.latestBalance?.date, Dates.parse("2026-10-28"))
+        XCTAssertEqual(all.selectedEntries.count, 2)
+        XCTAssertEqual(all.recentThreeMonthsStart, start)
+    }
+
+    func testCommittingEitherRangePreservesFullStatementLatestBalanceAndOriginalFile() throws {
+        let bytes = Data("时间,收支,金额,余额\n2025-10-28,支出,10,100\n2026-07-28,支出,10,90\n2026-08-28,支出,10,80\n2026-10-28 21:14:00,支出,10,70".utf8)
+        var account = Account(name: "新银行卡")
+        var base = Ledger(); base.accounts = [account]
+        let all = try BillImporter.preview(data: bytes, filename: "bank.csv", accountID: account.id, ledger: base)
+        let start = try XCTUnwrap(all.recentThreeMonthsStart)
+        let balance = try XCTUnwrap(all.latestBalance)
+        account.anchorBalance = balance.amount; account.anchorDate = balance.date
+        for (selection, count) in [(all.selectingEntries(onOrAfter: start), 2), (all, 4)] {
+            var ledger = Ledger(); ledger.accounts = [account]
+            let batch = try BillImporter.commit(selection, data: bytes, to: &ledger)
+            XCTAssertEqual(batch.importedCount, count)
+            XCTAssertEqual(ledger.activeEntries.count, count)
+            XCTAssertEqual(selection.latestBalance, balance)
+            XCTAssertEqual(Finance.balance(account, in: ledger, at: Dates.addDays(1, to: balance.date)), balance.amount)
+            XCTAssertEqual(ledger.attachments.first?.data, bytes)
+        }
+    }
+
     func testAscendingStatementUsesLatestDate() throws {
         let p = try preview("""
         时间,收支,金额,余额

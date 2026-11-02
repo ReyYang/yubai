@@ -36,6 +36,22 @@ public enum JSONValue: Codable, Sendable, Equatable {
     public static func parse(_ text: String) throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
     }
+    /// Accept JSON wrapped in a Markdown fence or surrounding model commentary.
+    public static func parseModelResponse(_ text: String) throws -> JSONValue {
+        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.hasPrefix("```") {
+            clean = String(clean.dropFirst(3))
+            if clean.lowercased().hasPrefix("json") { clean = String(clean.dropFirst(4)) }
+            clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+            if clean.hasSuffix("```") { clean = String(clean.dropLast(3)) }
+            clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        do { return try parse(clean) }
+        catch {
+            guard let first = clean.firstIndex(of: "{"), let last = clean.lastIndex(of: "}"), first < last else { throw error }
+            return try parse(String(clean[first...last]))
+        }
+    }
     static func money(_ cents: Int64) -> JSONValue {
         .object(["text": .string(Money.text(cents)), "cents": .number(Double(cents))])
     }

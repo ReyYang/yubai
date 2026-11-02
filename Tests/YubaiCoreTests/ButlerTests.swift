@@ -2,6 +2,21 @@ import XCTest
 @testable import YubaiCore
 
 final class ButlerTests: XCTestCase {
+    func testFullCardBatchHasJSONBudgetWithoutThinkingAndAcceptsFences() async throws {
+        let candidates = (0..<12).map { index in
+            CardCandidate(kind: .restrain, dedupeKey: "batch-\(index)", evidence: [], facts: [], title: "原观察", body: "原正文", action: .openEvidence, priority: 0)
+        }
+        let title = String(repeating: "字", count: 14), body = String(repeating: "文", count: 60)
+        let cards: [JSONValue] = candidates.indices.map { .object(["key": .string("c\($0)"), "title": .string(title), "body": .string(body)]) }
+        let json = try JSONValue.object(["cards": .array(cards)]).jsonText()
+        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: "```json\n" + json + "\n```")])
+        let result = await ButlerWording.word(candidates, ledger: seed(), transport: script, now: now)
+        XCTAssertEqual(result.map(\.body), Array(repeating: body, count: 12))
+        let requests = await script.recorded()
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertEqual(request.thinking, false)
+        XCTAssertGreaterThanOrEqual(request.maxTokens, 12 * 256)
+    }
     private let now = Dates.parse("2026-06-17 12:00")!
     private func seed() -> Ledger {
         var ledger = Ledger()
@@ -108,14 +123,18 @@ final class ButlerTests: XCTestCase {
         let priorities = [5, 4, 3, 2, 0, 1, 5]
         ledger.cards = kinds.enumerated().map { index, kind in
             var card = ButlerCard(kind: kind, title: "合成卡片", body: "观察", dedupeKey: "test:\(index)")
+            if kind == .unknownInflow {
+                let entry = Entry(date: now, amount: 100, nature: .unknownIn, accountID: ledger.accounts[0].id, title: "合成进账")
+                ledger.entries.append(entry); card.evidence = [entry.id]
+            }
             card.priority = priorities[index]; card.createdAt = now; return card
         }
-        XCTAssertEqual(ButlerCards.visible(ledger).map(\.priority), [0, 1, 2, 3, 4])
+        XCTAssertEqual(ButlerCards.visible(ledger).map(\.priority), [0, 1, 5, 2, 3])
         XCTAssertEqual(ledger.cards.filter { $0.dismissedAt == nil }.count, 7)
         let id = ButlerCards.visible(ledger)[0].id
         ledger.cards[ledger.cards.firstIndex { $0.id == id }!].dismissedAt = now
         XCTAssertEqual(ButlerCards.visible(ledger).count, 5)
-        XCTAssertEqual(ButlerCards.visible(ledger).last?.priority, 5)
+        XCTAssertEqual(ButlerCards.visible(ledger).last?.priority, 4)
     }
     func testFallbackAndUnverifiedAIAmountAndOneBatch() async throws {
         let ledger = restrained(); let candidates = ButlerCards.detect(ledger, now: now)

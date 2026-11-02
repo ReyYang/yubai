@@ -1,5 +1,72 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-10-29 · 第二十五轮「整理完剩下的」
+
+来源为 owner 本轮已确认的三张第二十五轮页面稿，上一轮整理中页面只作参照。本轮仅在本机只读核对，未复制原稿、私有地址或设计链接；不增加依赖、不提交。
+
+现在页的导入问题采用纵向 amber 卡片，具体问题在前、兜底在后；问题标题、日期／对方事实及选项直接呈现。原工资、待整理和其他管家卡继续用原分页。Core 的 answerQuestion 排在 unknownInflow 前，问题覆盖 ID 使用完整集合去重，不受卡片 evidence 的 1000 笔上限影响。至少两张未覆盖的有效进账提醒折成 raised 底、最小 44pt 行「N 笔进账没说来源／稍后」，点开复用 ButlerListView 与原卡片，读取完整队列；一张保留原卡。折叠在五张窗口之前完成，避免被折叠的提醒占掉提问名额。
+
+ImportQuestion 新增可空 groupsByParty 标记，无需提高存档 schema；缺字段可解码，旧标题以「其余这」开头且两个选项精确为「都是日常收支／稍后写用途」也识别为兜底，旧批量答案和自由补充均不再允许直接应用。新兜底只保存原覆盖 ID，选项为空；跨段合并保留同一问题 ID，将具体问题留在前四张，其余合入一个兜底。标题在界面按实时记录数显示「N 笔还没分类」，归类、删除、关联或已确定特殊性质的记录退出；零笔隐藏，撤销后重新出现，不永久删覆盖或标记卡片已完成。导入结果页也使用同一兜底卡，问题数排除已清空兜底。
+
+UnsortedGroups.swift 为纯函数：按原始 title 的「 · 」前半部和收支方向分组，笔数降序、相同笔数按稳定 ID 排序；组内日期倒序、同日按 UUID 排序。它只读兜底覆盖且仍待整理的有效记录，不修改金额、日期或原始文本。按对方分页使用 ScrollView／LazyVStack／CardRows，一张列表卡内逐行展示，搜索仅匹配对方，顶部计数始终为全部剩余记录。普通提问页改为外层 LazyVStack 和 Set 查找，CardRows 的 ForEach 每个 ID 固定一个行容器，避免为条件分隔线预建所有行；样式和分隔线保持。
+
+一组页复用衬线 quote 标题、SuggestionChip、PrimaryButtonStyle(compact:) 与 AmountLabel，展示最多四笔日期／金额；普通收支才出现该方向可选主项，无选择或未选分类时禁用确认。特殊选项不要求分类。确认从当前账本重取组，只生成一个 ChangeSet，经 AppStore.apply 保存一次，并记录整批撤销差量，沿用已有撤销及版本留存，然后返回列表。各控件均有 accessibilityIdentifier。
+
+对稿取舍：遵守不新增视觉样式，顶部数字用现有 amountLarge（30pt，原稿为34pt），其余字号、页边距、卡片和芯片都取现有 token／组件；原稿示例中个别行笔数并非严格递减，实现依 owner 明确要求按笔数降序。标准导航与原有其余卡片分页保持；本轮导入问题纵排。模型的 transfer 是转出方向，本轮选「转给自己」后要求选择未归档、且不属于本组任何原账户的另一个账户，无可选账户就隐藏该选项；进账转账按转出形式保存，但严格校验原进账账户的金额、方向、入账日均不变，不生成虚构记录。此选择也防止同组跨账户时选到某笔自己的原账户。
+
+本次新增或改动的可见中文：标题「按对方分」「一组」「这些钱是」「分类」「转到哪个账户」「最近几笔」；数字事实「N 笔还没分类」「笔还没分类」「N 笔」「N 笔 · 合计金额」「N 笔进账没说来源」及日期、对方／账户／分类名称和带符号两位金额；控件「搜对方」「日常支出」「日常收入」「买基金」「卖基金」「转给自己」「还款」「借给别人」「收回借款」「这 N 笔都这样记」「都不是」「稍后」和原问题选项。批量完成提示复用既有状态「整理完成」和撤销入口。兜底旧问题与两项旧选项不再显示；新页面无说明句。所有字属于标题、数字事实、控件或状态，无额外文案例外。
+
+工程：UnsortedViews.swift 已登记 App target，UnsortedGroupsTests.swift 已登记 Xcode Core 测试 target；UnsortedGroups.swift 由本地 Swift Package 的 YubaiCore target 自动收录，与其余 Core 文件相同。
+
+验证：指定命令 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出0，599项、595通过／4项原有实网opt-in跳过／0失败，新增9项Core测试覆盖旧数据、跨段合并、收支拆组、分类门槛、所有性质、双向转账、完整覆盖去重、零笔隐藏及4,200笔分组。新增2项UI测试源码覆盖首页顺序／折叠去重和按对方分→日常支出→选分类→确认→组数／剩余数减少并重启持久化。全部App源码通过iOS26模拟器Debug、设备Release、macOS14Debug条件语法解析，UI测试通过模拟器Debug解析；完整UITestSupport／UITestTransport和提取的实际store.apply、applyUnsortedGroup方法以Swift6严格并发离线编译执行，使用持久化替身核对2张问题先于6笔未覆盖进账、9笔／2组→一次apply→3笔／1组、磁盘与恢复版本、清零隐藏及整批撤销通过。该替身不代替完整AppStore或Apple SDK类型检查。Apple SDK 编译、XCTest UI 实跑、VoiceOver／深色／大字号及4,200笔真机滚动仍待 Mac，条件语法解析和离线夹具检查不代替这些验收。原稿保持只读，外部画布、截图和分发包未同步；未提交、未推送、未调用 DeepSeek 或任何付费 API。
+## 2026-10-29 · 小项截断与账目搜索卡顿修复
+
+来源为 owner 在 `fix/subcategory-truncation-ledger-hang`（基于 `main e6eff03`）提供的 4,200 笔 DeepSeek 导入反馈与 Mac `hang.sample.txt`。本轮只修行为和性能，不采用新设计，不改业务分类规则、外观、可见文案或操作入口。
+
+小项原每段 80 笔、沿用默认 4096 输出 token 且没有禁用默认思考，思考与 JSON 共用预算。`Subcategories.swift` 改为每段 40 笔，预算 `512 + 条数 × 128`（整段 5632），注释列明 UUID／主项／小项与 JSON 外壳估算；显式 `thinking: false`，用 `JSONValue.parseModelResponse` 接收围栏 JSON，原字段白名单、分类校验、取消及整轮原子应用保持。
+
+已遍历 Sources 的全部 ChatRequest 构造及通用 chat 调用：
+
+| 调用 | 本轮处理 |
+|---|---|
+| `SubcategoryBatch.run` | 上述分段、预算、禁用思考及共享解析 |
+| `AIImportColumnMapper.map` | 禁用思考；保留足够容纳列索引对象的 4000 预算，改用共享解析后解码 |
+| `ButlerWording.word` | 禁用思考；最多 12 张、每张 14 字标题／60 字正文，按 `256 + 张数 × 256` 预算；共享解析 |
+| `MemoryReflection.run` | 禁用思考、共享解析；保留显式 4096，用于选择性记忆提炼，不要求逐笔返回输入账目 |
+| `ImportOrganizer.organize` | 已有每段最多 30 笔、6000、禁用思考及共享解析，保持 |
+| `AssistantAgent` 主循环／金额核对 | 工具推理与自然语言答复，不是要求逐项 JSON 的批量任务，保持 |
+| `AskYubaiSession` 对话摘要 | 800 的纯文本摘要，保持 |
+| `CloudBackend.reflectPurchase` | 450、禁用思考的纯文本，保持 |
+| `DeepSeekClient.chat` 及洞察文字／搜索扩展／连接测试调用 | 通用方法转传预算与 thinking；三个调用已分别显式设置 220／80／64 和禁用思考，均非批量 JSON，保持 |
+
+账目页原在 `body` 每次执行月筛选、两次 timeline 分组及搜索金额格式化，每行又携带包含导入来源等元数据的完整 Entry；懒列表的 ForEach 还为每项产生行与条件分隔线两个可变子项。这些成本与 sample 的 LazyStack 布局／Entry、LedgerEntryRow 复制热点吻合，实际 Mac 修复效果仍待复验。`ManualBookkeeping.swift` 增加纯输入的 `EntryTimeline.snapshot`，保持旧搜索字段、金额匹配、月总额不随筛选变化及房租个人份额／退款口径；行只投影 UUID、金额、收支／分类状态、分类名、备注和图标。`AppStore` 用不参与观察的缓存保存结果，以月份／搜索词／筛选／日历为键，在每次账本替换时失效，不依赖 updatedAt；`EntriesView` 只读取快照，行的隐藏金额／新行状态由父级传入。日期与 UUID 原稳定 ID 保持，CardRows 将行与原分隔线包在零间距 VStack 内，每项固定一个子容器，继续使用原行高、分隔线、transition 与动画参数。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0；595 项，591 通过／4 原有实网 opt-in 跳过／0 失败。新增 5 项 Core 测试，覆盖 4,200 笔搜索的 1400 个匹配、全部筛选／带符号金额与旧 timeline 一致、月汇总、稳定 ID、只读输入／快照、账户与分类变化、房租／退款、月界与显式时区，以及整批卡片和每周回看的 thinking／预算／围栏解析。现有小项多段测试改为 40 笔分段并验证预算／thinking／围栏回复，保留失败原子性与敏感信息检查；列识别 HTTP 测试补禁用思考断言。
+
+三份 App 改动通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析；提取实际 AppStore 缓存属性／方法，隔离平台发布桥后，以 Swift 6 严格并发编译并链接 Core 离线执行，4,200 笔下一万次命中复用数组存储，月份／搜索／筛选和相同时间戳的账本替换失效均通过。Linux 内存布局 Entry 为 497 字节、行投影为 80 字节。此检查不代替完整 AppStore／SwiftUI Apple SDK 编译或实际滚动测试。Apple 编译、Mac 搜索「5.00」后滚动、手势／动画及视觉复验待做；原稿／Figma／分发资源保持。新增／改动可见中文字符串：无。未提交、未新增依赖、未调用 DeepSeek 或其他实网 API。
+
+## 2026-10-28 · 第二十四轮大量流水导入界面
+
+来源为 owner 本轮明确确认的第二十四轮文字规格，在 `fix/large-import-organize` 的 `5409003` 上续作；未附独立 HTML／图片或私有原稿链接。继承上一轮认工资、错误映射、逐段保存与已完成 ID 记录，本轮完成范围选择和整理状态界面。
+
+`ImportPreview` 在 `Import.swift` 公开 `recentThreeMonthsStart` 与 `selectingEntries(onOrAfter:)`：以完整有效记录的最晚时间往前推三个公历月，仅最早时间严格早于阈值时提供范围选择；阈值包含在最近范围内。筛选只在副本取消范围外行的勾选，不重新选中手动取消或重复行，不改变 `latestBalance`。`WelcomeView` 在已导入行上方显示双行两段控件，neutralSoft 底、选中 raised 底与共用 knob 轻阴影，默认最近三个月，数字千分位；辅助功能字号改纵排。摘要和提交沿用所选副本，核对 sheet 只显示当前范围并按行 ID 合回勾选，切换范围保留范围外原选择。余额、锚点与保存的完整原件仍来自原始流水。`ImportView` 源码及其导入页保持，不增加范围控件。
+
+`PendingImportsCard` 标题沿用每段保存后刷新出的剩余计数，账户／完整批次日期范围保持。整理中替换原转圈与按钮区：6pt neutralSoft／brand 进度、圆角 3；下行 13pt 数字字体／labelSecondary 的千分位已整理／总数、12pt labelSecondary 提醒、raised 底 36pt「停下」（触控至少 44pt）。空间不足时进度数字与提醒／停下分行。进度 AX 标识 `organizeProgress`、value 为无空格的数字 `completed/total`，停止标识 `stopOrganizing`。失败原文放到详情之后、按钮之前，13pt amberInk，移除开头的「记录已保存。」时不改其余原因，标识 `organizeError`；按钮保留「整理」「自己分」。若原错误对应云端不可用，再点整理进入既有智能设置，配置恢复后仅发送剩余记录。
+
+`AppStore` 持有待整理任务与当前批次任务，停下取消两者；直接调用 `organizeImport` 的父任务取消也会传到子任务。取消不写失败原因，已持久化的段保留；保存前在 MainActor 再检查取消。待整理运行的总数汇总全部批次可整理 ID，批次之间不重置分子／分母；导入页单批次调用仍独立计数。失败原因继续用上一轮 `ImportOrganizer.failureMessage`，不更换错误映射或已完成 ID 规则。
+
+新增可见中文仅「最近 3 个月」「全部」「N 笔」「停下」「整理时别离开余白」。前两项与停下为控件，N 笔与进度为数字事实；既有「已导入 N 笔」「N 笔还没分类」仅随范围／保存更新数字，失败原文复用已有文案。提醒是 owner 本轮明确指定的稿内文字：删除会丢失整理期间的前台要求，分组／字重不能表达该要求，进度数字与停下控件也无法表达；已限于整理发生时显示，故按本轮确认稿保留这一句，不增加其他说明。
+
+测试沿用现有工程已登记的 `ImportBalanceTests.swift`、`AppFlowTests.swift`，没有新增 Swift 文件。新增 5 项 Core 覆盖跨年计数、严格三个月边界／空与单行、月底与闰二月、手动／重复勾选保留、两范围提交后的账目数／余额锚点／完整原件。扩展严格门控的 salary／welcome-import 脚本：70 笔、30＋30＋10 三段；第二请求可持续等待取消或抛出既有 HTTP 503 原文，重试时延迟回复便于观察进度。新增观察值仅在显式测试开关或整理场景下包含真实账目数／已分类数／重发已成功 ID 数，原脚本的 `requests=N` 保持。
+
+新增 UI 测试（源码，未在 Apple 平台实跑）：
+
+- `testWelcomeAnnualStatementDefaultsToRecentThreeMonthsAndCommitsSelectedCount`：一年 13 笔，默认最近 4 笔、切换 13 笔、范围内手动勾选跨切换保持、余额固定 1234.56，提交／重启后实际账目数为 4。
+- `testWelcomeAnnualStatementAllRangeCommitsFullCount`：相同流水选择全部，提交／重启后实际账目数为 13。
+- `testPendingImportsStopKeepsCompletedChunkAndRemainingCount`：30/70 进度、停下、剩余 40，30 笔已分类与重启持久化。
+- `testPendingImportsSecondChunkFailureShowsReasonAndRetriesOnlyRemaining`：第二段失败原文、剩余 40、详情不变，再点整理的分母 40／中途剩余 10；总请求 4 次且不重发已完成 ID，完成／重启不再出现卡片。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0，584 项、580 通过／4 原有实网 opt-in 跳过／0 失败。改动 App 文件通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析。另提取实际任务方法、实际 `ActiveLedgerTransport` 与 `UITestSupport`，移除平台门控后以 Swift 6 严格并发类型检查，并链接 Core、配持久化替身离线执行：停下保留 30／剩余 40、HTTP 503 后只重试 30＋10、无已完成 ID 重发、多批次 0→30→45→70 且分母始终 70、直接调用父任务取消传递均通过。该替身不代替完整 AppStore／Apple SDK 类型检查或 XCTest UI 实跑。`git diff --check` 通过；Apple 编译、AX／VoiceOver、字号与视觉验收待 Mac，Figma／截图／分发资源未同步。未提交、未推送，未调用 DeepSeek 或任何付费 API。
 ## 2026-10-28 · 全部 sheet 底色与底部遮挡修复
 
 按 owner 本轮明确要求，在 `DesignSystem.swift` 的 `paperBackground()` 旁增加 `yubaiSheetBackground()`，iOS／macOS 共用 `.presentationBackground(YubaiColor.canvas)`。逐项核对全部 21 处 `.sheet`：根部 `store.sheet` 及 19 处本地呈现内容根使用该修饰符，QuickEntryView 原有设色也改用同一修饰符。改一笔、固定收付添加、账户编辑、导入及问余白内部未发现白色／systemBackground 大底色；Form 已隐藏系统滚动背景。全仓白色检出仅为图标前景与白色 token，保持。
