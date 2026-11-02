@@ -1,0 +1,14 @@
+/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.1.sdk/System/Library/Frameworks/BackgroundTasks.framework/Headers/BGTaskScheduler.h
+Xcode 27.1 (27A9275)
+/// An enumeration of the task scheduling errors.
+typedef NS_ERROR_ENUM(BGTaskSchedulerErrorDomain, BGTaskSchedulerErrorCode) {
+    /// A task scheduling error indicating that the app or extension can’t schedule background work.
+    ///
+    /// This error usually occurs for one of following reasons:
+    ///
+    /// - The user has disabled background refresh in settings.
+    /// - The app is running on Simulator which doesn’t support background processing.
+    ///   - The keyboard extension either hasn’t set <doc://com.apple.documentation/documentation/bundleresources/information_property_list/nsextension/nsextensionattributes/requestsopenaccess>
+    ///     to `YES` in [The Info.plist File](https://developer.apple.com/library/archive/documentation/Carbon/Conceptual/ProvidingUserAssitAppleHelp/authoring_help/authoring_help_book.html#//apple_ref/doc/uid/TP30000903-CH206-SW22), or the user hasn’t granted open access.
+    /// - The extension type isn’t able to schedule background tasks.
+    BGTaskSchedulerErrorCodeUnavailable = 1,

@@ -1,0 +1,14 @@
+[
+  "xcodebuild",
+  "build-for-testing",
+  "-project",
+  "Yubai.xcodeproj",
+  "-scheme",
+  "Yubai",
+  "-destination",
+  "id=37FDA39F-AF08-48EA-9E35-0AAB017AAFE0",
+  "ARCHS=arm64",
+  "ONLY_ACTIVE_ARCH=YES",
+  "-derivedDataPath",
+  "/Users/yang/deepresearch/yubai/.dd"
+]

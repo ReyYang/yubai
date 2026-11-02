@@ -1,0 +1,9 @@
+{
+  "backup": "/Users/yang/yubai-sim-data-before-pr53-rerun-2026-11-02",
+  "files": 228,
+  "restored_hashes_match": true,
+  "backup_hashes_match": true,
+  "not_relaunched_after_restore": true,
+  "keychain_untouched": true,
+  "restored_at": "2026-11-02T14:05:01.375044+08:00"
+}

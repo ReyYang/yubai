@@ -1,0 +1,13 @@
+Timestamp               Ty Process[PID:TID]
+2026-11-02 13:57:46.447 I  Yubai[66495:1ded08c] [app.yubai.personal:background-organize] run=7DE40871-E6D9-41EA-8227-882F00B7A8F0 start=false: simulator UI script disallows background
+2026-11-02 13:57:46.741 I  Yubai[66495:1ded08c] [app.yubai.personal:background-organize] run=7DE40871-E6D9-41EA-8227-882F00B7A8F0 finish(success: true) alreadyFinished=false
+2026-11-02 13:58:00.814 I  Yubai[66524:1ded2ea] [app.yubai.personal:background-organize] run=EFCDBD4C-3144-455E-AD40-8CCF6CADF6A7 start=false: simulator UI script disallows background
+2026-11-02 13:58:01.118 I  Yubai[66524:1ded2ea] [app.yubai.personal:background-organize] run=EFCDBD4C-3144-455E-AD40-8CCF6CADF6A7 finish(success: false) alreadyFinished=false
+2026-11-02 13:58:06.772 I  Yubai[66524:1ded2ea] [app.yubai.personal:background-organize] run=FB77F95E-2ED5-4C93-BB9B-737B49B6D5C7 start=false: simulator UI script disallows background
+2026-11-02 13:58:17.609 I  Yubai[66524:1ded2ea] [app.yubai.personal:background-organize] run=FB77F95E-2ED5-4C93-BB9B-737B49B6D5C7 finish(success: true) alreadyFinished=false
+2026-11-02 13:58:32.649 I  Yubai[66661:1ded819] [app.yubai.personal:background-organize] run=A4E0C2E5-AF08-45AA-8C0E-C9903F417FBF start=false: simulator UI script disallows background
+2026-11-02 13:58:38.787 I  Yubai[66661:1ded819] [app.yubai.personal:background-organize] run=A4E0C2E5-AF08-45AA-8C0E-C9903F417FBF finish(success: false) alreadyFinished=false
+2026-11-02 13:58:38.788 I  Yubai[66661:1ded819] [app.yubai.personal:background-organize] run=A4E0C2E5-AF08-45AA-8C0E-C9903F417FBF finish(success: false) alreadyFinished=true
+2026-11-02 13:59:18.298 I  Yubai[66884:1dee008] [app.yubai.personal:background-organize] run=64288AE5-E681-41AD-BF21-2EACBC46C629 register success=true identifier=app.yubai.personal.organizeImports.64288AE5-E681-41AD-BF21-2EACBC46C629
+2026-11-02 13:59:18.300 E  Yubai[66884:1dee008] [app.yubai.personal:background-organize] run=64288AE5-E681-41AD-BF21-2EACBC46C629 submit failed; start=false domain=BGTaskSchedulerErrorDomain code=1 localizedDescription=未能完成操作。（BGTaskSchedulerErrorDomain错误1。）
+getpwuid_r did not find a match for uid 501

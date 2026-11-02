@@ -1,0 +1,7 @@
+Timestamp               Ty Process[PID:TID]
+2026-11-02 14:02:06.304 I  Yubai[67953:1defd56] [app.yubai.personal:background-organize] run=9CB83121-BA61-4B63-814B-57508961C6BE register success=true identifier=app.yubai.personal.organizeImports.9CB83121-BA61-4B63-814B-57508961C6BE
+2026-11-02 14:02:06.305 E  Yubai[67953:1defd56] [app.yubai.personal:background-organize] run=9CB83121-BA61-4B63-814B-57508961C6BE submit failed; start=false domain=BGTaskSchedulerErrorDomain code=1 localizedDescription=未能完成操作。（BGTaskSchedulerErrorDomain错误1。）
+2026-11-02 14:02:48.928 I  Yubai[67953:1defd56] [app.yubai.personal:background-organize] run=9CB83121-BA61-4B63-814B-57508961C6BE finish(success: true) alreadyFinished=false
+2026-11-02 14:03:08.666 I  Yubai[68736:1df0ed9] [app.yubai.personal:background-organize] run=4D5E97F9-8965-4243-BA20-4335B2552917 start=false: simulator UI script disallows background
+2026-11-02 14:03:51.410 I  Yubai[68736:1df0ed9] [app.yubai.personal:background-organize] run=4D5E97F9-8965-4243-BA20-4335B2552917 finish(success: true) alreadyFinished=false
+getpwuid_r did not find a match for uid 501

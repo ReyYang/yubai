@@ -1,0 +1,1815 @@
+Timestamp               Ty Process[PID:TID]
+2026-11-02 14:01:51.035 E  dasd[37094:1defbb9] [com.apple.duetactivityscheduler:batteryTemperatureRecorder] Unable to get valid battery temperature: {
+    AdapterDetails =     {
+        AdapterID = 28674;
+        AdapterPowerTier = 2;
+        AdapterVoltage = 20000;
+        Current = 4690;
+        Description = "pd charger";
+        FamilyCode = "-536854518";
+        FwVersion = 01090058;
+        HwVersion = "1.0";
+        IsWireless = 0;
+        Manufacturer = "Apple Inc.";
+        Model = 0x7002;
+        Name = "96W USB-C Power Adapter";
+        PMUConfiguration = 4460;
+        SerialString = C4H607500HYL4YRAR;
+        UsbHvcHvcIndex = 3;
+        UsbHvcMenu =         (
+                        {
+                Index = 0;
+                MaxCurrent = 2960;
+                MaxVoltage = 5000;
+            },
+                        {
+                Index = 1;
+                MaxCurrent = 2970;
+                MaxVoltage = 9000;
+            },
+                        {
+                Index = 2;
+                MaxCurrent = 2980;
+                MaxVoltage = 15000;
+            },
+                        {
+                Index = 3;
+                MaxCurrent = 4690;
+                MaxVoltage = 20000;
+            }
+        );
+        Watts = 94;
+    };
+    AdapterInfo = 0;
+    Amperage = 0;
+    AppleRawAdapterDetails =     (
+                {
+            AdapterID = 28674;
+            AdapterPowerTier = 2;
+            AdapterVoltage = 20000;
+            Current = 4690;
+            Description = "pd charger";
+            FamilyCode = "-536854518";
+            FwVersion = 01090058;
+            HwVersion = "1.0";
+            IsWireless = 0;
+            Manufacturer = "Apple Inc.";
+            Model = 0x7002;
+            Name = "96W USB-C Power Adapter";
+            PMUConfiguration = 4460;
+            SerialString = C4H607500HYL4YRAR;
+            UsbHvcHvcIndex = 3;
+            UsbHvcMenu =             (
+                                {
+                    Index = 0;
+                    MaxCurrent = 2960;
+                    MaxVoltage = 5000;
+                },
+                                {
+                    Index = 1;
+                    MaxCurrent = 2970;
+                    MaxVoltage = 9000;
+                },
+                                {
+                    Index = 2;
+                    MaxCurrent = 2980;
+                    MaxVoltage = 15000;
+                },
+                                {
+                    Index = 3;
+                    MaxCurrent = 4690;
+                    MaxVoltage = 20000;
+                }
+            );
+            Watts = 94;
+        }
+    );
+    AppleRawBatteryVoltage = 12876;
+    AppleRawExternalConnected = 1;
+    AtCriticalLevel = 0;
+    AvgTimeToEmpty = 65535;
+    AvgTimeToFull = 65535;
+    BatteryData =     {
+        AbsoluteCapacity = 0;
+        AvgTimeToEmpty = 65535;
+        BatteryPower = 0;
+        CurrentCapacity = 100;
+        DesignCapacity = 6249;
+        FullChargeCapacity = 5595;
+        FullyCharged = 1;
+        MaxCapacity = 100;
+        NominalChargeCapacity = 5747;
+        RemainingCapacity = 5531;
+        TrueRemainingCapacity = 0;
+    };
+    BatteryInstalled = 1;
+    BatteryInvalidWakeSeconds = 30;
+    BatteryPackCount = 1;
+    BatteryShutdownReason =     {
+        ShutDownTimestamp = 0;
+        ShutDownUpoReboot = 0;
+    };
+    BestAdapterIndex = 0;
+    BootPathUpdated = 1792544543;
+    BootVoltage = 0;
+    ChargerConfiguration = 4456;
+    ChargerCount = 1;
+    ChargerData =     {
+        IsCharging = 0;
+        NotChargingReason = 4194305;
+        PMUConfiguration = 4460;
+        PMUConfigured = 4456;
+        SlowChargingReason = 0;
+        TimeChargingThermallyLimited = 0;
+    };
+    CurrentCapacity = 100;
+    CycleCount = 35;
+    DeadBatteryBootData =     {
+        ActivePayloads = 0;
+    };
+    DesignCycleCount9C = 1000;
+    DeviceName = bq40z651;
+    ExternalChargeCapable = 1;
+    ExternalConnected = 1;
+    FedDetails =     (
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 1;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 1;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 0;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 1;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 0;
+            FedExternalConnected = 1;
+            FedPdSpecRevision = 1;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        }
+    );
+    FullPathUpdated = 1793599251;
+    FullyCharged = 1;
+    IOGeneralInterest = "IOCommand is not serializable";
+    IOReportLegend =     (
+                {
+            IOReportChannelInfo =             {
+                IOReportChannelUnit = 0;
+            };
+            IOReportChannels =             (
+                                (
+                    7167869599145487988,
+                    6460407809,
+                    BatteryCycleCount
+                )
+            );
+            IOReportGroupName = Battery;
+        }
+    );
+    IOReportLegendPublic = 1;
+    InstantAmperage = 0;
+    IsCharging = 0;
+    Location = 0;
+    ManufacturerData = {length = 32, bytes = 0x00000000 0b000100 271d0000 04333531 ... 4c000000 00000000 };
+    MaxCapacity = 100;
+    PortControllerInfo =     (
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 118;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 1;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 119;
+            PortControllerDnSt = 0;
+            PortControllerElectionFailReason = 1;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x03021a03 3f025f03 011a0340 005ff800 ... 0003021a 033f025f };
+            PortControllerFetStatus = 0;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 90;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 35;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 361;
+            PortControllerIrqCntHrdRst = 90;
+            PortControllerIrqCntPdStsUpd = 568;
+            PortControllerIrqCntPlg = 237;
+            PortControllerIrqCntPwrStsUpd = 467;
+            PortControllerIrqCntRxIdSop = 351;
+            PortControllerIrqCntRxRdo = 357;
+            PortControllerIrqCntRxSnkCap = 357;
+            PortControllerIrqCntRxSrcCap = 1;
+            PortControllerIrqCntStsUpd = 1248;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 244;
+            PortControllerIrqCntUvdmStsUpd = 1045;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 1;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                906072114,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 2;
+            PortControllerSrdoRejectCount = 1;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 357;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 327155712;
+            PortControllerAttachCount = 13;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 1;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 13;
+            PortControllerDnSt = 0;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x40015e01 5f060606 06060302 1a033f02 ... 021a033f 025ff800 };
+            PortControllerFetStatus = 0;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 72;
+            PortControllerIrqCntAppLd = 1;
+            PortControllerIrqCntConSrc = 20;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 47;
+            PortControllerIrqCntPlg = 26;
+            PortControllerIrqCntPwrStsUpd = 47;
+            PortControllerIrqCntRxIdSop = 21;
+            PortControllerIrqCntRxRdo = 19;
+            PortControllerIrqCntRxSnkCap = 23;
+            PortControllerIrqCntRxSrcCap = 5;
+            PortControllerIrqCntStsUpd = 85;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 25;
+            PortControllerIrqCntUvdmStsUpd = 68;
+            PortControllerIrqCntWakeAck = 10169;
+            PortControllerIrqCntldcm = 1;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 1;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                704745672,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 5;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 30;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 1;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 0;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 0;
+            PortControllerDnSt = 115;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x00000000 00000000 00000000 00000000 ... 0003011a 035ff800 };
+            PortControllerFetStatus = 2;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 0;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 0;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 0;
+            PortControllerIrqCntPlg = 1;
+            PortControllerIrqCntPwrStsUpd = 2;
+            PortControllerIrqCntRxIdSop = 0;
+            PortControllerIrqCntRxRdo = 0;
+            PortControllerIrqCntRxSnkCap = 0;
+            PortControllerIrqCntRxSrcCap = 0;
+            PortControllerIrqCntStsUpd = 285;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 0;
+            PortControllerIrqCntUvdmStsUpd = 1;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 0;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 0;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 0;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 1;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 0;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 1;
+            PortControllerDnSt = 81;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x00000000 00000000 00000000 00000000 ... 015f485f 5f5e015f };
+            PortControllerFetStatus = 140;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 0;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 0;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 2;
+            PortControllerIrqCntPlg = 2;
+            PortControllerIrqCntPwrStsUpd = 3;
+            PortControllerIrqCntRxIdSop = 2;
+            PortControllerIrqCntRxRdo = 0;
+            PortControllerIrqCntRxSnkCap = 0;
+            PortControllerIrqCntRxSrcCap = 1;
+            PortControllerIrqCntStsUpd = 8;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 2;
+            PortControllerIrqCntUvdmStsUpd = 9;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 0;
+            PortControllerMaxPower = 93800;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 4;
+            PortControllerPDst = 5;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                134320424,
+                184617,
+                307498,
+                410069,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 3;
+            PortControllerSrdoCount = 2;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 2;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 3;
+            PortControllerVdoFailCount = 0;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        }
+    );
+    PostChargeWaitSeconds = 120;
+    PostDischargeWaitSeconds = 120;
+    PowerDistribution =     {
+        IPDChargingAllowed = 0;
+        IPDInputCurrent = 4460;
+        IPDInputPower = 89200;
+        IPDInputVoltage = 20000;
+        IPDRatio = 100;
+        IPDRatioOverride = 255;
+        IPDWattageOverride = 30000;
+    };
+    PowerOutDetails =     (
+                {
+            AccumulatedPower = 462247;
+            AccumulatorCount = 6251;
+            AccumulatorErrorCount = 0;
+            AdapterVoltage = 5210;
+            ConfiguredCurrent = 3000;
+            ConfiguredVoltage = 5000;
+            Current = 12;
+            FilteredPower = 68;
+            NumLDCMCollisions = 0;
+            PDPowermW = 0;
+            PortIndex = 3;
+            PortType = 0;
+            PowerState = 0;
+            USBSleepPoolPowermW = 0;
+            USBWakePoolPowermW = 0;
+            VConnAccumulatedPower = 40271;
+            VConnAccumulatorCount = 6251;
+            VConnAccumulatorErrorCount = 0;
+            VConnCurrent = 1;
+            VConnMaxCurrent = 330;
+            VConnPower = 5;
+            Watts = 66;
+        }
+    );
+    PowerTelemetryData =     {
+        AccumSystemEffectiveTotalLoad = 0;
+        AccumSystemEffectiveTotalLoadCount = 0;
+        AccumulatedAdapterEfficiencyLoss = 1750766206667540;
+        AccumulatedBatteryDischarge = "-23415717";
+        AccumulatedBatteryPower = 37272589;
+        AccumulatedSystemEnergyConsumed = 3084330488;
+        AccumulatedSystemLoad = 11091526173;
+        AccumulatedSystemPowerIn = 11105383045;
+        AccumulatedWallEnergyEstimate = 3182194626;
+        AdapterEfficiencyLoss = 167;
+        AdapterEfficiencyLossAccumulatorCount = 1053865;
+        BatteryDischargeAccumulatorCount = 9887;
+        BatteryPower = 0;
+        BatteryPowerAccumulatorCount = 4037;
+        PowerTelemetryErrorCount = 0;
+        SystemCurrentIn = 628;
+        SystemEffectiveTotalLoad = 0;
+        SystemEnergyConsumed = 3546;
+        SystemLoad = 12769;
+        SystemLoadAccumulatorCount = 1054389;
+        SystemPowerIn = 12769;
+        SystemPowerInAccumulatorCount = 1054387;
+        SystemVoltageIn = 20313;
+        WallEnergyEstimate = 3713;
+    };
+    Serial = F8YHQF00CJP0000VD5;
+    SkipperNEIgnoreAtCritical = 0;
+    TimeRemaining = 65535;
+    UpdateTime = 1793599311;
+    UserVisiblePathUpdated = 1793599311;
+    Voltage = 12876;
+    "built-in" = 1;
+}
+2026-11-02 14:01:52.116 Df Yubai[67953:1defd56] [com.apple.renderbox:misc] RBDevice: initialized bg state: false
+2026-11-02 14:02:06.304 Df Yubai[67953:1defd56] [com.apple.BackgroundTasks:Framework] submitTaskRequest: <BGContinuedProcessingTaskRequest: app.yubai.personal.organizeImports.9CB83121-BA61-4B63-814B-57508961C6BE, (title: 整理导入记录, subtitle: 已整理 0 / 150, resources: Default, submissionStrategy: Fail)>
+2026-11-02 14:02:06.305 E  Yubai[67953:1defd56] [app.yubai.personal:background-organize] run=9CB83121-BA61-4B63-814B-57508961C6BE submit failed; start=false domain=BGTaskSchedulerErrorDomain code=1 localizedDescription=未能完成操作。（BGTaskSchedulerErrorDomain错误1。）
+2026-11-02 14:02:51.034 E  dasd[37094:1defbb9] [com.apple.duetactivityscheduler:batteryTemperatureRecorder] Unable to get valid battery temperature: {
+    AdapterDetails =     {
+        AdapterID = 28674;
+        AdapterPowerTier = 2;
+        AdapterVoltage = 20000;
+        Current = 4690;
+        Description = "pd charger";
+        FamilyCode = "-536854518";
+        FwVersion = 01090058;
+        HwVersion = "1.0";
+        IsWireless = 0;
+        Manufacturer = "Apple Inc.";
+        Model = 0x7002;
+        Name = "96W USB-C Power Adapter";
+        PMUConfiguration = 4460;
+        SerialString = C4H607500HYL4YRAR;
+        UsbHvcHvcIndex = 3;
+        UsbHvcMenu =         (
+                        {
+                Index = 0;
+                MaxCurrent = 2960;
+                MaxVoltage = 5000;
+            },
+                        {
+                Index = 1;
+                MaxCurrent = 2970;
+                MaxVoltage = 9000;
+            },
+                        {
+                Index = 2;
+                MaxCurrent = 2980;
+                MaxVoltage = 15000;
+            },
+                        {
+                Index = 3;
+                MaxCurrent = 4690;
+                MaxVoltage = 20000;
+            }
+        );
+        Watts = 94;
+    };
+    AdapterInfo = 0;
+    Amperage = 0;
+    AppleRawAdapterDetails =     (
+                {
+            AdapterID = 28674;
+            AdapterPowerTier = 2;
+            AdapterVoltage = 20000;
+            Current = 4690;
+            Description = "pd charger";
+            FamilyCode = "-536854518";
+            FwVersion = 01090058;
+            HwVersion = "1.0";
+            IsWireless = 0;
+            Manufacturer = "Apple Inc.";
+            Model = 0x7002;
+            Name = "96W USB-C Power Adapter";
+            PMUConfiguration = 4460;
+            SerialString = C4H607500HYL4YRAR;
+            UsbHvcHvcIndex = 3;
+            UsbHvcMenu =             (
+                                {
+                    Index = 0;
+                    MaxCurrent = 2960;
+                    MaxVoltage = 5000;
+                },
+                                {
+                    Index = 1;
+                    MaxCurrent = 2970;
+                    MaxVoltage = 9000;
+                },
+                                {
+                    Index = 2;
+                    MaxCurrent = 2980;
+                    MaxVoltage = 15000;
+                },
+                                {
+                    Index = 3;
+                    MaxCurrent = 4690;
+                    MaxVoltage = 20000;
+                }
+            );
+            Watts = 94;
+        }
+    );
+    AppleRawBatteryVoltage = 12876;
+    AppleRawExternalConnected = 1;
+    AtCriticalLevel = 0;
+    AvgTimeToEmpty = 65535;
+    AvgTimeToFull = 65535;
+    BatteryData =     {
+        AbsoluteCapacity = 0;
+        AvgTimeToEmpty = 65535;
+        BatteryPower = 0;
+        CurrentCapacity = 100;
+        DesignCapacity = 6249;
+        FullChargeCapacity = 5595;
+        FullyCharged = 1;
+        MaxCapacity = 100;
+        NominalChargeCapacity = 5747;
+        RemainingCapacity = 5531;
+        TrueRemainingCapacity = 0;
+    };
+    BatteryInstalled = 1;
+    BatteryInvalidWakeSeconds = 30;
+    BatteryPackCount = 1;
+    BatteryShutdownReason =     {
+        ShutDownTimestamp = 0;
+        ShutDownUpoReboot = 0;
+    };
+    BestAdapterIndex = 0;
+    BootPathUpdated = 1792544543;
+    BootVoltage = 0;
+    ChargerConfiguration = 4456;
+    ChargerCount = 1;
+    ChargerData =     {
+        IsCharging = 0;
+        NotChargingReason = 4194305;
+        PMUConfiguration = 4460;
+        PMUConfigured = 4456;
+        SlowChargingReason = 0;
+        TimeChargingThermallyLimited = 0;
+    };
+    CurrentCapacity = 100;
+    CycleCount = 35;
+    DeadBatteryBootData =     {
+        ActivePayloads = 0;
+    };
+    DesignCycleCount9C = 1000;
+    DeviceName = bq40z651;
+    ExternalChargeCapable = 1;
+    ExternalConnected = 1;
+    FedDetails =     (
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 1;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 1;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 0;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 1;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 0;
+            FedExternalConnected = 1;
+            FedPdSpecRevision = 1;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        }
+    );
+    FullPathUpdated = 1793599251;
+    FullyCharged = 1;
+    IOGeneralInterest = "IOCommand is not serializable";
+    IOReportLegend =     (
+                {
+            IOReportChannelInfo =             {
+                IOReportChannelUnit = 0;
+            };
+            IOReportChannels =             (
+                                (
+                    7167869599145487988,
+                    6460407809,
+                    BatteryCycleCount
+                )
+            );
+            IOReportGroupName = Battery;
+        }
+    );
+    IOReportLegendPublic = 1;
+    InstantAmperage = 0;
+    IsCharging = 0;
+    Location = 0;
+    ManufacturerData = {length = 32, bytes = 0x00000000 0b000100 271d0000 04333531 ... 4c000000 00000000 };
+    MaxCapacity = 100;
+    PortControllerInfo =     (
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 118;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 1;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 119;
+            PortControllerDnSt = 0;
+            PortControllerElectionFailReason = 1;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x03021a03 3f025f03 011a0340 005ff800 ... 0003021a 033f025f };
+            PortControllerFetStatus = 0;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 90;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 35;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 361;
+            PortControllerIrqCntHrdRst = 90;
+            PortControllerIrqCntPdStsUpd = 568;
+            PortControllerIrqCntPlg = 237;
+            PortControllerIrqCntPwrStsUpd = 467;
+            PortControllerIrqCntRxIdSop = 351;
+            PortControllerIrqCntRxRdo = 357;
+            PortControllerIrqCntRxSnkCap = 357;
+            PortControllerIrqCntRxSrcCap = 1;
+            PortControllerIrqCntStsUpd = 1248;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 244;
+            PortControllerIrqCntUvdmStsUpd = 1045;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 1;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                906072114,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 2;
+            PortControllerSrdoRejectCount = 1;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 357;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 327155712;
+            PortControllerAttachCount = 13;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 1;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 13;
+            PortControllerDnSt = 0;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x40015e01 5f060606 06060302 1a033f02 ... 021a033f 025ff800 };
+            PortControllerFetStatus = 0;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 72;
+            PortControllerIrqCntAppLd = 1;
+            PortControllerIrqCntConSrc = 20;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 47;
+            PortControllerIrqCntPlg = 26;
+            PortControllerIrqCntPwrStsUpd = 47;
+            PortControllerIrqCntRxIdSop = 21;
+            PortControllerIrqCntRxRdo = 19;
+            PortControllerIrqCntRxSnkCap = 23;
+            PortControllerIrqCntRxSrcCap = 5;
+            PortControllerIrqCntStsUpd = 85;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 25;
+            PortControllerIrqCntUvdmStsUpd = 68;
+            PortControllerIrqCntWakeAck = 10169;
+            PortControllerIrqCntldcm = 1;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 1;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                704745672,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 5;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 30;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 1;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 0;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 0;
+            PortControllerDnSt = 115;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x00000000 00000000 00000000 00000000 ... 0003011a 035ff800 };
+            PortControllerFetStatus = 2;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 0;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 0;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 0;
+            PortControllerIrqCntPlg = 1;
+            PortControllerIrqCntPwrStsUpd = 2;
+            PortControllerIrqCntRxIdSop = 0;
+            PortControllerIrqCntRxRdo = 0;
+            PortControllerIrqCntRxSnkCap = 0;
+            PortControllerIrqCntRxSrcCap = 0;
+            PortControllerIrqCntStsUpd = 285;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 0;
+            PortControllerIrqCntUvdmStsUpd = 1;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 0;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 0;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 0;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 1;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 0;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 1;
+            PortControllerDnSt = 81;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x00000000 00000000 00000000 00000000 ... 015f485f 5f5e015f };
+            PortControllerFetStatus = 140;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 0;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 0;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 2;
+            PortControllerIrqCntPlg = 2;
+            PortControllerIrqCntPwrStsUpd = 3;
+            PortControllerIrqCntRxIdSop = 2;
+            PortControllerIrqCntRxRdo = 0;
+            PortControllerIrqCntRxSnkCap = 0;
+            PortControllerIrqCntRxSrcCap = 1;
+            PortControllerIrqCntStsUpd = 8;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 2;
+            PortControllerIrqCntUvdmStsUpd = 9;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 0;
+            PortControllerMaxPower = 93800;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 4;
+            PortControllerPDst = 5;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                134320424,
+                184617,
+                307498,
+                410069,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 3;
+            PortControllerSrdoCount = 2;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 2;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 3;
+            PortControllerVdoFailCount = 0;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        }
+    );
+    PostChargeWaitSeconds = 120;
+    PostDischargeWaitSeconds = 120;
+    PowerDistribution =     {
+        IPDChargingAllowed = 0;
+        IPDInputCurrent = 4460;
+        IPDInputPower = 89200;
+        IPDInputVoltage = 20000;
+        IPDRatio = 100;
+        IPDRatioOverride = 255;
+        IPDWattageOverride = 30000;
+    };
+    PowerOutDetails =     (
+                {
+            AccumulatedPower = 466642;
+            AccumulatorCount = 6311;
+            AccumulatorErrorCount = 0;
+            AdapterVoltage = 5210;
+            ConfiguredCurrent = 3000;
+            ConfiguredVoltage = 5000;
+            Current = 14;
+            FilteredPower = 68;
+            NumLDCMCollisions = 0;
+            PDPowermW = 0;
+            PortIndex = 3;
+            PortType = 0;
+            PowerState = 0;
+            USBSleepPoolPowermW = 0;
+            USBWakePoolPowermW = 0;
+            VConnAccumulatedPower = 40651;
+            VConnAccumulatorCount = 6311;
+            VConnAccumulatorErrorCount = 0;
+            VConnCurrent = 1;
+            VConnMaxCurrent = 330;
+            VConnPower = 5;
+            Watts = 76;
+        }
+    );
+    PowerTelemetryData =     {
+        AccumSystemEffectiveTotalLoad = 0;
+        AccumSystemEffectiveTotalLoadCount = 0;
+        AccumulatedAdapterEfficiencyLoss = 1750766206685663;
+        AccumulatedBatteryDischarge = "-23415717";
+        AccumulatedBatteryPower = 37272589;
+        AccumulatedSystemEnergyConsumed = 3084609254;
+        AccumulatedSystemLoad = 11092529839;
+        AccumulatedSystemPowerIn = 11106386711;
+        AccumulatedWallEnergyEstimate = 3182491515;
+        AdapterEfficiencyLoss = 724;
+        AdapterEfficiencyLossAccumulatorCount = 1053924;
+        BatteryDischargeAccumulatorCount = 9887;
+        BatteryPower = 0;
+        BatteryPowerAccumulatorCount = 4037;
+        PowerTelemetryErrorCount = 0;
+        SystemCurrentIn = 1475;
+        SystemEffectiveTotalLoad = 0;
+        SystemEnergyConsumed = 8216;
+        SystemLoad = 29579;
+        SystemLoadAccumulatorCount = 1054448;
+        SystemPowerIn = 29579;
+        SystemPowerInAccumulatorCount = 1054446;
+        SystemVoltageIn = 20160;
+        WallEnergyEstimate = 8940;
+    };
+    Serial = F8YHQF00CJP0000VD5;
+    SkipperNEIgnoreAtCritical = 0;
+    TimeRemaining = 65535;
+    UpdateTime = 1793599371;
+    UserVisiblePathUpdated = 1793599371;
+    Voltage = 12876;
+    "built-in" = 1;
+}
+2026-11-02 14:03:07.263 Df Yubai[68736:1df0ed9] [com.apple.renderbox:misc] RBDevice: initialized bg state: false
+2026-11-02 14:03:51.037 E  dasd[37094:1df0a91] [com.apple.duetactivityscheduler:batteryTemperatureRecorder] Unable to get valid battery temperature: {
+    AdapterDetails =     {
+        AdapterID = 28674;
+        AdapterPowerTier = 2;
+        AdapterVoltage = 20000;
+        Current = 4690;
+        Description = "pd charger";
+        FamilyCode = "-536854518";
+        FwVersion = 01090058;
+        HwVersion = "1.0";
+        IsWireless = 0;
+        Manufacturer = "Apple Inc.";
+        Model = 0x7002;
+        Name = "96W USB-C Power Adapter";
+        PMUConfiguration = 4460;
+        SerialString = C4H607500HYL4YRAR;
+        UsbHvcHvcIndex = 3;
+        UsbHvcMenu =         (
+                        {
+                Index = 0;
+                MaxCurrent = 2960;
+                MaxVoltage = 5000;
+            },
+                        {
+                Index = 1;
+                MaxCurrent = 2970;
+                MaxVoltage = 9000;
+            },
+                        {
+                Index = 2;
+                MaxCurrent = 2980;
+                MaxVoltage = 15000;
+            },
+                        {
+                Index = 3;
+                MaxCurrent = 4690;
+                MaxVoltage = 20000;
+            }
+        );
+        Watts = 94;
+    };
+    AdapterInfo = 0;
+    Amperage = 0;
+    AppleRawAdapterDetails =     (
+                {
+            AdapterID = 28674;
+            AdapterPowerTier = 2;
+            AdapterVoltage = 20000;
+            Current = 4690;
+            Description = "pd charger";
+            FamilyCode = "-536854518";
+            FwVersion = 01090058;
+            HwVersion = "1.0";
+            IsWireless = 0;
+            Manufacturer = "Apple Inc.";
+            Model = 0x7002;
+            Name = "96W USB-C Power Adapter";
+            PMUConfiguration = 4460;
+            SerialString = C4H607500HYL4YRAR;
+            UsbHvcHvcIndex = 3;
+            UsbHvcMenu =             (
+                                {
+                    Index = 0;
+                    MaxCurrent = 2960;
+                    MaxVoltage = 5000;
+                },
+                                {
+                    Index = 1;
+                    MaxCurrent = 2970;
+                    MaxVoltage = 9000;
+                },
+                                {
+                    Index = 2;
+                    MaxCurrent = 2980;
+                    MaxVoltage = 15000;
+                },
+                                {
+                    Index = 3;
+                    MaxCurrent = 4690;
+                    MaxVoltage = 20000;
+                }
+            );
+            Watts = 94;
+        }
+    );
+    AppleRawBatteryVoltage = 12876;
+    AppleRawExternalConnected = 1;
+    AtCriticalLevel = 0;
+    AvgTimeToEmpty = 65535;
+    AvgTimeToFull = 65535;
+    BatteryData =     {
+        AbsoluteCapacity = 0;
+        AvgTimeToEmpty = 65535;
+        BatteryPower = 0;
+        CurrentCapacity = 100;
+        DesignCapacity = 6249;
+        FullChargeCapacity = 5595;
+        FullyCharged = 1;
+        MaxCapacity = 100;
+        NominalChargeCapacity = 5747;
+        RemainingCapacity = 5531;
+        TrueRemainingCapacity = 0;
+    };
+    BatteryInstalled = 1;
+    BatteryInvalidWakeSeconds = 30;
+    BatteryPackCount = 1;
+    BatteryShutdownReason =     {
+        ShutDownTimestamp = 0;
+        ShutDownUpoReboot = 0;
+    };
+    BestAdapterIndex = 0;
+    BootPathUpdated = 1792544543;
+    BootVoltage = 0;
+    ChargerConfiguration = 4456;
+    ChargerCount = 1;
+    ChargerData =     {
+        IsCharging = 0;
+        NotChargingReason = 4194305;
+        PMUConfiguration = 4460;
+        PMUConfigured = 4456;
+        SlowChargingReason = 0;
+        TimeChargingThermallyLimited = 0;
+    };
+    CurrentCapacity = 100;
+    CycleCount = 35;
+    DeadBatteryBootData =     {
+        ActivePayloads = 0;
+    };
+    DesignCycleCount9C = 1000;
+    DeviceName = bq40z651;
+    ExternalChargeCapable = 1;
+    ExternalConnected = 1;
+    FedDetails =     (
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 1;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 1;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 0;
+            FedExternalConnected = 0;
+            FedPdSpecRevision = 0;
+            FedPortPowerRole = 1;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        },
+                {
+            FedDesignCapacity = 0;
+            FedDualRolePower = 0;
+            FedExternalConnected = 1;
+            FedPdSpecRevision = 1;
+            FedPortPowerRole = 0;
+            FedProductID = 0;
+            FedPwrPolicySt = 0;
+            FedRemainingCapacity = 0;
+            FedSnkConfReason = 0;
+            FedSrcConfReason = 0;
+            FedStateOfCharge = 0;
+            FedVendorID = 0;
+        }
+    );
+    FullPathUpdated = 1793599251;
+    FullyCharged = 1;
+    IOGeneralInterest = "IOCommand is not serializable";
+    IOReportLegend =     (
+                {
+            IOReportChannelInfo =             {
+                IOReportChannelUnit = 0;
+            };
+            IOReportChannels =             (
+                                (
+                    7167869599145487988,
+                    6460407809,
+                    BatteryCycleCount
+                )
+            );
+            IOReportGroupName = Battery;
+        }
+    );
+    IOReportLegendPublic = 1;
+    InstantAmperage = 0;
+    IsCharging = 0;
+    Location = 0;
+    ManufacturerData = {length = 32, bytes = 0x00000000 0b000100 271d0000 04333531 ... 4c000000 00000000 };
+    MaxCapacity = 100;
+    PortControllerInfo =     (
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 118;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 1;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 119;
+            PortControllerDnSt = 0;
+            PortControllerElectionFailReason = 1;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x03021a03 3f025f03 011a0340 005ff800 ... 0003021a 033f025f };
+            PortControllerFetStatus = 0;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 90;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 35;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 361;
+            PortControllerIrqCntHrdRst = 90;
+            PortControllerIrqCntPdStsUpd = 568;
+            PortControllerIrqCntPlg = 237;
+            PortControllerIrqCntPwrStsUpd = 467;
+            PortControllerIrqCntRxIdSop = 351;
+            PortControllerIrqCntRxRdo = 357;
+            PortControllerIrqCntRxSnkCap = 357;
+            PortControllerIrqCntRxSrcCap = 1;
+            PortControllerIrqCntStsUpd = 1248;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 244;
+            PortControllerIrqCntUvdmStsUpd = 1045;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 1;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                906072114,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 2;
+            PortControllerSrdoRejectCount = 1;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 357;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 327155712;
+            PortControllerAttachCount = 13;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 1;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 13;
+            PortControllerDnSt = 0;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x40015e01 5f060606 06060302 1a033f02 ... 021a033f 025ff800 };
+            PortControllerFetStatus = 0;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 72;
+            PortControllerIrqCntAppLd = 1;
+            PortControllerIrqCntConSrc = 20;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 47;
+            PortControllerIrqCntPlg = 26;
+            PortControllerIrqCntPwrStsUpd = 47;
+            PortControllerIrqCntRxIdSop = 21;
+            PortControllerIrqCntRxRdo = 19;
+            PortControllerIrqCntRxSnkCap = 23;
+            PortControllerIrqCntRxSrcCap = 5;
+            PortControllerIrqCntStsUpd = 85;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 25;
+            PortControllerIrqCntUvdmStsUpd = 68;
+            PortControllerIrqCntWakeAck = 10169;
+            PortControllerIrqCntldcm = 1;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 1;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                704745672,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 5;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 30;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 1;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 0;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 0;
+            PortControllerDnSt = 115;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x00000000 00000000 00000000 00000000 ... 0003011a 035ff800 };
+            PortControllerFetStatus = 2;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 0;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 0;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 0;
+            PortControllerIrqCntPlg = 1;
+            PortControllerIrqCntPwrStsUpd = 2;
+            PortControllerIrqCntRxIdSop = 0;
+            PortControllerIrqCntRxRdo = 0;
+            PortControllerIrqCntRxSnkCap = 0;
+            PortControllerIrqCntRxSrcCap = 0;
+            PortControllerIrqCntStsUpd = 285;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 0;
+            PortControllerIrqCntUvdmStsUpd = 1;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 1;
+            PortControllerMaxPower = 0;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 0;
+            PortControllerPDst = 0;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 0;
+            PortControllerSrdoCount = 0;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 0;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 0;
+            PortControllerVdoFailCount = 0;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        },
+                {
+            PortControllerActiveContractRdo = 0;
+            PortControllerAttachCount = 1;
+            PortControllerBootFlags = 0;
+            PortControllerCapMismatch = 0;
+            PortControllerDataRoleSwapCount = 0;
+            PortControllerDataRoleSwapFailCount = 0;
+            PortControllerDetachCount = 1;
+            PortControllerDnSt = 81;
+            PortControllerElectionFailReason = 0;
+            PortControllerEvtBuffer = {length = 120, bytes = 0x00000000 00000000 00000000 00000000 ... 015f485f 5f5e015f };
+            PortControllerFetStatus = 140;
+            PortControllerFwVersion = 3211776;
+            PortControllerHardResetCount = 0;
+            PortControllerHvEnRecoveryCount = 0;
+            PortControllerI2cErrCount = 0;
+            PortControllerInpFetEnFailCount = 0;
+            PortControllerIrqCntAlert = 0;
+            PortControllerIrqCntAppLd = 0;
+            PortControllerIrqCntConSrc = 0;
+            PortControllerIrqCntHrdRst = 0;
+            PortControllerIrqCntPdStsUpd = 2;
+            PortControllerIrqCntPlg = 2;
+            PortControllerIrqCntPwrStsUpd = 3;
+            PortControllerIrqCntRxIdSop = 2;
+            PortControllerIrqCntRxRdo = 0;
+            PortControllerIrqCntRxSnkCap = 0;
+            PortControllerIrqCntRxSrcCap = 1;
+            PortControllerIrqCntStsUpd = 8;
+            PortControllerIrqCntUsb2Plg = 0;
+            PortControllerIrqCntUsb2Wak = 0;
+            PortControllerIrqCntUvdmEnum = 2;
+            PortControllerIrqCntUvdmStsUpd = 9;
+            PortControllerIrqCntWakeAck = 10172;
+            PortControllerIrqCntldcm = 0;
+            PortControllerLoserReason = 0;
+            PortControllerMaxPower = 93800;
+            PortControllerNEprPDOs = 0;
+            PortControllerNPDOs = 4;
+            PortControllerPDst = 5;
+            PortControllerPortMode = 2;
+            PortControllerPortPDO =             (
+                134320424,
+                184617,
+                307498,
+                410069,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            );
+            PortControllerPowerState = 255;
+            PortControllerPwrRoleSwapCount = 0;
+            PortControllerPwrRoleSwapFailCount = 0;
+            PortControllerShortDetectCount = 0;
+            PortControllerSleepCmdFailCount = 0;
+            PortControllerSlpWakDisCause = 0;
+            PortControllerSlpWakDisTime = 0;
+            PortControllerSlpWakIsSleepEnabled = 1;
+            PortControllerSrcTypes = 3;
+            PortControllerSrdoCount = 2;
+            PortControllerSrdoRejectCount = 0;
+            PortControllerSrdoRetryCount = 0;
+            PortControllerSrdyCount = 2;
+            PortControllerSrdyRejectCount = 0;
+            PortControllerStuckCmdCount = 0;
+            PortControllerSurpriseAckCount = 0;
+            PortControllerSurpriseNackCount = 0;
+            PortControllerUvdmStatus = 3;
+            PortControllerVdoFailCount = 0;
+            PortControllerWakeCmdFailCount = 0;
+            PortControllerWakeFailCount = 0;
+            PortControllerWakeTimeoutCount = 0;
+        }
+    );
+    PostChargeWaitSeconds = 120;
+    PostDischargeWaitSeconds = 120;
+    PowerDistribution =     {
+        IPDChargingAllowed = 0;
+        IPDInputCurrent = 4460;
+        IPDInputPower = 89200;
+        IPDInputVoltage = 20000;
+        IPDRatio = 100;
+        IPDRatioOverride = 255;
+        IPDWattageOverride = 30000;
+    };
+    PowerOutDetails =     (
+                {
+            AccumulatedPower = 471210;
+            AccumulatorCount = 6371;
+            AccumulatorErrorCount = 0;
+            AdapterVoltage = 5212;
+            ConfiguredCurrent = 3000;
+            ConfiguredVoltage = 5000;
+            Current = 12;
+            FilteredPower = 68;
+            NumLDCMCollisions = 0;
+            PDPowermW = 0;
+            PortIndex = 3;
+            PortType = 0;
+            PowerState = 0;
+            USBSleepPoolPowermW = 0;
+            USBWakePoolPowermW = 0;
+            VConnAccumulatedPower = 41031;
+            VConnAccumulatorCount = 6371;
+            VConnAccumulatorErrorCount = 0;
+            VConnCurrent = 1;
+            VConnMaxCurrent = 330;
+            VConnPower = 7;
+            Watts = 66;
+        }
+    );
+    PowerTelemetryData =     {
+        AccumSystemEffectiveTotalLoad = 0;
+        AccumSystemEffectiveTotalLoadCount = 0;
+        AccumulatedAdapterEfficiencyLoss = 1750766206703232;
+        AccumulatedBatteryDischarge = "-23415717";
+        AccumulatedBatteryPower = 37272589;
+        AccumulatedSystemEnergyConsumed = 3084885555;
+        AccumulatedSystemLoad = 11093524621;
+        AccumulatedSystemPowerIn = 11107381493;
+        AccumulatedWallEnergyEstimate = 3182785385;
+        AdapterEfficiencyLoss = 171;
+        AdapterEfficiencyLossAccumulatorCount = 1053984;
+        BatteryDischargeAccumulatorCount = 9887;
+        BatteryPower = 0;
+        BatteryPowerAccumulatorCount = 4037;
+        PowerTelemetryErrorCount = 0;
+        SystemCurrentIn = 634;
+        SystemEffectiveTotalLoad = 0;
+        SystemEnergyConsumed = 3576;
+        SystemLoad = 12877;
+        SystemLoadAccumulatorCount = 1054508;
+        SystemPowerIn = 12877;
+        SystemPowerInAccumulatorCount = 1054506;
+        SystemVoltageIn = 20312;
+        WallEnergyEstimate = 3747;
+    };
+    Serial = F8YHQF00CJP0000VD5;
+    SkipperNEIgnoreAtCritical = 0;
+    TimeRemaining = 65535;
+    UpdateTime = 1793599431;
+    UserVisiblePathUpdated = 1793599431;
+    Voltage = 12876;
+    "built-in" = 1;
+}
+getpwuid_r did not find a match for uid 501
