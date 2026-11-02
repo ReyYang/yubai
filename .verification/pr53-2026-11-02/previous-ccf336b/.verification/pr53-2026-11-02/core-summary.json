@@ -1,0 +1,19 @@
+{
+  "counts": {
+    "passed": 602,
+    "failed": 1,
+    "skipped": 4
+  },
+  "failed": [
+    [
+      "YubaiCoreTests.StorageTests",
+      "testSavedAndLoadedAttachmentsAreLazyAndImmutablePayloadsAreNotRewritten",
+      "failed",
+      "0.498 seconds"
+    ]
+  ],
+  "errors": [
+    "/Users/yang/deepresearch/yubai/Tests/YubaiCoreTests/StorageTests.swift:235: error: -[YubaiCoreTests.StorageTests testSavedAndLoadedAttachmentsAreLazyAndImmutablePayloadsAreNotRewritten] : XCTAssertEqual failed: (\"Optional(2026-11-02 02:40:58 +0000)\") is not equal to (\"Optional(1970-01-01 00:01:40 +0000)\")",
+    "/Users/yang/deepresearch/yubai/Tests/YubaiCoreTests/StorageTests.swift:235: error: -[YubaiCoreTests.StorageTests testSavedAndLoadedAttachmentsAreLazyAndImmutablePayloadsAreNotRewritten] : XCTAssertEqual failed: (\"Optional(2026-11-02 02:40:58 +0000)\") is not equal to (\"Optional(1970-01-01 00:01:40 +0000)\")"
+  ]
+}

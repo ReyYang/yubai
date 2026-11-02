@@ -1,0 +1,51 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_overview" id="rootPage_overview" at=0,0 size=440x956
+@e3 StaticText label="现在" name="rootHeaderTitle" id="rootHeaderTitle" at=205,89 size=30x18
+@e4 Button label="隐藏金额" name="toggleAmountVisibility" id="toggleAmountVisibility" at=20,76 size=44x44
+@e5 Image label="显示" name="eye" id="eye" at=20,76 size=44x44
+@e6 Button label="问余白" name="askYubai" id="askYubai" at=376,76 size=44x44
+@e7 Button label="还能花、接下来 90 天、¥1,910.00、还能花 1,910.00，要付 0.00，日常开销 90.00、还能花、1,910.00、要付、0.00、日常开销、90.00" name="fundsFormula" id="fundsFormula" at=20,146 size=400x141
+@e8 StaticText label="还能花" name="还能花" at=20,146 size=50x20
+@e9 StaticText label="接下来 90 天" name="接下来 90 天" at=78,151 size=69x14
+@e10 StaticText label="¥1,910.00" name="¥1,910.00" at=20,170 size=223x57
+@e11 StaticText label="还能花" name="还能花" at=32,272 size=36x14
+@e12 StaticText label="1,910.00" name="1,910.00" at=72,271 size=59x15
+@e13 StaticText label="要付" name="要付" at=155,272 size=24x14
+@e14 StaticText label="0.00" name="0.00" at=183,271 size=29x15
+@e15 StaticText label="日常开销" name="日常开销" at=237,272 size=48x14
+@e16 StaticText label="90.00" name="90.00" at=289,271 size=38x15
+@e17 Other name="nowCards" value="1 / 1" id="nowCards" at=20,311 size=400x141
+@e18 Other name="pendingImportsCard" value="requests=1" id="pendingImportsCard" at=20,311 size=400x141
+@e19 StaticText label="120 笔还没分类" name="120 笔还没分类" at=36,327 size=109x19
+@e20 StaticText label="1 / 1" name="1 / 1" at=383,332 size=20x13
+@e21 StaticText label="合成工资卡 · 6月5日–11月1日" name="合成工资卡 · 6月5日–11月1日" at=36,354 size=174x15
+@e22 Other label="正在整理导入的账目" name="organizeProgress" value="30/150" id="organizeProgress" at=36,378 size=368x6
+@e23 StaticText label="30 / 150" name="30 / 150" at=36,406 size=53x15
+@e24 StaticText label="整理时别离开余白" name="整理时别离开余白" at=242,407 size=95x14
+@e25 Button label="停下" name="stopOrganizing" id="stopOrganizing" at=346,396 size=58x36
+@e26 Button label="今天、还没记、账目" name="todayEntries" id="todayEntries" at=20,476 size=400x47
+@e27 StaticText label="今天" name="今天" at=36,491 size=28x17
+@e28 StaticText label="还没记" name="todayEntrySummary" id="todayEntrySummary" at=72,493 size=36x14
+@e29 StaticText label="账目" name="账目" at=364,493 size=24x14
+@e30 Image label="前进" name="chevron.right" id="chevron.right" at=398,495 size=5x9
+@e31 StaticText label="现金会怎么走" name="现金会怎么走" at=36,564 size=95x19
+@e32 StaticText label="接下来 90 天" name="接下来 90 天" at=339,569 size=64x13
+@e33 Other label="还能花从 ¥2,000.00 起，2027-01-31 最低 ¥1,910.00，2027-01-31 ¥1,910.00。" name="forecastChart" id="forecastChart" at=36,591 size=368x150
+@e34 StaticText label="下一笔 · 还没有待付款" name="下一笔 · 还没有待付款" at=20,795 size=129x15
+@e35 Other label="主导航" name="mainNavigation" value="destination=overview; visible=overview; phase=idle; locked=0" id="mainNavigation" at=20,848 size=400x66
+@e36 Button label="现在" name="tab_overview" id="tab_overview" at=28,856 size=78x50 selected
+@e37 Image label="TabWaterMark" name="TabWaterMark" at=57,863 size=20x20
+@e38 StaticText label="现在" name="现在" at=57,887 size=20x12
+@e39 Button label="洞察" name="tab_insights" id="tab_insights" at=106,856 size=78x50
+@e40 Image label="图表饼图" name="chart.pie" id="chart.pie" at=135,863 size=19x20
+@e41 StaticText label="洞察" name="洞察" at=135,887 size=20x12
+@e42 Button label="记一笔" name="addEntry" id="addEntry" at=193,854 size=54x54
+@e43 Button label="账目" name="tab_entries" id="tab_entries" at=255,856 size=78x50
+@e44 Image label="列表" name="list.bullet" id="list.bullet" at=284,866 size=20x14
+@e45 StaticText label="账目" name="账目" at=284,887 size=20x12
+@e46 Button label="我" name="tab_settings" id="tab_settings" at=333,856 size=78x50
+@e47 Image label="person" name="person" id="person" at=363,864 size=17x18
+@e48 StaticText label="我" name="我" at=367,887 size=10x12
+@e49 StaticText label="11:51" name="11:51" at=62,22 size=42x21
+@e50 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

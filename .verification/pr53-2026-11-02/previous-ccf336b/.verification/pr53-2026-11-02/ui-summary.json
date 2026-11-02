@@ -1,0 +1,68 @@
+{
+  "exit": 0,
+  "started": "2026-11-02T10:41:17.979342+08:00",
+  "finished": "2026-11-02T10:46:29.591990+08:00",
+  "cases": [
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount",
+      "status": "passed",
+      "duration": "44.158 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testImportOrganizeAnswerAndUndoEntireBatch",
+      "status": "passed",
+      "duration": "78.163 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testOrganizationDefersSavedQuestionsUntilCompletion",
+      "status": "passed",
+      "duration": "23.892 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testOrganizationFailureReleasesSavedQuestionsAndRestoresIdleTimer",
+      "status": "passed",
+      "duration": "20.066 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testOrganizationRelaunchReleasesCheckpointedQuestionsWithoutRestarting",
+      "status": "passed",
+      "duration": "13.463 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testOrganizationStopReleasesSavedQuestionsAndRestoresIdleTimer",
+      "status": "passed",
+      "duration": "19.416 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testOrganizedQuestionsPrecedeCollapsedUncoveredInflows",
+      "status": "passed",
+      "duration": "16.968 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testPendingImportsOrganizesOnlyAfterTapWithFakeTransport",
+      "status": "passed",
+      "duration": "36.326 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testPendingImportsSecondChunkFailureShowsReasonAndRetriesOnlyRemaining",
+      "status": "passed",
+      "duration": "30.727 seconds"
+    },
+    {
+      "class": "YubaiUITests.AppFlowTests",
+      "name": "testPendingImportsStopKeepsCompletedChunkAndRemainingCount",
+      "status": "passed",
+      "duration": "24.080 seconds"
+    }
+  ],
+  "errors": []
+}

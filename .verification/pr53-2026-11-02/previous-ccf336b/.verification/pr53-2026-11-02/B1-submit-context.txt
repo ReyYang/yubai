@@ -1,0 +1,21 @@
+2026-11-02 10:46:54.092 Df Yubai[89640:1d6ec97] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x106136e00; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0
+2026-11-02 10:46:54.092 Df Yubai[89640:1d6ec97] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1
+2026-11-02 10:46:54.092 Df Yubai[89640:1d6ec97] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x1061d4800>; contextId: 0x8CE19C32
+2026-11-02 10:46:54.092 A  Yubai[89640:1d6ec97] (UIKitCore) send gesture actions
+2026-11-02 10:46:54.124 A  Yubai[89640:1d6ec97] (Security) SecItemCopyMatching_ios
+2026-11-02 10:46:54.126 Df Yubai[89640:1d6ec97] [com.apple.BackgroundTasks:Framework] submitTaskRequest: <BGContinuedProcessingTaskRequest: app.yubai.personal.organizeImports.BD807B08-3906-4D88-8B2D-CE79D99C4B85, (title: 整理导入记录, subtitle: 已整理 0 / 150, resources: Default, submissionStrategy: Fail)>
+2026-11-02 10:46:54.126 A  Yubai[89640:1d6ec97] (UIKitCore) send gesture actions
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ece0] [com.apple.dt.xctest:Default] Received request to fetch matches for query:
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ece0] [com.apple.dt.xctest:Default] Evaluating query:
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ece0] [com.apple.dt.xctest:Default] Getting root element snapshot
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ece0] [com.apple.dt.xctest:Default] Getting snapshot for App element pid: 89640 for query
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ece0] [com.apple.dt.xctest:Default] Query requires iOS snapshot attributes .
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ece0] [com.apple.dt.xctest:Default] XCTPerformOnMainRunLoop[not MT]: about to CFRunLoopPerform
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ece0] [com.apple.dt.xctest:Default] XCTPerformOnMainRunLoop[not MT]: waiting with 30.00s responsiveness timeout
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ec97] [com.apple.dt.xctest:Default] XCTPerformOnMainRunLoop[MT]: inside CFRunLoopPerform
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ec97] [com.apple.dt.xctest:Default] XCTPerformOnMainRunLoop[MT]: MT responded in time (won the race to the busy flag)
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ece0] [com.apple.dt.xctest:Default] XCTPerformOnMainRunLoop[not MT]: waiting 60.00s for work to complete
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ec97] [com.apple.dt.xctest:Default] Got main window <AXUIElementRef 0x1246d0180> {pid=89640} {uid=[ID:4 hash:0x1061d4800]}
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ec97] [com.apple.dt.xctest:Default] Capturing hierarchy with attributes XC_kAXXCAttributeElementType, XC_kAXXCAttributeElementBaseType, XC_kAXXCAttributeParent, XC_kAXXCAttributeIdentifier, XC_kAXXCAttributeAutomationType, XC_kAXXCAttributeTraits
+2026-11-02 10:46:54.824 Df Yubai[89640:1d6ec97] [com.apple.dt.xctest:Default] Capturing hierarchy with parameters {
+    attributes =     (

@@ -1,0 +1,46 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_overview" id="rootPage_overview" at=0,0 size=440x956
+@e3 StaticText label="现在" name="rootHeaderTitle" id="rootHeaderTitle" at=205,89 size=30x18
+@e4 Button label="隐藏金额" name="toggleAmountVisibility" id="toggleAmountVisibility" at=20,76 size=44x44
+@e5 Image label="显示" name="eye" id="eye" at=20,76 size=44x44
+@e6 Button label="问余白" name="askYubai" id="askYubai" at=376,76 size=44x44
+@e7 Button label="还能花、接下来 90 天、¥1,910.00、还能花 1,910.00，要付 0.00，日常开销 90.00、还能花、1,910.00、要付、0.00、日常开销、90.00" name="fundsFormula" id="fundsFormula" at=20,146 size=400x141
+@e8 StaticText label="还能花" name="还能花" at=20,146 size=50x20
+@e9 StaticText label="接下来 90 天" name="接下来 90 天" at=78,151 size=69x14
+@e10 StaticText label="¥1,910.00" name="¥1,910.00" at=20,170 size=223x57
+@e11 StaticText label="还能花" name="还能花" at=32,272 size=36x14
+@e12 StaticText label="1,910.00" name="1,910.00" at=72,271 size=59x15
+@e13 StaticText label="要付" name="要付" at=155,272 size=24x14
+@e14 StaticText label="0.00" name="0.00" at=183,271 size=29x15
+@e15 StaticText label="日常开销" name="日常开销" at=237,272 size=48x14
+@e16 StaticText label="90.00" name="90.00" at=289,271 size=38x15
+@e17 Button label="今天、还没记、账目" name="todayEntries" id="todayEntries" at=20,335 size=400x48
+@e18 StaticText label="今天" name="今天" at=36,350 size=28x17
+@e19 StaticText label="还没记" name="todayEntrySummary" id="todayEntrySummary" at=72,352 size=36x14
+@e20 StaticText label="账目" name="账目" at=364,352 size=24x14
+@e21 Image label="前进" name="chevron.right" id="chevron.right" at=398,354 size=5x9
+@e22 StaticText label="现金会怎么走" name="现金会怎么走" at=36,423 size=95x19
+@e23 StaticText label="接下来 90 天" name="接下来 90 天" at=339,428 size=64x13
+@e24 Other label="还能花从 ¥2,000.00 起，2027-01-31 最低 ¥1,910.00，2027-01-31 ¥1,910.00。" name="forecastChart" id="forecastChart" at=36,450 size=368x150
+@e25 StaticText label="下一笔 · 还没有待付款" name="下一笔 · 还没有待付款" at=20,654 size=129x15
+@e26 Other label="主导航" name="mainNavigation" value="destination=overview; visible=overview; phase=idle; locked=0" id="mainNavigation" at=20,848 size=400x66
+@e27 Button label="现在" name="tab_overview" id="tab_overview" at=28,856 size=78x50 selected
+@e28 Image label="TabWaterMark" name="TabWaterMark" at=57,863 size=20x20
+@e29 StaticText label="现在" name="现在" at=57,887 size=20x12
+@e30 Button label="洞察" name="tab_insights" id="tab_insights" at=106,856 size=78x50
+@e31 Image label="图表饼图" name="chart.pie" id="chart.pie" at=135,863 size=19x20
+@e32 StaticText label="洞察" name="洞察" at=135,887 size=20x12
+@e33 Button label="记一笔" name="addEntry" id="addEntry" at=193,854 size=54x54
+@e34 Button label="账目" name="tab_entries" id="tab_entries" at=255,856 size=78x50
+@e35 Image label="列表" name="list.bullet" id="list.bullet" at=284,866 size=20x14
+@e36 StaticText label="账目" name="账目" at=284,887 size=20x12
+@e37 Button label="我" name="tab_settings" id="tab_settings" at=333,856 size=78x50
+@e38 Image label="person" name="person" id="person" at=363,864 size=17x18
+@e39 StaticText label="我" name="我" at=367,887 size=10x12
+@e40 StaticText label="导入整理完成" name="toastMessage" id="toastMessage" at=36,789 size=83x17
+@e41 StaticText label="·" name="·" at=285,789 size=7x17
+@e42 Button label="撤销" name="undoLastChange" id="undoLastChange" at=316,789 size=28x17
+@e43 Button label="关闭提示" name="xmark" id="xmark" at=385,793 size=9x9
+@e44 StaticText label="10:51" name="10:51" at=61,22 size=45x21
+@e45 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

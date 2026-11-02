@@ -1,0 +1,11 @@
+{
+  "case": "B3",
+  "ledger": "0d60c977-5239-4f82-a2fa-2981205b5975",
+  "allow_background": "1",
+  "script": "salary",
+  "scenario": "",
+  "launched": "2026-11-02T10:50:45.853829+08:00",
+  "output": "app.yubai.personal: 96525\n",
+  "error": "",
+  "exit": 0
+}

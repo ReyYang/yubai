@@ -1,0 +1,31 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 Other name="Home screen icons" id="Home screen icons" at=0,0 size=440x956
+@e2 Icon label="Fitness" name="Fitness" id="Fitness" at=33,92 size=72x94
+@e3 Other name="label-view" id="label-view" at=40,165 size=57x19
+@e4 Icon label="Watch" name="Watch" id="Watch" at=133,92 size=72x94
+@e5 Other name="label-view" id="label-view" at=143,165 size=52x19
+@e6 Icon label="通讯录" name="通讯录" id="通讯录" at=234,92 size=72x94
+@e7 Other name="label-view" id="label-view" at=244,165 size=51x19
+@e8 Icon label="文件" name="文件" id="文件" at=335,92 size=72x94
+@e9 Other name="label-view" id="label-view" at=351,165 size=39x19
+@e10 Icon label="预览" name="预览" id="预览" at=33,200 size=72x94
+@e11 Other name="label-view" id="label-view" at=49,273 size=39x19
+@e12 Icon label="“实用工具”文件夹" name="实用工具" value="2个App" id="实用工具" at=133,200 size=72x94
+@e13 Icon label="YubaiUITests-Runner" name="YubaiUITests-Runner" id="YubaiUITests-Runner" at=215,200 size=109x97
+@e14 Other name="label-view" id="label-view" at=217,270 size=105x26
+@e15 Icon label="余白" name="余白" id="余白" at=335,200 size=72x94
+@e16 Other name="label-view" id="label-view" at=351,273 size=39x19
+@e17 Icon label="Device Kit" name="Device Kit" id="Device Kit" at=29,309 size=78x94
+@e18 Other name="label-view" id="label-view" at=31,382 size=74x19
+@e19 Other label="搜索" name="spotlight-pill" value="第2页（共2页）" id="spotlight-pill" at=189,763 size=61x30
+@e20 PageIndicator name="Page control" value="第2页（共2页）" id="Page control" at=189,763 size=61x35
+@e21 Other name="spotlight-pill" id="spotlight-pill" at=189,763 size=61x30
+@e22 Image label="搜索" name="magnifyingglass" id="magnifyingglass" at=201,773 size=11x10
+@e23 StaticText label="搜索" name="搜索" at=215,771 size=24x14
+@e24 Icon label="Safari浏览器" name="Safari浏览器" id="Safari浏览器" at=136,844 size=72x72
+@e25 Icon label="信息" name="信息" id="信息" at=232,844 size=72x72
+@e26 Other name="jindo-container-view:1" id="jindo-container-view:1" at=157,13 size=125x36
+@e27 StaticText label="11:51" name="11:51" at=62,22 size=42x21
+@e28 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14
+@e29 StaticText label="11:51" name="11:51" at=62,22 size=42x21
+@e30 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

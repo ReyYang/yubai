@@ -1,0 +1,50 @@
+    );
+}: (no error) for children using XC_kAXXCAttributeChildren
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] Fetching AX attributes XC_kAXXCAttributeChildren for AX element pid: 31535, elementOrHash.elementID: 4345737472.86
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] Got attributes, transferring to dictionary for return.
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] AX element pid: 31535, elementOrHash.elementID: 4345737472.86 (AX element pid: 31535, elementOrHash.elementID: 4345737472.86) faulted in {
+    "XC_kAXXCAttributeChildren" =     (
+    );
+}: (no error) for children using XC_kAXXCAttributeChildren
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] Fetching AX attributes XC_kAXXCAttributeChildren for AX element pid: 31535, elementOrHash.elementID: 4345737920.87
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] Got attributes, transferring to dictionary for return.
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] AX element pid: 31535, elementOrHash.elementID: 4345737920.87 (AX element pid: 31535, elementOrHash.elementID: 4345737920.87) faulted in {
+    "XC_kAXXCAttributeChildren" =     (
+    );
+}: (no error) for children using XC_kAXXCAttributeChildren
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] [First Match] no match found for transformer `Descendants matching type Any`
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] [First Match] no match found and no further inputs/transformers to explore in the current sequence, returning nil
+2026-11-02 11:51:40.896 Df Yubai[31535:1da118a] [com.apple.dt.xctest:Default] [First Match] unioned related elements {(
+)} from {(
+)}
+2026-11-02 11:51:40.897 Df Yubai[31535:1da11cd] [com.apple.dt.xctest:Default] Current tree:
+0x12024c8c0 <App element pid: 31535>
+  0x12024f200 <AX element pid: 31535, elementOrHash.elementID: 4326344704.4>
+    0x12024d400 <AX element pid: 31535, elementOrHash.elementID: 4346024960.5>
+      0x12024c500 <AX element pid: 31535, elementOrHash.elementID: 4345950720.6>
+        0x12024dcc0 <AX element pid: 31535, elementOrHash.elementID: 4326343680.7>
+          0x12024fe80 <AX element pid: 31535, elementOrHash.elementID: 4345663872.8>
+            0x12024da40 <AX element pid: 31535, elementOrHash.elementID: 4834135040.9>
+              0x12024c640 <AX element pid: 31535, elementOrHash.elementID: 4834093568.11>
+                0x12024ed00 <AX element pid: 31535, elementOrHash.elementID: 4345638272.17>
+                  0x12024e800 <AX element pid: 31535, elementOrHash.elementID: 4325441536.26>
+                    0x12024ef80 <AX element pid: 31535, elementOrHash.elementID: 4325448256.27>
+                      0x12024e1c0 <AX element pid: 31535, elementOrHash.elementID: 4345342464.29>
+                <…>
+2026-11-02 11:51:40.897 Df Yubai[31535:1da11cd] [com.apple.dt.xctest:Default] Query ↪︎ Descendants matching type Any
+    ↪︎ Elements matching predicate 'hasKeyboardFocus == 1' (First Match) found matching snapshots: {(
+)} (error: (null))
+2026-11-02 11:51:40.897 Df Yubai[31535:1da11cd] [com.apple.dt.xctest:Default] Replying to query ↪︎ Descendants matching type Any
+    ↪︎ Elements matching predicate 'hasKeyboardFocus == 1' (First Match) with results: <XCTElementQueryResults: 0x12152e520> (error: (null))
+2026-11-02 11:51:49.458 Df Yubai[31535:1da118a] [com.apple.FileURL:default] kExcludedFromBackupXattrName set on path: /Users/yang/Library/Developer/CoreSimulator/Devices/37FDA39F-AF08-48EA-9E35-0AAB017AAFE0/data/Containers/Data/Application/E6B4EAE2-5525-4843-8027-0E8A7926F0CC/Library/Caches/YubaiUITests/4478e1f8-a711-49ad-8860-96a8d36c60fb/Recovery
+2026-11-02 11:51:49.471 A  Yubai[31535:1da118a] (libsystem_containermanager.dylib) container_create_or_lookup_app_group_path_by_app_group_identifier
+2026-11-02 11:51:49.471 Df Yubai[31535:1da118a] [com.apple.containermanager:unspecified] container_create_or_lookup_app_group_path_by_app_group_identifier: success
+2026-11-02 11:51:49.477 Df Yubai[31535:1da11cc] [com.apple.chrono:widget] reloadAllTimelines() - reloaded all timelines
+2026-11-02 11:51:58.031 Df Yubai[31535:1da118a] [com.apple.FileURL:default] kExcludedFromBackupXattrName set on path: /Users/yang/Library/Developer/CoreSimulator/Devices/37FDA39F-AF08-48EA-9E35-0AAB017AAFE0/data/Containers/Data/Application/E6B4EAE2-5525-4843-8027-0E8A7926F0CC/Library/Caches/YubaiUITests/4478e1f8-a711-49ad-8860-96a8d36c60fb/Recovery
+2026-11-02 11:51:58.045 A  Yubai[31535:1da118a] (libsystem_containermanager.dylib) container_create_or_lookup_app_group_path_by_app_group_identifier
+2026-11-02 11:51:58.045 Df Yubai[31535:1da118a] [com.apple.containermanager:unspecified] container_create_or_lookup_app_group_path_by_app_group_identifier: success
+2026-11-02 11:51:58.052 Df Yubai[31535:1da11cc] [com.apple.chrono:widget] reloadAllTimelines() - reloaded all timelines
+2026-11-02 11:52:06.672 Df Yubai[31535:1da118a] [com.apple.FileURL:default] kExcludedFromBackupXattrName set on path: /Users/yang/Library/Developer/CoreSimulator/Devices/37FDA39F-AF08-48EA-9E35-0AAB017AAFE0/data/Containers/Data/Application/E6B4EAE2-5525-4843-8027-0E8A7926F0CC/Library/Caches/YubaiUITests/4478e1f8-a711-49ad-8860-96a8d36c60fb/Recovery
+2026-11-02 11:52:06.689 A  Yubai[31535:1da118a] (libsystem_containermanager.dylib) container_create_or_lookup_app_group_path_by_app_group_identifier
+2026-11-02 11:52:06.689 Df Yubai[31535:1da118a] [com.apple.containermanager:unspecified] container_create_or_lookup_app_group_path_by_app_group_identifier: success
+2026-11-02 11:52:06.696 Df Yubai[31535:1da11cc] [com.apple.chrono:widget] reloadAllTimelines() - reloaded all timelines

@@ -1,0 +1,12 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_settings" id="rootPage_settings" at=0,0 size=440x956
+@e3 NavigationBar name="发给云端的内容" id="发给云端的内容" at=0,62 size=440x54
+@e4 Button label="智能与隐私" name="BackButton" id="BackButton" at=20,62 size=44x44
+@e5 StaticText label="发给云端的内容" name="发给云端的内容" at=161,73 size=118x20
+@e6 StaticText label="本次打开" name="本次打开" at=20,136 size=63x19
+@e7 StaticText label="本次打开后发送 0 次，共 0.0 KB" name="cloudSendSummary" id="cloudSendSummary" at=20,159 size=124x26
+@e8 StaticText label="还没有发送记录。" name="emptyCloudSendLog" id="emptyCloudSendLog" at=36,225 size=112x18
+@e9 Button label="清空这份记录" name="clearCloudSendLog" id="clearCloudSendLog" at=20,283 size=400x52
+@e10 StaticText label="11:55" name="11:55" at=61,22 size=45x21
+@e11 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

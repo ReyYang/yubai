@@ -1,0 +1,16 @@
+{
+  "branch_restored": true,
+  "main_unchanged": true,
+  "status_identical": true,
+  "stashes_identical": true,
+  "diff_identical": true,
+  "original_files_identical": true,
+  "index_empty": true,
+  "artifacts_removed": true,
+  "test_branch_removed": true,
+  "restored_sim_hashes_still_match": true,
+  "backup_retained": true,
+  "checked_at": "2026-11-02T10:55:07.754101+08:00",
+  "status": " M Yubai.xcodeproj/project.pbxproj\n?? Yubai.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved\n",
+  "stashes": "2f976db23b6d45b0ea908b281168d42fd9ff8ec5 On fix/insights-push-inset: xcode signing before v16 check\n1ddf0386d08d881d68902b6e86fa661e613e1191 On fix/row-delete-shape: local xcodegen noise before fix/spacing-hig check\n8a98bc0024c88b73ff638e2e1ef210ba9079762b On main: pull前保留本地Xcode配置-20261021\n"
+}
