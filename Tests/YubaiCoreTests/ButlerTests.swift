@@ -2,6 +2,21 @@ import XCTest
 @testable import YubaiCore
 
 final class ButlerTests: XCTestCase {
+    func testFullCardBatchHasJSONBudgetWithoutThinkingAndAcceptsFences() async throws {
+        let candidates = (0..<12).map { index in
+            CardCandidate(kind: .restrain, dedupeKey: "batch-\(index)", evidence: [], facts: [], title: "原观察", body: "原正文", action: .openEvidence, priority: 0)
+        }
+        let title = String(repeating: "字", count: 14), body = String(repeating: "文", count: 60)
+        let cards: [JSONValue] = candidates.indices.map { .object(["key": .string("c\($0)"), "title": .string(title), "body": .string(body)]) }
+        let json = try JSONValue.object(["cards": .array(cards)]).jsonText()
+        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: "```json\n" + json + "\n```")])
+        let result = await ButlerWording.word(candidates, ledger: seed(), transport: script, now: now)
+        XCTAssertEqual(result.map(\.body), Array(repeating: body, count: 12))
+        let requests = await script.recorded()
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertEqual(request.thinking, false)
+        XCTAssertGreaterThanOrEqual(request.maxTokens, 12 * 256)
+    }
     private let now = Dates.parse("2026-06-17 12:00")!
     private func seed() -> Ledger {
         var ledger = Ledger()

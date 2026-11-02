@@ -640,11 +640,14 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
         Card(style: .list) {
             LazyVStack(spacing: YubaiSpace.none) {
                 ForEach(rows) { row in
-                    content(row).frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading).transition(YubaiMotion.rowTransition(reduceMotion: reduceMotion))
-                    if row.id != rows.last?.id {
-                        Rectangle().fill(YubaiColor.separator).frame(height: 1)
-                            .padding(.leading, hasLeadingIcon ? YubaiSize.rowTextInset : YubaiSpace.none).accessibilityHidden(true)
-                    }
+                    // One child per stable ID lets the lazy stack index rows without enumerating conditional dividers.
+                    VStack(spacing: YubaiSpace.none) {
+                        content(row).frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+                        if row.id != rows.last?.id {
+                            Rectangle().fill(YubaiColor.separator).frame(height: 1)
+                                .padding(.leading, hasLeadingIcon ? YubaiSize.rowTextInset : YubaiSpace.none).accessibilityHidden(true)
+                        }
+                    }.transition(YubaiMotion.rowTransition(reduceMotion: reduceMotion))
                 }
             }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: rows.map(\.id))
         }

@@ -114,23 +114,31 @@ final class SubcategorySavingTests: XCTestCase {
     }
     func testBatchChunksAllRowsAndLogsRedactedAllowlistedPayloadOncePerDay() async throws {
         var ledger = seed(); ledger.entries = (0..<161).map { _ in entry(ledger, title: "转账给张三 6222021234567890", category: Classification.pendingCategory) }
-        let replies = try stride(from: 0, to: 161, by: 80).map { try response(Array(ledger.entries.dropFirst($0).prefix(80)), category: "餐饮") }
+        let replies = try stride(from: 0, to: 161, by: 40).map { offset in
+            var reply = try response(Array(ledger.entries.dropFirst(offset).prefix(40)), category: "餐饮")
+            reply.content = "```json\n" + reply.content! + "\n```"
+            return reply
+        }
         let transport = ScriptedChatTransport(replies)
         let result = try await SubcategoryBatch.run(transport: transport, ledger: ledger, now: now)
-        XCTAssertEqual(result.choices.count, 161); let requests = await transport.recorded(); XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(result.choices.count, 161); let requests = await transport.recorded(); XCTAssertEqual(requests.count, 5)
         for request in requests {
             XCTAssertEqual(request.purpose, "小项归类")
+            XCTAssertEqual(request.thinking, false)
             let body = request.messages.compactMap(\.content).joined(separator: "\n")
             XCTAssertFalse(body.contains("不要发出的账户名字")); XCTAssertFalse(body.contains(ledger.accounts[0].id.uuidString)); XCTAssertFalse(body.contains("张三")); XCTAssertFalse(body.contains("6222021234567890"))
             let payload = try JSONValue.parse(request.messages.last!.content!)
-            XCTAssertLessThanOrEqual(payload["entries"]!.arrayValue!.count, 80)
+            let count = payload["entries"]!.arrayValue!.count
+            XCTAssertLessThanOrEqual(count, 40)
+            XCTAssertGreaterThanOrEqual(request.maxTokens, 512 + count * 128)
+            XCTAssertLessThanOrEqual(request.maxTokens, 6000)
             XCTAssertNil(payload["entries"]?.arrayValue?.first?["amount"]); XCTAssertNotNil(payload["entries"]?.arrayValue?.first?["amount_band"])
         }
         try result.apply(to: &ledger, now: now)
         XCTAssertFalse(SubcategoryBatch.isDue(ledger, now)); XCTAssertTrue(SubcategoryBatch.pending(ledger).isEmpty)
         XCTAssertTrue(SubcategoryBatch.isDue(ledger, Dates.addDays(1, to: now))); XCTAssertFalse(ledger.subcategoryMemory.isEmpty)
         do { _ = try await SubcategoryBatch.run(transport: transport, ledger: ledger, now: now); XCTFail("second round") } catch { }
-        let count = await transport.recorded().count; XCTAssertEqual(count, 3)
+        let count = await transport.recorded().count; XCTAssertEqual(count, 5)
     }
     func testBatchStrictJSONRejectsUnknownDuplicateCrossCategoryAndWrongIncome() async throws {
         let base = seed(); var ledger = base; let row = entry(base, title: "用途"); ledger.entries = [row]
@@ -154,12 +162,12 @@ final class SubcategorySavingTests: XCTestCase {
     }
     func baseWithEntry(_ base: Ledger, _ row: Entry) -> Ledger { var next = base; next.entries = [row]; return next }
     func testBatchFailureInLaterChunkAndStaleApplyAreAtomic() async throws {
-        var ledger = seed(); ledger.entries = (0..<81).map { _ in entry(ledger, title: "用途") }
+        var ledger = seed(); ledger.entries = (0..<41).map { _ in entry(ledger, title: "用途") }
         let before = ledger
-        let bad = ScriptedChatTransport([try response(Array(ledger.entries.prefix(80))), ChatMessage(role: .assistant, content: "bad")])
+        let bad = ScriptedChatTransport([try response(Array(ledger.entries.prefix(40))), ChatMessage(role: .assistant, content: "bad")])
         do { _ = try await SubcategoryBatch.run(transport: bad, ledger: ledger, now: now); XCTFail("later chunk") } catch { }
         XCTAssertEqual(ledger, before)
-        let good = ScriptedChatTransport([try response(Array(ledger.entries.prefix(80))), try response(Array(ledger.entries.suffix(1)))])
+        let good = ScriptedChatTransport([try response(Array(ledger.entries.prefix(40))), try response(Array(ledger.entries.suffix(1)))])
         let result = try await SubcategoryBatch.run(transport: good, ledger: ledger, now: now)
         ledger.updatedAt = now.addingTimeInterval(1); let changed = ledger
         XCTAssertThrowsError(try result.apply(to: &ledger, now: now)); XCTAssertEqual(ledger, changed)

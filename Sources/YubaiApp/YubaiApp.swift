@@ -62,6 +62,7 @@ enum AppSheet: Identifiable {
     // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
     @ObservationIgnored private var cachedEntries: [Entry]?
+    @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, calendar: Calendar, value: EntryTimeline.Snapshot)?
     var funds: Funds {
         _ = derivedRevision
         let now = Date(); let zone = TimeZone.current
@@ -85,7 +86,15 @@ enum AppSheet: Identifiable {
         let rows = current.entries.sorted { $0.date > $1.date }
         cachedEntries = rows; return rows
     }
-    private func invalidateDerived() { cachedEntries = nil; refreshTimeDerived() }
+    func entryTimeline(month: Date, search: String, filter: EntryTimeline.Filter) -> EntryTimeline.Snapshot {
+        _ = derivedRevision
+        let calendar = Dates.calendar
+        if let cached = cachedEntryTimeline, cached.month == month, cached.search == search, cached.filter == filter, cached.calendar == calendar { return cached.value }
+        let value = EntryTimeline.snapshot(sortedEntries: sortedEntries, ledger: current, month: month, search: search, filter: filter, calendar: calendar)
+        cachedEntryTimeline = (month, search, filter, calendar, value)
+        return value
+    }
+    private func invalidateDerived() { cachedEntries = nil; cachedEntryTimeline = nil; refreshTimeDerived() }
     func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
     var locations: LedgerLocations

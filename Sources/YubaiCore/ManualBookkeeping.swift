@@ -168,6 +168,27 @@ public struct TodayEntries: Equatable, Sendable {
 }
 /// One pass over the store's cached descending entries. No ledger scans per day or row.
 public enum EntryTimeline {
+    /// Only display values cross into a lazy row; import metadata and the ledger stay out of its view value.
+    public struct Row: Identifiable, Equatable, Sendable {
+        public let id: UUID
+        public let amount: Int64
+        public let inflow: Bool
+        public let uncategorized: Bool
+        public let categoryName: String
+        public let note: String
+        public let symbol: String
+    }
+    public struct Day: Identifiable, Equatable, Sendable {
+        public var id: Date { date }
+        public let date: Date
+        public let spending: Int64
+        public let entries: [Row]
+    }
+    public struct Snapshot: Equatable, Sendable {
+        public let spending: Int64
+        public let income: Int64
+        public let days: [Day]
+    }
     public enum Filter: String, CaseIterable, Sendable {
         case all = "全部", expense = "支出", income = "收入", uncategorized = "没分类"
         public func includes(_ entry: Entry) -> Bool {
@@ -182,13 +203,49 @@ public enum EntryTimeline {
     public static func isUncategorized(_ entry: Entry) -> Bool {
         Classification.isPending(entry)
     }
-    public static func months(sortedEntries: [Entry], ledger: Ledger, search: String = "", filter: Filter = .all) -> [EntryMonth] {
+    /// Deterministic for the supplied ledger, query, month and calendar; cache at the ledger revision boundary.
+    public static func snapshot(sortedEntries: [Entry], ledger: Ledger, month: Date, search: String = "", filter: Filter = .all,
+                                calendar: Calendar = Dates.calendar) -> Snapshot {
+        guard let interval = calendar.dateInterval(of: .month, for: month) else { return Snapshot(spending: 0, income: 0, days: []) }
+        let entries = sortedEntries.filter { $0.deletedAt == nil && $0.date >= interval.start && $0.date < interval.end }
+        let rents = Dictionary(uniqueKeysWithValues: ledger.rents.map { ($0.id, $0) })
+        var spending: Int64 = 0; var income: Int64 = 0
+        for entry in entries {
+            spending += Finance.spendingAmount(entry, rent: entry.rentID.flatMap { rents[$0] })
+            if entry.nature == .income { income += entry.amount }
+        }
+        let symbols = Dictionary(uniqueKeysWithValues: ledger.categories.map { ($0.name, $0.symbol) })
+        let days = months(sortedEntries: entries, ledger: ledger, search: search, filter: filter, calendar: calendar).flatMap(\.days).map { day in
+            Day(date: day.date, spending: day.spending, entries: day.entries.map { entry in
+                let category = ledger.resolveCategory(entry.category)
+                let uncategorized = isUncategorized(entry)
+                let name = uncategorized ? "没分类" : Classification.displayCategory(category)
+                let note = entry.note.isEmpty ? (entry.displayTitle == name ? "" : entry.displayTitle) : entry.note
+                let symbol: String
+                if let known = symbols[category] { symbol = known }
+                else {
+                    switch category {
+                    case "日用", "购物": symbol = "bag"
+                    case "娱乐": symbol = "sparkles"
+                    case "工资", "奖金": symbol = "banknote"
+                    case "兼职": symbol = "hammer"
+                    case "理财收益": symbol = "chart.line.uptrend.xyaxis"
+                    default: symbol = entry.nature.symbol
+                    }
+                }
+                return Row(id: entry.id, amount: entry.amount, inflow: entry.nature.inflow, uncategorized: uncategorized,
+                           categoryName: name, note: note, symbol: symbol)
+            })
+        }
+        return Snapshot(spending: spending, income: income, days: days)
+    }
+    public static func months(sortedEntries: [Entry], ledger: Ledger, search: String = "", filter: Filter = .all,
+                              calendar: Calendar = Dates.calendar) -> [EntryMonth] {
         let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0.name) })
         let rents = Dictionary(uniqueKeysWithValues: ledger.rents.map { ($0.id, $0) })
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
         let formatter = NumberFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.numberStyle = .decimal
         formatter.minimumFractionDigits = 2; formatter.maximumFractionDigits = 2
-        let calendar = Dates.calendar
         var dayInterval: DateInterval?; var monthInterval: DateInterval?
         var result: [EntryMonth] = []
         for entry in sortedEntries where entry.deletedAt == nil && filter.includes(entry) {
