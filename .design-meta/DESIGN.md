@@ -22,6 +22,8 @@ ImportOrganizer.swift 先按对方和收支方向生成本次待整理记录的�
 
 补充离线执行：提取实际 IntelligenceRuntime、AppStore.apply 与完整 UITestSupport／UITestTransport，链接真实 Core，以 Swift 6 严格并发编译；平台／持久化宿主与 UI 的 BG 门控用替身。完成／停止／失败三条原 questions 场景验证 30／70 保存与暂缓提问、收尾显示和常亮恢复；by-party 验证 1 次分组＋1 次逐笔请求、进度 0→9→10、6／3 笔兜底两组、手动归类后剩 3 笔及重读持久化。该执行不代替 Apple SDK 编译、XCTest UI 或系统后台实跑。
 
+同日合并 `feat/background-organize` 的夹具选择修正：UITestTransport 的「导入整理」与「导入整理·按对方」均用 `usesBackgroundFixture` 决定 8 秒延迟，与 `allowsBackground` 解耦。保留现有不同对方的 150 行夹具，无须调整数据或产品流程；第二块保存 1 个问题。重新提取实际源码（仅替换平台宿主／条件并省略 OSLog），链接真实 Core 以 Swift 6 严格并发离线执行：`salary`＋`BACKGROUND_FIXTURE=1`、清空场景，`ALLOW_BACKGROUND=0/1` 分别约 41.7／41.8 秒，均保存 30→60→90→120→150，问题中途已写盘但隐藏、完成及重读后显示；0 路径不提交 BG、满足既有前台提醒条件并常亮，完成后恢复。另验证分组 purpose 也延迟 8 秒、原六个显式整理场景优先且保留时序／重试语义、普通 salary 与无效开关不加延迟。指定全量测试仍为 616 项、612 通过／4 原有实网跳过／0 失败；全部 App 的 iOS 26 模拟器 Debug／设备 Release 与 UI 模拟器 Debug 语法解析通过。UI 测试源码与产品代码保持；Apple SDK／UI／系统后台实跑仍待 Mac，无新增／改动可见中文，未提交。手动命令已补齐独立夹具开关，见 README。
+
 新增／改动的固定界面可见中文：无。新增发送记录用途事实标签「导入整理·按对方」；生产问题与选项由模型生成。UI 夹具仅复用原问题／选项及合成数据，未新增生产说明句。
 
 

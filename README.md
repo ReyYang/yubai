@@ -47,6 +47,7 @@
 
 ```sh
 SIMCTL_CHILD_YUBAI_UI_ALLOW_BACKGROUND=1 \
+SIMCTL_CHILD_YUBAI_UI_BACKGROUND_FIXTURE=1 \
 SIMCTL_CHILD_YUBAI_UI_TEST_SCRIPT=salary \
 SIMCTL_CHILD_YUBAI_UI_TEST_CONFIGURED_KEY=1 \
 SIMCTL_CHILD_YUBAI_UI_ORGANIZATION_SCENARIO= \
@@ -55,4 +56,6 @@ xcrun simctl launch --terminate-running-process booted app.yubai.personal \
   --test-ledger "$(uuidgen)" -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN
 ```
 
-`salary`＋开关、不指定额外场景时，复用原 70 笔生成器，仅本模式扩为 150 笔待整理记录：30 笔／段，共 5 段，每段假回复等待约 8 秒，合计约 40 秒，全程不联网。点「整理」后立即回桌面，观察系统「整理导入记录」的进度；再运行一次命令可用新账本验证系统「停止」，回到 App 查看已完成段，再整理只处理剩余。若仍显示「整理时别离开余白」，表示系统未接受 BG 提交。未开启开关时，现有夹具、回复时序和 UI 测试的常亮回退保持；Release／真机不包含此开关。
+`salary`＋`YUBAI_UI_BACKGROUND_FIXTURE=1`、清空额外场景时，选择 150 笔待整理夹具并默认配置假密钥。各行对方不同，新增按对方阶段后仍走 30 笔／段、共 5 段；两种整理 purpose 的假回复均等待约 8 秒，合计约 40 秒，全程不联网。第二段保存 1 个问题，整理期间隐藏，结束后显示。
+
+`YUBAI_UI_ALLOW_BACKGROUND` 只控制是否允许 BG 提交，与夹具选择独立。设为 `1` 后点「整理」并立即回桌面，观察系统「整理导入记录」的进度；再用新账本验证系统「停止」及仅重试剩余。设为 `0` 时同一夹具显示「整理时别离开余白」、屏幕常亮，留在前台也能完成；设为 `1` 仍显示此句则表示系统未接受 BG 提交。原有显式整理场景优先于夹具开关，数据与时序保持；未选慢夹具时回复不加延迟。Release／真机不包含这些测试开关。
