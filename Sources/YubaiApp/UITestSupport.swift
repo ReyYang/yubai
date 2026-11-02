@@ -21,6 +21,12 @@ enum UITestSupport {
     static var allowsBackground: Bool {
         script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_ALLOW_BACKGROUND"] == "1"
     }
+    /// Select the same slow, cloud-enabled fixture for BG and foreground fallback checks.
+    /// Explicit organization scenarios keep their existing data and timing.
+    static var usesBackgroundFixture: Bool {
+        script == "salary" && organizationScenario == nil &&
+            ProcessInfo.processInfo.environment["YUBAI_UI_BACKGROUND_FIXTURE"] == "1"
+    }
     static var organizationScenario: String? {
         guard script == "salary", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
               ["stop-second", "fail-second", "by-party", "questions-complete", "questions-stop", "questions-fail"].contains(value) else { return nil }
@@ -48,12 +54,13 @@ enum UITestSupport {
     ]
     /// Scripted replies alone do not imply that a key is configured.
     /// UI tests can explicitly simulate either state without changing Keychain.
+    /// The manual background fixture defaults to a configured fake key.
     static var configuredKeyOverride: Bool? {
         guard script != nil else { return nil }
         switch ProcessInfo.processInfo.environment["YUBAI_UI_TEST_CONFIGURED_KEY"] {
         case "1": return true
         case "0": return false
-        default: return nil
+        default: return usesBackgroundFixture ? true : nil
         }
     }
     static var script: String? {
@@ -81,7 +88,7 @@ enum UITestSupport {
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty", script != "welcome-import" else { return }
         let now = Date()
         if script == "salary" {
-            try repository.save(organizationScenario == nil && !allowsBackground ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
+            try repository.save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
             return
         }
         if screenshotScripts.contains(script) {
@@ -180,7 +187,7 @@ enum UITestSupport {
         }
         return ledger
     }
-    /// Three chunks by default; the background opt-in uses five slow chunks.
+    /// Three chunks by default; the manual background fixture uses five slow chunks.
     /// No salary candidate or automatic cloud work.
     static func organizationLedger(now: Date) -> Ledger {
         var ledger = salaryLedger(now: now)
@@ -204,7 +211,7 @@ enum UITestSupport {
             ButlerCards.refresh(&ledger, now: now)
             return ledger
         }
-        let count = allowsBackground ? 150 : 70
+        let count = usesBackgroundFixture ? 150 : 70
         var batch = ImportBatch(filename: "合成大量流水.csv", importedCount: count, duplicateCount: 0, skippedCount: 0)
         batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
         ledger.imports = [batch]
@@ -320,7 +327,7 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
-        if request.purpose == "导入整理", UITestSupport.allowsBackground {
+        if request.purpose == "导入整理", UITestSupport.usesBackgroundFixture {
             try await Task.sleep(for: .seconds(8))
         }
         if script == "salary", request.purpose == "导入整理" {
@@ -372,7 +379,9 @@ struct UITestTransport: ChatTransport {
                                 "nature": .string(income ? "income" : "expense"), "confident": .bool(true)])
             }
             var questions: [JSONValue] = []
-            if scenario?.hasPrefix("questions-") == true, number == 1, let id = ids.sorted().first {
+            let asksQuestion = (scenario?.hasPrefix("questions-") == true && number == 1) ||
+                (UITestSupport.usesBackgroundFixture && number == 2)
+            if asksQuestion, let id = ids.sorted().first {
                 let options: [JSONValue] = [("日常支出", "expense"), ("还款", "repayment")].map { title, nature in
                     .object(["title": .string(title), "items": .array([
                         .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string(nature)])

@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import YubaiCore
+import os
 #if os(iOS)
 import BackgroundTasks
 import UIKit
@@ -9,6 +10,7 @@ import UIKit
 /// Owns the system assertion for one explicit run; the organizer remains the
 /// same async checkpoint pipeline whether or not submission succeeds.
 @MainActor final class ImportOrganizationExecution {
+    private static let logger = Logger(subsystem: "app.yubai.personal", category: "background-organize")
     let id: UUID
     private var progress: ImportOrganizationProgress
     private let cancel: @MainActor () -> Void
@@ -29,34 +31,56 @@ import UIKit
         #endif
     }
     func start() -> Bool {
+        let logger = Self.logger
+        let executionID = id.uuidString
         #if os(iOS)
         originalIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
         UIApplication.shared.isIdleTimerDisabled = true
         #if DEBUG && targetEnvironment(simulator)
-        if UITestSupport.script != nil && !UITestSupport.allowsBackground { return false }
+        if UITestSupport.script != nil && !UITestSupport.allowsBackground {
+            logger.info("run=\(executionID, privacy: .public) start=false: simulator UI script disallows background")
+            return false
+        }
         #endif
-        guard progress.total > 0, UIApplication.shared.applicationState == .active else { return false }
+        guard progress.total > 0 else {
+            logger.info("run=\(executionID, privacy: .public) start=false: progress.total=\(self.progress.total, privacy: .public)")
+            return false
+        }
+        guard UIApplication.shared.applicationState == .active else {
+            logger.info("run=\(executionID, privacy: .public) start=false: applicationState=\(UIApplication.shared.applicationState.rawValue, privacy: .public) (not active)")
+            return false
+        }
         // Register/submit the concrete suffix of Info.plist's bundle-ID wildcard
         // immediately on the user action. .fail avoids a detached, queued rerun.
-        guard BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main, launchHandler: { [weak self] task in
+        let registered = BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main, launchHandler: { [weak self] task in
+            logger.info("run=\(executionID, privacy: .public) launch handler called at=\(Date().ISO8601Format(), privacy: .public)")
             // The scheduler guarantees .main here; BGTask is not Sendable.
             nonisolated(unsafe) let deliveredTask = task
             MainActor.assumeIsolated {
                 guard let self, let task = deliveredTask as? BGContinuedProcessingTask else {
+                    logger.error("run=\(executionID, privacy: .public) launch handler rejected: execution released or unexpected task type")
                     deliveredTask.setTaskCompleted(success: false); return
                 }
                 self.attach(task)
             }
-        }) else { return false }
+        })
+        logger.info("run=\(executionID, privacy: .public) register success=\(registered, privacy: .public) identifier=\(self.identifier, privacy: .public)")
+        guard registered else { return false }
         let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: "整理导入记录", subtitle: progress.subtitle)
         request.strategy = .fail
         do {
             try BGTaskScheduler.shared.submit(request)
+            logger.info("run=\(executionID, privacy: .public) submit succeeded; start=true")
             submitted = true
             return true
         }
-        catch { return false }
+        catch {
+            let error = error as NSError
+            logger.error("run=\(executionID, privacy: .public) submit failed; start=false domain=\(error.domain, privacy: .public) code=\(error.code, privacy: .public) localizedDescription=\(error.localizedDescription, privacy: .public)")
+            return false
+        }
         #else
+        logger.info("run=\(executionID, privacy: .public) start=false: non-iOS platform")
         return false
         #endif
     }
@@ -82,6 +106,7 @@ import UIKit
         #endif
     }
     func finish(success: Bool) {
+        Self.logger.info("run=\(self.id.uuidString, privacy: .public) finish(success: \(success, privacy: .public)) alreadyFinished=\(self.completion != nil, privacy: .public)")
         guard completion == nil else { return }
         completion = success
         #if os(iOS)
@@ -107,7 +132,10 @@ import UIKit
             backgroundTask = nil
             return
         }
+        let logger = Self.logger
+        let executionID = id.uuidString
         task.expirationHandler = { [weak self] in
+            logger.info("run=\(executionID, privacy: .public) expiration triggered at=\(Date().ISO8601Format(), privacy: .public)")
             Task { @MainActor in
                 guard let self, self.completion == nil else { return }
                 // System Stop and resource expiration share the in-app Stop path.
