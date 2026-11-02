@@ -1,0 +1,152 @@
+[
+  {
+    "class": "AppFlowTests",
+    "name": "testOrganizedQuestionsPrecedeCollapsedUncoveredInflows",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testPendingImportsOrganizesOnlyAfterTapWithFakeTransport",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testPendingImportsStopKeepsCompletedChunkAndRemainingCount",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testPendingImportsSecondChunkFailureShowsReasonAndRetriesOnlyRemaining",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testImportOrganizeAnswerAndUndoEntireBatch",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testButlerFastLongSwipeDismissesWithoutPaging",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testButlerFastShortSwipeDismisses",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testButlerRightSwipeAtFirstPagePreservesCardAndPaging",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testButlerSwipeDismissesWithoutSwitchingTabs",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testSalaryConfirmationChangesHorizonAndUndoRestoresCard",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testWelcomeAnnualStatementAllRangeCommitsFullCount",
+    "extra": false
+  },
+  {
+    "class": "MotionStateTests",
+    "name": "testOnlyNewActiveEntriesTriggerSaveAndMissingActiveEntriesTriggerDeletion",
+    "extra": false
+  },
+  {
+    "class": "MotionStateTests",
+    "name": "testTabDirectionAndReselection",
+    "extra": false
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testStorageEntryAndOverviewOpenFromMe",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testScrolledRootHeadersStayInsideSafeAreaWhenOpeningEntrySheet",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testEntrySheetWithPurposeSuggestionsKeepsActionsAboveHomeIndicator",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testTabTapReturnsToLedgerAfterRightSwipe",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testClosedLedgerRowPagesRightAndRevealedRowClosesFirst",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testRevealedLedgerRowConsumesSwipesInBothDirections",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testOnlyOneLedgerRowRevealsDeleteAndOutsideTapClosesIt",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testRevealedLedgerRowSlowLeftSwipeKeepsCurrentTab",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testLedgerRevealClosesAfterTabSelectionAndPaging",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testLedgerRowSwipesDoNotOpenEditorAndTapStillWorks",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testLedgerMonthFiltersAndSearchToggle",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testLedgerSwipeDeleteAndUndoRestoresRow",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testLedgerRowsStillScrollVerticallyAndOpenWithTap",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testFirstLaunchEmptyLedgerAccountAndAvailableFunds",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testFloatingNavigationHidesForKeyboardAndLeavesLastLedgerRowVisible",
+    "extra": true
+  },
+  {
+    "class": "AppFlowTests",
+    "name": "testAskNumericAnswerEvidenceAndEntryDetail",
+    "extra": true
+  }
+]

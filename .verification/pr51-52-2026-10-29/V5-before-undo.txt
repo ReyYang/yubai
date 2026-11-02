@@ -1,0 +1,20 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_overview" id="rootPage_overview" at=0,0 size=440x956
+@e3 NavigationBar name="按对方分" id="按对方分" at=0,62 size=440x54
+@e4 Button label="现在" name="BackButton" id="BackButton" at=20,62 size=44x44
+@e5 StaticText label="按对方分" name="按对方分" at=186,73 size=67x20
+@e6 StaticText label="3" name="unsortedEntryCount" id="unsortedEntryCount" at=20,124 size=19x36
+@e7 StaticText label="笔还没分类" name="笔还没分类" at=47,140 size=64x15
+@e8 TextField name="unsortedPartySearch" id="unsortedPartySearch" at=20,168 size=400x40
+@e9 Button label="合成对方乙、3 笔、−3.00" name="unsortedGroup_out:合成对方乙" id="unsortedGroup_out:合成对方乙" at=36,231 size=368x34
+@e10 StaticText label="合成对方乙" name="合成对方乙" at=36,231 size=74x18
+@e11 StaticText label="3 笔" name="3 笔" at=36,251 size=23x14
+@e12 StaticText label="−3.00" name="−3.00" at=338,239 size=44x17
+@e13 Image label="前进" name="chevron.right" id="chevron.right" at=397,243 size=6x10
+@e14 StaticText label="整理完成" name="toastMessage" id="toastMessage" at=36,789 size=55x17
+@e15 StaticText label="·" name="·" at=285,789 size=7x17
+@e16 Button label="撤销" name="undoLastChange" id="undoLastChange" at=316,789 size=28x17
+@e17 Button label="关闭提示" name="xmark" id="xmark" at=385,793 size=9x9
+@e18 StaticText label="09:17" name="09:17" at=60,22 size=47x21
+@e19 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

@@ -1,0 +1,40 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_overview" id="rootPage_overview" at=0,0 size=440x956
+@e3 NavigationBar name="一组" id="一组" at=0,62 size=440x54
+@e4 Button label="按对方分" name="BackButton" id="BackButton" at=20,62 size=44x44
+@e5 StaticText label="一组" name="一组" at=203,73 size=34x20
+@e6 StaticText label="合成对方甲" name="合成对方甲" at=20,123 size=96x24
+@e7 StaticText label="6 笔 ·" name="6 笔 ·" at=20,149 size=34x15
+@e8 StaticText label="−6.00" name="−6.00" at=58,149 size=38x15
+@e9 StaticText label="这些钱是" name="这些钱是" at=20,181 size=48x14
+@e10 Button label="日常支出" name="unsortedUse_expense" id="unsortedUse_expense" at=20,211 size=72x30 selected
+@e11 Button label="买基金" name="unsortedUse_investBuy" id="unsortedUse_investBuy" at=100,211 size=60x30
+@e12 Button label="还款" name="unsortedUse_repayment" id="unsortedUse_repayment" at=168,211 size=48x30
+@e13 Button label="借给别人" name="unsortedUse_lend" id="unsortedUse_lend" at=224,211 size=72x30
+@e14 StaticText label="分类" name="分类" at=20,263 size=24x14
+@e15 Button label="餐饮" name="unsortedCategory_餐饮" id="unsortedCategory_餐饮" at=20,293 size=48x30 selected
+@e16 Button label="购物" name="unsortedCategory_购物" id="unsortedCategory_购物" at=76,293 size=48x30
+@e17 Button label="交通" name="unsortedCategory_交通" id="unsortedCategory_交通" at=132,293 size=48x30
+@e18 Button label="居住" name="unsortedCategory_居住" id="unsortedCategory_居住" at=188,293 size=48x30
+@e19 Button label="医疗健康" name="unsortedCategory_医疗健康" id="unsortedCategory_医疗健康" at=244,293 size=72x30
+@e20 Button label="娱乐" name="unsortedCategory_娱乐" id="unsortedCategory_娱乐" at=324,293 size=48x30
+@e21 Button label="旅行" name="unsortedCategory_旅行" id="unsortedCategory_旅行" at=20,345 size=48x30
+@e22 Button label="会员订阅" name="unsortedCategory_会员订阅" id="unsortedCategory_会员订阅" at=76,345 size=72x30
+@e23 Button label="学习成长" name="unsortedCategory_学习成长" id="unsortedCategory_学习成长" at=156,345 size=72x30
+@e24 Button label="人情家庭" name="unsortedCategory_人情家庭" id="unsortedCategory_人情家庭" at=236,345 size=72x30
+@e25 Button label="利息手续费" name="unsortedCategory_利息手续费" id="unsortedCategory_利息手续费" at=316,345 size=83x30
+@e26 Button label="其他支出" name="unsortedCategory_其他支出" id="unsortedCategory_其他支出" at=20,397 size=72x30
+@e27 Button label="这 6 笔都这样记" name="applyUnsortedGroup" id="applyUnsortedGroup" at=20,454 size=125x36
+@e28 StaticText label="最近几笔" name="最近几笔" at=20,510 size=48x14
+@e29 Other name="unsortedRecentEntries" id="unsortedRecentEntries" at=20,532 size=400x187
+@e30 StaticText label="10/27" name="10/27" at=36,550 size=33x15
+@e31 StaticText label="−1.00" name="−1.00" at=365,550 size=38x15
+@e32 StaticText label="10/26" name="10/26" at=36,595 size=34x15
+@e33 StaticText label="−1.00" name="−1.00" at=365,595 size=38x15
+@e34 StaticText label="10/25" name="10/25" at=36,640 size=34x15
+@e35 StaticText label="−1.00" name="−1.00" at=365,640 size=38x15
+@e36 StaticText label="10/24" name="10/24" at=36,685 size=34x15
+@e37 StaticText label="−1.00" name="−1.00" at=365,685 size=38x15
+@e38 StaticText label="09:16" name="09:16" at=59,22 size=48x21
+@e39 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

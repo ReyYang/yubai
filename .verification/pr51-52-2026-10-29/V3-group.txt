@@ -1,0 +1,27 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_overview" id="rootPage_overview" at=0,0 size=440x956
+@e3 NavigationBar name="一组" id="一组" at=0,62 size=440x54
+@e4 Button label="按对方分" name="BackButton" id="BackButton" at=20,62 size=44x44
+@e5 StaticText label="一组" name="一组" at=203,73 size=34x20
+@e6 StaticText label="合成对方甲" name="合成对方甲" at=20,123 size=96x24
+@e7 StaticText label="6 笔 ·" name="6 笔 ·" at=20,149 size=34x15
+@e8 StaticText label="−6.00" name="−6.00" at=58,149 size=38x15
+@e9 StaticText label="这些钱是" name="这些钱是" at=20,181 size=48x14
+@e10 Button label="日常支出" name="unsortedUse_expense" id="unsortedUse_expense" at=20,211 size=72x30
+@e11 Button label="买基金" name="unsortedUse_investBuy" id="unsortedUse_investBuy" at=100,211 size=60x30
+@e12 Button label="还款" name="unsortedUse_repayment" id="unsortedUse_repayment" at=168,211 size=48x30
+@e13 Button label="借给别人" name="unsortedUse_lend" id="unsortedUse_lend" at=224,211 size=72x30
+@e14 Button label="这 6 笔都这样记" name="applyUnsortedGroup" id="applyUnsortedGroup" at=20,268 size=125x36 disabled
+@e15 StaticText label="最近几笔" name="最近几笔" at=20,323 size=48x14
+@e16 Other name="unsortedRecentEntries" id="unsortedRecentEntries" at=20,346 size=400x186
+@e17 StaticText label="10/27" name="10/27" at=36,364 size=33x15
+@e18 StaticText label="−1.00" name="−1.00" at=365,364 size=38x15
+@e19 StaticText label="10/26" name="10/26" at=36,409 size=34x15
+@e20 StaticText label="−1.00" name="−1.00" at=365,409 size=38x15
+@e21 StaticText label="10/25" name="10/25" at=36,454 size=34x15
+@e22 StaticText label="−1.00" name="−1.00" at=365,454 size=38x15
+@e23 StaticText label="10/24" name="10/24" at=36,499 size=34x15
+@e24 StaticText label="−1.00" name="−1.00" at=365,499 size=38x15
+@e25 StaticText label="09:16" name="09:16" at=59,22 size=48x21
+@e26 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

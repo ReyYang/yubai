@@ -1,0 +1,57 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_overview" id="rootPage_overview" at=0,0 size=440x956
+@e3 NavigationBar name="需要留意" id="需要留意" at=0,62 size=440x54
+@e4 Button label="现在" name="BackButton" id="BackButton" at=20,62 size=44x44
+@e5 StaticText label="需要留意" name="需要留意" at=186,73 size=67x20
+@e6 Other name="butlerCard_unknownInflow" value="closed" id="butlerCard_unknownInflow" at=20,136 size=400x195
+@e7 StaticText label="这笔是什么？ · 11月2日" name="这笔是什么？ · 11月2日" at=50,159 size=117x13
+@e8 StaticText label="这笔是什么？" name="butlerTitle_unknownInflow" id="butlerTitle_unknownInflow" at=36,188 size=87x19
+@e9 Button label="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" name="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" at=36,229 size=342x15
+@e10 Button label="看看这几笔" name="看看这几笔" at=36,277 size=88x31
+@e11 Button label="更多：知道了、以后别提" name="butlerOptions_unknownInflow" id="butlerOptions_unknownInflow" at=360,152 size=44x44
+@e12 Button at=360,152 size=44x44
+@e13 Image label="更多" name="ellipsis" id="ellipsis" at=376,172 size=12x2
+@e14 Other name="butlerCard_unknownInflow" value="closed" id="butlerCard_unknownInflow" at=20,343 size=400x195
+@e15 StaticText label="这笔是什么？ · 11月2日" name="这笔是什么？ · 11月2日" at=50,366 size=117x13
+@e16 StaticText label="这笔是什么？" name="butlerTitle_unknownInflow" id="butlerTitle_unknownInflow" at=36,395 size=87x19
+@e17 Button label="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" name="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" at=36,437 size=342x15
+@e18 Button label="看看这几笔" name="看看这几笔" at=36,485 size=88x31
+@e19 Button label="更多：知道了、以后别提" name="butlerOptions_unknownInflow" id="butlerOptions_unknownInflow" at=360,359 size=44x44
+@e20 Button at=360,359 size=44x44
+@e21 Image label="更多" name="ellipsis" id="ellipsis" at=376,380 size=12x2
+@e22 Other name="butlerCard_unknownInflow" value="closed" id="butlerCard_unknownInflow" at=20,550 size=400x195
+@e23 StaticText label="这笔是什么？ · 11月2日" name="这笔是什么？ · 11月2日" at=50,574 size=117x13
+@e24 StaticText label="这笔是什么？" name="butlerTitle_unknownInflow" id="butlerTitle_unknownInflow" at=36,602 size=87x19
+@e25 Button label="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" name="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" at=36,644 size=342x15
+@e26 Button label="看看这几笔" name="看看这几笔" at=36,692 size=88x31
+@e27 Button label="更多：知道了、以后别提" name="butlerOptions_unknownInflow" id="butlerOptions_unknownInflow" at=360,566 size=44x44
+@e28 Button at=360,566 size=44x44
+@e29 Image label="更多" name="ellipsis" id="ellipsis" at=376,587 size=12x2
+@e30 Other name="butlerCard_unknownInflow" value="closed" id="butlerCard_unknownInflow" at=20,758 size=400x195
+@e31 StaticText label="这笔是什么？ · 11月2日" name="这笔是什么？ · 11月2日" at=50,781 size=117x13
+@e32 StaticText label="这笔是什么？" name="butlerTitle_unknownInflow" id="butlerTitle_unknownInflow" at=36,810 size=87x19
+@e33 Button label="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" name="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" at=36,851 size=342x15
+@e34 Button label="看看这几笔" name="看看这几笔" at=36,899 size=88x31
+@e35 Button label="更多：知道了、以后别提" name="butlerOptions_unknownInflow" id="butlerOptions_unknownInflow" at=360,774 size=44x44
+@e36 Button at=360,774 size=44x44
+@e37 Image label="更多" name="ellipsis" id="ellipsis" at=376,794 size=12x2
+@e38 Other name="butlerCard_unknownInflow" value="closed" id="butlerCard_unknownInflow" at=20,965 size=400x195
+@e39 StaticText label="这笔是什么？ · 11月2日" name="这笔是什么？ · 11月2日" at=50,988 size=117x13
+@e40 StaticText label="这笔是什么？" name="butlerTitle_unknownInflow" id="butlerTitle_unknownInflow" at=36,1017 size=87x19
+@e41 Button label="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" name="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" at=36,1059 size=342x15
+@e42 Button label="看看这几笔" name="看看这几笔" at=36,1107 size=88x31
+@e43 Button label="更多：知道了、以后别提" name="butlerOptions_unknownInflow" id="butlerOptions_unknownInflow" at=360,981 size=44x44
+@e44 Button at=360,981 size=44x44
+@e45 Image label="更多" name="ellipsis" id="ellipsis" at=376,1001 size=12x2
+@e46 Other name="butlerCard_unknownInflow" value="closed" id="butlerCard_unknownInflow" at=20,1172 size=400x195
+@e47 StaticText label="这笔是什么？ · 11月2日" name="这笔是什么？ · 11月2日" at=50,1195 size=117x13
+@e48 StaticText label="这笔是什么？" name="butlerTitle_unknownInflow" id="butlerTitle_unknownInflow" at=36,1224 size=87x19
+@e49 Button label="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" name="¥2.00 的用途还没记下，可以看看原始记录。 · 明细：1 笔 ›" at=36,1266 size=342x15
+@e50 Button label="看看这几笔" name="看看这几笔" at=36,1314 size=88x31
+@e51 Button label="更多：知道了、以后别提" name="butlerOptions_unknownInflow" id="butlerOptions_unknownInflow" at=360,1188 size=44x44
+@e52 Button at=360,1188 size=44x44
+@e53 Image label="更多" name="ellipsis" id="ellipsis" at=376,1209 size=12x2
+@e54 StaticText label="说过「以后别提」的：1 类" name="说过「以后别提」的：1 类" at=20,1379 size=134x14
+@e55 StaticText label="09:15" name="09:15" at=59,22 size=48x21
+@e56 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

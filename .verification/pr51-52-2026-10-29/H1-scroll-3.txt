@@ -1,0 +1,93 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_entries" id="rootPage_entries" at=0,0 size=440x956
+@e3 StaticText label="账目" name="rootHeaderTitle" id="rootHeaderTitle" at=205,89 size=30x18
+@e4 Button label="问余白" name="askYubai" id="askYubai" at=376,76 size=44x44
+@e5 ScrollView name="entriesScroll" id="entriesScroll" at=0,146 size=440x810
+@e6 Button label="上个月" name="entriesPreviousMonth" id="entriesPreviousMonth" at=4,146 size=44x44
+@e7 StaticText label="2025 年 11 月" name="entriesMonth" id="entriesMonth" at=52,159 size=92x18
+@e8 Button label="下个月" name="entriesNextMonth" id="entriesNextMonth" at=148,146 size=44x44
+@e9 Button label="关闭搜索" name="entriesSearchButton" id="entriesSearchButton" at=376,146 size=44x44
+@e10 Image label="搜索" name="magnifyingglass" id="magnifyingglass" at=37,216 size=14x14
+@e11 TextField label="搜索账目" name="entriesSearch" value="5.00" id="entriesSearch" at=61,214 size=342x18
+@e12 StaticText label="本月支出" name="本月支出" at=36,274 size=48x14
+@e13 StaticText label="25,313.17" name="25,313.17" at=36,292 size=112x26
+@e14 StaticText label="本月收入" name="本月收入" at=242,274 size=48x14
+@e15 StaticText label="+28,955.42" name="+28,955.42" at=242,292 size=126x26
+@e16 ScrollView label="筛选账目" name="筛选账目" at=20,346 size=400x44
+@e17 Button label="全部" name="entriesFilter_全部" id="entriesFilter_全部" at=20,346 size=58x44 selected
+@e18 Button label="支出" name="entriesFilter_支出" id="entriesFilter_支出" at=86,346 size=58x44
+@e19 Button label="收入" name="entriesFilter_收入" id="entriesFilter_收入" at=152,346 size=58x44
+@e20 Button label="没分类" name="entriesFilter_没分类" id="entriesFilter_没分类" at=218,346 size=71x44
+@e21 StaticText label="11月18日 周二" name="11月18日 周二" at=36,418 size=90x17
+@e22 StaticText label="−45.00" name="−45.00" at=341,414 size=62x21
+@e23 Button label="没分类、对手信息：虚构科技服务公司0091 9000000000000018、−45.00" name="ledgerEntry_002C75C3-9CFF-4CF8-9C00-618925B8270E" value="closed" id="ledgerEntry_002C75C3-9CFF-4CF8-9C00-618925B8270E" at=36,448 size=368x56
+@e24 Image label="questionmark" name="questionmark" id="questionmark" at=36,458 size=36x36
+@e25 StaticText label="没分类" name="没分类" at=84,458 size=44x18
+@e26 StaticText label="对手信息：虚构科技服务公司0091 9000000000000018" name="对手信息：虚构科技服务公司0091 9000000000000018" at=84,480 size=251x14
+@e27 StaticText label="−45.00" name="−45.00" at=349,467 size=54x18
+@e28 StaticText label="11月15日 周六" name="11月15日 周六" at=36,536 size=90x17
+@e29 StaticText label="−25.00" name="−25.00" at=341,532 size=62x21
+@e30 Button label="没分类、对手信息：虚构软件服务商0083 90000000000000000021、−25.00" name="ledgerEntry_D07628C8-5F20-4855-9F8C-791BAEF89B80" value="closed" id="ledgerEntry_D07628C8-5F20-4855-9F8C-791BAEF89B80" at=36,566 size=368x56
+@e31 Image label="questionmark" name="questionmark" id="questionmark" at=36,576 size=36x36
+@e32 StaticText label="没分类" name="没分类" at=84,575 size=44x18
+@e33 StaticText label="对手信息：虚构软件服务商0083 90000000000000000021" name="对手信息：虚构软件服务商0083 90000000000000000021" at=84,597 size=256x14
+@e34 StaticText label="−25.00" name="−25.00" at=349,585 size=54x18
+@e35 StaticText label="11月13日 周四" name="11月13日 周四" at=36,653 size=90x17
+@e36 StaticText label="−4,605.00" name="−4,605.00" at=314,650 size=90x21
+@e37 Button label="没分类、对手信息：虚构个人转账往来0030 9000000007、−4,605.00" name="ledgerEntry_3B5D02CF-0073-447A-AB9B-E20DB2C4284F" value="closed" id="ledgerEntry_3B5D02CF-0073-447A-AB9B-E20DB2C4284F" at=36,683 size=368x56
+@e38 Image label="questionmark" name="questionmark" id="questionmark" at=36,693 size=36x36
+@e39 StaticText label="没分类" name="没分类" at=84,693 size=44x18
+@e40 StaticText label="对手信息：虚构个人转账往来0030 9000000007" name="对手信息：虚构个人转账往来0030 9000000007" at=84,715 size=230x14
+@e41 StaticText label="−4,605.00" name="−4,605.00" at=325,702 size=78x18
+@e42 StaticText label="11月12日 周三" name="11月12日 周三" at=36,771 size=90x17
+@e43 StaticText label="−135.00" name="−135.00" at=330,767 size=73x21
+@e44 Button label="没分类、对手信息：虚构个人0071 90000000004、−135.00" name="ledgerEntry_E56B6ED0-8AB3-4DBD-B0C2-EEDD7CDA5497" value="closed" id="ledgerEntry_E56B6ED0-8AB3-4DBD-B0C2-EEDD7CDA5497" at=36,801 size=368x56
+@e45 Image label="questionmark" name="questionmark" id="questionmark" at=36,811 size=36x36
+@e46 StaticText label="没分类" name="没分类" at=84,811 size=44x18
+@e47 StaticText label="对手信息：虚构个人0071 90000000004" name="对手信息：虚构个人0071 90000000004" at=84,833 size=223x14
+@e48 StaticText label="−135.00" name="−135.00" at=340,820 size=64x18
+@e49 StaticText label="11月11日 周二" name="11月11日 周二" at=36,888 size=88x17
+@e50 StaticText label="−5.00" name="−5.00" at=353,885 size=50x21
+@e51 Button label="没分类、对手信息：虚构个人0013 90000000000000000004、−5.00" name="ledgerEntry_8866258B-8829-45D6-B078-BCC17ABFA148" value="closed" id="ledgerEntry_8866258B-8829-45D6-B078-BCC17ABFA148" at=36,919 size=368x56
+@e52 Image label="questionmark" name="questionmark" id="questionmark" at=36,929 size=36x36
+@e53 StaticText label="没分类" name="没分类" at=84,928 size=44x18
+@e54 StaticText label="对手信息：虚构个人0013 90000000000000000004" name="对手信息：虚构个人0013 90000000000000000004" at=84,950 size=263x14
+@e55 StaticText label="−5.00" name="−5.00" at=359,938 size=44x18
+@e56 StaticText label="11月7日 周五" name="11月7日 周五" at=36,1006 size=82x17
+@e57 StaticText label="−10.00" name="−10.00" at=341,1002 size=62x21
+@e58 Button label="餐饮、对手信息：虚构餐饮店0015 900000007、−5.00" name="ledgerEntry_6F0A85E4-5FF7-4B96-A925-8DADA8B998E9" value="closed" id="ledgerEntry_6F0A85E4-5FF7-4B96-A925-8DADA8B998E9" at=36,1036 size=368x56
+@e59 Image label="食物" name="fork.knife" id="fork.knife" at=36,1046 size=36x36
+@e60 StaticText label="餐饮" name="餐饮" at=84,1046 size=30x18
+@e61 StaticText label="对手信息：虚构餐饮店0015 900000007" name="对手信息：虚构餐饮店0015 900000007" at=84,1068 size=219x14
+@e62 StaticText label="−5.00" name="−5.00" at=359,1055 size=44x18
+@e63 StaticText label="11月5日 周三" name="11月5日 周三" at=36,1181 size=83x17
+@e64 StaticText label="−75.00" name="−75.00" at=341,1177 size=62x21
+@e65 Button label="没分类、对手信息：虚构公益基金会0047 9000000009、−75.00" name="ledgerEntry_134B76B7-6B3C-4616-8DE8-60A11F9B6F1E" value="closed" id="ledgerEntry_134B76B7-6B3C-4616-8DE8-60A11F9B6F1E" at=36,1211 size=368x56
+@e66 Image label="questionmark" name="questionmark" id="questionmark" at=36,1221 size=36x36
+@e67 StaticText label="没分类" name="没分类" at=84,1221 size=44x18
+@e68 StaticText label="对手信息：虚构公益基金会0047 9000000009" name="对手信息：虚构公益基金会0047 9000000009" at=84,1243 size=253x14
+@e69 StaticText label="−75.00" name="−75.00" at=349,1230 size=54x18
+@e70 StaticText label="11月4日 周二" name="11月4日 周二" at=36,1299 size=83x17
+@e71 StaticText label="−5.00" name="−5.00" at=353,1295 size=50x21
+@e72 Button label="没分类、对手信息：虚构个人0022 90000000000000000007、−5.00" name="ledgerEntry_7D06C8A5-7B2D-4EF0-9774-554E4EBF49D4" value="closed" id="ledgerEntry_7D06C8A5-7B2D-4EF0-9774-554E4EBF49D4" at=36,1329 size=368x56
+@e73 Image label="questionmark" name="questionmark" id="questionmark" at=36,1339 size=36x36
+@e74 StaticText label="没分类" name="没分类" at=84,1338 size=44x18
+@e75 StaticText label="对手信息：虚构个人0022 90000000000000000007" name="对手信息：虚构个人0022 90000000000000000007" at=84,1360 size=265x14
+@e76 StaticText label="−5.00" name="−5.00" at=359,1348 size=44x18
+@e77 Other label="主导航" name="mainNavigation" value="destination=entries; visible=entries; phase=idle; locked=0" id="mainNavigation" at=20,848 size=400x66
+@e78 Button label="现在" name="tab_overview" id="tab_overview" at=28,856 size=78x50
+@e79 Image label="TabWaterMark" name="TabWaterMark" at=57,863 size=20x20
+@e80 StaticText label="现在" name="现在" at=57,887 size=20x12
+@e81 Button label="洞察" name="tab_insights" id="tab_insights" at=106,856 size=78x50
+@e82 Image label="图表饼图" name="chart.pie" id="chart.pie" at=135,863 size=19x20
+@e83 StaticText label="洞察" name="洞察" at=135,887 size=20x12
+@e84 Button label="记一笔" name="addEntry" id="addEntry" at=193,854 size=54x54
+@e85 Button label="账目" name="tab_entries" id="tab_entries" at=255,856 size=78x50 selected
+@e86 Image label="列表" name="list.bullet" id="list.bullet" at=283,865 size=20x15
+@e87 StaticText label="账目" name="账目" at=284,887 size=20x12
+@e88 Button label="我" name="tab_settings" id="tab_settings" at=333,856 size=78x50
+@e89 Image label="person" name="person" id="person" at=363,864 size=17x18
+@e90 StaticText label="我" name="我" at=367,887 size=10x12
+@e91 StaticText label="09:13" name="09:13" at=59,22 size=48x21
+@e92 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

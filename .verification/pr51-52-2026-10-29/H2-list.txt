@@ -1,0 +1,134 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_entries" id="rootPage_entries" at=0,0 size=440x956
+@e3 StaticText label="账目" name="rootHeaderTitle" id="rootHeaderTitle" at=205,89 size=30x18
+@e4 Button label="问余白" name="askYubai" id="askYubai" at=376,76 size=44x44
+@e5 ScrollView name="entriesScroll" id="entriesScroll" at=0,146 size=440x810
+@e6 StaticText label="11月12日 周三" name="11月12日 周三" at=36,1476 size=90x17
+@e7 StaticText label="−52.92" name="−52.92" at=341,1473 size=62x21
+@e8 StaticText label="11月18日 周二" name="11月18日 周二" at=36,1266 size=90x17
+@e9 StaticText label="−23.52" name="−23.52" at=341,1262 size=62x21
+@e10 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_20DE2E01-134B-41D8-917A-4A789E590D44" value="closed" id="ledgerEntry_20DE2E01-134B-41D8-917A-4A789E590D44" at=36,1296 size=368x56
+@e11 Image label="questionmark" name="questionmark" id="questionmark" at=36,1306 size=36x36
+@e12 StaticText label="没分类" name="没分类" at=84,1306 size=44x18
+@e13 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,1328 size=260x14
+@e14 StaticText label="−5.88" name="−5.88" at=359,1315 size=44x18
+@e15 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_99A1878D-3C2E-47AD-AE57-3D9D37D50F7C" value="closed" id="ledgerEntry_99A1878D-3C2E-47AD-AE57-3D9D37D50F7C" at=36,1353 size=368x56
+@e16 Image label="questionmark" name="questionmark" id="questionmark" at=36,1363 size=36x36
+@e17 StaticText label="没分类" name="没分类" at=84,1363 size=44x18
+@e18 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,1385 size=260x14
+@e19 StaticText label="−5.88" name="−5.88" at=359,1372 size=44x18
+@e20 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_EBE92BB2-B517-4B75-8B4B-A01EC52D2093" value="closed" id="ledgerEntry_EBE92BB2-B517-4B75-8B4B-A01EC52D2093" at=36,1410 size=368x56
+@e21 Image label="questionmark" name="questionmark" id="questionmark" at=36,1420 size=36x36
+@e22 StaticText label="没分类" name="没分类" at=84,1420 size=44x18
+@e23 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,1442 size=260x14
+@e24 StaticText label="−5.88" name="−5.88" at=359,1429 size=44x18
+@e25 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_52931A8F-95D0-4175-A3AB-42D537216CDE" value="closed" id="ledgerEntry_52931A8F-95D0-4175-A3AB-42D537216CDE" at=36,1467 size=368x56
+@e26 Image label="questionmark" name="questionmark" id="questionmark" at=36,1477 size=36x36
+@e27 StaticText label="没分类" name="没分类" at=84,1477 size=44x18
+@e28 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,1499 size=260x14
+@e29 StaticText label="−5.88" name="−5.88" at=359,1486 size=44x18
+@e30 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_85D06E8F-6308-4D71-BD95-59899DAA7B72" value="closed" id="ledgerEntry_85D06E8F-6308-4D71-BD95-59899DAA7B72" at=36,136 size=368x56
+@e31 Image label="questionmark" name="questionmark" id="questionmark" at=36,146 size=36x36
+@e32 StaticText label="没分类" name="没分类" at=84,146 size=44x18
+@e33 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,168 size=260x14
+@e34 StaticText label="−5.88" name="−5.88" at=359,155 size=44x18
+@e35 StaticText label="11月25日 周二" name="11月25日 周二" at=36,224 size=92x17
+@e36 StaticText label="−67.04" name="−67.04" at=341,220 size=62x21
+@e37 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_659DFC93-C078-4CF7-B3AE-67E755063FC2" value="closed" id="ledgerEntry_659DFC93-C078-4CF7-B3AE-67E755063FC2" at=36,254 size=368x56
+@e38 Image label="questionmark" name="questionmark" id="questionmark" at=36,264 size=36x36
+@e39 StaticText label="没分类" name="没分类" at=84,263 size=44x18
+@e40 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,285 size=260x14
+@e41 StaticText label="−5.88" name="−5.88" at=359,273 size=44x18
+@e42 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_3EB734CB-FB7D-4F10-A446-8BA478FCCC94" value="closed" id="ledgerEntry_3EB734CB-FB7D-4F10-A446-8BA478FCCC94" at=36,311 size=368x56
+@e43 Image label="questionmark" name="questionmark" id="questionmark" at=36,321 size=36x36
+@e44 StaticText label="没分类" name="没分类" at=84,320 size=44x18
+@e45 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,342 size=260x14
+@e46 StaticText label="−5.88" name="−5.88" at=359,330 size=44x18
+@e47 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_DC97C3AD-BF14-4DC3-A923-743B585DEDA3" value="closed" id="ledgerEntry_DC97C3AD-BF14-4DC3-A923-743B585DEDA3" at=36,368 size=368x56
+@e48 Image label="questionmark" name="questionmark" id="questionmark" at=36,378 size=36x36
+@e49 StaticText label="没分类" name="没分类" at=84,377 size=44x18
+@e50 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,399 size=260x14
+@e51 StaticText label="−5.88" name="−5.88" at=359,387 size=44x18
+@e52 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_5A44F5CB-5A40-4578-9035-72458516F45E" value="closed" id="ledgerEntry_5A44F5CB-5A40-4578-9035-72458516F45E" at=36,425 size=368x56
+@e53 Image label="questionmark" name="questionmark" id="questionmark" at=36,435 size=36x36
+@e54 StaticText label="没分类" name="没分类" at=84,434 size=44x18
+@e55 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,456 size=260x14
+@e56 StaticText label="−5.88" name="−5.88" at=359,444 size=44x18
+@e57 Button label="没分类、对手信息：虚构基金销售公司0107 9000000000000002、−20.00" name="ledgerEntry_27394685-5B5E-4B90-949C-1C4E140FFCD2" value="closed" id="ledgerEntry_27394685-5B5E-4B90-949C-1C4E140FFCD2" at=36,482 size=368x56
+@e58 Image label="questionmark" name="questionmark" id="questionmark" at=36,492 size=36x36
+@e59 StaticText label="没分类" name="没分类" at=84,491 size=44x18
+@e60 StaticText label="对手信息：虚构基金销售公司0107 9000000000000002" name="对手信息：虚构基金销售公司0107 9000000000000002" at=84,513 size=257x14
+@e61 StaticText label="−20.00" name="−20.00" at=349,501 size=54x18
+@e62 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_118DA2DD-670B-4227-BDEF-BA1F87E96FC4" value="closed" id="ledgerEntry_118DA2DD-670B-4227-BDEF-BA1F87E96FC4" at=36,539 size=368x56
+@e63 Image label="questionmark" name="questionmark" id="questionmark" at=36,549 size=36x36
+@e64 StaticText label="没分类" name="没分类" at=84,548 size=44x18
+@e65 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,570 size=260x14
+@e66 StaticText label="−5.88" name="−5.88" at=359,558 size=44x18
+@e67 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_C4AE4C95-6E90-433B-98D9-A2A434BB14E5" value="closed" id="ledgerEntry_C4AE4C95-6E90-433B-98D9-A2A434BB14E5" at=36,596 size=368x56
+@e68 Image label="questionmark" name="questionmark" id="questionmark" at=36,606 size=36x36
+@e69 StaticText label="没分类" name="没分类" at=84,605 size=44x18
+@e70 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,627 size=260x14
+@e71 StaticText label="−5.88" name="−5.88" at=359,615 size=44x18
+@e72 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_B7AA1305-7EA1-4823-8DDC-F652183CC1DE" value="closed" id="ledgerEntry_B7AA1305-7EA1-4823-8DDC-F652183CC1DE" at=36,653 size=368x56
+@e73 Image label="questionmark" name="questionmark" id="questionmark" at=36,663 size=36x36
+@e74 StaticText label="没分类" name="没分类" at=84,662 size=44x18
+@e75 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,684 size=260x14
+@e76 StaticText label="−5.88" name="−5.88" at=359,672 size=44x18
+@e77 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_89D659A1-2A45-4594-A0BD-A10BC4A942FF" value="closed" id="ledgerEntry_89D659A1-2A45-4594-A0BD-A10BC4A942FF" at=36,710 size=368x56
+@e78 Image label="questionmark" name="questionmark" id="questionmark" at=36,720 size=36x36
+@e79 StaticText label="没分类" name="没分类" at=84,719 size=44x18
+@e80 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,741 size=260x14
+@e81 StaticText label="−5.88" name="−5.88" at=359,729 size=44x18
+@e82 StaticText label="11月24日 周一" name="11月24日 周一" at=36,797 size=92x17
+@e83 StaticText label="−11.76" name="−11.76" at=341,794 size=62x21
+@e84 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_FFBD69CF-C0B6-4735-9729-B26DA021AAB8" value="closed" id="ledgerEntry_FFBD69CF-C0B6-4735-9729-B26DA021AAB8" at=36,827 size=368x56
+@e85 Image label="questionmark" name="questionmark" id="questionmark" at=36,837 size=36x36
+@e86 StaticText label="没分类" name="没分类" at=84,837 size=44x18
+@e87 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,859 size=260x14
+@e88 StaticText label="−5.88" name="−5.88" at=359,846 size=44x18
+@e89 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_A4F58BBB-9FFB-45CB-824F-95CDE4ADEB12" value="closed" id="ledgerEntry_A4F58BBB-9FFB-45CB-824F-95CDE4ADEB12" at=36,884 size=368x56
+@e90 Image label="questionmark" name="questionmark" id="questionmark" at=36,894 size=36x36
+@e91 StaticText label="没分类" name="没分类" at=84,894 size=44x18
+@e92 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,916 size=260x14
+@e93 StaticText label="−5.88" name="−5.88" at=359,903 size=44x18
+@e94 StaticText label="11月23日 周日" name="11月23日 周日" at=36,972 size=92x17
+@e95 StaticText label="−17.64" name="−17.64" at=341,968 size=62x21
+@e96 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_FAB2A465-7847-4457-A574-723DFA256FDF" value="closed" id="ledgerEntry_FAB2A465-7847-4457-A574-723DFA256FDF" at=36,1002 size=368x56
+@e97 Image label="questionmark" name="questionmark" id="questionmark" at=36,1012 size=36x36
+@e98 StaticText label="没分类" name="没分类" at=84,1012 size=44x18
+@e99 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,1034 size=260x14
+@e100 StaticText label="−5.88" name="−5.88" at=359,1021 size=44x18
+@e101 StaticText label="11月22日 周六" name="11月22日 周六" at=36,1203 size=91x17
+@e102 StaticText label="−17.64" name="−17.64" at=341,1200 size=62x21
+@e103 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_9ADB85F5-E97A-4539-A6B9-0C0AB3B62157" value="closed" id="ledgerEntry_9ADB85F5-E97A-4539-A6B9-0C0AB3B62157" at=36,1234 size=368x56
+@e104 Image label="questionmark" name="questionmark" id="questionmark" at=36,1244 size=36x36
+@e105 StaticText label="没分类" name="没分类" at=84,1243 size=44x18
+@e106 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,1265 size=260x14
+@e107 StaticText label="−5.88" name="−5.88" at=359,1253 size=44x18
+@e108 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_0E0D5C73-10F2-4772-B1C6-0AE62516CBD1" value="closed" id="ledgerEntry_0E0D5C73-10F2-4772-B1C6-0AE62516CBD1" at=36,1291 size=368x56
+@e109 Image label="questionmark" name="questionmark" id="questionmark" at=36,1301 size=36x36
+@e110 StaticText label="没分类" name="没分类" at=84,1300 size=44x18
+@e111 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,1322 size=260x14
+@e112 StaticText label="−5.88" name="−5.88" at=359,1310 size=44x18
+@e113 Button label="没分类、对手信息：虚构基金销售公司0005 90000000000000000002、−5.88" name="ledgerEntry_030594FD-B3F2-4390-8F75-41E407622141" value="closed" id="ledgerEntry_030594FD-B3F2-4390-8F75-41E407622141" at=36,1348 size=368x56
+@e114 Image label="questionmark" name="questionmark" id="questionmark" at=36,1358 size=36x36
+@e115 StaticText label="没分类" name="没分类" at=84,1357 size=44x18
+@e116 StaticText label="对手信息：虚构基金销售公司0005 90000000000000000002" name="对手信息：虚构基金销售公司0005 90000000000000000002" at=84,1379 size=260x14
+@e117 StaticText label="−5.88" name="−5.88" at=359,1367 size=44x18
+@e118 Other label="主导航" name="mainNavigation" value="destination=entries; visible=entries; phase=idle; locked=0" id="mainNavigation" at=20,848 size=400x66
+@e119 Button label="现在" name="tab_overview" id="tab_overview" at=28,856 size=78x50
+@e120 Image label="TabWaterMark" name="TabWaterMark" at=57,863 size=20x20
+@e121 StaticText label="现在" name="现在" at=57,887 size=20x12
+@e122 Button label="洞察" name="tab_insights" id="tab_insights" at=106,856 size=78x50
+@e123 Image label="图表饼图" name="chart.pie" id="chart.pie" at=135,863 size=19x20
+@e124 StaticText label="洞察" name="洞察" at=135,887 size=20x12
+@e125 Button label="记一笔" name="addEntry" id="addEntry" at=193,854 size=54x54
+@e126 Button label="账目" name="tab_entries" id="tab_entries" at=255,856 size=78x50 selected
+@e127 Image label="列表" name="list.bullet" id="list.bullet" at=283,865 size=20x15
+@e128 StaticText label="账目" name="账目" at=284,887 size=20x12
+@e129 Button label="我" name="tab_settings" id="tab_settings" at=333,856 size=78x50
+@e130 Image label="person" name="person" id="person" at=363,864 size=17x18
+@e131 StaticText label="我" name="我" at=367,887 size=10x12
+@e132 StaticText label="09:14" name="09:14" at=59,22 size=48x21
+@e133 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

@@ -1,0 +1,10 @@
+{
+  "files_before": 203,
+  "files_restored": 203,
+  "data_sha256_matches": true,
+  "backup_sha256_matches": true,
+  "backup": "/Users/yang/yubai-sim-data-before-pr51-52-2026-10-29",
+  "restored_app_not_relaunched": true,
+  "keychain_untouched": true,
+  "restored_at": "2026-11-02T09:18:38.889646+08:00"
+}

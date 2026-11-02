@@ -1,0 +1,9 @@
+{
+  "test_ledger_uuid_gate": true,
+  "sync_disabled_for_test_ledger": true,
+  "scripted_transport_before_real_client": true,
+  "script_transport_has_no_network_client": true,
+  "core_live_eval": "0",
+  "workflow_dispatch_only": true,
+  "csv_sha256": "6b524237c9fdc789f643b8e0a4e9b909e44bc8700750b010695be007f5de2d01"
+}

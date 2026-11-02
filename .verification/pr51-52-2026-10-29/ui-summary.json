@@ -1,0 +1,182 @@
+[
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testAskNumericAnswerEvidenceAndEntryDetail",
+    "status": "passed",
+    "duration": "31.984 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testButlerFastLongSwipeDismissesWithoutPaging",
+    "status": "passed",
+    "duration": "9.091 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testButlerFastShortSwipeDismisses",
+    "status": "passed",
+    "duration": "8.710 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testButlerRightSwipeAtFirstPagePreservesCardAndPaging",
+    "status": "passed",
+    "duration": "32.855 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testButlerSwipeDismissesWithoutSwitchingTabs",
+    "status": "passed",
+    "duration": "25.042 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testClosedLedgerRowPagesRightAndRevealedRowClosesFirst",
+    "status": "passed",
+    "duration": "50.926 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testEntrySheetWithPurposeSuggestionsKeepsActionsAboveHomeIndicator",
+    "status": "passed",
+    "duration": "20.952 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount",
+    "status": "passed",
+    "duration": "41.798 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testFirstLaunchEmptyLedgerAccountAndAvailableFunds",
+    "status": "passed",
+    "duration": "49.339 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testFloatingNavigationHidesForKeyboardAndLeavesLastLedgerRowVisible",
+    "status": "passed",
+    "duration": "67.316 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testImportOrganizeAnswerAndUndoEntireBatch",
+    "status": "failed",
+    "duration": "18.972 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testLedgerMonthFiltersAndSearchToggle",
+    "status": "passed",
+    "duration": "52.676 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testLedgerRevealClosesAfterTabSelectionAndPaging",
+    "status": "passed",
+    "duration": "68.754 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testLedgerRowsStillScrollVerticallyAndOpenWithTap",
+    "status": "passed",
+    "duration": "23.226 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testLedgerRowSwipesDoNotOpenEditorAndTapStillWorks",
+    "status": "passed",
+    "duration": "44.627 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testLedgerSwipeDeleteAndUndoRestoresRow",
+    "status": "passed",
+    "duration": "36.759 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testOnlyOneLedgerRowRevealsDeleteAndOutsideTapClosesIt",
+    "status": "passed",
+    "duration": "48.518 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testOrganizedQuestionsPrecedeCollapsedUncoveredInflows",
+    "status": "passed",
+    "duration": "16.080 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testPendingImportsOrganizesOnlyAfterTapWithFakeTransport",
+    "status": "passed",
+    "duration": "36.628 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testPendingImportsSecondChunkFailureShowsReasonAndRetriesOnlyRemaining",
+    "status": "passed",
+    "duration": "29.968 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testPendingImportsStopKeepsCompletedChunkAndRemainingCount",
+    "status": "passed",
+    "duration": "24.460 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testRevealedLedgerRowConsumesSwipesInBothDirections",
+    "status": "passed",
+    "duration": "45.969 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testRevealedLedgerRowSlowLeftSwipeKeepsCurrentTab",
+    "status": "passed",
+    "duration": "51.341 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testSalaryConfirmationChangesHorizonAndUndoRestoresCard",
+    "status": "passed",
+    "duration": "13.561 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testScrolledRootHeadersStayInsideSafeAreaWhenOpeningEntrySheet",
+    "status": "passed",
+    "duration": "176.417 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testStorageEntryAndOverviewOpenFromMe",
+    "status": "passed",
+    "duration": "23.240 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testTabTapReturnsToLedgerAfterRightSwipe",
+    "status": "passed",
+    "duration": "63.230 seconds"
+  },
+  {
+    "class": "YubaiUITests.AppFlowTests",
+    "name": "testWelcomeAnnualStatementAllRangeCommitsFullCount",
+    "status": "passed",
+    "duration": "27.685 seconds"
+  },
+  {
+    "class": "YubaiUITests.MotionStateTests",
+    "name": "testOnlyNewActiveEntriesTriggerSaveAndMissingActiveEntriesTriggerDeletion",
+    "status": "passed",
+    "duration": "0.058 seconds"
+  },
+  {
+    "class": "YubaiUITests.MotionStateTests",
+    "name": "testTabDirectionAndReselection",
+    "status": "passed",
+    "duration": "0.048 seconds"
+  }
+]

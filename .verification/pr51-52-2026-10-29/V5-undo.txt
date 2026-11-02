@@ -1,0 +1,54 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_overview" id="rootPage_overview" at=0,0 size=440x956
+@e3 StaticText label="现在" name="rootHeaderTitle" id="rootHeaderTitle" at=205,89 size=30x18
+@e4 Button label="隐藏金额" name="toggleAmountVisibility" id="toggleAmountVisibility" at=20,76 size=44x44
+@e5 Image label="显示" name="eye" id="eye" at=20,76 size=44x44
+@e6 Button label="问余白" name="askYubai" id="askYubai" at=376,76 size=44x44
+@e7 Button label="还能花、接下来 90 天、¥2,000.00、还能花 2,000.00，要付 0.00，日常开销 0.00、还能花、2,000.00、要付、0.00、日常开销、0.00" name="fundsFormula" id="fundsFormula" at=20,146 size=400x141
+@e8 StaticText label="还能花" name="还能花" at=20,146 size=50x20
+@e9 StaticText label="接下来 90 天" name="接下来 90 天" at=78,151 size=69x14
+@e10 StaticText label="¥2,000.00" name="¥2,000.00" at=20,170 size=223x57
+@e11 StaticText label="还能花" name="还能花" at=32,272 size=36x14
+@e12 StaticText label="2,000.00" name="2,000.00" at=72,271 size=59x15
+@e13 StaticText label="要付" name="要付" at=155,272 size=24x14
+@e14 StaticText label="0.00" name="0.00" at=183,271 size=29x15
+@e15 StaticText label="日常开销" name="日常开销" at=237,272 size=48x14
+@e16 StaticText label="0.00" name="0.00" at=289,271 size=29x15
+@e17 Other name="importQuestionCard" id="importQuestionCard" at=20,311 size=400x127
+@e18 StaticText label="这笔来款是什么用途？" name="importQuestion" id="importQuestion" at=36,327 size=151x19
+@e19 StaticText label="10/28 · 合成个人" name="10/28 · 合成个人" at=36,354 size=99x15
+@e20 Button label="日常收入" name="homeImportAnswer_5641BCAE-5F82-415A-AFEB-314BE947D294_0" id="homeImportAnswer_5641BCAE-5F82-415A-AFEB-314BE947D294_0" at=36,382 size=83x36
+@e21 Button label="收回借款" name="homeImportAnswer_5641BCAE-5F82-415A-AFEB-314BE947D294_1" id="homeImportAnswer_5641BCAE-5F82-415A-AFEB-314BE947D294_1" at=127,382 size=83x36
+@e22 Button label="都不是" name="describeImportQuestion" id="describeImportQuestion" at=219,382 size=71x36
+@e23 Other name="unsortedQuestionCard" id="unsortedQuestionCard" at=20,450 size=400x103
+@e24 StaticText label="9 笔还没分类" name="unsortedQuestionTitle" id="unsortedQuestionTitle" at=36,466 size=93x19
+@e25 Button label="按对方分" name="groupUnsortedByParty" id="groupUnsortedByParty" at=36,497 size=83x36
+@e26 Button label="6 笔进账没说来源、稍后" name="unknownInflowsSummary" id="unknownInflowsSummary" at=20,565 size=400x44
+@e27 StaticText label="6 笔进账没说来源" name="6 笔进账没说来源" at=36,579 size=110x17
+@e28 StaticText label="稍后" name="稍后" at=380,580 size=24x14
+@e29 Button label="今天、还没记、账目" name="todayEntries" id="todayEntries" at=20,633 size=400x48
+@e30 StaticText label="今天" name="今天" at=36,649 size=28x17
+@e31 StaticText label="还没记" name="todayEntrySummary" id="todayEntrySummary" at=72,650 size=36x14
+@e32 StaticText label="账目" name="账目" at=364,650 size=24x14
+@e33 Image label="前进" name="chevron.right" id="chevron.right" at=398,653 size=5x9
+@e34 Button label="现金会怎么走" name="现金会怎么走" at=20,705 size=400x48
+@e35 StaticText label="现金会怎么走" name="现金会怎么走" at=36,720 size=95x19
+@e36 Image label="前进" name="chevron.right" id="chevron.right" at=395,723 size=7x13
+@e37 StaticText label="下一笔 · 还没有待付款" name="下一笔 · 还没有待付款" at=20,791 size=129x15
+@e38 Other label="主导航" name="mainNavigation" value="destination=overview; visible=overview; phase=idle; locked=0" id="mainNavigation" at=20,848 size=400x66
+@e39 Button label="现在" name="tab_overview" id="tab_overview" at=28,856 size=78x50 selected
+@e40 Image label="TabWaterMark" name="TabWaterMark" at=57,863 size=20x20
+@e41 StaticText label="现在" name="现在" at=57,887 size=20x12
+@e42 Button label="洞察" name="tab_insights" id="tab_insights" at=106,856 size=78x50
+@e43 Image label="图表饼图" name="chart.pie" id="chart.pie" at=135,863 size=19x20
+@e44 StaticText label="洞察" name="洞察" at=135,887 size=20x12
+@e45 Button label="记一笔" name="addEntry" id="addEntry" at=193,854 size=54x54
+@e46 Button label="账目" name="tab_entries" id="tab_entries" at=255,856 size=78x50
+@e47 Image label="列表" name="list.bullet" id="list.bullet" at=284,866 size=20x14
+@e48 StaticText label="账目" name="账目" at=284,887 size=20x12
+@e49 Button label="我" name="tab_settings" id="tab_settings" at=333,856 size=78x50
+@e50 Image label="person" name="person" id="person" at=363,864 size=17x18
+@e51 StaticText label="我" name="我" at=367,887 size=10x12
+@e52 StaticText label="09:17" name="09:17" at=60,22 size=47x21
+@e53 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14

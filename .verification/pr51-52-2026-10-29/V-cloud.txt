@@ -1,0 +1,52 @@
+One element per line: @ref Type text= label= name= value= id= at=x,y size=WxH [focused] [selected] [checked] [disabled]
+@e1 ScrollView name="rootPager" id="rootPager" at=0,0 size=440x956
+@e2 Other name="rootPage_settings" id="rootPage_settings" at=0,0 size=440x956
+@e3 NavigationBar name="智能与隐私" id="智能与隐私" at=0,62 size=440x54
+@e4 Button label="我" name="BackButton" id="BackButton" at=20,62 size=44x44
+@e5 StaticText label="智能与隐私" name="智能与隐私" at=177,73 size=84x20
+@e6 ScrollView name="intelligencePrivacyPage" id="intelligencePrivacyPage" at=0,0 size=440x956
+@e7 StaticText label="云端智能" name="云端智能" at=35,127 size=48x14
+@e8 Switch label="打开云端智能" name="打开云端智能" value="1" at=36,164 size=368x28 checked
+@e9 StaticText label="打开云端智能" name="打开云端智能" at=35,169 size=89x18
+@e10 Switch value="1" at=343,164 size=63x28 checked
+@e11 StaticText label="服务" name="服务" at=35,218 size=28x17
+@e12 StaticText label="DeepSeek" name="DeepSeek" at=346,220 size=57x14
+@e13 Button label="模型、deepseek-v4-pro" name="editCloudModel" id="editCloudModel" at=36,252 size=368x48
+@e14 Button at=36,252 size=368x48
+@e15 StaticText label="模型" name="模型" at=36,267 size=28x17
+@e16 StaticText label="deepseek-v4-pro" name="deepseek-v4-pro" at=277,268 size=106x15
+@e17 Image label="向下移动" name="chevron.down" id="chevron.down" at=393,273 size=9x5
+@e18 Button label="密钥，保存在本机钥匙串，不进入账本或备份" name="密钥，保存在本机钥匙串，不进入账本或备份" at=36,301 size=368x48
+@e19 StaticText label="密钥" name="密钥" at=36,316 size=28x17
+@e20 StaticText label="钥匙串 ✓" name="钥匙串 ✓" at=338,318 size=49x14
+@e21 Image label="前进" name="chevron.right" id="chevron.right" at=398,320 size=5x9
+@e22 StaticText label="会发给云端" name="会发给云端" at=35,377 size=59x14
+@e23 StaticText label="会发给云端：问题、金额、日期、分类、商户、备注、转账姓名 → 联系人A" name="会发给云端：问题、金额、日期、分类、商户、备注、转账姓名 → 联系人A" at=20,399 size=400x100
+@e24 StaticText label="问题" name="问题" at=47,423 size=24x14
+@e25 StaticText label="金额" name="金额" at=103,423 size=24x14
+@e26 StaticText label="日期" name="日期" at=159,423 size=24x14
+@e27 StaticText label="分类" name="分类" at=215,423 size=24x14
+@e28 StaticText label="商户" name="商户" at=272,423 size=24x14
+@e29 StaticText label="备注" name="备注" at=328,423 size=24x14
+@e30 StaticText label="转账姓名 → 联系人A" name="转账姓名 → 联系人A" at=47,461 size=110x14
+@e31 StaticText label="不发" name="不发" at=35,524 size=24x14
+@e32 StaticText label="不发：账户名、卡号、交易单号、附件" name="不发：账户名、卡号、交易单号、附件" at=20,546 size=400x62
+@e33 StaticText label="账户名" name="账户名" at=47,570 size=36x14
+@e34 StaticText label="卡号" name="卡号" at=115,570 size=24x14
+@e35 StaticText label="交易单号" name="交易单号" at=171,570 size=48x14
+@e36 StaticText label="附件" name="附件" at=251,570 size=24x14
+@e37 Button label="发给云端的内容、本次打开 0 次" name="发给云端的内容、本次打开 0 次" at=36,637 size=368x48
+@e38 StaticText label="发给云端的内容" name="发给云端的内容" at=36,652 size=97x17
+@e39 StaticText label="本次打开 0 次" name="本次打开 0 次" at=314,653 size=74x14
+@e40 Image label="前进" name="chevron.right" id="chevron.right" at=398,656 size=5x9
+@e41 Switch label="每周来信提醒" name="每周来信提醒" value="0" at=36,727 size=368x28
+@e42 StaticText label="每周来信提醒" name="每周来信提醒" at=35,731 size=89x18
+@e43 Switch value="0" at=343,727 size=63x28
+@e44 StaticText label="设备与界面" name="设备与界面" at=35,792 size=59x14
+@e45 Switch label="使用设备解锁保护账本" name="使用设备解锁保护账本" value="0" at=36,829 size=368x28
+@e46 StaticText label="使用设备解锁保护账本" name="使用设备解锁保护账本" at=35,834 size=149x18
+@e47 Switch value="0" at=343,829 size=63x28
+@e48 Button label="外观、跟随系统" name="外观、跟随系统" at=166,875 size=107x34
+@e49 StaticText label="跟随系统" name="跟随系统" at=178,882 size=67x20
+@e50 StaticText label="09:17" name="09:17" at=60,22 size=47x21
+@e51 Other name="3（共3格Wi-Fi信号）" value="SSID, 3（共3格Wi-Fi信号）" id="3（共3格Wi-Fi信号）" at=341,25 size=19x14
