@@ -26,6 +26,9 @@ public enum UnsortedUse: String, CaseIterable, Sendable {
 /// Pure projections over the question's original coverage. No cached counts or
 /// destructive removal: normal edits, deletions and undo are reflected immediately.
 public enum UnsortedGroups {
+    public static func party(for entry: Entry) -> String {
+        entry.title.components(separatedBy: " · ")[0]
+    }
     public static func needsSorting(_ entry: Entry) -> Bool {
         entry.deletedAt == nil && entry.mergedIntoID == nil && entry.otherAccountID == nil &&
         entry.planID == nil && entry.rentID == nil && entry.relatedEntryID == nil &&
@@ -38,9 +41,13 @@ public enum UnsortedGroups {
         return ledger.entries.filter { ids.contains($0.id) && needsSorting($0) && !referenced.contains($0.id) }
     }
     public static func groups(for question: ImportQuestion, in ledger: Ledger) -> [UnsortedPartyGroup] {
+        groups(entries: entries(for: question, in: ledger))
+    }
+    /// Shared party/direction projection for the remaining-record UI and AI input.
+    public static func groups(entries: [Entry]) -> [UnsortedPartyGroup] {
         struct Key: Hashable { let party: String; let inflow: Bool }
-        let grouped = Dictionary(grouping: entries(for: question, in: ledger)) {
-            Key(party: $0.title.components(separatedBy: " · ")[0], inflow: $0.nature.inflow)
+        let grouped = Dictionary(grouping: entries) {
+            Key(party: party(for: $0), inflow: $0.nature.inflow)
         }
         return grouped.map { key, entries in
             UnsortedPartyGroup(party: key.party, inflow: key.inflow, entries: entries.sorted {

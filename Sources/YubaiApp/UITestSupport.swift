@@ -198,7 +198,7 @@ enum UITestSupport {
             ledger.imports = [batch]
             ledger.entries = (0..<10).map { index in
                 let title = index == 0 ? "合成个人 · 来款" : (index <= 6 ? "合成对方甲 · 明细" : "合成对方乙 · 明细")
-                var entry = Entry(date: Dates.addDays(-index - 5, to: now), amount: 100,
+                var entry = Entry(date: Dates.addDays(-index - 5, to: now), amount: index == 0 ? 99 : 100,
                                   nature: index == 0 ? .unknownIn : .unknownOut, accountID: ledger.accounts[0].id, title: title)
                 entry.batchID = batch.id; entry.source = "文件"
                 return entry
@@ -217,7 +217,9 @@ enum UITestSupport {
         ledger.imports = [batch]
         ledger.entries = (1...count).map { day in
             var entry = Entry(date: Dates.addDays(-day, to: Dates.day(now)), amount: 100,
-                              accountID: ledger.accounts[0].id, title: "合成日常支出", category: Classification.pendingCategory)
+                              // Distinct parties keep the stop/fail fixtures on
+                              // their original 30/30/10 (or 5×30) row checkpoints.
+                              accountID: ledger.accounts[0].id, title: "合成日常支出\(day)", category: Classification.pendingCategory)
             entry.batchID = batch.id; entry.source = "文件"
             return entry
         }
@@ -327,8 +329,44 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
-        if request.purpose == "导入整理", UITestSupport.usesBackgroundFixture {
+        if ["导入整理", "导入整理·按对方"].contains(request.purpose), UITestSupport.usesBackgroundFixture {
             try await Task.sleep(for: .seconds(8))
+        }
+        if ["salary", "import"].contains(script), request.purpose == "导入整理·按对方" {
+            let payload = try JSONValue.parse(request.messages.last?.content ?? "")
+            let groups = payload["groups"]?.arrayValue ?? []
+            let keys = Set(groups.compactMap { group -> String? in
+                guard let party = group["party"]?.stringValue else { return nil }
+                return "group:" + party + (group["inflow"] == .bool(true) ? ":in" : ":out")
+            })
+            await MainActor.run {
+                let log = UITestRequestLog.shared
+                log.organizationRequests += 1
+                log.resentCompletedCount += keys.intersection(log.completedOrganizationIDs).count
+                log.completedOrganizationIDs.formUnion(keys)
+            }
+            // The remaining-by-party scenario still leaves all nine outgoing
+            // records on the real fallback card for the manual grouping tests.
+            if UITestSupport.organizationScenario == "by-party" {
+                return ChatMessage(role: .assistant, content: #"{"groups":[],"questions":[]}"#)
+            }
+            var results: [JSONValue] = [], questions: [JSONValue] = []
+            for group in groups {
+                guard let id = group["id"] else { continue }
+                let income = group["inflow"] == .bool(true)
+                if script == "import", income {
+                    questions.append(.object(["group": id, "text": .string("这笔来款是什么用途？"), "options": .array([
+                        .object(["title": .string("日常收入"), "items": .array([
+                            .object(["kind": .string("set_nature"), "nature": .string("income")]),
+                            .object(["kind": .string("set_category"), "category": .string("其他收入")])])]),
+                        .object(["title": .string("先留没写用途"), "items": .array([
+                            .object(["kind": .string("set_purpose"), "text": .string("待核对来款")])])])])]))
+                } else {
+                    results.append(.object(["group": id, "category": .string(income ? "工资奖金" : "餐饮"),
+                        "nature": .string(income ? "income" : "expense"), "confident": .bool(true)]))
+                }
+            }
+            return ChatMessage(role: .assistant, content: try JSONValue.object(["groups": .array(results), "questions": .array(questions)]).jsonText())
         }
         if script == "salary", request.purpose == "导入整理" {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
@@ -413,20 +451,21 @@ struct UITestTransport: ChatTransport {
         if script == "import", request.purpose == "导入整理" {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
             let batch = payload["batch"]?.arrayValue ?? []
-            guard let incoming = batch.first(where: { $0["inflow"] == .bool(true) }), let id = incoming["id"]?.stringValue else {
-                throw YubaiError.invalid("合成导入夹具缺少来款。")
-            }
+            let id = batch.first(where: { $0["inflow"] == .bool(true) })?["id"]?.stringValue
             let rows: [JSONValue] = batch.compactMap { row in
                 guard let key = row["id"]?.stringValue, key != id else { return nil }
                 return .object(["entry": .string(key), "category": .string("餐饮"), "nature": .string("expense"), "confident": .bool(true)])
             }
-            let question: JSONValue = .object(["text": .string("这笔来款是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array([
+            var questions: [JSONValue] = []
+            if let id {
+                questions = [.object(["text": .string("这笔来款是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array([
                 .object(["title": .string("日常收入"), "items": .array([
                     .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string("income")]),
                     .object(["kind": .string("set_category"), "entry": .string(id), "category": .string("其他收入")])])]),
                 .object(["title": .string("先留没写用途"), "items": .array([
-                    .object(["kind": .string("set_purpose"), "entry": .string(id), "text": .string("待核对来款")])])])])])
-            let result = JSONValue.object(["rows": .array(rows), "items": .array([]), "series": .array([]), "questions": .array([question])])
+                    .object(["kind": .string("set_purpose"), "entry": .string(id), "text": .string("待核对来款")])])])])])]
+            }
+            let result = JSONValue.object(["rows": .array(rows), "items": .array([]), "series": .array([]), "questions": .array(questions)])
             return ChatMessage(role: .assistant, content: try result.jsonText())
         }
         if script == "ask" {
