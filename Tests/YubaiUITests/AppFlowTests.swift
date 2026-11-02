@@ -145,6 +145,7 @@ final class AppFlowTests: XCTestCase {
         let fallback = app.staticTexts["unsortedQuestionTitle"]
         let summary = app.buttons["unknownInflowsSummary"]
         XCTAssertTrue(question.waitForExistence(timeout: 15))
+        assertGone(app.buttons["stopOrganizing"])
         XCTAssertEqual(question.label, "这笔来款是什么用途？")
         XCTAssertTrue(fallback.waitForExistence(timeout: 5)); XCTAssertEqual(fallback.label, "9 笔还没分类")
         XCTAssertFalse(app.buttons["都是日常收支"].exists)
@@ -156,6 +157,82 @@ final class AppFlowTests: XCTestCase {
         tap(summary, in: app)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "butlerCard_unknownInflow").firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["nowImportQuestion"].exists)
+    }
+
+    func testOrganizationDefersSavedQuestionsUntilCompletion() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "questions-complete"
+        app.launch()
+        assertSavedQuestionIsDeferredDuringOrganization(app)
+        XCTAssertTrue(app.staticTexts["nowImportQuestion"].waitForExistence(timeout: 25))
+        XCTAssertFalse(app.buttons["stopOrganizing"].exists)
+        XCTAssertEqual(app.staticTexts["nowImportQuestion"].label, "这笔支出是什么用途？")
+        XCTAssertFalse(app.staticTexts["organizeError"].exists)
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.staticTexts["nowImportQuestion"].waitForExistence(timeout: 10))
+    }
+
+    func testOrganizationStopReleasesSavedQuestionsAndRestoresIdleTimer() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "questions-stop"
+        app.launch()
+        assertSavedQuestionIsDeferredDuringOrganization(app)
+        tap(app.buttons["stopOrganizing"], in: app)
+        XCTAssertTrue(app.staticTexts["nowImportQuestion"].waitForExistence(timeout: 5))
+        assertStoppedQuestionState(app)
+        XCTAssertFalse(app.staticTexts["organizeError"].exists)
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.staticTexts["nowImportQuestion"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["40 笔还没分类"].exists)
+    }
+
+    func testOrganizationFailureReleasesSavedQuestionsAndRestoresIdleTimer() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "questions-fail"
+        app.launch()
+        assertSavedQuestionIsDeferredDuringOrganization(app)
+        XCTAssertTrue(app.staticTexts["organizeError"].waitForExistence(timeout: 25))
+        XCTAssertTrue(app.staticTexts["nowImportQuestion"].exists)
+        assertStoppedQuestionState(app)
+    }
+
+    func testOrganizationRelaunchReleasesCheckpointedQuestionsWithoutRestarting() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "questions-stop"
+        app.launch()
+        assertSavedQuestionIsDeferredDuringOrganization(app)
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.staticTexts["nowImportQuestion"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["stopOrganizing"].exists)
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        XCTAssertEqual(pending.value as? String, "requests=0;entries=70;classified=29;resent=0;questions=1;idle=0")
+        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
+    }
+
+    private func assertSavedQuestionIsDeferredDuringOrganization(_ app: XCUIApplication,
+                                                                 file: StaticString = #filePath, line: UInt = #line) {
+        tap(app.buttons["organizeImports"], in: app)
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        let state = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@",
+            "requests=2;entries=70;classified=29;resent=0;questions=1;idle=1"), object: pending)
+        XCTAssertEqual(XCTWaiter.wait(for: [state], timeout: 10), .completed, file: file, line: line)
+        let progress = app.descendants(matching: .any).matching(identifier: "organizeProgress").firstMatch
+        XCTAssertEqual(progress.value as? String, "30/70", file: file, line: line)
+        XCTAssertTrue(app.buttons["stopOrganizing"].exists, file: file, line: line)
+        XCTAssertTrue(pending.staticTexts["整理时别离开余白"].exists, file: file, line: line)
+        XCTAssertFalse(app.staticTexts["nowImportQuestion"].exists, file: file, line: line)
+        XCTAssertFalse(app.staticTexts["unsortedQuestionTitle"].exists, file: file, line: line)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'homeImportAnswer_' ")).firstMatch.exists,
+                       file: file, line: line)
+    }
+
+    private func assertStoppedQuestionState(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
+        let state = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@",
+            "requests=2;entries=70;classified=29;resent=0;questions=1;idle=0"), object: pending)
+        XCTAssertEqual(XCTWaiter.wait(for: [state], timeout: 5), .completed, file: file, line: line)
+        XCTAssertTrue(app.buttons["organizeImports"].isEnabled, file: file, line: line)
+        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists, file: file, line: line)
     }
 
     func testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount() {

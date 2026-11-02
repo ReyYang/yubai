@@ -1,6 +1,123 @@
 import Foundation
 import Observation
 import YubaiCore
+#if os(iOS)
+import BackgroundTasks
+import UIKit
+#endif
+
+/// Owns the system assertion for one explicit run; the organizer remains the
+/// same async checkpoint pipeline whether or not submission succeeds.
+@MainActor final class ImportOrganizationExecution {
+    let id: UUID
+    private var progress: ImportOrganizationProgress
+    private let cancel: @MainActor () -> Void
+    private var completion: Bool?
+    private let authorizedConfiguration: DeepSeekConfiguration?
+    #if os(iOS)
+    private let identifier: String
+    private var backgroundTask: BGContinuedProcessingTask?
+    private var originalIdleTimerDisabled: Bool?
+    private var submitted = false
+    #endif
+
+    init(id: UUID, progress: ImportOrganizationProgress, cancel: @escaping @MainActor () -> Void) {
+        self.id = id; self.progress = progress; self.cancel = cancel
+        authorizedConfiguration = APIKeyStore.shared.configuration()
+        #if os(iOS)
+        identifier = "app.yubai.personal.organizeImports." + id.uuidString
+        #endif
+    }
+    func start() -> Bool {
+        #if os(iOS)
+        originalIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil && !UITestSupport.allowsBackground { return false }
+        #endif
+        guard progress.total > 0, UIApplication.shared.applicationState == .active else { return false }
+        // Register/submit the concrete suffix of Info.plist's bundle-ID wildcard
+        // immediately on the user action. .fail avoids a detached, queued rerun.
+        guard BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main, launchHandler: { [weak self] task in
+            // The scheduler guarantees .main here; BGTask is not Sendable.
+            nonisolated(unsafe) let deliveredTask = task
+            MainActor.assumeIsolated {
+                guard let self, let task = deliveredTask as? BGContinuedProcessingTask else {
+                    deliveredTask.setTaskCompleted(success: false); return
+                }
+                self.attach(task)
+            }
+        }) else { return false }
+        let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: "整理导入记录", subtitle: progress.subtitle)
+        request.strategy = .fail
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            submitted = true
+            return true
+        }
+        catch { return false }
+        #else
+        return false
+        #endif
+    }
+    func configurationForTransport() -> DeepSeekConfiguration? {
+        #if os(iOS)
+        if UIApplication.shared.applicationState != .active {
+            // Keep this run's foreground-authorized key in memory: the existing
+            // WhenUnlocked Keychain item cannot be reread after device lock.
+            guard authorizedConfiguration?.model == DeepSeekConfiguration.modelName() else { return nil }
+            return authorizedConfiguration
+        }
+        #endif
+        return APIKeyStore.shared.configuration()
+    }
+    func update(_ progress: ImportOrganizationProgress) {
+        self.progress = progress
+        #if os(iOS)
+        // Report real saved checkpoints: minimal/no progress can cause the
+        // system to terminate the task; never invent progress during a request.
+        backgroundTask?.progress.totalUnitCount = Int64(progress.total)
+        backgroundTask?.progress.completedUnitCount = Int64(progress.completed)
+        backgroundTask?.updateTitle("整理导入记录", subtitle: progress.subtitle)
+        #endif
+    }
+    func finish(success: Bool) {
+        guard completion == nil else { return }
+        completion = success
+        #if os(iOS)
+        if let backgroundTask {
+            backgroundTask.expirationHandler = nil
+            backgroundTask.setTaskCompleted(success: success)
+            self.backgroundTask = nil
+        } else if submitted {
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: identifier)
+        }
+        if let originalIdleTimerDisabled {
+            UIApplication.shared.isIdleTimerDisabled = originalIdleTimerDisabled
+            self.originalIdleTimerDisabled = nil
+        }
+        #endif
+    }
+    #if os(iOS)
+    private func attach(_ task: BGContinuedProcessingTask) {
+        backgroundTask = task
+        update(progress)
+        if let completion {
+            task.setTaskCompleted(success: completion)
+            backgroundTask = nil
+            return
+        }
+        task.expirationHandler = { [weak self] in
+            Task { @MainActor in
+                guard let self, self.completion == nil else { return }
+                // System Stop and resource expiration share the in-app Stop path.
+                self.cancel()
+                self.finish(success: false)
+            }
+        }
+    }
+    #endif
+}
 
 @MainActor enum IntelligenceRuntime {
     static let cloud = CloudAIStatus()
@@ -73,21 +190,31 @@ struct ActiveLedgerTransport: ChatTransport {
 
 @MainActor extension AppStore {
     func assistantTransport(for snapshot: Ledger, reportingLedgerChanges: Bool = false) -> (any ChatTransport)? {
-        guard snapshot.preferences.cloudAIEnabled, !locked, IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
+        let continuingOrganization = reportingLedgerChanges && organizationContinuesInBackground
+        guard snapshot.preferences.cloudAIEnabled, !locked || continuingOrganization, IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
         #if DEBUG && targetEnvironment(simulator)
         if let script = UITestSupport.script {
             guard IntelligenceRuntime.isConfigured else { return nil }
-            return ActiveLedgerTransport(base: UITestTransport(script: script), staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) { self.current == snapshot && !self.locked }
+            return ActiveLedgerTransport(base: UITestTransport(script: script), staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
+                self.current == snapshot && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground))
+            }
         }
         #endif
-        guard let client = DeepSeekClient.configured(redactor: Redactor(ledger: snapshot)) else { return nil }
+        let configuration = continuingOrganization ? organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
+        guard let configuration else { return nil }
+        let client = DeepSeekClient(configuration: configuration, redactor: Redactor(ledger: snapshot))
         return ActiveLedgerTransport(base: client, model: client.configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
-            self.current == snapshot && !self.locked && APIKeyStore.shared.configuration() == client.configuration
+            let configuration = continuingOrganization ? self.organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
+            return self.current == snapshot && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground)) && configuration == client.configuration
         }
     }
     // Called only by the now-page's explicit organization button.
     func startOrganizingPendingImports() {
-        guard pendingOrganizationTask == nil, !organizingPendingImports, organizingBatchID == nil else { return }
+        guard pendingOrganizationTask == nil, organizationExecution == nil, !organizingPendingImports, organizingBatchID == nil,
+              !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
+        let ids = PendingImportOrganization(in: current).batchIDs
+        guard !ids.isEmpty else { return }
+        beginImportOrganization(batchIDs: ids)
         pendingOrganizationTask = Task { @MainActor in
             defer { pendingOrganizationTask = nil }
             await organizePendingImports()
@@ -96,14 +223,43 @@ struct ActiveLedgerTransport: ChatTransport {
     func stopOrganizingImports() {
         pendingOrganizationTask?.cancel()
         importOrganizationTask?.cancel()
+        organizationExecution?.finish(success: false)
+    }
+    private func beginImportOrganization(batchIDs: [UUID]) {
+        let progress = ImportOrganizationProgress(completed: 0, total: batchIDs.reduce(0) {
+            $0 + ImportOrganizer.pendingEntryIDs(in: current, batchID: $1).count
+        })
+        organizationProgress = progress
+        organizingImportBatchIDs = Set(batchIDs)
+        let id = UUID()
+        let execution = ImportOrganizationExecution(id: id, progress: progress) { [weak self] in
+            guard let self, self.organizationExecution?.id == id else { return }
+            self.stopOrganizingImports()
+        }
+        organizationExecution = execution
+        organizationContinuesInBackground = execution.start()
+    }
+    private func finishImportOrganization() {
+        let complete = organizationProgress.map { $0.completed == $0.total } ?? false
+        organizationExecution?.finish(success: complete && !Task.isCancelled &&
+            organizingImportBatchIDs.allSatisfy { organizationErrors[$0] == nil })
+        organizationExecution = nil
+        organizationContinuesInBackground = false
+        organizingImportBatchIDs = []
+        organizationProgress = nil
     }
     func organizePendingImports() async {
-        guard !Task.isCancelled, !organizingPendingImports, organizingBatchID == nil,
-              !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
-        let ids = current.imports.filter { $0.needsOrganization == true && $0.undoneAt == nil }.map(\.id)
+        // A synchronous button submission may already own this run. Always
+        // release it even if settings changed before the Task's first turn.
+        guard !organizingPendingImports, organizingBatchID == nil else { return }
+        defer { organizingPendingImports = false; finishImportOrganization() }
+        guard !Task.isCancelled, !locked || organizationContinuesInBackground,
+              loadFailure == nil, current.preferences.cloudAIEnabled else { return }
+        let ids = current.imports.filter {
+            $0.needsOrganization == true && $0.undoneAt == nil && (organizationExecution == nil || organizingImportBatchIDs.contains($0.id))
+        }.map(\.id)
+        if organizationExecution == nil { beginImportOrganization(batchIDs: ids) }
         organizingPendingImports = true
-        organizationProgress = (completed: 0, total: ids.reduce(0) { $0 + ImportOrganizer.pendingEntryIDs(in: current, batchID: $1).count })
-        defer { organizingPendingImports = false; organizationProgress = nil }
         for id in ids {
             guard !Task.isCancelled else { return }
             await organizeImport(id)
@@ -112,30 +268,35 @@ struct ActiveLedgerTransport: ChatTransport {
     }
     func organizeImport(_ batchID: UUID) async {
         guard !Task.isCancelled, importOrganizationTask == nil else { return }
+        let ownsExecution = organizationExecution == nil
+        if ownsExecution {
+            guard !locked, loadFailure == nil, current.preferences.cloudAIEnabled,
+                  current.imports.contains(where: { $0.id == batchID && $0.needsOrganization == true && $0.undoneAt == nil }) else { return }
+            beginImportOrganization(batchIDs: [batchID])
+        }
         let task = Task { @MainActor in await performImportOrganization(batchID) }
         importOrganizationTask = task
-        defer { importOrganizationTask = nil }
+        defer {
+            importOrganizationTask = nil
+            if ownsExecution { finishImportOrganization() }
+        }
         await withTaskCancellationHandler {
             await task.value
         } onCancel: { task.cancel() }
     }
     private func performImportOrganization(_ batchID: UUID) async {
-        guard !Task.isCancelled, organizingBatchID == nil, !locked,
+        guard !Task.isCancelled, organizingBatchID == nil, !locked || organizationContinuesInBackground,
               let batch = current.imports.first(where: { $0.id == batchID }), batch.needsOrganization == true,
               batch.undoneAt == nil, current.preferences.cloudAIEnabled,
-              assistantTransport(for: current) != nil else { return }
+              assistantTransport(for: current, reportingLedgerChanges: true) != nil else { return }
         let before = current
         let ids = ImportOrganizer.pendingEntryIDs(in: before, batchID: batchID)
         organizingBatchID = batchID; organizationErrors[batchID] = nil
-        if !organizingPendingImports { organizationProgress = (completed: 0, total: ids.count) }
-        defer {
-            organizingBatchID = nil
-            if !organizingPendingImports { organizationProgress = nil }
-        }
+        defer { organizingBatchID = nil }
         do {
             let organizer = ImportOrganizer { snapshot in
                 try await MainActor.run {
-                    guard self.current == snapshot, !self.locked,
+                    guard self.current == snapshot, !self.locked || self.organizationContinuesInBackground,
                           let transport = self.assistantTransport(for: snapshot, reportingLedgerChanges: true) else {
                         throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
                     }
@@ -146,14 +307,16 @@ struct ActiveLedgerTransport: ChatTransport {
                 try Task.checkCancellation()
                 return try await MainActor.run {
                     try Task.checkCancellation()
-                    guard self.current == snapshot, !self.locked else {
+                    guard self.current == snapshot, !self.locked || self.organizationContinuesInBackground else {
                         throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
                     }
-                    guard self.apply(result.changeSet, label: "导入整理", silently: true, finishing: { ledger in
+                    guard self.apply(result.changeSet, label: "导入整理", silently: true, continuingImportOrganization: true, finishing: { ledger in
                         result.finish(batchID: batchID, before: snapshot, in: &ledger, entryIDs: completedIDs)
                     }) else { throw YubaiError.invalid(self.error ?? ImportOrganizer.ledgerChangedMessage) }
-                    self.organizationProgress = (completed: (self.organizationProgress?.completed ?? 0) + completedIDs.count,
-                                                 total: self.organizationProgress?.total ?? ids.count)
+                    let progress = ImportOrganizationProgress(completed: (self.organizationProgress?.completed ?? 0) + completedIDs.count,
+                                                              total: self.organizationProgress?.total ?? ids.count)
+                    self.organizationProgress = progress
+                    self.organizationExecution?.update(progress)
                     return self.current
                 }
             }

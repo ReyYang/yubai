@@ -2,6 +2,9 @@
 import Foundation
 import Observation
 import YubaiCore
+#if os(iOS)
+import UIKit
+#endif
 
 @MainActor @Observable final class UITestRequestLog {
     static let shared = UITestRequestLog()
@@ -14,16 +17,27 @@ import YubaiCore
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
 enum UITestSupport {
+    /// Opt in only with a valid, isolated UI script; replies remain offline.
+    static var allowsBackground: Bool {
+        script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_ALLOW_BACKGROUND"] == "1"
+    }
     static var organizationScenario: String? {
         guard script == "salary", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
-              ["stop-second", "fail-second", "by-party"].contains(value) else { return nil }
+              ["stop-second", "fail-second", "by-party", "questions-complete", "questions-stop", "questions-fail"].contains(value) else { return nil }
         return value
     }
     @MainActor static func importRequestState(in ledger: Ledger) -> String {
         let log = UITestRequestLog.shared
         let requests = "requests=\(log.count)"
         guard script != nil, organizationScenario != nil || ProcessInfo.processInfo.environment["YUBAI_UI_TEST_IMPORT_STATE"] == "1" else { return requests }
-        return requests + ";entries=\(ledger.activeEntries.count);classified=\(ledger.activeEntries.filter { !Classification.isPending($0) }.count);resent=\(log.resentCompletedCount)"
+        var state = requests + ";entries=\(ledger.activeEntries.count);classified=\(ledger.activeEntries.filter { !Classification.isPending($0) }.count);resent=\(log.resentCompletedCount)"
+        if organizationScenario?.hasPrefix("questions-") == true {
+            state += ";questions=\(ledger.imports.flatMap { $0.organization?.questions ?? [] }.count)"
+            #if os(iOS)
+            state += ";idle=\(UIApplication.shared.isIdleTimerDisabled ? 1 : 0)"
+            #endif
+        }
+        return state
     }
     static var keepsUndoReceipt: Bool {
         script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_KEEP_UNDO"] == "1"
@@ -67,7 +81,7 @@ enum UITestSupport {
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty", script != "welcome-import" else { return }
         let now = Date()
         if script == "salary" {
-            try repository.save(organizationScenario == nil ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
+            try repository.save(organizationScenario == nil && !allowsBackground ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
             return
         }
         if screenshotScripts.contains(script) {
@@ -166,7 +180,8 @@ enum UITestSupport {
         }
         return ledger
     }
-    /// Three chunks, with no salary candidate or automatic cloud work.
+    /// Three chunks by default; the background opt-in uses five slow chunks.
+    /// No salary candidate or automatic cloud work.
     static func organizationLedger(now: Date) -> Ledger {
         var ledger = salaryLedger(now: now)
         ledger.preferences.cloudAIEnabled = true
@@ -189,10 +204,11 @@ enum UITestSupport {
             ButlerCards.refresh(&ledger, now: now)
             return ledger
         }
-        var batch = ImportBatch(filename: "合成大量流水.csv", importedCount: 70, duplicateCount: 0, skippedCount: 0)
+        let count = allowsBackground ? 150 : 70
+        var batch = ImportBatch(filename: "合成大量流水.csv", importedCount: count, duplicateCount: 0, skippedCount: 0)
         batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
         ledger.imports = [batch]
-        ledger.entries = (1...70).map { day in
+        ledger.entries = (1...count).map { day in
             var entry = Entry(date: Dates.addDays(-day, to: Dates.day(now)), amount: 100,
                               accountID: ledger.accounts[0].id, title: "合成日常支出", category: Classification.pendingCategory)
             entry.batchID = batch.id; entry.source = "文件"
@@ -304,6 +320,9 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
+        if request.purpose == "导入整理", UITestSupport.allowsBackground {
+            try await Task.sleep(for: .seconds(8))
+        }
         if script == "salary", request.purpose == "导入整理" {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
             let ids = Set((payload["batch"]?.arrayValue ?? []).compactMap { $0["id"]?.stringValue })
@@ -327,6 +346,15 @@ struct UITestTransport: ChatTransport {
                 log.resentCompletedCount += ids.intersection(log.completedOrganizationIDs).count
                 return log.organizationRequests
             }
+            if scenario?.hasPrefix("questions-") == true, number == 2 {
+                if scenario == "questions-stop" {
+                    while true { try await Task.sleep(for: .seconds(1)) }
+                }
+                try await Task.sleep(for: .seconds(10)) // Observe a saved question while the next chunk is running.
+                if scenario == "questions-fail" {
+                    throw YubaiError.invalid("云端服务返回错误（HTTP 503）。本机计算结果已保留。")
+                }
+            }
             if scenario == "stop-second", number == 2 {
                 // Stay in a cancellable request until the UI presses Stop.
                 while true { try await Task.sleep(for: .seconds(1)) }
@@ -343,9 +371,18 @@ struct UITestTransport: ChatTransport {
                 return .object(["entry": .string(id), "category": .string(income ? "工资奖金" : "餐饮"),
                                 "nature": .string(income ? "income" : "expense"), "confident": .bool(true)])
             }
+            var questions: [JSONValue] = []
+            if scenario?.hasPrefix("questions-") == true, number == 1, let id = ids.sorted().first {
+                let options: [JSONValue] = [("日常支出", "expense"), ("还款", "repayment")].map { title, nature in
+                    .object(["title": .string(title), "items": .array([
+                        .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string(nature)])
+                    ])])
+                }
+                questions = [.object(["text": .string("这笔支出是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array(options)])]
+            }
             await MainActor.run { UITestRequestLog.shared.completedOrganizationIDs.formUnion(ids) }
             return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array(rows), "items": .array([]),
-                "series": .array([]), "questions": .array([])]).jsonText())
+                "series": .array([]), "questions": .array(questions)]).jsonText())
         }
         if script.hasPrefix("judge-") { return try purchaseReply(request) }
         if script == "profile-revisit", request.purpose == "消费观对话" {
