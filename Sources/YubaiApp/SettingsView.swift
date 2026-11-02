@@ -196,7 +196,7 @@ struct IntelligencePrivacyView: View {
             Card {
                 ChipFlow {
                     ForEach(values, id: \.self) { value in
-                        Text(value).yubaiFont(YubaiFont.caption).strikethrough(excluded)
+                        Text(value).yubaiFont(YubaiFont.caption).lineLimit(1).truncationMode(.tail).strikethrough(excluded)
                             .foregroundStyle(excluded ? YubaiColor.labelSecondary : YubaiColor.label)
                             .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
                             .background(excluded ? Color.clear : YubaiColor.raised, in: Capsule())

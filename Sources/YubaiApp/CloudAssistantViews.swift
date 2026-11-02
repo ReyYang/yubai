@@ -273,11 +273,11 @@ private struct CloudSendLogDetailView: View {
                 HStack(spacing: YubaiSpace.gapGroup) {
                     Button("看原文") { raw = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewCloudLogRaw")
                     Button(copied ? "已拷贝" : "拷贝原文") { copyRaw(); copied = true }.buttonStyle(SecondaryButtonStyle()).disabled(hidden).accessibilityIdentifier("copyCloudLogRaw")
-                }.padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
+                }.padding(YubaiSpace.insetPage).background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
             }
         }
         .amountPrivacy(hidden).navigationTitle(group.purpose + " · " + ImportStatementText.time(group.startedAt)).yubaiNavigation()
-        .sheet(isPresented: $raw) { NavigationStack { rawRequests }.environment(store) }
+        .sheet(isPresented: $raw) { NavigationStack { rawRequests }.environment(store).yubaiSheetBackground() }
         .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in
             if let latest = SendLog.shared.groups.first(where: { $0.id == group.id }) { group = latest; copied = false }
             else { removed = true; raw = false }

@@ -40,7 +40,8 @@ struct ProfileView: View {
                             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                                 ChipFlow {
                                     ForEach(profile.generous) { area in
-                                        Text(area.title).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8).background(YubaiColor.raised, in: Capsule())
+                                        Text(area.title).yubaiFont(YubaiFont.callout).lineLimit(1).truncationMode(.tail)
+                                            .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8).background(YubaiColor.raised, in: Capsule())
                                     }
                                 }
                                 ForEach(profile.principles, id: \.self) { text in Text(text).yubaiFont(YubaiFont.cardTitle) }
@@ -76,7 +77,7 @@ struct ProfileView: View {
                     case .goal(let goal): GoalEditor(goal: goal, updateLabel: "修改消费观")
                     case .conversation: ProfileConversationView()
                     }
-                }.environment(store).tint(YubaiColor.brandInk).appErrors()
+                }.environment(store).tint(YubaiColor.brandInk).appErrors().yubaiSheetBackground()
                     #if os(macOS)
                     .frame(minWidth: 540, minHeight: 600)
                     #endif

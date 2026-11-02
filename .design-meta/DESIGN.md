@@ -118,6 +118,15 @@ UnsortedGroups.swift 为纯函数：按原始 title 的「 · 」前半部和收
 - `testPendingImportsSecondChunkFailureShowsReasonAndRetriesOnlyRemaining`：第二段失败原文、剩余 40、详情不变，再点整理的分母 40／中途剩余 10；总请求 4 次且不重发已完成 ID，完成／重启不再出现卡片。
 
 验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0，584 项、580 通过／4 原有实网 opt-in 跳过／0 失败。改动 App 文件通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析，UI 测试通过 iOS 26 模拟器 Debug 条件语法解析。另提取实际任务方法、实际 `ActiveLedgerTransport` 与 `UITestSupport`，移除平台门控后以 Swift 6 严格并发类型检查，并链接 Core、配持久化替身离线执行：停下保留 30／剩余 40、HTTP 503 后只重试 30＋10、无已完成 ID 重发、多批次 0→30→45→70 且分母始终 70、直接调用父任务取消传递均通过。该替身不代替完整 AppStore／Apple SDK 类型检查或 XCTest UI 实跑。`git diff --check` 通过；Apple 编译、AX／VoiceOver、字号与视觉验收待 Mac，Figma／截图／分发资源未同步。未提交、未推送，未调用 DeepSeek 或任何付费 API。
+## 2026-10-28 · 全部 sheet 底色与底部遮挡修复
+
+按 owner 本轮明确要求，在 `DesignSystem.swift` 的 `paperBackground()` 旁增加 `yubaiSheetBackground()`，iOS／macOS 共用 `.presentationBackground(YubaiColor.canvas)`。逐项核对全部 21 处 `.sheet`：根部 `store.sheet` 及 19 处本地呈现内容根使用该修饰符，QuickEntryView 原有设色也改用同一修饰符。改一笔、固定收付添加、账户编辑、导入及问余白内部未发现白色／systemBackground 大底色；Form 已隐藏系统滚动背景。全仓白色检出仅为图标前景与白色 token，保持。
+
+存储删除旧截图／抹掉全部数据共用的另一处呈现保持 `StorageSheet` 原有 raised 背景，未在其外层叠加 canvas；嵌套备份 sheet 单独使用 canvas。本分支没有 `FixedFlowStopSheet`。[Apple 文档](https://developer.apple.com/documentation/swiftui/view/presentationbackground(_:))说明该修饰符设置所在 sheet 的呈现背景，未说明同一 sheet 内外多处设色的覆盖顺序；当前无 Apple 运行环境，未实测该优先级，本次通过避免不同底色叠加保留 raised。
+
+底部四处 `safeAreaInset` 均已核对：记一笔键盘沿用 #47；云端发送记录详情操作条、存储抹掉按钮区、欢迎页开始按钮区补齐 canvas 延伸至底部安全区。问余白／消费观聊天共用 `ChatInputBar` 的玻璃胶囊，以及既有提示条／浮动导航栏／圆钮保持，无浮层归属待定项。全部直接 `ChipFlow` 调用已有 leading 的 Card／VStack，故不加重复 frame；仅智能与隐私标签、消费观愿意多花的领域文字补单行尾部省略，SuggestionChip 已有同样限制。改一笔与记一笔的 RecentPurposeChips 都紧接用途行、在分隔线前，共享固定单行实现，位置保持。
+
+验证：静态审计覆盖 21 处呈现与 4 处底部 inset；17 份改动 Swift 文件的字符串字面量与 HEAD 完全一致，raised 共用实现与 HEAD 完全一致，`git diff --check` 通过。`/opt/swift-rootfs/usr/bin/swiftc` 不存在，PATH 也无 swiftc，未执行 `swiftc -frontend -parse`；Apple SDK 编译、UI／视觉／深色／大字号与安全区实测待 Mac。新增／改动可见中文：无；业务与动效保持。设计原稿／Figma／截图／分发包未同步，未提交、未推送。
 
 ## 2026-10-28 · 第二十三轮固定收付「以后」
 

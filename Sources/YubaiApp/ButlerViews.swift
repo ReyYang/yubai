@@ -398,7 +398,7 @@ struct WeeklyLetterCard: View {
             }
             ProfileChatEntry(title: "聊聊这周", context: .weeklyLetter(card.body))
         }.sheet(item: $reviewProposal) { change in
-            NavigationStack { ButlerProposalView(changeID: change.id) }.appErrors()
+            NavigationStack { ButlerProposalView(changeID: change.id) }.appErrors().yubaiSheetBackground()
         }
     }
     private func letterChart(_ facts: LetterFacts) -> some View {

@@ -407,7 +407,7 @@ struct RootView: View {
             NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brandInk)
                 .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
                 .yubaiZoomDestination(store.sheetSource ?? sheet.motionSource)
-                .appErrors().presentationDragIndicator(.visible)
+                .appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()
                 .overlay { privacyCover }
                 #if os(macOS)
                 .frame(minWidth: 540, idealWidth: 620, minHeight: 600, idealHeight: 720)

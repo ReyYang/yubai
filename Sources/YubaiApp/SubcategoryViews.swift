@@ -24,7 +24,7 @@ struct EntrySubcategoryRow: View {
             .buttonStyle(PressButtonStyle()).disabled(!editable).accessibilityIdentifier("entrySubcategory")
             .sheet(isPresented: $selecting) {
                 NavigationStack { SubcategoryPicker(entryID: classificationID) }
-                    .environment(store).appErrors()
+                    .environment(store).appErrors().yubaiSheetBackground()
                     #if os(macOS)
                     .frame(minWidth: 460, minHeight: 400)
                     #endif

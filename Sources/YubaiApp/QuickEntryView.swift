@@ -70,15 +70,15 @@ struct QuickEntryView: View {
             }
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: purposeFocused)
             .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+            .yubaiSheetBackground()
             #if os(iOS)
             .presentationDetents([.large])
-            .presentationBackground(YubaiColor.canvas)
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .sheet(isPresented: $showingTransferAccountEditor, onDismiss: selectAddedTransferAccount) {
                 NavigationStack { AccountEditor(account: nil) }
                     .environment(store).tint(YubaiColor.brandInk).appErrors()
-                    .presentationDragIndicator(.visible).frame(minWidth: 340, minHeight: 520)
+                    .presentationDragIndicator(.visible).yubaiSheetBackground().frame(minWidth: 340, minHeight: 520)
             }
             .onAppear {
                 guard !loaded else { return }; loaded = true

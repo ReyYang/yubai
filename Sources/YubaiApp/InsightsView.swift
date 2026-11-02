@@ -88,7 +88,7 @@ struct InsightsView: View {
                     }.editorForm().navigationTitle("自定时间")
                         .onChange(of: customStart) { _, value in if customEnd < value { customEnd = value } }
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("看这段时间") { store.pickingInsightDates = false } } }
-                }.presentationDragIndicator(.visible)
+                }.presentationDragIndicator(.visible).yubaiSheetBackground()
             }
     }
     private func categoryLink(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice], range: DateInterval) -> some View {
