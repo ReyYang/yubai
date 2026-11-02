@@ -19,6 +19,16 @@ final class MemoryReflectionTests: XCTestCase {
     private func transport(_ value: JSONValue) throws -> ScriptedChatTransport {
         ScriptedChatTransport([ChatMessage(role: .assistant, content: try value.jsonText())])
     }
+    func testStructuredReflectionDisablesThinkingAndAcceptsFencedJSON() async throws {
+        let json = try output(add: [.object(["text": .string("准备搬家"), "kind": .string("plan")])], learned: [.string("你在准备搬家")]).jsonText()
+        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: "```json\n" + json + "\n```")])
+        let result = try await MemoryReflection.run(ledger: seed(), transport: script, now: now)
+        XCTAssertEqual(result.addedNotes.map(\.text), ["准备搬家"])
+        let requests = await script.recorded()
+        let request = try XCTUnwrap(requests.first)
+        XCTAssertEqual(request.thinking, false)
+        XCTAssertGreaterThanOrEqual(request.maxTokens, 4096)
+    }
     func testAddUpdateRemoveApplyAtomicallyLearnedInLetterAndUndo() async throws {
         var ledger = seed(); let before = ledger; let original = ledger.memories[0]; let duplicate = ledger.memories[1]
         let json = output(add: [.object(["text": .string("正在为搬家作准备"), "kind": .string("plan")])],

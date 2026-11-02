@@ -19,6 +19,31 @@ UnsortedGroups.swift 为纯函数：按原始 title 的「 · 」前半部和收
 工程：UnsortedViews.swift 已登记 App target，UnsortedGroupsTests.swift 已登记 Xcode Core 测试 target；UnsortedGroups.swift 由本地 Swift Package 的 YubaiCore target 自动收录，与其余 Core 文件相同。
 
 验证：指定命令 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出0，599项、595通过／4项原有实网opt-in跳过／0失败，新增9项Core测试覆盖旧数据、跨段合并、收支拆组、分类门槛、所有性质、双向转账、完整覆盖去重、零笔隐藏及4,200笔分组。新增2项UI测试源码覆盖首页顺序／折叠去重和按对方分→日常支出→选分类→确认→组数／剩余数减少并重启持久化。全部App源码通过iOS26模拟器Debug、设备Release、macOS14Debug条件语法解析，UI测试通过模拟器Debug解析；完整UITestSupport／UITestTransport和提取的实际store.apply、applyUnsortedGroup方法以Swift6严格并发离线编译执行，使用持久化替身核对2张问题先于6笔未覆盖进账、9笔／2组→一次apply→3笔／1组、磁盘与恢复版本、清零隐藏及整批撤销通过。该替身不代替完整AppStore或Apple SDK类型检查。Apple SDK 编译、XCTest UI 实跑、VoiceOver／深色／大字号及4,200笔真机滚动仍待 Mac，条件语法解析和离线夹具检查不代替这些验收。原稿保持只读，外部画布、截图和分发包未同步；未提交、未推送、未调用 DeepSeek 或任何付费 API。
+## 2026-10-29 · 小项截断与账目搜索卡顿修复
+
+来源为 owner 在 `fix/subcategory-truncation-ledger-hang`（基于 `main e6eff03`）提供的 4,200 笔 DeepSeek 导入反馈与 Mac `hang.sample.txt`。本轮只修行为和性能，不采用新设计，不改业务分类规则、外观、可见文案或操作入口。
+
+小项原每段 80 笔、沿用默认 4096 输出 token 且没有禁用默认思考，思考与 JSON 共用预算。`Subcategories.swift` 改为每段 40 笔，预算 `512 + 条数 × 128`（整段 5632），注释列明 UUID／主项／小项与 JSON 外壳估算；显式 `thinking: false`，用 `JSONValue.parseModelResponse` 接收围栏 JSON，原字段白名单、分类校验、取消及整轮原子应用保持。
+
+已遍历 Sources 的全部 ChatRequest 构造及通用 chat 调用：
+
+| 调用 | 本轮处理 |
+|---|---|
+| `SubcategoryBatch.run` | 上述分段、预算、禁用思考及共享解析 |
+| `AIImportColumnMapper.map` | 禁用思考；保留足够容纳列索引对象的 4000 预算，改用共享解析后解码 |
+| `ButlerWording.word` | 禁用思考；最多 12 张、每张 14 字标题／60 字正文，按 `256 + 张数 × 256` 预算；共享解析 |
+| `MemoryReflection.run` | 禁用思考、共享解析；保留显式 4096，用于选择性记忆提炼，不要求逐笔返回输入账目 |
+| `ImportOrganizer.organize` | 已有每段最多 30 笔、6000、禁用思考及共享解析，保持 |
+| `AssistantAgent` 主循环／金额核对 | 工具推理与自然语言答复，不是要求逐项 JSON 的批量任务，保持 |
+| `AskYubaiSession` 对话摘要 | 800 的纯文本摘要，保持 |
+| `CloudBackend.reflectPurchase` | 450、禁用思考的纯文本，保持 |
+| `DeepSeekClient.chat` 及洞察文字／搜索扩展／连接测试调用 | 通用方法转传预算与 thinking；三个调用已分别显式设置 220／80／64 和禁用思考，均非批量 JSON，保持 |
+
+账目页原在 `body` 每次执行月筛选、两次 timeline 分组及搜索金额格式化，每行又携带包含导入来源等元数据的完整 Entry；懒列表的 ForEach 还为每项产生行与条件分隔线两个可变子项。这些成本与 sample 的 LazyStack 布局／Entry、LedgerEntryRow 复制热点吻合，实际 Mac 修复效果仍待复验。`ManualBookkeeping.swift` 增加纯输入的 `EntryTimeline.snapshot`，保持旧搜索字段、金额匹配、月总额不随筛选变化及房租个人份额／退款口径；行只投影 UUID、金额、收支／分类状态、分类名、备注和图标。`AppStore` 用不参与观察的缓存保存结果，以月份／搜索词／筛选／日历为键，在每次账本替换时失效，不依赖 updatedAt；`EntriesView` 只读取快照，行的隐藏金额／新行状态由父级传入。日期与 UUID 原稳定 ID 保持，CardRows 将行与原分隔线包在零间距 VStack 内，每项固定一个子容器，继续使用原行高、分隔线、transition 与动画参数。
+
+验证：`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0；595 项，591 通过／4 原有实网 opt-in 跳过／0 失败。新增 5 项 Core 测试，覆盖 4,200 笔搜索的 1400 个匹配、全部筛选／带符号金额与旧 timeline 一致、月汇总、稳定 ID、只读输入／快照、账户与分类变化、房租／退款、月界与显式时区，以及整批卡片和每周回看的 thinking／预算／围栏解析。现有小项多段测试改为 40 笔分段并验证预算／thinking／围栏回复，保留失败原子性与敏感信息检查；列识别 HTTP 测试补禁用思考断言。
+
+三份 App 改动通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 条件语法解析；提取实际 AppStore 缓存属性／方法，隔离平台发布桥后，以 Swift 6 严格并发编译并链接 Core 离线执行，4,200 笔下一万次命中复用数组存储，月份／搜索／筛选和相同时间戳的账本替换失效均通过。Linux 内存布局 Entry 为 497 字节、行投影为 80 字节。此检查不代替完整 AppStore／SwiftUI Apple SDK 编译或实际滚动测试。Apple 编译、Mac 搜索「5.00」后滚动、手势／动画及视觉复验待做；原稿／Figma／分发资源保持。新增／改动可见中文字符串：无。未提交、未新增依赖、未调用 DeepSeek 或其他实网 API。
 
 ## 2026-10-28 · 第二十四轮大量流水导入界面
 
