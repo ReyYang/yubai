@@ -304,7 +304,7 @@ final class ImportOrganizerTests: XCTestCase {
         let count = await script.count()
         XCTAssertEqual(count, 2)
     }
-    func testUnaskedPendingRowsGetFallbackAndSpecificQuestionsHaveNoCountLimit() async throws {
+    func testLegacyRowQuestionsAreIgnoredAndAllPendingRowsGetFallback() async throws {
         var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]
         ledger.entries = (0..<11).map {
             Entry(amount: 50_000 + Int64($0) * 100_000, nature: .expense, accountID: ledger.accounts[0].id, title: "待明确组\($0)")
@@ -333,7 +333,8 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertEqual(ledger.entries[6].nature, .unknownOut)
         XCTAssertEqual(ledger.entries[7].nature, .unknownOut)
         XCTAssertEqual(ledger.entries[10].category, "餐饮")
-        XCTAssertEqual(result.questions.count, 7)
+        XCTAssertEqual(result.questions.count, 1)
+        XCTAssertTrue(result.questions.allSatisfy(\.isFallback))
         XCTAssertEqual(Set(result.questions.flatMap(\.entryIDs)), Set(ledger.activeEntries.filter(Classification.isPending).map(\.id)))
         let fallback = try XCTUnwrap(result.questions.first(where: \.isFallback))
         XCTAssertTrue(Set(ids[6...9]).isSubset(of: Set(fallback.entryIDs)), "False/missing confidence, omitted rows and rejected questions must all remain reachable")
@@ -550,7 +551,7 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertEqual(try LedgerCodec.encode(ledger), try LedgerCodec.encode(data.before))
     }
 
-    func testPartyQuestionsMergeWithoutCountLimitAndAnswersExpand() async throws {
+    func testLegacyPartyQuestionsAreIgnoredWithoutResendingGroups() async throws {
         var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]
         ledger.entries = (0..<90).map { i in
             Entry(amount: 50000 + Int64(i % 6) * 100000, nature: .expense,
@@ -573,17 +574,13 @@ final class ImportOrganizerTests: XCTestCase {
         let requests = await script.requests
         XCTAssertEqual(Set(requests.compactMap(\.groupID)).count, 1)
         XCTAssertTrue(requests.allSatisfy { $0.groupID != nil && $0.groupTitle == "整理 90 笔导入记录" })
-        XCTAssertEqual(result.questions.count, 6)
-        XCTAssertTrue(result.questions.allSatisfy { $0.entryIDs.count == 15 })
+        XCTAssertEqual(result.questions.count, 1)
+        XCTAssertTrue(result.questions.allSatisfy(\.isFallback))
         XCTAssertEqual(Set(result.questions.flatMap(\.entryIDs)), Set(ledger.entries.map(\.id)))
-        try result.changeSet.apply(to: &ledger)
-        XCTAssertTrue(ledger.entries.allSatisfy { $0.nature == .unknownOut }, "Group questions withhold uncertain nature before an answer")
-        let question = try XCTUnwrap(result.questions.first)
-        let answer = try XCTUnwrap(question.answer(0))
-        XCTAssertEqual(Set(answer.items.flatMap(\.entryIDs)), Set(question.entryIDs))
-        try answer.apply(to: &ledger)
-        XCTAssertTrue(ledger.entries.filter { question.entryIDs.contains($0.id) }.allSatisfy { $0.nature == .expense })
-        XCTAssertNil(question.answer(99))
+        XCTAssertTrue(result.changeSet.items.isEmpty)
+        XCTAssertTrue(ledger.entries.allSatisfy { $0.nature == .expense }, "Ignored questions cannot alter nature")
+        XCTAssertTrue(result.questions[0].options.isEmpty)
+        XCTAssertNil(result.questions[0].answer(0))
     }
 
     func testLargeOrganizationIsOneChangeSetBeyondAssistantChatLimit() async throws {
@@ -601,7 +598,7 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertTrue(ledger.entries.allSatisfy { $0.nature == .expense && $0.category == "餐饮" && $0.purpose == "午餐" })
     }
 
-    func testQuestionPersistenceAndCategoryAliasesWhileInvalidItemsAreSkipped() async throws {
+    func testIgnoredQuestionsPreserveConfidentNatureAliasesFallbackPersistenceAndUndo() async throws {
         var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]; ledger.categoryAliases["吃饭"] = "餐饮"
         let bytes = Data("时间,收支,金额,名称\n2026-10-01,支出,500.00,不明\n2026-10-01,支出,25.00,午餐\n".utf8)
         let before = ledger
@@ -624,14 +621,14 @@ final class ImportOrganizerTests: XCTestCase {
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: [id, mealID])
         XCTAssertFalse(result.skipped.isEmpty)
         try result.changeSet.apply(to: &ledger); result.finish(batchID: batch.id, before: raw, in: &ledger)
-        XCTAssertEqual(ledger.entries[1].category, "餐饮"); XCTAssertEqual(ledger.entries[0].nature, .unknownOut)
+        XCTAssertEqual(ledger.entries[1].category, "餐饮"); XCTAssertEqual(ledger.entries[0].nature, .expense)
         XCTAssertEqual(ledger.entries[0].amount, 50000)
         ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
         XCTAssertEqual(ledger.cards.first?.kind, .answerQuestion)
         let question = try XCTUnwrap(ledger.cards.first?.importQuestion)
-        let answerBefore = ledger
-        try XCTUnwrap(question.answer(0)).apply(to: &ledger)
-        ImportOrganization.recordUndo(batchID: batch.id, before: answerBefore, in: &ledger)
+        XCTAssertTrue(question.isFallback)
+        XCTAssertEqual(question.entryIDs, [id])
+        XCTAssertNil(question.answer(0))
         BillImporter.undo(batchID: batch.id, in: &ledger)
         XCTAssertEqual(try LedgerCodec.encode(ledger), try LedgerCodec.encode(before))
     }
@@ -713,7 +710,7 @@ final class ImportOrganizerTests: XCTestCase {
                 return expected.isSubset(of: linked)
             }, "Missing recurring evidence: \(series.title)")
         }
-        XCTAssertTrue(result.questions.allSatisfy { $0.isFallback || (2...4).contains($0.options.count) })
+        XCTAssertTrue(result.questions.allSatisfy(\.isFallback))
     }
 }
 
@@ -737,6 +734,62 @@ extension ImportOrganizerTests {
         return (ledger, batch)
     }
     private func jsonReply(_ json: String) -> ChatMessage { ChatMessage(role: .assistant, content: json) }
+
+    func testPersonPartyUsesOtherExpenseAndTransferPurpose() async throws {
+        var (ledger, _) = partyImport(counts: [3])
+        for i in ledger.entries.indices { ledger.entries[i].title = "李明 · 转账" }
+        let script = ImportScript { request in
+            XCTAssertEqual(request.purpose, "导入整理·按对方")
+            let input = try JSONValue.parse(request.messages.last!.content!)
+            let group = try XCTUnwrap(input["groups"]?.arrayValue?.first)
+            XCTAssertEqual(group["party"], .string("李明"))
+            XCTAssertTrue(input["categories"]!.arrayValue!.contains { $0["name"] == .string("其他支出") })
+            return .object(["groups": .array([.object(["group": group["id"]!, "category": .string("其他支出"),
+                "nature": .string("expense"), "purpose": .string("转给李明"), "confident": .bool(true)])])])
+        }
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
+        _ = try result.changeSet.apply(to: &ledger)
+        XCTAssertTrue(ledger.entries.allSatisfy { $0.category == "其他支出" && $0.nature == .expense && $0.purpose == "转给李明" })
+        XCTAssertTrue(result.questions.isEmpty)
+        for prompt in [ImportOrganizer.partySystemPrompt, ImportOrganizer.systemPrompt] {
+            XCTAssertFalse(prompt.contains("questions")); XCTAssertFalse(prompt.contains("提问")); XCTAssertFalse(prompt.contains("问题"))
+            XCTAssertTrue(prompt.contains("转给<对方>")); XCTAssertTrue(prompt.contains("来自<对方>"))
+            XCTAssertTrue(prompt.contains("其他支出")); XCTAssertTrue(prompt.contains("其他收入"))
+        }
+    }
+    func testLegacyQuestionsCannotSuppressConfidentIndividualIncome() async throws {
+        var (ledger, _) = partyImport(counts: [1])
+        ledger.entries[0].nature = .unknownIn; ledger.entries[0].title = "李明 · 来款"
+        let id = ledger.entries[0].id
+        let script = ImportScript { _ in .object([
+            "rows": .array([.object(["entry": .string(id.uuidString), "category": .string("其他收入"),
+                "nature": .string("income"), "purpose": .string("来自李明"), "confident": .bool(true)])]),
+            "questions": .array([.object(["text": .string("旧模型的问题"), "entry_ids": .strings([id.uuidString]), "options": .array([])])])
+        ]) }
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: [id])
+        _ = try result.changeSet.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries[0].category, "其他收入"); XCTAssertEqual(ledger.entries[0].nature, .income)
+        XCTAssertEqual(ledger.entries[0].purpose, "来自李明"); XCTAssertTrue(result.questions.isEmpty)
+    }
+    func testUncertainSkippedAndOmittedGroupsStayOnFallbackWithoutIndividualRequestsOrResumeResends() async throws {
+        let (ledger, batch) = partyImport(counts: [3, 3, 3])
+        let store = ImportCheckpointStore(ledger, batchID: batch.id)
+        let script = ScriptedChatTransport([jsonReply(#"{"groups":[{"group":"g0","skip":true,"category":"餐饮","nature":"expense","confident":true},{"group":"g1","confident":false,"nature":"transfer"}]}"#)])
+        try await resume(store, script: script, batchID: batch.id)
+        let requests = await script.recorded(), saved = await store.snapshot()
+        XCTAssertEqual(requests.map(\.purpose), ["导入整理·按对方"])
+        XCTAssertTrue(saved.entries.allSatisfy(Classification.isPending))
+        XCTAssertEqual(saved.entries, ledger.entries)
+        let fallback = try XCTUnwrap(saved.imports[0].organization?.questions.first)
+        XCTAssertTrue(fallback.isFallback); XCTAssertTrue(fallback.options.isEmpty)
+        XCTAssertEqual(Set(fallback.entryIDs), Set(ledger.entries.map(\.id)))
+        XCTAssertEqual(Set(UnsortedGroups.groups(for: fallback, in: saved).flatMap { $0.entries.map(\.id) }), Set(ledger.entries.map(\.id)))
+        XCTAssertEqual(saved.imports[0].needsOrganization, false)
+        XCTAssertTrue(ImportOrganizer.pendingEntryIDs(in: saved, batchID: batch.id).isEmpty)
+        let retry = ScriptedChatTransport([])
+        try await resume(store, script: retry, batchID: batch.id)
+        let retried = await retry.recorded(); XCTAssertTrue(retried.isEmpty)
+    }
 
     func testPartySummaryStatisticsRedactionAndAtMostThreeSamples() async throws {
         var (ledger, _) = partyImport(counts: [6])
@@ -797,21 +850,21 @@ extension ImportOrganizerTests {
         let requests = await script.recorded(), payload = try JSONValue.parse(requests[0].messages.last!.content!)
         XCTAssertEqual(payload["groups"]?.arrayValue?.first?["count"], .number(4))
     }
-    func testPartyQuestionExpandsBeyondOneThousandIDsAndValidatesAnswerTemplates() async throws {
+    func testFallbackCoversBeyondOneThousandIDsWhileLegacyPartyQuestionIsIgnored() async throws {
         var (ledger, _) = partyImport(counts: [1088])
         let ids = Set(ledger.entries.map(\.id))
         let script = ScriptedChatTransport([jsonReply(#"{"groups":[],"questions":[{"group":"g0","text":"这些扣款是什么用途？","options":[{"title":"买基金","items":[{"kind":"set_nature","nature":"investBuy"},{"kind":"set_purpose","text":"基金定投"}]},{"title":"日常支出","items":[{"kind":"set_nature","nature":"expense"},{"kind":"set_category","category":"餐饮"}]}]}]}"#)])
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: Array(ids))
         let question = try XCTUnwrap(result.questions.first)
-        XCTAssertEqual(result.questions.count, 1); XCTAssertFalse(question.isFallback)
+        XCTAssertEqual(result.questions.count, 1); XCTAssertTrue(question.isFallback)
         XCTAssertEqual(Set(question.entryIDs), ids)
-        XCTAssertTrue(question.options.allSatisfy { Set($0.items.flatMap(\.entryIDs)) == ids })
+        XCTAssertTrue(question.options.isEmpty)
         if !result.changeSet.items.isEmpty { _ = try result.changeSet.apply(to: &ledger) }
         XCTAssertTrue(ledger.entries.allSatisfy { $0.nature == .unknownOut && $0.purpose == nil })
-        _ = try XCTUnwrap(question.answer(0, in: ledger)).apply(to: &ledger)
-        XCTAssertTrue(ledger.entries.allSatisfy { $0.nature == .investBuy && $0.purpose == "基金定投" })
+        XCTAssertNil(question.answer(0, in: ledger))
+        XCTAssertEqual(Set(UnsortedGroups.groups(for: question, in: ledger).flatMap { $0.entries.map(\.id) }), ids)
     }
-    func testPartyAndSingletonQuestionsMergeThroughExistingGroupFunction() async throws {
+    func testPartyAndSingletonFallbacksMergeWhileBothLegacyQuestionFormatsAreIgnored() async throws {
         var (ledger, _) = partyImport(counts: [3], singleton: true)
         let single = ledger.entries.last!.id
         // The singleton uses another party but a nearby amount, as in existing group().
@@ -827,6 +880,8 @@ extension ImportOrganizerTests {
         ])
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
         XCTAssertEqual(result.questions.count, 1); XCTAssertEqual(Set(result.questions[0].entryIDs), Set(ledger.entries.map(\.id)))
+        XCTAssertTrue(result.questions[0].isFallback)
+        XCTAssertTrue(result.questions[0].options.isEmpty)
         let requests = await script.recorded()
         XCTAssertEqual(requests.map(\.purpose), ["导入整理·按对方", "导入整理"])
         let rows = try JSONValue.parse(requests[1].messages.last!.content!)["batch"]?.arrayValue
@@ -846,7 +901,7 @@ extension ImportOrganizerTests {
         XCTAssertEqual(firstGroups.count, 12); XCTAssertEqual(completed, 36)
         XCTAssertEqual(partial.imports[0].organizedEntryIDs?.count, completed)
         XCTAssertEqual(partial.imports[0].organization?.categoryCount, 3)
-        XCTAssertEqual(partial.imports[0].organization?.questions.filter { !$0.isFallback }.count, 1)
+        XCTAssertEqual(partial.imports[0].organization?.questions.filter { !$0.isFallback }.count, 0)
         XCTAssertEqual(PendingImportOrganization(in: partial).count, 40 - completed)
         XCTAssertEqual(ImportOrganizationProgress(completed: completed, total: 40).completed, 36)
         let retry = ScriptedChatTransport([jsonReply(#"{"groups":[]}"#), jsonReply(#"{"rows":[]}"#)])
@@ -862,7 +917,8 @@ extension ImportOrganizerTests {
         let names = Set(firstGroups.compactMap { $0["party"]?.stringValue })
         XCTAssertTrue(names.isDisjoint(with: remainingGroups.compactMap { $0["party"]?.stringValue }))
         XCTAssertEqual(complete.imports[0].organizedEntryIDs?.count, 40); XCTAssertEqual(complete.imports[0].needsOrganization, false)
-        XCTAssertEqual(complete.imports[0].organization?.questions.count, 2, "The saved specific question survives while fallbacks merge across both stages and resume")
+        XCTAssertEqual(complete.imports[0].organization?.questions.count, 1, "Only local fallbacks merge across stages and resume")
+        XCTAssertTrue(complete.imports[0].organization?.questions.allSatisfy(\.isFallback) == true)
     }
     func testPartyModelCanDeferToIndividualEvidenceWithoutCompletingIDsEarly() async throws {
         let (ledger, batch) = partyImport(counts: [3])
@@ -902,7 +958,7 @@ extension ImportOrganizerTests {
         let rows = try JSONValue.parse(requests[0].messages.last!.content!)["batch"]!.arrayValue!
         XCTAssertEqual(Set(rows.compactMap { $0["id"]?.stringValue }), Set(targets.map(\.uuidString)))
     }
-    func testSamePartyOppositeDirectionsHaveSeparateSummariesAndRejectInvalidGroupOptions() async throws {
+    func testSamePartyOppositeDirectionsHaveSeparateSummariesAndIgnoreLegacyGroupQuestions() async throws {
         var (ledger, _) = partyImport(counts: [3, 3])
         for i in 3..<6 {
             ledger.entries[i].title = ledger.entries[0].title

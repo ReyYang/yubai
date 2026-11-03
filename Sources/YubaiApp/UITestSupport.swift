@@ -203,7 +203,7 @@ enum UITestSupport {
                 entry.batchID = batch.id; entry.source = "文件"
                 return entry
             }
-            // More than five unrelated reminders used to push all questions out.
+            // More than five unrelated reminders exercise fallback ordering.
             for index in 0..<6 {
                 ledger.entries.append(Entry(date: Dates.addDays(-10, to: now), amount: 200,
                                             nature: .unknownIn, accountID: ledger.accounts[0].id, title: "合成旧来款\(index)", category: "其他收入"))
@@ -348,42 +348,33 @@ struct UITestTransport: ChatTransport {
             // The remaining-by-party scenario still leaves all nine outgoing
             // records on the real fallback card for the manual grouping tests.
             if UITestSupport.organizationScenario == "by-party" {
-                return ChatMessage(role: .assistant, content: #"{"groups":[],"questions":[]}"#)
+                return ChatMessage(role: .assistant, content: #"{"groups":[]}"#)
             }
-            var results: [JSONValue] = [], questions: [JSONValue] = []
+            var results: [JSONValue] = []
             for group in groups {
                 guard let id = group["id"] else { continue }
                 let income = group["inflow"] == .bool(true)
                 if script == "import", income {
-                    questions.append(.object(["group": id, "text": .string("这笔来款是什么用途？"), "options": .array([
-                        .object(["title": .string("日常收入"), "items": .array([
-                            .object(["kind": .string("set_nature"), "nature": .string("income")]),
-                            .object(["kind": .string("set_category"), "category": .string("其他收入")])])]),
-                        .object(["title": .string("先留没写用途"), "items": .array([
-                            .object(["kind": .string("set_purpose"), "text": .string("待核对来款")])])])])]))
+                    // Uncertain incoming groups stay on the local fallback.
+                    results.append(.object(["group": id, "skip": .bool(true)]))
                 } else {
                     results.append(.object(["group": id, "category": .string(income ? "工资奖金" : "餐饮"),
                         "nature": .string(income ? "income" : "expense"), "confident": .bool(true)]))
                 }
             }
-            return ChatMessage(role: .assistant, content: try JSONValue.object(["groups": .array(results), "questions": .array(questions)]).jsonText())
+            return ChatMessage(role: .assistant, content: try JSONValue.object(["groups": .array(results)]).jsonText())
         }
         if script == "salary", request.purpose == "导入整理" {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
             let ids = Set((payload["batch"]?.arrayValue ?? []).compactMap { $0["id"]?.stringValue })
             let scenario = UITestSupport.organizationScenario
             if scenario == "by-party" {
-                let incoming = (payload["batch"]?.arrayValue ?? []).first { $0["inflow"] == .bool(true) }
-                var questions: [JSONValue] = []
-                if let id = incoming?["id"]?.stringValue {
-                    let options: [JSONValue] = [("日常收入", "income"), ("收回借款", "loanRecovery")].map { title, nature in
-                        let item: JSONValue = .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string(nature)])
-                        return .object(["title": .string(title), "items": .array([item])])
-                    }
-                    questions = [.object(["text": .string("这笔来款是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array(options)])]
+                let rows: [JSONValue] = (payload["batch"]?.arrayValue ?? []).compactMap { row in
+                    guard row["inflow"] == .bool(true), let id = row["id"] else { return nil }
+                    return .object(["entry": id, "category": .string("其他收入"), "nature": .string("income"),
+                        "purpose": .string("来自合成个人"), "confident": .bool(true)])
                 }
-                return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array([]), "items": .array([]),
-                    "series": .array([]), "questions": .array(questions)]).jsonText())
+                return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array(rows)]).jsonText())
             }
             let number = await MainActor.run {
                 let log = UITestRequestLog.shared
@@ -395,7 +386,7 @@ struct UITestTransport: ChatTransport {
                 if scenario == "questions-stop" {
                     while true { try await Task.sleep(for: .seconds(1)) }
                 }
-                try await Task.sleep(for: .seconds(10)) // Observe a saved question while the next chunk is running.
+                try await Task.sleep(for: .seconds(10)) // Observe saved classifications while the next chunk is running.
                 if scenario == "questions-fail" {
                     throw YubaiError.invalid("云端服务返回错误（HTTP 503）。本机计算结果已保留。")
                 }
@@ -417,9 +408,10 @@ struct UITestTransport: ChatTransport {
                                 "nature": .string(income ? "income" : "expense"), "confident": .bool(true)])
             }
             var questions: [JSONValue] = []
-            let asksQuestion = (scenario?.hasPrefix("questions-") == true && number == 1) ||
+            // Deliberate legacy replies: questions must not suppress confident rows.
+            let returnsLegacyQuestion = (scenario?.hasPrefix("questions-") == true && number == 1) ||
                 (UITestSupport.usesBackgroundFixture && number == 2)
-            if asksQuestion, let id = ids.sorted().first {
+            if returnsLegacyQuestion, let id = ids.sorted().first {
                 let options: [JSONValue] = [("日常支出", "expense"), ("还款", "repayment")].map { title, nature in
                     .object(["title": .string(title), "items": .array([
                         .object(["kind": .string("set_nature"), "entry": .string(id), "nature": .string(nature)])
@@ -456,6 +448,7 @@ struct UITestTransport: ChatTransport {
                 guard let key = row["id"]?.stringValue, key != id else { return nil }
                 return .object(["entry": .string(key), "category": .string("餐饮"), "nature": .string("expense"), "confident": .bool(true)])
             }
+            // Deliberate legacy question for an omitted row: only a local fallback may appear.
             var questions: [JSONValue] = []
             if let id {
                 questions = [.object(["text": .string("这笔来款是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array([
