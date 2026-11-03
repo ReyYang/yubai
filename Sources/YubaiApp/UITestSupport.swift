@@ -211,14 +211,16 @@ enum UITestSupport {
             ButlerCards.refresh(&ledger, now: now)
             return ledger
         }
+        // A known plan makes these rows association candidates; retain the
+        // 30/30/10 (or 5×30) checkpoints asserted by the stop/fail UI tests.
+        var plan = Plan(title: "合成关联候选", amount: 100, dueDate: Dates.addMonths(12, to: now), frequency: .monthly)
+        plan.accountID = ledger.accounts[0].id; ledger.plans.append(plan)
         let count = usesBackgroundFixture ? 150 : 70
         var batch = ImportBatch(filename: "合成大量流水.csv", importedCount: count, duplicateCount: 0, skippedCount: 0)
         batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
         ledger.imports = [batch]
         ledger.entries = (1...count).map { day in
             var entry = Entry(date: Dates.addDays(-day, to: Dates.day(now)), amount: 100,
-                              // Distinct parties keep the stop/fail fixtures on
-                              // their original 30/30/10 (or 5×30) row checkpoints.
                               accountID: ledger.accounts[0].id, title: "合成日常支出\(day)", category: Classification.pendingCategory)
             entry.batchID = batch.id; entry.source = "文件"
             return entry
@@ -348,7 +350,12 @@ struct UITestTransport: ChatTransport {
             // The remaining-by-party scenario still leaves all nine outgoing
             // records on the real fallback card for the manual grouping tests.
             if UITestSupport.organizationScenario == "by-party" {
-                return ChatMessage(role: .assistant, content: #"{"groups":[]}"#)
+                let results: [JSONValue] = groups.compactMap { group in
+                    guard group["inflow"] == .bool(true), let id = group["id"] else { return nil }
+                    return .object(["group": id, "category": .string("其他收入"), "nature": .string("income"),
+                                    "purpose": .string("来自合成个人"), "confident": .bool(true)])
+                }
+                return ChatMessage(role: .assistant, content: try JSONValue.object(["groups": .array(results)]).jsonText())
             }
             var results: [JSONValue] = []
             for group in groups {
