@@ -12,9 +12,8 @@ struct ButlerListView: View {
     var unknownInflowsOnly = false
     var body: some View {
         let cards = unknownInflowsOnly
-            ? ButlerCards.queued(store.current, fallbackEntryCount: { store.unsortedEntryCount(for: $0) }).filter { $0.kind == .unknownInflow }
-            : SavingCardVisibility.visible(in: store.current, organizingBatchIDs: store.organizingImportBatchIDs,
-                                           fallbackEntryCount: { store.unsortedEntryCount(for: $0) })
+            ? store.butlerVisibility.queued.filter { $0.kind == .unknownInflow }
+            : store.butlerVisibility.visible
         Page(spacing: YubaiSpace.gapGroup) {
             ForEach(cards) { card in
                 if let question = card.importQuestion, let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {

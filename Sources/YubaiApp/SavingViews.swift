@@ -2,19 +2,22 @@ import SwiftUI
 import YubaiCore
 
 enum SavingCardVisibility {
-    static func visible(in ledger: Ledger, collapsingInflows: Bool = false, organizingBatchIDs: Set<UUID> = [],
-                        fallbackEntryCount: ((ImportQuestion) -> Int)? = nil) -> [ButlerCard] {
-        let progress = RestrainProgress.current(ledger: ledger)
-        var filtered = ledger
-        filtered.cards.removeAll { card in
-            guard card.kind == .restrain, let areaID = card.areaID,
-                  let value = progress.first(where: { $0.areaID == areaID }) else { return false }
-            return value.status != .over
+    struct Snapshot {
+        let queued: [ButlerCard]
+        let visible: [ButlerCard]
+        let collapsed: [ButlerCard]
+    }
+    static func snapshot(in ledger: Ledger, organizingBatchIDs: Set<UUID>,
+                         fallbackEntryCount: @escaping (ImportQuestion) -> Int) -> Snapshot {
+        let queue = ButlerCards.queued(ledger, organizingBatchIDs: organizingBatchIDs, fallbackEntryCount: fallbackEntryCount)
+        let progress = Dictionary(uniqueKeysWithValues: RestrainProgress.current(ledger: ledger).map { ($0.areaID, $0) })
+        let filtered = queue.filter { card in
+            guard card.kind == .restrain, let id = card.areaID, let value = progress[id] else { return true }
+            return value.status == .over
         }
-        if collapsingInflows, ButlerCards.queued(filtered, organizingBatchIDs: organizingBatchIDs, fallbackEntryCount: fallbackEntryCount).filter({ $0.kind == .unknownInflow }).count >= 2 {
-            filtered.cards.removeAll { $0.kind == .unknownInflow }
-        }
-        return ButlerCards.visible(filtered, organizingBatchIDs: organizingBatchIDs, fallbackEntryCount: fallbackEntryCount)
+        let collapse = queue.lazy.filter { $0.kind == .unknownInflow }.prefix(2).count >= 2
+        return Snapshot(queued: queue, visible: Array(filtered.prefix(5)),
+                        collapsed: Array(filtered.lazy.filter { !collapse || $0.kind != .unknownInflow }.prefix(5)))
     }
 }
 

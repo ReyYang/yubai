@@ -187,7 +187,7 @@ final class AppFlowTests: XCTestCase {
         app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["nowImportQuestion"].exists)
-        XCTAssertTrue(app.staticTexts["40 笔还没分类"].exists)
+        XCTAssertTrue(app.staticTexts["55 笔还没分类"].exists)
     }
 
     func testOrganizationFailureKeepsClassificationsWithoutModelQuestionsAndRestoresIdleTimer() {
@@ -210,8 +210,8 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["nowImportQuestion"].exists)
         XCTAssertFalse(app.buttons["stopOrganizing"].exists)
         let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
-        XCTAssertEqual(pending.value as? String, "requests=0;entries=70;classified=30;resent=0;questions=0;idle=0")
-        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
+        XCTAssertEqual(pending.value as? String, "requests=0;entries=70;classified=15;resent=0;questions=0;idle=0")
+        XCTAssertTrue(pending.staticTexts["55 笔还没分类"].exists)
     }
 
     private func assertLegacyQuestionIsIgnoredDuringOrganization(_ app: XCUIApplication,
@@ -219,10 +219,10 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["organizeImports"], in: app)
         let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
         let state = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@",
-            "requests=2;entries=70;classified=30;resent=0;questions=0;idle=1"), object: pending)
+            "requests=3;entries=70;classified=15;resent=0;questions=0;idle=1"), object: pending)
         XCTAssertEqual(XCTWaiter.wait(for: [state], timeout: 10), .completed, file: file, line: line)
         let progress = app.descendants(matching: .any).matching(identifier: "organizeProgress").firstMatch
-        XCTAssertEqual(progress.value as? String, "30/70", file: file, line: line)
+        XCTAssertEqual(progress.value as? String, "15/70", file: file, line: line)
         XCTAssertTrue(app.buttons["stopOrganizing"].exists, file: file, line: line)
         XCTAssertTrue(pending.staticTexts["整理时别离开余白"].exists, file: file, line: line)
         XCTAssertFalse(app.staticTexts["nowImportQuestion"].exists, file: file, line: line)
@@ -234,10 +234,10 @@ final class AppFlowTests: XCTestCase {
     private func assertStoppedWithoutModelQuestionState(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let pending = app.descendants(matching: .any).matching(identifier: "pendingImportsCard").firstMatch
         let state = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@",
-            "requests=2;entries=70;classified=30;resent=0;questions=0;idle=0"), object: pending)
+            "requests=3;entries=70;classified=15;resent=0;questions=0;idle=0"), object: pending)
         XCTAssertEqual(XCTWaiter.wait(for: [state], timeout: 5), .completed, file: file, line: line)
         XCTAssertTrue(app.buttons["organizeImports"].isEnabled, file: file, line: line)
-        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists, file: file, line: line)
+        XCTAssertTrue(pending.staticTexts["55 笔还没分类"].exists, file: file, line: line)
     }
 
     func testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount() {
@@ -342,27 +342,27 @@ final class AppFlowTests: XCTestCase {
         let details = pending.staticTexts.matching(NSPredicate(format: "label CONTAINS '合成工资卡'")).firstMatch.label
         tap(app.buttons["organizeImports"], in: app)
         let progress = app.descendants(matching: .any).matching(identifier: "organizeProgress").firstMatch
-        let checkpoint = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '30/70'"), object: progress)
+        let checkpoint = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '15/70'"), object: progress)
         XCTAssertEqual(XCTWaiter.wait(for: [checkpoint], timeout: 10), .completed)
-        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
-        XCTAssertTrue(pending.staticTexts["30 / 70"].exists)
+        XCTAssertTrue(pending.staticTexts["55 笔还没分类"].exists)
+        XCTAssertTrue(pending.staticTexts["15 / 70"].exists)
         XCTAssertTrue(pending.staticTexts["整理时别离开余白"].exists)
         XCTAssertTrue(pending.staticTexts[details].exists)
         XCTAssertFalse(app.buttons["classifyImportsManually"].exists)
         XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "organizingImports").firstMatch.exists)
-        assertImportRequestState(pending, requests: 2, entries: 70, classified: 30)
+        assertImportRequestState(pending, requests: 3, entries: 70, classified: 15)
         snapshot("organization-progress", app)
         tap(app.buttons["stopOrganizing"], in: app)
         assertGone(progress)
         XCTAssertTrue(app.buttons["organizeImports"].isEnabled)
         XCTAssertTrue(app.buttons["classifyImportsManually"].exists)
         XCTAssertFalse(app.staticTexts["organizeError"].exists)
-        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
-        assertImportRequestState(pending, requests: 2, entries: 70, classified: 30)
+        XCTAssertTrue(pending.staticTexts["55 笔还没分类"].exists)
+        assertImportRequestState(pending, requests: 3, entries: 70, classified: 15)
         app.terminate(); app.launch()
         XCTAssertTrue(pending.waitForExistence(timeout: 10))
-        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
-        assertImportRequestState(pending, requests: 0, entries: 70, classified: 30)
+        XCTAssertTrue(pending.staticTexts["55 笔还没分类"].exists)
+        assertImportRequestState(pending, requests: 0, entries: 70, classified: 15)
     }
 
     func testPendingImportsSecondChunkFailureShowsReasonAndRetriesOnlyRemaining() {
@@ -375,21 +375,21 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["organizeImports"], in: app)
         let error = app.staticTexts["organizeError"]
         XCTAssertTrue(error.waitForExistence(timeout: 10))
-        XCTAssertEqual(error.label, "云端服务返回错误（HTTP 503）。本机计算结果已保留。")
-        XCTAssertTrue(pending.staticTexts["40 笔还没分类"].exists)
+        XCTAssertEqual(error.label, "DeepSeek 返回错误（HTTP 503）。")
+        XCTAssertTrue(pending.staticTexts["55 笔还没分类"].exists)
         XCTAssertTrue(pending.staticTexts[details].exists)
         XCTAssertTrue(app.buttons["organizeImports"].isEnabled)
         XCTAssertTrue(app.buttons["classifyImportsManually"].isEnabled)
-        assertImportRequestState(pending, requests: 2, entries: 70, classified: 30)
+        assertImportRequestState(pending, requests: 3, entries: 70, classified: 15)
         snapshot("organization-second-chunk-error", app)
         tap(app.buttons["organizeImports"], in: app)
         assertGone(error)
         let progress = app.descendants(matching: .any).matching(identifier: "organizeProgress").firstMatch
-        let checkpoint = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '30/40'"), object: progress)
+        let checkpoint = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '30/55'"), object: progress)
         XCTAssertEqual(XCTWaiter.wait(for: [checkpoint], timeout: 15), .completed)
-        XCTAssertTrue(pending.staticTexts["10 笔还没分类"].exists)
-        // Retry sends 30 + 10, and never requests an already completed ID.
-        assertImportRequestState(pending, requests: 4, entries: 70, classified: 60)
+        XCTAssertTrue(pending.staticTexts["25 笔还没分类"].exists)
+        // Retry saves two 15-row chunks; the next two requests contain only remaining IDs.
+        assertImportRequestState(pending, requests: 7, entries: 70, classified: 45)
         assertGone(pending)
         app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 10))

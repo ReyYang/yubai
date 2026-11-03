@@ -373,7 +373,12 @@ struct UITestTransport: ChatTransport {
         }
         if script == "salary", request.purpose == "导入整理" {
             let payload = try JSONValue.parse(request.messages.last?.content ?? "")
-            let ids = Set((payload["batch"]?.arrayValue ?? []).compactMap { $0["id"]?.stringValue })
+            let batchRows = payload["batch"]?.arrayValue ?? []
+            let ids = Set(batchRows.compactMap { $0["id"]?.stringValue })
+            // rN names are request-local; provenance facts identify retry rows.
+            let stableKeys = Set(batchRows.map { row in
+                ["account", "date", "title", "amount"].map { (try? row[$0]?.jsonText()) ?? "" }.joined(separator: "|")
+            })
             let scenario = UITestSupport.organizationScenario
             if scenario == "by-party" {
                 let rows: [JSONValue] = (payload["batch"]?.arrayValue ?? []).compactMap { row in
@@ -386,27 +391,32 @@ struct UITestTransport: ChatTransport {
             let number = await MainActor.run {
                 let log = UITestRequestLog.shared
                 log.organizationRequests += 1
-                log.resentCompletedCount += ids.intersection(log.completedOrganizationIDs).count
+                log.resentCompletedCount += stableKeys.intersection(log.completedOrganizationIDs).count
                 return log.organizationRequests
             }
-            if scenario?.hasPrefix("questions-") == true, number == 2 {
-                if scenario == "questions-stop" {
+            if scenario?.hasPrefix("questions-") == true, number >= 2 {
+                if scenario == "questions-stop" || (scenario == "questions-fail" && number > 2) {
                     while true { try await Task.sleep(for: .seconds(1)) }
                 }
-                try await Task.sleep(for: .seconds(10)) // Observe saved classifications while the next chunk is running.
+                try await Task.sleep(for: .seconds(number <= 3 ? 7 : 1)) // Observe saved classifications while the next chunk is running.
                 if scenario == "questions-fail" {
-                    throw YubaiError.invalid("云端服务返回错误（HTTP 503）。本机计算结果已保留。")
+                    throw DeepSeekError.http(503)
                 }
             }
-            if scenario == "stop-second", number == 2 {
+            if scenario == "stop-second", number >= 2 {
                 // Stay in a cancellable request until the UI presses Stop.
                 while true { try await Task.sleep(for: .seconds(1)) }
             }
             if scenario == "fail-second", number == 2 {
-                throw YubaiError.invalid("云端服务返回错误（HTTP 503）。本机计算结果已保留。")
+                try await Task.sleep(for: .seconds(1))
+                throw DeepSeekError.http(503)
             }
-            if scenario == "fail-second", number >= 3 {
-                try await Task.sleep(for: .seconds(5)) // Let XCTest observe retry progress.
+            if scenario == "fail-second", number == 3 {
+                while true { try await Task.sleep(for: .seconds(1)) }
+            }
+            if scenario == "fail-second", number >= 4 {
+                // Complete retry's first two chunks, then expose saved progress.
+                try await Task.sleep(for: .seconds(number <= 5 ? 1 : 5))
             }
             let rows: [JSONValue] = (payload["batch"]?.arrayValue ?? []).compactMap { row in
                 guard let id = row["id"]?.stringValue else { return nil }
@@ -426,7 +436,7 @@ struct UITestTransport: ChatTransport {
                 }
                 questions = [.object(["text": .string("这笔支出是什么用途？"), "entry_ids": .array([.string(id)]), "options": .array(options)])]
             }
-            await MainActor.run { UITestRequestLog.shared.completedOrganizationIDs.formUnion(ids) }
+            await MainActor.run { UITestRequestLog.shared.completedOrganizationIDs.formUnion(stableKeys) }
             return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array(rows), "items": .array([]),
                 "series": .array([]), "questions": .array(questions)]).jsonText())
         }

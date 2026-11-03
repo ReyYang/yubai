@@ -60,32 +60,33 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
               (-2_208_988_800...7_258_118_400).contains(createdAt.timeIntervalSince1970) else { throw YubaiError.invalid("修改的来源、明细、时间或项目数量无效。") }
     }
     public func preview(in ledger: Ledger, showPreviousValues: Bool = false) -> [String] {
+        let entries = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         func entry(_ id: UUID) -> String {
-            guard let e = ledger.entries.first(where: { $0.id == id }) else { return "已移除的记录" }
+            guard let e = entries[id] else { return "已移除的记录" }
             let parts = Dates.calendar.dateComponents([.month, .day], from: e.date)
             return "\(parts.month ?? 1)月\(parts.day ?? 1)日 \(e.displayTitle) \(e.nature.inflow ? "+" : "−")\(Money.text(e.amount, currency: false))"
         }
         var lines = items.map { item in
             switch item {
             case .setCategory(let id, let category):
-                if showPreviousValues, let original = ledger.entries.first(where: { $0.id == id }) {
+                if showPreviousValues, let original = entries[id] {
                     return entry(id) + " · " + original.category + " → " + category
                 }
                 return "把 \(entry(id)) 归为 \(category)"
             case .setNature(let id, let nature, let other):
-                if showPreviousValues, let original = ledger.entries.first(where: { $0.id == id }) {
+                if showPreviousValues, let original = entries[id] {
                     return entry(id) + " · " + original.nature.label + " → " + nature.label + (other.map { "，关联" + ledger.accountName($0) } ?? "")
                 }
                 return "把 \(entry(id)) 标为 \(nature.label)" + (other.map { "，关联\(ledger.accountName($0))" } ?? "")
             case .setPurpose(let id, let text):
-                if showPreviousValues, let original = ledger.entries.first(where: { $0.id == id }) {
+                if showPreviousValues, let original = entries[id] {
                     return entry(id) + " · 「" + (original.purpose ?? original.title) + "」 → 「" + text + "」"
                 }
                 return "把 \(entry(id)) 的用途记为「\(text)」"
             case .pairTransfer(let a, let b, let nature): return "把 \(entry(a)) 与 \(entry(b)) 配对为\(nature.label)"
             case .linkRefund(let refund, let original): return "把 \(entry(refund)) 关联为 \(entry(original)) 的退款"
             case .linkPlan(let id, let plan, let date): return "把 \(entry(id)) 关联为 \(Dates.text(date)) \(ledger.plans.first { $0.id == plan }?.title ?? "资金安排")"
-            case .linkRent(let id, let rent, let date): return "把 \(entry(id)) 关联为 \(Dates.calendar.component(.month, from: date)) 月\(ledger.rents.first { $0.id == rent }?.title ?? "房租")\(ledger.entries.first { $0.id == id }?.nature.inflow == true ? "分摊" : "付款")"
+            case .linkRent(let id, let rent, let date): return "把 \(entry(id)) 关联为 \(Dates.calendar.component(.month, from: date)) 月\(ledger.rents.first { $0.id == rent }?.title ?? "房租")\(entries[id]?.nature.inflow == true ? "分摊" : "付款")"
             case .markDuplicate(let id, let original): return "把 \(entry(id)) 作为 \(entry(original)) 的重复记录标为已删除"
             case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
@@ -133,11 +134,19 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         var changedExpenseCategories: [UUID: String] = [:]
         var incomingTransfers: Set<UUID> = []
         func validDate(_ d: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(d.timeIntervalSince1970) }
-        let lines = preview(in: ledger)
+        var lines: [String]?
+        var entryIndex = Dictionary(uniqueKeysWithValues: next.entries.enumerated().map { ($0.element.id, $0.offset) })
+        var referenced = Set(next.entries.lazy.filter { $0.deletedAt == nil }.compactMap(\.relatedEntryID))
+        let merged = Set(next.entries.lazy.filter { $0.deletedAt == nil }.compactMap(\.mergedIntoID))
         let stamp = source + "：" + reason
-        func active(_ id: UUID) -> Int? { next.entries.firstIndex { $0.id == id && $0.deletedAt == nil } }
+        func active(_ id: UUID) -> Int? {
+            guard let i = entryIndex[id], next.entries[i].deletedAt == nil else { return nil }; return i
+        }
         func touch(_ index: Int) { next.entries[index].classificationReason = stamp; next.entries[index].userEdited = true }
-        func skip(_ index: Int) { skipped.append("已跳过：" + lines[index] + "（记录已移除、已关联或已处理）") }
+        func skip(_ index: Int) {
+            if lines == nil { lines = preview(in: ledger) }
+            skipped.append("已跳过：" + lines![index] + "（记录已移除、已关联或已处理）")
+        }
         for (position, item) in items.enumerated() {
             switch item {
             case .setCategory(let id, let rawCategory):
@@ -166,7 +175,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 let e = next.entries[i]
                 if e.nature == nature && e.otherAccountID == other { skip(position); continue }
                 guard e.planID == nil, e.rentID == nil, e.relatedEntryID == nil, e.otherAccountID == nil,
-                      !next.activeEntries.contains(where: { $0.relatedEntryID == id || $0.mergedIntoID == id }) else { skip(position); continue }
+                      !referenced.contains(id), !merged.contains(id) else { skip(position); continue }
                 guard nature.inflow == e.nature.inflow || (nature == .transfer && other != nil) else { throw YubaiError.invalid("整理性质不能改变原始资金流向。") }
                 next.entries[i].nature = nature; next.entries[i].otherAccountID = other
                 // Transfer is stored from its outgoing account. An imported
@@ -188,7 +197,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                       next.entries[ai].planID == nil, next.entries[bi].planID == nil,
                       next.entries[ai].rentID == nil, next.entries[bi].rentID == nil,
                       next.entries[ai].relatedEntryID == nil, next.entries[bi].relatedEntryID == nil,
-                      !next.activeEntries.contains(where: { $0.relatedEntryID == a || $0.relatedEntryID == b }) else { skip(position); continue }
+                      !referenced.contains(a), !referenced.contains(b) else { skip(position); continue }
                 _ = try LedgerOperations.mergeTransfer(a, b, nature: nature, in: &next, now: createdAt)
                 touch(ai); touch(bi)
             case .linkRefund(let refund, let original):
@@ -197,6 +206,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                       next.entries[i].rentID == nil, next.entries[i].otherAccountID == nil else { skip(position); continue }
                 guard refund != original, next.entries[i].nature.inflow, next.entries[j].nature == .expense else { throw YubaiError.invalid("退款需要关联不同的原始支出，且不能改变资金流向。") }
                 next.entries[i].nature = .refund; next.entries[i].relatedEntryID = original
+                referenced.insert(original)
                 next.entries[i].category = next.entries[j].category; next.entries[i].subcategory = next.entries[j].subcategory
                 var refundEntry = next.entries[i]; LedgerOperations.recordPersonalShare(&refundEntry, ledger: next)
                 next.entries[i] = refundEntry; touch(i); touch(j)
@@ -223,7 +233,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                       next.entries[i].nature.inflow == next.entries[j].nature.inflow else { throw YubaiError.invalid("重复记录必须是不同的、金额与方向相同的记录。") }
                 guard next.entries[i].otherAccountID == nil, next.entries[i].planID == nil,
                       next.entries[i].rentID == nil, next.entries[i].relatedEntryID == nil,
-                      !next.activeEntries.contains(where: { $0.relatedEntryID == id }) else { skip(position); continue }
+                      !referenced.contains(id) else { skip(position); continue }
                 next.entries[i].deletedAt = createdAt; touch(i)
                 next.entries[i].classificationReason += "；重复于 \(original.uuidString)"
             case .addPlan(let p):
@@ -284,6 +294,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
                 e.source = source; e.classificationReason = stamp; e.userEdited = true
                 SubcategoryClassifier.classify(&e, ledger: next)
+                entryIndex[e.id] = next.entries.count
                 next.entries.append(e)
                 if source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(e, in: &next) }
             case .profile(let change):
@@ -308,9 +319,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         }
         for i in next.entries.indices where next.entries[i].nature == .refund {
             if let original = next.entries[i].relatedEntryID, let category = changedExpenseCategories[original],
-               let expense = next.entries.first(where: { $0.id == original }),
-               next.entries[i].category != category || next.entries[i].subcategory != expense.subcategory {
-                next.entries[i].category = category; next.entries[i].subcategory = expense.subcategory; touch(i)
+               let index = entryIndex[original],
+               next.entries[i].category != category || next.entries[i].subcategory != next.entries[index].subcategory {
+                next.entries[i].category = category; next.entries[i].subcategory = next.entries[index].subcategory; touch(i)
             }
         }
         let originals = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })

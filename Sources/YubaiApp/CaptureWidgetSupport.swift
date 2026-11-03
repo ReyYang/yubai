@@ -14,19 +14,22 @@ enum CaptureSnapshotBridge {
         return nil
         #endif
     }
+    private static let publishQueue = DispatchQueue(label: "app.yubai.capture-snapshot", qos: .utility)
     static func publish(_ ledger: Ledger) {
         #if os(iOS)
         guard let file else { return }
-        // 设备锁或隐藏金额时连用途快照也移除，扩展只能显示入口。
-        if ledger.preferences.lockEnabled || ledger.preferences.hideAmounts {
-            try? FileManager.default.removeItem(at: file)
-        } else {
-            do {
-                let bytes = try JSONEncoder().encode(QuickCaptureSnapshot(ledger: ledger))
-                try bytes.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-            } catch { try? FileManager.default.removeItem(at: file) }
+        publishQueue.async {
+            // 设备锁或隐藏金额时连用途快照也移除，扩展只能显示入口。
+            if ledger.preferences.lockEnabled || ledger.preferences.hideAmounts {
+                try? FileManager.default.removeItem(at: file)
+            } else {
+                do {
+                    let bytes = try JSONEncoder().encode(QuickCaptureSnapshot(ledger: ledger))
+                    try bytes.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                } catch { try? FileManager.default.removeItem(at: file) }
+            }
+            WidgetCenter.shared.reloadAllTimelines()
         }
-        WidgetCenter.shared.reloadAllTimelines()
         #endif
     }
     static func read(now: Date = Date()) -> QuickCaptureSnapshot? {

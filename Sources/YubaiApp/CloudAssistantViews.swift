@@ -85,7 +85,7 @@ struct CloudModelMenu: View {
         #endif
         // Opening settings during setup or before organizing an import is local.
         guard store.current.preferences.onboardingComplete, store.current.preferences.cloudAIEnabled,
-              PendingImportOrganization(in: store.current).batchIDs.isEmpty else { return }
+              store.pendingOrganization.batchIDs.isEmpty else { return }
         guard let client = DeepSeekClient.configured() else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
         do {
             let result = try await client.listModels()

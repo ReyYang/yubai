@@ -73,6 +73,11 @@ public struct LedgerRepository: Sendable {
     private let state: State
     private let localState: State
     private let historyLock: NSRecursiveLock
+    public struct Revision: Equatable, Sendable { fileprivate let digest: String? }
+    public var revision: Revision {
+        state.lock.lock(); defer { state.lock.unlock() }
+        return Revision(digest: state.digest)
+    }
     public let directory: URL
     public let localDirectory: URL
     public let isUbiquitous: Bool
@@ -431,12 +436,12 @@ public struct LedgerRepository: Sendable {
         ledger.attachments.removeAll { !referenced.contains($0.id) }
         return ledger
     }
-    private func put(_ ledger: Ledger, at root: URL, repairing: Bool = false) throws -> Ledger {
+    private func put(_ ledger: Ledger, at root: URL, repairing: Bool = false, metadata: Data? = nil) throws -> Ledger {
         var shared = cleaned(ledger)
         if isUbiquitous { shared.preferences.lockEnabled = false }
         let previous = (try? LedgerCodec.decode(Data(contentsOf: root.appendingPathComponent("ledger.json"))))?.attachments ?? []
         let known = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0.payloadChecksum) })
-        let bytes = try LedgerCodec.encodeMetadata(shared)
+        let bytes = try metadata ?? LedgerCodec.encodeMetadata(shared)
         try prepare(root); try checkSpace(bytes.count, at: root)
         try writeAttachments(shared, at: attachments(at: root), known: known, repairing: repairing)
         try writePrivate(bytes, to: root.appendingPathComponent("ledger.json")); state.digest = LedgerCodec.checksum(bytes)
@@ -461,16 +466,27 @@ public struct LedgerRepository: Sendable {
     }
     /// Checkpoints may skip history only after the run's pre-change snapshot has been preserved.
     /// They still use the ordinary validation, atomic write and stale-file protection.
-    @discardableResult public func save(_ ledger: Ledger, reason: String = "修改", requiringUnchanged: Bool = false, preservingRecovery: Bool = true) throws -> Ledger {
-        _ = try LedgerCodec.encodeMetadata(ledger)
+    @discardableResult public func save(_ ledger: Ledger, reason: String = "修改", requiringUnchanged: Bool = false, preservingRecovery: Bool = true, expectedRevision: Revision? = nil, markingPendingSync: Bool = false) throws -> Ledger {
+        var shared = cleaned(ledger)
+        if isUbiquitous { shared.preferences.lockEnabled = false }
+        // Expensive validation/JSON construction precede the storage lock.
+        let metadata = try LedgerCodec.encodeMetadata(shared)
         return try access(writing: true) { root in
+            if let expectedRevision, expectedRevision.digest != state.digest { throw LedgerSyncError.changed }
             if isUbiquitous || requiringUnchanged || !preservingRecovery { try checkUnchanged(at: root) }
-            try prepare(root)
-            if preservingRecovery, FileManager.default.fileExists(atPath: root.appendingPathComponent("ledger.json").path) { try preserveCurrent(at: root, reason: reason) }
-            else if let bytes = ledger.preMigrationData { try preserve(bytes: bytes, ledger: LedgerCodec.decode(bytes), reason: "升级前版本") }
-            let saved = try put(ledger, at: root)
-            if preservingRecovery { pruneHistory() }
-            return saved
+            let wasPending = hasPendingSync
+            if markingPendingSync { try markPendingSync(true) }
+            do {
+                try prepare(root)
+                if preservingRecovery, FileManager.default.fileExists(atPath: root.appendingPathComponent("ledger.json").path) { try preserveCurrent(at: root, reason: reason) }
+                else if let bytes = ledger.preMigrationData { try preserve(bytes: bytes, ledger: LedgerCodec.decode(bytes), reason: "升级前版本") }
+                let saved = try put(shared, at: root, metadata: metadata)
+                if preservingRecovery { pruneHistory() }
+                return saved
+            } catch {
+                if markingPendingSync && !wasPending { try? markPendingSync(false) }
+                throw error
+            }
         }
     }
     public func recoveries() throws -> [Recovery] {

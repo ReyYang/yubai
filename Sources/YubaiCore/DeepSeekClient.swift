@@ -65,6 +65,10 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
         return DeepSeekConfiguration(apiKey: raw, baseURL: base, model: model)
     }
 
+    public func model(for request: ChatRequest) -> String {
+        request.model.map(Self.canonicalModel) ?? model
+    }
+
     /// Redacted description safe for logs / diagnostics (never includes the key).
     public var diagnosticsLabel: String {
         "DeepSeek(\(baseURL.host ?? "?")/\(model))"
@@ -73,8 +77,16 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
 
 public enum DeepSeekError: Error, LocalizedError, Equatable, Sendable {
     case modelUnavailable(String)
+    case network
+    case http(Int)
+    case invalidResponse
     public var errorDescription: String? {
-        switch self { case .modelUnavailable(let model): return "模型「\(model)」现在用不了。请到智能与隐私换一个模型名字再试。" }
+        switch self {
+        case .modelUnavailable(let model): return "模型「\(model)」现在用不了。请到智能与隐私换一个模型名字再试。"
+        case .network: return "云端请求失败：网络或超时。本机计算结果已保留，可稍后重试。"
+        case .http(let status): return "DeepSeek 返回错误（HTTP \(status)）。"
+        case .invalidResponse: return "云端响应无法解析。"
+        }
     }
     static func modelError(status: Int, body: Data, model: String) -> DeepSeekError? {
         let text = String(decoding: body, as: UTF8.self).lowercased()
@@ -176,7 +188,9 @@ public struct DeepSeekClient: ChatTransport {
             definitions[i].function.description = redactor.text(definitions[i].function.description)
             definitions[i].function.parameters = redactor.value(definitions[i].function.parameters)
         }
-        let payload = Payload(model: configuration.model, messages: messages,
+        let model = configuration.model(for: input)
+        let organizing = input.purpose == "导入整理" || input.purpose == "导入整理·按对方"
+        let payload = Payload(model: model, messages: messages,
             tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens, response_format: input.responseFormat,
             thinking: input.thinking.map { ["type": $0 ? "enabled" : "disabled"] })
         let body = try JSONEncoder().encode(payload)
@@ -186,7 +200,7 @@ public struct DeepSeekClient: ChatTransport {
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         try Task.checkCancellation()
-        let logID = sendLog.record(purpose: redactor.text(input.purpose), model: configuration.model, body: body, apiKey: configuration.apiKey,
+        let logID = sendLog.record(purpose: redactor.text(input.purpose), model: model, body: body, apiKey: configuration.apiKey,
             groupID: input.groupID ?? UUID(), groupTitle: redactor.text(input.groupTitle ?? input.purpose))
         let started = DispatchTime.now().uptimeNanoseconds
         var loggedResponse = SendLogResponse(durationMilliseconds: 0)
@@ -199,13 +213,14 @@ public struct DeepSeekClient: ChatTransport {
             do { (data, response) = try await session.data(for: request) }
             catch {
                 if Task.isCancelled { throw CancellationError() }
-                throw YubaiError.invalid("云端请求失败：网络或超时。本机计算结果已保留，可稍后重试。")
+                throw DeepSeekError.network
             }
-            guard let http = response as? HTTPURLResponse else { throw YubaiError.invalid("云端响应异常。") }
+            guard let http = response as? HTTPURLResponse else { throw DeepSeekError.invalidResponse }
             loggedResponse.httpStatus = http.statusCode
             guard (200..<300).contains(http.statusCode) else {
                 // Error bodies may echo credentials. Never retain or expose them.
-                if let error = DeepSeekError.modelError(status: http.statusCode, body: data, model: configuration.model) { throw error }
+                if organizing { throw DeepSeekError.http(http.statusCode) }
+                if let error = DeepSeekError.modelError(status: http.statusCode, body: data, model: model) { throw error }
                 if http.statusCode == 401 || http.statusCode == 403 {
                     throw YubaiError.invalid("云端密钥无效或无权访问，请检查密钥设置。")
                 }
@@ -220,7 +235,7 @@ public struct DeepSeekClient: ChatTransport {
                 var choices: [Choice]
             }
             guard let result = try? JSONDecoder().decode(Response.self, from: data), let choice = result.choices.first else {
-                throw YubaiError.invalid("云端响应无法解析。")
+                throw DeepSeekError.invalidResponse
             }
             let message = choice.message
             loggedResponse.content = message.content
@@ -229,6 +244,7 @@ public struct DeepSeekClient: ChatTransport {
             let hasContent = !(message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
             let hasTools = !(message.tool_calls?.isEmpty ?? true)
             guard hasContent || hasTools else {
+                if organizing { throw DeepSeekError.invalidResponse }
                 if choice.finish_reason == "length" { throw YubaiError.invalid("云端回复被截断。请重试或调整模型输出空间。") }
                 if !(message.reasoning_content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
                     throw YubaiError.invalid("云端只返回了推理内容，没有返回正文。请重试或更换模型。")

@@ -54,12 +54,14 @@ public struct ChatRequest: Sendable {
     public var groupID: UUID?
     public var groupTitle: String?
     public var timeout: TimeInterval?
+    /// Applies to this request only; never changes the saved model preference.
+    public var model: String?
     public init(messages: [ChatMessage], tools: [ChatToolDefinition] = [], temperature: Double = 0.2,
                 maxTokens: Int = 4096, thinking: Bool? = nil, purpose: String = "财务管家", responseFormat: JSONValue? = nil,
-                groupID: UUID? = nil, groupTitle: String? = nil, timeout: TimeInterval? = nil) {
+                groupID: UUID? = nil, groupTitle: String? = nil, timeout: TimeInterval? = nil, model: String? = nil) {
         self.messages = messages; self.tools = tools; self.temperature = temperature
         self.maxTokens = maxTokens; self.thinking = thinking; self.purpose = purpose; self.responseFormat = responseFormat
-        self.groupID = groupID; self.groupTitle = groupTitle; self.timeout = timeout
+        self.groupID = groupID; self.groupTitle = groupTitle; self.timeout = timeout; self.model = model
     }
 }
 
