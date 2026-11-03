@@ -12,6 +12,7 @@ import UIKit
 @MainActor final class ImportOrganizationExecution {
     private static let logger = Logger(subsystem: "app.yubai.personal", category: "background-organize")
     let id: UUID
+    let before: Ledger
     private var progress: ImportOrganizationProgress
     private let cancel: @MainActor () -> Void
     private var completion: Bool?
@@ -23,8 +24,8 @@ import UIKit
     private var submitted = false
     #endif
 
-    init(id: UUID, progress: ImportOrganizationProgress, cancel: @escaping @MainActor () -> Void) {
-        self.id = id; self.progress = progress; self.cancel = cancel
+    init(id: UUID, before: Ledger, progress: ImportOrganizationProgress, cancel: @escaping @MainActor () -> Void) {
+        self.id = id; self.before = before; self.progress = progress; self.cancel = cancel
         authorizedConfiguration = APIKeyStore.shared.configuration()
         #if os(iOS)
         identifier = "app.yubai.personal.organizeImports." + id.uuidString
@@ -242,7 +243,7 @@ struct ActiveLedgerTransport: ChatTransport {
               !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
         let ids = PendingImportOrganization(in: current).batchIDs
         guard !ids.isEmpty else { return }
-        beginImportOrganization(batchIDs: ids)
+        guard beginImportOrganization(batchIDs: ids) else { return }
         pendingOrganizationTask = Task { @MainActor in
             defer { pendingOrganizationTask = nil }
             await organizePendingImports()
@@ -253,19 +254,25 @@ struct ActiveLedgerTransport: ChatTransport {
         importOrganizationTask?.cancel()
         organizationExecution?.finish(success: false)
     }
-    private func beginImportOrganization(batchIDs: [UUID]) {
+    @discardableResult private func beginImportOrganization(batchIDs: [UUID]) -> Bool {
+        guard canEditLedger(), loadFailure == nil else { return false }
+        // One snapshot covers every batch and checkpoint until completion, stop or failure.
+        // Fail before any request/mutation if the pre-run recovery cannot be written.
+        do { try localRepository.preserveRecovery(current, reason: "导入整理") }
+        catch { self.error = error.localizedDescription; return false }
         let progress = ImportOrganizationProgress(completed: 0, total: batchIDs.reduce(0) {
             $0 + ImportOrganizer.pendingEntryIDs(in: current, batchID: $1).count
         })
         organizationProgress = progress
         organizingImportBatchIDs = Set(batchIDs)
         let id = UUID()
-        let execution = ImportOrganizationExecution(id: id, progress: progress) { [weak self] in
+        let execution = ImportOrganizationExecution(id: id, before: current, progress: progress) { [weak self] in
             guard let self, self.organizationExecution?.id == id else { return }
             self.stopOrganizingImports()
         }
         organizationExecution = execution
         organizationContinuesInBackground = execution.start()
+        return true
     }
     private func finishImportOrganization() {
         let complete = organizationProgress.map { $0.completed == $0.total } ?? false
@@ -286,7 +293,7 @@ struct ActiveLedgerTransport: ChatTransport {
         let ids = current.imports.filter {
             $0.needsOrganization == true && $0.undoneAt == nil && (organizationExecution == nil || organizingImportBatchIDs.contains($0.id))
         }.map(\.id)
-        if organizationExecution == nil { beginImportOrganization(batchIDs: ids) }
+        if organizationExecution == nil, !beginImportOrganization(batchIDs: ids) { return }
         organizingPendingImports = true
         for id in ids {
             guard !Task.isCancelled else { return }
@@ -300,7 +307,7 @@ struct ActiveLedgerTransport: ChatTransport {
         if ownsExecution {
             guard !locked, loadFailure == nil, current.preferences.cloudAIEnabled,
                   current.imports.contains(where: { $0.id == batchID && $0.needsOrganization == true && $0.undoneAt == nil }) else { return }
-            beginImportOrganization(batchIDs: [batchID])
+            guard beginImportOrganization(batchIDs: [batchID]) else { return }
         }
         let task = Task { @MainActor in await performImportOrganization(batchID) }
         importOrganizationTask = task

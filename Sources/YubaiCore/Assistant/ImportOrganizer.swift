@@ -116,7 +116,8 @@ public struct ImportOrganization: Codable, Equatable, Sendable {
     public static func recordUndo(batchID: UUID, before: Ledger, in ledger: inout Ledger) {
         guard let i = ledger.imports.firstIndex(where: { $0.id == batchID }), var undo = ledger.imports[i].undo else { return }
         let current = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-        for old in before.entries where old.batchID != batchID && current[old.id] != old && !undo.entries.contains(where: { $0.id == old.id }) {
+        var recorded = Set(undo.entries.map(\.id))
+        for old in before.entries where old.batchID != batchID && current[old.id] != old && recorded.insert(old.id).inserted {
             undo.entries.append(old)
         }
         let plans = Set(before.plans.map(\.id)), cards = Set(before.cards.map(\.id))

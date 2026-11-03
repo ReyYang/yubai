@@ -162,6 +162,32 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         mergedIntoID = try c.decodeIfPresent(UUID.self, forKey: .mergedIntoID)
         personalExpense = try c.decodeIfPresent(Int64.self, forKey: .personalExpense)
     }
+    public func encode(to encoder: Encoder) throws {
+        // All omitted values already have explicit defaults in init(from:).
+        // Keep provenance, deduplication keys and every non-default prior value intact.
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(date, forKey: .date); try c.encode(amount, forKey: .amount)
+        try c.encode(nature, forKey: .nature); try c.encode(accountID, forKey: .accountID)
+        try c.encode(title, forKey: .title); try c.encode(category, forKey: .category)
+        try c.encodeIfPresent(recordedAt, forKey: .recordedAt); try c.encodeIfPresent(otherAccountID, forKey: .otherAccountID)
+        if !note.isEmpty { try c.encode(note, forKey: .note) }
+        try c.encodeIfPresent(purpose, forKey: .purpose); try c.encodeIfPresent(subcategory, forKey: .subcategory)
+        if subcategoryUserEdited { try c.encode(true, forKey: .subcategoryUserEdited) }
+        if source != "手动" { try c.encode(source, forKey: .source) }
+        if !externalID.isEmpty { try c.encode(externalID, forKey: .externalID) }
+        try c.encodeIfPresent(batchID, forKey: .batchID)
+        if !sourceIdentity.isEmpty { try c.encode(sourceIdentity, forKey: .sourceIdentity) }
+        try c.encodeIfPresent(quickCapture, forKey: .quickCapture); try c.encodeIfPresent(sourceRow, forKey: .sourceRow)
+        if !fingerprint.isEmpty { try c.encode(fingerprint, forKey: .fingerprint) }
+        if userEdited { try c.encode(true, forKey: .userEdited) }
+        try c.encodeIfPresent(deletedAt, forKey: .deletedAt); try c.encodeIfPresent(relatedEntryID, forKey: .relatedEntryID)
+        try c.encodeIfPresent(planID, forKey: .planID); try c.encodeIfPresent(occurrence, forKey: .occurrence)
+        try c.encodeIfPresent(rentID, forKey: .rentID); try c.encodeIfPresent(rentPeriod, forKey: .rentPeriod)
+        try c.encodeIfPresent(attachmentID, forKey: .attachmentID)
+        if classificationReason != "手动选择" { try c.encode(classificationReason, forKey: .classificationReason) }
+        try c.encodeIfPresent(otherDate, forKey: .otherDate); try c.encodeIfPresent(mergedIntoID, forKey: .mergedIntoID)
+        try c.encodeIfPresent(personalExpense, forKey: .personalExpense)
+    }
     public func delta(for account: UUID) -> Int64 {
         if accountID == account { return nature.inflow ? amount : -amount }
         if nature.paired && otherAccountID == account { return nature.inflow ? -amount : amount }
