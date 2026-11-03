@@ -8,16 +8,18 @@
 ## 1. 日志：所有 run= 行（按时间，原样）
 USB 重连后，`sudo log collect --device-udid 00008140-00163C340128401C --last 6h` 成功，退出码 0；`device.logarchive` 大小为 1,046,426,267 bytes，保留在仓库外。
 
-按指定谓词 `subsystem == "app.yubai.personal"`，含 info / debug 导出的 [yubai.log](yubai.log) 为 180 bytes、4 行归档标题，无事件正文，`run=` 行数为 0。它是成功导出的实际结果，不是人为创建的空占位文件。导出的系统日志中也未找到字面 `run=` 行。不能因此断言没有执行过整理：第 2 节有系统框架记录的整理任务 UUID 和生命周期。
+按指定谓词 `subsystem == "app.yubai.personal"`，含 info / debug 导出的 [yubai.log](yubai.log) 为 180 bytes、4 行归档标题，无事件正文，`run=` 行数为 0。它是成功导出的实际结果，不是人为创建的空占位文件。导出的系统日志中也未找到字面 `run=` 行。 继续取证时又跨子系统查询 Yubai / yubai 子系统 / background-organize 分类，并启用 info 与 debug，结果同样只有 4 行归档标题、0 条事件，退出码 0。该补查结果另存本地 `background-diagnostic-allsubsystems.log`。不能因此断言没有执行过整理：第 2 节有系统框架记录的整理任务 UUID 和生命周期。
 
 `system.log` 原始导出为 43,495,022 bytes / 304,818 行；超过 20 MB，已按要求只保留含 `app.yubai.personal`、`organizeImports`、`BGContinued`、`expir`、`watchdog`、`jetsam`、`hang`、`terminat` 的行（不区分大小写），保留后为 10,505,984 bytes / 33,536 行，仅留本地。该文件不随报告上传。
 
 ## 2. 日志：Yubai 进程的终止、expire、watchdog、hang、jetsam 相关行（原样，最多 80 行）
-以下按时间摘录 67 行：后台任务的关键生命周期、最长的 12 条 HangTracer 样本及进程终止记录。排除了仅包含 Changing 字样的行，未把 watchdogd 的普通状态更新当成 watchdog 杀进程证据。完整筛选日志保留在本地。
+以下按时间摘录 75 行：后台任务关键生命周期、Activity Progress Policy 决策与过期请求上下文、最长的 12 条 HangTracer 样本、失败任务窗口内的 6 条卡顿记录及进程终止记录。排除了仅包含 Changing 字样的行，未把 watchdogd 的普通状态更新当成 watchdog 杀进程证据。完整筛选日志保留在本地。
 
 可直接核对的事实：09:23 的 4,200 笔任务收到前台标识不匹配错误；09:39 的 1,867 笔任务在 09:53 标记 success: 1；11:51 的 4,200 笔任务在 11:52:44 因未按预期节奏报告进度而被标记 stalled，随后系统 Expiring task、应用回报 success: 0。该系统行为不等同于已定位代码原因，success: 1 也不证明分类结果符合预期。
 
 HangTracer 的 always-on hang reporting 共 191 条，最长 2.40 秒；未将紧邻的 under capture threshold / emitting telemetry 重复行再计一次。12:03:23 的进程终止上下文明确为 uninstallation，早于本轮 14:20 开始取证及 14:29 重装；未据此认定具体由谁卸载。
+
+时间与进程核对：11:51:42–11:52:44 的失败任务为 PID 70398，窗口内 6 条 always-on HangTracer 记录的最大值为 0.62 秒；全窗口最大 2.40 秒发生在 11:51:21，早于该任务启动约 21 秒，不能把它作为导致这次过期的直接证据。系统原始多行事件明确保留了 `Activity Progress Policy`、`tracker.health == 2`、`Decision: AMNP` 以及 `_BGTaskExpirationRequest`；这些是系统字段，没有据此推断具体代码原因。
 
 ```text
 2026-11-03 09:23:26.201359+0800 0x589881   Default     0x0                  36     7    runningboardd: (RunningBoard) [com.apple.runningboard:ttl] [extension<app.yubai.personal.widgets[config:6E69CA09-34E3-3493-B8FC-B5021E1ACB71]((null):121)>[uuid:7B4C5371-D198-447F-9DBB-CF9DA5489F03]:68123] termination reported by launchd (1, 17, 9)
@@ -64,10 +66,18 @@ HangTracer 的 always-on hang reporting 共 191 条，最长 2.40 秒；未将�
 2026-11-03 11:51:42.696376+0800 0x5adbb6   Default     0x1580229            70398  0    Yubai: (BackgroundTasks) [com.apple.BackgroundTasks:Framework] submitTaskRequest: <BGContinuedProcessingTaskRequest: app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C, (title: 整理导入记录, subtitle: 已整理 0 / 4,200, resources: Default, submissionStrategy: Fail)>
 2026-11-03 11:51:42.697887+0800 0x5ad9bb   Default     0x1580229            58290  8    dasd: [com.apple.duetactivityscheduler:lifecycle] SUBMITTED bgContinuedProcessing-app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C:005D44 at priority 90 (Sat Dec 30 08:06:00 0000 - Tue Nov  3 11:51:42 2026)
 2026-11-03 11:51:42.700531+0800 0x5adf91   Default     0x0                  70398  0    Yubai: (BackgroundTasks) [com.apple.BackgroundTasks:Framework] Running task: <BGContinuedProcessingTask: app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C (整理导入记录)>
+2026-11-03 11:51:42.853283+0800 0x5adbb6   Default     0x0                  70398  0    Yubai: (HangTracer) [com.apple.hangtracer:] Hang detected: 0.47s (always-on hang reporting)
 2026-11-03 11:51:42.853618+0800 0x5adbb6   Default     0x0                  70398  0    Yubai: (BackgroundTasks) [com.apple.BackgroundTasks:Framework] Starting task: <BGContinuedProcessingTask: app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C (整理导入记录)>
+2026-11-03 11:51:43.289483+0800 0x5adbb6   Default     0x0                  70398  0    Yubai: (HangTracer) [com.apple.hangtracer:] Hang detected: 0.44s (always-on hang reporting)
+2026-11-03 11:52:06.164515+0800 0x5adbb6   Default     0x0                  70398  0    Yubai: (HangTracer) [com.apple.hangtracer:] Hang detected: 0.62s (always-on hang reporting)
+2026-11-03 11:52:06.533276+0800 0x5adbb6   Default     0x0                  70398  0    Yubai: (HangTracer) [com.apple.hangtracer:] Hang detected: 0.37s (always-on hang reporting)
+2026-11-03 11:52:08.295470+0800 0x5adbb6   Default     0x0                  70398  0    Yubai: (HangTracer) [com.apple.hangtracer:] Hang detected: 0.48s (always-on hang reporting)
 2026-11-03 11:52:31.326173+0800 0x5ae249   Default     0x0                  52     8    powerd: [com.apple.powerd:assertions] Process dasd.58290 Summary PreventUserIdleSystemSleep "DASActivity:bgContinuedProcessing-app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C" age:00:00:48  id:4295004713 [System: PrevIdle SysAct] [Qualifiers: AllowsDeviceRestart]
+2026-11-03 11:52:31.838471+0800 0x5adbb6   Default     0x0                  70398  0    Yubai: (HangTracer) [com.apple.hangtracer:] Hang detected: 0.34s (always-on hang reporting)
 2026-11-03 11:52:44.264097+0800 0x5ae0ed   Error       0x0                  58290  8    dasd: [com.apple.duetactivityscheduler:ProgressTracker] [0x7d84827a80:bgContinuedProcessing-app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C:005D44] Task has not reported progress within expected cadence, marking stalled (time without update: -38.09956693649292)
 2026-11-03 11:52:44.264474+0800 0x5ae0ed   Default     0x0                  58290  8    dasd: [com.apple.duetactivityscheduler:scoring] bgContinuedProcessing-app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C:005D44:[
+	{name: Activity Progress Policy, policyWeight: 0.001, response: {AMNP, 0.00, [{tracker.health == 2}]}}
+ ], Decision: AMNP}
 2026-11-03 11:52:44.264515+0800 0x5ae0ed   Default     0x0                  58290  8    dasd: [com.apple.duetactivityscheduler:lifecycle] Suspending bgContinuedProcessing-app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C:005D44 - required criterion is not satisfied.
 2026-11-03 11:52:44.270934+0800 0x5ae163   Default     0x0                  70398  0    Yubai: (BackgroundTasks) [com.apple.BackgroundTasks:Framework] Expiring task: <BGContinuedProcessingTask: app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C (整理导入记录)>
 2026-11-03 11:52:44.271270+0800 0x5adbb6   Default     0x0                  70398  0    Yubai: (BackgroundTasks) [com.apple.BackgroundTasks:Framework] Marking task <BGContinuedProcessingTask: app.yubai.personal.organizeImports.2432B7ED-5978-422C-9B49-CEBF0F034F2C (整理导入记录)> complete with success: 0
@@ -95,6 +105,8 @@ HangTracer 的 always-on hang reporting 共 191 条，最长 2.40 秒；未将�
 | 旧 ledger.json 未取得 | 未知 | 未知 | 未知 | 未知 | 未知 |
 
 USB 重连前后，旧 App 的 appDataContainer / appGroupDataContainer 复制均失败。CoreDevice 和 MobileInstallation 的指定 bundle 查询均未找到 App，用户随后确认「已没有余白图标」。用户明确要求重装后，原 Application Support 路径仍不存在。没有把重装后的数据作为故障现场统计；未取得或上传 ledger.json，报告没有交易明细。
+
+重装后容器只读快照（2026-11-03T14:36:25.520071+08:00）：App 为 2.0.0（build 1）、containerAccessible 为 true，数据容器为 `6EBBC26A-BD21-413B-AD52-47D01FF2FBC5`；递归列表 12 个条目，没有 Application Support、ledger.json 或 Recovery。App Group 为 `group.app.yubai.personal`，容器为 `E91FFDA4-FADB-4B00-94A3-D192A4BE89FD`；复制成功，但只有 Library / Caches / Preferences 三个目录、0 个普通文件。相关修改时间集中在 14:29:55–14:29:59，即本轮重新安装期间。没有在这些重装后目录里找到旧故障账本，不能用它们推算原始批次或分类统计；没有读取 Preferences 内容或密钥。
 
 ## 4. 待整理 / 其他支出 / 总数
 未知：没有取得故障现场 ledger.json，无法统计 activeEntries 中「待整理」「没分类」「其他支出」及总数。上述数值不是 0。
@@ -171,7 +183,7 @@ USB 重连前后，旧 App 的 appDataContainer / appGroupDataContainer 复制�
     "freeze_skip_reason:" : "none",
 ```
 
-结构化核对：这份 Jetsam 中 Yubai 的 pid 为 68462、状态 suspended、reason 为 long-idle-exit；largestProcess 为 Aweme。该记录不能直接作为 11:52 整理失败的原因，也不能证明其中所有进程对应同一安装提交。
+结构化核对：这份 Jetsam 中 Yubai 的 pid 为 68462、状态 suspended、reason 为 long-idle-exit；largestProcess 为 Aweme。该记录不能直接作为 11:52 整理失败的原因，也不能证明其中所有进程对应同一安装提交。 失败任务的 PID 是 70398，与该 Jetsam 的 PID 68462 不同。Jetsam 内 Yubai 主程序 UUID 为 `131a11d7-a681-3b9e-8051-47a78281f98f`，本次重新安装包主程序 UUID 为 `32271ed4-6ea9-3187-98ee-2c0f8e55173b`，两者不一致；仅将该 Jetsam 作为历史旁证，UUID 不同不能独立证明源代码提交不同。
 
 ## 7. 哪一步失败了、报错原文
 
@@ -209,11 +221,13 @@ USB 重连后补采原始回执（退出码 0）：
 Archive successfully written to /Users/yang/deepresearch/yubai-evidence-2026-11-03/device.logarchive
 ```
 
+继续取证补查：重新安装后的 App Group 复制成功（退出码 0），回执为 `File received from Device`，但没有 ledger.json / Recovery；这不改变旧容器复制失败的事实。跨子系统诊断日志与失败任务完整事件导出均成功（退出码 0），stderr 为空。
+
 连接核对：首次是 localNetwork / xctrace Offline，USB 列表没有该 iPhone；用户重新连接并解锁后，`idevice_id -l` 返回正确 UDID，CoreDevice 的 transportType 为 wired。当前 macOS USB profiler 类型为 SPUSBHostDataType，原流程的 SPUSBDataType 返回空输出。
 
 重装时间：2026-11-03T14:29:52.962501+08:00。使用之前从 main 2970017 编译成功的现有 Debug 真机包；`devicectl device install app` 退出码 0、bundleID 为 app.yubai.personal。只安装，未启动 App。重新安装是本轮后续用户指令新增的动作，不改变前面已保存日志的来源和时间；没有以新账本冒充原账本。
 
 ## 结论：EVIDENCE PARTIAL（写明缺哪项）
-已补齐六小时系统归档、两类日志导出、可核对的后台任务过期与卡顿记录、进程卸载终止记录，以及含 Yubai 的 Jetsam 报告。`run=` 自定义日志在指定归档导出中没有记录。仍缺故障现场 ledger.json、导入批次 / 分类统计、Recovery 大小与份数，不能定位具体代码原因。
+已补齐六小时系统归档、两类日志导出、可核对的后台任务过期与卡顿记录、进程卸载终止记录，以及含 Yubai 的 Jetsam 报告。`run=` 自定义日志在指定归档导出中没有记录。仍缺故障现场 ledger.json、导入批次 / 分类统计、Recovery 大小与份数。已明确区分任务内 / 任务前卡顿，以及失败进程 / 历史 Jetsam 进程；证据能确认系统过期链路，不能定位具体代码原因。
 
 只提交本报告与实际导出的 `.verification/yubai.log`；归档、system.log、完整崩溃报告、其他 App 元数据和任何账本数据均不上传。报告分支更新后返回原 main；原有 stash、未跟踪文件与 main 提交保持不变。
