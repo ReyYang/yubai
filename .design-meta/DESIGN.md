@@ -18,6 +18,29 @@ SendLogPresentation.swift 旁的 SendLogRawPresentation 承载解析、system �
 
 当前 Linux 环境未做 Apple SDK 类型检查／编译、XCTest UI、长数组展开／滚动与动态字号的设备视觉验收、VoiceOver 和实际剪贴板验证；这些仍待 Mac。未提交、未推送、未新增第三方依赖，未调用真实智能服务。
 
+## 2026-11-02 · 导入整理绝不向用户提问
+
+来源为 owner 在 fix/organize-never-asks（基于 main）的明确决定：导入整理时模型绝不向用户提问。本节取代下方历史版本中要求模型提问、问题展开及整理后显示模型问题的行为；历史验证仍按原日期保留。只改整理行为和离线夹具，不改页面布局与样式，不增加数量上限。
+
+ImportOrganizer.swift 两套提示词都移除 questions 字段、问题指令及选项示例。个人姓名往来（含脱敏联系人）看不出用途时，出账直接用 expense／其他支出／「转给对方」，进账按方向用合理性质、通常 income／其他收入／「来自对方」，confident=true，名称须来自实际 categories；已知分类与明确还款语义优先。其他不确定组不列出或 skip=true，逐笔不列在 rows，没把握的关联不列入 items／series。needs_individual 仍送逐笔；不确定或略过组直接写入本段已处理 ID，保持没分类并进入本机兜底，不在同次运行或续跑重复发送。
+
+解析不再读取模型 questions，也不再据其 ID 阻止可信分类、性质、用途或关联。只由本机创建 ImportQuestion.isFallback 的「N 笔还没分类」，沿用实时剩余数、按对方分、逐段合并、撤销、持久化与运行时暂缓展示。ImportQuestion 存档模型及旧问题的处理能力保留，未迁移或删除历史问题。
+
+Core 新增 3 项测试：人名组直接记其他支出／转给X且两套提示词不含问题协议；旧 questions 不阻止可信个人收入／来自X；skip、confident=false 和省略组全部留兜底，原始记录保持且逐笔／续跑不重发。既有断言调整：逐笔与六组模型问题改为唯一兜底、无选项且不改性质；分类别名／无效关联保留，同时验证可信性质不被旧问题降级、兜底存档与整批撤销；1,088 笔从模型选项展开改为完整兜底覆盖与分组可达；组和单笔只合并兜底；取消续跑从保存一个具体问题改为零具体问题／最终一个合并兜底；实网 opt-in 测试的输出问题约束改为仅允许兜底（本轮不运行实网）。反向分组测试名称改为忽略旧问题，非法分类校验仍在。
+
+UITestSupport 的分组回复改用 skip／省略；salary 的 by-party 单笔来款直接记其他收入／来自合成个人，保留 9 笔剩余及 6／3 分组回归。salary 的 questions-complete／stop／fail 与后台假传输故意保留旧 questions 来验证忽略，可信首段均保存 30 笔分类、零问题；import 逐笔故意保留旧问题但省略不确定来款，预期为 1 笔兜底。原场景名作为回归夹具标识保留。
+
+AppFlowTests 的 6 项行为断言更新：by-party 断言无模型问题／选项、9 笔兜底在 6 笔旧来款汇总之前；完成、停下、失败、重启四项均由「保存29笔分类＋1个模型问题，结束后显示」改为「保存30笔分类＋0问题，结束／重启仍无模型问题」，进度30/70、剩余40、无重发和常亮恢复保持；import 从点模型答案改为无模型问题／答案、来款在1笔兜底并可按对方分，整批撤销与重新导入仍验证。完成测试使用25秒收尾等待，共用 assertGone 默认10秒保持。
+
+新增／改动可见中文：固定生产界面文案无；模型生成用途模板「转给<对方>」「来自<对方>」属于记录用途事实，假传输用途「来自合成个人」仅用于测试。保留的「N 笔还没分类」「按对方分」分别是数字状态与控件；没有新增说明句。未读取、复制或写入任何设计稿链接。
+
+验证：按指定命令 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 全量退出 0，619 项、615 通过／4 原有实网 opt-in 跳过／0 失败。当前 worktree 初始无依赖缓存，第一次定向启动被本机不可用代理阻断；随后仅复制旁边主仓库中已锁定相同版本的 checkouts／repositories 缓存与 workspace-state 到忽略的 .build，未修改 Package.swift／Package.resolved，未增加依赖。定向测试发现旧断言尝试应用空 ChangeSet，已改为断言无变更，最终全量覆盖通过。iOS 26 模拟器 Debug：40 份 App＋1 份 UI；iOS 26 设备 Release：40 份 App，全部通过 swiftc -frontend -parse（Swift 5 模式）。git diff --check 通过。
+
+补充离线执行：当前完整 UITestSupport／UITestTransport 配真实 Core，以 Swift 6 严格并发编译；复用未改动的实际 runtime／apply 提取代码及 UIKit／BG／持久化宿主替身。8 条路径全部通过：salary 的 by-party、questions-complete／stop／fail、stop-second／fail-second，import（分别单笔与三笔来款），150 行五段后台夹具的前台常亮回退。首段30笔分类／零问题、进度与停止／错误恢复、已完成ID不重发、完整70／150笔均无模型问题且重读保持；by-party 保留6／3笔兜底分组、手动归类后余3笔，已分类来款不重复提醒，仍有6笔历史来款；import 的省略／skip 来款只出现在本机兜底。原30＋30＋10／五段节奏与常亮恢复保持。该执行不是 Apple 系统后台或 XCTest UI 实跑。
+
+Linux 不具备 Apple SDK，语法解析不等同类型检查或 XCTest UI 实跑；真实 DeepSeek、人名／商户判断质量、Apple 编译、UI 与真机后台行为仍待验证。外部画布、截图和分发包未同步。未提交、未推送、未增加依赖、未调用真实 DeepSeek。
+
+
 ## 2026-11-02 · 导入整理先按对方分组
 
 来源为 owner 在 feat/organize-by-party-groups（基于 PR #53 的 feat/background-organize ccf336b）明确同意的数据层与 AI 输入改法。真实 DeepSeek 对 4,200 笔银行流水仍留 2,098 笔没分类，是本轮问题依据；未读取或发送用户真实流水。本轮不改界面外观、布局及固定文案，不提交、不增加第三方依赖。
