@@ -3,6 +3,21 @@ import XCTest
 
 final class StorageTests: XCTestCase {
     func sample() -> Ledger { var l = SampleData.ledger(now: Dates.parse("2026-10-01")!); l.attachments = [Attachment(name: "账单原件.csv", data: Data([0, 1, 2, 0xFF]))]; l.entries[0].attachmentID = l.attachments[0].id; return l }
+    func testEntryDefaultsFromLegacyJSONAndAllNonDefaultValuesSurviveCompactEncoding() throws {
+        let legacy = Data(#"{"id":"00000000-0000-0000-0000-000000000001","date":0,"amount":123,"nature":"expense","accountID":"00000000-0000-0000-0000-000000000002","title":"合成记录","category":"餐饮","note":"","source":"手动","externalID":"","sourceIdentity":"","fingerprint":"","userEdited":false,"subcategoryUserEdited":false,"classificationReason":"手动选择"}"#.utf8)
+        let defaults = try JSONDecoder().decode(Entry.self, from: legacy)
+        XCTAssertEqual(try JSONDecoder().decode(Entry.self, from: JSONEncoder().encode(defaults)), defaults)
+        var entry = defaults
+        entry.recordedAt = Date(timeIntervalSinceReferenceDate: 1); entry.otherAccountID = UUID()
+        entry.note = "合成原文"; entry.purpose = "午餐"; entry.subcategory = "午餐"; entry.subcategoryUserEdited = true
+        entry.source = "合成导入"; entry.externalID = "合成交易号"; entry.sourceIdentity = "原始账户和交易号"
+        entry.batchID = UUID(); entry.quickCapture = QuickCaptureOrigin(merchant: "合成商户", card: "合成卡", transactionDate: entry.date, withoutOpeningApp: true)
+        entry.sourceRow = 12; entry.fingerprint = "合成去重指纹"; entry.userEdited = true
+        entry.deletedAt = entry.date; entry.relatedEntryID = UUID(); entry.planID = UUID(); entry.occurrence = entry.date
+        entry.rentID = UUID(); entry.rentPeriod = entry.date; entry.attachmentID = UUID()
+        entry.classificationReason = "合成整理原因"; entry.otherDate = entry.date; entry.mergedIntoID = UUID(); entry.personalExpense = 99
+        XCTAssertEqual(try JSONDecoder().decode(Entry.self, from: JSONEncoder().encode(entry)), entry)
+    }
     func testLegacyLedgerDefaultsToVividThemeWithoutChangingPreferences() throws {
         var ledger = sample()
         ledger.preferences.appearance = "dark"
@@ -149,6 +164,96 @@ final class StorageTests: XCTestCase {
         let last = try Data(contentsOf: repo.file); try reopened.save(ledger)
         XCTAssertEqual(try reopened.recoveries().count, 20)
         XCTAssertEqual(try reopened.recoveryBytes(XCTUnwrap(reopened.recoveries().first).url), last)
+    }
+    func testHistoryByteBudgetPrunesOldestLegacyFilesOnLoad() throws {
+        try withRepository { repository in
+            var ledger = Ledger(); ledger.accounts = [Account(name: "当前账本")]
+            try repository.save(ledger)
+            let history = repository.directory.appendingPathComponent("Recovery", isDirectory: true)
+            try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+            for index in 1...4 {
+                var old = ledger; old.accounts[0].name = "版本\(index)"
+                // Legacy plain JSON, with legal padding to exercise byte rather than count limits.
+                let bytes = try LedgerCodec.encodeMetadata(old) + Data(repeating: 32, count: 4 * 1024 * 1024)
+                try bytes.write(to: history.appendingPathComponent("\(index * 1000)-legacy-版本.json"))
+            }
+            let reopened = LedgerRepository(directory: repository.directory)
+            XCTAssertEqual(try reopened.load(), ledger)
+            let versions = try reopened.recoveries()
+            XCTAssertEqual(versions.count, 2)
+            XCTAssertEqual(try versions.map { try reopened.readRecovery($0).accounts[0].name }, ["版本4", "版本3"])
+            XCTAssertLessThanOrEqual(try reopened.storageUsage().recoveryBytes, LedgerRepository.historyByteLimit)
+        }
+    }
+    func testHistoryBudgetCountsSharedPayloadsAndAlwaysKeepsNewestRecovery() throws {
+        try withRepository { repository in
+            var live = Ledger(); live.accounts = [Account(name: "当前账本")]
+            try repository.save(live)
+            var previousPayload: UUID?
+            for index in 1...3 {
+                var version = live
+                let payload = Attachment(name: "合成\(index).csv", data: Data(repeating: UInt8(index), count: 6 * 1024 * 1024))
+                var entry = Entry(amount: 100, accountID: live.accounts[0].id, title: "版本\(index)")
+                entry.attachmentID = payload.id; version.entries = [entry]; version.attachments = [payload]
+                try repository.preserveRecovery(version, reason: "合成\(index)")
+                let versions = try repository.recoveries()
+                XCTAssertEqual(versions.count, 1)
+                XCTAssertEqual(try repository.readRecovery(XCTUnwrap(versions.first)), version)
+                XCTAssertLessThanOrEqual(try repository.storageUsage().recoveryBytes, LedgerRepository.historyByteLimit)
+                if let previousPayload {
+                    XCTAssertFalse(FileManager.default.fileExists(atPath: repository.directory.appendingPathComponent("Recovery/Payloads/" + previousPayload.uuidString).path))
+                }
+                previousPayload = payload.id
+            }
+            // A single newest snapshot can exceed the budget. Its payload must remain recoverable.
+            var oversized = live
+            let payload = Attachment(name: "合成大原件.csv", data: Data(repeating: 7, count: Int(LedgerRepository.historyByteLimit) + 1))
+            var entry = Entry(amount: 100, accountID: live.accounts[0].id, title: "大版本")
+            entry.attachmentID = payload.id; oversized.entries = [entry]; oversized.attachments = [payload]
+            try repository.preserveRecovery(oversized, reason: "超过预算的一份")
+            XCTAssertEqual(try repository.recoveries().count, 1)
+            XCTAssertGreaterThan(try repository.storageUsage().recoveryBytes, LedgerRepository.historyByteLimit)
+            XCTAssertEqual(try repository.readRecovery(XCTUnwrap(repository.recoveries().first)), oversized)
+        }
+    }
+    func testHistoryBudgetRemovesLegacySidecarsAndProtectsUnreadablePayloadReferences() throws {
+        try withRepository { repository in
+            try repository.save(Ledger())
+            let history = repository.directory.appendingPathComponent("Recovery", isDirectory: true)
+            try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+            let oldest = history.appendingPathComponent("1000-legacy-旧.json")
+            let sidecar = oldest.deletingPathExtension().appendingPathExtension("attachments")
+            try FileManager.default.createDirectory(at: sidecar, withIntermediateDirectories: true)
+            try LedgerCodec.encodeMetadata(Ledger()).write(to: oldest)
+            try Data(repeating: 1, count: Int(LedgerRepository.historyByteLimit)).write(to: sidecar.appendingPathComponent(UUID().uuidString))
+            let readable = history.appendingPathComponent("1500-legacy-可读版本.json")
+            try LedgerCodec.encodeMetadata(Ledger()).write(to: readable)
+            let newest = history.appendingPathComponent("2000-unreadable-原文件.json.gz")
+            try Data("damaged but retained".utf8).write(to: newest)
+            let shared = history.appendingPathComponent("Payloads", isDirectory: true)
+            try FileManager.default.createDirectory(at: shared, withIntermediateDirectories: true)
+            let unknown = shared.appendingPathComponent(UUID().uuidString)
+            try Data([1, 2, 3]).write(to: unknown)
+            _ = try repository.load()
+            XCTAssertEqual(try repository.recoveries().map(\.url), [newest, readable])
+            XCTAssertNoThrow(try repository.readRecovery(XCTUnwrap(repository.recoveries().last)))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: oldest.path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: sidecar.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: unknown.path))
+        }
+    }
+    func testCheckpointSavesStillRejectStaleOrCorruptFiles() throws {
+        try withRepository { repository in
+            var ledger = Ledger(); ledger.accounts = [Account(name: "合成卡")]
+            try repository.save(ledger)
+            try repository.preserveRecovery(ledger, reason: "导入整理")
+            let stale = LedgerRepository(directory: repository.directory)
+            XCTAssertThrowsError(try stale.save(ledger, preservingRecovery: false))
+            try Data("corrupt".utf8).write(to: repository.file)
+            XCTAssertThrowsError(try repository.save(ledger, preservingRecovery: false))
+            XCTAssertEqual(try String(contentsOf: repository.file, encoding: .utf8), "corrupt")
+            XCTAssertEqual(try repository.recoveries().count, 1)
+        }
     }
     func testLoadedRepositoryVerifiesAndPreservesValidExternalChangesBeforeSaving() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-external-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }

@@ -60,10 +60,26 @@ enum AppSheet: Identifiable {
     private(set) var ledger = Ledger() { didSet { invalidateDerived() } }
     var current: Ledger { ledger }
     private var derivedRevision = 0
+    private var ledgerRevision: UInt64 = 0
     // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
     @ObservationIgnored private var cachedEntries: [Entry]?
     @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, calendar: Calendar, value: EntryTimeline.Snapshot)?
+    @ObservationIgnored private var cachedUnsortedGroups = UnsortedGroupsCache()
+    func unsortedGroups(questionID: UUID) -> UnsortedGroupsSnapshot? {
+        cachedUnsortedGroups.snapshot(for: questionID, revision: ledgerRevision, in: current)
+    }
+    func unsortedEntryCount(for question: ImportQuestion) -> Int {
+        guard question.isFallback else { return 0 }
+        return unsortedGroups(questionID: question.id)?.entryCount ?? 0
+    }
+    func unsortedChangeSet(questionID: UUID, groupID: String, use: UnsortedUse,
+                          category: String?, otherAccount: UUID?, entryIDs: Set<UUID>? = nil,
+                          purpose: String? = nil) -> ChangeSet? {
+        cachedUnsortedGroups.changeSet(groupID: groupID, questionID: questionID, use: use,
+                                      category: category, otherAccount: otherAccount, entryIDs: entryIDs,
+                                      purpose: purpose, revision: ledgerRevision, in: current)
+    }
     var funds: Funds {
         _ = derivedRevision
         let now = Date(); let zone = TimeZone.current
@@ -95,7 +111,10 @@ enum AppSheet: Identifiable {
         cachedEntryTimeline = (month, search, filter, calendar, value)
         return value
     }
-    private func invalidateDerived() { cachedEntries = nil; cachedEntryTimeline = nil; refreshTimeDerived() }
+    private func invalidateDerived() {
+        ledgerRevision &+= 1
+        cachedEntries = nil; cachedEntryTimeline = nil; refreshTimeDerived()
+    }
     func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
     var locations: LedgerLocations
@@ -111,6 +130,7 @@ enum AppSheet: Identifiable {
     var syncStatus: String?
     var syncChoice: SyncChoice?
     var pendingUpload: Ledger?
+    var pendingUploadPreservingRecovery = true
     @ObservationIgnored var syncMonitor: CloudLedgerMonitor?
     var iCloudAvailable: Bool { locations.cloud != nil }
     var destination: Destination = .overview {
@@ -172,7 +192,7 @@ enum AppSheet: Identifiable {
         #endif
     }
 
-    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, showToast: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
+    @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, preservingRecovery: Bool = true, undoSnapshot: Ledger? = nil, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, showToast: Bool = true, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard canEditLedger(allowLockedCapture: allowLockedCapture) else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
         let before = current; var next = before
@@ -184,14 +204,14 @@ enum AppSheet: Identifiable {
                 Wishlist.autoLink(&next, addedEntryIDs: addedIDs, now: Date())
             }
             if !preservingUpdatedAt { next.updatedAt = Date() }
-            next = try persist(next, reason: reason)
+            next = try persist(next, reason: reason, preservingRecovery: preservingRecovery)
             let motion = MotionEntryChange(previous: before.entries.map(\.id), previousActive: before.activeEntries.map(\.id), currentActive: next.activeEntries.map(\.id))
             if entryMotion && !motion.saved.isEmpty { freshEntryIDs = motion.saved; pendingEntrySave = true }
             if entryMotion && !motion.deleted.isEmpty { entryDeleteTrigger &+= 1 }
             ledger = next
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
             if recordUndo {
-                undoLedger = before; undoLabel = reason
+                undoLedger = undoSnapshot ?? before; undoLabel = reason
                 if showToast {
                     if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
                     else { toast = reason + "完成" }
@@ -228,8 +248,10 @@ enum AppSheet: Identifiable {
         return prepared.batch
     }
     @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, continuingImportOrganization: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
+        guard !continuingImportOrganization || organizationExecution != nil else { return false }
         var skipped: [String] = []
-        let saved = update(label, entryMotion: !silently,
+        let saved = update(label, preservingRecovery: !continuingImportOrganization,
+                           undoSnapshot: continuingImportOrganization ? organizationExecution?.before : nil, entryMotion: !silently,
                            allowLockedCapture: locked && continuingImportOrganization && organizationContinuesInBackground,
                            showToast: !silently) { ledger in
             if !changeSet.items.isEmpty { skipped = try changeSet.apply(to: &ledger) }
@@ -304,7 +326,7 @@ enum AppSheet: Identifiable {
             if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
             let saved = try localRepository.deleteOldScreenshots(from: current, months: months, now: now)
             cancelEntrySaveMotion(); ledger = saved; undoLedger = nil; undoLabel = nil
-            if ledgerLocation == .iCloud { pendingUpload = saved; Task { await synchronizeLedger() } }
+            if ledgerLocation == .iCloud { pendingUpload = saved; pendingUploadPreservingRecovery = true; Task { await synchronizeLedger() } }
             toast = "已删除 \(count) 张截图"
             return true
         } catch {

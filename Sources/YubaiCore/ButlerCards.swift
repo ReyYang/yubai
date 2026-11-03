@@ -144,7 +144,8 @@ public enum ButlerCards {
     }
     /// The entire eligible queue, before the five-card window. Aggregation must
     /// use this queue so reminders beyond the window are still reachable.
-    public static func queued(_ ledger: Ledger, organizingBatchIDs: Set<UUID> = []) -> [ButlerCard] {
+    public static func queued(_ ledger: Ledger, organizingBatchIDs: Set<UUID> = [],
+                              fallbackEntryCount: ((ImportQuestion) -> Int)? = nil) -> [ButlerCard] {
         // Visibility is run-local, never persisted: stopped or relaunched apps
         // immediately expose the questions saved by completed checkpoints.
         let deferredQuestions = Set(ledger.imports.filter { organizingBatchIDs.contains($0.id) }
@@ -156,7 +157,7 @@ public enum ButlerCards {
                   !isMuted(card.dedupeKey, evidence: Array(offCharacterEntryIDs(card)), in: ledger) else { return false }
             if let question = card.importQuestion, deferredQuestions.contains(question.id) { return false }
             if let question = card.importQuestion, question.isFallback {
-                return !UnsortedGroups.entries(for: question, in: ledger).isEmpty
+                return (fallbackEntryCount?(question) ?? UnsortedGroups.entries(for: question, in: ledger).count) > 0
             }
             if card.kind == .unknownInflow {
                 return card.evidence.contains { !asked.contains($0) && active[$0]?.nature == .unknownIn }
@@ -174,8 +175,9 @@ public enum ButlerCards {
         }
     }
     /// Overflow stays queued; dismissing a card reveals the next one.
-    public static func visible(_ ledger: Ledger, organizingBatchIDs: Set<UUID> = []) -> [ButlerCard] {
-        Array(queued(ledger, organizingBatchIDs: organizingBatchIDs).prefix(5))
+    public static func visible(_ ledger: Ledger, organizingBatchIDs: Set<UUID> = [],
+                               fallbackEntryCount: ((ImportQuestion) -> Int)? = nil) -> [ButlerCard] {
+        Array(queued(ledger, organizingBatchIDs: organizingBatchIDs, fallbackEntryCount: fallbackEntryCount).prefix(5))
     }
     private static func rank(_ card: ButlerCard) -> Int {
         if card.kind == .answerQuestion { return 2 }

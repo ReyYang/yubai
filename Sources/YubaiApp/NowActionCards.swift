@@ -43,7 +43,8 @@ struct NowCardsSection: View {
     @State private var width: CGFloat = 1
     @State private var drag: CGFloat = 0
     private var butlerCards: [ButlerCard] {
-        SavingCardVisibility.visible(in: store.current, collapsingInflows: true, organizingBatchIDs: store.organizingImportBatchIDs)
+        SavingCardVisibility.visible(in: store.current, collapsingInflows: true, organizingBatchIDs: store.organizingImportBatchIDs,
+                                     fallbackEntryCount: { store.unsortedEntryCount(for: $0) })
     }
     private var pages: [NowCardPage] {
         var result: [NowCardPage] = []
@@ -61,7 +62,7 @@ struct NowCardsSection: View {
                     ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
                 }
             }
-            let inflows = ButlerCards.queued(store.current).filter { $0.kind == .unknownInflow }
+            let inflows = ButlerCards.queued(store.current, fallbackEntryCount: { store.unsortedEntryCount(for: $0) }).filter { $0.kind == .unknownInflow }
             if inflows.count >= 2 {
                 TabNavigationLink(.unknownInflows) { ButlerListView(unknownInflowsOnly: true) } label: {
                     HStack(spacing: YubaiSpace.gapGroup) {

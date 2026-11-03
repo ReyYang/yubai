@@ -78,18 +78,19 @@ extension AppStore {
         guard syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { error = "请先完成账本位置或同步版本的选择。"; return false }
         return true
     }
-    func persist(_ next: Ledger, reason: String, restoring: Bool = false) throws -> Ledger {
+    func persist(_ next: Ledger, reason: String, restoring: Bool = false, preservingRecovery: Bool = true) throws -> Ledger {
         var saved: Ledger
         let wasPending = localRepository.hasPendingSync
         if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
         do {
             if restoring { saved = try localRepository.restoreBackup(next) }
-            else { saved = try localRepository.save(next, reason: reason, requiringUnchanged: true) }
+            else { saved = try localRepository.save(next, reason: reason, requiringUnchanged: true, preservingRecovery: preservingRecovery) }
         } catch {
             if !wasPending { try? localRepository.markPendingSync(false) }; throw error
         }
         if ledgerLocation == .iCloud {
             pendingUpload = saved
+            pendingUploadPreservingRecovery = preservingRecovery
             Task { await synchronizeLedger() }
         }
         return saved
@@ -126,7 +127,7 @@ extension AppStore {
         }
         if UserDefaults.standard.string(forKey: locationKey) == LedgerLocation.iCloud.rawValue {
             ledgerLocation = .iCloud
-            if localRepository.hasPendingSync { pendingUpload = current }
+            if localRepository.hasPendingSync { pendingUpload = current; pendingUploadPreservingRecovery = true }
             await synchronizeLedger()
         }
     }
@@ -203,13 +204,14 @@ extension AppStore {
         defer { finishSyncOperation() }
         syncStatus = "正在从 iCloud 读取…"
         let submitted = pendingUpload; let before = current
+        let preservingRecovery = pendingUploadPreservingRecovery
         let source = FileLedgerVersionSource(repository: repository)
         do {
             try await syncMonitor?.waitForDiscovery()
             let result = try await Task.detached { () throws -> SyncResult in
                 if let submitted {
                     var shared = submitted; shared.preferences.lockEnabled = false
-                    do { try repository.save(shared); return .uploaded(submitted) }
+                    do { try repository.save(shared, preservingRecovery: preservingRecovery); return .uploaded(submitted) }
                     catch LedgerSyncError.changed { return .conflict(try source.versions()) }
                 }
                 let versions = try source.versions()

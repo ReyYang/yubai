@@ -255,10 +255,17 @@ final class AppFlowTests: XCTestCase {
         tap(firstGroup, in: app)
         let apply = app.buttons["applyUnsortedGroup"]
         XCTAssertTrue(apply.waitForExistence(timeout: 5)); XCTAssertFalse(apply.isEnabled)
-        tap(app.buttons["unsortedUse_expense"], in: app)
-        XCTAssertFalse(apply.isEnabled)
+        XCTAssertEqual(apply.label, "选一个分类")
+        XCTAssertFalse(app.buttons["unsortedUse_expense"].exists)
+        XCTAssertTrue(app.buttons["unsortedCategory_其他支出"].exists)
         tap(app.buttons["unsortedCategory_餐饮"], in: app)
-        XCTAssertTrue(apply.isEnabled); XCTAssertEqual(apply.label, "这 6 笔都这样记")
+        XCTAssertTrue(apply.isEnabled); XCTAssertEqual(apply.label, "6 笔记为 餐饮")
+        tap(app.buttons["unsortedNature_investBuy"], in: app)
+        XCTAssertTrue(apply.isEnabled); XCTAssertEqual(apply.label, "6 笔记为 买基金")
+        XCTAssertFalse(app.buttons["unsortedCategory_餐饮"].isSelected)
+        tap(app.buttons["unsortedCategory_餐饮"], in: app)
+        XCTAssertFalse(app.buttons["unsortedNature_investBuy"].isSelected)
+        XCTAssertEqual(apply.label, "6 笔记为 餐饮")
         tap(apply, in: app)
         let reduced = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '3'"), object: count)
         XCTAssertEqual(XCTWaiter.wait(for: [reduced], timeout: 5), .completed)
@@ -269,6 +276,59 @@ final class AppFlowTests: XCTestCase {
         app.terminate(); app.launch()
         XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "3 笔还没分类")
+    }
+
+    func testFallbackGroupAppliesOnlyCheckedEntriesAndLeavesUncheckedEntryInPartyGroup() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["groupUnsortedByParty"].waitForExistence(timeout: 15))
+        tap(app.buttons["groupUnsortedByParty"], in: app)
+        let count = app.staticTexts["unsortedEntryCount"]
+        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "9")
+        tap(app.buttons["unsortedGroup_out:合成对方甲"], in: app)
+        tap(app.buttons["unsortedCategory_餐饮"], in: app)
+        let purpose = app.textFields["unsortedPurpose"]
+        tap(purpose, in: app); purpose.typeText("合成用途\n")
+        let scroll = app.scrollViews["unsortedGroupScroll"]
+        let toggle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'unsortedEntryToggle_' ")).firstMatch
+        tap(toggle, in: app, scroll: scroll)
+        let toggleID = toggle.identifier
+        let entryID = String(toggleID.dropFirst("unsortedEntryToggle_".count))
+        XCTAssertEqual(toggle.value as? String, "未选择")
+        let entry = app.buttons["unsortedEntry_" + entryID]
+        tap(entry, in: app)
+        let original = app.otherElements["unsortedEntrySource_" + entryID]
+        XCTAssertTrue(original.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "未选择", "Expanding the body must not toggle selection")
+        tap(entry, in: app); XCTAssertFalse(original.exists)
+        let apply = app.buttons["applyUnsortedGroup"]
+        XCTAssertTrue(apply.isEnabled); XCTAssertEqual(apply.label, "5 笔记为 餐饮")
+        tap(apply, in: app)
+        let remaining = app.buttons[toggleID]
+        scrollToVisible(remaining, in: app, scroll: scroll)
+        XCTAssertTrue(remaining.waitForExistence(timeout: 5), "Partial application keeps this group open")
+        XCTAssertEqual(remaining.value as? String, "已选择", "Remaining rows are selected again")
+        XCTAssertEqual(apply.label, "1 笔记为 餐饮")
+        tap(remaining, in: app)
+        XCTAssertFalse(apply.isEnabled); XCTAssertEqual(apply.label, "选一个分类")
+        tap(remaining, in: app)
+        tap(app.navigationBars.buttons["按对方分"], in: app)
+        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "4")
+        let group = app.buttons["unsortedGroup_out:合成对方甲"]
+        XCTAssertTrue(group.exists); XCTAssertTrue(app.buttons["unsortedGroup_out:合成对方乙"].exists)
+        tap(group, in: app)
+        scrollToVisible(app.buttons[toggleID], in: app, scroll: scroll)
+        XCTAssertTrue(app.buttons[toggleID].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons[toggleID].value as? String, "已选择")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'unsortedEntryToggle_' ")).count, 1)
+        tap(app.navigationBars.buttons["按对方分"], in: app)
+        tap(app.navigationBars.buttons["现在"], in: app)
+        XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "4 笔还没分类")
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "4 笔还没分类")
     }
 
     func testPendingImportsStopKeepsCompletedChunkAndRemainingCount() {

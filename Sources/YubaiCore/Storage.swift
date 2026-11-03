@@ -62,6 +62,9 @@ public struct Recovery: Identifiable, Sendable {
 public enum LedgerSyncError: Error { case changed }
 
 public struct LedgerRepository: Sendable {
+    // Bound the whole local Recovery directory, including shared payloads.
+    // The newest recovery/readable version and payloads needed by the live ledger win over the budget.
+    static let historyByteLimit: Int64 = 10 * 1024 * 1024
     private final class State: @unchecked Sendable {
         let lock = NSRecursiveLock(); var digest: String?
         let discoveryLock = NSLock(); var discoveredFiles: Set<URL>?
@@ -347,26 +350,42 @@ public struct LedgerRepository: Sendable {
     private func pruneHistory() {
         historyLock.lock(); defer { historyLock.unlock() }
         guard let versions = try? recoveries() else { return }
-        for recovery in versions.dropFirst(20) {
-            do {
-                try FileManager.default.removeItem(at: recovery.url)
-                try? FileManager.default.removeItem(at: recoveryAttachments(recovery.url))
-            } catch { continue }
+        // Decode references once, even when the byte budget evicts several versions.
+        var references: [URL: Set<UUID>] = [:]
+        for version in versions {
+            if let ledger = try? LedgerCodec.decode(recoveryBytes(version.url)) {
+                references[version.url] = Set(ledger.attachments.map(\.id))
+            }
         }
-        guard let remaining = try? recoveries() else { return }
-        var used = Set<UUID>()
-        // Never collect payloads if any retained metadata cannot be read.
-        for version in remaining {
-            guard let ledger = try? LedgerCodec.decode(recoveryBytes(version.url)) else { return }
-            used.formUnion(ledger.attachments.map(\.id))
-        }
+        let newestReadable = versions.first { references[$0.url] != nil }?.url
+        var currentIDs = Set<UUID>(), currentReadable = true
         for current in Set([file, localDirectory.appendingPathComponent("ledger.json")]) where containsFile(current) {
-            guard let ledger = try? LedgerCodec.decode(Data(contentsOf: current)) else { return }
-            used.formUnion(ledger.attachments.map(\.id))
+            if let ledger = try? LedgerCodec.decode(Data(contentsOf: current)) { currentIDs.formUnion(ledger.attachments.map(\.id)) }
+            else { currentReadable = false }
         }
-        guard let payloads = try? FileManager.default.contentsOfDirectory(at: recoveryPayloads, includingPropertiesForKeys: nil) else { return }
-        for url in payloads where UUID(uuidString: url.lastPathComponent).map({ !used.contains($0) }) == true {
-            try? FileManager.default.removeItem(at: url); state.payloadChecksums.removeValue(forKey: url)
+        let payloads = (try? FileManager.default.contentsOfDirectory(at: recoveryPayloads, includingPropertiesForKeys: nil)) ?? []
+        var remaining = versions
+        func collectPayloads() {
+            // Never collect payloads if any retained or live metadata cannot be read.
+            guard currentReadable, remaining.allSatisfy({ references[$0.url] != nil }) else { return }
+            let used = remaining.reduce(into: currentIDs) { $0.formUnion(references[$1.url]!) }
+            for url in payloads where UUID(uuidString: url.lastPathComponent).map({ !used.contains($0) }) == true {
+                try? FileManager.default.removeItem(at: url); state.payloadChecksums.removeValue(forKey: url)
+            }
+        }
+        collectPayloads()
+        var byteCount = (try? bytesIn(history)) ?? Int64.max
+        // Both limits delete oldest first. There is deliberately no age-based expiry.
+        for recovery in versions.dropFirst().reversed() {
+            guard remaining.count > 20 || byteCount > Self.historyByteLimit else { break }
+            // A damaged newest file must not evict the last readable fallback.
+            if recovery.url == newestReadable { continue }
+            do { try FileManager.default.removeItem(at: recovery.url) }
+            catch { continue }
+            try? FileManager.default.removeItem(at: recoveryAttachments(recovery.url))
+            remaining.removeAll { $0.url == recovery.url }
+            collectPayloads()
+            byteCount = (try? bytesIn(history)) ?? Int64.max
         }
     }
     public func exists() throws -> Bool {
@@ -398,6 +417,8 @@ public struct LedgerRepository: Sendable {
                 ledger = try put(ledger, at: root); pruneHistory()
             }
         }
+        // Existing installations also receive the budget without needing a new history write.
+        if !needsMigration { pruneHistory() }
         return ledger
     }
     private func cleaned(_ ledger: Ledger) -> Ledger {
@@ -438,14 +459,18 @@ public struct LedgerRepository: Sendable {
         if isUbiquitous, !(NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []).isEmpty { throw LedgerSyncError.changed }
         #endif
     }
-    @discardableResult public func save(_ ledger: Ledger, reason: String = "修改", requiringUnchanged: Bool = false) throws -> Ledger {
+    /// Checkpoints may skip history only after the run's pre-change snapshot has been preserved.
+    /// They still use the ordinary validation, atomic write and stale-file protection.
+    @discardableResult public func save(_ ledger: Ledger, reason: String = "修改", requiringUnchanged: Bool = false, preservingRecovery: Bool = true) throws -> Ledger {
         _ = try LedgerCodec.encodeMetadata(ledger)
         return try access(writing: true) { root in
-            if isUbiquitous || requiringUnchanged { try checkUnchanged(at: root) }
+            if isUbiquitous || requiringUnchanged || !preservingRecovery { try checkUnchanged(at: root) }
             try prepare(root)
-            if FileManager.default.fileExists(atPath: root.appendingPathComponent("ledger.json").path) { try preserveCurrent(at: root, reason: reason) }
+            if preservingRecovery, FileManager.default.fileExists(atPath: root.appendingPathComponent("ledger.json").path) { try preserveCurrent(at: root, reason: reason) }
             else if let bytes = ledger.preMigrationData { try preserve(bytes: bytes, ledger: LedgerCodec.decode(bytes), reason: "升级前版本") }
-            let saved = try put(ledger, at: root); pruneHistory(); return saved
+            let saved = try put(ledger, at: root)
+            if preservingRecovery { pruneHistory() }
+            return saved
         }
     }
     public func recoveries() throws -> [Recovery] {

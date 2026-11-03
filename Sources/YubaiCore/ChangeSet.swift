@@ -149,8 +149,12 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, category.count <= 200 else { throw YubaiError.invalid("分类不能为空或过长。") }
                 guard next.entries[i].nature != .refund || next.entries[i].relatedEntryID == nil else { skip(position); continue }
                 if next.entries[i].category == category {
+                    // Legacy pending rows can already carry “其他支出”. An explicit
+                    // confirmation must clear their pending classification marker.
+                    if Classification.isPending(next.entries[i]) { touch(i) }
+                    else { skip(position) }
                     if source != "导入整理" { CategoryMemory.remember(next.entries[i], in: &next) }
-                    skip(position); continue
+                    continue
                 }
                 next.entries[i].category = category; next.entries[i].subcategory = assignment.subcategory; next.entries[i].subcategoryUserEdited = false
                 SubcategoryClassifier.classify(&next.entries[i], ledger: ledger)
