@@ -1187,6 +1187,52 @@ final class AppFlowTests: XCTestCase {
         snapshot("multiple-period-stop-undone", app)
     }
 
+    func testEraseFromMeThenWelcomeBankImportRestoresTabsAndPagingWithoutRelaunch() {
+        let app = application("welcome-import")
+        app.launchEnvironment["YUBAI_UI_ERASE_REIMPORT"] = "1"
+        let csv = "时间,收支,金额,名称,余额\n2001-01-02 12:00:00,支出,32.00,合成午餐,968.00\n2001-01-03 21:14:00,收入,200.00,合成工资,1168.00\n"
+        app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(csv.utf8).base64EncodedString()
+        app.launch()
+        for cycle in 1...2 {
+            assertSelectedTab("tab_overview", in: app)
+            tap(app.buttons["tab_settings"], in: app)
+            assertSelectedTab("tab_settings", in: app)
+            let storage = app.buttons["openStorage"]
+            scrollToVisible(storage, in: app, scroll: rootPage("tab_settings", in: app).scrollViews["settingsScroll"])
+            tap(storage, in: app)
+            XCTAssertTrue(app.navigationBars["存储空间"].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.otherElements["mainNavigation"].exists)
+            tap(app.buttons["openStorageErase"], in: app)
+            let confirmation = app.textFields["storageEraseConfirmation"]
+            XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+            tap(confirmation, in: app); confirmation.typeText("抹掉")
+            let erase = app.buttons["eraseDeviceData"]
+            scrollToVisible(erase, in: app, scroll: app.scrollViews.matching(NSPredicate(format: "hittable == true")).firstMatch)
+            tap(erase, in: app)
+            XCTAssertTrue(app.buttons["startLedger"].waitForExistence(timeout: 10))
+            tap(app.buttons["招行储蓄卡"], in: app)
+            tap(app.buttons["welcomeImportStatement"], in: app)
+            XCTAssertTrue(app.staticTexts["welcomeStatementBalance"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["welcomeImportStatement"].label.contains("已导入 2 笔"))
+            tap(app.buttons["startLedger"], in: app)
+            XCTAssertTrue(app.otherElements["mainNavigation"].waitForExistence(timeout: 10))
+            assertSelectedTab("tab_overview", in: app)
+            assertPagingLocked(false, in: app)
+            tap(app.buttons["tab_settings"], in: app)
+            assertSelectedTab("tab_settings", in: app)
+            XCTAssertTrue(app.buttons["openProfile"].isHittable)
+            XCTAssertFalse(app.navigationBars["存储空间"].exists)
+            tap(app.buttons["tab_overview"], in: app)
+            assertSelectedTab("tab_overview", in: app)
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.2))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2)))
+            assertSelectedTab("tab_insights", in: app)
+            tap(app.buttons["tab_overview"], in: app)
+            assertSelectedTab("tab_overview", in: app)
+            snapshot("erase-import-tabs-cycle-\(cycle)", app)
+        }
+    }
+
     func testStorageEntryAndOverviewOpenFromMe() {
         let app = application("ask"); app.launch()
         tap(app.buttons["tab_settings"], in: app)

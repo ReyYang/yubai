@@ -74,19 +74,29 @@ enum UITestSupport {
     static var statementURL: URL? {
         guard ["import", "welcome-import"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1])
+            .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1] + (erasesThenReimports ? "-input" : ""))
             .appendingPathComponent("合成账单.csv")
+    }
+    static var erasesThenReimports: Bool {
+        script == "welcome-import" && ProcessInfo.processInfo.environment["YUBAI_UI_ERASE_REIMPORT"] == "1"
     }
     static var welcomeStatementURL: URL? { script == "welcome-import" ? statementURL : nil }
     static func prepare(_ repository: LedgerRepository) throws {
         guard let script else { return }
         if let url = statementURL, let encoded = ProcessInfo.processInfo.environment["YUBAI_UI_STATEMENT"],
            let data = Data(base64Encoded: encoded), data.count < 1_000_000 {
-            try FileManager.default.createDirectory(at: repository.directory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
         }
-        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty", script != "welcome-import" else { return }
+        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty",
+              script != "welcome-import" || erasesThenReimports else { return }
         let now = Date()
+        if erasesThenReimports {
+            var ledger = Ledger(); ledger.preferences.onboardingComplete = true
+            ledger.accounts = [Account(name: "合成卡")]; ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
+            try repository.save(ledger, reason: "合成测试夹具")
+            return
+        }
         if script == "salary" {
             try repository.save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
             return

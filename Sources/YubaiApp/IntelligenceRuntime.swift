@@ -10,6 +10,8 @@ import UIKit
 /// Owns the system assertion for one explicit run; the organizer remains the
 /// same async checkpoint pipeline whether or not submission succeeds.
 @MainActor final class ImportOrganizationExecution {
+    let requestController = ImportRequestController()
+    var aborted = false
     private static let logger = Logger(subsystem: "app.yubai.personal", category: "background-organize")
     let id: UUID
     let before: Ledger
@@ -330,7 +332,7 @@ struct ActiveLedgerTransport: ChatTransport {
         for id in ids {
             guard !Task.isCancelled else { return }
             await organizeImport(id)
-            if organizationErrors[id] != nil { return }
+            if organizationExecution?.aborted == true { return }
         }
     }
     func organizeImport(_ batchID: UUID) async {
@@ -373,16 +375,25 @@ struct ActiveLedgerTransport: ChatTransport {
                     return transport
                 }
             }
-            _ = try await organizer.organize(ledger: before, entryIDs: ids, checkpoint: { result, completedIDs, snapshot in
+            let result = try await organizer.organize(ledger: before, entryIDs: ids, checkpoint: { result, completedIDs, snapshot in
                 try await self.checkpointImportOrganization(result, completedIDs: completedIDs, snapshot: snapshot, batchID: batchID)
             }, activity: { event in
                 await MainActor.run { self.organizationExecution?.requestActivity(event) }
-            })
+            }, controller: organizationExecution?.requestController ?? ImportRequestController())
+            if let failure = result.failedChunks?.first {
+                organizationErrors[batchID] = failure.reason
+                toast = nil
+                return
+            }
+            if organizingPendingImports, organizingImportBatchIDs.contains(where: { organizationErrors[$0] != nil }) { return }
             let skipped = current.imports.first { $0.id == batchID }?.organization?.skipped ?? []
             toast = skipped.isEmpty ? "导入整理完成" : "整理完成；" + skipped.joined(separator: "；")
         } catch is CancellationError { }
         catch {
-            if !Task.isCancelled { organizationErrors[batchID] = ImportOrganizer.failureMessage(error) }
+            if !Task.isCancelled {
+                organizationErrors[batchID] = ImportOrganizer.incompleteReason(error)
+                organizationExecution?.aborted = true
+            }
         }
     }
     /// Only this parent's completion loop calls here, so checkpoints serialize.

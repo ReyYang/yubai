@@ -66,6 +66,11 @@ public struct ImportUndo: Codable, Equatable, Sendable {
     public init(updatedAt: Date) { self.updatedAt = updatedAt }
 }
 
+public struct ImportChunkFailure: Codable, Equatable, Sendable {
+    public var entryIDs: [UUID]
+    public var reason: String
+}
+
 public struct ImportOrganization: Codable, Equatable, Sendable {
     public var changeSet: ChangeSet
     public var questions: [ImportQuestion]
@@ -73,6 +78,7 @@ public struct ImportOrganization: Codable, Equatable, Sendable {
     public var comments: [ButlerCard]? = nil
     /// Optional for old archives; retains exact counts behind the bounded status lines.
     public var diagnosticCounts: [String: Int]? = nil
+    public var failedChunks: [ImportChunkFailure]? = nil
     public var categoryCount: Int { changeSet.items.filter { if case .setCategory = $0 { return true }; return false }.count }
     public var pairCount: Int { changeSet.items.filter { if case .pairTransfer = $0 { return true }; return false }.count }
     public var recurringCount: Int { changeSet.items.filter { if case .addPlan = $0 { return true }; return false }.count }
@@ -180,6 +186,20 @@ public struct ImportOrganizer: Sendable {
         return error.localizedDescription
     }
     public static let ledgerChangedMessage = "账本已变化，整理未完成。"
+    public static func abortsRun(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if case .http(let status) = error as? DeepSeekError { return status == 401 || status == 402 }
+        return false
+    }
+    public static func incompleteReason(_ error: Error) -> String {
+        if case .http(let status) = error as? DeepSeekError, status == 429 || status == 503 {
+            return "DeepSeek 繁忙（HTTP \(status)）"
+        }
+        return failureMessage(error).trimmingCharacters(in: CharacterSet(charactersIn: "。"))
+    }
+    public static func incompleteMessage(remaining: Int, reason: String) -> String {
+        "\(remaining) 笔没整理完：" + reason
+    }
     public typealias Checkpoint = @Sendable (ImportOrganization, [UUID], Ledger) async throws -> Ledger
     public enum RequestEvent: Sendable {
         case started(UUID, entries: Int)
@@ -510,6 +530,10 @@ public struct ImportOrganizer: Sendable {
         var deferred: [Entry]
         var requestID: UUID
     }
+    private enum ChunkOutcome: Sendable {
+        case completed(ChunkResult)
+        case failed(ImportChunkFailure, requestID: UUID)
+    }
     private static func change(_ items: [ChangeItem], now: Date) -> ChangeSet {
         var change = ChangeSet(source: "导入整理", reason: "根据账单用途与关联证据整理", items: items)
         change.createdAt = now; return change
@@ -517,7 +541,7 @@ public struct ImportOrganizer: Sendable {
     /// Children only construct proposals. The parent consumes completion order
     /// and awaits each checkpoint before consuming the next, including on MainActor.
     public func organize(ledger: Ledger, entryIDs: [UUID], now: Date = Date(), checkpoint: Checkpoint? = nil,
-                         activity: Activity? = nil) async throws -> ImportOrganization {
+                         activity: Activity? = nil, controller: ImportRequestController = ImportRequestController()) async throws -> ImportOrganization {
         try Task.checkCancellation()
         let targets = Set(entryIDs)
         let completed = ledger.imports.reduce(into: Set<UUID>()) { $0.formUnion($1.organizedEntryIDs ?? []) }
@@ -528,6 +552,7 @@ public struct ImportOrganizer: Sendable {
         var allItems: [ChangeItem] = [], allQuestions: [ImportQuestion] = []
         var allDiagnostics: [String: Int] = [:]
         var deferred: [Entry] = []
+        var failures: [ImportChunkFailure] = []
         if batch.isEmpty, let checkpoint {
             _ = try await checkpoint(ImportOrganization(changeSet: Self.change([], now: now), questions: [], skipped: []), [], working)
         }
@@ -535,34 +560,54 @@ public struct ImportOrganizer: Sendable {
             let queue = phase == 0 ? units.filter(\.local) : phase == 1 ? units.filter { !$0.groups.isEmpty } :
                 units.filter { !$0.local && $0.groups.isEmpty } + Self.individualChunks(deferred)
             let limit = phase == 0 ? 1 : phase == 1 ? Self.partyConcurrency : Self.individualConcurrency
-            try await withThrowingTaskGroup(of: ChunkResult.self) { group in
-                var next = 0
+            try await withThrowingTaskGroup(of: ChunkOutcome.self) { group in
+                var next = 0, active = 0
                 func launch(_ unit: Chunk, snapshot: Ledger) {
+                    active += 1
                     group.addTask {
-                        let visible = try await snapshotForNextRequest?() ?? snapshot
-                        return try await process(unit, ledger: visible, now: now, groupID: groupID, total: batch.count, activity: activity)
+                        do {
+                            let visible = try await snapshotForNextRequest?() ?? snapshot
+                            let result = try await ImportRequestScope.$current.withValue(.init(controller: controller, ceiling: limit)) {
+                                try await process(unit, ledger: visible, now: now, groupID: groupID, total: batch.count, activity: activity)
+                            }
+                            if !unit.local { await controller.succeeded() }
+                            return .completed(result)
+                        } catch {
+                            if Task.isCancelled || Self.abortsRun(error) { throw error }
+                            await controller.failed()
+                            if case .http(let status) = error as? DeepSeekError { await controller.congested(status: status) }
+                            return .failed(ImportChunkFailure(entryIDs: unit.entries.map(\.id), reason: Self.incompleteReason(error)), requestID: unit.id)
+                        }
                     }
                 }
-                for unit in queue.prefix(limit) { launch(unit, snapshot: working); next += 1 }
+                for unit in queue.prefix(await controller.limit(ceiling: limit)) { launch(unit, snapshot: working); next += 1 }
                 do {
-                    while let finished = try await group.next() {
+                    while let outcome = try await group.next() {
+                        active -= 1
                         try Task.checkCancellation()
-                        var accepted = finished.result
-                        if finished.coveredIDs.isEmpty && finished.result.changeSet.items.isEmpty {
-                            // All groups deferred; no saved-entry checkpoint yet.
-                        } else if let checkpoint {
-                            working = try await checkpoint(finished.result, finished.coveredIDs, finished.snapshot)
-                        } else {
-                            let prepared = try finished.result.preparingCheckpoint(entryIDs: finished.coveredIDs, snapshot: finished.snapshot, current: working)
-                            working = prepared.ledger; accepted = prepared.result
+                        switch outcome {
+                        case .failed(let failure, let requestID):
+                            failures.append(failure)
+                            await activity?(.checkpointed(requestID))
+                        case .completed(let finished):
+                            var accepted = finished.result
+                            if finished.coveredIDs.isEmpty && finished.result.changeSet.items.isEmpty {
+                                // All groups deferred; no saved-entry checkpoint yet.
+                            } else if let checkpoint {
+                                working = try await checkpoint(finished.result, finished.coveredIDs, finished.snapshot)
+                            } else {
+                                let prepared = try finished.result.preparingCheckpoint(entryIDs: finished.coveredIDs, snapshot: finished.snapshot, current: working)
+                                working = prepared.ledger; accepted = prepared.result
+                            }
+                            await activity?(.checkpointed(finished.requestID))
+                            allItems += accepted.changeSet.items
+                            allQuestions += accepted.questions
+                            allDiagnostics.merge(accepted.countedDiagnostics, uniquingKeysWith: +)
+                            deferred += finished.deferred
                         }
-                        await activity?(.checkpointed(finished.requestID))
-                        allItems += accepted.changeSet.items
-                        allQuestions += accepted.questions
-                        allDiagnostics.merge(accepted.countedDiagnostics, uniquingKeysWith: +)
-                        deferred += finished.deferred
                         try Task.checkCancellation()
-                        if next < queue.count { launch(queue[next], snapshot: working); next += 1 }
+                        let currentLimit = await controller.limit(ceiling: limit)
+                        while next < queue.count && active < currentLimit { launch(queue[next], snapshot: working); next += 1 }
                     }
                 } catch { group.cancelAll(); throw error }
             }
@@ -575,11 +620,13 @@ public struct ImportOrganizer: Sendable {
         commentLedger.entries.removeAll { weChatIDs.contains($0.id) }
         let candidates = OffCharacter.candidates(commentLedger, entryIDs: entryIDs.filter { !weChatIDs.contains($0) }, now: now)
         var comments: [ButlerCard] = []
-        if units.contains(where: { !$0.local }), !candidates.isEmpty {
+        if failures.isEmpty, units.contains(where: { !$0.local }), !candidates.isEmpty {
             let transport = try await transportForSnapshot(working)
             let commentID = UUID()
             await activity?(.started(commentID, entries: 1))
-            comments = await ButlerWording.word(candidates, ledger: commentLedger, transport: OrganizerTransport(base: transport), select: true, now: now).map { $0.card(now: now) }
+            comments = await ImportRequestScope.$current.withValue(.init(controller: controller, ceiling: Self.individualConcurrency)) {
+                await ButlerWording.word(candidates, ledger: commentLedger, transport: OrganizerTransport(base: transport), select: true, now: now).map { $0.card(now: now) }
+            }
             await activity?(.finished(commentID))
             try Task.checkCancellation()
             if let checkpoint, !comments.isEmpty {
@@ -587,13 +634,13 @@ public struct ImportOrganizer: Sendable {
             }
             await activity?(.checkpointed(commentID))
         }
-        return ImportOrganization(changeSet: Self.change(allItems, now: now), questions: Self.group(allQuestions, ledger: working), skipped: [], comments: comments, diagnosticCounts: allDiagnostics).compactingDiagnostics()
+        return ImportOrganization(changeSet: Self.change(allItems, now: now), questions: Self.group(allQuestions, ledger: working), skipped: [], comments: comments, diagnosticCounts: allDiagnostics, failedChunks: failures.isEmpty ? nil : failures).compactingDiagnostics()
     }
     private struct OrganizerTransport: ChatTransport {
         let base: any ChatTransport
         private enum SelfLimit { static let outputTokens = 2000 }
         func send(_ input: ChatRequest) async throws -> ChatMessage {
-            var request = input; request.model = "deepseek-flash"; request.thinking = false; request.timeout = 45
+            var request = input; request.model = nil; request.thinking = false; request.timeout = 45
             request.maxTokens = min(request.maxTokens, SelfLimit.outputTokens)
             return try await base.send(request)
         }
@@ -746,7 +793,7 @@ public struct ImportOrganizer: Sendable {
                 ChatMessage(role: .user, content: try redactor.value(payload).jsonText())], temperature: 0,
                 maxTokens: byParty ? Self.partyMaxTokens(groups: unit.groups.count) : Self.individualMaxTokens, thinking: false,
                 purpose: byParty ? "导入整理·按对方" : "导入整理", responseFormat: .object(["type": .string("json_object")]), groupID: groupID,
-                groupTitle: "整理 \(total) 笔导入记录", timeout: 45, model: "deepseek-flash"))
+                groupTitle: "整理 \(total) 笔导入记录", timeout: 45))
         } catch {
             await activity?(.finished(unit.id)); throw error
         }

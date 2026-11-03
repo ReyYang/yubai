@@ -173,6 +173,7 @@ extension AppStore {
             selected.preferences.lockEnabled = current.preferences.lockEnabled
             if choice.target == .iCloud { selected = try localRepository.restoreBackup(selected) }
             adoptSyncedLedger(selected)
+            resetRootNavigation()
             ledgerLocation = choice.target; syncChoice = nil; pendingUpload = nil
             UserDefaults.standard.set(choice.target.rawValue, forKey: locationKey)
             try? localRepository.markPendingSync(false)

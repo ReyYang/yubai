@@ -2,10 +2,11 @@ import XCTest
 @testable import YubaiCore
 
 final class SavingConversationTests: XCTestCase {
-    func testLegacyModelMappingForSavedEnvironmentAndDirectConfiguration() throws {
+    func testSavedEnvironmentAndDirectModelNamesStayUnchangedWithoutCatalog() throws {
         let suite = "SavingModelTests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { defaults.removePersistentDomain(forName: suite) }
-        for (old, new) in [("deepseek-chat", "deepseek-flash"), ("deepseek-v4-flash", "deepseek-flash"), ("deepseek-flash", "deepseek-flash"), ("deepseek-reasoner", "deepseek-v4-pro")] {
+        for old in ["deepseek-chat", "deepseek-v4-flash", "deepseek-flash", "deepseek-reasoner"] {
+            let new = old
             defaults.set(old, forKey: DeepSeekConfiguration.modelPreferenceKey)
             XCTAssertEqual(DeepSeekConfiguration.modelName(environment: [:], defaults: defaults), new)
             XCTAssertEqual(DeepSeekConfiguration.modelName(environment: ["DEEPSEEK_MODEL": " " + old + " "], defaults: defaults), new)

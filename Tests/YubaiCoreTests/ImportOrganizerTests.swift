@@ -114,7 +114,7 @@ private actor ResumableImportScript: ChatTransport {
         XCTAssertEqual(request.purpose, "导入整理")
         XCTAssertEqual(request.timeout, 45)
         XCTAssertEqual(request.maxTokens, 2000)
-        XCTAssertEqual(request.model, "deepseek-flash")
+        XCTAssertNil(request.model)
         XCTAssertEqual(request.thinking, false)
         let wire = try ImportWireFixture(request, entries: entries)
         let input = try JSONValue.parse(wire.request.messages.last!.content!)
@@ -123,8 +123,7 @@ private actor ResumableImportScript: ChatTransport {
         XCTAssertGreaterThan(rows.count, 0)
         XCTAssertLessThanOrEqual(input["context"]!.arrayValue!.count, 60)
         batches.append(rows.compactMap { $0["id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
-        if batches.count == failAt { try await Task.sleep(nanoseconds: 100_000_000); throw YubaiError.invalid("云端服务返回错误（HTTP 503）。本机计算结果已保留。") }
-        if let failAt, batches.count > failAt { try await Task.sleep(nanoseconds: 60_000_000_000) }
+        if batches.count == failAt { try await Task.sleep(nanoseconds: 100_000_000); throw DeepSeekError.http(503) }
         let output: [JSONValue] = leaveUncertain ? [] : rows.map {
             .object(["entry": $0["id"]!, "category": .string("餐饮"), "nature": .string("expense"), "purpose": .string("午餐"), "confident": .bool(true)])
         }
@@ -204,12 +203,12 @@ final class ImportOrganizerTests: XCTestCase {
         let batch = try BillImporter.commit(preview, data: bytes, to: &ledger)
         return (before, ledger, batch)
     }
-    private func resume(_ store: ImportCheckpointStore, script: any ChatTransport, batchID: UUID, beginningRun: Bool = true) async throws {
+    @discardableResult private func resume(_ store: ImportCheckpointStore, script: any ChatTransport, batchID: UUID, beginningRun: Bool = true) async throws -> ImportOrganization {
         if beginningRun { try await store.beginRun() }
         let snapshot = await store.snapshot()
         if let resumable = script as? ResumableImportScript { await resumable.useEntries(snapshot.entries) }
         let organizer = ImportOrganizer { _ in script }
-        _ = try await organizer.organize(ledger: snapshot, entryIDs: ImportOrganizer.pendingEntryIDs(in: snapshot, batchID: batchID)) { result, ids, before in
+        return try await organizer.organize(ledger: snapshot, entryIDs: ImportOrganizer.pendingEntryIDs(in: snapshot, batchID: batchID)) { result, ids, before in
             try await store.save(result, ids: ids, before: before)
         }
     }
@@ -246,9 +245,10 @@ final class ImportOrganizerTests: XCTestCase {
             let run = Task {
                 try await self.resume(store, script: ResumableImportScript(failAt: failing ? 3 : nil), batchID: batch.id)
             }
-            do { try await run.value; XCTFail("The run must stop after two saved chunks") } catch { }
+            if failing { try await run.value }
+            else { do { try await run.value; XCTFail("user stop must cancel") } catch { } }
             let partial = try repository.load()
-            XCTAssertEqual(partial.imports[0].organizedEntryIDs?.count, 30)
+            XCTAssertEqual(partial.imports[0].organizedEntryIDs?.count, failing ? 85 : 30)
             XCTAssertEqual(try repository.recoveries().count, 1)
             XCTAssertEqual(try repository.readRecovery(XCTUnwrap(repository.recoveries().first)), imported)
             await store.configure()
@@ -324,21 +324,25 @@ final class ImportOrganizerTests: XCTestCase {
         let (before, imported, batch) = try syntheticImport()
         let store = ImportCheckpointStore(imported, batchID: batch.id)
         let failing = ResumableImportScript(failAt: 3)
-        do { try await resume(store, script: failing, batchID: batch.id); XCTFail("third chunk should fail") } catch { }
+        let result = try await resume(store, script: failing, batchID: batch.id)
+        XCTAssertEqual(result.failedChunks?.count, 1)
+        XCTAssertEqual(result.failedChunks?.first?.entryIDs.count, 15)
+        XCTAssertEqual(ImportOrganizer.incompleteMessage(remaining: 15, reason: result.failedChunks!.first!.reason),
+                       "15 笔没整理完：DeepSeek 繁忙（HTTP 503）")
         let partial = await store.snapshot()
-        XCTAssertEqual(partial.entries.filter { $0.category == "餐饮" }.count, 30)
-        XCTAssertEqual(partial.imports[0].organizedEntryIDs?.count, 30)
+        XCTAssertEqual(partial.entries.filter { $0.category == "餐饮" }.count, 185)
+        XCTAssertEqual(partial.imports[0].organizedEntryIDs?.count, 185)
         XCTAssertEqual(partial.imports[0].needsOrganization, true)
-        XCTAssertEqual(partial.imports[0].organization?.categoryCount, 30)
-        XCTAssertEqual(PendingImportOrganization(in: partial).count, 170)
-        XCTAssertEqual(ImportOrganizer.pendingEntryIDs(in: partial, batchID: batch.id).count, 170)
+        XCTAssertEqual(partial.imports[0].organization?.categoryCount, 185)
+        XCTAssertEqual(PendingImportOrganization(in: partial).count, 15)
+        XCTAssertEqual(ImportOrganizer.pendingEntryIDs(in: partial, batchID: batch.id).count, 15)
         let first = await failing.sentBatches()
-        XCTAssertEqual(first.map(\.count), [15, 15, 15, 15])
+        XCTAssertEqual(first.count, 14)
         let retry = ResumableImportScript()
         try await resume(store, script: retry, batchID: batch.id)
         let complete = await store.snapshot()
         let retried = await retry.sentBatches()
-        XCTAssertEqual(retried.map(\.count).sorted(), [5, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15])
+        XCTAssertEqual(retried.map(\.count).sorted(), [15])
         XCTAssertTrue(Set(retried.flatMap { $0 }).isDisjoint(with: first.prefix(2).flatMap { $0 }))
         XCTAssertEqual(Set(retried.flatMap { $0 }), Set(ImportOrganizer.pendingEntryIDs(in: partial, batchID: batch.id)))
         XCTAssertEqual(complete.imports[0].needsOrganization, false)
@@ -407,16 +411,17 @@ final class ImportOrganizerTests: XCTestCase {
     func testUncertainRowsAreCheckpointedAndNotRequestedAgain() async throws {
         let (_, imported, batch) = try syntheticImport()
         let store = ImportCheckpointStore(imported, batchID: batch.id)
-        do { try await resume(store, script: ResumableImportScript(failAt: 3, leaveUncertain: true), batchID: batch.id); XCTFail() } catch { }
+        let result = try await resume(store, script: ResumableImportScript(failAt: 3, leaveUncertain: true), batchID: batch.id)
+        XCTAssertEqual(result.failedChunks?.count, 1)
         let partial = await store.snapshot()
         XCTAssertTrue(partial.entries.allSatisfy(Classification.isPending))
-        XCTAssertEqual(ImportOrganizer.pendingEntryIDs(in: partial, batchID: batch.id).count, 170)
+        XCTAssertEqual(ImportOrganizer.pendingEntryIDs(in: partial, batchID: batch.id).count, 15)
         let retry = ResumableImportScript(leaveUncertain: true)
         try await resume(store, script: retry, batchID: batch.id)
         let complete = await store.snapshot()
         XCTAssertEqual(complete.imports[0].needsOrganization, false)
         let requests = await retry.sentBatches()
-        XCTAssertEqual(requests.count, 12)
+        XCTAssertEqual(requests.count, 1)
     }
     func testCancellationBetweenChunksKeepsSavedResultsAndUndo() async throws {
         let (before, imported, batch) = try syntheticImport()
@@ -452,14 +457,11 @@ final class ImportOrganizerTests: XCTestCase {
         }
         let (_, ledger, batch) = try syntheticImport(count: 2)
         let store = ImportCheckpointStore(ledger, batchID: batch.id)
-        do {
-            _ = try await ImportOrganizer(transport: Malformed()).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id)) { result, ids, before in
-                try await store.save(result, ids: ids, before: before)
-            }
-            XCTFail()
-        } catch {
-            XCTAssertEqual(ImportOrganizer.failureMessage(error), "整理返回格式无效。")
+        let result = try await ImportOrganizer(transport: Malformed()).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id)) { result, ids, before in
+            try await store.save(result, ids: ids, before: before)
         }
+        XCTAssertEqual(result.failedChunks?.first?.entryIDs, ledger.entries.map(\.id))
+        XCTAssertEqual(result.failedChunks?.first?.reason, "整理返回格式无效")
         let after = await store.snapshot()
         XCTAssertEqual(after, ledger)
     }
@@ -866,14 +868,10 @@ final class ImportOrganizerTests: XCTestCase {
     func testOfflineAndMalformedReplyLeavePendingImportUntouched() async throws {
         let data = try ImportEval.load().imported(); var ledger = data.imported
         let ids = ledger.entries.filter { $0.batchID == data.batch.id }.map(\.id)
-        do {
-            _ = try await ImportOrganizer(transport: ImportScript(entries: ledger.entries) { _ in throw URLError(.notConnectedToInternet) }).organize(ledger: ledger, entryIDs: ids)
-            XCTFail("Expected offline failure")
-        } catch { }
-        do {
-            _ = try await ImportOrganizer(transport: ImportScript(entries: ledger.entries) { _ in .object([:]) }).organize(ledger: ledger, entryIDs: ids)
-            XCTFail("Expected malformed reply failure")
-        } catch { }
+        let offline = try await ImportOrganizer(transport: ImportScript(entries: ledger.entries) { _ in throw URLError(.notConnectedToInternet) }).organize(ledger: ledger, entryIDs: ids)
+        let invalid = try await ImportOrganizer(transport: ImportScript(entries: ledger.entries) { _ in .object([:]) }).organize(ledger: ledger, entryIDs: ids)
+        XCTAssertFalse(offline.failedChunks?.isEmpty ?? true)
+        XCTAssertFalse(invalid.failedChunks?.isEmpty ?? true)
         XCTAssertEqual(ledger.imports[0].needsOrganization, true)
         XCTAssertEqual(ledger, data.imported)
         BillImporter.undo(batchID: data.batch.id, in: &ledger)
@@ -1091,7 +1089,8 @@ extension ImportOrganizerTests {
         let localIDs = Set(ledger.entries.prefix(2).map(\.id))
         let store = ImportCheckpointStore(ledger, batchID: batch.id)
         let bad = ScriptedChatTransport([jsonReply("bad json")])
-        do { try await resume(store, script: bad, batchID: batch.id); XCTFail() } catch { }
+        let failure = try await resume(store, script: bad, batchID: batch.id)
+        XCTAssertEqual(failure.failedChunks?.first?.reason, "整理返回格式无效")
         let saved = await store.snapshot()
         XCTAssertEqual(Set(saved.imports[0].organizedEntryIDs ?? []), localIDs)
         XCTAssertEqual(saved.entries[0].purpose, "微信"); XCTAssertEqual(saved.entries[1].purpose, "微信提现")
@@ -1118,7 +1117,8 @@ extension ImportOrganizerTests {
         for i in ledger.entries.indices { ledger.entries[i].title = "李明 · " + (i < 2 ? "掌上生活还款" : "消费") }
         let store = ImportCheckpointStore(ledger, batchID: batch.id)
         let bad = ScriptedChatTransport([jsonReply("bad json")])
-        do { try await resume(store, script: bad, batchID: batch.id); XCTFail() } catch { }
+        let failure = try await resume(store, script: bad, batchID: batch.id)
+        XCTAssertEqual(failure.failedChunks?.first?.reason, "整理返回格式无效")
         let saved = await store.snapshot()
         XCTAssertEqual(Set(saved.imports[0].organizedEntryIDs ?? []), Set(ledger.entries.prefix(2).map(\.id)))
         XCTAssertTrue(saved.entries.prefix(2).allSatisfy { $0.nature == .repayment })
@@ -1879,5 +1879,129 @@ extension ImportOrganizerTests {
         _ = try result.changeSet.apply(to: &ledger)
         XCTAssertEqual(ledger.entries[0].category, "餐饮"); XCTAssertEqual(ledger.entries[0].subcategory, "咖啡饮品")
         XCTAssertTrue(ledger.entries[0].subcategoryUserEdited); XCTAssertEqual(ledger.entries[0].purpose, "午餐")
+    }
+}
+
+private actor FailureIsolationTransport: ChatTransport {
+    let status: Int?
+    let holdsOtherRequests: Bool
+    var requests: [ChatRequest] = []
+    var cancellations = 0
+    init(status: Int? = 503, holdsOtherRequests: Bool = false) {
+        self.status = status; self.holdsOtherRequests = holdsOtherRequests
+    }
+    func send(_ request: ChatRequest) async throws -> ChatMessage {
+        if request.purpose == "导入短评" { return ChatMessage(role: .assistant, content: #"{"cards":[]}"#) }
+        let index = requests.count; requests.append(request)
+        do {
+            try await Task.sleep(nanoseconds: index == 0 ? 10_000_000 : holdsOtherRequests ? 30_000_000_000 : 30_000_000)
+        } catch { cancellations += 1; throw error }
+        if index == 0, let status { throw DeepSeekError.http(status) }
+        let payload = try JSONValue.parse(request.messages.last!.content!)
+        let party = request.purpose == "导入整理·按对方"
+        let input = payload[party ? "groups" : "batch"]!.arrayValue!
+        let rows = input.map { JSONValue.object([party ? "group" : "entry": $0["id"]!, "cat": .string("餐饮"), "ok": .bool(true)]) }
+        return ChatMessage(role: .assistant, content: try JSONValue.object([party ? "groups" : "rows": .array(rows)]).jsonText())
+    }
+}
+
+extension ImportOrganizerTests {
+    func testOneFailedChunkLeavesOnlyItsRowsPendingWhileOtherInFlightAndQueuedChunksFinishInBothPhases() async throws {
+        for party in [true, false] {
+            for status in [503, 422] {
+                let ledger: Ledger, batch: ImportBatch
+                if party { (ledger, batch) = partyImport(counts: Array(repeating: 1, count: 80)) }
+                else { let value = try syntheticImport(count: 100); ledger = value.1; batch = value.2 }
+                let store = ImportCheckpointStore(ledger, batchID: batch.id)
+                let script = FailureIsolationTransport(status: status)
+                let result = try await resume(store, script: script, batchID: batch.id)
+                let failure = try XCTUnwrap(result.failedChunks?.first)
+                let saved = await store.snapshot()
+                XCTAssertEqual(result.failedChunks?.count, 1)
+                XCTAssertEqual(failure.entryIDs.count, party ? 8 : 15)
+                XCTAssertEqual(Set(ImportOrganizer.pendingEntryIDs(in: saved, batchID: batch.id)), Set(failure.entryIDs))
+                XCTAssertEqual(PendingImportOrganization(in: saved).count, failure.entryIDs.count)
+                XCTAssertEqual(saved.imports[0].organizedEntryIDs?.count, ledger.entries.count - failure.entryIDs.count)
+                let cancellations = await script.cancellations
+                XCTAssertEqual(cancellations, 0)
+                let requests = await script.requests
+                XCTAssertGreaterThan(requests.count, party ? 4 : 2, "queued chunks also run")
+                let expected = status == 503 ? "DeepSeek 繁忙（HTTP 503）" : "DeepSeek 返回错误（HTTP 422）"
+                XCTAssertEqual(ImportOrganizer.incompleteMessage(remaining: failure.entryIDs.count, reason: failure.reason),
+                               "\(failure.entryIDs.count) 笔没整理完：" + expected)
+                let retry = FailureIsolationTransport(status: nil)
+                let resumed = try await resume(store, script: retry, batchID: batch.id)
+                XCTAssertNil(resumed.failedChunks)
+                let retryRequests = await retry.requests
+                XCTAssertEqual(retryRequests.count, 1)
+                let finished = await store.snapshot()
+                XCTAssertEqual(PendingImportOrganization(in: finished).count, 0)
+                XCTAssertEqual(finished.imports[0].organizedEntryIDs?.count, ledger.entries.count)
+                await store.undo()
+                let undone = await store.snapshot()
+                XCTAssertTrue(undone.entries.isEmpty)
+            }
+        }
+    }
+    func testAccountErrorsCancelOtherInFlightChunksInBothPhases() async throws {
+        for party in [true, false] {
+            for status in [401, 402] {
+                let ledger = party ? partyImport(counts: Array(repeating: 1, count: 80)).0 : try syntheticImport(count: 100).1
+                let script = FailureIsolationTransport(status: status, holdsOtherRequests: true)
+                do {
+                    _ = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
+                    XCTFail("account error must abort")
+                } catch { XCTAssertEqual(error as? DeepSeekError, .http(status)) }
+                let requests = await script.requests, cancellations = await script.cancellations
+                XCTAssertEqual(requests.count, party ? 4 : 2)
+                XCTAssertEqual(cancellations, requests.count - 1)
+            }
+        }
+    }
+}
+
+private struct StubbedImportTransport: ChatTransport, @unchecked Sendable {
+    let stub: CloudTestStub
+    func send(_ request: ChatRequest) async throws -> ChatMessage { try await stub.send(request) }
+}
+private actor RetryHeartbeatProbe {
+    var heartbeat: ImportOrganizationHeartbeat
+    var started = 0, finished = 0
+    init(total: Int) { heartbeat = .init(progress: .init(completed: 0, total: total)) }
+    func receive(_ event: ImportOrganizer.RequestEvent) {
+        heartbeat.receive(event)
+        switch event { case .started: started += 1; case .finished: finished += 1; case .checkpointed: break }
+    }
+    func tick() -> Int64 { heartbeat.tick(); return heartbeat.completedUnits }
+}
+extension ImportOrganizerTests {
+    func testHeartbeatContinuesThroughActualHTTPBackoffAndStopLeavesAllRowsPending() async throws {
+        let (_, ledger, batch) = try syntheticImport(count: 2)
+        let store = ImportCheckpointStore(ledger, batchID: batch.id), probe = RetryHeartbeatProbe(total: 2)
+        let waiting = expectation(description: "retry waiting"), log = SendLog()
+        let stub = CloudTestStub(rawResponse: true, statusCode: 503, sendLog: log, retrySleep: { _ in
+            waiting.fulfill()
+            try await Task.sleep(nanoseconds: 30_000_000_000)
+        }) { _ in "" }
+        defer { stub.close() }
+        let run = Task {
+            try await ImportOrganizer(transport: StubbedImportTransport(stub: stub)).organize(
+                ledger: ledger, entryIDs: ledger.entries.map(\.id), checkpoint: { result, ids, before in
+                    try await store.save(result, ids: ids, before: before)
+                }, activity: { await probe.receive($0) })
+        }
+        await fulfillment(of: [waiting], timeout: 2)
+        let started = await probe.started, finished = await probe.finished
+        XCTAssertEqual(started, 1); XCTAssertEqual(finished, 0)
+        let firstTick = await probe.tick(), secondTick = await probe.tick()
+        XCTAssertGreaterThan(firstTick, 0); XCTAssertGreaterThan(secondTick, firstTick)
+        XCTAssertLessThan(secondTick, 20_000)
+        let start = Date(); run.cancel()
+        do { _ = try await run.value; XCTFail() } catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 0.5)
+        let saved = await store.snapshot()
+        XCTAssertEqual(saved, ledger)
+        XCTAssertEqual(PendingImportOrganization(in: saved).count, 2)
+        XCTAssertEqual(log.items.first?.attempts?.count, 1)
     }
 }

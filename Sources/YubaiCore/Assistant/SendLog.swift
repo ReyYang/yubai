@@ -1,5 +1,16 @@
 import Foundation
 
+public struct SendLogAttempt: Codable, Sendable, Equatable, Identifiable {
+    public var id: Int { number }
+    public let number: Int
+    public var response: SendLogResponse?
+    public var retryDelay: TimeInterval?
+    public var model: String? = nil
+    /// Only retained when fallback changes the payload's model.
+    public var requestText: String? = nil
+    public var byteSize: Int? = nil
+}
+
 public struct SendLogResponse: Codable, Sendable, Equatable {
     public var content: String?
     public var toolCalls: [String]
@@ -29,6 +40,8 @@ public struct SendLogItem: Identifiable, Codable, Sendable, Equatable {
     public var temperature: Double?
     public var maxTokens: Int?
     public var response: SendLogResponse?
+    /// One logical request, including every actual HTTP attempt. Nil in old logs.
+    public var attempts: [SendLogAttempt]? = nil
     /// Occurrences in the outgoing message content/arguments, after redaction.
     public var redactionSummary: [String: Int] = [:]
 }
@@ -54,8 +67,10 @@ public struct SendLogGroup: Identifiable, Sendable, Equatable {
         let first = items[0]
         self.items = items; id = first.groupID ?? first.id
         title = first.groupTitle ?? first.purpose; purpose = first.purpose
-        startedAt = first.time; requestCount = items.count
-        totalBytes = items.reduce(0) { $0 + $1.byteSize }
+        startedAt = first.time; requestCount = items.reduce(0) { $0 + max(1, $1.attempts?.count ?? 0) }
+        totalBytes = items.reduce(0) { total, item in
+            total + (item.attempts?.reduce(0) { $0 + ($1.byteSize ?? item.byteSize) } ?? item.byteSize)
+        }
         totalDurationMilliseconds = items.reduce(0) { $0 + ($1.response?.durationMilliseconds ?? 0) }
         var reasons: [String] = [], summary: [String: Int] = [:]
         for item in items {
@@ -169,6 +184,35 @@ public final class SendLog: @unchecked Sendable {
         lock.lock()
         guard let i = buffer.firstIndex(where: { $0.id == id }) else { lock.unlock(); return }
         buffer[i].response = clean; accountFor(buffer[i]); evict()
+        lock.unlock()
+        NotificationCenter.default.post(name: Self.didRecord, object: nil)
+    }
+    func attempt(id: UUID, number: Int, response: SendLogResponse? = nil, retryDelay: TimeInterval? = nil,
+                 model: String? = nil, body: Data? = nil, apiKey: String) {
+        let response = response.map { original in
+            var clean = original
+            clean.content = clean.content.map { Self.hideKey($0, apiKey) }
+            clean.errorDescription = clean.errorDescription.map { Self.hideKey($0, apiKey) }
+            clean.toolCalls = clean.toolCalls.map { Self.hideKey($0, apiKey) }
+            clean.finishReason = clean.finishReason.map { Self.hideKey($0, apiKey) }
+            return clean
+        }
+        let text = body.map { body in
+            let original = String(decoding: body, as: UTF8.self)
+            return (try? JSONValue.parse(original)).flatMap { try? Self.sanitized($0, key: apiKey).jsonText() }
+                ?? Self.hideKey(original, apiKey)
+        }
+        lock.lock()
+        guard let i = buffer.firstIndex(where: { $0.id == id }) else { lock.unlock(); return }
+        var attempts = buffer[i].attempts ?? []
+        let attempt = SendLogAttempt(number: number, response: response, retryDelay: retryDelay,
+            model: model.map { Self.hideKey($0, apiKey) }, requestText: text, byteSize: body?.count)
+        if let index = attempts.firstIndex(where: { $0.number == number }) { attempts[index] = attempt }
+        else {
+            attempts.append(attempt)
+            if number > 1 { count += 1; sentBytes += body?.count ?? buffer[i].byteSize }
+        }
+        buffer[i].attempts = attempts; accountFor(buffer[i]); evict()
         lock.unlock()
         NotificationCenter.default.post(name: Self.didRecord, object: nil)
     }
