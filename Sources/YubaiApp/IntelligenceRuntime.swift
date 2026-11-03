@@ -370,10 +370,12 @@ struct ActiveLedgerTransport: ChatTransport {
         update("回答整理问题") { try question.describe(text, batchID: batchID, in: &$0) }
     }
     @discardableResult func applyUnsortedGroup(questionID: UUID, groupID: String, use: UnsortedUse,
-                                               category: String?, otherAccount: UUID?) -> Bool {
+                                               category: String?, otherAccount: UUID?, entryIDs: Set<UUID>? = nil,
+                                               purpose: String? = nil) -> Bool {
         guard let snapshot = unsortedGroups(questionID: questionID),
               let change = unsortedChangeSet(questionID: questionID, groupID: groupID, use: use,
-                                            category: category, otherAccount: otherAccount) else { return false }
+                                            category: category, otherAccount: otherAccount,
+                                            entryIDs: entryIDs, purpose: purpose) else { return false }
         let before = current
         return apply(change, label: "整理") { ledger in
             ImportOrganization.recordUndo(batchID: snapshot.batchID, before: before, in: &ledger)

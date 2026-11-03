@@ -74,9 +74,11 @@ enum AppSheet: Identifiable {
         return unsortedGroups(questionID: question.id)?.entryCount ?? 0
     }
     func unsortedChangeSet(questionID: UUID, groupID: String, use: UnsortedUse,
-                          category: String?, otherAccount: UUID?) -> ChangeSet? {
+                          category: String?, otherAccount: UUID?, entryIDs: Set<UUID>? = nil,
+                          purpose: String? = nil) -> ChangeSet? {
         cachedUnsortedGroups.changeSet(groupID: groupID, questionID: questionID, use: use,
-                                      category: category, otherAccount: otherAccount, revision: ledgerRevision, in: current)
+                                      category: category, otherAccount: otherAccount, entryIDs: entryIDs,
+                                      purpose: purpose, revision: ledgerRevision, in: current)
     }
     var funds: Funds {
         _ = derivedRevision

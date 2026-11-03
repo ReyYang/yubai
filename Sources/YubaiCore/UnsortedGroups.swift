@@ -4,7 +4,7 @@ public struct UnsortedPartyGroup: Identifiable, Equatable, Sendable {
     public var id: String { (inflow ? "in:" : "out:") + party }
     public let party: String
     public let inflow: Bool
-    /// Newest first, with a stable tie-breaker. The UI only renders the first four.
+    /// Newest first, with a stable tie-breaker. The UI renders these lazily.
     public let entries: [Entry]
     public let total: Int64
     fileprivate let sourceAccountIDs: Set<UUID>
@@ -85,7 +85,7 @@ public enum UnsortedGroups {
             guard let category, ledger.categories.contains(where: {
                 !$0.system && !$0.hidden && $0.name == category && $0.income == group.inflow
             }) else { return false }
-        }
+        } else if category != nil { return false }
         if use == .transfer {
             guard let otherAccount, !group.sourceAccountIDs.contains(otherAccount),
                   ledger.accounts.contains(where: { $0.id == otherAccount && !$0.archived }) else { return false }
@@ -95,23 +95,30 @@ public enum UnsortedGroups {
     /// Re-read the live group at confirmation so stale selections cannot change
     /// rows that were classified elsewhere while this page was open.
     public static func changeSet(groupID: String, question: ImportQuestion, use: UnsortedUse,
-                                 category: String? = nil, otherAccount: UUID? = nil, in ledger: Ledger) -> ChangeSet? {
+                                 category: String? = nil, otherAccount: UUID? = nil,
+                                 entryIDs: Set<UUID>? = nil, purpose: String? = nil, in ledger: Ledger) -> ChangeSet? {
         guard let group = groups(for: question, in: ledger).first(where: { $0.id == groupID }) else { return nil }
-        return changeSet(group: group, use: use, category: category, otherAccount: otherAccount, in: ledger)
+        return changeSet(group: group, use: use, category: category, otherAccount: otherAccount,
+                         entryIDs: entryIDs, purpose: purpose, in: ledger)
     }
     fileprivate static func changeSet(group: UnsortedPartyGroup, use: UnsortedUse,
-                                      category: String?, otherAccount: UUID?, in ledger: Ledger) -> ChangeSet? {
+                                      category: String?, otherAccount: UUID?, entryIDs: Set<UUID>?,
+                                      purpose: String?, in ledger: Ledger) -> ChangeSet? {
         guard canApply(to: group, use: use, category: category, otherAccount: otherAccount, in: ledger) else { return nil }
-        let items: [ChangeItem] = group.entries.flatMap { entry in
+        let entries = group.entries.filter { entryIDs?.contains($0.id) ?? true }
+        let purpose = purpose?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !entries.isEmpty, (purpose?.count ?? 0) <= 4000 else { return nil }
+        let items: [ChangeItem] = entries.flatMap { entry in
             var items: [ChangeItem] = []
             if entry.nature != use.nature || use == .transfer {
                 items.append(.setNature(entry: entry.id, nature: use.nature, otherAccount: use == .transfer ? otherAccount : nil))
             }
             if use.needsCategory, let category { items.append(.setCategory(entry: entry.id, category: category)) }
+            if let purpose, !purpose.isEmpty { items.append(.setPurpose(entry: entry.id, text: purpose)) }
             return items
         }
         guard !items.isEmpty else { return nil }
-        return ChangeSet(source: "按对方分", reason: "这 \(group.entries.count) 笔都这样记", items: items)
+        return ChangeSet(source: "按对方分", reason: "\(entries.count) 笔记为 \(category ?? use.title)", items: items)
     }
 }
 
@@ -174,8 +181,56 @@ public struct UnsortedGroupsCache {
     /// Resolve against the current revision at the moment of confirmation.
     public mutating func changeSet(groupID: String, questionID: UUID, use: UnsortedUse,
                                   category: String? = nil, otherAccount: UUID? = nil,
+                                  entryIDs: Set<UUID>? = nil, purpose: String? = nil,
                                   revision: UInt64, in ledger: Ledger) -> ChangeSet? {
         guard let group = snapshot(for: questionID, revision: revision, in: ledger)?.groupsByID[groupID] else { return nil }
-        return UnsortedGroups.changeSet(group: group, use: use, category: category, otherAccount: otherAccount, in: ledger)
+        return UnsortedGroups.changeSet(group: group, use: use, category: category, otherAccount: otherAccount,
+                                        entryIDs: entryIDs, purpose: purpose, in: ledger)
+    }
+}
+
+public struct UnsortedEntryField: Equatable, Sendable {
+    public let key: String
+    public let value: String
+}
+
+/// Display projections only. Read and parse attachments on demand, off the UI thread.
+public enum UnsortedEntryPresentation {
+    public static func summary(_ entry: Entry) -> String {
+        let parts = entry.title.components(separatedBy: " · ").filter { !$0.isEmpty }
+        let note = entry.note.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let summary = parts.dropFirst().joined(separator: " · ")
+        return [summary, parts.first ?? "", note].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    public static func fallbackFields(_ entry: Entry, account: String, hideAmounts: Bool) -> [UnsortedEntryField] {
+        [UnsortedEntryField(key: "时间", value: Dates.text(entry.date, time: true)),
+         UnsortedEntryField(key: "金额", value: hideAmounts ? "••••" : Money.text(entry.nature.inflow ? entry.amount : -entry.amount)),
+         UnsortedEntryField(key: "账户", value: account),
+         UnsortedEntryField(key: "明细", value: entry.title),
+         UnsortedEntryField(key: "备注", value: entry.note)]
+    }
+
+    /// sourceRow is the one-based parsed table row used by BillImporter, including
+    /// preamble rows and quoted multiline cells. Preserve original column order.
+    public static func sourceFields(data: Data, filename: String, sourceRow: Int) throws -> [UnsortedEntryField] {
+        let table = filename.lowercased().hasSuffix(".xlsx") ? try XLSX.read(data)
+            : try CSV.parse(CSV.decode(data), delimiter: filename.lowercased().hasSuffix(".tsv") ? "\t" : nil)
+        guard sourceRow > 1, table.indices.contains(sourceRow - 1) else { return [] }
+        let preceding = table.prefix(sourceRow - 1)
+        let dates = Set(BillImporter.dateNames.map(BillImporter.normalized))
+        let amounts = Set(BillImporter.amountNames.map(BillImporter.normalized))
+        let header = preceding.firstIndex { row in
+            let keys = Set(row.map(BillImporter.normalized))
+            return !keys.isDisjoint(with: dates) && !keys.isDisjoint(with: amounts)
+        } ?? preceding.firstIndex { row in row.contains { dates.contains(BillImporter.normalized($0)) } }
+            ?? preceding.firstIndex { $0.count > 1 }
+        guard let header else { return [] }
+        let keys = table[header], values = table[sourceRow - 1]
+        return (0..<max(keys.count, values.count)).map { index in
+            let key = keys.indices.contains(index) ? keys[index] : ""
+            return UnsortedEntryField(key: key.isEmpty ? String(index + 1) : key,
+                                      value: values.indices.contains(index) ? values[index] : "")
+        }
     }
 }
