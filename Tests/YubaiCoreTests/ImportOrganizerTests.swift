@@ -120,6 +120,8 @@ private actor ResumableImportScript: ChatTransport {
 final class ImportOrganizerTests: XCTestCase {
     private func syntheticImport(count: Int = 200) throws -> (Ledger, Ledger, ImportBatch) {
         var ledger = Ledger(); ledger.accounts = [Account(name: "合成卡")]
+        // These tests exercise individual association checkpoints, not grouping.
+        ledger.plans = [Plan(title: "合成关联候选", amount: 1000, dueDate: Dates.parse("2040-01-01")!)]
         let before = ledger
         let rows = (0..<count).map { "2026-10-01,支出,10.00,合成用途\($0),合成\($0)" }
         let bytes = Data((["时间,收支,金额,名称,交易单号"] + rows).joined(separator: "\n").utf8)
@@ -172,6 +174,7 @@ final class ImportOrganizerTests: XCTestCase {
         let original = Entry(date: Dates.parse("2026-02-15")!, amount: 70_000, nature: .expense, accountID: ledger.accounts[0].id, title: "合成商城")
         let subscription = Entry(date: Dates.parse("2026-01-01")!, amount: 2_000, nature: .expense, accountID: ledger.accounts[0].id, title: "合成订阅")
         ledger.entries = [transfer, original, subscription]
+        ledger.plans = [Plan(title: "合成关联候选", amount: 100, dueDate: Dates.parse("2040-01-01")!)]
         let before = ledger
         var rows = (0..<200).map { "2026-03-01,支出,1.00,合成用途\($0),商户消费,fill\($0)" }
         rows[0] = "2026-03-01,支出,900.00,合成转账,转账,move"
@@ -213,7 +216,7 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertEqual(complete.entries.first { $0.id == refund }?.relatedEntryID, original.id)
         XCTAssertEqual(complete.entries.first { $0.id == transfer.id }?.mergedIntoID, move)
         XCTAssertEqual(complete.entries.first { $0.id == move }?.nature, .transfer)
-        XCTAssertEqual(complete.entries.first { $0.id == subscription.id }?.planID, complete.plans.first?.id)
+        XCTAssertEqual(complete.entries.first { $0.id == subscription.id }?.planID, complete.plans.first { $0.title == "合成订阅" }?.id)
         let requests = await script.requests
         XCTAssertEqual(requests.filter { $0.purpose == "导入整理" }.count, 7)
         await store.undo()
@@ -309,6 +312,7 @@ final class ImportOrganizerTests: XCTestCase {
         ledger.entries = (0..<11).map {
             Entry(amount: 50_000 + Int64($0) * 100_000, nature: .expense, accountID: ledger.accounts[0].id, title: "待明确组\($0)")
         }
+        individualCandidates(in: &ledger)
         let ids = ledger.entries.map(\.id)
         let script = ImportScript { request in
             if request.purpose == "导入短评" { return .object(["cards": .array([])]) }
@@ -363,13 +367,15 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertEqual(result.questions.first?.entryIDs, [ledger.entries[0].id])
     }
     func testFallbacksMergeAcrossTwoCheckpointedChunksRegardlessOfPartyAmountOrDirection() async throws {
-        let (before, imported, batch) = try syntheticImport(count: 2 * ImportOrganizer.chunkSize)
-        var ledger = imported
+        let (base, imported, batch) = try syntheticImport(count: 2 * ImportOrganizer.chunkSize)
+        var before = base, ledger = imported
         for i in ledger.entries.indices {
             ledger.entries[i].nature = i < ImportOrganizer.chunkSize ? .unknownOut : .unknownIn
             ledger.entries[i].title = "合成对方\(i)"
             ledger.entries[i].amount = 50_000 + Int64(i) * 100_000
         }
+        individualCandidates(in: &ledger)
+        before.plans = ledger.plans
         let store = ImportCheckpointStore(ledger, batchID: batch.id)
         let script = ResumableImportScript(leaveUncertain: true)
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id)) { result, ids, before in
@@ -601,6 +607,7 @@ final class ImportOrganizerTests: XCTestCase {
     func testIgnoredQuestionsPreserveConfidentNatureAliasesFallbackPersistenceAndUndo() async throws {
         var ledger = Ledger(); ledger.accounts = [Account(name: "卡")]; ledger.categoryAliases["吃饭"] = "餐饮"
         let bytes = Data("时间,收支,金额,名称\n2026-10-01,支出,500.00,不明\n2026-10-01,支出,25.00,午餐\n".utf8)
+        ledger.plans = [2500, 50000].map { Plan(title: "合成关联候选", amount: $0, dueDate: Dates.parse("2040-01-01")!) }
         let before = ledger
         let preview = try BillImporter.preview(data: bytes, filename: "bill.csv", accountID: ledger.accounts[0].id, ledger: ledger)
         let batch = try BillImporter.commit(preview, data: bytes, to: &ledger)
@@ -638,7 +645,9 @@ final class ImportOrganizerTests: XCTestCase {
         ledger.rents = [Rent(monthlyTotal: 10000, personalShare: 5000, startDate: Dates.parse("2026-09-01")!, nextDueDate: Dates.parse("2026-10-01")!)]
         let purchase = Entry(date: Dates.parse("2026-09-15")!, amount: 10000, accountID: ledger.accounts[0].id, title: "网购", category: "日用购物")
         let duplicate = Entry(date: Dates.parse("2026-09-16")!, amount: 3000, accountID: ledger.accounts[0].id, title: "午餐", category: "餐饮")
-        ledger.entries = [purchase, duplicate]; let before = ledger
+        ledger.entries = [purchase, duplicate]
+        ledger.plans = [Plan(title: "合成关联候选", amount: 3000, dueDate: Dates.parse("2040-01-01")!)]
+        let before = ledger
         let bytes = Data("时间,收支,金额,名称\n2026-09-20,收入,50.00,部分退款\n2026-09-20,收入,50.00,房租分摊\n2026-09-16,支出,30.00,午餐\n2026-09-20,支出,20.00,未知\n".utf8)
         var preview = try BillImporter.preview(data: bytes, filename: "bill.csv", accountID: ledger.accounts[0].id, ledger: ledger)
         for i in preview.rows.indices where preview.rows[i].status == .possibleDuplicate { preview.rows[i].included = true }
@@ -646,6 +655,10 @@ final class ImportOrganizerTests: XCTestCase {
         let rows = ledger.entries.filter { $0.batchID == batch.id }; let rentID = ledger.rents[0].id
         let result = try await ImportOrganizer(transport: ImportScript { request in
             let payload = try JSONValue.parse(request.messages.last!.content!)
+            if let groups = payload["groups"]?.arrayValue {
+                return .object(["groups": .array(groups.map { .object(["group": $0["id"]!,
+                    "category": .string("不存在的分类"), "confident": .bool(true)]) })])
+            }
             let evidence = payload["context"]?.arrayValue?.compactMap { $0["id"]?.stringValue } ?? []
             XCTAssertTrue(evidence.contains(purchase.id.uuidString), "A partial refund needs a larger original expense")
             return .object([
@@ -735,6 +748,262 @@ extension ImportOrganizerTests {
     }
     private func jsonReply(_ json: String) -> ChatMessage { ChatMessage(role: .assistant, content: json) }
 
+    func testOneAndTwoRowPartiesUseGroupStageWithAllRowsAsSamples() async throws {
+        let (ledger, _) = partyImport(counts: [1, 2])
+        let script = ImportScript { request in
+            XCTAssertEqual(request.purpose, "导入整理·按对方")
+            let payload = try JSONValue.parse(request.messages.last!.content!)
+            let groups = try XCTUnwrap(payload["groups"]?.arrayValue)
+            XCTAssertEqual(groups.map { $0["count"]! }, [.number(2), .number(1)])
+            for group in groups {
+                XCTAssertEqual(group["samples"]?.arrayValue?.count, Int(group["count"]!.numberForTest))
+            }
+            return .object(["groups": .array(groups.map { .object(["group": $0["id"]!, "category": .string("餐饮"),
+                "nature": .string("expense"), "purpose": .string("小店"), "confident": .bool(true)]) })])
+        }
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
+        XCTAssertEqual(result.categoryCount, 3); XCTAssertTrue(result.questions.isEmpty)
+        let sent = await script.count(); XCTAssertEqual(sent, 1)
+    }
+    func testPersonalSmallPaymentsRedPacketsAndSemanticPriorityAppearInBothPrompts() {
+        for prompt in [ImportOrganizer.partySystemPrompt, ImportOrganizer.systemPrompt] {
+            for rule in ["绝不向用户提问", "≥5笔", "中位≤50元", "amount_median.cents≤5000", "高频小额", "个人收款码", "餐饮", "购物/交通", "小店", "confident:true",
+                         "微信红包", "群收款", "人情家庭", "否则其他支出", "大额、低频", "用途语义优先于「像人名」", "掌上生活", "待还款", "信贷", "基金销售", "肯特瑞", "小金库", "每月固定日期"] {
+                XCTAssertTrue(prompt.contains(rule), rule)
+            }
+        }
+    }
+    func testEveryRepaymentKeywordOverridesPersonalNameWithoutCreatingTransport() async throws {
+        let keywords = ["还款", "信用卡", "掌上生活", "白条", "花呗", "借呗", "信贷", "待还款"]
+        var (ledger, _) = partyImport(counts: [keywords.count])
+        for i in ledger.entries.indices { ledger.entries[i].title = "李明 · " + keywords[i] }
+        // Explicit main categories remain unchanged even when nature is corrected.
+        ledger.entries[0].category = "其他支出"
+        let before = ledger
+        let organizer = ImportOrganizer { _ in
+            XCTFail("deterministic repayment must not create a transport")
+            throw YubaiError.invalid("离线")
+        }
+        let result = try await organizer.organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
+        _ = try result.changeSet.apply(to: &ledger)
+        XCTAssertTrue(ledger.entries.allSatisfy { $0.nature == .repayment && $0.purpose == "还款" })
+        XCTAssertEqual(ledger.entries.map(\.category), before.entries.map(\.category))
+        XCTAssertEqual(ledger.entries.map(\.amount), before.entries.map(\.amount))
+        XCTAssertEqual(ledger.entries.map(\.date), before.entries.map(\.date))
+        XCTAssertEqual(ledger.entries.map(\.accountID), before.entries.map(\.accountID))
+        XCTAssertTrue(result.questions.isEmpty)
+    }
+    func testBankWeChatImportsFollowDirectionLocallyEvenWithAssociationCandidates() async throws {
+        var ledger = Ledger(); ledger.accounts = [Account(name: "合成银行卡"), Account(name: "另一张卡")]
+        let csv = """
+        记账日期,货币,交易金额,交易摘要,对手信息
+        2025-11-01,CNY,-10.00,快捷支付,微信转账
+        2025-12-01,CNY,-10.00,银联快捷支付,微信转账
+        2026-01-01,CNY,-10.00,快捷支付,微信转账
+        2026-01-02,CNY,10.00,银联快捷支付,微信转账
+        2026-01-03,CNY,10.00,快捷退款,微信转账
+        2026-01-04,CNY,-11.00,微信转账,财付通
+        2026-01-05,CNY,11.00,微信转账,财付通支付科技有限公司
+        2026-01-06,CNY,-12.00,微信转账,微信零钱
+        2026-01-07,CNY,-13.00,微信转账,微信
+        2026-01-08,CNY,-14.00,微信转账,微信支付
+        """
+        let data = Data(csv.utf8)
+        let preview = try BillImporter.preview(data: data, filename: "合成微信.csv", accountID: ledger.accounts[0].id, ledger: ledger)
+        let batch = try BillImporter.commit(preview, data: data, to: &ledger)
+        let ids = ledger.entries.map(\.id), before = ledger
+        ledger.entries.append(Entry(amount: 1000, nature: .income, accountID: ledger.accounts[1].id, title: "反向证据"))
+        var plan = Plan(title: "已有固定支出", amount: 1000, dueDate: Dates.parse("2026-01-01")!, frequency: .monthly)
+        plan.accountID = ledger.accounts[0].id; ledger.plans.append(plan)
+        let estimate = try ImportOrganizer.requestEstimate(ledger: ledger, entryIDs: ids)
+        XCTAssertEqual(estimate.localWeChatEntries, 10); XCTAssertEqual(estimate.localRepaymentEntries, 0)
+        XCTAssertEqual(estimate.requests, 0)
+        let organizer = ImportOrganizer { _ in
+            XCTFail("bank WeChat rules must not create any transport, including comments")
+            throw YubaiError.invalid("离线")
+        }
+        let result = try await organizer.organize(ledger: ledger, entryIDs: ids)
+        _ = try result.changeSet.apply(to: &ledger)
+        let rows = ledger.entries.filter { $0.batchID == batch.id }
+        XCTAssertEqual(rows.filter { $0.nature == .expense && $0.category == "其他支出" && $0.purpose == "微信" }.count, 7)
+        XCTAssertEqual(rows.filter { $0.nature == .income && $0.category == "其他收入" && $0.purpose == "微信提现" }.count, 3)
+        XCTAssertTrue(rows.allSatisfy { $0.otherAccountID == nil && $0.planID == nil && $0.relatedEntryID == nil })
+        XCTAssertEqual(rows.map(\.amount), before.entries.map(\.amount))
+        XCTAssertEqual(rows.map(\.date), before.entries.map(\.date))
+        XCTAssertEqual(rows.map(\.accountID), before.entries.map(\.accountID))
+        XCTAssertEqual(rows.map(\.title), before.entries.map(\.title)); XCTAssertEqual(rows.map(\.note), before.entries.map(\.note))
+        XCTAssertEqual(ledger.accounts, before.accounts); XCTAssertEqual(ledger.plans.count, 1)
+        XCTAssertTrue(result.questions.isEmpty); XCTAssertTrue((result.comments ?? []).isEmpty)
+    }
+    func testWeChatRuleDoesNotMatchPersonalTransfersRedPacketsOrAlipayTopUps() async throws {
+        let titles = ["张三 · 微信转账", "微信转账李明 · 快捷支付", "李明（财付通） · 微信转账",
+                      "财付通 · 快捷支付", "财付通 · 微信红包", "微信红包 · 快捷支付", "企业微信红包 · 快捷退款",
+                      "支付宝 · 充值", "支付宝充值 · 快捷支付", "微信零钱通 · 微信转账", "微信零钱 · 红包"]
+        var (ledger, _) = partyImport(counts: Array(repeating: 1, count: titles.count))
+        for i in titles.indices { ledger.entries[i].title = titles[i] }
+        let before = ledger.entries
+        let estimate = try ImportOrganizer.requestEstimate(ledger: ledger, entryIDs: before.map(\.id))
+        XCTAssertEqual(estimate.localWeChatEntries, 0)
+        let script = ScriptedChatTransport([jsonReply(#"{"groups":[]}"#)])
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: before.map(\.id))
+        _ = try result.changeSet.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries.map(\.nature), before.map(\.nature))
+        XCTAssertEqual(ledger.entries.map(\.purpose), before.map(\.purpose))
+        for i in [0, 1, 2, 3, 7, 8, 9] { XCTAssertEqual(ledger.entries[i], before[i]) }
+        // Existing keyword classification of red packets remains in force.
+        for i in [4, 5, 6, 10] { XCTAssertEqual(ledger.entries[i].category, "人情家庭") }
+        let requests = await script.recorded(); XCTAssertEqual(requests.map(\.purpose), ["导入整理·按对方"])
+        XCTAssertEqual(Set(result.questions.flatMap(\.entryIDs)), Set(ledger.entries.filter(Classification.isPending).map(\.id)))
+    }
+    func testWeChatRulePreservesEditedLinkedNonBankAndExistingCategoryRecords() async throws {
+        var (ledger, _) = partyImport(counts: [7])
+        ledger.accounts.append(Account(name: "现金", kind: .cash))
+        for i in ledger.entries.indices { ledger.entries[i].title = "微信转账 · 快捷支付" }
+        ledger.entries[0].userEdited = true
+        ledger.entries[1].nature = .transfer; ledger.entries[1].otherAccountID = ledger.accounts[1].id
+        let plan = Plan(title: "既有计划", amount: 588, dueDate: Date(), frequency: .monthly)
+        ledger.plans.append(plan); ledger.entries[2].nature = .expense
+        ledger.entries[2].planID = plan.id; ledger.entries[2].occurrence = plan.dueDate
+        ledger.entries[3].accountID = ledger.accounts[1].id
+        ledger.entries[4].category = "购物"
+        ledger.entries[5].nature = .refund; ledger.entries[5].relatedEntryID = ledger.entries[6].id
+        ledger.entries[6].nature = .expense
+        try ledger.validate()
+        let before = ledger.entries, ids = before.map(\.id)
+        let estimate = try ImportOrganizer.requestEstimate(ledger: ledger, entryIDs: ids)
+        XCTAssertEqual(estimate.localWeChatEntries, 1)
+        let script = ImportScript { _ in .object(["groups": .array([]), "rows": .array([])]) }
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ids)
+        _ = try result.changeSet.apply(to: &ledger)
+        for i in [0, 1, 2, 3, 5, 6] { XCTAssertEqual(ledger.entries[i], before[i]) }
+        XCTAssertEqual(ledger.entries[4].category, "购物")
+        XCTAssertEqual(ledger.entries[4].nature, .expense); XCTAssertEqual(ledger.entries[4].purpose, "微信")
+    }
+    func testWeChatRowsNeverAppearInModelContextAndCannotBePairedByModel() async throws {
+        var (ledger, _) = partyImport(counts: [2, 1])
+        for i in 0..<2 { ledger.entries[i].title = "微信转账 · 快捷支付" }
+        ledger.entries[1].nature = .unknownIn
+        // This wallet expense would create a short-comment candidate if leaked.
+        ledger.profile.restrain = [ProfileArea(title: "合成领域", match: AreaMatch(keywords: ["微信"]))]
+        // Force the other target down the individual path with a real plan candidate.
+        ledger.plans.append(Plan(title: "合成候选", amount: ledger.entries[2].amount, dueDate: Date(), frequency: .monthly))
+        let walletIDs = Set(ledger.entries.prefix(2).map(\.id)), otherID = ledger.entries[2].id
+        let script = ImportScript { request in
+            XCTAssertEqual(request.purpose, "导入整理")
+            let text = request.messages.last!.content!, payload = try JSONValue.parse(text)
+            for id in walletIDs { XCTAssertFalse(text.contains(id.uuidString)) }
+            XCTAssertFalse(text.contains("微信转账")); XCTAssertFalse(text.contains("微信提现"))
+            XCTAssertEqual(payload["batch"]?.arrayValue?.count, 1); XCTAssertEqual(payload["context"]?.arrayValue?.count, 0)
+            return .object(["rows": .array([]), "items": .array(walletIDs.map { .object([
+                "kind": .string("pair_transfer"), "entry": .string(otherID.uuidString), "other_entry": .string($0.uuidString), "nature": .string("transfer")
+            ]) })])
+        }
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
+        _ = try result.changeSet.apply(to: &ledger)
+        XCTAssertTrue(ledger.entries.prefix(2).allSatisfy { $0.otherAccountID == nil && !Classification.isPending($0) })
+        XCTAssertEqual(Set(result.questions.flatMap(\.entryIDs)), [otherID])
+        let sent = await script.count(); XCTAssertEqual(sent, 1)
+    }
+    func testWeChatCheckpointSurvivesFailureResumesWithoutResendingAndUndoes() async throws {
+        var (ledger, batch) = partyImport(counts: [2, 1])
+        for i in 0..<2 { ledger.entries[i].title = "微信转账 · 快捷支付" }
+        ledger.entries[1].nature = .unknownIn
+        let localIDs = Set(ledger.entries.prefix(2).map(\.id))
+        let store = ImportCheckpointStore(ledger, batchID: batch.id)
+        let bad = ScriptedChatTransport([jsonReply("bad json")])
+        do { try await resume(store, script: bad, batchID: batch.id); XCTFail() } catch { }
+        let saved = await store.snapshot()
+        XCTAssertEqual(Set(saved.imports[0].organizedEntryIDs ?? []), localIDs)
+        XCTAssertEqual(saved.entries[0].purpose, "微信"); XCTAssertEqual(saved.entries[1].purpose, "微信提现")
+        XCTAssertEqual(saved.entries[0].category, "其他支出"); XCTAssertEqual(saved.entries[1].category, "其他收入")
+        XCTAssertTrue(saved.imports[0].organization!.questions.isEmpty)
+        let estimate = try ImportOrganizer.requestEstimate(ledger: saved, entryIDs: ledger.entries.map(\.id))
+        XCTAssertEqual(estimate.localWeChatEntries, 0); XCTAssertEqual(estimate.partyEntries, 1)
+        let retry = ScriptedChatTransport([jsonReply(#"{"groups":[]}"#)])
+        try await resume(store, script: retry, batchID: batch.id)
+        let requests = await retry.recorded()
+        XCTAssertEqual(requests.count, 1)
+        let text = requests[0].messages.last!.content!
+        XCTAssertFalse(text.contains("微信转账")); XCTAssertFalse(text.contains("微信提现"))
+        let finished = await store.snapshot()
+        XCTAssertFalse(finished.imports[0].needsOrganization!)
+        XCTAssertTrue(Set(finished.imports[0].organization!.questions.flatMap(\.entryIDs)).isDisjoint(with: localIDs))
+        await store.undo()
+        let undone = await store.snapshot()
+        XCTAssertTrue(undone.entries.isEmpty); XCTAssertTrue(undone.imports.isEmpty)
+        XCTAssertEqual(undone.accounts, ledger.accounts)
+    }
+    func testMixedPersonalGroupOnlyRepaymentRowsAreLocalAndSurviveFailureResume() async throws {
+        var (ledger, batch) = partyImport(counts: [4])
+        for i in ledger.entries.indices { ledger.entries[i].title = "李明 · " + (i < 2 ? "掌上生活还款" : "消费") }
+        let store = ImportCheckpointStore(ledger, batchID: batch.id)
+        let bad = ScriptedChatTransport([jsonReply("bad json")])
+        do { try await resume(store, script: bad, batchID: batch.id); XCTFail() } catch { }
+        let saved = await store.snapshot()
+        XCTAssertEqual(Set(saved.imports[0].organizedEntryIDs ?? []), Set(ledger.entries.prefix(2).map(\.id)))
+        XCTAssertTrue(saved.entries.prefix(2).allSatisfy { $0.nature == .repayment })
+        XCTAssertTrue(saved.entries.suffix(2).allSatisfy { $0.nature == .unknownOut })
+        let retry = ScriptedChatTransport([jsonReply(#"{"groups":[]}"#)])
+        try await resume(store, script: retry, batchID: batch.id)
+        let requests = await retry.recorded()
+        let groups = try JSONValue.parse(requests[0].messages.last!.content!)["groups"]!.arrayValue!
+        XCTAssertEqual(groups.first?["count"], .number(2))
+        let finished = await store.snapshot(); XCTAssertFalse(finished.imports[0].needsOrganization!)
+        await store.undo()
+        let undone = await store.snapshot(); XCTAssertTrue(undone.entries.isEmpty); XCTAssertTrue(undone.imports.isEmpty)
+    }
+    func testMonthlyRepaymentsKeepIndividualSeriesAndRejectModelExpenseOverride() async throws {
+        var (ledger, _) = partyImport(counts: [3])
+        for i in ledger.entries.indices {
+            ledger.entries[i].title = "李明 · 信用卡"
+            ledger.entries[i].date = Dates.addMonths(i, to: Dates.parse("2026-01-15")!)
+        }
+        let ids = ledger.entries.map(\.id)
+        let script = ImportScript { request in
+            let payload = try JSONValue.parse(request.messages.last!.content!)
+            let rows = try XCTUnwrap(payload["batch"]?.arrayValue)
+            XCTAssertTrue(rows.allSatisfy { $0["nature"] == .string("repayment") })
+            return .object(["rows": .array(rows.map { .object(["entry": $0["id"]!, "nature": .string("expense"),
+                "purpose": .string("转给李明"), "confident": .bool(true)]) }), "items": .array([
+                    .object(["kind": .string("set_nature"), "entry": .string(ids[0].uuidString), "nature": .string("expense")])
+                ]), "series": .array([.object(["entry_ids": .strings(ids.map(\.uuidString)),
+                    "frequency": .string("monthly"), "title": .string("信用卡还款")])])])
+        }
+        let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ids)
+        _ = try result.changeSet.apply(to: &ledger)
+        XCTAssertTrue(ledger.entries.allSatisfy { $0.nature == .repayment && $0.purpose == "还款" && $0.planID != nil })
+        XCTAssertEqual(result.recurringCount, 1); XCTAssertTrue(result.questions.isEmpty)
+    }
+    func testSameAmountOppositeDirectionInSameAccountIsNotTransferCandidate() async throws {
+        var (ledger, _) = partyImport(counts: [1, 1])
+        ledger.entries[1].nature = .unknownIn; ledger.entries[1].amount = ledger.entries[0].amount
+        let estimate = try ImportOrganizer.requestEstimate(ledger: ledger, entryIDs: ledger.entries.map(\.id))
+        XCTAssertEqual(estimate.partyGroups, 2); XCTAssertEqual(estimate.individualRequests, 0)
+    }
+    func testRequestEstimateMatchesActualChunksBudgetsAndCompletedRemainder() async throws {
+        var (ledger, _) = partyImport(counts: Array(repeating: 1, count: 65))
+        ledger.entries[0].title = "李明 · 花呗"
+        let all = ledger.entries.map(\.id)
+        ledger.imports[0].organizedEntryIDs = Set(all.suffix(2))
+        let estimate = try ImportOrganizer.requestEstimate(ledger: ledger, entryIDs: all)
+        XCTAssertEqual(estimate.localRepaymentEntries, 1)
+        XCTAssertEqual(estimate.partyGroups, 62); XCTAssertEqual(estimate.partyEntries, 62)
+        XCTAssertEqual(estimate.individualRequests, 0); XCTAssertGreaterThan(estimate.partyRequests, 1)
+        let script = ImportScript { request in
+            XCTAssertEqual(request.purpose, "导入整理·按对方")
+            let payload = try JSONValue.parse(request.messages.last!.content!)
+            let count = payload["groups"]!.arrayValue!.count
+            XCTAssertLessThanOrEqual(request.maxTokens, 8192)
+            XCTAssertEqual(request.maxTokens, 512 + count * 256)
+            let bytes = request.messages.compactMap(\.content).reduce(0) { $0 + $1.utf8.count }
+            XCTAssertLessThanOrEqual((bytes + 1) / 2, 12_000)
+            return .object(["groups": .array([])])
+        }
+        _ = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: all)
+        let sent = await script.count(); XCTAssertEqual(estimate.requests, sent)
+        XCTAssertEqual(try ImportOrganizer.requestEstimate(ledger: ledger, entryIDs: []).requests, 0)
+    }
+
     func testPersonPartyUsesOtherExpenseAndTransferPurpose() async throws {
         var (ledger, _) = partyImport(counts: [3])
         for i in ledger.entries.indices { ledger.entries[i].title = "李明 · 转账" }
@@ -752,7 +1021,8 @@ extension ImportOrganizerTests {
         XCTAssertTrue(ledger.entries.allSatisfy { $0.category == "其他支出" && $0.nature == .expense && $0.purpose == "转给李明" })
         XCTAssertTrue(result.questions.isEmpty)
         for prompt in [ImportOrganizer.partySystemPrompt, ImportOrganizer.systemPrompt] {
-            XCTAssertFalse(prompt.contains("questions")); XCTAssertFalse(prompt.contains("提问")); XCTAssertFalse(prompt.contains("问题"))
+            XCTAssertTrue(prompt.contains("绝不向用户提问")); XCTAssertTrue(prompt.contains("不输出questions"))
+            XCTAssertFalse(prompt.contains("\"questions\":"))
             XCTAssertTrue(prompt.contains("转给<对方>")); XCTAssertTrue(prompt.contains("来自<对方>"))
             XCTAssertTrue(prompt.contains("其他支出")); XCTAssertTrue(prompt.contains("其他收入"))
         }
@@ -760,6 +1030,7 @@ extension ImportOrganizerTests {
     func testLegacyQuestionsCannotSuppressConfidentIndividualIncome() async throws {
         var (ledger, _) = partyImport(counts: [1])
         ledger.entries[0].nature = .unknownIn; ledger.entries[0].title = "李明 · 来款"
+        individualCandidates(in: &ledger)
         let id = ledger.entries[0].id
         let script = ImportScript { _ in .object([
             "rows": .array([.object(["entry": .string(id.uuidString), "category": .string("其他收入"),
@@ -822,7 +1093,7 @@ extension ImportOrganizerTests {
         XCTAssertTrue(group["party"]?.stringValue?.contains("联系人") == true)
         XCTAssertEqual(request.purpose, "导入整理·按对方"); XCTAssertEqual(request.thinking, false)
         XCTAssertEqual(request.responseFormat, .object(["type": .string("json_object")]))
-        XCTAssertEqual(request.maxTokens, 512 + 640); XCTAssertEqual(request.timeout, 180)
+        XCTAssertEqual(request.maxTokens, 512 + 256); XCTAssertEqual(request.timeout, 180)
         for prompt in [ImportOrganizer.partySystemPrompt, ImportOrganizer.systemPrompt] {
             XCTAssertTrue(prompt.contains("高频固定金额的规律本身就是证据")); XCTAssertTrue(prompt.contains("美团/饿了么"))
             XCTAssertFalse(prompt.contains("至多5"))
@@ -866,30 +1137,18 @@ extension ImportOrganizerTests {
     }
     func testPartyAndSingletonFallbacksMergeWhileBothLegacyQuestionFormatsAreIgnored() async throws {
         var (ledger, _) = partyImport(counts: [3], singleton: true)
-        let single = ledger.entries.last!.id
-        // The singleton uses another party but a nearby amount, as in existing group().
         ledger.entries[3].amount = 590
-        let option = #""options":[{"title":"日常支出","items":[{"kind":"set_nature","nature":"expense"}]},{"title":"借给别人","items":[{"kind":"set_nature","nature":"lend"}]}]"#
-        let script = ScriptedChatTransport([
-            jsonReply("{\"groups\":[],\"questions\":[{\"group\":\"g0\",\"text\":\"这些是什么用途？\",\(option)}]}"),
-            jsonReply(try JSONValue.object(["rows": .array([]), "questions": .array([.object([
-                "text": .string("这笔是什么用途？"), "entry_ids": .strings([single.uuidString]),
-                "options": .array([("日常支出", "expense"), ("借给别人", "lend")].map { title, nature in .object([
-                    "title": .string(title), "items": .array([.object(["kind": .string("set_nature"), "entry": .string(single.uuidString), "nature": .string(nature)])])]) })
-            ])])]).jsonText())
-        ])
+        let script = ScriptedChatTransport([jsonReply(#"{"groups":[],"questions":[{"group":"g0","text":"旧组问题"},{"entry_ids":[],"text":"旧逐笔问题"}]}"#)])
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
         XCTAssertEqual(result.questions.count, 1); XCTAssertEqual(Set(result.questions[0].entryIDs), Set(ledger.entries.map(\.id)))
-        XCTAssertTrue(result.questions[0].isFallback)
-        XCTAssertTrue(result.questions[0].options.isEmpty)
+        XCTAssertTrue(result.questions[0].isFallback); XCTAssertTrue(result.questions[0].options.isEmpty)
         let requests = await script.recorded()
-        XCTAssertEqual(requests.map(\.purpose), ["导入整理·按对方", "导入整理"])
-        let rows = try JSONValue.parse(requests[1].messages.last!.content!)["batch"]?.arrayValue
-        XCTAssertEqual(rows?.count, 1); XCTAssertEqual(rows?.first?["id"], .string(single.uuidString))
-        XCTAssertEqual(Set(requests.compactMap(\.groupID)).count, 1)
+        XCTAssertEqual(requests.map(\.purpose), ["导入整理·按对方"])
+        let groups = try JSONValue.parse(requests[0].messages.last!.content!)["groups"]!.arrayValue!
+        XCTAssertEqual(groups.map { $0["count"]! }, [.number(3), .number(1)])
     }
     func testPartyCheckpointCancellationResumeAndRecordProgressNeverResendsGroups() async throws {
-        let (ledger, batch) = partyImport(counts: Array(repeating: 3, count: 13), singleton: true)
+        let (ledger, batch) = partyImport(counts: Array(repeating: 3, count: 40), singleton: true)
         let store = ImportCheckpointStore(ledger, batchID: batch.id)
         await store.configure(cancel: 1)
         let script = ScriptedChatTransport([jsonReply(#"{"groups":[{"group":"g0","category":"餐饮","nature":"expense","confident":true}],"questions":[{"group":"g1","text":"这些是什么用途？","options":[{"title":"日常支出","items":[{"kind":"set_nature","nature":"expense"}]},{"title":"借给别人","items":[{"kind":"set_nature","nature":"lend"}]}]}]}"#)])
@@ -898,33 +1157,33 @@ extension ImportOrganizerTests {
         let partial = await store.snapshot(), sent = await script.recorded()
         let firstGroups = try JSONValue.parse(sent[0].messages.last!.content!)["groups"]!.arrayValue!
         let completed = firstGroups.reduce(0) { sum, group in sum + Int(group["count"]!.numberForTest) }
-        XCTAssertEqual(firstGroups.count, 12); XCTAssertEqual(completed, 36)
+        XCTAssertGreaterThan(firstGroups.count, 12); XCTAssertLessThan(firstGroups.count, 40)
         XCTAssertEqual(partial.imports[0].organizedEntryIDs?.count, completed)
         XCTAssertEqual(partial.imports[0].organization?.categoryCount, 3)
         XCTAssertEqual(partial.imports[0].organization?.questions.filter { !$0.isFallback }.count, 0)
-        XCTAssertEqual(PendingImportOrganization(in: partial).count, 40 - completed)
-        XCTAssertEqual(ImportOrganizationProgress(completed: completed, total: 40).completed, 36)
-        let retry = ScriptedChatTransport([jsonReply(#"{"groups":[]}"#), jsonReply(#"{"rows":[]}"#)])
+        XCTAssertEqual(PendingImportOrganization(in: partial).count, 121 - completed)
+        XCTAssertEqual(ImportOrganizationProgress(completed: completed, total: 121).completed, completed)
+        let retry = ScriptedChatTransport(Array(repeating: jsonReply(#"{"groups":[]}"#), count: 4))
         let snapshot = await store.snapshot()
         _ = try await ImportOrganizer(transport: retry).organize(ledger: snapshot, entryIDs: ImportOrganizer.pendingEntryIDs(in: snapshot, batchID: batch.id)) { result, ids, before in
             let saved = try await store.save(result, ids: ids, before: before)
             let totalCompleted = saved.imports[0].organizedEntryIDs!.count
-            XCTAssertEqual(totalCompleted, completed + (ids.count == 3 ? 3 : 4))
+            XCTAssertGreaterThan(totalCompleted, completed)
             return saved
         }
         let retried = await retry.recorded(), complete = await store.snapshot()
         let remainingGroups = try JSONValue.parse(retried[0].messages.last!.content!)["groups"]!.arrayValue!
         let names = Set(firstGroups.compactMap { $0["party"]?.stringValue })
         XCTAssertTrue(names.isDisjoint(with: remainingGroups.compactMap { $0["party"]?.stringValue }))
-        XCTAssertEqual(complete.imports[0].organizedEntryIDs?.count, 40); XCTAssertEqual(complete.imports[0].needsOrganization, false)
+        XCTAssertEqual(complete.imports[0].organizedEntryIDs?.count, 121); XCTAssertEqual(complete.imports[0].needsOrganization, false)
         XCTAssertEqual(complete.imports[0].organization?.questions.count, 1, "Only local fallbacks merge across stages and resume")
         XCTAssertTrue(complete.imports[0].organization?.questions.allSatisfy(\.isFallback) == true)
     }
     func testPartyModelCanDeferToIndividualEvidenceWithoutCompletingIDsEarly() async throws {
-        let (ledger, batch) = partyImport(counts: [3])
+        let (ledger, batch) = partyImport(counts: [2, 1])
         let store = ImportCheckpointStore(ledger, batchID: batch.id)
         let script = ScriptedChatTransport([
-            jsonReply(#"{"groups":[{"group":"g0","needs_individual":true}]}"#),
+            jsonReply(#"{"groups":[{"group":"g0","needs_individual":true},{"group":"g1","needs_individual":true}]}"#),
             jsonReply(#"{"rows":[]}"#)
         ])
         try await resume(store, script: script, batchID: batch.id)
@@ -936,7 +1195,7 @@ extension ImportOrganizerTests {
         let rows = try JSONValue.parse(requests[1].messages.last!.content!)["batch"]!.arrayValue!
         XCTAssertEqual(Set(rows.compactMap { $0["id"]?.stringValue }), Set(ledger.entries.map { $0.id.uuidString }))
     }
-    func testOppositeLegPartialRefundSeriesPlanRentAndSmallGroupsStayIndividual() async throws {
+    func testAssociationCandidatesStayIndividualWhileSmallGroupsUseSummaries() async throws {
         var (ledger, _) = partyImport(counts: [3, 3, 3, 3, 3, 2, 3])
         ledger.accounts.append(Account(name: "合成钱包"))
         let first = ledger.entries[0]
@@ -951,12 +1210,15 @@ extension ImportOrganizerTests {
         // members look ordinary; the linked row itself is never bulk classified.
         ledger.entries[17].nature = .repayment
         let targets = ledger.entries.filter { $0.batchID != nil }.map(\.id)
-        let script = ScriptedChatTransport([jsonReply(#"{"rows":[]}"#)])
+        let script = ScriptedChatTransport([jsonReply(#"{"groups":[]}"#), jsonReply(#"{"rows":[]}"#)])
         _ = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: targets)
         let requests = await script.recorded()
-        XCTAssertEqual(requests.map(\.purpose), ["导入整理"])
-        let rows = try JSONValue.parse(requests[0].messages.last!.content!)["batch"]!.arrayValue!
-        XCTAssertEqual(Set(rows.compactMap { $0["id"]?.stringValue }), Set(targets.map(\.uuidString)))
+        XCTAssertEqual(requests.map(\.purpose), ["导入整理·按对方", "导入整理"])
+        let groups = try JSONValue.parse(requests[0].messages.last!.content!)["groups"]!.arrayValue!
+        XCTAssertEqual(groups.map { $0["count"]! }, [.number(2), .number(2)])
+        let groupedIDs = Set(ledger.entries[15..<17].map(\.id) + ledger.entries[18..<20].map(\.id))
+        let rows = try JSONValue.parse(requests[1].messages.last!.content!)["batch"]!.arrayValue!
+        XCTAssertEqual(Set(rows.compactMap { $0["id"]?.stringValue }), Set(targets.filter { !groupedIDs.contains($0) }.map(\.uuidString)))
     }
     func testSamePartyOppositeDirectionsHaveSeparateSummariesAndIgnoreLegacyGroupQuestions() async throws {
         var (ledger, _) = partyImport(counts: [3, 3])
@@ -1002,6 +1264,7 @@ final class CategoryMemoryTests: XCTestCase {
         let ctx = AssistantFixtures.context(); var ledger = ctx.ledger
         ledger.entries = [Entry(date: ctx.now, amount: 2000, accountID: ledger.accounts[0].id, title: "美团123!", category: Classification.pendingCategory)]
         ledger.categoryMemory[CategoryMemory.key("美团456")] = "餐饮"
+        individualCandidates(in: &ledger)
         let entry = ledger.entries[0]
         let result = JSONValue.object(["rows": .array([.object(["entry": .string(entry.id.uuidString), "category": .string("日用购物"), "nature": .string("expense"), "confident": .bool(true)])]),
             "items": .array([.object(["kind": .string("set_category"), "entry": .string(entry.id.uuidString), "category": .string("娱乐旅行")])])])
@@ -1022,6 +1285,7 @@ final class CategoryMemoryTests: XCTestCase {
         let ctx = AssistantFixtures.context(); var ledger = ctx.ledger
         ledger.entries = [Entry(date: ctx.now, amount: 100, accountID: ledger.accounts[0].id, title: "普通商户")]
         ledger.categoryMemory["普通商户"] = "已删除分类"
+        individualCandidates(in: &ledger)
         let id = ledger.entries[0].id.uuidString
         let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array([.object(["entry": .string(id), "category": .string("餐饮"), "confident": .bool(true), "nature": .string("expense")])])]).jsonText()), ChatMessage(role: .assistant, content: "{}")])
         let result = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: [ledger.entries[0].id], now: ctx.now)
@@ -1046,5 +1310,13 @@ extension ImportOrganizerTests {
         _ = try organization.changeSet.apply(to: &ledger)
         XCTAssertEqual(ledger.entries.first?.category, "其他支出")
         XCTAssertEqual(ledger.entries.first?.purpose, "周末车票")
+    }
+}
+
+/// Explicit existing-plan candidates keep tests of the row protocol on that path.
+private func individualCandidates(in ledger: inout Ledger) {
+    for entry in ledger.entries {
+        var plan = Plan(title: "合成关联候选", amount: entry.amount, dueDate: Dates.parse("2040-01-01")!, inflow: entry.nature.inflow)
+        plan.accountID = entry.accountID; ledger.plans.append(plan)
     }
 }

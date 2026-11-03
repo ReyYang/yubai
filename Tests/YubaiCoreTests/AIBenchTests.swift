@@ -4,6 +4,9 @@ import XCTest
 final class AIBenchTests: XCTestCase {
     private static func organizedReply(_ messages: [[String: String]], category: String) throws -> String {
         let payload = try JSONValue.parse(messages[1]["content"]!)
+        if let group = payload["groups"]?.arrayValue?.first {
+            return try JSONValue.object(["groups": .array([.object(["group": group["id"]!, "category": .string(category), "confident": .bool(true)])])]).jsonText()
+        }
         let row = try XCTUnwrap(payload["batch"]?.arrayValue?.first)
         return try JSONValue.object(["rows": .array([.object(["entry": row["id"]!, "category": .string(category), "confident": .bool(true)])])]).jsonText()
     }
