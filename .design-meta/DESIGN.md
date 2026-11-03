@@ -1,5 +1,31 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-03 ·「按对方分」性能与空组返回修复
+
+来源为 owner 在 fix/unsorted-group-perf（基于 main）的真机反馈：约 4,200 笔导入且后台整理可能同时运行时，一组页点击性质 chip 卡顿、返回分组列表偶现白屏。本轮仅性能与稳定性修复，沿用既有页面、组件、布局、样式、文案及分类／转账规则，不制作或写入设计稿链接。
+
+源码核实：UnsortedGroupView.body 每次求值都扫描账本并重新分组，ViewThatFits 两个按钮的 canApply 又各自调用 changeSet，再扫描／分组并为整组分配 ChangeItem。原 changeSet 在此仅构造变更项目，并没有调用 ChangeSet.apply 做账本模拟。列表和 ImportQuestionCard 也直接求投影，性质／主项状态及逐段 ledger 更新会重复支付这些成本。组或问题消失时，if let 分支没有内容且没有退出处理；目的页还附着在即将移除的列表行上，更新与返回交错缺少稳定承载。
+
+实现采用与范围：
+
+- UnsortedGroups.swift 新增 UnsortedGroupsCache 与不可变 UnsortedGroupsSnapshot。每个账本修订先建立可整理 entryID 字典、有效问题／batchID 字典；每题首次读取按覆盖集合生成分组、总数及 groupID 字典，随后卡片、列表、搜索和一组页复用同一个实例。重复覆盖 ID 去重，已分类、删除、关联、特殊性质及覆盖外记录沿用原排除规则。
+- AppStore 的独立 ledgerRevision 在 ledger.didSet 的 invalidateDerived 中递增，缓存本体为 ObservationIgnored。键含账本 ID、修订及题 ID；不依赖 updatedAt，也不比较整个 Ledger。逐段保存、手动修改、撤销、重读、恢复及换账本均触发新修订；仅时间刷新不重建分组，渲染时填充缓存不发布观察事件。
+- UnsortedPartyGroup 缓存总额和来源账户集合；组内排序的 UUID 字符串每笔只转换一次。canApply 只校验方向对应的性质、可选主项及本组来源以外的未归档账户，不构造项目；应用按钮通过同一修订缓存重新取当前组，过滤其他路径已整理的记录，再生成一次 ChangeSet，继续走 store.apply、导入撤销与持久化。
+- 列表搜索仅过滤缓存中的对方名，保留原空白裁剪与大小写匹配；ImportQuestionCard、导入结果题目过滤、ButlerCards 的兜底可见性以及现在页的相关调用均读取同一缓存。Core 的 queued／visible 保留默认纯投影路径，App 可传入修订缓存的计数回调，运行中暂缓问题仍先于回调执行。
+- 导航目的地登记在列表外层，按题 ID／组 ID 保持路由身份，不随搜索或行删除消失。路由携带初始组，一组页保存最新有效组作返回过渡内容；当前组不存在时停止交互并 dismiss，成功应用和自动退出共用防重复返回。缺失组的旧内容仅用于退出过渡，不能用于确认变更。
+
+复杂度核对：原 entries 是线性扫描，groups 本身为分组加排序，并非单次 O(N²)；主要问题是渲染中反复调用全量投影和项目构造。新修订的共享索引为 O(N + Q)，每题按覆盖 K 个 ID 用字典读取再排序为 O(K log K)，缓存命中、计数、groupID 查组与总额读取均为 O(1)。搜索为 O(G)，性质／主项／账户校验为 O(A + C)，其中 G 为组数，A／C 为账户／分类数；生成项目为 O(组内笔数 + A + C)。逐笔构造循环中没有线性查找 ledger.entries／accounts／questions，也不为每一组重新扫描整本账。这些指标只描述投影、校验和 ChangeSet 构造，不将实际写盘与完整 store.apply 的开销算作性能测试结果。
+
+UnsortedGroupsTests 在原已登记文件新增 6 项：同修订实例复用、卡片／搜索／groupID 一致、重复覆盖／多题隔离、相同时间戳的分类／删除／撤销失效、确认时排除后台已整理行、覆盖／新增记录／关联与已删除引用变化、整批撤销／移除问题／换账本、全部性质及非法／隐藏主项、混合来源账户与归档账户、兜底可见性共用缓存和运行时暂缓、旧快照只读保留，以及 4,200 笔单组的性能。性能计时包含首次缓存、原 entries 投影、1,000 次缓存命中与完整／不完整选择校验，以及一次 8,400 项 ChangeSet 构造；定向约 0.168 秒，最终全量约 0.139 秒，宽松断言小于 0.5 秒。原 4,200 笔／200 组完整覆盖、稳定顺序与总额测试继续保留。
+
+现有 UI 测试源码保持，已逐条读核 testFallbackGroupsByPartyAppliesCategoryAndUpdatesRemainingCount：9 笔／两组，初始按钮禁用，选支出仍禁用，选餐饮后按钮为「这 6 笔都这样记」，应用后第一组移除且剩 3 笔，返回现在页及重启均为「3 笔还没分类」。问题优先、进账不重复、导入结果兜底及整批撤销等相关断言未降低，所有原 AX 标识保持。
+
+验证：指定 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 全量 637 项、633 通过／4 项原有实网 opt-in 跳过／0 失败；分组定向 15 项通过。worktree 首次构建仅复制主仓库相同锁定版本的现有依赖缓存到忽略的 .build，Package.swift／Package.resolved 未改、无新增依赖。40 个 App 文件通过 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 的 swiftc -frontend -parse，UI 测试文件通过 iOS 26 模拟器 Debug 解析；git diff --check 通过。
+
+补充离线执行：从本轮源码提取实际 AppStore 缓存属性／方法、invalidateDerived、apply、applyUnsortedGroup、undo 和 SavingCardVisibility，配完整实际 UITestSupport／UITestTransport，链接真实 Core，以 Swift 6 严格并发编译。平台发布桥与持久化宿主用替身，落盘仍用独立临时目录中的真实 LedgerRepository。验证 9→3→0、单次应用、过期组拒绝、缓存填充不触发观察、仅时间刷新复用、账本赋值触发观察和缓存失效、重读／撤销恢复、兜底消失与整批撤销，全部通过。未调用真实 DeepSeek。
+
+新增／改动可见中文字符串：无。外部设计、截图及分发资源未同步；未提交、未推送。Linux 语法解析与离线宿主执行不代替 Apple SDK 类型检查／编译或 XCTest UI：实际导航返回／白屏、真机 4,200 笔点按与滚动、后台整理交错、动画及系统后台行为仍待 Mac／iPhone 验证。
+
 ## 2026-11-02 · 第二十六轮「看原文」
 
 来源为 owner 本轮已确认的第二十六轮「看原文」HTML 及顶部／下滑两张渲染图；本轮已只读核对这四份资源。仅实现发送记录原文 sheet 与拷贝原文，不改变外发数据、记录存储或详情摘要。原稿保留在 owner 给定的位置，未复制进仓库、未写入设计稿链接；外部画布、历史原型、截图与分发包未同步。

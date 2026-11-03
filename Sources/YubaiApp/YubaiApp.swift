@@ -60,10 +60,24 @@ enum AppSheet: Identifiable {
     private(set) var ledger = Ledger() { didSet { invalidateDerived() } }
     var current: Ledger { ledger }
     private var derivedRevision = 0
+    private var ledgerRevision: UInt64 = 0
     // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
     @ObservationIgnored private var cachedEntries: [Entry]?
     @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, calendar: Calendar, value: EntryTimeline.Snapshot)?
+    @ObservationIgnored private var cachedUnsortedGroups = UnsortedGroupsCache()
+    func unsortedGroups(questionID: UUID) -> UnsortedGroupsSnapshot? {
+        cachedUnsortedGroups.snapshot(for: questionID, revision: ledgerRevision, in: current)
+    }
+    func unsortedEntryCount(for question: ImportQuestion) -> Int {
+        guard question.isFallback else { return 0 }
+        return unsortedGroups(questionID: question.id)?.entryCount ?? 0
+    }
+    func unsortedChangeSet(questionID: UUID, groupID: String, use: UnsortedUse,
+                          category: String?, otherAccount: UUID?) -> ChangeSet? {
+        cachedUnsortedGroups.changeSet(groupID: groupID, questionID: questionID, use: use,
+                                      category: category, otherAccount: otherAccount, revision: ledgerRevision, in: current)
+    }
     var funds: Funds {
         _ = derivedRevision
         let now = Date(); let zone = TimeZone.current
@@ -95,7 +109,10 @@ enum AppSheet: Identifiable {
         cachedEntryTimeline = (month, search, filter, calendar, value)
         return value
     }
-    private func invalidateDerived() { cachedEntries = nil; cachedEntryTimeline = nil; refreshTimeDerived() }
+    private func invalidateDerived() {
+        ledgerRevision &+= 1
+        cachedEntries = nil; cachedEntryTimeline = nil; refreshTimeDerived()
+    }
     func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
     var locations: LedgerLocations

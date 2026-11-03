@@ -96,7 +96,7 @@ struct OverviewView: View {
                 }
             }
         }.foregroundStyle(YubaiColor.label).amountPrivacy(store.current.preferences.hideAmounts)
-            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: ButlerCards.visible(store.current).first?.id)
+            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: ButlerCards.visible(store.current, fallbackEntryCount: { store.unsortedEntryCount(for: $0) }).first?.id)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: dueBills.map(\.id))
     }
     private var dueCard: some View {

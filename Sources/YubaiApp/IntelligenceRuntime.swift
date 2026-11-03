@@ -371,13 +371,12 @@ struct ActiveLedgerTransport: ChatTransport {
     }
     @discardableResult func applyUnsortedGroup(questionID: UUID, groupID: String, use: UnsortedUse,
                                                category: String?, otherAccount: UUID?) -> Bool {
-        guard let batch = current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == questionID }) == true }),
-              let question = batch.organization?.questions.first(where: { $0.id == questionID }),
-              let change = UnsortedGroups.changeSet(groupID: groupID, question: question, use: use,
-                                                    category: category, otherAccount: otherAccount, in: current) else { return false }
+        guard let snapshot = unsortedGroups(questionID: questionID),
+              let change = unsortedChangeSet(questionID: questionID, groupID: groupID, use: use,
+                                            category: category, otherAccount: otherAccount) else { return false }
         let before = current
         return apply(change, label: "整理") { ledger in
-            ImportOrganization.recordUndo(batchID: batch.id, before: before, in: &ledger)
+            ImportOrganization.recordUndo(batchID: snapshot.batchID, before: before, in: &ledger)
         }
     }
     func undoImport(_ batchID: UUID) {

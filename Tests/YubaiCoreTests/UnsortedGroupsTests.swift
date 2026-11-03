@@ -16,6 +16,11 @@ final class UnsortedGroupsTests: XCTestCase {
         let question = ImportQuestion(text: "4 笔还没分类", entryIDs: ledger.entries.map(\.id), options: [], groupsByParty: true)
         return (ledger, question)
     }
+    private func register(_ question: ImportQuestion, in ledger: inout Ledger) {
+        var batch = ImportBatch(filename: "合成.csv", importedCount: question.entryIDs.count, duplicateCount: 0, skippedCount: 0)
+        batch.organization = ImportOrganization(changeSet: ChangeSet(source: "导入整理", reason: "合成", items: []), questions: [question], skipped: [])
+        ledger.imports.append(batch)
+    }
     func testGroupsSplitDirectionsSortByCountAndSumCentsWithStableIDs() {
         let (ledger, question) = fixture()
         let groups = UnsortedGroups.groups(for: question, in: ledger)
@@ -154,5 +159,173 @@ final class UnsortedGroupsTests: XCTestCase {
         XCTAssertEqual(groups.count, 200)
         XCTAssertEqual(groups.reduce(0) { $0 + $1.entries.count }, 4200)
         XCTAssertEqual(groups.reduce(Int64(0)) { $0 + $1.total }, Int64(4200 * 4201 / 2))
+    }
+
+    func testCacheSharesOneProjectionAcrossCountSearchAndGroupLookup() throws {
+        var (ledger, question) = fixture()
+        question.entryIDs.append(question.entryIDs[0]) // Old duplicate coverage must not duplicate rows.
+        register(question, in: &ledger)
+        var cache = UnsortedGroupsCache()
+        let snapshot = try XCTUnwrap(cache.snapshot(for: question.id, revision: 1, in: ledger))
+        XCTAssertEqual(snapshot.entryCount, 4)
+        XCTAssertEqual(snapshot.batchID, ledger.imports[0].id)
+        XCTAssertEqual(snapshot.groups, UnsortedGroups.groups(for: question, in: ledger))
+        XCTAssertEqual(snapshot.groupsByID["out:商店"], snapshot.groups[0])
+        XCTAssertEqual(snapshot.matching(" 商店\n").map(\.id), ["out:商店", "in:商店"])
+        XCTAssertEqual(snapshot.matching(" \n"), snapshot.groups)
+        XCTAssertTrue(snapshot.matching("不存在").isEmpty)
+        for _ in 0..<100 {
+            XCTAssertTrue(cache.snapshot(for: question.id, revision: 1, in: ledger) === snapshot)
+        }
+        var other = question; other.id = UUID(); other.entryIDs = [question.entryIDs[3]]
+        ledger.imports[0].organization?.questions.append(other)
+        let second = try XCTUnwrap(cache.snapshot(for: other.id, revision: 2, in: ledger))
+        XCTAssertEqual(second.entryCount, 1)
+        XCTAssertEqual(second.groups.map(\.id), ["out:咖啡店"])
+        XCTAssertEqual(cache.snapshot(for: question.id, revision: 2, in: ledger)?.entryCount, 4)
+    }
+
+    func testCacheInvalidatesForClassificationDeletionAndUndoWithUnchangedTimestamp() throws {
+        var (ledger, question) = fixture()
+        register(question, in: &ledger)
+        let before = ledger
+        var cache = UnsortedGroupsCache()
+        let original = try XCTUnwrap(cache.snapshot(for: question.id, revision: 0, in: ledger))
+        ledger.entries[0].category = "餐饮" // A background checkpoint while the group is open.
+        let changed = try XCTUnwrap(cache.snapshot(for: question.id, revision: 1, in: ledger))
+        XCTAssertFalse(original === changed)
+        XCTAssertEqual(changed.entryCount, 3)
+        let change = try XCTUnwrap(cache.changeSet(groupID: "out:商店", questionID: question.id, use: .expense,
+                                                  category: "餐饮", revision: 1, in: ledger))
+        XCTAssertEqual(Set(change.items.flatMap(\.entryIDs)), [ledger.entries[1].id], "Confirmation must exclude a row sorted elsewhere")
+        ledger.entries[1].deletedAt = now
+        let removed = try XCTUnwrap(cache.snapshot(for: question.id, revision: 2, in: ledger))
+        XCTAssertEqual(removed.entryCount, 2)
+        XCTAssertNil(removed.groupsByID["out:商店"], "The destination should dismiss when its live group disappears")
+        XCTAssertNil(cache.changeSet(groupID: "out:商店", questionID: question.id, use: .expense,
+                                    category: "餐饮", revision: 2, in: ledger))
+        XCTAssertEqual(ledger.updatedAt, before.updatedAt)
+        ledger = before // Undo must rebuild even if updatedAt goes backwards or stays unchanged.
+        let restored = try XCTUnwrap(cache.snapshot(for: question.id, revision: 3, in: ledger))
+        XCTAssertEqual(restored.groups, original.groups)
+        XCTAssertFalse(restored === original)
+        XCTAssertFalse(restored === removed)
+    }
+
+    func testFallbackCardVisibilityUsesTheSameRevisionCacheAndStillDefersDuringOrganization() throws {
+        var (ledger, question) = fixture()
+        register(question, in: &ledger)
+        var card = ButlerCard(kind: .answerQuestion, title: "问题", body: "", dedupeKey: "fallback")
+        card.importQuestion = question; ledger.cards = [card]
+        var cache = UnsortedGroupsCache()
+        let snapshot = try XCTUnwrap(cache.snapshot(for: question.id, revision: 1, in: ledger))
+        let cached = ButlerCards.visible(ledger, fallbackEntryCount: {
+            let value = cache.snapshot(for: $0.id, revision: 1, in: ledger)
+            XCTAssertTrue(value === snapshot)
+            return value?.entryCount ?? 0
+        })
+        XCTAssertEqual(cached, ButlerCards.visible(ledger))
+        XCTAssertEqual(cached.map(\.id), [card.id])
+        XCTAssertTrue(ButlerCards.queued(ledger, organizingBatchIDs: [ledger.imports[0].id], fallbackEntryCount: { _ in
+            XCTFail("Run-local deferral must happen before reading the fallback count"); return 4
+        }).isEmpty)
+        for i in ledger.entries.indices { ledger.entries[i].category = "餐饮" }
+        XCTAssertTrue(ButlerCards.visible(ledger, fallbackEntryCount: {
+            cache.snapshot(for: $0.id, revision: 2, in: ledger)?.entryCount ?? 0
+        }).isEmpty)
+        XCTAssertEqual(snapshot.entryCount, 4, "An outgoing destination can retain its immutable transition frame")
+    }
+
+    func testCacheRefreshesCoverageLinksAndQuestionOrLedgerReplacement() throws {
+        var (ledger, question) = fixture()
+        register(question, in: &ledger)
+        var cache = UnsortedGroupsCache()
+        XCTAssertEqual(cache.snapshot(for: question.id, revision: 0, in: ledger)?.entryCount, 4)
+        let added = Entry(date: now, amount: 99, nature: .unknownIn, accountID: ledger.accounts[0].id, title: "New Party · 来款")
+        ledger.entries.append(added)
+        ledger.imports[0].organization?.questions[0].entryIDs = [added.id, ledger.entries[0].id]
+        let updated = try XCTUnwrap(cache.snapshot(for: question.id, revision: 1, in: ledger))
+        XCTAssertEqual(updated.entryCount, 2)
+        XCTAssertEqual(updated.matching("new PARTY").map(\.id), ["in:New Party"])
+        ledger.entries[1].relatedEntryID = ledger.entries[0].id
+        XCTAssertEqual(cache.snapshot(for: question.id, revision: 2, in: ledger)?.entryCount, 1)
+        ledger.entries[1].deletedAt = now
+        XCTAssertEqual(cache.snapshot(for: question.id, revision: 3, in: ledger)?.entryCount, 2, "Deleted references must stop suppressing rows")
+        ledger.imports[0].undoneAt = now
+        XCTAssertNil(cache.snapshot(for: question.id, revision: 4, in: ledger))
+        ledger.imports[0].undoneAt = nil
+        ledger.imports[0].organization?.questions.removeAll()
+        XCTAssertNil(cache.snapshot(for: question.id, revision: 5, in: ledger))
+        ledger.id = UUID(); register(question, in: &ledger)
+        XCTAssertEqual(cache.snapshot(for: question.id, revision: 5, in: ledger)?.entryCount, 3, "A different ledger cannot reuse the old revision's index")
+    }
+
+    func testLightweightValidationAgreesWithChangesAndRejectsInvalidSelections() throws {
+        var (ledger, question) = fixture()
+        let source = ledger.accounts[0].id
+        let other = Account(name: "合成钱包", at: now)
+        var archived = Account(name: "已归档", at: now); archived.archived = true
+        ledger.accounts += [other, archived]
+        let groups = UnsortedGroups.groups(for: question, in: ledger)
+        for group in groups {
+            XCTAssertFalse(UnsortedGroups.canApply(to: group, use: nil, in: ledger))
+            for use in UnsortedUse.allCases {
+                for category: String? in [nil, "餐饮", "工资奖金", "不存在"] {
+                    for account: UUID? in [nil, source, other.id, archived.id, UUID()] {
+                        let valid = UnsortedGroups.canApply(to: group, use: use, category: category, otherAccount: account, in: ledger)
+                        let change = UnsortedGroups.changeSet(groupID: group.id, question: question, use: use,
+                                                             category: category, otherAccount: account, in: ledger)
+                        XCTAssertEqual(valid, change != nil, "\(group.id) / \(use)")
+                    }
+                }
+            }
+        }
+        let expense = try XCTUnwrap(groups.first { $0.id == "out:商店" })
+        var mixedAccounts = ledger; mixedAccounts.entries[1].accountID = other.id
+        let mixedGroup = try XCTUnwrap(UnsortedGroups.groups(for: question, in: mixedAccounts).first { $0.id == expense.id })
+        XCTAssertTrue(UnsortedGroups.otherAccounts(for: mixedGroup, in: mixedAccounts).isEmpty)
+        XCTAssertFalse(UnsortedGroups.uses(for: mixedGroup, in: mixedAccounts).contains(.transfer))
+        XCTAssertFalse(UnsortedGroups.canApply(to: mixedGroup, use: .transfer, otherAccount: other.id, in: mixedAccounts))
+        ledger.categories[try XCTUnwrap(ledger.categories.firstIndex { $0.name == "餐饮" })].hidden = true
+        XCTAssertFalse(UnsortedGroups.canApply(to: expense, use: .expense, category: "餐饮", in: ledger))
+        register(question, in: &ledger)
+        var cache = UnsortedGroupsCache()
+        XCTAssertNotNil(cache.changeSet(groupID: expense.id, questionID: question.id, use: .transfer,
+                                       otherAccount: other.id, revision: 1, in: ledger))
+        ledger.accounts[1].archived = true
+        XCTAssertNil(cache.changeSet(groupID: expense.id, questionID: question.id, use: .transfer,
+                                    otherAccount: other.id, revision: 2, in: ledger))
+        ledger.imports[0].organization?.questions[0].groupsByParty = false
+        XCTAssertNil(cache.snapshot(for: question.id, revision: 3, in: ledger))
+    }
+
+    func test4200RowProjectionAndRepeatedSelectionsStayWithinHalfASecond() throws {
+        var (ledger, question) = fixture()
+        let accountID = ledger.accounts[0].id
+        ledger.entries = (0..<4200).map { index in
+            Entry(date: now, amount: Int64(index + 1), nature: .unknownOut,
+                  accountID: accountID, title: "合成大组 · 明细\(index)")
+        }
+        question.entryIDs = ledger.entries.map(\.id)
+        register(question, in: &ledger)
+        var cache = UnsortedGroupsCache()
+        let start = ProcessInfo.processInfo.systemUptime
+        let snapshot = try XCTUnwrap(cache.snapshot(for: question.id, revision: 1, in: ledger))
+        let group = try XCTUnwrap(snapshot.groupsByID["out:合成大组"])
+        XCTAssertEqual(snapshot.entryCount, 4200)
+        XCTAssertEqual(group.total, Int64(4200 * 4201 / 2))
+        XCTAssertEqual(UnsortedGroups.entries(for: question, in: ledger).count, 4200)
+        for _ in 0..<1000 {
+            XCTAssertTrue(cache.snapshot(for: question.id, revision: 1, in: ledger) === snapshot)
+            XCTAssertTrue(UnsortedGroups.canApply(to: group, use: .expense, category: "餐饮", in: ledger))
+            XCTAssertFalse(UnsortedGroups.canApply(to: group, use: .expense, in: ledger))
+        }
+        let change = try XCTUnwrap(cache.changeSet(groupID: group.id, questionID: question.id, use: .expense,
+                                                  category: "餐饮", revision: 1, in: ledger))
+        XCTAssertEqual(change.items.count, 8400)
+        XCTAssertEqual(Set(change.items.flatMap(\.entryIDs)), Set(question.entryIDs))
+        let elapsed = ProcessInfo.processInfo.systemUptime - start
+        print("4200-row projection + 1000 cached selections + ChangeSet: \(elapsed)s")
+        XCTAssertLessThan(elapsed, 0.5)
     }
 }

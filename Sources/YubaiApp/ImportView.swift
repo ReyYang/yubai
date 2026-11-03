@@ -526,7 +526,7 @@ struct ImportView: View {
                             }
                         }
                     } }
-                    let questions = organization.questions.filter { !$0.isFallback || !UnsortedGroups.entries(for: $0, in: store.current).isEmpty }
+                    let questions = organization.questions.filter { !$0.isFallback || store.unsortedEntryCount(for: $0) > 0 }
                     if !questions.isEmpty {
                         Text("还有 \(min(5, questions.count)) 个问题")
                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)

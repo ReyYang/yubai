@@ -7,9 +7,9 @@ struct ImportQuestionCard: View {
     let batchID: UUID
     var cardID: UUID? = nil
     var body: some View {
-        let rows = UnsortedGroups.entries(for: question, in: store.current)
-        let title = question.isFallback ? "\(rows.count.formatted(.number.locale(Locale(identifier: "en_US")))) 笔还没分类" : (store.current.preferences.hideAmounts ? "这几笔是什么用途？" : question.text)
-        if !question.isFallback || !rows.isEmpty {
+        let count = store.unsortedEntryCount(for: question)
+        let title = question.isFallback ? "\(count.formatted(.number.locale(Locale(identifier: "en_US")))) 笔还没分类" : (store.current.preferences.hideAmounts ? "这几笔是什么用途？" : question.text)
+        if !question.isFallback || count > 0 {
             Card(style: .compact, background: YubaiColor.amberTint) {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text(title)
@@ -41,18 +41,24 @@ struct ImportQuestionCard: View {
     }
 }
 
+/// Keep the destination attached to the list, even if its source row disappears.
+/// The initial group is display-only during the pop transition; confirmation
+/// always resolves the current ledger revision through AppStore.
+private struct UnsortedGroupRoute: Hashable {
+    let questionID: UUID
+    let group: UnsortedPartyGroup
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.questionID == rhs.questionID && lhs.group.id == rhs.group.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(questionID); hasher.combine(group.id) }
+}
+
 struct UnsortedGroupsView: View {
     @Environment(AppStore.self) private var store
     let questionID: UUID
     @State private var search = ""
-    private var question: ImportQuestion? {
-        store.current.imports.filter { $0.undoneAt == nil }.flatMap { $0.organization?.questions ?? [] }.first { $0.id == questionID }
-    }
     var body: some View {
-        let groups: [UnsortedPartyGroup] = question.map { UnsortedGroups.groups(for: $0, in: store.current) } ?? []
-        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        let visible: [UnsortedPartyGroup] = query.isEmpty ? groups : groups.filter { $0.party.localizedCaseInsensitiveContains(query) }
-        let count: Int = groups.reduce(0) { $0 + $1.entries.count }
+        let snapshot = store.unsortedGroups(questionID: questionID)
+        let visible: [UnsortedPartyGroup] = snapshot?.matching(search) ?? []
+        let count = snapshot?.entryCount ?? 0
         ScrollView {
             LazyVStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
@@ -70,9 +76,12 @@ struct UnsortedGroupsView: View {
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).paperBackground().foregroundStyle(YubaiColor.label)
             .navigationTitle("按对方分").yubaiNavigation()
+            .navigationDestination(for: UnsortedGroupRoute.self) { route in
+                UnsortedGroupView(questionID: route.questionID, initialGroup: route.group)
+            }
     }
     private func groupRow(_ group: UnsortedPartyGroup) -> some View {
-        NavigationLink { UnsortedGroupView(questionID: questionID, groupID: group.id) } label: {
+        NavigationLink(value: UnsortedGroupRoute(questionID: questionID, group: group)) {
             HStack(spacing: YubaiSpace.gapGroup) {
                 VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                     Text(group.party).yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail)
@@ -94,23 +103,32 @@ struct UnsortedGroupView: View {
     @State private var use: UnsortedUse?
     @State private var category: String?
     @State private var otherAccount: UUID?
-    private var question: ImportQuestion? {
-        store.current.imports.filter { $0.undoneAt == nil }.flatMap { $0.organization?.questions ?? [] }.first { $0.id == questionID }
+    @State private var lastGroup: UnsortedPartyGroup
+    @State private var isDismissing = false
+    init(questionID: UUID, initialGroup: UnsortedPartyGroup) {
+        self.questionID = questionID; groupID = initialGroup.id
+        _lastGroup = State(initialValue: initialGroup)
     }
     var body: some View {
+        let snapshot = store.unsortedGroups(questionID: questionID)
+        let liveGroup = snapshot?.groupsByID[groupID]
+        let group = liveGroup ?? lastGroup
         Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space8) {
-            if let question, let group = UnsortedGroups.groups(for: question, in: store.current).first(where: { $0.id == groupID }) {
-                heading(group)
-                useChoices(group)
-                if use?.needsCategory == true { categoryChoices(group) }
-                if use == .transfer { accountChoices(group) }
-                ViewThatFits(in: .horizontal) {
-                    applyButton(group, question: question).fixedSize(horizontal: true, vertical: false)
-                    applyButton(group, question: question)
-                }
-                recentEntries(group)
+            heading(group)
+            useChoices(group)
+            if use?.needsCategory == true { categoryChoices(group) }
+            if use == .transfer { accountChoices(group) }
+            ViewThatFits(in: .horizontal) {
+                applyButton(group, available: liveGroup != nil).fixedSize(horizontal: true, vertical: false)
+                applyButton(group, available: liveGroup != nil)
             }
+            recentEntries(group)
         }.navigationTitle("一组").yubaiNavigation()
+            .allowsHitTesting(liveGroup != nil && !isDismissing)
+            .onChange(of: snapshot?.revision, initial: true) { _, _ in
+                if let liveGroup { lastGroup = liveGroup }
+                else { dismissOnce() }
+            }
     }
     private func sectionTitle(_ title: String) -> some View {
         Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -150,11 +168,11 @@ struct UnsortedGroupView: View {
             }
         }
     }
-    private func applyButton(_ group: UnsortedPartyGroup, question: ImportQuestion) -> some View {
+    private func applyButton(_ group: UnsortedPartyGroup, available: Bool) -> some View {
         Button("这 \(group.entries.count.formatted(.number.locale(Locale(identifier: "en_US")))) 笔都这样记") {
-            if let use, store.applyUnsortedGroup(questionID: questionID, groupID: groupID, use: use, category: category, otherAccount: otherAccount) { dismiss() }
+            if let use, store.applyUnsortedGroup(questionID: questionID, groupID: groupID, use: use, category: category, otherAccount: otherAccount) { dismissOnce() }
         }.buttonStyle(PrimaryButtonStyle(compact: true, disabledBackground: YubaiColor.raised))
-            .accessibilityIdentifier("applyUnsortedGroup").disabled(!canApply(question))
+            .accessibilityIdentifier("applyUnsortedGroup").disabled(!available || isDismissing || !canApply(group))
     }
     private func recentEntries(_ group: UnsortedPartyGroup) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -179,8 +197,12 @@ struct UnsortedGroupView: View {
             }.foregroundStyle(YubaiColor.labelMuted)
         }
     }
-    private func canApply(_ question: ImportQuestion) -> Bool {
-        guard let use else { return false }
-        return UnsortedGroups.changeSet(groupID: groupID, question: question, use: use, category: category, otherAccount: otherAccount, in: store.current) != nil
+    private func canApply(_ group: UnsortedPartyGroup) -> Bool {
+        UnsortedGroups.canApply(to: group, use: use, category: category, otherAccount: otherAccount, in: store.current)
+    }
+    private func dismissOnce() {
+        guard !isDismissing else { return }
+        isDismissing = true
+        dismiss()
     }
 }
