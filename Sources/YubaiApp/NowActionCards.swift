@@ -5,6 +5,7 @@ import YubaiCore
     var cloudAIReady: Bool {
         current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil
     }
+    var organizationAIReady: Bool { current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured }
     func confirmSalary(_ candidate: SalaryCandidate) {
         guard SalaryDetection.candidate(in: current)?.key == candidate.key else { return }
         if update("工资", showToast: false, { ledger in
@@ -43,13 +44,12 @@ struct NowCardsSection: View {
     @State private var width: CGFloat = 1
     @State private var drag: CGFloat = 0
     private var butlerCards: [ButlerCard] {
-        SavingCardVisibility.visible(in: store.current, collapsingInflows: true, organizingBatchIDs: store.organizingImportBatchIDs,
-                                     fallbackEntryCount: { store.unsortedEntryCount(for: $0) })
+        store.butlerVisibility.collapsed
     }
     private var pages: [NowCardPage] {
         var result: [NowCardPage] = []
-        if let salary = SalaryDetection.candidate(in: store.current), !store.hiddenSalaryKeys.contains(salary.key) { result.append(.salary(salary)) }
-        let pending = PendingImportOrganization(in: store.current)
+        if let salary = store.nowSalaryCandidate, !store.hiddenSalaryKeys.contains(salary.key) { result.append(.salary(salary)) }
+        let pending = store.pendingOrganization
         if !pending.batchIDs.isEmpty { result.append(.imports(pending)) }
         result += butlerCards.filter { $0.importQuestion == nil && $0.kind != .unknownInflow }.map(NowCardPage.butler)
         return result
@@ -62,7 +62,7 @@ struct NowCardsSection: View {
                     ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
                 }
             }
-            let inflows = ButlerCards.queued(store.current, fallbackEntryCount: { store.unsortedEntryCount(for: $0) }).filter { $0.kind == .unknownInflow }
+            let inflows = store.butlerVisibility.queued.filter { $0.kind == .unknownInflow }
             if inflows.count >= 2 {
                 TabNavigationLink(.unknownInflows) { ButlerListView(unknownInflowsOnly: true) } label: {
                     HStack(spacing: YubaiSpace.gapGroup) {
@@ -215,9 +215,9 @@ private struct PendingImportsCard: View {
                     organizationProgress
                 } else {
                     HStack(spacing: YubaiSpace.space8) {
-                        if store.cloudAIReady || organizationError != nil {
+                        if store.organizationAIReady || organizationError != nil {
                             Button("整理") {
-                                if store.cloudAIReady { store.startOrganizingPendingImports() }
+                                if store.organizationAIReady { store.startOrganizingPendingImports() }
                                 else { store.sheet = .intelligencePrivacy }
                             }
                                 .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("organizeImports")

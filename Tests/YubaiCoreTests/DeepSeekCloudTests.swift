@@ -8,7 +8,7 @@ final class DeepSeekCloudTests: XCTestCase {
             (403, "", "云端密钥无效或无权访问，请检查密钥设置。"),
             (503, "", "云端服务返回错误（HTTP 503）。本机计算结果已保留。"),
             (404, #"{"error":{"code":"model_not_found"}}"#, DeepSeekError.modelUnavailable(DeepSeekConfiguration.defaultModel).localizedDescription),
-            (200, "malformed", "云端响应无法解析。")
+            (200, "malformed", "整理返回格式无效。")
         ]
         for (status, body, expected) in cases {
             let stub = CloudTestStub(rawResponse: true, statusCode: status) { _ in body }
@@ -20,7 +20,7 @@ final class DeepSeekCloudTests: XCTestCase {
             let stub = CloudTestStub { _ in throw URLError(code) }
             defer { stub.close() }
             do { _ = try await stub.send(ChatRequest(messages: [])); XCTFail() }
-            catch { XCTAssertEqual(ImportOrganizer.failureMessage(error), "云端请求失败：网络或超时。本机计算结果已保留，可稍后重试。") }
+            catch { XCTAssertEqual(ImportOrganizer.failureMessage(error), "整理请求网络中断或超时。") }
         }
     }
     func testImportTimeoutOverrideDoesNotChangeOtherRequestsOrHTTPPayload() async throws {
@@ -249,5 +249,41 @@ final class DeepSeekCloudTests: XCTestCase {
         let terms = try await backend.expandSearchQuery("咖啡")
         XCTAssertFalse(terms.isEmpty, "live expand should return synonyms")
         XCTAssertFalse(terms.contains(where: ModelAmountGuard.containsInventedAmount))
+    }
+}
+
+extension DeepSeekCloudTests {
+    func testOrganizationModelAndDisabledThinkingReachHTTPWithoutChangingSelectedModel() async throws {
+        let log = SendLog()
+        let stub = CloudTestStub(sendLog: log, model: "deepseek-v4-pro") { request in
+            let payload = try CloudTestStub.payload(in: request)
+            XCTAssertEqual(payload["thinking"] as? [String: String], ["type": "disabled"])
+            XCTAssertNil(payload["purpose"])
+            return #"{"rows":[]}"#
+        }
+        defer { stub.close() }
+        _ = try await stub.send(ChatRequest(messages: [], thinking: false, purpose: "导入整理", model: "deepseek-flash"))
+        _ = try await stub.send(ChatRequest(messages: [], thinking: false))
+        XCTAssertEqual(stub.backend.client.configuration.model, "deepseek-v4-pro")
+        XCTAssertEqual(log.items.map(\.model), ["deepseek-v4-pro", "deepseek-flash"])
+        for item in log.items {
+            let payload = try JSONSerialization.jsonObject(with: Data(item.requestText.utf8)) as! [String: Any]
+            XCTAssertEqual(payload["model"] as? String, item.model)
+            XCTAssertEqual(payload["thinking"] as? [String: String], ["type": "disabled"])
+        }
+    }
+    func testOrganizationHTTPFailuresRetainStatusIncludingAuthAndUnavailableModel() async throws {
+        for status in [400, 401, 403, 404, 429, 503] {
+            let stub = CloudTestStub(rawResponse: true, statusCode: status) { _ in #"{"error":{"code":"model_not_found","secret":"test-key"}}"# }
+            defer { stub.close() }
+            do {
+                _ = try await stub.send(ChatRequest(messages: [], purpose: "导入整理", model: "deepseek-flash"))
+                XCTFail("must reject HTTP error")
+            } catch {
+                XCTAssertEqual(error as? DeepSeekError, .http(status))
+                XCTAssertEqual(ImportOrganizer.failureMessage(error), "DeepSeek 返回错误（HTTP \(status)）。")
+                XCTAssertFalse(error.localizedDescription.contains("test-key"))
+            }
+        }
     }
 }

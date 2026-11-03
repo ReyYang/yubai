@@ -59,12 +59,34 @@ enum AppSheet: Identifiable {
     static let shared = AppStore()
     private(set) var ledger = Ledger() { didSet { invalidateDerived() } }
     var current: Ledger { ledger }
+    @ObservationIgnored var preparingImportOrganization = false
     private var derivedRevision = 0
-    private var ledgerRevision: UInt64 = 0
+    private(set) var ledgerRevision: UInt64 = 0
     // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
     @ObservationIgnored private var cachedEntries: [Entry]?
     @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, calendar: Calendar, value: EntryTimeline.Snapshot)?
+    @ObservationIgnored private var cachedPendingOrganization: PendingImportOrganization?
+    @ObservationIgnored private var cachedSalary: (day: Date, value: SalaryCandidate?)?
+    var pendingOrganization: PendingImportOrganization {
+        _ = ledgerRevision
+        if let cachedPendingOrganization { return cachedPendingOrganization }
+        let value = PendingImportOrganization(in: current); cachedPendingOrganization = value; return value
+    }
+    var nowSalaryCandidate: SalaryCandidate? {
+        _ = ledgerRevision
+        let day = Dates.day(Date())
+        if let cachedSalary, cachedSalary.day == day { return cachedSalary.value }
+        let value = SalaryDetection.candidate(in: current); cachedSalary = (day, value); return value
+    }
+    @ObservationIgnored private var cachedButlerVisibility: (revision: Int, day: Date, batches: Set<UUID>, value: SavingCardVisibility.Snapshot)?
+    var butlerVisibility: SavingCardVisibility.Snapshot {
+        let day = Dates.day(Date()), batches = organizingImportBatchIDs
+        if let cached = cachedButlerVisibility, cached.revision == derivedRevision, cached.day == day, cached.batches == batches { return cached.value }
+        let value = SavingCardVisibility.snapshot(in: current, organizingBatchIDs: batches,
+                                                 fallbackEntryCount: { self.unsortedEntryCount(for: $0) })
+        cachedButlerVisibility = (derivedRevision, day, batches, value); return value
+    }
     @ObservationIgnored private var cachedUnsortedGroups = UnsortedGroupsCache()
     func unsortedGroups(questionID: UUID) -> UnsortedGroupsSnapshot? {
         cachedUnsortedGroups.snapshot(for: questionID, revision: ledgerRevision, in: current)
@@ -113,7 +135,7 @@ enum AppSheet: Identifiable {
     }
     private func invalidateDerived() {
         ledgerRevision &+= 1
-        cachedEntries = nil; cachedEntryTimeline = nil; refreshTimeDerived()
+        cachedEntries = nil; cachedEntryTimeline = nil; cachedPendingOrganization = nil; cachedSalary = nil; refreshTimeDerived()
     }
     func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
@@ -264,6 +286,11 @@ enum AppSheet: Identifiable {
         }
         if saved, !silently, !skipped.isEmpty { toast = label + "完成；" + skipped.joined(separator: "；") }
         return saved
+    }
+    func publishOrganizationCheckpoint(_ next: Ledger, pending: PendingImportOrganization, salary: SalaryCandidate?, day: Date) {
+        ledger = next
+        cachedPendingOrganization = pending; cachedSalary = (day, salary)
+        undoLedger = organizationExecution?.before; undoLabel = "导入整理"
     }
     func autoSettleFixedFlows() {
         guard !locked, loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,

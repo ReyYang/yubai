@@ -14,6 +14,8 @@ import UIKit
     let id: UUID
     let before: Ledger
     private var progress: ImportOrganizationProgress
+    private var heartbeat: ImportOrganizationHeartbeat
+    private var heartbeatTask: Task<Void, Never>?
     private let cancel: @MainActor () -> Void
     private var completion: Bool?
     private let authorizedConfiguration: DeepSeekConfiguration?
@@ -26,6 +28,7 @@ import UIKit
 
     init(id: UUID, before: Ledger, progress: ImportOrganizationProgress, cancel: @escaping @MainActor () -> Void) {
         self.id = id; self.before = before; self.progress = progress; self.cancel = cancel
+        heartbeat = ImportOrganizationHeartbeat(progress: progress)
         authorizedConfiguration = APIKeyStore.shared.configuration()
         #if os(iOS)
         identifier = "app.yubai.personal.organizeImports." + id.uuidString
@@ -73,6 +76,7 @@ import UIKit
             try BGTaskScheduler.shared.submit(request)
             logger.info("run=\(executionID, privacy: .public) submit succeeded; start=true")
             submitted = true
+            startHeartbeat()
             return true
         }
         catch {
@@ -90,19 +94,30 @@ import UIKit
         if UIApplication.shared.applicationState != .active {
             // Keep this run's foreground-authorized key in memory: the existing
             // WhenUnlocked Keychain item cannot be reread after device lock.
-            guard authorizedConfiguration?.model == DeepSeekConfiguration.modelName() else { return nil }
             return authorizedConfiguration
         }
         #endif
         return APIKeyStore.shared.configuration()
     }
     func update(_ progress: ImportOrganizationProgress) {
-        self.progress = progress
+        self.progress = progress; heartbeat.update(progress); reportProgress()
+    }
+    func requestActivity(_ event: ImportOrganizer.RequestEvent) {
+        heartbeat.receive(event); reportProgress()
+    }
+    private func startHeartbeat() {
+        heartbeatTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+                guard let self, self.completion == nil else { return }
+                self.heartbeat.tick(); self.reportProgress()
+            }
+        }
+    }
+    private func reportProgress() {
         #if os(iOS)
-        // Report real saved checkpoints: minimal/no progress can cause the
-        // system to terminate the task; never invent progress during a request.
-        backgroundTask?.progress.totalUnitCount = Int64(progress.total)
-        backgroundTask?.progress.completedUnitCount = Int64(progress.completed)
+        backgroundTask?.progress.totalUnitCount = heartbeat.totalUnits
+        backgroundTask?.progress.completedUnitCount = heartbeat.completedUnits
         backgroundTask?.updateTitle("整理导入记录", subtitle: progress.subtitle)
         #endif
     }
@@ -110,8 +125,10 @@ import UIKit
         Self.logger.info("run=\(self.id.uuidString, privacy: .public) finish(success: \(success, privacy: .public)) alreadyFinished=\(self.completion != nil, privacy: .public)")
         guard completion == nil else { return }
         completion = success
+        heartbeatTask?.cancel(); heartbeatTask = nil
         #if os(iOS)
         if let backgroundTask {
+            if success { backgroundTask.progress.completedUnitCount = backgroundTask.progress.totalUnitCount }
             backgroundTask.expirationHandler = nil
             backgroundTask.setTaskCompleted(success: success)
             self.backgroundTask = nil
@@ -218,32 +235,32 @@ struct ActiveLedgerTransport: ChatTransport {
 }
 
 @MainActor extension AppStore {
-    func assistantTransport(for snapshot: Ledger, reportingLedgerChanges: Bool = false) -> (any ChatTransport)? {
+    func assistantTransport(for snapshot: Ledger, reportingLedgerChanges: Bool = false, preparedRedactor: Redactor? = nil) -> (any ChatTransport)? {
+        let revision = ledgerRevision
         let continuingOrganization = reportingLedgerChanges && organizationContinuesInBackground
-        guard snapshot.preferences.cloudAIEnabled, !locked || continuingOrganization, IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
+        guard snapshot.preferences.cloudAIEnabled, !locked || continuingOrganization, reportingLedgerChanges || IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
         #if DEBUG && targetEnvironment(simulator)
         if let script = UITestSupport.script {
             guard IntelligenceRuntime.isConfigured else { return nil }
             return ActiveLedgerTransport(base: UITestTransport(script: script), staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
-                self.current == snapshot && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground))
+                (reportingLedgerChanges || self.ledgerRevision == revision) && self.current.preferences.cloudAIEnabled && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground))
             }
         }
         #endif
         let configuration = continuingOrganization ? organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
         guard let configuration else { return nil }
-        let client = DeepSeekClient(configuration: configuration, redactor: Redactor(ledger: snapshot))
-        return ActiveLedgerTransport(base: client, model: client.configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
+        let client = DeepSeekClient(configuration: configuration, redactor: preparedRedactor ?? Redactor(ledger: snapshot))
+        return ActiveLedgerTransport(base: client, model: reportingLedgerChanges ? nil : client.configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
             let configuration = continuingOrganization ? self.organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
-            return self.current == snapshot && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground)) && configuration == client.configuration
+            return (reportingLedgerChanges || self.ledgerRevision == revision) && self.current.preferences.cloudAIEnabled && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground)) && (reportingLedgerChanges ? configuration?.baseURL == client.configuration.baseURL && configuration?.apiKey == client.configuration.apiKey : configuration == client.configuration)
         }
     }
     // Called only by the now-page's explicit organization button.
     func startOrganizingPendingImports() {
-        guard pendingOrganizationTask == nil, organizationExecution == nil, !organizingPendingImports, organizingBatchID == nil,
+        guard pendingOrganizationTask == nil, organizationExecution == nil, !preparingImportOrganization, !organizingPendingImports, organizingBatchID == nil,
               !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
-        let ids = PendingImportOrganization(in: current).batchIDs
+        let ids = pendingOrganization.batchIDs
         guard !ids.isEmpty else { return }
-        guard beginImportOrganization(batchIDs: ids) else { return }
         pendingOrganizationTask = Task { @MainActor in
             defer { pendingOrganizationTask = nil }
             await organizePendingImports()
@@ -254,12 +271,24 @@ struct ActiveLedgerTransport: ChatTransport {
         importOrganizationTask?.cancel()
         organizationExecution?.finish(success: false)
     }
-    @discardableResult private func beginImportOrganization(batchIDs: [UUID]) -> Bool {
-        guard canEditLedger(), loadFailure == nil else { return false }
-        // One snapshot covers every batch and checkpoint until completion, stop or failure.
-        // Fail before any request/mutation if the pre-run recovery cannot be written.
-        do { try localRepository.preserveRecovery(current, reason: "导入整理") }
-        catch { self.error = error.localizedDescription; return false }
+    @discardableResult private func beginImportOrganization(batchIDs: [UUID]) async -> Bool {
+        guard !preparingImportOrganization, canEditLedger(), loadFailure == nil else { return false }
+        preparingImportOrganization = true
+        defer { preparingImportOrganization = false }
+        // Exactly one pre-run recovery; gzip and pruning stay off MainActor.
+        // Edits made during preparation are handled by fresh request snapshots.
+        let before = current, repository = localRepository
+        let preparation = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            try repository.preserveRecovery(before, reason: "导入整理")
+        }
+        do {
+            try await withTaskCancellationHandler { try await preparation.value } onCancel: { preparation.cancel() }
+            try Task.checkCancellation()
+        } catch {
+            if !(error is CancellationError) { self.error = error.localizedDescription }
+            return false
+        }
         let progress = ImportOrganizationProgress(completed: 0, total: batchIDs.reduce(0) {
             $0 + ImportOrganizer.pendingEntryIDs(in: current, batchID: $1).count
         })
@@ -268,6 +297,9 @@ struct ActiveLedgerTransport: ChatTransport {
         let id = UUID()
         let execution = ImportOrganizationExecution(id: id, before: current, progress: progress) { [weak self] in
             guard let self, self.organizationExecution?.id == id else { return }
+            for batchID in self.organizingImportBatchIDs {
+                self.organizationErrors[batchID] = ImportOrganizer.failureMessage(ImportOrganizer.Failure.backgroundExpired)
+            }
             self.stopOrganizingImports()
         }
         organizationExecution = execution
@@ -293,7 +325,7 @@ struct ActiveLedgerTransport: ChatTransport {
         let ids = current.imports.filter {
             $0.needsOrganization == true && $0.undoneAt == nil && (organizationExecution == nil || organizingImportBatchIDs.contains($0.id))
         }.map(\.id)
-        if organizationExecution == nil, !beginImportOrganization(batchIDs: ids) { return }
+        if organizationExecution == nil, !(await beginImportOrganization(batchIDs: ids)) { return }
         organizingPendingImports = true
         for id in ids {
             guard !Task.isCancelled else { return }
@@ -307,7 +339,7 @@ struct ActiveLedgerTransport: ChatTransport {
         if ownsExecution {
             guard !locked, loadFailure == nil, current.preferences.cloudAIEnabled,
                   current.imports.contains(where: { $0.id == batchID && $0.needsOrganization == true && $0.undoneAt == nil }) else { return }
-            guard beginImportOrganization(batchIDs: [batchID]) else { return }
+            guard await beginImportOrganization(batchIDs: [batchID]) else { return }
         }
         let task = Task { @MainActor in await performImportOrganization(batchID) }
         importOrganizationTask = task
@@ -323,43 +355,75 @@ struct ActiveLedgerTransport: ChatTransport {
         guard !Task.isCancelled, organizingBatchID == nil, !locked || organizationContinuesInBackground,
               let batch = current.imports.first(where: { $0.id == batchID }), batch.needsOrganization == true,
               batch.undoneAt == nil, current.preferences.cloudAIEnabled,
-              assistantTransport(for: current, reportingLedgerChanges: true) != nil else { return }
+              IntelligenceRuntime.isConfigured else { return }
         let before = current
         let ids = ImportOrganizer.pendingEntryIDs(in: before, batchID: batchID)
         organizingBatchID = batchID; organizationErrors[batchID] = nil
         defer { organizingBatchID = nil }
         do {
-            let organizer = ImportOrganizer { snapshot in
-                try await MainActor.run {
-                    guard self.current == snapshot, !self.locked || self.organizationContinuesInBackground,
-                          let transport = self.assistantTransport(for: snapshot, reportingLedgerChanges: true) else {
+            let organizer = ImportOrganizer(snapshotForNextRequest: {
+                await MainActor.run { self.current }
+            }) { snapshot in
+                let redactor = Redactor(ledger: snapshot)
+                return try await MainActor.run {
+                    guard !self.locked || self.organizationContinuesInBackground,
+                          let transport = self.assistantTransport(for: snapshot, reportingLedgerChanges: true, preparedRedactor: redactor) else {
                         throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
                     }
                     return transport
                 }
             }
-            _ = try await organizer.organize(ledger: before, entryIDs: ids) { result, completedIDs, snapshot in
-                try Task.checkCancellation()
-                return try await MainActor.run {
-                    try Task.checkCancellation()
-                    guard self.current == snapshot, !self.locked || self.organizationContinuesInBackground else {
-                        throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
-                    }
-                    guard self.apply(result.changeSet, label: "导入整理", silently: true, continuingImportOrganization: true, finishing: { ledger in
-                        result.finish(batchID: batchID, before: snapshot, in: &ledger, entryIDs: completedIDs)
-                    }) else { throw YubaiError.invalid(self.error ?? ImportOrganizer.ledgerChangedMessage) }
-                    let progress = ImportOrganizationProgress(completed: (self.organizationProgress?.completed ?? 0) + completedIDs.count,
-                                                              total: self.organizationProgress?.total ?? ids.count)
-                    self.organizationProgress = progress
-                    self.organizationExecution?.update(progress)
-                    return self.current
-                }
-            }
+            _ = try await organizer.organize(ledger: before, entryIDs: ids, checkpoint: { result, completedIDs, snapshot in
+                try await self.checkpointImportOrganization(result, completedIDs: completedIDs, snapshot: snapshot, batchID: batchID)
+            }, activity: { event in
+                await MainActor.run { self.organizationExecution?.requestActivity(event) }
+            })
             let skipped = current.imports.first { $0.id == batchID }?.organization?.skipped ?? []
             toast = skipped.isEmpty ? "导入整理完成" : "整理完成；" + skipped.joined(separator: "；")
         } catch is CancellationError { }
         catch {
             if !Task.isCancelled { organizationErrors[batchID] = ImportOrganizer.failureMessage(error) }
+        }
+    }
+    /// Only this parent's completion loop calls here, so checkpoints serialize.
+    /// Manual edits can run while preparation/storage await; CAS and the local
+    /// revision then rebase only this reply, preserving those edits.
+    private func checkpointImportOrganization(_ result: ImportOrganization, completedIDs: [UUID], snapshot: Ledger, batchID: UUID) async throws -> Ledger {
+        while true {
+            try Task.checkCancellation()
+            guard organizationExecution != nil, !locked || organizationContinuesInBackground,
+                  loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
+                  current.preferences.cloudAIEnabled else { throw ImportOrganizer.Failure.ledgerChanged }
+            let before = current, revision = ledgerRevision, repository = localRepository
+            let diskRevision = repository.revision
+            let location = ledgerLocation
+            let preparation = Task.detached(priority: .userInitiated) {
+                try Task.checkCancellation()
+                let prepared = try result.preparingCheckpoint(entryIDs: completedIDs, snapshot: snapshot, current: before, batchID: batchID)
+                try Task.checkCancellation()
+                let saved = try repository.save(prepared.ledger, reason: "导入整理", requiringUnchanged: true,
+                                                preservingRecovery: false, expectedRevision: diskRevision, markingPendingSync: location == .iCloud)
+                return (ledger: saved, pending: PendingImportOrganization(in: saved), salary: SalaryDetection.candidate(in: saved), day: Dates.day(Date()))
+            }
+            let saved: (ledger: Ledger, pending: PendingImportOrganization, salary: SalaryCandidate?, day: Date)
+            do {
+                saved = try await withTaskCancellationHandler { try await preparation.value } onCancel: { preparation.cancel() }
+            } catch {
+                if ledgerRevision != revision, error is LedgerSyncError { continue }
+                throw error
+            }
+            // A successful atomic write is always published, even if Stop arrived
+            // during that write. If a manual write won instead, rebase and retry.
+            guard ledgerRevision == revision, ledgerLocation == location else { continue }
+            publishOrganizationCheckpoint(saved.ledger, pending: saved.pending, salary: saved.salary, day: saved.day)
+            if location == .iCloud {
+                pendingUpload = saved.ledger; pendingUploadPreservingRecovery = false
+                Task { await synchronizeLedger() }
+            }
+            let progress = ImportOrganizationProgress(completed: (organizationProgress?.completed ?? 0) + completedIDs.count,
+                                                      total: organizationProgress?.total ?? completedIDs.count)
+            organizationProgress = progress; organizationExecution?.update(progress)
+            return current
         }
     }
     func answerImportQuestion(_ question: ImportQuestion, batchID: UUID, option: Int) {
@@ -412,7 +476,7 @@ struct ActiveLedgerTransport: ChatTransport {
         update("更新管家卡片", recordUndo: false) { $0.cards = next.cards }
     }
     private func classifySubcategoriesIfDue() async {
-        guard !reflectingMemories, PendingImportOrganization(in: current).batchIDs.isEmpty,
+        guard !reflectingMemories, pendingOrganization.batchIDs.isEmpty,
               current.preferences.cloudAIEnabled, SubcategoryBatch.isDue(current),
               !SubcategoryBatch.pending(current).isEmpty, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
               let transport = assistantTransport(for: current) else { return }
@@ -427,7 +491,7 @@ struct ActiveLedgerTransport: ChatTransport {
         } catch { /* Keep the local classification and retry the unpersisted round later. */ }
     }
     private func reflectMemoriesIfDue() async {
-        guard !reflectingMemories, PendingImportOrganization(in: current).batchIDs.isEmpty,
+        guard !reflectingMemories, pendingOrganization.batchIDs.isEmpty,
               MemoryReflection.isDue(ledger: current),
               syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
               let transport = assistantTransport(for: current) else { return }
