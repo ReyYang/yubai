@@ -1,4 +1,8 @@
 Timestamp                       Thread     Type        Activity             PID    TTL  
+2026-11-03 14:44:06.293593+0800 0x5cdc28   Info        0x0                  72206  0    Yubai: (Yubai.debug.dylib) [app.yubai.personal:background-organize] run=DA7D426F-035A-48E4-8390-CF14E6A33747 expiration triggered at=2026-11-03T06:44:06Z
+2026-11-03 14:44:06.509817+0800 0x5cce8f   Info        0x0                  72206  0    Yubai: (Yubai.debug.dylib) [app.yubai.personal:background-organize] run=DA7D426F-035A-48E4-8390-CF14E6A33747 finish(success: false) alreadyFinished=false
+2026-11-03 14:44:06.511759+0800 0x5cce8f   Info        0x0                  72206  0    Yubai: (Yubai.debug.dylib) [app.yubai.personal:background-organize] run=DA7D426F-035A-48E4-8390-CF14E6A33747 finish(success: false) alreadyFinished=true
+2026-11-03 14:44:16.681786+0800 0x5cce8f   Info        0x15ef81f            72206  0    Yubai: (Yubai.debug.dylib) [app.yubai.personal:background-organize] run=DA7D426F-035A-48E4-8390-CF14E6A33747 finish(success: false) alreadyFinished=true
 ==========
-/Users/yang/deepresearch/yubai-evidence-2026-11-03/device.logarchive
+/Users/yang/deepresearch/yubai-evidence-2026-11-03/post-reinstall-failure-144441/device.logarchive
 ==========
