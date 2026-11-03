@@ -64,10 +64,14 @@ private struct ImportEval: Decodable {
 private actor ImportCheckpointStore {
     var ledger: Ledger
     let batchID: UUID
+    let repository: LedgerRepository?
     var checkpoints = 0
     var editAfterCheckpoint: Int?
     var cancelAfterCheckpoint: Int?
-    init(_ ledger: Ledger, batchID: UUID) { self.ledger = ledger; self.batchID = batchID }
+    init(_ ledger: Ledger, batchID: UUID, repository: LedgerRepository? = nil) {
+        self.ledger = ledger; self.batchID = batchID; self.repository = repository
+    }
+    func beginRun() throws { try repository?.preserveRecovery(ledger, reason: "导入整理") }
     func snapshot() -> Ledger { ledger }
     func configure(edit: Int? = nil, cancel: Int? = nil) { editAfterCheckpoint = edit; cancelAfterCheckpoint = cancel }
     func check(_ snapshot: Ledger) throws {
@@ -81,7 +85,10 @@ private actor ImportCheckpointStore {
         next.updatedAt = next.updatedAt.addingTimeInterval(1)
         try next.validate()
         // Exercise actual Codable round trips between every request.
-        ledger = try LedgerCodec.decode(LedgerCodec.encode(next))
+        if let repository {
+            _ = try repository.save(next, reason: "导入整理", requiringUnchanged: true, preservingRecovery: false)
+            ledger = try repository.load()
+        } else { ledger = try LedgerCodec.decode(LedgerCodec.encode(next)) }
         checkpoints += 1
         let saved = ledger
         if checkpoints == editAfterCheckpoint { ledger.preferences.dailyLiving += 1 }
@@ -118,6 +125,65 @@ private actor ResumableImportScript: ChatTransport {
 }
 
 final class ImportOrganizerTests: XCTestCase {
+    /// Import-shaped metadata, including the IDs/notes used for deduplication and provenance.
+    private func largeImport() -> (Ledger, UUID) {
+        var ledger = Ledger()
+        let date = Dates.parse("2026-11-03")!
+        ledger.updatedAt = date
+        ledger.accounts = [Account(name: "合成支付宝", at: date)]
+        var batch = ImportBatch(filename: "synthetic-4200.csv", importedCount: 4200, duplicateCount: 0, skippedCount: 0)
+        batch.importedAt = date; batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: date)
+        let attachment = Attachment(name: batch.filename, data: Data("合成原件".utf8))
+        batch.attachmentID = attachment.id
+        ledger.attachments = [attachment]; ledger.imports = [batch]
+        ledger.entries = (0..<4200).map { index in
+            var entry = Entry(date: date.addingTimeInterval(Double(-index * 60)), amount: Int64(100 + index % 10000),
+                              accountID: ledger.accounts[0].id, title: "合成商户\(index % 70)")
+            entry.batchID = batch.id; entry.attachmentID = attachment.id
+            entry.source = "支付宝"; entry.sourceRow = index + 2
+            entry.externalID = "202611030000000000\(String(format: "%010d", index))"
+            entry.sourceIdentity = entry.source + "|" + entry.accountID.uuidString + "|" + entry.externalID
+            entry.fingerprint = LedgerCodec.checksum(Data("合成流水\(index)".utf8))
+            entry.note = "对手信息：合成商户\(index % 70)\n原账单状态：交易成功\n收付款方式：余额宝"
+            entry.classificationReason = "没分类"
+            return entry
+        }
+        return (ledger, batch.id)
+    }
+
+    func test4200EntryMetadataSizeAndUndoRemainBounded() throws {
+        var (ledger, batchID) = largeImport()
+        let imported = ledger
+        let rawBytes = try LedgerCodec.encodeMetadata(ledger)
+        let items = ledger.entries.flatMap { entry -> [ChangeItem] in
+            [.setCategory(entry: entry.id, category: "餐饮"), .setPurpose(entry: entry.id, text: "午餐")]
+        }
+        // The production path accumulates changes for the import details screen.
+        // Apply 30-row checkpoints, without spending this size test on model/parsing work.
+        for start in stride(from: 0, to: ledger.entries.count, by: 30) {
+            let before = ledger
+            let end = min(start + 30, ledger.entries.count)
+            for index in start..<end {
+                ledger.entries[index].category = "餐饮"; ledger.entries[index].purpose = "午餐"
+                ledger.entries[index].userEdited = true
+                ledger.entries[index].classificationReason = "导入整理：根据账单用途与关联证据整理"
+            }
+            let result = ImportOrganization(changeSet: ChangeSet(source: "导入整理", reason: "根据账单用途与关联证据整理",
+                                                                items: Array(items[(start * 2)..<(end * 2)])), questions: [], skipped: [])
+            result.finish(batchID: batchID, before: before, in: &ledger, entryIDs: Array(ledger.entries[start..<end].map(\.id)))
+        }
+        let organizedBytes = try LedgerCodec.encodeMetadata(ledger)
+        let compressed = try RecoveryCompression.encode(organizedBytes)
+        print("RECOVERY_SIZE_4200 imported=\(rawBytes.count) organized=\(organizedBytes.count) gzip=\(compressed.count) undoEntries=\(ledger.imports[0].undo!.entries.count)")
+        XCTAssertLessThan(rawBytes.count, 4_000_000)
+        XCTAssertLessThan(organizedBytes.count, 5_000_000)
+        XCTAssertEqual(ledger.imports[0].undo?.entries.count, 0, "Rows from this batch are removed on undo, never copied into undo")
+        XCTAssertEqual(try LedgerCodec.decode(organizedBytes), ledger)
+        BillImporter.undo(batchID: batchID, in: &ledger)
+        var expected = imported; expected.entries = []; expected.imports = []; expected.attachments = []
+        XCTAssertEqual(ledger, expected)
+    }
+
     private func syntheticImport(count: Int = 200) throws -> (Ledger, Ledger, ImportBatch) {
         var ledger = Ledger(); ledger.accounts = [Account(name: "合成卡")]
         let before = ledger
@@ -127,7 +193,8 @@ final class ImportOrganizerTests: XCTestCase {
         let batch = try BillImporter.commit(preview, data: bytes, to: &ledger)
         return (before, ledger, batch)
     }
-    private func resume(_ store: ImportCheckpointStore, script: any ChatTransport, batchID: UUID) async throws {
+    private func resume(_ store: ImportCheckpointStore, script: any ChatTransport, batchID: UUID, beginningRun: Bool = true) async throws {
+        if beginningRun { try await store.beginRun() }
         let snapshot = await store.snapshot()
         let organizer = ImportOrganizer { expected in
             try await store.check(expected)
@@ -136,6 +203,113 @@ final class ImportOrganizerTests: XCTestCase {
         _ = try await organizer.organize(ledger: snapshot, entryIDs: ImportOrganizer.pendingEntryIDs(in: snapshot, batchID: batchID)) { result, ids, before in
             try await store.save(result, ids: ids, before: before)
         }
+    }
+    func testMultiChunkRunKeepsOnePreRunRecoveryAndBatchUndoAfterReload() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-organize-history-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = LedgerRepository(directory: root)
+        let (before, imported, batch) = try syntheticImport(count: 95)
+        let initial = try repository.save(imported)
+        let store = ImportCheckpointStore(initial, batchID: batch.id, repository: repository)
+        try await resume(store, script: ResumableImportScript(), batchID: batch.id)
+        let checkpoints = await store.checkpoints
+        XCTAssertEqual(checkpoints, 4)
+        let history = try repository.recoveries()
+        XCTAssertEqual(history.count, 1)
+        XCTAssertEqual(try repository.readRecovery(XCTUnwrap(history.first)), imported)
+        var complete = try LedgerRepository(directory: root).load()
+        XCTAssertEqual(complete.imports[0].organizedEntryIDs?.count, 95)
+        BillImporter.undo(batchID: batch.id, in: &complete)
+        XCTAssertEqual(complete, before)
+        // Normal operations immediately resume their original snapshot policy.
+        try repository.save(complete, reason: "整批撤销")
+        XCTAssertEqual(try repository.recoveries().count, 2)
+    }
+
+    func testFailedAndStoppedRunsKeepOneRecoveryEachAndResumeWithANewRecovery() async throws {
+        for failing in [true, false] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-organize-resume-\(UUID())")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let repository = LedgerRepository(directory: root)
+            let (before, imported, batch) = try syntheticImport(count: 100)
+            let store = ImportCheckpointStore(try repository.save(imported), batchID: batch.id, repository: repository)
+            if !failing { await store.configure(cancel: 2) }
+            let run = Task {
+                try await self.resume(store, script: ResumableImportScript(failAt: failing ? 3 : nil), batchID: batch.id)
+            }
+            do { try await run.value; XCTFail("The run must stop after two saved chunks") } catch { }
+            let partial = try repository.load()
+            XCTAssertEqual(partial.imports[0].organizedEntryIDs?.count, 60)
+            XCTAssertEqual(try repository.recoveries().count, 1)
+            XCTAssertEqual(try repository.readRecovery(XCTUnwrap(repository.recoveries().first)), imported)
+            await store.configure()
+            try await resume(store, script: ResumableImportScript(), batchID: batch.id)
+            let history = try repository.recoveries()
+            XCTAssertEqual(history.count, 2)
+            XCTAssertEqual(try repository.readRecovery(history[0]), partial)
+            XCTAssertEqual(try repository.readRecovery(history[1]), imported)
+            var undone = try repository.load()
+            BillImporter.undo(batchID: batch.id, in: &undone)
+            XCTAssertEqual(undone, before)
+        }
+    }
+
+    func testMultipleImportBatchesInOneRunShareThePreRunRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-multi-import-history-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = LedgerRepository(directory: root)
+        var (_, imported, first) = try syntheticImport(count: 35)
+        var second = ImportBatch(filename: "second.csv", importedCount: 35, duplicateCount: 0, skippedCount: 0)
+        second.needsOrganization = true; second.undo = ImportUndo(updatedAt: imported.updatedAt)
+        let extra = imported.entries.map { entry -> Entry in
+            var entry = entry; entry.id = UUID(); entry.batchID = second.id
+            entry.externalID += "-second"; entry.sourceIdentity += "-second"; entry.fingerprint += "-second"
+            return entry
+        }
+        imported.imports.append(second); imported.entries += extra
+        var saved = try repository.save(imported)
+        for (index, batch) in [first, second].enumerated() {
+            let store = ImportCheckpointStore(saved, batchID: batch.id, repository: repository)
+            try await resume(store, script: ResumableImportScript(), batchID: batch.id, beginningRun: index == 0)
+            saved = await store.snapshot()
+        }
+        XCTAssertTrue(saved.imports.allSatisfy { $0.needsOrganization == false })
+        XCTAssertEqual(try repository.recoveries().count, 1)
+        XCTAssertEqual(try repository.readRecovery(XCTUnwrap(repository.recoveries().first)), imported)
+    }
+
+    func testUndoDeltaStoresOnlyChangedForeignEntriesAndKeepsTheirFirstValues() throws {
+        var before = Ledger(); let date = Dates.parse("2026-11-03")!
+        before.updatedAt = date; before.accounts = [Account(name: "合成卡", at: date)]
+        before.entries = (0..<200).map { Entry(date: date, amount: Int64(100 + $0), accountID: before.accounts[0].id, title: "旧记录\($0)") }
+        var batch = ImportBatch(filename: "diff.csv", importedCount: 1, duplicateCount: 0, skippedCount: 0)
+        batch.undo = ImportUndo(updatedAt: before.updatedAt)
+        var ledger = before; ledger.imports = [batch]
+        var own = Entry(date: date, amount: 99, accountID: before.accounts[0].id, title: "本批记录")
+        own.batchID = batch.id; ledger.entries.append(own)
+        let imported = ledger
+        ledger.entries[0].purpose = "第一次用途"; ledger.entries[1].category = "餐饮"
+        var plan = Plan(title: "合成安排", amount: 100, dueDate: date)
+        plan.accountID = before.accounts[0].id; ledger.plans.append(plan)
+        ledger.cards.append(ButlerCard(kind: .answerQuestion, title: "合成", body: "合成", evidence: [], action: .answerQuestion, dedupeKey: "diff"))
+        ImportOrganization.recordUndo(batchID: batch.id, before: imported, in: &ledger)
+        let middle = ledger
+        ledger.entries[0].purpose = "第二次用途"; ledger.entries[2].note = "合成改动"
+        ledger.entries[200].purpose = "本批不用复制"
+        ImportOrganization.recordUndo(batchID: batch.id, before: middle, in: &ledger)
+        let undo = try XCTUnwrap(ledger.imports[0].undo)
+        XCTAssertEqual(undo.entries, Array(before.entries.prefix(3)))
+        XCTAssertEqual(undo.planIDs, [plan.id]); XCTAssertEqual(undo.cardIDs, ledger.cards.map(\.id))
+        // This is the pre-existing undo JSON shape: full prior values for changed rows,
+        // no memoryIDs in older data. Reading and resaving it must preserve batch undo.
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encodeMetadata(ledger)) as? [String: Any])
+        var imports = try XCTUnwrap(json["imports"] as? [[String: Any]])
+        var legacyUndo = try XCTUnwrap(imports[0]["undo"] as? [String: Any])
+        legacyUndo.removeValue(forKey: "memoryIDs"); imports[0]["undo"] = legacyUndo; json["imports"] = imports
+        var restored = try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json))
+        restored = try LedgerCodec.decode(LedgerCodec.encodeMetadata(restored))
+        BillImporter.undo(batchID: batch.id, in: &restored)
+        XCTAssertEqual(restored, before)
     }
     func testThirdChunkFailurePersistsTwoChunksResumesOnlyRemainderAndUndoesEntireImport() async throws {
         let (before, imported, batch) = try syntheticImport()
