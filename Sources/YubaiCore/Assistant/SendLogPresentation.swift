@@ -140,3 +140,170 @@ public enum SendLogPresentation {
         String(text.prefix(limit)) + (text.count > limit ? "…" : "")
     }
 }
+
+public struct SendLogRawField: Identifiable, Equatable, Sendable {
+    public var id: String { name }
+    public let name: String
+    public let value: JSONValue
+}
+
+public struct SendLogRawGroup: Equatable, Sendable {
+    public let party: String
+    public let detail: String
+    public let fields: [SendLogRawField]
+}
+
+public struct SendLogRawSection: Equatable, Sendable {
+    public enum Body: Equatable, Sendable {
+        case fields([SendLogRawField])
+        case groups([SendLogRawGroup])
+        case array(name: String, values: [JSONValue])
+        case text(String)
+    }
+    public let title: String?
+    public let body: Body
+}
+
+/// Lossless text fallbacks and unabridged JSON projections for the raw sheet.
+/// Unlike the timeline, these do not translate field names or clip values.
+public enum SendLogRawPresentation {
+    public struct Rules: Equatable, Sendable {
+        public let text: String
+        public var paragraphs: [String] { text.components(separatedBy: "\n") }
+        public var preview: String { paragraphs.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? "" }
+        public var count: Int { text.count }
+    }
+
+    public static func rules(in item: SendLogItem) -> Rules {
+        Rules(text: SendLogPresentation.rules(in: SendLogGroup(items: [item])).joined(separator: "\n\n"))
+    }
+
+    public static func fields(in object: [String: JSONValue]) -> [SendLogRawField] {
+        object.keys.sorted().map { SendLogRawField(name: $0, value: object[$0]!) }
+    }
+
+    public static func isScalar(_ value: JSONValue) -> Bool {
+        switch value { case .array, .object: false; default: true }
+    }
+
+    public static func scalarText(_ value: JSONValue) -> String {
+        switch value {
+        case .string(let text): text
+        case .null: "null"
+        default: (try? value.jsonText()) ?? ""
+        }
+    }
+
+    public static func initiallyCollapsed(count: Int) -> Bool { count > 8 }
+    public static func initiallyCollapsed(_ values: [JSONValue]) -> Bool { initiallyCollapsed(count: values.count) }
+
+    public static func arrayTitle(_ name: String, count: Int) -> String {
+        let unit = name == "groups" ? "组" : name == "questions" ? "个" : "项"
+        return "\(name) · \(count) \(unit)"
+    }
+
+    public static func requestSections(in item: SendLogItem) -> [SendLogRawSection] {
+        // Older/unparsed log items still expose their original request.
+        guard !item.messages.isEmpty else { return requestSections(item.requestText) }
+        return item.messages.filter { $0.role != .system }.flatMap { message in
+            var sections = message.content.flatMap { $0.isEmpty ? nil : requestSections($0) } ?? []
+            for call in message.toolCalls ?? [] {
+                let arguments = (try? JSONValue.parse(call.function.arguments)).flatMap { $0.objectValue == nil ? nil : $0 }
+                    ?? .string(call.function.arguments)
+                sections.append(SendLogRawSection(title: nil, body: .fields(fields(in: [
+                    "id": .string(call.id), "type": .string(call.type),
+                    "function": .object(["name": .string(call.function.name), "arguments": arguments])
+                ]))))
+            }
+            return sections
+        }
+    }
+
+    public static func requestSections(_ text: String) -> [SendLogRawSection] {
+        guard let object = (try? JSONValue.parse(text))?.objectValue else {
+            return [SendLogRawSection(title: nil, body: .text(text))]
+        }
+        var remaining = object
+        var groups: [SendLogRawGroup]?
+        if let values = object["groups"]?.arrayValue, !values.isEmpty,
+           values.allSatisfy({ $0["party"]?.stringValue != nil }) {
+            groups = values.map { value in
+                var fields = value.objectValue!
+                let party = fields.removeValue(forKey: "party")!.stringValue!
+                let inflow = fields.removeValue(forKey: "inflow") == .bool(true)
+                let count = fields.removeValue(forKey: "count").map(scalarText)
+                let direction = inflow ? "收入" : "支出"
+                return SendLogRawGroup(party: party, detail: count.map { "\(direction) · \($0) 笔" } ?? direction,
+                    fields: Self.fields(in: fields))
+            }
+            remaining.removeValue(forKey: "groups")
+        }
+        var sections: [SendLogRawSection] = []
+        if !remaining.isEmpty { sections.append(SendLogRawSection(title: nil, body: .fields(fields(in: remaining)))) }
+        if let groups {
+            sections.append(SendLogRawSection(title: arrayTitle("groups", count: groups.count), body: .groups(groups)))
+        }
+        // Keep an explicitly empty object visible as raw JSON.
+        return sections.isEmpty ? [SendLogRawSection(title: nil, body: .text(text))] : sections
+    }
+
+    public static func responseSections(in item: SendLogItem) -> [SendLogRawSection] {
+        guard let response = item.response else {
+            return [SendLogRawSection(title: nil, body: .text("还在等待回复"))]
+        }
+        var sections: [SendLogRawSection] = []
+        if let content = response.content, !content.isEmpty {
+            if let value = try? JSONValue.parseModelResponse(content) {
+                if let object = value.objectValue, !object.isEmpty {
+                    let ordinary = object.filter { $0.value.arrayValue == nil }
+                    if !ordinary.isEmpty { sections.append(SendLogRawSection(title: nil, body: .fields(fields(in: ordinary)))) }
+                    for field in fields(in: object) {
+                        if let values = field.value.arrayValue {
+                            sections.append(SendLogRawSection(title: arrayTitle(field.name, count: values.count),
+                                body: .array(name: field.name, values: values)))
+                        }
+                    }
+                } else if let values = value.arrayValue {
+                    sections.append(SendLogRawSection(title: nil, body: .array(name: "", values: values)))
+                } else { sections.append(SendLogRawSection(title: nil, body: .text(scalarText(value)))) }
+            } else { sections.append(SendLogRawSection(title: nil, body: .text(content))) }
+        }
+        if !response.toolCalls.isEmpty {
+            sections.append(SendLogRawSection(title: nil, body: .fields([
+                SendLogRawField(name: "tool_calls", value: .array(response.toolCalls.map { .string($0) }))
+            ])))
+        }
+        if let reason = failureReason(response) { sections.append(SendLogRawSection(title: nil, body: .text(reason))) }
+        return sections
+    }
+
+    private static func failureReason(_ response: SendLogResponse) -> String? {
+        response.errorDescription ?? (response.finishReason == "length" ? "云端回复被截断" : nil)
+            ?? response.httpStatus.flatMap { (200..<300).contains($0) ? nil : "HTTP \($0)" }
+    }
+
+    /// JSONSerialization preserves numeric values without a Double round trip.
+    /// Deliberately omit sortedKeys: copying should only format the raw payload.
+    public static func prettyPrinted(_ text: String) -> String {
+        guard let value = try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed]),
+              let data = try? JSONSerialization.data(withJSONObject: value,
+                options: [.prettyPrinted, .withoutEscapingSlashes, .fragmentsAllowed]) else { return text }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    public static func copyText(in group: SendLogGroup) -> String {
+        group.items.enumerated().map { index, item in
+            var reply: [String] = []
+            // Keep fences/commentary and the original content in the clipboard.
+            if let content = item.response?.content, !content.isEmpty { reply.append(prettyPrinted(content)) }
+            if let calls = item.response?.toolCalls, !calls.isEmpty,
+               let data = try? JSONSerialization.data(withJSONObject: ["tool_calls": calls], options: [.prettyPrinted, .withoutEscapingSlashes]) {
+                reply.append(String(decoding: data, as: UTF8.self))
+            }
+            if let response = item.response, let reason = failureReason(response) { reply.append(reason) }
+            if item.response == nil { reply.append("还在等待回复") }
+            return "第 \(index + 1) 次发出\n" + prettyPrinted(item.requestText)
+                + "\n\n第 \(index + 1) 次云端回\n" + reply.joined(separator: "\n\n")
+        }.joined(separator: "\n\n")
+    }
+}
