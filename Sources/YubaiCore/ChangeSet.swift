@@ -162,13 +162,13 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     // confirmation must clear their pending classification marker.
                     if Classification.isPending(next.entries[i]) { touch(i) }
                     else { skip(position) }
-                    if source != "导入整理" { CategoryMemory.remember(next.entries[i], in: &next) }
+                    if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: source == "按对方分", in: &next) }
                     continue
                 }
                 next.entries[i].category = category; next.entries[i].subcategory = assignment.subcategory; next.entries[i].subcategoryUserEdited = false
                 SubcategoryClassifier.classify(&next.entries[i], ledger: ledger)
                 touch(i)
-                if source != "导入整理" { CategoryMemory.remember(next.entries[i], in: &next) }
+                if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: source == "按对方分", in: &next) }
                 if next.entries[i].nature == .expense { changedExpenseCategories[id] = category }
             case .setNature(let id, let nature, let other):
                 guard let i = active(id) else { skip(position); continue }

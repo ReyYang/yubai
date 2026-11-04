@@ -278,6 +278,89 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "3 笔还没分类")
     }
 
+    func testQuickSortCategoryAdvancesAndUndoRestoresOnlyLastGroup() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["quickSortUnsorted"].waitForExistence(timeout: 15))
+        tap(app.buttons["quickSortUnsorted"], in: app)
+        let party = app.staticTexts["quickSortParty"]
+        let progress = app.staticTexts["quickSortProgress"]
+        XCTAssertTrue(party.waitForExistence(timeout: 5)); XCTAssertEqual(party.label, "合成对方甲")
+        XCTAssertEqual(progress.label, "0/2"); XCTAssertEqual(progress.value as? String, "还没分类 9 笔")
+        tap(app.buttons["quickSortCategory_餐饮"], in: app)
+        let advanced = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '合成对方乙'"), object: party)
+        XCTAssertEqual(XCTWaiter.wait(for: [advanced], timeout: 5), .completed)
+        XCTAssertEqual(progress.label, "1/2"); XCTAssertEqual(progress.value as? String, "还没分类 3 笔")
+        XCTAssertFalse(app.staticTexts["toastMessage"].exists, "Only the dedicated undo bar should show")
+        XCTAssertEqual(app.staticTexts["unsortedUndoMessage"].label, "合成对方甲 · 6 笔记为餐饮")
+        tap(app.buttons["quickSortUndo"], in: app)
+        let restored = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '合成对方甲'"), object: party)
+        XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 5), .completed)
+        XCTAssertEqual(progress.label, "0/2"); XCTAssertEqual(progress.value as? String, "还没分类 9 笔")
+        tap(app.buttons["quickSortCategory_餐饮"], in: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '合成对方乙'"), object: party)], timeout: 5), .completed)
+        tap(app.buttons["quickSortCategory_交通"], in: app)
+        XCTAssertTrue(app.navigationBars["现在"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["unsortedQuestionTitle"].exists)
+        tap(app.buttons["quickSortUndo"], in: app)
+        XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "3 笔还没分类", "Undo of the final group must keep the earlier group classified")
+    }
+
+    func testQuickSortSkipRotatesAndDetailsReturnToCurrentGroup() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["quickSortUnsorted"].waitForExistence(timeout: 15))
+        tap(app.buttons["quickSortUnsorted"], in: app)
+        let party = app.staticTexts["quickSortParty"]
+        XCTAssertTrue(party.waitForExistence(timeout: 5))
+        tap(app.buttons["quickSortSkip"], in: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '合成对方乙'"), object: party)], timeout: 5), .completed)
+        tap(app.buttons["quickSortGroupDetails"], in: app)
+        XCTAssertTrue(app.buttons["applyUnsortedGroup"].waitForExistence(timeout: 5))
+        tap(app.navigationBars.buttons["一个个分"], in: app)
+        XCTAssertTrue(party.waitForExistence(timeout: 5)); XCTAssertEqual(party.label, "合成对方乙")
+        tap(app.buttons["quickSortSkip"], in: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '合成对方甲'"), object: party)], timeout: 5), .completed)
+        tap(app.navigationBars.buttons["现在"], in: app)
+        tap(app.buttons["quickSortUnsorted"], in: app)
+        XCTAssertTrue(party.waitForExistence(timeout: 5)); XCTAssertEqual(party.label, "合成对方甲")
+        XCTAssertEqual(app.staticTexts["quickSortProgress"].label, "0/2")
+    }
+
+    func testUnsortedMultiSelectAppliesAllGroupsWithOneUndo() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["groupUnsortedByParty"].waitForExistence(timeout: 15))
+        tap(app.buttons["groupUnsortedByParty"], in: app)
+        let count = app.staticTexts["unsortedEntryCount"]
+        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "9")
+        tap(app.buttons["unsortedSelect"], in: app)
+        let apply = app.buttons["unsortedApplySelected"]
+        XCTAssertTrue(apply.exists); XCTAssertFalse(apply.isEnabled)
+        let first = app.buttons["unsortedGroup_out:合成对方甲"]
+        let second = app.buttons["unsortedGroup_out:合成对方乙"]
+        tap(first, in: app); tap(second, in: app)
+        XCTAssertTrue(first.isSelected); XCTAssertTrue(second.isSelected)
+        XCTAssertEqual(app.staticTexts["unsortedSelectionCount"].label, "2 组 · 9 笔")
+        tap(apply, in: app)
+        XCTAssertTrue(app.staticTexts["9 笔记为"].waitForExistence(timeout: 5))
+        tap(app.buttons["unsortedSelectedCategory_餐饮"], in: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '0'"), object: count)], timeout: 5), .completed)
+        XCTAssertFalse(apply.exists); XCTAssertEqual(app.buttons["unsortedSelect"].label, "选择")
+        XCTAssertEqual(app.staticTexts["unsortedUndoMessage"].label, "2 组 · 9 笔记为餐饮")
+        XCTAssertFalse(app.staticTexts["toastMessage"].exists)
+        tap(app.buttons["quickSortUndo"], in: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '9'"), object: count)], timeout: 5), .completed)
+        XCTAssertTrue(first.exists); XCTAssertTrue(second.exists)
+    }
+
     func testFallbackGroupAppliesOnlyCheckedEntriesAndLeavesUncheckedEntryInPartyGroup() {
         let app = application("salary")
         app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"

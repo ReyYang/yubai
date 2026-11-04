@@ -555,3 +555,12 @@ owner 提供 main `43a9e2a` 真机4,200笔导入整理后约42 MB容器：Splash
 ## 2026-11-04 · PR #62／#63 Mac 验证修复（owner 明确任务）
 
 owner 提供 main `55d6687` 的 Mac FAIL 报告，要求修编译／存储／测试确定性，保持界面与既有业务规则。Agent 实现：两个 UIKit representable 均 `.gesture` 挂载且互斥，存储统一符号链接目录身份；测试按实际 checkpoint ID 核验全部续跑组、用新鲜文件属性严格核验原件 mtime。Widget package／Frameworks 引用完整，不改工程配置。新增 2 项显式符号链接回归；指定 Linux 全量 738 项、734 通过／4 原有实网跳过／0 失败（120.883 秒），App／UI／Widget 条件解析通过。[逐项根因、API 签名与证据](../../../docs/MAC-VERIFY-6263-FIX.md)。Apple SDK 编译、Darwin 新断言／UI／手势／真机仍待 Mac，外部资源未同步；无可见中文变化，未提交／推送、无新依赖／设计稿链接、未读密钥／未调用真实 DeepSeek。
+
+
+## 2026-11-04 · 第三十一轮「更快分类」（owner 确认）
+
+owner 确认五张V31静态稿，在 `feat/quick-sort-unsorted`（main fb0e4f3）授权实现，不提交／不加依赖／不调网络API或DeepSeek。首页新增主按钮「一个个分」，按快照组顺序逐组点分类即应用、会话跳过到末尾、实时移除外部完成组、完成数／总组数及4pt进度；看最近两笔、进入原一组页处理子集／用途／原文。最新记录的本机分类猜测置首并描边，特殊性质即时应用，转给自己内联选共同可用账户；列表增加最新摘要和同方向多选，sheet一次确认形成一个ChangeSet／一次保存／一步撤销。分类确认记住对方，后续不同摘要导入仍复用。
+
+Agent实现选择：quick session保留已见身份作分母，新组追加，外部完成不算本次done；快分／批量用原apply／persist恢复机制并另持有操作范围前值，4秒深色撤销条替代通用toast，新apply替换旧条，撤销组回当前。为保留后台checkpoint，恢复仅作用于仍与该操作结果一致的记录／记忆键，后续编辑／删除优先；不跨账本。现有一组页继续原流程，既有导入整批撤销照记。原生字体、inset和控件沿用现有token，与HTML静态值的差异明确登记，不据源码宣称视觉验收。
+
+[五稿逐字节归档](../../../.design-meta/mockups/quick-sort-v31/README.md)、[源码／全部可见文案／验证边界](../../../.design-meta/DESIGN.md#2026-11-04--第三十一轮更快分类owner-确认)。新增8项Core／3项UI源码；Core build成功，指定全量746项、742通过／4原有实网跳过／0失败（96.426秒），App／UI条件解析、实际AppStore方法Linux替身单／多组应用与checkpoint后撤销／保存一致通过。Apple SDK类型检查／Xcode构建、UI实跑、视觉／读屏及真机仍待Mac，外部资源未同步。整票长期状态保持；未提交或推送，无新增依赖或网络API／DeepSeek调用。

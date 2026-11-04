@@ -551,10 +551,14 @@ public enum CategoryMemory {
             .replacingOccurrences(of: #"[\p{N}\p{P}]+"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    public static func remember(_ entry: Entry, in ledger: inout Ledger) {
+    public static func remember(_ entry: Entry, includingParty: Bool = false, in ledger: inout Ledger) {
         let choice = ledger.normalizedCategory(for: entry)
         guard !Classification.isPending(choice.category), ledger.categories.contains(where: { $0.name == choice.category && !$0.system }) else { return }
         for key in SubcategoryClassifier.keys(entry) { ledger.classificationMemory[key] = choice.path }
+        if includingParty {
+            let key = self.key(UnsortedGroups.party(for: entry))
+            if !key.isEmpty { ledger.classificationMemory[key] = choice.path }
+        }
     }
 }
 public enum CardKind: String, Codable, CaseIterable, Sendable {

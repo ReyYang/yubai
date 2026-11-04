@@ -1,5 +1,37 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-04 · 第三十一轮「更快分类」（owner 确认）
+
+来源：owner 明确确认五张 V31 静态 HTML，在 `feat/quick-sort-unsorted`（基于 main `fb0e4f3`）授权实现；[原稿归档](mockups/quick-sort-v31/README.md)五文件逐字节一致。本节补充第二十五／二十七轮：首页兜底新增主入口「一个个分」，保留「按对方分」及原一组页的勾选、用途、原文操作。没有第三方新增依赖、网络 API／DeepSeek 请求或提交；Package.swift／Package.resolved 保持。
+
+### 页面与源码
+
+| 位置 | 采用实现 |
+|---|---|
+| `UnsortedViews.swift` | 首页双按钮；快速页的组进度／4pt 条、对方卡、最近两笔、原一组页入口、48pt 三列即时分类、非日常 chips／内联账户、跳过；列表单行摘要、多选圈、底栏与批量 sheet；共用深色撤销条。 |
+| `YubaiApp.swift`、`IntelligenceRuntime.swift` | 新 TabRoute、缓存批量入口、一次 apply／一次保存、整批导入原撤销记录、专用撤销通知与根 overlay。即时分类关闭通用保存 toast、取消旧延迟 toast，最后一组清空自动回首页，撤销条仍可恢复最后一组。 |
+| `UnsortedGroups.swift`（Core） | 最新记录本机猜测、组共用性质／账户交集、确认时按修订重取多组并忽略已消失组、单个 ChangeSet；页面会话队列／进度，以及按操作保存的记录和分类记忆前值。 |
+| `CategoryModel.swift`、`Models.swift`、`ChangeSet.swift` | 原 setCategory 记忆已有；补齐按对方分确认后的对方键，猜测在用途／商户／完整标题之后读对方，供后续不同摘要导入复用，仍校验方向与当前可选主项。旧单组路径也记住对方。 |
+| `UnsortedGroupsTests.swift`、`AppFlowTests.swift` | 新增 8 项 Core、3 项 UI 源码；沿用已有文件／工程登记。 |
+
+快速页初始按 snapshot 笔数降序；跳过只移动本次队列，账本修订后移除已消失组、新组入队。分母为打开时见过的组身份加后续新组，外部完成不增加本次 done；撤销本次记录后减少 done 并把该组放回当前。进出详情不重建会话；详情清空组后继续当前活组。横向短距滑动使用 quick token，减少动态效果时只淡入淡出。分类建议来自最新一笔的本机 CategoryGuesser／已有记忆，置首、2pt brand 边／brandInk 半粗，无猜测保持默认顺序。非日常按共用允许项排列、转给自己置末，账户必须是所有所选组均可使用的未归档账户。列表多选以首个已选组锁方向；搜索不丢失已选项，后台消失组移出选择。
+
+**Agent 实现选择／恢复边界**：复用现有 apply→update→persist／恢复版本与 ImportOrganization.recordUndo，快速／批量另保留操作范围的前值撤销凭据，避免无关 checkpoint 被整本回滚。新操作替换撤销条，使用现有 4 秒 toastLifetime；撤销恢复仍与本操作结果一致的记录／记忆键，已被后续编辑或删除的记录／记忆以新值为准；不复活已删除记录，也不跨账本恢复。撤销提示及恢复组事件位于 AppStore，最后一组弹回首页后仍可撤销。原一组页继续使用原确认／撤销方式。
+
+与 HTML 的原生适配：保留既有字体（quote 为20pt）、页面 inset20pt、PrimaryButtonStyle／SuggestionChip 原生点击区域和 token，未加载网页字体或新增全局 token；格子48pt、三列／间距8pt、进度4pt、卡 radius22pt、建议边2pt、选择圈24pt、跳过44pt。分类数量按账本当前主项，不固定为稿件八项。原稿没有完整运行依赖，未宣称独立可预览或逐像素验收。
+
+### 可见中文字符串
+
+新增／改变模板为：「一个个分」（标题／控件）、「跳过」「撤销」「选择」「完成」「记为…」「这 N 笔 ›」（控件）、「N 笔记为」（sheet 标题）、「对方 · N 笔记为X」「N 组 · M 笔」「N 组 · M 笔记为X」「N 笔 · 最新记录摘要」「N 笔 · 金额」（数字／记录事实）。首页「N 笔还没分类」、既有分类／性质／账户名与「不是支出／不是收入」复用；进度是 `done/total` 数字。没有说明句、副标题或额外例外文案；完整辅助功能 label／value 不作为可见说明。
+
+### 验证与未验证项
+
+- Core build 成功；全量 **746 项，742 通过／4 项原有实网 opt-in 跳过／0 失败，96.426 秒**。新增8项覆盖本机建议／最新行／方向／隐藏主项、多组一次应用与撤销、过期组／行、混向拒绝、共同转账账户／原账户 delta、后续不同摘要导入复用对方、旧 pending 其他分类、带 checkpoint 和新编辑的 scoped undo，以及队列／新组／分母／撤销回当前。原4,200笔投影＋1,000次选择＋ChangeSet约0.106秒，原阈值保持。
+- 指定命令因默认 `/root/.cache` 只读首次未启动，随后仅指定 `/tmp/yubai-swift-*` 为 SwiftPM／Clang 缓存目录；使用锁定的既有依赖，无包文件变化。完整日志 `/tmp/yubai-final-build.log`、`/tmp/yubai-full-tests.log`，实网 opt-in 显式为0。
+- 抽取实际 AppStore 缓存、update、apply、单组／批量／撤销方法到 Linux 替身，在 Swift6 严格并发下链接真实 Core／LedgerRepository 离线执行通过：每操作只保存一次、6→3→6→0→6、无关 checkpoint 保留、通用 toast 关闭、stale group忽略、重复撤销拒绝、落盘一致。替身只替代平台环境／同步与 motion，不代表 Apple AppStore 类型检查；脚本 `/tmp/yubai-verify-store.py`。
+- App iOS26模拟器Debug／设备Release／macOS14Debug，以及UI测试iOS26模拟器Debug条件语法解析通过；`git diff --check` 通过。新增UI源码覆盖快速分类／进度笔数减少／撤销／最后一组回首页、跳过循环／详情返回／重进重置、多选应用／一步撤销与无重复toast。
+- **仍待 Mac**：Apple SDK 类型检查／Xcode 构建、XCTest UI 执行、390pt 实际布局／动画、深色／大字号／VoiceOver和真机操作。外部画布、截图、分发资源未同步；本轮未提交或推送。
+
 ## 2026-11-04 · PR #62／#63 Mac 验证修复（行为保持）
 
 owner 提供 main `55d6687` 的 Mac FAIL 报告并授权修复。现金图长按与 `HorizontalPan` 均以 `.gesture` 挂载，由 UIKit coordinator 保持互斥及对根分页器的优先级；0.25 秒长按逐日读取、横拖窗口、松手回最低的采用交互保持。存储统一目录别名身份，修正三类测试假设：URL 字面相等、首发即先保存、Darwin URL mtime 无缓存；Widget 依赖完整，不改工程架构。无外观或可见中文字符串变化。

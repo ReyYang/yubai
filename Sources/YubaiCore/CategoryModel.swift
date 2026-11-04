@@ -57,7 +57,7 @@ public enum CategoryGuesser {
         let income = entry.nature != .refund && entry.nature.inflow
         var table = ledger.selectableCategories.filter { $0.income == income && (pending || $0.name == current.category) }
         if !pending && ["其他支出", "其他收入"].contains(current.category) { return nil }
-        for key in SubcategoryClassifier.keys(entry) {
+        for key in SubcategoryClassifier.keys(entry) + [CategoryMemory.key(UnsortedGroups.party(for: entry))] {
             guard let path = ledger.classificationMemory[key] else { continue }
             let value = CategoryAssignment(path: path)
             let choice = ledger.categoryAssignment(category: value.category, subcategory: value.subcategory)

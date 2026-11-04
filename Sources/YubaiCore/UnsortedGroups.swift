@@ -72,6 +72,26 @@ public enum UnsortedGroups {
     public static func otherAccounts(for group: UnsortedPartyGroup, in ledger: Ledger) -> [Account] {
         ledger.accounts.filter { !$0.archived && !group.sourceAccountIDs.contains($0.id) }
     }
+    /// Local evidence from the newest row; never invent a category or cross directions.
+    public static func suggestedCategory(for group: UnsortedPartyGroup, in ledger: Ledger) -> String? {
+        guard let newest = group.entries.first,
+              let choice = CategoryGuesser.guess(newest, in: ledger),
+              ledger.selectableCategories.contains(where: { $0.name == choice.category && $0.income == group.inflow }) else { return nil }
+        return choice.category
+    }
+    public static func otherAccounts(for groups: [UnsortedPartyGroup], in ledger: Ledger) -> [Account] {
+        guard !groups.isEmpty else { return [] }
+        return ledger.accounts.filter { account in
+            !account.archived && groups.allSatisfy { !$0.sourceAccountIDs.contains(account.id) }
+        }
+    }
+    public static func uses(for groups: [UnsortedPartyGroup], in ledger: Ledger) -> [UnsortedUse] {
+        guard let first = groups.first else { return [] }
+        return uses(for: first, in: ledger).filter { use in
+            groups.allSatisfy { uses(for: $0, in: ledger).contains(use) } &&
+            (use != .transfer || !otherAccounts(for: groups, in: ledger).isEmpty)
+        }
+    }
     public static func uses(for group: UnsortedPartyGroup, in ledger: Ledger) -> [UnsortedUse] {
         let uses: [UnsortedUse] = group.inflow ? [.income, .investSell, .transfer, .loanRecovery] : [.expense, .investBuy, .transfer, .repayment, .lend]
         let canTransfer = ledger.accounts.contains { !$0.archived && !group.sourceAccountIDs.contains($0.id) }
@@ -119,6 +139,20 @@ public enum UnsortedGroups {
         }
         guard !items.isEmpty else { return nil }
         return ChangeSet(source: "按对方分", reason: "\(entries.count) 笔记为 \(category ?? use.title)", items: items)
+    }
+    fileprivate static func changeSet(groups: [UnsortedPartyGroup], use: UnsortedUse,
+                                      category: String?, otherAccount: UUID?, in ledger: Ledger) -> ChangeSet? {
+        guard !groups.isEmpty else { return nil }
+        var items: [ChangeItem] = []
+        for group in groups {
+            // Live but incompatible selections fail atomically. Missing groups were
+            // already dropped by the confirmation-time snapshot lookup.
+            guard let change = changeSet(group: group, use: use, category: category, otherAccount: otherAccount,
+                                         entryIDs: nil, purpose: nil, in: ledger) else { return nil }
+            items += change.items
+        }
+        let count = groups.reduce(0) { $0 + $1.entries.count }
+        return ChangeSet(source: "按对方分", reason: "\(groups.count) 组 · \(count) 笔记为\(category ?? use.title)", items: items)
     }
 }
 
@@ -186,6 +220,71 @@ public struct UnsortedGroupsCache {
         guard let group = snapshot(for: questionID, revision: revision, in: ledger)?.groupsByID[groupID] else { return nil }
         return UnsortedGroups.changeSet(group: group, use: use, category: category, otherAccount: otherAccount,
                                         entryIDs: entryIDs, purpose: purpose, in: ledger)
+    }
+    public mutating func changeSet(groupIDs: Set<String>, questionID: UUID, use: UnsortedUse,
+                                  category: String? = nil, otherAccount: UUID? = nil,
+                                  revision: UInt64, in ledger: Ledger) -> ChangeSet? {
+        guard let snapshot = snapshot(for: questionID, revision: revision, in: ledger) else { return nil }
+        return UnsortedGroups.changeSet(groups: snapshot.groups.filter { groupIDs.contains($0.id) }, use: use,
+                                       category: category, otherAccount: otherAccount, in: ledger)
+    }
+}
+
+/// Page-local order only. Reconcile with every live snapshot, including checkpoints
+/// and undo. Known identities stay in the denominator when sorted elsewhere.
+public struct UnsortedQuickSession: Sendable {
+    public private(set) var queue: [String] = []
+    private var known: Set<String> = []
+    private var recorded: Set<String> = []
+    public var total: Int { known.count }
+    public var done: Int { recorded.count }
+    public init() {}
+    public mutating func reconcile(_ groups: [UnsortedPartyGroup]) {
+        let live = Set(groups.map(\.id))
+        queue.removeAll { !live.contains($0) }
+        let queued = Set(queue)
+        queue += groups.map(\.id).filter { !queued.contains($0) }
+        known.formUnion(live)
+    }
+    public mutating func skip(_ groupID: String) {
+        queue.removeAll { $0 == groupID }; queue.append(groupID)
+    }
+    public mutating func record(_ groupID: String) {
+        recorded.insert(groupID); queue.removeAll { $0 == groupID }
+    }
+    public mutating func restore(_ groupID: String) {
+        recorded.remove(groupID); queue.removeAll { $0 == groupID }; queue.insert(groupID, at: 0)
+    }
+}
+
+/// The same before-value recovery approach as ImportUndo, scoped to this action.
+/// It survives unrelated checkpoints without restoring the whole ledger. A later
+/// edit of an affected row/key takes precedence over this older undo.
+public struct UnsortedGroupsUndo: Sendable {
+    private let ledgerID: UUID
+    private let originals: [Entry]
+    private let applied: [UUID: Entry]
+    private let memoryBefore: [String: String]
+    private let memoryAfter: [String: String]
+    public init(before: Ledger, after: Ledger, entryIDs: Set<UUID>) {
+        ledgerID = before.id
+        originals = before.entries.filter { entryIDs.contains($0.id) }
+        applied = Dictionary(uniqueKeysWithValues: after.entries.filter { entryIDs.contains($0.id) }.map { ($0.id, $0) })
+        let keys = Set(before.classificationMemory.keys).union(after.classificationMemory.keys).filter {
+            before.classificationMemory[$0] != after.classificationMemory[$0]
+        }
+        memoryBefore = before.classificationMemory.filter { keys.contains($0.key) }
+        memoryAfter = after.classificationMemory.filter { keys.contains($0.key) }
+    }
+    public func restore(in ledger: inout Ledger) {
+        guard ledger.id == ledgerID else { return }
+        let positions = Dictionary(uniqueKeysWithValues: ledger.entries.indices.map { (ledger.entries[$0].id, $0) })
+        for entry in originals {
+            if let i = positions[entry.id], ledger.entries[i] == applied[entry.id] { ledger.entries[i] = entry }
+        }
+        for key in Set(memoryBefore.keys).union(memoryAfter.keys) where ledger.classificationMemory[key] == memoryAfter[key] {
+            ledger.classificationMemory[key] = memoryBefore[key]
+        }
     }
 }
 

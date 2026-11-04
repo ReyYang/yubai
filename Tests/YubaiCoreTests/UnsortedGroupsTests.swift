@@ -31,6 +31,150 @@ final class UnsortedGroupsTests: XCTestCase {
         XCTAssertEqual(UnsortedGroups.groups(for: question, in: reversed), groups)
         XCTAssertEqual(groups[0].entries[0].title, "商店 · 午餐")
     }
+    func testSuggestedCategoryUsesNewestEntryAndValidLocalMemory() throws {
+        var (ledger, question) = fixture()
+        let group = try XCTUnwrap(UnsortedGroups.groups(for: question, in: ledger).first)
+        XCTAssertEqual(UnsortedGroups.suggestedCategory(for: group, in: ledger), "餐饮")
+        ledger.classificationMemory[CategoryMemory.key(group.entries[0].title)] = "交通/打车"
+        XCTAssertEqual(UnsortedGroups.suggestedCategory(for: group, in: ledger), "交通")
+        ledger.classificationMemory = [CategoryMemory.key(group.party): "购物"]
+        XCTAssertEqual(UnsortedGroups.suggestedCategory(for: group, in: ledger), "购物")
+        ledger.categories[try XCTUnwrap(ledger.categories.firstIndex { $0.name == "购物" })].hidden = true
+        XCTAssertEqual(UnsortedGroups.suggestedCategory(for: group, in: ledger), "餐饮", "Hidden memories must not become choices")
+        ledger.classificationMemory = [CategoryMemory.key(group.party): "工资奖金"]
+        XCTAssertEqual(UnsortedGroups.suggestedCategory(for: group, in: ledger), "餐饮", "Memory cannot cross direction")
+        ledger.entries[0].title = "商店 · 无线索"
+        let noGuess = try XCTUnwrap(UnsortedGroups.groups(for: question, in: ledger).first)
+        XCTAssertNil(UnsortedGroups.suggestedCategory(for: noGuess, in: ledger), "An older meal cannot suggest the newest row's category")
+        let income = try XCTUnwrap(UnsortedGroups.groups(for: question, in: ledger).first { $0.inflow })
+        XCTAssertEqual(UnsortedGroups.suggestedCategory(for: income, in: ledger), "工资奖金")
+    }
+    func testMultiGroupChangeIsAtomicDeduplicatedAndOneUndoRestoresAll() throws {
+        var (ledger, question) = fixture(); register(question, in: &ledger)
+        let before = ledger
+        var cache = UnsortedGroupsCache()
+        let change = try XCTUnwrap(cache.changeSet(groupIDs: ["out:商店", "out:咖啡店"], questionID: question.id,
+                                                  use: .expense, category: "餐饮", revision: 0, in: ledger))
+        XCTAssertEqual(change.items.filter { if case .setCategory = $0 { return true }; return false }.count, 3)
+        XCTAssertEqual(Set(change.items.flatMap(\.entryIDs)).count, 3)
+        XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
+        XCTAssertEqual(UnsortedGroups.entries(for: question, in: ledger).map(\.id), [before.entries[2].id])
+        XCTAssertNotNil(ledger.classificationMemory[CategoryMemory.key("商店")])
+        XCTAssertNotNil(ledger.classificationMemory[CategoryMemory.key("咖啡店")])
+        let undo = UnsortedGroupsUndo(before: before, after: ledger, entryIDs: Set(change.items.flatMap(\.entryIDs)))
+        undo.restore(in: &ledger)
+        XCTAssertEqual(ledger, before, "One action restores every selected group and its new memories")
+    }
+    func testMultiGroupConfirmationDropsStaleGroupsAndRowsButRejectsIncompatibleLiveGroups() throws {
+        var (ledger, question) = fixture(); register(question, in: &ledger)
+        var cache = UnsortedGroupsCache()
+        _ = cache.snapshot(for: question.id, revision: 0, in: ledger)
+        ledger.entries[0].category = "购物"
+        ledger.entries[3].deletedAt = now
+        let change = try XCTUnwrap(cache.changeSet(groupIDs: ["out:商店", "out:咖啡店", "gone"], questionID: question.id,
+                                                  use: .expense, category: "餐饮", revision: 1, in: ledger))
+        XCTAssertEqual(Set(change.items.flatMap(\.entryIDs)), [ledger.entries[1].id])
+        XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
+        XCTAssertEqual(ledger.entries[0].category, "购物")
+        XCTAssertNil(cache.changeSet(groupIDs: ["gone", "out:咖啡店"], questionID: question.id,
+                                    use: .expense, category: "餐饮", revision: 2, in: ledger))
+        let (base, _) = fixture(); var mixed = base
+        // Use this ledger's own IDs and coverage.
+        let mixedQuestion = ImportQuestion(text: "4 笔还没分类", entryIDs: mixed.entries.map(\.id), options: [], groupsByParty: true)
+        mixed.imports.removeAll(); register(mixedQuestion, in: &mixed)
+        XCTAssertNil(cache.changeSet(groupIDs: ["out:商店", "in:商店"], questionID: mixedQuestion.id,
+                                    use: .expense, category: "餐饮", revision: 3, in: mixed))
+    }
+    func testMultiGroupTransferNeedsOneCommonAccountAndPreservesEveryOriginalDelta() throws {
+        var (ledger, question) = fixture()
+        let second = Account(name: "第二账户", at: now)
+        ledger.accounts.append(second); ledger.entries[3].accountID = second.id
+        register(question, in: &ledger)
+        var cache = UnsortedGroupsCache()
+        let groups = try XCTUnwrap(cache.snapshot(for: question.id, revision: 0, in: ledger)).groups.filter { !$0.inflow }
+        XCTAssertFalse(UnsortedGroups.uses(for: groups, in: ledger).contains(.transfer))
+        let destination = Account(name: "共同账户", at: now); ledger.accounts.append(destination)
+        XCTAssertEqual(UnsortedGroups.otherAccounts(for: groups, in: ledger).map(\.id), [destination.id])
+        XCTAssertTrue(UnsortedGroups.uses(for: groups, in: ledger).contains(.transfer))
+        let before = ledger
+        let change = try XCTUnwrap(cache.changeSet(groupIDs: Set(groups.map(\.id)), questionID: question.id, use: .transfer,
+                                                  otherAccount: destination.id, revision: 1, in: ledger))
+        XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
+        for entry in before.entries where !entry.nature.inflow {
+            let applied = try XCTUnwrap(ledger.entries.first { $0.id == entry.id })
+            XCTAssertEqual(applied.delta(for: entry.accountID), entry.delta(for: entry.accountID))
+        }
+    }
+    func testPartyMemoryAppliesToLaterImportWithDifferentSummaryAndRestoresOnUndo() throws {
+        var (ledger, question) = fixture()
+        let before = ledger
+        let change = try XCTUnwrap(UnsortedGroups.changeSet(groupID: "out:商店", question: question, use: .expense, category: "交通", in: ledger))
+        XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
+        XCTAssertEqual(CategoryAssignment(path: try XCTUnwrap(ledger.classificationMemory[CategoryMemory.key("商店")])).category, "交通")
+        let bytes = Data("日期,金额,收支,用途\n2026-11-01,10,支出,商店 · 新摘要\n".utf8)
+        let preview = try BillImporter.preview(data: bytes, filename: "新账单.csv", accountID: ledger.accounts[0].id, ledger: ledger)
+        XCTAssertEqual(preview.selectedEntries.first?.category, "交通")
+        let undo = UnsortedGroupsUndo(before: before, after: ledger, entryIDs: Set(change.items.flatMap(\.entryIDs)))
+        undo.restore(in: &ledger)
+        XCTAssertEqual(ledger, before)
+    }
+    func testExplicitOtherCategoryOnLegacyPendingRowAlsoRemembersParty() throws {
+        var (ledger, question) = fixture()
+        ledger.entries[0].nature = .expense
+        ledger.entries[0].category = "其他支出"
+        ledger.entries[0].classificationReason = "没分类"
+        let change = try XCTUnwrap(UnsortedGroups.changeSet(groupID: "out:商店", question: question, use: .expense, category: "其他支出", in: ledger))
+        XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
+        XCTAssertEqual(ledger.classificationMemory[CategoryMemory.key("商店")], "其他支出")
+    }
+    func testScopedUndoKeepsUnrelatedCheckpointAndLaterEdits() throws {
+        var (ledger, question) = fixture()
+        ledger.classificationMemory = [CategoryMemory.key("商店"): "购物"]
+        let before = ledger
+        let change = try XCTUnwrap(UnsortedGroups.changeSet(groupID: "out:商店", question: question, use: .expense, category: "交通", in: ledger))
+        XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
+        let undo = UnsortedGroupsUndo(before: before, after: ledger, entryIDs: Set(change.items.flatMap(\.entryIDs)))
+        ledger.entries[3].category = "餐饮"; ledger.entries[3].userEdited = true
+        ledger.classificationMemory["新记忆"] = "餐饮"
+        let unrelated = ledger.entries[3]
+        undo.restore(in: &ledger)
+        XCTAssertEqual(Array(ledger.entries.prefix(2)), Array(before.entries.prefix(2)))
+        XCTAssertEqual(ledger.entries[3], unrelated)
+        XCTAssertEqual(ledger.classificationMemory["新记忆"], "餐饮")
+        XCTAssertEqual(ledger.classificationMemory[CategoryMemory.key("商店")], "购物")
+        var laterEdit = before
+        XCTAssertTrue(try change.apply(to: &laterEdit).isEmpty)
+        laterEdit.entries[0].purpose = "后来修改"
+        laterEdit.classificationMemory[CategoryMemory.key("商店")] = "餐饮"
+        let edited = laterEdit.entries[0]
+        undo.restore(in: &laterEdit)
+        XCTAssertEqual(laterEdit.entries[0], edited, "A newer edit of this row wins over the older action")
+        XCTAssertEqual(laterEdit.entries[1], before.entries[1])
+        XCTAssertEqual(laterEdit.classificationMemory[CategoryMemory.key("商店")], "餐饮")
+        var replacement = Ledger(); let otherLedger = replacement
+        undo.restore(in: &replacement); XCTAssertEqual(replacement, otherLedger)
+    }
+    func testQuickSessionRotatesSkipsDropsStaleGroupsTracksNewGroupsAndRestoresCurrent() throws {
+        var (ledger, question) = fixture()
+        let groups = UnsortedGroups.groups(for: question, in: ledger)
+        var session = UnsortedQuickSession(); session.reconcile(groups)
+        XCTAssertEqual(session.queue, groups.map(\.id)); XCTAssertEqual(session.total, 3); XCTAssertEqual(session.done, 0)
+        session.skip(groups[0].id)
+        XCTAssertEqual(session.queue, [groups[1].id, groups[2].id, groups[0].id])
+        session.record(groups[1].id)
+        ledger.entries[2].category = "工资奖金"
+        ledger.entries[3].deletedAt = now
+        session.reconcile(UnsortedGroups.groups(for: question, in: ledger))
+        XCTAssertEqual(session.queue, [groups[0].id]); XCTAssertEqual(session.done, 1); XCTAssertEqual(session.total, 3)
+        let added = Entry(date: now, amount: 1, accountID: ledger.accounts[0].id, title: "新对方")
+        ledger.entries.append(added); question.entryIDs.append(added.id)
+        session.reconcile(UnsortedGroups.groups(for: question, in: ledger))
+        XCTAssertEqual(session.total, 4)
+        session.restore(groups[1].id)
+        XCTAssertEqual(session.queue.first, groups[1].id); XCTAssertEqual(session.done, 0)
+        var fresh = UnsortedQuickSession(); fresh.reconcile(groups)
+        XCTAssertEqual(fresh.queue, groups.map(\.id), "Skips do not persist across visits")
+    }
     func testLiveCoverageExcludesClassifiedDeletedLinkedSpecialAndUncoveredEntries() {
         var (ledger, question) = fixture()
         ledger.entries[0].category = "餐饮"

@@ -453,15 +453,52 @@ struct ActiveLedgerTransport: ChatTransport {
     }
     @discardableResult func applyUnsortedGroup(questionID: UUID, groupID: String, use: UnsortedUse,
                                                category: String?, otherAccount: UUID?, entryIDs: Set<UUID>? = nil,
-                                               purpose: String? = nil) -> Bool {
+                                               purpose: String? = nil, quickSort: Bool = false) -> Bool {
         guard let snapshot = unsortedGroups(questionID: questionID),
               let change = unsortedChangeSet(questionID: questionID, groupID: groupID, use: use,
                                             category: category, otherAccount: otherAccount,
                                             entryIDs: entryIDs, purpose: purpose) else { return false }
         let before = current
-        return apply(change, label: "整理") { ledger in
+        let saved = apply(change, label: "整理", silently: quickSort) { ledger in
             ImportOrganization.recordUndo(batchID: snapshot.batchID, before: before, in: &ledger)
         }
+        if saved, quickSort, let group = snapshot.groupsByID[groupID] {
+            let count = Set(change.items.flatMap(\.entryIDs)).count
+            showUnsortedUndo(questionID: questionID, groups: [group], change: change, before: before,
+                             label: "\(group.party) · \(count) 笔记为\(category ?? use.title)")
+        }
+        return saved
+    }
+    @discardableResult func applyUnsortedGroups(questionID: UUID, groupIDs: Set<String>, use: UnsortedUse,
+                                                category: String?, otherAccount: UUID?) -> Bool {
+        guard let snapshot = unsortedGroups(questionID: questionID),
+              let change = unsortedChangeSet(questionID: questionID, groupIDs: groupIDs, use: use,
+                                            category: category, otherAccount: otherAccount) else { return false }
+        let groups = snapshot.groups.filter { groupIDs.contains($0.id) }
+        let before = current
+        let saved = apply(change, label: "整理", silently: true) { ledger in
+            ImportOrganization.recordUndo(batchID: snapshot.batchID, before: before, in: &ledger)
+        }
+        if saved {
+            let count = Set(change.items.flatMap(\.entryIDs)).count
+            showUnsortedUndo(questionID: questionID, groups: groups, change: change, before: before,
+                             label: "\(groups.count) 组 · \(count) 笔记为\(category ?? use.title)")
+        }
+        return saved
+    }
+    private func showUnsortedUndo(questionID: UUID, groups: [UnsortedPartyGroup], change: ChangeSet, before: Ledger, label: String) {
+        cancelEntrySaveMotion(); toast = nil
+        unsortedUndo = UnsortedUndoNotice(questionID: questionID, groupIDs: groups.map(\.id), label: label,
+                                          recovery: UnsortedGroupsUndo(before: before, after: current,
+                                                                      entryIDs: Set(change.items.flatMap(\.entryIDs))))
+    }
+    @discardableResult func undoUnsorted(_ noticeID: UUID) -> Bool {
+        guard let notice = unsortedUndo, notice.id == noticeID else { return false }
+        guard update("撤销", recordUndo: false, entryMotion: false, showToast: false, { notice.recovery.restore(in: &$0) }) else { return false }
+        cancelEntrySaveMotion(); toast = nil; unsortedUndo = nil; undoLedger = nil; undoLabel = nil
+        unsortedUndoRestoration = UnsortedUndoRestoration(questionID: notice.questionID, groupIDs: notice.groupIDs)
+        undoTrigger &+= 1
+        return true
     }
     func undoImport(_ batchID: UUID) {
         if update("整批撤销", preservingUpdatedAt: true, entryMotion: false, { ledger in BillImporter.undo(batchID: batchID, in: &ledger) }) { cancelEntrySaveMotion(); undoTrigger &+= 1 }

@@ -15,7 +15,7 @@ enum Destination: String, CaseIterable, Identifiable {
 enum TabRoute: Hashable {
     case upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
-    case unsortedGroups(UUID), unknownInflows
+    case unsortedGroups(UUID), quickSortUnsorted(UUID), unknownInflows
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
     case subcategoryInsights(category: String, income: Bool, interval: DateInterval, periodTitle: String)
 }
@@ -110,6 +110,11 @@ enum AppSheet: Identifiable {
                                       category: category, otherAccount: otherAccount, entryIDs: entryIDs,
                                       purpose: purpose, revision: ledgerRevision, in: current)
     }
+    func unsortedChangeSet(questionID: UUID, groupIDs: Set<String>, use: UnsortedUse,
+                          category: String?, otherAccount: UUID?) -> ChangeSet? {
+        cachedUnsortedGroups.changeSet(groupIDs: groupIDs, questionID: questionID, use: use,
+                                      category: category, otherAccount: otherAccount, revision: ledgerRevision, in: current)
+    }
     var funds: Funds {
         _ = derivedRevision
         let now = Date(); let zone = TimeZone.current
@@ -175,6 +180,7 @@ enum AppSheet: Identifiable {
     private(set) var navigationRevision: UInt64 = 0
     func resetRootNavigation() {
         destination = .overview; pickingInsightDates = false
+        unsortedUndo = nil; unsortedUndoRestoration = nil
         #if os(iOS)
         pagingLocked = false
         #endif
@@ -184,6 +190,8 @@ enum AppSheet: Identifiable {
     var pagingLocked = false
     #endif
     var sheet: AppSheet?; var error: String?; var toast: String?
+    var unsortedUndo: UnsortedUndoNotice?
+    var unsortedUndoRestoration: UnsortedUndoRestoration?
     var sheetSource: String?
     var entrySaveTrigger = 0; var entryDeleteTrigger = 0; var undoTrigger = 0; var floorWarningTrigger = 0
     var fixedFlowSettleTrigger = 0
@@ -254,6 +262,7 @@ enum AppSheet: Identifiable {
             ledger = next
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
             if recordUndo {
+                unsortedUndo = nil
                 undoLedger = undoSnapshot ?? before; undoLabel = reason
                 if showToast {
                     if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
@@ -321,6 +330,7 @@ enum AppSheet: Identifiable {
         if apply(change, label: "自动记下", silently: true) { toast = nil }
     }
     func undo() {
+        if let notice = unsortedUndo { _ = undoUnsorted(notice.id); return }
         guard canEditLedger(), let previous = undoLedger else { return }
         do {
             ledger = try persist(previous, reason: "撤销")
@@ -493,7 +503,13 @@ struct RootView: View {
         .environment(\.yubaiZoomNamespace, motionNamespace)
         .appErrors()
         .overlay(alignment: .bottom) {
-            if let toast = store.toast {
+            if !store.locked, let notice = store.unsortedUndo {
+                UnsortedUndoBar(notice: notice)
+                    .id(notice.id)
+                    .padding(.horizontal, YubaiSpace.insetPage)
+                    .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
+                    .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
+            } else if let toast = store.toast {
                 Toast(text: toast, onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(toast)
                     #if os(iOS)
@@ -651,6 +667,7 @@ struct RootView: View {
         case .fixedFlows: FixedFlowsView()
         case .butlerCards: ButlerListView()
         case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)
+        case .quickSortUnsorted(let id): UnsortedQuickSortView(questionID: id)
         case .unknownInflows: ButlerListView(unknownInflowsOnly: true)
         case .profile: ProfileView()
         case .wishlist: WishlistView()

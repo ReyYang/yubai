@@ -15,8 +15,12 @@ struct ImportQuestionCard: View {
                     Text(title)
                         .yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier(question.isFallback ? "unsortedQuestionTitle" : "nowImportQuestion")
                     if question.isFallback {
-                        TabNavigationLink(.unsortedGroups(question.id)) { UnsortedGroupsView(questionID: question.id) } label: { Text("按对方分") }
-                            .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("groupUnsortedByParty")
+                        HStack(spacing: YubaiSpace.space8) {
+                            TabNavigationLink(.quickSortUnsorted(question.id)) { UnsortedQuickSortView(questionID: question.id) } label: { Text("一个个分") }
+                                .buttonStyle(NowCardButtonStyle(primary: true)).accessibilityIdentifier("quickSortUnsorted")
+                            TabNavigationLink(.unsortedGroups(question.id)) { UnsortedGroupsView(questionID: question.id) } label: { Text("按对方分") }
+                                .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("groupUnsortedByParty")
+                        }
                     } else {
                         let ids = Set(question.entryIDs)
                         if let entry = store.sortedEntries.first(where: { ids.contains($0.id) }) {
@@ -44,9 +48,10 @@ struct ImportQuestionCard: View {
 /// Keep the destination attached to the list, even if its source row disappears.
 /// The initial group is display-only during the pop transition; confirmation
 /// always resolves the current ledger revision through AppStore.
-private struct UnsortedGroupRoute: Hashable {
+private struct UnsortedGroupRoute: Hashable, Identifiable {
     let questionID: UUID
     let group: UnsortedPartyGroup
+    var id: String { group.id }
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.questionID == rhs.questionID && lhs.group.id == rhs.group.id }
     func hash(into hasher: inout Hasher) { hasher.combine(questionID); hasher.combine(group.id) }
 }
@@ -55,10 +60,14 @@ struct UnsortedGroupsView: View {
     @Environment(AppStore.self) private var store
     let questionID: UUID
     @State private var search = ""
+    @State private var selecting = false
+    @State private var selectedIDs: Set<String> = []
+    @State private var showingApply = false
     var body: some View {
         let snapshot = store.unsortedGroups(questionID: questionID)
         let visible: [UnsortedPartyGroup] = snapshot?.matching(search) ?? []
         let count = snapshot?.entryCount ?? 0
+        let selected = snapshot?.groups.filter { selectedIDs.contains($0.id) } ?? []
         ScrollView {
             LazyVStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
@@ -70,28 +79,289 @@ struct UnsortedGroupsView: View {
                     .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.segmentedHeight)
                     .background(YubaiColor.raised, in: Capsule()).accessibilityIdentifier("unsortedPartySearch")
                 if !visible.isEmpty {
-                    CardRows(visible) { group in groupRow(group) }
+                    CardRows(visible) { group in groupRow(group, selected: selected) }
                 }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8).padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).paperBackground().foregroundStyle(YubaiColor.label)
             .navigationTitle("按对方分").yubaiNavigation()
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(selecting ? "完成" : "选择") { selecting.toggle(); selectedIDs.removeAll() }
+                        .foregroundStyle(YubaiColor.brandInk).accessibilityIdentifier("unsortedSelect")
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+                if selecting {
+                    HStack(spacing: YubaiSpace.gapGroup) {
+                        Text("\(selected.count) 组 · \(selected.reduce(0) { $0 + $1.entries.count }) 笔")
+                            .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)
+                            .frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("unsortedSelectionCount")
+                        Button("记为…") { showingApply = true }
+                            .buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.raised)).fixedSize(horizontal: true, vertical: false)
+                            .disabled(selected.isEmpty).accessibilityIdentifier("unsortedApplySelected")
+                    }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapGroup)
+                        .background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
+                }
+            }
+            .sheet(isPresented: $showingApply) {
+                UnsortedSelectionSheet(questionID: questionID, groupIDs: selectedIDs) {
+                    showingApply = false; selecting = false; selectedIDs.removeAll()
+                }.environment(store).presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible).yubaiSheetBackground().appErrors()
+            }
+            .onChange(of: snapshot?.revision) { _, _ in
+                selectedIDs.formIntersection(snapshot?.groups.map(\.id) ?? [])
+                if selectedIDs.isEmpty { showingApply = false }
+            }
             .navigationDestination(for: UnsortedGroupRoute.self) { route in
                 UnsortedGroupView(questionID: route.questionID, initialGroup: route.group)
             }
     }
-    private func groupRow(_ group: UnsortedPartyGroup) -> some View {
-        NavigationLink(value: UnsortedGroupRoute(questionID: questionID, group: group)) {
-            HStack(spacing: YubaiSpace.gapGroup) {
+    @ViewBuilder private func groupRow(_ group: UnsortedPartyGroup, selected: [UnsortedPartyGroup]) -> some View {
+        if selecting {
+            Button {
+                if !selectedIDs.insert(group.id).inserted { selectedIDs.remove(group.id) }
+            } label: { rowContent(group) }
+                .buttonStyle(PressButtonStyle())
+                .disabled(selected.first.map { $0.inflow != group.inflow } ?? false)
+                .opacity(selected.first.map { $0.inflow != group.inflow } == true ? 0.4 : 1)
+                .accessibilityAddTraits(selectedIDs.contains(group.id) ? .isSelected : [])
+                .accessibilityValue(selectedIDs.contains(group.id) ? "已选择" : "未选择")
+                .accessibilityIdentifier("unsortedGroup_" + group.id)
+        } else {
+            NavigationLink(value: UnsortedGroupRoute(questionID: questionID, group: group)) { rowContent(group) }
+                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("unsortedGroup_" + group.id)
+        }
+    }
+    private func rowContent(_ group: UnsortedPartyGroup) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+                if selecting {
+                    ZStack {
+                        Circle().strokeBorder(YubaiColor.labelSecondary, lineWidth: 2)
+                        if selectedIDs.contains(group.id) {
+                            Circle().fill(YubaiColor.brand)
+                            Image(systemName: "checkmark").yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.onBrand)
+                        }
+                    }.frame(width: YubaiSpace.space24, height: YubaiSpace.space24).accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                     Text(group.party).yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail)
-                    Text("\(group.entries.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    Text("\(group.entries.count) 笔 · \(group.entries.first.map(UnsortedEntryPresentation.summary) ?? "")")
+                        .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1).truncationMode(.tail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 AmountLabel(cents: group.total, hide: store.current.preferences.hideAmounts, role: .amount,
                             sign: group.inflow ? .inflow : .outflow, currency: false).layoutPriority(1)
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                if !selecting { Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             }.contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("unsortedGroup_" + group.id)
+    }
+}
+
+struct UnsortedUndoNotice: Identifiable {
+    let id = UUID()
+    let questionID: UUID
+    let groupIDs: [String]
+    let label: String
+    let recovery: UnsortedGroupsUndo
+}
+
+struct UnsortedUndoRestoration: Equatable {
+    let id = UUID()
+    let questionID: UUID
+    let groupIDs: [String]
+}
+
+struct UnsortedUndoBar: View {
+    @Environment(AppStore.self) private var store
+    let notice: UnsortedUndoNotice
+    var body: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            Text(notice.label).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("unsortedUndoMessage")
+            Button("撤销") { store.undoUnsorted(notice.id) }
+                .yubaiFont(YubaiFont.callout, weight: .semibold).frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin)
+                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("quickSortUndo")
+        }.foregroundStyle(YubaiColor.canvas)
+            .padding(.leading, YubaiSpace.insetPage).padding(.trailing, YubaiSpace.space8)
+            .frame(minHeight: YubaiSize.rowSingle).background(YubaiColor.label, in: Capsule())
+            .task(id: notice.id) {
+                do { try await Task.sleep(for: .seconds(YubaiMotion.toastLifetime)) } catch { return }
+                if store.unsortedUndo?.id == notice.id { store.unsortedUndo = nil }
+            }
+    }
+}
+
+/// Shared immediate-apply controls for the quick card and the selection sheet.
+private struct UnsortedImmediateChoices: View {
+    @Environment(AppStore.self) private var store
+    let groups: [UnsortedPartyGroup]
+    var suggested: String? = nil
+    let identifier: String
+    let apply: (UnsortedUse, String?, UUID?) -> Void
+    @State private var choosingAccount = false
+    var body: some View {
+        let inflow = groups.first?.inflow ?? false
+        let categories = store.current.selectableCategories.filter { $0.income == inflow }
+        let ordered = categories.filter { $0.name == suggested } + categories.filter { $0.name != suggested }
+        let choices = UnsortedGroups.uses(for: groups, in: store.current).filter { !$0.needsCategory && $0 != .transfer }
+        let canTransfer = UnsortedGroups.uses(for: groups, in: store.current).contains(.transfer)
+        VStack(alignment: .leading, spacing: YubaiSpace.space16) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: 3), spacing: YubaiSpace.space8) {
+                ForEach(ordered) { category in
+                    Button { apply(inflow ? .income : .expense, category.name, nil) } label: {
+                        Text(category.name).yubaiFont(YubaiFont.button, weight: category.name == suggested ? .semibold : .regular)
+                            .lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
+                            .foregroundStyle(category.name == suggested ? YubaiColor.brandInk : YubaiColor.label)
+                            .background(YubaiColor.raised, in: Capsule())
+                            .overlay { if category.name == suggested { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 2) } }
+                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Category_" + category.name)
+                }
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                Text(inflow ? "不是收入" : "不是支出").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                ChipFlow {
+                    ForEach(choices, id: \.rawValue) { use in
+                        SuggestionChip(value: use.title, identifier: identifier + "Nature_" + use.rawValue) { apply(use, nil, nil) }
+                    }
+                    if canTransfer {
+                        SuggestionChip(value: UnsortedUse.transfer.title, selected: choosingAccount, identifier: identifier + "Nature_transfer") {
+                            choosingAccount.toggle()
+                        }
+                    }
+                }
+                if choosingAccount, canTransfer {
+                    ChipFlow {
+                        ForEach(UnsortedGroups.otherAccounts(for: groups, in: store.current)) { account in
+                            SuggestionChip(value: account.name, identifier: identifier + "Account_" + account.id.uuidString) { apply(.transfer, nil, account.id) }
+                        }
+                    }
+                }
+            }
+        }.disabled(groups.isEmpty)
+    }
+}
+
+private struct UnsortedSelectionSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let questionID: UUID
+    let groupIDs: Set<String>
+    let applied: () -> Void
+    var body: some View {
+        let snapshot = store.unsortedGroups(questionID: questionID)
+        let groups = snapshot?.groups.filter { groupIDs.contains($0.id) } ?? []
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.space16) {
+                Text("\(groups.reduce(0) { $0 + $1.entries.count }) 笔记为").yubaiFont(YubaiFont.heroLabel)
+                UnsortedImmediateChoices(groups: groups, identifier: "unsortedSelected") { use, category, account in
+                    if store.applyUnsortedGroups(questionID: questionID, groupIDs: groupIDs, use: use, category: category, otherAccount: account) { applied() }
+                }
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space24)
+        }.paperBackground().foregroundStyle(YubaiColor.label)
+            .onChange(of: snapshot?.revision) { _, _ in if groups.isEmpty { dismiss() } }
+    }
+}
+
+struct UnsortedQuickSortView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let questionID: UUID
+    @State private var session = UnsortedQuickSession()
+    @State private var detailRoute: UnsortedGroupRoute?
+    @State private var isDismissing = false
+    var body: some View {
+        let snapshot = store.unsortedGroups(questionID: questionID)
+        let groups = snapshot?.groups ?? []
+        let group = session.queue.compactMap { snapshot?.groupsByID[$0] }.first ?? groups.first
+        VStack(spacing: YubaiSpace.space16) {
+            GeometryReader { proxy in
+                Capsule().fill(YubaiColor.neutralSoft)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(YubaiColor.brand).frame(width: proxy.size.width * CGFloat(session.done) / CGFloat(max(1, session.total)))
+                    }
+            }.frame(height: YubaiSpace.space4).padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space4)
+                .accessibilityLabel("分类进度").accessibilityValue("已分 \(session.done) 组，共 \(session.total) 组")
+            ScrollView {
+                if let group {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space16) {
+                        quickCard(group)
+                        UnsortedImmediateChoices(groups: [group], suggested: UnsortedGroups.suggestedCategory(for: group, in: store.current), identifier: "quickSort") { use, category, account in
+                            if store.applyUnsortedGroup(questionID: questionID, groupID: group.id, use: use,
+                                                        category: category, otherAccount: account, quickSort: true) {
+                                session.record(group.id)
+                                session.reconcile(store.unsortedGroups(questionID: questionID)?.groups ?? [])
+                            }
+                        }
+                    }.id(group.id)
+                        .transition(reduceMotion ? .opacity : .asymmetric(insertion: .offset(x: YubaiSpace.space24).combined(with: .opacity), removal: .offset(x: -YubaiSpace.space24).combined(with: .opacity)))
+                        .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.space16)
+                }
+            }.animation(YubaiMotion.quick, value: group?.id)
+        }.frame(maxWidth: 1080).frame(maxWidth: .infinity).paperBackground().foregroundStyle(YubaiColor.label)
+            .navigationTitle("一个个分").yubaiNavigation()
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Text("\(session.done)/\(session.total)").yubaiFont(YubaiFont.caption).monospacedDigit()
+                        .foregroundStyle(YubaiColor.labelSecondary).accessibilityIdentifier("quickSortProgress")
+                        .accessibilityValue("还没分类 \(snapshot?.entryCount ?? 0) 笔")
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+                VStack(spacing: YubaiSpace.space8) {
+                    if store.unsortedUndo != nil { Color.clear.frame(height: YubaiSize.rowSingle).accessibilityHidden(true) }
+                    Button("跳过") { if let group { session.skip(group.id) } }
+                        .yubaiFont(YubaiFont.button).foregroundStyle(YubaiColor.labelSecondary)
+                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).buttonStyle(.plain)
+                        .disabled(group == nil).accessibilityIdentifier("quickSortSkip")
+                }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.space4)
+            }
+            .navigationDestination(item: $detailRoute) { route in
+                UnsortedGroupView(questionID: route.questionID, initialGroup: route.group)
+            }
+            .onChange(of: snapshot?.revision, initial: true) { _, _ in
+                session.reconcile(groups)
+                dismissIfEmpty(groups)
+            }
+            .onChange(of: detailRoute) { _, route in if route == nil { dismissIfEmpty(groups) } }
+            .onChange(of: store.unsortedUndoRestoration) { _, restoration in
+                guard let restoration, restoration.questionID == questionID else { return }
+                for id in restoration.groupIDs.reversed() { session.restore(id) }
+                session.reconcile(groups)
+            }
+    }
+    private func dismissIfEmpty(_ groups: [UnsortedPartyGroup]) {
+        guard groups.isEmpty, detailRoute == nil, !isDismissing else { return }
+        isDismissing = true; dismiss()
+    }
+    private func quickCard(_ group: UnsortedPartyGroup) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.none) {
+            Text(group.party).yubaiFont(YubaiFont.quote).accessibilityIdentifier("quickSortParty")
+            HStack(spacing: YubaiSpace.space4) {
+                Text("\(group.entries.count) 笔 ·").yubaiFont(YubaiFont.callout)
+                AmountLabel(cents: group.total, hide: store.current.preferences.hideAmounts, role: .small,
+                            sign: group.inflow ? .inflow : .outflow, currency: false)
+            }.foregroundStyle(YubaiColor.labelMuted).padding(.top, YubaiSpace.space2)
+                .accessibilityIdentifier("quickSortGroupCount")
+            Rectangle().fill(YubaiColor.neutralSoft).frame(height: 1).padding(.top, YubaiSpace.space8)
+            ForEach(Array(group.entries.prefix(2))) { entry in
+                HStack(spacing: YubaiSpace.space8) {
+                    Text(FixedFlowPresentation.monthDay(entry.date)).foregroundStyle(YubaiColor.labelSecondary).fixedSize()
+                    Text(UnsortedEntryPresentation.summary(entry)).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
+                    AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts, role: .small,
+                                sign: group.inflow ? .inflow : .outflow, currency: false).fixedSize()
+                }.yubaiFont(YubaiFont.caption).padding(.vertical, YubaiSpace.space8)
+                Rectangle().fill(YubaiColor.neutralSoft).frame(height: 1)
+            }
+            Button { detailRoute = UnsortedGroupRoute(questionID: questionID, group: group) } label: {
+                HStack(spacing: YubaiSpace.space4) {
+                    Text("这 \(group.entries.count) 笔")
+                    Image(systemName: "chevron.right")
+                }.yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
+                    .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("quickSortGroupDetails")
+        }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, YubaiSpace.insetCard).padding(.bottom, YubaiSpace.space8)
+            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
     }
 }
 
