@@ -20,10 +20,15 @@ struct FixedFlowPayments {
             }
         }
     }
-    func amount(for plan: Plan) -> Int64 { plan.estimated ? latest[plan.id]?.amount ?? plan.amount : plan.amount }
+    func amount(for plan: Plan) -> Int64 {
+        guard plan.estimated, let entry = latest[plan.id],
+              plan.estimatedAmountSince.map({ (entry.recordedAt ?? entry.date) > $0 }) ?? true else { return plan.amount }
+        return entry.amount
+    }
     func remaining(for plan: Plan, on date: Date) -> Int64 {
         guard !plan.isSkipped(on: date) else { return 0 }
         let paid = plans[FixedFlowPaymentKey(id: plan.id, day: Dates.day(date)), default: 0]
+        if paid > 0 && plan.settledOccurrences.contains(where: { Dates.day($0) == Dates.day(date) }) { return 0 }
         return plan.estimated && paid > 0 ? 0 : max(0, amount(for: plan) - paid)
     }
 }
@@ -184,15 +189,9 @@ extension FixedFlows {
             let schedule = plan.schedule(through: end)
             // Paid or skipped periods still count as a period in this month.
             if !stoppedIDs.contains(plan.id), plan.stoppedAt == nil, !schedule.contains(where: { $0.date >= interval.start }) {
-                for index in 0..<min(2400, max(0, plan.installments ?? 2400)) {
-                    let date = plan.scheduledDate(at: index)
-                    if plan.endDate.map({ date > $0 }) == true { break }
-                    if date >= interval.end && !plan.isSkipped(on: date) {
-                        later.append(FixedFlowUpcoming(planID: plan.id, title: plan.title, amount: payments.amount(for: plan), inflow: plan.inflow,
-                                                       date: date, frequency: plan.frequency, dueDate: plan.dueDate, monthlyDay: plan.monthlyDay))
-                        break
-                    }
-                    if plan.frequency == .once { break }
+                if let date = plan.nextScheduledDate(after: end) {
+                    later.append(FixedFlowUpcoming(planID: plan.id, title: plan.title, amount: payments.amount(for: plan), inflow: plan.inflow,
+                                                   date: date, frequency: plan.frequency, dueDate: plan.dueDate, monthlyDay: plan.monthlyDay))
                 }
             }
             for item in schedule where item.date >= interval.start && !plan.isSkipped(on: item.date) {

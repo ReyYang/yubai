@@ -31,6 +31,19 @@
 - 抽取实际 AppStore 缓存、update、apply、单组／批量／撤销方法到 Linux 替身，在 Swift6 严格并发下链接真实 Core／LedgerRepository 离线执行通过：每操作只保存一次、6→3→6→0→6、无关 checkpoint 保留、通用 toast 关闭、stale group忽略、重复撤销拒绝、落盘一致。替身只替代平台环境／同步与 motion，不代表 Apple AppStore 类型检查；脚本 `/tmp/yubai-verify-store.py`。
 - App iOS26模拟器Debug／设备Release／macOS14Debug，以及UI测试iOS26模拟器Debug条件语法解析通过；`git diff --check` 通过。新增UI源码覆盖快速分类／进度笔数减少／撤销／最后一组回首页、跳过循环／详情返回／重进重置、多选应用／一步撤销与无重复toast。
 - **仍待 Mac**：Apple SDK 类型检查／Xcode 构建、XCTest UI 执行、390pt 实际布局／动画、深色／大字号／VoiceOver和真机操作。外部画布、截图、分发资源未同步；本轮未提交或推送。
+## 2026-11-04 · 第二十九轮固定收付「改」（owner 确认）
+
+来源：owner 本轮明确确认 V29-Bills-Edit「改」与 V29-Bills-Add「添加」，任务内给出结构、交互、文案与尺寸。本节取代 2026-10-28 第二十三轮「尚无编辑页、以后行不可点」的限制；不改此前 Core 的总期数／历史期／方向与撤销规则。独立 HTML／截图未附，未把旧候选标作 V29 原稿，外部画布与分发资源未同步。
+
+`YubaiApp.swift` 新增 `AppSheet.editPlan(UUID)`，复用 `FixedFlowEditor(planID:)`。`FixedFlowsView.swift` 的本月要付／要收、以后、已停掉行及 `OverviewView.swift` 原有到期行，以独立的行主体 Button 打开编辑，结清／恢复／旧期处理仍为并列控件；无 planID 的 rent 主体保持只读。已有左滑宽度、内容偏移和 contextMenu 保持；展开时内容覆盖层先收起，不打开或结清。
+
+表单沿用添加的 Page、ManualSheetHeader、卡片、字号与 chip：编辑标题「改」，左「取消」、右「好」，隐藏收支切换，Core 预填全部字段；未改动或 Core 校验不通过时禁用「好」。保存实时重建 `FixedFlows.update`，经 `store.apply(..., label: "修改安排")` 成功后关闭，撤销沿用完整快照。账户列表保留当前已归档账户以免预填丢失。分类位于账户与共几期之间，用相同 manualFormChip Menu 和 Core 可选分类；添加默认仍为其他支出／其他收入，方向切换只在原分类不适用时重置。
+
+接下来最多四期复用 Core `Finance.occurrences` 的排期、跳过、已付、保留历史和期数限制；月末排期文案使用原 monthlyDay／原始日期的锚点。编辑停掉的安排时仅预览忽略停止截止，不改账本状态。底部「停掉以后的」为卡片底色、amberInk、52pt 高及 YubaiRadius.card；已停掉或不能执行原 stop API 的安排不显示。列表与表单使用同一个 `FixedFlowStopConfirmation`：无待处理期只有停掉／取消，有待处理期沿用付了或收到了后记一笔再停／没付或没收到则跳过；stop 成功才关闭编辑，未保存字段不会随停掉提交。
+
+新增可见中文仅 **「改」**（标题）、**「分类」**（Menu 控件名）、**「停掉以后的」**（结果按钮，复用原确认框措辞）。分类名、错误原因、确认后果及已有状态均复用现有来源，无新增说明句。AX 新增 `editFixedFlow_<planID>`、`fixedFlowCategory`、`fixedFlowEditStop`、`fixedFlowEditor`、`fixedFlowTitle`、`fixedFlowAmount`；原行／结清／恢复／alert 标识保持。
+
+`AppFlowTests.swift` 新增 7 项：预填／禁用／改名／撤销、跳过停掉与停掉后编辑、全部结清再停与撤销、无待处理期停掉、滑开先收起、分类方向切换、首页主体与结清按钮分开；更新工资「以后」行的旧不打开断言，原结清／长按／左滑／恢复用例保持。Linux `swift build --target YubaiCore` 通过，全量 767 项、763 通过／4 原有实网 opt-in 跳过／0 失败（125.513 秒）。实际 editor 非绘制方法以 Linux 状态／环境替身编译执行，覆盖预填、无改动／无效禁用、更新保存、快照恢复、有限期预览、月末锚点与停掉后修改。App 全目录在 iOS 26／27 模拟器 Debug、iOS 26 设备及 macOS 14 Debug 条件下语法解析通过，UI 测试在 iOS 26／27 模拟器条件下解析通过。上述检查不替代 Apple SDK 的 SwiftUI 类型检查或 UI 实跑；Xcode 编译、iPhone／Mac 视觉、AX 与手势待 Mac。未提交／推送、无新依赖或真实智能请求。
 
 ## 2026-11-04 · PR #62／#63 Mac 验证修复（行为保持）
 

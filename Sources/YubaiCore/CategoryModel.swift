@@ -158,6 +158,7 @@ enum CategoryReferences {
                 let choice = map(.init(category: draft.category, subcategory: draft.subcategory))
                 draft.category = choice.category; draft.subcategory = choice.subcategory; return .addEntry(draft)
             case .addPlan(let old): return .addPlan(plan(old))
+            case .updatePlan(let old): return .updatePlan(plan(old))
             case .profile(.upsertArea(let old, let stance)): return .profile(.upsertArea(area(old), stance: stance))
             default: return old
             }

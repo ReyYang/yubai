@@ -1,6 +1,7 @@
 # 余白 · 产品与设计入口
 
 **2026-11-04 第三十一轮「更快分类」**：owner 确认五稿并授权在 `feat/quick-sort-unsorted` 实现；[五稿原样归档](mockups/quick-sort-v31/README.md)。首页双入口、快速页即时分类／跳过／原一组详情／本机建议／进度、列表同向多选与批量sheet均已接入；一次apply／一次保存，专用4秒撤销恢复该操作的记录与分类记忆，并保留无关checkpoint。记住对方供后续不同摘要导入。新增8项Core／3项UI源码；Core build和全量 **746项、742通过／4原有实网跳过／0失败（96.426秒）**，App／UI条件解析、实际AppStore方法Linux替身验证通过。采用行为、原生token与HTML适配、可见中文及恢复边界见[DESIGN.md本轮节](DESIGN.md#2026-11-04--第三十一轮更快分类owner-确认)。Apple SDK编译、UI实跑／视觉／真机仍待Mac，外部资源未同步。未提交／推送、无新依赖／网络API或DeepSeek调用。
+**2026-11-04 第二十九轮固定收付「改」**：owner 已确认 V29-Bills-Edit／Add，并授权在既有 Core 上接 SwiftUI。本月要付／要收、以后、已停掉及首页原有到期行的 Plan 主体可打开同一个 `FixedFlowEditor(planID:)`；rent 保持只读。编辑预填、锁定方向，「好」仅改动合法才可点；添加／编辑同位置增加分类 chip，添加切换方向重置不适用分类。底部 52pt 卡片按钮「停掉以后的」与左滑共用系统确认，成功关闭；结清、提前标记、恢复和撤销保持，滑开时先收起。采用范围、中文清单和验证见 [DESIGN.md](DESIGN.md#2026-11-04--第二十九轮固定收付改owner-确认)；产品票及地图同步。Linux Core 构建与全量 **767 项，763 通过／4 原有跳过／0 失败（125.513 秒）**；新增 7 项 UI 回归源码并更新旧「以后只读」断言，Apple SDK 类型检查、Xcode 编译、UI／视觉／手势实跑仍待 Mac。独立原稿未附，按本轮已确认结构规格实现，外部资源未同步；未提交／推送、无新依赖。
 
 **2026-11-04 PR #62／#63 Mac 验证修复**：按 owner 的 main `55d6687` FAIL 报告修复现金图 representable 挂载、存储路径别名身份与测试的完成顺序／mtime 缓存假设；Widget package／Frameworks 引用完整，未改工程架构。业务规则、界面外观和可见中文保持。指定 Linux 全量 **738 项，734 通过／4 原有实网跳过／0 失败（120.883 秒）**；App／UI／Widget 条件解析通过。根因、API 签名和证据见[修复报告](../docs/MAC-VERIFY-6263-FIX.md)；Apple SDK 构建、Darwin 新断言、XCTest UI／真机仍待 Mac，外部资源未同步。未提交／推送、无新依赖／设计稿链接、未读密钥／未调用真实 DeepSeek。
 

@@ -214,10 +214,17 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     // Preserve a detected payday when the first due date is clamped to a short month.
     public var monthlyDay: Int?
     public var skippedOccurrences: [Date] = []
+    /// Linked periods retained when the recurring schedule is replaced. These
+    /// count toward installments, and are merged by day with the new schedule.
+    public var previousOccurrences: [Date] = []
+    /// Completion before an edit is independent of later price/estimate changes.
+    /// A period still needs a live linked payment to remain paid.
+    public var settledOccurrences: [Date] = []
+    public var estimatedAmountSince: Date?
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = Classification.pendingCategory, nature: Nature = .expense) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
     }
-    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay }
+    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
@@ -234,16 +241,23 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         monthlyDay = try c.decodeIfPresent(Int.self, forKey: .monthlyDay)
         estimated = try c.decodeIfPresent(Bool.self, forKey: .estimated) ?? false
         skippedOccurrences = try c.decodeIfPresent([Date].self, forKey: .skippedOccurrences) ?? []
+        previousOccurrences = try c.decodeIfPresent([Date].self, forKey: .previousOccurrences) ?? []
+        settledOccurrences = try c.decodeIfPresent([Date].self, forKey: .settledOccurrences) ?? []
+        estimatedAmountSince = try c.decodeIfPresent(Date.self, forKey: .estimatedAmountSince)
     }
     func schedule(through end: Date) -> [(index: Int, date: Date)] {
-        var result: [(index: Int, date: Date)] = []
-        for index in 0..<min(2400, max(0, installments ?? 2400)) {
+        let previous = Set(previousOccurrences.map(Dates.day))
+        var dates = previousOccurrences
+        let limit = min(2400, max(0, installments ?? 2400))
+        var added = previous.count
+        for index in 0..<2400 {
+            if added >= limit { break }
             let date = scheduledDate(at: index)
             if date > end || endDate.map({ date > $0 }) == true { break }
-            result.append((index, date))
+            if !previous.contains(Dates.day(date)) { dates.append(date); added += 1 }
             if frequency == .once { break }
         }
-        return result
+        return dates.sorted().enumerated().compactMap { index, date in date <= end ? (index, date) : nil }
     }
     func scheduledDate(at index: Int) -> Date {
         let date = frequency.advance(dueDate, by: index)
@@ -254,7 +268,29 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         return Dates.addDays(min(max(1, monthlyDay), last) - 1, to: month)
     }
     func isSkipped(on date: Date) -> Bool { skippedOccurrences.contains { Dates.day($0) == Dates.day(date) } }
+    /// The earliest scheduled, non-waived day after a boundary, without expanding
+    /// an unlimited arrangement to the end of the supported date range.
+    func nextScheduledDate(after boundary: Date) -> Date? {
+        let previous = Set(previousOccurrences.map(Dates.day))
+        let historical = previousOccurrences.filter { $0 > boundary && !isSkipped(on: $0) }.min()
+        let limit = min(2400, max(0, installments ?? 2400))
+        var count = previous.count
+        for index in 0..<2400 {
+            if count >= limit { break }
+            let date = scheduledDate(at: index)
+            if endDate.map({ date > $0 }) == true { break }
+            if !previous.contains(Dates.day(date)) {
+                count += 1
+                if date > boundary && !isSkipped(on: date) { return min(date, historical ?? date) }
+            }
+            if frequency == .once { break }
+        }
+        return historical
+    }
     func occurrenceIndex(on date: Date) -> Int? {
+        if !previousOccurrences.isEmpty {
+            return schedule(through: Dates.addDays(1, to: Dates.day(date)).addingTimeInterval(-0.001)).first { Dates.day($0.date) == Dates.day(date) }?.index
+        }
         let day = Dates.day(date); let start = Dates.day(dueDate)
         guard day >= start, endDate.map({ day <= Dates.day($0) }) ?? true else { return nil }
         let count: Int
@@ -853,9 +889,16 @@ public struct Ledger: Codable, Equatable, Sendable {
         for change in pendingChanges { try change.validateStructure() }
         for p in plans {
             var schedule = p; schedule.endDate = nil
-            guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && $0 >= p.dueDate }) ?? true,
+            guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && ($0 >= p.dueDate || p.stoppedAt != nil || !p.active) }) ?? true,
                               p.stoppedAt.map(dateValid) ?? true, p.autoPaySince.map(dateValid) ?? true, p.installments.map({ $0 > 0 }) ?? true,
+                              p.estimatedAmountSince.map(dateValid) ?? true,
+                              p.previousOccurrences.count <= 2400, p.settledOccurrences.count <= 2400,
+                              p.previousOccurrences.allSatisfy(dateValid), p.settledOccurrences.allSatisfy(dateValid),
+                              Set(p.previousOccurrences.map(Dates.day)).count == p.previousOccurrences.count,
+                              Set(p.settledOccurrences.map(Dates.day)).count == p.settledOccurrences.count,
+                              p.installments.map({ $0 >= p.previousOccurrences.count }) ?? true,
                               p.monthlyDay.map({ (1...31).contains($0) && p.frequency == .monthly }) ?? true,
+                              p.skippedOccurrences.allSatisfy(dateValid),
                               Set(p.skippedOccurrences.map(Dates.day)).count == p.skippedOccurrences.count,
                               p.skippedOccurrences.allSatisfy({ dateValid($0) && schedule.occurrenceIndex(on: $0) != nil }) else { throw YubaiError.invalid("资金安排信息无效。") }
         }

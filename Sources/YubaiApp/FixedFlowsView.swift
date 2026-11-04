@@ -65,16 +65,21 @@ struct FixedFlowsView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             Text("以后").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.leading, YubaiSpace.insetCard)
             CardRows(rows, rowHeight: 52) { row in
-                HStack(spacing: YubaiSpace.gapGroup) {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                        Text(row.title).yubaiFont(YubaiFont.rowTitle)
-                        Text(row.detail()).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                    AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none,
-                                ink: row.inflow ? YubaiColor.brandInk : YubaiColor.label).fixedSize(horizontal: true, vertical: false)
-                    Color.clear.frame(width: YubaiSize.rowIcon).accessibilityHidden(true)
-                }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: 52)
-                    .accessibilityElement(children: .contain)
+                HStack(spacing: YubaiSpace.none) {
+                    Button { edit(row.planID) } label: {
+                        HStack(spacing: YubaiSpace.gapGroup) {
+                            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                                Text(row.title).yubaiFont(YubaiFont.rowTitle)
+                                Text(row.detail()).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none,
+                                        ink: row.inflow ? YubaiColor.brandInk : YubaiColor.label).fixedSize(horizontal: true, vertical: false)
+                            Color.clear.frame(width: YubaiSize.rowIcon).accessibilityHidden(true)
+                        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: 52).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityElement(children: .contain).accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("改" + row.title)
+                        .accessibilityIdentifier("editFixedFlow_" + row.planID.uuidString)
+                }.accessibilityElement(children: .contain)
                     .accessibilityIdentifier("fixedFlowLater_" + row.planID.uuidString)
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("fixedFlowLater")
@@ -85,17 +90,13 @@ struct FixedFlowsView: View {
             CardRows(rows) { row in
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     HStack(spacing: YubaiSpace.gapGroup) {
-                        HStack(spacing: YubaiSpace.gapGroup) {
-                            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                                Text(row.title).yubaiFont(YubaiFont.rowTitle)
-                                Text(row.detail).yubaiFont(YubaiFont.caption)
-                                    .foregroundStyle(row.pending.isEmpty ? YubaiColor.labelSecondary : YubaiColor.amberInk)
-                            }.frame(maxWidth: .infinity, alignment: .leading)
-                            let amount = row.pending.isEmpty ? row.amount : row.pendingAmount
-                            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts,
-                                        sign: row.inflow ? .inflow : .none, ink: YubaiColor.labelSecondary)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }.foregroundStyle(YubaiColor.labelSecondary).opacity(row.pending.isEmpty ? 0.7 : 1)
+                        let planID = store.current.plans.first { $0.id == row.id }?.id
+                        if let planID {
+                            Button { edit(planID) } label: { stoppedSummary(row) }
+                                .buttonStyle(.plain).accessibilityElement(children: .contain).accessibilityAddTraits(.isButton)
+                                .accessibilityLabel("改" + row.title)
+                                .accessibilityIdentifier("editFixedFlow_" + planID.uuidString)
+                        } else { stoppedSummary(row) }
                         Button("恢复") { resume(row) }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
                             .frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
                             .accessibilityLabel("恢复" + row.title).accessibilityIdentifier("resumeFixedFlow_" + row.id.uuidString)
@@ -110,6 +111,23 @@ struct FixedFlowsView: View {
                     .accessibilityIdentifier("stoppedFixedFlow_" + row.id.uuidString)
             }
         }
+    }
+    private func stoppedSummary(_ row: FixedFlowArrangement) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text(row.title).yubaiFont(YubaiFont.rowTitle)
+                Text(row.detail).yubaiFont(YubaiFont.caption)
+                    .foregroundStyle(row.pending.isEmpty ? YubaiColor.labelSecondary : YubaiColor.amberInk)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            let amount = row.pending.isEmpty ? row.amount : row.pendingAmount
+            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts,
+                        sign: row.inflow ? .inflow : .none, ink: YubaiColor.labelSecondary)
+                .fixedSize(horizontal: true, vertical: false)
+        }.foregroundStyle(YubaiColor.labelSecondary).opacity(row.pending.isEmpty ? 0.7 : 1)
+            .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+    }
+    private func edit(_ id: UUID) {
+        store.sheetSource = nil; store.sheet = .editPlan(id)
     }
     private func stoppedAction(_ title: String, row: FixedFlowArrangement, resolution: FixedFlowStopResolution) -> some View {
         let ink = resolution == .skip ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.amberInk
@@ -176,6 +194,48 @@ struct FixedFlowDot: View {
     }
 }
 
+/// Both edit and swipe stop the saved arrangement through the same confirmation.
+private struct FixedFlowStopConfirmation: ViewModifier {
+    @Environment(AppStore.self) private var store
+    let planID: UUID?
+    let title: String
+    let inflow: Bool
+    @Binding var isPresented: Bool
+    var onStopped: () -> Void = {}
+    private var pending: [Occurrence] { planID.map { FixedFlows.unsettled(planID: $0, in: store.current) } ?? [] }
+    private var message: String? {
+        let pending = pending
+        if pending.count > 1 { return "还有 \(pending.count) 期没记。" }
+        return pending.first.map { FixedFlowPresentation.monthDay($0.date) + "这期还没记。" }
+    }
+    func body(content: Content) -> some View {
+        content.alert("停掉「\(title)」？", isPresented: $isPresented) {
+            if pending.isEmpty {
+                Button("停掉以后的", role: .destructive) { performStop() }
+                    .accessibilityIdentifier("fixedFlowStopConfirm")
+                    .accessibilityHint("只停以后的，已到期账单和付过的记录保留")
+            } else {
+                Button(inflow ? "收到了，记一笔再停" : "付了，记一笔再停") { performStop(.settle) }
+                    .accessibilityIdentifier("fixedFlowStopConfirm")
+                Button(inflow ? "没收到，这期也不要了" : "没付，这期也不要了", role: .destructive) { performStop(.skip) }
+                    .accessibilityIdentifier("fixedFlowStopSkip")
+            }
+            Button("取消", role: .cancel) { isPresented = false }.accessibilityIdentifier("fixedFlowStopCancel")
+        } message: {
+            if let message { Text(message) }
+        }
+    }
+    private func performStop(_ resolution: FixedFlowStopResolution? = nil) {
+        guard let planID else { return }
+        do {
+            let change = try FixedFlows.stop(planID: planID, resolution: resolution, in: store.current)
+            if store.apply(change, label: "停掉安排") {
+                store.cancelEntrySaveMotion(); store.toast = "已停掉"; onStopped()
+            }
+        } catch { store.error = error.localizedDescription }
+    }
+}
+
 private struct FixedFlowBillRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -189,12 +249,6 @@ private struct FixedFlowBillRow: View {
     let row: FixedFlowOccurrence
     private let revealDistance = YubaiSize.swipeRevealDistance
     private var canEnd: Bool { store.current.plans.contains { $0.id == row.planID && $0.active && $0.endDate == nil } }
-    private var pendingStop: [Occurrence] { row.planID.map { FixedFlows.unsettled(planID: $0, in: store.current) } ?? [] }
-    private var pendingStopMessage: String? {
-        let pending = pendingStop
-        if pending.count > 1 { return "还有 \(pending.count) 期没记。" }
-        return pending.first.map { FixedFlowPresentation.monthDay($0.date) + "这期还没记。" }
-    }
     var body: some View {
         Group {
             if canEnd {
@@ -233,33 +287,9 @@ private struct FixedFlowBillRow: View {
                     }
                 }
             }
-            .alert("停掉「\(row.title)」？", isPresented: $confirmingStop) {
-                stopActions
-            } message: {
-                if let message = pendingStopMessage { Text(message) }
-            }
+            .modifier(FixedFlowStopConfirmation(planID: row.planID, title: row.title, inflow: row.inflow, isPresented: $confirmingStop))
     }
-    @ViewBuilder private var stopActions: some View {
-        if pendingStop.isEmpty {
-            Button("停掉以后的", role: .destructive) { performStop() }
-                .accessibilityIdentifier("fixedFlowStopConfirm")
-                .accessibilityHint("只停以后的，已到期账单和付过的记录保留")
-        } else {
-            Button(row.inflow ? "收到了，记一笔再停" : "付了，记一笔再停") { performStop(.settle) }
-                .accessibilityIdentifier("fixedFlowStopConfirm")
-            Button(row.inflow ? "没收到，这期也不要了" : "没付，这期也不要了", role: .destructive) { performStop(.skip) }
-                .accessibilityIdentifier("fixedFlowStopSkip")
-        }
-        Button("取消", role: .cancel) { confirmingStop = false }.accessibilityIdentifier("fixedFlowStopCancel")
-    }
-    private func performStop(_ resolution: FixedFlowStopResolution? = nil) {
-        guard let id = row.planID else { return }
-        do {
-            let change = try FixedFlows.stop(planID: id, resolution: resolution, in: store.current)
-            if store.apply(change, label: "停掉安排") { store.cancelEntrySaveMotion(); store.toast = "已停掉" }
-        } catch { store.error = error.localizedDescription }
-    }
-    private var content: some View {
+    private var summary: some View {
         HStack(spacing: YubaiSpace.gapGroup) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(row.title).yubaiFont(YubaiFont.rowTitle)
@@ -270,12 +300,35 @@ private struct FixedFlowBillRow: View {
                 if row.estimated { Text("~").yubaiFont(YubaiFont.amount) }
                 AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none, ink: row.state == .paid ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.label)
             }.foregroundStyle(row.state == .paid ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.label).fixedSize(horizontal: true, vertical: false)
+        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+    }
+    private var content: some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            if let id = row.planID {
+                Button { edit(id) } label: { summary }
+                    .buttonStyle(.plain).accessibilityElement(children: .contain).accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("改" + row.title)
+                    .accessibilityIdentifier("editFixedFlow_" + id.uuidString)
+            } else { summary }
             if let id = row.planID, row.state != .upcoming {
-                FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount, inflow: row.inflow, state: row.state)
+                if row.state == .paid {
+                    FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount, inflow: row.inflow, state: row.state)
+                        .onTapGesture { edit(id) }
+                } else {
+                    FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount, inflow: row.inflow, state: row.state)
+                }
             } else if row.state == .paid { FixedFlowPaidMark(inflow: row.inflow, title: row.title) }
-            else { Color.clear.frame(width: YubaiSize.rowIcon).accessibilityHidden(true) }
-        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
+            else {
+                Color.clear.frame(width: YubaiSize.rowIcon, height: YubaiSize.rowDouble).contentShape(Rectangle())
+                    .onTapGesture { if let id = row.planID { edit(id) } }.accessibilityHidden(true)
+            }
+        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
             .opacity(row.state == .paid ? 0.7 : 1).background(YubaiColor.card)
+            .overlay {
+                if resting < 0 {
+                    Color.clear.contentShape(Rectangle()).onTapGesture { resting = 0; reset() }
+                }
+            }
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: row.state)
     }
     private func reset() {
@@ -283,6 +336,10 @@ private struct FixedFlowBillRow: View {
         horizontal = nil
         #endif
         withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { offset = resting }
+    }
+    private func edit(_ id: UUID) {
+        guard resting == 0 && offset == 0 else { resting = 0; reset(); return }
+        store.sheetSource = nil; store.sheet = .editPlan(id)
     }
     private func stop() { resting = 0; reset(); confirmingStop = true }
 }
@@ -366,47 +423,80 @@ struct FixedFlowCheck: View {
 struct FixedFlowEditor: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    var planID: UUID? = nil
     @State private var inflow = false
     @State private var amount = ""
     @State private var title = ""
     @State private var frequency = Frequency.monthly
     @State private var date = Date()
     @State private var accountID: UUID?
+    @State private var category = "其他支出"
     @State private var installments: Int?
     @State private var autoPay = false
     @State private var estimated = false
     @State private var pickingSchedule = false
+    @State private var confirmingStop = false
+    @State private var initialized = false
+    @State private var original: FixedFlowEdit?
     @State private var balances: [UUID: Int64] = [:]
-    private var accounts: [Account] { store.current.accounts.filter { !$0.archived } }
+    private var accounts: [Account] { store.current.accounts.filter { !$0.archived || (planID != nil && $0.id == accountID) } }
     private var hasAccount: Bool { accounts.contains { $0.id == accountID } }
+    private var categories: [String] { FixedFlows.categories(inflow: inflow, in: store.current) }
+    private var savedPlan: Plan? { store.current.plans.first { $0.id == planID } }
+    private var canStop: Bool { savedPlan.map { $0.active && $0.endDate == nil && $0.stoppedAt == nil } ?? false }
+    private var scheduleChanged: Bool { original.map { $0.frequency != frequency || $0.date != Dates.day(date) } ?? true }
+    private var scheduleDate: Date { !scheduleChanged && frequency != .once ? savedPlan?.dueDate ?? date : date }
+    private var monthlyDay: Int? {
+        guard !scheduleChanged, frequency == .monthly, let savedPlan else { return nil }
+        return savedPlan.monthlyDay ?? Dates.calendar.component(.day, from: savedPlan.dueDate)
+    }
+    private var editChange: ChangeSet? {
+        guard let planID, let original, let cents = try? Money.parse(amount), cents > 0 else { return nil }
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty,
+              name != original.title || cents != original.amount || frequency != original.frequency || Dates.day(date) != original.date ||
+                accountID != original.accountID || category != original.category || installments != original.installments ||
+                autoPay != original.autoPay || estimated != original.estimated else { return nil }
+        return try? update(planID)
+    }
     private var plan: Plan? {
         guard let cents = try? Money.parse(amount), cents > 0 else { return nil }
         var plan = Plan(title: title.trimmingCharacters(in: .whitespacesAndNewlines), amount: cents, dueDate: Dates.day(date),
-                        frequency: frequency, inflow: inflow, category: inflow ? "其他收入" : "其他支出", nature: inflow ? .income : .expense)
+                        frequency: frequency, inflow: inflow, category: category, nature: inflow ? .income : .expense)
         plan.accountID = hasAccount ? accountID : nil; plan.installments = frequency == .once ? nil : installments
         plan.autoPay = autoPay && hasAccount; plan.autoPaySince = plan.autoPay ? Dates.day(Date()) : nil; plan.estimated = estimated
         return plan
     }
     var body: some View {
+        let change = editChange
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-            ManualSheetHeader(title: "添加", actionTitle: "好", enabled: plan != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            ManualSheetHeader(title: planID == nil ? "添加" : "改", actionTitle: "好",
+                              enabled: planID == nil ? plan != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : change != nil,
                               cancel: { dismiss() }, action: save)
-            Segmented(choices: [(false, "要付"), (true, "要收")], selection: $inflow)
+            if planID == nil { Segmented(choices: [(false, "要付"), (true, "要收")], selection: $inflow) }
             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                 Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-                TextField("0", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay).accessibilityLabel("金额")
+                TextField("0", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay).accessibilityLabel("金额").accessibilityIdentifier("fixedFlowAmount")
             }.frame(minHeight: YubaiSize.rowDouble)
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    EntryFormRow(title: "名字") { TextField("", text: $title).multilineTextAlignment(.trailing).accessibilityLabel("名字") }.frame(minHeight: YubaiSize.rowSingle)
+                    EntryFormRow(title: "名字") { TextField("", text: $title).multilineTextAlignment(.trailing).accessibilityLabel("名字").accessibilityIdentifier("fixedFlowTitle") }.frame(minHeight: YubaiSize.rowSingle)
                     EntryFormDivider()
                     EntryFormRow(title: frequency == .monthly ? "每月几号" : "多久一次") {
-                        Button(FixedFlowArrangement.schedule(frequency, date: date).replacingOccurrences(of: " 日", with: " 号")) { pickingSchedule = true }
+                        Button(FixedFlowArrangement.schedule(frequency, date: scheduleDate, monthlyDay: monthlyDay).replacingOccurrences(of: " 日", with: " 号")) { pickingSchedule = true }
                             .manualFormChip().accessibilityIdentifier("fixedFlowSchedule")
                     }.frame(minHeight: YubaiSize.rowSingle)
                     EntryFormDivider()
                     EntryFormRow(title: inflow ? "收到哪里" : "从哪里付") {
                         EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, optional: true, emptyTitle: "选账户后可自动记")
+                    }.frame(minHeight: YubaiSize.rowSingle)
+                    EntryFormDivider()
+                    EntryFormRow(title: "分类") {
+                        Menu {
+                            ForEach(categories, id: \.self) { name in Button(name) { category = name } }
+                        } label: { Text(Classification.displayCategory(category)) }.manualFormChip()
+                            .accessibilityLabel("分类").accessibilityValue(Classification.displayCategory(category))
+                            .accessibilityIdentifier("fixedFlowCategory")
                     }.frame(minHeight: YubaiSize.rowSingle)
                     EntryFormDivider()
                     EntryFormRow(title: "共几期") {
@@ -425,14 +515,28 @@ struct FixedFlowEditor: View {
                     Toggle("金额会变", isOn: $estimated).accessibilityIdentifier("fixedFlowEstimated").frame(minHeight: YubaiSize.rowSingle)
                 }.yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn)
             }
-            preview
+            preview(change: change)
+            if canStop {
+                Button("停掉以后的") { confirmingStop = true }
+                    .yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.amberInk)
+                    .frame(maxWidth: .infinity).frame(height: 52)
+                    .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+                    .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).buttonStyle(PressButtonStyle())
+                    .accessibilityIdentifier("fixedFlowEditStop")
+            }
         }
+            .accessibilityIdentifier("fixedFlowEditor")
             #if os(iOS)
             .presentationDetents([.large])
             .toolbar(.hidden, for: .navigationBar)
             #endif
-            .onAppear { balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) }) }
+            .onAppear(perform: load)
             .onChange(of: accountID) { _, _ in if !hasAccount { autoPay = false } }
+            .onChange(of: inflow) { _, _ in
+                if planID == nil, !categories.contains(category) { category = inflow ? "其他收入" : "其他支出" }
+            }
+            .modifier(FixedFlowStopConfirmation(planID: planID, title: savedPlan?.title ?? title, inflow: inflow,
+                                                isPresented: $confirmingStop, onStopped: { dismiss() }))
             .popover(isPresented: $pickingSchedule) {
                 VStack(spacing: YubaiSpace.gapGroup) {
                     Picker("多久一次", selection: $frequency) { ForEach(Frequency.allCases) { Text($0.label).tag($0) } }.frame(width: 320)
@@ -444,23 +548,69 @@ struct FixedFlowEditor: View {
                     #endif
             }
     }
-    private var preview: some View {
-        let count = frequency == .once ? 1 : min(4, installments ?? 4)
+    private func load() {
+        guard !initialized else { return }; initialized = true
+        if let planID {
+            guard let value = FixedFlows.edit(planID: planID, in: store.current) else { dismiss(); return }
+            original = value; title = value.title; amount = Money.input(value.amount); frequency = value.frequency; date = value.date
+            inflow = value.inflow; accountID = value.accountID; category = value.category
+            installments = value.installments; autoPay = value.autoPay; estimated = value.estimated
+        }
+        balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) })
+    }
+    private func preview(change: ChangeSet?) -> some View {
+        let dates = previewDates(change: change)
         return HStack(spacing: YubaiSpace.gapGroup) {
-            ForEach(0..<count, id: \.self) { index in
-                let day = frequency.advance(Dates.day(date), by: index)
+            ForEach(dates, id: \.self) { day in
                 VStack(spacing: YubaiSpace.space4) {
                     FixedFlowDot(state: Dates.day(day) <= Dates.day(Date()) ? .due : .upcoming)
                     Text(FixedFlowPresentation.monthDay(day)).yubaiFont(YubaiFont.chartLabel).foregroundStyle(YubaiColor.labelSecondary)
                 }.frame(maxWidth: .infinity)
             }
         }.padding(.top, YubaiSpace.space4).accessibilityElement(children: .ignore)
-            .accessibilityLabel("接下来\(count)期：" + (0..<count).map { FixedFlowPresentation.monthDay(frequency.advance(Dates.day(date), by: $0)) }.joined(separator: "、"))
+            .accessibilityLabel("接下来\(dates.count)期：" + dates.map(FixedFlowPresentation.monthDay).joined(separator: "、"))
+    }
+    private func previewDates(change: ChangeSet?) -> [Date] {
+        var preview = savedPlan ?? Plan(title: title, amount: 1, dueDate: Dates.day(date), frequency: frequency)
+        if let item = change?.items.first, case .updatePlan(let updated) = item { preview = updated }
+        else {
+            if scheduleChanged {
+                preview.dueDate = Dates.day(date); preview.frequency = frequency
+                preview.monthlyDay = frequency == .monthly ? Dates.calendar.component(.day, from: date) : nil
+                // Even while another field is invalid, retain the linked periods
+                // so the finite preview still counts the same history as Core.
+                if let planID {
+                    let linked = store.current.activeEntries.filter { $0.planID == planID }.compactMap(\.occurrence).map(Dates.day)
+                    preview.previousOccurrences = Array(Set(preview.previousOccurrences + linked)).sorted()
+                }
+            }
+            preview.installments = frequency == .once && planID == nil ? nil : installments
+        }
+        // This is a read-only schedule preview, including for stopped plans.
+        preview.active = true; preview.endDate = nil; preview.stoppedAt = nil
+        var ledger = store.current; ledger.plans = [preview]; ledger.rents = []
+        let first = Dates.day(date)
+        let end = frequency.advance(first, by: 4)
+        let days = max(1, (Dates.calendar.dateComponents([.day], from: first, to: end).day ?? 0) + 1)
+        return Array(Finance.occurrences(in: ledger, now: first, days: days).filter { Dates.day($0.date) >= first }.prefix(4).map(\.date))
     }
     private func save() {
+        if let planID {
+            do {
+                let change = try update(planID)
+                if store.apply(change, label: "修改安排") { dismiss() }
+            } catch FixedFlowEditError.noChanges { }
+            catch { store.error = error.localizedDescription }
+            return
+        }
         guard let plan, !plan.title.isEmpty else { return }
         let change = ChangeSet(source: "用户操作", reason: "添加安排「\(plan.title)」", items: [.addPlan(plan)])
         if store.apply(change, label: "添加安排") { dismiss() }
+    }
+    private func update(_ planID: UUID) throws -> ChangeSet {
+        try FixedFlows.update(planID: planID, title: title, amount: Money.parse(amount), frequency: frequency, date: date,
+                              accountID: accountID, category: category, installments: installments,
+                              autoPay: autoPay, estimated: estimated, in: store.current)
     }
 }
 
