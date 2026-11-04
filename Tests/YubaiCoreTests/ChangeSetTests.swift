@@ -184,7 +184,7 @@ final class ChangeSetTests: XCTestCase {
         let area = ProfileArea(title: "外卖")
         let items: [ChangeItem] = [.setCategory(entry: a, category: "餐饮"), .setNature(entry: b, nature: .income, otherAccount: nil), .setPurpose(entry: a, text: "午餐"),
             .pairTransfer(a: a, b: b, nature: .transfer), .linkRefund(refund: b, original: a), .linkPlan(entry: a, plan: plan.id, occurrence: day), .linkRent(entry: b, rent: rent.id, period: day),
-            .markDuplicate(entry: a, of: b), .addPlan(plan), .endPlan(plan.id, day), .addRent(rent), .addEntry(EntryDraft(date: day, amount: 100, accountID: l.accounts[0].id, title: "书")),
+            .markDuplicate(entry: a, of: b), .addPlan(plan), .updatePlan(plan), .endPlan(plan.id, day), .addRent(rent), .addEntry(EntryDraft(date: day, amount: 100, accountID: l.accounts[0].id, title: "书")),
             .profile(.upsertArea(area, stance: .restrain)), .profile(.removeArea(area.id)), .profile(.addPrinciple("借阅")), .profile(.editPrinciple(old: "借阅", new: "购买")), .profile(.removePrinciple("购买")), .profile(.setFloorAmount(nil))]
         let change = ChangeSet(source: "测试", reason: "序列化", items: items); l.pendingChanges = [change]
         XCTAssertEqual(change.preview(in: l).count, items.count); XCTAssertTrue(change.preview(in: l).allSatisfy { !$0.isEmpty })

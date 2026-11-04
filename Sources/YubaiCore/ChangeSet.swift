@@ -32,7 +32,7 @@ public enum ChangeItem: Codable, Equatable, Sendable {
     case linkPlan(entry: UUID, plan: UUID, occurrence: Date)
     case linkRent(entry: UUID, rent: UUID, period: Date)
     case markDuplicate(entry: UUID, of: UUID)
-    case addPlan(Plan), endPlan(UUID, Date), resumePlan(UUID), addRent(Rent), addEntry(EntryDraft)
+    case addPlan(Plan), updatePlan(Plan), endPlan(UUID, Date), resumePlan(UUID), addRent(Rent), addEntry(EntryDraft)
     case skipOccurrence(UUID, Date)
     case profile(ProfileChange)
 
@@ -58,6 +58,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
               !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, reason.count <= 4000,
               !items.isEmpty,
               (-2_208_988_800...7_258_118_400).contains(createdAt.timeIntervalSince1970) else { throw YubaiError.invalid("修改的来源、明细、时间或项目数量无效。") }
+        for case .updatePlan(let plan) in items { try FixedFlows.validateUpdateFields(plan) }
     }
     public func preview(in ledger: Ledger, showPreviousValues: Bool = false) -> [String] {
         let entries = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
@@ -89,6 +90,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .linkRent(let id, let rent, let date): return "把 \(entry(id)) 关联为 \(Dates.calendar.component(.month, from: date)) 月\(ledger.rents.first { $0.id == rent }?.title ?? "房租")\(entries[id]?.nature.inflow == true ? "分摊" : "付款")"
             case .markDuplicate(let id, let original): return "把 \(entry(id)) 作为 \(entry(original)) 的重复记录标为已删除"
             case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
+            case .updatePlan(let p): return FixedFlows.describeUpdate(p, in: ledger)
             case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
             case .resumePlan(let id): return "恢复「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」"
             case .skipOccurrence(let id, let date): return "跳过「\(ledger.plans.first { $0.id == id }?.title ?? "资金安排")」\(Dates.text(date))这期"
@@ -241,6 +243,10 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard p.accountID == nil || next.accounts.contains(where: { $0.id == p.accountID }) else { throw YubaiError.invalid("资金安排的账户不存在。") }
                 guard validDate(p.dueDate) else { throw YubaiError.invalid("资金安排的日期无效。") }
                 next.plans.append(p)
+            case .updatePlan(let p):
+                guard let i = next.plans.firstIndex(where: { $0.id == p.id }) else { throw YubaiError.invalid("找不到要修改的安排。") }
+                try FixedFlows.validateUpdate(p, replacing: next.plans[i], in: next)
+                next.plans[i] = p
             case .skipOccurrence(let id, let date):
                 guard validDate(date), let i = next.plans.firstIndex(where: { $0.id == id }),
                       next.plans[i].occurrenceIndex(on: date) != nil else { throw YubaiError.invalid("找不到这期固定收付。") }

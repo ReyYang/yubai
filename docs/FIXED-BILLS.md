@@ -30,3 +30,30 @@ ManualBookkeeping.change(amount: Int64, nature: Nature, accountID: UUID,
 `FixedFlowMonth` 提供 `date`（月初）、`occurrences: [FixedFlowOccurrence]`、`remainingOutflow`、`remainingInflow`。每行包含 `id`、`title`、`date`、`state: FixedFlowState`（`paid`／`due`／`upcoming`）、`amount`、`planID`／`rentID`、`inflow`、`autoPay`、`installment: (index: Int, total: Int)?` 和 `estimated`。本期结清时状态为 `paid`，金额为关联记录合计；定额部分付款仍为 `due`／`upcoming`，金额显示剩余数；没有关联记录时今天及之前为 `due`，之后为 `upcoming`。定额部分付款的剩余差额仍计入剩余合计。房租付款和应收分摊分别列出，本轮只读。`FixedFlowArrangement` 新增 `paidCount: Int` 与 `total: Int?`；定额分期完全付清一期才计数。`canEnd` 及从今天结束安排的 `.endPlan` 规则保持。
 
 验证结果见 [VALIDATION.md](VALIDATION.md)。Core 接口未在 Apple SDK 或界面分支验证，设计稿、原型及分发包尚未同步。
+
+## 改安排（2026-11-04）
+
+```swift
+ChangeItem.updatePlan(Plan)
+FixedFlows.edit(planID: UUID, in ledger: Ledger,
+                now: Date = Date()) -> FixedFlowEdit?
+FixedFlows.update(planID: UUID, title: String, amount: Int64, frequency: Frequency,
+                  date: Date, accountID: UUID?, category: String, installments: Int?,
+                  autoPay: Bool, estimated: Bool, in ledger: Ledger,
+                  now: Date = Date()) throws -> ChangeSet
+FixedFlows.categories(inflow: Bool, in ledger: Ledger) -> [String]
+```
+
+`FixedFlowEdit` 提供 `title`、`amount`、`frequency`、`date`、`accountID`、`category`、`installments`、`autoPay`、`estimated`、`inflow`、`stopped`。金额取当前估额；日期取最早未结清且未跳过的一期，全部结束则取今天和已有末期之后的下一期（一次性安排保留原日期）。分类复用账本当前可选分类表并按收支方向筛选；添加的默认分类保持。
+
+`update` 返回来源「用户操作」、只有一项 `.updatePlan` 的变更；未改动抛 `FixedFlowEditError.noChanges`。应用按 ID 整体替换，校验存在的安排／可空账户、有效日期、去空白后非空的名字、正金额、方向不变，自动记必须有账户。历史预览写「修改安排「标题」」及各字段前后值；撤销复用 AppStore 应用前完整快照。
+
+名字、分类、账户和开关直接修改，所有关联流水保持。调价只改变未结清期，定额部分付款按新金额减已记金额；已结清期冻结状态。修改估额后先用所填金额，之后新记的实际金额继续更新估额。自动记从关变开以今天为起点，不补记历史；持续开启保留原 `autoPaySince`。修改停掉的安排保留 `active`／`endDate`／`stoppedAt`，不自动恢复。
+
+日期或频率相对 `edit` 发生变化时，日程从所选日期重建，重设 `monthlyDay`；原日程没有关联记录的期不再保留，有关联记录的期按原日期保留（部分付款也保留余款），与新日程同日只算一期。跳过日期只留在新日程仍存在的期。
+
+**`installments` 表示总期数，nil 表示一直**，与添加页「共几期」一致。保留的历史期也占期数，按日期排序编号；例如共 6 期已付 2 期，改新起点后还生成 4 期，首个新期标第 3／6 期。总数不能移除已记过的期。`Plan.previousOccurrences`／`settledOccurrences`／`estimatedAmountSince` 保存排期历史、已结清状态和估额修改时点；旧 JSON 缺键分别解码为 `[]`／`[]`／nil，不改 schema。SyncVersions 的整对象比较自动覆盖这些字段；MemoryReflection 无 ChangeItem 穷举，AI proposal tools 保持原能力。
+
+本轮新增中文仅为历史事实字段「修改安排「…」」「名字：…」「金额：…」「日期/频率：…」「账户：…」「分类：…」「共几期：…」「自动记：开／关」「金额会变：开／关」（空账户「未指定」、无期限「一直」），以及错误状态「没有改动。」「找不到要修改的安排。」「安排名字不能为空。」「安排金额必须大于零且在有效范围内。」「资金安排的日期无效。」「共几期必须大于零。」「自动记需要选择账户。」「不能把要付改为要收，或把要收改为要付。」「资金安排的账户不存在。」「共几期不能少于已保留的期数。」「共几期不能移除已经记过的期。」；无新增页面说明。产品 tracker／设计入口不在本轮写入范围，尚未同步；SwiftUI／Apple SDK 接线未验证。
+
+验证：Swift 6.2.4／Linux，`swift build --target YubaiCore` 通过；`swift test` 最终运行 767 项，763 通过／4 项原有实网 opt-in 跳过／0 失败（120.687 秒）。新增编辑回归 29 项全部通过，原固定收付 50 项保持通过；编译缓存因默认目录只读而放在 `/tmp`。未改 SwiftUI，未提交或推送。

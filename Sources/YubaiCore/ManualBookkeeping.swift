@@ -324,7 +324,8 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
                 }
             }
             return Self(id: plan.id, title: plan.title, detail: detail,
-                        amount: payments.amount(for: plan), inflow: plan.inflow, canEnd: false, total: plan.installments, stoppedAt: date, pending: pending)
+                        amount: payments.amount(for: plan), inflow: plan.inflow, canEnd: false,
+                        paidCount: paidCount(plan, payments: payments), total: plan.installments, stoppedAt: date, pending: pending)
         }
         rows += ledger.rents.compactMap { rent -> Self? in
             let date = rent.stoppedAt ?? rent.endDate
@@ -349,7 +350,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
         }.map { plan in
             Self(id: plan.id, title: plan.title, detail: schedule(plan.frequency, date: plan.dueDate, now: now) + (plan.accountID.map { " · " + ledger.accountName($0) } ?? ""),
                  amount: next[plan.id]?.amount ?? payments.amount(for: plan), inflow: plan.inflow, canEnd: plan.endDate == nil,
-                 paidCount: plan.installments == nil ? 0 : payments.plans.keys.filter { $0.id == plan.id && plan.occurrenceIndex(on: $0.day) != nil && !plan.isSkipped(on: $0.day) && payments.remaining(for: plan, on: $0.day) == 0 }.count,
+                 paidCount: paidCount(plan, payments: payments),
                  total: plan.installments)
         }
         rows += ledger.rents.filter { $0.active && ($0.endDate == nil || $0.endDate! > now) }.map { rent in
@@ -357,6 +358,10 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
                  amount: next[rent.id]?.amount ?? rent.monthlyTotal * Int64(rent.monthsPerPayment), inflow: false, canEnd: rent.endDate == nil)
         }
         return rows
+    }
+    private static func paidCount(_ plan: Plan, payments: FixedFlowPayments) -> Int {
+        guard plan.installments != nil else { return 0 }
+        return payments.plans.keys.filter { $0.id == plan.id && plan.occurrenceIndex(on: $0.day) != nil && !plan.isSkipped(on: $0.day) && payments.remaining(for: plan, on: $0.day) == 0 }.count
     }
     public static func schedule(_ frequency: Frequency, date: Date, now: Date = Date(), monthlyDay: Int? = nil) -> String {
         let c = Dates.calendar

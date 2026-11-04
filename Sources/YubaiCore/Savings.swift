@@ -41,10 +41,11 @@ public enum Savings {
         for stop in stopped {
             let plan = stop.plan
             guard SubscriptionCheck.eligible(plan, ledger: ledger) else { continue }
-            for item in plan.schedule(through: to) {
+            let schedule = plan.schedule(through: plan.frequency.advance(to, by: 1))
+            for (index, item) in schedule.enumerated() {
                 let due = item.date
                 guard due > stop.stoppedAt, due >= from, due < to, stop.resumedAt.map({ due < $0 }) ?? true else { continue }
-                let next = plan.frequency.advance(plan.dueDate, by: item.index + 1)
+                let next = index + 1 < schedule.count ? schedule[index + 1].date : plan.frequency.advance(due, by: 1)
                 let paid = ledger.activeEntries.contains { entry in
                     guard entry.nature == .expense else { return false }
                     if entry.planID == plan.id, let occurrence = entry.occurrence, Dates.day(occurrence) == Dates.day(due) { return true }
