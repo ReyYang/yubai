@@ -1962,14 +1962,67 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["entriesSearchButton"].waitForExistence(timeout: 5))
     }
 
-    func testForecastHoldAndDragKeepsTheCurrentTab() {
-        let app = application("ask"); app.launch()
-        let chart = app.descendants(matching: .any).matching(identifier: "forecastChart").firstMatch
+    func testCashTimelineHoldAndDragKeepsTheCurrentTab() {
+        let app = application("cashflow"); app.launch()
+        let chart = app.descendants(matching: .any).matching(identifier: "cashTimelineChart").firstMatch
         XCTAssertTrue(chart.waitForExistence(timeout: 5))
         let start = chart.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
-        start.press(forDuration: 0.3, thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)))
+        start.press(forDuration: 0.4, thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)))
         XCTAssertTrue(app.buttons["tab_overview"].isSelected)
         XCTAssertTrue(chart.exists)
+        XCTAssertFalse(app.buttons["cashTimelineToday"].exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelineMinimum").firstMatch.exists)
+    }
+
+    func testCashTimelineIsBelowFundsAndPansWithinBoundsThenReturnsToToday() {
+        let app = application("cashflow"); app.launch()
+        let chart = app.descendants(matching: .any).matching(identifier: "cashTimelineChart").firstMatch
+        let card = app.descendants(matching: .any).matching(identifier: "cashTimelineCard").firstMatch
+        XCTAssertTrue(chart.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(app.buttons["fundsFormula"].frame.maxY, card.frame.minY)
+        XCTAssertFalse(app.buttons["现金会怎么走"].exists)
+        XCTAssertFalse(app.navigationBars["现金会怎么走"].exists)
+        let original = chart.value as? String
+        XCTAssertNotNil(original)
+        snapshot("cash-timeline-default", app)
+        func panEarlier() {
+            chart.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.4)).press(forDuration: 0.05,
+                thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.4)))
+        }
+        panEarlier()
+        let today = app.buttons["cashTimelineToday"]
+        XCTAssertTrue(today.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["tab_overview"].isSelected)
+        XCTAssertNotEqual(original, chart.value as? String)
+        panEarlier(); let earliest = chart.value as? String
+        panEarlier(); XCTAssertEqual(earliest, chart.value as? String)
+        snapshot("cash-timeline-earlier", app)
+        tap(today, in: app)
+        XCTAssertFalse(today.exists)
+        XCTAssertEqual(original, chart.value as? String)
+        chart.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.4)).press(forDuration: 0.05,
+            thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.4)))
+        XCTAssertFalse(today.exists)
+        XCTAssertEqual(original, chart.value as? String)
+        XCTAssertTrue(app.buttons["tab_overview"].isSelected)
+        XCTAssertTrue(app.sliders.allElementsBoundByIndex.isEmpty)
+    }
+
+    func testCashTimelineLowFloorUsesTwoDecimalsAndAmountPrivacyHidesThePlot() {
+        let app = application("cashflow-low"); app.launch()
+        let floor = app.descendants(matching: .any).matching(identifier: "cashTimelineFloor").firstMatch
+        let minimum = app.descendants(matching: .any).matching(identifier: "cashTimelineMinimum").firstMatch
+        let chart = app.descendants(matching: .any).matching(identifier: "cashTimelineChart").firstMatch
+        XCTAssertTrue(floor.waitForExistence(timeout: 5))
+        XCTAssertTrue(floor.label.contains("3,000.00"))
+        XCTAssertTrue(minimum.label.contains("1,200.00"))
+        snapshot("cash-timeline-low", app)
+        tap(app.buttons["toggleAmountVisibility"], in: app)
+        XCTAssertFalse(chart.exists); XCTAssertFalse(floor.exists); XCTAssertFalse(minimum.exists)
+        XCTAssertTrue(app.staticTexts["金额已隐藏"].exists)
+        tap(app.buttons["toggleAmountVisibility"], in: app)
+        XCTAssertTrue(chart.waitForExistence(timeout: 3))
+        XCTAssertTrue(floor.exists)
     }
 
     func testWelcomeStatementBalanceReviewAndCommit() {
@@ -2499,27 +2552,15 @@ final class AppFlowTests: XCTestCase {
 
 /// The same Foundation-only source is compiled into the app and this test bundle.
 final class MotionStateTests: XCTestCase {
-    func testForecastPlaysOncePerVisitAcrossScrollingAndViewLifetimes() {
-        var motion = MotionVisitState()
-        XCTAssertTrue(motion.claim(0)); XCTAssertFalse(motion.claim(0))
-        XCTAssertTrue(motion.claim(1)); XCTAssertFalse(motion.claim(1))
-        XCTAssertTrue(motion.claim(2)); XCTAssertFalse(motion.claim(2))
-    }
-    func testReducedMotionSkipsPlaybackAndDoesNotReplayDuringSameVisit() {
-        var motion = MotionVisitState()
-        XCTAssertFalse(motion.claim(0, reduceMotion: true)); XCTAssertFalse(motion.claim(0))
-        XCTAssertTrue(motion.claim(1)); XCTAssertFalse(motion.claim(1, reduceMotion: true))
-        XCTAssertTrue(motion.claim(2))
-    }
     func testChartClaimsSurviveViewLifetimesAndStayIndependent() {
         var session = MotionSessionState()
-        XCTAssertFalse(session.contains("forecast"))
-        XCTAssertTrue(session.claim("forecast"))
-        XCTAssertTrue(session.contains("forecast"))
-        XCTAssertFalse(session.claim("forecast"))
+        XCTAssertFalse(session.contains("cashTimeline"))
+        XCTAssertTrue(session.claim("cashTimeline"))
+        XCTAssertTrue(session.contains("cashTimeline"))
+        XCTAssertFalse(session.claim("cashTimeline"))
         XCTAssertTrue(session.claim("donut"))
         var nextLaunch = MotionSessionState()
-        XCTAssertTrue(nextLaunch.claim("forecast"))
+        XCTAssertTrue(nextLaunch.claim("cashTimeline"))
     }
     func testTabDirectionAndReselection() {
         XCTAssertEqual(MotionSessionState.direction(from: 0, to: 2), 1)

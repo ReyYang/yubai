@@ -1064,17 +1064,12 @@ struct HeroCard: View {
     var available: Int64
     var payable: Int64
     var reserved: Int64
-    var floor: Int64? = nil
     var attentionCount = 0
     var hideAmount = false
     var title = "还能花"
     var horizon: String? = nil
     var onDetails: (() -> Void)? = nil
     var onAttention: (() -> Void)? = nil
-    private var waterBands: Int {
-        let cash = Double(available) + Double(payable) + Double(reserved)
-        return cash > 0 ? Int((min(1, max(0, Double(available) / cash)) * 6).rounded(.down)) : 0
-    }
     var body: some View {
         ChartGrow(key: "hero-composition") { progress in VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             if let onDetails { Button(action: onDetails) { amounts(progress) }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula").accessibilityHint("还能花是怎么算的") }
@@ -1093,18 +1088,9 @@ struct HeroCard: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             summary
             if !hideAmount {
-                composition(progress).padding(.top, YubaiSpace.space8)
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: YubaiSpace.gapGroup) { legends }
-                    VStack(alignment: .leading, spacing: YubaiSpace.space8) { legends }
-                }
+                composition(progress)
             }
         }.contentShape(Rectangle())
-    }
-    @ViewBuilder private var legends: some View {
-        legend("还能花", available, YubaiColor.brand)
-        legend("要付", payable, YubaiColor.neutralStrong)
-        legend("日常开销", reserved, YubaiColor.neutralSoft)
     }
     private var summary: some View {
         HStack(alignment: .bottom, spacing: YubaiSpace.gapGroup) {
@@ -1116,53 +1102,30 @@ struct HeroCard: View {
                 AmountLabel(cents: displayedAvailable ?? available, hide: hideAmount, role: .hero)
             }
             Spacer(minLength: YubaiSpace.none)
-            BrandMark(size: 44, bands: waterBands, wobbleTrigger: store.entrySaveTrigger, moment: "hero-water").padding(.bottom, YubaiSpace.space8).accessibilityHidden(true)
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
-    private var compositionFloor: Int64? {
-        guard let floor, available >= floor else { return nil }
-        return max(0, min(floor, available))
-    }
     private var compositionAccessibilityLabel: String {
-        var label = "还能花 \(AmountLabel.text(available))"
-        if let floor = compositionFloor, floor > 0 {
-            label += "，其中始终留着 \(AmountLabel.text(floor))"
-        }
+        let label = "还能花 \(AmountLabel.text(available))"
         return label + "，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))"
     }
     private func composition(_ progress: Double) -> some View {
-        let values = [max(0, Double(available)), max(0, Double(payable)), max(0, Double(reserved))]
+        let values = [max(0, Double(available)), max(0, Double(payable) + Double(reserved))]
         let total = values.reduce(0, +)
-        let colors = [YubaiColor.brand, YubaiColor.neutralStrong, YubaiColor.neutralSoft]
+        let colors = [YubaiColor.brand, YubaiColor.neutralSoft]
         let indices = values.indices.filter { values[$0] > 0 }
         return GeometryReader { geometry in
-            let width = max(0, geometry.size.width - CGFloat(max(0, indices.count - 1)) * YubaiSpace.space4)
-            HStack(spacing: YubaiSpace.space4) {
+            let width = max(0, geometry.size.width - CGFloat(max(0, indices.count - 1)) * 2)
+            HStack(spacing: 2) {
                 ForEach(indices, id: \.self) { index in
                     let ratio: Double = total > 0 ? values[index] / total : 0
                     let animatedRatio: Double = ratio * progress
                     let segmentWidth = width * CGFloat(animatedRatio)
-                    if index == 0, let floor = compositionFloor {
-                        let floorRatio = Double(floor) / values[index]
-                        HStack(spacing: YubaiSpace.none) {
-                            YubaiColor.brand.frame(width: segmentWidth * CGFloat(floorRatio))
-                            YubaiColor.brand.opacity(0.55).frame(width: segmentWidth * CGFloat(1 - floorRatio))
-                        }
-                    } else {
-                        colors[index].frame(width: segmentWidth)
-                    }
+                    colors[index].frame(width: segmentWidth)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).background(total == 0 ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
         }.frame(height: YubaiSpace.gapGroup).accessibilityElement(children: .ignore)
             .accessibilityLabel(compositionAccessibilityLabel)
-    }
-    private func legend(_ title: String, _ cents: Int64, _ color: Color) -> some View {
-        HStack(spacing: YubaiSpace.space4) {
-            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: YubaiSize.marker, height: YubaiSize.marker).accessibilityHidden(true)
-            Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: cents, role: .small)
-        }
     }
 }
 
@@ -1957,210 +1920,6 @@ struct ProposalCard: View {
             }
             Button(secondaryTitle, action: cancel).buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
         }
-    }
-}
-
-private struct ChartReveal: Shape {
-    var progress: Double
-    var animatableData: Double { get { progress } set { progress = newValue } }
-    func path(in rect: CGRect) -> Path {
-        Path(CGRect(x: rect.minX, y: rect.minY - YubaiSpace.gapSection, width: rect.width * min(1, max(0, progress)), height: rect.height + YubaiSpace.gapSection * 2))
-    }
-}
-
-struct ForecastChart: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var lineProgress: Double = 0
-    @State private var pointVisible = false
-    @State private var endpointVisible = false
-    @State private var appeared = false
-    @State private var visible = false
-    @State private var ringVisible = false
-    @State private var ringProgress: CGFloat = 0
-    @GestureState private var scrubbing = false
-    @State private var selectedDay: Date?
-    @State private var accessibleDay: Date?
-    @State private var selectionTrigger = 0
-    let funds: Funds
-    var height: CGFloat = 150
-    private var lowPoint: ForecastPoint? { funds.points.min(by: { $0.conservative < $1.conservative }) }
-    private var selectedPoint: ForecastPoint? { funds.points.first { $0.date == selectedDay } }
-    private var horizon: String {
-        funds.payday == nil ? "接下来 \(funds.horizonDays) 天" : "到 " + funds.horizonEnd.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
-    }
-    var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                SectionHeading(title: "现金会怎么走", meta: selectedDay.map { $0.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))) } ?? horizon)
-                if store.current.preferences.hideAmounts {
-                    Text("金额已隐藏").yubaiFont(YubaiFont.callout)
-                } else {
-                    forecastPlot
-                }
-            }
-        }.pageLocalHorizontalGestures()
-    }
-    private var forecastPlot: some View {
-        let visit = store.overviewVisit; let active = store.destination == .overview && appeared && visible; let reduced = reduceMotion
-        return Chart {
-            ForEach(funds.points) { point in
-                LineMark(x: .value("日期", point.date), y: .value("还能花", Double(point.conservative) / 100))
-                    .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand)
-            }
-            RuleMark(y: .value("零点", 0))
-                .foregroundStyle(YubaiColor.chartRule).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-            if let point = selectedPoint {
-                RuleMark(x: .value("选中日期", point.date)).foregroundStyle(YubaiColor.chartGuide)
-                PointMark(x: .value("日期", point.date), y: .value("还能花", Double(point.conservative) / 100))
-                    .foregroundStyle(YubaiColor.brand)
-            }
-            if let last = funds.points.last {
-                PointMark(x: .value("日期", last.date), y: .value("还能花", Double(last.conservative) / 100))
-                    .foregroundStyle(YubaiColor.brand).symbolSize(0)
-                    .annotation(position: .top, alignment: .trailing, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
-                        AmountLabel(cents: last.conservative, role: .chart).fixedSize().opacity(reduceMotion || endpointVisible ? 1 : 0)
-                    }
-            }
-        }.chartYAxis(.hidden).chartLegend(.hidden)
-            .chartXScale(range: .plotDimension(padding: YubaiSpace.space8))
-            .chartYScale(range: .plotDimension(padding: YubaiSpace.insetCard))
-            .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month()) } }
-            .chartPlotStyle { plot in plot.mask(ChartReveal(progress: reduceMotion ? 1 : lineProgress)) }
-            .chartOverlay { proxy in forecastOverlay(proxy) }.frame(height: height)
-            .accessibilityElement(children: .ignore).accessibilityLabel(chartDescription)
-            .accessibilityValue(accessibleDay.flatMap { date in funds.points.first { $0.date == date } }.map(readoutDescription) ?? "")
-            .accessibilityHint("上下轻扫逐天查看")
-            .accessibilityAdjustableAction { direction in
-                guard !funds.points.isEmpty else { return }
-                let current = funds.points.firstIndex { $0.date == accessibleDay } ?? 0
-                let next: Int
-                switch direction {
-                case .increment: next = min(funds.points.count - 1, current + 1)
-                case .decrement: next = max(0, current - 1)
-                @unknown default: return
-                }
-                let date = funds.points[next].date
-                if accessibleDay != date { accessibleDay = date; selectionTrigger &+= 1 }
-            }
-            .accessibilityIdentifier("forecastChart")
-            .onGeometryChange(for: Bool.self) { geometry in
-                let bounds = CGRect(origin: .zero, size: geometry.size)
-                return !bounds.isEmpty && (geometry.bounds(of: .scrollView)?.intersects(bounds) ?? true)
-            } action: { visible = $0 }
-            .onChange(of: scrubbing) { _, active in if !active { endScrub() } }
-            #if os(iOS)
-            .sensoryFeedback(.selection, trigger: selectionTrigger)
-            #endif
-            .task(id: "\(visit)-\(active)-\(reduced)") { await playForecast(visit: visit, active: active, reduced: reduced) }
-            .onAppear { appeared = true }
-            .onDisappear { appeared = false; finishForecast() }
-    }
-    private func forecastOverlay(_ proxy: ChartProxy) -> some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topLeading) {
-                Rectangle().fill(.clear).contentShape(Rectangle())
-                    .gesture(scrubGesture(proxy, geometry: geometry))
-                if let point = funds.points.last, let plot = proxy.plotFrame,
-                   let x = proxy.position(forX: point.date), let y = proxy.position(forY: Double(point.conservative) / 100) {
-                    let frame = geometry[plot]
-                    Circle().fill(YubaiColor.brand).frame(width: YubaiSize.marker, height: YubaiSize.marker)
-                        .opacity(reduceMotion || endpointVisible ? 1 : 0)
-                        .offset(y: reduceMotion || endpointVisible ? 0 : -YubaiSpace.space8)
-                        .position(x: frame.minX + x, y: frame.minY + y).allowsHitTesting(false)
-                }
-                if let point = lowPoint, point.conservative < 0,
-                   let plotFrame = proxy.plotFrame, let x = proxy.position(forX: point.date), let y = proxy.position(forY: Double(point.conservative) / 100) {
-                    let frame = geometry[plotFrame]
-                    let ink = YubaiColor.amberDot
-                    ZStack {
-                        if ringVisible && !reduceMotion {
-                            Circle().stroke(ink, lineWidth: 1).frame(width: YubaiSize.marker * (1 + ringProgress * 2.2), height: YubaiSize.marker * (1 + ringProgress * 2.2))
-                                .opacity(0.7 * (1 - ringProgress))
-                        }
-                        Circle().fill(ink).frame(width: YubaiSize.marker, height: YubaiSize.marker)
-                            .opacity(reduceMotion || pointVisible ? 1 : 0).offset(y: reduceMotion || pointVisible ? 0 : -YubaiSpace.space8)
-                    }.position(x: frame.minX + x, y: frame.minY + y).allowsHitTesting(false)
-                }
-                if let point = selectedPoint, let plot = proxy.plotFrame, let x = proxy.position(forX: point.date) {
-                    let frame = geometry[plot]
-                    let width = min(260, geometry.size.width)
-                    readout(point).frame(width: width)
-                        .position(x: min(geometry.size.width - width / 2, max(width / 2, frame.minX + x)), y: frame.minY + 48)
-                        .transition(.opacity).allowsHitTesting(false)
-                }
-            }
-        }.accessibilityHidden(true)
-    }
-    private func scrubGesture(_ proxy: ChartProxy, geometry: GeometryProxy) -> some Gesture {
-        LongPressGesture(minimumDuration: YubaiMotion.durationDismiss, maximumDistance: 12)
-            .sequenced(before: DragGesture(minimumDistance: 0))
-            .updating($scrubbing) { value, state, _ in
-                if case .second(true, _) = value { state = true }
-            }
-            .onChanged { value in
-                guard case .second(true, let drag?) = value, let plot = proxy.plotFrame else { return }
-                let frame = geometry[plot]
-                let x = min(frame.width, max(0, drag.location.x - frame.minX))
-                guard let date: Date = proxy.value(atX: x),
-                      let point = funds.points.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }) else { return }
-                if selectedDay != point.date { selectedDay = point.date; selectionTrigger &+= 1 }
-            }
-            .onEnded { _ in endScrub() }
-    }
-    private func playForecast(visit: Int, active: Bool, reduced: Bool) async {
-        guard !Task.isCancelled, active else { return }
-        guard store.forecastMotion.claim(visit, reduceMotion: reduced) else { finishForecast(); return }
-        var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-        withTransaction(transaction) { lineProgress = 0; pointVisible = false; endpointVisible = false; ringVisible = false; ringProgress = 0 }
-        do {
-            try await Task.sleep(for: .seconds(YubaiMotion.durationStagger))
-            withAnimation(YubaiMotion.chart(reduceMotion: false)) { lineProgress = 1 }
-            try await Task.sleep(for: .seconds(YubaiMotion.pointDelay))
-            withAnimation(YubaiMotion.control(reduceMotion: false)) { pointVisible = true }
-            try await Task.sleep(for: .seconds(YubaiMotion.ringDelay - YubaiMotion.pointDelay))
-            if (lowPoint?.conservative ?? 0) < 0 {
-                ringVisible = true
-                withAnimation(YubaiMotion.ring(reduceMotion: false)) { ringProgress = 1 }
-            }
-            try await Task.sleep(for: .seconds(YubaiMotion.durationDraw - YubaiMotion.ringDelay))
-            withAnimation(YubaiMotion.control(reduceMotion: false)) { endpointVisible = true }
-        } catch {}
-    }
-    private func finishForecast() {
-        var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-        withTransaction(transaction) { lineProgress = 1; pointVisible = true; endpointVisible = true; ringVisible = false; ringProgress = 1 }
-    }
-    private func endScrub() { withAnimation(YubaiMotion.quick) { selectedDay = nil } }
-    private func dayLabel(_ point: ForecastPoint) -> String {
-        point.date.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))) + " · "
-            + point.date.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "zh_CN")))
-    }
-    private func events(_ point: ForecastPoint) -> [String] {
-        let items = funds.occurrences.filter { Dates.day($0.date) == point.date }
-        let shortfall = point.conservative < 0 ? "比留着的少 " + Money.text(-point.conservative, currency: false) : ""
-        let lines = items.map { $0.title + " " + ($0.inflow ? "+" : "−") + Money.text($0.amount, currency: false) }
-        guard !shortfall.isEmpty else { return lines }
-        if lines.isEmpty { return [shortfall] }
-        return lines.enumerated().map { $0.offset == 0 ? $0.element + " · " + shortfall : $0.element }
-    }
-    private func readout(_ point: ForecastPoint) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            Text(dayLabel(point)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: point.conservative, role: .card)
-            ForEach(Array(events(point).enumerated()), id: \.offset) { _, event in
-                Text(event).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelMuted)
-            }
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.gapGroup)
-            .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
-    }
-    private func readoutDescription(_ point: ForecastPoint) -> String {
-        dayLabel(point) + "，还能花 " + Money.text(point.conservative) + "。" + events(point).joined(separator: "；")
-    }
-    private var chartDescription: String {
-        guard let first = funds.points.first, let last = funds.points.last,
-              let low = funds.points.min(by: { $0.conservative < $1.conservative }) else { return "还没有预测明细" }
-        return "还能花从 \(Money.text(first.conservative)) 起，\(Dates.text(low.date)) 最低 \(Money.text(low.conservative))，\(Dates.text(last.date)) \(Money.text(last.conservative))。"
     }
 }
 

@@ -68,7 +68,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl"].contains(name)) else { return nil }
+              (screenshotScripts.contains(name) || ["empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low"].contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -99,6 +99,10 @@ enum UITestSupport {
         }
         if script == "salary" {
             try repository.save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
+            return
+        }
+        if script.hasPrefix("cashflow") {
+            try repository.save(cashTimelineLedger(low: script == "cashflow-low", now: now), reason: "合成测试夹具")
             return
         }
         if screenshotScripts.contains(script) {
@@ -168,6 +172,26 @@ enum UITestSupport {
             }
         }
         try repository.save(ledger, reason: "合成测试夹具")
+    }
+    static func cashTimelineLedger(low: Bool, now: Date) -> Ledger {
+        var ledger = Ledger()
+        ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = false
+        ledger.lastReflectionWeek = ButlerCards.isoWeek(now); ledger.lastSubcategoryBatchDay = Dates.text(now)
+        ledger.mutedTopics = ["letter"]
+        let bank = Account(name: "合成工资卡", balance: low ? 200_000 : 900_000, at: now)
+        ledger.accounts = [bank]
+        ledger.entries = (1...365).map {
+            Entry(date: Dates.addDays(-$0, to: Dates.day(now)), amount: 3000, accountID: bank.id, title: "合成日常", category: "餐饮")
+        }
+        for offset in [20, 50, 80] {
+            ledger.entries.append(Entry(date: Dates.addDays(-offset, to: Dates.day(now)), amount: 1_310_000, nature: .income, accountID: bank.id, title: "工资", category: "工资奖金"))
+        }
+        var salary = Plan(title: "工资", amount: 1_310_000, dueDate: Dates.addDays(11, to: Dates.day(now)), frequency: .monthly, inflow: true, nature: .income)
+        salary.accountID = bank.id
+        var bill = Plan(title: "房租", amount: 50_000, dueDate: Dates.addDays(4, to: Dates.day(now)))
+        bill.accountID = bank.id; ledger.plans = [salary, bill]
+        if low { ledger.profile.floorAmount = 300_000 }
+        return ledger
     }
     static func salaryLedger(now: Date) -> Ledger {
         var ledger = Ledger()

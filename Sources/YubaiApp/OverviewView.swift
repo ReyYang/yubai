@@ -13,18 +13,7 @@ struct OverviewView: View {
         store.funds.occurrences.filter { !$0.inflow && ($0.planID != nil || $0.rentID != nil) && Dates.day($0.date) <= Dates.day(Date()) }
     }
     var body: some View {
-        Group {
-            if textSize > .xxLarge {
-                scrollingContent
-            } else {
-                ViewThatFits(in: .vertical) {
-                    fittedContent(chartHeight: 150)
-                    fittedContent(chartHeight: 96)
-                    fittedContent(chartHeight: 0)
-                    scrollingContent
-                }.frame(maxHeight: .infinity, alignment: .top)
-            }
-        }.rootPageHeader { TabRootHeader(title: "现在", showsAmountVisibility: true) }
+        scrollingContent.rootPageHeader { TabRootHeader(title: "现在", showsAmountVisibility: true) }
             .frame(maxWidth: 680).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(YubaiColor.canvas).navigationTitle("现在")
             #if os(iOS)
@@ -37,14 +26,10 @@ struct OverviewView: View {
             .onChange(of: store.entrySaveTrigger) { _, _ in displayedToday = TodayEntries(in: store.current) }
     }
     private var scrollingContent: some View {
-        ScrollView { content(chartHeight: 0).padding(.horizontal, YubaiSpace.insetPage) }
+        ScrollView { content.padding(.horizontal, YubaiSpace.insetPage) }
             .rootScrollContentMargins().accessibilityIdentifier("overviewScroll")
     }
-    private func fittedContent(chartHeight: CGFloat) -> some View {
-        content(chartHeight: chartHeight).fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding)
-    }
-    private func content(chartHeight: CGFloat) -> some View {
+    private var content: some View {
         let funds = store.funds
         return VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
             if let letter = freshLetter {
@@ -60,14 +45,10 @@ struct OverviewView: View {
             } else {
                 VStack(alignment: .leading, spacing: YubaiSpace.none) {
                     HeroCard(available: funds.available, payable: funds.debt + funds.committed,
-                             reserved: funds.goals + funds.living + funds.uncertainInflow, floor: store.current.profile.floorAmount,
+                             reserved: funds.goals + funds.living + funds.uncertainInflow,
                              hideAmount: store.current.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
                              onDetails: { store.sheet = .fundsCalculation })
-                    if let floor = store.current.profile.floorAmount, let room = funds.floorRoom {
-                        TabNavigationLink(.profile) { ProfileView() } label: {
-                            FloorLine(floor: floor, floorRoom: room, hideAmounts: store.current.preferences.hideAmounts, showsChevron: true)
-                        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("floorLine")
-                    }
+                    CashTimelineCard(timeline: store.cashTimeline).padding(.top, 14)
                 }
                 ButlerSection()
                 RestrainNearRow()
@@ -75,14 +56,6 @@ struct OverviewView: View {
                 if !dueBills.isEmpty { dueCard }
             }
             if !store.current.accounts.isEmpty {
-                if chartHeight > 0 && !store.current.preferences.hideAmounts {
-                    ForecastChart(funds: funds, height: chartHeight)
-                } else {
-                    TabNavigationLink(.forecast) { Page { ForecastChart(funds: funds, height: 150) }.navigationTitle("现金会怎么走").yubaiNavigation() } label: {
-                        HStack(spacing: YubaiSpace.gapGroup) { Text("现金会怎么走").yubaiFont(YubaiFont.cardTitle); Spacer(); Image(systemName: "chevron.right") }
-                            .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.rowSingle).background(YubaiColor.card, in: RoundedRectangle(cornerRadius: 18))
-                    }.buttonStyle(PressButtonStyle())
-                }
                 if dueBills.isEmpty, let next = funds.occurrences.first(where: { !$0.inflow }) {
                     TabNavigationLink(.upcomingPayments) { Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation() } label: {
                         ViewThatFits(in: .horizontal) {
