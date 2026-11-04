@@ -1,5 +1,21 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-04 · 恢复历史合并、均匀保留与 URLCache（非界面）
+
+owner 在 main `43a9e2a` 真机导入4,200笔后发现Recovery17份／约10.35 MB、短间隔重复全量快照，以及URLCache WAL约2.4 MB；明确要求10分钟同类合并、4 MiB／8份、时间分散保留、启动修剪／缓存清理、合成账本字段取证与Core回归。不改界面、不读密钥、不调真实DeepSeek、不提交／推送、不加依赖、不写设计稿链接；SplashBoard系统快照不处理。
+
+采用上述规则，取代2026-11-03旧预算和每次重试各留一份。导入整理／重试、答题、按对方分与批量记账各自以第一份固定锚点合并，600秒边界开新窗口，未知／手动原因不合并。新上限按整个目录计，首尾优先、中间选接近等距时间点，超预算降低保留数；最新与最后附件完整可读版本及当前／剩余版本共享附件硬保护。旧JSON／gzip／sidecar均兼容，启动也合并；未知引用或删除失败仍保守。App多条纯addEntry应用采用恢复事实名「批量记账」，提示／即时撤销标签不变，上传传递原保存原因。
+
+云端chat／模型目录／CloudBackend统一禁用URLCache（nil＋reloadIgnoringLocalCacheData），复制默认配置保留超时／代理等；单请求同样忽略缓存。AppStore启动清本App Caches根及bundle命名空间的Cache.db*和fsCachedData；不递归清Mac其他App目录，不读旧缓存内容。源码中其余Caches写入仅Debug合成测试账本与CSV，SendLog及目录缓存只在内存。
+
+[完整测量、字段表、方法与边界](../docs/STORAGE-RECOVERY-CACHE.md)：同一masked.csv导入种子4,200笔，四次整理运行、各四次答题／按组／批量应用，旧17份／9,178,931字节，新5份／2,487,398字节（−72.90%）；复制旧目录仅load为6份／3,071,715字节，重复窗口中的原最新依硬保护保留。ledger前后3,522,664字节，entries73.32%、organization.changeSet21.82%、organizedEntryIDs4.65%，note6.53%，skipped2字节、undo70字节、sourceIdentity本样本0。合成内容不代表真实模型结果或真机账本分布；删明细／去重身份会丢详情、续跑或原文，改为索引需要格式调整，本轮不做，schema4与旧undo保持。CSV、生成账本和原始日志仅在/tmp。
+
+验证：指定完整`export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test`，721项、717通过／4原有实网opt-in跳过／0失败，99.106秒；新增10项策略／缓存和1项可选测量。实际AppStore update／apply／persist在Swift6严格并发Linux替身里验证批量合并、单笔各留、原撤销标签、上传原因与落盘相等；iOS26／macOS14＋iCloud全App条件解析通过。依赖取网被代理阻断后改用本机同版本缓存，无依赖文件变化。Apple SDK类型检查／真机空间与Cache.db系统重建／代理实跑／真实iCloud与模型未验证，外部画布与分发资源未同步。
+
+界面文案清单：无控件／布局变化；新增恢复历史名称「批量记账」，属于操作事实，不是说明句。owner同日追加授权将RecoveryVersionsView的「最近 20 份账本」改为「最近 8 份账本」，属于数字事实；historyCountLimit是Core内部常量，沿用静态Text写法并注释指向LedgerRepository.historyCountLimit。该数字同步项已完成，旧稿和其他产品未决项未改。
+
+同日数字补修后重跑指定完整命令：721项、717通过／4原有实网opt-in跳过／0失败，103.522秒。SettingsView的iOS26／macOS14条件语法解析通过；Apple SDK编译和真机显示仍未验证，未提交／推送。
+
 ## 2026-11-03 · 模型目录选择／回退与抹掉后 tab 恢复（离线追加）
 
 owner 追加两项明确任务：最高优先处理 main 3805da2 强制 deepseek-flash 后真机三轮请求全部秒回 503，而 2970017 用户模型能成功的证据；同时修复「我→存储空间→抹掉全部数据→开始页导入银行流水→主界面」后 tab 栏消失、横滑锁定，重启才恢复。本节取代下方历史记录中的整理固定模型及无条件旧模型名迁移；原重试、心跳、逐段保存与局部失败隔离保留。未读密钥／未调用真实 DeepSeek，不增加依赖、设计稿链接或布局，未提交／推送。
