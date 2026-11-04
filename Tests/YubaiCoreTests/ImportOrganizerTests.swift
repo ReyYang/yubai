@@ -234,7 +234,7 @@ final class ImportOrganizerTests: XCTestCase {
         XCTAssertEqual(try repository.recoveries().count, 2)
     }
 
-    func testFailedAndStoppedRunsKeepOneRecoveryEachAndResumeWithANewRecovery() async throws {
+    func testFailedAndStoppedRunsShareFirstRecoveryWhenResumedWithinWindow() async throws {
         for failing in [true, false] {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-organize-resume-\(UUID())")
             defer { try? FileManager.default.removeItem(at: root) }
@@ -254,9 +254,8 @@ final class ImportOrganizerTests: XCTestCase {
             await store.configure()
             try await resume(store, script: ResumableImportScript(), batchID: batch.id)
             let history = try repository.recoveries()
-            XCTAssertEqual(history.count, 2)
-            XCTAssertEqual(try repository.readRecovery(history[0]), partial)
-            XCTAssertEqual(try repository.readRecovery(history[1]), imported)
+            XCTAssertEqual(history.count, 1)
+            XCTAssertEqual(try repository.readRecovery(history[0]), imported)
             var undone = try repository.load()
             BillImporter.undo(batchID: batch.id, in: &undone)
             XCTAssertEqual(undone, before)

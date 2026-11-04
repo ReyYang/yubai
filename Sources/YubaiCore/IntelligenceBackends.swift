@@ -3,12 +3,39 @@ import Foundation
 import FoundationNetworking
 #endif
 
+/// Keep system proxy/cookie/timeout behavior, while disabling the response cache.
+public enum CloudNetworking {
+    public static func configuration(basedOn base: URLSessionConfiguration = .default) -> URLSessionConfiguration {
+        let configuration = base.copy() as! URLSessionConfiguration
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return configuration
+    }
+    public static let session = URLSession(configuration: configuration())
+
+    /// Run before cloud sessions are used. On macOS, Caches is shared by apps;
+    /// inspect only the root and this app's URLCache namespace, never other apps' directories.
+    @discardableResult public static func clearLegacyCache(in root: URL? = nil, bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> [URL] {
+        guard let root = root ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return [] }
+        let names = Set(["app.yubai.personal", bundleIdentifier].compactMap { $0 }.filter { !$0.isEmpty && !$0.contains("/") && $0 != "." && $0 != ".." })
+        var failed: [URL] = []
+        for directory in [root] + names.sorted().map({ root.appendingPathComponent($0, isDirectory: true) }) {
+            guard (try? directory.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true,
+                  let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { continue }
+            for file in files where file.lastPathComponent.hasPrefix("Cache.db") || file.lastPathComponent == "fsCachedData" {
+                do { try FileManager.default.removeItem(at: file) } catch { failed.append(file) }
+            }
+        }
+        return failed
+    }
+}
+
 /// DeepSeek cloud tasks. Callers keep deterministic results when a request fails.
 public struct CloudBackend: ChatTransport {
     public let client: DeepSeekClient
     private let session: URLSession
 
-    public init(client: DeepSeekClient, session: URLSession = .shared) {
+    public init(client: DeepSeekClient, session: URLSession = CloudNetworking.session) {
         self.client = client
         self.session = session
     }

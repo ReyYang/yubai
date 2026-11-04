@@ -147,7 +147,7 @@ final class StorageTests: XCTestCase {
         XCTAssertTrue(try repo.recoveries().contains { try LedgerCodec.decode(repo.recoveryBytes($0.url)).accounts[0].name == "新名称" })
         let another = Ledger(); try repo.restoreBackup(another); XCTAssertEqual(try repo.load(), another); XCTAssertFalse(try repo.recoveries().isEmpty)
     }
-    func testRepeatedSavesKeepExactPreviousBytesAndLatestTwentyRevisions() throws {
+    func testRepeatedSavesKeepExactPreviousBytesAndDistributedEightRevisions() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("yubai-history-\(UUID())"); defer { try? FileManager.default.removeItem(at: root) }
         let repo = LedgerRepository(directory: root); let copy = repo; var ledger = sample(); try repo.save(ledger)
         var previous: [Data] = []
@@ -156,16 +156,17 @@ final class StorageTests: XCTestCase {
             ledger.accounts[0].name = "Revision \(index / 2)"
             try copy.save(ledger, reason: "Repeated/save")
         }
-        let history = try repo.recoveries(); XCTAssertEqual(history.count, 20)
-        XCTAssertEqual(try history.map { try repo.recoveryBytes($0.url) }, Array(previous.suffix(20).reversed()))
+        let history = try repo.recoveries(); XCTAssertEqual(history.count, 8)
+        XCTAssertEqual(try repo.recoveryBytes(XCTUnwrap(history.first).url), previous.last)
+        XCTAssertEqual(try repo.recoveryBytes(XCTUnwrap(history.last).url), previous.first)
         for revision in history { XCTAssertNoThrow(try LedgerCodec.decode(repo.recoveryBytes(revision.url))) }
         XCTAssertEqual(try repo.load(), ledger)
         let reopened = LedgerRepository(directory: root); _ = try reopened.load()
         let last = try Data(contentsOf: repo.file); try reopened.save(ledger)
-        XCTAssertEqual(try reopened.recoveries().count, 20)
+        XCTAssertEqual(try reopened.recoveries().count, 8)
         XCTAssertEqual(try reopened.recoveryBytes(XCTUnwrap(reopened.recoveries().first).url), last)
     }
-    func testHistoryByteBudgetPrunesOldestLegacyFilesOnLoad() throws {
+    func testHistoryByteBudgetKeepsEndpointsOfLegacyFilesOnLoad() throws {
         try withRepository { repository in
             var ledger = Ledger(); ledger.accounts = [Account(name: "当前账本")]
             try repository.save(ledger)
@@ -174,14 +175,14 @@ final class StorageTests: XCTestCase {
             for index in 1...4 {
                 var old = ledger; old.accounts[0].name = "版本\(index)"
                 // Legacy plain JSON, with legal padding to exercise byte rather than count limits.
-                let bytes = try LedgerCodec.encodeMetadata(old) + Data(repeating: 32, count: 4 * 1024 * 1024)
+                let bytes = try LedgerCodec.encodeMetadata(old) + Data(repeating: 32, count: 1500 * 1024)
                 try bytes.write(to: history.appendingPathComponent("\(index * 1000)-legacy-版本.json"))
             }
             let reopened = LedgerRepository(directory: repository.directory)
             XCTAssertEqual(try reopened.load(), ledger)
             let versions = try reopened.recoveries()
             XCTAssertEqual(versions.count, 2)
-            XCTAssertEqual(try versions.map { try reopened.readRecovery($0).accounts[0].name }, ["版本4", "版本3"])
+            XCTAssertEqual(try versions.map { try reopened.readRecovery($0).accounts[0].name }, ["版本4", "版本1"])
             XCTAssertLessThanOrEqual(try reopened.storageUsage().recoveryBytes, LedgerRepository.historyByteLimit)
         }
     }
@@ -192,7 +193,7 @@ final class StorageTests: XCTestCase {
             var previousPayload: UUID?
             for index in 1...3 {
                 var version = live
-                let payload = Attachment(name: "合成\(index).csv", data: Data(repeating: UInt8(index), count: 6 * 1024 * 1024))
+                let payload = Attachment(name: "合成\(index).csv", data: Data(repeating: UInt8(index), count: 3 * 1024 * 1024))
                 var entry = Entry(amount: 100, accountID: live.accounts[0].id, title: "版本\(index)")
                 entry.attachmentID = payload.id; version.entries = [entry]; version.attachments = [payload]
                 try repository.preserveRecovery(version, reason: "合成\(index)")
@@ -365,7 +366,10 @@ extension StorageTests {
             XCTAssertFalse(FileManager.default.fileExists(atPath: repo.directory.appendingPathComponent("Attachments/" + id.uuidString).path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: payload.path))
             for _ in 0..<21 { ledger = try repo.save(ledger) }
-            XCTAssertEqual(try repo.recoveries().count, 20)
+            XCTAssertEqual(try repo.recoveries().count, 8)
+            // The dispersed oldest version still needs this shared payload.
+            XCTAssertTrue(FileManager.default.fileExists(atPath: payload.path))
+            try repo.clearRecoveryHistory()
             XCTAssertFalse(FileManager.default.fileExists(atPath: payload.path))
         }
     }
@@ -422,7 +426,8 @@ extension StorageTests {
             XCTAssertEqual(Array(bytes.prefix(2)), [0x1f, 0x8b]); XCTAssertLessThan(bytes.count, try repo.recoveryBytes(newest.url).count)
             XCTAssertEqual(try repo.readRecovery(newest), original)
             for _ in 0..<22 { try repo.save(original) }
-            XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path)); XCTAssertFalse(FileManager.default.fileExists(atPath: sidecar.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: legacy.path)); XCTAssertTrue(FileManager.default.fileExists(atPath: sidecar.path))
+            XCTAssertEqual(try repo.readRecovery(old), original)
         }
     }
     func testGzipRejectsTruncationAndDamagedChecksum() throws {

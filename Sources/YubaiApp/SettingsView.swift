@@ -365,7 +365,8 @@ struct RecoveryVersionsView: View {
     @State private var target: Recovery?
     var body: some View {
         Page {
-            Text("最近 20 份账本")
+            // Matches LedgerRepository.historyCountLimit (internal to YubaiCore).
+            Text("最近 8 份账本")
                 .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             CardRows(recoveries) { recovery in
                 Button { target = recovery } label: {
