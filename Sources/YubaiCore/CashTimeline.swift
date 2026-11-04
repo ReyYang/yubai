@@ -3,89 +3,134 @@ import Foundation
 public struct CashTimelineEvent: Identifiable, Equatable, Sendable {
     public var id: String
     public var title: String
-    /// Signed movement of cash/bank balances, in cents.
+    /// Signed cash/bank movement, in cents; internal same-day transfers cancel.
     public var amount: Int64
     public var date: Date
+    public var isSalary = false
+    public var isRecurring = false
 }
 
 public struct CashTimelinePoint: Identifiable, Equatable, Sendable {
     public var id: Date { date }
     public var date: Date
     public var balance: Int64
-    public var lower: Int64
-    public var upper: Int64
     public var events: [CashTimelineEvent]
 }
 
-/// Consecutive vertices can share a date: fixed receipts/payments jump vertically
-/// without smearing across days. The line never invents a lower intraday balance
-/// than the daily minimum by spending an income day's allowance before receipt.
+/// Duplicate dates preserve known bill steps without interpolating across days.
 public struct CashTimelineVertex: Identifiable, Equatable, Sendable {
     public var id: Int
     public var date: Date
     public var balance: Int64
-    public var lower: Int64
-    public var upper: Int64
+}
+
+public struct CashTimelineCycle: Equatable, Sendable {
+    public var start: Date
+    public var end: Date
+    public var previousStart: Date
+    public var previousEnd: Date
 }
 
 public struct CashTimelineWindow: Equatable, Sendable {
-    public var start: Date
-    public var end: Date
+    public var cycle: CashTimelineCycle
     public var isDefault: Bool
     public var history: [CashTimelinePoint]
     public var forecast: [CashTimelinePoint]
     public var forecastLine: [CashTimelineVertex]
-    public var minimum: CashTimelinePoint?
+    /// Dates are projected onto this cycle by elapsed calendar days, not M/D.
+    public var previous: [CashTimelinePoint]
     public var floor: Int64?
+    public var previousClosingBalance: Int64?
+    public var start: Date { cycle.start }
+    public var end: Date { cycle.end }
+    public var endpoint: CashTimelinePoint? { forecast.last ?? history.last }
     public var belowFloor: Bool {
-        guard let floor, let minimum else { return false }
-        return minimum.balance < floor
+        guard isDefault, let floor, let endpoint else { return false }
+        return endpoint.balance < floor
     }
-    public var showsZero: Bool { (history + forecast).contains { $0.lower < 0 } }
-    /// Fractions of the complete scrollable date range, for a passive indicator.
-    public var indicatorStart: Double
-    public var indicatorLength: Double
-
-    public func point(on date: Date) -> CashTimelinePoint? {
-        let day = Dates.day(date)
-        // Today reads the actual balance; its outstanding bills are forecast events.
-        return history.first { $0.date == day } ?? forecast.first { $0.date == day }
+    public var showsZero: Bool { (history + forecast + previous).contains { $0.balance < 0 } }
+    public var points: [CashTimelinePoint] { history + forecast.filter { $0.date > (history.last?.date ?? .distantPast) } }
+    public func point(on date: Date) -> CashTimelinePoint? { points.first { $0.date == Dates.day(date) } }
+    public func previousPoint(on date: Date) -> CashTimelinePoint? { previous.first { $0.date == Dates.day(date) } }
+    /// Current cycle compares today's actual cash; completed cycles compare closing cash.
+    public var difference: Int64? {
+        guard let actual = history.last, let prior = isDefault ? previousPoint(on: actual.date)?.balance : previousClosingBalance else { return nil }
+        return actual.balance - prior
+    }
+    public var averageSpending: Int64 {
+        let out = history.flatMap(\.events).filter { $0.amount < 0 }.reduce(Int64(0)) { $0 - $1.amount }
+        let days = max(1, (Dates.calendar.dateComponents([.day], from: start, to: history.last?.date ?? start).day ?? 0) + 1)
+        return out / Int64(days)
+    }
+    /// Display candidates only: all events remain available to scrubbing and AI.
+    public var annotations: [CashTimelineEvent] {
+        let average = averageSpending
+        return Array(history.flatMap(\.events).filter {
+            $0.isSalary || ($0.amount < 0 && ($0.isRecurring || -$0.amount >= average * 3))
+        }.sorted {
+            abs($0.amount) == abs($1.amount) ? $0.id < $1.id : abs($0.amount) > abs($1.amount)
+        }.prefix(4))
     }
 }
 
 public struct CashTimeline: Equatable, Sendable {
     public var today: Date
+    /// Earliest allowed cycle start (three calendar months before today).
     public var start: Date
-    public var end: Date
-    public var defaultStart: Date
+    public var hasPayday: Bool
+    /// Newest first. The comparison preceding the oldest selectable cycle is read-only.
+    public var cycles: [CashTimelineCycle]
     public var dailyLiving: Int64
     public var floor: Int64?
-    /// Closing daily cash balances; today is the balance at `now`.
     public var history: [CashTimelinePoint]
-    /// Today includes outstanding due/overdue items, after the actual anchor.
     public var forecast: [CashTimelinePoint]
     public var forecastLine: [CashTimelineVertex]
+    public var end: Date { cycles[0].end }
+    public var defaultStart: Date { cycles[0].start }
 
-    public var visibleDays: Int { Dates.calendar.dateComponents([.day], from: defaultStart, to: end).day ?? 0 }
+    public func window(cycleOffset: Int = 0) -> CashTimelineWindow {
+        let index = min(max(0, cycleOffset), cycles.count - 1), cycle = cycles[index]
+        let actual = history.filter { $0.date >= cycle.start && $0.date <= cycle.end }
+        let predicted = index == 0 ? forecast : []
+        let count = Dates.calendar.dateComponents([.day], from: cycle.start, to: cycle.end).day ?? 0
+        let previous = history.filter { $0.date >= cycle.previousStart && $0.date <= cycle.previousEnd }.compactMap { point -> CashTimelinePoint? in
+            let offset = Dates.calendar.dateComponents([.day], from: cycle.previousStart, to: point.date).day ?? 0
+            guard offset <= count else { return nil }
+            var aligned = point; aligned.date = Dates.addDays(offset, to: cycle.start)
+            return aligned
+        }
+        return CashTimelineWindow(cycle: cycle, isDefault: index == 0, history: actual, forecast: predicted,
+                                  forecastLine: index == 0 ? forecastLine : [], previous: previous, floor: floor,
+                                  previousClosingBalance: history.first { $0.date == cycle.previousEnd }?.balance)
+    }
+}
 
-    /// Fixed-width calendar window. No imported history can extend the three-month
-    /// bound and no drag can extend beyond the forecast horizon.
-    public func window(startingAt requested: Date? = nil) -> CashTimelineWindow {
-        let first = max(start, min(defaultStart, Dates.day(requested ?? defaultStart)))
-        let last = min(end, Dates.addDays(visibleDays, to: first))
-        let actual = history.filter { $0.date >= first && $0.date <= last }
-        let predicted = forecast.filter { $0.date >= first && $0.date <= last }
-        let isDefault = first == defaultStart
-        let candidates = isDefault ? (history.filter { $0.date == today } + predicted) : (actual + predicted)
-        // Earliest date wins tied minima, including flat/no-spending histories.
-        let minimum = candidates.min { $0.balance == $1.balance ? $0.date < $1.date : $0.balance < $1.balance }
-        let total = max(1, Dates.calendar.dateComponents([.day], from: start, to: end).day ?? 1)
-        let offset = Dates.calendar.dateComponents([.day], from: start, to: first).day ?? 0
-        return CashTimelineWindow(start: first, end: last, isDefault: isDefault, history: actual, forecast: predicted,
-                                  forecastLine: forecastLine.filter { $0.date >= first && $0.date <= last },
-                                  minimum: minimum, floor: floor,
-                                  indicatorStart: Double(offset) / Double(total),
-                                  indicatorLength: Double(visibleDays) / Double(total))
+/// A small deterministic 1/2/5 scale shared by plotting and tests. Values are yuan.
+public struct CashTimelineScale: Equatable, Sendable {
+    public var domain: ClosedRange<Double>
+    public var ticks: [Double]
+    public init(window: CashTimelineWindow) {
+        var values = (window.history + window.forecast + window.previous).map { Double($0.balance) / 100 }
+        values += window.forecastLine.map { Double($0.balance) / 100 }
+        if window.belowFloor, let floor = window.floor { values.append(Double(floor) / 100) }
+        let low = min(0, values.min() ?? 0), high = max(0, values.max() ?? 0)
+        let span = max(1, high - low), raw = span / 4
+        let power = pow(10, floor(log10(raw)))
+        let steps: [Double] = [power, 2 * power, 5 * power, 10 * power]
+        let step: Double = steps.first { value in
+            let intervals = ceil(high / value) - floor(low / value)
+            return intervals <= 4
+        } ?? (power * 10)
+        let bottom = floor(low / step) * step
+        let top = max(bottom + 2 * step, ceil(high / step) * step)
+        ticks = stride(from: bottom, through: top + step * 0.001, by: step).map { $0 }
+        domain = (bottom - step * 0.08)...(top + step * 0.22)
+    }
+    public static func label(_ value: Double) -> String {
+        let magnitude = abs(value), sign = value < 0 ? "−" : ""
+        let divisor: Double = magnitude >= 1_000_000 ? 1_000_000 : (magnitude >= 1000 ? 1000 : 1)
+        let suffix = divisor == 1_000_000 ? "m" : (divisor == 1000 ? "k" : "")
+        return sign + String(format: "%g", magnitude / divisor) + suffix
     }
 }
 
@@ -94,94 +139,139 @@ extension Finance {
         cashTimeline(ledger, funds: funds(ledger, now: now, days: days), now: now)
     }
 
-    /// `funds` must come from the same ledger/now; the app reuses its existing cache.
+    /// Reuses the app's funds anchor and payday; recognition never creates a plan.
     public static func cashTimeline(_ ledger: Ledger, funds: Funds, now: Date) -> CashTimeline {
-        let today = Dates.day(now), start = Dates.addMonths(-3, to: Dates.day(now))
-        let end = max(today, Dates.day(funds.horizonEnd))
+        let today = Dates.day(now), boundary = Dates.addMonths(-3, to: Dates.day(now))
         let cashIDs = Set(ledger.accounts.filter { $0.kind == .cash || $0.kind == .bank }.map(\.id))
+        var candidate = SalaryDetection.candidate(in: ledger, now: now)
+        let salaryPlan = ledger.plans.filter { $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once }
+            .sorted { $0.id.uuidString < $1.id.uuidString }.first { plan in
+                guard let payday = funds.payday, let index = plan.occurrenceIndex(on: payday) else { return false }
+                return !plan.isSkipped(on: plan.scheduledDate(at: index)) && plan.title == funds.paydayTitle
+            }
+        // Confirming salary deliberately does not rewrite old entries. Recover its
+        // local evidence from a copy so their original company titles still match.
+        if candidate == nil, let plan = salaryPlan, plan.frequency == .monthly {
+            var detectionLedger = ledger
+            detectionLedger.plans.removeAll { $0.active && $0.inflow && $0.nature == .income && $0.frequency == .monthly }
+            if let evidence = SalaryDetection.candidate(in: detectionLedger, now: now),
+               plan.accountID == nil || plan.accountID == evidence.accountID,
+               abs(Double(evidence.amount) - Double(plan.amount)) <= Double(plan.amount) * 0.1 {
+                candidate = evidence
+            }
+        }
+        let salaryIDs = Set(candidate?.entryIDs ?? [])
+        func isSalary(_ entry: Entry) -> Bool {
+            guard entry.nature == .income else { return false }
+            if salaryIDs.contains(entry.id) { return true }
+            guard let plan = salaryPlan else { return false }
+            return entry.planID == plan.id || (SalaryDetection.payerKey(entry.title) == SalaryDetection.payerKey(plan.title)
+                && (plan.accountID == nil || entry.accountID == plan.accountID))
+        }
+        let salaryEntries = ledger.activeEntries.filter { isSalary($0) && cashIDs.contains($0.accountID) && $0.postingDate(for: $0.accountID) <= now }
+        let hasPayday = salaryPlan != nil || candidate != nil
+        let month = Dates.calendar.dateInterval(of: .month, for: today)!.start
+        func monthly(_ offset: Int, day: Int) -> Date {
+            let first = Dates.addMonths(offset, to: month)
+            let last = Dates.calendar.range(of: .day, in: .month, for: first)!.count
+            return Dates.addDays(min(max(1, day), last) - 1, to: first)
+        }
+        var nominal: [Date] = []
+        if let plan = salaryPlan, let payday = funds.payday, let nextIndex = plan.occurrenceIndex(on: payday) {
+            // Derive every date from the original schedule to avoid Feb/Mar drift.
+            for offset in -1..<400 {
+                let day = Dates.day(plan.scheduledDate(at: nextIndex - offset))
+                if !plan.isSkipped(on: day) { nominal.append(day) }
+                if nominal.count >= 3 && day < Dates.addMonths(-2, to: boundary) { break }
+            }
+        } else {
+            let anchor = candidate?.dayOfMonth ?? 1
+            nominal = (-6...1).map { monthly($0, day: anchor) }.reversed()
+        }
+        let spacing = nominal.count > 1 ? abs(Dates.calendar.dateComponents([.day], from: nominal[1], to: nominal[0]).day ?? 30) : 30
+        let tolerance = max(1, min(15, spacing / 2 - 1))
+        let boundaries = Array(Set(nominal.map { expected -> Date in
+            guard hasPayday else { return expected }
+            let nearby = salaryEntries.filter { abs(Dates.calendar.dateComponents([.day], from: expected, to: Dates.day($0.postingDate(for: $0.accountID))).day ?? 999) <= tolerance }
+            return nearby.min { lhs, rhs in
+                let a = abs(lhs.postingDate(for: lhs.accountID).timeIntervalSince(expected)), b = abs(rhs.postingDate(for: rhs.accountID).timeIntervalSince(expected))
+                return a == b ? lhs.amount > rhs.amount : a < b
+            }.map { Dates.day($0.postingDate(for: $0.accountID)) } ?? expected
+        })).sorted()
+        let currentIndex = boundaries.lastIndex { $0 <= today }!
+        var cycles: [CashTimelineCycle] = []
+        for index in stride(from: currentIndex, through: 1, by: -1) {
+            let first = boundaries[index]
+            if index != currentIndex && first < boundary { break }
+            cycles.append(CashTimelineCycle(start: first, end: Dates.addDays(-1, to: boundaries[index + 1]),
+                                            previousStart: boundaries[index - 1], previousEnd: Dates.addDays(-1, to: first)))
+        }
+        let historyStart = cycles.last!.previousStart, end = cycles[0].end
+        let plans = Dictionary(uniqueKeysWithValues: ledger.plans.map { ($0.id, $0) })
         var deltas: [Date: Int64] = [:], actualEvents: [Date: [CashTimelineEvent]] = [:]
         for entry in ledger.activeEntries {
-            var movements: [Date: Int64] = [:]
-            var legs = [entry.accountID]
+            var movements: [Date: Int64] = [:], legs = [entry.accountID]
             if entry.nature.paired, let other = entry.otherAccountID, other != entry.accountID { legs.append(other) }
             for id in legs where cashIDs.contains(id) {
-                let posting = entry.postingDate(for: id), day = Dates.day(entry.postingDate(for: id))
-                guard posting <= now, day >= start else { continue }
+                let posting = entry.postingDate(for: id), day = Dates.day(posting)
+                guard posting <= now, day >= historyStart else { continue }
                 movements[day, default: 0] += entry.delta(for: id)
             }
+            let recurring = entry.rentID != nil || entry.planID.flatMap { plans[$0] }.map { $0.frequency != .once } == true
             for (day, amount) in movements {
                 deltas[day, default: 0] += amount
-                if amount != 0 && (entry.nature == .income || entry.planID != nil || entry.rentID != nil) {
-                    actualEvents[day, default: []].append(CashTimelineEvent(id: entry.id.uuidString + Dates.text(day), title: entry.displayTitle, amount: amount, date: day))
+                if amount != 0 {
+                    actualEvents[day, default: []].append(CashTimelineEvent(id: entry.id.uuidString + Dates.text(day), title: entry.displayTitle,
+                        amount: amount, date: day, isSalary: isSalary(entry), isRecurring: recurring))
                 }
             }
         }
-        // Deliberately include pre-reconciliation entries: they reconstruct history,
-        // rather than changing today's reconciled anchor a second time.
+        // Pre-reconciliation entries only reconstruct history; today's reconciled
+        // funds.cash remains the anchor, including archived cash/bank accounts.
         var history: [CashTimelinePoint] = [], balance = funds.cash, day = today
-        while day >= start {
-            let events = (actualEvents[day] ?? []).sorted { $0.id < $1.id }
-            history.append(CashTimelinePoint(date: day, balance: balance, lower: balance, upper: balance, events: events))
-            balance -= deltas[day, default: 0]
-            day = Dates.addDays(-1, to: day)
+        while day >= historyStart {
+            let events = (actualEvents[day] ?? []).sorted { abs($0.amount) == abs($1.amount) ? $0.id < $1.id : abs($0.amount) > abs($1.amount) }
+            history.append(CashTimelinePoint(date: day, balance: balance, events: events))
+            balance -= deltas[day, default: 0]; day = Dates.addDays(-1, to: day)
         }
         history.reverse()
-
         let daily = estimatedDailyLiving(ledger, now: now)
         let days = Dates.calendar.dateComponents([.day], from: today, to: end).day ?? 0
         let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })
-        let plans = Dictionary(uniqueKeysWithValues: ledger.plans.map { ($0.id, $0) })
         let rents = Dictionary(uniqueKeysWithValues: ledger.rents.map { ($0.id, $0) })
-        // Future-dated linked entries have not reached today's cash balance. Do not
-        // let payment matching suppress their scheduled movement before posting.
         var paidLedger = ledger
         paidLedger.entries = ledger.entries.filter { $0.date <= now }
         var scheduled: [Date: [CashTimelineEvent]] = [:]
-        for item in occurrences(in: paidLedger, now: now, days: days + 1) where Dates.day(item.date) <= end {
+        for item in occurrences(in: paidLedger, now: now, days: days + 1)
+            where Dates.day(item.date) >= cycles[0].start && Dates.day(item.date) <= end {
             let plan = item.planID.flatMap { plans[$0] }
+            // Recognition/confirmation leaves old unlinked payroll untouched. An
+            // observed receipt must not become a second outstanding salary. Linked
+            // partial payments still use FixedFlowPayments' remaining amount.
+            if let salaryPlan, plan?.id == salaryPlan.id,
+               salaryEntries.contains(where: { entry in
+                   (entry.planID != salaryPlan.id || entry.occurrence == nil)
+                       && abs(Dates.calendar.dateComponents([.day], from: Dates.day(entry.date), to: Dates.day(item.date)).day ?? 999) <= tolerance
+               }) { continue }
             let accountID = plan?.accountID ?? item.rentID.flatMap { rents[$0]?.accountID }
-            // Credit purchases do not move cash until repayment. Repayment itself
-            // moves cash on its date; debt is never deducted from the anchor.
             if let accountID, accounts[accountID] != nil, !cashIDs.contains(accountID), plan?.nature != .repayment { continue }
             let date = max(today, Dates.day(item.date))
             scheduled[date, default: []].append(CashTimelineEvent(id: item.id, title: item.title,
-                                                                 amount: item.inflow ? item.amount : -item.amount,
-                                                                 date: Dates.day(item.date)))
+                amount: item.inflow ? item.amount : -item.amount, date: Dates.day(item.date)))
         }
         var forecast: [CashTimelinePoint] = []
-        var line = [CashTimelineVertex(id: 0, date: today, balance: funds.cash, lower: funds.cash, upper: funds.cash)]
+        var line = [CashTimelineVertex(id: 0, date: today, balance: funds.cash)]
         balance = funds.cash
-        for offset in 0...days {
+        for offset in 0...max(0, days) {
             let date = Dates.addDays(offset, to: today)
-            let living = offset > 0 ? daily : 0
-            // ±25% is a scenario range for daily living, not a statistical interval.
-            // Known receipts/payments translate both bounds by exactly their amount.
-            let spread = daily * Int64(offset) / 4
-            let events = (scheduled[date] ?? []).sorted { $0.id < $1.id }
-            let movement = events.reduce(Int64(0)) { $0 + $1.amount }
-            if movement > 0 {
-                // Credit the day's net receipt before its living allowance. Drawing
-                // a pre-payday daily deduction first would invent an intraday trough
-                // below every daily balance, contradicting the minimum readout.
-                let priorSpread = daily * Int64(max(0, offset - 1)) / 4
-                line.append(CashTimelineVertex(id: line.count, date: date, balance: balance, lower: balance - priorSpread, upper: balance + priorSpread))
-                balance += movement
-                line.append(CashTimelineVertex(id: line.count, date: date, balance: balance, lower: balance - priorSpread, upper: balance + priorSpread))
-                balance -= living
-                if living > 0 {
-                    line.append(CashTimelineVertex(id: line.count, date: date, balance: balance, lower: balance - spread, upper: balance + spread))
-                }
-            } else {
-                balance -= living
-                line.append(CashTimelineVertex(id: line.count, date: date, balance: balance, lower: balance - spread, upper: balance + spread))
-                balance += movement
-                if !events.isEmpty {
-                    line.append(CashTimelineVertex(id: line.count, date: date, balance: balance, lower: balance - spread, upper: balance + spread))
-                }
-            }
-            forecast.append(CashTimelinePoint(date: date, balance: balance, lower: balance - spread, upper: balance + spread, events: events))
+            balance -= offset > 0 ? daily : 0
+            line.append(CashTimelineVertex(id: line.count, date: date, balance: balance))
+            let events = (scheduled[date] ?? []).sorted { abs($0.amount) == abs($1.amount) ? $0.id < $1.id : abs($0.amount) > abs($1.amount) }
+            balance += events.reduce(Int64(0)) { $0 + $1.amount }
+            if !events.isEmpty { line.append(CashTimelineVertex(id: line.count, date: date, balance: balance)) }
+            forecast.append(CashTimelinePoint(date: date, balance: balance, events: events))
         }
-        return CashTimeline(today: today, start: start, end: end, defaultStart: Dates.addMonths(-2, to: today), dailyLiving: daily,
+        return CashTimeline(today: today, start: boundary, hasPayday: hasPayday, cycles: cycles, dailyLiving: daily,
                             floor: ledger.profile.floorAmount, history: history, forecast: forecast, forecastLine: line)
     }
 }

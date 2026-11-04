@@ -8,8 +8,7 @@ import UIKit
 struct CashTimelineCard: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
-    @State private var windowStart: Date?
-    @State private var panStart: Date?
+    @State private var cycleOffset = 0
     @State private var selectedDay: Date?
     @State private var holding = false
     @State private var selectionTrigger = 0
@@ -18,94 +17,106 @@ struct CashTimelineCard: View {
     #endif
     let timeline: CashTimeline
 
-    private var window: CashTimelineWindow { timeline.window(startingAt: windowStart) }
+    private var window: CashTimelineWindow { timeline.window(cycleOffset: cycleOffset) }
     private var selected: CashTimelinePoint? { selectedDay.flatMap { window.point(on: $0) } }
-    private var warningInk: Color { window.belowFloor ? YubaiColor.amberInk : YubaiColor.label }
     private var hidden: Bool { store.current.preferences.hideAmounts }
 
     var body: some View {
         let visible = window
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("现金会怎么走").yubaiFont(YubaiFont.cardTitle)
-                Spacer(minLength: YubaiSpace.space8)
+                Spacer(minLength: 8)
                 if let selected {
-                    Text(monthDay(selected.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    Text(FixedFlowPresentation.monthDay(selected.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 } else if !visible.isDefault {
-                    Button { windowStart = nil; panStart = nil; selectedDay = nil } label: {
-                        Text("今天 ›").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.label)
-                            .padding(.horizontal, 10).padding(.vertical, 3)
+                    Button { cycleOffset = 0; selectedDay = nil } label: {
+                        Text("这个月 ›").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(YubaiColor.raised, in: Capsule())
-                            .contentShape(Rectangle().inset(by: -10))
+                            .contentShape(Rectangle().inset(by: -8))
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("cashTimelineToday")
-                        .accessibilityLabel("回到今天").accessibilityHint("恢复最近两个月到预测截止日的窗口")
+                        .accessibilityLabel("回到这个月").accessibilityHint("显示当前发薪周期")
                 } else {
-                    Text("到 " + monthDay(timeline.end)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    Text(dateRange(visible)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }
             if hidden {
                 Text("金额已隐藏").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                    .frame(maxWidth: .infinity, minHeight: 190, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 220, alignment: .leading)
             } else {
-                readout(visible).padding(.top, 4)
+                readout(visible).padding(.top, 6)
                 plot(visible).padding(.top, 10)
-                indicator(visible).padding(.top, 8)
+                HStack(spacing: 14) {
+                    legend(visible.isDefault ? "这个月" : shortDate(visible.start) + " 起", ink: YubaiColor.brand, width: 2)
+                    legend(visible.isDefault ? "上个月" : shortDate(visible.cycle.previousStart) + " 起", ink: YubaiColor.labelSecondary.opacity(0.35), width: 1.2)
+                }.padding(.top, 8).accessibilityIdentifier("cashTimelineLegend")
             }
         }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, 14).padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("cashTimelineCard")
-            .onChange(of: timeline.today) { _, _ in windowStart = nil; selectedDay = nil; panStart = nil }
-            .onChange(of: hidden) { _, _ in selectedDay = nil; holding = false; panStart = nil }
-            .onDisappear { selectedDay = nil; holding = false; panStart = nil }
+            .onChange(of: timeline.cycles) { _, _ in cycleOffset = 0; selectedDay = nil; holding = false }
+            .onChange(of: hidden) { _, _ in selectedDay = nil; holding = false }
+            .onDisappear { selectedDay = nil; holding = false }
     }
 
-    @ViewBuilder private func readout(_ visible: CashTimelineWindow) -> some View {
-        let layout = textSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
-        layout {
-            if let selected {
-                amount(selected.balance, ink: YubaiColor.label)
-                if !selected.events.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(selected.events) { event in
-                            Text(eventText(event)).yubaiFont(YubaiFont.caption)
-                                .foregroundStyle(event.amount >= 0 ? YubaiColor.brandInk : YubaiColor.labelSecondary)
-                        }
-                    }
-                }
-            } else if let low = visible.minimum {
+    private func readout(_ visible: CashTimelineWindow) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            let layout = textSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+            layout {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("最低").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    amount(low.balance, ink: warningInk)
-                    Text(monthDay(low.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    Text(readoutTitle(visible)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    Text(amountText(selected?.balance ?? visible.endpoint?.balance ?? 0))
+                        .yubaiFont(YubaiFont.amountDonut).monospacedDigit()
+                        .foregroundStyle(selected == nil && visible.belowFloor ? YubaiColor.amberInk : YubaiColor.label)
+                        .fixedSize(horizontal: true, vertical: false)
                 }.accessibilityElement(children: .combine).accessibilityIdentifier("cashTimelineMinimum")
-                if !textSize.isAccessibilitySize { Spacer(minLength: 0) }
-                if visible.belowFloor, let floor = visible.floor {
-                    HStack(spacing: 5) {
+                if selected == nil && visible.belowFloor, let floor = visible.floor {
+                    if !textSize.isAccessibilitySize { Spacer(minLength: 0) }
+                    HStack(spacing: 4) {
                         Line().stroke(YubaiColor.amberInk, style: StrokeStyle(lineWidth: 1, dash: [3, 2])).frame(width: 14, height: 1)
-                            .accessibilityHidden(true)
                         Text("始终留着 " + Money.text(floor, currency: false)).yubaiFont(YubaiFont.caption)
                     }.foregroundStyle(YubaiColor.amberInk).fixedSize(horizontal: true, vertical: false)
                         .accessibilityIdentifier("cashTimelineFloor")
                 }
             }
-        }.frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("cashTimelineReadout")
+            Text(detail(visible)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                .accessibilityIdentifier("cashTimelineComparison")
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("cashTimelineReadout")
     }
 
-    private func amount(_ cents: Int64, ink: Color) -> some View {
-        Text(Money.text(cents, currency: false)).yubaiFont(YubaiFont.amountDonut)
-            .monospacedDigit().foregroundStyle(ink).fixedSize(horizontal: true, vertical: false)
+    private func readoutTitle(_ visible: CashTimelineWindow) -> String {
+        if selected != nil { return "当天余额" }
+        if timeline.hasPayday { return visible.isDefault ? "发工资前还剩" : "发工资前剩下" }
+        return visible.isDefault ? "月底还剩" : "月底剩下"
+    }
+
+    private func detail(_ visible: CashTimelineWindow) -> String {
+        if let selected {
+            var facts: [String] = []
+            if let event = selected.events.first { facts.append(eventText(event)) }
+            if let prior = visible.previousPoint(on: selected.date) { facts.append("上个月同一天 " + amountText(prior.balance)) }
+            return facts.joined(separator: " · ")
+        }
+        let comparison = visible.difference.map {
+            (visible.isDefault ? "比上个月同一天" : "比上个月") + ($0 >= 0 ? "多 " : "少 ") + Money.text(abs($0), currency: false)
+        }
+        return ([visible.isDefault ? nil : dateRange(visible), comparison].compactMap { $0 }).joined(separator: " · ")
+    }
+
+    private func legend(_ title: String, ink: Color, width: CGFloat) -> some View {
+        HStack(spacing: 5) {
+            Line().stroke(ink, lineWidth: width).frame(width: 14, height: 2).accessibilityHidden(true)
+            Text(title).yubaiFont(YubaiFont.caption)
+        }.foregroundStyle(YubaiColor.labelSecondary)
     }
 
     private func plot(_ visible: CashTimelineWindow) -> some View {
-        Chart {
-            ForEach(visible.forecastLine) { point in
-                AreaMark(x: .value("日期", point.date), yStart: .value("下界", money(point.lower)), yEnd: .value("上界", money(point.upper)))
-                    .foregroundStyle(YubaiColor.brand.opacity(0.14)).interpolationMethod(.linear)
-            }
+        let scale = CashTimelineScale(window: visible)
+        return Chart {
             if visible.showsZero {
                 RuleMark(y: .value("零点", 0)).foregroundStyle(YubaiColor.neutralSoft).lineStyle(StrokeStyle(lineWidth: 1))
             }
@@ -113,53 +124,67 @@ struct CashTimelineCard: View {
                 RuleMark(y: .value("始终留着", money(floor)))
                     .foregroundStyle(YubaiColor.amberDot).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
             }
+            ForEach(visible.previous) { point in
+                LineMark(x: .value("日期", point.date), y: .value("余额", money(point.balance)), series: .value("段", "上周期"))
+                    .foregroundStyle(YubaiColor.labelSecondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1.2, lineJoin: .round)).interpolationMethod(.linear)
+            }
             ForEach(visible.history) { point in
-                LineMark(x: .value("日期", point.date), y: .value("现金", money(point.balance)), series: .value("段", "过去"))
-                    .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: 2, lineJoin: .round)).interpolationMethod(.linear)
+                LineMark(x: .value("日期", point.date), y: .value("余额", money(point.balance)), series: .value("段", "本周期"))
+                    .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: 2.2, lineJoin: .round)).interpolationMethod(.linear)
             }
             ForEach(visible.forecastLine) { point in
-                LineMark(x: .value("日期", point.date), y: .value("现金", money(point.balance)), series: .value("段", "预测"))
-                    .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 3])).interpolationMethod(.linear)
+                LineMark(x: .value("日期", point.date), y: .value("余额", money(point.balance)), series: .value("段", "预测"))
+                    .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: 2.2, dash: [4, 3])).interpolationMethod(.linear)
             }
-            if timeline.today >= visible.start && timeline.today <= visible.end {
-                RuleMark(x: .value("今天", timeline.today)).foregroundStyle(YubaiColor.chartGuide)
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
-            }
-            if let low = visible.minimum {
-                PointMark(x: .value("最低日期", low.date), y: .value("最低现金", money(low.balance)))
-                    .symbol { Circle().fill(visible.belowFloor ? YubaiColor.amberDot : YubaiColor.brandInk)
-                        .frame(width: 8, height: 8).overlay { Circle().stroke(YubaiColor.card, lineWidth: 2) } }
+            if visible.isDefault, let today = visible.history.last {
+                PointMark(x: .value("今天", today.date), y: .value("余额", money(today.balance)))
+                    .symbol { Circle().fill(YubaiColor.brand).frame(width: 7, height: 7) }
+                if let end = visible.endpoint {
+                    PointMark(x: .value("周期终点", end.date), y: .value("余额", money(end.balance)))
+                        .symbol { Circle().fill(YubaiColor.card).frame(width: 8, height: 8)
+                            .overlay { Circle().stroke(visible.belowFloor ? YubaiColor.amberDot : YubaiColor.brandInk, lineWidth: 2) } }
+                }
             }
             if let selected {
                 RuleMark(x: .value("选中日期", selected.date)).foregroundStyle(YubaiColor.label).lineStyle(StrokeStyle(lineWidth: 1))
-                PointMark(x: .value("选中日期", selected.date), y: .value("现金", money(selected.balance)))
+                PointMark(x: .value("选中日期", selected.date), y: .value("余额", money(selected.balance)))
                     .symbol { Circle().fill(YubaiColor.label).frame(width: 8, height: 8).overlay { Circle().stroke(YubaiColor.card, lineWidth: 2) } }
             }
-        }.chartLegend(.hidden).chartYAxis(.hidden)
+        }.chartLegend(.hidden)
             .chartXScale(domain: visible.start...visible.end, range: .plotDimension(padding: 4))
-            .chartYScale(domain: yDomain(visible), range: .plotDimension(padding: 8))
+            .chartYScale(domain: scale.domain)
+            .chartYAxis {
+                AxisMarks(position: .trailing, values: scale.ticks) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6)).foregroundStyle(YubaiColor.neutralSoft)
+                    AxisValueLabel {
+                        if let number = value.as(Double.self) {
+                            Text(CashTimelineScale.label(number)).yubaiFont(YubaiFont.chartLabel).foregroundStyle(YubaiColor.labelSecondary)
+                        }
+                    }
+                }
+            }
             .chartXAxis {
                 AxisMarks(values: axisDates(visible)) { value in
                     AxisValueLabel {
                         if let date = value.as(Date.self) {
-                            Text(date == timeline.today ? "今天" : monthDay(date)).yubaiFont(YubaiFont.chartLabel)
-                                .foregroundStyle(YubaiColor.labelSecondary)
+                            Text(date == timeline.today ? "今天" : shortDate(date)).yubaiFont(YubaiFont.chartLabel).foregroundStyle(YubaiColor.labelSecondary)
                         }
                     }
                 }
             }.chartOverlay { proxy in
                 GeometryReader { geometry in
                     if let plot = proxy.plotFrame {
+                        annotations(visible, proxy: proxy, frame: geometry[plot]).allowsHitTesting(false).accessibilityHidden(true)
                         touchSurface(proxy, frame: geometry[plot])
                     }
                 }
-            }.frame(height: 150)
+            }.frame(height: textSize.isAccessibilitySize ? 210 : 170)
             .accessibilityElement(children: .ignore).accessibilityIdentifier("cashTimelineChart")
-            .accessibilityLabel("现金会怎么走")
-            .accessibilityValue(accessibilityValue(visible))
-            .accessibilityHint("上下轻扫逐天查看；左右拖动看更早，长按后拖动查看一天")
+            .accessibilityLabel("现金会怎么走").accessibilityValue(accessibilityValue(visible))
+            .accessibilityHint("上下轻扫逐天查看；右滑看上个周期，左滑看下个周期，长按后拖动查看一天")
             .accessibilityAdjustableAction { direction in
-                let points = visible.history + visible.forecast.filter { $0.date > timeline.today }
+                let points = visible.points
                 guard !points.isEmpty else { return }
                 let index = points.firstIndex { $0.date == selectedDay } ?? (points.firstIndex { $0.date == timeline.today } ?? 0)
                 switch direction {
@@ -173,14 +198,41 @@ struct CashTimelineCard: View {
             #endif
     }
 
+    /// Measure rendered text, keep the largest first and reject intersecting labels.
+    /// Eight card-colored copies form an outline without a rectangular label box.
+    private func annotations(_ visible: CashTimelineWindow, proxy: ChartProxy, frame: CGRect) -> some View {
+        Canvas { context, _ in
+            var occupied: [CGRect] = []
+            for event in visible.annotations {
+                guard let point = visible.history.first(where: { $0.date == event.date }),
+                      let x = proxy.position(forX: event.date), let y = proxy.position(forY: money(point.balance)) else { continue }
+                let title = annotationText(event)
+                let text = Text(title).font(.system(size: YubaiFont.chartLabel.size))
+                let resolved = context.resolve(text.foregroundColor(event.isSalary ? YubaiColor.brandInk : YubaiColor.labelSecondary))
+                let size = resolved.measure(in: CGSize(width: .infinity, height: .infinity))
+                guard size.width <= frame.width, size.height <= frame.height else { continue }
+                let center = CGPoint(x: min(frame.maxX - size.width / 2, max(frame.minX + size.width / 2, frame.minX + x)),
+                                     y: min(frame.maxY - size.height / 2, max(frame.minY + size.height / 2, frame.minY + y + (event.amount > 0 ? -12 : 12))))
+                let rect = CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height).insetBy(dx: -3, dy: -2)
+                guard !occupied.contains(where: { $0.intersects(rect) }) else { continue }
+                occupied.append(rect)
+                let outline = context.resolve(text.foregroundColor(YubaiColor.card))
+                for dx: CGFloat in [-1.5, 0.0, 1.5] {
+                    for dy: CGFloat in [-1.5, 0.0, 1.5] where dx != 0 || dy != 0 {
+                        context.draw(outline, at: CGPoint(x: center.x + dx, y: center.y + dy))
+                    }
+                }
+                context.draw(resolved, at: center)
+            }
+        }
+    }
+
     @ViewBuilder private func touchSurface(_ proxy: ChartProxy, frame: CGRect) -> some View {
         #if os(iOS)
         Rectangle().fill(.clear).contentShape(Rectangle())
-            .gesture(HorizontalPan(shouldBegin: { _ in !holding }, changed: { distance in
-                pan(distance, width: frame.width)
-            }, ended: { distance, _ in
-                pan(distance, width: frame.width); panStart = nil
-            }, cancelled: { panStart = nil }))
+            .gesture(HorizontalPan(shouldBegin: { _ in !holding }, changed: { _ in selectedDay = nil }, ended: { distance, velocity in
+                switchCycle(distance, velocity: velocity, width: frame.width)
+            }))
             .gesture(CashTimelinePress(changed: { location in
                 holding = true; scrub(location.x, proxy: proxy, frame: frame)
             }, ended: { holding = false; selectedDay = nil }))
@@ -200,75 +252,49 @@ struct CashTimelineCard: View {
                         if let location = drag?.location ?? pointerLocation { scrub(location.x, proxy: proxy, frame: frame) }
                     }
                 }.onEnded { _ in holding = false; selectedDay = nil })
-            .simultaneousGesture(DragGesture(minimumDistance: 10).onChanged { value in
-                guard !holding, abs(value.translation.width) > abs(value.translation.height) else { return }
-                pan(value.translation.width, width: frame.width)
-            }.onEnded { _ in panStart = nil })
-            .accessibilityHidden(true)
+            .simultaneousGesture(DragGesture(minimumDistance: 10).onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                switchCycle(value.translation.width, velocity: 0, width: frame.width)
+            }).accessibilityHidden(true)
         #endif
     }
 
-    private func pan(_ distance: CGFloat, width: CGFloat) {
-        guard !holding, width > 0 else { return }
-        if panStart == nil { panStart = window.start; selectedDay = nil }
-        let days = Int((Double(distance / width) * Double(timeline.visibleDays)).rounded())
-        windowStart = timeline.window(startingAt: Dates.addDays(-days, to: panStart ?? window.start)).start
+    private func switchCycle(_ distance: CGFloat, velocity: CGFloat, width: CGFloat) {
+        guard !holding, width > 0, abs(distance) > width * 0.2 || abs(velocity) > 500 else { return }
+        cycleOffset = min(timeline.cycles.count - 1, max(0, cycleOffset + (distance > 0 ? 1 : -1)))
+        selectedDay = nil
     }
-
     private func scrub(_ x: CGFloat, proxy: ChartProxy, frame: CGRect) {
         guard let date: Date = proxy.value(atX: min(frame.width, max(0, x - frame.minX))) else { return }
-        let candidates = window.history + window.forecast.filter { $0.date > timeline.today }
-        if let point = candidates.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }) { select(point.date) }
+        if let point = window.points.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }) { select(point.date) }
     }
-
     private func select(_ day: Date) {
         if selectedDay != day { selectedDay = day; selectionTrigger &+= 1 }
     }
-
-    private func indicator(_ visible: CashTimelineWindow) -> some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(YubaiColor.neutralSoft).frame(height: 2)
-                Capsule().fill(YubaiColor.labelSecondary.opacity(0.55))
-                    .frame(width: geometry.size.width * visible.indicatorLength, height: 4)
-                    .offset(x: geometry.size.width * visible.indicatorStart)
-            }.frame(height: 4)
-        }.frame(height: 4).allowsHitTesting(false).accessibilityHidden(true)
-    }
-
-    private func yDomain(_ visible: CashTimelineWindow) -> ClosedRange<Double> {
-        var values = (visible.history + visible.forecast).flatMap { [money($0.lower), money($0.upper)] }
-        values += visible.forecastLine.flatMap { [money($0.lower), money($0.upper)] }
-        if visible.belowFloor, let floor = visible.floor { values.append(money(floor)) }
-        if visible.showsZero { values.append(0) }
-        let lower = values.min() ?? 0, upper = values.max() ?? 0
-        let pad = max(1, (upper - lower) * 0.08)
-        return (lower - pad)...(upper + pad)
-    }
-
     private func axisDates(_ visible: CashTimelineWindow) -> [Date] {
-        var dates: [Date] = []
-        // Payday/day-of-month positions match the approved two-month reference.
-        for index in -6...0 {
-            let day = Dates.addMonths(index, to: timeline.end)
-            if day >= visible.start && day <= min(visible.end, Dates.addDays(-7, to: timeline.today)) { dates.append(day) }
-        }
-        if timeline.today >= visible.start && timeline.today <= visible.end { dates.append(timeline.today) }
-        return dates.sorted()
+        Array(Set([visible.start, visible.end] + (visible.isDefault ? [timeline.today] : []))).sorted()
     }
-
     private func accessibilityValue(_ visible: CashTimelineWindow) -> String {
-        if let selected { return monthDay(selected.date) + "，余额 " + Money.text(selected.balance) + "。" + selected.events.map(eventText).joined(separator: "；") }
-        guard let low = visible.minimum else { return "" }
-        return monthDay(visible.start) + "至" + monthDay(visible.end) + "，最低 " + Money.text(low.balance) + "，" + monthDay(low.date)
-            + (visible.belowFloor ? "，低于始终留着" : "")
+        if let selected { return FixedFlowPresentation.monthDay(selected.date) + "，当天余额 " + Money.text(selected.balance) + "，" + detail(visible) }
+        return dateRange(visible) + "，" + readoutTitle(visible) + " " + Money.text(visible.endpoint?.balance ?? 0)
+            + "，" + detail(visible) + (visible.belowFloor ? "，低于始终留着" : "")
+    }
+    private func annotationText(_ event: CashTimelineEvent) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "zh_CN"); formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0; formatter.maximumFractionDigits = 0
+        let amount = formatter.string(from: NSDecimalNumber(decimal: Decimal(abs(event.amount)) / 100)) ?? "0"
+        return (event.isSalary ? "工资" : event.title) + " " + (event.amount >= 0 ? "+" : "−") + amount
+    }
+    private func amountText(_ cents: Int64) -> String {
+        (cents < 0 ? "−" : "") + Money.text(abs(cents), currency: false)
     }
     private func eventText(_ event: CashTimelineEvent) -> String {
         event.title + " " + (event.amount >= 0 ? "+" : "−") + Money.text(abs(event.amount), currency: false)
     }
-    private func monthDay(_ date: Date) -> String { FixedFlowPresentation.monthDay(date) }
+    private func dateRange(_ visible: CashTimelineWindow) -> String { shortDate(visible.start) + " – " + shortDate(visible.end) }
+    private func shortDate(_ date: Date) -> String { "\(Dates.calendar.component(.month, from: date))/\(Dates.calendar.component(.day, from: date))" }
     private func money(_ cents: Int64) -> Double { Double(cents) / 100 }
-
     private struct Line: Shape {
         func path(in rect: CGRect) -> Path { Path { $0.move(to: CGPoint(x: rect.minX, y: rect.midY)); $0.addLine(to: CGPoint(x: rect.maxX, y: rect.midY)) } }
     }
