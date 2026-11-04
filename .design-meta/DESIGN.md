@@ -44,6 +44,63 @@
 新增可见中文仅 **「改」**（标题）、**「分类」**（Menu 控件名）、**「停掉以后的」**（结果按钮，复用原确认框措辞）。分类名、错误原因、确认后果及已有状态均复用现有来源，无新增说明句。AX 新增 `editFixedFlow_<planID>`、`fixedFlowCategory`、`fixedFlowEditStop`、`fixedFlowEditor`、`fixedFlowTitle`、`fixedFlowAmount`；原行／结清／恢复／alert 标识保持。
 
 `AppFlowTests.swift` 新增 7 项：预填／禁用／改名／撤销、跳过停掉与停掉后编辑、全部结清再停与撤销、无待处理期停掉、滑开先收起、分类方向切换、首页主体与结清按钮分开；更新工资「以后」行的旧不打开断言，原结清／长按／左滑／恢复用例保持。Linux `swift build --target YubaiCore` 通过，全量 767 项、763 通过／4 原有实网 opt-in 跳过／0 失败（125.513 秒）。实际 editor 非绘制方法以 Linux 状态／环境替身编译执行，覆盖预填、无改动／无效禁用、更新保存、快照恢复、有限期预览、月末锚点与停掉后修改。App 全目录在 iOS 26／27 模拟器 Debug、iOS 26 设备及 macOS 14 Debug 条件下语法解析通过，UI 测试在 iOS 26／27 模拟器条件下解析通过。上述检查不替代 Apple SDK 的 SwiftUI 类型检查或 UI 实跑；Xcode 编译、iPhone／Mac 视觉、AX 与手势待 Mac。未提交／推送、无新依赖或真实智能请求。
+## 2026-11-04 · 第三十二轮「和上个月比」（owner 确认）
+
+owner 确认四张 390pt HTML并授权在 `feat/cashflow-cycle-compare`（main `fb0e4f3`）替换首页现金卡。原稿逐字节归档在 `.design-meta/mockups/cashflow-v32/`，哈希见其 README。此节取代第二十八轮的窗口、最低读数、范围带与细条；v28 原目录及当轮决定保留历史。还能花、购买判断和其他预测工具不改。
+
+### 源码与数据
+
+| 位置 | 本轮采用 |
+|---|---|
+| `Sources/YubaiCore/CashTimeline.swift` | 发薪／自然月周期、逐日实际现金、周期内预测、上周期按天投影、差值、标注候选、1/2/5 刻度；移除 lower／upper 范围与日滚动窗口。 |
+| `Sources/YubaiApp/CashTimelineCard.swift` | 本周期实线／预测虚线与空心终点、35% secondary 上周期细线、右侧刻度和浅网格、工资／大额描边标注、终点与当日比较、周期切换及长按；取消范围带和指示条。沿用暖纸颜色与系统字体 token。 |
+| `Sources/YubaiApp/UITestSupport.swift`、`Tests/YubaiUITests/AppFlowTests.swift` | 工资夹具改为真实月历周期并保留 plan 关联，加入已付房租；低余额夹具预测终点为 −200.00。保留三个原 CashTimeline 测试名和既有标识（`cashTimelineMinimum` 现指终点读数，`cashTimelineToday` 现指回当前周期）。 |
+| `Tests/YubaiCoreTests/CashTimelineTests.swift` | 更新 v28 断言并增加周期与比较回归，共 27 项（原 15 项，净增 12）。沿用已注册文件，无新工程引用或依赖。 |
+
+1. **周期与发薪依据**：优先复用 `Funds.payday` 对应的活动工资安排，保留原 `scheduledDate`／monthlyDay（31 日在短月夹到月底，不链式漂移）；否则使用现有 SalaryDetection 本机候选。不因绘图确认候选、建安排或改流水。每个预期工资日期在半个周期以内（最多 15 天）匹配最近的实际现金工资到账日，优先使用实际日期；缺记录时按原安排日期补齐。提前到账也会开启新周期。确认工资不会重写原公司名称流水，因此在账本副本移除活动月收入后复用识别证据，并校验账户／金额后只读恢复原 entryIDs。没有任一发薪依据，周期是本月 1 日至月底。
+2. **周期边界与三个月限制**：本周期由最近一个边界至下一个边界的前一天；上周期同理。导航只暴露起点不早于今天往前 3 个日历月的完整周期，越界夹到首／末周期。为最早可选周期绘制比较线，内部额外倒推其上一个完整周期，但该更早周期不能导航进入。日历月、闰年和跨年沿用 Dates.calendar。
+3. **实际现金**：继续以同一 funds 缓存时刻的现金／银行卡余额为锚，按各侧 postingDate 倒推每日结束余额；今天取 `now` 的实际值。核对前流水只用于还原，删除／尚未入账不计；归档现金账户仍计，同日现金互转抵消，错日分别记，还款／投资按实际现金腿记。全部净现金收付保留在每日事件，按绝对金额降序，长按取当天最大的一笔。
+4. **预测**：只到周期终点，下次工资不在日期范围内。日常沿用 estimatedDailyLiving，每个未来日递减；周期内已知未付收付到日阶跃，保留部分已付／跳过／停掉／信用消费与还款口径。今天到期及本周期逾期未处理项在实际锚点后计入，上一周期逾期项不带入。未关联但被识别为已到账的本期工资不再次预测；有明确 occurrence 的部分付款仍由原 remaining 计算。没有 ±25% 带。始终留着只与当前周期预测终点比较，相等不警示，不扣现金；已完成周期无预测或目标警示。
+5. **对齐与差值**：上周期第 n 天投到本周期第 n 天，上周期短则到头停止，长则截断，不拉伸、不复制尾点。本周期比较今天实际现金减上周期同一偏移日实际现金；前周期没有该日时不造数，省略比较事实。已完成周期的「比上个月」采用两完整周期末日现金之差（比较原始末值，不用被截断的灰线末值），这是结合 Past 稿采用的实现选择。
+6. **标注与刻度**：日均为本周期已过日（含今天）的实际现金流出总额／天数，整数分计算；单笔达到其 3 倍或关联循环 Plan／rent 的支出，以及已识别工资，按绝对值取前四。只限制显示候选，不裁掉流水、长按事实或 AI 输入。Canvas 测量真实文本边界，先大后小拒绝碰撞，超出绘图区的超长标签省略，保留长按事实；卡片色文字副本构成约 1.5pt 描边。工资统一标「工资 +整数」，支出为原标题与「−整数」，按零位小数四舍五入。Y 轴用本／上周期和预测／目标的范围，含零，选 1、2、5 × 10^n 步长，共 3–5 条；负值绘 0 线及负刻度。
+
+### 交互、稿子差异与文案
+
+iOS 沿用 #64 的两个 `UIGestureRecognizerRepresentable`，均通过 `.gesture` 挂载；coordinator 双方保持不同时识别，且让根分页器等待图内识别失败。静止 0.25s 即选点，之后移动逐日读取，抬手回终点。提前横拖在松手位移超过图宽 20% 或速度超过 500pt/s 时切一个完整周期：右滑更早、左滑更近，边界保持当前页；不连续日平移。macOS 保留 SwiftUI 长按／拖动及指针坐标分支。VoiceOver 可逐日调整。金额隐藏时不构造图、刻度、标注、目标或数值辅助功能。
+
+与 HTML 的已知差异：原样例右端／日期区间写下次发薪日（如 11/15），明确规格要求前一天，因此实现为 11/14。图表用实际账本、刻度和事件替换示例；原生 Swift Charts 的 trailing 刻度在绘图区右侧，HTML 刻度在 SVG 内右侧。沿用系统字体，未装网页字体；图例沿用 caption token（12pt，HTML 11pt），标注 10pt（HTML 9.5pt）。大字号时读数／目标竖排、图高 210pt（默认 170pt），不复刻固定 844pt 页面。起点／今天／终点重合时只保留一个日期位置；缺少可对齐的上周期日时省略不存在的比较。其他首页业务卡和滚动保持。上述实现尚无 Apple 渲染证据，不宣称逐像素一致。
+
+新增／改动的可见中文模板（均为标题、事实或控件，没有解释句）：
+
+- 标题／金额事实：「发工资前还剩 X.XX」「月底还剩 X.XX」「发工资前剩下 X.XX」「月底剩下 X.XX」「当天余额 X.XX」。
+- 比较事实：「比上个月同一天多／少 Y.YY」「比上个月多／少 Y.YY」「上个月同一天 Y.YY」「收付标题 ±X.XX」；历史行组合「M/D – M/D · 比上个月多／少 Y.YY」。
+- 日期／图例事实：「M/D – M/D」「M/D 起」「这个月」「上个月」「工资 +整数」「支出标题 −整数」，保留「今天」「M月D日」「始终留着 X.XX」。
+- 控件：「这个月 ›」；保留状态「金额已隐藏」与标题「现金会怎么走」。金额使用 Money.text 两位小数（负数显示 −），仅刻度／图中标注简写。辅助功能 Hint 只在读屏中完整表达手势。
+
+### Apple API 签名核对
+
+按 Apple 官方文档核对本轮桥接及新增绘图调用；不是 Apple SDK 类型检查。#64 已记录的 UIPan／delegate 签名沿用，其余 View token／修饰符使用既有写法。
+
+| 调用 | 核对签名／合约 |
+|---|---|
+| representable 挂载 | `gesture(_ representable: some UIGestureRecognizerRepresentable) -> some View`；此参数没有 including，不传 simultaneousGesture。 |
+| representable 协议 | `makeUIGestureRecognizer(context: Context) -> R`、`updateUIGestureRecognizer(_: R, context: Context)`、`makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator`、`handleUIGestureRecognizerAction(_: R, context: Context)`；长按 R = UILongPressGestureRecognizer，横拖 R = UIPanGestureRecognizer。 |
+| 转换／长按 | `location(in: some CoordinateSpaceProtocol) -> CGPoint`；`minimumPressDuration: TimeInterval`、`allowableMovement: CGFloat` 均可写，使用 0.25／10。 |
+| delegate／横拖 | `gestureRecognizerShouldBegin(_:) -> Bool`，`gestureRecognizer(_:shouldRecognizeSimultaneouslyWith:) -> Bool`，`gestureRecognizer(_:shouldBeRequiredToFailBy:) -> Bool`；`translation(in: UIView?) -> CGPoint`、`velocity(in: UIView?) -> CGPoint`，沿用 #64 优先关系。 |
+| 坐标／轴 | `ChartProxy.position<P>(forX: P) -> CGFloat?`、`position<P>(forY: P) -> CGFloat?`，P: Plottable，坐标相对 plot；`AxisMarks.init<Value>(preset:position:values:content:)` 接收 `[Value]` 及 `(AxisValue) -> Content`；`AxisGridLine.init(centered: Bool? = nil, stroke: StrokeStyle? = nil)`。`AxisValueLabel` 用 content builder 默认参数。 |
+| 测量／描边 | `GraphicsContext.resolve(_ text: Text) -> ResolvedText`；`ResolvedText.measure(in: CGSize) -> CGSize`；`draw(_ text: ResolvedText, at: CGPoint, anchor: UnitPoint = .center)`。Canvas 先测量再绘制，坐标加 plot frame 原点。 |
+
+核对来源：[representable](https://developer.apple.com/documentation/swiftui/uigesturerecognizerrepresentable)、[坐标转换](https://developer.apple.com/documentation/swiftui/uigesturerecognizerrepresentablecoordinatespaceconverter/location(in:))、[delegate](https://developer.apple.com/documentation/uikit/uigesturerecognizerdelegate)、[长按](https://developer.apple.com/documentation/uikit/uilongpressgesturerecognizer)、[ChartProxy](https://developer.apple.com/documentation/charts/chartproxy)、[AxisMarks](https://developer.apple.com/documentation/charts/axismarks)、[AxisGridLine](https://developer.apple.com/documentation/charts/axisgridline)、[AxisValueLabel](https://developer.apple.com/documentation/charts/axisvaluelabel)、[文本测量](https://developer.apple.com/documentation/swiftui/graphicscontext/resolvedtext/measure(in:))、[文本绘制](https://developer.apple.com/documentation/swiftui/graphicscontext/draw(_:at:anchor:)-6xr87)。
+
+### 验证与未验证项
+
+- 定向 CashTimelineTests：**27 项，0 失败，0.898 秒**。覆盖有／无／已确认／未确认工资、实际到账偏移／提前到账、跨月／闰年／周薪跨年、周期长短、灰线对齐／截断／缺日、当前与历史差值、终点不含下次工资、账单阶跃／部分已付等现金口径、标注门槛／循环例外／四笔上限、三个月边界及比较所需更早数据、始终留着只比终点、正负／零刻度和空账本。
+- 指定完整 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 退出 0：**750 项，746 通过／4 原有实网 opt-in 跳过／0 失败，117.263 秒**。日志 `/tmp/yubai-v32-full-test.log`。新 worktree 缺依赖缓存且代理不可达后，仅向 ignored `.build` 复制本机同版本缓存；Package.swift／Package.resolved 未改。
+- App 全目录 iOS 26 模拟器 Debug（iCloud／App Group）、iOS 26 设备 Release（iCloud／App Group）、macOS 14 Debug（iCloud）及 UI 全部源码 iOS 26 模拟器 Debug 的条件语法解析退出 0。三个 UI 测试保留原名并更新终点／周期／图例／回当前／负余额／金额隐藏断言；源码通过解析不等于 UI 执行通过。`git diff --check` 通过，四份归档与来源逐字节一致。
+- 未验证：Apple SDK 类型检查／链接／构建、XCTest UI 实跑、390pt 渲染、深色／大字号／VoiceOver、标注真实字体碰撞和 UIKit 竖滚／长按／横滑／根分页器仲裁、Mac 指针与拖动、真机使用。HTML 运行依赖未提供，外部画布、截图及分发包未同步。
+
+未提交／推送，未新增依赖或外部设计稿链接，未读密钥，未调用真实 DeepSeek。
+
 
 ## 2026-11-04 · PR #62／#63 Mac 验证修复（行为保持）
 
@@ -52,6 +109,8 @@ owner 提供 main `55d6687` 的 Mac FAIL 报告并授权修复。现金图长按
 指定 Linux 全量 738 项、734 通过／4 原有实网跳过／0 失败（120.883 秒），App／UI／Widget 条件解析通过；[根因、逐项 API 签名与验证报告](../docs/MAC-VERIFY-6263-FIX.md)。Apple SDK 编译、Darwin 新断言实跑、XCTest UI／手势／真机仍待 Mac；外部资源未同步。未提交／推送、无新依赖／设计稿链接、未读密钥／未调用真实 DeepSeek。
 
 ## 2026-11-04 · 第二十八轮「现金怎么走」（owner 确认）
+
+**历史记录，当前卡片说明已被上方第三十二轮取代。**
 
 来源：owner 明确确认四张 390pt HTML，授权在 `feat/home-cashflow-chart`（main `43a9e2a`）实现。原稿保存在 [本地归档](mockups/cashflow-v28/README.md)，四个文件与提供的 HTML 逐字节一致。此节取代下方历史的首页预测入口／二级页、conservative 曲线和 90 天图表期限，以及第十九轮首页目标分段／目标状态行的布局；还能花计算、购买判断、其他只读预测工具和付款缺口观察期保持。没有新增依赖、外部设计稿链接或真实智能请求，未读取密钥，未提交／推送。
 
