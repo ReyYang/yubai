@@ -551,3 +551,7 @@ owner 提供 main `43a9e2a` 真机4,200笔导入整理后约42 MB容器：Splash
 无页面结构／控件／布局变化；新增恢复历史名称「批量记账」为操作事实。owner同日追加授权将恢复页的「最近 20 份账本」改为数字事实「最近 8 份账本」，与新上限一致；因LedgerRepository.historyCountLimit为Core内部常量，保留静态Text并注释指向该常量。原数字同步项已完成。整票其他状态与历史未决项保持，未提交／推送。
 
 数字补修后指定完整命令再次通过：721项、717通过／4原有实网opt-in跳过／0失败，103.522秒；SettingsView的iOS26／macOS14条件语法解析通过。未新增测试或变更布局，Apple SDK／真机显示未验证。
+
+## 2026-11-04 · PR #62／#63 Mac 验证修复（owner 明确任务）
+
+owner 提供 main `55d6687` 的 Mac FAIL 报告，要求修编译／存储／测试确定性，保持界面与既有业务规则。Agent 实现：两个 UIKit representable 均 `.gesture` 挂载且互斥，存储统一符号链接目录身份；测试按实际 checkpoint ID 核验全部续跑组、用新鲜文件属性严格核验原件 mtime。Widget package／Frameworks 引用完整，不改工程配置。新增 2 项显式符号链接回归；指定 Linux 全量 738 项、734 通过／4 原有实网跳过／0 失败（120.883 秒），App／UI／Widget 条件解析通过。[逐项根因、API 签名与证据](../../../docs/MAC-VERIFY-6263-FIX.md)。Apple SDK 编译、Darwin 新断言／UI／手势／真机仍待 Mac，外部资源未同步；无可见中文变化，未提交／推送、无新依赖／设计稿链接、未读密钥／未调用真实 DeepSeek。

@@ -112,10 +112,65 @@ final class StoragePolicyTests: XCTestCase {
             _ = try write(broken, at: root, seconds: second, reason: "导入账单")
         }
         _ = try repository.load()
-        XCTAssertTrue(try repository.recoveries().contains { $0.url == complete })
+        XCTAssertTrue(try repository.recoveries().contains {
+            $0.url.resolvingSymlinksInPath().standardizedFileURL == complete.resolvingSymlinksInPath().standardizedFileURL
+        })
         XCTAssertEqual(try repository.readRecovery(XCTUnwrap(repository.recoveries().last)).accounts[0].name, "完整")
         XCTAssertThrowsError(try repository.readRecovery(XCTUnwrap(repository.recoveries().first)))
         XCTAssertLessThanOrEqual(try repository.recoveries().count, 8)
+    }
+    func testSymlinkAliasesShareDiscoveredFileIdentity() throws {
+        let root = try directory(), real = root.appendingPathComponent("real", isDirectory: true)
+        let alias = root.appendingPathComponent("alias", isDirectory: true)
+        try FileManager.default.createDirectory(at: real.appendingPathComponent("Attachments"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: real)
+        let repository = LedgerRepository(directory: alias)
+        // iCloud discovery can precede local materialization and use a resolved path.
+        for path in ["Attachments/" + UUID().uuidString, "NotMaterialized/Nested/" + UUID().uuidString] {
+            let discovered = real.appendingPathComponent(path)
+            repository.updateDiscoveredFiles([discovered])
+            XCTAssertTrue(repository.containsFile(alias.appendingPathComponent(path)))
+            repository.updateDiscoveredFiles([alias.appendingPathComponent(path)])
+            XCTAssertTrue(repository.containsFile(discovered))
+        }
+    }
+    func testSymlinkHistoryProtectsCompletePayloadsAndCollectsOnlyOrphans() throws {
+        let root = try directory(), real = root.appendingPathComponent("real", isDirectory: true)
+        let alias = root.appendingPathComponent("alias", isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: real)
+        let repository = LedgerRepository(directory: alias, recoveryDate: { Date(timeIntervalSince1970: 1000) })
+        let payload = Attachment(name: "完整原件.csv", data: Data([1, 2, 3]))
+        var complete = ledger("完整")
+        var entry = Entry(amount: 100, accountID: complete.accounts[0].id, title: "合成")
+        entry.attachmentID = payload.id; complete.entries = [entry]; complete.attachments = [payload]
+        var current = try repository.save(complete)
+        try repository.preserveRecovery(current, reason: "导入账单")
+        let savedRecovery = try XCTUnwrap(repository.recoveries().first)
+        for second in 1001...1010 {
+            var broken = complete
+            broken.attachments[0].id = UUID(); broken.entries[0].attachmentID = broken.attachments[0].id
+            _ = try write(broken, at: real, seconds: second, reason: "导入账单")
+        }
+        let payloads = real.appendingPathComponent("Recovery/Payloads")
+        let orphan = payloads.appendingPathComponent(UUID().uuidString)
+        try Data([9]).write(to: orphan)
+        _ = try repository.load()
+        let recoveries = try repository.recoveries()
+        XCTAssertLessThanOrEqual(recoveries.count, 8)
+        XCTAssertEqual(recoveries.first?.date, Date(timeIntervalSince1970: 1010))
+        XCTAssertEqual(recoveries.last?.date, savedRecovery.date)
+        XCTAssertEqual(try repository.readRecovery(XCTUnwrap(recoveries.last)), complete)
+        XCTAssertThrowsError(try repository.readRecovery(XCTUnwrap(recoveries.first)))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: payloads.appendingPathComponent(payload.id.uuidString).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+        var aliasRecovery = savedRecovery
+        aliasRecovery.url = alias.appendingPathComponent("Recovery/" + savedRecovery.url.lastPathComponent)
+        XCTAssertEqual(try repository.readRecovery(aliasRecovery), complete)
+        current.entries = []; current.attachments = []
+        try repository.save(current, preservingRecovery: false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: real.appendingPathComponent("Attachments/" + payload.id.uuidString).path))
+        XCTAssertEqual(try repository.readRecovery(aliasRecovery), complete)
     }
     func testCloudConfigurationDisablesCacheAndPreservesTimeoutsProxyAndProtocols() {
         let base = URLSessionConfiguration.default

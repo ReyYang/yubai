@@ -181,7 +181,7 @@ struct CashTimelineCard: View {
             }, ended: { distance, _ in
                 pan(distance, width: frame.width); panStart = nil
             }, cancelled: { panStart = nil }))
-            .simultaneousGesture(CashTimelinePress(changed: { location in
+            .gesture(CashTimelinePress(changed: { location in
                 holding = true; scrub(location.x, proxy: proxy, frame: frame)
             }, ended: { holding = false; selectedDay = nil }))
             .accessibilityHidden(true)
@@ -296,6 +296,12 @@ private struct CashTimelinePress: UIGestureRecognizerRepresentable {
         }
     }
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            // HorizontalPan also returns false for this pair. UIKit lets the
+            // first recognizer win: an early pan or a stationary 0.25s hold.
+            // Once the hold begins, moving the finger only scrubs the chart.
+            false
+        }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
             guard let scroll = other.view as? UIScrollView else { return false }
             return other === scroll.panGestureRecognizer

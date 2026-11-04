@@ -123,11 +123,27 @@ public struct LedgerRepository: Sendable {
     }
     public func updateDiscoveredFiles(_ urls: [URL]) {
         state.discoveryLock.lock(); defer { state.discoveryLock.unlock() }
-        state.discoveredFiles = Set(urls.map { $0.standardizedFileURL })
+        state.discoveredFiles = Set(urls.map(fileIdentity))
     }
     private func discovered(_ url: URL) -> Bool {
         state.discoveryLock.lock(); defer { state.discoveryLock.unlock() }
-        return state.discoveredFiles?.contains(url.standardizedFileURL) == true
+        return state.discoveredFiles?.contains(fileIdentity(url)) == true
+    }
+    // Foundation enumeration and iCloud coordination can resolve directory
+    // aliases (notably /var -> /private/var). Use one identity for comparisons
+    // and cache keys, while preserving the caller's public repository location.
+    private func fileIdentity(_ url: URL) -> URL {
+        var ancestor = url
+        var missing: [(name: String, isDirectory: Bool)] = []
+        // resolvingSymlinksInPath can leave the whole URL unresolved when its
+        // leaf does not exist yet (e.g. an undownloaded iCloud payload).
+        while ancestor.path != "/", !FileManager.default.fileExists(atPath: ancestor.path) {
+            missing.append((ancestor.lastPathComponent, ancestor.hasDirectoryPath))
+            ancestor.deleteLastPathComponent()
+        }
+        var resolved = ancestor.resolvingSymlinksInPath().standardizedFileURL
+        for component in missing.reversed() { resolved.appendPathComponent(component.name, isDirectory: component.isDirectory) }
+        return resolved
     }
     func containsFile(_ url: URL) -> Bool {
         #if os(Linux)
@@ -263,7 +279,7 @@ public struct LedgerRepository: Sendable {
     }
     private func withPayload<T>(_ url: URL, writing: Bool, _ body: (URL) throws -> T) throws -> T {
         // Immutable payload reads must not take another repository's ledger lock.
-        let cloud = isUbiquitous && url.deletingLastPathComponent().standardizedFileURL == attachments(at: directory).standardizedFileURL
+        let cloud = isCloudPayload(url)
         if cloud { try downloaded(url); return try payloadAccess(url, writing: writing, body) }
         if !FileManager.default.fileExists(atPath: url.path), UUID(uuidString: url.lastPathComponent) != nil {
             let retained = recoveryPayloads.appendingPathComponent(url.lastPathComponent)
@@ -286,7 +302,7 @@ public struct LedgerRepository: Sendable {
     private func writeAttachments(_ ledger: Ledger, at root: URL, known: [UUID: String] = [:], repairing: Bool = false) throws {
         guard !ledger.attachments.isEmpty else { return }
         try prepare(root)
-        let cloud = isUbiquitous && root.standardizedFileURL == attachments(at: directory).standardizedFileURL
+        let cloud = isUbiquitous && fileIdentity(root) == fileIdentity(attachments(at: directory))
         let newBytes = ledger.attachments.filter { !(cloud ? containsFile(root.appendingPathComponent($0.id.uuidString)) : FileManager.default.fileExists(atPath: root.appendingPathComponent($0.id.uuidString).path)) }.reduce(0) { $0 + $1.byteCount }
         try checkSpace(newBytes, at: root)
         for item in ledger.attachments {
@@ -294,10 +310,11 @@ public struct LedgerRepository: Sendable {
             if cloud, containsFile(destination) { try downloaded(destination) }
             let write: (URL) throws -> Void = { url in
                 let checksum = item.payloadChecksum
+                let identity = self.fileIdentity(url)
                 if FileManager.default.fileExists(atPath: url.path) {
                     let sameSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize == item.byteCount
-                    let existing = repairing && sameSize ? try self.fileChecksum(url) : known[item.id] ?? self.state.payloadChecksums[url]
-                    if sameSize, try (existing ?? self.fileChecksum(url)) == checksum { self.state.payloadChecksums[url] = checksum; return }
+                    let existing = repairing && sameSize ? try self.fileChecksum(url) : known[item.id] ?? self.state.payloadChecksums[identity]
+                    if sameSize, try (existing ?? self.fileChecksum(url)) == checksum { self.state.payloadChecksums[identity] = checksum; return }
                     guard repairing else { throw YubaiError.invalid("同一附件标识的内容不同，原文件已保留。") }
                 }
                 if repairing { try self.checkSpace(item.byteCount, at: root) }
@@ -314,7 +331,7 @@ public struct LedgerRepository: Sendable {
                     guard item.data.count == item.byteCount else { throw YubaiError.invalid("附件尚未完整读取，请稍后再试。") }
                     try self.writePrivate(item.data, to: url)
                 }
-                self.state.payloadChecksums[url] = checksum
+                self.state.payloadChecksums[identity] = checksum
             }
             if cloud { try payloadAccess(destination, writing: true, write) }
             else { try write(destination) }
@@ -389,6 +406,8 @@ public struct LedgerRepository: Sendable {
     private func pruneHistory() {
         historyLock.lock(); defer { historyLock.unlock() }
         guard let versions = try? recoveries() else { return }
+        // recoveries() canonicalizes URLs once. All protected/selected keys,
+        // reference lookups and removals below use that same identity.
         // Decode references once, even when the byte budget evicts several versions.
         var references: [URL: Set<UUID>] = [:]
         for version in versions {
@@ -400,7 +419,7 @@ public struct LedgerRepository: Sendable {
         let newestReadable = versions.first { (try? readRecovery($0)) != nil }?.url
         let protected = Set([versions.first?.url, newestReadable].compactMap { $0 })
         var currentIDs = Set<UUID>(), currentReadable = true
-        for current in Set([file, localDirectory.appendingPathComponent("ledger.json")]) where containsFile(current) {
+        for current in Set([file, localDirectory.appendingPathComponent("ledger.json")].map(fileIdentity)) where containsFile(current) {
             if let ledger = try? LedgerCodec.decode(Data(contentsOf: current)) { currentIDs.formUnion(ledger.attachments.map(\.id)) }
             else { currentReadable = false }
         }
@@ -411,7 +430,8 @@ public struct LedgerRepository: Sendable {
             guard currentReadable, remaining.allSatisfy({ references[$0.url] != nil }) else { return }
             let used = remaining.reduce(into: currentIDs) { $0.formUnion(references[$1.url]!) }
             for url in payloads where UUID(uuidString: url.lastPathComponent).map({ !used.contains($0) }) == true {
-                try? FileManager.default.removeItem(at: url); state.payloadChecksums.removeValue(forKey: url)
+                let identity = fileIdentity(url)
+                try? FileManager.default.removeItem(at: url); state.payloadChecksums.removeValue(forKey: identity)
             }
         }
         collectPayloads()
@@ -510,9 +530,11 @@ public struct LedgerRepository: Sendable {
         let used = Set(shared.attachments.map(\.id))
         var files = (try? FileManager.default.contentsOfDirectory(at: attachments(at: root), includingPropertiesForKeys: nil)) ?? []
         state.discoveryLock.lock(); files += Array(state.discoveredFiles ?? []); state.discoveryLock.unlock()
-        for url in Set(files) where url.deletingLastPathComponent().standardizedFileURL == attachments(at: root).standardizedFileURL && UUID(uuidString: url.lastPathComponent).map({ !used.contains($0) }) == true {
+        let attachmentRoot = fileIdentity(attachments(at: root))
+        for url in Set(files) where fileIdentity(url.deletingLastPathComponent()) == attachmentRoot && UUID(uuidString: url.lastPathComponent).map({ !used.contains($0) }) == true {
+            let identity = fileIdentity(url)
             try? payloadAccess(url, writing: true, deleting: true) { try FileManager.default.removeItem(at: $0) }
-            state.payloadChecksums.removeValue(forKey: url)
+            state.payloadChecksums.removeValue(forKey: identity)
         }
         for i in shared.attachments.indices { shared.attachments[i].unload(at: attachments(at: root).appendingPathComponent(shared.attachments[i].id.uuidString), repository: self) }
         shared.preMigrationData = nil
@@ -554,11 +576,12 @@ public struct LedgerRepository: Sendable {
     public func recoveries() throws -> [Recovery] {
         historyLock.lock(); defer { historyLock.unlock() }
         guard FileManager.default.fileExists(atPath: history.path) else { return [] }
+        let historyRoot = fileIdentity(history)
         return try FileManager.default.contentsOfDirectory(at: history, includingPropertiesForKeys: [.contentModificationDateKey]).filter { $0.pathExtension == "json" || $0.lastPathComponent.hasSuffix(".json.gz") }.map { url in
             let name = (url.pathExtension == "gz" ? url.deletingPathExtension() : url).deletingPathExtension().lastPathComponent
             let stamp = name.split(separator: "-").first.flatMap { Int64($0) }.flatMap { (0..<10_000_000_000_000).contains($0) ? $0 : nil }
             let date = stamp.map { Date(timeIntervalSince1970: Double($0) / 1000) } ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return Recovery(url: url, date: date, name: name)
+            return Recovery(url: historyRoot.appendingPathComponent(url.lastPathComponent), date: date, name: name)
         }.sorted { $0.date > $1.date }
     }
 
@@ -624,7 +647,8 @@ public struct LedgerRepository: Sendable {
             try storageTransaction(paths: [history]) {
                 if FileManager.default.fileExists(atPath: history.path) { try FileManager.default.removeItem(at: history) }
             }
-            state.payloadChecksums = state.payloadChecksums.filter { !$0.key.path.hasPrefix(history.path + "/") }
+            let historyPath = fileIdentity(history).path + "/"
+            state.payloadChecksums = state.payloadChecksums.filter { !$0.key.path.hasPrefix(historyPath) }
         } catch let error as YubaiError { throw error }
         catch { throw YubaiError.invalid("清除恢复历史失败，原数据已保留。请稍后重试。") }
     }
@@ -642,7 +666,7 @@ public struct LedgerRepository: Sendable {
                 try storageTransaction(paths: paths) { for url in paths { try manager.removeItem(at: url) } }
             }
             localState.digest = nil; localState.payloadChecksums.removeAll()
-            if directory == localDirectory { state.digest = nil; state.payloadChecksums.removeAll() }
+            if fileIdentity(directory) == fileIdentity(localDirectory) { state.digest = nil; state.payloadChecksums.removeAll() }
         } catch let error as YubaiError { throw error }
         catch { throw YubaiError.invalid("抹掉失败，本机数据已保留。请稍后重试。") }
     }
@@ -685,7 +709,7 @@ public struct LedgerRepository: Sendable {
         }
     }
     private func isCloudPayload(_ url: URL) -> Bool {
-        isUbiquitous && url.deletingLastPathComponent().standardizedFileURL == attachments(at: directory).standardizedFileURL
+        isUbiquitous && fileIdentity(url.deletingLastPathComponent()) == fileIdentity(attachments(at: directory))
     }
     private func snapshotStorage(_ original: URL, to snapshot: URL) throws {
         if isCloudPayload(original) {
@@ -710,8 +734,8 @@ public struct LedgerRepository: Sendable {
     public func readRecovery(_ recovery: Recovery) throws -> Ledger {
         state.lock.lock(); defer { state.lock.unlock() }
         historyLock.lock(); defer { historyLock.unlock() }
-        let recoveryDirectory = recovery.url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
-        guard recoveryDirectory == history.resolvingSymlinksInPath().standardizedFileURL else { throw YubaiError.invalid("恢复文件不属于当前账本。") }
+        let recoveryDirectory = fileIdentity(recovery.url.deletingLastPathComponent())
+        guard recoveryDirectory == fileIdentity(history) else { throw YubaiError.invalid("恢复文件不属于当前账本。") }
         var ledger = try LedgerCodec.decode(recoveryBytes(recovery.url))
         if ledger.attachments.contains(where: { $0.checksum == nil }) {
             try writeAttachments(ledger, at: recoveryPayloads)
