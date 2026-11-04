@@ -117,6 +117,32 @@ final class ButlerTests: XCTestCase {
         let restored = try LedgerCodec.decode(LedgerCodec.encode(ledger))
         XCTAssertEqual(restored.cards, ledger.cards)
     }
+    func testAnswerDismissesWithoutMutingAndSurvivesPersistence() throws {
+        for value in [CardFeedback.worth, .regret] {
+            var ledger = restrained()
+            _ = ButlerCards.refresh(&ledger, now: now)
+            let card = try XCTUnwrap(ButlerCards.visible(ledger).first)
+            let before = ledger
+            ButlerCards.feedback(value, cardID: card.id, in: &ledger, now: now)
+            let answered = try XCTUnwrap(ledger.cards.first { $0.id == card.id })
+            XCTAssertEqual(answered.feedback, value)
+            XCTAssertEqual(answered.feedbackAt, now)
+            XCTAssertEqual(answered.dismissedAt, now)
+            XCTAssertEqual(answered.evidence, card.evidence)
+            XCTAssertTrue(ButlerCards.queued(ledger).isEmpty)
+            XCTAssertTrue(ledger.mutedTopics.isEmpty)
+            let saved = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+            XCTAssertEqual(saved.cards, ledger.cards)
+            XCTAssertTrue(ButlerCards.detect(saved, now: now).isEmpty)
+            var legacy = saved
+            legacy.cards[0].dismissedAt = nil // Old versions kept answered cards open.
+            XCTAssertTrue(ButlerCards.queued(legacy).isEmpty)
+            ButlerCards.feedback(value, cardID: card.id, in: &ledger, now: Dates.addDays(1, to: now))
+            XCTAssertEqual(ledger, saved) // Repeated completion cannot replace the first answer.
+            XCTAssertEqual(ButlerCards.visible(before).map(\.id), [card.id])
+            XCTAssertNil(before.cards.first?.feedback)
+        }
+    }
     func testFiveVisibleCardsInPriorityOrderAndOverflowRemainsQueued() {
         var ledger = seed()
         let kinds: [CardKind] = [.answerQuestion, .staleBalance, .unknownInflow, .restrain, .shortfall, .restrain, .offCharacter]

@@ -554,17 +554,49 @@ struct ActiveLedgerTransport: ChatTransport {
             update("每周来信", recordUndo: false, reportError: false) { try result.apply(to: &$0) }
         } catch { /* Leave the week pending so a later refresh can retry. */ }
     }
-    func dismissCard(_ id: UUID) {
-        guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return }
-        update("收起管家卡片") { ledger in
+    @discardableResult func dismissCard(_ id: UUID) -> Bool {
+        guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return false }
+        let saved = update("收起管家卡片", showToast: false) { ledger in
             if let i = ledger.cards.firstIndex(where: { $0.id == id }) { ledger.cards[i].dismissedAt = Date() }
         }
+        if saved { toast = "收起了" }
+        return saved
     }
-    func muteCard(_ id: UUID) {
-        update("以后不再提这个话题") { ButlerCards.mute(id, in: &$0, now: Date()) }
+    @discardableResult func muteCard(_ id: UUID) -> Bool {
+        guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return false }
+        let saved = update("以后不再提这个话题", showToast: false) { ButlerCards.mute(id, in: &$0, now: Date()) }
+        if saved { toast = "以后不提这类了" }
+        return saved
     }
-    func cardFeedback(_ value: CardFeedback, id: UUID) {
-        update("记下你点过的提醒") { ButlerCards.feedback(value, cardID: id, in: &$0, now: Date()) }
+    @discardableResult func cardFeedback(_ value: CardFeedback, id: UUID) -> Bool {
+        guard let card = current.cards.first(where: { $0.id == id && $0.dismissedAt == nil && $0.feedback == nil }) else { return false }
+        let answer = value == .worth ? (card.evidence.count > 1 ? "都值得" : "值得") : "有点后悔"
+        let saved = update("记下你点过的提醒", showToast: false) { ButlerCards.feedback(value, cardID: id, in: &$0, now: Date()) }
+        if saved { toast = "记下了：" + answer }
+        return saved
+    }
+    @discardableResult func answerWishFollowUp(_ wishID: UUID, choice: FollowUpChoice, text: String) -> Bool {
+        let saved = update("记下一个月的感受", showToast: false) {
+            try Wishlist.answerFollowUp(wishID, choice: choice, text: text, in: &$0, now: Date())
+        }
+        if saved { toast = "记下了：" + choice.rawValue }
+        return saved
+    }
+    @discardableResult func dismissWishFollowUp(_ wishID: UUID, mute: Bool = false) -> Bool {
+        let key = "follow:\(wishID)"
+        if let card = current.cards.first(where: { $0.dedupeKey == key }) {
+            return mute ? muteCard(card.id) : dismissCard(card.id)
+        }
+        // A due wish may be opened before the normal reminder refresh finishes.
+        // Materialize and close its reminder in one undoable save in that case.
+        let saved = update(mute ? "以后不再提这个话题" : "收起管家卡片", showToast: false) { ledger in
+            _ = ButlerCards.refresh(&ledger, now: Date())
+            guard let i = ledger.cards.firstIndex(where: { $0.dedupeKey == key }) else { return }
+            if mute { ButlerCards.mute(ledger.cards[i].id, in: &ledger, now: Date()) }
+            else { ledger.cards[i].dismissedAt = Date() }
+        }
+        if saved { toast = mute ? "以后不提这类了" : "收起了" }
+        return saved
     }
     func performCardAction(_ card: ButlerCard) {
         switch card.action ?? .openEvidence {

@@ -68,7 +68,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low"].contains(name)) else { return nil }
+              (screenshotScripts.contains(name) || ["empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -123,6 +123,15 @@ enum UITestSupport {
             ledger.entries = [Entry(date: now.addingTimeInterval(-60), amount: 1600, accountID: account.id, title: "原有午饭", category: "餐饮")]
         } else if script == "entries" {
             ledger.entries = (0..<50).map { Entry(date: now.addingTimeInterval(Double(-$0 * 60)), amount: 3200, accountID: account.id, title: "合成账目 \($0)", category: "餐饮") }
+        }
+        if script == "butler-deck" {
+            ledger.preferences.cloudAIEnabled = false
+            ledger.entries = (0..<2).map { Entry(date: now, amount: 3200, accountID: account.id, title: "合成观察 \($0)", category: "餐饮") }
+            var top = ButlerCard(kind: .offCharacter, title: "合成的两笔观察", body: "合成记录", evidence: ledger.entries.map(\.id), action: .openEvidence, dedupeKey: "off:" + ledger.entries.map { $0.id.uuidString }.joined(separator: ":"))
+            top.priority = 0; top.createdAt = now
+            var next = ButlerCard(kind: .recurring, title: "下一条合成提醒", body: "合成记录", action: .openEvidence, dedupeKey: "test:next")
+            next.priority = 1; next.createdAt = now
+            ledger.cards = [top, next]
         }
         if script == "restrain" {
             ledger.profile.restrain = [ProfileArea(title: "咖啡", match: AreaMatch(keywords: ["咖啡"]), softLimit: SoftLimit(perMonthAmount: 3000))]

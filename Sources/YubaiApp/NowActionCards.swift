@@ -29,20 +29,16 @@ private enum NowCardPage: Identifiable {
     var id: String {
         switch self {
         case .salary(let candidate): "salary:" + candidate.key
-        case .imports: "imports"
+        case .imports(let pending): "imports:" + pending.sessionCardKey
         case .butler(let card): card.id.uuidString
         }
     }
 }
 
-/// Intrinsic card height (including large type), with horizontal paging owned by
-/// the same direction gate as the existing card gesture and root pager.
+/// Only the first card is mounted; the remaining cards appear as quiet deck edges.
 struct NowCardsSection: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selected: String?
-    @State private var width: CGFloat = 1
-    @State private var drag: CGFloat = 0
     private var butlerCards: [ButlerCard] {
         store.butlerVisibility.collapsed
     }
@@ -50,13 +46,13 @@ struct NowCardsSection: View {
         var result: [NowCardPage] = []
         if let salary = store.nowSalaryCandidate, !store.hiddenSalaryKeys.contains(salary.key) { result.append(.salary(salary)) }
         let pending = store.pendingOrganization
-        if !pending.batchIDs.isEmpty { result.append(.imports(pending)) }
+        if !pending.batchIDs.isEmpty, !store.hiddenPendingImportKeys.contains(pending.sessionCardKey) { result.append(.imports(pending)) }
         result += butlerCards.filter { $0.importQuestion == nil && $0.kind != .unknownInflow }.map(NowCardPage.butler)
         return result
     }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            if !pages.isEmpty { pagedCards }
+            if !pages.isEmpty { deck }
             ForEach(butlerCards.filter { $0.importQuestion != nil }) { card in
                 if let question = card.importQuestion, let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
                     ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
@@ -77,93 +73,50 @@ struct NowCardsSection: View {
             }
         }
     }
-    private var pagedCards: some View {
+    private var deck: some View {
         let pages = self.pages
-        let index = pages.firstIndex { $0.id == selected } ?? 0
-        let ids = pages.map(\.id)
-        let pageValue = pages.isEmpty ? "" : "\(index + 1) / \(pages.count)"
-        return ZStack(alignment: .top) {
-            ForEach(Array(pages.enumerated()), id: \.element.id) { position, page in
-                card(page, number: "\(position + 1) / \(pages.count)", paging: pages.count > 1, active: position == index)
-                    .frame(maxWidth: .infinity)
-                    .offset(x: CGFloat(position - index) * (width + YubaiSpace.gapGroup) + drag)
-                    .opacity(position == index || drag != 0 ? 1 : 0)
-                    .allowsHitTesting(position == index && drag == 0)
-                    .accessibilityHidden(position != index)
-                    .transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion))
+        let edges = min(2, max(0, pages.count - 1))
+        return ZStack(alignment: .bottom) {
+            ForEach(Array((1..<(edges + 1)).reversed()), id: \.self) { depth in
+                RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous)
+                    .fill(YubaiColor.neutralSoft).frame(height: 40)
+                    .padding(.horizontal, CGFloat(depth) * 10).offset(y: CGFloat(depth) * 6)
+                    .allowsHitTesting(false).accessibilityHidden(true)
             }
-        }
-            // With only one visible card, .contain reuses that card's AX container.
-            // A separate page-status element makes nowCards a new parent instead
-            // of overwriting the card's identifier/value, without changing layout.
-            .overlay(alignment: .topTrailing) {
-                if !pages.isEmpty {
-                    Color.clear.frame(width: 1, height: 1)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("第 \(index + 1) 张，共 \(pages.count) 张卡片")
-                        .allowsHitTesting(false)
-                }
+            ForEach(Array(pages.prefix(1))) { page in
+                card(page)
+                    .transition(.asymmetric(insertion: reduceMotion ? .opacity : .scale(scale: 0.97), removal: .identity))
             }
-            .clipped().contentShape(Rectangle())
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = max(1, $0) }
-            #if os(iOS)
-            .gesture(HorizontalPan(shouldBegin: { _ in pages.count > 1 || isSalary(pages.first) }, changed: { distance in
-                drag = max(-width, min(width, distance))
-            }, ended: { distance, velocity in
-                finishSwipe(distance: distance, velocity: velocity, pages: pages, index: index)
-            }, cancelled: resetDrag))
-            #else
-            .simultaneousGesture(DragGesture(minimumDistance: 18).onChanged { value in
-                guard pages.count > 1 || isSalary(pages.first), abs(value.translation.width) > abs(value.translation.height) * 1.3 else { return }
-                drag = max(-width, min(width, value.translation.width))
-            }.onEnded { value in
-                guard drag != 0 else { return }
-                finishSwipe(distance: value.translation.width, velocity: value.velocity.width, pages: pages, index: index)
-            })
-            #endif
-            .onChange(of: ids) { old, new in
-                if let first = new.first, first.hasPrefix("salary:"), !old.contains(first) { selected = first }
-                else if !new.contains(selected ?? "") { selected = new.first }
-                drag = 0
-            }
-            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: ids)
-            .accessibilityElement(children: .contain).accessibilityIdentifier("nowCards")
-            .accessibilityValue(pageValue)
-            .accessibilityAction(named: "下一张卡片") { move(1, in: pages, index: index) }
-            .accessibilityAction(named: "上一张卡片") { move(-1, in: pages, index: index) }
+        }.padding(.bottom, CGFloat(edges) * 6)
+            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: pages.map(\.id))
     }
-    @ViewBuilder private func card(_ page: NowCardPage, number: String, paging: Bool, active: Bool) -> some View {
+    @ViewBuilder private func card(_ page: NowCardPage) -> some View {
         switch page {
-        case .salary(let candidate): SalaryCard(candidate: candidate, pageNumber: number)
-        case .imports(let pending): PendingImportsCard(pending: pending, pageNumber: number)
-        case .butler(let card): ButlerCardView(card: card, pageNumber: paging ? number : nil, paging: paging, isCurrentPage: active)
+        case .salary(let candidate):
+            SwipeDismissCard(onDismiss: { store.hiddenSalaryKeys.insert(candidate.key); return true }, nudgesOnce: true) { _ in
+                SalaryCard(candidate: candidate)
+            }
+        case .imports(let pending):
+            SwipeDismissCard(onDismiss: { store.hiddenPendingImportKeys.insert(pending.sessionCardKey); return true }, nudgesOnce: true, reportsRevealState: false) { _ in
+                PendingImportsCard(pending: pending)
+            }
+        case .butler(let card): ButlerCardView(card: card, nudgesOnce: true)
         }
     }
-    private func isSalary(_ page: NowCardPage?) -> Bool {
-        if case .salary? = page { return true }; return false
-    }
-    private func finishSwipe(distance: CGFloat, velocity: CGFloat, pages: [NowCardPage], index: Int) {
-        if abs(distance) > width * 0.25 || (abs(velocity) > 650 && abs(distance) > 20) {
-            if pages.count == 1, distance < 0, case .salary(let candidate) = pages[0] { store.hiddenSalaryKeys.insert(candidate.key) }
-            else { move(distance < 0 ? 1 : -1, in: pages, index: index) }
-        }
-        resetDrag()
-    }
-    private func move(_ step: Int, in pages: [NowCardPage], index: Int) {
-        guard pages.indices.contains(index + step) else { return }
-        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { selected = pages[index + step].id; drag = 0 }
-    }
-    private func resetDrag() { withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { drag = 0 } }
+}
+
+private extension PendingImportOrganization {
+    // A new set of batches can surface again; progress within a hidden set stays hidden.
+    var sessionCardKey: String { batchIDs.map(\.uuidString).sorted().joined(separator: ":") }
 }
 
 private struct SalaryCard: View {
     @Environment(AppStore.self) private var store
     let candidate: SalaryCandidate
-    let pageNumber: String
     var body: some View {
         Card(style: .compact, background: YubaiColor.brandTint) {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                NowCardHeading(title: "这是工资吗？", pageNumber: pageNumber)
+                NowCardHeading(title: "这是工资吗？")
                 HStack(spacing: YubaiSpace.space8) {
                     Text(candidate.payer + " · 每月 \(candidate.dayOfMonth) 日")
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).lineLimit(1)
@@ -184,14 +137,12 @@ private struct SalaryCard: View {
                 }
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("salaryCard")
-            .accessibilityAction(named: "本次收起工资卡片") { store.hiddenSalaryKeys.insert(candidate.key) }
     }
 }
 
 private struct PendingImportsCard: View {
     @Environment(AppStore.self) private var store
     let pending: PendingImportOrganization
-    let pageNumber: String
     private var busy: Bool { store.organizingPendingImports || store.organizingBatchID != nil }
     private var accounts: String {
         pending.accountIDs.count > 1 ? "\(pending.accountIDs.count) 个账户" : store.current.accountName(pending.accountIDs.first)
@@ -205,7 +156,7 @@ private struct PendingImportsCard: View {
     var body: some View {
         Card(style: .compact) {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                NowCardHeading(title: "\(pending.count) 笔还没分类", pageNumber: pageNumber)
+                NowCardHeading(title: "\(pending.count) 笔还没分类")
                 Text(accounts + (pending.dates.isEmpty ? "" : " · " + ImportStatementText.range(pending.dates)))
                     .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).lineLimit(1)
                 if let error = organizationError {
@@ -286,13 +237,10 @@ private struct PendingImportsCard: View {
 
 private struct NowCardHeading: View {
     let title: String
-    let pageNumber: String
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
             Text(title).yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.label)
             Spacer(minLength: YubaiSpace.none)
-            Text(pageNumber).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                .accessibilityHidden(true) // The pager exposes this status outside the card's AX container.
         }
     }
 }

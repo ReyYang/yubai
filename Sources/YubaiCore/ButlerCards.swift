@@ -153,7 +153,7 @@ public enum ButlerCards {
         let asked = questionEntryIDs(in: ledger)
         let active = Dictionary(uniqueKeysWithValues: ledger.activeEntries.map { ($0.id, $0) })
         return ledger.cards.filter { card in
-            guard card.kind != .weeklyLetter, card.dismissedAt == nil,
+            guard card.kind != .weeklyLetter, card.dismissedAt == nil, card.feedback == nil,
                   !isMuted(card.dedupeKey, evidence: Array(offCharacterEntryIDs(card)), in: ledger) else { return false }
             if let question = card.importQuestion, deferredQuestions.contains(question.id) { return false }
             if let question = card.importQuestion, question.isFallback {
@@ -213,7 +213,7 @@ public enum ButlerCards {
     }
     public static func feedback(_ value: CardFeedback, cardID: UUID, in ledger: inout Ledger, now: Date) {
         guard let i = ledger.cards.firstIndex(where: { $0.id == cardID }), [.restrain, .offCharacter, .followUp].contains(ledger.cards[i].kind), ledger.cards[i].feedback == nil else { return }
-        ledger.cards[i].feedback = value; ledger.cards[i].feedbackAt = now
+        ledger.cards[i].feedback = value; ledger.cards[i].feedbackAt = now; ledger.cards[i].dismissedAt = now
         let card = ledger.cards[i]
         let ids = Set(card.evidence).union(offCharacterEntryIDs(card))
         let entries = ledger.entries

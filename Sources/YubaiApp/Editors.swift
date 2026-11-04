@@ -26,7 +26,15 @@ struct AccountEditor: View {
             var a = account ?? Account(name: clean); a.name = clean; a.kind = kind; a.note = note
             if account == nil || reconcileNow { a.anchorBalance = kind == .credit ? -cents : cents; a.anchorDate = at; a.reconciled = verified }
             a.creditLimit = limit.isEmpty ? 0 : try Money.parse(limit)
-            if store.update("保存账户", { l in if let i = l.accounts.firstIndex(where: { $0.id == a.id }) { l.accounts[i] = a } else { l.accounts.append(a) } }) { dismiss() }
+            if store.update("保存账户", { ledger in
+                if let i = ledger.accounts.firstIndex(where: { $0.id == a.id }) { ledger.accounts[i] = a }
+                else { ledger.accounts.append(a) }
+                if account != nil && reconcileNow && verified {
+                    for i in ledger.cards.indices where ledger.cards[i].action == .reconcileAccount(a.id) {
+                        ledger.cards[i].dismissedAt = Date()
+                    }
+                }
+            }) { dismiss() }
         } catch { store.error = error.localizedDescription }
     }
 

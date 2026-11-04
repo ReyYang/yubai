@@ -49,24 +49,16 @@ struct WishlistView: View {
         }.navigationTitle("心愿单").yubaiNavigation()
     }
     private func followUpCard(_ wish: WishItem) -> some View {
-        Card(style: .compact, background: YubaiColor.amberTint) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(spacing: YubaiSpace.gapGroup) {
+        SwipeDismissCard(onDismiss: { store.dismissWishFollowUp(wish.id) }, onMute: { store.dismissWishFollowUp(wish.id, mute: true) }) { animateDismiss in
+            Card(style: .compact, background: YubaiColor.amberTint) {
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text("买了一个月").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk).accessibilityIdentifier("wishFollowUpAge")
-                    Spacer()
-                    if let card = store.current.cards.first(where: { $0.dedupeKey == "follow:\(wish.id)" }) {
-                        Menu {
-                            Button("知道了") { store.dismissCard(card.id) }
-                            Button("以后别提") { store.muteCard(card.id) }
-                        } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
-                            .accessibilityLabel("更多：知道了、以后别提")
-                    }
+                    Text(wish.title + "，用得怎么样？").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.amberStrong)
+                    if !wish.purpose.isEmpty { Text("当时说「" + wish.purpose + "」").yubaiFont(YubaiFont.callout) }
+                    WishFollowUpView(wishID: wish.id, showsTitle: false, animateDismiss: animateDismiss)
                 }
-                Text(wish.title + "，用得怎么样？").yubaiFont(YubaiFont.cardTitle).foregroundStyle(YubaiColor.amberStrong)
-                if !wish.purpose.isEmpty { Text("当时说「" + wish.purpose + "」").yubaiFont(YubaiFont.callout) }
-                WishFollowUpView(wishID: wish.id, showsTitle: false)
             }
-        }
+        }.accessibilityIdentifier("butlerCard_followUp")
     }
     private func ageText(_ wish: WishItem) -> String? {
         let now: Date = Date()
@@ -160,6 +152,7 @@ private struct WishFollowUpView: View {
     @Environment(AppStore.self) private var store
     let wishID: UUID
     var showsTitle = true
+    var animateDismiss: CardDismissAnimation? = nil
     @State private var text = ""
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
@@ -176,7 +169,9 @@ private struct WishFollowUpView: View {
     private var choices: some View {
         ForEach(FollowUpChoice.allCases, id: \.rawValue) { choice in
             Button(choice.rawValue) {
-                store.update("记下一个月的感受") { try Wishlist.answerFollowUp(wishID, choice: choice, text: text, in: &$0, now: Date()) }
+                let save = { store.answerWishFollowUp(wishID, choice: choice, text: text) }
+                if let animateDismiss { animateDismiss(save) }
+                else { _ = save() }
             }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).frame(minHeight: YubaiSize.tapMin).disabled(text.count > 3900)
         }
     }
