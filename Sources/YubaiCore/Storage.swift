@@ -64,7 +64,23 @@ public enum LedgerSyncError: Error { case changed }
 public struct LedgerRepository: Sendable {
     // Bound the whole local Recovery directory, including shared payloads.
     // The newest recovery/readable version and payloads needed by the live ledger win over the budget.
-    static let historyByteLimit: Int64 = 10 * 1024 * 1024
+    static let historyByteLimit: Int64 = 4 * 1024 * 1024
+    static let historyCountLimit = 8
+    static let recoveryMergeWindow: TimeInterval = 10 * 60
+    // Exact operation labels also identify pre-policy files. Unknown/manual reasons never merge.
+    static func recoveryGroup(_ reason: String) -> String? {
+        switch reason {
+        case "导入整理", "整理重试", "重试整理": return "导入整理"
+        case "回答整理问题": return "回答整理问题"
+        case "整理", "按对方分": return "按对方分"
+        case "批量记账": return "批量记账"
+        case "自动记下", "归小项", "更新管家卡片", "每周来信": return reason
+        default: return nil
+        }
+    }
+    private static func recoveryReason(_ version: Recovery) -> String {
+        version.name.split(separator: "-", maxSplits: 2).dropFirst(2).joined(separator: "-")
+    }
     private final class State: @unchecked Sendable {
         let lock = NSRecursiveLock(); var digest: String?
         let discoveryLock = NSLock(); var discoveredFiles: Set<URL>?
@@ -73,6 +89,7 @@ public struct LedgerRepository: Sendable {
     private let state: State
     private let localState: State
     private let historyLock: NSRecursiveLock
+    private let recoveryDate: @Sendable () -> Date
     public struct Revision: Equatable, Sendable { fileprivate let digest: String? }
     public var revision: Revision {
         state.lock.lock(); defer { state.lock.unlock() }
@@ -83,17 +100,19 @@ public struct LedgerRepository: Sendable {
     public let isUbiquitous: Bool
     public var file: URL { directory.appendingPathComponent("ledger.json") }
     private var history: URL { localDirectory.appendingPathComponent("Recovery", isDirectory: true) }
-    public init(directory: URL) {
+    public init(directory: URL, recoveryDate: @escaping @Sendable () -> Date = { Date() }) {
         self.directory = directory; localDirectory = directory; isUbiquitous = false
+        self.recoveryDate = recoveryDate
         let state = State(); self.state = state; localState = state; historyLock = NSRecursiveLock()
     }
-    private init(directory: URL, localDirectory: URL, isUbiquitous: Bool, historyLock: NSRecursiveLock, localState: State) {
+    private init(directory: URL, localDirectory: URL, isUbiquitous: Bool, historyLock: NSRecursiveLock, localState: State, recoveryDate: @escaping @Sendable () -> Date) {
         self.directory = directory; self.localDirectory = localDirectory; self.isUbiquitous = isUbiquitous
+        self.recoveryDate = recoveryDate
         state = State(); self.localState = localState; self.historyLock = historyLock
     }
     // A relocated repository shares LOCAL history and its lock, never the last-read digest.
     public func relocated(to directory: URL, isUbiquitous: Bool = false) -> Self {
-        Self(directory: directory, localDirectory: localDirectory, isUbiquitous: isUbiquitous, historyLock: historyLock, localState: localState)
+        Self(directory: directory, localDirectory: localDirectory, isUbiquitous: isUbiquitous, historyLock: historyLock, localState: localState, recoveryDate: recoveryDate)
     }
     private var pendingSyncFile: URL { localDirectory.appendingPathComponent(".icloud-pending") }
     public var hasPendingSync: Bool { FileManager.default.fileExists(atPath: pendingSyncFile.path) }
@@ -308,7 +327,7 @@ public struct LedgerRepository: Sendable {
         try excluded.setResourceValues(values)
         #endif
         let latest = try recoveries().first.map { Int64(($0.date.timeIntervalSince1970 * 1000).rounded()) } ?? 0
-        let stamp = max(Int64(Date().timeIntervalSince1970 * 1000), latest + 1)
+        let stamp = max(Int64(recoveryDate().timeIntervalSince1970 * 1000), latest + 1)
         let safeReason = reason.replacingOccurrences(of: "/", with: "-").prefix(40)
         return history.appendingPathComponent("\(stamp)-\(UUID().uuidString.prefix(8))-\(safeReason).json.gz")
     }
@@ -322,6 +341,21 @@ public struct LedgerRepository: Sendable {
     }
     private func preserve(bytes: Data, ledger: Ledger?, reason: String) throws {
         historyLock.lock(); defer { historyLock.unlock() }
+        if let group = Self.recoveryGroup(reason) {
+            // Anchor to the FIRST retained snapshot, never extend the window on every save.
+            let versions = try recoveries()
+            var first: Recovery?
+            for version in versions.reversed() where Self.recoveryGroup(Self.recoveryReason(version)) == group {
+                if let anchor = first, version.date.timeIntervalSince(anchor.date) < Self.recoveryMergeWindow { continue }
+                first = version
+            }
+            if let first {
+                let date = max(recoveryDate(), versions.first?.date ?? .distantPast)
+                let elapsed = date.timeIntervalSince(first.date)
+                // A damaged snapshot cannot stand in for the new pre-change state.
+                if (0..<Self.recoveryMergeWindow).contains(elapsed), let readable = try? readRecovery(first), readable.id == ledger?.id { return }
+            }
+        }
         let destination = try recoveryURL(reason: reason)
         if let ledger { try writeAttachments(ledger, at: recoveryPayloads) }
         let metadata = try ledger.map { ledger in
@@ -362,7 +396,9 @@ public struct LedgerRepository: Sendable {
                 references[version.url] = Set(ledger.attachments.map(\.id))
             }
         }
-        let newestReadable = versions.first { references[$0.url] != nil }?.url
+        // Metadata alone is insufficient: a readable fallback must have all its payloads.
+        let newestReadable = versions.first { (try? readRecovery($0)) != nil }?.url
+        let protected = Set([versions.first?.url, newestReadable].compactMap { $0 })
         var currentIDs = Set<UUID>(), currentReadable = true
         for current in Set([file, localDirectory.appendingPathComponent("ledger.json")]) where containsFile(current) {
             if let ledger = try? LedgerCodec.decode(Data(contentsOf: current)) { currentIDs.formUnion(ledger.attachments.map(\.id)) }
@@ -380,17 +416,43 @@ public struct LedgerRepository: Sendable {
         }
         collectPayloads()
         var byteCount = (try? bytesIn(history)) ?? Int64.max
-        // Both limits delete oldest first. There is deliberately no age-based expiry.
-        for recovery in versions.dropFirst().reversed() {
-            guard remaining.count > 20 || byteCount > Self.historyByteLimit else { break }
-            // A damaged newest file must not evict the last readable fallback.
-            if recovery.url == newestReadable { continue }
+        func remove(_ recovery: Recovery) {
+            guard !protected.contains(recovery.url) else { return }
             do { try FileManager.default.removeItem(at: recovery.url) }
-            catch { continue }
+            catch { return }
             try? FileManager.default.removeItem(at: recoveryAttachments(recovery.url))
             remaining.removeAll { $0.url == recovery.url }
             collectPayloads()
             byteCount = (try? bytesIn(history)) ?? Int64.max
+        }
+        // Upgrade old installations too. Keep each window's first file; mandatory fallbacks win.
+        var anchors: [String: Date] = [:]
+        for version in versions.reversed() {
+            guard let group = Self.recoveryGroup(Self.recoveryReason(version)) else { continue }
+            if let first = anchors[group], version.date.timeIntervalSince(first) < Self.recoveryMergeWindow {
+                remove(version)
+            } else if (try? readRecovery(version)) != nil { anchors[group] = version.date }
+        }
+        // Resample the entire time span, reducing the target if the actual directory is still too big.
+        // The oldest is preferred, but can yield when even the endpoints exceed the byte budget.
+        var target = min(Self.historyCountLimit, remaining.count)
+        while remaining.count > Self.historyCountLimit || byteCount > Self.historyByteLimit {
+            let candidates = remaining
+            var selected = protected
+            if selected.count < target, let oldest = candidates.last { selected.insert(oldest.url) }
+            if target > 2, let newest = candidates.first, let oldest = candidates.last {
+                let span = newest.date.timeIntervalSince(oldest.date)
+                for index in 1..<(target - 1) where selected.count < target {
+                    let date = oldest.date.addingTimeInterval(span * Double(index) / Double(target - 1))
+                    if let nearest = candidates.filter({ !selected.contains($0.url) }).min(by: {
+                        abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
+                    }) { selected.insert(nearest.url) }
+                }
+            }
+            for candidate in candidates where !selected.contains(candidate.url) { remove(candidate) }
+            if remaining.count <= Self.historyCountLimit && byteCount <= Self.historyByteLimit { break }
+            guard target > protected.count else { break }
+            target -= 1
         }
     }
     public func exists() throws -> Bool {

@@ -91,6 +91,7 @@ extension AppStore {
         if ledgerLocation == .iCloud {
             pendingUpload = saved
             pendingUploadPreservingRecovery = preservingRecovery
+            pendingUploadRecoveryReason = reason
             Task { await synchronizeLedger() }
         }
         return saved
@@ -127,7 +128,7 @@ extension AppStore {
         }
         if UserDefaults.standard.string(forKey: locationKey) == LedgerLocation.iCloud.rawValue {
             ledgerLocation = .iCloud
-            if localRepository.hasPendingSync { pendingUpload = current; pendingUploadPreservingRecovery = true }
+            if localRepository.hasPendingSync { pendingUpload = current; pendingUploadPreservingRecovery = true; pendingUploadRecoveryReason = "修改" }
             await synchronizeLedger()
         }
     }
@@ -206,13 +207,14 @@ extension AppStore {
         syncStatus = "正在从 iCloud 读取…"
         let submitted = pendingUpload; let before = current
         let preservingRecovery = pendingUploadPreservingRecovery
+        let recoveryReason = pendingUploadRecoveryReason
         let source = FileLedgerVersionSource(repository: repository)
         do {
             try await syncMonitor?.waitForDiscovery()
             let result = try await Task.detached { () throws -> SyncResult in
                 if let submitted {
                     var shared = submitted; shared.preferences.lockEnabled = false
-                    do { try repository.save(shared, preservingRecovery: preservingRecovery); return .uploaded(submitted) }
+                    do { try repository.save(shared, reason: recoveryReason, preservingRecovery: preservingRecovery); return .uploaded(submitted) }
                     catch LedgerSyncError.changed { return .conflict(try source.versions()) }
                 }
                 let versions = try source.versions()

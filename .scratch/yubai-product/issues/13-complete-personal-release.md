@@ -536,3 +536,18 @@ Root 的确认状态链：旧 visibleTab/settings 路径保留，抹掉虽然把
 Swift Charts 卡片和金额区按稿落地，首页去掉旧图例、水位装饰、目标状态行与小屏降级入口，图下其他业务卡保留，页面可滚动。删除旧 forecast 路由、组件及专用动效状态／测试。新时间序列跟随原 funds 缓存与派生失效；新增 App 文件及 Core 测试已登记 Xcode。原 HTML 四文件逐字节归档在 `.design-meta/mockups/cashflow-v28/`，没有外部设计稿或 artifact 链接。原稿依赖未提供，归档不能独立运行；固定样例数字替换为真实数据，目标图例按两位小数为 `3,000.00`。完整源码映射、可见中文、差异与验证边界见 `.design-meta/DESIGN.md` 本轮节。
 
 **验证**：新增 15 项 Core 全过；指定 Linux 全量 `export PATH=/opt/swift-rootfs/usr/bin:$PATH && YUBAI_LIVE_EVAL=0 swift test` 共 **725 项，721 通过、4 项原有实网 opt-in 跳过、0 失败（104.289 秒）**。初次新 worktree 的依赖缓存缺失且网络不可达，后复用本机现有同版本缓存，未改依赖与锁定文件。UI 源码改写 1 项长按回归、新增 2 项窗口／隐藏金额／目标回归，移除旧图专用 2 项动效状态测试。App 三组及 UI 模拟器条件语法解析通过；尚未完成 Apple SDK 类型检查／编译、XCTest UI、390pt 原生视觉、VoiceOver／大字号／深色和真机手势仲裁，外部资源未同步。未提交、未推送、未新增依赖、未读取密钥、未调用真实 DeepSeek。
+## 2026-11-04 · 恢复历史合并与云端缓存（owner 明确任务）
+
+owner 提供 main `43a9e2a` 真机4,200笔导入整理后约42 MB容器：SplashBoard25 MB为系统快照不处理，Recovery17份约10.35 MB且相隔数秒／数分钟、ledger约3.6 MB、URLCache WAL约2.4 MB。明确要求同类自动操作10分钟仅保留首份、预算降至4 MiB／8份并按时间均匀保留、启动修剪已有历史、禁用云端URLCache并清已有数据库／响应文件、离线合成账本字段量化及Core回归。不改界面、不读密钥、不调用真实DeepSeek、不提交／推送、不加依赖、不写设计稿链接。
+
+已采用上述owner规则，取代2026-11-03旧20份／10 MiB及重试各留一份。Agent具体实现：窗口固定锚定第一份、600秒边界开启下一窗口；导入整理及重试一类，答题、按对方分、批量应用各自一类，未知／手动原因不合并。首尾优先、中间按实际时间均匀选择，字节不足降低目标份数；最新、最后附件完整可读版本及当前／保留版本所需共享附件保护优先。旧格式、损坏资料、引用不可读与删除失败保持保守，启动同时处理旧历史；最新若正好是窗口重复项也保留。多条纯addEntry从App实际apply路径采用恢复事实名「批量记账」，普通单笔／混合操作和即时撤销标签保持；iCloud上传携带原保存原因。原抹掉全部本机数据会清恢复历史的规则保持。
+
+默认云端会话复制系统配置，仅设urlCache=nil和reloadIgnoringLocalCacheData；chat与/models的单请求也忽略缓存，保留现有超时与代理行为。AppStore启动清Caches根及本App bundle目录的Cache.db*和fsCachedData；Mac不递归删其他App目录。其他Caches写入只有Debug／--test-ledger合成测试资料；发送记录、模型目录缓存均在内存。
+
+[离线字段报告与复现方法](../../../docs/STORAGE-RECOVERY-CACHE.md)：同一masked.csv导入4,200笔种子、四次整理运行、各四次答题／分组／批量应用，17份／9,178,931字节→5份／2,487,398字节（−72.90%）；复制旧历史后仅load为6份／3,071,715字节，额外保留原最新。合成ledger前后3,522,664字节，entries73.32%、organization.changeSet21.82%、完成ID4.65%；note6.53%、skipped2字节、undo70字节，本样本无sourceIdentity／externalID。不能据此推断真机字段比例或模型效果；详情、续跑、原文与撤销仍消费这些字段，未发现兼容原格式的安全额外删除，schema4保持，未做格式迁移或删除明细。CSV／生成账本／原始运行日志留/tmp，不入库。
+
+指定完整swift test：721项、717通过／4原有实网opt-in跳过／0失败，99.106秒；新增10项策略／缓存及1项可选测量。实际update／apply／persist的Swift6严格并发Linux替身与iOS26／Mac14＋iCloud条件语法解析通过。首次取依赖受代理阻断，复用本机同版本缓存后离线完成，依赖文件未改。Apple SDK／UI／真机磁盘与URLCache系统重建、系统代理实跑、真实iCloud／模型及真机ledger分布仍未验证，外部资源未同步。
+
+无页面结构／控件／布局变化；新增恢复历史名称「批量记账」为操作事实。owner同日追加授权将恢复页的「最近 20 份账本」改为数字事实「最近 8 份账本」，与新上限一致；因LedgerRepository.historyCountLimit为Core内部常量，保留静态Text并注释指向该常量。原数字同步项已完成。整票其他状态与历史未决项保持，未提交／推送。
+
+数字补修后指定完整命令再次通过：721项、717通过／4原有实网opt-in跳过／0失败，103.522秒；SettingsView的iOS26／macOS14条件语法解析通过。未新增测试或变更布局，Apple SDK／真机显示未验证。

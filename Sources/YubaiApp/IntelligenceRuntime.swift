@@ -277,7 +277,7 @@ struct ActiveLedgerTransport: ChatTransport {
         guard !preparingImportOrganization, canEditLedger(), loadFailure == nil else { return false }
         preparingImportOrganization = true
         defer { preparingImportOrganization = false }
-        // Exactly one pre-run recovery; gzip and pruning stay off MainActor.
+        // Preserve the window's first pre-run recovery; gzip and pruning stay off MainActor.
         // Edits made during preparation are handled by fresh request snapshots.
         let before = current, repository = localRepository
         let preparation = Task.detached(priority: .userInitiated) {

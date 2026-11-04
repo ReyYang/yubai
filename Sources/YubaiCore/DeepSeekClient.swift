@@ -273,7 +273,7 @@ public struct DeepSeekClient: ChatTransport {
     }
 
     public func chat(system: String, user: String, temperature: Double = 0.2, maxTokens: Int = 400,
-                     thinking: Bool? = nil, purpose: String = "云端智能", session: URLSession = .shared) async throws -> String {
+                     thinking: Bool? = nil, purpose: String = "云端智能", session: URLSession = CloudNetworking.session) async throws -> String {
         let reply = try await send(ChatRequest(messages: [ChatMessage(role: .system, content: system),
             ChatMessage(role: .user, content: user)], temperature: temperature, maxTokens: maxTokens,
             thinking: thinking, purpose: purpose), session: session)
@@ -284,16 +284,17 @@ public struct DeepSeekClient: ChatTransport {
     }
 
     public func send(_ request: ChatRequest) async throws -> ChatMessage {
-        try await send(request, session: .shared)
+        try await send(request, session: CloudNetworking.session)
     }
 
-    public func listModels(session: URLSession = .shared, timeout: TimeInterval? = nil) async throws -> [String] {
+    public func listModels(session: URLSession = CloudNetworking.session, timeout: TimeInterval? = nil) async throws -> [String] {
         struct Response: Decodable {
             struct Model: Decodable { var id: String }
             var data: [Model]
         }
         let root = Self.chatCompletionsURL(baseURL: configuration.baseURL).deletingLastPathComponent().deletingLastPathComponent()
         var request = URLRequest(url: root.appendingPathComponent("models"), timeoutInterval: timeout ?? configuration.timeout)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.httpMethod = "GET"
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -357,6 +358,7 @@ public struct DeepSeekClient: ChatTransport {
             thinking: input.thinking.map { ["type": $0 ? "enabled" : "disabled"] })
         let body = try JSONEncoder().encode(payload)
         var request = URLRequest(url: Self.chatCompletionsURL(baseURL: configuration.baseURL), timeoutInterval: input.timeout ?? configuration.timeout)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.httpMethod = "POST"; request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
