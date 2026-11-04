@@ -207,16 +207,20 @@ struct CashTimelineCard: View {
                 guard let point = visible.history.first(where: { $0.date == event.date }),
                       let x = proxy.position(forX: event.date), let y = proxy.position(forY: money(point.balance)) else { continue }
                 let title = annotationText(event)
-                let text = Text(title).font(.system(size: YubaiFont.chartLabel.size))
-                let resolved = context.resolve(text.foregroundColor(event.isSalary ? YubaiColor.brandInk : YubaiColor.labelSecondary))
-                let size = resolved.measure(in: CGSize(width: .infinity, height: .infinity))
+                let text: Text = Text(title).font(.system(size: YubaiFont.chartLabel.size))
+                let resolved: GraphicsContext.ResolvedText = context.resolve(text.foregroundStyle(event.isSalary ? YubaiColor.brandInk : YubaiColor.labelSecondary))
+                let size: CGSize = resolved.measure(in: CGSize(width: CGFloat.infinity, height: CGFloat.infinity))
                 guard size.width <= frame.width, size.height <= frame.height else { continue }
-                let center = CGPoint(x: min(frame.maxX - size.width / 2, max(frame.minX + size.width / 2, frame.minX + x)),
-                                     y: min(frame.maxY - size.height / 2, max(frame.minY + size.height / 2, frame.minY + y + (event.amount > 0 ? -12 : 12))))
+                let halfWidth: CGFloat = size.width / 2
+                let halfHeight: CGFloat = size.height / 2
+                let verticalOffset: CGFloat = event.amount > 0 ? -12 : 12
+                let centerX: CGFloat = min(frame.maxX - halfWidth, max(frame.minX + halfWidth, frame.minX + x))
+                let centerY: CGFloat = min(frame.maxY - halfHeight, max(frame.minY + halfHeight, frame.minY + y + verticalOffset))
+                let center = CGPoint(x: centerX, y: centerY)
                 let rect = CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height).insetBy(dx: -3, dy: -2)
                 guard !occupied.contains(where: { $0.intersects(rect) }) else { continue }
                 occupied.append(rect)
-                let outline = context.resolve(text.foregroundColor(YubaiColor.card))
+                let outline: GraphicsContext.ResolvedText = context.resolve(text.foregroundStyle(YubaiColor.card))
                 for dx: CGFloat in [-1.5, 0.0, 1.5] {
                     for dy: CGFloat in [-1.5, 0.0, 1.5] where dx != 0 || dy != 0 {
                         context.draw(outline, at: CGPoint(x: center.x + dx, y: center.y + dy))
