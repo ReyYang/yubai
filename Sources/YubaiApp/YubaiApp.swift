@@ -40,7 +40,7 @@ struct TabNavigationLink<Content: View, Label: View>: View {
 
 enum AppSheet: Identifiable {
     case account(Account?), imports, accounts, backup, history, fundsCalculation, syncVersions, addEntry, addPlan, intelligencePrivacy
-    case editEntry(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
+    case editEntry(UUID), editPlan(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
     case ask(String), capture(Data), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, letter(UUID), reconcile(UUID)
     var id: String { String(describing: self) }
@@ -692,6 +692,7 @@ struct RootView: View {
         case .screenshotReview(let data): ImportView(initialScreenshot: data)
         case .editEntry(let id): EntryEditView(entryID: id)
         case .addPlan: FixedFlowEditor()
+        case .editPlan(let id): FixedFlowEditor(planID: id)
         case .account(let account): AccountEditor(account: account)
         case .imports: ImportView()
         case .accounts: AccountsView()

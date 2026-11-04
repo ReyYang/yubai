@@ -92,6 +92,19 @@ struct OverviewView: View {
     }
     private func dueRow(_ row: Occurrence) -> some View {
         HStack(spacing: YubaiSpace.gapGroup) {
+            if let id = row.planID {
+                Button { store.sheetSource = nil; store.sheet = .editPlan(id) } label: { dueSummary(row) }
+                    .buttonStyle(.plain).accessibilityElement(children: .contain).accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("改" + row.title)
+                    .accessibilityIdentifier("editFixedFlow_" + id.uuidString)
+            } else { dueSummary(row) }
+            if let id = row.planID {
+                FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount)
+            }
+        }.frame(minHeight: YubaiSize.rowDouble)
+    }
+    private func dueSummary(_ row: Occurrence) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
             FixedFlowDot(state: .due)
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(row.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
@@ -99,10 +112,7 @@ struct OverviewView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts,
                         ink: YubaiColor.amberStrong)
-            if let id = row.planID {
-                FixedFlowCheck(planID: id, occurrence: row.date, title: row.title, amount: row.amount)
-            }
-        }.frame(minHeight: YubaiSize.rowDouble)
+        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private func dueDetail(_ row: Occurrence) -> String {
         let date = Dates.day(row.date) == Dates.day(Date()) ? "今天到期" : FixedFlowPresentation.monthDay(row.date) + "到期"
