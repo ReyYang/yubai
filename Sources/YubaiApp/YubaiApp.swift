@@ -205,6 +205,7 @@ enum AppSheet: Identifiable {
     @ObservationIgnored var pendingOrganizationTask: Task<Void, Never>?
     @ObservationIgnored var importOrganizationTask: Task<Void, Never>?
     var hiddenSalaryKeys: Set<String> = []
+    var hiddenPendingImportKeys: Set<String> = []
     var entryFilterRequest: UUID?
     var entryFilterDate: Date?
     var reflectingMemories = false

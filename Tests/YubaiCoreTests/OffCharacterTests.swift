@@ -202,6 +202,8 @@ final class OffCharacterTests: XCTestCase {
             let id = ledger.cards[0].id
             ButlerCards.feedback(value, cardID: id, in: &ledger, now: now)
             XCTAssertEqual(ledger.cards[0].feedback, value); XCTAssertEqual(ledger.cards[0].feedbackAt, now)
+            XCTAssertEqual(ledger.cards[0].dismissedAt, now)
+            XCTAssertTrue(ButlerCards.visible(ledger).isEmpty)
             XCTAssertTrue(ledger.pendingChanges.isEmpty)
             ButlerCards.feedback(value, cardID: id, in: &ledger, now: now)
             XCTAssertTrue(ledger.pendingChanges.isEmpty)

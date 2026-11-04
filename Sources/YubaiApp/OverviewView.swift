@@ -3,9 +3,7 @@ import YubaiCore
 
 struct OverviewView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var displayedToday: TodayEntries?
     private var freshLetter: ButlerCard? {
         store.current.cards.first { WeeklyLetter.isFresh($0, now: Date()) && !ButlerCards.isMuted($0.dedupeKey, in: store.current) }
     }
@@ -19,11 +17,6 @@ struct OverviewView: View {
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
-            .onAppear { displayedToday = TodayEntries(in: store.current) }
-            .onChange(of: store.current.updatedAt) { _, _ in
-                if !store.pendingEntrySave || store.sheet == nil { displayedToday = TodayEntries(in: store.current) }
-            }
-            .onChange(of: store.entrySaveTrigger) { _, _ in displayedToday = TodayEntries(in: store.current) }
     }
     private var scrollingContent: some View {
         ScrollView { content.padding(.horizontal, YubaiSpace.insetPage) }
@@ -52,7 +45,6 @@ struct OverviewView: View {
                 }
                 ButlerSection()
                 RestrainNearRow()
-                todayRow
                 if !dueBills.isEmpty { dueCard }
             }
             if !store.current.accounts.isEmpty {
@@ -108,33 +100,6 @@ struct OverviewView: View {
         let date = Dates.day(row.date) == Dates.day(Date()) ? "今天到期" : FixedFlowPresentation.monthDay(row.date) + "到期"
         let account = store.current.plans.first { $0.id == row.planID }?.accountID ?? store.current.rents.first { $0.id == row.rentID }?.accountID
         return date + (account.map { " · " + store.current.accountName($0) } ?? "")
-    }
-    private var todayRow: some View {
-        let today = store.pendingEntrySave ? (displayedToday ?? TodayEntries(in: store.current)) : TodayEntries(in: store.current)
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
-        return Button { store.destination = .entries } label: {
-            layout {
-                Text("今天").yubaiFont(YubaiFont.row, weight: .medium)
-                Text(today.count == 0 ? "还没记" : "\(today.count) 笔 · \(today.latest?.displayTitle ?? "")")
-                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    .lineLimit(textSize.isAccessibilitySize ? nil : 1).fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("todayEntrySummary")
-                if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
-                HStack(spacing: YubaiSpace.space8) {
-                    if today.count == 0 {
-                        Text("账目").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    } else {
-                        AmountLabel(cents: today.net, hide: store.current.preferences.hideAmounts, role: .small,
-                                    sign: today.net > 0 ? .inflow : .automatic)
-                    }
-                    if textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
-                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                }
-                .layoutPriority(1)
-            }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, textSize.isAccessibilitySize ? YubaiSpace.space8 : YubaiSpace.none)
-                .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle, alignment: .leading)
-                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("todayEntries")
     }
     private func nextTitle(_ item: Occurrence) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
