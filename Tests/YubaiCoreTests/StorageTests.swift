@@ -236,7 +236,8 @@ final class StorageTests: XCTestCase {
             let unknown = shared.appendingPathComponent(UUID().uuidString)
             try Data([1, 2, 3]).write(to: unknown)
             _ = try repository.load()
-            XCTAssertEqual(try repository.recoveries().map(\.url), [newest, readable])
+            XCTAssertEqual(try repository.recoveries().map { $0.url.resolvingSymlinksInPath().standardizedFileURL },
+                           [newest, readable].map { $0.resolvingSymlinksInPath().standardizedFileURL })
             XCTAssertNoThrow(try repository.readRecovery(XCTUnwrap(repository.recoveries().last)))
             XCTAssertFalse(FileManager.default.fileExists(atPath: oldest.path))
             XCTAssertFalse(FileManager.default.fileExists(atPath: sidecar.path))
@@ -335,11 +336,18 @@ extension StorageTests {
             let main = repo.directory.appendingPathComponent("Attachments/" + id.uuidString)
             let shared = repo.directory.appendingPathComponent("Recovery/Payloads/" + id.uuidString)
             let old = Date(timeIntervalSince1970: 100)
-            for file in [main, shared] { try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path) }
+            for file in [main, shared] {
+                _ = try file.resourceValues(forKeys: [.contentModificationDateKey])
+                try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path)
+                XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date, old)
+            }
             for _ in 0..<3 { saved = try repo.save(saved) }
             for file in [main, shared] {
-                XCTAssertEqual(try file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, old)
-                XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+                // Darwin URL resource values may still cache the pre-set mtime.
+                // Read fresh filesystem attributes to detect an actual rewrite.
+                let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+                XCTAssertEqual(attributes[.modificationDate] as? Date, old)
+                XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
             }
             let loaded = try LedgerRepository(directory: repo.directory).load()
             XCTAssertTrue(loaded.attachments[0].data.isEmpty); XCTAssertEqual(loaded, original)

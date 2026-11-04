@@ -1328,15 +1328,37 @@ extension ImportOrganizerTests {
         XCTAssertEqual(groups.map { $0["count"]! }, [.number(3), .number(1)])
     }
     func testPartyCheckpointCancellationResumeAndRecordProgressNeverResendsGroups() async throws {
+        actor ReorderedParties: ChatTransport {
+            var requests: [ChatRequest] = []
+            func send(_ request: ChatRequest) async throws -> ChatMessage {
+                requests.append(request)
+                // The first send cannot finish before another request's saved
+                // checkpoint cancels it. Exercise completion order on every OS.
+                if requests.count == 1 {
+                    while true { try await Task.sleep(nanoseconds: 30_000_000_000) }
+                }
+                return ChatMessage(role: .assistant, content: #"{"groups":[{"group":"g0","category":"餐饮","nature":"expense","confident":true}],"questions":[{"group":"g1","text":"这些是什么用途？","options":[{"title":"日常支出","items":[{"kind":"set_nature","nature":"expense"}]},{"title":"借给别人","items":[{"kind":"set_nature","nature":"lend"}]}]}]}"#)
+            }
+            func recorded() -> [ChatRequest] { requests }
+        }
         let (ledger, batch) = partyImport(counts: Array(repeating: 3, count: 40), singleton: true)
         let store = ImportCheckpointStore(ledger, batchID: batch.id)
         await store.configure(cancel: 1)
-        let script = ScriptedChatTransport(Array(repeating: jsonReply(#"{"groups":[{"group":"g0","category":"餐饮","nature":"expense","confident":true}],"questions":[{"group":"g1","text":"这些是什么用途？","options":[{"title":"日常支出","items":[{"kind":"set_nature","nature":"expense"}]},{"title":"借给别人","items":[{"kind":"set_nature","nature":"lend"}]}]}]}"#), count: 4))
+        let script = ReorderedParties()
         let task = Task { try await self.resume(store, script: script, batchID: batch.id) }
-        do { try await task.value; XCTFail("must stop after saved groups") } catch { XCTAssertTrue(error is CancellationError) }
+        do { _ = try await task.value; XCTFail("must stop after saved groups") } catch { XCTAssertTrue(error is CancellationError) }
         let partial = await store.snapshot(), sent = await script.recorded()
-        let firstGroups = try JSONValue.parse(sent[0].messages.last!.content!)["groups"]!.arrayValue!
+        let savedIDs = Set(try XCTUnwrap(partial.imports[0].organizedEntryIDs))
+        let savedEntries = ledger.entries.filter { savedIDs.contains($0.id) }
+        let names = Set(savedEntries.map(UnsortedGroups.party(for:)))
+        let sentGroups = try sent.map { try XCTUnwrap(JSONValue.parse($0.messages.last!.content!)["groups"]?.arrayValue) }
+        let firstGroups = try XCTUnwrap(sentGroups.first { groups in
+            Set(groups.compactMap { $0["party"]?.stringValue }) == names
+        })
+        XCTAssertFalse(names.isEmpty)
+        XCTAssertTrue(names.isDisjoint(with: sentGroups[0].compactMap { $0["party"]?.stringValue }), "The first send was cancelled, not checkpointed")
         let completed = firstGroups.reduce(0) { sum, group in sum + Int(group["count"]!.numberForTest) }
+        XCTAssertEqual(Set(savedEntries.map(\.id)), savedIDs)
         XCTAssertEqual(firstGroups.count, 8); XCTAssertLessThan(firstGroups.count, 40)
         XCTAssertEqual(partial.imports[0].organizedEntryIDs?.count, completed)
         XCTAssertEqual(partial.imports[0].organization?.categoryCount, 3)
@@ -1353,9 +1375,13 @@ extension ImportOrganizerTests {
             return saved
         }
         let retried = await retry.recorded(), complete = await store.snapshot()
-        let remainingGroups = try JSONValue.parse(retried[0].messages.last!.content!)["groups"]!.arrayValue!
-        let names = Set(firstGroups.compactMap { $0["party"]?.stringValue })
+        let remainingGroups = try retried.filter { $0.purpose == "导入整理·按对方" }.flatMap {
+            try XCTUnwrap(JSONValue.parse($0.messages.last!.content!)["groups"]?.arrayValue)
+        }
         XCTAssertTrue(names.isDisjoint(with: remainingGroups.compactMap { $0["party"]?.stringValue }))
+        let remainingNames = Set(ledger.entries.filter { !savedIDs.contains($0.id) }.map(UnsortedGroups.party(for:)))
+        XCTAssertEqual(remainingGroups.compactMap { $0["party"]?.stringValue }.count, remainingNames.count)
+        XCTAssertEqual(Set(remainingGroups.compactMap { $0["party"]?.stringValue }), remainingNames)
         XCTAssertEqual(complete.imports[0].organizedEntryIDs?.count, 121); XCTAssertEqual(complete.imports[0].needsOrganization, false)
         XCTAssertEqual(complete.imports[0].organization?.questions.count, 1, "Only local fallbacks merge across stages and resume")
         XCTAssertTrue(complete.imports[0].organization?.questions.allSatisfy(\.isFallback) == true)
