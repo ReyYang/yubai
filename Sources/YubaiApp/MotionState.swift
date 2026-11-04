@@ -8,14 +8,6 @@ struct MotionSessionState {
     static func direction(from: Int, to: Int) -> Double { to == from ? 0 : (to > from ? 1 : -1) }
 }
 
-struct MotionVisitState {
-    private var playedVisit: Int?
-    @discardableResult mutating func claim(_ visit: Int, reduceMotion: Bool = false) -> Bool {
-        guard playedVisit != visit else { return false }
-        playedVisit = visit; return !reduceMotion
-    }
-}
-
 struct MotionEntryChange {
     let saved: Set<UUID>
     let deleted: Set<UUID>

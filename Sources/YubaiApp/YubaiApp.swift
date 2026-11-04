@@ -13,7 +13,7 @@ enum Destination: String, CaseIterable, Identifiable {
     var symbol: String { switch self { case .overview: "water.waves"; case .insights: "chart.pie"; case .entries: "list.bullet"; case .settings: "person" } }
 }
 enum TabRoute: Hashable {
-    case forecast, upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
+    case upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
     case unsortedGroups(UUID), unknownInflows
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
@@ -71,6 +71,7 @@ enum AppSheet: Identifiable {
     private(set) var ledgerRevision: UInt64 = 0
     // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
+    @ObservationIgnored private var cachedCashTimeline: (at: Date, value: CashTimeline)?
     @ObservationIgnored private var cachedEntries: [Entry]?
     @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, calendar: Calendar, value: EntryTimeline.Snapshot)?
     @ObservationIgnored private var cachedPendingOrganization: PendingImportOrganization?
@@ -125,6 +126,13 @@ enum AppSheet: Identifiable {
         let value = Finance.funds(ledger, now: now)
         cachedFunds = (value, now, expires, zone); return value
     }
+    var cashTimeline: CashTimeline {
+        let funds = self.funds
+        let at = cachedFunds?.at ?? Date()
+        if let cachedCashTimeline, cachedCashTimeline.at == at { return cachedCashTimeline.value }
+        let value = Finance.cashTimeline(current, funds: funds, now: at)
+        cachedCashTimeline = (at, value); return value
+    }
     var fixedFlowMonth: FixedFlowMonth { _ = derivedRevision; return FixedFlows.month(containing: Date(), in: current) }
     var sortedEntries: [Entry] {
         _ = derivedRevision
@@ -144,7 +152,7 @@ enum AppSheet: Identifiable {
         ledgerRevision &+= 1
         cachedEntries = nil; cachedEntryTimeline = nil; cachedPendingOrganization = nil; cachedSalary = nil; refreshTimeDerived()
     }
-    func refreshTimeDerived() { cachedFunds = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
+    func refreshTimeDerived() { cachedFunds = nil; cachedCashTimeline = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
     var locations: LedgerLocations
     var ledgerLocation: LedgerLocation = .local
@@ -162,10 +170,7 @@ enum AppSheet: Identifiable {
     var pendingUploadPreservingRecovery = true
     @ObservationIgnored var syncMonitor: CloudLedgerMonitor?
     var iCloudAvailable: Bool { locations.cloud != nil }
-    var destination: Destination = .overview {
-        didSet { if destination == .overview && oldValue != .overview { overviewVisit &+= 1 } }
-    }
-    var overviewVisit = 0
+    var destination: Destination = .overview
     private(set) var navigationRevision: UInt64 = 0
     func resetRootNavigation() {
         destination = .overview; pickingInsightDates = false
@@ -177,7 +182,6 @@ enum AppSheet: Identifiable {
     #if os(iOS)
     var pagingLocked = false
     #endif
-    @ObservationIgnored var forecastMotion = MotionVisitState()
     var sheet: AppSheet?; var error: String?; var toast: String?
     var sheetSource: String?
     var entrySaveTrigger = 0; var entryDeleteTrigger = 0; var undoTrigger = 0; var floorWarningTrigger = 0
@@ -640,7 +644,6 @@ struct RootView: View {
     }
     @ViewBuilder private func tabDestination(_ route: TabRoute) -> some View {
         switch route {
-        case .forecast: Page { ForecastChart(funds: store.funds, height: 150) }.navigationTitle("现金会怎么走").yubaiNavigation()
         case .upcomingPayments: Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation()
         case .fixedFlows: FixedFlowsView()
         case .butlerCards: ButlerListView()
