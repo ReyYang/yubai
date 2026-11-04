@@ -495,7 +495,7 @@ struct ActiveLedgerTransport: ChatTransport {
     @discardableResult func undoUnsorted(_ noticeID: UUID) -> Bool {
         guard let notice = unsortedUndo, notice.id == noticeID else { return false }
         guard update("撤销", recordUndo: false, entryMotion: false, showToast: false, { notice.recovery.restore(in: &$0) }) else { return false }
-        cancelEntrySaveMotion(); toast = nil; unsortedUndo = nil; undoLedger = nil; undoLabel = nil
+        cancelEntrySaveMotion(); toast = nil; unsortedUndo = nil; clearUndo()
         unsortedUndoRestoration = UnsortedUndoRestoration(questionID: notice.questionID, groupIDs: notice.groupIDs)
         undoTrigger &+= 1
         return true

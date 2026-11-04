@@ -599,7 +599,7 @@ private struct CloudLogRawScalars: View {
             }
         } else {
             values.enumerated().reduce(Text("")) { text, element in
-                text + (element.offset == 0 ? Text("") : Text("、")) + scalar(element.element)
+                Text("\(text)\(element.offset == 0 ? "" : "、")\(scalar(element.element))")
             }.yubaiFont(YubaiFont.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
         }
     }

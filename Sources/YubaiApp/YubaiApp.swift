@@ -330,6 +330,10 @@ enum AppSheet: Identifiable {
         cancelEntrySaveMotion()
         if apply(change, label: "自动记下", silently: true) { toast = nil }
     }
+    func clearUndo() {
+        undoLedger = nil; undoLabel = nil
+    }
+
     func undo() {
         if let notice = unsortedUndo { _ = undoUnsorted(notice.id); return }
         guard canEditLedger(), let previous = undoLedger else { return }

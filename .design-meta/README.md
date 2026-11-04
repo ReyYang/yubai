@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-11-04 main 15ab722 跨文件访问修复**：保留 AppStore.undoLedger 私有，通过声明文件内的 internal clearUndo 同步清空快照／标签；整理撤销扩展改为调用该方法。原始错误在保留双文件边界的 Linux 类型检查中复现，修后通过；日志 Text 拼接改为插值，外观／可见中文不变。全 App 私有声明脚本覆盖 1,194 处显式修饰＋2 个私有扩展成员，仅确认上述一处越权；[完整疑点、区间符号复核与验证](../docs/XCODE-15AB-ACCESS-AUDIT.md)。指定 Linux 全量 **788 项，784 通过／4 原有实网跳过／0 失败（112.438 秒）**，App／UI iOS27.1与Mac条件解析207次通过。Apple SDK／Xcode／UI实跑仍待Mac，外部资源未同步；未提交／推送、无新依赖、未读密钥／未调用真实DeepSeek。
+
 **2026-11-04 main b40bd4b Xcode 编译修复**：按 owner 的 Xcode 27.1／iOS 26 SDK 报错，将现金图测量尺寸改为显式 CGFloat.infinity；Canvas 标注保留 Text／ResolvedText 类型，替换已弃用的文本着色调用，并拆开坐标长表达式。相对 fb0e4f3 的 11 个 App／1 个 UI 文件、194 个 diff hunk 已逐段审读，Widget 无区间改动。[逐文件结果、Apple 签名与验证报告](../docs/XCODE-B40-BUILD-AUDIT.md)。指定 Linux 全量 **788 项，784 通过／4 原有实网跳过／0 失败（118.540 秒）**；41 个 App／1 个 Widget／1 个 UI 文件逐个条件解析共210次通过，Foundation 修复通过严格Swift 6类型检查，450组标注坐标与原式一致。Apple SDK类型检查／Xcode构建／UI实跑仍待Mac；无外观、业务或可见中文变更，外部资源未同步。未提交／推送、无新依赖、未读密钥／未调用真实DeepSeek。
 
 **2026-11-04 第三十一轮「更快分类」**：owner 确认五稿并授权在 `feat/quick-sort-unsorted` 实现；[五稿原样归档](mockups/quick-sort-v31/README.md)。首页双入口、快速页即时分类／跳过／原一组详情／本机建议／进度、列表同向多选与批量sheet均已接入；一次apply／一次保存，专用4秒撤销恢复该操作的记录与分类记忆，并保留无关checkpoint。记住对方供后续不同摘要导入。新增8项Core／3项UI源码；Core build和全量 **746项、742通过／4原有实网跳过／0失败（96.426秒）**，App／UI条件解析、实际AppStore方法Linux替身验证通过。采用行为、原生token与HTML适配、可见中文及恢复边界见[DESIGN.md本轮节](DESIGN.md#2026-11-04--第三十一轮更快分类owner-确认)。Apple SDK编译、UI实跑／视觉／真机仍待Mac，外部资源未同步。未提交／推送、无新依赖／网络API或DeepSeek调用。
