@@ -57,7 +57,14 @@ enum AppSheet: Identifiable {
 
 @MainActor @Observable final class AppStore {
     static let shared = AppStore()
-    private(set) var ledger = Ledger() { didSet { invalidateDerived() } }
+    private(set) var ledger = Ledger() {
+        didSet {
+            if oldValue.id != ledger.id || oldValue.preferences.onboardingComplete != ledger.preferences.onboardingComplete {
+                resetRootNavigation()
+            }
+            invalidateDerived()
+        }
+    }
     var current: Ledger { ledger }
     @ObservationIgnored var preparingImportOrganization = false
     private var derivedRevision = 0
@@ -159,6 +166,14 @@ enum AppSheet: Identifiable {
         didSet { if destination == .overview && oldValue != .overview { overviewVisit &+= 1 } }
     }
     var overviewVisit = 0
+    private(set) var navigationRevision: UInt64 = 0
+    func resetRootNavigation() {
+        destination = .overview; pickingInsightDates = false
+        #if os(iOS)
+        pagingLocked = false
+        #endif
+        navigationRevision &+= 1
+    }
     #if os(iOS)
     var pagingLocked = false
     #endif
@@ -326,12 +341,12 @@ enum AppSheet: Identifiable {
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
         guard canEditLedger() else { return false }
-        do { let saved = try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = saved; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
+        do { let saved = try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = saved; resetRootNavigation(); loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func recover(_ recovery: Recovery) -> Bool {
         guard canEditLedger() else { return false }
-        do { let restored = try localRepository.readRecovery(recovery); let saved = try persist(restored, reason: "恢复版本", restoring: true); cancelEntrySaveMotion(); ledger = saved; loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
+        do { let restored = try localRepository.readRecovery(recovery); let saved = try persist(restored, reason: "恢复版本", restoring: true); cancelEntrySaveMotion(); ledger = saved; resetRootNavigation(); loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     func adoptSyncedLedger(_ next: Ledger) {
@@ -408,7 +423,9 @@ enum AppSheet: Identifiable {
     }
     var body: some Scene {
         WindowGroup {
-            RootView().environment(store).tint(YubaiColor.brandInk)
+            // A ledger/onboarding boundary discards ALL tab NavigationPaths and
+            // pager state together, rather than only changing its selected tab.
+            RootView().id(store.navigationRevision).environment(store).tint(YubaiColor.brandInk)
                 .preferredColorScheme(colorScheme)
                 #if os(macOS)
                 .frame(minWidth: 920, minHeight: 680)
@@ -438,11 +455,14 @@ struct RootView: View {
     @State private var visibleTab: Destination = .overview
     @State private var pagingPhase: ScrollPhase = .idle
     @State private var pagingAligned = false
+    @State private var pagingTarget: Destination?
+    @State private var needsInitialScroll = true
     private struct PagingPosition: Equatable {
         let destination: Destination
         let aligned: Bool
+        let ready: Bool
     }
-    private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
+    private var tabBarHidden: Bool { tabPaths[visibleTab]?.isEmpty == false }
     #endif
     var body: some View {
         @Bindable var store = store
@@ -521,12 +541,14 @@ struct RootView: View {
             NavigationStack { tabRoot(store.destination) }.id(store.destination)
         }
         #else
+        let generation = store.navigationRevision
+        let appearanceTarget = store.destination
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 HStack(spacing: YubaiSpace.none) {
                     ForEach(Destination.allCases) { d in
-                        tabNavigation(d).containerRelativeFrame(.horizontal).id(d)
-                            .accessibilityHidden(store.destination != d)
+                        tabNavigation(d, generation: generation).containerRelativeFrame(.horizontal).id(d)
+                            .accessibilityHidden(visibleTab != d)
                     }
                 }.scrollTargetLayout()
             }.accessibilityIdentifier("rootPager").scrollTargetBehavior(.paging)
@@ -539,19 +561,45 @@ struct RootView: View {
                     let width = geometry.containerSize.width
                     let offset = geometry.contentOffset.x + geometry.contentInsets.leading
                     let index = Destination.allCases.firstIndex(of: destination) ?? 0
-                    return PagingPosition(destination: destination, aligned: width > 0 && abs(offset - CGFloat(index) * width) <= 1)
+                    return PagingPosition(destination: destination, aligned: width > 0 && abs(offset - CGFloat(index) * width) <= 1, ready: width > 0)
                 } action: { _, next in
+                    guard generation == store.navigationRevision else { return }
                     visibleTab = next.destination; pagingAligned = next.aligned
+                    if needsInitialScroll {
+                        guard next.ready else { return }
+                        needsInitialScroll = false; pagingTarget = appearanceTarget
+                        proxy.scrollTo(appearanceTarget, anchor: .leading)
+                    }
+                    if let target = pagingTarget, next.destination != target || !next.aligned { return }
+                    pagingTarget = nil
                     if pagingPhase == .idle && store.destination != next.destination { store.destination = next.destination }
                 }
                 .onScrollPhaseChange { _, phase in
+                    guard generation == store.navigationRevision else { return }
                     pagingPhase = phase
-                    if phase == .idle && store.destination != visibleTab { store.destination = visibleTab }
+                    if phase == .interacting { pagingTarget = nil }
+                    if phase == .idle && pagingTarget == nil && store.destination != visibleTab { store.destination = visibleTab }
                 }
                 .onChange(of: store.destination) { _, next in
                     if next != visibleTab { scrollTo(next, using: proxy) }
                 }
-                .onAppear { proxy.scrollTo(store.destination, anchor: .leading) }
+                .onAppear {
+                    guard generation == store.navigationRevision else { return }
+                    pagingTarget = appearanceTarget
+                    proxy.scrollTo(appearanceTarget, anchor: .leading)
+                }
+                .onDisappear {
+                    guard generation == store.navigationRevision else { return }
+                    needsInitialScroll = true; pagingTarget = nil
+                }
+                .task {
+                    // Retry after the first layout; an onAppear scroll may run
+                    // before the pager has a usable width or registered targets.
+                    await Task.yield()
+                    guard !Task.isCancelled, generation == store.navigationRevision else { return }
+                    proxy.scrollTo(appearanceTarget, anchor: .leading)
+                    if visibleTab == appearanceTarget && pagingAligned { pagingTarget = nil }
+                }
                 .overlay(alignment: .bottom) {
                     if !tabBarHidden {
                         FloatingTabBar { scrollTo($0, using: proxy) }
@@ -574,10 +622,14 @@ struct RootView: View {
     private func scrollTo(_ d: Destination, using proxy: ScrollViewProxy) {
         // Reselecting an already settled page has no scroll transition to perform.
         guard d != store.destination || d != visibleTab || pagingPhase != .idle || !pagingAligned else { return }
+        pagingTarget = d
         withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo(d, anchor: .leading) }
     }
-    private func tabNavigation(_ d: Destination) -> some View {
-        NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: { tabPaths[d] = $0 })) {
+    private func tabNavigation(_ d: Destination, generation: UInt64) -> some View {
+        NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: {
+            guard generation == store.navigationRevision else { return }
+            tabPaths[d] = $0
+        })) {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
                 .navigationDestination(for: TabRoute.self) { tabDestination($0) }
         }.toolbarBackground(.hidden, for: .navigationBar)

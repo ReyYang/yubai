@@ -409,3 +409,92 @@ extension SendLogTests {
         XCTAssertEqual(SendLogRawPresentation.prettyPrinted(original), original)
     }
 }
+
+extension SendLogTests {
+    func testEveryTimelineStepTargetsItsExactMessageOrAttemptReply() async throws {
+        var item = rawItem(messages: [
+            .init(role: .system, content: "规则"), .init(role: .user, content: "第一条"),
+            .init(role: .assistant, toolCalls: [.init(id: "t", name: "get_funds")]),
+            .init(role: .tool, content: #"{"available":7}"#, toolCallID: "t")
+        ], response: .init(content: "最后回复", durationMilliseconds: 1, httpStatus: 200))
+        item.attempts = [
+            .init(number: 1, response: .init(durationMilliseconds: 1, httpStatus: 503, errorDescription: "HTTP 503"), retryDelay: 1),
+            .init(number: 2, response: item.response)
+        ]
+        let group = SendLogGroup(items: [item]), sources = SendLogRawPresentation.sources(in: group)
+        let steps = SendLogPresentation.trace(in: group)
+        for step in steps {
+            let source = try XCTUnwrap(sources.first { $0.target == step.target })
+            let document = try await SendLogRawPresentation.load(source)
+            XCTAssertFalse(document.sections.isEmpty)
+        }
+        XCTAssertEqual(steps.first { $0.title == "发出 · 你说的" }?.target.messageIndex, 1)
+        XCTAssertEqual(steps.first { $0.title == "发出 · 余白给的" }?.target.messageIndex, 3)
+        XCTAssertEqual(steps.first { $0.title == "没成功 · 第 1 次" }?.target.attemptNumber, 1)
+        let response = try XCTUnwrap(sources.first { $0.target.attemptNumber == 2 })
+        XCTAssertEqual(SendLogRawPresentation.prepare(response).sections.map(\.body), [.text("最后回复")])
+        XCTAssertEqual(sources.filter(\.includesRules).count, 1)
+        let copy = SendLogRawPresentation.copyText(in: group)
+        XCTAssertTrue(copy.contains("第 1 次\nHTTP 503"))
+        XCTAssertTrue(copy.contains("第 2 次\nHTTP 200\n最后回复"))
+    }
+    func testRawSourcesRemainLazyAndLegacyRequestsAndLongStringsStayLossless() async throws {
+        let long = String(repeating: "银行原文🙂\n", count: 4200)
+        let group = SendLogGroup(items: [rawItem(long)])
+        let sources = SendLogRawPresentation.sources(in: group)
+        XCTAssertEqual(sources.count, 2)
+        let document = try await SendLogRawPresentation.load(sources[0])
+        XCTAssertEqual(document.sections.map(\.body), [.text(long)])
+        let chunks = SendLogRawPresentation.textChunks(long)
+        XCTAssertEqual(chunks.joined(), long)
+        XCTAssertTrue(chunks.allSatisfy { $0.count <= 1200 })
+        XCTAssertGreaterThan(chunks.count, 16)
+        XCTAssertEqual(SendLogRawPresentation.textChunks(""), [])
+    }
+    func testRawLoadingHonorsCancellation() async throws {
+        let source = SendLogRawPresentation.sources(in: SendLogGroup(items: [rawItem("{}")]))[0]
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await SendLogRawPresentation.load(source)
+        }
+        task.cancel()
+        do { _ = try await task.value; XCTFail() } catch { XCTAssertTrue(error is CancellationError) }
+    }
+    /// CPU approximation of the old synchronous body versus lazy descriptor creation
+    /// and preparing the first visible block. SwiftUI layout is unavailable on Linux.
+    func testRawOpeningPerformance4200RowsAndEightGroupRequests() async throws {
+        func rows(_ count: Int) -> [JSONValue] {
+            (0..<count).map { .object(["id": .string("r\($0)"), "title": .string("合成商户\($0)"),
+                "amount": .number(Double($0)), "note": .string(String(repeating: "合成摘要", count: 8))]) }
+        }
+        let large = try JSONValue.object(["batch": .array(rows(4200))]).jsonText()
+        let party = try JSONValue.object(["groups": .array((0..<8).map { index in
+            .object(["id": .string("g\(index)"), "party": .string("合成对方\(index)"), "count": .number(525),
+                "inflow": .bool(false), "samples": .array(rows(3))])
+        })]).jsonText()
+        let cases: [(String, SendLogGroup)] = [
+            ("4200_rows_one_request", SendLogGroup(items: [rawItem(messages: [.init(role: .user, content: large)])])),
+            ("8_groups_one_request", SendLogGroup(items: [rawItem(messages: [.init(role: .user, content: party)])])),
+            ("8_requests_8_groups_each", SendLogGroup(items: (0..<8).map { _ in rawItem(messages: [.init(role: .user, content: party)]) }))
+        ]
+        for (name, group) in cases {
+            var before: [Double] = [], opening: [Double] = [], first: [Double] = []
+            for _ in 0..<7 {
+                let start = Date()
+                let old = group.items.map { item in
+                    (SendLogRawPresentation.rules(in: item), SendLogRawPresentation.requestSections(in: item), SendLogRawPresentation.responseSections(in: item))
+                }
+                before.append(Date().timeIntervalSince(start) * 1000)
+                XCTAssertEqual(old.count, group.items.count)
+                let descriptorStart = Date()
+                let sources = SendLogRawPresentation.sources(in: group)
+                opening.append(Date().timeIntervalSince(descriptorStart) * 1000)
+                let firstStart = Date()
+                let document = try await SendLogRawPresentation.load(sources[0])
+                first.append(Date().timeIntervalSince(firstStart) * 1000)
+                XCTAssertFalse(document.sections.isEmpty)
+            }
+            print("RAW_OPEN_BENCH \(name) before_sync_ms=\(before.sorted()[3]) after_open_ms=\(opening.sorted()[3]) first_background_ms=\(first.sorted()[3])")
+        }
+    }
+}

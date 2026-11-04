@@ -10,12 +10,19 @@ final class CloudTestStub {
     private let session: URLSession
     private let host: String
 
-    init(rawResponse: Bool = false, statusCode: Int = 200, sendLog: SendLog = .shared, basePath: String = "", model: String = DeepSeekConfiguration.defaultModel, reply: @escaping (URLRequest) throws -> String) {
+    init(rawResponse: Bool = false, statusCode: Int = 200, sendLog: SendLog = .shared, basePath: String = "", model: String = DeepSeekConfiguration.defaultModel, headers: [String: String] = [:], responseStatus: (() -> Int)? = nil,
+         catalogReply: ((URLRequest) throws -> String)? = nil, catalogStatus: Int = 200,
+         retrySleep: @escaping @Sendable (TimeInterval) async throws -> Void = { _ in }, reply: @escaping (URLRequest) throws -> String) {
         let host = UUID().uuidString.lowercased() + ".yubai.test"
         CloudTestURLProtocol.register({ request in
+            // Organization's bounded discovery is separate from explicit model-menu tests.
+            if request.url?.lastPathComponent == "models", request.timeoutInterval <= 5 {
+                return (Data(try (catalogReply?(request) ?? "{}").utf8), catalogReply == nil ? 503 : catalogStatus, [:])
+            }
             let content = try reply(request)
-            if rawResponse { return (Data(content.utf8), statusCode) }
-            return (try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]]), statusCode)
+            let statusCode = responseStatus?() ?? statusCode
+            if rawResponse { return (Data(content.utf8), statusCode, headers) }
+            return (try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]]), statusCode, headers)
         }, for: host)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CloudTestURLProtocol.self]
@@ -25,7 +32,7 @@ final class CloudTestStub {
         backend = CloudBackend(
             client: DeepSeekClient(configuration: DeepSeekConfiguration(
                 apiKey: "test-key", baseURL: URL(string: "https://" + host + basePath)!, model: model
-            ), sendLog: sendLog),
+            ), sendLog: sendLog, retrySleep: retrySleep, retryJitter: { 0.5 }),
             session: session
         )
     }
@@ -70,9 +77,9 @@ final class CloudTestStub {
 
 private final class CloudTestURLProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
-    private static var replies: [String: (URLRequest) throws -> (Data, Int)] = [:]
+    private static var replies: [String: (URLRequest) throws -> (Data, Int, [String: String])] = [:]
 
-    static func register(_ reply: @escaping (URLRequest) throws -> (Data, Int), for host: String) {
+    static func register(_ reply: @escaping (URLRequest) throws -> (Data, Int, [String: String]), for host: String) {
         lock.lock(); defer { lock.unlock() }
         replies[host] = reply
     }
@@ -91,8 +98,8 @@ private final class CloudTestURLProtocol: URLProtocol, @unchecked Sendable {
         Self.lock.unlock()
         do {
             guard let reply, let url = request.url else { throw URLError(.unsupportedURL) }
-            let (data, status) = try reply(request)
-            let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
+            let (data, status, headers) = try reply(request)
+            let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: headers)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)

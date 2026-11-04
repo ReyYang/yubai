@@ -238,6 +238,11 @@ private struct CloudSendLogDetailView: View {
     @State private var raw = false
     @State private var copied = false
     @State private var removed = false
+    @State private var rawFocus: SendLogRawTarget?
+    @State private var revision = 0
+    @State private var rules: [String] = []
+    @State private var rulesCharacters = 0
+    @State private var steps: [SendLogTraceStep] = []
     private var hidden: Bool { store.current.preferences.hideAmounts }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
@@ -245,25 +250,25 @@ private struct CloudSendLogDetailView: View {
             else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: YubaiSpace.space8) {
-                        ForEach(Set(group.items.map(\.model)).sorted(), id: \.self) { Pill(text: $0, variant: .neutral, showsDot: false) }
+                        ForEach(Set(group.items.flatMap { [$0.model] + ($0.attempts?.compactMap(\.model) ?? []) }).sorted(), id: \.self) { Pill(text: $0, variant: .neutral, showsDot: false) }
                         Pill(text: CloudLogText.metadata(group), variant: .neutral, showsDot: false)
                     }
                 }
                 if !group.redactionSummary.isEmpty { CloudRedactionChips(summary: group.redactionSummary) }
                 Card(style: .list) {
                     DisclosureGroup {
-                        ForEach(Array(SendLogPresentation.rules(in: group).enumerated()), id: \.offset) { _, rule in
+                        ForEach(Array(rules.enumerated()), id: \.offset) { _, rule in
                             Text(hidden ? "金额已隐藏" : rule).yubaiFont(YubaiFont.caption).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space8)
                         }
                     } label: {
                         HStack(spacing: YubaiSpace.gapGroup) {
                             Text("给云端的规则说明").yubaiFont(YubaiFont.row)
                             Spacer()
-                            Text("\(SendLogPresentation.rules(in: group).reduce(0) { $0 + $1.count }) 字").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                            Text("\(rulesCharacters) 字").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                         }.frame(minHeight: YubaiSize.tapMin)
                     }.accessibilityIdentifier("cloudLogRules")
                 }
-                ForEach(SendLogPresentation.trace(in: group)) { step in traceRow(step) }
+                ForEach(steps) { step in traceRow(step) }
                 if group.hasFailure {
                     InlineNote(text: hidden ? "这次没有成功" : group.failureReasons.joined(separator: "；"), style: .attention)
                 }
@@ -271,79 +276,117 @@ private struct CloudSendLogDetailView: View {
         }.safeAreaInset(edge: .bottom) {
             if !removed {
                 HStack(spacing: YubaiSpace.gapGroup) {
-                    Button("看原文") { raw = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewCloudLogRaw")
-                    Button(copied ? "已拷贝" : "拷贝原文") { copyRaw(); copied = true }.buttonStyle(SecondaryButtonStyle()).disabled(hidden).accessibilityIdentifier("copyCloudLogRaw")
+                    Button("看原文") { rawFocus = nil; raw = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewCloudLogRaw")
+                    Button(copied ? "已拷贝" : "拷贝原文") { copyRaw() }.buttonStyle(SecondaryButtonStyle()).disabled(hidden).accessibilityIdentifier("copyCloudLogRaw")
                 }.padding(YubaiSpace.insetPage).background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
             }
         }
         .amountPrivacy(hidden).navigationTitle(group.purpose + " · " + ImportStatementText.time(group.startedAt)).yubaiNavigation()
+        .task(id: revision) {
+            let snapshot = group
+            let preparation = Task.detached(priority: .userInitiated) {
+                let rules = SendLogPresentation.rules(in: snapshot)
+                return (rules, rules.reduce(0) { $0 + $1.count }, SendLogPresentation.trace(in: snapshot))
+            }
+            let prepared = await withTaskCancellationHandler { await preparation.value } onCancel: { preparation.cancel() }
+            guard !Task.isCancelled else { return }
+            rules = prepared.0; rulesCharacters = prepared.1; steps = prepared.2
+        }
         .sheet(isPresented: $raw) { NavigationStack { rawRequests }.environment(store).yubaiSheetBackground() }
         .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in
-            if let latest = SendLog.shared.groups.first(where: { $0.id == group.id }) { group = latest; copied = false }
+            if let latest = SendLog.shared.groups.first(where: { $0.id == group.id }) { group = latest; copied = false; revision += 1 }
             else { removed = true; raw = false }
         }
     }
     private func traceRow(_ step: SendLogTraceStep) -> some View {
-        HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
-            Text("\(step.id)").yubaiFont(YubaiFont.meta)
-                .foregroundStyle(step.outgoing ? YubaiColor.onBrand : YubaiColor.label)
-                .frame(width: YubaiSize.tagHeight, height: YubaiSize.tagHeight)
-                .background(step.outgoing ? YubaiColor.brand : YubaiColor.card, in: Circle())
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text(step.title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    ForEach(Array(step.lines.enumerated()), id: \.offset) { _, line in
-                        HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
-                            if !line.label.isEmpty { Text(line.label).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
-                            Text(hidden ? "金额已隐藏" : line.value).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
+        Button { rawFocus = step.target; raw = true } label: {
+            HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
+                Text("\(step.id)").yubaiFont(YubaiFont.meta)
+                    .foregroundStyle(step.outgoing ? YubaiColor.onBrand : YubaiColor.label)
+                    .frame(width: YubaiSize.tagHeight, height: YubaiSize.tagHeight)
+                    .background(step.outgoing ? YubaiColor.brand : YubaiColor.card, in: Circle())
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                    Text(step.title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                        ForEach(Array(step.lines.enumerated()), id: \.offset) { _, line in
+                            HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
+                                if !line.label.isEmpty { Text(line.label).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
+                                Text(hidden ? "金额已隐藏" : line.value).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
-                    }
-                }.padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(step.outgoing ? YubaiColor.raised : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
-            }
-        }.accessibilityIdentifier("cloudLogStep_" + String(step.id))
+                    }.padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(step.outgoing ? YubaiColor.raised : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                }
+            }.contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityIdentifier("cloudLogStep_" + String(step.id))
     }
     private var rawRequests: some View {
-        Page {
-            if hidden { Text("金额已隐藏").yubaiFont(YubaiFont.callout) }
-            else {
-                ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                    CloudLogRawExchange(item: item, index: index)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
+                    if hidden { Text("金额已隐藏").yubaiFont(YubaiFont.callout) }
+                    else {
+                        ForEach(SendLogRawPresentation.sources(in: group)) { source in
+                            CloudLogRawExchange(source: source, revision: revision).id(source.id)
+                        }
+                    }
                 }
-            }
+                .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.insetPage)
+                .padding(.bottom, YubaiSpace.gapSection)
+                .frame(maxWidth: 1080).frame(maxWidth: .infinity)
+            }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body)
+                .foregroundStyle(YubaiColor.label).paperBackground()
+                .task(id: rawFocus) {
+                    if let rawFocus { proxy.scrollTo(rawFocus, anchor: .top) }
+                }
         }.navigationTitle("原文").yubaiNavigation().toolbar { CloseButton() }
     }
     private func copyRaw() {
         guard !hidden else { return }
-        let text = SendLogRawPresentation.copyText(in: group)
-        #if os(iOS)
-        UIPasteboard.general.string = text
-        #elseif os(macOS)
-        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
-        #endif
+        let snapshot = group, expectedRevision = revision
+        Task {
+            let text = await Task.detached(priority: .userInitiated) { SendLogRawPresentation.copyText(in: snapshot) }.value
+            guard !hidden, !removed, revision == expectedRevision else { return }
+            #if os(iOS)
+            UIPasteboard.general.string = text
+            #elseif os(macOS)
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+            #endif
+            copied = true
+        }
     }
 }
 
 private struct CloudLogRawExchange: View {
-    let item: SendLogItem
-    let index: Int
+    let source: SendLogRawSource
+    let revision: Int
+    @State private var document: SendLogRawDocument?
+    private var outgoing: Bool { source.target.outgoing }
+    private var title: String {
+        let title = outgoing ? "发出" : "云端回"
+        guard let number = source.target.attemptNumber else { return title }
+        let model = source.item.attempts?.first { $0.number == number }?.model
+        let suffix = model.flatMap { $0 == source.item.model ? nil : " · " + $0 } ?? ""
+        return title + " · 第 \(number) 次" + suffix
+    }
     var body: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                step(index * 2 + 1, title: "发出", outgoing: true)
-                CloudLogRawRules(rules: SendLogRawPresentation.rules(in: item))
-                heading("资料")
-                CloudLogRawSections(sections: SendLogRawPresentation.requestSections(in: item), outgoing: true)
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("cloudLogRequest_" + String(index + 1))
-            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                step(index * 2 + 2, title: "云端回", outgoing: false)
-                CloudLogRawSections(sections: SendLogRawPresentation.responseSections(in: item), outgoing: false)
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("cloudLogResponse_" + String(index + 1))
+        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+            step(source.number, title: title, outgoing: outgoing)
+            if let document {
+                if let rules = document.rules { CloudLogRawRules(rules: rules) }
+                if outgoing { Text("资料").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                CloudLogRawSections(sections: document.sections, outgoing: outgoing)
+            } else { ProgressView() }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier((outgoing ? "cloudLogRequest_" : "cloudLogResponse_") + source.item.id.uuidString)
+        .task(id: revision) {
+            do {
+                let prepared = try await SendLogRawPresentation.load(source)
+                try Task.checkCancellation()
+                document = prepared
+            } catch { }
         }
     }
     private func step(_ number: Int, title: String, outgoing: Bool) -> some View {
@@ -354,9 +397,6 @@ private struct CloudLogRawExchange: View {
                 .background(outgoing ? YubaiColor.brand : YubaiColor.card, in: Circle())
             Text(title).yubaiFont(YubaiFont.callout, weight: .medium)
         }
-    }
-    private func heading(_ title: String) -> some View {
-        Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
     }
 }
 
@@ -378,9 +418,11 @@ private struct CloudLogRawRules: View {
             Text("给云端的规则说明").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             CloudLogRawCard {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text(expanded ? rules.paragraphs.joined(separator: "\n") : rules.preview)
-                        .yubaiFont(YubaiFont.row).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if expanded { CloudLogRawText(text: rules.text) }
+                    else {
+                        Text(rules.preview).yubaiFont(YubaiFont.row).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     CloudLogRawSeparator()
                     Button { expanded.toggle() } label: {
                         CloudLogRawDisclosure(title: "全文 \(rules.count.formatted()) 字", expanded: expanded, color: YubaiColor.brand)
@@ -410,8 +452,7 @@ private struct CloudLogRawSections: View {
                     }
                 case .text(let text):
                     CloudLogRawCard(outgoing: outgoing) {
-                        Text(text).yubaiFont(YubaiFont.row).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        CloudLogRawText(text: text)
                     }
                 }
             }
@@ -422,6 +463,7 @@ private struct CloudLogRawSections: View {
 private struct CloudLogRawGroups: View {
     let groups: [SendLogRawGroup]
     @State private var expanded = false
+    @State private var visibleCount = SendLogRawPresentation.renderPageSize
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             if SendLogRawPresentation.initiallyCollapsed(count: groups.count) {
@@ -432,7 +474,7 @@ private struct CloudLogRawGroups: View {
                 }
             }
             if !SendLogRawPresentation.initiallyCollapsed(count: groups.count) || expanded {
-                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                ForEach(Array(groups.prefix(visibleCount).enumerated()), id: \.offset) { _, group in
                     CloudLogRawCard {
                         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
@@ -444,6 +486,9 @@ private struct CloudLogRawGroups: View {
                         }.textSelection(.enabled)
                     }
                 }
+                if visibleCount < groups.count {
+                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
+                }
             }
         }
     }
@@ -453,11 +498,15 @@ private struct CloudLogRawGroups: View {
 /// infinitely recursive SwiftUI body type. Every value remains available.
 private struct CloudLogRawTree: View {
     let fields: [SendLogRawField]
+    @State private var visibleCount = SendLogRawPresentation.renderPageSize
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.none) {
-            ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
+            ForEach(Array(fields.prefix(visibleCount).enumerated()), id: \.element.id) { index, field in
                 if index > 0 { CloudLogRawSeparator() }
                 CloudLogRawFieldRow(field: field).padding(.vertical, YubaiSpace.space4)
+            }
+            if visibleCount < fields.count {
+                Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
             }
         }
     }
@@ -498,6 +547,7 @@ private struct CloudLogRawArray: View {
     var showsHeading = true
     var indentElements = true
     @State private var expanded = false
+    @State private var visibleCount = SendLogRawPresentation.renderPageSize
     private var collapsible: Bool { SendLogRawPresentation.initiallyCollapsed(values) }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -510,13 +560,16 @@ private struct CloudLogRawArray: View {
             }
             if !collapsible || expanded {
                 if values.allSatisfy(SendLogRawPresentation.isScalar) {
-                    CloudLogRawScalars(values: values)
+                    CloudLogRawScalars(values: Array(values.prefix(visibleCount)))
                 } else {
-                    ForEach(Array(values.enumerated()), id: \.offset) { index, value in
+                    ForEach(Array(values.prefix(visibleCount).enumerated()), id: \.offset) { index, value in
                         if index > 0 { CloudLogRawSeparator() }
                         if indentElements { CloudLogRawIndent { element(value) } }
                         else { element(value) }
                     }
+                }
+                if visibleCount < values.count {
+                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
                 }
             }
         }
@@ -535,10 +588,22 @@ private struct CloudLogRawScalars: View {
     let values: [JSONValue]
     @ScaledMetric(relativeTo: .caption) private var codeSize = YubaiFont.code.size
     var body: some View {
-        values.enumerated().reduce(Text("")) { text, element in
-            text + (element.offset == 0 ? Text("") : Text("、")) + scalar(element.element)
-        }.yubaiFont(YubaiFont.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+        if values.contains(where: { value in
+            if case .string(let text) = value { return text.utf8.count > SendLogRawPresentation.textChunkSize }
+            return false
+        }) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                    CloudLogRawText(text: SendLogRawPresentation.scalarText(value))
+                }
+            }
+        } else {
+            values.enumerated().reduce(Text("")) { text, element in
+                text + (element.offset == 0 ? Text("") : Text("、")) + scalar(element.element)
+            }.yubaiFont(YubaiFont.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+        }
     }
+
     private func scalar(_ value: JSONValue) -> Text {
         let text = Text(SendLogRawPresentation.scalarText(value))
         switch value {
@@ -547,6 +612,32 @@ private struct CloudLogRawScalars: View {
                 .foregroundColor(YubaiColor.brand)
         case .null: return text.foregroundColor(YubaiColor.labelSecondary)
         default: return text.foregroundColor(YubaiColor.label)
+        }
+    }
+}
+
+/// Reuses the existing text/disclosure appearance; each Text has a bounded size.
+private struct CloudLogRawText: View {
+    let text: String
+    @State private var chunks: [String] = []
+    @State private var visibleCount = 1
+    var body: some View {
+        LazyVStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            ForEach(Array(chunks.prefix(visibleCount).enumerated()), id: \.offset) { _, chunk in
+                Text(chunk).yubaiFont(YubaiFont.row).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if visibleCount < chunks.count {
+                Button { visibleCount += SendLogRawPresentation.renderPageSize } label: {
+                    CloudLogRawDisclosure(title: "展开", expanded: false, color: YubaiColor.brand)
+                }.buttonStyle(.plain)
+            }
+        }
+        .task(id: text) {
+            let preparation = Task.detached(priority: .userInitiated) { SendLogRawPresentation.textChunks(text) }
+            let prepared = await withTaskCancellationHandler { await preparation.value } onCancel: { preparation.cancel() }
+            guard !Task.isCancelled else { return }
+            chunks = prepared
         }
     }
 }

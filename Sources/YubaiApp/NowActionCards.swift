@@ -199,7 +199,8 @@ private struct PendingImportsCard: View {
     private var organizationError: String? {
         guard !busy, let error = pending.batchIDs.compactMap({ store.organizationErrors[$0] }).first else { return nil }
         let prefix = "记录已保存。"
-        return error.hasPrefix(prefix) ? String(error.dropFirst(prefix.count)) : error
+        let reason = error.hasPrefix(prefix) ? String(error.dropFirst(prefix.count)) : error
+        return ImportOrganizer.incompleteMessage(remaining: pending.count, reason: reason.trimmingCharacters(in: CharacterSet(charactersIn: "。")))
     }
     var body: some View {
         Card(style: .compact) {

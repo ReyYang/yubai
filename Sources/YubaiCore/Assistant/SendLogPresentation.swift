@@ -5,11 +5,20 @@ public struct SendLogSummaryLine: Equatable, Sendable {
     public let value: String
     public init(_ label: String, _ value: String) { self.label = label; self.value = value }
 }
+public struct SendLogRawTarget: Hashable, Sendable, Identifiable {
+    public var id: Self { self }
+    public let itemID: UUID
+    public let outgoing: Bool
+    public var messageIndex: Int? = nil
+    public var attemptNumber: Int? = nil
+}
+
 public struct SendLogTraceStep: Identifiable, Equatable, Sendable {
     public let id: Int
     public let title: String
     public let outgoing: Bool
     public let lines: [SendLogSummaryLine]
+    public let target: SendLogRawTarget
 }
 
 /// Plain-language projections of the in-memory trace. Raw requests remain available
@@ -49,21 +58,22 @@ public enum SendLogPresentation {
     public static func trace(in group: SendLogGroup) -> [SendLogTraceStep] {
         var steps: [SendLogTraceStep] = [], previous: [ChatMessage] = []
         var names: [String: String] = [:]
+        var target = SendLogRawTarget(itemID: group.id, outgoing: true)
         func add(_ title: String, outgoing: Bool, lines: [SendLogSummaryLine]) {
             guard !lines.isEmpty else { return }
-            steps.append(SendLogTraceStep(id: steps.count + 1, title: title, outgoing: outgoing, lines: lines))
+            steps.append(SendLogTraceStep(id: steps.count + 1, title: title, outgoing: outgoing, lines: lines, target: target))
         }
         for (index, item) in group.items.enumerated() {
             for call in item.messages.flatMap({ $0.toolCalls ?? [] }) { names[call.id] = call.function.name }
             var start = 0
-            if index == 0 {
-                start = item.messages.lastIndex(where: { $0.role == .user }) ?? 0
-            } else {
+            if index == 0 { start = item.messages.lastIndex(where: { $0.role == .user }) ?? 0 }
+            else {
                 while start < min(previous.count, item.messages.count), previous[start] == item.messages[start] { start += 1 }
-                // A compressed history is a new snapshot. Restrict it to this turn.
                 if start < previous.count { start = max(start, item.messages.lastIndex(where: { $0.role == .user }) ?? start) }
             }
-            for message in item.messages.dropFirst(start) {
+            for messageIndex in item.messages.indices.dropFirst(start) {
+                let message = item.messages[messageIndex]
+                target = SendLogRawTarget(itemID: item.id, outgoing: true, messageIndex: messageIndex)
                 guard let content = message.content, !content.isEmpty else { continue }
                 switch message.role {
                 case .user: add("发出 · 你说的", outgoing: true, lines: summary(content))
@@ -74,23 +84,41 @@ public enum SendLogPresentation {
                 }
             }
             previous = item.messages
-            guard let response = item.response else {
-                add("等云端回", outgoing: false, lines: [.init("", "还在等待回复")]); continue
+            let attempts = item.attempts ?? [SendLogAttempt(number: 1, response: item.response)]
+            for attempt in attempts {
+                target = SendLogRawTarget(itemID: item.id, outgoing: false, attemptNumber: item.attempts == nil ? nil : attempt.number)
+                let model = attempt.model.flatMap { $0 == item.model ? nil : " · " + $0 } ?? ""
+                let suffix = (item.attempts == nil ? "" : " · 第 \(attempt.number) 次") + model
+                guard let response = attempt.response else {
+                    add("等云端回" + suffix, outgoing: false, lines: [.init("", "还在等待回复")]); continue
+                }
+                if !response.toolCalls.isEmpty {
+                    let proposal = response.toolCalls.allSatisfy { $0.hasPrefix("propose_") }
+                    add((proposal ? "云端回 · 提出草稿" : "云端回 · 想先看") + suffix, outgoing: false,
+                        lines: response.toolCalls.map { .init("", toolName($0)) })
+                }
+                if let content = response.content, !content.isEmpty {
+                    add("云端回 · 回答" + suffix, outgoing: false, lines: summary(content))
+                } else if response.errorDescription == nil, response.toolCalls.isEmpty,
+                          let status = response.httpStatus, (200..<300).contains(status) {
+                    add("云端回" + suffix, outgoing: false, lines: [.init("状态", "HTTP \(status)")])
+                }
+                if let error = response.errorDescription {
+                    add("没成功" + suffix, outgoing: false, lines: [.init("原因", error)])
+                } else if response.finishReason == "length" {
+                    add("没成功" + suffix, outgoing: false, lines: [.init("原因", "云端回复被截断")])
+                } else if let status = response.httpStatus, !(200..<300).contains(status) {
+                    add("没成功" + suffix, outgoing: false, lines: [.init("原因", "HTTP \(status)")])
+                }
+                if let delay = attempt.retryDelay {
+                    let waiting = item.response == nil && attempt.number == attempts.last?.number
+                    add(waiting ? "重试等待中" : "重试", outgoing: false,
+                        lines: [.init("尝试", "第 \(attempt.number + 1) 次"), .init("等待", "\(String(format: "%.1f", delay)) 秒")])
+                }
             }
-            if !response.toolCalls.isEmpty {
-                let proposal = response.toolCalls.allSatisfy { $0.hasPrefix("propose_") }
-                add(proposal ? "云端回 · 提出草稿" : "云端回 · 想先看", outgoing: false,
-                    lines: response.toolCalls.map { .init("", toolName($0)) })
-            }
-            if let content = response.content, !content.isEmpty {
-                add("云端回 · 回答", outgoing: false, lines: summary(content))
-            }
-            if let error = response.errorDescription {
-                add("没成功", outgoing: false, lines: [.init("原因", error)])
-            } else if response.finishReason == "length" {
-                add("没成功", outgoing: false, lines: [.init("原因", "云端回复被截断")])
-            } else if let status = response.httpStatus, !(200..<300).contains(status) {
-                add("没成功", outgoing: false, lines: [.init("原因", "HTTP \(status)")])
+            if item.response?.errorDescription == "请求已取消。", attempts.last?.retryDelay != nil {
+                target = SendLogRawTarget(itemID: item.id, outgoing: false)
+                add("没成功", outgoing: false, lines: [.init("原因", "请求已取消。")])
             }
         }
         return steps
@@ -164,14 +192,93 @@ public struct SendLogRawSection: Equatable, Sendable {
     public let body: Body
 }
 
+/// Cheap descriptors: opening a sheet does not parse any request/reply JSON.
+public struct SendLogRawSource: Identifiable, Sendable {
+    public var id: SendLogRawTarget { target }
+    public let target: SendLogRawTarget
+    public let item: SendLogItem
+    public let number: Int
+    public let includesRules: Bool
+}
+
+public struct SendLogRawDocument: Sendable {
+    public let rules: SendLogRawPresentation.Rules?
+    public let sections: [SendLogRawSection]
+}
+
 /// Lossless text fallbacks and unabridged JSON projections for the raw sheet.
 /// Unlike the timeline, these do not translate field names or clip values.
 public enum SendLogRawPresentation {
     public struct Rules: Equatable, Sendable {
         public let text: String
-        public var paragraphs: [String] { text.components(separatedBy: "\n") }
-        public var preview: String { paragraphs.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? "" }
-        public var count: Int { text.count }
+        public let paragraphs: [String]
+        public let preview: String
+        public let count: Int
+        public init(text: String) {
+            self.text = text; paragraphs = text.components(separatedBy: "\n"); count = text.count
+            preview = String((paragraphs.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? "").prefix(1200))
+        }
+    }
+
+    public static let renderPageSize = 16
+    public static let textChunkSize = 1200
+
+    public static func textChunks(_ text: String) -> [String] {
+        var chunks: [String] = [], start = text.startIndex
+        while start < text.endIndex {
+            let end = text.index(start, offsetBy: textChunkSize, limitedBy: text.endIndex) ?? text.endIndex
+            chunks.append(String(text[start..<end])); start = end
+        }
+        return chunks
+    }
+
+    public static func sources(in group: SendLogGroup) -> [SendLogRawSource] {
+        var sources: [SendLogRawSource] = []
+        for item in group.items {
+            let indices = item.messages.indices.filter { item.messages[$0].role != .system }
+            for index in indices.isEmpty ? [nil] : indices.map(Optional.some) {
+                sources.append(SendLogRawSource(target: .init(itemID: item.id, outgoing: true, messageIndex: index),
+                    item: item, number: sources.count + 1, includesRules: index == indices.first))
+            }
+            if let attempts = item.attempts, !attempts.isEmpty {
+                for attempt in attempts {
+                    sources.append(SendLogRawSource(target: .init(itemID: item.id, outgoing: false, attemptNumber: attempt.number),
+                        item: item, number: sources.count + 1, includesRules: false))
+                }
+                if item.response?.errorDescription == "请求已取消。", attempts.last?.retryDelay != nil {
+                    sources.append(SendLogRawSource(target: .init(itemID: item.id, outgoing: false),
+                        item: item, number: sources.count + 1, includesRules: false))
+                }
+            } else {
+                sources.append(SendLogRawSource(target: .init(itemID: item.id, outgoing: false),
+                    item: item, number: sources.count + 1, includesRules: false))
+            }
+        }
+        return sources
+    }
+
+    public static func prepare(_ source: SendLogRawSource) -> SendLogRawDocument {
+        let item = source.item
+        if source.target.outgoing {
+            let sections = source.target.messageIndex.map { requestSections(message: item.messages[$0]) }
+                ?? requestSections(in: item)
+            return SendLogRawDocument(rules: source.includesRules ? rules(in: item) : nil, sections: sections)
+        }
+        var reply = item
+        if let number = source.target.attemptNumber { reply.response = item.attempts?.first { $0.number == number }?.response }
+        return SendLogRawDocument(rules: nil, sections: responseSections(in: reply))
+    }
+
+    /// Cancellation follows the sheet; parsing and rule preparation never run on MainActor.
+    public static func load(_ source: SendLogRawSource) async throws -> SendLogRawDocument {
+        try Task.checkCancellation()
+        let task = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let document = prepare(source)
+            try Task.checkCancellation()
+            return document
+        }
+        return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
     }
 
     public static func rules(in item: SendLogItem) -> Rules {
@@ -206,17 +313,21 @@ public enum SendLogRawPresentation {
         // Older/unparsed log items still expose their original request.
         guard !item.messages.isEmpty else { return requestSections(item.requestText) }
         return item.messages.filter { $0.role != .system }.flatMap { message in
-            var sections = message.content.flatMap { $0.isEmpty ? nil : requestSections($0) } ?? []
-            for call in message.toolCalls ?? [] {
-                let arguments = (try? JSONValue.parse(call.function.arguments)).flatMap { $0.objectValue == nil ? nil : $0 }
-                    ?? .string(call.function.arguments)
-                sections.append(SendLogRawSection(title: nil, body: .fields(fields(in: [
-                    "id": .string(call.id), "type": .string(call.type),
-                    "function": .object(["name": .string(call.function.name), "arguments": arguments])
-                ]))))
-            }
-            return sections
+            requestSections(message: message)
         }
+    }
+
+    public static func requestSections(message: ChatMessage) -> [SendLogRawSection] {
+        var sections = message.content.flatMap { $0.isEmpty ? nil : requestSections($0) } ?? []
+        for call in message.toolCalls ?? [] {
+            let arguments = (try? JSONValue.parse(call.function.arguments)).flatMap { $0.objectValue == nil ? nil : $0 }
+                ?? .string(call.function.arguments)
+            sections.append(SendLogRawSection(title: nil, body: .fields(fields(in: [
+                "id": .string(call.id), "type": .string(call.type),
+                "function": .object(["name": .string(call.function.name), "arguments": arguments])
+            ]))))
+        }
+        return sections
     }
 
     public static func requestSections(_ text: String) -> [SendLogRawSection] {
@@ -301,6 +412,21 @@ public enum SendLogRawPresentation {
                 reply.append(String(decoding: data, as: UTF8.self))
             }
             if let response = item.response, let reason = failureReason(response) { reply.append(reason) }
+            if let attempts = item.attempts, attempts.count > 1 {
+                reply = attempts.map { attempt in
+                    var parts = ["第 \(attempt.number) 次"]
+                    if let model = attempt.model { parts.append(model) }
+                    if let request = attempt.requestText { parts.append(prettyPrinted(request)) }
+                    if let status = attempt.response?.httpStatus { parts.append("HTTP \(status)") }
+                    if let content = attempt.response?.content { parts.append(prettyPrinted(content)) }
+                    if let calls = attempt.response?.toolCalls, !calls.isEmpty { parts.append(calls.joined(separator: "\n")) }
+                    if let response = attempt.response, let reason = failureReason(response) { parts.append(reason) }
+                    if attempt.response == nil { parts.append("还在等待回复") }
+                    if let delay = attempt.retryDelay { parts.append("等待 \(String(format: "%.1f", delay)) 秒") }
+                    return parts.joined(separator: "\n")
+                }
+                if item.response?.errorDescription == "请求已取消。", attempts.last?.retryDelay != nil { reply.append("请求已取消。") }
+            }
             if item.response == nil { reply.append("还在等待回复") }
             return "第 \(index + 1) 次发出\n" + prettyPrinted(item.requestText)
                 + "\n\n第 \(index + 1) 次云端回\n" + reply.joined(separator: "\n\n")

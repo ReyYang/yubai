@@ -3,6 +3,141 @@ import Foundation
 import FoundationNetworking
 #endif
 
+/// Bounded retries for import organization only. Header values never enter logs.
+public enum DeepSeekRetryPolicy {
+    public static let delays: [TimeInterval] = [1, 3, 8, 20]
+    public static let maximumWait: TimeInterval = 30
+    public static func retries(status: Int) -> Bool { [429, 500, 502, 503, 504].contains(status) }
+    public static func retries(network error: Error) -> Bool {
+        guard let error = error as? URLError else { return false }
+        return [.timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost,
+                .dnsLookupFailed, .notConnectedToInternet].contains(error.code)
+    }
+    public static func retryAfter(_ header: String?, now: Date = Date()) -> TimeInterval? {
+        guard let header = header?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        if let seconds = Double(header), seconds.isFinite, seconds >= 0 { return min(maximumWait, seconds) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = formatter.date(from: header) else { return nil }
+        return min(maximumWait, max(0, date.timeIntervalSince(now)))
+    }
+    /// retry starts at 1; jitter in 0...1 gives ±20% without exceeding the cap.
+    public static func delay(retry: Int, header: String? = nil, now: Date = Date(), jitter: Double) -> TimeInterval {
+        if let seconds = retryAfter(header, now: now) { return seconds }
+        let base = delays[min(max(0, retry - 1), delays.count - 1)]
+        return min(maximumWait, base * (0.8 + 0.4 * min(1, max(0, jitter))))
+    }
+}
+
+/// Shared by both phases (and all batches) in one explicit organization run.
+/// Existing HTTP attempts finish when congestion is detected; new attempts wait.
+public actor ImportRequestController {
+    public let models = ImportModelRouting()
+    private var capacity = ImportOrganizer.partyConcurrency
+    private var consecutiveSuccesses = 0
+    private var active = 0
+    private struct Waiter {
+        var id: UUID; var ceiling: Int; var continuation: CheckedContinuation<Void, Error>
+    }
+    private var waiters: [Waiter] = []
+    public init() {}
+    public func limit(ceiling: Int) -> Int { min(capacity, ceiling) }
+    public func congested(status: Int) {
+        guard status == 429 || status == 503 else { return }
+        capacity = 1; consecutiveSuccesses = 0
+    }
+    public func failed() { consecutiveSuccesses = 0 }
+    public func succeeded() {
+        consecutiveSuccesses += 1
+        if consecutiveSuccesses >= 3 {
+            capacity = min(ImportOrganizer.partyConcurrency, capacity + 1); consecutiveSuccesses = 0
+            drain()
+        }
+    }
+    public func acquire(ceiling: Int) async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
+                else if active < limit(ceiling: ceiling), waiters.isEmpty {
+                    active += 1; continuation.resume()
+                } else { waiters.append(Waiter(id: id, ceiling: ceiling, continuation: continuation)); drain() }
+            }
+        } onCancel: { Task { await self.cancel(id) } }
+    }
+    public func release() { active -= 1; drain() }
+    private func cancel(_ id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
+        drain()
+    }
+    private func drain() {
+        while let first = waiters.first, active < limit(ceiling: first.ceiling) {
+            active += 1; waiters.removeFirst().continuation.resume()
+        }
+    }
+}
+
+/// Per-run fallback. Concurrent requests re-read it before each HTTP attempt.
+public actor ImportModelRouting {
+    private var fallback: String?
+    private var requests = 0
+    public init() {}
+    func begin(preferred: String) -> (model: String, first: Bool) {
+        requests += 1; return (fallback ?? preferred, requests == 1)
+    }
+    func current(preferred: String) -> String { fallback ?? preferred }
+    func recovered(using model: String) { fallback = model }
+}
+
+/// In-memory, credential/endpoint-scoped catalog, shared across ephemeral clients.
+/// Coalesces concurrent lookups; failed lookups are cached briefly as well.
+public actor DeepSeekModelCatalog {
+    public static let shared = DeepSeekModelCatalog()
+    private struct Key: Hashable { let endpoint: URL; let credential: String }
+    private struct Cached { var names: [String]?; var expires: Date }
+    private var cache: [Key: Cached] = [:]
+    private var pending: [Key: Task<[String], Error>] = [:]
+    public init() {}
+    private func key(_ configuration: DeepSeekConfiguration) -> Key {
+        Key(endpoint: DeepSeekClient.chatCompletionsURL(baseURL: configuration.baseURL), credential: configuration.apiKey)
+    }
+    func cached(for configuration: DeepSeekConfiguration) -> [String]? {
+        guard let value = cache[key(configuration)], value.expires > Date() else { return nil }
+        return value.names
+    }
+    func store(_ names: [String], for configuration: DeepSeekConfiguration) {
+        cache[key(configuration)] = Cached(names: names, expires: Date().addingTimeInterval(300))
+    }
+    func models(for configuration: DeepSeekConfiguration,
+                fetch: @escaping @Sendable () async throws -> [String]) async throws -> [String]? {
+        try Task.checkCancellation()
+        let key = key(configuration)
+        if let value = cache[key], value.expires > Date() { return value.names }
+        let task: Task<[String], Error>
+        if let existing = pending[key] { task = existing }
+        else { task = Task { try await fetch() }; pending[key] = task }
+        do {
+            let names = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            try Task.checkCancellation()
+            cache[key] = Cached(names: names, expires: Date().addingTimeInterval(300)); pending[key] = nil
+            return names
+        } catch {
+            pending[key] = nil
+            if Task.isCancelled { throw CancellationError() }
+            cache[key] = Cached(names: nil, expires: Date().addingTimeInterval(30))
+            return nil
+        }
+    }
+}
+
+enum ImportRequestScope {
+    struct Context: Sendable { var controller: ImportRequestController; var ceiling: Int }
+    @TaskLocal static var current: Context?
+}
+
 /// Configuration for optional DeepSeek cloud calls. Never log or embed credentials.
 public struct DeepSeekConfiguration: Equatable, Sendable {
     public var apiKey: String
@@ -11,17 +146,23 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
     public var timeout: TimeInterval
 
     public static let defaultBaseURL = URL(string: "https://api.deepseek.com")!
-    /// Prefer a fast chat model; override with `DEEPSEEK_MODEL` when needed.
-    /// Legacy saved names are mapped when reading configuration.
+    /// Used only when no model has been selected. Organization discovers its
+    /// preferred model from the authenticated catalog instead.
     public static let defaultModel = "deepseek-flash"
     public static let modelPreferenceKey = "DeepSeek.model"
 
-    public static func canonicalModel(_ name: String) -> String {
+    public static func canonicalModel(_ name: String, availableModels: [String]? = nil) -> String {
+        guard let availableModels, !availableModels.contains(name) else { return name }
+        let candidates: [String]
         switch name {
-        case "deepseek-chat", "deepseek-v4-flash": return "deepseek-flash"
-        case "deepseek-reasoner": return "deepseek-v4-pro"
-        default: return name
+        case "deepseek-chat": candidates = ["deepseek-v4-flash", "deepseek-flash"]
+        case "deepseek-flash": candidates = ["deepseek-v4-flash", "deepseek-chat"]
+        case "deepseek-v4-flash": candidates = ["deepseek-flash", "deepseek-chat"]
+        case "deepseek-reasoner": candidates = ["deepseek-v4-pro"]
+        case "deepseek-v4-pro": candidates = ["deepseek-reasoner"]
+        default: candidates = []
         }
+        return candidates.first(where: availableModels.contains) ?? name
     }
     public static func modelName(environment: [String: String] = ProcessInfo.processInfo.environment,
                                  defaults: UserDefaults = .standard) -> String {
@@ -65,8 +206,8 @@ public struct DeepSeekConfiguration: Equatable, Sendable {
         return DeepSeekConfiguration(apiKey: raw, baseURL: base, model: model)
     }
 
-    public func model(for request: ChatRequest) -> String {
-        request.model.map(Self.canonicalModel) ?? model
+    public func model(for request: ChatRequest, availableModels: [String]? = nil) -> String {
+        request.model ?? Self.canonicalModel(model, availableModels: availableModels)
     }
 
     /// Redacted description safe for logs / diagnostics (never includes the key).
@@ -90,7 +231,7 @@ public enum DeepSeekError: Error, LocalizedError, Equatable, Sendable {
     }
     static func modelError(status: Int, body: Data, model: String) -> DeepSeekError? {
         let text = String(decoding: body, as: UTF8.self).lowercased()
-        if text.contains("model_not_found") || ([400, 404].contains(status) && text.contains("model")) {
+        if text.contains("model_not_found") || ([400, 404, 503].contains(status) && (text.contains("model") || text.contains("模型"))) {
             return .modelUnavailable(model)
         }
         return nil
@@ -103,9 +244,18 @@ public struct DeepSeekClient: ChatTransport {
     public var configuration: DeepSeekConfiguration
     private let redactor: Redactor
     private let sendLog: SendLog
+    private let retrySleep: @Sendable (TimeInterval) async throws -> Void
+    private let retryJitter: @Sendable () -> Double
+    private let modelCatalog: DeepSeekModelCatalog
 
-    public init(configuration: DeepSeekConfiguration, redactor: Redactor = .shared, sendLog: SendLog = .shared) {
+    public init(configuration: DeepSeekConfiguration, redactor: Redactor = .shared, sendLog: SendLog = .shared,
+                retrySleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
+                    try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                }, retryJitter: @escaping @Sendable () -> Double = { Double.random(in: 0...1) },
+                modelCatalog: DeepSeekModelCatalog = .shared) {
         self.configuration = configuration; self.redactor = redactor; self.sendLog = sendLog
+        self.retrySleep = retrySleep; self.retryJitter = retryJitter
+        self.modelCatalog = modelCatalog
     }
 
     public static func fromEnvironment(
@@ -137,19 +287,19 @@ public struct DeepSeekClient: ChatTransport {
         try await send(request, session: .shared)
     }
 
-    public func listModels(session: URLSession = .shared) async throws -> [String] {
+    public func listModels(session: URLSession = .shared, timeout: TimeInterval? = nil) async throws -> [String] {
         struct Response: Decodable {
             struct Model: Decodable { var id: String }
             var data: [Model]
         }
         let root = Self.chatCompletionsURL(baseURL: configuration.baseURL).deletingLastPathComponent().deletingLastPathComponent()
-        var request = URLRequest(url: root.appendingPathComponent("models"), timeoutInterval: configuration.timeout)
+        var request = URLRequest(url: root.appendingPathComponent("models"), timeoutInterval: timeout ?? configuration.timeout)
         request.httpMethod = "GET"
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         try Task.checkCancellation()
         let data: Data; let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await Self.attemptData(for: request, session: session) }
         catch {
             if Task.isCancelled { throw CancellationError() }
             throw YubaiError.invalid("暂时取不到模型列表。")
@@ -166,6 +316,7 @@ public struct DeepSeekClient: ChatTransport {
             return id
         }
         guard !models.isEmpty else { throw YubaiError.invalid("暂时取不到模型列表。") }
+        await modelCatalog.store(models, for: configuration)
         return models
     }
 
@@ -188,9 +339,20 @@ public struct DeepSeekClient: ChatTransport {
             definitions[i].function.description = redactor.text(definitions[i].function.description)
             definitions[i].function.parameters = redactor.value(definitions[i].function.parameters)
         }
-        let model = configuration.model(for: input)
-        let organizing = input.purpose == "导入整理" || input.purpose == "导入整理·按对方"
-        let payload = Payload(model: model, messages: messages,
+        let organizing = input.purpose == "导入整理" || input.purpose == "导入整理·按对方" || ImportRequestScope.current != nil
+        let names: [String]?
+        if organizing {
+            names = try await modelCatalog.models(for: configuration) {
+                try await self.listModels(session: session, timeout: min(5, configuration.timeout))
+            }
+        } else { names = await modelCatalog.cached(for: configuration) }
+        let selectedModel = DeepSeekConfiguration.canonicalModel(configuration.model, availableModels: names)
+        let preferred = organizing ? names?.first(where: { $0.localizedCaseInsensitiveContains("flash") }) ?? selectedModel
+            : configuration.model(for: input, availableModels: names)
+        let routing = ImportRequestScope.current?.controller.models ?? ImportModelRouting()
+        let initial = organizing ? await routing.begin(preferred: preferred) : (model: preferred, first: false)
+        var model = initial.model
+        var payload = Payload(model: model, messages: messages,
             tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens, response_format: input.responseFormat,
             thinking: input.thinking.map { ["type": $0 ? "enabled" : "disabled"] })
         let body = try JSONEncoder().encode(payload)
@@ -209,52 +371,124 @@ public struct DeepSeekClient: ChatTransport {
             sendLog.complete(id: logID, response: loggedResponse, apiKey: configuration.apiKey)
         }
         do {
-            let data: Data; let response: URLResponse
-            do { (data, response) = try await session.data(for: request) }
-            catch {
-                if Task.isCancelled { throw CancellationError() }
-                throw DeepSeekError.network
-            }
-            guard let http = response as? HTTPURLResponse else { throw DeepSeekError.invalidResponse }
-            loggedResponse.httpStatus = http.statusCode
-            guard (200..<300).contains(http.statusCode) else {
-                // Error bodies may echo credentials. Never retain or expose them.
-                if organizing { throw DeepSeekError.http(http.statusCode) }
-                if let error = DeepSeekError.modelError(status: http.statusCode, body: data, model: model) { throw error }
-                if http.statusCode == 401 || http.statusCode == 403 {
-                    throw YubaiError.invalid("云端密钥无效或无权访问，请检查密钥设置。")
+            var number = 0, retry = 0
+            var fallbackTried = false
+            while true {
+                try Task.checkCancellation()
+                number += 1
+                model = fallbackTried ? selectedModel : await routing.current(preferred: preferred)
+                payload.model = model
+                let attemptBody = try JSONEncoder().encode(payload)
+                request.httpBody = attemptBody
+                loggedResponse = SendLogResponse(durationMilliseconds: 0)
+                var retryable = false, fallbackAllowed = false
+                var retryHeader: String?
+                let attemptStarted = DispatchTime.now().uptimeNanoseconds
+                sendLog.attempt(id: logID, number: number, model: model,
+                    body: model == initial.model ? nil : attemptBody, apiKey: configuration.apiKey)
+                do {
+                    let data: Data; let response: URLResponse
+                    do {
+                        let scope = ImportRequestScope.current
+                        if let scope { try await scope.controller.acquire(ceiling: scope.ceiling) }
+                        do {
+                            try Task.checkCancellation()
+                            (data, response) = try await Self.attemptData(for: request, session: session)
+                            if let http = response as? HTTPURLResponse {
+                                await scope?.controller.congested(status: http.statusCode)
+                            }
+                            await scope?.controller.release()
+                        } catch {
+                            await scope?.controller.release()
+                            throw error
+                        }
+                    } catch {
+                        if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                        retryable = DeepSeekRetryPolicy.retries(network: error)
+                        throw DeepSeekError.network
+                    }
+                    try Task.checkCancellation()
+                    guard let http = response as? HTTPURLResponse else { throw DeepSeekError.invalidResponse }
+                    loggedResponse.httpStatus = http.statusCode
+                    guard (200..<300).contains(http.statusCode) else {
+                        // Error bodies may echo credentials. Never retain or expose them.
+                        retryable = DeepSeekRetryPolicy.retries(status: http.statusCode)
+                        fallbackAllowed = [400, 404, 503].contains(http.statusCode) &&
+                            (Self.isModelFailure(status: http.statusCode, body: data, model: model) || (initial.first && number == 1))
+                        retryHeader = http.value(forHTTPHeaderField: "Retry-After")
+                        if organizing { throw DeepSeekError.http(http.statusCode) }
+                        if let error = DeepSeekError.modelError(status: http.statusCode, body: data, model: model) { throw error }
+                        if http.statusCode == 401 || http.statusCode == 403 {
+                            throw YubaiError.invalid("云端密钥无效或无权访问，请检查密钥设置。")
+                        }
+                        throw YubaiError.invalid("云端服务返回错误（HTTP \(http.statusCode)）。本机计算结果已保留。")
+                    }
+                    struct Response: Decodable {
+                        struct Choice: Decodable {
+                            struct Message: Decodable { var content: String?; var tool_calls: [ChatToolCall]?; var reasoning_content: String? }
+                            var message: Message
+                            var finish_reason: String?
+                        }
+                        var choices: [Choice]
+                    }
+                    guard let result = try? JSONDecoder().decode(Response.self, from: data), let choice = result.choices.first else {
+                        throw DeepSeekError.invalidResponse
+                    }
+                    let message = choice.message
+                    loggedResponse.content = message.content
+                    loggedResponse.toolCalls = message.tool_calls?.map { $0.function.name } ?? []
+                    loggedResponse.finishReason = choice.finish_reason
+                    let hasContent = !(message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                    let hasTools = !(message.tool_calls?.isEmpty ?? true)
+                    guard hasContent || hasTools else {
+                        if organizing { throw DeepSeekError.invalidResponse }
+                        if choice.finish_reason == "length" { throw YubaiError.invalid("云端回复被截断。请重试或调整模型输出空间。") }
+                        if !(message.reasoning_content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                            throw YubaiError.invalid("云端只返回了推理内容，没有返回正文。请重试或更换模型。")
+                        }
+                        throw YubaiError.invalid("云端返回空内容。")
+                    }
+                    loggedResponse.durationMilliseconds = Int((DispatchTime.now().uptimeNanoseconds - attemptStarted) / 1_000_000)
+                    sendLog.attempt(id: logID, number: number, response: loggedResponse, model: model,
+                        body: model == initial.model ? nil : attemptBody, apiKey: configuration.apiKey)
+                    if fallbackTried { await routing.recovered(using: selectedModel) }
+                    return ChatMessage(role: .assistant, content: message.content, toolCalls: message.tool_calls)
+                } catch {
+                    await ImportRequestScope.current?.controller.failed()
+                    loggedResponse.durationMilliseconds = Int((DispatchTime.now().uptimeNanoseconds - attemptStarted) / 1_000_000)
+                    loggedResponse.errorDescription = error is CancellationError ? "请求已取消。" : error.localizedDescription
+                    let fallback = organizing && fallbackAllowed && !fallbackTried && model != selectedModel && !Task.isCancelled
+                    let delay = !fallback && organizing && retryable && retry < DeepSeekRetryPolicy.delays.count && !Task.isCancelled
+                        ? DeepSeekRetryPolicy.delay(retry: retry + 1, header: retryHeader, jitter: retryJitter()) : nil
+                    sendLog.attempt(id: logID, number: number, response: loggedResponse, retryDelay: delay, model: model,
+                        body: model == initial.model ? nil : attemptBody, apiKey: configuration.apiKey)
+                    if fallback { fallbackTried = true; continue }
+                    guard let delay else { throw error }
+                    retry += 1
+                    try await retrySleep(delay)
+                    try Task.checkCancellation()
                 }
-                throw YubaiError.invalid("云端服务返回错误（HTTP \(http.statusCode)）。本机计算结果已保留。")
             }
-            struct Response: Decodable {
-                struct Choice: Decodable {
-                    struct Message: Decodable { var content: String?; var tool_calls: [ChatToolCall]?; var reasoning_content: String? }
-                    var message: Message
-                    var finish_reason: String?
-                }
-                var choices: [Choice]
-            }
-            guard let result = try? JSONDecoder().decode(Response.self, from: data), let choice = result.choices.first else {
-                throw DeepSeekError.invalidResponse
-            }
-            let message = choice.message
-            loggedResponse.content = message.content
-            loggedResponse.toolCalls = message.tool_calls?.map { $0.function.name } ?? []
-            loggedResponse.finishReason = choice.finish_reason
-            let hasContent = !(message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-            let hasTools = !(message.tool_calls?.isEmpty ?? true)
-            guard hasContent || hasTools else {
-                if organizing { throw DeepSeekError.invalidResponse }
-                if choice.finish_reason == "length" { throw YubaiError.invalid("云端回复被截断。请重试或调整模型输出空间。") }
-                if !(message.reasoning_content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
-                    throw YubaiError.invalid("云端只返回了推理内容，没有返回正文。请重试或更换模型。")
-                }
-                throw YubaiError.invalid("云端返回空内容。")
-            }
-            return ChatMessage(role: .assistant, content: message.content, toolCalls: message.tool_calls)
         } catch {
             loggedResponse.errorDescription = error is CancellationError ? "请求已取消。" : error.localizedDescription
             throw error
+        }
+    }
+
+    private static func isModelFailure(status: Int, body: Data, model: String) -> Bool {
+        DeepSeekError.modelError(status: status, body: body, model: model) != nil
+    }
+
+    /// A wall-clock bound as well as URLSession's inactivity timeout.
+    private static func attemptData(for request: URLRequest, session: URLSession) async throws -> (Data, URLResponse) {
+        try await withThrowingTaskGroup(of: (Data, URLResponse).self) { group in
+            group.addTask { try await session.data(for: request) }
+            group.addTask {
+                try await Task.sleep(for: .seconds(request.timeoutInterval))
+                throw URLError(.timedOut)
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
         }
     }
 
