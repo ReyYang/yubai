@@ -349,34 +349,45 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
     /// Goods belong to shopping; services/experiences to their domain. Tickets
     /// belong to transport; recurring monthly/yearly services to subscriptions.
     public static let defaults: [Category] = [
-        .init("餐饮", "fork.knife", subcategories: ["早餐", "午餐", "晚餐", "外卖", "咖啡饮品", "零食水果", "聚餐"],
+        .init("餐饮", "fork.knife", subcategories: ["早餐", "午餐", "晚餐", "外卖", "咖啡饮品", "零食水果", "聚餐", "买菜做饭"],
               keywords: ["吃饭", "饭", "食堂", "餐厅", "烧烤", "小吃", "面馆", "麻辣烫", "饭店", "餐饮", "烧麦", "火锅", "快餐"], subcategoryKeywords: [
                 "早餐": ["早餐", "早饭"], "午餐": ["午餐", "午饭"], "晚餐": ["晚餐", "晚饭"],
-                "外卖": ["外卖", "饿了么", "美团外卖"], "咖啡饮品": ["咖啡", "奶茶", "饮品", "coffee", "cafe", "茶饮"], "零食水果": ["零食", "水果"], "聚餐": ["聚餐"]]),
-        .init("购物", "bag", subcategories: ["日用百货", "服饰鞋包", "数码电器", "家居家电", "美妆个护", "运动户外", "书和文具"],
+                "外卖": ["外卖", "饿了么", "美团外卖"], "咖啡饮品": ["咖啡", "奶茶", "饮品", "coffee", "cafe", "茶饮"], "零食水果": ["零食", "水果"], "聚餐": ["聚餐"],
+                "买菜做饭": ["买菜", "菜市场", "生鲜", "叮咚"]]),
+        .init("购物", "bag", subcategories: ["日用百货", "服饰鞋包", "数码电器", "家居家电", "美妆个护", "运动户外", "书和文具", "烟酒", "快递"],
               keywords: ["购物", "淘宝", "京东"], subcategoryKeywords: [
-                "日用百货": ["日用", "纸巾", "洗衣", "洗衣液", "超市", "罗森", "便利店", "商店", "百货", "菜市场", "生鲜"], "服饰鞋包": ["买衣", "衣服", "买鞋", "鞋包"],
+                "日用百货": ["日用", "纸巾", "洗衣", "洗衣液", "超市", "罗森", "便利店", "商店", "百货"], "服饰鞋包": ["买衣", "衣服", "买鞋", "鞋包"],
                 "数码电器": ["手机", "电脑", "数码", "电器"], "家居家电": ["家居", "家电", "家具"], "美妆个护": ["洗发", "美妆", "个护", "护肤"],
-                "运动户外": ["登山杖", "登山鞋", "帐篷", "运动装备", "户外装备"], "书和文具": ["书籍", "买书", "文具", "办公用品"]]),
-        .init("交通", "tram", subcategories: ["公共交通", "打车", "加油停车", "共享单车", "火车飞机"], subcategoryKeywords: [
+                "运动户外": ["登山杖", "登山鞋", "帐篷", "运动装备", "户外装备"], "书和文具": ["书籍", "买书", "文具", "办公用品"],
+                "烟酒": ["烟", "香烟", "酒", "白酒", "啤酒"], "快递": ["快递", "顺丰", "邮费", "运费", "寄件"]]),
+        .init("交通", "tram", subcategories: ["公共交通", "打车", "加油停车", "共享单车", "火车飞机", "养车"], subcategoryKeywords: [
                 "公共交通": ["地铁", "公交"], "打车": ["滴滴", "打车", "出租车"], "加油停车": ["加油", "停车", "高速", "加油站", "停车场", "ETC"],
-                "共享单车": ["共享单车"], "火车飞机": ["火车", "机票", "高铁", "车票", "飞机票"]]),
-        .init("居住", "house", subcategories: ["房租", "水电燃气", "物业", "网费话费", "维修"], subcategoryKeywords: [
-                "房租": ["房租"], "水电燃气": ["水费", "电费", "燃气"], "物业": ["物业"], "网费话费": ["网费", "话费"], "维修": ["维修"]]),
+                "共享单车": ["共享单车"], "火车飞机": ["火车", "机票", "高铁", "车票", "飞机票"],
+                "养车": ["保养", "洗车", "违章", "交通罚款", "违章罚款", "交警罚款", "年检", "4S"]]),
+        .init("居住", "house", subcategories: ["房租", "水电燃气", "物业", "网费话费", "维修", "家政保洁"], subcategoryKeywords: [
+                "房租": ["房租"], "水电燃气": ["水费", "电费", "燃气"], "物业": ["物业"], "网费话费": ["网费", "话费"], "维修": ["维修"], "家政保洁": ["家政", "保洁", "钟点工", "清洁"]]),
         .init("医疗健康", "cross.case", subcategories: ["看病", "药品", "体检"], subcategoryKeywords: ["看病": ["看病", "挂号", "医院", "诊所"], "药品": ["药品", "买药", "药店", "药房"], "体检": ["体检"]]),
+        .init("美容个护", "scissors", subcategories: ["理发", "美容美甲", "洗浴按摩"], subcategoryKeywords: [
+                "理发": ["理发", "美发", "造型", "发型", "剪发", "烫发", "染发"], "美容美甲": ["美甲", "美容", "美睫"],
+                "洗浴按摩": ["洗浴", "按摩", "足疗", "SPA", "汗蒸"]]),
         .init("娱乐", "sparkles", subcategories: ["电影演出", "游戏", "运动健身", "兴趣爱好"], keywords: ["娱乐"], subcategoryKeywords: [
                 "电影演出": ["电影", "演唱会", "演出"], "游戏": ["游戏"], "运动健身": ["健身", "健身房", "球场"], "兴趣爱好": ["兴趣", "爱好"]]),
         .init("旅行", "suitcase", subcategories: ["住宿", "门票游玩", "跟团包价"], subcategoryKeywords: ["住宿": ["住宿", "酒店", "民宿"], "门票游玩": ["门票", "游玩"], "跟团包价": ["跟团", "包价"]]),
         .init("会员订阅", "repeat", subcategories: ["影音会员", "软件云服务", "其他会员"], keywords: ["会员", "订阅", "按月自动扣", "按年自动扣", "每月自动扣费", "每年自动扣费", "月费", "年费"], subcategoryKeywords: [
                 "影音会员": ["影音会员", "视频会员", "音乐会员", "电影会员"], "软件云服务": ["软件工具", "软件订阅", "软件会员", "云服务", "icloud"], "其他会员": ["其他会员", "健身房会员", "健身会员", "月卡", "年卡"]]),
         .init("学习成长", "book", subcategories: ["课程", "考试证书"], subcategoryKeywords: ["课程": ["课程", "培训"], "考试证书": ["考试", "证书"]]),
-        .init("人情家庭", "gift", subcategories: ["红包礼物", "给家人", "孩子", "宠物"], subcategoryKeywords: ["红包礼物": ["红包", "礼物"], "给家人": ["给家人"], "孩子": ["孩子"], "宠物": ["宠物"]]),
+        .init("人情家庭", "gift", subcategories: ["红包礼物", "给家人", "孩子", "宠物", "孝敬长辈", "捐赠"], subcategoryKeywords: ["红包礼物": ["红包", "礼物"], "给家人": ["给家人"], "孩子": ["孩子"], "宠物": ["宠物"],
+                "孝敬长辈": ["孝敬", "长辈", "孝敬父母"], "捐赠": ["捐款", "捐赠", "公益"]]),
+        .init("保险税费", "checkmark.shield", subcategories: ["保险", "税费"], subcategoryKeywords: [
+                "保险": ["保险", "保费", "人寿", "车险", "医疗险"], "税费": ["个税", "税费", "缴税", "纳税", "印花税", "契税"]]),
         .init("利息手续费", "percent", subcategories: ["手续费", "利息"], subcategoryKeywords: ["手续费": ["手续费"], "利息": ["利息"]]),
         .init("其他支出", "ellipsis"),
-        .init("工资奖金", "briefcase", income: true, subcategories: ["工资", "奖金", "补贴"], subcategoryKeywords: ["工资": ["工资", "薪水", "薪资"], "奖金": ["奖金", "年终奖"], "补贴": ["补贴"]]),
+        .init("工资奖金", "briefcase", income: true, subcategories: ["工资", "奖金", "补贴", "公积金"], subcategoryKeywords: ["工资": ["工资", "薪水", "薪资"], "奖金": ["奖金", "年终奖"], "补贴": ["补贴"], "公积金": ["公积金提取", "住房公积金"]]),
         .init("兼职劳务", "hammer", income: true, keywords: ["兼职", "稿费", "劳务"]),
         .init("礼金赠与", "gift", income: true, keywords: ["礼金", "赠与", "红包"]),
         .init("投资收益", "chart.line.uptrend.xyaxis", income: true, subcategories: ["利息", "基金股票"], subcategoryKeywords: ["利息": ["利息"], "基金股票": ["基金", "股票"]]),
+        .init("报销", "receipt", income: true, keywords: ["报销", "差旅报销"]),
+        .init("二手转卖", "arrow.triangle.2.circlepath", income: true, keywords: ["闲鱼", "转转", "二手", "回收"]),
         .init("其他收入", "ellipsis", income: true),
         .init("内部移动", "arrow.left.arrow.right", system: true)
     ]
@@ -646,6 +657,8 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var goals: [Goal] = []; public var rents: [Rent] = []
     public var categories = Category.defaults; public var imports: [ImportBatch] = []; public var attachments: [Attachment] = []
     public var categoryAliases: [String: String] = [:]
+    /// Independent of the file schema; older readers safely ignore this field.
+    public var defaultCategoriesVersion: Int? = CategoryMigration.currentDefaultsVersion
     public var classificationMemory: [String: String] = [:]
     // Source-compatible projections backed by the same store, never encoded.
     public var categoryMemory: [String: String] {
@@ -690,7 +703,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -712,6 +725,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         imports = try c.decode([ImportBatch].self, forKey: .imports)
         attachments = try c.decode([Attachment].self, forKey: .attachments)
         categoryAliases = try c.decodeIfPresent([String: String].self, forKey: .categoryAliases) ?? categoryAliases
+        defaultCategoriesVersion = try c.decodeIfPresent(Int.self, forKey: .defaultCategoriesVersion)
         let oldMain = try c.decodeIfPresent([String: String].self, forKey: .categoryMemory) ?? [:]
         let oldSmall = try c.decodeIfPresent([String: String].self, forKey: .subcategoryMemory) ?? [:]
         classificationMemory = try c.decodeIfPresent([String: String].self, forKey: .classificationMemory) ?? [:]
@@ -751,6 +765,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         classificationMemory = importedMemory
         preferences.quickCapture.merchantCategories = [:]
         if needsCategoryMigration { CategoryMigration.apply(to: &self) }
+        CategoryMigration.addMissingDefaults(to: &self)
         CategoryMigration.upgradeKeywords(to: &self)
         schema = 4
     }
@@ -769,6 +784,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(imports, forKey: .imports)
         try c.encode(attachments, forKey: .attachments)
         try c.encode(categoryAliases, forKey: .categoryAliases)
+        try c.encodeIfPresent(defaultCategoriesVersion, forKey: .defaultCategoriesVersion)
         try c.encode(classificationMemory, forKey: .classificationMemory)
         try c.encodeIfPresent(lastSubcategoryBatchDay, forKey: .lastSubcategoryBatchDay)
         try c.encode(subscriptionChecks, forKey: .subscriptionChecks)
@@ -797,6 +813,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.imports == rhs.imports &&
         lhs.attachments == rhs.attachments &&
         lhs.categoryAliases == rhs.categoryAliases &&
+        lhs.defaultCategoriesVersion == rhs.defaultCategoriesVersion &&
         lhs.classificationMemory == rhs.classificationMemory &&
         lhs.lastSubcategoryBatchDay == rhs.lastSubcategoryBatchDay &&
         lhs.subscriptionChecks == rhs.subscriptionChecks &&

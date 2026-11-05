@@ -1780,8 +1780,8 @@ extension ImportOrganizerTests {
     func testOrganizerCategoryResolverUsesSubcategoriesKeywordsAliasesAndDirection() {
         let resolver = ImportOrganizer.CategoryResolver(ledger: Ledger())
         let cases: [(String, String, String?)] = [
-            ("买菜", "购物", "日用百货"), ("日用", "购物", "日用百货"), ("日用百货", "购物", "日用百货"),
-            ("话费", "居住", "网费话费"), ("网费话费", "居住", "网费话费"), ("保险", "其他支出", nil),
+            ("买菜", "餐饮", "买菜做饭"), ("日用", "购物", "日用百货"), ("日用百货", "购物", "日用百货"),
+            ("话费", "居住", "网费话费"), ("网费话费", "居住", "网费话费"), ("保险", "保险税费", "保险"),
             ("外卖", "餐饮", "外卖"), ("餐饮/外卖", "餐饮", "外卖"), ("出行", "交通", nil),
             ("超市", "购物", "日用百货"), ("移动话费充值", "居住", "网费话费"), ("火锅", "餐饮", nil)
         ]
@@ -1806,10 +1806,10 @@ extension ImportOrganizerTests {
         XCTAssertEqual(resolver.resolve("唯一主项", income: false)?.category, "自定义甲")
         try CategoryModel.rename("购物", to: "生活采购", in: &ledger)
         resolver = .init(ledger: ledger)
-        XCTAssertEqual(resolver.resolve("买菜", income: false)?.category, "生活采购")
+        XCTAssertEqual(resolver.resolve("日用", income: false)?.category, "生活采购")
         try CategoryModel.setHidden(true, category: "生活采购", in: &ledger)
         resolver = .init(ledger: ledger)
-        XCTAssertNil(resolver.resolve("买菜", income: false)); XCTAssertNil(resolver.resolve("日用百货", income: false))
+        XCTAssertNil(resolver.resolve("日用", income: false)); XCTAssertNil(resolver.resolve("日用百货", income: false))
     }
     func testBothOrganizerPromptsOnlyUseAvailableMainExamplesAndExposeSubcategories() async throws {
         var (ledger, _) = partyImport(counts: [1, 1])
@@ -1818,7 +1818,7 @@ extension ImportOrganizerTests {
         let system = ImportOrganizer.prompt(for: ledger, byParty: true)
         XCTAssertTrue(system.contains("美团/饿了么→吃喝/外卖"))
         XCTAssertFalse(system.contains("→买菜")); XCTAssertFalse(system.contains("→日用"))
-        XCTAssertFalse(system.contains("→保险")); XCTAssertFalse(system.contains("→话费"))
+        XCTAssertFalse(system.contains("→保险，")); XCTAssertFalse(system.contains("→话费"))
         XCTAssertFalse(system.contains("购物/日用百货")); XCTAssertFalse(system.contains("$"))
         XCTAssertTrue(system.contains("进账选礼金赠与")); XCTAssertTrue(system.contains("进账不可使用支出分类"))
         XCTAssertTrue(system.contains("只能取categories中的name"))
@@ -1827,7 +1827,7 @@ extension ImportOrganizerTests {
             let categories = try XCTUnwrap(payload["categories"]?.arrayValue)
             XCTAssertTrue(categories.allSatisfy { $0["subcategories"]?.arrayValue != nil })
             XCTAssertFalse(categories.contains { $0["name"] == .string("购物") })
-            XCTAssertEqual(categories.first { $0["name"] == .string("吃喝") }?["subcategories"], .strings(["早餐", "午餐", "晚餐", "外卖", "咖啡饮品", "零食水果", "聚餐"]))
+            XCTAssertEqual(categories.first { $0["name"] == .string("吃喝") }?["subcategories"], .strings(["早餐", "午餐", "晚餐", "外卖", "咖啡饮品", "零食水果", "聚餐", "买菜做饭"]))
             return .object(["groups": .array([]), "rows": .array([])])
         }
         _ = try await ImportOrganizer(transport: script).organize(ledger: ledger, entryIDs: ledger.entries.map(\.id))
@@ -1859,7 +1859,7 @@ extension ImportOrganizerTests {
             for entry in ledger.entries {
                 if entry.category == "购物" { XCTAssertEqual(entry.subcategory, "日用百货") }
                 if entry.category == "居住" { XCTAssertEqual(entry.subcategory, "网费话费") }
-                if entry.category == "餐饮" { XCTAssertEqual(entry.subcategory, "外卖") }
+                if entry.category == "餐饮" { XCTAssertTrue(["外卖", "买菜做饭"].contains(entry.subcategory ?? "")) }
             }
             XCTAssertTrue(ledger.classificationMemory.isEmpty)
         }

@@ -2,6 +2,74 @@ import Foundation
 
 /// Schema 1/2 legacy names and schema 3 split categories migrate together once.
 public enum CategoryMigration {
+    public static let currentDefaultsVersion = 2
+    // Version 1 is the pre-expansion table. Never offer its absent paths to an
+    // unversioned ledger: absence may be an old deletion without an alias.
+    // Retain each release's manifest when adding future versions.
+    private static let additions: [(version: Int, paths: [String])] = [(2, [
+        "美容个护", "保险税费", "报销", "二手转卖", "交通/养车", "餐饮/买菜做饭",
+        "购物/烟酒", "购物/快递", "人情家庭/孝敬长辈", "人情家庭/捐赠", "居住/家政保洁", "工资奖金/公积金"
+    ])]
+    private static let oldDailyWords = ["日用", "纸巾", "洗衣", "洗衣液", "超市", "罗森", "便利店", "商店", "百货", "菜市场", "生鲜"]
+
+    /// Add release-specific paths once, including when an alias or hidden parent
+    /// prevents an offer. User order is retained; new mains follow the nearest
+    /// preceding default neighbour (or precede a following one when none exists).
+    public static func addMissingDefaults(to ledger: inout Ledger) {
+        let seen = ledger.defaultCategoriesVersion ?? 1
+        guard seen < currentDefaultsVersion else { return }
+        let aliases = Set(ledger.categoryAliases.keys).union(ledger.categoryAliases.values)
+        func mentioned(_ path: String) -> Bool {
+            aliases.contains { $0 == path || (!path.contains("/") && $0.hasPrefix(path + "/")) }
+        }
+        for release in additions where release.version > seen {
+            if release.version == 2, let i = ledger.categories.firstIndex(where: { $0.name == "购物" }),
+               ledger.categories[i].subcategoryKeywords["日用百货"] == oldDailyWords {
+                // Only an untouched old list can lose words. Custom lists retain
+                // every word, even an explicitly re-added default word.
+                ledger.categories[i].subcategoryKeywords["日用百货"] = oldDailyWords.filter { !["菜市场", "生鲜"].contains($0) }
+            }
+            for path in release.paths {
+                let choice = CategoryAssignment(path: path)
+                guard let defaults = Category.defaults.first(where: { $0.name == choice.category }), !mentioned(path) else { continue }
+                if let sub = choice.subcategory {
+                    guard let i = ledger.categories.firstIndex(where: { $0.name == choice.category && !$0.hidden && !$0.system && $0.income == defaults.income }),
+                          ledger.categoryAliases[choice.category] == nil,
+                          !ledger.categories[i].subcategories.contains(sub) else { continue }
+                    ledger.categories[i].subcategories.append(sub)
+                    ledger.categories[i].subcategoryKeywords[sub] = defaults.subcategoryKeywords[sub]
+                } else {
+                    guard !ledger.categories.contains(where: { $0.name == choice.category }) else { continue }
+                    ledger.categories.append(defaults)
+                    insert(choice.category, income: defaults.income, into: &ledger.preferences.categoryOrder)
+                }
+            }
+        }
+        // Materialize the existing fallback order too: user-added categories may
+        // not yet be in preferences. This preserves their effective relative order
+        // while allowing each catch-all to remain last for its direction.
+        for category in ledger.categories where !category.system && !ledger.preferences.categoryOrder.contains(category.name) {
+            ledger.preferences.categoryOrder.append(category.name)
+        }
+        for (other, income) in [("其他支出", false), ("其他收入", true)] {
+            guard ledger.preferences.categoryOrder.contains(other) else { continue }
+            ledger.preferences.categoryOrder.removeAll { $0 == other }
+            let sameDirection = Set(ledger.categories.filter { !$0.system && $0.income == income }.map(\.name))
+            let last = ledger.preferences.categoryOrder.lastIndex { sameDirection.contains($0) }
+            ledger.preferences.categoryOrder.insert(other, at: last.map { $0 + 1 } ?? ledger.preferences.categoryOrder.endIndex)
+        }
+        ledger.defaultCategoriesVersion = currentDefaultsVersion
+    }
+    private static func insert(_ name: String, income: Bool, into order: inout [String]) {
+        guard !order.contains(name) else { return }
+        let defaults = Category.defaults.filter { !$0.system && $0.income == income }.map(\.name)
+        guard let position = defaults.firstIndex(of: name) else { return }
+        if let previous = defaults[..<position].reversed().compactMap({ order.firstIndex(of: $0) }).first {
+            order.insert(name, at: previous + 1)
+        } else if let following = defaults.dropFirst(position + 1).compactMap({ order.firstIndex(of: $0) }).first {
+            order.insert(name, at: following)
+        } else { order.append(name) }
+    }
     /// Default vocabulary is additive data; apply on every load without reviving removed small items.
     public static func upgradeKeywords(to ledger: inout Ledger) {
         for i in ledger.categories.indices where !ledger.categories[i].system {
@@ -64,7 +132,15 @@ public enum CategoryMigration {
         // Preserve custom categories that cannot map to the new table. Merge
         // custom small items into their mapped destinations without reviving the
         // overlapping schema-3 defaults.
-        var categories = Category.defaults
+        // The schema migration uses the old baseline. Release additions are
+        // offered afterwards with the same alias/deletion protection as schema 4.
+        let introduced = Set(additions.flatMap(\.paths))
+        var categories = Category.defaults.filter { !introduced.contains($0.name) }.map { category in
+            var value = category
+            value.subcategories.removeAll { introduced.contains(category.name + "/" + $0) }
+            value.subcategoryKeywords = value.subcategoryKeywords.filter { value.subcategories.contains($0.key) }
+            return value
+        }
         let replaced = Set(["娱乐旅行", "学习工作"])
         for old in original.categories {
             let mapped = map(.init(category: old.name)).category
@@ -92,6 +168,10 @@ public enum CategoryMigration {
             ledger.entries[i].category = Classification.pendingCategory; ledger.entries[i].subcategory = nil
         }
         CategoryReferences.rewrite(&ledger, using: map)
+        if let old = original.categories.first(where: { $0.name == "购物" }), old.subcategoryKeywords["日用百货"] == oldDailyWords,
+           let i = categories.firstIndex(where: { $0.name == "购物" }) {
+            categories[i].subcategoryKeywords["日用百货"] = oldDailyWords
+        }
         ledger.categories = categories
         for old in original.categories {
             let mapped = map(.init(category: old.name))

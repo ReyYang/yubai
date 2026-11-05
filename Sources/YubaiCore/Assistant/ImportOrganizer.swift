@@ -247,11 +247,13 @@ public struct ImportOrganizer: Sendable {
         func choice(_ path: String, income: Bool) -> String {
             available(path, income: income) ?? available(income ? "其他收入" : "其他支出", income: income) ?? "不返回分类"
         }
-        let examples: [(String, String)] = [("美团/饿了么", "餐饮/外卖"), ("高德/滴滴/12306", "交通"),
-            ("盒马/小象超市/叮咚买菜", "购物/日用百货"), ("保险公司", "其他支出"), ("通信运营商", "居住/网费话费")]
-        let validExamples = examples.compactMap { merchant, path -> String? in
+        let examples: [(String, String, Bool)] = [("美团/饿了么", "餐饮/外卖", false), ("高德/滴滴/12306", "交通", false),
+            ("超市/便利店", "购物/日用百货", false), ("叮咚买菜/菜市场/生鲜", "餐饮/买菜做饭", false),
+            ("理发店/造型", "美容个护/理发", false), ("保险公司", "保险税费/保险", false), ("个税", "保险税费/税费", false),
+            ("通信运营商", "居住/网费话费", false), ("差旅报销", "报销", true), ("闲鱼/转转", "二手转卖", true)]
+        let validExamples = examples.compactMap { merchant, path, income -> String? in
             let value = ledger.categoryAssignment(category: CategoryAssignment(path: path).category, subcategory: CategoryAssignment(path: path).subcategory)
-            guard let main = ledger.selectableCategories.first(where: { $0.name == value.category && !$0.income }) else { return nil }
+            guard let main = ledger.selectableCategories.first(where: { $0.name == value.category && $0.income == income }) else { return nil }
             let sub = value.subcategory.flatMap { main.subcategories.contains($0) ? $0 : nil }
             return merchant + "→" + main.name + (sub.map { "/" + $0 } ?? "")
         }
@@ -305,7 +307,7 @@ public struct ImportOrganizer: Sendable {
                 return direction(.init(category: first.category, subcategory: subs.count == 1 ? subs.first : nil))
             }
             if !exact.isEmpty { return unique(exact) }
-            let aliases = ["买菜": "购物/日用百货", "日用": "购物/日用百货", "话费": "居住/网费话费", "保险": "其他支出", "出行": "交通"]
+            let aliases = ["买菜": "餐饮/买菜做饭", "日用": "购物/日用百货", "话费": "居住/网费话费", "保险": "保险税费/保险", "出行": "交通"]
             if let path = aliases[label], let value = validated(CategoryAssignment(path: path)) { return direction(value) }
             let old = CategoryMigration.canonical(label)
             let legacy = CategoryAssignment(category: old.category, subcategory: old.subcategory)
