@@ -1,5 +1,8 @@
 import SwiftUI
 import YubaiCore
+#if os(iOS)
+import UIKit
+#endif
 
 struct ManualSheetHeader: View {
     let title: String
@@ -180,17 +183,237 @@ struct EntryDateChip: View {
 struct RecentPurposeChips: View {
     @Environment(AppStore.self) private var store
     @Binding var selection: String
-    private var recent: [String] {
-        var seen = Set<String>()
-        return Array(store.sortedEntries.filter { $0.deletedAt == nil }.compactMap { entry -> String? in
-            let text = (entry.purpose ?? entry.title).trimmingCharacters(in: .whitespacesAndNewlines)
-            return !text.isEmpty && seen.insert(text).inserted ? text : nil
-        }.prefix(3))
+    @State private var recent: [String] = []
+    var body: some View {
+        VStack(spacing: 0) {
+            if !recent.isEmpty {
+                SuggestionChips(values: recent, selected: selection, identifierPrefix: "recentPurpose_", singleLine: true) { selection = $0 }
+                    .padding(.vertical, YubaiSpace.space8).accessibilityLabel("最近用过的用途")
+            }
+        }
+        // Cache at the ledger boundary, never scan history on a keypad frame.
+        .task(id: store.current.updatedAt) {
+            recent = ManualBookkeeping.recentPurposes(sortedEntries: store.sortedEntries, categories: store.current.categories)
+        }
+    }
+}
+
+/// Shared by quick entry, entry editing and fixed-flow amounts.
+struct AmountKeypad: View {
+    @Binding var keypad: EntryKeypad
+    @Binding var amountSelected: Bool
+    let canSave: Bool
+    let primaryTitle: String
+    let primaryIdentifier: String
+    let save: () -> Void
+    var saveAnother: (() -> Void)? = nil
+    @StateObject private var feedback = AmountKeypadFeedback()
+    private let rows = [["1", "2", "3", "⌫"], ["4", "5", "6", "+"], ["7", "8", "9", "−"]]
+
+    init(keypad: Binding<EntryKeypad>, amountSelected: Binding<Bool> = .constant(false), canSave: Bool,
+         primaryTitle: String, primaryIdentifier: String, save: @escaping () -> Void, saveAnother: (() -> Void)? = nil) {
+        _keypad = keypad; _amountSelected = amountSelected; self.canSave = canSave
+        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.save = save; self.saveAnother = saveAnother
     }
     var body: some View {
-        if !recent.isEmpty {
-            SuggestionChips(values: recent, selected: selection, identifierPrefix: "recentPurpose_", singleLine: true) { selection = $0 }
-                .padding(.vertical, YubaiSpace.space8).accessibilityLabel("最近用过的用途")
+        VStack(spacing: 0) {
+            GeometryReader { geometry in
+                let keyWidth = max(0, (geometry.size.width - 18) / 4)
+                VStack(spacing: 6) {
+                    ForEach(rows.indices, id: \.self) { row in
+                        HStack(spacing: 6) { ForEach(rows[row], id: \.self) { key in
+                            AmountKeypadKey(key: key, keypad: $keypad, amountSelected: $amountSelected, feedback: feedback)
+                                .frame(width: keyWidth)
+                        } }
+                    }
+                    HStack(spacing: 6) {
+                        AmountKeypadKey(key: ".", keypad: $keypad, amountSelected: $amountSelected, feedback: feedback)
+                            .frame(width: keyWidth)
+                        AmountKeypadKey(key: "0", keypad: $keypad, amountSelected: $amountSelected, feedback: feedback)
+                            .frame(width: keyWidth)
+                        Button(action: save) {
+                            Text(primaryTitle).yubaiFont(YubaiFont.keypadAction)
+                                .lineLimit(1).minimumScaleFactor(0.6).frame(maxWidth: .infinity).frame(height: 52)
+                        }.buttonStyle(AmountKeyButtonStyle(primary: true))
+                            .frame(width: keyWidth * 2 + 6).opacity(canSave ? 1 : 0.4).disabled(!canSave)
+                            .accessibilityIdentifier(primaryIdentifier)
+                    }
+                }
+            }.frame(height: 52 * 4 + 6 * 3)
+            if let saveAnother {
+                Button("记下，再记一笔", action: saveAnother).yubaiFont(YubaiFont.body)
+                    .foregroundStyle(YubaiColor.labelMuted).frame(maxWidth: .infinity, minHeight: 44)
+                    .buttonStyle(.plain).disabled(!canSave).accessibilityIdentifier("saveAndAddAnother")
+            }
+        }.padding(.horizontal, 8).padding(.top, 10).padding(.bottom, saveAnother == nil ? 8 : 0)
+            .frame(maxWidth: 620).frame(maxWidth: .infinity)
+            .background {
+                UnevenRoundedRectangle(topLeadingRadius: YubaiRadius.card, topTrailingRadius: YubaiRadius.card)
+                    .fill(YubaiColor.keypadTray).ignoresSafeArea(edges: .bottom)
+            }
+            .accessibilityElement(children: .contain).accessibilityLabel("数字键盘")
+            .onAppear { feedback.prepare() }
+    }
+}
+
+private struct AmountKeypadKey: View {
+    let key: String
+    @Binding var keypad: EntryKeypad
+    @Binding var amountSelected: Bool
+    let feedback: AmountKeypadFeedback
+    @State private var holdTask: Task<Void, Never>?
+    @State private var clearedOnHold = false
+    private var selected: Bool { keypad.pendingOperator == key }
+    var body: some View {
+        Button {
+            guard !clearedOnHold else { return }
+            keypad.press(key, replacingAmount: amountSelected); amountSelected = false
+        } label: {
+            Group {
+                if key == "⌫" { Image(systemName: "delete.left") }
+                else { Text(key) }
+            }.yubaiFont(YubaiFont.amountAccount, weight: .regular)
+                .frame(maxWidth: .infinity).frame(height: 52)
+        }.buttonStyle(AmountKeyButtonStyle(function: ["⌫", "+", "−"].contains(key), selected: selected, pressing: pressChanged))
+            .accessibilityLabel(key == "⌫" ? "删除一位" : key == "+" ? "加" : key == "−" ? "减" : key == "." ? "小数点" : key)
+            .accessibilityIdentifier("keypad_" + key).accessibilityAddTraits(selected ? .isSelected : [])
+            .onDisappear { holdTask?.cancel() }
+    }
+    private func pressChanged(_ pressed: Bool) {
+        holdTask?.cancel()
+        guard pressed else { return }
+        clearedOnHold = false
+        var next = keypad; next.press(key, replacingAmount: amountSelected)
+        feedback.press(key, accepted: next != keypad)
+        guard key == "⌫" else { return }
+        holdTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            guard !Task.isCancelled else { return }
+            clearedOnHold = true; keypad.reset(); amountSelected = false; feedback.clear()
         }
+    }
+}
+
+private struct AmountKeyButtonStyle: ButtonStyle {
+    var primary = false
+    var function = false
+    var selected = false
+    var pressing: (Bool) -> Void = { _ in }
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        let fill = primary ? (pressed ? YubaiColor.brandInk : YubaiColor.brand)
+            : pressed ? (function ? YubaiColor.keyFnPressed : YubaiColor.keyPressed)
+            : selected ? YubaiColor.brandTint : (function ? YubaiColor.keyFn : YubaiColor.key)
+        return configuration.label
+            .foregroundStyle(primary ? YubaiColor.onBrand : selected ? YubaiColor.brandInk : YubaiColor.label)
+            .background(fill, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .overlay {
+                if selected { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: 1.5) }
+            }
+            .shadow(color: primary || selected || pressed ? .clear : YubaiColor.shadowKey, radius: 0, x: 0, y: 1)
+            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .animation(pressed ? nil : .easeOut(duration: YubaiMotion.durationQuick), value: pressed)
+            .onChange(of: pressed) { _, value in pressing(value) }
+    }
+}
+
+@MainActor private final class AmountKeypadFeedback: ObservableObject {
+    #if os(iOS)
+    private let light = UIImpactFeedbackGenerator(style: .light)
+    private let medium = UIImpactFeedbackGenerator(style: .medium)
+    private let rigid = UIImpactFeedbackGenerator(style: .rigid)
+    #endif
+    func prepare() {
+        #if os(iOS)
+        light.prepare(); medium.prepare(); rigid.prepare()
+        #endif
+    }
+    func press(_ key: String, accepted: Bool) {
+        #if os(iOS)
+        if !accepted { rigid.impactOccurred(intensity: 0.5); rigid.prepare() }
+        else if key == "+" || key == "−" { medium.impactOccurred(); medium.prepare() }
+        else { light.impactOccurred(); light.prepare() }
+        #endif
+    }
+    func clear() {
+        #if os(iOS)
+        medium.impactOccurred(); prepare()
+        #endif
+    }
+}
+
+/// A single button keeps the entire amount accessible and avoids decimalPad.
+struct EditableAmountDisplay: View {
+    let amount: String
+    let keypad: EntryKeypad
+    let presented: Bool
+    let selected: Bool
+    let identifier: String
+    let open: () -> Void
+    var body: some View {
+        Button(action: open) {
+            VStack(alignment: .leading, spacing: 0) {
+                if presented, let expression = keypad.expressionText {
+                    Text(expression).yubaiFont(YubaiFont.amount).foregroundStyle(YubaiColor.labelSecondary)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                    Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
+                    Text(presented ? keypad.displayText : ((try? Money.parse(amount)).map { EntryKeypad(amount: $0).resultText } ?? "0.00"))
+                        .yubaiFont(YubaiFont.amountDisplay).lineLimit(1).minimumScaleFactor(0.5)
+                        .padding(.horizontal, 6)
+                        .background(selected ? YubaiColor.brandTint : .clear, in: RoundedRectangle(cornerRadius: 10))
+                    Spacer(minLength: 0)
+                }.frame(minHeight: YubaiSize.rowDouble)
+            }.contentShape(Rectangle())
+        }.buttonStyle(.plain).foregroundStyle(YubaiColor.label)
+            .accessibilityLabel("金额").accessibilityValue(presented ? keypad.resultText : amount)
+            .accessibilityIdentifier(identifier)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: AmountEditorFrame.self, value: proxy.frame(in: .named("amountEditor")))
+                }
+            }
+    }
+}
+
+private struct AmountEditorFrame: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+private struct AmountEditorOutsideTap: ViewModifier {
+    let presented: Bool
+    let finish: () -> Void
+    @State private var amountFrame = CGRect.zero
+    func body(content: Content) -> some View {
+        content.contentShape(Rectangle()).coordinateSpace(name: "amountEditor")
+            .onPreferenceChange(AmountEditorFrame.self) { amountFrame = $0 }
+            .simultaneousGesture(SpatialTapGesture().onEnded { event in
+                if presented && !amountFrame.contains(event.location) { finish() }
+            })
+    }
+}
+
+extension View {
+    func finishAmountOnOutsideTap(presented: Bool, finish: @escaping () -> Void) -> some View {
+        modifier(AmountEditorOutsideTap(presented: presented, finish: finish))
+    }
+}
+
+struct EntryRepeatChip: View {
+    var selected: Bool
+    var value: String
+    var opensPlan = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(value + (opensPlan ? " ›" : "")).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(height: YubaiSize.chipHeight)
+                .background(selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
+                .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
+                .yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryRepeat")
+            .accessibilityLabel("重复").accessibilityValue(value).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

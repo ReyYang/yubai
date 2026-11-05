@@ -4,6 +4,7 @@ import Foundation
 public struct EntryKeypad: Equatable, Sendable {
     public private(set) var expression = "0"
     public init() {}
+    public init(amount: Int64) { expression = Money.input(amount) }
     public var amount: Int64? { try? Self.evaluate(expression) }
     public var canSave: Bool { amount.map { $0 > 0 && $0 <= Money.limit } ?? false }
     public var resultText: String {
@@ -34,6 +35,7 @@ public struct EntryKeypad: Equatable, Sendable {
         if key == "⌫" { expression = expression.count > 1 ? String(expression.dropLast()) : "0"; return }
         let key = key == "−" ? "-" : key
         if key == "+" || key == "-" {
+            guard expression != "0" else { return }
             var next = expression
             if next.last == "+" || next.last == "-" { next.removeLast() }
             guard (try? Self.evaluate(next)) != nil else { return }

@@ -344,3 +344,145 @@ final class ManualBookkeepingTests: XCTestCase {
         XCTAssertEqual(shifted.days.flatMap(\.entries).map(\.id), [nextMonth.id])
     }
 }
+
+final class EntryRepetitionTests: XCTestCase {
+    private let now = Dates.parse("2026-11-05 14:30:00")!
+    private func day(_ text: String) -> Date { Dates.parse(text)! }
+    private func fixture() -> Ledger {
+        var ledger = Ledger()
+        ledger.accounts = [Account(name: "银行卡", balance: 100_000, at: day("2026-01-01"))]
+        return ledger
+    }
+    private func entry(in ledger: Ledger, nature: Nature = .expense) -> Entry {
+        var entry = Entry(date: now, amount: 3850, nature: nature, accountID: ledger.accounts[0].id, title: "旧标题", category: nature.inflow ? "工资奖金" : "餐饮")
+        entry.purpose = " 午饭 \n"
+        return entry
+    }
+    func testMonthlyPlanCopiesAmountDateAccountCategoryAndTrimmedPurpose() throws {
+        let source = entry(in: fixture())
+        let plan = try FixedFlows.monthlyPlan(from: source)
+        XCTAssertEqual(plan.title, "午饭"); XCTAssertEqual(plan.amount, 3850)
+        XCTAssertEqual(plan.frequency, .monthly); XCTAssertEqual(plan.dueDate, Dates.day(now)); XCTAssertEqual(plan.monthlyDay, 5)
+        XCTAssertEqual(plan.accountID, source.accountID); XCTAssertEqual(plan.category, source.category)
+        XCTAssertEqual(plan.nature, .expense); XCTAssertFalse(plan.inflow)
+        XCTAssertFalse(plan.autoPay); XCTAssertFalse(plan.estimated); XCTAssertTrue(plan.active)
+        XCTAssertNil(plan.installments); XCTAssertNil(plan.endDate)
+    }
+    func testEmptyPurposeFallsBackToCategoryIncludingWhitespaceAndNil() throws {
+        var source = entry(in: fixture())
+        for purpose in [nil, "", " \n "] as [String?] {
+            source.purpose = purpose
+            XCTAssertEqual(try FixedFlows.monthlyPlan(from: source).title, "餐饮")
+        }
+    }
+    func testIncomePlanAndFirstPaymentHaveIncomeDirection() throws {
+        var ledger = fixture()
+        let change = try FixedFlows.monthlyEntryChange(amount: 50_000, nature: .income, accountID: ledger.accounts[0].id,
+                                                      day: now, purpose: "劳务", category: "兼职劳务", now: now)
+        try change.apply(to: &ledger)
+        XCTAssertEqual(ledger.plans.count, 1); XCTAssertEqual(ledger.entries.count, 1)
+        XCTAssertTrue(ledger.plans[0].inflow); XCTAssertEqual(ledger.plans[0].nature, .income)
+        XCTAssertEqual(ledger.entries[0].nature, .income)
+        XCTAssertEqual(FixedFlows.month(containing: now, in: ledger).occurrences.first?.state, .paid)
+        XCTAssertEqual(Finance.occurrences(in: ledger, now: now, days: 40).first?.inflow, true)
+    }
+    func testNontransferSpecialNatureRetainsLedgerLinkInvariant() throws {
+        var ledger = fixture(); var source = entry(in: ledger, nature: .refund)
+        source.category = "餐饮"; ledger.entries = [source]
+        try FixedFlows.repeatMonthly(source, in: &ledger)
+        XCTAssertEqual(ledger.plans[0].nature, .refund); XCTAssertTrue(ledger.plans[0].inflow)
+        XCTAssertEqual(ledger.entries[0].nature, ledger.plans[0].nature)
+        XCTAssertNoThrow(try ledger.validate())
+    }
+    func testOneChangeSetAddsPlanAndLinkedFirstPeriodAndLeavesNextMonthUnpaid() throws {
+        var ledger = fixture()
+        let change = try FixedFlows.monthlyEntryChange(amount: 3850, nature: .expense, accountID: ledger.accounts[0].id,
+                                                      day: now, purpose: "午饭", category: "餐饮", now: now)
+        XCTAssertEqual(change.items.count, 2)
+        guard case .addPlan(let proposed) = change.items[0], case .addEntry(let draft) = change.items[1] else {
+            return XCTFail("Plan and payment must be atomic")
+        }
+        XCTAssertEqual(draft.planID, proposed.id); XCTAssertEqual(draft.occurrence, Dates.day(now))
+        try change.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries[0].planID, ledger.plans[0].id)
+        XCTAssertEqual(ledger.entries[0].occurrence, Dates.day(now)); XCTAssertEqual(ledger.entries[0].date, now)
+        let month = FixedFlows.month(containing: now, in: ledger)
+        XCTAssertEqual(month.occurrences.first?.state, .paid); XCTAssertEqual(month.remainingOutflow, 0)
+        let next = try XCTUnwrap(Finance.occurrences(in: ledger, now: now, days: 40).first)
+        XCTAssertEqual(next.planID, ledger.plans[0].id); XCTAssertEqual(next.date, day("2026-12-05")); XCTAssertEqual(next.amount, 3850)
+        XCTAssertThrowsError(try FixedFlows.settle(planID: proposed.id, occurrence: now, in: ledger, now: now))
+    }
+    func testMonthEndRecoversOriginalDayAfterFebruary() throws {
+        var ledger = fixture(); var source = entry(in: ledger)
+        source.date = day("2027-01-31"); source.purpose = "房租"; ledger.entries = [source]
+        try FixedFlows.repeatMonthly(source, in: &ledger)
+        let dates = Finance.occurrences(in: ledger, now: source.date, days: 65).map(\.date)
+        XCTAssertEqual(Array(dates.prefix(2)), [day("2027-02-28"), day("2027-03-31")])
+    }
+    func testEditedEntryAndPlanSaveTogetherWithoutAddingAnotherPayment() throws {
+        var ledger = fixture(); let source = entry(in: ledger); ledger.entries = [source]
+        var edited = source; edited.amount = 4200; edited.date = day("2026-11-04"); edited.purpose = "晚饭"
+        try FixedFlows.repeatMonthly(edited, in: &ledger)
+        XCTAssertEqual(ledger.entries.count, 1); XCTAssertEqual(ledger.plans.count, 1)
+        XCTAssertEqual(ledger.plans[0].title, "晚饭"); XCTAssertEqual(ledger.plans[0].amount, 4200)
+        XCTAssertEqual(ledger.entries[0].amount, 4200); XCTAssertTrue(ledger.entries[0].userEdited)
+        XCTAssertEqual(ledger.entries[0].occurrence, day("2026-11-04"))
+        XCTAssertEqual(FixedFlows.month(containing: now, in: ledger).occurrences.first?.state, .paid)
+    }
+    func testRepeatEditRejectsAlreadyLinkedEntryAndMissingEntryAtomically() throws {
+        var ledger = fixture(); let source = entry(in: ledger); ledger.entries = [source]
+        try FixedFlows.repeatMonthly(source, in: &ledger)
+        let before = ledger
+        XCTAssertThrowsError(try FixedFlows.repeatMonthly(ledger.entries[0], in: &ledger)); XCTAssertEqual(ledger, before)
+        XCTAssertThrowsError(try FixedFlows.repeatMonthly(source, in: &ledger)); XCTAssertEqual(ledger, before)
+        XCTAssertThrowsError(try FixedFlows.repeatMonthly(entry(in: ledger), in: &ledger)); XCTAssertEqual(ledger, before)
+    }
+    func testTransferAndInvalidAmountsAreRejectedWithoutChanges() throws {
+        var ledger = fixture(); let source = entry(in: ledger, nature: .transfer); ledger.entries = [source]
+        let before = ledger
+        XCTAssertThrowsError(try FixedFlows.monthlyPlan(from: source))
+        XCTAssertThrowsError(try FixedFlows.repeatMonthly(source, in: &ledger)); XCTAssertEqual(ledger, before)
+        XCTAssertThrowsError(try FixedFlows.monthlyEntryChange(amount: 100, nature: .transfer, accountID: source.accountID,
+                                                             day: now, purpose: "", category: "转账", now: now))
+        for amount in [Int64(0), -1, Money.limit + 1] {
+            var invalid = source; invalid.nature = .expense; invalid.amount = amount
+            XCTAssertThrowsError(try FixedFlows.monthlyPlan(from: invalid))
+        }
+    }
+    func testRecentPurposesExcludeCategoryAndSmallItemNamesBeforeLimiting() {
+        var ledger = fixture()
+        ledger.categories.append(Category("自定义", subcategories: ["小分类"]))
+        let titles = ["餐饮", "交通", "购物", "小分类", "没分类", "自定义", "午饭", "午饭", "车票", "书店", "其他用途"]
+        var entries = titles.map { Entry(date: now, amount: 100, accountID: ledger.accounts[0].id, title: $0) }
+        var deleted = entries[6]; deleted.deletedAt = now; deleted.purpose = "不该出现"; entries.insert(deleted, at: 0)
+        XCTAssertEqual(ManualBookkeeping.recentPurposes(sortedEntries: entries, categories: ledger.categories), ["午饭", "车票", "书店"])
+        XCTAssertEqual(ManualBookkeeping.recentPurposes(sortedEntries: entries, categories: ledger.categories, limit: 0), [])
+        entries[1].purpose = " 餐饮 \n"
+        XCTAssertEqual(ManualBookkeeping.recentPurposes(sortedEntries: entries, categories: ledger.categories, limit: 1), ["午饭"])
+    }
+    func testSelectedAmountIsReplacedByDigitsOrDecimalAndEditedByDeleteOrOperator() {
+        var pad = EntryKeypad(amount: 3850)
+        pad.press("2", replacingAmount: true); XCTAssertEqual(pad.amount, 200)
+        pad = EntryKeypad(amount: 3850); pad.press(".", replacingAmount: true)
+        XCTAssertEqual(pad.expression, "0."); pad.press("5"); XCTAssertEqual(pad.amount, 50)
+        pad = EntryKeypad(amount: 3850); let expression = pad.expression
+        pad.press("⌫", replacingAmount: true); XCTAssertEqual(pad.expression, String(expression.dropLast()))
+        for key in ["+", "−"] {
+            pad = EntryKeypad(amount: 3850); pad.press(key, replacingAmount: true)
+            XCTAssertEqual(pad.amount, 3850); XCTAssertEqual(pad.pendingOperator, key)
+        }
+        XCTAssertEqual(EntryKeypad(amount: -250).amount, -250)
+    }
+    func testTouchPredictionRejectsEmptyDeleteOperatorsDecimalsAndOverflowWithoutMutating() {
+        for key in ["⌫", "+", "−"] {
+            let pad = EntryKeypad(); var next = pad; next.press(key)
+            XCTAssertEqual(next, pad)
+        }
+        for (amount, key) in [(Int64(123), "4"), (Money.limit, "9")] {
+            let pad = EntryKeypad(amount: amount); var next = pad; next.press(key)
+            XCTAssertEqual(next, pad); XCTAssertEqual(pad.amount, amount)
+        }
+        var pad = EntryKeypad(amount: 3850); pad.press("+"); pad.press("2"); pad.reset()
+        XCTAssertEqual(pad, EntryKeypad()); XCTAssertNil(pad.expressionText); XCTAssertNil(pad.pendingOperator)
+    }
+}

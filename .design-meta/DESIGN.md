@@ -1,5 +1,43 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-05 · 第三十三轮「记账重新做」（owner 明确规格）
+
+本轮采用 owner 任务内给出的八节设计系统与交互规格，不另推定外部原稿。取代第四轮／第十七轮键盘的底色、按下透明度和缩放；运算符亮起、用途键盘轮流及既有保存动效保持。原型与历史记录继续保留；外部设计资源未同步。
+
+| 规格 | 实现与边界 |
+|---|---|
+| 1. 颜色 | `DesignSystem.swift / YubaiColor` 新增 keypadTray、key、keyFn、keyPressed、keyFnPressed、shadowKey 的浅／深色。实影为 y=1、blur=0，按下去掉；沿用品牌、字色和圆角 token。 |
+| 2. 托盘 | `EntryFormComponents.swift / AmountKeypad`：顶角22、左右8／上10、52高／6间距／14圆角；按可用宽度精确平分四列，主键占两列。「记下」禁用时40%，有效时带两位金额；编辑主键「好」。底延至安全区；连续记账按钮15pt／44pt，仅记一笔出现。 |
+| 3. 触感 | 专用 ButtonStyle 用 isPressed 在按下时立即换色／去影，不缩放或变透明，松开160ms ease-out；系统 Button 松手输入／滑出取消。UIKit 生成器出现时预热，副本预判拒绝给 rigid 0.5，数字／删除 light、运算符 medium。删除按住500ms reset／medium，松手抑制单删；连续保存清掉 deferred 状态并推进原 success trigger 一次，未改 AppStore。 |
+| 4. 输入帧 | QuickEntry 的预览和匹配以150ms可取消 Task 合并输入，原 Core 算法在 detached task 计算，回主线程前检查取消，结果存 State；body 不扫描账本。保存时重验匹配，避免抢在 debounce 前保存到失效建议。固定收付编辑的日期预览在托盘打开时保留快照。 |
+| 5. 表单 | 用途加 owner 指定的 secondary「可不填」。Core recentPurposes 在取前3项前过滤全部主项／显示名／子项／没分类，保留原 recency、去重及删除过滤；最近用途按账本更新时间缓存。用途聚焦时整个托盘及连续按钮收起。 |
+| 6. 编辑共用 | EntryEditView（含 Apple Pay）、FixedFlowEditor 添加／改及原第二个 numericInput「这期金额」均改用 EditableAmountDisplay 和同一托盘。打开整段高亮，数字／小数点替换、删除／运算符接原值；好／外部点按 resolve 再用 Money.input 回写。名字／用途／备注聚焦收起，ScrollViewReader 在布局后定位金额，沿用 layout 动画／减少动态效果。 |
+| 7. 重复 | 记一笔日期后、改一笔时间与备注间的32pt芯片；转账隐藏，已选固定收付建议隐藏并取消新重复。新计划与首笔关联同一 ChangeSet；改账用同一次 store.update 原子追加计划／更新关联。月日跟日期；连续记账重置。已有 planID 芯片显示计划月日或频率并打开原固定收付编辑，不能本地取消。Core `EntryRepetition.swift` 复用 ManualBookkeeping.change 的 link 和 edit，首期已付、下一期正常排入下月。 |
+| 8. 无障碍 | 保留 keypad_X、saveQuickEntry、saveAndAddAnother、editEntryAmount 等标识，新增 entryRepeat／amountKeypadDone。金额由 TextField 变为可点按钮；运算符和重复的选中 traits、重复 value、禁用主键保留。UI 测试查询同步更新，旧固定收付输入改为点托盘。 |
+
+新增／变化的可见中文：控件「重复」「不重复」「每月 N 号」「每月 N 号 ›」「频率 ›」「记下」（禁用态）、「好」（托盘），状态后缀「 · 每月 N 号」，金额事实「0.00」。既有「记下 X.XX 元」「记下，再记一笔」保留并统一样式。「可不填」由 owner 本轮第5节明确指定，作为四类之外的任务明确例外，不自行增写说明。Core 新错误原因「转账不能重复。」「请核对金额。」「这笔已有固定收付。」通过既有错误提示与按钮显示，属于出错例外。没有新增常驻说明。
+
+验证：新增12项Core测试（计划字段／空用途／收入／原子首期／月末／改账关联／失败回滚／非转账特殊性质／转账与无效金额／最近用途／选中替换／拒绝预判）及5项UI回归源码（替换结算与长删／连续重复重置／改账重复与跳转／转账与匹配互斥／固定收付键盘切换）；另更新既有金额控件和异步建议断言。`git diff --check` 通过。访问脚本输出41个App＋1个UI文件、1,236个访问声明、5个setter-only，632个同名候选；与HEAD比较新增34个同名候选已逐项核对，均为不同类型的属性／方法／枚举名，跨文件新共用组件保持internal；无非setter同类型候选。完整输出保存在 `/tmp/yubai-entry-v33-access.json` 与 TSV。
+
+首轮验证（安装前）：`/opt/swift-rootfs/usr/bin/swift` 未出现，加入 PATH 后 `swift build`／`YUBAI_LIVE_EVAL=0 swift test` 均为 command not found（127），没有测试执行或通过数。仓库安装脚本尝试在临时目录安装，因代理端口不可用退出；直连DNS也不可用。已向owner请求后台安装状态／可用路径。Swift条件语法解析、Core测试及Apple SDK类型检查／UI／触感真机验收均仍待验证，不能把静态审读或访问脚本当作编译通过。
+
+### 同日续作：用途与备注合一／不随用途换分类（owner 明确决定）
+
+本段取代本轮表格中「备注聚焦」及「时间与备注间」的描述：EntryEditView 删除备注行，仅保留用途；保存时在同一 store.update 中取当前账本原 note 并原样保留，旧表单不能覆盖它。重复行位于时间后、表单末尾。用途仍可不填；Core 字段／note并入purpose的加载迁移由 `feat/category-defaults-expand` 负责，本追加仅改 UI。
+
+EntryDetailView 的 UI-only `EntryNotePresentation` 复用 Import.swift 的四种导入来源（文件／微信／支付宝／BeeCount），或 sourceRow／batchID，识别导入证据。详情及同步版本差异仅显示导入 note；手记／Apple Pay／快捷指令／问余白／固定收付自动记录不显示独立 note。账目列表的 Core Row.note 是混合的一行展示投影，因此 UI 在账本 revision 变化时缓存手记用途并覆盖旧 note，滚动行不逐笔扫描账本；分类同名用途继续留空。ImportView 用 note 的待核对判断属于导入证据，保留；账户／目标等其他模型的备注保持。搜索读屏 hint 改为「可按用途、分类或金额搜索」。
+
+QuickEntryView 删除 purpose 的自动猜分类监听及 userChoseCategory；切换 nature 仅取对应方向常用分类首项，不再 guessCategory。显式预填分类保留；用途仍参与固定收付匹配与预览。EntryEditView 无用途猜分类逻辑，分类选择器未改。新增 UI 回归覆盖输入地铁后仍餐饮、手选购物后用途不改分类、带兼职用途切收入仍取工资奖金；改账回归断言无备注字段。没有新增可见中文；删除「备注」行及其「可不填」占位，变更的完整读屏文字不属于可见文案。
+
+续作最终验证（Swift 6.2.4）：
+
+- 已先后执行 build/test，完成追加后再次执行 `swift build` 和 `YUBAI_LIVE_EVAL=0 swift test`；初次默认 /root 缓存只读，后用 CLANG_MODULE_CACHE_PATH／SWIFTPM_MODULECACHE_OVERRIDE／XDG_CACHE_HOME 及 SwiftPM 的 cache-path／config-path／security-path 全部移至 `/tmp/yubai-entry-v33-*`。最终两命令均退出1，现有 swift-crypto／swift-asn1 因 `127.0.0.1:43067` 代理连接失败而无法拉取；关闭代理试读公共依赖仍无法解析 github.com。未进入 Core 编译或测试，没有通过／失败统计，也不能判定 main 原有失败。未修改任何基线测试或新增跳过；已请求缓存／外层 resolve。日志在 `/tmp/yubai-entry-v33-build-final.log`、`/tmp/yubai-entry-v33-test-final.log`。
+- 41个App文件逐个覆盖 iOS26模拟器Debug／macOS14 Debug，另1次UI条件解析：**83／83通过，0失败**。本轮Core及其测试语法解析也通过。记录在 `/tmp/yubai-entry-v33-parse-final.json`。Apple SDK类型检查／UI和真机触感仍未验证。
+- `python3 scripts/audit-swift-access.py --output /tmp/yubai-entry-v33-access-final.json --summary /tmp/yubai-entry-v33-access-final.tsv` 退出0：41 App＋1 UI，1,236访问声明、5 setter-only，630同名候选／130,524次匹配；新增同名候选复核为不同类型的 purposeFocused，非setter同类型跨文件候选0。新共用 EntryNotePresentation 保持internal。
+- 实际 UI note policy 抽取后以Foundation替身运行，**45个判断通过**（覆盖四种导入来源、行号／批次，以及手动、Apple Pay、快捷指令、Siri、问余白、用户操作、自动扣款；非Core/XCTest，不替代全量测试）。`git diff --check`通过。累计本轮Core12项／UI6项新增测试源码，未执行XCTest。
+
+本轮未触碰 Storage、YubaiApp／LedgerSync、CashTimeline、available(after:)、ChangeSet.apply、Editors 或 InsightsView；ManualBookkeeping.swift 仅新增金额初始化与空金额运算符防护。无新依赖、无外部设计稿链接、未提交／推送。
+
 ## 2026-11-04 · 第三十一轮「更快分类」（owner 确认）
 
 来源：owner 明确确认五张 V31 静态 HTML，在 `feat/quick-sort-unsorted`（基于 main `fb0e4f3`）授权实现；[原稿归档](mockups/quick-sort-v31/README.md)五文件逐字节一致。本节补充第二十五／二十七轮：首页兜底新增主入口「一个个分」，保留「按对方分」及原一组页的勾选、用途、原文操作。没有第三方新增依赖、网络 API／DeepSeek 请求或提交；Package.swift／Package.resolved 保持。
