@@ -77,7 +77,7 @@ private struct CaptureWidgetView: View {
                 Text("还能花").font(.caption).foregroundStyle(.secondary)
                 Text(Money.text(snapshot.available)).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit().minimumScaleFactor(0.5).lineLimit(1).privacySensitive()
                 Text("今天记了 \(snapshot.todayCount) 笔 · " + Money.text(snapshot.todayTotal)).font(.system(size: 11)).foregroundStyle(.secondary).privacySensitive()
-            } else { Label("余白", systemImage: "water.waves").font(.headline) }
+            } else { Label("余白", systemImage: "square.righthalf.filled").font(.headline) }
             Spacer(minLength: 4)
             Link(destination: CaptureSnapshotBridge.addURL()) { Label("记一笔", systemImage: "plus").font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 40).background(brand, in: Capsule()).foregroundStyle(scheme == .dark ? .black : .white) }
         }

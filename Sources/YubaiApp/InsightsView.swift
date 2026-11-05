@@ -51,7 +51,7 @@ struct InsightsView: View {
             }
             Card(style: .compact) {
                 VStack(spacing: YubaiSpace.gapGroup) {
-                    Segmented(choices: [(false, "支出"), (true, "收入")], selection: $income, background: YubaiColor.canvas)
+                    Segmented(choices: [(false, "支出"), (true, "收入")], selection: $income)
                     if !store.current.preferences.hideAmounts {
                         donut(slices, total: income ? summary.income : summary.spending)
                     }
@@ -125,7 +125,7 @@ struct InsightsView: View {
             Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(balance ? YubaiColor.brandInk : YubaiColor.labelSecondary)
             AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .summary)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
-            .background(balance ? YubaiColor.brandTint : YubaiColor.card, in: RoundedRectangle(cornerRadius: 18))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: 18), background: balance ? YubaiColor.brandTint : nil)
     }
     private func restrained(_ slice: CashFlowSlice) -> Bool {
         !income && store.current.profile.restrain.contains { area in

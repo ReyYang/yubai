@@ -190,7 +190,7 @@ struct ButlerCardView: View {
         }.accessibilityIdentifier("butlerCard_" + card.kind.rawValue)
     }
     private func cardContent(animateDismiss: @escaping CardDismissAnimation) -> some View {
-        Card(style: .compact, background: amber ? YubaiColor.amberTint : YubaiColor.card) {
+        Card(style: .compact, background: amber ? YubaiColor.amberTint : YubaiColor.paperSheet) {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 HStack(spacing: YubaiSpace.space8) {
                     if amber { Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true) }

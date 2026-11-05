@@ -10,10 +10,21 @@ struct WelcomeStatement: Sendable {
 
 /// Shared with the import queue, including its three local reading stages.
 struct ImportReadingProgress: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let value: Double
+    private var fraction: Double { value.isFinite ? min(1, max(0, value / 3)) : 0 }
     var body: some View {
-        ProgressView(value: value, total: 3).tint(YubaiColor.brand)
-            .frame(width: YubaiSize.buttonHeight).accessibilityLabel("读取进度")
+        HStack(spacing: YubaiSpace.space8) {
+            Text(fraction, format: .percent.precision(.fractionLength(0))).yubaiFont(YubaiFont.meta)
+                .foregroundStyle(YubaiColor.labelSecondary).monospacedDigit().lineLimit(1)
+            GeometryReader { geometry in
+                Capsule().fill(YubaiColor.raised)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(YubaiColor.brand).frame(width: geometry.size.width * CGFloat(fraction))
+                    }
+            }.frame(width: 64, height: 6).animation(YubaiMotion.progress(reduceMotion: reduceMotion), value: fraction)
+        }.fixedSize(horizontal: true, vertical: false).accessibilityElement(children: .ignore).accessibilityLabel("读取进度")
+            .accessibilityValue(fraction.formatted(.percent.precision(.fractionLength(0))))
     }
 }
 

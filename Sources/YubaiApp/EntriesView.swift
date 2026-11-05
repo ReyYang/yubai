@@ -83,7 +83,7 @@ struct EntriesView: View {
             } label: {
                 Image(systemName: showingSearch ? "xmark" : "magnifyingglass")
                     .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
-                    .background(YubaiColor.raised, in: Circle()).yubaiHitTarget(alignment: .trailing)
+                    .controlSurface(in: Circle()).yubaiHitTarget(alignment: .trailing)
             }.accessibilityLabel(showingSearch ? "关闭搜索" : "搜索账目").accessibilityIdentifier("entriesSearchButton")
         }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).buttonStyle(PressButtonStyle())
     }
@@ -122,7 +122,7 @@ struct EntriesView: View {
                         sign: inflow ? .inflow : .automatic,
                         ink: inflow ? YubaiColor.brandInk : YubaiColor.label)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
-            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
     }
     private func changeMonth(_ offset: Int) { searchFocused = false; month = Dates.addMonths(offset, to: month) }
     private func dayLabel(_ date: Date) -> String {
@@ -208,7 +208,7 @@ private struct LedgerEntryRow: View {
             Image(systemName: entry.uncategorized ? "questionmark" : entry.symbol).yubaiFont(YubaiFont.tabIcon)
                 .foregroundStyle(entry.uncategorized ? YubaiColor.amberInk : entry.inflow ? YubaiColor.brandInk : YubaiColor.labelMuted)
                 .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
-                .background(entry.uncategorized ? YubaiColor.amberTint : entry.inflow ? YubaiColor.brandTint : YubaiColor.raised,
+                .background(entry.uncategorized ? YubaiColor.amberTint : entry.inflow ? YubaiColor.brandTint : YubaiColor.paperInset,
                             in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
             layout {
@@ -221,7 +221,7 @@ private struct LedgerEntryRow: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
         }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: entry.note.isEmpty ? YubaiSize.rowSingle : YubaiSize.rowDouble).contentShape(Rectangle())
-            .background(isFresh && highlighted ? YubaiColor.brandTint : YubaiColor.card)
+            .background(isFresh && highlighted ? YubaiColor.brandTint : YubaiColor.paperSheet)
     }
     private func reset() {
         #if os(macOS)
