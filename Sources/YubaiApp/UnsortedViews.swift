@@ -46,6 +46,7 @@ struct ImportQuestionCard: View {
 }
 
 /// Keep the destination attached to the list, even if its source row disappears.
+/// A bound route lets the list wait for the detail's pop before dismissing itself.
 /// The initial group is display-only during the pop transition; confirmation
 /// always resolves the current ledger revision through AppStore.
 private struct UnsortedGroupRoute: Hashable, Identifiable {
@@ -58,32 +59,47 @@ private struct UnsortedGroupRoute: Hashable, Identifiable {
 
 struct UnsortedGroupsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     let questionID: UUID
     @State private var search = ""
     @State private var selecting = false
     @State private var selectedIDs: Set<String> = []
     @State private var showingApply = false
+    // The binding becomes false before the sheet's dismissal has finished.
+    @State private var applySheetPresented = false
+    @State private var detailRoute: UnsortedGroupRoute?
+    @State private var isDismissing = false
     var body: some View {
         let snapshot = store.unsortedGroups(questionID: questionID)
         let visible: [UnsortedPartyGroup] = snapshot?.matching(search) ?? []
         let count = snapshot?.entryCount ?? 0
         let selected = snapshot?.groups.filter { selectedIDs.contains($0.id) } ?? []
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                    Text(count.formatted(.number.locale(Locale(identifier: "en_US"))))
-                        .yubaiFont(YubaiFont.amountLarge).accessibilityIdentifier("unsortedEntryCount")
-                    Text("笔还没分类").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+        ScrollViewReader { proxy in
+            ScrollView {
+                // CardRows owns the lazy rows; keep the top anchor eagerly laid out.
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                        Text(count.formatted(.number.locale(Locale(identifier: "en_US"))))
+                            .yubaiFont(YubaiFont.amountLarge).accessibilityIdentifier("unsortedEntryCount")
+                        Text("笔还没分类").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    }.id("unsortedGroupsTop")
+                    TextField("搜对方", text: $search).textFieldStyle(.plain).yubaiFont(YubaiFont.row)
+                        .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.segmentedHeight)
+                        .background(YubaiColor.raised, in: Capsule()).accessibilityIdentifier("unsortedPartySearch")
+                    if !visible.isEmpty {
+                        CardRows(visible) { group in groupRow(group, selected: selected) }
+                            .id(count)
+                    }
+                }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8).padding(.bottom, YubaiSpace.gapSection)
+                    .frame(maxWidth: 1080).frame(maxWidth: .infinity)
+            }.scrollDismissesKeyboard(.interactively)
+                .accessibilityIdentifier("unsortedGroupsScroll")
+                .onChange(of: count) { _, _ in
+                    // Apply and undo both invalidate lazy measurements and return
+                    // to the count/search, including while a sheet is closing.
+                    proxy.scrollTo("unsortedGroupsTop", anchor: .top)
                 }
-                TextField("搜对方", text: $search).textFieldStyle(.plain).yubaiFont(YubaiFont.row)
-                    .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.segmentedHeight)
-                    .background(YubaiColor.raised, in: Capsule()).accessibilityIdentifier("unsortedPartySearch")
-                if !visible.isEmpty {
-                    CardRows(visible) { group in groupRow(group, selected: selected) }
-                }
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8).padding(.bottom, YubaiSpace.gapSection)
-                .frame(maxWidth: 1080).frame(maxWidth: .infinity)
-        }.scrollDismissesKeyboard(.interactively).paperBackground().foregroundStyle(YubaiColor.label)
+        }.paperBackground().foregroundStyle(YubaiColor.label)
             .navigationTitle("按对方分").yubaiNavigation()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -97,26 +113,39 @@ struct UnsortedGroupsView: View {
                         Text("\(selected.count) 组 · \(selected.reduce(0) { $0 + $1.entries.count }) 笔")
                             .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)
                             .frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("unsortedSelectionCount")
-                        Button("记为…") { showingApply = true }
+                        Button("记为…") { applySheetPresented = true; showingApply = true }
                             .buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.raised)).fixedSize(horizontal: true, vertical: false)
                             .disabled(selected.isEmpty).accessibilityIdentifier("unsortedApplySelected")
                     }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapGroup)
                         .background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
                 }
             }
-            .sheet(isPresented: $showingApply) {
+            .sheet(isPresented: $showingApply, onDismiss: {
+                applySheetPresented = false
+                dismissIfEmpty()
+            }) {
                 UnsortedSelectionSheet(questionID: questionID, groupIDs: selectedIDs) {
                     showingApply = false; selecting = false; selectedIDs.removeAll()
                 }.environment(store).presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible).yubaiSheetBackground().appErrors()
             }
-            .onChange(of: snapshot?.revision) { _, _ in
+            .onChange(of: snapshot?.revision, initial: true) { _, _ in
                 selectedIDs.formIntersection(snapshot?.groups.map(\.id) ?? [])
                 if selectedIDs.isEmpty { showingApply = false }
+                dismissIfEmpty()
             }
-            .navigationDestination(for: UnsortedGroupRoute.self) { route in
+            .navigationDestination(item: $detailRoute) { route in
                 UnsortedGroupView(questionID: route.questionID, initialGroup: route.group)
             }
+            .onChange(of: detailRoute) { _, route in if route == nil { dismissIfEmpty() } }
+    }
+    private func dismissIfEmpty() {
+        // Let the sheet/detail finish its own dismissal first. Undo belongs to
+        // RootView and remains available after this page returns to 现在.
+        guard (store.unsortedGroups(questionID: questionID)?.entryCount ?? 0) == 0,
+              !applySheetPresented, detailRoute == nil, !isDismissing else { return }
+        isDismissing = true
+        dismiss()
     }
     @ViewBuilder private func groupRow(_ group: UnsortedPartyGroup, selected: [UnsortedPartyGroup]) -> some View {
         if selecting {
@@ -130,7 +159,7 @@ struct UnsortedGroupsView: View {
                 .accessibilityValue(selectedIDs.contains(group.id) ? "已选择" : "未选择")
                 .accessibilityIdentifier("unsortedGroup_" + group.id)
         } else {
-            NavigationLink(value: UnsortedGroupRoute(questionID: questionID, group: group)) { rowContent(group) }
+            Button { detailRoute = UnsortedGroupRoute(questionID: questionID, group: group) } label: { rowContent(group) }
                 .buttonStyle(PressButtonStyle()).accessibilityIdentifier("unsortedGroup_" + group.id)
         }
     }
@@ -185,6 +214,9 @@ struct UnsortedUndoBar: View {
             .padding(.leading, YubaiSpace.insetPage).padding(.trailing, YubaiSpace.space8)
             .frame(minHeight: YubaiSize.rowSingle).background(YubaiColor.label, in: Capsule())
             .task(id: notice.id) {
+                #if DEBUG && targetEnvironment(simulator)
+                if UITestSupport.keepsUndoReceipt { return }
+                #endif
                 do { try await Task.sleep(for: .seconds(YubaiMotion.toastLifetime)) } catch { return }
                 if store.unsortedUndo?.id == notice.id { store.unsortedUndo = nil }
             }
@@ -243,7 +275,6 @@ private struct UnsortedImmediateChoices: View {
 
 private struct UnsortedSelectionSheet: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
     let questionID: UUID
     let groupIDs: Set<String>
     let applied: () -> Void
@@ -258,7 +289,6 @@ private struct UnsortedSelectionSheet: View {
                 }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space24)
         }.paperBackground().foregroundStyle(YubaiColor.label)
-            .onChange(of: snapshot?.revision) { _, _ in if groups.isEmpty { dismiss() } }
     }
 }
 
@@ -282,22 +312,32 @@ struct UnsortedQuickSortView: View {
                     }
             }.frame(height: YubaiSpace.space4).padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space4)
                 .accessibilityLabel("分类进度").accessibilityValue("已分 \(session.done) 组，共 \(session.total) 组")
-            ScrollView {
-                if let group {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space16) {
-                        quickCard(group)
-                        UnsortedImmediateChoices(groups: [group], suggested: UnsortedGroups.suggestedCategory(for: group, in: store.current), identifier: "quickSort") { use, category, account in
-                            if store.applyUnsortedGroup(questionID: questionID, groupID: group.id, use: use,
-                                                        category: category, otherAccount: account, quickSort: true) {
-                                session.record(group.id)
-                                session.reconcile(store.unsortedGroups(questionID: questionID)?.groups ?? [])
+            ScrollViewReader { proxy in
+                ScrollView {
+                    if let group {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space16) {
+                            quickCard(group).id("unsortedQuickTop")
+                            UnsortedImmediateChoices(groups: [group], suggested: UnsortedGroups.suggestedCategory(for: group, in: store.current), identifier: "quickSort") { use, category, account in
+                                if store.applyUnsortedGroup(questionID: questionID, groupID: group.id, use: use,
+                                                            category: category, otherAccount: account, quickSort: true) {
+                                    session.record(group.id)
+                                    session.reconcile(store.unsortedGroups(questionID: questionID)?.groups ?? [])
+                                }
                             }
-                        }
-                    }.id(group.id)
-                        .transition(reduceMotion ? .opacity : .asymmetric(insertion: .offset(x: YubaiSpace.space24).combined(with: .opacity), removal: .offset(x: -YubaiSpace.space24).combined(with: .opacity)))
-                        .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.space16)
-                }
-            }.animation(YubaiMotion.quick, value: group?.id)
+                        }.id(group.id)
+                            .transition(reduceMotion ? .opacity : .asymmetric(insertion: .offset(x: YubaiSpace.space24).combined(with: .opacity), removal: .offset(x: -YubaiSpace.space24).combined(with: .opacity)))
+                            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.space16)
+                    }
+                }.animation(YubaiMotion.quick, value: group?.id)
+                    .accessibilityIdentifier("quickSortScroll")
+                    .onChange(of: group?.id) { _, _ in
+                        // Includes skip, external completion and undo restoration.
+                        proxy.scrollTo("unsortedQuickTop", anchor: .top)
+                    }
+                    .onChange(of: group?.entries.count) { _, _ in
+                        proxy.scrollTo("unsortedQuickTop", anchor: .top)
+                    }
+            }
         }.frame(maxWidth: 1080).frame(maxWidth: .infinity).paperBackground().foregroundStyle(YubaiColor.label)
             .navigationTitle("一个个分").yubaiNavigation()
             .toolbar {
@@ -387,14 +427,19 @@ struct UnsortedGroupView: View {
         let snapshot = store.unsortedGroups(questionID: questionID)
         let liveGroup = snapshot?.groupsByID[groupID]
         let group = liveGroup ?? lastGroup
-        Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space8) {
-            heading(group)
-            categoryChoices(group)
-            natureChoices(group)
-            if use == .transfer { accountChoices(group) }
-            purposeField
-            entries(group)
-        }.accessibilityIdentifier("unsortedGroupScroll").navigationTitle("一组").yubaiNavigation()
+        ScrollViewReader { proxy in
+            Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space8) {
+                heading(group).id("unsortedGroupTop")
+                categoryChoices(group)
+                natureChoices(group)
+                if use == .transfer { accountChoices(group) }
+                purposeField
+                entries(group).id(group.entries.count)
+            }.accessibilityIdentifier("unsortedGroupScroll")
+                .onChange(of: liveGroup?.entries.count) { _, _ in
+                    proxy.scrollTo("unsortedGroupTop", anchor: .top)
+                }
+        }.navigationTitle("一组").yubaiNavigation()
             .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
                 applyButton(group, available: liveGroup != nil)
                     .padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapGroup)

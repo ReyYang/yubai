@@ -1,5 +1,20 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-05 · 批量记为后空白与同类页面滚动修复
+
+来源：owner 在 main `a0f21da` 的真机反馈及本轮修复 brief；工作分支 `fix/unsorted-blank-after-batch`。按对方分滚动选择 61 组／72 笔，记为其他支出后只剩导航与撤销条。源码确认列表缩短未复位滚动、批量 sheet 同时由父绑定与自身 dismiss 关闭，且列表缺少全分完返回；未在 Linux 将这几条机制各自对真机现象的贡献作为已实测结论。
+
+- 按对方分：外层改为普通 VStack，保留 CardRows 内的惰性行；计数头部为稳定顶部锚点。实际待分类笔数变化时重建行容器身份并用 ScrollViewReader 回顶部，覆盖批量／详情应用、后台减少与撤销恢复；选择与搜索状态仍属于父页。
+- 关闭与全分完：sheet 仅由父页绑定关闭；父页等 sheet 的 onDismiss 后才检查清空。详情改用列表层的绑定路由，清空时先让详情返回，再由列表防重复返回「现在」。判断基于实际 entryCount，搜索无匹配不会触发返回。沿用已批准的全分完回现在，AppStore 的撤销凭据与 RootView overlay 保留，返回后仍可撤销。
+- 一个个分：对方卡顶部加锚点，当前组身份／笔数变化时回顶部，覆盖应用、跳过、外部完成、详情部分应用及撤销恢复；原会话、卡片切换与减少动态效果逻辑保持。
+- 一组：顶部锚点随实际组笔数变化复位；记录区域按笔数重建惰性布局，部分应用后仍全选剩余，撤销恢复也回顶部。审读同文件所有 unsortedGroups 滚动视图，剩余批量 sheet 清空由父绑定关闭，无另一处可缩短的长组列表。
+
+`AppFlowTests.swift` 新增 3 项 UI 回归源码：64 组／75 笔中滚动选 61 组，记其他支出后断言剩 3 笔计数／搜索实际可见，再撤销回 75；64 笔单组取消一笔后深滚动、应用 63 笔、撤销及末组完成返回；快速页长控件列表深滚动后的跳过／应用／撤销都须看到卡片顶部。可见性断言不调用补救滚动，不能以 AX 节点存在代替可见。旧批量全选测试更新为返回现在、根撤销恢复后重新进入列表。新增两个 simulator Debug 合成情景，沿用离线 UITestTransport；专用撤销条复用现有显式 KEEP_UNDO 测试开关，设备／Release 及默认 4 秒寿命保持。
+
+验证：Core build 成功；全量 **788 项，784 通过／4 项原有实网 opt-in 跳过／0 失败（103.812 秒）**，禁用自动依赖解析并设置 `YUBAI_LIVE_EVAL=0`，日志 `/tmp/yubai-unsorted-build.log`、`/tmp/yubai-unsorted-test.log`。改动 App／UI 文件的 iOS 26 模拟器 Debug、App 的 iOS 26 设备 Release／macOS 14 Debug 条件语法解析通过。完整 UITestSupport 去除仅 simulator 的外围编译门后，在 Linux 以真实 Core 类型检查通过；临时可执行程序使用实际夹具、离线传输与整理器验证 75→3→75、[64,1]→[1,1]→[64,1]，日志 `/tmp/yubai-unsorted-fixture-{many,long}.log`。这些检查不替代 Apple SDK 类型检查、XCTest UI 实跑或真机白屏复验，均仍待 Mac／iPhone。
+
+新增／改动产品可见中文字符串：**无**；合成夹具仅增加测试事实名称「合成长列表.csv」「合成对方NN」「合成明细N」「合成分类NN」。原 V31 HTML 保留不变，外部画布、截图和分发资源未同步。未提交／推送、无新依赖、无网络／DeepSeek 调用。
+
 ## 2026-11-04 · 第三十一轮「更快分类」（owner 确认）
 
 来源：owner 明确确认五张 V31 静态 HTML，在 `feat/quick-sort-unsorted`（基于 main `fb0e4f3`）授权实现；[原稿归档](mockups/quick-sort-v31/README.md)五文件逐字节一致。本节补充第二十五／二十七轮：首页兜底新增主入口「一个个分」，保留「按对方分」及原一组页的勾选、用途、原文操作。没有第三方新增依赖、网络 API／DeepSeek 请求或提交；Package.swift／Package.resolved 保持。

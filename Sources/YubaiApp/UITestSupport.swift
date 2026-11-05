@@ -29,9 +29,10 @@ enum UITestSupport {
     }
     static var organizationScenario: String? {
         guard script == "salary", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
-              ["stop-second", "fail-second", "by-party", "questions-complete", "questions-stop", "questions-fail"].contains(value) else { return nil }
+              ["stop-second", "fail-second", "by-party", "by-party-many", "by-party-long", "questions-complete", "questions-stop", "questions-fail"].contains(value) else { return nil }
         return value
     }
+    static var isByPartyScenario: Bool { organizationScenario?.hasPrefix("by-party") == true }
     @MainActor static func importRequestState(in ledger: Ledger) -> String {
         let log = UITestRequestLog.shared
         let requests = "requests=\(log.count)"
@@ -248,6 +249,31 @@ enum UITestSupport {
     static func organizationLedger(now: Date) -> Ledger {
         var ledger = salaryLedger(now: now)
         ledger.preferences.cloudAIEnabled = true
+        if ["by-party-many", "by-party-long"].contains(organizationScenario ?? "") {
+            // 64 groups / 75 entries: the first 61 groups cover exactly 72 entries.
+            // The long variant supplies 64 rows in one group and a second live group.
+            let many = organizationScenario == "by-party-many"
+            ledger.entries = []
+            var batch = ImportBatch(filename: "合成长列表.csv", importedCount: many ? 75 : 65, duplicateCount: 0, skippedCount: 0)
+            batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
+            ledger.imports = [batch]
+            for index in 0..<(many ? 64 : 2) {
+                let count = many ? (index < 11 ? 2 : 1) : (index == 0 ? 64 : 1)
+                for row in 0..<count {
+                    let party = String(format: "合成对方%02d", index)
+                    var entry = Entry(date: now.addingTimeInterval(-Double(index * 100 + row)), amount: 100,
+                                      nature: .unknownOut, accountID: ledger.accounts[0].id, title: party + " · 合成明细\(row)")
+                    entry.batchID = batch.id; entry.source = "文件"
+                    ledger.entries.append(entry)
+                }
+            }
+            if !many {
+                // Force the quick card's controls to extend below an iPhone viewport.
+                ledger.categories += (0..<24).map { Category(String(format: "合成分类%02d", $0)) }
+            }
+            ButlerCards.refresh(&ledger, now: now)
+            return ledger
+        }
         if organizationScenario == "by-party" {
             var batch = ImportBatch(filename: "合成剩余流水.csv", importedCount: 10, duplicateCount: 0, skippedCount: 0)
             batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
@@ -403,9 +429,8 @@ struct UITestTransport: ChatTransport {
                 log.resentCompletedCount += keys.intersection(log.completedOrganizationIDs).count
                 log.completedOrganizationIDs.formUnion(keys)
             }
-            // The remaining-by-party scenario still leaves all nine outgoing
-            // records on the real fallback card for the manual grouping tests.
-            if UITestSupport.organizationScenario == "by-party" {
+            // Leave outgoing records on the real fallback card for grouping tests.
+            if UITestSupport.isByPartyScenario {
                 let results: [JSONValue] = groups.compactMap { group in
                     guard group["inflow"] == .bool(true), let id = group["id"] else { return nil }
                     return .object(["group": id, "category": .string("其他收入"), "nature": .string("income"),
@@ -436,7 +461,7 @@ struct UITestTransport: ChatTransport {
                 ["account", "date", "title", "amount"].map { (try? row[$0]?.jsonText()) ?? "" }.joined(separator: "|")
             })
             let scenario = UITestSupport.organizationScenario
-            if scenario == "by-party" {
+            if UITestSupport.isByPartyScenario {
                 let rows: [JSONValue] = (payload["batch"]?.arrayValue ?? []).compactMap { row in
                     guard row["inflow"] == .bool(true), let id = row["id"] else { return nil }
                     return .object(["entry": id, "category": .string("其他收入"), "nature": .string("income"),

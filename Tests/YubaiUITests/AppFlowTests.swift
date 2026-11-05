@@ -338,7 +338,7 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testUnsortedMultiSelectAppliesAllGroupsWithOneUndo() {
-        let app = application("salary")
+        let app = application("salary", keepingUndo: true)
         app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
         app.launch()
         tap(app.buttons["organizeImports"], in: app)
@@ -357,13 +357,116 @@ final class AppFlowTests: XCTestCase {
         tap(apply, in: app)
         XCTAssertTrue(app.staticTexts["9 笔记为"].waitForExistence(timeout: 5))
         tap(app.buttons["unsortedSelectedCategory_餐饮"], in: app)
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '0'"), object: count)], timeout: 5), .completed)
-        XCTAssertFalse(apply.exists); XCTAssertEqual(app.buttons["unsortedSelect"].label, "选择")
+        XCTAssertTrue(app.navigationBars["现在"].waitForExistence(timeout: 5))
+        XCTAssertFalse(count.exists); XCTAssertFalse(apply.exists)
+        XCTAssertFalse(app.staticTexts["unsortedQuestionTitle"].exists)
         XCTAssertEqual(app.staticTexts["unsortedUndoMessage"].label, "2 组 · 9 笔记为餐饮")
         XCTAssertFalse(app.staticTexts["toastMessage"].exists)
         tap(app.buttons["quickSortUndo"], in: app)
+        XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "9 笔还没分类")
+        tap(app.buttons["groupUnsortedByParty"], in: app)
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '9'"), object: count)], timeout: 5), .completed)
         XCTAssertTrue(first.exists); XCTAssertTrue(second.exists)
+    }
+
+    func testUnsortedManyGroupsBatchApplyReturnsToVisibleHeaderAndUndoRestores() {
+        let app = application("salary", keepingUndo: true)
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party-many"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["groupUnsortedByParty"].waitForExistence(timeout: 15))
+        tap(app.buttons["groupUnsortedByParty"], in: app)
+        let scroll = app.scrollViews["unsortedGroupsScroll"]
+        let count = app.staticTexts["unsortedEntryCount"]
+        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "75")
+        tap(app.buttons["unsortedSelect"], in: app)
+        for index in 0..<61 {
+            let group = app.buttons[String(format: "unsortedGroup_out:合成对方%02d", index)]
+            tap(group, in: app, scroll: scroll)
+            XCTAssertTrue(group.isSelected)
+        }
+        XCTAssertFalse(count.isHittable, "The batch must start with the viewport far below the header")
+        XCTAssertEqual(app.staticTexts["unsortedSelectionCount"].label, "61 组 · 72 笔")
+        tap(app.buttons["unsortedApplySelected"], in: app)
+        tap(app.buttons["unsortedSelectedCategory_其他支出"], in: app)
+
+        // Do not scroll to these assertions: an offscreen AX node would miss the bug.
+        assertVisibleWithoutScrolling(count, label: "3", in: app, scroll: scroll)
+        assertVisibleWithoutScrolling(app.textFields["unsortedPartySearch"], in: app, scroll: scroll)
+        XCTAssertEqual(app.buttons["unsortedSelect"].label, "选择")
+        XCTAssertEqual(app.staticTexts["unsortedUndoMessage"].label, "61 组 · 72 笔记为其他支出")
+        tap(app.buttons["quickSortUndo"], in: app)
+        assertVisibleWithoutScrolling(count, label: "75", in: app, scroll: scroll)
+        assertVisibleWithoutScrolling(app.textFields["unsortedPartySearch"], in: app, scroll: scroll)
+        XCTAssertTrue(app.buttons["unsortedGroup_out:合成对方00"].exists)
+        XCTAssertFalse(app.buttons["unsortedApplySelected"].exists)
+    }
+
+    func testUnsortedLongGroupPartialApplyAndUndoReturnToTop() {
+        let app = application("salary", keepingUndo: true)
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party-long"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["groupUnsortedByParty"].waitForExistence(timeout: 15))
+        tap(app.buttons["groupUnsortedByParty"], in: app)
+        tap(app.buttons["unsortedGroup_out:合成对方00"], in: app)
+        let scroll = app.scrollViews["unsortedGroupScroll"]
+        let category = app.buttons["unsortedCategory_其他支出"]
+        tap(category, in: app, scroll: scroll)
+        let toggles = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'unsortedEntryToggle_'"))
+        let firstToggle = toggles.firstMatch
+        tap(firstToggle, in: app, scroll: scroll)
+        let remainingID = firstToggle.identifier
+        // Traverse the real lazy list to its bottom before removing 63 of 64 rows.
+        for _ in 0..<18 { scrollVertically(scroll, in: app) }
+        XCTAssertFalse(category.isHittable)
+        let apply = app.buttons["applyUnsortedGroup"]
+        XCTAssertEqual(apply.label, "63 笔记为 其他支出")
+        tap(apply, in: app)
+        assertVisibleWithoutScrolling(category, in: app, scroll: scroll)
+        XCTAssertEqual(apply.label, "1 笔记为 其他支出")
+        let remaining = app.buttons[remainingID]
+        tapUndo(messagePrefix: "整理", in: app)
+        assertVisibleWithoutScrolling(category, in: app, scroll: scroll)
+        XCTAssertEqual(apply.label, "64 笔记为 其他支出")
+        scrollToVisible(remaining, in: app, scroll: scroll)
+        XCTAssertEqual(remaining.value as? String, "已选择")
+        // Applying the whole group still returns once to the live list.
+        tap(apply, in: app)
+        let list = app.scrollViews["unsortedGroupsScroll"]
+        assertVisibleWithoutScrolling(app.staticTexts["unsortedEntryCount"], label: "1", in: app, scroll: list)
+        tap(app.buttons["unsortedGroup_out:合成对方01"], in: app)
+        tap(app.buttons["unsortedCategory_其他支出"], in: app, scroll: scroll)
+        tap(apply, in: app)
+        XCTAssertTrue(app.navigationBars["现在"].waitForExistence(timeout: 5), "Final detail and list must each dismiss once")
+    }
+
+    func testQuickSortScrolledCardApplySkipAndUndoShowNextCardAtTop() {
+        let app = application("salary", keepingUndo: true)
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party-long"
+        app.launch()
+        tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["quickSortUnsorted"].waitForExistence(timeout: 15))
+        tap(app.buttons["quickSortUnsorted"], in: app)
+        let scroll = app.scrollViews["quickSortScroll"]
+        let party = app.staticTexts["quickSortParty"]
+        XCTAssertTrue(party.waitForExistence(timeout: 5)); XCTAssertEqual(party.label, "合成对方00")
+        for _ in 0..<4 { scrollVertically(scroll, in: app) }
+        XCTAssertFalse(party.isHittable)
+        tap(app.buttons["quickSortSkip"], in: app)
+        assertVisibleWithoutScrolling(party, label: "合成对方01", in: app, scroll: scroll)
+        for _ in 0..<4 { scrollVertically(scroll, in: app) }
+        XCTAssertFalse(party.isHittable)
+        tap(app.buttons["quickSortSkip"], in: app)
+        assertVisibleWithoutScrolling(party, label: "合成对方00", in: app, scroll: scroll)
+        tap(app.buttons["quickSortCategory_合成分类23"], in: app, scroll: scroll)
+        assertVisibleWithoutScrolling(party, label: "合成对方01", in: app, scroll: scroll)
+        for _ in 0..<4 { scrollVertically(scroll, in: app) }
+        XCTAssertFalse(party.isHittable)
+        tap(app.buttons["quickSortUndo"], in: app)
+        assertVisibleWithoutScrolling(party, label: "合成对方00", in: app, scroll: scroll)
+        XCTAssertEqual(app.staticTexts["quickSortProgress"].label, "0/2")
     }
 
     func testFallbackGroupAppliesOnlyCheckedEntriesAndLeavesUncheckedEntryInPartyGroup() {
@@ -598,6 +701,14 @@ final class AppFlowTests: XCTestCase {
     private func assertNotHittable(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         let hidden = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !element.exists || !element.isHittable }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, file: file, line: line)
+    }
+    private func assertVisibleWithoutScrolling(_ element: XCUIElement, label: String? = nil, in app: XCUIApplication, scroll: XCUIElement,
+                                               file: StaticString = #filePath, line: UInt = #line) {
+        let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            element.exists && element.isHittable && self.visibleFrame(scroll, in: app).contains(element.frame) &&
+                (label == nil || element.label == label)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed, "Content must be visible without a recovery swipe", file: file, line: line)
     }
     private func assertGone(_ element: XCUIElement, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)

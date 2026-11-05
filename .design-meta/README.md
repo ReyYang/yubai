@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-11-05 批量记为后空白修复**：按 owner 在 main `a0f21da` 的真机反馈，按对方分／一组的长列表缩短与撤销复位到顶部，快速页切组／跳过／撤销也复位；移除批量 sheet 自身 dismiss，父页等 sheet／详情返回后防重复回现在，根撤销保留。[实现与验证边界](DESIGN.md#2026-11-05--批量记为后空白与同类页面滚动修复)。新增 3 项 UI 回归源码并更新原全选返回断言；Core build 与全量 **788 项，784 通过／4 原有实网跳过／0 失败（103.812 秒）**，iOS 26／Mac 条件解析和真实 Core 离线夹具 75→3→75、64 笔组部分应用／恢复通过。Apple SDK／XCTest UI／真机白屏复验仍待 Mac／iPhone；产品可见中文无变化，外部资源未同步。未提交／推送、无新依赖、无网络／DeepSeek 调用。
+
 **2026-11-04 main 15ab722 跨文件访问修复**：保留 AppStore.undoLedger 私有，通过声明文件内的 internal clearUndo 同步清空快照／标签；整理撤销扩展改为调用该方法。原始错误在保留双文件边界的 Linux 类型检查中复现，修后通过；日志 Text 拼接改为插值，外观／可见中文不变。全 App 私有声明脚本覆盖 1,194 处显式修饰＋2 个私有扩展成员，仅确认上述一处越权；[完整疑点、区间符号复核与验证](../docs/XCODE-15AB-ACCESS-AUDIT.md)。指定 Linux 全量 **788 项，784 通过／4 原有实网跳过／0 失败（112.438 秒）**，App／UI iOS27.1与Mac条件解析207次通过。Apple SDK／Xcode／UI实跑仍待Mac，外部资源未同步；未提交／推送、无新依赖、未读密钥／未调用真实DeepSeek。
 
 **2026-11-04 main b40bd4b Xcode 编译修复**：按 owner 的 Xcode 27.1／iOS 26 SDK 报错，将现金图测量尺寸改为显式 CGFloat.infinity；Canvas 标注保留 Text／ResolvedText 类型，替换已弃用的文本着色调用，并拆开坐标长表达式。相对 fb0e4f3 的 11 个 App／1 个 UI 文件、194 个 diff hunk 已逐段审读，Widget 无区间改动。[逐文件结果、Apple 签名与验证报告](../docs/XCODE-B40-BUILD-AUDIT.md)。指定 Linux 全量 **788 项，784 通过／4 原有实网跳过／0 失败（118.540 秒）**；41 个 App／1 个 Widget／1 个 UI 文件逐个条件解析共210次通过，Foundation 修复通过严格Swift 6类型检查，450组标注坐标与原式一致。Apple SDK类型检查／Xcode构建／UI实跑仍待Mac；无外观、业务或可见中文变更，外部资源未同步。未提交／推送、无新依赖、未读密钥／未调用真实DeepSeek。
