@@ -279,13 +279,13 @@ struct ActiveLedgerTransport: ChatTransport {
         defer { preparingImportOrganization = false }
         // Preserve the window's first pre-run recovery; gzip and pruning stay off MainActor.
         // Edits made during preparation are handled by fresh request snapshots.
+        await flushPersistence()
         let before = current, repository = localRepository
-        let preparation = Task.detached(priority: .userInitiated) {
-            try Task.checkCancellation()
+        let preparation = ledgerWriter.submit(invalidatingOnFailure: false) {
             try repository.preserveRecovery(before, reason: "导入整理")
         }
         do {
-            try await withTaskCancellationHandler { try await preparation.value } onCancel: { preparation.cancel() }
+            try await preparation.value
             try Task.checkCancellation()
         } catch {
             if !(error is CancellationError) { self.error = error.localizedDescription }
@@ -405,30 +405,38 @@ struct ActiveLedgerTransport: ChatTransport {
             guard organizationExecution != nil, !locked || organizationContinuesInBackground,
                   loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
                   current.preferences.cloudAIEnabled else { throw ImportOrganizer.Failure.ledgerChanged }
+            await flushPersistence()
+            try Task.checkCancellation()
             let before = current, revision = ledgerRevision, repository = localRepository
             let diskRevision = repository.revision
-            let location = ledgerLocation
+            let location = ledgerLocation, batches = organizingImportBatchIDs
             let preparation = Task.detached(priority: .userInitiated) {
                 try Task.checkCancellation()
                 let prepared = try result.preparingCheckpoint(entryIDs: completedIDs, snapshot: snapshot, current: before, batchID: batchID)
                 try Task.checkCancellation()
-                let saved = try repository.save(prepared.ledger, reason: "导入整理", requiringUnchanged: true,
-                                                preservingRecovery: false, expectedRevision: diskRevision, markingPendingSync: location == .iCloud)
-                return (ledger: saved, pending: PendingImportOrganization(in: saved), salary: SalaryDetection.candidate(in: saved), day: Dates.day(Date()))
+                let derived = LedgerDerivedSnapshot(prepared.ledger, organizingBatchIDs: batches)
+                return (ledger: prepared.ledger, pending: PendingImportOrganization(in: prepared.ledger),
+                        salary: SalaryDetection.candidate(in: prepared.ledger), day: Dates.day(derived.at), derived: derived)
             }
-            let saved: (ledger: Ledger, pending: PendingImportOrganization, salary: SalaryCandidate?, day: Date)
-            do {
-                saved = try await withTaskCancellationHandler { try await preparation.value } onCancel: { preparation.cancel() }
-            } catch {
+            let prepared = try await withTaskCancellationHandler { try await preparation.value } onCancel: { preparation.cancel() }
+            try Task.checkCancellation()
+            guard ledgerRevision == revision, ledgerLocation == location else { continue }
+            let write = ledgerWriter.submit(invalidatingOnFailure: false) {
+                try repository.save(prepared.ledger, reason: "导入整理", requiringUnchanged: true,
+                                    preservingRecovery: false, expectedRevision: diskRevision, markingPendingSync: location == .iCloud)
+            }
+            let saved: Ledger
+            do { saved = try await write.value }
+            catch {
                 if ledgerRevision != revision, error is LedgerSyncError { continue }
                 throw error
             }
             // A successful atomic write is always published, even if Stop arrived
             // during that write. If a manual write won instead, rebase and retry.
             guard ledgerRevision == revision, ledgerLocation == location else { continue }
-            publishOrganizationCheckpoint(saved.ledger, pending: saved.pending, salary: saved.salary, day: saved.day)
+            publishOrganizationCheckpoint(saved, pending: prepared.pending, salary: prepared.salary, day: prepared.day, derived: prepared.derived)
             if location == .iCloud {
-                pendingUpload = saved.ledger; pendingUploadPreservingRecovery = false
+                pendingUpload = saved; pendingUploadPreservingRecovery = false
                 Task { await synchronizeLedger() }
             }
             let progress = ImportOrganizationProgress(completed: (organizationProgress?.completed ?? 0) + completedIDs.count,

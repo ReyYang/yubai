@@ -141,7 +141,9 @@ extension Finance {
 
     /// Reuses the app's funds anchor and payday; recognition never creates a plan.
     public static func cashTimeline(_ ledger: Ledger, funds: Funds, now: Date) -> CashTimeline {
-        let today = Dates.day(now), boundary = Dates.addMonths(-3, to: Dates.day(now))
+        let calendar = Dates.calendar
+        let today = calendar.startOfDay(for: now), boundary = Dates.addMonths(-3, to: calendar.startOfDay(for: now))
+        let entries = ledger.entries.lazy.filter { $0.deletedAt == nil }
         let cashIDs = Set(ledger.accounts.filter { $0.kind == .cash || $0.kind == .bank }.map(\.id))
         var candidate = SalaryDetection.candidate(in: ledger, now: now)
         let salaryPlan = ledger.plans.filter { $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once }
@@ -168,7 +170,7 @@ extension Finance {
             return entry.planID == plan.id || (SalaryDetection.payerKey(entry.title) == SalaryDetection.payerKey(plan.title)
                 && (plan.accountID == nil || entry.accountID == plan.accountID))
         }
-        let salaryEntries = ledger.activeEntries.filter { isSalary($0) && cashIDs.contains($0.accountID) && $0.postingDate(for: $0.accountID) <= now }
+        let salaryEntries = Array(entries.filter { isSalary($0) && cashIDs.contains($0.accountID) && $0.postingDate(for: $0.accountID) <= now })
         let hasPayday = salaryPlan != nil || candidate != nil
         let month = Dates.calendar.dateInterval(of: .month, for: today)!.start
         func monthly(_ offset: Int, day: Int) -> Date {
@@ -209,19 +211,26 @@ extension Finance {
         let historyStart = cycles.last!.previousStart, end = cycles[0].end
         let plans = Dictionary(uniqueKeysWithValues: ledger.plans.map { ($0.id, $0) })
         var deltas: [Date: Int64] = [:], actualEvents: [Date: [CashTimelineEvent]] = [:]
-        for entry in ledger.activeEntries {
+        // DateFormatter creation used to dominate this loop. Event IDs retain
+        // their exact format, with one formatting operation per calendar day.
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.dateFormat = "yyyy-MM-dd"
+        var dayLabels: [Date: String] = [:]
+        for entry in entries {
             var movements: [Date: Int64] = [:], legs = [entry.accountID]
             if entry.nature.paired, let other = entry.otherAccountID, other != entry.accountID { legs.append(other) }
             for id in legs where cashIDs.contains(id) {
-                let posting = entry.postingDate(for: id), day = Dates.day(posting)
-                guard posting <= now, day >= historyStart else { continue }
+                let posting = entry.postingDate(for: id)
+                guard posting <= now, posting >= historyStart else { continue }
+                let day = calendar.startOfDay(for: posting)
                 movements[day, default: 0] += entry.delta(for: id)
             }
             let recurring = entry.rentID != nil || entry.planID.flatMap { plans[$0] }.map { $0.frequency != .once } == true
             for (day, amount) in movements {
                 deltas[day, default: 0] += amount
                 if amount != 0 {
-                    actualEvents[day, default: []].append(CashTimelineEvent(id: entry.id.uuidString + Dates.text(day), title: entry.displayTitle,
+                    let label = dayLabels[day] ?? formatter.string(from: day)
+                    dayLabels[day] = label
+                    actualEvents[day, default: []].append(CashTimelineEvent(id: entry.id.uuidString + label, title: entry.displayTitle,
                         amount: amount, date: day, isSalary: isSalary(entry), isRecurring: recurring))
                 }
             }
