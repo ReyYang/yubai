@@ -359,12 +359,13 @@ final class CashTimelineTests: XCTestCase {
         XCTAssertEqual(point(timeline, "2026-11-09")?.balance, 993_000)
     }
 
-    func testScaleHasThreeToFiveNiceTicksIncludingNegativeAndZero() {
+    func testScaleHasThreeToFourNiceTicksWithoutForcingZero() {
         for balance: Int64 in [-2_000_000, -100, 0, 100, 12345, 1_999_999, 9_000_000_000] {
             let window = Finance.cashTimeline(ledger(balance: balance), now: now).window()
             let scale = CashTimelineScale(window: window)
-            XCTAssertTrue((3...5).contains(scale.ticks.count))
-            XCTAssertTrue(scale.ticks.contains(0))
+            XCTAssertTrue((3...4).contains(scale.ticks.count))
+            if balance > 200_000 { XCTAssertGreaterThan(scale.domain.lowerBound, 0) }
+            if balance < -200_000 { XCTAssertLessThan(scale.domain.upperBound, 0) }
             XCTAssertTrue(scale.domain.contains(Double(balance) / 100))
             let step = scale.ticks[1] - scale.ticks[0]
             let normalized = step / pow(10, floor(log10(step)))
@@ -384,5 +385,192 @@ final class CashTimelineTests: XCTestCase {
         XCTAssertEqual(timeline.window().point(on: day)?.balance, 0)
         XCTAssertFalse(timeline.window().showsZero)
         XCTAssertTrue(CashTimelineScale(window: timeline.window()).domain.upperBound.isFinite)
+    }
+
+    func testScaleUsesDataRangeAndPermittedSteps() {
+        for values in [[5_568.0, 20_000], [6_010.74, 14_200], [1_100, 5_900], [2_000, 10_000], [-32.37, 28_000]] {
+            let scale = CashTimelineScale(values: values)
+            XCTAssertTrue((3...4).contains(scale.ticks.count))
+            XCTAssertTrue([1_000.0, 2_000, 5_000, 10_000].contains(scale.step))
+            for value in values { XCTAssertTrue(scale.domain.contains(value)) }
+            for (a, b) in zip(scale.ticks, scale.ticks.dropFirst()) { XCTAssertEqual(b - a, scale.step) }
+            if values.allSatisfy({ $0 > 3_000 }) { XCTAssertGreaterThan(scale.domain.lowerBound, 0) }
+        }
+        let nearZero = CashTimelineScale(values: [-32.37, 28_000])
+        XCTAssertGreaterThan(nearZero.domain.lowerBound, -2_000)
+        XCTAssertFalse(nearZero.ticks.contains(-10_000))
+    }
+
+    func testScaleIncludesPreviousCurveStepVerticesAndVisibleFloor() {
+        var ledger = ledger(balance: 100_000)
+        ledger.profile.floorAmount = 200_000
+        ledger.plans = [salary(), Plan(title: "合成支出", amount: 150_000, dueDate: date("2026-11-10"))]
+        let window = Finance.cashTimeline(ledger, now: now).window()
+        let scale = CashTimelineScale(window: window)
+        for value in (window.history + window.forecast + window.previous).map(\.balance) + window.forecastLine.map(\.balance) + [200_000] {
+            XCTAssertTrue(scale.domain.contains(Double(value) / 100))
+        }
+        XCTAssertTrue(window.showsFloor)
+    }
+
+    func testScaleHandlesFlatEmptyAndNonFiniteValues() {
+        for values in [[], [0], [12_345.67], [-12_345.67], [Double.nan, Double.infinity]] {
+            let scale = CashTimelineScale(values: values)
+            XCTAssertTrue(scale.domain.lowerBound.isFinite)
+            XCTAssertTrue(scale.domain.upperBound.isFinite)
+            XCTAssertGreaterThan(scale.domain.upperBound, scale.domain.lowerBound)
+            XCTAssertTrue((3...4).contains(scale.ticks.count))
+        }
+    }
+
+    func testReadoutDefaultsToActualTodayRatherThanForecastEndpoint() throws {
+        var ledger = ledger(daily: 1_000); ledger.plans = [salary()]
+        let window = Finance.cashTimeline(ledger, now: now).window()
+        let readout = try XCTUnwrap(window.readout())
+        XCTAssertEqual(readout.title, "今天")
+        XCTAssertEqual(readout.point.date, Dates.day(now))
+        XCTAssertEqual(readout.point.balance, 1_000_000)
+        XCTAssertNotEqual(readout.point.balance, window.endpoint?.balance)
+        XCTAssertEqual(readout.difference, window.difference)
+    }
+
+    func testPastReadoutUsesLastDayAndAlignedComparisonRatherThanPriorClosingDay() throws {
+        let timeline = Finance.cashTimeline(ledger(daily: 100), now: now)
+        let past = timeline.window(cycleOffset: 1), readout = try XCTUnwrap(past.readout())
+        XCTAssertEqual(readout.title, "10月31日")
+        XCTAssertEqual(readout.point.date, date("2026-10-31"))
+        XCTAssertEqual(readout.point.balance, past.history.last?.balance)
+        XCTAssertNil(readout.difference) // September has no aligned day 31.
+        var ledger = ledger(daily: 100); ledger.plans = [salary()]
+        let salaryPast = Finance.cashTimeline(ledger, now: now).window(cycleOffset: 1)
+        XCTAssertEqual(salaryPast.readout()?.title, "10月14日")
+        XCTAssertEqual(salaryPast.readout()?.difference, salaryPast.history.last!.balance - salaryPast.previous.last!.balance)
+        XCTAssertTrue(salaryPast.forecastSegments.isEmpty)
+    }
+
+    func testPressReadoutFollowsActualAndForecastDaysAndRevertsToToday() throws {
+        var ledger = ledger(daily: 1_000); ledger.plans = [salary()]
+        let window = Finance.cashTimeline(ledger, now: now).window()
+        for day in ["2026-10-25", "2026-11-10"] {
+            let selected = try XCTUnwrap(window.readout(selectedDay: date(day)))
+            XCTAssertEqual(selected.point, window.point(on: date(day)))
+            XCTAssertEqual(selected.title, CashTimelinePresentation.dayTitle(date(day)))
+            XCTAssertEqual(selected.difference, window.previousPoint(on: date(day)).map { selected.point.balance - $0.balance })
+        }
+        XCTAssertEqual(window.readout()?.title, "今天")
+    }
+
+    func testEventCapsuleChoosesLargestAbsoluteMovementAndCountsAllRemaining() {
+        let events = [CashTimelineEvent(id: "b", title: "咖啡", amount: -2_500, date: now),
+                      CashTimelineEvent(id: "a", title: "房租", amount: -300_000, date: now),
+                      CashTimelineEvent(id: "c", title: "收款", amount: 100_000, date: now)]
+        XCTAssertEqual(CashTimelinePresentation.eventSummary(events), "房租 −3,000.00 · 还有 2 笔")
+        XCTAssertEqual(CashTimelinePresentation.eventSummary(Array(events.reversed())), "房租 −3,000.00 · 还有 2 笔")
+        XCTAssertEqual(CashTimelinePresentation.eventSummary([events[2]]), "收款 +1,000.00")
+        XCTAssertNil(CashTimelinePresentation.eventSummary([]))
+    }
+
+    func testEventCapsuleTiesUseStableIdentity() {
+        let events = [CashTimelineEvent(id: "b", title: "后", amount: 10_000, date: now),
+                      CashTimelineEvent(id: "a", title: "前", amount: -10_000, date: now)]
+        XCTAssertEqual(CashTimelinePresentation.eventSummary(events), "前 −100.00 · 还有 1 笔")
+    }
+
+    func testNegativeEndpointTextMarkerAndForecastShareExactUnclampedCents() throws {
+        var ledger = ledger(balance: 100_000)
+        ledger.plans = [salary(), Plan(title: "合成支出", amount: 103_237, dueDate: date("2026-11-10"))]
+        let timeline = Finance.cashTimeline(ledger, now: now), window = timeline.window()
+        let endpoint = try XCTUnwrap(window.endpointPresentation)
+        XCTAssertEqual(endpoint.balance, -3_237)
+        XCTAssertEqual(endpoint.amount, "−32.37")
+        XCTAssertEqual(endpoint.label(hasPayday: true), "发工资前 −32.37")
+        XCTAssertEqual(endpoint.label(hasPayday: false), "月底 −32.37")
+        XCTAssertEqual(endpoint.date, window.end)
+        XCTAssertEqual(endpoint.balance, window.endpoint?.balance)
+        XCTAssertEqual(endpoint.balance, timeline.forecastLine.last?.balance)
+        XCTAssertEqual(window.forecastSegments.last?.points.last?.balance, Double(endpoint.balance))
+        XCTAssertTrue(CashTimelineScale(window: window).domain.contains(Double(endpoint.balance) / 100))
+        XCTAssertEqual(window.readout()?.point.balance, 100_000)
+    }
+
+    func testFloorSegmentsInterpolateSlopingCrossingsWithoutMovingEndpoint() throws {
+        let vertices = [CashTimelineVertex(id: 0, date: date("2026-11-01"), balance: 300_000),
+                        CashTimelineVertex(id: 1, date: date("2026-11-03"), balance: 100_000)]
+        let segments = CashTimelineForecastSegment.split(vertices, floor: 200_000)
+        XCTAssertEqual(segments.map(\.belowFloor), [false, true])
+        let crossing = try XCTUnwrap(segments.first?.points.last)
+        XCTAssertEqual(crossing.date, date("2026-11-02"))
+        XCTAssertEqual(crossing.balance, 200_000)
+        XCTAssertEqual(segments.last?.points.first, crossing)
+        XCTAssertEqual(segments.last?.points.last?.balance, 100_000)
+    }
+
+    func testFloorSegmentsKeepVerticalBillsAndHandleRecoveryAboveFloor() {
+        let day = date("2026-11-02")
+        let vertices = [CashTimelineVertex(id: 0, date: day, balance: 300_000),
+                        CashTimelineVertex(id: 1, date: day, balance: 100_000),
+                        CashTimelineVertex(id: 2, date: Dates.addDays(1, to: day), balance: 400_000)]
+        let segments = CashTimelineForecastSegment.split(vertices, floor: 200_000)
+        XCTAssertEqual(segments.map(\.belowFloor), [false, true, false])
+        XCTAssertTrue(segments[0].points.allSatisfy { $0.date == day })
+        XCTAssertEqual(segments[0].points.last?.balance, 200_000)
+        XCTAssertEqual(segments[1].points.first, segments[0].points.last)
+        XCTAssertEqual(segments[2].points.last?.balance, 400_000)
+    }
+
+    func testFloorSegmentsAtEqualityStayBrandAndNoFloorStaysOneSeries() {
+        let vertices = [300_000, 200_000, 300_000].enumerated().map {
+            CashTimelineVertex(id: $0.offset, date: Dates.addDays($0.offset, to: now), balance: Int64($0.element))
+        }
+        XCTAssertEqual(CashTimelineForecastSegment.split(vertices, floor: 200_000).map(\.belowFloor), [false])
+        XCTAssertEqual(CashTimelineForecastSegment.split(vertices, floor: nil).count, 1)
+        XCTAssertTrue(CashTimelineForecastSegment.split([], floor: 200_000).isEmpty)
+    }
+
+    func testTemporaryForecastDipShowsFloorButRecoveredEndpointStaysBrand() {
+        var ledger = ledger(balance: 300_000)
+        ledger.profile.floorAmount = 200_000
+        ledger.plans = [salary(), Plan(title: "先付", amount: 250_000, dueDate: date("2026-11-06")),
+                        Plan(title: "再收", amount: 300_000, dueDate: date("2026-11-10"), inflow: true, nature: .income)]
+        let timeline = Finance.cashTimeline(ledger, now: now), window = timeline.window()
+        XCTAssertTrue(window.showsFloor)
+        XCTAssertFalse(window.belowFloor)
+        XCTAssertFalse(window.endpointPresentation!.belowFloor)
+        XCTAssertTrue(window.forecastSegments.contains { $0.belowFloor })
+        XCTAssertFalse(window.forecastSegments.last!.belowFloor)
+        XCTAssertFalse(timeline.window(cycleOffset: 1).showsFloor)
+    }
+
+    func testAnnotationsReserveSalaryAndOnlyTwoLargestEligibleExpenses() {
+        var ledger = ledger(); let bank = ledger.accounts[0].id
+        let recurring = Plan(title: "合成月费", amount: 1, dueDate: date("2026-11-01"), frequency: .monthly)
+        ledger.plans = [salary(), recurring]
+        ledger.entries = (1...5).map { i in
+            var entry = Entry(date: date("2026-11-02"), amount: Int64(i * 2_000_000), accountID: bank, title: "合成支出\(i)")
+            entry.planID = recurring.id; return entry
+        }
+        ledger.entries.append(Entry(date: date("2026-10-15"), amount: 1_310_000, nature: .income, accountID: bank, title: "工资"))
+        let window = Finance.cashTimeline(ledger, now: now).window()
+        XCTAssertEqual(window.topAnnotations.first?.title, "工资")
+        XCTAssertEqual(Set(window.topAnnotations.map(\.title)), ["工资", "合成支出4", "合成支出5"])
+        XCTAssertEqual(window.point(on: date("2026-11-02"))?.events.count, 5)
+    }
+
+    func testAnnotationRowsStaggerCollisionsAndClampEdgesWithoutDroppingLabels() {
+        let candidates: [CashTimelineAnnotationLayout.Candidate] = [
+            .init(id: "a", x: 0, width: 80), .init(id: "b", x: 65, width: 80), .init(id: "c", x: 290, width: 60)]
+        let placed = CashTimelineAnnotationLayout.place(candidates, width: 300)
+        XCTAssertEqual(placed.map(\.row), [0, 1, 0])
+        XCTAssertEqual(placed.map(\.centerX), [40, 65, 270])
+        XCTAssertEqual(placed.count, candidates.count)
+        let allAtOnce = candidates.map { CashTimelineAnnotationLayout.Candidate(id: $0.id, x: 0, width: $0.width) }
+        XCTAssertEqual(CashTimelineAnnotationLayout.place(allAtOnce, width: 300).map(\.row), [0, 1, 2])
+    }
+
+    func testAnnotationRowSpacingAndOrderAreDeterministic() {
+        let candidates: [CashTimelineAnnotationLayout.Candidate] = [.init(id: "b", x: 158, width: 100), .init(id: "a", x: 50, width: 100)]
+        XCTAssertEqual(CashTimelineAnnotationLayout.place(candidates, width: 300).map(\.row), [0, 0])
+        XCTAssertEqual(CashTimelineAnnotationLayout.place(candidates, width: 300),
+                       CashTimelineAnnotationLayout.place(Array(candidates.reversed()), width: 300))
     }
 }
