@@ -105,26 +105,63 @@ public struct CashTimeline: Equatable, Sendable {
     }
 }
 
-/// A small deterministic 1/2/5 scale shared by plotting and tests. Values are yuan.
+/// A compact scale shared by plotting and tests. Values are yuan.
 public struct CashTimelineScale: Equatable, Sendable {
     public var domain: ClosedRange<Double>
     public var ticks: [Double]
+    public var step: Double
     public init(window: CashTimelineWindow) {
         var values = (window.history + window.forecast + window.previous).map { Double($0.balance) / 100 }
         values += window.forecastLine.map { Double($0.balance) / 100 }
-        if window.belowFloor, let floor = window.floor { values.append(Double(floor) / 100) }
-        let low = min(0, values.min() ?? 0), high = max(0, values.max() ?? 0)
-        let span = max(1, high - low), raw = span / 4
-        let power = pow(10, floor(log10(raw)))
-        let steps: [Double] = [power, 2 * power, 5 * power, 10 * power]
-        let step: Double = steps.first { value in
-            let intervals = ceil(high / value) - floor(low / value)
-            return intervals <= 4
-        } ?? (power * 10)
-        let bottom = floor(low / step) * step
-        let top = max(bottom + 2 * step, ceil(high / step) * step)
-        ticks = stride(from: bottom, through: top + step * 0.001, by: step).map { $0 }
-        domain = (bottom - step * 0.08)...(top + step * 0.22)
+        if window.showsFloor, let floor = window.floor { values.append(Double(floor) / 100) }
+        self.init(values: values)
+    }
+    public init(values: [Double]) {
+        let finite = values.filter(\.isFinite)
+        let low = finite.min() ?? 0, high = finite.max() ?? 0
+        var bottom = low, top = high
+        // A flat or tiny range needs room for three 1k ticks. Never invent a
+        // negative range for all-positive cash (or positive for all-negative).
+        if high - low < 3_000 {
+            bottom = floor(low / 1_000) * 1_000
+            top = max(bottom + 2_000, ceil(high / 1_000) * 1_000)
+            if high <= 0 && low < 0 && top > 0 { bottom -= top; top = 0 }
+        }
+        let padding = max(1, (top - bottom) * 0.04)
+        let lower = low >= 0 ? max(0, bottom - padding) : bottom - padding
+        let upper = high <= 0 && low < 0 ? min(0, top + padding) : top + padding
+        var steps: [Double] = [1_000, 2_000, 5_000, 10_000]
+        // Outside the design's ordinary cash range, extend the same 1/2/5
+        // sequence so very large ledgers still have three or four labels.
+        var decade = 10_000.0
+        while decade < max(10_000, upper - lower) {
+            steps += [2 * decade, 5 * decade, 10 * decade]
+            decade *= 10
+        }
+        func labels(_ step: Double) -> [Double] {
+            let first = ceil(lower / step), last = floor(upper / step)
+            guard last >= first, last - first <= 10 else { return [] }
+            return (0...Int(last - first)).map { (first + Double($0)) * step }
+        }
+        let compact = steps.first { (3...4).contains(labels($0).count) }
+        if let chosen = compact ?? steps.first(where: { (3...6).contains(labels($0).count) }) {
+            step = chosen; ticks = labels(chosen)
+            // Interior grid labels need not coincide with both domain edges.
+            // Drop outer labels instead of expanding the cash range to zero.
+            while ticks.count > 4 {
+                if ticks.count.isMultiple(of: 2) { ticks.removeFirst() }
+                else { ticks.removeLast() }
+            }
+        } else {
+            // Rare alignment gaps (e.g. 1.1k...5.9k) need only a small grid
+            // extension, rather than forcing the entire axis down to zero.
+            let chosen = steps.first { ceil(high / $0) - floor(low / $0) <= 3 } ?? steps.last!
+            step = chosen
+            bottom = floor(low / chosen) * chosen
+            top = max(bottom + 2 * chosen, ceil(high / chosen) * chosen)
+            ticks = (0...Int((top - bottom) / chosen)).map { bottom + Double($0) * chosen }
+        }
+        domain = min(lower, ticks.first ?? lower)...max(upper, ticks.last ?? upper)
     }
     public static func label(_ value: Double) -> String {
         let magnitude = abs(value), sign = value < 0 ? "−" : ""

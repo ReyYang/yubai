@@ -2448,7 +2448,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["tab_overview"].isSelected)
         XCTAssertTrue(chart.exists)
         XCTAssertFalse(app.buttons["cashTimelineToday"].exists)
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelineMinimum").firstMatch.label.contains("发工资前还剩"))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelineMinimum").firstMatch.label.contains("今天"))
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelineMinimum").firstMatch.exists)
     }
 
@@ -2462,10 +2462,13 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.navigationBars["现金会怎么走"].exists)
         let original = chart.value as? String
         XCTAssertNotNil(original)
-        XCTAssertTrue((original ?? "").contains("发工资前还剩"))
+        XCTAssertTrue((original ?? "").contains("发工资前 "))
+        XCTAssertTrue((original ?? "").contains("今天，余额"))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelineMinimum").firstMatch.label.contains("9,000.00"))
         XCTAssertTrue((original ?? "").contains("比上个月同一天"))
         XCTAssertTrue(app.staticTexts["这个月"].exists)
         XCTAssertTrue(app.staticTexts["上个月"].exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelineRange").firstMatch.exists)
         snapshot("cash-timeline-default", app)
         func panEarlier() {
             chart.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.4)).press(forDuration: 0.05,
@@ -2476,8 +2479,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(today.waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["tab_overview"].isSelected)
         XCTAssertNotEqual(original, chart.value as? String)
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelineMinimum").firstMatch.label.contains("发工资前剩下"))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", " 起")).count >= 2)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelineMinimum").firstMatch.label.contains("日"))
+        XCTAssertTrue(app.staticTexts["这个月"].exists)
+        XCTAssertTrue(app.staticTexts["上个月"].exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "cashTimelinePages").firstMatch.exists)
         // Number of whole cycles depends on today's day-of-month. Repeated swipes
         // must reach and stay at the three-calendar-month boundary.
         for _ in 0..<4 { panEarlier() }
@@ -2487,7 +2492,7 @@ final class AppFlowTests: XCTestCase {
             thenDragTo: chart.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.4)))
         XCTAssertNotEqual(earliest, chart.value as? String)
         snapshot("cash-timeline-earlier", app)
-        tap(app.buttons["tab_entries"], in: app)
+        tap(today, in: app)
         XCTAssertFalse(today.exists)
         XCTAssertEqual(original, chart.value as? String)
         chart.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.4)).press(forDuration: 0.05,
@@ -2505,8 +2510,9 @@ final class AppFlowTests: XCTestCase {
         let chart = app.descendants(matching: .any).matching(identifier: "cashTimelineChart").firstMatch
         XCTAssertTrue(floor.waitForExistence(timeout: 5))
         XCTAssertTrue(floor.label.contains("3,000.00"))
-        XCTAssertTrue(minimum.label.contains("发工资前还剩"))
-        XCTAssertTrue(minimum.label.contains("−200.00"))
+        XCTAssertTrue(minimum.label.contains("今天"))
+        XCTAssertTrue(minimum.label.contains("600.00"))
+        XCTAssertTrue((chart.value as? String ?? "").contains("发工资前 −200.00"))
         snapshot("cash-timeline-low", app)
         tap(app.buttons["toggleAmountVisibility"], in: app)
         XCTAssertFalse(chart.exists); XCTAssertFalse(floor.exists); XCTAssertFalse(minimum.exists)
