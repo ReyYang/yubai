@@ -255,11 +255,25 @@ struct LetterSubscriptionCard: View {
 struct SavingProgressBar: View {
     let ratio: Double
     var amber = false
+    var showsOvershoot = false
     var body: some View {
+        let segments = SavingBarSegments(ratio: ratio, showsOvershoot: showsOvershoot)
         GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(YubaiColor.neutralSoft)
-                Capsule().fill(amber ? YubaiColor.amberDot : YubaiColor.brand).frame(width: geometry.size.width * min(1, max(0, ratio)))
+            if segments.overflowFraction > 0 {
+                let width = max(0, geometry.size.width - (segments.filledFraction > 0 ? YubaiSpace.space2 : 0))
+                HStack(spacing: YubaiSpace.space2) {
+                    if segments.filledFraction > 0 {
+                        (amber ? YubaiColor.amberDot : YubaiColor.brand)
+                            .frame(width: width * segments.filledFraction)
+                    }
+                    YubaiColor.amberStrong.frame(width: width * segments.overflowFraction)
+                }.clipShape(Capsule())
+            } else {
+                ZStack(alignment: .leading) {
+                    Capsule().fill(YubaiColor.neutralSoft)
+                    Capsule().fill(amber ? YubaiColor.amberDot : YubaiColor.brand)
+                        .frame(width: geometry.size.width * segments.filledFraction)
+                }
             }
         }.frame(height: YubaiSpace.space4).accessibilityHidden(true)
     }
@@ -289,7 +303,7 @@ struct RestrainNearRow: View {
                 Text(progress.title + " · " + usage(progress)).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
                 Text(limit(progress)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            SavingProgressBar(ratio: progress.ratio, amber: true).frame(width: YubaiSize.iconButton + YubaiSpace.gapSection)
+            SavingProgressBar(ratio: progress.ratio, amber: true, showsOvershoot: true).frame(width: YubaiSize.iconButton + YubaiSpace.gapSection)
         }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.rowDouble)
             .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
     }

@@ -78,6 +78,7 @@ enum YubaiFont {
     static let amountLarge = Style(size: 30, lineHeight: 36, weight: .semibold, family: .num, tracking: -0.5, relativeTo: .title)
     static let amount = Style(size: 15, lineHeight: 20, weight: .semibold, family: .num, tracking: 0, relativeTo: .body)
     static let amountSmall = Style(size: 13, lineHeight: 18, weight: .medium, family: .num, tracking: 0, relativeTo: .footnote)
+    static let amountCaption = Style(size: 12, lineHeight: 18, weight: .medium, family: .num, relativeTo: .caption)
     static let amountDay = Style(size: 18, lineHeight: 24, weight: .semibold, family: .num, tracking: -0.3, relativeTo: .headline)
     // Numeric sizes specified by the approved V3 summary tiles and donut.
     static let amountSummary = Style(size: 17, lineHeight: 24, weight: .semibold, family: .num, relativeTo: .headline)
@@ -1058,6 +1059,25 @@ private struct AssistantWave: Shape {
     }
 }
 
+private struct HeroShortfallStripes: View {
+    var body: some View {
+        Canvas { context, size in
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(YubaiColor.amberMark))
+            // A 135° CSS gradient has diagonal bands with 3pt perpendicular widths.
+            let band: CGFloat = 3 * sqrt(2)
+            var stripes = Path()
+            for x in stride(from: CGFloat.zero, to: size.width + size.height + band * 2, by: band * 2) {
+                stripes.move(to: CGPoint(x: x, y: 0))
+                stripes.addLine(to: CGPoint(x: x + band, y: 0))
+                stripes.addLine(to: CGPoint(x: x + band - size.height, y: size.height))
+                stripes.addLine(to: CGPoint(x: x - size.height, y: size.height))
+                stripes.closeSubpath()
+            }
+            context.fill(stripes, with: .color(YubaiColor.amberDot))
+        }.clipped()
+    }
+}
+
 struct HeroCard: View {
     @Environment(AppStore.self) private var store
     @State private var displayedAvailable: Int64?
@@ -1105,27 +1125,72 @@ struct HeroCard: View {
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
-    private var compositionAccessibilityLabel: String {
-        let label = "还能花 \(AmountLabel.text(available))"
-        return label + "，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))"
+    private func compositionAccessibilityLabel(_ segments: HeroBarSegments) -> String {
+        let cash = Money.text(segments.cash, currency: false)
+        let needs = Money.text(segments.needs, currency: false)
+        if segments.isOverspent {
+            return "要付和日常 \(needs)：现金 \(cash)，还差 \(Money.text(segments.trailingAmount, currency: false))"
+        }
+        return "现金 \(cash)：还能花 \(Money.text(available, currency: false))，要付和日常 \(needs)"
     }
     private func composition(_ progress: Double) -> some View {
-        let values = [max(0, Double(available)), max(0, Double(payable) + Double(reserved))]
-        let total = values.reduce(0, +)
-        let colors = [YubaiColor.brand, YubaiColor.neutralSoft]
-        let indices = values.indices.filter { values[$0] > 0 }
-        return GeometryReader { geometry in
-            let width = max(0, geometry.size.width - CGFloat(max(0, indices.count - 1)) * 2)
-            HStack(spacing: 2) {
-                ForEach(indices, id: \.self) { index in
-                    let ratio: Double = total > 0 ? values[index] / total : 0
-                    let animatedRatio: Double = ratio * progress
-                    let segmentWidth = width * CGFloat(animatedRatio)
-                    colors[index].frame(width: segmentWidth)
+        let segments = HeroBarSegments(available: available, payable: payable, reserved: reserved)
+        let hasGap = segments.leadingAmount > 0 && segments.trailingAmount > 0
+        let isEmpty = segments.leadingAmount == 0 && segments.trailingAmount == 0
+        return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            GeometryReader { geometry in
+                let width = max(0, geometry.size.width - (hasGap ? YubaiSpace.space2 : 0))
+                HStack(spacing: YubaiSpace.space2) {
+                    if segments.leadingAmount > 0 {
+                        (segments.isOverspent ? YubaiColor.neutralSoft : YubaiColor.brand)
+                            .frame(width: width * CGFloat(segments.leadingFraction * progress))
+                    }
+                    if segments.trailingAmount > 0 {
+                        Group {
+                            if segments.isOverspent { HeroShortfallStripes() }
+                            else { YubaiColor.neutralSoft }
+                        }.frame(width: width * CGFloat(segments.trailingFraction * progress))
+                    }
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading).background(total == 0 ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
-        }.frame(height: YubaiSpace.gapGroup).accessibilityElement(children: .ignore)
-            .accessibilityLabel(compositionAccessibilityLabel)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .background(isEmpty ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
+            }.frame(height: YubaiSpace.gapGroup)
+            if !isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 0) { compositionLegend(segments, horizontal: true) }
+                    VStack(alignment: .leading, spacing: YubaiSpace.space8) { compositionLegend(segments, horizontal: false) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }.accessibilityElement(children: .ignore).accessibilityLabel(compositionAccessibilityLabel(segments))
+    }
+    @ViewBuilder private func compositionLegend(_ segments: HeroBarSegments, horizontal: Bool) -> some View {
+        if segments.isOverspent {
+            if segments.cash > 0 {
+                legendItem("现金", amount: segments.cash, color: YubaiColor.neutralSoft)
+            }
+            if segments.trailingAmount > 0 {
+                if horizontal && segments.cash > 0 { Spacer(minLength: YubaiSpace.space12) }
+                legendItem("还差", amount: segments.trailingAmount, color: YubaiColor.amberDot, striped: true)
+            }
+        } else {
+            legendItem("还能花", amount: available, color: YubaiColor.brand)
+            if segments.needs > 0 {
+                if horizontal { Spacer(minLength: YubaiSpace.space12) }
+                legendItem("要付和日常", amount: segments.needs, color: YubaiColor.neutralSoft)
+            }
+        }
+    }
+    private func legendItem(_ name: String, amount: Int64, color: Color, striped: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Group {
+                if striped { HeroShortfallStripes() }
+                else { color }
+            }.frame(width: 8, height: 8).clipShape(RoundedRectangle(cornerRadius: 2))
+            Text(name).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            Text(Money.text(abs(amount), currency: false))
+                .yubaiFont(YubaiFont.amountCaption)
+                .foregroundStyle(striped ? YubaiColor.amberInk : YubaiColor.label)
+        }.fixedSize(horizontal: true, vertical: true)
     }
 }
 

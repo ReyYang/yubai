@@ -1,5 +1,21 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-05 · 第三十八轮「还能花图例与克制超出」
+
+来源：owner 指定本轮 brief、V38-Hero-Normal／Hero-Over／Restrain-Over 三份 HTML 和 HeroCard／Meter 两份组件规格；[原稿归档与哈希](mockups/hero-v38/README.md)。不采用已否决的 Hero-Over-NoBar。仅调整构成条的呈现，不改变资金、软线或提醒触发的计算规则。
+
+- `DesignSystem.swift / HeroCard`：保留 ChartGrow 的 progress 动画、12pt 条高、2pt 段间隙及整体胶囊裁切。够花时为还能花／要付和日常；超支时为现金覆盖／缺口，现金不大于零时整条缺口。缺口与其色块共用 Canvas，沿 135° 按 3pt 交替使用自适应 amberDot／amberMark。全零保留中性空条，无图例；零余量且有预留时整条现金，图例只写现金（缺口为零不显示「还差」）。
+- 图例在条下 8pt，以 8×8pt、圆角 2pt 色块配 caption 名称及同字号 medium／num 金额，金额由 Money.text 输出绝对值、两位小数、无货币符号；缺口金额为 amberInk。横排两端对齐，项目固定自然宽度，ViewThatFits 不够宽时改竖排；无截断或缩小。无预留时只显示还能花，无正现金时只显示还差。隐藏金额时条和图例均不创建；原点击计算依据及注意事项按钮保持。
+- 条和图例共用一个辅助功能元素，分别读「现金 C：还能花 X，要付和日常 Y」和「要付和日常 N：现金 C，还差 Z」。金额隐藏时不会创建该元素。
+- `SavingViews.swift / SavingProgressBar`：新增默认 false 的 showsOvershoot；有限比率超过 1 时，上限段／超出段按 `1/ratio` 和 `1-1/ratio` 分配扣除 2pt 间隙后的宽度。上限段沿用品牌色或 amberDot，超出段为 amberStrong；正无穷时整条为 amberStrong。只有 ProfileView.areaUsage 和 RestrainNearRow 开启，小项占比仍用默认截断。条高保留现有 4pt，HTML 对照板为 6pt；这是本轮 brief 指定的旧行为保留范围。
+- `YubaiCore/MeterSegments.swift`：只保存显示所需的金额与比例，无平台依赖；`MeterSegmentsTests.swift` 登记到现有 Xcode Core 测试目标。原生字体沿用系统 num／sans，新增 amountCaption 将图例数值固定在 caption 字号并支持动态字体，不加载网页字体。
+
+可见中文新增模板为：「还能花 X」「要付和日常 Y」「现金 X」「还差 Z」，全部属于数字与事实；没有说明句或规则例外。原稿对照板的「到 80%／刚好到／超了」为稿件演示标签，不加入 App。
+
+验证：容器 Linux `swift test` 全量通过（含新增 MeterSegmentsTests），0 失败。
+
+三个修改 App 文件的 iOS 26 模拟器 Debug／macOS 14 条件语法解析及 `git diff --check` 通过。没有 Apple SDK 类型检查、Xcode 构建或 UI 执行证据；390pt 原生布局、深色、动态字体、VoiceOver 和动画仍待 Mac／设备验证。原稿依赖未提供，不能独立预览；外部画布、截图及分发资源未同步。无新依赖。
+
 ## 2026-11-04 · 第三十一轮「更快分类」（owner 确认）
 
 来源：owner 明确确认五张 V31 静态 HTML，在 `feat/quick-sort-unsorted`（基于 main `fb0e4f3`）授权实现；[原稿归档](mockups/quick-sort-v31/README.md)五文件逐字节一致。本节补充第二十五／二十七轮：首页兜底新增主入口「一个个分」，保留「按对方分」及原一组页的勾选、用途、原文操作。没有第三方新增依赖、网络 API／DeepSeek 请求或提交；Package.swift／Package.resolved 保持。

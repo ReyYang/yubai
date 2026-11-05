@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-11-05 第三十八轮「还能花图例与克制超出」**：按本轮 brief、三份 V38 HTML 与两份组件规格实现；[原稿逐字节归档](mockups/hero-v38/README.md)。Hero 的 12pt 构成条增加两端图例／窄宽竖排，超支改为现金覆盖与琥珀斜纹缺口；隐藏金额时一并隐藏。想克制的进度条显示超出段，其他调用默认继续截断。源码、可见中文及验证边界见 [DESIGN.md 本轮节](DESIGN.md#2026-11-05--第三十八轮还能花图例与克制超出)。Linux 全量 `swift test` 通过（含新增 9 项纯计算测试）。iOS／macOS 条件语法解析通过，Apple SDK 编译与原生视觉／辅助功能仍待 Mac，外部资源未同步。无新增依赖。
+
 **2026-11-04 main 15ab722 跨文件访问修复**：保留 AppStore.undoLedger 私有，通过声明文件内的 internal clearUndo 同步清空快照／标签；整理撤销扩展改为调用该方法。原始错误在保留双文件边界的 Linux 类型检查中复现，修后通过；日志 Text 拼接改为插值，外观／可见中文不变。全 App 私有声明脚本覆盖 1,194 处显式修饰＋2 个私有扩展成员，仅确认上述一处越权；[完整疑点、区间符号复核与验证](../docs/XCODE-15AB-ACCESS-AUDIT.md)。指定 Linux 全量 **788 项，784 通过／4 原有实网跳过／0 失败（112.438 秒）**，App／UI iOS27.1与Mac条件解析207次通过。Apple SDK／Xcode／UI实跑仍待Mac，外部资源未同步；未提交／推送、无新依赖、未读密钥／未调用真实DeepSeek。
 
 **2026-11-04 main b40bd4b Xcode 编译修复**：按 owner 的 Xcode 27.1／iOS 26 SDK 报错，将现金图测量尺寸改为显式 CGFloat.infinity；Canvas 标注保留 Text／ResolvedText 类型，替换已弃用的文本着色调用，并拆开坐标长表达式。相对 fb0e4f3 的 11 个 App／1 个 UI 文件、194 个 diff hunk 已逐段审读，Widget 无区间改动。[逐文件结果、Apple 签名与验证报告](../docs/XCODE-B40-BUILD-AUDIT.md)。指定 Linux 全量 **788 项，784 通过／4 原有实网跳过／0 失败（118.540 秒）**；41 个 App／1 个 Widget／1 个 UI 文件逐个条件解析共210次通过，Foundation 修复通过严格Swift 6类型检查，450组标注坐标与原式一致。Apple SDK类型检查／Xcode构建／UI实跑仍待Mac；无外观、业务或可见中文变更，外部资源未同步。未提交／推送、无新依赖、未读密钥／未调用真实DeepSeek。
