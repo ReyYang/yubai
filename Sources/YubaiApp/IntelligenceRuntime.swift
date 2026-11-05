@@ -453,38 +453,85 @@ struct ActiveLedgerTransport: ChatTransport {
     }
     @discardableResult func applyUnsortedGroup(questionID: UUID, groupID: String, use: UnsortedUse,
                                                category: String?, otherAccount: UUID?, entryIDs: Set<UUID>? = nil,
-                                               purpose: String? = nil, quickSort: Bool = false) -> Bool {
-        guard let snapshot = unsortedGroups(questionID: questionID),
-              let change = unsortedChangeSet(questionID: questionID, groupID: groupID, use: use,
-                                            category: category, otherAccount: otherAccount,
-                                            entryIDs: entryIDs, purpose: purpose) else { return false }
+                                               purpose: String? = nil, quickSort: Bool = false,
+                                               subcategory: String? = nil, addition: CategoryAddition? = nil) -> Bool {
+        guard let snapshot = unsortedGroups(questionID: questionID) else { return false }
+        let change: ChangeSet?
+        if let addition {
+            do {
+                var prepared = current; try addition.apply(to: &prepared)
+                var cache = UnsortedGroupsCache()
+                change = cache.changeSet(groupID: groupID, questionID: questionID, use: use,
+                                         category: category, otherAccount: otherAccount, entryIDs: entryIDs,
+                                         purpose: purpose, revision: ledgerRevision, in: prepared)
+            } catch { self.error = error.localizedDescription; return false }
+        } else {
+            change = unsortedChangeSet(questionID: questionID, groupID: groupID, use: use,
+                                       category: category, otherAccount: otherAccount, entryIDs: entryIDs, purpose: purpose)
+        }
+        guard let change else { return false }
         let before = current
-        let saved = apply(change, label: "整理", silently: quickSort) { ledger in
+        let choice = category.map { CategoryAssignment(category: $0, subcategory: subcategory) }
+        let saved = saveUnsorted(change, choice: choice, addition: addition, silently: quickSort) { ledger in
             ImportOrganization.recordUndo(batchID: snapshot.batchID, before: before, in: &ledger)
         }
         if saved, quickSort, let group = snapshot.groupsByID[groupID] {
             let count = Set(change.items.flatMap(\.entryIDs)).count
+            let title = choice.map { $0.category + ($0.subcategory.map { " · " + $0 } ?? "") } ?? use.title
             showUnsortedUndo(questionID: questionID, groups: [group], change: change, before: before,
-                             label: "\(group.party) · \(count) 笔记为\(category ?? use.title)")
+                             label: "\(group.party) · \(count) 笔记为\(title)")
         }
         return saved
     }
     @discardableResult func applyUnsortedGroups(questionID: UUID, groupIDs: Set<String>, use: UnsortedUse,
-                                                category: String?, otherAccount: UUID?) -> Bool {
-        guard let snapshot = unsortedGroups(questionID: questionID),
-              let change = unsortedChangeSet(questionID: questionID, groupIDs: groupIDs, use: use,
-                                            category: category, otherAccount: otherAccount) else { return false }
+                                                category: String?, otherAccount: UUID?, subcategory: String? = nil,
+                                                addition: CategoryAddition? = nil) -> Bool {
+        guard let snapshot = unsortedGroups(questionID: questionID) else { return false }
+        let change: ChangeSet?
+        if let addition {
+            do {
+                var prepared = current; try addition.apply(to: &prepared)
+                var cache = UnsortedGroupsCache()
+                change = cache.changeSet(groupIDs: groupIDs, questionID: questionID, use: use,
+                                         category: category, otherAccount: otherAccount, revision: ledgerRevision, in: prepared)
+            } catch { self.error = error.localizedDescription; return false }
+        } else {
+            change = unsortedChangeSet(questionID: questionID, groupIDs: groupIDs, use: use,
+                                       category: category, otherAccount: otherAccount)
+        }
+        guard let change else { return false }
         let groups = snapshot.groups.filter { groupIDs.contains($0.id) }
         let before = current
-        let saved = apply(change, label: "整理", silently: true) { ledger in
+        let choice = category.map { CategoryAssignment(category: $0, subcategory: subcategory) }
+        let saved = saveUnsorted(change, choice: choice, addition: addition, silently: true) { ledger in
             ImportOrganization.recordUndo(batchID: snapshot.batchID, before: before, in: &ledger)
         }
         if saved {
             let count = Set(change.items.flatMap(\.entryIDs)).count
+            let title = choice.map { $0.category + ($0.subcategory.map { " · " + $0 } ?? "") } ?? use.title
             showUnsortedUndo(questionID: questionID, groups: groups, change: change, before: before,
-                             label: "\(groups.count) 组 · \(count) 笔记为\(category ?? use.title)")
+                             label: "\(groups.count) 组 · \(count) 笔记为\(title)")
         }
         return saved
+    }
+    /// The addition, ChangeSet, explicit small-item choice and import undo are
+    /// persisted once. ChangeSet.apply remains shared with the other branches.
+    private func saveUnsorted(_ change: ChangeSet, choice: CategoryAssignment?, addition: CategoryAddition?,
+                              silently: Bool, finishing: @escaping (inout Ledger) throws -> Void) -> Bool {
+        let ids = Set(change.items.flatMap(\.entryIDs))
+        let finish: (inout Ledger) throws -> Void = { ledger in
+            if let choice { try CategoryModel.confirm(choice, entryIDs: ids, includingParty: true, in: &ledger) }
+            try finishing(&ledger)
+        }
+        if let addition {
+            guard addition.assignment == choice else { return false }
+            return update("整理", entryMotion: !silently, showToast: !silently) { ledger in
+                try addition.apply(to: &ledger)
+                _ = try change.apply(to: &ledger)
+                try finish(&ledger)
+            }
+        }
+        return apply(change, label: "整理", silently: silently, finishing: finish)
     }
     private func showUnsortedUndo(questionID: UUID, groups: [UnsortedPartyGroup], change: ChangeSet, before: Ledger, label: String) {
         cancelEntrySaveMotion(); toast = nil

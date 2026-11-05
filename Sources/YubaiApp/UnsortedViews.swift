@@ -197,42 +197,35 @@ private struct UnsortedImmediateChoices: View {
     let groups: [UnsortedPartyGroup]
     var suggested: String? = nil
     let identifier: String
-    let apply: (UnsortedUse, String?, UUID?) -> Void
+    let apply: (UnsortedUse, CategoryAssignment?, UUID?, CategoryAddition?) -> Bool
     @State private var choosingAccount = false
     var body: some View {
         let inflow = groups.first?.inflow ?? false
-        let categories = store.current.selectableCategories.filter { $0.income == inflow }
-        let ordered = categories.filter { $0.name == suggested } + categories.filter { $0.name != suggested }
         let choices = UnsortedGroups.uses(for: groups, in: store.current).filter { !$0.needsCategory && $0 != .transfer }
         let canTransfer = UnsortedGroups.uses(for: groups, in: store.current).contains(.transfer)
         VStack(alignment: .leading, spacing: YubaiSpace.space16) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: 3), spacing: YubaiSpace.space8) {
-                ForEach(ordered) { category in
-                    Button { apply(inflow ? .income : .expense, category.name, nil) } label: {
-                        Text(category.name).yubaiFont(YubaiFont.button, weight: category.name == suggested ? .semibold : .regular)
-                            .lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
-                            .foregroundStyle(category.name == suggested ? YubaiColor.brandInk : YubaiColor.label)
-                            .background(YubaiColor.raised, in: Capsule())
-                            .overlay { if category.name == suggested { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 2) } }
-                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Category_" + category.name)
-                }
+            CategoryPicker(income: inflow, suggested: suggested,
+                           applyingCount: groups.reduce(0) { $0 + $1.entries.count }, identifier: identifier) { choice, addition in
+                apply(inflow ? .income : .expense, choice, nil, addition)
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 Text(inflow ? "不是收入" : "不是支出").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 ChipFlow {
                     ForEach(choices, id: \.rawValue) { use in
-                        SuggestionChip(value: use.title, identifier: identifier + "Nature_" + use.rawValue) { apply(use, nil, nil) }
+                        CategoryChoiceChip(title: use.title) { _ = apply(use, nil, nil, nil) }
+                            .accessibilityIdentifier(identifier + "Nature_" + use.rawValue)
                     }
                     if canTransfer {
-                        SuggestionChip(value: UnsortedUse.transfer.title, selected: choosingAccount, identifier: identifier + "Nature_transfer") {
+                        CategoryChoiceChip(title: UnsortedUse.transfer.title, selected: choosingAccount) {
                             choosingAccount.toggle()
-                        }
+                        }.accessibilityIdentifier(identifier + "Nature_transfer")
                     }
                 }
                 if choosingAccount, canTransfer {
                     ChipFlow {
                         ForEach(UnsortedGroups.otherAccounts(for: groups, in: store.current)) { account in
-                            SuggestionChip(value: account.name, identifier: identifier + "Account_" + account.id.uuidString) { apply(.transfer, nil, account.id) }
+                            CategoryChoiceChip(title: account.name) { _ = apply(.transfer, nil, account.id, nil) }
+                                .accessibilityIdentifier(identifier + "Account_" + account.id.uuidString)
                         }
                     }
                 }
@@ -253,8 +246,10 @@ private struct UnsortedSelectionSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: YubaiSpace.space16) {
                 Text("\(groups.reduce(0) { $0 + $1.entries.count }) 笔记为").yubaiFont(YubaiFont.heroLabel)
-                UnsortedImmediateChoices(groups: groups, identifier: "unsortedSelected") { use, category, account in
-                    if store.applyUnsortedGroups(questionID: questionID, groupIDs: groupIDs, use: use, category: category, otherAccount: account) { applied() }
+                UnsortedImmediateChoices(groups: groups, suggested: groups.count == 1 ? groups.first.flatMap { UnsortedGroups.suggestedCategory(for: $0, in: store.current) } : nil, identifier: "unsortedSelected") { use, choice, account, addition in
+                    if store.applyUnsortedGroups(questionID: questionID, groupIDs: groupIDs, use: use, category: choice?.category,
+                                                 otherAccount: account, subcategory: choice?.subcategory, addition: addition) { applied(); return true }
+                    return false
                 }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space24)
         }.paperBackground().foregroundStyle(YubaiColor.label)
@@ -286,12 +281,15 @@ struct UnsortedQuickSortView: View {
                 if let group {
                     VStack(alignment: .leading, spacing: YubaiSpace.space16) {
                         quickCard(group)
-                        UnsortedImmediateChoices(groups: [group], suggested: UnsortedGroups.suggestedCategory(for: group, in: store.current), identifier: "quickSort") { use, category, account in
+                        UnsortedImmediateChoices(groups: [group], suggested: UnsortedGroups.suggestedCategory(for: group, in: store.current), identifier: "quickSort") { use, choice, account, addition in
                             if store.applyUnsortedGroup(questionID: questionID, groupID: group.id, use: use,
-                                                        category: category, otherAccount: account, quickSort: true) {
+                                                        category: choice?.category, otherAccount: account, quickSort: true,
+                                                        subcategory: choice?.subcategory, addition: addition) {
                                 session.record(group.id)
                                 session.reconcile(store.unsortedGroups(questionID: questionID)?.groups ?? [])
+                                return true
                             }
+                            return false
                         }
                     }.id(group.id)
                         .transition(reduceMotion ? .opacity : .asymmetric(insertion: .offset(x: YubaiSpace.space24).combined(with: .opacity), removal: .offset(x: -YubaiSpace.space24).combined(with: .opacity)))
@@ -372,6 +370,7 @@ struct UnsortedGroupView: View {
     let groupID: String
     @State private var use: UnsortedUse?
     @State private var category: String?
+    @State private var subcategory: String?
     @State private var otherAccount: UUID?
     @State private var purpose = ""
     // An empty exclusion set means all rows are selected, without rebuilding a
@@ -422,24 +421,27 @@ struct UnsortedGroupView: View {
             sectionTitle(group.inflow ? "不是收入" : "不是支出")
             ChipFlow {
                 ForEach(ordered, id: \.rawValue) { choice in
-                    SuggestionChip(value: choice.title, selected: use == choice, identifier: "unsortedNature_" + choice.rawValue) {
-                        use = choice; category = nil; otherAccount = nil
-                    }
+                    CategoryChoiceChip(title: choice.title, selected: use == choice) {
+                        use = choice; category = nil; subcategory = nil; otherAccount = nil
+                    }.accessibilityIdentifier("unsortedNature_" + choice.rawValue)
                 }
             }
         }
     }
     private func categoryChoices(_ group: UnsortedPartyGroup) -> some View {
-        let choices: [YubaiCore.Category] = store.current.selectableCategories.filter { $0.income == group.inflow }
-        return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             sectionTitle("分类")
-            ChipFlow {
-                ForEach(choices) { choice in
-                    SuggestionChip(value: choice.name, selected: category == choice.name, identifier: "unsortedCategory_" + choice.name) {
-                        use = group.inflow ? .income : .expense; category = choice.name; otherAccount = nil
-                    }
+            CategoryPicker(income: group.inflow,
+                           selected: category.map { .init(category: $0, subcategory: subcategory) },
+                           suggested: UnsortedGroups.suggestedCategory(for: group, in: store.current),
+                           applyingCount: group.entries.count - excludedEntryIDs.count, identifier: "unsorted") { choice, addition in
+                if let addition {
+                    if excludedEntryIDs.count < group.entries.count { return apply(group, choice: choice, addition: addition) }
+                    guard store.update("添加分类", { try addition.apply(to: &$0) }) else { return false }
                 }
-            }
+                use = group.inflow ? .income : .expense; category = choice.category
+                subcategory = choice.subcategory; otherAccount = nil; return true
+            }.id(use?.rawValue)
         }
     }
     private func accountChoices(_ group: UnsortedPartyGroup) -> some View {
@@ -448,7 +450,8 @@ struct UnsortedGroupView: View {
             sectionTitle("转到哪个账户")
             ChipFlow {
                 ForEach(accounts) { account in
-                    SuggestionChip(value: account.name, selected: otherAccount == account.id, identifier: "unsortedAccount_" + account.id.uuidString) { otherAccount = account.id }
+                    CategoryChoiceChip(title: account.name, selected: otherAccount == account.id) { otherAccount = account.id }
+                        .accessibilityIdentifier("unsortedAccount_" + account.id.uuidString)
                 }
             }
         }
@@ -456,7 +459,7 @@ struct UnsortedGroupView: View {
     private var purposeField: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             sectionTitle("用途")
-            TextField("可不填", text: $purpose).textFieldStyle(.plain).yubaiFont(YubaiFont.row)
+            TextField("", text: $purpose).textFieldStyle(.plain).yubaiFont(YubaiFont.row)
                 .lineLimit(1).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.segmentedHeight)
                 .background(YubaiColor.raised, in: Capsule())
                 .accessibilityLabel("用途").accessibilityIdentifier("unsortedPurpose")
@@ -464,19 +467,29 @@ struct UnsortedGroupView: View {
     }
     private func applyButton(_ group: UnsortedPartyGroup, available: Bool) -> some View {
         let count = group.entries.count - excludedEntryIDs.count
-        let result = category ?? use?.title
+        let result = category.map { $0 + (subcategory.map { " · " + $0 } ?? "") } ?? use?.title
         let title = count > 0 ? result.map { "\(count.formatted(.number.locale(Locale(identifier: "en_US")))) 笔记为 \($0)" } : nil
         return Button(title ?? "选一个分类") {
             guard let use else { return }
             let selected = Set(group.entries.lazy.filter { !excludedEntryIDs.contains($0.id) }.map(\.id))
             if store.applyUnsortedGroup(questionID: questionID, groupID: groupID, use: use, category: category,
-                                        otherAccount: otherAccount, entryIDs: selected, purpose: purpose) {
+                                        otherAccount: otherAccount, entryIDs: selected, purpose: purpose, subcategory: subcategory) {
                 if let remaining = store.unsortedGroups(questionID: questionID)?.groupsByID[groupID] {
                     lastGroup = remaining; excludedEntryIDs.removeAll()
                 } else { dismissOnce() }
             }
         }.buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.raised))
             .accessibilityIdentifier("applyUnsortedGroup").disabled(!available || isDismissing || !canApply(group))
+    }
+    private func apply(_ group: UnsortedPartyGroup, choice: CategoryAssignment, addition: CategoryAddition) -> Bool {
+        let selected = Set(group.entries.lazy.filter { !excludedEntryIDs.contains($0.id) }.map(\.id))
+        guard store.applyUnsortedGroup(questionID: questionID, groupID: groupID, use: group.inflow ? .income : .expense,
+                                       category: choice.category, otherAccount: nil, entryIDs: selected, purpose: purpose,
+                                       subcategory: choice.subcategory, addition: addition) else { return false }
+        if let remaining = store.unsortedGroups(questionID: questionID)?.groupsByID[groupID] {
+            lastGroup = remaining; excludedEntryIDs.removeAll()
+        } else { dismissOnce() }
+        return true
     }
     private func entries(_ group: UnsortedPartyGroup) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {

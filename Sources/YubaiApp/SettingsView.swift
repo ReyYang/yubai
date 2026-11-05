@@ -42,8 +42,13 @@ struct SettingsView: View {
             }.buttonStyle(PressButtonStyle())
             TabNavigationLink(.accounts) { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
-                TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { row("固定收付", detail: fixedFlowsDetail) }
-                    .accessibilityIdentifier("openFixedFlows")
+                VStack(spacing: YubaiSpace.none) {
+                    TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { row("固定收付", detail: fixedFlowsDetail) }
+                        .accessibilityIdentifier("openFixedFlows")
+                    separator
+                    NavigationLink(value: CategorySettingsRoute.categories) { row("分类") }
+                        .accessibilityIdentifier("openCategories")
+                }
             }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
@@ -67,6 +72,7 @@ struct SettingsView: View {
                 }
             }.buttonStyle(PressButtonStyle())
         }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("settingsScroll")
+            .navigationDestination(for: CategorySettingsRoute.self) { _ in CategoriesView() }
             .rootPageHeader { TabRootHeader(title: "我") }.navigationTitle("我")
             .task(id: store.current.updatedAt) {
                 let repository = store.localRepository

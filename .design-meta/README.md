@@ -1,5 +1,7 @@
 # 余白 · 产品与设计入口
 
+**2026-11-05 第三十四／三十五轮分类**：owner 已批准分类管理及共享两步选择器，在 `feat/category-defaults-expand` 实现。我页入口、固定排序前五、小项增改删、合并撤销、隐藏与恢复；整理三处及导入／问余白草稿／快速记账映射复用新组件。用途备注一次性迁移、口语词表与显式只记大类 Core API 一并完成，CategoryReguess 暂不接 UI。[采用范围、全部可见中文、源码与验证边界](../docs/CATEGORY-UI-V34-V35.md)。指定 Linux build／全量 **824 项，820 通过／4 原有实网跳过／0 失败**；App／UI 条件解析、访问审计与四组实际分类方法平台替身验证通过。Apple SDK／UI／视觉仍待 Mac；记一笔更多留给所属分支。原 HTML、路径和外部链接未入库，外部资源未同步；Git 工作树索引只读，两个提交使用临时索引生成并保存在本地 `review/category-ui-v34-v35`，原分支／索引未更新，不推送。
+
 **2026-11-04 main 15ab722 跨文件访问修复**：保留 AppStore.undoLedger 私有，通过声明文件内的 internal clearUndo 同步清空快照／标签；整理撤销扩展改为调用该方法。原始错误在保留双文件边界的 Linux 类型检查中复现，修后通过；日志 Text 拼接改为插值，外观／可见中文不变。全 App 私有声明脚本覆盖 1,194 处显式修饰＋2 个私有扩展成员，仅确认上述一处越权；[完整疑点、区间符号复核与验证](../docs/XCODE-15AB-ACCESS-AUDIT.md)。指定 Linux 全量 **788 项，784 通过／4 原有实网跳过／0 失败（112.438 秒）**，App／UI iOS27.1与Mac条件解析207次通过。Apple SDK／Xcode／UI实跑仍待Mac，外部资源未同步；未提交／推送、无新依赖、未读密钥／未调用真实DeepSeek。
 
 **2026-11-04 main b40bd4b Xcode 编译修复**：按 owner 的 Xcode 27.1／iOS 26 SDK 报错，将现金图测量尺寸改为显式 CGFloat.infinity；Canvas 标注保留 Text／ResolvedText 类型，替换已弃用的文本着色调用，并拆开坐标长表达式。相对 fb0e4f3 的 11 个 App／1 个 UI 文件、194 个 diff hunk 已逐段审读，Widget 无区间改动。[逐文件结果、Apple 签名与验证报告](../docs/XCODE-B40-BUILD-AUDIT.md)。指定 Linux 全量 **788 项，784 通过／4 原有实网跳过／0 失败（118.540 秒）**；41 个 App／1 个 Widget／1 个 UI 文件逐个条件解析共210次通过，Foundation 修复通过严格Swift 6类型检查，450组标注坐标与原式一致。Apple SDK类型检查／Xcode构建／UI实跑仍待Mac；无外观、业务或可见中文变更，外部资源未同步。未提交／推送、无新依赖、未读密钥／未调用真实DeepSeek。
