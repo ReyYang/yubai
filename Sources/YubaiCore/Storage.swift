@@ -85,6 +85,27 @@ public struct LedgerRepository: Sendable {
         let lock = NSRecursiveLock(); var digest: String?
         let discoveryLock = NSLock(); var discoveredFiles: Set<URL>?
         var payloadChecksums: [URL: String] = [:]
+        var current: (url: URL, digest: String, bytes: Data, ledger: Ledger)?
+        // Shared with relocated repositories, under historyLock.
+        var recoveryInfo: [URL: RecoveryInfo] = [:]
+        var verifiedRecoveryPayloads: [URL: (stamp: FileStamp, checksum: String, readable: Bool)] = [:]
+    }
+    private struct FileStamp: Equatable {
+        let size: UInt64, inode: UInt64
+        let modified: Date?, created: Date?
+        init?(_ url: URL) {
+            guard let a = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let size = a[.size] as? NSNumber else { return nil }
+            self.size = size.uint64Value; inode = (a[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+            modified = a[.modificationDate] as? Date; created = a[.creationDate] as? Date
+        }
+    }
+    private struct RecoveryInfo {
+        let stamp: FileStamp
+        var id: UUID?
+        var references: Set<UUID>?
+        var payloads: [URL: FileStamp?]
+        var readable: Bool
     }
     private let state: State
     private let localState: State
@@ -258,7 +279,16 @@ public struct LedgerRepository: Sendable {
         for i in ledger.attachments.indices where ledger.attachments[i].checksum != nil {
             ledger.attachments[i].unload(at: root.appendingPathComponent(ledger.attachments[i].id.uuidString), repository: self)
         }
+        ledger.calculations.markValidated()
         return ledger
+    }
+    private func rememberCurrent(_ ledger: Ledger, bytes: Data, digest: String, url: URL) {
+        // Cached metadata must not retain this repository through attachment
+        // locators (State -> Ledger -> Attachment -> Repository -> State).
+        var metadata = ledger
+        for i in metadata.attachments.indices { metadata.attachments[i].payloadRepository = nil }
+        metadata.calculations.markValidated()
+        state.current = (fileIdentity(url), digest, bytes, metadata)
     }
     public func attachmentData(_ id: UUID) throws -> Data {
         try access(writing: false) { root in
@@ -356,23 +386,61 @@ public struct LedgerRepository: Sendable {
         let bytes = try Data(contentsOf: url)
         return url.pathExtension == "gz" ? try RecoveryCompression.decode(bytes) : bytes
     }
-    private func preserve(bytes: Data, ledger: Ledger?, reason: String) throws {
-        historyLock.lock(); defer { historyLock.unlock() }
-        if let group = Self.recoveryGroup(reason) {
-            // Anchor to the FIRST retained snapshot, never extend the window on every save.
-            let versions = try recoveries()
-            var first: Recovery?
-            for version in versions.reversed() where Self.recoveryGroup(Self.recoveryReason(version)) == group {
-                if let anchor = first, version.date.timeIntervalSince(anchor.date) < Self.recoveryMergeWindow { continue }
-                first = version
-            }
-            if let first {
-                let date = max(recoveryDate(), versions.first?.date ?? .distantPast)
-                let elapsed = date.timeIntervalSince(first.date)
-                // A damaged snapshot cannot stand in for the new pre-change state.
-                if (0..<Self.recoveryMergeWindow).contains(elapsed), let readable = try? readRecovery(first), readable.id == ledger?.id { return }
+    // File identities include payloads: a removed/replaced payload invalidates readability.
+    // Undecodable metadata retains unknown references, preventing unsafe collection.
+    private func recoveryInfo(_ version: Recovery) -> RecoveryInfo? {
+        let url = fileIdentity(version.url)
+        guard let stamp = FileStamp(url) else { return nil }
+        if let cached = localState.recoveryInfo[url], cached.stamp == stamp,
+           cached.payloads.allSatisfy({ FileStamp($0.key) == $0.value }) { return cached }
+        let decoded = try? LedgerCodec.decode(recoveryBytes(url))
+        let readable = try? readRecovery(version)
+        let info = makeRecoveryInfo(url, stamp: stamp, ledger: decoded, readable: readable != nil)
+        localState.recoveryInfo[url] = info
+        return info
+    }
+    private func makeRecoveryInfo(_ url: URL, stamp: FileStamp, ledger: Ledger?, readable: Bool) -> RecoveryInfo {
+        var payloads: [URL: FileStamp?] = [:]
+        for item in ledger?.attachments ?? [] {
+            // Track both possible locations, including an absent shared payload.
+            for root in [recoveryPayloads, recoveryAttachments(url)] {
+                let payload = fileIdentity(root.appendingPathComponent(item.id.uuidString))
+                payloads.updateValue(FileStamp(payload), forKey: payload)
             }
         }
+        return RecoveryInfo(stamp: stamp, id: ledger?.id, references: ledger.map { Set($0.attachments.map(\.id)) }, payloads: payloads, readable: readable)
+    }
+    private func recoveryPayloadsReadable(_ ledger: Ledger) -> Bool {
+        for item in ledger.attachments {
+            let url = fileIdentity(recoveryPayloads.appendingPathComponent(item.id.uuidString))
+            guard let stamp = FileStamp(url) else { return false }
+            let checksum = item.payloadChecksum
+            if let cached = localState.verifiedRecoveryPayloads[url], cached.stamp == stamp, cached.checksum == checksum {
+                if !cached.readable { return false }
+                continue
+            }
+            let readable = stamp.size == UInt64(item.byteCount) && (try? fileChecksum(url)) == checksum
+            localState.verifiedRecoveryPayloads[url] = (stamp, checksum, readable)
+            if !readable { return false }
+        }
+        return true
+    }
+    private func mergesRecovery(reason: String, ledgerID: UUID?) throws -> Bool {
+        guard let ledgerID, let group = Self.recoveryGroup(reason) else { return false }
+        let versions = try recoveries()
+        var first: Recovery?
+        for version in versions.reversed() where Self.recoveryGroup(Self.recoveryReason(version)) == group {
+            if let anchor = first, version.date.timeIntervalSince(anchor.date) < Self.recoveryMergeWindow { continue }
+            first = version
+        }
+        guard let first else { return false }
+        let elapsed = max(recoveryDate(), versions.first?.date ?? .distantPast).timeIntervalSince(first.date)
+        guard (0..<Self.recoveryMergeWindow).contains(elapsed), let info = recoveryInfo(first) else { return false }
+        return info.readable && info.id == ledgerID
+    }
+    private func preserve(bytes: Data, ledger: Ledger?, reason: String) throws {
+        historyLock.lock(); defer { historyLock.unlock() }
+        if try mergesRecovery(reason: reason, ledgerID: ledger?.id) { return }
         let destination = try recoveryURL(reason: reason)
         if let ledger { try writeAttachments(ledger, at: recoveryPayloads) }
         let metadata = try ledger.map { ledger in
@@ -381,15 +449,28 @@ public struct LedgerRepository: Sendable {
         let compressed = try RecoveryCompression.encode(metadata)
         try checkSpace(compressed.count, at: history)
         try writePrivate(compressed, to: destination)
+        if let stamp = FileStamp(destination) {
+            localState.recoveryInfo[fileIdentity(destination)] = makeRecoveryInfo(destination, stamp: stamp, ledger: ledger, readable: ledger.map { recoveryPayloadsReadable($0) } ?? false)
+        }
     }
-    private func preserveCurrent(at root: URL, reason: String, verify: Bool = true) throws {
+    private func preserveCurrent(at root: URL, reason: String, verify: Bool = true, unchanged: Bool = false) throws {
         let url = root.appendingPathComponent("ledger.json")
+        historyLock.lock(); defer { historyLock.unlock() }
+        // CAS already verified the digest. A merged snapshot needs no second read.
+        if unchanged, let cached = state.current, cached.url == fileIdentity(url), cached.digest == state.digest {
+            if try mergesRecovery(reason: reason, ledgerID: cached.ledger.id) { return }
+            try preserve(bytes: cached.bytes, ledger: located(cached.ledger, at: attachments(at: root)), reason: cached.ledger.preMigrationData != nil ? "升级前版本" : reason)
+            return
+        }
         if verify, try (url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) > LedgerCodec.capacity { throw YubaiError.invalid("账本文件超过 250 MB，原文件已保留。") }
         let bytes = try Data(contentsOf: url)
         let decoded: Ledger?
-        if verify { decoded = try LedgerCodec.decode(bytes) }
+        let digest = LedgerCodec.checksum(bytes)
+        if let cached = state.current, cached.url == fileIdentity(url), cached.digest == digest { decoded = cached.ledger }
+        else if verify { decoded = try LedgerCodec.decode(bytes) }
         else { decoded = try? LedgerCodec.decode(bytes) }
         let ledger = decoded.map { located($0, at: attachments(at: root)) }
+        if let ledger { rememberCurrent(ledger, bytes: bytes, digest: digest, url: url) }
         // Embedded legacy payloads are split too; undecodable originals remain verbatim inside gzip.
         let label = decoded?.preMigrationData != nil ? "升级前版本" : reason
         if verify { try preserve(bytes: bytes, ledger: ledger, reason: label) }
@@ -403,7 +484,7 @@ public struct LedgerRepository: Sendable {
         historyLock.lock(); defer { historyLock.unlock() }
         try preserve(bytes: LedgerCodec.encodeMetadata(ledger), ledger: ledger, reason: reason); pruneHistory()
     }
-    private func pruneHistory() {
+    private func pruneHistory(knownCurrent: Bool = false) {
         historyLock.lock(); defer { historyLock.unlock() }
         guard let versions = try? recoveries() else { return }
         // recoveries() canonicalizes URLs once. All protected/selected keys,
@@ -411,19 +492,21 @@ public struct LedgerRepository: Sendable {
         // Decode references once, even when the byte budget evicts several versions.
         var references: [URL: Set<UUID>] = [:]
         for version in versions {
-            if let ledger = try? LedgerCodec.decode(recoveryBytes(version.url)) {
-                references[version.url] = Set(ledger.attachments.map(\.id))
-            }
+            references[version.url] = recoveryInfo(version)?.references
         }
         // Metadata alone is insufficient: a readable fallback must have all its payloads.
-        let newestReadable = versions.first { (try? readRecovery($0)) != nil }?.url
+        let newestReadable = versions.first { recoveryInfo($0)?.readable == true }?.url
         let protected = Set([versions.first?.url, newestReadable].compactMap { $0 })
         var currentIDs = Set<UUID>(), currentReadable = true
         for current in Set([file, localDirectory.appendingPathComponent("ledger.json")].map(fileIdentity)) where containsFile(current) {
-            if let ledger = try? LedgerCodec.decode(Data(contentsOf: current)) { currentIDs.formUnion(ledger.attachments.map(\.id)) }
+            if let cached = state.current, cached.url == current,
+               knownCurrent || (try? LedgerCodec.checksum(Data(contentsOf: current))) == cached.digest {
+                currentIDs.formUnion(cached.ledger.attachments.map(\.id))
+            } else if let ledger = try? LedgerCodec.decode(Data(contentsOf: current)) { currentIDs.formUnion(ledger.attachments.map(\.id)) }
             else { currentReadable = false }
         }
         let payloads = (try? FileManager.default.contentsOfDirectory(at: recoveryPayloads, includingPropertiesForKeys: nil)) ?? []
+        localState.recoveryInfo = localState.recoveryInfo.filter { key, _ in versions.contains { $0.url == key } }
         var remaining = versions
         func collectPayloads() {
             // Never collect payloads if any retained or live metadata cannot be read.
@@ -451,7 +534,7 @@ public struct LedgerRepository: Sendable {
             guard let group = Self.recoveryGroup(Self.recoveryReason(version)) else { continue }
             if let first = anchors[group], version.date.timeIntervalSince(first) < Self.recoveryMergeWindow {
                 remove(version)
-            } else if (try? readRecovery(version)) != nil { anchors[group] = version.date }
+            } else if recoveryInfo(version)?.readable == true { anchors[group] = version.date }
         }
         // Resample the entire time span, reducing the target if the actual directory is still too big.
         // The oldest is preferred, but can yield when even the endpoints exceed the byte budget.
@@ -486,14 +569,15 @@ public struct LedgerRepository: Sendable {
         var needsMigration = false
         var ledger = try access(writing: false) { root -> Ledger in
             let url = root.appendingPathComponent("ledger.json")
-            guard containsFile(url) else { state.digest = nil; return Ledger() }
+            guard containsFile(url) else { state.digest = nil; state.current = nil; return Ledger() }
             #if !os(Linux)
             guard !isUbiquitous || (NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []).isEmpty else { throw LedgerSyncError.changed }
             #endif
             let ledger = try read(url, attachmentDirectory: attachments(at: root))
             let bytes = try Data(contentsOf: url)
             needsMigration = ledger.preMigrationData != nil || ledger.attachments.contains(where: { $0.checksum == nil })
-            state.digest = LedgerCodec.checksum(bytes)
+            let digest = LedgerCodec.checksum(bytes); state.digest = digest
+            rememberCurrent(ledger, bytes: bytes, digest: digest, url: url)
             return ledger
         }
         if needsMigration {
@@ -501,7 +585,7 @@ public struct LedgerRepository: Sendable {
             try access(writing: true) { root in
                 try checkUnchanged(at: root)
                 try preserveCurrent(at: root, reason: "附件拆分前")
-                ledger = try put(ledger, at: root); pruneHistory()
+                ledger = try put(ledger, at: root); pruneHistory(knownCurrent: true)
             }
         }
         // Existing installations also receive the budget without needing a new history write.
@@ -521,7 +605,8 @@ public struct LedgerRepository: Sendable {
     private func put(_ ledger: Ledger, at root: URL, repairing: Bool = false, metadata: Data? = nil) throws -> Ledger {
         var shared = cleaned(ledger)
         if isUbiquitous { shared.preferences.lockEnabled = false }
-        let previous = (try? LedgerCodec.decode(Data(contentsOf: root.appendingPathComponent("ledger.json"))))?.attachments ?? []
+        // Payload checksums come from the last verified load/save, never a second decode.
+        let previous = state.current?.ledger.attachments ?? []
         let known = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0.payloadChecksum) })
         let bytes = try metadata ?? LedgerCodec.encodeMetadata(shared)
         try prepare(root); try checkSpace(bytes.count, at: root)
@@ -538,6 +623,8 @@ public struct LedgerRepository: Sendable {
         }
         for i in shared.attachments.indices { shared.attachments[i].unload(at: attachments(at: root).appendingPathComponent(shared.attachments[i].id.uuidString), repository: self) }
         shared.preMigrationData = nil
+        shared.calculations.markValidated()
+        rememberCurrent(shared, bytes: bytes, digest: state.digest!, url: root.appendingPathComponent("ledger.json"))
         return shared
     }
     func checkUnchanged(at root: URL) throws {
@@ -562,10 +649,10 @@ public struct LedgerRepository: Sendable {
             if markingPendingSync { try markPendingSync(true) }
             do {
                 try prepare(root)
-                if preservingRecovery, FileManager.default.fileExists(atPath: root.appendingPathComponent("ledger.json").path) { try preserveCurrent(at: root, reason: reason) }
+                if preservingRecovery, FileManager.default.fileExists(atPath: root.appendingPathComponent("ledger.json").path) { try preserveCurrent(at: root, reason: reason, unchanged: isUbiquitous || requiringUnchanged) }
                 else if let bytes = ledger.preMigrationData { try preserve(bytes: bytes, ledger: LedgerCodec.decode(bytes), reason: "升级前版本") }
                 let saved = try put(shared, at: root, metadata: metadata)
-                if preservingRecovery { pruneHistory() }
+                if preservingRecovery { pruneHistory(knownCurrent: true) }
                 return saved
             } catch {
                 if markingPendingSync && !wasPending { try? markPendingSync(false) }
@@ -647,6 +734,7 @@ public struct LedgerRepository: Sendable {
             try storageTransaction(paths: [history]) {
                 if FileManager.default.fileExists(atPath: history.path) { try FileManager.default.removeItem(at: history) }
             }
+            localState.recoveryInfo.removeAll(); localState.verifiedRecoveryPayloads.removeAll()
             let historyPath = fileIdentity(history).path + "/"
             state.payloadChecksums = state.payloadChecksums.filter { !$0.key.path.hasPrefix(historyPath) }
         } catch let error as YubaiError { throw error }
@@ -665,8 +753,8 @@ public struct LedgerRepository: Sendable {
                 let paths = try manager.contentsOfDirectory(at: localDirectory, includingPropertiesForKeys: nil)
                 try storageTransaction(paths: paths) { for url in paths { try manager.removeItem(at: url) } }
             }
-            localState.digest = nil; localState.payloadChecksums.removeAll()
-            if fileIdentity(directory) == fileIdentity(localDirectory) { state.digest = nil; state.payloadChecksums.removeAll() }
+            localState.digest = nil; localState.current = nil; localState.payloadChecksums.removeAll(); localState.recoveryInfo.removeAll(); localState.verifiedRecoveryPayloads.removeAll()
+            if fileIdentity(directory) == fileIdentity(localDirectory) { state.digest = nil; state.current = nil; state.payloadChecksums.removeAll() }
         } catch let error as YubaiError { throw error }
         catch { throw YubaiError.invalid("抹掉失败，本机数据已保留。请稍后重试。") }
     }
@@ -700,7 +788,7 @@ public struct LedgerRepository: Sendable {
                     if isCloudPayload(original) { try payloadAccess(original, writing: true, restore) }
                     else { try restore(original) }
                 }
-                state.digest = digest; state.payloadChecksums.removeAll()
+                state.digest = digest; state.current = nil; localState.recoveryInfo.removeAll(); localState.verifiedRecoveryPayloads.removeAll(); state.payloadChecksums.removeAll()
             } catch {
                 keepSnapshot = true
                 throw YubaiError.invalid("无法完成清理，原数据副本保留在 \(staging.path)。")
@@ -767,7 +855,7 @@ public struct LedgerRepository: Sendable {
             try prepare(root)
             if FileManager.default.fileExists(atPath: root.appendingPathComponent("ledger.json").path) { try preserveCurrent(at: root, reason: "恢复前", verify: false) }
             if let bytes = restored.preMigrationData { try preserve(bytes: bytes, ledger: LedgerCodec.decode(bytes), reason: "升级前版本") }
-            let saved = try put(restored, at: root, repairing: true); pruneHistory(); return saved
+            let saved = try put(restored, at: root, repairing: true); pruneHistory(knownCurrent: true); return saved
         }
     }
     public func resolve(_ versions: [LedgerVersion], choosing id: String, source: LedgerVersionSource, reason: String = "同步冲突时的另一版本", prepare: (Ledger) -> Ledger = { $0 }) throws -> Ledger {
@@ -778,7 +866,7 @@ public struct LedgerRepository: Sendable {
             try source.validate()
             for other in versions where other.id != id { try preserveRecovery(other.ledger, reason: reason) }
             let saved = try put(selected, at: root)
-            try source.markResolved(); pruneHistory(); return saved
+            try source.markResolved(); pruneHistory(knownCurrent: true); return saved
         }
     }
 }

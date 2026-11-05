@@ -80,22 +80,28 @@ public enum Finance {
     /// own 10-day window. The median resists a few unusually expensive windows.
     public static func estimatedDailyLiving(_ ledger: Ledger, now: Date) -> Int64 {
         let end = Dates.day(now); let start = Dates.addDays(-90, to: end)
-        let entries = ledger.activeEntries.filter { $0.date < end }
+        if let cached = ledger.calculations.dailyLiving(on: end) { return cached }
+        let entries = ledger.entries.lazy.filter { $0.deletedAt == nil && $0.date < end }
         var refunds: [UUID: Int64] = [:]
         for e in entries where e.nature == .refund {
             if let id = e.relatedEntryID { refunds[id, default: 0] += e.amount }
         }
         var windows = Array(repeating: Int64(0), count: 9)
+        let boundaries = (0...9).map { Dates.addDays($0 * 10, to: start) }
         for e in entries where e.date >= start {
-            let day = Dates.calendar.dateComponents([.day], from: start, to: Dates.day(e.date)).day ?? -1
-            guard (0..<90).contains(day) else { continue }
+            // Calendar boundaries preserve DST and local-midnight semantics
+            // without allocating calendar components for every transaction.
+            var window = 0
+            while window < 8 && e.date >= boundaries[window + 1] { window += 1 }
             if e.nature == .expense, e.planID == nil, e.rentID == nil, e.amount <= 50_000 {
-                windows[day / 10] += max(0, e.amount - refunds[e.id, default: 0])
+                windows[window] += max(0, e.amount - refunds[e.id, default: 0])
             } else if e.nature == .refund, e.relatedEntryID == nil {
-                windows[day / 10] -= e.amount
+                windows[window] -= e.amount
             }
         }
-        return min(Money.limit / 366, max(0, windows.sorted()[4]) / 10)
+        let value = min(Money.limit / 366, max(0, windows.sorted()[4]) / 10)
+        ledger.calculations.storeDailyLiving(value, day: end)
+        return value
     }
     public static func balance(_ account: Account, in ledger: Ledger, at: Date = Date()) -> Int64 {
         account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && account.includes($0, posting: $0.postingDate(for: account.id)) && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
@@ -151,8 +157,9 @@ public enum Finance {
     }
     public static func funds(_ ledger: Ledger, now: Date = Date(), days: Int = Finance.observationDays) -> Funds {
         let horizon = max(0, min(366, days))
+        if let cached = ledger.calculations.cachedFunds(now: now, days: horizon) { return cached }
         let accounts = ledger.accounts // Archived accounts still own money and obligations.
-        let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }); let entries = ledger.activeEntries
+        let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }); let entries = ledger.entries.lazy.filter { $0.deletedAt == nil }
         var deltas: [UUID: Int64] = [:]
         for entry in entries {
             if let account = accountsByID[entry.accountID] {
@@ -215,11 +222,13 @@ public enum Finance {
             let conservative = baseline - out - Int64(offset) * daily
             points.append(ForecastPoint(date: date, conservative: conservative, expected: conservative + incoming))
         }
-        return Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
+        let value = Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
                      livingEstimated: true, committed: committed, goals: goals, emergency: emergency, living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
                      occurrences: occurrences, points: points, warnings: warnings, floorRoom: ledger.profile.floorAmount.map { available - $0 },
                      horizonEnd: horizonEnd, horizonDays: horizonDays, payday: payday?.date, paydayTitle: payday?.title)
+        ledger.calculations.storeFunds(value, in: ledger, now: now, days: horizon)
+        return value
     }
     public static func spendingAmount(_ entry: Entry, ledger: Ledger) -> Int64 {
         spendingAmount(entry, rent: entry.rentID.flatMap { id in ledger.rents.first { $0.id == id } })

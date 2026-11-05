@@ -256,7 +256,7 @@ struct FlowRecordsView: View {
     let income: Bool
     let interval: DateInterval
     var body: some View {
-        let entriesByID: [UUID: Entry] = Dictionary(uniqueKeysWithValues: store.current.entries.map { ($0.id, $0) })
+        let entriesByID: [UUID: Entry] = store.entriesByID
         let rows: [Entry] = store.sortedEntries.filter { entry in
             guard entry.deletedAt == nil, entry.date >= interval.start, entry.date < interval.end else { return false }
             let natureMatches: Bool = income ? entry.nature == .income : (entry.nature == .expense || entry.nature == .refund)

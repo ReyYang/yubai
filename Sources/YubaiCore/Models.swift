@@ -640,13 +640,23 @@ public struct WishItem: Codable, Identifiable, Equatable, Sendable {
     }
 }
 public struct Ledger: Codable, Equatable, Sendable {
-    public var schema = 4; public var id = UUID(); public var updatedAt = Date()
-    public var isSample = false
-    public var accounts: [Account] = []; public var entries: [Entry] = []; public var plans: [Plan] = []
-    public var goals: [Goal] = []; public var rents: [Rent] = []
-    public var categories = Category.defaults; public var imports: [ImportBatch] = []; public var attachments: [Attachment] = []
-    public var categoryAliases: [String: String] = [:]
-    public var classificationMemory: [String: String] = [:]
+    // Every stored domain field invalidates the cache, including nested array/
+    // struct edits. Keep this observer when adding fields; copies then stay isolated.
+    var calculations = LedgerCalculations()
+    public var schema = 4 { didSet { calculations = LedgerCalculations() } }
+    public var id = UUID() { didSet { calculations = LedgerCalculations() } }
+    public var updatedAt = Date() { didSet { calculations = LedgerCalculations() } }
+    public var isSample = false { didSet { calculations = LedgerCalculations() } }
+    public var accounts: [Account] = [] { didSet { calculations = LedgerCalculations() } }
+    public var entries: [Entry] = [] { didSet { calculations = LedgerCalculations() } }
+    public var plans: [Plan] = [] { didSet { calculations = LedgerCalculations() } }
+    public var goals: [Goal] = [] { didSet { calculations = LedgerCalculations() } }
+    public var rents: [Rent] = [] { didSet { calculations = LedgerCalculations() } }
+    public var categories = Category.defaults { didSet { calculations = LedgerCalculations() } }
+    public var imports: [ImportBatch] = [] { didSet { calculations = LedgerCalculations() } }
+    public var attachments: [Attachment] = [] { didSet { calculations = LedgerCalculations() } }
+    public var categoryAliases: [String: String] = [:] { didSet { calculations = LedgerCalculations() } }
+    public var classificationMemory: [String: String] = [:] { didSet { calculations = LedgerCalculations() } }
     // Source-compatible projections backed by the same store, never encoded.
     public var categoryMemory: [String: String] {
         get { classificationMemory.mapValues { CategoryAssignment(path: $0).category } }
@@ -665,17 +675,20 @@ public struct Ledger: Codable, Equatable, Sendable {
             classificationMemory.merge(newValue) { _, new in new }
         }
     }
-    public var lastSubcategoryBatchDay: String?
-    public var subscriptionChecks: [String: String] = [:]
-    public var stoppedSubscriptions: [StoppedSubscription] = []
-    public var dismissedSalaryKeys: Set<String> = []
-    public var memories: [MemoryNote] = []
-    public var lastReflectionWeek: String?
-    public var preferences = Preferences()
-    public var profile = SpendingProfile(); public var cards: [ButlerCard] = []
-    public var pendingChanges: [ChangeSet] = []; public var wishlist: [WishItem] = []; public var mutedTopics: [String] = []
+    public var lastSubcategoryBatchDay: String? { didSet { calculations = LedgerCalculations() } }
+    public var subscriptionChecks: [String: String] = [:] { didSet { calculations = LedgerCalculations() } }
+    public var stoppedSubscriptions: [StoppedSubscription] = [] { didSet { calculations = LedgerCalculations() } }
+    public var dismissedSalaryKeys: Set<String> = [] { didSet { calculations = LedgerCalculations() } }
+    public var memories: [MemoryNote] = [] { didSet { calculations = LedgerCalculations() } }
+    public var lastReflectionWeek: String? { didSet { calculations = LedgerCalculations() } }
+    public var preferences = Preferences() { didSet { calculations = LedgerCalculations() } }
+    public var profile = SpendingProfile() { didSet { calculations = LedgerCalculations() } }
+    public var cards: [ButlerCard] = [] { didSet { calculations = LedgerCalculations() } }
+    public var pendingChanges: [ChangeSet] = [] { didSet { calculations = LedgerCalculations() } }
+    public var wishlist: [WishItem] = [] { didSet { calculations = LedgerCalculations() } }
+    public var mutedTopics: [String] = [] { didSet { calculations = LedgerCalculations() } }
     // Only retained for restoring a legacy backup into a repository; never encoded.
-    var preMigrationData: Data?
+    var preMigrationData: Data? { didSet { calculations = LedgerCalculations() } }
     // Compatibility for the old purchase screen until its replacement. Writes persist as wishes.
     public var advice: [AdviceRecord] {
         get { wishlist.map { wish in
@@ -818,6 +831,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         return categoryAssignment(category: value.category, subcategory: value.subcategory).category
     }
     public func validate() throws {
+        if calculations.isValidated { return }
         guard (1...4).contains(schema) else { throw YubaiError.invalid("这个账本来自更新版本，请先更新余白。") }
         guard accounts.count <= 1000, entries.count <= 200_000, plans.count <= 1000, rents.count <= 100,
               goals.count <= 1000, attachments.count <= 5000, cards.count <= 5000,
@@ -879,11 +893,13 @@ public struct Ledger: Codable, Equatable, Sendable {
                 guard rents.contains(where: { $0.id == rID }), e.rentPeriod != nil, e.nature == .expense || e.nature == .contribution else { throw YubaiError.invalid("房租记录需要保留支出或收到分摊的性质；请先解除关联再修改。") }
             }
         }
-        let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
-        let refunds = Dictionary(grouping: activeEntries.filter { $0.nature == .refund && $0.relatedEntryID != nil }, by: { $0.relatedEntryID! })
-        for (id, rows) in refunds {
-            guard let original = entriesByID[id], original.deletedAt == nil, original.nature == .expense,
-                  rows.reduce(Int64(0), { $0 + $1.amount }) <= original.amount else { throw YubaiError.invalid("关联退款超过原支出，或原支出已被移除。请先核对退款关联。") }
+        let refunds = Dictionary(grouping: entries.lazy.filter { $0.deletedAt == nil && $0.nature == .refund && $0.relatedEntryID != nil }, by: { $0.relatedEntryID! })
+        if !refunds.isEmpty {
+            let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+            for (id, rows) in refunds {
+                guard let original = entriesByID[id], original.deletedAt == nil, original.nature == .expense,
+                      rows.reduce(Int64(0), { $0 + $1.amount }) <= original.amount else { throw YubaiError.invalid("关联退款超过原支出，或原支出已被移除。请先核对退款关联。") }
+            }
         }
         try validateProfileAndCards()
         for change in pendingChanges { try change.validateStructure() }
@@ -907,6 +923,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         for r in rents { guard r.monthlyTotal > 0, r.monthlyTotal <= Money.limit / 12, r.personalShare >= 0, r.personalShare <= r.monthlyTotal, (1...12).contains(r.monthsPerPayment), (1...28).contains(r.receiveDay), dateValid(r.startDate), dateValid(r.nextDueDate), r.endDate.map({ dateValid($0) && $0 >= r.startDate }) ?? true, r.stoppedAt.map(dateValid) ?? true else { throw YubaiError.invalid("房租金额、分摊或周期无效。") } }
         guard (7...366).contains(preferences.horizonDays), preferences.emergencyReserve >= 0, preferences.emergencyReserve <= Money.limit,
               preferences.dailyLiving >= 0, preferences.dailyLiving <= Money.limit / 366 else { throw YubaiError.invalid("资金偏好数值无效。") }
+        calculations.markValidated()
     }
 }
 
