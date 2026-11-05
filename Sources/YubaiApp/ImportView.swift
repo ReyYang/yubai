@@ -369,7 +369,8 @@ struct ImportView: View {
         }.navigationTitle("原图").yubaiNavigation().toolbar { CloseButton() }
     }
     private func unknownCategories(_ p: ImportPreview) -> [String] {
-        return Set(p.rows.map(\.sourceCategory).filter { !Classification.isPending($0) && CategoryMapping.match($0, in: store.current) == nil }).sorted()
+        var seen = Set<String>()
+        return p.rows.map(\.sourceCategory).filter { !Classification.isPending($0) && CategoryMapping.match($0, in: store.current) == nil && seen.insert($0).inserted }
     }
     private func directCategoryCount(_ p: ImportPreview) -> Int {
         Set(p.rows.map(\.sourceCategory).filter { name in
@@ -435,16 +436,26 @@ struct ImportView: View {
     private var categoryCorrespondence: some View {
         Page {
             if let preview {
-                ForEach(Set(preview.rows.map(\.sourceCategory).filter { !$0.isEmpty }).sorted(), id: \.self) { name in
-                    let categoryNames: [String] = Set(store.current.categoryNames(including: name)).sorted()
+                ForEach(sourceCategoryNames(preview), id: \.self) { name in
+                    let nature = preview.rows.first { $0.sourceCategory == name }?.entry?.nature
+                    let income = nature.map { $0 != .refund && $0.inflow } ?? false
+                    let raw = categoryMappings[name] ?? name
+                    let choice = CategoryMapping.match(raw, in: store.current) ?? CategoryAssignment(path: raw)
                     Card(style: .list) {
-                        Picker(name, selection: Binding<String>(get: { categoryMappings[name] ?? name }, set: { confirmedNewCategories.remove(name); categoryMappings[name] = $0 })) {
-                            ForEach(categoryNames, id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
-                        }.frame(minHeight: YubaiSize.tapMin)
+                        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                            Text(name).yubaiFont(YubaiFont.caption).lineLimit(1).fixedSize()
+                            CategoryPickerField(income: income, selection: choice, identifier: "importCategory_" + name) { selected in
+                                confirmedNewCategories.remove(name); categoryMappings[name] = selected.path
+                            }
+                        }
                     }
                 }
             }
         }.navigationTitle("分类对应").yubaiNavigation().toolbar { CloseButton() }
+    }
+    private func sourceCategoryNames(_ preview: ImportPreview) -> [String] {
+        var seen = Set<String>()
+        return preview.rows.map(\.sourceCategory).filter { !$0.isEmpty && seen.insert($0).inserted }
     }
     private func groupedRows(_ p: ImportPreview) -> [ImportDayGroup] {
         let rows = p.rows.filter { filter == "全部" || (filter == "要你选" && needsDecision($0)) || (filter == "不导入" && !$0.included) }
@@ -707,10 +718,18 @@ struct ImportView: View {
                     }
                 }
                 for i in parsed.rows.indices where [.ready, .possibleDuplicate].contains(parsed.rows[i].status) {
+                    if let raw = categories[parsed.rows[i].sourceCategory],
+                       let choice = CategoryMapping.match(raw, in: ledger),
+                       let entry = parsed.rows[i].entry,
+                       SubcategoryClassifier.valid(choice, in: ledger, nature: entry.nature) {
+                        parsed.rows[i].entry?.category = choice.category
+                        parsed.rows[i].entry?.subcategory = choice.subcategory
+                        parsed.rows[i].entry?.subcategoryUserEdited = true
+                    }
                     if let selected = rowSelections[parsed.rows[i].line] { parsed.rows[i].included = selected }
                     else if screenshot { parsed.rows[i].included = false }
                     if let edited = rowEdits[parsed.rows[i].line], var entry = parsed.rows[i].entry {
-                        entry.title = edited.title; entry.date = edited.date; entry.nature = edited.nature; entry.category = edited.category; entry.userEdited = edited.userEdited
+                        entry.title = edited.title; entry.date = edited.date; entry.nature = edited.nature; entry.category = edited.category; entry.subcategory = edited.subcategory; entry.subcategoryUserEdited = edited.subcategoryUserEdited; entry.userEdited = edited.userEdited
                         parsed.rows[i].entry = entry
                     }
                 }
@@ -766,9 +785,6 @@ private struct ImportScreenshotEntryEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var entry: Entry
     let save: (Entry) -> Void
-    private var categoryNames: [String] {
-        Set(store.current.categoryNames(including: entry.category, income: entry.nature.inflow)).sorted()
-    }
     var body: some View {
         Form {
             Section {
@@ -776,10 +792,14 @@ private struct ImportScreenshotEntryEditor: View {
                 AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts)
                 DatePicker("日期", selection: $entry.date, displayedComponents: [.date, .hourAndMinute])
                 Picker("收支", selection: $entry.nature) { Text("支出").tag(Nature.expense); Text("收入").tag(Nature.income) }
-                Picker("分类", selection: $entry.category) {
-                    ForEach(categoryNames, id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
+                CategoryPickerField(income: entry.nature.inflow,
+                                    selection: .init(category: entry.category, subcategory: entry.subcategory),
+                                    identifier: "screenshotCategory") { choice in
+                    entry.category = choice.category; entry.subcategory = choice.subcategory; entry.subcategoryUserEdited = true
                 }
             }.listRowBackground(YubaiColor.card)
+        }.onChange(of: entry.nature) { _, _ in
+            entry.category = Classification.pendingCategory; entry.subcategory = nil; entry.subcategoryUserEdited = false
         }.editorForm().navigationTitle("核对这一笔").yubaiNavigation().toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {

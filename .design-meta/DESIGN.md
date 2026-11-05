@@ -51,6 +51,13 @@ QuickEntryView 删除 purpose 的自动猜分类监听及 userChoseCategory；�
 - 实际 UI note policy 抽取后以Foundation替身运行，**45个判断通过**（覆盖四种导入来源、行号／批次，以及手动、Apple Pay、快捷指令、Siri、问余白、用户操作、自动扣款；非Core/XCTest，不替代全量测试）。`git diff --check`通过。累计本轮Core12项／UI6项新增测试源码，未执行XCTest。
 
 本轮未触碰 Storage、YubaiApp／LedgerSync、CashTimeline、available(after:)、ChangeSet.apply、Editors 或 InsightsView；ManualBookkeeping.swift 仅新增金额初始化与空金额运算符防护。无新依赖、无外部设计稿链接、未提交／推送。
+## 2026-11-05 · 第三十四／三十五轮分类（owner 批准）
+
+owner 本轮批准分类管理与统一两步分类选择，取代第三十一轮即时分类的单层格子，并补齐此前仅有 Core API 的分类维护。其他分类固定末位不可编辑；快选取固定 categoryOrder 前五。改名沿用历史，小项删除只留大类，合并可撤销，隐藏不影响统计。建议仅描边置首，不自动确认；主项展开到所在行下方，选小项或只记大类才完成，无小项则立即完成。新增默认归当前展开主类，底部写结果。
+
+[逐文件行为、Core 迁移与词表、全部可见中文、原生适配及验证](../docs/CATEGORY-UI-V34-V35.md)。新组件独立于禁改记一笔与表单文件；我页独立值导航避免修改根 AppStore。新增与即时应用同次保存；快分的范围撤销保留新分类定义。手写备注只迁移一次、按 4,000 字符截断；这两项为实现选择，用户决定与上限边界分别登记于交付记录。
+
+原 HTML 仅阅读，不复制原稿、路径或链接；本节及交付记录保留可追溯的采用行为，外部资源未同步。Core 全量824项、820通过／4原有跳过／0失败，App／UI条件解析、访问审计与实际分类方法Linux替身通过；Apple SDK类型检查、UI／视觉／真机仍待Mac。「记一笔更多」专用全量小项画面按任务边界留给另一分支。
 
 ## 2026-11-04 · 第三十一轮「更快分类」（owner 确认）
 

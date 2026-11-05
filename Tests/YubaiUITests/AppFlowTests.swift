@@ -264,11 +264,13 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["unsortedUse_expense"].exists)
         XCTAssertTrue(app.buttons["unsortedCategory_其他支出"].exists)
         tap(app.buttons["unsortedCategory_餐饮"], in: app)
+        tap(app.buttons["unsortedMainOnly_餐饮"], in: app)
         XCTAssertTrue(apply.isEnabled); XCTAssertEqual(apply.label, "6 笔记为 餐饮")
         tap(app.buttons["unsortedNature_investBuy"], in: app)
         XCTAssertTrue(apply.isEnabled); XCTAssertEqual(apply.label, "6 笔记为 买基金")
         XCTAssertFalse(app.buttons["unsortedCategory_餐饮"].isSelected)
         tap(app.buttons["unsortedCategory_餐饮"], in: app)
+        tap(app.buttons["unsortedMainOnly_餐饮"], in: app)
         XCTAssertFalse(app.buttons["unsortedNature_investBuy"].isSelected)
         XCTAssertEqual(apply.label, "6 笔记为 餐饮")
         tap(apply, in: app)
@@ -283,6 +285,68 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["unsortedQuestionTitle"].label, "3 笔还没分类")
     }
 
+    func testTwoStepCategoryPickerExpandsCollapsesAndAppliesSmallItem() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
+        app.launch(); tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["quickSortUnsorted"].waitForExistence(timeout: 15))
+        tap(app.buttons["quickSortUnsorted"], in: app)
+        let progress = app.staticTexts["quickSortProgress"]
+        tap(app.buttons["quickSortCategory_美容个护"], in: app)
+        let sub = app.buttons["quickSortSubcategory_美容个护/理发"]
+        XCTAssertTrue(sub.exists); XCTAssertEqual(progress.label, "0/2")
+        tap(app.buttons["quickSortCategory_美容个护"], in: app)
+        XCTAssertFalse(sub.exists); XCTAssertEqual(progress.label, "0/2")
+        tap(app.buttons["quickSortCategory_美容个护"], in: app); tap(sub, in: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '1/2'"), object: progress)], timeout: 5), .completed)
+        XCTAssertEqual(app.staticTexts["unsortedUndoMessage"].label, "合成对方甲 · 6 笔记为美容个护 · 理发")
+        tap(app.buttons["quickSortUndo"], in: app)
+        XCTAssertEqual(progress.label, "0/2")
+    }
+
+    func testCategoryAdditionDefaultsToExpandedMainAndAppliesGroup() {
+        let app = application("salary")
+        app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
+        app.launch(); tap(app.buttons["organizeImports"], in: app)
+        XCTAssertTrue(app.buttons["quickSortUnsorted"].waitForExistence(timeout: 15))
+        tap(app.buttons["quickSortUnsorted"], in: app)
+        tap(app.buttons["quickSortCategory_美容个护"], in: app)
+        tap(app.buttons["quickSortAdd"], in: app)
+        XCTAssertTrue(app.buttons["美容个护"].isSelected)
+        let field = app.textFields["categoryAdditionName"]
+        tap(field, in: app); field.typeText("合成护理\n")
+        let save = app.buttons["categoryAdditionSave"]
+        XCTAssertEqual(save.label, "加上，这 6 笔记为合成护理"); tap(save, in: app)
+        XCTAssertTrue(app.staticTexts["quickSortProgress"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["quickSortProgress"].label, "1/2")
+        tap(app.buttons["quickSortUndo"], in: app)
+        XCTAssertEqual(app.staticTexts["quickSortProgress"].label, "0/2")
+        tap(app.buttons["quickSortCategory_美容个护"], in: app)
+        XCTAssertTrue(app.buttons["quickSortSubcategory_美容个护/合成护理"].exists)
+    }
+
+    func testCategoryManagementAddsSmallItemDeletesItAndMergesWithUndo() {
+        let app = application("salary"); app.launch()
+        tap(app.buttons["tab_settings"], in: app); tap(app.buttons["openCategories"], in: app)
+        XCTAssertFalse(app.buttons["hiddenCategories"].exists)
+        tap(app.buttons["addMainCategory"], in: app)
+        let field = app.textFields["newCategoryName"]
+        tap(field, in: app); field.typeText("合成大类\n"); tap(app.buttons["saveNewCategory"], in: app)
+        XCTAssertTrue(app.textFields["categoryName"].waitForExistence(timeout: 5))
+        tap(app.buttons["addSubcategory"], in: app)
+        tap(field, in: app); field.typeText("合成小项\n"); tap(app.buttons["saveNewCategory"], in: app)
+        let sub = app.buttons["editSubcategory_合成小项"]
+        XCTAssertTrue(sub.waitForExistence(timeout: 5)); tap(sub, in: app)
+        tap(app.buttons["deleteSubcategory"], in: app); XCTAssertFalse(sub.exists)
+        tap(app.buttons["mergeCategory"], in: app)
+        tap(app.buttons["mergeInto_餐饮"], in: app)
+        XCTAssertEqual(app.buttons["confirmCategoryMerge"].label, "0 笔改成餐饮")
+        tap(app.buttons["confirmCategoryMerge"], in: app)
+        XCTAssertTrue(app.buttons["undoLastChange"].waitForExistence(timeout: 5))
+        tap(app.buttons["undoLastChange"], in: app)
+        XCTAssertTrue(app.buttons["manageCategory_合成大类"].exists)
+    }
+
     func testQuickSortCategoryAdvancesAndUndoRestoresOnlyLastGroup() {
         let app = application("salary")
         app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = "by-party"
@@ -295,6 +359,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(party.waitForExistence(timeout: 5)); XCTAssertEqual(party.label, "合成对方甲")
         XCTAssertEqual(progress.label, "0/2"); XCTAssertEqual(progress.value as? String, "还没分类 9 笔")
         tap(app.buttons["quickSortCategory_餐饮"], in: app)
+        tap(app.buttons["quickSortMainOnly_餐饮"], in: app)
         let advanced = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '合成对方乙'"), object: party)
         XCTAssertEqual(XCTWaiter.wait(for: [advanced], timeout: 5), .completed)
         XCTAssertEqual(progress.label, "1/2"); XCTAssertEqual(progress.value as? String, "还没分类 3 笔")
@@ -305,8 +370,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 5), .completed)
         XCTAssertEqual(progress.label, "0/2"); XCTAssertEqual(progress.value as? String, "还没分类 9 笔")
         tap(app.buttons["quickSortCategory_餐饮"], in: app)
+        tap(app.buttons["quickSortMainOnly_餐饮"], in: app)
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '合成对方乙'"), object: party)], timeout: 5), .completed)
         tap(app.buttons["quickSortCategory_交通"], in: app)
+        tap(app.buttons["quickSortMainOnly_交通"], in: app)
         XCTAssertTrue(app.navigationBars["现在"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["unsortedQuestionTitle"].exists)
         tap(app.buttons["quickSortUndo"], in: app)
@@ -357,6 +424,7 @@ final class AppFlowTests: XCTestCase {
         tap(apply, in: app)
         XCTAssertTrue(app.staticTexts["9 笔记为"].waitForExistence(timeout: 5))
         tap(app.buttons["unsortedSelectedCategory_餐饮"], in: app)
+        tap(app.buttons["unsortedSelectedMainOnly_餐饮"], in: app)
         XCTAssertTrue(app.navigationBars["现在"].waitForExistence(timeout: 5))
         XCTAssertFalse(count.exists); XCTAssertFalse(apply.exists)
         XCTAssertFalse(app.staticTexts["unsortedQuestionTitle"].exists)
@@ -480,6 +548,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "9")
         tap(app.buttons["unsortedGroup_out:合成对方甲"], in: app)
         tap(app.buttons["unsortedCategory_餐饮"], in: app)
+        tap(app.buttons["unsortedMainOnly_餐饮"], in: app)
         let purpose = app.textFields["unsortedPurpose"]
         tap(purpose, in: app); purpose.typeText("合成用途\n")
         let scroll = app.scrollViews["unsortedGroupScroll"]

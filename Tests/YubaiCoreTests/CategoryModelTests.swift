@@ -19,10 +19,10 @@ final class CategoryModelTests: XCTestCase {
     func decode(_ json: [String: Any]) throws -> Ledger { try LedgerCodec.decode(JSONSerialization.data(withJSONObject: json)) }
     func testDefaultsHaveExactOrderNoAutomaticOtherAndSystemIsNeverSelectable() throws {
         let ledger = seed()
-        let expense = ["餐饮", "购物", "交通", "居住", "医疗健康", "娱乐", "旅行", "会员订阅", "学习成长", "人情家庭", "利息手续费", "其他支出"]
+        let expense = ["餐饮", "购物", "交通", "居住", "医疗健康", "美容个护", "娱乐", "旅行", "会员订阅", "学习成长", "人情家庭", "保险税费", "利息手续费", "其他支出"]
         XCTAssertEqual(ManualBookkeeping.defaults(for: .expense), expense)
         XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense), expense)
-        XCTAssertEqual(ManualBookkeeping.defaults(for: .income), ["工资奖金", "兼职劳务", "礼金赠与", "投资收益", "其他收入"])
+        XCTAssertEqual(ManualBookkeeping.defaults(for: .income), ["工资奖金", "兼职劳务", "礼金赠与", "投资收益", "报销", "二手转卖", "其他收入"])
         XCTAssertTrue(ManualBookkeeping.categories(in: ledger, nature: .transfer).isEmpty)
         XCTAssertEqual(ledger.categories.filter(\.system).map(\.name), ["内部移动"])
         XCTAssertEqual(Category("自定").subcategories, [])
@@ -59,7 +59,7 @@ final class CategoryModelTests: XCTestCase {
             XCTAssertEqual(CategoryGuesser.guess(word, nature: .expense, in: ledger)?.category, "餐饮", word)
         }
         for (words, category, sub) in [(["coffee", "CAFE", "茶饮"], "餐饮", "咖啡饮品"),
-            (["便利店", "超市", "商店", "百货", "菜市场", "生鲜"], "购物", "日用百货"),
+            (["便利店", "超市", "商店", "百货"], "购物", "日用百货"),
             (["高速", "加油站", "停车场", "etc"], "交通", "加油停车"),
             (["地铁", "公交"], "交通", "公共交通"), (["药房"], "医疗健康", "药品"), (["诊所"], "医疗健康", "看病")] {
             for word in words { XCTAssertEqual(CategoryGuesser.guess(word, nature: .expense, in: ledger), .init(category: category, subcategory: sub), word) }
@@ -129,7 +129,7 @@ final class CategoryModelTests: XCTestCase {
     func testSchema1FixtureStillMigratesAllTheWayToFour() throws {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "ledger-schema-1", withExtension: "json", subdirectory: "Fixtures"))
         let ledger = try LedgerCodec.decode(Data(contentsOf: url)); XCTAssertEqual(ledger.schema, 4)
-        XCTAssertEqual(ledger.categories.filter { !$0.system && !$0.income }.count, 12)
+        XCTAssertEqual(ledger.categories.filter { !$0.system && !$0.income }.count, 14)
         XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)), ledger)
     }
     func testLegacyThreeMemoriesNormalizeAndHaveDeterministicPrecedence() throws {

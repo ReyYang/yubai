@@ -127,7 +127,10 @@ private struct CaptureRulesView: View {
         List {
             ForEach(names, id: \.self) { name in
                 Button { editing = CaptureRuleSelection(name: name) } label: {
-                    HStack(spacing: YubaiSpace.gapGroup) { Text(name); Spacer(); Text(value(name)).foregroundStyle(YubaiColor.labelSecondary) }.contentShape(Rectangle())
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: YubaiSpace.gapGroup) { Text(name).lineLimit(1).fixedSize(); Spacer(); Text(value(name)).lineLimit(1).fixedSize().foregroundStyle(YubaiColor.labelSecondary) }
+                        VStack(alignment: .leading, spacing: YubaiSpace.space8) { Text(name).lineLimit(1).fixedSize(); Text(value(name)).lineLimit(1).fixedSize().foregroundStyle(YubaiColor.labelSecondary) }
+                    }.contentShape(Rectangle())
                 }.foregroundStyle(YubaiColor.label)
             }.onDelete { offsets in
                 let deleted = offsets.map { names[$0] }
@@ -145,7 +148,9 @@ private struct CaptureRulesView: View {
     }
     private func value(_ name: String) -> String {
         if kind == .card { return store.current.accountName(store.current.preferences.quickCapture.cardAccounts[name]) }
-        return Classification.displayCategory(store.current.resolveCategory(store.current.classificationMemory[name] ?? ""))
+        let choice = CategoryAssignment(path: store.current.classificationMemory[name] ?? "")
+        let resolved = store.current.categoryAssignment(category: choice.category, subcategory: choice.subcategory)
+        return Classification.displayCategory(resolved.category) + (resolved.subcategory.map { " · " + $0 } ?? "")
     }
 }
 private struct CaptureRuleSelection: Identifiable { var id = UUID(); var name: String? }
@@ -163,7 +168,9 @@ private struct CaptureRuleEditor: View {
             if kind == .card {
                 Picker("账户", selection: $account) { ForEach(accounts) { Text($0.name).tag(Optional($0.id)) } }
             } else {
-                Picker("分类", selection: $category) { ForEach(ManualBookkeeping.categories(in: store.current, nature: .expense), id: \.self) { Text(Classification.displayCategory($0)).tag($0) } }
+                CategoryPickerField(income: store.current.categories.first { $0.name == CategoryAssignment(path: category).category }?.income ?? false,
+                                    selection: CategoryAssignment(path: category), allowsDirectionChange: true,
+                                    identifier: "captureRuleCategory") { category = $0.path }
             }
             if let original { Button("删除", role: .destructive) { if store.update("删除映射", { remove(original, in: &$0) }) { dismiss() } } }
         }.navigationTitle(original == nil ? "添加映射" : "修改映射")
@@ -174,7 +181,10 @@ private struct CaptureRuleEditor: View {
             .onAppear {
                 name = original ?? ""
                 account = original.flatMap { store.current.preferences.quickCapture.cardAccounts[$0] }.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first?.id
-                category = original.flatMap { store.current.classificationMemory[$0] }.map { store.current.resolveCategory($0) } ?? "餐饮"
+                category = original.flatMap { store.current.classificationMemory[$0] }.map { raw in
+                    let choice = CategoryAssignment(path: raw)
+                    return store.current.categoryAssignment(category: choice.category, subcategory: choice.subcategory).path
+                } ?? "餐饮"
             }
     }
     private func remove(_ name: String, in ledger: inout Ledger) {

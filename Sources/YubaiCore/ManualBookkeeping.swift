@@ -210,6 +210,12 @@ public enum ManualBookkeeping {
         var entry = edited
         entry.id = original.id; entry.source = original.source; entry.recordedAt = original.recordedAt
         entry.userEdited = true
+        // ImportOrganizer also sets userEdited. Persist a distinct manual marker
+        // for category corrections; conservatively protect any reviewed catch-all
+        // even when its category stayed the same. Legacy pending stays pending.
+        if entry.category != original.category || (!Classification.isPending(entry) && ["其他支出", "其他收入"].contains(entry.category)) {
+            entry.classificationReason = "手动选择"
+        }
         if entry.amount != original.amount { entry.personalExpense = nil; LedgerOperations.recordPersonalShare(&entry, ledger: next) }
         if entry.subcategory != original.subcategory || entry.category != original.category {
             if entry.category != original.category && entry.subcategory == original.subcategory {

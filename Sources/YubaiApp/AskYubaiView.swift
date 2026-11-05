@@ -503,7 +503,7 @@ private struct AskEntryDraftCard: View {
                 HStack(spacing: YubaiSpace.gapGroup) {
                     VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                         Text(draft.purpose ?? draft.title).yubaiFont(YubaiFont.row)
-                        Text(Classification.displayCategory(draft.category)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                        Text(Classification.displayCategory(draft.category) + (draft.subcategory.map { " · " + $0 } ?? "")).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .none)
                     Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
@@ -517,6 +517,9 @@ private struct AskEntryDraftCard: View {
         var confirmed = change
         confirmed.items = chosen.map { draft in var value = draft; value.amountConfirmed = true; return .addEntry(value) }
         if store.apply(confirmed, label: "问余白修改", finishing: { ledger in
+            for draft in chosen where draft.categoryUserEdited == true {
+                try CategoryModel.confirm(.init(category: draft.category, subcategory: draft.subcategory), entryIDs: [draft.id], in: &ledger)
+            }
             if let image {
                 let compressed = ImageCompression.compress(image.data, name: image.name)
                 let attachment = Attachment(name: compressed.name, data: compressed.data)
@@ -536,16 +539,6 @@ private struct AskDraftEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var draft: EntryDraft
     let save: (EntryDraft) -> Void
-    private var categorySelection: Binding<String> {
-        Binding(get: { draft.category }, set: { category in
-            draft.category = category
-            draft.subcategory = nil
-            draft.categoryUserEdited = true
-        })
-    }
-    private var categoryNames: [String] {
-        Set(store.current.categoryNames(including: draft.category)).sorted()
-    }
     var body: some View {
         Form {
             Section {
@@ -553,8 +546,10 @@ private struct AskDraftEditor: View {
                 AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts)
                 DatePicker("日期", selection: $draft.date, displayedComponents: .date)
                 Picker("账户", selection: $draft.accountID) { ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag($0.id) } }
-                Picker("分类", selection: categorySelection) {
-                    ForEach(categoryNames, id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
+                CategoryPickerField(income: draft.nature == .refund ? false : draft.nature.inflow,
+                                    selection: .init(category: draft.category, subcategory: draft.subcategory),
+                                    identifier: "draftCategory") { choice in
+                    draft.category = choice.category; draft.subcategory = choice.subcategory; draft.categoryUserEdited = true
                 }
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("编辑这一笔").yubaiNavigation().toolbar {

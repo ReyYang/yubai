@@ -112,6 +112,8 @@ Status: open
 
 ## Decisions so far
 
+- [第三十四／三十五轮分类](issues/13-complete-personal-release.md#2026-11-05--第三十四三十五轮分类owner-批准) — owner 批准分类维护、固定前五与共享两步选择器；用途备注一次迁移及口语词表完成，Apple 验证待 Mac。
+
 - [金额固定两位小数](issues/13-complete-personal-release.md#2026-10-26--金额固定两位小数owner-明确要求) — owner 要求金额展示保留分，整额也显示 `.00`，移除整元进位；仅改 App 格式化与既有 UI 断言，Core／输入算法保持，Apple 界面验收待做。
 
 - [第十六轮少写字，让版式说话](issues/13-complete-personal-release.md#2026-10-23--第十六轮少写字让版式说话owner-确认稿) — owner 确认 V16 规则与画板，54 项按文案／布局接线；系统入口图示按授权降级。语法解析已做，Linux swift test 结果见交付总结，Apple 验收待做；未提交／推送。

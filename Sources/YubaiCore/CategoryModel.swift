@@ -12,8 +12,34 @@ public struct CategoryAssignment: Equatable, Sendable {
     public var path: String { category + (subcategory.map { "/" + $0 } ?? "") }
 }
 
+/// A user-confirmed addition can be committed together with the selected rows.
+public struct CategoryAddition: Equatable, Sendable {
+    public var name: String
+    public var parent: String?
+    public var income: Bool
+    public init(name: String, parent: String? = nil, income: Bool) {
+        self.name = name.trimmingCharacters(in: .whitespacesAndNewlines); self.parent = parent; self.income = income
+    }
+    public var assignment: CategoryAssignment { .init(category: parent ?? name, subcategory: parent == nil ? nil : name) }
+    public func apply(to ledger: inout Ledger) throws {
+        if let parent {
+            guard ledger.selectableCategories.contains(where: { $0.name == parent && $0.income == income }) else { throw YubaiError.invalid("这个分类不能修改。") }
+            try CategoryModel.addSubcategory(name, to: parent, in: &ledger)
+        } else { try CategoryModel.add(Category(name, income: income), in: &ledger) }
+    }
+}
+
 public extension Ledger {
     var selectableCategories: [Category] { categories.filter { !$0.system && !$0.hidden } }
+    /// Preference order with stable table-order fallback; catch-alls stay last.
+    func orderedCategories(income: Bool, hidden: Bool = false) -> [Category] {
+        let table = categories.filter { !$0.system && $0.hidden == hidden && $0.income == income }
+        let other = income ? "其他收入" : "其他支出"
+        var seen = Set<String>()
+        let names = (preferences.categoryOrder + table.map(\.name)).filter { seen.insert($0).inserted && $0 != other }
+        let byName = Dictionary(uniqueKeysWithValues: table.map { ($0.name, $0) })
+        return (names + [other]).compactMap { byName[$0] }
+    }
     func categoryNames(including current: String? = nil, income: Bool? = nil) -> [String] {
         var names = selectableCategories.filter { income == nil || $0.income == income }.map(\.name)
         if let current, !names.contains(current), !categories.contains(where: { $0.name == current && ($0.system || $0.hidden) }) { names.append(current) }
@@ -190,6 +216,18 @@ enum CategoryReferences {
 }
 
 public enum CategoryModel {
+    /// Explicit UI choices also record nil: “main only” must override local guesses.
+    public static func confirm(_ choice: CategoryAssignment, entryIDs: Set<UUID>, includingParty: Bool = false, in ledger: inout Ledger) throws {
+        try update(&ledger) { next in
+            for i in next.entries.indices where entryIDs.contains(next.entries[i].id) && next.entries[i].deletedAt == nil {
+                guard SubcategoryClassifier.valid(choice, in: next, nature: next.entries[i].nature) else { throw YubaiError.invalid("这个小项不属于该主项。") }
+                next.entries[i].category = choice.category; next.entries[i].subcategory = choice.subcategory
+                next.entries[i].subcategoryUserEdited = true
+                CategoryMemory.remember(next.entries[i], includingParty: includingParty, in: &next)
+            }
+            LedgerOperations.syncLinkedRefundCategories(in: &next, expenseIDs: entryIDs)
+        }
+    }
     private static func name(_ raw: String) throws -> String {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !Classification.isPending(value), value.count <= 200, !value.contains("/"), value != "其他" else { throw YubaiError.invalid("分类名称无效。") }
