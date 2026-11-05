@@ -46,7 +46,8 @@ struct SyncVersionsView: View {
                             AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts)
                             Text(entry.nature.entryLabel + " · " + Classification.displayCategory(entry.category)).yubaiFont(YubaiFont.caption)
                             Text(version.ledger.accountName(entry.accountID)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                            if !entry.note.isEmpty { Text(entry.note).yubaiFont(YubaiFont.caption).lineLimit(3) }
+                            let note = EntryNotePresentation.importedNote(entry)
+                            if !note.isEmpty { Text(note).yubaiFont(YubaiFont.caption).lineLimit(3) }
                             if entry.deletedAt != nil { Text("已删除").yubaiFont(YubaiFont.caption) }
                         }
                     }
