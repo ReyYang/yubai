@@ -124,6 +124,18 @@ public struct JudgePurchaseTool: AssistantTool {
 }
 
 public enum AskYubai {
+    public static func exampleQuestions(ledger: Ledger, occurrences: [Occurrence], now: Date) -> [String] {
+        var questions: [String] = []
+        if let next = occurrences.first(where: { !$0.inflow }) {
+            let calendar = Dates.calendar
+            questions.append("\(calendar.component(.month, from: next.date))月\(calendar.component(.day, from: next.date))日的\(next.title)够付吗？")
+        }
+        let week = ButlerCards.calendar.dateInterval(of: .weekOfYear, for: now)!
+        let category = Finance.cashFlow(ledger, during: week).spendingByCategory.first(where: { $0.amount > 0 }).map { Classification.displayCategory($0.category) } ?? ""
+        questions.append("这周\(category)花了多少？")
+        questions.append("想买一双 899 的鞋，该不该买？")
+        return questions
+    }
     public static var tools: [any AssistantTool] { ReadOnlyTool.all + ProposalTool.all + [ShowChartTool() as any AssistantTool, JudgePurchaseTool() as any AssistantTool, SubmitVerdictTool() as any AssistantTool, AskPurchaseQuestionsTool() as any AssistantTool, MemoryTool.remember as any AssistantTool, MemoryTool.recall as any AssistantTool] }
     public static func prompt(now: Date) -> String {
         """

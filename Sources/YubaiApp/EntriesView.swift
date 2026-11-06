@@ -111,7 +111,7 @@ struct EntriesView: View {
             }
         }.pageLocalHorizontalGestures()
             #if os(iOS)
-            .contentMargins(.bottom, 0, for: .scrollContent)
+            .contentMargins(.bottom, YubaiSpace.none, for: .scrollContent)
             #endif
             .accessibilityElement(children: .contain).accessibilityLabel("筛选账目")
     }

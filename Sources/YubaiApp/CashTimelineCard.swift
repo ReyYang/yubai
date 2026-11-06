@@ -23,16 +23,16 @@ struct CashTimelineCard: View {
 
     var body: some View {
         let visible = window
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        VStack(alignment: .leading, spacing: YubaiSpace.none) {
+            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                 Text("现金会怎么走").yubaiFont(YubaiFont.cardTitle)
-                Spacer(minLength: 8)
+                Spacer(minLength: YubaiSpace.space8)
                 if let selected {
                     Text(FixedFlowPresentation.monthDay(selected.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 } else if !visible.isDefault {
                     Button { cycleOffset = 0; selectedDay = nil } label: {
                         Text("这个月 ›").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk)
-                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .padding(.horizontal, YubaiSpace.space10).padding(.vertical, 5)
                             .background(YubaiColor.raised, in: Capsule())
                             .contentShape(Rectangle().inset(by: -8))
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("cashTimelineToday")
@@ -45,14 +45,14 @@ struct CashTimelineCard: View {
                 Text("金额已隐藏").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                     .frame(maxWidth: .infinity, minHeight: 220, alignment: .leading)
             } else {
-                readout(visible).padding(.top, 6)
-                plot(visible).padding(.top, 10)
+                readout(visible).padding(.top, YubaiSpace.space6)
+                plot(visible).padding(.top, YubaiSpace.space10)
                 HStack(spacing: 14) {
                     legend(visible.isDefault ? "这个月" : shortDate(visible.start) + " 起", ink: YubaiColor.brand, width: 2)
                     legend(visible.isDefault ? "上个月" : shortDate(visible.cycle.previousStart) + " 起", ink: YubaiColor.labelSecondary.opacity(0.35), width: 1.2)
-                }.padding(.top, 8).accessibilityIdentifier("cashTimelineLegend")
+                }.padding(.top, YubaiSpace.space8).accessibilityIdentifier("cashTimelineLegend")
             }
-        }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, 14).padding(.bottom, 12)
+        }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, 14).padding(.bottom, YubaiSpace.space12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("cashTimelineCard")
@@ -62,12 +62,12 @@ struct CashTimelineCard: View {
     }
 
     private func readout(_ visible: CashTimelineWindow) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
             let layout = textSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: YubaiSpace.space8))
             layout {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                     Text(readoutTitle(visible)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     Text(amountText(selected?.balance ?? visible.endpoint?.balance ?? 0))
                         .yubaiFont(YubaiFont.amountDonut).monospacedDigit()
@@ -75,8 +75,8 @@ struct CashTimelineCard: View {
                         .fixedSize(horizontal: true, vertical: false)
                 }.accessibilityElement(children: .combine).accessibilityIdentifier("cashTimelineMinimum")
                 if selected == nil && visible.belowFloor, let floor = visible.floor {
-                    if !textSize.isAccessibilitySize { Spacer(minLength: 0) }
-                    HStack(spacing: 4) {
+                    if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+                    HStack(spacing: YubaiSpace.space4) {
                         Line().stroke(YubaiColor.amberInk, style: StrokeStyle(lineWidth: 1, dash: [3, 2])).frame(width: 14, height: 1)
                         Text("始终留着 " + Money.text(floor, currency: false)).yubaiFont(YubaiFont.caption)
                     }.foregroundStyle(YubaiColor.amberInk).fixedSize(horizontal: true, vertical: false)

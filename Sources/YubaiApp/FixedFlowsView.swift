@@ -75,7 +75,7 @@ struct FixedFlowsView: View {
                             AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none,
                                         ink: row.inflow ? YubaiColor.brandInk : YubaiColor.label).fixedSize(horizontal: true, vertical: false)
                             Color.clear.frame(width: YubaiSize.rowIcon).accessibilityHidden(true)
-                        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: 52).contentShape(Rectangle())
+                        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityElement(children: .contain).accessibilityAddTraits(.isButton)
                         .accessibilityLabel("改" + row.title)
                         .accessibilityIdentifier("editFixedFlow_" + row.planID.uuidString)
@@ -519,7 +519,7 @@ struct FixedFlowEditor: View {
             if canStop {
                 Button("停掉以后的") { confirmingStop = true }
                     .yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.amberInk)
-                    .frame(maxWidth: .infinity).frame(height: 52)
+                    .frame(maxWidth: .infinity).frame(height: YubaiSize.buttonHeight)
                     .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
                     .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).buttonStyle(PressButtonStyle())
                     .accessibilityIdentifier("fixedFlowEditStop")

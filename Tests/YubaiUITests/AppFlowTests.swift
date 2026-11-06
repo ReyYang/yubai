@@ -896,9 +896,10 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["askYubai"], in: app)
         let input = app.descendants(matching: .any).matching(identifier: "askInput").firstMatch
         XCTAssertTrue(input.waitForExistence(timeout: 5)); XCTAssertFalse(input.isEnabled)
-        for title in ["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，该不该买？"] {
+        for title in ["这周餐饮花了多少？", "想买一双 899 的鞋，该不该买？"] {
             XCTAssertTrue(app.buttons[title].exists); XCTAssertFalse(app.buttons[title].isEnabled)
         }
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label ENDSWITH %@", "够付吗？")).count, 0)
         let configure = app.buttons["configureAskKey"]
         XCTAssertTrue(configure.exists); XCTAssertTrue(configure.isEnabled)
         snapshot("ask-missing-key", app)

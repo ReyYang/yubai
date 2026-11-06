@@ -43,7 +43,7 @@ struct WishlistView: View {
                     Page { ForEach(past.sorted { $0.createdAt > $1.createdAt }) { wish in wishRow(wish) } }.navigationTitle("过去的心愿").yubaiNavigation()
                 } label: {
                     HStack(spacing: YubaiSpace.gapGroup) { Text("买了 \(past.filter { $0.status == .bought }.count) 件 · 划掉 \(past.filter { $0.status == .dropped }.count) 件"); Spacer(); Image(systemName: "chevron.right") }
-                        .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: 18))
+                        .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
         }.navigationTitle("心愿单").yubaiNavigation()

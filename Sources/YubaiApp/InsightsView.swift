@@ -125,7 +125,7 @@ struct InsightsView: View {
             Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(balance ? YubaiColor.brandInk : YubaiColor.labelSecondary)
             AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .summary)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: 18), background: balance ? YubaiColor.brandTint : nil)
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row), background: balance ? YubaiColor.brandTint : nil)
     }
     private func restrained(_ slice: CashFlowSlice) -> Bool {
         !income && store.current.profile.restrain.contains { area in

@@ -43,6 +43,93 @@ enum AssistantFixtures {
     }
 }
 
+final class AskYubaiExamplesTests: XCTestCase {
+    private let now = Dates.parse("2026-11-04 12:00")!
+    private let purchase = "想买一双 899 的鞋，该不该买？"
+
+    func testUpcomingPaymentUsesFirstNonInflowOccurrence() {
+        var ledger = Ledger()
+        ledger.plans = [Plan(title: "工资", amount: 500_000, dueDate: Dates.parse("2026-11-05")!, inflow: true),
+                        Plan(title: "房租", amount: 200_000, dueDate: Dates.parse("2026-11-06")!),
+                        Plan(title: "网费", amount: 10_000, dueDate: Dates.parse("2026-11-08")!)]
+        let occurrences = Finance.funds(ledger, now: now).occurrences
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: ledger, occurrences: occurrences, now: now),
+                       ["11月6日的房租够付吗？", "这周花了多少？", purchase])
+    }
+
+    func testNoUpcomingPaymentSkipsBillQuestion() {
+        var ledger = Ledger()
+        ledger.plans = [Plan(title: "工资", amount: 500_000, dueDate: Dates.parse("2026-11-05")!, inflow: true)]
+        let occurrences = Finance.funds(ledger, now: now).occurrences
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: ledger, occurrences: occurrences, now: now),
+                       ["这周花了多少？", purchase])
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: Ledger(), occurrences: [], now: now),
+                       ["这周花了多少？", purchase])
+    }
+
+    func testWeeklySpendingUsesLargestCategoryTotalAndCurrentName() {
+        var ledger = Ledger()
+        let account = Account(name: "合成银行卡", at: now)
+        ledger.accounts = [account]
+        ledger.categoryAliases["外卖"] = "餐饮"
+        ledger.entries = [Entry(date: Dates.parse("2026-11-02")!, amount: 6000, accountID: account.id, title: "午饭", category: "外卖"),
+                          Entry(date: now, amount: 6000, accountID: account.id, title: "晚饭", category: "餐饮"),
+                          Entry(date: now, amount: 10_000, accountID: account.id, title: "打车", category: "交通"),
+                          Entry(date: now, amount: 500_000, nature: .income, accountID: account.id, title: "工资", category: "工资奖金")]
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: ledger, occurrences: [], now: now),
+                       ["这周餐饮花了多少？", purchase])
+    }
+
+    func testNoWeeklySpendingUsesGenericQuestion() {
+        var ledger = Ledger()
+        let account = Account(name: "合成银行卡", at: now)
+        ledger.accounts = [account]
+        ledger.entries = [Entry(date: Dates.parse("2026-11-01 23:59")!, amount: 10_000, accountID: account.id, title: "上周晚饭", category: "餐饮"),
+                          Entry(date: now, amount: 500_000, nature: .income, accountID: account.id, title: "工资", category: "工资奖金")]
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: ledger, occurrences: [], now: now),
+                       ["这周花了多少？", purchase])
+    }
+
+    func testPendingCategoryUsesDisplayName() {
+        var ledger = Ledger()
+        let account = Account(name: "合成银行卡", at: now)
+        ledger.accounts = [account]
+        ledger.entries = [Entry(date: now, amount: 3000, accountID: account.id, title: "午饭", category: Classification.pendingCategory)]
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: ledger, occurrences: [], now: now),
+                       ["这周没分类花了多少？", purchase])
+    }
+
+    func testISOWeekIncludesMondayAndSundayAcrossYearButExcludesAdjacentWeeks() {
+        let now = Dates.parse("2027-01-03 12:00")!
+        var ledger = Ledger()
+        let account = Account(name: "合成银行卡", at: now)
+        ledger.accounts = [account]
+        ledger.entries = [Entry(date: Dates.parse("2026-12-28")!, amount: 6000, accountID: account.id, title: "周一午饭", category: "餐饮"),
+                          Entry(date: Dates.parse("2027-01-03")!, amount: 6000, accountID: account.id, title: "周日午饭", category: "餐饮"),
+                          Entry(date: Dates.parse("2027-01-01")!, amount: 10_000, accountID: account.id, title: "打车", category: "交通"),
+                          Entry(date: Dates.parse("2026-12-27 23:59")!, amount: 100_000, accountID: account.id, title: "上周购买", category: "购物"),
+                          Entry(date: Dates.parse("2027-01-04")!, amount: 100_000, accountID: account.id, title: "下周购买", category: "购物")]
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: ledger, occurrences: [], now: now),
+                       ["这周餐饮花了多少？", purchase])
+    }
+
+    func testRefundsOffsetOriginalCategoryAndNonpositiveTotalsUseFallback() {
+        var ledger = Ledger()
+        let account = Account(name: "合成银行卡", at: now)
+        ledger.accounts = [account]
+        let purchaseEntry = Entry(date: now, amount: 10_000, accountID: account.id, title: "鞋", category: "购物")
+        var refund = Entry(date: now, amount: 10_000, nature: .refund, accountID: account.id, title: "退鞋", category: "其他支出")
+        refund.relatedEntryID = purchaseEntry.id
+        let meal = Entry(date: now, amount: 3000, accountID: account.id, title: "午饭", category: "餐饮")
+        ledger.entries = [purchaseEntry, refund, meal]
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: ledger, occurrences: [], now: now),
+                       ["这周餐饮花了多少？", purchase])
+        ledger.entries.removeLast()
+        XCTAssertEqual(AskYubai.exampleQuestions(ledger: ledger, occurrences: [], now: now),
+                       ["这周花了多少？", purchase])
+    }
+}
+
 final class AssistantTests: XCTestCase {
     func testJSONRoundTrip() throws {
         let value = JSONValue.object(["null": .null, "bool": .bool(true), "number": .number(2.5), "array": .array([.string("余白")])])
