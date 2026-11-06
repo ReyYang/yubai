@@ -96,7 +96,7 @@ struct EntriesView: View {
                     #if os(iOS)
                     .pickerStyle(.wheel)
                     #endif
-                }.padding(.horizontal, 20).yubaiSheetBackground().presentationDetents([.height(300)])
+                }.padding(.horizontal, 20).yubaiSheetBackground().presentationDetents([.height(300 + YubaiSpace.sheetHeaderTop)])
             }
     }
     private var searching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

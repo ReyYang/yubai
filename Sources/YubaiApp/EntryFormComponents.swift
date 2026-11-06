@@ -5,6 +5,7 @@ import UIKit
 #endif
 
 struct ManualSheetHeader: View {
+    @Environment(\.yubaiSheetSurface) private var inSheet
     let title: String
     var actionTitle = "保存"
     var actionImage: String? = nil
@@ -46,7 +47,7 @@ struct ManualSheetHeader: View {
                     VStack(spacing: 8) { cancelButton; actionButton }
                 }
             }
-        }.frame(minHeight: 48).buttonStyle(PressButtonStyle())
+        }.frame(minHeight: 48).padding(.top, inSheet ? YubaiSpace.sheetHeaderTop : 0).buttonStyle(PressButtonStyle())
     }
 }
 
