@@ -464,12 +464,13 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var quickCapture = QuickCapturePreferences()
     public var categoryOrder: [String] = Category.defaults.filter { !$0.system }.map(\.name)
     public var onboardingComplete = false
+    public var profileColdStartDone = false
     public var lastBackupAt: Date?
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
-        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
+        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, profileColdStartDone, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
     }
     // Decode the former master switch without including it in newly encoded ledgers.
     private enum LegacyCodingKeys: String, CodingKey {
@@ -492,6 +493,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder
         quickCapture = try values.decodeIfPresent(QuickCapturePreferences.self, forKey: .quickCapture) ?? QuickCapturePreferences()
         onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
+        profileColdStartDone = try values.decodeIfPresent(Bool.self, forKey: .profileColdStartDone) ?? false
         lastBackupAt = try values.decodeIfPresent(Date.self, forKey: .lastBackupAt)
     }
 }

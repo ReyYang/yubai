@@ -587,7 +587,7 @@ private struct EntryDiscardGuard: ViewModifier {
             #if os(iOS)
             .background { DismissAttempt(dirty: dirty) { confirming = true }.frame(width: 0, height: 0) }
             #endif
-            .confirmationDialog("已经填了 \(Money.text(amount, currency: false)) 元", isPresented: $confirming, titleVisibility: .visible) {
+            .confirmationDialog(amount == 0 ? "放弃修改？" : "已经填了 \(Money.text(amount, currency: false)) 元", isPresented: $confirming, titleVisibility: .visible) {
                 Button("放弃这笔", role: .destructive) { dismiss() }.foregroundStyle(YubaiColor.amberInk)
                 Button("继续记", role: .cancel) {}
             }

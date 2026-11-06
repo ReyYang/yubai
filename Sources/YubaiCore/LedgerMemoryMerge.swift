@@ -9,6 +9,7 @@ public enum LedgerMemoryMerge {
         var dates = chosen.profile.principleDates
         let chosenMemoryIDs = Set(chosen.memories.map(\.id))
         for other in others where other.id == chosen.id {
+            result.preferences.profileColdStartDone = result.preferences.profileColdStartDone || other.preferences.profileColdStartDone
             for note in other.memories {
                 if !chosenMemoryIDs.contains(note.id), chosen.updatedAt >= note.updatedAt { continue }
                 if let i = result.memories.firstIndex(where: { $0.id == note.id }) {
