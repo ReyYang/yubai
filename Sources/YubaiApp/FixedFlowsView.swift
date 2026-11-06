@@ -130,9 +130,11 @@ struct FixedFlowsView: View {
     }
     private func stoppedAction(_ title: String, row: FixedFlowArrangement, resolution: FixedFlowStopResolution) -> some View {
         let ink = resolution == .skip ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.amberInk
-        return Button(title) { resolve(row, resolution) }.yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(ink)
-            .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowIcon)
-            .overlay { Capsule().strokeBorder(ink, lineWidth: 1.5) }.yubaiHitTarget().buttonStyle(PressButtonStyle())
+        return Button { resolve(row, resolution) } label: {
+            Text(title).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(ink)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowIcon)
+                .overlay { Capsule().strokeBorder(ink, lineWidth: 1.5) }.yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle())
             .accessibilityLabel(title + row.title + "的全部 \(row.pending.count) 期")
             .accessibilityIdentifier((resolution == .settle ? "settleStoppedFixedFlow_" : "skipStoppedFixedFlow_") + row.id.uuidString)
     }
@@ -303,6 +305,7 @@ private struct FixedFlowPaidMark: View {
     var body: some View {
         Image(systemName: "checkmark").yubaiFont(YubaiFont.row, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
             .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon).background(YubaiColor.neutralSoft, in: Circle())
+            .contentShape(Circle())
             .accessibilityLabel((inflow ? "已收到 " : "已付 ") + title)
     }
 }
@@ -505,17 +508,17 @@ struct FixedFlowEditor: View {
                         EntryFormRow(title: "分类") {
                             Menu {
                                 ForEach(categories, id: \.self) { name in Button(name) { category = name } }
-                            } label: { Text(Classification.displayCategory(category)) }.manualFormChip()
+                            } label: { Text(Classification.displayCategory(category)).manualFormChip() }.buttonStyle(PressButtonStyle())
                                 .accessibilityLabel("分类").accessibilityValue(Classification.displayCategory(category))
                                 .accessibilityIdentifier("fixedFlowCategory")
                         }.frame(minHeight: YubaiSize.rowSingle)
                         EntryFormDivider()
                         EntryFormRow(title: "共几期") {
                             HStack(spacing: 0) {
-                                Button { let value = max(0, (installments ?? 0) - 1); installments = value == 0 ? nil : value } label: { Image(systemName: "minus").frame(width: 34, height: 30) }
+                                Button { let value = max(0, (installments ?? 0) - 1); installments = value == 0 ? nil : value } label: { Image(systemName: "minus").frame(width: 34, height: 30).contentShape(Capsule()) }
                                     .disabled(installments == nil).accessibilityLabel("减少期数").buttonRepeatBehavior(.enabled)
                                 Text(installments.map { "\($0) 期" } ?? "一直").fixedSize().yubaiFont(YubaiFont.callout).padding(.horizontal, 8)
-                                Button { installments = min(2400, (installments ?? 0) + 1) } label: { Image(systemName: "plus").frame(width: 34, height: 30) }
+                                Button { installments = min(2400, (installments ?? 0) + 1) } label: { Image(systemName: "plus").frame(width: 34, height: 30).contentShape(Capsule()) }
                                     .disabled(installments == 2400).accessibilityLabel("增加期数").buttonRepeatBehavior(.enabled)
                             }.background(YubaiColor.raised, in: Capsule()).buttonStyle(.plain)
                                 .disabled(frequency == .once).accessibilityIdentifier("fixedFlowInstallments")
@@ -575,8 +578,10 @@ struct FixedFlowEditor: View {
     }
     private var scheduleRow: some View {
         EntryFormRow(title: frequency == .monthly ? "每月几号" : "多久一次") {
-            Button(FixedFlowArrangement.schedule(frequency, date: scheduleDate, monthlyDay: monthlyDay).replacingOccurrences(of: " 日", with: " 号")) { pickingSchedule = true }
-                .manualFormChip().accessibilityIdentifier("fixedFlowSchedule")
+            Button { pickingSchedule = true } label: {
+                Text(FixedFlowArrangement.schedule(frequency, date: scheduleDate, monthlyDay: monthlyDay).replacingOccurrences(of: " 日", with: " 号"))
+                    .manualFormChip()
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fixedFlowSchedule")
         }
     }
     private func openAmount() {
@@ -664,6 +669,6 @@ struct FixedFlowEditor: View {
 private extension View {
     func manualFormChip() -> some View {
         self.yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
-            .background(YubaiColor.raised, in: Capsule()).yubaiHitTarget().buttonStyle(PressButtonStyle())
+            .background(YubaiColor.raised, in: Capsule()).yubaiHitTarget()
     }
 }

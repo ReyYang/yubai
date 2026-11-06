@@ -21,9 +21,11 @@ struct ManualSheetHeader: View {
         Text(title).yubaiFont(["记一笔", "改一笔", "改这笔"].contains(title) ? YubaiFont.entrySheetTitle : YubaiFont.navTitle).fixedSize()
     }
     private var cancelButton: some View {
-        Button(cancelTitle, action: cancel).yubaiFont(YubaiFont.body).fixedSize()
-            .padding(.horizontal, 16).frame(minHeight: 36).background(YubaiColor.card, in: Capsule())
-            .frame(minHeight: 44).accessibilityIdentifier(cancelIdentifier == "cancelManualSheet" && cancelTitle != "取消" ? "closeSheet" : cancelIdentifier)
+        Button(action: cancel) {
+            Text(cancelTitle).yubaiFont(YubaiFont.body).fixedSize()
+                .padding(.horizontal, 16).frame(minHeight: 36).background(YubaiColor.card, in: Capsule())
+                .frame(minHeight: 44).contentShape(Capsule())
+        }.accessibilityIdentifier(cancelIdentifier == "cancelManualSheet" && cancelTitle != "取消" ? "closeSheet" : cancelIdentifier)
     }
     @ViewBuilder private var actionButton: some View {
         if showsAction {
@@ -33,6 +35,7 @@ struct ManualSheetHeader: View {
                     .padding(.horizontal, 12).frame(minHeight: 36)
                     .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
                     .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
+                    .contentShape(Capsule())
             }.frame(minHeight: 44).disabled(!enabled).opacity(enabled ? 1 : 0.4)
                 .accessibilityIdentifier(actionIdentifier ?? (actionTitle == "导入" ? "importFromEntry" : "saveManualSheet"))
         } else { Color.clear.frame(width: 64, height: 36).accessibilityHidden(true) }

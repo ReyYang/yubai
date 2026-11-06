@@ -142,7 +142,7 @@ struct SavingPurchaseCard: View {
                 Text(detailsTitle).multilineTextAlignment(.leading)
                 Spacer(minLength: YubaiSpace.none)
                 Image(systemName: "chevron.right")
-            }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(minHeight: YubaiSize.tapMin)
+            }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("answerEvidence")
     }
     private var detailsTitle: String {

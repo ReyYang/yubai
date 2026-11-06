@@ -57,7 +57,7 @@ struct StorageView: View {
                 Button { sheet = .erase } label: {
                     Text("抹掉全部数据").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberInk)
                         .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight)
-                        .background(YubaiColor.card, in: Capsule())
+                        .background(YubaiColor.card, in: Capsule()).contentShape(Capsule())
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openStorageErase")
                     .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
                     .padding(.top, YubaiSpace.gapGroup).frame(maxWidth: 1080).frame(maxWidth: .infinity)
@@ -220,7 +220,7 @@ private struct StorageEraseSheet: View {
             Button { if store.eraseAllDeviceData() { dismiss() } } label: {
                 Text("抹掉这台手机上的全部数据").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberInk)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight)
-                    .background(YubaiColor.card, in: Capsule()).opacity(confirmation == "抹掉" ? 1 : 0.55)
+                    .background(YubaiColor.card, in: Capsule()).contentShape(Capsule()).opacity(confirmation == "抹掉" ? 1 : 0.55)
             }.buttonStyle(PressButtonStyle()).disabled(confirmation != "抹掉" || currentRecoveryCount == nil || store.syncBusy || store.checkingCloudAvailability)
                 .padding(.top, YubaiSpace.gapGroup).accessibilityIdentifier("eraseDeviceData")
             Button { dismiss() } label: {

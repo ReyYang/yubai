@@ -6,6 +6,7 @@ import YubaiCore
 import AppKit
 #elseif os(iOS)
 import UIKit
+import CoreImage
 #endif
 
 enum YubaiColor {
@@ -529,6 +530,8 @@ private struct BambooShadow: View {
                 .padding(-BambooRasterCache.padding)
         } else {
             BambooRasterCache.source.blur(radius: 6)
+                .padding(BambooRasterCache.padding).drawingGroup()
+                .padding(-BambooRasterCache.padding)
         }
     }
     var body: some View {
@@ -558,20 +561,52 @@ private struct BambooShadow: View {
         Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
             .foregroundStyle(YubaiColor.bambooShadow).frame(width: 230, height: 299)
     }
+    #if os(iOS)
+    private static let context = CIContext()
+    #endif
     static func image(scheme: ColorScheme, scale: CGFloat) -> Image? {
         let key = Key(dark: scheme == .dark, scale: scale)
         if let cached = images[key] { return cached }
+        #if os(iOS)
+        guard scale > 0, let asset = UIImage(named: "BambooShadow"), asset.size.width > 0, asset.size.height > 0 else { return nil }
+        // Resolve the dynamic token explicitly; neither template tint nor SwiftUI
+        // environment resolution is left to an offscreen ImageRenderer.
+        let traits = UITraitCollection(userInterfaceStyle: key.dark ? .dark : .light)
+        let tint = UIColor(YubaiColor.bambooShadow).resolvedColor(with: traits)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale; format.opaque = false; format.preferredRange = .standard
+        let size = CGSize(width: 230 + padding * 2, height: 299 + padding * 2)
+        let fit = min(230 / asset.size.width, 299 / asset.size.height)
+        let fitted = CGSize(width: asset.size.width * fit, height: asset.size.height * fit)
+        let rect = CGRect(x: (size.width - fitted.width) / 2, y: (size.height - fitted.height) / 2, width: fitted.width, height: fitted.height)
+        let bitmap = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            asset.withTintColor(tint, renderingMode: .alwaysOriginal).draw(in: rect)
+        }
+        guard let pixels = bitmap.cgImage, hasVisiblePixels(pixels) else { return nil }
+        let input = CIImage(cgImage: pixels)
+        let blurred = input.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 6 * scale])
+        guard let output = context.createCGImage(blurred, from: input.extent), hasVisiblePixels(output) else { return nil }
+        let image = Image(uiImage: UIImage(cgImage: output, scale: scale, orientation: .up)).renderingMode(.original)
+        #else
         let renderer = ImageRenderer(content: source.blur(radius: 6).padding(padding).environment(\.colorScheme, scheme))
         renderer.scale = scale
-        #if os(iOS)
-        guard let bitmap = renderer.uiImage else { return nil }
-        let image = Image(uiImage: bitmap)
-        #else
         guard let bitmap = renderer.nsImage else { return nil }
         let image = Image(nsImage: bitmap)
         #endif
         images[key] = image; return image
     }
+    #if os(iOS)
+    /// A non-nil renderer result can still be transparent. Never retain one.
+    private static func hasVisiblePixels(_ image: CGImage) -> Bool {
+        var pixels = [UInt8](repeating: 0, count: 32 * 40 * 4)
+        return pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: 32, height: 40, bitsPerComponent: 8, bytesPerRow: 32 * 4,
+                                          space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 32, height: 40))
+            return stride(from: 3, to: buffer.count, by: 4).contains { buffer[$0] > 0 }
+        }
+    }
+    #endif
 }
 
 private struct PaperBackground: ViewModifier {
@@ -645,7 +680,9 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
     var flat = false
     private var castsShadow: Bool { !flat && !formSurface && !insideCard }
     func body(content: Content) -> some View {
-        content.environment(\.yubaiCardContent, true).background {
+        // Cover the paper's empty space without adding a gesture or an overlay
+        // above nested controls. Decorative shadows stay outside the hit area.
+        content.contentShape(.interaction, shape).environment(\.yubaiCardContent, true).background {
             Group {
                 if castsShadow {
                     paperWithShadow
@@ -965,7 +1002,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.gapSection).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .frame(maxWidth: .infinity, minHeight: compact ? YubaiSize.rowIcon : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.onBrand : YubaiColor.labelSecondary)
-            .background(isEnabled ? YubaiColor.brand : disabledBackground, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
+            .background(isEnabled ? YubaiColor.brand : disabledBackground, in: Capsule()).frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
@@ -979,7 +1016,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.gapSection).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .frame(maxWidth: .infinity, minHeight: compact ? YubaiSize.rowIcon : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.label : YubaiColor.labelSecondary)
-            .background(isEnabled ? background : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
+            .background(isEnabled ? background : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
@@ -1080,12 +1117,13 @@ struct SwipeActionRow<Content: View>: View {
                             .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
                             .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                             .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                            #else
+                            .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity)
+                            .background(tint).contentShape(Rectangle())
                             #endif
                     }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
                         #if os(iOS)
                         .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
-                        #else
-                        .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity).background(tint)
                         #endif
                         .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0)
                         .accessibilityIdentifier(actionIdentifier).accessibilityHidden(!revealed)
@@ -1191,7 +1229,7 @@ struct Pill: View {
             Text(text).yubaiFont(height < YubaiSize.pillHeight ? YubaiFont.meta : YubaiFont.caption)
             if showsChevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta, weight: .medium).accessibilityHidden(true) }
         }.padding(.horizontal, height < YubaiSize.pillHeight ? YubaiSpace.space8 : YubaiSpace.gapGroup)
-            .padding(.vertical, YubaiSpace.space4).frame(minHeight: height).foregroundStyle(ink).background(background, in: Capsule())
+            .padding(.vertical, YubaiSpace.space4).frame(minHeight: height).foregroundStyle(ink).background(background, in: Capsule()).contentShape(Capsule())
     }
 }
 
@@ -1532,9 +1570,11 @@ struct InlineNote: View {
     }
     @ViewBuilder private var actions: some View {
         if let action, let onAction {
-            Button(action, action: onAction).yubaiFont(YubaiFont.callout, weight: .medium).padding(.horizontal, YubaiSpace.gapGroup)
-                .frame(minHeight: YubaiSize.chipHeight).foregroundStyle(YubaiColor.amberStrong).background(YubaiColor.raised, in: Capsule())
-                .frame(minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
+            Button(action: onAction) {
+                Text(action).yubaiFont(YubaiFont.callout, weight: .medium).padding(.horizontal, YubaiSpace.gapGroup)
+                    .frame(minHeight: YubaiSize.chipHeight).foregroundStyle(YubaiColor.amberStrong).background(YubaiColor.raised, in: Capsule())
+                    .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
+            }.buttonStyle(PressButtonStyle())
         }
         if let secondaryAction, let onSecondaryAction {
             Button(secondaryAction, action: onSecondaryAction).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup)
@@ -1560,9 +1600,11 @@ struct EmptyState: View {
                     .frame(width: 44, height: 44).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
                 Text(title).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).multilineTextAlignment(.center)
                 if let action, let onAction {
-                    Button(action, action: onAction).yubaiFont(YubaiFont.body, weight: .medium)
-                        .padding(.horizontal, 18).frame(minHeight: 40).foregroundStyle(YubaiColor.onBrand)
-                        .background(YubaiColor.brand, in: Capsule()).buttonStyle(PressButtonStyle())
+                    Button(action: onAction) {
+                        Text(action).yubaiFont(YubaiFont.body, weight: .medium)
+                            .padding(.horizontal, 18).frame(minHeight: 40).foregroundStyle(YubaiColor.onBrand)
+                            .background(YubaiColor.brand, in: Capsule()).contentShape(Capsule())
+                    }.buttonStyle(PressButtonStyle())
                 }
             }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
         }
@@ -1957,6 +1999,7 @@ private struct WelcomeImportRange: View {
                         else { selectedSurface.matchedGeometryEffect(id: "selection", in: selectionNamespace) }
                     }
                 }
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(recent == value ? .isSelected : [])
             .accessibilityIdentifier(identifier)
     }
@@ -1994,7 +2037,7 @@ struct SuggestionChip: View {
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
                 .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
-                .frame(minHeight: YubaiSize.tapMin)
+                .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier(identifier)
     }
 }
@@ -2150,7 +2193,7 @@ struct AddEntryButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) { Image(systemName: "plus").font(.system(size: 26, weight: .medium)).foregroundStyle(YubaiColor.onBrand).accessibilityHidden(true)
-            .frame(width: 62, height: 62).floatingSurface(in: Circle(), tint: YubaiColor.brand, shadow: YubaiShadow.ask)
+            .frame(width: 62, height: 62).floatingSurface(in: Circle(), tint: YubaiColor.brand, shadow: YubaiShadow.ask).contentShape(Circle())
         }.buttonStyle(RoundPressStyle())
             .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
     }

@@ -30,7 +30,7 @@ struct OverviewView: View {
                     HStack(spacing: YubaiSpace.space8) {
                         Image(systemName: "envelope"); Text(letterChip(letter)).lineLimit(1); Image(systemName: "chevron.right")
                     }.yubaiFont(YubaiFont.caption).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
-                        .background(YubaiColor.raised, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
+                        .background(YubaiColor.raised, in: Capsule()).frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("freshLetter")
             }
             if store.accounts.isEmpty {
@@ -74,7 +74,7 @@ struct OverviewView: View {
                 if rows.count > 2 {
                     TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: {
                         HStack(spacing: YubaiSpace.gapGroup) { Text("还有 \(rows.count - 2) 笔 ›"); Spacer() }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
-                            .frame(minHeight: YubaiSize.tapMin)
+                            .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("moreDueBills")
                         .accessibilityLabel("还有 \(rows.count - 2) 笔").accessibilityValue(String(rows.count - 2))
                 }

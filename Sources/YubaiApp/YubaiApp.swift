@@ -745,6 +745,11 @@ enum AppSheet: Identifiable {
 }
 
 #if os(iOS)
+/// Only the tab bar observes this value, so scroll frames don't rebuild root pages.
+@MainActor @Observable private final class RootPagingProgress {
+    var position: CGFloat = 0
+}
+
 private struct HorizontalPageClip: Shape {
     func path(in rect: CGRect) -> Path {
         // Contain each page horizontally while preserving vertical scroll edge overflow.
@@ -766,7 +771,9 @@ struct RootView: View {
     @State private var pagingAligned = false
     @State private var pagingTarget: Destination?
     @State private var needsInitialScroll = true
+    @State private var pagingProgress = RootPagingProgress()
     private struct PagingPosition: Equatable {
+        let position: CGFloat
         let destination: Destination
         let aligned: Bool
         let ready: Bool
@@ -878,13 +885,19 @@ struct RootView: View {
                 .scrollClipDisabled()
                 .background(YubaiColor.canvas.ignoresSafeArea())
                 .onScrollGeometryChange(for: PagingPosition.self) { geometry in
-                    let destination = tab(at: geometry)
                     let width = geometry.containerSize.width
                     let offset = geometry.contentOffset.x + geometry.contentInsets.leading
-                    let index = Destination.allCases.firstIndex(of: destination) ?? 0
-                    return PagingPosition(destination: destination, aligned: width > 0 && abs(offset - CGFloat(index) * width) <= 1, ready: width > 0)
+                    let last = Destination.allCases.count - 1
+                    let position = width > 0 ? max(0, min(CGFloat(last), offset / width)) : CGFloat(Destination.allCases.firstIndex(of: store.destination) ?? 0)
+                    let index = Int(position.rounded())
+                    return PagingPosition(position: position, destination: Destination.allCases[index], aligned: width > 0 && abs(offset - CGFloat(index) * width) <= 1, ready: width > 0)
                 } action: { _, next in
                     guard generation == store.navigationRevision else { return }
+                    if pagingProgress.position != next.position {
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { pagingProgress.position = next.position }
+                    }
                     if visibleTab != next.destination { visibleTab = next.destination }; if pagingAligned != next.aligned { pagingAligned = next.aligned }
                     if needsInitialScroll {
                         guard next.ready else { return }
@@ -923,7 +936,7 @@ struct RootView: View {
                 }
                 .overlay(alignment: .bottom) {
                     if !tabBarHidden && store.sheet == nil && !store.pickingInsightDates {
-                        FloatingTabBar { scrollTo($0, using: proxy) }
+                        FloatingTabBar(progress: pagingProgress) { scrollTo($0, using: proxy) }
                             .uiTestAccessibilityValue("destination=\(store.destination.rawValue); visible=\(visibleTab.rawValue); phase=\(pagingPhase == .idle ? "idle" : "moving"); locked=\(store.pagingLocked ? 1 : 0)")
                             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.floatingTabbarBottom)
                             .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
@@ -935,11 +948,6 @@ struct RootView: View {
         #endif
     }
     #if os(iOS)
-    private func tab(at geometry: ScrollGeometry) -> Destination {
-        guard geometry.containerSize.width > 0 else { return store.destination }
-        let index = Int(((geometry.contentOffset.x + geometry.contentInsets.leading) / geometry.containerSize.width).rounded())
-        return Destination.allCases[max(0, min(Destination.allCases.count - 1, index))]
-    }
     private func scrollTo(_ d: Destination, using proxy: ScrollViewProxy) {
         // Reselecting an already settled page has no scroll transition to perform.
         if d == store.destination && d == visibleTab && pagingPhase == .idle && pagingAligned {
@@ -948,7 +956,10 @@ struct RootView: View {
             return
         }
         pagingTarget = d
-        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo(d, anchor: .leading) }
+        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) {
+            pagingProgress.position = CGFloat(Destination.allCases.firstIndex(of: d) ?? 0)
+            proxy.scrollTo(d, anchor: .leading)
+        }
     }
     private func tabNavigation(_ d: Destination, generation: UInt64) -> some View {
         NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: {
@@ -1078,22 +1089,28 @@ private struct LedgerPrivacyCover: View {
 }
 
 #if os(iOS)
+private struct TabSlotAnchors: PreferenceKey {
+    static var defaultValue: [Destination: Anchor<CGRect>] { [:] }
+    static func reduce(value: inout [Destination: Anchor<CGRect>], nextValue: () -> [Destination: Anchor<CGRect>]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
+    }
+}
+
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var scheme
     @State private var tagJump = 0
     @ScaledMetric(relativeTo: .title3) private var scaledIconSize = YubaiSize.tabIcon
     @ScaledMetric(relativeTo: .title2) private var scaledAddSize = YubaiFont.addIcon.size
-    @Namespace private var selection
+    let progress: RootPagingProgress
     var select: (Destination) -> Void
     var body: some View {
         HStack(spacing: YubaiSpace.none) {
             tab(.overview); tab(.insights)
             Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
                 Image(systemName: "plus").font(.system(size: min(scaledAddSize, YubaiFont.amountLarge.size), weight: YubaiFont.addIcon.weight)).foregroundStyle(YubaiColor.onBrand)
-                    .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background { Circle().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
+                    .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background { Circle().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }.contentShape(Circle())
             }.buttonStyle(RoundPressStyle()).padding(.horizontal, YubaiSpace.space8)
                 .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
                 .contextMenu {
@@ -1107,6 +1124,15 @@ private struct FloatingTabBar: View {
                 }
             tab(.entries); tab(.settings)
         }.padding(.horizontal, YubaiSpace.space8).frame(height: YubaiSize.tabBarHeight)
+            .backgroundPreferenceValue(TabSlotAnchors.self) { anchors in
+                GeometryReader { geometry in
+                    if let rect = selectionFrame(anchors, in: geometry) {
+                        RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius).fill(YubaiColor.card)
+                            .frame(width: rect.width, height: rect.height)
+                            .offset(x: rect.minX, y: rect.minY)
+                    }
+                }.allowsHitTesting(false).accessibilityHidden(true)
+            }
             .background {
                 Capsule().fill(reduceTransparency ? AnyShapeStyle(YubaiColor.raised) : AnyShapeStyle(.ultraThinMaterial))
                     .overlay { if !reduceTransparency { Capsule().fill(YubaiColor.glassBar) } }
@@ -1114,12 +1140,21 @@ private struct FloatingTabBar: View {
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
             .overlay { Capsule().strokeBorder(reduceTransparency ? YubaiColor.separator : Color.white.opacity(scheme == .dark ? 0.08 : 0.6), lineWidth: 1).allowsHitTesting(false) }
-            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.destination)
             .onChange(of: store.destination) { _, destination in if destination == .overview { tagJump &+= 1 } }
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
     }
+    private var pagePosition: CGFloat { max(0, min(CGFloat(Destination.allCases.count - 1), progress.position)) }
+    private func selectionFrame(_ anchors: [Destination: Anchor<CGRect>], in geometry: GeometryProxy) -> CGRect? {
+        let position = pagePosition
+        let lower = Int(position), upper = min(lower + 1, Destination.allCases.count - 1)
+        guard let start = anchors[Destination.allCases[lower]], let end = anchors[Destination.allCases[upper]] else { return nil }
+        let a = geometry[start], b = geometry[end], fraction = position - CGFloat(lower)
+        // The measured slots include the larger gap occupied by the central +.
+        return CGRect(x: a.minX + (b.minX - a.minX) * fraction, y: a.minY + (b.minY - a.minY) * fraction,
+                      width: a.width + (b.width - a.width) * fraction, height: a.height + (b.height - a.height) * fraction)
+    }
     private func tab(_ d: Destination) -> some View {
-        let selected = store.destination == d
+        let selected = Destination.allCases[Int(pagePosition.rounded())] == d
         let iconSize = min(scaledIconSize, YubaiSize.barMax)
         return Button { select(d) } label: {
             VStack(spacing: YubaiSpace.space2) {
@@ -1133,11 +1168,10 @@ private struct FloatingTabBar: View {
             }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity).frame(height: YubaiSize.tabSelectionHeight)
                 .contentShape(RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius))
-                .background {
-                    if selected { RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius).fill(YubaiColor.card).matchedGeometryEffect(id: "selection", in: selection) }
-                }
+                .anchorPreference(key: TabSlotAnchors.self, value: .bounds) { [d: $0] }
         }.buttonStyle(.plain).accessibilityLabel(d.title).accessibilityIdentifier("tab_" + d.rawValue)
-            .accessibilityAddTraits(selected ? .isSelected : [])
+            // VoiceOver keeps the committed selection until the pager settles.
+            .accessibilityAddTraits(store.destination == d ? .isSelected : [])
     }
 }
 #endif

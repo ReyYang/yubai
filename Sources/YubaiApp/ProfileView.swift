@@ -147,6 +147,7 @@ struct ProfileView: View {
                         Label("添加", systemImage: "plus").yubaiFont(YubaiFont.row)
                             .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
                             .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1, dash: [4, 4])) }
+                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
                     }.buttonStyle(PressButtonStyle()).accessibilityLabel("添加" + title)
                 }
             } else {

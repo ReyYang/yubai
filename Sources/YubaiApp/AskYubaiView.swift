@@ -143,6 +143,7 @@ struct AskYubaiView: View {
                             Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.gapGroup)
                                 .frame(minHeight: YubaiSize.tapMin)
                                 .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+                                .contentShape(Capsule())
                         }.foregroundStyle(enabled ? YubaiColor.label : YubaiColor.labelSecondary)
                             .buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.55)
                     }
