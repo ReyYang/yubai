@@ -114,6 +114,7 @@ private struct EntryEditForm: View {
                     .frame(minHeight: geometry.size.height, alignment: .top).frame(maxWidth: 620).frame(maxWidth: .infinity)
             }.scrollDismissesKeyboard(.interactively)
         }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+            .environment(\.yubaiFormSurface, true).paperBackground()
             #if os(iOS)
             .presentationDetents([.large])
             .toolbar(.hidden, for: .navigationBar)

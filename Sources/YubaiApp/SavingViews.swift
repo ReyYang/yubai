@@ -39,7 +39,7 @@ struct ProfileChatEntry: View {
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption)
             }.foregroundStyle(prominent ? YubaiColor.brandTintStrong : YubaiColor.brandInk)
                 .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: prominent ? YubaiSize.rowDouble : YubaiSize.rowSingle)
-                .background(prominent ? YubaiColor.brandTint : YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+                .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: prominent ? YubaiColor.brandTint : nil)
         }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.5)
             .accessibilityIdentifier("profileChatEntry")
             .onAppear { configured = IntelligenceRuntime.isConfigured }
@@ -305,7 +305,7 @@ struct RestrainNearRow: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             SavingProgressBar(ratio: progress.ratio, amber: true, showsOvershoot: true).frame(width: YubaiSize.iconButton + YubaiSpace.gapSection)
         }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.rowDouble)
-            .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: YubaiColor.amberTint)
     }
     private func countLeads(_ p: RestrainProgress) -> Bool {
         guard let count = p.perWeekCount else { return false }

@@ -127,7 +127,7 @@ struct ModelUnavailableNote: View {
             .foregroundStyle(YubaiColor.amberInk)
             .yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
-            .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row), background: YubaiColor.amberTint)
             .accessibilityHint("使用下方模型菜单选择其他模型")
             .accessibilityIdentifier("modelUnavailable")
     }
@@ -304,7 +304,7 @@ private struct CloudSendLogDetailView: View {
                 Text("\(step.id)").yubaiFont(YubaiFont.meta)
                     .foregroundStyle(step.outgoing ? YubaiColor.onBrand : YubaiColor.label)
                     .frame(width: YubaiSize.tagHeight, height: YubaiSize.tagHeight)
-                    .background(step.outgoing ? YubaiColor.brand : YubaiColor.card, in: Circle())
+                    .background(step.outgoing ? YubaiColor.brand : YubaiColor.paperInset, in: Circle())
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     Text(step.title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -316,7 +316,7 @@ private struct CloudSendLogDetailView: View {
                         }
                     }.padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(step.outgoing ? YubaiColor.raised : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                        .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                 }
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("cloudLogStep_" + String(step.id))
@@ -394,7 +394,7 @@ private struct CloudLogRawExchange: View {
             Text(number.formatted()).yubaiFont(YubaiFont.code)
                 .foregroundStyle(outgoing ? YubaiColor.onBrand : YubaiColor.label)
                 .frame(width: YubaiSize.tagHeight, height: YubaiSize.tagHeight)
-                .background(outgoing ? YubaiColor.brand : YubaiColor.card, in: Circle())
+                .background(outgoing ? YubaiColor.brand : YubaiColor.paperInset, in: Circle())
             Text(title).yubaiFont(YubaiFont.callout, weight: .medium)
         }
     }
@@ -406,7 +406,7 @@ private struct CloudLogRawCard<Content: View>: View {
     var body: some View {
         content.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(outgoing ? YubaiColor.raised : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
     }
 }
 

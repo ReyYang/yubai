@@ -72,7 +72,7 @@ struct StorageView: View {
                 Button("取消", role: .cancel) {}
             }
             .sheet(item: $sheet, onDismiss: { Task { await refreshUsage() } }) { destination in
-                // StorageSheet owns the raised background for both destinations.
+                // Both destinations share the stationary page light.
                 Group {
                     switch destination {
                     case .photos: StoragePhotosSheet()
@@ -154,7 +154,7 @@ private struct StoragePhotosSheet: View {
                             .yubaiFont(YubaiFont.callout, weight: months == value ? .medium : .regular)
                             .foregroundStyle(months == value ? YubaiColor.brandInk : YubaiColor.labelMuted)
                             .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
-                            .background(months == value ? YubaiColor.brandTint : YubaiColor.card, in: Capsule())
+                            .background(months == value ? YubaiColor.brandTint : YubaiColor.raised, in: Capsule())
                             .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                     }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(months == value ? .isSelected : [])
                 }
@@ -286,10 +286,10 @@ private struct StorageSheet<Content: View>: View {
                 content
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
                 .background { GeometryReader { geometry in Color.clear.preference(key: StorageSheetHeight.self, value: geometry.size.height) } }
-        }.scrollDismissesKeyboard(.interactively).foregroundStyle(YubaiColor.label).background(YubaiColor.raised)
+        }.scrollDismissesKeyboard(.interactively).foregroundStyle(YubaiColor.label).paperBackground()
             .onPreferenceChange(StorageSheetHeight.self) { contentHeight = $0 + YubaiSpace.gapSection }
             .presentationDetents([.height(contentHeight), .large]).presentationDragIndicator(.visible)
-            .presentationBackground(YubaiColor.raised).presentationCornerRadius(28)
+            .yubaiSheetBackground().presentationCornerRadius(28)
             #if os(macOS)
             .frame(minWidth: 540, idealWidth: 620, minHeight: 600, idealHeight: 720)
             #endif

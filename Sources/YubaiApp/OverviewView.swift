@@ -13,7 +13,7 @@ struct OverviewView: View {
     var body: some View {
         scrollingContent.rootPageHeader { TabRootHeader(title: "现在", showsAmountVisibility: true) }
             .frame(maxWidth: 680).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(YubaiColor.canvas).navigationTitle("现在")
+            .navigationTitle("现在")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
@@ -53,7 +53,7 @@ struct OverviewView: View {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: YubaiSpace.gapGroup) { nextTitle(next); Spacer(); nextAmount(next); Image(systemName: "chevron.right") }
                             VStack(alignment: .leading, spacing: YubaiSpace.space8) { nextTitle(next); nextAmount(next) }
-                        }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: 18))
+                        }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).paperCardSurface(in: RoundedRectangle(cornerRadius: 18))
                     }.buttonStyle(PressButtonStyle())
                 } else if dueBills.isEmpty {
                     Text("下一笔 · 还没有待付款").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)

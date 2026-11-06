@@ -54,7 +54,7 @@ struct CashTimelineCard: View {
             }
         }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, 14).padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("cashTimelineCard")
             .onChange(of: timeline.cycles) { _, _ in cycleOffset = 0; selectedDay = nil; holding = false }
             .onChange(of: hidden) { _, _ in selectedDay = nil; holding = false }
@@ -142,14 +142,14 @@ struct CashTimelineCard: View {
                     .symbol { Circle().fill(YubaiColor.brand).frame(width: 7, height: 7) }
                 if let end = visible.endpoint {
                     PointMark(x: .value("周期终点", end.date), y: .value("余额", money(end.balance)))
-                        .symbol { Circle().fill(YubaiColor.card).frame(width: 8, height: 8)
+                        .symbol { Circle().fill(YubaiColor.paperSheet).frame(width: 8, height: 8)
                             .overlay { Circle().stroke(visible.belowFloor ? YubaiColor.amberDot : YubaiColor.brandInk, lineWidth: 2) } }
                 }
             }
             if let selected {
                 RuleMark(x: .value("选中日期", selected.date)).foregroundStyle(YubaiColor.label).lineStyle(StrokeStyle(lineWidth: 1))
                 PointMark(x: .value("选中日期", selected.date), y: .value("余额", money(selected.balance)))
-                    .symbol { Circle().fill(YubaiColor.label).frame(width: 8, height: 8).overlay { Circle().stroke(YubaiColor.card, lineWidth: 2) } }
+                    .symbol { Circle().fill(YubaiColor.label).frame(width: 8, height: 8).overlay { Circle().stroke(YubaiColor.paperSheet, lineWidth: 2) } }
             }
         }.chartLegend(.hidden)
             .chartXScale(domain: visible.start...visible.end, range: .plotDimension(padding: 4))
@@ -220,7 +220,7 @@ struct CashTimelineCard: View {
                 let rect = CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height).insetBy(dx: -3, dy: -2)
                 guard !occupied.contains(where: { $0.intersects(rect) }) else { continue }
                 occupied.append(rect)
-                let outline: GraphicsContext.ResolvedText = context.resolve(text.foregroundStyle(YubaiColor.card))
+                let outline: GraphicsContext.ResolvedText = context.resolve(text.foregroundStyle(YubaiColor.paperSheet))
                 for dx: CGFloat in [-1.5, 0.0, 1.5] {
                     for dy: CGFloat in [-1.5, 0.0, 1.5] where dx != 0 || dy != 0 {
                         context.draw(outline, at: CGPoint(x: center.x + dx, y: center.y + dy))

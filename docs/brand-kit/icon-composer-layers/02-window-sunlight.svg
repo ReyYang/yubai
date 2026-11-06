@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="sunBeam" x1="0.05" y1="0.15" x2="0.95" y2="0.85">
+      <stop offset="0%" stop-color="#FEFBEA" stop-opacity="0.38"/>
+      <stop offset="65%" stop-color="#FEFBEA" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#EDE6D3" stop-opacity="0.10"/>
+    </linearGradient>
+    <filter id="winBlur" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+  </defs>
+  <g filter="url(#winBlur)">
+    <path d="M 0 568 L 1024 36 V 366 H 254 V 1024 H 0 Z" fill="url(#sunBeam)"/>
+    <rect x="284" y="402" width="740" height="312" fill="#FEFBEA" fill-opacity="0.26"/>
+    <rect x="284" y="742" width="740" height="282" fill="#FEFBEA" fill-opacity="0.16"/>
+  </g>
+</svg>

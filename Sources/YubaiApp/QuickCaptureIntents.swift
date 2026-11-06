@@ -34,7 +34,7 @@ private struct CaptureSnippetView: View {
     let entries: [Entry]; let ledger: Ledger; let privateResult: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            Label(entries.isEmpty ? "余白 · 已撤销" : "余白 · 已记下", systemImage: "water.waves").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+            Label(entries.isEmpty ? "余白 · 已撤销" : "余白 · 已记下", systemImage: "square.righthalf.filled").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             ForEach(entries) { entry in
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {

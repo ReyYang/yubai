@@ -21,7 +21,7 @@ struct MemoryView: View {
                                     Text(metadata(note)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                                 }.padding(.vertical, YubaiSpace.space8)
                             }.accessibilityIdentifier("memory_" + note.id.uuidString)
-                                .listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+                                .listRowBackground(YubaiColor.paperSheet).listRowSeparatorTint(YubaiColor.separator)
                         }.onDelete { offsets in
                             let ids = offsets.map { notes[$0].id }
                             store.update("删除记忆") { ledger in

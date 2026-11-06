@@ -361,7 +361,7 @@ struct UnsortedQuickSortView: View {
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("quickSortGroupDetails")
         }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, YubaiSpace.insetCard).padding(.bottom, YubaiSpace.space8)
-            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
     }
 }
 
@@ -555,7 +555,7 @@ private struct UnsortedEntryRow: View {
                         Text(fields[index].key + "  " + fields[index].value).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
-                    .padding(YubaiSpace.space8).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                    .padding(YubaiSpace.space8).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
                     .padding(.leading, YubaiSize.tapMin + YubaiSpace.space8)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("unsortedEntrySource_" + entry.id.uuidString)
