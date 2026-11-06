@@ -192,6 +192,8 @@ enum YubaiSpace {
     static let gapGroup = space12
     static let gapHeading = space8
     static let gapAction = space12
+    /// Clear space above a sheet's manual header so it sits below the system grabber.
+    static let sheetHeaderTop: CGFloat = 20
     static let emptyTop: CGFloat = 100
     static let messageIndent = space20 * 2
     // H1 已完成；滑动操作保留原有内缩与标签几何，不参与 4/8 网格归一。

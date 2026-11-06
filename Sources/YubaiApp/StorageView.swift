@@ -287,7 +287,7 @@ private struct StorageSheet<Content: View>: View {
                 .background { GeometryReader { geometry in Color.clear.preference(key: StorageSheetHeight.self, value: geometry.size.height) } }
         }.scrollDismissesKeyboard(.interactively).foregroundStyle(YubaiColor.label).paperBackground()
             .manualSheetHeader(title, cancelTitle: "关闭", showsAction: false)
-            .onPreferenceChange(StorageSheetHeight.self) { contentHeight = $0 + YubaiSpace.gapSection }
+            .onPreferenceChange(StorageSheetHeight.self) { contentHeight = $0 + YubaiSpace.gapSection + YubaiSize.headerHeight + YubaiSpace.sheetHeaderTop }
             .presentationDetents([.height(contentHeight), .large]).presentationDragIndicator(.visible)
             .yubaiSheetBackground().presentationCornerRadius(28)
             #if os(macOS)
