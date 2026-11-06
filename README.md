@@ -12,6 +12,7 @@ AI 负责理解和整理，数字永远由代码来算。
 ![Swift](https://img.shields.io/badge/Swift-6.2%20toolchain%20·%20v5%20mode-f05138)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0a84ff)
 ![Local first](https://img.shields.io/badge/data-local--first-6b5b3e)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 </div>
 
@@ -153,4 +154,4 @@ swift test
 
 ## 许可证
 
-尚未选定开源许可证。在仓库加入 `LICENSE` 之前，代码保留所有权利。
+[Apache License 2.0](LICENSE) © 2026 ReyYang
