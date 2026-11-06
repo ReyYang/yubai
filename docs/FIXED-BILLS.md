@@ -29,7 +29,7 @@ ManualBookkeeping.change(amount: Int64, nature: Nature, accountID: UUID,
 
 `FixedFlowMonth` 提供 `date`（月初）、`occurrences: [FixedFlowOccurrence]`、`remainingOutflow`、`remainingInflow`。每行包含 `id`、`title`、`date`、`state: FixedFlowState`（`paid`／`due`／`upcoming`）、`amount`、`planID`／`rentID`、`inflow`、`autoPay`、`installment: (index: Int, total: Int)?` 和 `estimated`。本期结清时状态为 `paid`，金额为关联记录合计；定额部分付款仍为 `due`／`upcoming`，金额显示剩余数；没有关联记录时今天及之前为 `due`，之后为 `upcoming`。定额部分付款的剩余差额仍计入剩余合计。房租付款和应收分摊分别列出，本轮只读。`FixedFlowArrangement` 新增 `paidCount: Int` 与 `total: Int?`；定额分期完全付清一期才计数。`canEnd` 及从今天结束安排的 `.endPlan` 规则保持。
 
-验证结果见 [VALIDATION.md](VALIDATION.md)。Core 接口未在 Apple SDK 或界面分支验证，设计稿、原型及分发包尚未同步。
+Core 接口未在 Apple SDK 或界面分支验证，设计稿、原型及分发包尚未同步。
 
 ## 改安排（2026-11-04）
 
