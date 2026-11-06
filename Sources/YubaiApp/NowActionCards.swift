@@ -80,14 +80,14 @@ struct NowCardsSection: View {
             ForEach(Array((1..<(edges + 1)).reversed()), id: \.self) { depth in
                 RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous)
                     .fill(YubaiColor.neutralSoft).frame(height: 40)
-                    .padding(.horizontal, CGFloat(depth) * 10).offset(y: CGFloat(depth) * 6)
+                    .padding(.horizontal, CGFloat(depth) * YubaiSpace.space10).offset(y: CGFloat(depth) * 6)
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
             ForEach(Array(pages.prefix(1))) { page in
                 card(page)
                     .transition(.asymmetric(insertion: reduceMotion ? .opacity : .scale(scale: 0.97), removal: .identity))
             }
-        }.padding(.bottom, CGFloat(edges) * 6)
+        }.padding(.bottom, CGFloat(edges) * YubaiSpace.space6)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: pages.map(\.id))
     }
     @ViewBuilder private func card(_ page: NowCardPage) -> some View {
@@ -214,7 +214,7 @@ private struct PendingImportsCard: View {
                 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     progressCount(progress)
-                    HStack(spacing: YubaiSpace.space8) { organizingReminder; Spacer(minLength: 0); stopButton }
+                    HStack(spacing: YubaiSpace.space8) { organizingReminder; Spacer(minLength: YubaiSpace.none); stopButton }
                 }
             }
         }

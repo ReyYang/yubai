@@ -103,6 +103,31 @@ owner 本轮批准分类管理与统一两步分类选择，取代第三十一�
 - `scripts/audit-swift-access.py` 已执行：41 个 App＋1 个 UI 文件、1,214 处访问声明，0 个同属主跨文件私有命中；复核新增成员均在同文件使用，Core 供 App 使用的成员明确为 public。审计是保守命名检查，不能代替类型检查。五份改动 Swift 的词法括号配对检查、`git diff --check` 通过。
 - 刻度算法的独立 Python 转写检查 10,008 组范围／步长／刻度数量，未发现失败；这只是算法模型核对，不是执行 Swift 源码，不能计入单元测试结果。
 - 仍待 Apple SDK 类型检查／Xcode 构建、XCTest UI、390pt 渲染、长按／横滑竞争、标注真实坐标、Mac 指针、深色／大字号／VoiceOver 与真机仍未验证。
+## 2026-11-06 · Batch A 细节维护（外观保持）
+
+来源：owner 本轮明确任务，在 `feat/detail-polish` 实现，不提交。沿用现有选定稿与「少写字」规则；本轮只授权问余白示例的数据与文案变化，不新增说明文字。
+
+- `DesignSystem.swift / Toast` 在原有 `.task(id: text)` 显示时发送 iOS accessibility announcement，有撤销动作追加「，可撤销」；普通重绘不重复触发，macOS 不调用该 API。
+- `AskYubai.swift / exampleQuestions` 接收账本、现在页同源的 occurrences 与当前时间：第一笔非收入项生成付款问题，当前 ISO 周用 Finance.cashFlow 的最大正净支出分类及 Classification.displayCategory 生成消费问题，再加原购买问题。无待付款时跳过该题（两题），无本周正净支出时使用通用周消费问题。AskYubaiView 只传数据，按钮 UI 保持。
+- 同值 token 替换覆盖 DesignSystem 的使用处及 CashTimelineCard、EntriesView、FixedFlowsView、InsightsView、NowActionCards、OverviewView、ProfileConversationView、QuickEntryView、WishlistView；token 定义、实际数值与图内几何不变。6／10pt 原有间距使用已有兼容 token，不升级到其他网格值。
+- `AssistantTests.swift` 新增 7 项 Core 回归，覆盖待付款／仅收入／空账本、分类合计与别名、无本周支出、分类显示名、跨年 ISO 周边界、退款抵扣；`AppFlowTests.swift` 的无密钥断言同步为合成账本实际生成的两题。
+
+新增／改动可见中文只有控件文字：「M月D日的标题够付吗？」「这周分类显示名花了多少？」「这周花了多少？」；「，可撤销」仅用于读屏。没有新增其他类型的可见文字。
+
+保留的原始数值按用途列出（同值但异义的 token 不复用）：
+
+| 位置／用途 | 保留数值 | 原因 |
+|---|---|---|
+| ButlerViews 滑动标签、Overview／CashTimeline 顶距、CashTimeline 按钮与图例间距 | padding 22／14／5；spacing 14／5 | 没有同义的间距 token；radius 的 14／22 不用于 padding。 |
+| 分隔线与滚动锚点 | height 1 | 没有 1pt 尺寸 token。 |
+| Butler／Saving／Pill／InlineNote 状态点、聊天思考点、固定收付日期点 | 6×6、4×4、12×12 | 没有对应尺寸语义；不借用间距、messageTail 或 pageArrowGlyph。 |
+| Now 卡组背面、NowCardButton、AddEntryButton | height 40、minHeight 36、62×62 | 现有同值 token 分别表示图标／分段、行图标、标签栏高度，与这些表面／按钮不同义。 |
+| CashTimeline、Butler、Insights、Settings、ImportReadingProgress、Hero／AnswerChart 的图、图例标记与进度条 | 14×1、14×2；7／8／10／124／204 方形；圆角 2／3；高度 6／8／140／170／180／210；宽 64 | 按要求保留图形几何；进度条 6pt 也没有同义尺寸 token。 |
+| 固定内容、空态、日期选择器、窗口与页面最大宽度 | 120、220、230、240、299、300、320、340、360、400、410、460、520、540、600、610、620、680、720、760、780、920、1080 | 没有同值且同义的尺寸 token；230×299 是现有竹影资源。 |
+| BrandMark 图形、NavigationBackPaper 图片 renderer 与 UI 测试支持 | 现有绘图比例与坐标；renderer 60×48、绘图圆角 18 等 | 按任务排除，保持原始绘图及测试夹具。 |
+| frame 中的比例、倍数、索引和分母保护 | 0／1／2／3 等 | 无量纲计算数值，不是绝对间距／尺寸。 |
+
+验证：Swift 6.2.4 Linux `swift build` 退出 0（58.60 秒），完整 `YUBAI_LIVE_EVAL=0 swift test` 退出 0，**804 项，800 通过／4 原有实网 opt-in 跳过／0 失败，102.83 秒**；新增 7 项全部通过。依赖通过只读 GitHub 接口取得 Package.resolved 锁定 revision 的 818 个源码／manifest／license 文件，逐个 Git blob SHA-1 与长度校验后仅写 ignored `.build/checkouts`，未改依赖版本；SwiftPM 缓存使用可写的 /tmp。日志 `/tmp/yubai-batch-a-build.log`、`/tmp/yubai-batch-a-tests.log`。41 个 App 文件在 iOS 26 模拟器 Debug、iOS 26 设备、macOS 14 Debug 条件解析共 123 次通过，最终 DesignSystem 三组补检与更新 UI 测试的 iOS 条件解析通过；解析记录 `/tmp/yubai-batch-a-app-parse.json`。同值 token 还原对照、token 定义保持检查及 `git diff --check` 通过。Apple SDK 构建、UI 实跑与 VoiceOver 真机仍待 Mac。外部画布、原稿、截图和分发包未同步；无新依赖或工程引用变化，Core 由 Xcode 的本地 Swift package 产品引用。
 
 ## 2026-11-05 · 第三十八轮「还能花图例与克制超出」
 

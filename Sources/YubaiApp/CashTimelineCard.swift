@@ -45,7 +45,7 @@ struct CashTimelineCard: View {
                 plot(visible).padding(.top, 22)
                 footer.padding(.top, 10)
             }
-        }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, 14).padding(.bottom, 12)
+        }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, 14).padding(.bottom, YubaiSpace.space12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("cashTimelineCard")

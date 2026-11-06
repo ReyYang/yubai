@@ -53,7 +53,7 @@ struct OverviewView: View {
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: YubaiSpace.gapGroup) { nextTitle(next); Spacer(); nextAmount(next); Image(systemName: "chevron.right") }
                             VStack(alignment: .leading, spacing: YubaiSpace.space8) { nextTitle(next); nextAmount(next) }
-                        }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).paperCardSurface(in: RoundedRectangle(cornerRadius: 18))
+                        }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                     }.buttonStyle(PressButtonStyle())
                 } else if dueBills.isEmpty {
                     Text("下一笔 · 还没有待付款").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)

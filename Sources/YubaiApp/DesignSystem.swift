@@ -1439,7 +1439,7 @@ struct HeroCard: View {
             }.frame(height: YubaiSpace.gapGroup)
             if !isEmpty {
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 0) { compositionLegend(segments, horizontal: true) }
+                    HStack(spacing: YubaiSpace.none) { compositionLegend(segments, horizontal: true) }
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) { compositionLegend(segments, horizontal: false) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -1463,7 +1463,7 @@ struct HeroCard: View {
         }
     }
     private func legendItem(_ name: String, amount: Int64, color: Color, striped: Bool = false) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: YubaiSpace.space6) {
             Group {
                 if striped { HeroShortfallStripes() }
                 else { color }
@@ -1569,6 +1569,9 @@ struct Toast: View {
         ZStack { if visible { surface } }
             .task(id: text) {
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
+                #if os(iOS)
+                AccessibilityNotification.Announcement(text + (onUndo == nil ? "" : "，可撤销")).post()
+                #endif
                 #if DEBUG && targetEnvironment(simulator)
                 if onUndo != nil && UITestSupport.keepsUndoReceipt { return }
                 #endif
@@ -1620,7 +1623,7 @@ extension View {
         self.paperBackground().tint(YubaiColor.brandInk)
             .environment(\.yubaiRootSurface, false).environment(\.yubaiFormSurface, false)
             #if os(iOS)
-            .background { NavigationBackPaper().frame(width: 0, height: 0) }
+            .background { NavigationBackPaper().frame(width: YubaiSpace.none, height: YubaiSpace.none) }
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)

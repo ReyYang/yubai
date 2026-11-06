@@ -152,7 +152,7 @@ struct QuickEntryView: View {
                 Text(keypad.displayText.replacingOccurrences(of: "-", with: "−")).yubaiFont(YubaiFont.amountDisplay)
                     .numberTransition(value: Double(keypad.amount ?? 0) / 100)
                     .lineLimit(1).minimumScaleFactor(0.5).accessibilityIdentifier("entryKeypadAmount")
-                Rectangle().fill(YubaiColor.brand).frame(width: 2, height: YubaiSize.rowIcon).accessibilityHidden(true)
+                Rectangle().fill(YubaiColor.brand).frame(width: YubaiSize.lineWidth, height: YubaiSize.rowIcon).accessibilityHidden(true)
                 Spacer(minLength: YubaiSpace.none)
             }.frame(minHeight: YubaiSize.rowDouble)
         }.contentShape(Rectangle()).onTapGesture { purposeFocused = false }

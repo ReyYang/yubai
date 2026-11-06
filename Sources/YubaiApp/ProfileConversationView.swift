@@ -50,7 +50,7 @@ struct ProfileConversationView: View {
             if proposal == nil || revising {
                 ChatInputBar(text: $input, placeholder: revising ? "想改哪里？" : "写下你的想法…",
                     accessibilityLabel: "告诉余白你的消费观", inputID: "profileInput", sendID: "sendProfile",
-                    busy: busy, send: ask, leading: { Color.clear.frame(width: YubaiSpace.space8, height: 0).accessibilityHidden(true) }, accessory: { EmptyView() })
+                    busy: busy, send: ask, leading: { Color.clear.frame(width: YubaiSpace.space8, height: YubaiSpace.none).accessibilityHidden(true) }, accessory: { EmptyView() })
                     .padding(YubaiSpace.insetPage)
             }
         }.paperBackground().navigationTitle("和余白聊聊").yubaiNavigation()

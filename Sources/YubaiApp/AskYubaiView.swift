@@ -123,7 +123,7 @@ struct AskYubaiView: View {
         return VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             if messages.isEmpty && !busy && !reading {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                    ForEach(["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，该不该买？"], id: \.self) { question in
+                    ForEach(AskYubai.exampleQuestions(ledger: store.current, occurrences: store.funds.occurrences, now: Date()), id: \.self) { question in
                         Button { input = question; send() } label: {
                             Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.gapGroup)
                                 .frame(minHeight: YubaiSize.tapMin)
