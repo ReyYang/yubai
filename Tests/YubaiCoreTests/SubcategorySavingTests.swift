@@ -54,7 +54,7 @@ final class SubcategorySavingTests: XCTestCase {
         XCTAssertEqual(ledger.entries.map(\.category), ["购物", "购物", "购物", "娱乐", "工资奖金", "工资奖金", "兼职劳务", "投资收益", "自定义主项"])
         XCTAssertEqual(ledger.entries[0].subcategory, "日用百货"); XCTAssertEqual(ledger.entries[4].subcategory, "工资"); XCTAssertEqual(ledger.entries[5].subcategory, "奖金")
         XCTAssertEqual(ledger.categoryMemory["用途"], "购物"); XCTAssertEqual(ledger.subcategoryMemory["用途"], "购物/日用百货")
-        XCTAssertEqual(ledger.resolveCategory("旧购物"), "购物"); XCTAssertEqual(ledger.profile.restrain[0].match.categories, ["购物"])
+        XCTAssertEqual(ledger.resolveCategory("旧购物", income: false), "购物"); XCTAssertEqual(ledger.profile.restrain[0].match.categories, ["购物"])
         XCTAssertTrue(ledger.categories.contains { $0.name == "自定义主项" }); XCTAssertFalse(ledger.categories.contains { $0.name == "日用" })
         XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)), ledger)
     }
@@ -182,7 +182,7 @@ final class SubcategorySavingTests: XCTestCase {
     }
     func testBatchCancellationDoesNotSendAndIncomeBreakdownUsesIncomeSmallItems() async throws {
         var ledger = seed(); var wage = entry(ledger, title: "工资", category: "工资奖金", amount: 500_000); wage.nature = .income; wage.subcategory = "工资"; ledger.entries = [wage]
-        let breakdown = Finance.subcategoryBreakdown(ledger, category: "工资奖金", during: .init(start: Dates.day(now), end: Dates.addDays(1, to: now)))
+        let breakdown = Finance.subcategoryBreakdown(ledger, category: "工资奖金", income: true, during: .init(start: Dates.day(now), end: Dates.addDays(1, to: now)))
         XCTAssertEqual(breakdown.first?.amount, 500_000); XCTAssertEqual(breakdown.first?.category, "工资")
         ledger.entries[0].subcategory = nil
         let transport = ScriptedChatTransport([])
@@ -199,7 +199,7 @@ final class SubcategorySavingTests: XCTestCase {
         var refund = entry(ledger, title: "退回", category: "其他支出", amount: 500); refund.nature = .refund; refund.relatedEntryID = lunch.id
         ledger.entries = [lunch, coffee, refund]
         let ctx = ToolContext(ledger: ledger, now: now)
-        let breakdown = Finance.subcategoryBreakdown(ledger, category: "餐饮", during: .init(start: Dates.day(now), end: Dates.addDays(1, to: now)))
+        let breakdown = Finance.subcategoryBreakdown(ledger, category: "餐饮", income: false, during: .init(start: Dates.day(now), end: Dates.addDays(1, to: now)))
         XCTAssertEqual(breakdown.map(\.amount), [2500, 2000])
         let habit = try ReadOnlyTool.compareToHabit.run(.object(["category": .string("餐饮"), "subcategory": .string("午餐"), "keyword": .string("不会匹配")]), ctx)
         XCTAssertEqual(habit["count"], .number(1)); XCTAssertEqual(habit["average"], .money(3000))

@@ -98,7 +98,7 @@ public enum QuickCapture {
         let mapped = ledger.preferences.quickCapture.cardAccounts.first { cardKey($0.key) == cardKey(card) }?.value
         let account = mapped.flatMap { id in ledger.accounts.first { $0.id == id && !$0.archived } } ?? ManualBookkeeping.defaultAccount(in: ledger)
         guard let account else { throw YubaiError.invalid("请先添加账户。") }
-        let rule = ledger.classificationMemory[key(merchant)]
+        let rule = CategoryMemory.value(key(merchant), income: false, in: ledger)
         let choice = CategoryGuesser.guess(merchant, nature: .expense, date: date, in: ledger)
         let category = choice?.category
         var entry = Entry(date: date, amount: cents, accountID: account.id, title: merchant, category: category ?? Classification.pendingCategory)
@@ -113,13 +113,13 @@ public enum QuickCapture {
         guard let index = ledger.entries.firstIndex(where: { $0.id == entryID && $0.deletedAt == nil }) else { return }
         ledger.entries[index].deletedAt = now
     }
-    public static func remember(merchant: String, category: String, in ledger: inout Ledger) throws {
+    public static func remember(merchant: String, category: String, income: Bool, in ledger: inout Ledger) throws {
         let merchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines), category = category.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !merchant.isEmpty, !category.isEmpty else { throw YubaiError.invalid("请填写商户和分类。") }
         let normalized = key(merchant)
-        let choice = CategoryMapping.match(category, in: ledger) ?? ledger.categoryAssignment(category: category)
-        guard !normalized.isEmpty, ledger.selectableCategories.contains(where: { $0.name == choice.category }) else { throw YubaiError.invalid("请选择已有分类。") }
-        ledger.classificationMemory[normalized] = choice.path
+        let choice = CategoryMapping.match(category, in: ledger, income: income) ?? ledger.categoryAssignment(category: category, income: income)
+        guard !normalized.isEmpty, ledger.selectableCategories.contains(where: { $0.name == choice.category && $0.income == income }) else { throw YubaiError.invalid("请选择已有分类。") }
+        CategoryMemory.store(choice.path, key: normalized, income: income, in: &ledger)
     }
     public static func key(_ text: String) -> String { CategoryMemory.key(text) }
     public static func cardKey(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }

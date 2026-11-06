@@ -82,7 +82,7 @@ final class CategoryReguessTests: XCTestCase {
         var ledger = seed()
         ledger.entries = [row(ledger)]
         ledger.classificationMemory["理发店"] = "交通/打车"
-        try CategoryModel.rename("交通", to: "出行服务", in: &ledger)
+        try CategoryModel.rename("交通", to: "出行服务", income: false, in: &ledger)
         XCTAssertEqual(CategoryReguess.proposals(in: ledger).first?.target.path, "出行服务/打车")
         let memory = ledger.classificationMemory
         try CategoryReguess.apply(CategoryReguess.proposals(in: ledger), in: &ledger)
@@ -156,7 +156,7 @@ final class CategoryReguessTests: XCTestCase {
         let proposals = CategoryReguess.proposals(in: ledger)
         ledger.entries[0].note = "预览之后改过"
         ledger.classificationMemory["造型"] = "交通/打车"
-        try CategoryModel.setHidden(true, category: "购物", in: &ledger)
+        try CategoryModel.setHidden(true, category: "购物", income: false, in: &ledger)
         let before = ledger
         let changes = try CategoryReguess.apply(proposals, in: &ledger)
         XCTAssertEqual(changes.count, 0); XCTAssertEqual(ledger, before)

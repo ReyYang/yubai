@@ -117,11 +117,11 @@ final class CategoryDefaultsExpansionTests: XCTestCase {
 
     func testRenamedMergedDeletedDefaultsStayGoneEvenWhenVersionIsMissing() throws {
         var ledger = Ledger()
-        try CategoryModel.rename("美容个护", to: "护理服务", in: &ledger)
-        try CategoryModel.merge("保险税费", into: "其他支出", in: &ledger)
-        try CategoryModel.merge("二手转卖", into: "其他收入", in: &ledger)
-        try CategoryModel.renameSubcategory("养车", in: "交通", to: "车辆维护", ledger: &ledger)
-        try CategoryModel.removeSubcategory("快递", from: "购物", in: &ledger)
+        try CategoryModel.rename("美容个护", to: "护理服务", income: false, in: &ledger)
+        try CategoryModel.merge("保险税费", into: "其他支出", income: false, in: &ledger)
+        try CategoryModel.merge("二手转卖", into: "其他收入", income: true, in: &ledger)
+        try CategoryModel.renameSubcategory("养车", in: "交通", to: "车辆维护", income: false, ledger: &ledger)
+        try CategoryModel.removeSubcategory("快递", from: "购物", income: false, in: &ledger)
         ledger.defaultCategoriesVersion = nil
         let migrated = try load(ledger)
         for main in ["美容个护", "保险税费", "二手转卖"] { XCTAssertFalse(migrated.categories.contains { $0.name == main }) }
@@ -194,9 +194,9 @@ final class CategoryDefaultsExpansionTests: XCTestCase {
             for path in ["美容个护/理发", "保险税费/保险", "保险税费/税费", "餐饮/买菜做饭", "报销", "二手转卖"] { XCTAssertTrue(prompt.contains("→" + path), path) }
             XCTAssertFalse(prompt.contains("保险公司→其他支出"))
         }
-        try CategoryModel.rename("美容个护", to: "个人护理", in: &ledger)
-        try CategoryModel.setHidden(true, category: "保险税费", in: &ledger)
-        try CategoryModel.merge("二手转卖", into: "其他收入", in: &ledger)
+        try CategoryModel.rename("美容个护", to: "个人护理", income: false, in: &ledger)
+        try CategoryModel.setHidden(true, category: "保险税费", income: false, in: &ledger)
+        try CategoryModel.merge("二手转卖", into: "其他收入", income: true, in: &ledger)
         for party in [true, false] {
             let prompt = ImportOrganizer.prompt(for: ledger, byParty: party)
             XCTAssertTrue(prompt.contains("→个人护理/理发"))

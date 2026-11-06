@@ -54,10 +54,9 @@ struct QuickEntryView: View {
                     if nature != .transfer {
                         EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
                                            income: nature != .refund && nature.inflow, selection: effectiveCategory, suggestionOnly: category.isEmpty,
-                                           suggest: { categorySuggestion?.category }) { choice in
-                            if let value = store.current.categories.first(where: { $0.name == choice.category }), value.income != nature.inflow {
-                                skipNatureReset = true; nature = value.income ? .income : .expense
-                            }
+                                           directionChanged: { income in
+                                               if income != nature.categoryIncome { skipNatureReset = true; nature = income ? .income : .expense }
+                                           }, suggest: { categorySuggestion?.category }) { choice in
                             category = choice.category; subcategory = choice.subcategory; purposeFocused = false
                         }
                             .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })

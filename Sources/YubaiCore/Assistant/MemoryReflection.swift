@@ -94,7 +94,7 @@ public enum MemoryReflection {
         let unusual = Set(OffCharacter.candidates(ledger, entryIDs: rows.map(\.id), now: monday.addingTimeInterval(-0.001)).flatMap(\.evidence))
         let notable: [JSONValue] = rows.filter { ($0.nature == .expense && Finance.spendingAmount($0, ledger: ledger) > 50_000) || unusual.contains($0.id) }.map {
             .object(["id": .string($0.id.uuidString), "date": .string(Dates.text($0.date)), "title": .string($0.displayTitle),
-                "category": .string(ledger.resolveCategory($0.category)), "spending": .money(Finance.spendingAmount($0, ledger: ledger))])
+                "category": .string(ledger.resolveCategory($0.category, income: $0.nature.categoryIncome)), "spending": .money(Finance.spendingAmount($0, ledger: ledger))])
         }
         let feedback: [JSONValue] = ledger.cards.compactMap { card in
             guard let feedback = card.feedback else { return nil }

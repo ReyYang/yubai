@@ -46,7 +46,22 @@ public enum LedgerMemoryMerge {
                 result.cards[i] = merged
             }
             for topic in other.mutedTopics where !result.mutedTopics.contains(topic) { result.mutedTopics.append(topic) }
-            for (key, choice) in other.classificationMemory where result.classificationMemory[key] == nil { result.classificationMemory[key] = choice }
+            for (key, choice) in other.classificationMemory {
+                let scoped = CategoryNamespace.split(key); let main = CategoryAssignment(path: choice).category
+                let directions = scoped.income.map { [$0] } ?? CategoryMemory.directions(choice, in: other)
+                for income in directions.isEmpty ? [false] : directions {
+                    let target = CategoryNamespace.key(scoped.name, income: income)
+                    if result.classificationMemory[target] != nil { continue }
+                    if let old = result.classificationMemory[scoped.name] {
+                        let oldDirections = Set(CategoryMemory.directions(old, in: chosen))
+                        if oldDirections.contains(income) { continue }
+                        for direction in oldDirections { result.classificationMemory[CategoryNamespace.key(scoped.name, income: direction)] = old }
+                        result.classificationMemory.removeValue(forKey: scoped.name)
+                    }
+                    let ambiguous = result.categories.contains { $0.name == main && $0.income != income }
+                    result.classificationMemory[scoped.income != nil || ambiguous || result.classificationMemory[CategoryNamespace.key(scoped.name, income: !income)] != nil ? target : scoped.name] = choice
+                }
+            }
         }
         result.profile.generous = areas.filter { $0.1 == .generous }.map { $0.0 }
         result.profile.restrain = areas.filter { $0.1 == .restrain }.map { $0.0 }

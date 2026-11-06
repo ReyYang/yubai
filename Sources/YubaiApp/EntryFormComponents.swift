@@ -86,6 +86,7 @@ struct EntryCategoryChips: View {
     let selection: CategoryAssignment
     var suggestionOnly = false
     var allowsDirectionChange = true
+    var directionChanged: (Bool) -> Void = { _ in }
     var suggest: () -> String? = { nil }
     let choose: (CategoryAssignment) -> Void
     @State private var picking = false
@@ -126,10 +127,10 @@ struct EntryCategoryChips: View {
                 NavigationStack {
                     Page(topPadding: YubaiSpace.space8) {
                         if allowsDirectionChange { Segmented(choices: [(false, "支出"), (true, "收入")], selection: $pickerIncome) }
-                        CategoryPicker(income: pickerIncome, selected: suggestionOnly ? nil : selection, suggested: suggested,
+                        CategoryPicker(income: pickerIncome, selected: suggestionOnly || pickerIncome != income ? nil : selection, suggested: pickerIncome == income ? suggested : nil,
                                        identifier: "entryMore", style: .sections) { choice, addition in
                             if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
-                            choose(choice); picking = false; return true
+                            directionChanged(pickerIncome); choose(choice); picking = false; return true
                         }
                     }.accessibilityIdentifier("entryCategoryPicker").manualSheetNavigation()
                         .safeAreaInset(edge: .top) {

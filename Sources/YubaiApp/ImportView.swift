@@ -368,19 +368,19 @@ struct ImportView: View {
     }
     private func unknownCategories(_ p: ImportPreview) -> [String] {
         var seen = Set<String>()
-        return p.rows.map(\.sourceCategory).filter { !Classification.isPending($0) && CategoryMapping.match($0, in: store.current) == nil && seen.insert($0).inserted }
+        return p.rows.filter { !Classification.isPending($0.sourceCategory) && CategoryMapping.match($0.sourceCategory, in: store.current, income: $0.entry?.nature.categoryIncome ?? false) == nil && seen.insert($0.sourceCategory).inserted }.map(\.sourceCategory)
     }
     private func directCategoryCount(_ p: ImportPreview) -> Int {
-        Set(p.rows.map(\.sourceCategory).filter { name in
-            name != Classification.pendingCategory && (categoryMappings[name] != nil || CategoryMapping.match(name, in: store.current) != nil)
-        }).count
+        Set(p.rows.filter { row in
+            row.sourceCategory != Classification.pendingCategory && (categoryMappings[row.sourceCategory] != nil || CategoryMapping.match(row.sourceCategory, in: store.current, income: row.entry?.nature.categoryIncome ?? false) != nil)
+        }.map(\.sourceCategory)).count
     }
     private func needsDecision(_ row: ImportRow) -> Bool {
         if [.invalid, .conflict, .needsAccount].contains(row.status) { return true }
         if row.status == .duplicate || row.status == .skipped { return false }
         if row.status == .possibleDuplicate && rowSelections[row.line] == nil { return true }
         if screenshot && rowEdits[row.line] == nil && row.entry?.note.contains("待核对") == true { return true }
-        return !row.sourceCategory.isEmpty && row.sourceCategory != Classification.pendingCategory && CategoryMapping.match(row.sourceCategory, in: store.current) == nil && categoryMappings[row.sourceCategory] == nil
+        return !row.sourceCategory.isEmpty && row.sourceCategory != Classification.pendingCategory && CategoryMapping.match(row.sourceCategory, in: store.current, income: row.entry?.nature.categoryIncome ?? false) == nil && categoryMappings[row.sourceCategory] == nil
     }
     @ViewBuilder private func decisionCard(_ p: ImportPreview) -> some View {
         let unknown = unknownCategories(p)
@@ -438,7 +438,7 @@ struct ImportView: View {
                     let nature = preview.rows.first { $0.sourceCategory == name }?.entry?.nature
                     let income = nature.map { $0 != .refund && $0.inflow } ?? false
                     let raw = categoryMappings[name] ?? name
-                    let choice = CategoryMapping.match(raw, in: store.current) ?? CategoryAssignment(path: raw)
+                    let choice = CategoryMapping.match(raw, in: store.current, income: income) ?? CategoryAssignment(path: raw)
                     Card(style: .list) {
                         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                             Text(name).yubaiFont(YubaiFont.caption).lineLimit(1).fixedSize()
@@ -722,8 +722,8 @@ struct ImportView: View {
                 }
                 for i in parsed.rows.indices where [.ready, .possibleDuplicate].contains(parsed.rows[i].status) {
                     if let raw = categories[parsed.rows[i].sourceCategory],
-                       let choice = CategoryMapping.match(raw, in: ledger),
                        let entry = parsed.rows[i].entry,
+                       let choice = CategoryMapping.match(raw, in: ledger, income: entry.nature.categoryIncome),
                        SubcategoryClassifier.valid(choice, in: ledger, nature: entry.nature) {
                         parsed.rows[i].entry?.category = choice.category
                         parsed.rows[i].entry?.subcategory = choice.subcategory
@@ -795,7 +795,7 @@ private struct ImportScreenshotEntryEditor: View {
                 AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts)
                 DatePicker("日期", selection: $entry.date, displayedComponents: [.date, .hourAndMinute])
                 Picker("收支", selection: $entry.nature) { Text("支出").tag(Nature.expense); Text("收入").tag(Nature.income) }
-                CategoryPickerField(income: entry.nature.inflow,
+                CategoryPickerField(income: entry.nature.categoryIncome,
                                     selection: .init(category: entry.category, subcategory: entry.subcategory),
                                     identifier: "screenshotCategory") { choice in
                     entry.category = choice.category; entry.subcategory = choice.subcategory; entry.subcategoryUserEdited = true
