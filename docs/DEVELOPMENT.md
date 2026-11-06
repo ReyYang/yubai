@@ -2,7 +2,7 @@
 
 Xcode 26 / Apple SDK，Swift 5 语言模式；最低 iOS 26 / macOS 14。Linux 的 Core 构建与单元测试使用下方 SwiftPM 路径；Apple 应用与 UI 仍须在 Xcode 验证，历史 1.0 的验证报告不覆盖 2.0。
 
-- `Sources/YubaiApp`：两项导航「现在／我」，底部常驻按钮「问余白」。首页复用 Finance 的待付款期次；依据打开精简记录详情。ProfileView 负责消费观、储蓄目标与「始终留着」目标。SettingsView 负责「我」的入口、导入记录、备份、恢复版本和指南。
+- `Sources/YubaiApp`：四项导航「现在／洞察／账目／我」，右下角常驻按钮「问余白」。首页复用 Finance 的待付款期次；依据打开精简记录详情。ProfileView 负责消费观、储蓄目标与「始终留着」目标。SettingsView 负责「我」的入口、导入记录、备份和恢复版本。
 - `Sources/YubaiCore`：schema 2（兼容 schema 1）、财务计算、导入解析与去重、ChangeSet、助手工具、管家与来信、加密备份和原子存储。还能花默认观察到下一次符合条件的固定收入；90 天内没有时看 90 天。「始终留着」目标取 `profile.floorAmount`，不扣减还能花或预测余额，日常预留自动估算。旧 horizonDays / emergencyReserve / dailyLiving / isSample 等字段保留解码与往返，不再控制 UI 或资金默认值。主动问答的指定日期预测通过函数参数传入范围。
 - `Tests/YubaiCoreTests`：计算、兼容、整理、撤销、隐私和备份测试；SampleData.swift 仅属于测试目标。Fixtures 是合成资料；SPM 和 Xcode 原生测试目标使用同一份文件。
 - `Tests/YubaiUITests`：五条离线流程：空账本开户、CSV 整理问答与整批撤销、克制卡片静音、数字问答到依据详情、消费原则持久化与备份入口。
