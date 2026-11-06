@@ -911,20 +911,22 @@ extension View {
         self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
             .scrollEdgeEffectHidden(true, for: .bottom)
             .scrollEdgeEffectStyle(.soft, for: .top)
-            // Root headers live outside this clipped scrolling body.
-            .clipped()
         #else
         self.safeAreaPadding(.bottom, YubaiSize.rootBottomPadding)
         #endif
     }
     func rootPageHeader<Header: View>(@ViewBuilder _ header: () -> Header) -> some View {
+        #if os(iOS)
+        self.safeAreaBar(edge: .top, spacing: 0) {
+            header()
+                .padding(.horizontal, YubaiSpace.insetPage)
+                .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+        }.modifier(RootPaperBackground())
+        #else
         VStack(spacing: YubaiSpace.none) {
             header()
                 .padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
-            #if os(iOS)
-            self
-            #else
             self
                 .mask(alignment: .top) {
                     GeometryReader { geometry in
@@ -937,8 +939,8 @@ extension View {
                         .padding(.horizontal, -geometry.size.width).padding(.bottom, -geometry.size.height)
                     }.allowsHitTesting(false).accessibilityHidden(true)
                 }
-            #endif
         }.modifier(RootPaperBackground())
+        #endif
     }
     func pageLocalHorizontalGestures() -> some View {
         #if os(iOS)

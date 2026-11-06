@@ -744,6 +744,15 @@ enum AppSheet: Identifiable {
     }
 }
 
+#if os(iOS)
+private struct HorizontalPageClip: Shape {
+    func path(in rect: CGRect) -> Path {
+        // Contain each page horizontally while preserving vertical scroll edge overflow.
+        Path(rect.insetBy(dx: 0, dy: -rect.height))
+    }
+}
+#endif
+
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var phase
@@ -859,6 +868,7 @@ struct RootView: View {
                 HStack(spacing: YubaiSpace.none) {
                     ForEach(Destination.allCases) { d in
                         tabNavigation(d, generation: generation).containerRelativeFrame(.horizontal).id(d)
+                            .clipShape(HorizontalPageClip())
                             .accessibilityHidden(visibleTab != d)
                     }
                 }.scrollTargetLayout()
