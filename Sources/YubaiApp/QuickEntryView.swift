@@ -149,7 +149,8 @@ struct QuickEntryView: View {
                 let ids = lastSavedIDs; let plans = lastAddedPlanIDs
                 if store.update("撤销记账", recordUndo: false, entryMotion: false, showToast: false, { ledger in
                     ledger.entries.removeAll { ids.contains($0.id) }
-                    ledger.plans.removeAll { plan in plans.contains(plan.id) && !ledger.entries.contains { $0.planID == plan.id } }
+                    let linkedPlanIDs = Set(ledger.entries.compactMap(\.planID))
+                    ledger.plans.removeAll { plan in plans.contains(plan.id) && !linkedPlanIDs.contains(plan.id) }
                 }) { store.clearUndo(); savedCount = max(0, savedCount - ids.count); lastSavedIDs = []; receiptVisible = false }
             }.padding(.horizontal, 10).frame(minHeight: 26).background(YubaiColor.raised, in: Capsule())
                 .accessibilityIdentifier("undoSheetEntry")
