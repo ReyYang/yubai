@@ -2820,6 +2820,125 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["餐饮"].isSelected)
     }
 
+    private func openEntryMore(_ app: XCUIApplication) -> XCUIElement {
+        tap(app.buttons["entryCategoryMore"], in: app)
+        let scroll = app.scrollViews["entryCategoryPicker"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        return scroll
+    }
+
+    func testEntryMoreShowsBothLevelsKeepsTopFiveAndPersistsSmallItem() {
+        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        tap(app.buttons["keypad_3"], in: app)
+        let purpose = app.textFields["entryPurpose"]
+        tap(purpose, in: app); purpose.typeText("合成剪头发\n")
+        let scroll = openEntryMore(app)
+        // Small items are already present beneath each main; no expansion tap.
+        XCTAssertTrue(app.buttons["entryMoreSubcategory_餐饮/早餐"].exists)
+        XCTAssertFalse(app.buttons["entryMoreCategory_工资奖金"].exists)
+        XCTAssertTrue(app.buttons["entryMoreCategory_餐饮"].isSelected)
+        XCTAssertFalse(app.buttons["entryMoreCategory_美容个护"].isSelected, "A local suggestion must not become a selection")
+        tap(app.buttons["entryMoreSubcategory_美容个护/理发"], in: app, scroll: scroll)
+        assertGone(scroll)
+        let chosen = app.buttons["entryCategory_美容个护"]
+        XCTAssertEqual(chosen.label, "美容个护 · 理发"); XCTAssertTrue(chosen.isSelected)
+        XCTAssertTrue(app.windows.firstMatch.frame.contains(chosen.frame), "The full chip must fit without squeezing")
+        for main in ["餐饮", "购物", "交通", "居住", "医疗健康"] {
+            XCTAssertTrue(app.buttons["entryCategory_" + main].exists, "Choosing outside the prefix keeps all five fixed chips")
+        }
+        _ = openEntryMore(app); tap(app.buttons["entryMoreCancel"], in: app)
+        XCTAssertEqual(chosen.label, "美容个护 · 理发")
+        tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["tab_entries"], in: app)
+        tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch, in: app)
+        XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护 · 理发")
+    }
+
+    func testEditMoreConfirmsMainOnlyAndSmallItemDespiteLocalGuess() {
+        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        tap(app.buttons["keypad_3"], in: app)
+        let purpose = app.textFields["entryPurpose"]
+        tap(purpose, in: app); purpose.typeText("合成剪头发\n")
+        tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["tab_entries"], in: app)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
+        tap(row, in: app)
+        XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮")
+        var scroll = openEntryMore(app)
+        tap(app.buttons["entryMoreCategory_美容个护"], in: app, scroll: scroll)
+        assertGone(scroll) // A main with small items still confirms main-only in one tap.
+        XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护")
+        tap(app.buttons["saveManualSheet"], in: app); tap(row, in: app)
+        XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护", "Saving must not reapply the hair-cut guess")
+        scroll = openEntryMore(app)
+        tap(app.buttons["entryMoreSubcategory_美容个护/理发"], in: app, scroll: scroll)
+        tap(app.buttons["saveManualSheet"], in: app); tap(row, in: app)
+        XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护 · 理发")
+        scroll = openEntryMore(app)
+        tap(app.buttons["entryMoreCategory_美容个护"], in: app, scroll: scroll)
+        tap(app.buttons["saveManualSheet"], in: app)
+        app.terminate(); app.launch(); tap(app.buttons["tab_entries"], in: app); tap(row, in: app)
+        XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护")
+    }
+
+    func testEntryMoreFollowsNatureAndClearsOldSmallItem() {
+        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        _ = openEntryMore(app); tap(app.buttons["entryMoreSubcategory_餐饮/早餐"], in: app)
+        XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮 · 早餐")
+        tap(app.buttons["收入"], in: app)
+        _ = openEntryMore(app)
+        XCTAssertFalse(app.buttons["entryMoreCategory_餐饮"].exists)
+        tap(app.buttons["entryMoreSubcategory_工资奖金/工资"], in: app)
+        XCTAssertEqual(app.buttons["entryCategory_工资奖金"].label, "工资奖金 · 工资")
+        tap(app.buttons["支出"], in: app)
+        XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮")
+        tap(app.buttons["转账"], in: app)
+        XCTAssertFalse(app.buttons["entryCategoryMore"].exists)
+        tap(app.buttons["收入"], in: app)
+        XCTAssertEqual(app.buttons["entryCategory_工资奖金"].label, "工资奖金")
+        _ = openEntryMore(app); tap(app.buttons["entryMoreSubcategory_工资奖金/工资"], in: app)
+        tap(app.buttons["keypad_3"], in: app); tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["tab_entries"], in: app)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
+        tap(row, in: app)
+        XCTAssertEqual(app.buttons["entryCategory_工资奖金"].label, "工资奖金 · 工资")
+        tap(app.buttons["转账"], in: app)
+        XCTAssertFalse(app.buttons["entryCategoryMore"].exists)
+        tap(app.buttons["支出"], in: app)
+        _ = openEntryMore(app)
+        XCTAssertFalse(app.buttons["entryMoreCategory_工资奖金"].exists)
+        tap(app.buttons["entryMoreCancel"], in: app)
+        tap(app.buttons["saveManualSheet"], in: app); tap(row, in: app)
+        XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮")
+    }
+
+    func testEntryMoreAddsSmallItemAndRepeatKeepsPlanMainOnly() {
+        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        var scroll = openEntryMore(app)
+        tap(app.buttons["entryMoreAdd"], in: app, scroll: scroll)
+        tap(app.buttons["categoryAdditionCancel"], in: app)
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        tap(app.buttons["entryMoreCancel"], in: app)
+        XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮")
+        scroll = openEntryMore(app)
+        tap(app.buttons["entryMoreAdd"], in: app, scroll: scroll)
+        tap(app.buttons["categoryAdditionParent_餐饮"], in: app)
+        let name = app.textFields["categoryAdditionName"]
+        tap(name, in: app); name.typeText("合成小项\n")
+        tap(app.buttons["categoryAdditionSave"], in: app)
+        assertGone(scroll)
+        XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮 · 合成小项")
+        tap(app.buttons["keypad_3"], in: app); tap(app.buttons["entryRepeat"], in: app)
+        tap(app.buttons["saveAndAddAnother"], in: app)
+        XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮", "Continuous entry resets the small item")
+        tap(app.buttons["cancelManualSheet"], in: app)
+        tap(app.buttons["tab_entries"], in: app)
+        tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch, in: app)
+        XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮 · 合成小项")
+        tap(app.buttons["entryRepeat"], in: app)
+        XCTAssertEqual(app.buttons["fixedFlowCategory"].value as? String, "餐饮")
+    }
+
     func testEditAmountTrayReplacesSelectionResolvesAndLongDeleteClears() {
         let app = application("manual"); app.launch()
         tap(addEntryTab(app), in: app)
