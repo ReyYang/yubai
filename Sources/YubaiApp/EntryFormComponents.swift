@@ -100,7 +100,7 @@ struct EntryCategoryChips: View {
                     List(all, id: \.self) { name in
                         Button { selection = name; didSelect(); picking = false } label: {
                             HStack(spacing: YubaiSpace.gapGroup) { Text(name); Spacer(); if name == selection { Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk) } }.contentShape(Rectangle())
-                        }.listRowBackground(YubaiColor.card)
+                        }.listRowBackground(YubaiColor.paperSheet)
                     }.scrollContentBackground(.hidden).navigationTitle("分类").yubaiNavigation()
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { picking = false } } }
                 }.presentationDragIndicator(.visible).yubaiSheetBackground()

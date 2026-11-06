@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="mossBase" x1="0.15" y1="0" x2="0.95" y2="1">
+      <stop offset="0%" stop-color="#5B8659"/>
+      <stop offset="52%" stop-color="#557F53"/>
+      <stop offset="100%" stop-color="#476846"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#mossBase)"/>
+</svg>

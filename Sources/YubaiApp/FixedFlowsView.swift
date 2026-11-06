@@ -323,7 +323,7 @@ private struct FixedFlowBillRow: View {
                     .onTapGesture { if let id = row.planID { edit(id) } }.accessibilityHidden(true)
             }
         }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
-            .opacity(row.state == .paid ? 0.7 : 1).background(YubaiColor.card)
+            .opacity(row.state == .paid ? 0.7 : 1).background(YubaiColor.paperSheet)
             .overlay {
                 if resting < 0 {
                     Color.clear.contentShape(Rectangle()).onTapGesture { resting = 0; reset() }
@@ -585,6 +585,7 @@ struct FixedFlowEditor: View {
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom))
             }
         }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: amountKeypadPresented)
+            .environment(\.yubaiFormSurface, true)
             #if os(iOS)
             .presentationDetents([.large])
             .toolbar(.hidden, for: .navigationBar)

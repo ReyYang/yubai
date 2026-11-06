@@ -233,7 +233,7 @@ struct ImportView: View {
                     Text(title).yubaiFont(YubaiFont.rowTitle)
                 }
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight, alignment: .leading)
-                .padding(YubaiSpace.insetCard).background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+                .padding(YubaiSpace.insetCard).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier)
     }
     private func exportChips(_ names: [String]) -> some View {

@@ -192,7 +192,7 @@ struct ProfileView: View {
         if !store.current.preferences.hideAmounts {
             Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             if let progress = progress(area) {
-                SavingProgressBar(ratio: progress, amber: progress >= 0.8).accessibilityLabel(area.title + " · " + usage(area))
+                SavingProgressBar(ratio: progress, amber: progress >= 0.8, showsOvershoot: true).accessibilityLabel(area.title + " · " + usage(area))
             }
         }
     }

@@ -20,6 +20,12 @@ enum YubaiColor {
     static let keyFnPressed = adaptive(0xccc0a4, 0x4a4436)
     // Solid bottom edge: radius 0, x 0, y 1; removed at touch-down.
     static let shadowKey = adaptive(0x4a4030, 0x000000, lightAlpha: 0x38 / 255.0, darkAlpha: 0x73 / 255.0)
+
+    static let paperSheet = adaptive(0xfefbea, 0x2a251c)
+    static let paperInset = adaptive(0xede6d3, 0x353026)
+    static let glassBar = adaptive(0xfefbea, 0x353026, lightAlpha: 204.0 / 255, darkAlpha: 217.0 / 255)
+    static let windowLight = adaptive(0xfffdf3, 0xe9cf9f)
+    static let bambooShadow = adaptive(0x2f4a2e, 0x86a884)
     static let selected = adaptive(0xffffff, 0x4a4436)
     static let label = adaptive(0x382f1f, 0xe6decb)
     static let labelMuted = adaptive(0x5a5040, 0xc2b8a3)
@@ -85,6 +91,7 @@ enum YubaiFont {
     static let amountLarge = Style(size: 30, lineHeight: 36, weight: .semibold, family: .num, tracking: -0.5, relativeTo: .title)
     static let amount = Style(size: 15, lineHeight: 20, weight: .semibold, family: .num, tracking: 0, relativeTo: .body)
     static let amountSmall = Style(size: 13, lineHeight: 18, weight: .medium, family: .num, tracking: 0, relativeTo: .footnote)
+    static let amountCaption = Style(size: 12, lineHeight: 18, weight: .medium, family: .num, relativeTo: .caption)
     static let amountDay = Style(size: 18, lineHeight: 24, weight: .semibold, family: .num, tracking: -0.3, relativeTo: .headline)
     // Numeric sizes specified by the approved V3 summary tiles and donut.
     static let amountSummary = Style(size: 17, lineHeight: 24, weight: .semibold, family: .num, relativeTo: .headline)
@@ -203,7 +210,7 @@ enum YubaiRadius {
 enum YubaiSize {
     static let tapMin: CGFloat = 44
     static let headerHeight: CGFloat = 48
-    static let headerIcon: CGFloat = 22
+    static let headerIcon: CGFloat = 20
     static let headerIconMax: CGFloat = 32
     static let iconButton: CGFloat = 40
     static let buttonHeight: CGFloat = 52
@@ -249,6 +256,9 @@ enum YubaiShadow {
         let x: CGFloat
         let y: CGFloat
     }
+    static let card = Token(color: YubaiColor.adaptive(0x4a4030, 0x000000, lightAlpha: 20.0 / 255, darkAlpha: 82.0 / 255), radius: 14, x: 0, y: 10)
+    static let cardNear = Token(color: YubaiColor.adaptive(0x4a4030, 0x000000, lightAlpha: 15.0 / 255, darkAlpha: 64.0 / 255), radius: 1, x: 0, y: 1)
+    static let control = Token(color: YubaiColor.adaptive(0x4a4030, 0x000000, lightAlpha: 20.0 / 255, darkAlpha: 64.0 / 255), radius: 4, x: 0, y: 2)
     static let float = Token(color: YubaiColor.adaptive(0x4a4030, 0x000000, lightAlpha: 31.0 / 255, darkAlpha: 89.0 / 255), radius: 20, x: 0, y: 6)
     static let ask = Token(color: YubaiColor.adaptive(0x4a4030, 0x000000, lightAlpha: 46.0 / 255, darkAlpha: 89.0 / 255), radius: 20, x: 0, y: 6)
     static let input = Token(color: YubaiColor.adaptive(0x4a4030, 0x000000, lightAlpha: 20.0 / 255, darkAlpha: 64.0 / 255), radius: 16, x: 0, y: 4)
@@ -267,7 +277,7 @@ extension View {
     static let durationQuick = 0.160
     static let durationStandard = 0.240
     static let durationDraw = 0.480
-    static let durationWater = 0.320
+    static let durationProgress = 0.320
     static let durationStagger = 0.040
     static let durationThink = 1.600
     static let durationBrandMax = 0.700
@@ -282,7 +292,9 @@ extension View {
     static let snappy = Animation.snappy(duration: 0.3)
     static let lively = Animation.spring(duration: 0.45, bounce: 0.25)
     static let livelySpring = Spring(duration: 0.45, bounce: 0.25)
-    static let durationWobbleHalf = 0.225
+    static let snappySpring = Spring(duration: 0.3, bounce: 0.15)
+    static let durationTagHopHalf = 0.150
+    static let durationSwayHalf = 0.225
     private static var session = MotionSessionState()
     static func hasAppeared(_ key: String) -> Bool { session.contains(key) }
     static func claim(_ key: String) -> Bool { session.claim(key) }
@@ -293,7 +305,7 @@ extension View {
     static let instant = easeInOut(duration: durationInstant)
     static let quick = Animation.easeInOut(duration: durationQuick)
     static let chartGrowth = easeOut(duration: durationDraw)
-    static let waterRise = easeOut(duration: durationWater)
+    static let progressFill = easeOut(duration: durationProgress)
     static let stagger = easeOut(duration: durationStagger)
     static let thinkCycle = easeInOut(duration: durationThink)
 
@@ -305,7 +317,7 @@ extension View {
     static func wash(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeOut(duration: durationWash) }
     static func ring(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : easeOut(duration: durationRing) }
     static func chart(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : chartGrowth }
-    static func water(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : waterRise }
+    static func progress(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : progressFill }
     static func think(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : thinkCycle }
     static func toastIn(reduceMotion: Bool) -> Animation { reduceMotion ? quick : snappy }
     static func toastOut(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeIn(duration: durationQuick) }
@@ -401,9 +413,15 @@ struct ChartSegments<Content: View>: View {
 }
 
 private struct SheetSurfaceKey: EnvironmentKey { static let defaultValue = false }
+private struct RootSurfaceKey: EnvironmentKey { static let defaultValue = false }
+private struct FormSurfaceKey: EnvironmentKey { static let defaultValue = false }
+private struct CardContentKey: EnvironmentKey { static let defaultValue = false }
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
 extension EnvironmentValues {
     var yubaiSheetSurface: Bool { get { self[SheetSurfaceKey.self] } set { self[SheetSurfaceKey.self] = newValue } }
+    var yubaiRootSurface: Bool { get { self[RootSurfaceKey.self] } set { self[RootSurfaceKey.self] = newValue } }
+    var yubaiFormSurface: Bool { get { self[FormSurfaceKey.self] } set { self[FormSurfaceKey.self] = newValue } }
+    var yubaiCardContent: Bool { get { self[CardContentKey.self] } set { self[CardContentKey.self] = newValue } }
     var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
 }
 
@@ -455,17 +473,157 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
 }
 #endif
 
+/// A stationary page surface. Data and card contents never receive this light.
+struct PaperCanvas: View {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    var showsBamboo = false
+    var bambooTrigger = 0
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                YubaiColor.canvas
+                if !reduceTransparency {
+                    let size = geometry.size
+                    // CSS 118°: the gradient line spans the full rectangular page.
+                    let angle = 118.0 * Double.pi / 180
+                    let dx = CGFloat(sin(angle)), dy = CGFloat(-cos(angle))
+                    let length = abs(size.width * dx) + abs(size.height * dy)
+                    let halfX = dx * length / max(1, size.width) / 2
+                    let halfY = dy * length / max(1, size.height) / 2
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: scheme == .dark ? 0.18 : 0.20),
+                        .init(color: YubaiColor.windowLight.opacity(scheme == .dark ? 18.0 / 255 : 199.0 / 255), location: scheme == .dark ? 0.34 : 0.36),
+                        .init(color: .clear, location: scheme == .dark ? 0.52 : 0.54)
+                    ], startPoint: UnitPoint(x: 0.5 - halfX, y: 0.5 - halfY), endPoint: UnitPoint(x: 0.5 + halfX, y: 0.5 + halfY))
+                    let radius = max(1, size.width * 1.3)
+                    RadialGradient(stops: [
+                        .init(color: YubaiColor.windowLight.opacity(scheme == .dark ? 20.0 / 255 : 1), location: 0),
+                        .init(color: .clear, location: 0.62)
+                    ], center: .topLeading, startRadius: 0, endRadius: radius)
+                        .frame(width: radius, height: radius)
+                        .scaleEffect(x: 1, y: size.height * 0.55 / radius, anchor: .topLeading)
+                    if showsBamboo {
+                        BambooShadow(trigger: bambooTrigger)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    }
+                }
+            }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
+        }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+private struct BambooShadow: View {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let trigger: Int
+    private var branch: some View {
+        Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
+            .foregroundStyle(YubaiColor.bambooShadow).frame(width: 230, height: 299)
+    }
+    var body: some View {
+        Group {
+            if reduceMotion { branch }
+            else {
+                branch.keyframeAnimator(initialValue: CGFloat.zero, trigger: trigger) { content, angle in
+                    content.rotationEffect(.degrees(Double(max(-3, min(3, angle)))), anchor: UnitPoint(x: -0.04, y: 0.96))
+                } keyframes: { _ in
+                    SpringKeyframe(CGFloat(2.5), duration: YubaiMotion.durationSwayHalf, spring: YubaiMotion.livelySpring)
+                    SpringKeyframe(CGFloat.zero, duration: YubaiMotion.durationSwayHalf, spring: YubaiMotion.livelySpring)
+                }
+            }
+        }.rotationEffect(.degrees(-12)).scaleEffect(x: 1, y: -1)
+            .opacity(scheme == .dark ? 0.12 : 0.11).blur(radius: 6)
+            .offset(x: 74, y: -58).allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
 private struct PaperBackground: ViewModifier {
+    @Environment(\.yubaiRootSurface) private var rootSurface
     @Environment(\.yubaiSheetSurface) private var inSheet
     func body(content: Content) -> some View {
-        if #available(iOS 26, macOS 26, *), inSheet { content }
-        else {
-            #if os(iOS)
-            content.background(YubaiColor.canvas.ignoresSafeArea())
-            #else
-            content.background(YubaiColor.canvas)
-            #endif
+        if rootSurface && !inSheet { content }
+        else { content.background { PaperCanvas() } }
+    }
+}
+
+private struct RootPaperBackground: ViewModifier {
+    @Environment(AppStore.self) private var store
+    func body(content: Content) -> some View {
+        content.environment(\.yubaiRootSurface, true)
+            .background { PaperCanvas(showsBamboo: true, bambooTrigger: store.entrySaveTrigger) }
+    }
+}
+
+#if os(iOS)
+/// Style the native back item so its title, pop gesture and navigation history stay native.
+private struct NavigationBackPaper: UIViewControllerRepresentable {
+    @Environment(\.colorScheme) private var scheme
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.dark = scheme == .dark
+        controller.applySurface()
+    }
+    final class Controller: UIViewController {
+        var dark = false
+        override func loadView() {
+            view = UIView(); view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false; view.accessibilityElementsHidden = true
         }
+        override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); applySurface() }
+        override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); applySurface() }
+        func applySurface() {
+            guard let previous = navigationController?.navigationBar.items?.dropLast().last else { return }
+            let back = previous.backBarButtonItem ?? UIBarButtonItem(title: previous.title, style: .plain, target: nil, action: nil)
+            // This customization only affects the back button, including on pushed sheet pages.
+            if #available(iOS 26, *) { back.hidesSharedBackground = true }
+            let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
+            let token = YubaiShadow.control
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 60, height: 48)).image { renderer in
+                let context = renderer.cgContext
+                context.setShadow(offset: CGSize(width: token.x, height: token.y), blur: token.radius,
+                                  color: UIColor(token.color).resolvedColor(with: traits).cgColor)
+                UIColor(YubaiColor.raised).resolvedColor(with: traits).setFill()
+                UIBezierPath(roundedRect: CGRect(x: 6, y: 4, width: 48, height: 36), cornerRadius: 18).fill()
+            }.resizableImage(withCapInsets: UIEdgeInsets(top: 22, left: 24, bottom: 22, right: 24), resizingMode: .stretch)
+                .withAlignmentRectInsets(UIEdgeInsets(top: 4, left: 6, bottom: 8, right: 6)).withRenderingMode(.alwaysOriginal)
+            back.setBackButtonBackgroundImage(image, for: .normal, barMetrics: .default)
+            back.setBackButtonBackgroundImage(image, for: .normal, barMetrics: .compact)
+            previous.backBarButtonItem = back
+        }
+    }
+}
+#endif
+
+/// Only the paper casts a shadow; rows, chips and charts remain flat.
+private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.yubaiFormSurface) private var formSurface
+    @Environment(\.yubaiCardContent) private var insideCard
+    let shape: S
+    var background: Color?
+    var flat = false
+    private var castsShadow: Bool { !flat && !formSurface && !insideCard }
+    func body(content: Content) -> some View {
+        content.environment(\.yubaiCardContent, true).background {
+            Group {
+                if castsShadow {
+                    paper
+                        .overlay {
+                            if contrast != .increased {
+                                shape.strokeBorder(Color.white.opacity(scheme == .dark ? 10.0 / 255 : 179.0 / 255), lineWidth: 1)
+                                    .mask(alignment: .top) { Rectangle().frame(height: 2) }
+                            }
+                        }
+                        .yubaiShadow(YubaiShadow.cardNear).yubaiShadow(YubaiShadow.card)
+                } else { paper }
+            }.allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+    private var paper: some View {
+        shape.fill(background ?? (formSurface ? YubaiColor.card : insideCard ? YubaiColor.paperInset : YubaiColor.paperSheet))
+            .overlay { if contrast == .increased && !insideCard { shape.strokeBorder(YubaiColor.separator, lineWidth: 1) } }
     }
 }
 
@@ -539,7 +697,17 @@ private struct ChipSelection: ViewModifier {
 extension View {
     func amountPrivacy(_ hidden: Bool) -> some View { contentTransition(.opacity).animation(YubaiMotion.quick, value: hidden) }
     func paperBackground() -> some View { modifier(PaperBackground()) }
-    func yubaiSheetBackground() -> some View { presentationBackground(YubaiColor.canvas) }
+    func yubaiSheetBackground() -> some View {
+        environment(\.yubaiSheetSurface, true).environment(\.yubaiRootSurface, false)
+            .environment(\.yubaiFormSurface, false)
+            .presentationBackground { PaperCanvas() }
+    }
+    func paperCardSurface<S: InsettableShape>(in shape: S, background: Color? = nil, flat: Bool = false) -> some View {
+        modifier(PaperCardSurface(shape: shape, background: background, flat: flat))
+    }
+    func controlSurface<S: Shape>(in shape: S) -> some View {
+        background(YubaiColor.raised, in: shape).yubaiShadow(YubaiShadow.control)
+    }
     func rootScrollContentMargins() -> some View {
         #if os(iOS)
         self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
@@ -555,14 +723,19 @@ extension View {
             header()
                 .padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
-                .background(YubaiColor.canvas)
             self
-                .overlay(alignment: .top) {
-                    LinearGradient(colors: [YubaiColor.canvas, YubaiColor.canvas.opacity(0)], startPoint: .top, endPoint: .bottom)
-                        .frame(height: YubaiSpace.space8)
-                        .allowsHitTesting(false).accessibilityHidden(true)
+                .mask(alignment: .top) {
+                    GeometryReader { geometry in
+                        VStack(spacing: YubaiSpace.none) {
+                            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                                .frame(height: YubaiSpace.space8)
+                            Color.black
+                        }
+                        // Preserve horizontal and bottom overflow from unclipped scroll views.
+                        .padding(.horizontal, -geometry.size.width).padding(.bottom, -geometry.size.height)
+                    }.allowsHitTesting(false).accessibilityHidden(true)
                 }
-        }
+        }.modifier(RootPaperBackground())
     }
     func pageLocalHorizontalGestures() -> some View {
         #if os(iOS)
@@ -627,15 +800,15 @@ struct Card<Content: View>: View {
     enum Style { case standard, list, compact }
     let content: Content
     var style: Style
-    var background: Color
-    init(style: Style = .standard, background: Color = YubaiColor.card, @ViewBuilder content: () -> Content) {
+    var background: Color?
+    init(style: Style = .standard, background: Color? = nil, @ViewBuilder content: () -> Content) {
         self.content = content(); self.style = style; self.background = background
     }
     var body: some View {
-        content.padding(.horizontal, YubaiSpace.insetCard)
+        content.environment(\.yubaiCardContent, true).padding(.horizontal, YubaiSpace.insetCard)
             .padding(.vertical, style == .list ? YubaiSpace.space4 : YubaiSpace.insetCard)
             .frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(YubaiColor.label)
-            .background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: background)
     }
 }
 
@@ -881,151 +1054,49 @@ struct CloseButton: View {
     var body: some View { Button("完成") { dismiss() }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("closeSheet") }
 }
 
+/// Monochrome paper and cloth; the small tag is separated with its host surface color.
 struct BrandMark: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var risen = true
-    enum Variant { case tile, mark }
     var size: CGFloat = 43
-    var variant: Variant = .tile
-    var color: Color? = nil
-    var bands = 3
-    var wobbleTrigger = 0
-    var moment: String? = nil
+    var background = YubaiColor.canvas
+    var jumpTrigger = 0
+    private var tag: some View {
+        RoundedRectangle(cornerRadius: size / 24)
+            .fill(.foreground)
+            .overlay { RoundedRectangle(cornerRadius: size / 24).stroke(background, lineWidth: size / 24) }
+            .frame(width: size * 4.2 / 24, height: size * 3 / 24)
+    }
     var body: some View {
-        let geometry = WaterGeometry(size: size, variant: variant, bands: bands)
-        let ink = color ?? (variant == .tile ? YubaiColor.iconInk : YubaiColor.label)
-        ZStack {
-            if variant == .tile { RoundedRectangle(cornerRadius: size * YubaiRadius.tile).fill(YubaiColor.iconTile) }
-            MarkCircle(radius: geometry.ringRadius).stroke(ink, lineWidth: geometry.stroke * size / 100)
-            ForEach(0..<geometry.count, id: \.self) { index in
-                WaterBand(index: index, geometry: geometry).fill(ink)
-                    .modifier(WaterWobble(trigger: wobbleTrigger, index: index))
-                    .offset(y: reduceMotion || risen ? 0 : YubaiSpace.gapSection)
-                    .opacity(risen ? 1 : 0)
-                    .animation(YubaiMotion.water(reduceMotion: reduceMotion)?.delay(Double(index) * YubaiMotion.durationStagger), value: risen)
-                    .clipShape(MarkCircle(radius: geometry.clipRadius))
-            }
+        ZStack(alignment: .topLeading) {
+            let outline = RoundedRectangle(cornerRadius: size * 5.2 / 24)
+            outline.fill(.foreground)
+                .mask(alignment: .trailing) { Rectangle().frame(width: size * 6 / 24) }
+                .frame(width: size * 18 / 24, height: size * 18 / 24).offset(x: size * 3 / 24, y: size * 3 / 24)
+            outline.stroke(.foreground, lineWidth: size * (size >= 40 ? 1.6 : 1.8) / 24)
+                .frame(width: size * 18 / 24, height: size * 18 / 24).offset(x: size * 3 / 24, y: size * 3 / 24)
+            Group {
+                if reduceMotion { tag }
+                else {
+                    tag.keyframeAnimator(initialValue: CGFloat.zero, trigger: jumpTrigger) { content, y in
+                        content.offset(y: y)
+                    } keyframes: { _ in
+                        SpringKeyframe(CGFloat(-1.5), duration: YubaiMotion.durationTagHopHalf, spring: YubaiMotion.snappySpring)
+                        SpringKeyframe(CGFloat.zero, duration: YubaiMotion.durationTagHopHalf, spring: YubaiMotion.snappySpring)
+                    }
+                }
+            }.offset(x: size * 13.4 / 24, y: size * 6.4 / 24)
         }.frame(width: size, height: size).accessibilityElement(children: .ignore).accessibilityLabel("余白")
-            .task {
-                guard let moment, YubaiMotion.claim(moment), !reduceMotion else { return }
-                var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-                withTransaction(transaction) { risen = false }; await Task.yield()
-                guard !Task.isCancelled else { risen = true; return }; risen = true
-            }.onDisappear { risen = true }
     }
 }
 
-private struct WaterWobble: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let trigger: Int
-    let index: Int
-    @ViewBuilder func body(content: Content) -> some View {
-        if reduceMotion { content }
-        else {
-            content.keyframeAnimator(initialValue: CGFloat.zero, trigger: trigger) { band, y in band.offset(y: y) } keyframes: { _ in
-                LinearKeyframe(CGFloat.zero, duration: Double(index) * YubaiMotion.durationStagger)
-                SpringKeyframe(CGFloat(5), duration: YubaiMotion.durationWobbleHalf, spring: YubaiMotion.livelySpring)
-                SpringKeyframe(CGFloat.zero, duration: YubaiMotion.durationWobbleHalf, spring: YubaiMotion.livelySpring)
-            }
-        }
-    }
-}
-
-private struct WaterGeometry {
-    let size: CGFloat
-    let variant: BrandMark.Variant
-    let bands: Int
-    var maxBands: Int {
-        if size <= 16 { return 1 }
-        if size <= 32 { return 2 }
-        return 6
-    }
-    var count: Int { max(0, min(bands, maxBands)) }
-    var ringRadius: CGFloat { variant == .tile ? 34 : 44 }
-    var clipRadius: CGFloat {
-        if variant == .mark { return 36 }
-        if size <= 16 { return 25 }
-        return size <= 32 ? 27 : 30
-    }
-    var stroke: CGFloat {
-        if size <= 16 { return 11 }
-        return size <= 32 || variant == .mark ? 8 : 4
-    }
-    var bandHeight: CGFloat {
-        if size <= 16 { return 20 }
-        return size <= 32 || variant == .mark ? 9 : 5
-    }
-    func bandY(_ index: Int) -> CGFloat {
-        if size <= 16 { return 56 }
-        if size <= 32 { return 70 - CGFloat(index) * 16 }
-        return variant == .mark ? 84 - CGFloat(index) * 16 : 72 - CGFloat(index) * 9.5
-    }
-}
-
-private struct MarkCircle: Shape {
-    var radius: CGFloat
+private struct PaperClothOutline: Shape {
     func path(in rect: CGRect) -> Path {
-        let scale = min(rect.width, rect.height) / 100
-        return Path(ellipseIn: CGRect(x: rect.midX - radius * scale, y: rect.midY - radius * scale, width: radius * 2 * scale, height: radius * 2 * scale))
-    }
-}
-
-private struct WaterBand: Shape {
-    var index: Int
-    var geometry: WaterGeometry
-    func path(in rect: CGRect) -> Path {
-        let scale = min(rect.width, rect.height) / 100
-        let x: CGFloat = geometry.variant == .tile ? 10 : 0
-        var path = Path()
-        path.addRect(CGRect(x: rect.midX + (x - 50) * scale, y: rect.midY + (geometry.bandY(index) - 50) * scale, width: (100 - 2 * x) * scale, height: geometry.bandHeight * scale))
-        return path
-    }
-}
-
-struct WaterLevelView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var visibleBands = 0
-    @State private var appeared = false
-    var filledBands: Int
-    var totalBands: Int
-    var size: CGFloat
-    var showsTile: Bool
-    var moment: String
-    init(filledBands: Int, totalBands: Int = 6, size: CGFloat = 168, showsTile: Bool = false, moment: String = "water-level") {
-        self.filledBands = filledBands; self.totalBands = totalBands; self.size = size; self.showsTile = showsTile; self.moment = moment
-    }
-    init(progress: Double, totalBands: Int = 6, size: CGFloat = 168, showsTile: Bool = false, moment: String = "water-level") {
-        let geometry = WaterGeometry(size: size, variant: .tile, bands: totalBands)
-        let count = max(1, geometry.count)
-        let clampedProgress: Double = progress.isFinite ? min(1, max(0, progress)) : 0
-        let filledBands = Int((clampedProgress * Double(count)).rounded(.down))
-        self.init(filledBands: filledBands, totalBands: count, size: size, showsTile: showsTile, moment: moment)
-    }
-    private var geometry: WaterGeometry { WaterGeometry(size: size, variant: .tile, bands: max(1, min(6, totalBands))) }
-    private var target: Int { max(0, min(geometry.count, filledBands)) }
-    var body: some View {
-        ZStack {
-            if showsTile { RoundedRectangle(cornerRadius: size * YubaiRadius.tile).fill(YubaiColor.iconTile) }
-            MarkCircle(radius: geometry.ringRadius).stroke(showsTile ? YubaiColor.iconInk : YubaiColor.label, lineWidth: geometry.stroke * size / 100)
-            ForEach(0..<geometry.count, id: \.self) { index in
-                WaterBand(index: index, geometry: geometry).fill(YubaiColor.grabber).clipShape(MarkCircle(radius: geometry.clipRadius))
-                WaterBand(index: index, geometry: geometry).fill(YubaiColor.brand)
-                    .offset(y: reduceMotion || index < visibleBands ? 0 : YubaiSpace.gapSection)
-                    .opacity(index < (reduceMotion ? target : visibleBands) ? 1 : 0)
-                    .animation(YubaiMotion.water(reduceMotion: reduceMotion)?.delay(Double(min(index, 5)) * YubaiMotion.durationStagger), value: visibleBands)
-                    .clipShape(MarkCircle(radius: geometry.clipRadius))
-            }
-        }.frame(width: size, height: size)
-            .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
-            .accessibilityElement(children: .ignore).accessibilityLabel("水位，共 \(geometry.count) 格，已填 \(target) 格")
-            .onAppear { if appeared || !YubaiMotion.claim(moment) { finish() } else { appeared = true; visibleBands = target } }
-            .onChange(of: target) { _, value in if appeared { visibleBands = value } else { finish() } }
-            .onChange(of: reduceMotion) { _, reduced in if reduced { finish() } }
-            .onDisappear { finish() }
-    }
-    private func finish() {
-        var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-        withTransaction(transaction) { visibleBands = target }
+        var path = Path(roundedRect: CGRect(x: 3, y: 3, width: 18, height: 18), cornerSize: CGSize(width: 5.2, height: 5.2))
+        path.move(to: CGPoint(x: 15, y: 3)); path.addLine(to: CGPoint(x: 15, y: 6.4))
+        path.move(to: CGPoint(x: 15, y: 9.4)); path.addLine(to: CGPoint(x: 15, y: 21))
+        path.addRoundedRect(in: CGRect(x: 13.4, y: 6.4, width: 4.2, height: 3), cornerSize: CGSize(width: 1, height: 1))
+        let scale = min(rect.width, rect.height) / 24
+        return path.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: rect.midX - 12 * scale, ty: rect.midY - 12 * scale))
     }
 }
 
@@ -1034,38 +1105,60 @@ struct AssistantMark: View {
     var size: CGFloat = 26
     var color = YubaiColor.brandGlyph
     var thinking = false
-    private var stroke: CGFloat {
-        let weight: CGFloat
-        if size <= 16 { weight = 11 }
-        else if size <= 24 { weight = 9 }
-        else if size <= 32 { weight = 8 }
-        else { weight = 7 }
-        return weight * size / 100
-    }
-    private var wave: some View { AssistantWave().stroke(color, style: StrokeStyle(lineWidth: stroke, lineCap: .round, lineJoin: .round)) }
-    var body: some View {
+    private var leaf: some View {
         ZStack {
-            MarkCircle(radius: 40).stroke(color, lineWidth: stroke)
+            BambooLeaf().fill(color)
+            Path { path in
+                path.move(to: CGPoint(x: size * 3.2 / 24, y: size * 15.5 / 24))
+                path.addLine(to: CGPoint(x: size * 1.6 / 24, y: size * 17.2 / 24))
+            }.stroke(color, style: StrokeStyle(lineWidth: size * 1.6 / 24, lineCap: .round))
+        }
+    }
+    var body: some View {
+        Group {
             if thinking && !reduceMotion {
-                wave.phaseAnimator([false, true]) { content, up in content.offset(y: (up ? -3 : 3) * size / 100) } animation: { _ in
-                    YubaiMotion.easeInOut(duration: YubaiMotion.durationThink / 2)
-                }
-            } else { wave.transaction { $0.animation = nil; $0.disablesAnimations = true } }
+                leaf.phaseAnimator([false, true]) { content, right in
+                    content.rotationEffect(.degrees(right ? 6 : -6), anchor: UnitPoint(x: 3.2 / 24, y: 15.5 / 24))
+                } animation: { _ in YubaiMotion.easeInOut(duration: YubaiMotion.durationThink / 2) }
+            } else { leaf.transaction { $0.animation = nil; $0.disablesAnimations = true } }
         }.frame(width: size, height: size)
             .transaction { if !thinking || reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
             .accessibilityElement(children: .ignore).accessibilityLabel(thinking ? "余白正在思考" : "余白")
     }
 }
 
-private struct AssistantWave: Shape {
+private struct BambooLeaf: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: 22, y: 52))
-        path.addCurve(to: CGPoint(x: 41, y: 52), control1: CGPoint(x: 29, y: 43), control2: CGPoint(x: 36, y: 43))
-        path.addCurve(to: CGPoint(x: 60, y: 52), control1: CGPoint(x: 46, y: 61), control2: CGPoint(x: 53, y: 61))
-        path.addCurve(to: CGPoint(x: 79, y: 52), control1: CGPoint(x: 67, y: 43), control2: CGPoint(x: 72, y: 43))
-        let scale = min(rect.width, rect.height) / 100
-        return path.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: rect.midX - 50 * scale, ty: rect.midY - 50 * scale))
+        path.move(to: .zero)
+        path.addCurve(to: CGPoint(x: 6.6, y: -3.9), control1: CGPoint(x: 1.2, y: -1.4), control2: CGPoint(x: 2.7, y: -3.7))
+        path.addCurve(to: CGPoint(x: 19.5, y: 2), control1: CGPoint(x: 11.7, y: -2.7), control2: CGPoint(x: 16.8, y: 0.2))
+        path.addCurve(to: CGPoint(x: 6.2, y: 3), control1: CGPoint(x: 16.4, y: 2.3), control2: CGPoint(x: 11.3, y: 3.9))
+        path.addCurve(to: .zero, control1: CGPoint(x: 2.7, y: 2.9), control2: CGPoint(x: 1, y: 1.2))
+        path.closeSubpath()
+        let scale = min(rect.width, rect.height) / 24
+        return path.applying(CGAffineTransform(rotationAngle: -38 * .pi / 180))
+            .applying(CGAffineTransform(translationX: 3.2, y: 15.5))
+            .applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: rect.midX - 12 * scale, ty: rect.midY - 12 * scale))
+    }
+}
+
+private struct HeroShortfallStripes: View {
+    var body: some View {
+        Canvas { context, size in
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(YubaiColor.amberMark))
+            // A 135° CSS gradient has diagonal bands with 3pt perpendicular widths.
+            let band: CGFloat = 3 * sqrt(2)
+            var stripes = Path()
+            for x in stride(from: CGFloat.zero, to: size.width + size.height + band * 2, by: band * 2) {
+                stripes.move(to: CGPoint(x: x, y: 0))
+                stripes.addLine(to: CGPoint(x: x + band, y: 0))
+                stripes.addLine(to: CGPoint(x: x + band - size.height, y: size.height))
+                stripes.addLine(to: CGPoint(x: x - size.height, y: size.height))
+                stripes.closeSubpath()
+            }
+            context.fill(stripes, with: .color(YubaiColor.amberDot))
+        }.clipped()
     }
 }
 
@@ -1116,27 +1209,72 @@ struct HeroCard: View {
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
-    private var compositionAccessibilityLabel: String {
-        let label = "还能花 \(AmountLabel.text(available))"
-        return label + "，要付 \(AmountLabel.text(payable))，日常开销 \(AmountLabel.text(reserved))"
+    private func compositionAccessibilityLabel(_ segments: HeroBarSegments) -> String {
+        let cash = Money.text(segments.cash, currency: false)
+        let needs = Money.text(segments.needs, currency: false)
+        if segments.isOverspent {
+            return "要付和日常 \(needs)：现金 \(cash)，还差 \(Money.text(segments.trailingAmount, currency: false))"
+        }
+        return "现金 \(cash)：还能花 \(Money.text(available, currency: false))，要付和日常 \(needs)"
     }
     private func composition(_ progress: Double) -> some View {
-        let values = [max(0, Double(available)), max(0, Double(payable) + Double(reserved))]
-        let total = values.reduce(0, +)
-        let colors = [YubaiColor.brand, YubaiColor.neutralSoft]
-        let indices = values.indices.filter { values[$0] > 0 }
-        return GeometryReader { geometry in
-            let width = max(0, geometry.size.width - CGFloat(max(0, indices.count - 1)) * 2)
-            HStack(spacing: 2) {
-                ForEach(indices, id: \.self) { index in
-                    let ratio: Double = total > 0 ? values[index] / total : 0
-                    let animatedRatio: Double = ratio * progress
-                    let segmentWidth = width * CGFloat(animatedRatio)
-                    colors[index].frame(width: segmentWidth)
+        let segments = HeroBarSegments(available: available, payable: payable, reserved: reserved)
+        let hasGap = segments.leadingAmount > 0 && segments.trailingAmount > 0
+        let isEmpty = segments.leadingAmount == 0 && segments.trailingAmount == 0
+        return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            GeometryReader { geometry in
+                let width = max(0, geometry.size.width - (hasGap ? YubaiSpace.space2 : 0))
+                HStack(spacing: YubaiSpace.space2) {
+                    if segments.leadingAmount > 0 {
+                        (segments.isOverspent ? YubaiColor.neutralSoft : YubaiColor.brand)
+                            .frame(width: width * CGFloat(segments.leadingFraction * progress))
+                    }
+                    if segments.trailingAmount > 0 {
+                        Group {
+                            if segments.isOverspent { HeroShortfallStripes() }
+                            else { YubaiColor.neutralSoft }
+                        }.frame(width: width * CGFloat(segments.trailingFraction * progress))
+                    }
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading).background(total == 0 ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
-        }.frame(height: YubaiSpace.gapGroup).accessibilityElement(children: .ignore)
-            .accessibilityLabel(compositionAccessibilityLabel)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .background(isEmpty ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
+            }.frame(height: YubaiSpace.gapGroup)
+            if !isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 0) { compositionLegend(segments, horizontal: true) }
+                    VStack(alignment: .leading, spacing: YubaiSpace.space8) { compositionLegend(segments, horizontal: false) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }.accessibilityElement(children: .ignore).accessibilityLabel(compositionAccessibilityLabel(segments))
+    }
+    @ViewBuilder private func compositionLegend(_ segments: HeroBarSegments, horizontal: Bool) -> some View {
+        if segments.isOverspent {
+            if segments.cash > 0 {
+                legendItem("现金", amount: segments.cash, color: YubaiColor.neutralSoft)
+            }
+            if segments.trailingAmount > 0 {
+                if horizontal && segments.cash > 0 { Spacer(minLength: YubaiSpace.space12) }
+                legendItem("还差", amount: segments.trailingAmount, color: YubaiColor.amberDot, striped: true)
+            }
+        } else {
+            legendItem("还能花", amount: available, color: YubaiColor.brand)
+            if segments.needs > 0 {
+                if horizontal { Spacer(minLength: YubaiSpace.space12) }
+                legendItem("要付和日常", amount: segments.needs, color: YubaiColor.neutralSoft)
+            }
+        }
+    }
+    private func legendItem(_ name: String, amount: Int64, color: Color, striped: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Group {
+                if striped { HeroShortfallStripes() }
+                else { color }
+            }.frame(width: 8, height: 8).clipShape(RoundedRectangle(cornerRadius: 2))
+            Text(name).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            Text(Money.text(abs(amount), currency: false))
+                .yubaiFont(YubaiFont.amountCaption)
+                .foregroundStyle(striped ? YubaiColor.amberInk : YubaiColor.label)
+        }.fixedSize(horizontal: true, vertical: true)
     }
 }
 
@@ -1156,7 +1294,7 @@ struct InlineNote: View {
                 Text(text).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
             case .explanation:
                 Text(text).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(YubaiSpace.insetCard).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                    .padding(YubaiSpace.insetCard).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
             case .attention:
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     Text(text).yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.amberStrong)
@@ -1168,7 +1306,7 @@ struct InlineNote: View {
                         }.padding(.top, YubaiSpace.gapAction)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
-                    .background(YubaiColor.amberTint, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                    .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row), background: YubaiColor.amberTint)
             case .reminder, .inline:
                 HStack(spacing: YubaiSpace.space8) {
                     Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true)
@@ -1276,12 +1414,15 @@ extension View {
     }
     func editorForm() -> some View {
         self.formStyle(.grouped).scrollContentBackground(.hidden).paperBackground()
+            .environment(\.yubaiFormSurface, true)
             .environment(\.defaultMinListRowHeight, YubaiSize.rowSingle).scrollDismissesKeyboard(.interactively)
             .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).tint(YubaiColor.brand).buttonStyle(.automatic)
     }
     func yubaiNavigation() -> some View {
         self.paperBackground().tint(YubaiColor.brandInk)
+            .environment(\.yubaiRootSurface, false).environment(\.yubaiFormSurface, false)
             #if os(iOS)
+            .background { NavigationBackPaper().frame(width: 0, height: 0) }
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
@@ -1599,7 +1740,7 @@ private struct WelcomeImportRange: View {
             .accessibilityIdentifier(identifier)
     }
     private var selectedSurface: some View {
-        RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).yubaiShadow(YubaiShadow.knob)
+        RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised)
     }
 }
 
@@ -1738,15 +1879,8 @@ struct EmptyAccountState: View {
     let add: () -> Void
     var body: some View {
         VStack(spacing: YubaiSpace.gapSection) {
-            let size = YubaiSize.tapMin * 2
-            let geometry = WaterGeometry(size: size, variant: .mark, bands: 3)
-            ZStack {
-                MarkCircle(radius: geometry.ringRadius).stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                ForEach(0..<geometry.count, id: \.self) { index in
-                    WaterBand(index: index, geometry: geometry).stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        .clipShape(MarkCircle(radius: geometry.clipRadius))
-                }
-            }.frame(width: size, height: size).accessibilityHidden(true)
+            PaperClothOutline().stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
+                .frame(width: 120, height: 120).accessibilityHidden(true)
             Button("添加第一个账户", action: add).buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addFirstAccount")
         }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
             .accessibilityElement(children: .contain).accessibilityLabel("还没有账户")
@@ -1814,7 +1948,7 @@ struct HeaderIconButton<Icon: View>: View {
         let side = max(YubaiSize.iconButton, iconSize + YubaiSpace.space8 * 2)
         Button(action: action) {
             icon(iconSize).accessibilityHidden(true)
-                .frame(width: side, height: side).floatingSurface(in: Circle())
+                .frame(width: side, height: side).controlSurface(in: Circle())
                 .yubaiHitTarget()
         }.buttonStyle(PressButtonStyle())
     }
@@ -1853,7 +1987,7 @@ struct TabRootHeader: View {
     }
 }
 
-private struct RoundPressStyle: ButtonStyle {
+struct RoundPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.92 : 1)
@@ -1939,6 +2073,6 @@ struct AssistantCard<Content: View>: View {
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         content.padding(YubaiSpace.insetCard).frame(maxWidth: .infinity, alignment: .leading)
-            .background(YubaiColor.card, in: UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 22, bottomTrailingRadius: 22, topTrailingRadius: 22))
+            .paperCardSurface(in: UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 22, bottomTrailingRadius: 22, topTrailingRadius: 22), background: YubaiColor.paperSheet, flat: true)
     }
 }

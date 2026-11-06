@@ -47,7 +47,7 @@ struct CashTimelineCard: View {
             }
         }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, 14).padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("cashTimelineCard")
             .onChange(of: timeline.cycles) { _, _ in cycleOffset = 0; selectedDay = nil; holding = false }
             .onChange(of: hidden) { _, _ in selectedDay = nil; holding = false }
@@ -189,10 +189,10 @@ struct CashTimelineCard: View {
             if visible.isDefault, let today = visible.history.last {
                 PointMark(x: .value("今天", today.date), y: .value("余额", money(today.balance)))
                     .symbol { Circle().fill(YubaiColor.brand).frame(width: 8, height: 8)
-                        .overlay { Circle().stroke(YubaiColor.card, lineWidth: 2) } }
+                        .overlay { Circle().stroke(YubaiColor.paperSheet, lineWidth: 2) } }
                 if let endpoint {
                     PointMark(x: .value("周期终点", endpoint.date), y: .value("余额", money(endpoint.balance)))
-                        .symbol { Circle().fill(YubaiColor.card).frame(width: 8, height: 8)
+                        .symbol { Circle().fill(YubaiColor.paperSheet).frame(width: 8, height: 8)
                             .overlay { Circle().stroke(endpoint.belowFloor ? YubaiColor.amberDot : YubaiColor.brandInk, lineWidth: 2) } }
                 }
             }
@@ -204,7 +204,7 @@ struct CashTimelineCard: View {
                 }
                 PointMark(x: .value("选中日期", selected.date), y: .value("余额", money(selected.balance)))
                     .symbol { Circle().fill(YubaiColor.label).frame(width: 5, height: 5).padding(2)
-                        .background(YubaiColor.card, in: Circle()) }
+                        .background(YubaiColor.paperSheet, in: Circle()) }
             }
         }.chartLegend(.hidden)
             .chartXScale(domain: visible.start...visible.end, range: .plotDimension(padding: 4))
@@ -364,7 +364,7 @@ struct CashTimelineCard: View {
             } else if let selected, let summary = CashTimelinePresentation.eventSummary(selected.events),
                       let x = proxy.position(forX: selected.date) {
                 let capsuleWidth = factWidth(summary, width: max(1, frame.width - 20)) + 20
-                factLabel(summary, width: max(1, frame.width - 20)).font(.system(size: annotationSize)).foregroundStyle(YubaiColor.card)
+                factLabel(summary, width: max(1, frame.width - 20)).font(.system(size: annotationSize)).foregroundStyle(YubaiColor.paperSheet)
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(YubaiColor.label, in: Capsule())
                     .position(x: frame.minX + min(frame.width - capsuleWidth / 2, max(capsuleWidth / 2, x)),

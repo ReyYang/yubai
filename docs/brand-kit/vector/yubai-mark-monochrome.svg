@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>余白 Yubai — Tonal Brand Ink Edition (#476846 with Window Light &amp; Shadow)</title>
+  <defs>
+    <clipPath id="squircleClip"><path d="M 512 0 C 773 0 879 0 951.5 72.5 C 1024 145 1024 251 1024 512 C 1024 773 1024 879 951.5 951.5 C 879 1024 773 1024 512 1024 C 251 1024 145 1024 72.5 951.5 C 0 879 0 773 0 512 C 0 251 0 145 72.5 72.5 C 145 0 251 0 512 0 Z"/></clipPath>
+    <clipPath id="leftClip"><rect x="0" y="0" width="722" height="1024"/></clipPath>
+    <clipPath id="rightClip"><rect x="722" y="0" width="302" height="1024"/></clipPath>
+
+    <linearGradient id="mossBase" x1="0.15" y1="0" x2="0.95" y2="1">
+      <stop offset="0%" stop-color="#5B8659"/>
+      <stop offset="52%" stop-color="#557F53"/>
+      <stop offset="100%" stop-color="#476846"/>
+    </linearGradient>
+    <linearGradient id="mossBaseDark" x1="0.15" y1="0" x2="0.95" y2="1">
+      <stop offset="0%" stop-color="#2F422E"/>
+      <stop offset="55%" stop-color="#263625"/>
+      <stop offset="100%" stop-color="#1B271A"/>
+    </linearGradient>
+    <linearGradient id="seamDropRight" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#243B23" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="#243B23" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="seamDropRightDark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#090D09" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#090D09" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="sageLeafMain" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#98B795"/>
+      <stop offset="55%" stop-color="#557F53"/>
+      <stop offset="100%" stop-color="#416140"/>
+    </linearGradient>
+    <linearGradient id="sageLeafLeft" x1="0" y1="0.1" x2="1" y2="0.9">
+      <stop offset="0%" stop-color="#9CB999"/>
+      <stop offset="58%" stop-color="#557F53"/>
+      <stop offset="100%" stop-color="#3F603E"/>
+    </linearGradient>
+    <linearGradient id="sageLeafRight" x1="0.85" y1="0" x2="0.15" y2="1">
+      <stop offset="0%" stop-color="#90B08D"/>
+      <stop offset="55%" stop-color="#557F53"/>
+      <stop offset="100%" stop-color="#3F603E"/>
+    </linearGradient>
+    <linearGradient id="sageLeafDark" x1="0.2" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#A9C9A6"/>
+      <stop offset="58%" stop-color="#86A884"/>
+      <stop offset="100%" stop-color="#5D7E5B"/>
+    </linearGradient>
+    <linearGradient id="tabGlass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FEFBEA" stop-opacity="0.88"/>
+      <stop offset="55%" stop-color="#F5F1E5" stop-opacity="0.82"/>
+      <stop offset="55.6%" stop-color="#D6E2CC" stop-opacity="0.54"/>
+      <stop offset="100%" stop-color="#C3D3B8" stop-opacity="0.48"/>
+    </linearGradient>
+    <linearGradient id="tabGlassDark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7A5B34" stop-opacity="0.72"/>
+      <stop offset="55%" stop-color="#6B4F2C" stop-opacity="0.66"/>
+      <stop offset="55.6%" stop-color="#4A4330" stop-opacity="0.54"/>
+      <stop offset="100%" stop-color="#3D3929" stop-opacity="0.48"/>
+    </linearGradient>
+    <linearGradient id="squircleRim" x1="0.25" y1="0" x2="0.75" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.62"/>
+      <stop offset="30%" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="70%" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#FEFBEA" stop-opacity="0.34"/>
+    </linearGradient>
+
+    <filter id="softWindow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+    <filter id="softShadowLeft" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="6.5"/>
+    </filter>
+    <filter id="softShadowRight" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="5.5"/>
+    </filter>
+    <filter id="tabShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5.5"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#squircleClip)">
+    
+    <!-- Right Moss-Ink Panel with Diagonal Window Sunlight ("光") -->
+    <rect width="1024" height="1024" fill="#476846"/>
+    <g filter="url(#softWindow)">
+      <path d="M 722 188 L 1004 38 V 364 H 722 Z" fill="#6D9169" opacity="0.56"/>
+      <rect x="722" y="402" width="282" height="316" fill="#678A63" opacity="0.46"/>
+      <rect x="722" y="746" width="282" height="260" fill="#587A55" opacity="0.28"/>
+    </g>
+    <!-- Soft blurred bamboo shadow cast onto right green panel ("影子") -->
+    <g clip-path="url(#rightClip)">
+      <g opacity="0.58" filter="url(#softShadowRight)" fill="#243B23">
+        
+    <!-- Tapered shadow stem rising smoothly from culm node (410,864) into slender shoot tip (710,404) -->
+    <path d="M 407 864 C 462 796 524 702 586 602 C 628 534 670 468 710 404 C 676 472 636 540 596 608 C 534 708 472 802 418 872 Z"/>
+    <!-- Subtle bamboo culm node on shadow stem -->
+    <ellipse cx="506" cy="735" rx="8.5" ry="5" transform="rotate(-53 506 735)"/>
+    <!-- Tall top leaf rising into soft shadow behind bookmark capsule -->
+    <path d="M 624 554 C 602 454 612 362 648 284 C 668 366 668 460 634 558 Z"/>
+    <!-- Upper-left leaf -->
+    <path d="M 594 592 C 552 510 514 438 476 376 C 534 430 578 502 606 586 Z"/>
+    <!-- Mid-left leaf -->
+    <path d="M 582 608 C 530 552 492 496 466 438 C 522 480 564 538 594 600 Z"/>
+    <!-- Right-crossing upper main leaf (crosses x=722 seam onto moss-sage panel to tip 872,438) -->
+    <path d="M 626 552 C 704 500 788 462 872 438 C 804 494 722 538 634 566 Z"/>
+    <!-- Right-crossing middle leaf -->
+    <path d="M 606 580 C 680 554 756 544 828 544 C 758 574 684 590 614 594 Z"/>
+    <!-- Lower-right crossing leaf -->
+    <path d="M 580 616 C 646 610 708 634 758 680 C 692 660 632 644 576 630 Z"/>
+
+      </g>
+    </g>
+    <rect x="722" y="0" width="24" height="1024" fill="url(#seamDropRight)"/>
+
+    <!-- Left 70.5% Warm Paper Panel with Diagonal Window Sunlight & Mullion Shade ("光与窗影") -->
+    <g clip-path="url(#leftClip)">
+      <rect x="0" y="0" width="722" height="1024" fill="#E7DFCC"/>
+      <g filter="url(#softWindow)">
+        <path d="M 0 0 H 440 L 0 360 Z" fill="#F4EFE1"/>
+        <path d="M 0 568 L 722 152 V 360 H 242 V 1024 H 0 Z" fill="#FEFBEA"/>
+        <rect x="278" y="396" width="444" height="628" fill="#FEFBEA" opacity="0.92"/>
+      </g>
+      <!-- Unified soft-blurred bamboo shadow behind frosted glass (zero overlap seams!) -->
+      <g opacity="0.46" filter="url(#softShadowLeft)" fill="#5E6E58">
+        
+    <!-- Tapered shadow stem rising smoothly from culm node (410,864) into slender shoot tip (710,404) -->
+    <path d="M 407 864 C 462 796 524 702 586 602 C 628 534 670 468 710 404 C 676 472 636 540 596 608 C 534 708 472 802 418 872 Z"/>
+    <!-- Subtle bamboo culm node on shadow stem -->
+    <ellipse cx="506" cy="735" rx="8.5" ry="5" transform="rotate(-53 506 735)"/>
+    <!-- Tall top leaf rising into soft shadow behind bookmark capsule -->
+    <path d="M 624 554 C 602 454 612 362 648 284 C 668 366 668 460 634 558 Z"/>
+    <!-- Upper-left leaf -->
+    <path d="M 594 592 C 552 510 514 438 476 376 C 534 430 578 502 606 586 Z"/>
+    <!-- Mid-left leaf -->
+    <path d="M 582 608 C 530 552 492 496 466 438 C 522 480 564 538 594 600 Z"/>
+    <!-- Right-crossing upper main leaf (crosses x=722 seam onto moss-sage panel to tip 872,438) -->
+    <path d="M 626 552 C 704 500 788 462 872 438 C 804 494 722 538 634 566 Z"/>
+    <!-- Right-crossing middle leaf -->
+    <path d="M 606 580 C 680 554 756 544 828 544 C 758 574 684 590 614 594 Z"/>
+    <!-- Lower-right crossing leaf -->
+    <path d="M 580 616 C 646 610 708 634 758 680 C 692 660 632 644 576 630 Z"/>
+
+      </g>
+    </g>
+
+    <!-- Crisp vertical glass seam -->
+    <rect x="719.5" y="0" width="3" height="1024" fill="#FEFBEA" opacity="0.92"/>
+    <rect x="722.5" y="0" width="1.5" height="1024" fill="#2A4229" opacity="0.32"/>
+
+    <!-- Foreground 5-leaf bamboo sprig in crisp #476846 brandInk -->
+    <g>
+    <!-- Main culm & branch with organic bamboo node joint at (411,860) -->
+    <path d="M 342 1024 C 366 970 389 916 407 866 C 399 802 384 746 367 696 L 380 692 C 398 742 413 800 421 866 C 403 918 380 972 357 1024 Z" fill="#426241"/>
+    <ellipse cx="412" cy="862" rx="11.5" ry="7" transform="rotate(-22 412 862)" fill="#395738"/>
+    <!-- Organic petiole branches seamlessly connecting stem to every leaf base -->
+    <path d="M 373 698 C 372 684 373 672 377 658" fill="none" stroke="#456644" stroke-width="6.5" stroke-linecap="round"/>
+    <path d="M 376 708 C 384 700 392 694 400 686" fill="none" stroke="#456644" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 371 700 C 358 692 346 686 332 680" fill="none" stroke="#456644" stroke-width="6" stroke-linecap="round"/>
+
+    <!-- 1. Slender inner shoot -->
+    <path d="M 372 676 C 344 614 314 556 282 504 C 322 548 354 606 380 672 Z" fill="#688D67"/>
+    <path d="M 282 504 C 322 548 354 606 378 668" fill="none" stroke="#DCEBD0" stroke-width="1.4" stroke-opacity="0.78" stroke-linecap="round"/>
+
+    <!-- 2. Long arching upper-left tender shoot -->
+    <path d="M 368 680 C 302 600 214 542 120 518 C 218 530 308 582 376 672 Z" fill="#688D67"/>
+    <path d="M 120 518 C 218 530 308 582 373 668" fill="none" stroke="#DCEBD0" stroke-width="1.5" stroke-opacity="0.80" stroke-linecap="round"/>
+
+    <!-- 3. Primary upright center leaf (tip 416,398) + sunlit upper-edge rim + midrib vein -->
+    <path d="M 374 678 C 344 576 366 478 416 398 C 424 498 410 598 383 680 Z" fill="url(#sageLeafMain)"/>
+    <path d="M 374 668 C 346 574 367 478 416 398 C 422 482 413 568 390 648" fill="none" stroke="#E2EFE0" stroke-width="2" stroke-opacity="0.82" stroke-linecap="round"/>
+    <path d="M 379 668 C 378 584 392 496 414 412" fill="none" stroke="#B5D1B1" stroke-width="1.8" stroke-opacity="0.65" stroke-linecap="round"/>
+
+    <!-- 4. Primary left spreading leaf (tip 128,576) + sunlit upper-edge rim + midrib vein -->
+    <path d="M 372 702 C 282 690 198 640 128 576 C 220 600 308 644 376 690 Z" fill="url(#sageLeafLeft)"/>
+    <path d="M 128 576 C 218 600 304 642 370 688" fill="none" stroke="#E2EFE0" stroke-width="2.1" stroke-opacity="0.85" stroke-linecap="round"/>
+    <path d="M 364 695 C 292 664 216 624 144 584" fill="none" stroke="#B5D1B1" stroke-width="1.8" stroke-opacity="0.65" stroke-linecap="round"/>
+
+    <!-- 5. Primary right ascending leaf (tip 516,526) + sunlit upper-edge rim + midrib vein -->
+    <path d="M 382 714 C 398 638 452 576 516 526 C 492 612 446 690 394 720 Z" fill="url(#sageLeafRight)"/>
+    <path d="M 385 704 C 400 634 453 575 516 526 C 495 600 456 668 406 708" fill="none" stroke="#E2EFE0" stroke-width="2" stroke-opacity="0.80" stroke-linecap="round"/>
+    <path d="M 392 712 C 424 654 464 594 506 538" fill="none" stroke="#B5D1B1" stroke-width="1.8" stroke-opacity="0.62" stroke-linecap="round"/>
+    </g>
+
+    <!-- Bookmark capsule tab with cast shadow & translucent glass refraction -->
+    <rect x="626" y="260" width="192" height="76" rx="16" fill="#243B23" opacity="0.28" filter="url(#tabShadow)"/>
+    <rect x="617" y="253" width="190" height="74" rx="16" fill="url(#tabGlass)" stroke="#FFFFFF" stroke-opacity="0.92" stroke-width="2.5"/>
+
+    <path d="M 512 0 C 773 0 879 0 951.5 72.5 C 1024 145 1024 251 1024 512 C 1024 773 1024 879 951.5 951.5 C 879 1024 773 1024 512 1024 C 251 1024 145 1024 72.5 951.5 C 0 879 0 773 0 512 C 0 251 0 145 72.5 72.5 C 145 0 251 0 512 0 Z" fill="none" stroke="url(#squircleRim)" stroke-width="6"/>
+  </g>
+  <path d="M 512 0 C 773 0 879 0 951.5 72.5 C 1024 145 1024 251 1024 512 C 1024 773 1024 879 951.5 951.5 C 879 1024 773 1024 512 1024 C 251 1024 145 1024 72.5 951.5 C 0 879 0 773 0 512 C 0 251 0 145 72.5 72.5 C 145 0 251 0 512 0 Z" fill="none" stroke="#CFD9C8" stroke-width="3"/>
+</svg>

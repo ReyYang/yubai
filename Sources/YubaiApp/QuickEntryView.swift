@@ -66,7 +66,7 @@ struct QuickEntryView: View {
             }
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: purposeFocused)
             .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
-            .yubaiSheetBackground()
+            .environment(\.yubaiFormSurface, true).paperBackground().yubaiSheetBackground()
             #if os(iOS)
             .presentationDetents([.large])
             .toolbar(.hidden, for: .navigationBar)

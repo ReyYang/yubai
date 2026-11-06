@@ -12,7 +12,7 @@ enum Destination: String, CaseIterable, Identifiable {
     case overview, insights, entries, settings
     var id: Self { self }
     var title: String { switch self { case .overview: "现在"; case .insights: "洞察"; case .entries: "账目"; case .settings: "我" } }
-    var symbol: String { switch self { case .overview: "water.waves"; case .insights: "chart.pie"; case .entries: "list.bullet"; case .settings: "person" } }
+    var symbol: String { switch self { case .overview: "square.righthalf.filled"; case .insights: "chart.pie"; case .entries: "list.bullet"; case .settings: "person" } }
 }
 enum TabRoute: Hashable {
     case upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
@@ -571,7 +571,7 @@ struct RootView: View {
                 .frame(minWidth: 540, idealWidth: 620, minHeight: 600, idealHeight: 720)
                 #endif
         }
-        .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background(YubaiColor.canvas.ignoresSafeArea())
+        .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background { PaperCanvas() }
         .environment(\.yubaiZoomNamespace, motionNamespace)
         .appErrors()
         .overlay(alignment: .bottom) {
@@ -612,7 +612,7 @@ struct RootView: View {
                 VStack(spacing: YubaiSpace.gapGroup) {
                     if store.syncBusy { ProgressView(store.syncStatus ?? "正在从 iCloud 读取…") }
                     if store.syncChoice != nil { Button("选择同步账本版本") { store.sheet = .syncVersions } }
-                }.padding(YubaiSpace.insetCard).background(YubaiColor.card)
+                }.padding(YubaiSpace.insetCard).background(YubaiColor.raised)
             }
         }
         .overlay { privacyCover }
@@ -629,7 +629,10 @@ struct RootView: View {
         #if os(macOS)
         NavigationSplitView {
             List(Destination.allCases, selection: $store.destination) { d in
-                Label(d.title, systemImage: d.symbol).tag(d).accessibilityIdentifier("tab_" + d.rawValue)
+                Label { Text(d.title) } icon: {
+                    if d == .overview { BrandMark(size: 20, background: store.destination == d ? YubaiColor.card : YubaiColor.canvas) }
+                    else { Image(systemName: d.symbol) }
+                }.tag(d).accessibilityIdentifier("tab_" + d.rawValue)
             }.listStyle(.sidebar).navigationTitle("余白")
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 250)
         } detail: {
@@ -830,6 +833,9 @@ struct RootView: View {
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var scheme
+    @State private var tagJump = 0
     @ScaledMetric(relativeTo: .title3) private var scaledIconSize = YubaiSize.tabIcon
     @ScaledMetric(relativeTo: .title2) private var scaledAddSize = YubaiFont.addIcon.size
     @Namespace private var selection
@@ -838,30 +844,36 @@ private struct FloatingTabBar: View {
         HStack(spacing: YubaiSpace.none) {
             tab(.overview); tab(.insights)
             Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
-                Image(systemName: "plus").font(.system(size: min(scaledAddSize, YubaiFont.amountLarge.size), weight: YubaiFont.addIcon.weight)).foregroundStyle(YubaiColor.white)
+                Image(systemName: "plus").font(.system(size: min(scaledAddSize, YubaiFont.amountLarge.size), weight: YubaiFont.addIcon.weight)).foregroundStyle(YubaiColor.onBrand)
                     .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background(YubaiColor.brand, in: Circle())
-                    .shadow(color: YubaiColor.brandInk.opacity(0.3), radius: 6, y: 4)
-            }.buttonStyle(.plain).padding(.horizontal, YubaiSpace.space8)
+                    .yubaiShadow(YubaiShadow.ask)
+            }.buttonStyle(RoundPressStyle()).padding(.horizontal, YubaiSpace.space8)
                 .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
             tab(.entries); tab(.settings)
         }.padding(.horizontal, YubaiSpace.space8).frame(height: YubaiSize.tabBarHeight)
-            .background(YubaiColor.raised, in: Capsule())
-            .overlay { Capsule().strokeBorder(YubaiColor.separator, lineWidth: 1).allowsHitTesting(false) }
+            .background {
+                ZStack {
+                    if reduceTransparency { YubaiColor.raised }
+                    else { Rectangle().fill(.ultraThinMaterial); YubaiColor.glassBar }
+                }.clipShape(Capsule())
+            }
+            .overlay { Capsule().strokeBorder(reduceTransparency ? YubaiColor.separator : Color.white.opacity(scheme == .dark ? 0.08 : 0.6), lineWidth: 1).allowsHitTesting(false) }
             .yubaiShadow(YubaiShadow.float)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.destination)
+            .onChange(of: store.destination) { _, destination in if destination == .overview { tagJump &+= 1 } }
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
     }
     private func tab(_ d: Destination) -> some View {
         let selected = store.destination == d
         let iconSize = min(scaledIconSize, YubaiSize.barMax)
         return Button { select(d) } label: {
-            VStack(spacing: YubaiSpace.space4) {
+            VStack(spacing: YubaiSpace.space2) {
                 Group {
-                    if d == .overview { Image("TabWaterMark").renderingMode(.template).resizable().scaledToFit() }
-                    else { Image(systemName: d.symbol).symbolVariant(.none).font(.system(size: iconSize, weight: selected ? .semibold : .regular)) }
+                    if d == .overview { BrandMark(size: iconSize, background: selected ? YubaiColor.card : YubaiColor.raised, jumpTrigger: tagJump) }
+                    else { Image(systemName: d.symbol).symbolVariant(.none).font(.system(size: iconSize, weight: selected ? .medium : .regular)) }
                 }
                 .frame(width: iconSize, height: iconSize)
-                Text(d.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .semibold : .regular).lineLimit(1)
+                Text(d.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .medium : .regular).lineLimit(1)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity).frame(height: YubaiSize.tabSelectionHeight)

@@ -1,5 +1,13 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-06 · PR #75 合并 main（#76／#78）
+
+本轮仅合并既有实现：保留批次 #70–#74 的金额托盘、用途／备注合一、两步分类、第三十六轮现金图及 LedgerWriteQueue 性能工作，同时采用 main 的超支条、PaperCanvas、纸面卡片、颜色和表单环境。现金图保留 endpoint／顶部标注结构，符号与胶囊采用 paperSheet；固定收付的两个 Toggle、预览与停掉按钮各保留一份。分类选择列表、排序行和小项面板沿用 main 的 paperSheet／paperCardSurface 模式。下方两侧历史记录按 HEAD、main 顺序完整保留。
+
+Swift 6.2.4 的 Core build 通过（65.25 秒）；离线全量测试 **874 项，870 通过／4 项原有实网 opt-in 跳过／0 失败（111.57 秒）**，含 MeterSegmentsTests 9 项。网络代理不可用，已从本机另一工作副本复制并核对锁文件对应的干净依赖缓存；未改 Package.swift／Package.resolved。35 个改动 App 文件、1 个 Widget 文件与1个 UI 测试文件的 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 语法解析 **111／111 通过**。工程 OpenStep 结构、282 个唯一对象定义、全部 ID 引用及双方目标登记并集通过 Python 校验；未发现冲突标记或 #78 已删除 API 的残留引用。日志位于 `/tmp/yubai-merge-{build,test}.log`，解析记录与工程校验脚本位于 `/tmp/yubai-merge-parse.json`、`/tmp/yubai-merge-validate-project.py`。
+
+冲突修复没有自行新增可见中文；相对合并前 HEAD 保留 main 的事实模板「还能花 X」「要付和日常 Y」「现金 X」「还差 Z」，均属于数字与事实。Apple SDK 类型检查、Xcode／XCTest UI 和真机视觉仍未验证，外部资源未同步。本会话 `.git` 只读，`git add -A` 无法创建 index.lock；工作树已消除冲突，实际分支的暂存与 merge commit 待外层可写环境完成。未推送。
+
 ## 2026-11-05 · 批量记为后空白与同类页面滚动修复
 
 来源：owner 在 main `a0f21da` 的真机反馈及本轮修复 brief；工作分支 `fix/unsorted-blank-after-batch`。按对方分滚动选择 61 组／72 笔，记为其他支出后只剩导航与撤销条。源码确认列表缩短未复位滚动、批量 sheet 同时由父绑定与自身 dismiss 关闭，且列表缺少全分完返回；未在 Linux 将这几条机制各自对真机现象的贡献作为已实测结论。
@@ -87,6 +95,22 @@ owner 本轮批准分类管理与统一两步分类选择，取代第三十一�
 - `scripts/audit-swift-access.py` 已执行：41 个 App＋1 个 UI 文件、1,214 处访问声明，0 个同属主跨文件私有命中；复核新增成员均在同文件使用，Core 供 App 使用的成员明确为 public。审计是保守命名检查，不能代替类型检查。五份改动 Swift 的词法括号配对检查、`git diff --check` 通过。
 - 刻度算法的独立 Python 转写检查 10,008 组范围／步长／刻度数量，未发现失败；这只是算法模型核对，不是执行 Swift 源码，不能计入单元测试结果。
 - 仍待 Apple SDK 类型检查／Xcode 构建、XCTest UI、390pt 渲染、长按／横滑竞争、标注真实坐标、Mac 指针、深色／大字号／VoiceOver 与真机仍未验证。
+
+## 2026-11-05 · 第三十八轮「还能花图例与克制超出」
+
+来源：owner 指定本轮 brief、V38-Hero-Normal／Hero-Over／Restrain-Over 三份 HTML 和 HeroCard／Meter 两份组件规格；[原稿归档与哈希](mockups/hero-v38/README.md)。不采用已否决的 Hero-Over-NoBar。仅调整构成条的呈现，不改变资金、软线或提醒触发的计算规则。
+
+- `DesignSystem.swift / HeroCard`：保留 ChartGrow 的 progress 动画、12pt 条高、2pt 段间隙及整体胶囊裁切。够花时为还能花／要付和日常；超支时为现金覆盖／缺口，现金不大于零时整条缺口。缺口与其色块共用 Canvas，沿 135° 按 3pt 交替使用自适应 amberDot／amberMark。全零保留中性空条，无图例；零余量且有预留时整条现金，图例只写现金（缺口为零不显示「还差」）。
+- 图例在条下 8pt，以 8×8pt、圆角 2pt 色块配 caption 名称及同字号 medium／num 金额，金额由 Money.text 输出绝对值、两位小数、无货币符号；缺口金额为 amberInk。横排两端对齐，项目固定自然宽度，ViewThatFits 不够宽时改竖排；无截断或缩小。无预留时只显示还能花，无正现金时只显示还差。隐藏金额时条和图例均不创建；原点击计算依据及注意事项按钮保持。
+- 条和图例共用一个辅助功能元素，分别读「现金 C：还能花 X，要付和日常 Y」和「要付和日常 N：现金 C，还差 Z」。金额隐藏时不会创建该元素。
+- `SavingViews.swift / SavingProgressBar`：新增默认 false 的 showsOvershoot；有限比率超过 1 时，上限段／超出段按 `1/ratio` 和 `1-1/ratio` 分配扣除 2pt 间隙后的宽度。上限段沿用品牌色或 amberDot，超出段为 amberStrong；正无穷时整条为 amberStrong。只有 ProfileView.areaUsage 和 RestrainNearRow 开启，小项占比仍用默认截断。条高保留现有 4pt，HTML 对照板为 6pt；这是本轮 brief 指定的旧行为保留范围。
+- `YubaiCore/MeterSegments.swift`：只保存显示所需的金额与比例，无平台依赖；`MeterSegmentsTests.swift` 登记到现有 Xcode Core 测试目标。原生字体沿用系统 num／sans，新增 amountCaption 将图例数值固定在 caption 字号并支持动态字体，不加载网页字体。
+
+可见中文新增模板为：「还能花 X」「要付和日常 Y」「现金 X」「还差 Z」，全部属于数字与事实；没有说明句或规则例外。原稿对照板的「到 80%／刚好到／超了」为稿件演示标签，不加入 App。
+
+验证：容器 Linux `swift test` 全量通过（含新增 MeterSegmentsTests），0 失败。
+
+三个修改 App 文件的 iOS 26 模拟器 Debug／macOS 14 条件语法解析及 `git diff --check` 通过。没有 Apple SDK 类型检查、Xcode 构建或 UI 执行证据；390pt 原生布局、深色、动态字体、VoiceOver 和动画仍待 Mac／设备验证。原稿依赖未提供，不能独立预览；外部画布、截图及分发资源未同步。无新依赖。
 
 ## 2026-11-04 · 第三十一轮「更快分类」（owner 确认）
 

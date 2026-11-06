@@ -139,6 +139,7 @@ private struct EntryEditForm: View {
             }
         }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: amountKeypadPresented)
             .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+            .environment(\.yubaiFormSurface, true).paperBackground()
             #if os(iOS)
             .presentationDetents([.large])
             .toolbar(.hidden, for: .navigationBar)

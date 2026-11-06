@@ -66,7 +66,7 @@ struct NowCardsSection: View {
                         Spacer(minLength: YubaiSpace.none)
                         Text("稍后").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin)
-                        .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                        .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("unknownInflowsSummary")
             } else if let card = butlerCards.first(where: { $0.kind == .unknownInflow }) {
                 ButlerCardView(card: card)

@@ -64,8 +64,7 @@ struct AskYubaiView: View {
             inputBar
         }.amountPrivacy(store.current.preferences.hideAmounts).paperBackground().navigationTitle("问余白").yubaiNavigation()
             #if os(iOS)
-            .toolbarBackground(YubaiColor.canvas, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             #endif
             .toolbar { CloseButton() }
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
@@ -153,7 +152,7 @@ struct AskYubaiView: View {
                     } label: {
                         Image(systemName: voice.recording ? "stop.fill" : "mic")
                             .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
-                            .foregroundStyle(voice.recording ? YubaiColor.onBrand : YubaiColor.label).background(voice.recording ? YubaiColor.brand : YubaiColor.card, in: Circle())
+                            .foregroundStyle(voice.recording ? YubaiColor.onBrand : YubaiColor.label).background(voice.recording ? YubaiColor.brand : YubaiColor.raised, in: Circle())
                             .yubaiHitTarget()
                     }.accessibilityLabel(voice.recording ? "停止听写" : "语音输入").disabled(voice.permissionDenied)
                 }

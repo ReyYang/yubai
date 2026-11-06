@@ -104,7 +104,7 @@ private struct SubcategoryChoiceChip: View {
             Text(sub).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
                 .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
                 .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
-                .background(selected ? YubaiColor.brand : YubaiColor.card, in: Capsule()).yubaiHitTarget()
+                .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule()).yubaiHitTarget()
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

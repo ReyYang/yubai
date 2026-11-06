@@ -81,11 +81,11 @@ struct CategoriesView: View {
                             .foregroundStyle(YubaiColor.labelSecondary)
                             .frame(minWidth: YubaiSpace.space16).fixedSize()
                         categoryName(category.name)
-                    }.frame(minHeight: YubaiSize.tapMin).listRowBackground(YubaiColor.card)
+                    }.frame(minHeight: YubaiSize.tapMin).listRowBackground(YubaiColor.paperSheet)
                         .accessibilityIdentifier("categoryOrder_" + category.name)
                 }.onMove(perform: move)
                 ForEach(categories.filter { isOther($0.name) }) { category in
-                    categoryName(category.name).frame(minHeight: YubaiSize.tapMin).listRowBackground(YubaiColor.card)
+                    categoryName(category.name).frame(minHeight: YubaiSize.tapMin).listRowBackground(YubaiColor.paperSheet)
                 }
             }.listStyle(.plain).scrollContentBackground(.hidden)
                 .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).padding(.horizontal, YubaiSpace.insetPage)

@@ -105,7 +105,7 @@ struct ProfileConversationView: View {
                 .accessibilityIdentifier(user ? "profileUserMessage_\(index)" : "profileAssistantMessage_\(index)")
             if showsStarters(message, index: index) { starters }
         }.padding(YubaiSpace.insetCard).frame(maxWidth: .infinity, alignment: .leading)
-            .background(user ? YubaiColor.brand : YubaiColor.card, in: shape)
+            .background(user ? YubaiColor.brand : YubaiColor.paperSheet, in: shape)
     }
     private var assistantHeading: some View {
         HStack(spacing: YubaiSpace.space8) {

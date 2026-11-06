@@ -75,7 +75,7 @@ struct CategoryPicker: View {
                 if choose(.init(category: category.name), nil) { expanded = nil }
             }.accessibilityIdentifier(identifier + "MainOnly_" + category.name)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.gapGroup)
-            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
     }
 }
 

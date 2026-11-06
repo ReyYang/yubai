@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="sageLeafMain" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#98B795"/>
+      <stop offset="55%" stop-color="#557F53"/>
+      <stop offset="100%" stop-color="#416140"/>
+    </linearGradient>
+    <linearGradient id="sageLeafLeft" x1="0" y1="0.1" x2="1" y2="0.9">
+      <stop offset="0%" stop-color="#9CB999"/>
+      <stop offset="58%" stop-color="#557F53"/>
+      <stop offset="100%" stop-color="#3F603E"/>
+    </linearGradient>
+    <linearGradient id="sageLeafRight" x1="0.85" y1="0" x2="0.15" y2="1">
+      <stop offset="0%" stop-color="#90B08D"/>
+      <stop offset="55%" stop-color="#557F53"/>
+      <stop offset="100%" stop-color="#3F603E"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <!-- Main culm & branch with organic bamboo node joint at (411,860) -->
+    <path d="M 342 1024 C 366 970 389 916 407 866 C 399 802 384 746 367 696 L 380 692 C 398 742 413 800 421 866 C 403 918 380 972 357 1024 Z" fill="#426241"/>
+    <ellipse cx="412" cy="862" rx="11.5" ry="7" transform="rotate(-22 412 862)" fill="#395738"/>
+    <!-- Organic petiole branches seamlessly connecting stem to every leaf base -->
+    <path d="M 373 698 C 372 684 373 672 377 658" fill="none" stroke="#456644" stroke-width="6.5" stroke-linecap="round"/>
+    <path d="M 376 708 C 384 700 392 694 400 686" fill="none" stroke="#456644" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 371 700 C 358 692 346 686 332 680" fill="none" stroke="#456644" stroke-width="6" stroke-linecap="round"/>
+
+    <!-- 1. Slender inner shoot -->
+    <path d="M 372 676 C 344 614 314 556 282 504 C 322 548 354 606 380 672 Z" fill="#688D67"/>
+    <path d="M 282 504 C 322 548 354 606 378 668" fill="none" stroke="#DCEBD0" stroke-width="1.4" stroke-opacity="0.78" stroke-linecap="round"/>
+
+    <!-- 2. Long arching upper-left tender shoot -->
+    <path d="M 368 680 C 302 600 214 542 120 518 C 218 530 308 582 376 672 Z" fill="#688D67"/>
+    <path d="M 120 518 C 218 530 308 582 373 668" fill="none" stroke="#DCEBD0" stroke-width="1.5" stroke-opacity="0.80" stroke-linecap="round"/>
+
+    <!-- 3. Primary upright center leaf (tip 416,398) + sunlit upper-edge rim + midrib vein -->
+    <path d="M 374 678 C 344 576 366 478 416 398 C 424 498 410 598 383 680 Z" fill="url(#sageLeafMain)"/>
+    <path d="M 374 668 C 346 574 367 478 416 398 C 422 482 413 568 390 648" fill="none" stroke="#E2EFE0" stroke-width="2" stroke-opacity="0.82" stroke-linecap="round"/>
+    <path d="M 379 668 C 378 584 392 496 414 412" fill="none" stroke="#B5D1B1" stroke-width="1.8" stroke-opacity="0.65" stroke-linecap="round"/>
+
+    <!-- 4. Primary left spreading leaf (tip 128,576) + sunlit upper-edge rim + midrib vein -->
+    <path d="M 372 702 C 282 690 198 640 128 576 C 220 600 308 644 376 690 Z" fill="url(#sageLeafLeft)"/>
+    <path d="M 128 576 C 218 600 304 642 370 688" fill="none" stroke="#E2EFE0" stroke-width="2.1" stroke-opacity="0.85" stroke-linecap="round"/>
+    <path d="M 364 695 C 292 664 216 624 144 584" fill="none" stroke="#B5D1B1" stroke-width="1.8" stroke-opacity="0.65" stroke-linecap="round"/>
+
+    <!-- 5. Primary right ascending leaf (tip 516,526) + sunlit upper-edge rim + midrib vein -->
+    <path d="M 382 714 C 398 638 452 576 516 526 C 492 612 446 690 394 720 Z" fill="url(#sageLeafRight)"/>
+    <path d="M 385 704 C 400 634 453 575 516 526 C 495 600 456 668 406 708" fill="none" stroke="#E2EFE0" stroke-width="2" stroke-opacity="0.80" stroke-linecap="round"/>
+    <path d="M 392 712 C 424 654 464 594 506 538" fill="none" stroke="#B5D1B1" stroke-width="1.8" stroke-opacity="0.62" stroke-linecap="round"/>
+  </g>
+</svg>
