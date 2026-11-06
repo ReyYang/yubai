@@ -24,7 +24,7 @@ struct CashTimelineCard: View {
 
     private var window: CashTimelineWindow { timeline.window(cycleOffset: cycleOffset) }
     private var selected: CashTimelinePoint? { selectedDay.flatMap { window.point(on: $0) } }
-    private var hidden: Bool { store.current.preferences.hideAmounts }
+    private var hidden: Bool { store.preferences.hideAmounts }
 
     var body: some View {
         let visible = window
@@ -162,77 +162,14 @@ struct CashTimelineCard: View {
             .accessibilityElement(children: .contain)
     }
     private func chart(_ visible: CashTimelineWindow, bandHeight: CGFloat) -> some View {
-        let scale = CashTimelineScale(window: visible)
         let endpoint = visible.endpointPresentation
-        let segments = visible.forecastSegments
-        return Chart {
-            if visible.showsFloor, let floor = visible.floor {
-                RuleMark(y: .value("始终留着", money(floor)))
-                    .foregroundStyle(YubaiColor.amberDot).lineStyle(StrokeStyle(lineWidth: 1, dash: [1.5, 2.5]))
-            }
-            ForEach(visible.previous) { point in
-                LineMark(x: .value("日期", point.date), y: .value("余额", money(point.balance)), series: .value("段", "上周期"))
-                    .foregroundStyle(YubaiColor.chartRule)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5, lineJoin: .round)).interpolationMethod(.linear)
-            }
-            ForEach(visible.history) { point in
-                LineMark(x: .value("日期", point.date), y: .value("余额", money(point.balance)), series: .value("段", "本周期"))
-                    .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: 2.4, lineJoin: .round)).interpolationMethod(.linear)
-            }
-            ForEach(segments) { segment in
-                ForEach(Array(segment.points.enumerated()), id: \.offset) { _, point in
-                    LineMark(x: .value("日期", point.date), y: .value("余额", point.balance / 100), series: .value("段", "预测\(segment.id)"))
-                        .foregroundStyle(segment.belowFloor ? YubaiColor.amberDot : YubaiColor.brand)
-                        .lineStyle(StrokeStyle(lineWidth: 2.4, dash: [4, 4])).interpolationMethod(.linear)
-                }
-            }
-            if visible.isDefault, let today = visible.history.last {
-                PointMark(x: .value("今天", today.date), y: .value("余额", money(today.balance)))
-                    .symbol { Circle().fill(YubaiColor.brand).frame(width: 8, height: 8)
-                        .overlay { Circle().stroke(YubaiColor.paperSheet, lineWidth: 2) } }
-                if let endpoint {
-                    PointMark(x: .value("周期终点", endpoint.date), y: .value("余额", money(endpoint.balance)))
-                        .symbol { Circle().fill(YubaiColor.paperSheet).frame(width: 8, height: 8)
-                            .overlay { Circle().stroke(endpoint.belowFloor ? YubaiColor.amberDot : YubaiColor.brandInk, lineWidth: 2) } }
-                }
-            }
-            if let selected {
-                RuleMark(x: .value("选中日期", selected.date)).foregroundStyle(YubaiColor.label).lineStyle(StrokeStyle(lineWidth: 1))
-                if let prior = visible.previousPoint(on: selected.date) {
-                    PointMark(x: .value("选中日期", selected.date), y: .value("上周期余额", money(prior.balance)))
-                        .symbol { Circle().fill(YubaiColor.chartRule).frame(width: 5, height: 5) }
-                }
-                PointMark(x: .value("选中日期", selected.date), y: .value("余额", money(selected.balance)))
-                    .symbol { Circle().fill(YubaiColor.label).frame(width: 5, height: 5).padding(2)
-                        .background(YubaiColor.paperSheet, in: Circle()) }
-            }
-        }.chartLegend(.hidden)
-            .chartXScale(domain: visible.start...visible.end, range: .plotDimension(padding: 4))
-            .chartYScale(domain: scale.domain)
-            .chartYAxis {
-                AxisMarks(position: .trailing, values: scale.ticks) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6)).foregroundStyle(YubaiColor.separator)
-                    AxisValueLabel {
-                        if let number = value.as(Double.self) {
-                            Text(CashTimelineScale.label(number)).yubaiFont(YubaiFont.chartLabel).foregroundStyle(YubaiColor.labelSecondary)
-                                .lineLimit(1).fixedSize()
-                        }
-                    }
-                }
-            }
-            .chartXAxis {
-                AxisMarks(values: axisDates(visible)) { value in
-                    AxisValueLabel {
-                        if let date = value.as(Date.self) {
-                            Text(date == timeline.today ? "今天" : shortDate(date)).yubaiFont(YubaiFont.chartLabel).foregroundStyle(YubaiColor.labelSecondary)
-                                .lineLimit(1).fixedSize()
-                        }
-                    }
-                }
-            }.chartOverlay { proxy in
+        return CashTimelineBaseChart(visible: visible, today: timeline.today).equatable()
+            .chartOverlay { proxy in
                 GeometryReader { geometry in
                     if let plot = proxy.plotFrame {
                         let frame = geometry[plot]
+                        selectionOverlay(visible, proxy: proxy, frame: frame)
+                            .allowsHitTesting(false).accessibilityHidden(true)
                         annotations(visible, proxy: proxy, frame: frame, bandHeight: bandHeight)
                             .allowsHitTesting(false).accessibilityHidden(true)
                         if let endpoint, visible.isDefault, let y = proxy.position(forY: money(endpoint.balance)) {
@@ -252,8 +189,8 @@ struct CashTimelineCard: View {
                                 .allowsHitTesting(false).accessibilityHidden(true)
                         }
                         touchSurface(proxy, frame: frame)
-                            .onAppear { plotWidth = max(1, frame.width) }
-                            .onChange(of: frame.width) { _, width in plotWidth = max(1, width) }
+                            .onAppear { let width = max(1, frame.width); if plotWidth != width { plotWidth = width } }
+                            .onChange(of: frame.width) { _, width in let next = max(1, width); if plotWidth != next { plotWidth = next } }
                     }
                 }
             }
@@ -278,12 +215,23 @@ struct CashTimelineCard: View {
             #endif
     }
 
+    private func selectionOverlay(_ visible: CashTimelineWindow, proxy: ChartProxy, frame: CGRect) -> some View {
+        Canvas { context, _ in
+            guard let selected, let x = proxy.position(forX: selected.date),
+                  let y = proxy.position(forY: money(selected.balance)) else { return }
+            let centerX = frame.minX + x
+            var rule = Path()
+            rule.move(to: CGPoint(x: centerX, y: frame.minY)); rule.addLine(to: CGPoint(x: centerX, y: frame.maxY))
+            context.stroke(rule, with: .color(YubaiColor.label), lineWidth: 1)
+            if let prior = visible.previousPoint(on: selected.date), let priorY = proxy.position(forY: money(prior.balance)) {
+                context.fill(Path(ellipseIn: CGRect(x: centerX - 2.5, y: frame.minY + priorY - 2.5, width: 5, height: 5)), with: .color(YubaiColor.chartRule))
+            }
+            context.fill(Path(ellipseIn: CGRect(x: centerX - 4.5, y: frame.minY + y - 4.5, width: 9, height: 9)), with: .color(YubaiColor.paperSheet))
+            context.fill(Path(ellipseIn: CGRect(x: centerX - 2.5, y: frame.minY + y - 2.5, width: 5, height: 5)), with: .color(YubaiColor.label))
+        }
+    }
     private func textWidth(_ text: String) -> CGFloat {
-        #if os(iOS)
-        return (text as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: annotationSize)]).width
-        #else
-        return (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: annotationSize)]).width
-        #endif
+        CashTimelineTextMetrics.width(text, size: annotationSize)
     }
     private var factLineHeight: CGFloat {
         #if os(iOS)
@@ -294,15 +242,7 @@ struct CashTimelineCard: View {
         #endif
     }
     private func factLines(_ text: String, width: CGFloat) -> [String] {
-        var result: [String] = [], line = ""
-        for character in text {
-            let next = line + String(character)
-            if !line.isEmpty && textWidth(next) > max(annotationSize * 2, width) {
-                result.append(line); line = String(character)
-            } else { line = next }
-        }
-        if !line.isEmpty { result.append(line) }
-        return result
+        CashTimelineTextMetrics.lines(text, width: width, size: annotationSize)
     }
     private func factHeight(_ text: String, width: CGFloat) -> CGFloat {
         CGFloat(factLines(text, width: width).count) * (factLineHeight + 2) - 2
@@ -376,11 +316,11 @@ struct CashTimelineCard: View {
     @ViewBuilder private func touchSurface(_ proxy: ChartProxy, frame: CGRect) -> some View {
         #if os(iOS)
         Rectangle().fill(.clear).contentShape(Rectangle())
-            .gesture(HorizontalPan(shouldBegin: { _ in !holding }, changed: { _ in selectedDay = nil }, ended: { distance, velocity in
+            .gesture(HorizontalPan(shouldBegin: { _ in !holding }, changed: { _ in if selectedDay != nil { selectedDay = nil } }, ended: { distance, velocity in
                 switchCycle(distance, velocity: velocity, width: frame.width)
             }))
             .gesture(CashTimelinePress(changed: { location in
-                holding = true; scrub(location.x, proxy: proxy, frame: frame)
+                if !holding { holding = true }; scrub(location.x, proxy: proxy, frame: frame)
             }, ended: { holding = false; selectedDay = nil }))
             .accessibilityHidden(true)
         #else
@@ -421,9 +361,6 @@ struct CashTimelineCard: View {
     private func select(_ day: Date) {
         if selectedDay != day { selectedDay = day; selectionTrigger &+= 1 }
     }
-    private func axisDates(_ visible: CashTimelineWindow) -> [Date] {
-        Array(Set([visible.start, visible.end] + (visible.isDefault ? [timeline.today] : []))).sorted()
-    }
     private func accessibilityValue(_ visible: CashTimelineWindow) -> String {
         guard let value = visible.readout(selectedDay: selectedDay) else { return dateRange(visible) }
         var facts = [dateRange(visible), value.title + "，余额 " + Money.text(value.point.balance)]
@@ -451,6 +388,111 @@ struct CashTimelineCard: View {
     private func money(_ cents: Int64) -> Double { Double(cents) / 100 }
     private struct Line: Shape {
         func path(in rect: CGRect) -> Path { Path { $0.move(to: CGPoint(x: rect.minX, y: rect.midY)); $0.addLine(to: CGPoint(x: rect.maxX, y: rect.midY)) } }
+    }
+}
+
+/// Selection lives in chartOverlay; scrubbing does not rebuild the line marks or axes.
+private struct CashTimelineBaseChart: View, Equatable {
+    let visible: CashTimelineWindow
+    let today: Date
+    var body: some View {
+        let scale = CashTimelineScale(window: visible)
+        let endpoint = visible.endpointPresentation
+        let segments = visible.forecastSegments
+        return Chart {
+            if visible.showsFloor, let floor = visible.floor {
+                RuleMark(y: .value("始终留着", money(floor)))
+                    .foregroundStyle(YubaiColor.amberDot).lineStyle(StrokeStyle(lineWidth: 1, dash: [1.5, 2.5]))
+            }
+            ForEach(visible.previous) { point in
+                LineMark(x: .value("日期", point.date), y: .value("余额", money(point.balance)), series: .value("段", "上周期"))
+                    .foregroundStyle(YubaiColor.chartRule)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, lineJoin: .round)).interpolationMethod(.linear)
+            }
+            ForEach(visible.history) { point in
+                LineMark(x: .value("日期", point.date), y: .value("余额", money(point.balance)), series: .value("段", "本周期"))
+                    .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: 2.4, lineJoin: .round)).interpolationMethod(.linear)
+            }
+            ForEach(segments) { segment in
+                ForEach(Array(segment.points.enumerated()), id: \.offset) { _, point in
+                    LineMark(x: .value("日期", point.date), y: .value("余额", point.balance / 100), series: .value("段", "预测\(segment.id)"))
+                        .foregroundStyle(segment.belowFloor ? YubaiColor.amberDot : YubaiColor.brand)
+                        .lineStyle(StrokeStyle(lineWidth: 2.4, dash: [4, 4])).interpolationMethod(.linear)
+                }
+            }
+            if visible.isDefault, let today = visible.history.last {
+                PointMark(x: .value("今天", today.date), y: .value("余额", money(today.balance)))
+                    .symbol { Circle().fill(YubaiColor.brand).frame(width: 8, height: 8)
+                        .overlay { Circle().stroke(YubaiColor.paperSheet, lineWidth: 2) } }
+                if let endpoint {
+                    PointMark(x: .value("周期终点", endpoint.date), y: .value("余额", money(endpoint.balance)))
+                        .symbol { Circle().fill(YubaiColor.paperSheet).frame(width: 8, height: 8)
+                            .overlay { Circle().stroke(endpoint.belowFloor ? YubaiColor.amberDot : YubaiColor.brandInk, lineWidth: 2) } }
+                }
+            }
+
+        }.chartLegend(.hidden)
+            .chartXScale(domain: visible.start...visible.end, range: .plotDimension(padding: 4))
+            .chartYScale(domain: scale.domain)
+            .chartYAxis {
+                AxisMarks(position: .trailing, values: scale.ticks) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6)).foregroundStyle(YubaiColor.separator)
+                    AxisValueLabel {
+                        if let number = value.as(Double.self) {
+                            Text(CashTimelineScale.label(number)).yubaiFont(YubaiFont.chartLabel).foregroundStyle(YubaiColor.labelSecondary)
+                                .lineLimit(1).fixedSize()
+                        }
+                    }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: axisDates(visible)) { value in
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            Text(date == today ? "今天" : shortDate(date)).yubaiFont(YubaiFont.chartLabel).foregroundStyle(YubaiColor.labelSecondary)
+                                .lineLimit(1).fixedSize()
+                        }
+                    }
+                }
+
+            }
+    }
+    private func axisDates(_ visible: CashTimelineWindow) -> [Date] {
+        Array(Set([visible.start, visible.end] + (visible.isDefault ? [today] : []))).sorted()
+    }
+    private func shortDate(_ date: Date) -> String { "\(Dates.calendar.component(.month, from: date))/\(Dates.calendar.component(.day, from: date))" }
+    private func money(_ cents: Int64) -> Double { Double(cents) / 100 }
+}
+
+@MainActor private enum CashTimelineTextMetrics {
+    private struct Key: Hashable { let text: String; let width: CGFloat; let size: CGFloat }
+    private static var widths: [Key: CGFloat] = [:]
+    private static var wrapped: [Key: [String]] = [:]
+    static func width(_ text: String, size: CGFloat) -> CGFloat {
+        let key = Key(text: text, width: 0, size: size)
+        if let value = widths[key] { return value }
+        #if os(iOS)
+        let font = UIFont.systemFont(ofSize: size)
+        #else
+        let font = NSFont.systemFont(ofSize: size)
+        #endif
+        let value = (text as NSString).size(withAttributes: [.font: font]).width
+        if widths.count >= 2048 { widths.removeAll(keepingCapacity: true) }
+        widths[key] = value; return value
+    }
+    static func lines(_ text: String, width: CGFloat, size: CGFloat) -> [String] {
+        let key = Key(text: text, width: width, size: size)
+        if let value = wrapped[key] { return value }
+        var result: [String] = [], line = ""
+        for character in text {
+            let next = line + String(character)
+            if !line.isEmpty && self.width(next, size: size) > max(size * 2, width) {
+                result.append(line); line = String(character)
+            } else { line = next }
+        }
+        if !line.isEmpty { result.append(line) }
+        if wrapped.count >= 512 { wrapped.removeAll(keepingCapacity: true) }
+        wrapped[key] = result; return result
     }
 }
 

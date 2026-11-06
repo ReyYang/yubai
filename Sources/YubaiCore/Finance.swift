@@ -5,10 +5,10 @@ public struct Occurrence: Identifiable, Equatable, Sendable {
     public var inflow: Bool; public var planID: UUID?; public var rentID: UUID?; public var overdue: Bool
     public var rentMonth: Date? = nil
 }
-public struct ForecastPoint: Identifiable, Sendable {
+public struct ForecastPoint: Equatable, Identifiable, Sendable {
     public var id: Date { date }; public var date: Date; public var conservative: Int64; public var expected: Int64
 }
-public struct Funds: Sendable {
+public struct Funds: Equatable, Sendable {
     public var cash: Int64; public var debt: Int64; public var investments: Int64; public var receivables: Int64; public var netWorth: Int64
     public var livingEstimated: Bool = false
     public var committed: Int64; public var goals: Int64; public var emergency: Int64; public var living: Int64
@@ -19,7 +19,7 @@ public struct Funds: Sendable {
     public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Date()))
     public var horizonDays: Int = Finance.observationDays; public var payday: Date? = nil; public var paydayTitle: String? = nil
 }
-public struct Breakdown: Identifiable, Sendable {
+public struct Breakdown: Equatable, Identifiable, Sendable {
     public var id: String { category }; public var category: String; public var amount: Int64; public var count: Int
 }
 public struct Review: Sendable {
@@ -29,14 +29,14 @@ public struct Review: Sendable {
 /// Net expense/refund accounting is shared with Review and the weekly letter.
 /// Refunds offset spending, never appear as income. Categories may be negative
 /// for a refund of a purchase made before this half-open interval.
-public struct CashFlowSlice: Identifiable, Sendable {
+public struct CashFlowSlice: Equatable, Identifiable, Sendable {
     public var id: [String] { categories }
     public var title: String
     public var categories: [String]
     public var amount: Int64
     public var share: Double
 }
-public struct CashFlowSummary: Sendable {
+public struct CashFlowSummary: Equatable, Sendable {
     public var income: Int64
     public var spending: Int64
     public var incomeByCategory: [Breakdown]
@@ -303,4 +303,180 @@ public enum Finance {
                                   facts: facts + f.warnings,
                                   questions: ["它具体解决什么经常发生的问题？", "现有物品能否满足同样需要？", "如果等 48 小时，还会同样想买吗？"])
     }
+}
+
+/// Rendering caches are owned by AppStore and deliberately kept outside Observation.
+/// The owner advances revision for every ledger change, including undo and restore.
+public struct LedgerPresentationCache {
+    private var revision: UInt64?
+    private var ledgerID: UUID?
+    private var entryDates: [Date] = []
+    private var sortedEntries: [Entry]?
+    private var byID: [UUID: Entry]?
+    private struct FlowKey: Hashable { let start: Int; let end: Int }
+    private struct RecordsKey: Hashable {
+        let categories: [String]; let income: Bool; let interval: DateInterval; let subcategory: String?
+    }
+    private var flows: [FlowKey: CashFlowSummary] = [:]
+    private var slices: [FlowKey: (income: [CashFlowSlice], spending: [CashFlowSlice])] = [:]
+    private var records: [RecordsKey: [Entry]] = [:]
+    private struct SubcategoryKey: Hashable { let category: String; let interval: DateInterval }
+    private struct EvidenceKey: Hashable { let ids: Set<UUID>; let activeOnly: Bool }
+    private var subcategories: [SubcategoryKey: [Breakdown]] = [:]
+    private var evidence: [EvidenceKey: [Entry]] = [:]
+    private var candidates: [SubscriptionCandidate]?
+    private var settingsValue: (value: LedgerSettingsSummary, at: Date, expires: Date, zone: TimeZone)?
+    private var savingsValue: (value: LedgerSavingsTotals, at: Date, expires: Date, zone: TimeZone)?
+    private var capturesValue: (value: [Entry], at: Date, expires: Date, zone: TimeZone)?
+    public init() {}
+    private mutating func prepare(_ ledger: Ledger, revision: UInt64) {
+        guard self.revision != revision || ledgerID != ledger.id else { return }
+        self.revision = revision; ledgerID = ledger.id
+        entryDates = ledger.entries.filter { $0.deletedAt == nil }.map(\.date).sorted()
+        sortedEntries = nil; byID = nil; flows = [:]; slices = [:]; records = [:]; subcategories = [:]; evidence = [:]; candidates = nil; settingsValue = nil; savingsValue = nil; capturesValue = nil
+    }
+    // Two half-open intervals in the same gaps between posting dates select exactly
+    // the same rows. This also caches a live interval whose end is Date() each render,
+    // without rounding dates or missing a future entry as it becomes eligible.
+    private func boundary(_ date: Date) -> Int {
+        var low = 0, high = entryDates.count
+        while low < high {
+            let mid = (low + high) / 2
+            if entryDates[mid] < date { low = mid + 1 } else { high = mid }
+        }
+        return low
+    }
+    public mutating func cashFlow(in ledger: Ledger, during interval: DateInterval, revision: UInt64) -> CashFlowSummary {
+        prepare(ledger, revision: revision)
+        let key = FlowKey(start: boundary(interval.start), end: boundary(interval.end))
+        if let value = flows[key] { return value }
+        let value = Finance.cashFlow(ledger, during: interval)
+        if flows.count >= 32 { flows.removeAll(keepingCapacity: true) }
+        flows[key] = value; return value
+    }
+    public mutating func cashFlowSlices(in ledger: Ledger, during interval: DateInterval, income: Bool, revision: UInt64) -> [CashFlowSlice] {
+        let summary = cashFlow(in: ledger, during: interval, revision: revision)
+        let key = FlowKey(start: boundary(interval.start), end: boundary(interval.end))
+        if let value = slices[key] { return income ? value.income : value.spending }
+        let value = (income: summary.slices(income: true), spending: summary.slices(income: false))
+        if slices.count >= 32 { slices.removeAll(keepingCapacity: true) }
+        slices[key] = value; return income ? value.income : value.spending
+    }
+    public mutating func flowRecords(in ledger: Ledger, categories: [String], income: Bool,
+                                    interval: DateInterval, subcategory: String? = nil, revision: UInt64) -> [Entry] {
+        prepare(ledger, revision: revision)
+        let key = RecordsKey(categories: categories, income: income, interval: interval, subcategory: subcategory)
+        if let value = records[key] { return value }
+        if sortedEntries == nil { sortedEntries = ledger.entries.sorted { $0.date > $1.date } }
+        if byID == nil { byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) }) }
+        let lookup = byID!
+        let resolved = Set(categories.map { ledger.resolveCategory($0) })
+        let value = sortedEntries!.filter { entry in
+            guard entry.deletedAt == nil, entry.date >= interval.start, entry.date < interval.end,
+                  income ? entry.nature == .income : (entry.nature == .expense || entry.nature == .refund) else { return false }
+            let choice = ledger.normalizedCategory(for: entry, entriesByID: lookup)
+            return resolved.contains(choice.category) && (subcategory == nil || (choice.subcategory ?? "其他") == subcategory)
+        }
+        if records.count >= 32 { records.removeAll(keepingCapacity: true) }
+        records[key] = value; return value
+    }
+    public mutating func subcategoryBreakdown(in ledger: Ledger, category: String, during interval: DateInterval, revision: UInt64) -> [Breakdown] {
+        prepare(ledger, revision: revision)
+        let key = SubcategoryKey(category: category, interval: interval)
+        if let value = subcategories[key] { return value }
+        let value = Finance.subcategoryBreakdown(ledger, category: category, during: interval)
+        if subcategories.count >= 32 { subcategories.removeAll(keepingCapacity: true) }
+        subcategories[key] = value; return value
+    }
+    public mutating func evidenceEntries(in ledger: Ledger, ids: Set<UUID>, activeOnly: Bool, revision: UInt64) -> [Entry] {
+        prepare(ledger, revision: revision)
+        let key = EvidenceKey(ids: ids, activeOnly: activeOnly)
+        if let value = evidence[key] { return value }
+        if sortedEntries == nil { sortedEntries = ledger.entries.sorted { $0.date > $1.date } }
+        let value = sortedEntries!.filter { ids.contains($0.id) && (!activeOnly || $0.deletedAt == nil) }
+        if evidence.count >= 32 { evidence.removeAll(keepingCapacity: true) }
+        evidence[key] = value; return value
+    }
+    public mutating func subscriptions(in ledger: Ledger, revision: UInt64) -> [SubscriptionCandidate] {
+        prepare(ledger, revision: revision)
+        if let candidates { return candidates }
+        let value = SubscriptionCheck.candidates(ledger: ledger)
+        candidates = value; return value
+    }
+    public mutating func savings(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> LedgerSavingsTotals {
+        prepare(ledger, revision: revision)
+        let zone = TimeZone.current
+        if let cached = savingsValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
+        let month = Dates.calendar.dateInterval(of: .month, for: now)!
+        let value = LedgerSavingsTotals(total: Savings.total(ledger: ledger, now: now),
+            month: Savings.summary(ledger: ledger, from: month.start, to: now, now: now).total)
+        var expires = Dates.addDays(1, to: Dates.day(now))
+        // total uses < now + 1ms, while the month uses < now. Retain both
+        // thresholds, including the exact boundary where strict < still excludes.
+        func boundary(_ date: Date) -> Date? {
+            let early = date.addingTimeInterval(-0.001)
+            if early >= now { return early }
+            return date >= now ? date : nil
+        }
+        for wish in ledger.wishlist where wish.status == .dropped {
+            if let date = wish.droppedAt, let next = boundary(date) { expires = min(expires, next) }
+        }
+        for plan in ledger.stoppedSubscriptions.map(\.plan) + ledger.plans {
+            for item in plan.schedule(through: expires.addingTimeInterval(0.001)) {
+                if let next = boundary(item.date) { expires = min(expires, next) }
+            }
+        }
+        savingsValue = (value, now, expires, zone); return value
+    }
+    public mutating func recentCaptures(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> [Entry] {
+        prepare(ledger, revision: revision)
+        let zone = TimeZone.current
+        if let cached = capturesValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
+        let start = Dates.addDays(-6, to: Dates.day(now))
+        var expires = Dates.addDays(1, to: Dates.day(now))
+        var rows: [Entry] = []
+        for entry in ledger.entries where entry.deletedAt == nil && entry.quickCapture != nil {
+            let date = entry.recordedAt ?? entry.date
+            if date > now { expires = min(expires, date) }
+            if date >= start && date <= now { rows.append(entry) }
+        }
+        capturesValue = (rows, now, expires, zone); return rows
+    }
+    public mutating func settings(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> LedgerSettingsSummary {
+        prepare(ledger, revision: revision)
+        let zone = TimeZone.current
+        if let cached = settingsValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
+        let cash = ledger.accounts.filter { $0.kind == .bank || $0.kind == .cash }
+        let balances = cash.map { Finance.balance($0, in: ledger, at: now) }
+        let week = ButlerCards.isoWeek(now)
+        let value = LedgerSettingsSummary(cashAccounts: cash, cashBalances: balances,
+            thinkingCount: ledger.wishlist.filter { $0.status == .thinking }.count,
+            followUpCount: ledger.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= now } == true }.count,
+            memoryCount: ledger.memories.count,
+            weeklyMemoryCount: ledger.memories.filter { ButlerCards.isoWeek($0.createdAt) == week }.count,
+            fixedFlowTitles: FixedFlowArrangement.rows(in: ledger).map(\.title))
+        var expires = Dates.addDays(1, to: Dates.day(now))
+        for entry in ledger.entries where entry.deletedAt == nil {
+            if entry.date > now { expires = min(expires, entry.date) }
+            if let date = entry.otherDate, date > now { expires = min(expires, date) }
+        }
+        for wish in ledger.wishlist {
+            if let date = wish.followUpAt, date > now { expires = min(expires, date) }
+        }
+        settingsValue = (value, now, expires, zone); return value
+    }
+}
+public struct LedgerSettingsSummary: Equatable, Sendable {
+    public let cashAccounts: [Account]
+    public let cashBalances: [Int64]
+    public let thinkingCount: Int
+    public let followUpCount: Int
+    public let memoryCount: Int
+    public let weeklyMemoryCount: Int
+    public let fixedFlowTitles: [String]
+}
+
+public struct LedgerSavingsTotals: Equatable, Sendable {
+    public let total: Int64
+    public let month: Int64
 }

@@ -17,7 +17,7 @@ struct ProfileConversationView: View {
     @State private var runningTask: Task<Void, Never>?
     private var revisit: Bool {
         if let startedAsRevisit { return startedAsRevisit }
-        let profile = store.current.profile
+        let profile = store.profile
         return openingContext != nil || !profile.generous.isEmpty || !profile.restrain.isEmpty || !profile.principles.isEmpty || profile.floorAmount != nil
     }
     private var proposal: ChangeSet? { store.current.pendingChanges.first { $0.id == proposalID } }
@@ -70,7 +70,7 @@ struct ProfileConversationView: View {
             .onDisappear { runningTask?.cancel() }
             .onChange(of: store.current.id) { _, _ in runningTask?.cancel(); dismiss() }
             .onChange(of: store.locked) { _, locked in if locked { runningTask?.cancel(); dismiss() } }
-            .onChange(of: store.current.preferences.cloudAIEnabled) { _, enabled in if !enabled { runningTask?.cancel(); dismiss() } }
+            .onChange(of: store.preferences.cloudAIEnabled) { _, enabled in if !enabled { runningTask?.cancel(); dismiss() } }
     }
     private var assistantCount: Int { messages.filter { $0.role == .assistant }.count }
     private var progressDots: some View {

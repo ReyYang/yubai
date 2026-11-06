@@ -33,8 +33,8 @@ struct InsightsView: View {
     }
     var body: some View {
         let range = interval
-        let summary = Finance.cashFlow(store.current, during: range)
-        let slices = summary.slices(income: income)
+        let summary = store.cashFlow(during: range)
+        let slices = store.cashFlowSlices(during: range, income: income)
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.none) {
             Segmented(choices: Window.allCases.map { ($0, $0.rawValue) }, selection: $window)
             if window == .custom { Button("选择日期范围") { store.pickingInsightDates = true }.frame(minHeight: YubaiSize.tapMin) }
@@ -52,7 +52,7 @@ struct InsightsView: View {
             Card(style: .compact) {
                 VStack(spacing: YubaiSpace.gapGroup) {
                     Segmented(choices: [(false, "支出"), (true, "收入")], selection: $income)
-                    if !store.current.preferences.hideAmounts {
+                    if !store.preferences.hideAmounts {
                         donut(slices, total: income ? summary.income : summary.spending)
                     }
                     if slices.isEmpty { Text("还没有收支记录").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, YubaiSpace.gapSection) }
@@ -68,7 +68,7 @@ struct InsightsView: View {
                 Text("本期有跨期退款。")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }
-        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("insightsScroll")
+        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("insightsScroll")
             .rootPageHeader { TabRootHeader(title: "洞察") }.navigationTitle("洞察")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
@@ -123,14 +123,14 @@ struct InsightsView: View {
     private func tile(_ title: String, _ amount: Int64, balance: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(balance ? YubaiColor.brandInk : YubaiColor.labelSecondary)
-            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .summary)
+            AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .summary)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: 18), background: balance ? YubaiColor.brandTint : nil)
     }
     private func restrained(_ slice: CashFlowSlice) -> Bool {
-        !income && store.current.profile.restrain.contains { area in
+        !income && store.profile.restrain.contains { area in
             slice.categories.contains { category in
-                area.match.categories.contains { store.current.resolveCategory($0) == store.current.resolveCategory(category) } || area.title == category
+                area.match.categories.contains { store.resolveCategory($0) == store.resolveCategory(category) } || area.title == category
             }
         }
     }
@@ -196,9 +196,9 @@ struct InsightsView: View {
             }
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
             HStack(spacing: YubaiSpace.gapGroup) {
-                AmountLabel(cents: slice.amount, hide: store.current.preferences.hideAmounts, role: .small)
+                AmountLabel(cents: slice.amount, hide: store.preferences.hideAmounts, role: .small)
                 Text(legendPercentage(slice))
-                    .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).numberTransition(value: slice.share * 100, enabled: !store.current.preferences.hideAmounts)
+                    .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).numberTransition(value: slice.share * 100, enabled: !store.preferences.hideAmounts)
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
             }
         }.frame(minHeight: YubaiSize.rowSingle).padding(.vertical, textSize.isAccessibilitySize ? YubaiSpace.space8 : YubaiSpace.none)
@@ -211,7 +211,7 @@ struct InsightsView: View {
             .opacity(selectedSlice == nil || selectedSlice == slice.id ? 1 : 0.55).contentShape(Rectangle())
     }
     private func legendPercentage(_ slice: CashFlowSlice) -> String {
-        if store.current.preferences.hideAmounts { return "" }
+        if store.preferences.hideAmounts { return "" }
         return slice.amount < 0 ? "—" : percentage(slice)
     }
     private func move(_ direction: Int) {
@@ -256,16 +256,10 @@ struct FlowRecordsView: View {
     let income: Bool
     let interval: DateInterval
     var body: some View {
-        let entriesByID: [UUID: Entry] = store.entriesByID
-        let rows: [Entry] = store.sortedEntries.filter { entry in
-            guard entry.deletedAt == nil, entry.date >= interval.start, entry.date < interval.end else { return false }
-            let natureMatches: Bool = income ? entry.nature == .income : (entry.nature == .expense || entry.nature == .refund)
-            let category: String = store.current.normalizedCategory(for: entry, entriesByID: entriesByID).category
-            return natureMatches && categories.contains { store.current.resolveCategory($0) == category }
-        }
+        let rows = store.flowRecords(categories: categories, income: income, interval: interval)
         Page {
             CardRows(rows) { entry in
-                EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts, editable: true)
+                EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts, editable: true)
             }
         }.navigationTitle(title).yubaiNavigation()
     }

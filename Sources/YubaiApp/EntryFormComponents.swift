@@ -149,7 +149,7 @@ struct EntryAccountMenu: View {
     }
     @Environment(AppStore.self) private var store
     private func balanceText(_ id: UUID) -> String {
-        store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(balances[id] ?? 0)
+        store.preferences.hideAmounts ? "••••" : AmountLabel.text(balances[id] ?? 0)
     }
 }
 

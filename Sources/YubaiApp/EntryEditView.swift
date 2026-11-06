@@ -6,7 +6,7 @@ struct EntryEditView: View {
     @Environment(\.dismiss) private var dismiss
     let entryID: UUID
     var body: some View {
-        if let entry = store.current.entries.first(where: { $0.id == entryID && $0.deletedAt == nil }) {
+        if let entry = store.entriesByID[entryID], entry.deletedAt == nil {
             EntryEditForm(entry: entry).id(entryID)
         } else { EmptyState("doc.questionmark", "记录已不存在", action: "返回", onAction: { dismiss() }) }
     }
@@ -33,7 +33,7 @@ private struct EntryEditForm: View {
         _purpose = State(initialValue: entry.displayTitle)
     }
     private var standardNature: Bool { [.expense, .income, .transfer].contains(draft.nature) }
-    private var accounts: [Account] { store.current.accounts.filter { !$0.archived || $0.id == draft.accountID || $0.id == draft.otherAccountID } }
+    private var accounts: [Account] { store.accounts.filter { !$0.archived || $0.id == draft.accountID || $0.id == draft.otherAccountID } }
     private var canSave: Bool {
         guard let cents = amountKeypadPresented ? keypad.amount : (try? Money.parse(amount)), cents > 0 else { return false }
         return draft.nature != .transfer || (draft.otherAccountID != nil && draft.otherAccountID != draft.accountID)
@@ -154,7 +154,7 @@ private struct EntryEditForm: View {
 
     }
     private var repeatValue: String {
-        if let id = draft.planID, let plan = store.current.plans.first(where: { $0.id == id }) {
+        if let id = draft.planID, let plan = store.plans.first(where: { $0.id == id }) {
             return plan.frequency == .monthly ? "每月 \(plan.monthlyDay ?? Dates.calendar.component(.day, from: plan.dueDate)) 号" : plan.frequency.label
         }
         return repeatsMonthly || draft.planID != nil ? "每月 \(Dates.calendar.component(.day, from: draft.date)) 号" : "不重复"

@@ -72,7 +72,7 @@ struct WishlistView: View {
     private func followUpVisible(_ wish: WishItem) -> Bool {
         guard wish.status == .bought, wish.followUpAnswer == nil, wish.followUpAt.map({ $0 <= Date() }) == true else { return false }
         let key = "follow:\(wish.id)"
-        return !ButlerCards.isMuted(key, in: store.current) && store.current.cards.first(where: { $0.dedupeKey == key })?.dismissedAt == nil
+        return !ButlerCards.isMuted(key, in: store.current) && store.cards.first(where: { $0.dedupeKey == key })?.dismissedAt == nil
     }
     private func wishRow(_ wish: WishItem) -> some View {
         Card { wishContent(wish) }
@@ -83,10 +83,10 @@ struct WishlistView: View {
                 Text(wish.title).yubaiFont(YubaiFont.rowTitle)
                 if wish.status == .bought { Pill(text: "已买", variant: .brand, showsDot: false) }
                 Spacer(minLength: YubaiSpace.space8)
-                AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts)
+                AmountLabel(cents: wish.amount, hide: store.preferences.hideAmounts)
             }
             if let age = ageText(wish) { Text(age).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-            if !wish.judgment.isEmpty { Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
+            if !wish.judgment.isEmpty { Text(store.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
             if wish.status != .bought {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: YubaiSpace.space8) { wishActions(wish) }
@@ -100,7 +100,7 @@ struct WishlistView: View {
                         .accessibilityLabel("\(Dates.text(due)) 问你用得怎么样")
                         .accessibilityIdentifier("wishFollowUpDate_" + wish.id.uuidString)
                 }
-                if let id = wish.boughtEntryID, store.current.activeEntries.contains(where: { $0.id == id }) {
+                if let id = wish.boughtEntryID, store.entriesByID[id].map { $0.deletedAt == nil } == true {
                     NavigationLink("购买记录") { EntryDetailView(entryID: id) }
                 }
                 if let answer = wish.followUpAnswer { Text("一个月后的感受：" + answer).yubaiFont(YubaiFont.callout) }
@@ -139,7 +139,7 @@ struct WishEntryPicker: View {
                 CardRows(rows) { entry in
                     Button {
                         if store.update("关联心愿购买记录", { try Wishlist.markBought(wishID, entryID: entry.id, in: &$0) }) { dismiss() }
-                    } label: { EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }.buttonStyle(PressButtonStyle())
+                    } label: { EntryRow(entry: entry, hideAmount: store.preferences.hideAmounts) }.buttonStyle(PressButtonStyle())
                 }.accessibilityLabel("选择已经记下的支出")
                 Toggle("查看全部支出", isOn: $all).tint(YubaiColor.toggleOn)
                 NavigationLink("先记下购买") { AskYubaiView(initialText: "记一笔：\(wish.title) \(Money.text(wish.amount, currency: false))元") }

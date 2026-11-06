@@ -110,7 +110,7 @@ struct CategoriesView: View {
         if let other = categories.first(where: { isOther($0.name) }) { names.append(other.name) }
         let allowed = Set(store.current.categories.filter { !$0.system }.map(\.name))
         var seen = Set(names)
-        let remaining = (store.current.preferences.categoryOrder + store.current.categories.map(\.name))
+        let remaining = (store.preferences.categoryOrder + store.current.categories.map(\.name))
             .filter { allowed.contains($0) && seen.insert($0).inserted }
         store.update("分类排序", recordUndo: false) { try CategoryModel.setOrder(names + remaining, in: &$0) }
     }

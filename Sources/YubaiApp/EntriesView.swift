@@ -9,11 +9,10 @@ struct EntriesView: View {
     @State private var search = ""
     @State private var showingSearch = false
     @State private var revealedEntryID: UUID?
-    @State private var manualNotePurposes: [UUID: String] = [:]
     @FocusState private var searchFocused: Bool
     var body: some View {
         let timeline = store.entryTimeline(month: month, search: search, filter: filter)
-        let hideAmounts = store.current.preferences.hideAmounts
+        let hideAmounts = store.preferences.hideAmounts
         ScrollView {
             LazyVStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
                 VStack(spacing: YubaiSpace.gapGroup) {
@@ -46,19 +45,14 @@ struct EntriesView: View {
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 780).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).amountPrivacy(hideAmounts).accessibilityIdentifier("entriesScroll")
-            .onChange(of: store.ledgerRevision, initial: true) { _, _ in
-                // Core's Row.note currently prefers legacy notes over purposes.
-                // Cache the UI override once per ledger revision, never per row.
-                manualNotePurposes = EntryNotePresentation.manualPurposes(store.current.entries)
-            }
             #if os(iOS)
             .rootScrollContentMargins()
             .simultaneousGesture(TapGesture().onEnded { revealedEntryID = nil })
             .onScrollPhaseChange { _, phase in if phase == .interacting { revealedEntryID = nil } }
-            .onChange(of: revealedEntryID, initial: true) { _, id in store.pagingLocked = id != nil }
+            .onChange(of: revealedEntryID, initial: true) { _, id in if store.pagingLocked != (id != nil) { store.pagingLocked = id != nil } }
             .onChange(of: store.destination) { _, _ in revealedEntryID = nil }
             .onChange(of: store.sheet?.id) { _, _ in revealedEntryID = nil }
-            .onDisappear { revealedEntryID = nil; store.pagingLocked = false }
+            .onDisappear { revealedEntryID = nil; if store.pagingLocked { store.pagingLocked = false } }
             #endif
             .rootPageHeader { TabRootHeader(title: "账目") }
             .navigationTitle("账目").yubaiNavigation()
@@ -72,7 +66,7 @@ struct EntriesView: View {
             #endif
     }
     private func noteText(_ row: EntryTimeline.Row) -> String {
-        guard let purpose = manualNotePurposes[row.id] else { return row.note }
+        guard let purpose = store.manualNotePurposes[row.id] else { return row.note }
         return purpose == row.categoryName ? "" : purpose
     }
     private var monthPicker: some View {
@@ -128,7 +122,7 @@ struct EntriesView: View {
     private func total(_ title: String, cents: Int64, inflow: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: cents, hide: store.current.preferences.hideAmounts, role: .donut,
+            AmountLabel(cents: cents, hide: store.preferences.hideAmounts, role: .donut,
                         sign: inflow ? .inflow : .automatic,
                         ink: inflow ? YubaiColor.brandInk : YubaiColor.label)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
@@ -180,7 +174,7 @@ private struct LedgerEntryRow: View {
         }
             #if os(iOS)
             .gesture(HorizontalPan(shouldBegin: { $0 < 0 || resting < 0 }, changed: { distance in
-                if distance < 0 { revealedEntryID = entry.id }
+                if distance < 0 && revealedEntryID != entry.id { revealedEntryID = entry.id }
                 offset = max(-revealDistance, min(0, resting + distance))
             }, ended: { distance, _ in
                 resting = resting < 0 ? (distance > 0 ? 0 : -revealDistance) : (offset < -revealDistance * 0.43 ? -revealDistance : 0)

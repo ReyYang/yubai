@@ -59,7 +59,7 @@ struct FixedFlowsView: View {
             } }
     }
     private func overdueAmount(_ amount: Int64) -> some View {
-        AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, ink: YubaiColor.amberInk)
+        AmountLabel(cents: amount, hide: store.preferences.hideAmounts, ink: YubaiColor.amberInk)
     }
     private func laterBills(_ rows: [FixedFlowUpcoming]) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -72,7 +72,7 @@ struct FixedFlowsView: View {
                                 Text(row.title).yubaiFont(YubaiFont.rowTitle)
                                 Text(row.detail()).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                             }.frame(maxWidth: .infinity, alignment: .leading)
-                            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none,
+                            AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts, sign: row.inflow ? .inflow : .none,
                                         ink: row.inflow ? YubaiColor.brandInk : YubaiColor.label).fixedSize(horizontal: true, vertical: false)
                             Color.clear.frame(width: YubaiSize.rowIcon).accessibilityHidden(true)
                         }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: 52).contentShape(Rectangle())
@@ -90,7 +90,7 @@ struct FixedFlowsView: View {
             CardRows(rows) { row in
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     HStack(spacing: YubaiSpace.gapGroup) {
-                        let planID = store.current.plans.first { $0.id == row.id }?.id
+                        let planID = store.plans.first { $0.id == row.id }?.id
                         if let planID {
                             Button { edit(planID) } label: { stoppedSummary(row) }
                                 .buttonStyle(.plain).accessibilityElement(children: .contain).accessibilityAddTraits(.isButton)
@@ -120,7 +120,7 @@ struct FixedFlowsView: View {
                     .foregroundStyle(row.pending.isEmpty ? YubaiColor.labelSecondary : YubaiColor.amberInk)
             }.frame(maxWidth: .infinity, alignment: .leading)
             let amount = row.pending.isEmpty ? row.amount : row.pendingAmount
-            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts,
+            AmountLabel(cents: amount, hide: store.preferences.hideAmounts,
                         sign: row.inflow ? .inflow : .none, ink: YubaiColor.labelSecondary)
                 .fixedSize(horizontal: true, vertical: false)
         }.foregroundStyle(YubaiColor.labelSecondary).opacity(row.pending.isEmpty ? 0.7 : 1)
@@ -248,7 +248,7 @@ private struct FixedFlowBillRow: View {
     @State private var confirmingStop = false
     let row: FixedFlowOccurrence
     private let revealDistance = YubaiSize.swipeRevealDistance
-    private var canEnd: Bool { store.current.plans.contains { $0.id == row.planID && $0.active && $0.endDate == nil } }
+    private var canEnd: Bool { store.plans.contains { $0.id == row.planID && $0.active && $0.endDate == nil } }
     var body: some View {
         Group {
             if canEnd {
@@ -298,7 +298,7 @@ private struct FixedFlowBillRow: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: YubaiSpace.none) {
                 if row.estimated { Text("~").yubaiFont(YubaiFont.amount) }
-                AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts, sign: row.inflow ? .inflow : .none, ink: row.state == .paid ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.label)
+                AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts, sign: row.inflow ? .inflow : .none, ink: row.state == .paid ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.label)
             }.foregroundStyle(row.state == .paid ? YubaiColor.labelSecondary : row.inflow ? YubaiColor.brandInk : YubaiColor.label).fixedSize(horizontal: true, vertical: false)
         }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
@@ -404,7 +404,7 @@ struct FixedFlowCheck: View {
             let change = try FixedFlows.settle(planID: planID, occurrence: occurrence, amount: override, in: store.current)
             guard store.apply(change, label: (inflow ? "收到了 " : "付了 ") + title) else { return false }
             store.cancelEntrySaveMotion(); store.fixedFlowSettleTrigger &+= 1
-            let value = store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(amount)
+            let value = store.preferences.hideAmounts ? "••••" : AmountLabel.text(amount)
             store.toast = title + " " + value + " 已记下"
             return true
         } catch { store.error = error.localizedDescription; return false }
@@ -486,10 +486,10 @@ struct FixedFlowEditor: View {
     @State private var amountPreviewDates: [Date] = []
     @FocusState private var titleFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private var accounts: [Account] { store.current.accounts.filter { !$0.archived || (planID != nil && $0.id == accountID) } }
+    private var accounts: [Account] { store.accounts.filter { !$0.archived || (planID != nil && $0.id == accountID) } }
     private var hasAccount: Bool { accounts.contains { $0.id == accountID } }
     private var categories: [String] { FixedFlows.categories(inflow: inflow, in: store.current) }
-    private var savedPlan: Plan? { store.current.plans.first { $0.id == planID } }
+    private var savedPlan: Plan? { store.plans.first { $0.id == planID } }
     private var canStop: Bool { savedPlan.map { $0.active && $0.endDate == nil && $0.stoppedAt == nil } ?? false }
     private var scheduleChanged: Bool { original.map { $0.frequency != frequency || $0.date != Dates.day(date) } ?? true }
     private var scheduleDate: Date { !scheduleChanged && frequency != .once ? savedPlan?.dueDate ?? date : date }

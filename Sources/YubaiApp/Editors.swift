@@ -21,7 +21,7 @@ struct AccountEditor: View {
         do {
             let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !clean.isEmpty else { throw YubaiError.invalid("请给账户起一个名称。") }
-            guard !store.current.accounts.contains(where: { $0.name == clean && $0.id != account?.id }) else { throw YubaiError.invalid("已有同名账户，请使用容易区分的名称。") }
+            guard !store.accounts.contains(where: { $0.name == clean && $0.id != account?.id }) else { throw YubaiError.invalid("已有同名账户，请使用容易区分的名称。") }
             let cents = try Money.parse(amount, allowNegative: kind != .credit)
             var a = account ?? Account(name: clean); a.name = clean; a.kind = kind; a.note = note
             if account == nil || reconcileNow { a.anchorBalance = kind == .credit ? -cents : cents; a.anchorDate = at; a.reconciled = verified }
@@ -76,7 +76,7 @@ struct AccountsView: View {
     var body: some View {
         Page {
             ForEach(AccountKind.allCases) { kind in
-                let accounts = store.current.accounts.filter { $0.kind == kind }
+                let accounts = store.accounts.filter { $0.kind == kind }
                 if !accounts.isEmpty {
                     VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                         SectionHeading(title: kind.label).padding(.horizontal, YubaiSpace.insetCard)
@@ -112,7 +112,7 @@ struct AccountsView: View {
             }.yubaiFont(YubaiFont.row) }
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 SectionHeading(title: "关联记录").padding(.horizontal, YubaiSpace.insetCard)
-                CardRows(store.accountEntries(a.id)) { e in EntryLink(entry: e, hideAmount: store.current.preferences.hideAmounts, editable: true) }
+                CardRows(store.accountEntries(a.id)) { e in EntryLink(entry: e, hideAmount: store.preferences.hideAmounts, editable: true) }
             }
             Button(a.archived ? "取消归档" : "归档账户") { store.update(a.archived ? "取消归档" : "归档账户") { l in if let i = l.accounts.firstIndex(where: { $0.id == a.id }) { l.accounts[i].archived.toggle() } } }.buttonStyle(SecondaryButtonStyle())
         }.navigationTitle(a.name).yubaiNavigation()

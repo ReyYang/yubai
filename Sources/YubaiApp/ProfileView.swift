@@ -12,8 +12,8 @@ struct ProfileView: View {
     @State private var floor = ""
     @State private var editing = false
     @State private var configured = IntelligenceRuntime.isConfigured
-    private var profile: SpendingProfile { store.current.profile }
-    private var canChat: Bool { configured && store.current.preferences.cloudAIEnabled && IntelligenceRuntime.cloud.unavailableModel == nil }
+    private var profile: SpendingProfile { store.profile }
+    private var canChat: Bool { configured && store.preferences.cloudAIEnabled && IntelligenceRuntime.cloud.unavailableModel == nil }
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
             ForEach(store.current.pendingChanges.filter(\.isProfileOnly)) { change in
@@ -67,7 +67,7 @@ struct ProfileView: View {
         }.navigationTitle("我的消费观").yubaiNavigation()
             .toolbar { Button(editing ? "完成" : "编辑") { editing.toggle() }.frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("editProfile") }
             .onAppear { configured = IntelligenceRuntime.isConfigured; loadFloor() }
-            .onChange(of: store.current.profile.floorAmount) { _, _ in loadFloor() }
+            .onChange(of: store.profile.floorAmount) { _, _ in loadFloor() }
             .onChange(of: store.current.id) { _, _ in sheet = nil; loadFloor() }
             .sheet(item: $sheet) { item in
                 NavigationStack {
@@ -116,7 +116,7 @@ struct ProfileView: View {
                 Text("和余白聊聊").yubaiFont(YubaiFont.rowTitle)
                 Spacer()
                 if !canChat {
-                    Text(!configured ? "还没配密钥" : (!store.current.preferences.cloudAIEnabled ? "云端智能没开" : "模型不可用")).yubaiFont(YubaiFont.caption)
+                    Text(!configured ? "还没配密钥" : (!store.preferences.cloudAIEnabled ? "云端智能没开" : "模型不可用")).yubaiFont(YubaiFont.caption)
                 }
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
             }.foregroundStyle(canChat ? YubaiColor.brandTintStrong : YubaiColor.amberInk).frame(minHeight: YubaiSize.rowDouble)
@@ -126,14 +126,14 @@ struct ProfileView: View {
         if let floor = profile.floorAmount {
             Card(style: .compact) { VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text("始终留着").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                AmountLabel(cents: floor, hide: store.current.preferences.hideAmounts, role: .card)
+                AmountLabel(cents: floor, hide: store.preferences.hideAmounts, role: .card)
             } }
         }
         ForEach(store.current.goals) { goal in
             Button { sheet = .goal(goal) } label: {
                 Card(style: .compact) { VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     Text("为 " + goal.title + " 存").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                    Text(store.current.preferences.hideAmounts ? "••••" : Money.text(goal.reserved, currency: false) + " / " + Money.text(goal.target, currency: false)).yubaiFont(YubaiFont.amountCard)
+                    Text(store.preferences.hideAmounts ? "••••" : Money.text(goal.reserved, currency: false) + " / " + Money.text(goal.target, currency: false)).yubaiFont(YubaiFont.amountCard)
                 } }
             }.buttonStyle(PressButtonStyle())
         }
@@ -189,7 +189,7 @@ struct ProfileView: View {
         return result
     }
     @ViewBuilder private func areaUsage(_ area: ProfileArea) -> some View {
-        if !store.current.preferences.hideAmounts {
+        if !store.preferences.hideAmounts {
             Text(usage(area)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             if let progress = progress(area) {
                 SavingProgressBar(ratio: progress, amber: progress >= 0.8, showsOvershoot: true).accessibilityLabel(area.title + " · " + usage(area))
@@ -285,7 +285,7 @@ struct ProfileView: View {
                 CardRows(lines) { line in
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                         HStack(spacing: YubaiSpace.gapGroup) { Text(line.title).yubaiFont(YubaiFont.rowTitle); Pill(text: line.kind == .category ? "分类" : "商户", variant: .neutral) }
-                        Text(store.current.preferences.hideAmounts ? "••••" : "共 " + Money.text(line.total) + " · 每周 " + String(format: "%.1f", line.countPerWeek) + " 次 · 平均 " + Money.text(line.average))
+                        Text(store.preferences.hideAmounts ? "••••" : "共 " + Money.text(line.total) + " · 每周 " + String(format: "%.1f", line.countPerWeek) + " 次 · 平均 " + Money.text(line.average))
                             .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     }.padding(.vertical, YubaiSpace.space8)
                 }
@@ -425,7 +425,7 @@ struct ProfileProposalCard: View {
     let secondaryTitle: String
     let secondary: () -> Void
     var body: some View {
-        ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
-                     primaryTitle: "改好这 \(change.items.count) 项", secondaryTitle: secondaryTitle, canConfirm: !store.current.preferences.hideAmounts, confirm: confirm, cancel: secondary)
+        ProposalCard(title: store.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
+                     primaryTitle: "改好这 \(change.items.count) 项", secondaryTitle: secondaryTitle, canConfirm: !store.preferences.hideAmounts, confirm: confirm, cancel: secondary)
     }
 }

@@ -75,6 +75,11 @@ struct ImportView: View {
     @State private var photoPicker = false
     @State private var photos: [PhotosPickerItem] = []
     @State private var data: Data?
+    #if os(iOS)
+    @State private var screenshotImage: UIImage?
+    #elseif os(macOS)
+    @State private var screenshotImage: NSImage?
+    #endif
     @State private var tableData: Data?
     @State private var filename = ""
     @State private var preview: ImportPreview?
@@ -112,7 +117,7 @@ struct ImportView: View {
     }
     private var resultTitle: String {
         guard let result else { return preview == nil ? "导入" : "核对 \(processed + 1)/\(max(queueTotal, 1))" }
-        guard let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) else { return "这一批已撤销" }
+        guard let batch = store.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) else { return "这一批已撤销" }
         return batch.needsOrganization == true ? "账单已保存" : "整理好了"
     }
     var body: some View {
@@ -120,20 +125,20 @@ struct ImportView: View {
             if let result { resultView(result) }
             else if let preview { previewView(preview) }
             else { intake }
-            if let localError { InlineNote(text: store.current.preferences.hideAmounts ? "这份账单还没读好" : localError, style: .attention).padding(YubaiSpace.insetPage).textSelection(.enabled) }
+            if let localError { InlineNote(text: store.preferences.hideAmounts ? "这份账单还没读好" : localError, style: .attention).padding(YubaiSpace.insetPage).textSelection(.enabled) }
         }
         .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
-        .amountPrivacy(store.current.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
+        .amountPrivacy(store.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
         .toolbar {
             ToolbarItem(placement: .confirmationAction) { CloseButton() }
             ToolbarItem(placement: .primaryAction) {
                 if screenshot && preview != nil {
                     Menu { accountPicker; Button("添加账户") { showAccount = true } } label: { Image(systemName: "creditcard") }
-                        .accessibilityLabel("选择截图记账的账户").accessibilityValue(store.current.accountName(accountID))
+                        .accessibilityLabel("选择截图记账的账户").accessibilityValue(store.accountName(accountID))
                 }
             }
             ToolbarItem(placement: .cancellationAction) {
-                if let result, let batch = store.current.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) {
+                if let result, let batch = store.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) {
                     Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }
                         .disabled(store.organizingBatchID == batch.id).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportResult")
                 } else if preview != nil && welcomeReview == nil {
@@ -166,8 +171,8 @@ struct ImportView: View {
                 }.environment(store).yubaiSheetBackground()
             }
         }
-        .onChange(of: store.current.accounts.count) { _, _ in
-            if accountID == nil { accountID = store.current.accounts.last(where: { !$0.archived })?.id; refreshPreview() }
+        .onChange(of: store.accounts.count) { _, _ in
+            if accountID == nil { accountID = store.accounts.last(where: { !$0.archived })?.id; refreshPreview() }
         }
         .onChange(of: accountID) { _, _ in refreshPreview() }
         .onChange(of: accountMappings) { _, _ in refreshPreview() }
@@ -185,8 +190,8 @@ struct ImportView: View {
                 return
             }
             appeared = true
-            accountID = store.current.accounts.first { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }?.id
-                ?? store.current.accounts.first { !$0.archived }?.id
+            accountID = store.accounts.first { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }?.id
+                ?? store.accounts.first { !$0.archived }?.id
             #if DEBUG && targetEnvironment(simulator)
             if preview == nil && result == nil && data == nil, let url = UITestSupport.statementURL { store.importedURL = url }
             #endif
@@ -215,7 +220,7 @@ struct ImportView: View {
                         CardRows(queue) { item in queueRow(item) }
                     }
                 }
-                let unfinished = store.current.imports.filter { $0.undoneAt == nil && ($0.needsOrganization == true || !($0.organization?.questions.isEmpty ?? true)) }
+                let unfinished = store.imports.filter { $0.undoneAt == nil && ($0.needsOrganization == true || !($0.organization?.questions.isEmpty ?? true)) }
                 if !unfinished.isEmpty {
                     DisclosureGroup("稍后继续的整理") { ForEach(unfinished) { batch in Button(batch.filename) { result = batch }.frame(minHeight: YubaiSize.tapMin) } }
                 }
@@ -347,23 +352,23 @@ struct ImportView: View {
     private func total(_ title: String, entries: [Entry]) -> some View {
         HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(entries.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
-            AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.current.preferences.hideAmounts, role: .small, sign: .none)
+            AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.preferences.hideAmounts, role: .small, sign: .none)
         }.accessibilityElement(children: .combine).accessibilityIdentifier("importTotal_" + title)
     }
     private var accountPicker: some View {
         Picker("没写账户的记到", selection: $accountID) {
             Text("请选择账户").tag(UUID?.none)
-            ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
+            ForEach(store.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
         }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("importDefaultAccount")
     }
     private var screenshotOriginal: some View {
         Page {
-            if store.current.preferences.hideAmounts { Text("金额已隐藏") }
-            else if let data {
+            if store.preferences.hideAmounts { Text("金额已隐藏") }
+            else {
                 #if os(iOS)
-                if let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFit().accessibilityLabel("账单原图") }
+                if let image = screenshotImage { Image(uiImage: image).resizable().scaledToFit().accessibilityLabel("账单原图") }
                 #elseif os(macOS)
-                if let image = NSImage(data: data) { Image(nsImage: image).resizable().scaledToFit().accessibilityLabel("账单原图") }
+                if let image = screenshotImage { Image(nsImage: image).resizable().scaledToFit().accessibilityLabel("账单原图") }
                 #endif
             }
         }.navigationTitle("原图").yubaiNavigation().toolbar { CloseButton() }
@@ -406,7 +411,7 @@ struct ImportView: View {
                     ForEach(methods, id: \.self) { method in
                         Picker(method, selection: Binding<UUID?>(get: { accountMappings[method] }, set: { accountMappings[method] = $0 })) {
                             Text("请选择对应账户").tag(UUID?.none)
-                            ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
+                            ForEach(store.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
                         }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("mapping_" + method)
                     }
                     if !methods.isEmpty { Button("添加缺少的账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
@@ -475,7 +480,7 @@ struct ImportView: View {
                 Text(row.entry?.title ?? "第 \(row.line) 行").yubaiFont(YubaiFont.row).lineLimit(textSize.isAccessibilitySize ? nil : 2)
                 Text(rowSubtitle(row)).yubaiFont(YubaiFont.meta).foregroundStyle(needsDecision(row) ? YubaiColor.amberInk : YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            if let entry = row.entry { AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .none) }
+            if let entry = row.entry { AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .none) }
             if screenshot, row.entry != nil {
                 Button { editingScreenshotRow = row } label: { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                     .buttonStyle(PressButtonStyle()).accessibilityLabel("核对这一笔").accessibilityIdentifier("editScreenshotRow_" + String(row.line))
@@ -483,7 +488,7 @@ struct ImportView: View {
         }.opacity(row.status == .duplicate ? 0.6 : 1).padding(.vertical, YubaiSpace.space4)
     }
     private func rowSubtitle(_ row: ImportRow) -> String {
-        if store.current.preferences.hideAmounts && [.invalid, .conflict].contains(row.status) { return "这一行需要核对" }
+        if store.preferences.hideAmounts && [.invalid, .conflict].contains(row.status) { return "这一行需要核对" }
         guard let entry = row.entry else { return row.message }
         let detail: String
         switch row.status {
@@ -501,7 +506,7 @@ struct ImportView: View {
                 HStack(spacing: YubaiSpace.gapGroup) {
                     Text("选了 \(p.selectedEntries.count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                     Spacer()
-                    AmountLabel(cents: p.selectedEntries.filter { !$0.nature.inflow }.reduce(0) { $0 + $1.amount }, hide: store.current.preferences.hideAmounts, sign: .outflow)
+                    AmountLabel(cents: p.selectedEntries.filter { !$0.nature.inflow }.reduce(0) { $0 + $1.amount }, hide: store.preferences.hideAmounts, sign: .outflow)
                 }.padding(.horizontal, YubaiSpace.insetCard)
             }
             layout {
@@ -513,7 +518,7 @@ struct ImportView: View {
         }.padding(YubaiSpace.insetPage)
     }
     @ViewBuilder func resultView(_ savedBatch: ImportBatch) -> some View {
-        if let batch = store.current.imports.first(where: { $0.id == savedBatch.id && $0.undoneAt == nil }) {
+        if let batch = store.imports.first(where: { $0.id == savedBatch.id && $0.undoneAt == nil }) {
             Page {
                 if store.organizingBatchID == batch.id { ProgressView("正在整理…").padding(YubaiSpace.insetCard) }
                 Text(batch.filename + "，\(batch.importedCount) 笔，" + (batch.needsOrganization == true ? "已经保存了。" : "已经整理好了。"))
@@ -530,10 +535,10 @@ struct ImportView: View {
                         }
                         DisclosureGroup("看看改了什么") {
                             ForEach(Array(organization.changeSet.preview(in: store.current).enumerated()), id: \.offset) { _, line in
-                                Text(store.current.preferences.hideAmounts ? "金额已隐藏" : line).yubaiFont(YubaiFont.caption).frame(maxWidth: .infinity, alignment: .leading)
+                                Text(store.preferences.hideAmounts ? "金额已隐藏" : line).yubaiFont(YubaiFont.caption).frame(maxWidth: .infinity, alignment: .leading)
                             }
                             ForEach(Array(organization.skipped.enumerated()), id: \.offset) { _, line in
-                                Text(store.current.preferences.hideAmounts ? "金额已隐藏" : line).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                                Text(store.preferences.hideAmounts ? "金额已隐藏" : line).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             }
                         }
                     } }
@@ -544,7 +549,7 @@ struct ImportView: View {
                         ForEach(Array(questions.prefix(5))) { question in questionCard(question, batchID: batch.id) }
                     }
                     ForEach(organization.comments ?? []) { comment in
-                        if let card = store.current.cards.first(where: { $0.dedupeKey == comment.dedupeKey }), card.dismissedAt == nil, !ButlerCards.isMuted(card.dedupeKey, in: store.current) {
+                        if let card = store.cards.first(where: { $0.dedupeKey == comment.dedupeKey }), card.dismissedAt == nil, !ButlerCards.isMuted(card.dedupeKey, in: store.current) {
                             ButlerCardView(card: card)
                         }
                     }
@@ -578,7 +583,7 @@ struct ImportView: View {
     private func ordinaryQuestionCard(_ question: ImportQuestion, batchID: UUID) -> some View {
         let covered = Set(question.entryIDs)
         return Card(style: .compact, background: YubaiColor.amberTint) { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            Text(store.current.preferences.hideAmounts ? "有几笔记录要你核对" : question.text).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("importQuestion")
+            Text(store.preferences.hideAmounts ? "有几笔记录要你核对" : question.text).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("importQuestion")
             HStack(spacing: YubaiSpace.space8) {
                 Pill(text: "\(question.entryIDs.count) 笔", variant: .neutral, showsDot: false)
                 Spacer()
@@ -590,8 +595,8 @@ struct ImportView: View {
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], alignment: .leading, spacing: YubaiSpace.space8) {
             ForEach(question.options.indices, id: \.self) { index in
-                Button(store.current.preferences.hideAmounts ? "选项 \(index + 1)" : question.options[index].title) { store.answerImportQuestion(question, batchID: batchID, option: index) }
-                    .disabled(store.current.preferences.hideAmounts)
+                Button(store.preferences.hideAmounts ? "选项 \(index + 1)" : question.options[index].title) { store.answerImportQuestion(question, batchID: batchID, option: index) }
+                    .disabled(store.preferences.hideAmounts)
                     .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("importAnswer_" + String(index))
             }
             Button("都不是") { freeTextQuestion = question.id }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
@@ -692,6 +697,11 @@ struct ImportView: View {
         activeFileID = id; data = item.original; tableData = item.table; filename = item.name
         result = nil; localError = nil; accountMappings = item.accountMappings; categoryMappings = item.categoryMappings; rowSelections = item.selections; rowEdits = item.edits
         confirmedNewCategories = item.confirmedNewCategories
+        #if os(iOS)
+        screenshotImage = item.screenshot ? item.original.flatMap { UIImage(data: $0) } : nil
+        #elseif os(macOS)
+        screenshotImage = item.screenshot ? item.original.flatMap { NSImage(data: $0) } : nil
+        #endif
         screenshot = item.screenshot; screenshotConfirmed = item.screenshotConfirmed; filter = "全部"; preview = prepared
         refreshPreview()
     }
@@ -789,7 +799,7 @@ private struct ImportScreenshotEntryEditor: View {
         Form {
             Section {
                 TextField("用途", text: $entry.title)
-                AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts)
+                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts)
                 DatePicker("日期", selection: $entry.date, displayedComponents: [.date, .hourAndMinute])
                 Picker("收支", selection: $entry.nature) { Text("支出").tag(Nature.expense); Text("收入").tag(Nature.income) }
                 CategoryPickerField(income: entry.nature.inflow,

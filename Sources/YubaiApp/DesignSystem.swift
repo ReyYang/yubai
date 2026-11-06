@@ -516,10 +516,15 @@ struct PaperCanvas: View {
 private struct BambooShadow: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
     let trigger: Int
-    private var branch: some View {
-        Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
-            .foregroundStyle(YubaiColor.bambooShadow).frame(width: 230, height: 299)
+    @ViewBuilder private var branch: some View {
+        if let image = BambooRasterCache.image(scheme: scheme, scale: displayScale) {
+            image.resizable().frame(width: 230 + BambooRasterCache.padding * 2, height: 299 + BambooRasterCache.padding * 2)
+                .padding(-BambooRasterCache.padding)
+        } else {
+            BambooRasterCache.source.blur(radius: 6)
+        }
     }
     var body: some View {
         Group {
@@ -533,8 +538,34 @@ private struct BambooShadow: View {
                 }
             }
         }.rotationEffect(.degrees(-12)).scaleEffect(x: 1, y: -1)
-            .opacity(scheme == .dark ? 0.12 : 0.11).blur(radius: 6)
+            .opacity(scheme == .dark ? 0.12 : 0.11)
             .offset(x: 74, y: -58).allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+/// The padding retains the blur outside the original 230 × 299 alignment rect.
+/// Rotation, reflection, opacity and sway remain on that original alignment rect.
+@MainActor private enum BambooRasterCache {
+    static let padding: CGFloat = 32
+    private struct Key: Hashable { let dark: Bool; let scale: CGFloat }
+    private static var images: [Key: Image] = [:]
+    static var source: some View {
+        Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
+            .foregroundStyle(YubaiColor.bambooShadow).frame(width: 230, height: 299)
+    }
+    static func image(scheme: ColorScheme, scale: CGFloat) -> Image? {
+        let key = Key(dark: scheme == .dark, scale: scale)
+        if let cached = images[key] { return cached }
+        let renderer = ImageRenderer(content: source.blur(radius: 6).padding(padding).environment(\.colorScheme, scheme))
+        renderer.scale = scale
+        #if os(iOS)
+        guard let bitmap = renderer.uiImage else { return nil }
+        let image = Image(uiImage: bitmap)
+        #else
+        guard let bitmap = renderer.nsImage else { return nil }
+        let image = Image(nsImage: bitmap)
+        #endif
+        images[key] = image; return image
     }
 }
 
@@ -601,6 +632,9 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.yubaiFormSurface) private var formSurface
     @Environment(\.yubaiCardContent) private var insideCard
+    #if os(iOS)
+    @State private var shadowRasterFailed = false
+    #endif
     let shape: S
     var background: Color?
     var flat = false
@@ -609,16 +643,32 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
         content.environment(\.yubaiCardContent, true).background {
             Group {
                 if castsShadow {
-                    paper
-                        .overlay {
-                            if contrast != .increased {
-                                shape.strokeBorder(Color.white.opacity(scheme == .dark ? 10.0 / 255 : 179.0 / 255), lineWidth: 1)
-                                    .mask(alignment: .top) { Rectangle().frame(height: 2) }
-                            }
-                        }
-                        .yubaiShadow(YubaiShadow.cardNear).yubaiShadow(YubaiShadow.card)
+                    paperWithShadow
                 } else { paper }
             }.allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+    @ViewBuilder private var paperWithShadow: some View {
+        #if os(iOS)
+        if let rounded = shape as? RoundedRectangle, !shadowRasterFailed {
+            highlightedPaper.background {
+                PaperShadowView(shape: rounded, scheme: scheme, increasedContrast: contrast == .increased) {
+                    shadowRasterFailed = true
+                }
+            }
+        } else {
+            highlightedPaper.yubaiShadow(YubaiShadow.cardNear).yubaiShadow(YubaiShadow.card)
+        }
+        #else
+        highlightedPaper.yubaiShadow(YubaiShadow.cardNear).yubaiShadow(YubaiShadow.card)
+        #endif
+    }
+    private var highlightedPaper: some View {
+        paper.overlay {
+            if contrast != .increased {
+                shape.strokeBorder(Color.white.opacity(scheme == .dark ? 10.0 / 255 : 179.0 / 255), lineWidth: 1)
+                    .mask(alignment: .top) { Rectangle().frame(height: 2) }
+            }
         }
     }
     private var paper: some View {
@@ -626,6 +676,149 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
             .overlay { if contrast == .increased && !insideCard { shape.strokeBorder(YubaiColor.separator, lineWidth: 1) } }
     }
 }
+
+#if os(iOS)
+/// SwiftUI only sees the card-sized container. The decorative overflow stays in
+/// UIKit, outside both SwiftUI layout and the enclosing element's AX bounds.
+@MainActor private struct PaperShadowView: UIViewRepresentable {
+    @Environment(\.displayScale) private var displayScale
+    let shape: RoundedRectangle
+    let scheme: ColorScheme
+    let increasedContrast: Bool
+    let onRasterFailure: @MainActor () -> Void
+
+    func makeUIView(context: Context) -> ShadowView { ShadowView(frame: .zero) }
+    func updateUIView(_ view: ShadowView, context: Context) {
+        view.shape = shape
+        view.scheme = scheme
+        view.scale = displayScale
+        view.increasedContrast = increasedContrast
+        view.onRasterFailure = onRasterFailure
+        view.setNeedsLayout()
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: ShadowView, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: .zero)
+    }
+
+    final class ShadowView: UIView {
+        var shape = RoundedRectangle(cornerRadius: 0)
+        var scheme: ColorScheme = .light
+        var scale: CGFloat = 1
+        var increasedContrast = false
+        var onRasterFailure: (@MainActor () -> Void)?
+        private let imageView = UIImageView()
+        private var padding: CGFloat = 0
+        private struct RenderKey: Equatable {
+            let size: CGSize; let cornerSize: CGSize; let style: String
+            let dark: Bool; let scale: CGFloat; let increasedContrast: Bool
+        }
+        private var lastRender: RenderKey?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            clipsToBounds = false
+            isUserInteractionEnabled = false
+            isAccessibilityElement = false
+            accessibilityElementsHidden = true
+            imageView.contentMode = .scaleToFill
+            imageView.isUserInteractionEnabled = false
+            imageView.isAccessibilityElement = false
+            imageView.accessibilityElementsHidden = true
+            addSubview(imageView)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // A zero-sized layout is not a rendering failure (e.g. before mount).
+            guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else {
+                imageView.image = nil
+                lastRender = nil
+                return
+            }
+            let key = RenderKey(size: bounds.size, cornerSize: shape.cornerSize, style: String(describing: shape.style),
+                                dark: scheme == .dark, scale: scale, increasedContrast: increasedContrast)
+            if key != lastRender {
+                lastRender = key
+                if let raster = PaperShadowCache.image(shape: shape, size: bounds.size, scheme: scheme, scale: scale, increasedContrast: increasedContrast) {
+                    padding = raster.padding
+                    let caps = UIEdgeInsets(top: raster.caps.top, left: raster.caps.leading,
+                                            bottom: raster.caps.bottom, right: raster.caps.trailing)
+                    imageView.image = raster.image.resizableImage(withCapInsets: caps, resizingMode: .stretch)
+                } else {
+                    imageView.image = nil
+                    // Defer SwiftUI state changes until UIKit finishes layout.
+                    // A failed renderer uses the original live double shadow.
+                    Task { @MainActor [weak self] in
+                        guard let self, self.lastRender == key, self.imageView.image == nil else { return }
+                        self.onRasterFailure?()
+                    }
+                }
+            }
+            imageView.frame = bounds.insetBy(dx: -padding, dy: -padding)
+        }
+    }
+}
+
+@MainActor private enum PaperShadowCache {
+    struct Raster { let image: UIImage; let caps: EdgeInsets; let padding: CGFloat }
+    private struct Key: Hashable {
+        let radiusX: CGFloat; let radiusY: CGFloat; let style: String
+        let dark: Bool; let scale: CGFloat; let width: CGFloat; let height: CGFloat; let increasedContrast: Bool
+    }
+    private static var images: [Key: Raster] = [:]
+    static func image(shape: RoundedRectangle, size: CGSize, scheme: ColorScheme, scale: CGFloat, increasedContrast: Bool) -> Raster? {
+        guard size.width > 0, size.height > 0, scale > 0 else { return nil }
+        let near = YubaiShadow.cardNear, far = YubaiShadow.card
+        // Keep four blur radii on each side of a corner; only the constant middle
+        // strips stretch. Short cards retain their full dimension so opposite
+        // edges' blur kernels continue to overlap exactly as on the live shape.
+        let spread = ceil(4 * (near.radius + far.radius))
+        let padding = spread + ceil(max(abs(near.x) + abs(far.x), abs(near.y) + abs(far.y)))
+        let edgeX = shape.cornerSize.width + spread, edgeY = shape.cornerSize.height + spread
+        let width = min(size.width, edgeX * 2 + 1 / scale)
+        let height = min(size.height, edgeY * 2 + 1 / scale)
+        let key = Key(radiusX: shape.cornerSize.width, radiusY: shape.cornerSize.height,
+                      style: String(describing: shape.style), dark: scheme == .dark, scale: scale, width: width, height: height, increasedContrast: increasedContrast)
+        if let cached = images[key] { return cached }
+        let extent = CGSize(width: width + padding * 2, height: height + padding * 2)
+        let canvas = Canvas { context, _ in
+            guard let source = context.resolveSymbol(id: 0) else { return }
+            let origin = CGPoint(x: padding, y: padding)
+            // Preserve the original near-then-far composition, including the
+            // source alpha of the live highlight/increased-contrast stroke.
+            var distant = context
+            distant.addFilter(.shadow(color: far.color, radius: far.radius, x: far.x, y: far.y, options: .shadowOnly))
+            distant.drawLayer { layer in
+                layer.addFilter(.shadow(color: near.color, radius: near.radius, x: near.x, y: near.y))
+                layer.draw(source, at: origin, anchor: .topLeading)
+            }
+            var close = context
+            close.addFilter(.shadow(color: near.color, radius: near.radius, x: near.x, y: near.y, options: .shadowOnly))
+            close.draw(source, at: origin, anchor: .topLeading)
+        } symbols: {
+            shape.fill(Color.black).overlay {
+                if increasedContrast { shape.strokeBorder(Color.black, lineWidth: 1) }
+                else {
+                    shape.strokeBorder(Color.black.opacity(scheme == .dark ? 10.0 / 255 : 179.0 / 255), lineWidth: 1)
+                        .mask(alignment: .top) { Rectangle().frame(height: 2) }
+                }
+            }.frame(width: width, height: height).tag(0)
+        }.frame(width: extent.width, height: extent.height).environment(\.colorScheme, scheme)
+        let renderer = ImageRenderer(content: canvas); renderer.scale = scale
+        guard let rendered = renderer.uiImage else { return nil }
+        let format = UIGraphicsImageRendererFormat(); format.scale = scale; format.opaque = false
+        format.preferredRange = .standard
+        let bitmap = UIGraphicsImageRenderer(size: extent, format: format).image { _ in rendered.draw(at: .zero) }
+        let caps = EdgeInsets(top: padding + (height - 1 / scale) / 2, leading: padding + (width - 1 / scale) / 2,
+                             bottom: padding + (height - 1 / scale) / 2, trailing: padding + (width - 1 / scale) / 2)
+        let raster = Raster(image: bitmap, caps: caps, padding: padding)
+        if images.count >= 64 { images.removeAll(keepingCapacity: true) }
+        images[key] = raster; return raster
+    }
+}
+#endif
 
 private struct FloatingSurface<S: Shape>: ViewModifier {
     let shape: S
@@ -816,11 +1009,16 @@ struct Card<Content: View>: View {
 struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Element: Identifiable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let rows: Data
+    private let rowSequence: Int
     var hasLeadingIcon: Bool
     var rowHeight: CGFloat
     let content: (Data.Element) -> Row
     init(_ rows: Data, hasLeadingIcon: Bool = false, rowHeight: CGFloat = YubaiSize.rowDouble, @ViewBuilder content: @escaping (Data.Element) -> Row) {
         self.rows = rows; self.hasLeadingIcon = hasLeadingIcon; self.rowHeight = rowHeight; self.content = content
+        var sequence = Hasher()
+        sequence.combine(rows.count)
+        for row in rows { sequence.combine(row.id) }
+        rowSequence = sequence.finalize()
     }
     var body: some View {
         Card(style: .list) {
@@ -836,7 +1034,7 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
                         }
                     }.transition(YubaiMotion.rowTransition(reduceMotion: reduceMotion))
                 }
-            }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: rows.map(\.id))
+            }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: rowSequence)
         }
     }
 }
@@ -1006,7 +1204,7 @@ struct EntryRow: View {
                     if entry.hasNoCaptureCategory { Pill(text: "没分类", variant: .amber, height: 20, showsDot: false) }
                     if metadata != nil && entry.nature.uncertain { Pill(text: "没写用途", variant: .amber, height: 20, showsDot: false) }
                 }
-                Text(metadata ?? "\(dateText) · \(Classification.displayCategory(entry.category)) · \(store.current.accountName(entry.accountID))")
+                Text(metadata ?? "\(dateText) · \(Classification.displayCategory(entry.category)) · \(store.accountName(entry.accountID))")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(textSize.isAccessibilitySize ? nil : 1)
                 if metadata == nil && entry.nature.uncertain { Pill(text: "没写用途", variant: .amber, height: 20) }
             }
@@ -1681,7 +1879,7 @@ struct WelcomeView: View {
         do {
             let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !clean.isEmpty else { throw YubaiError.invalid("请给账户起一个名称。") }
-            guard !store.current.accounts.contains(where: { $0.name == clean }) else { throw YubaiError.invalid("已有同名账户，请使用容易区分的名称。") }
+            guard !store.accounts.contains(where: { $0.name == clean }) else { throw YubaiError.invalid("已有同名账户，请使用容易区分的名称。") }
             let cents = try Money.parse(amount, allowNegative: true)
             let kind: AccountKind = isBank ? .bank : .cash
             let balance = statement?.preview.latestBalance
@@ -1975,9 +2173,9 @@ struct TabRootHeader: View {
                 HStack(spacing: YubaiSpace.gapGroup) {
                     if showsAmountVisibility {
                         HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
-                            Image(systemName: store.current.preferences.hideAmounts ? "eye.slash" : "eye")
+                            Image(systemName: store.preferences.hideAmounts ? "eye.slash" : "eye")
                                 .font(.system(size: size))
-                        }.accessibilityLabel(store.current.preferences.hideAmounts ? "显示金额" : "隐藏金额")
+                        }.accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额")
                             .accessibilityIdentifier("toggleAmountVisibility")
                     } else { Color.clear.frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                     Spacer(); AskToolbarButton()
@@ -2057,7 +2255,7 @@ struct ProposalCard: View {
     }
     private var actions: some View {
         Group {
-            if store.current.preferences.hideAmounts {
+            if store.preferences.hideAmounts {
                 Button("显示金额") { store.update("显示金额", recordUndo: false) { $0.preferences.hideAmounts = false } }
                     .buttonStyle(PrimaryButtonStyle(compact: true)).accessibilityHint("显示金额后可核对并确认修改")
             } else {

@@ -82,11 +82,11 @@ struct ScreenshotCaptureView: View {
                                     Image(systemName: selected.contains(draft.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(YubaiColor.brandInk)
                                     VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                                         Text(draft.title).yubaiFont(YubaiFont.rowTitle)
-                                        Text(Classification.displayCategory(draft.category) + " · " + store.current.accountName(draft.accountID) + " · " + ManualBookkeeping.dayLabel(draft.date))
+                                        Text(Classification.displayCategory(draft.category) + " · " + store.accountName(draft.accountID) + " · " + ManualBookkeeping.dayLabel(draft.date))
                                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                                     }
                                     Spacer()
-                                    AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .outflow)
+                                    AmountLabel(cents: draft.amount, hide: store.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .outflow)
                                 }.padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
                             }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected.contains(draft.id) ? .isSelected : [])
                         }

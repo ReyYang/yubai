@@ -8,7 +8,7 @@ struct ImportQuestionCard: View {
     var cardID: UUID? = nil
     var body: some View {
         let count = store.unsortedEntryCount(for: question)
-        let title = question.isFallback ? "\(count.formatted(.number.locale(Locale(identifier: "en_US")))) 笔还没分类" : (store.current.preferences.hideAmounts ? "这几笔是什么用途？" : question.text)
+        let title = question.isFallback ? "\(count.formatted(.number.locale(Locale(identifier: "en_US")))) 笔还没分类" : (store.preferences.hideAmounts ? "这几笔是什么用途？" : question.text)
         if !question.isFallback || count > 0 {
             Card(style: .compact, background: YubaiColor.amberTint) {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -30,7 +30,7 @@ struct ImportQuestionCard: View {
                         ChipFlow {
                             ForEach(question.options.indices, id: \.self) { index in
                                 Button(question.options[index].title) { store.answerImportQuestion(question, batchID: batchID, option: index) }
-                                    .buttonStyle(NowCardButtonStyle()).disabled(store.current.preferences.hideAmounts)
+                                    .buttonStyle(NowCardButtonStyle()).disabled(store.preferences.hideAmounts)
                                     .accessibilityIdentifier("homeImportAnswer_\(question.id)_\(index)")
                             }
                             if let cardID {
@@ -179,7 +179,7 @@ struct UnsortedGroupsView: View {
                     Text("\(group.entries.count) 笔 · \(group.entries.first.map(UnsortedEntryPresentation.summary) ?? "")")
                         .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1).truncationMode(.tail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                AmountLabel(cents: group.total, hide: store.current.preferences.hideAmounts, role: .amount,
+                AmountLabel(cents: group.total, hide: store.preferences.hideAmounts, role: .amount,
                             sign: group.inflow ? .inflow : .outflow, currency: false).layoutPriority(1)
                 if !selecting { Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             }.contentShape(Rectangle())
@@ -377,7 +377,7 @@ struct UnsortedQuickSortView: View {
             Text(group.party).yubaiFont(YubaiFont.quote).accessibilityIdentifier("quickSortParty")
             HStack(spacing: YubaiSpace.space4) {
                 Text("\(group.entries.count) 笔 ·").yubaiFont(YubaiFont.callout)
-                AmountLabel(cents: group.total, hide: store.current.preferences.hideAmounts, role: .small,
+                AmountLabel(cents: group.total, hide: store.preferences.hideAmounts, role: .small,
                             sign: group.inflow ? .inflow : .outflow, currency: false)
             }.foregroundStyle(YubaiColor.labelMuted).padding(.top, YubaiSpace.space2)
                 .accessibilityIdentifier("quickSortGroupCount")
@@ -386,7 +386,7 @@ struct UnsortedQuickSortView: View {
                 HStack(spacing: YubaiSpace.space8) {
                     Text(FixedFlowPresentation.monthDay(entry.date)).foregroundStyle(YubaiColor.labelSecondary).fixedSize()
                     Text(UnsortedEntryPresentation.summary(entry)).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
-                    AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts, role: .small,
+                    AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small,
                                 sign: group.inflow ? .inflow : .outflow, currency: false).fixedSize()
                 }.yubaiFont(YubaiFont.caption).padding(.vertical, YubaiSpace.space8)
                 Rectangle().fill(YubaiColor.neutralSoft).frame(height: 1)
@@ -551,7 +551,7 @@ struct UnsortedGroupView: View {
             Text(group.party).yubaiFont(YubaiFont.quote)
             HStack(spacing: YubaiSpace.space4) {
                 Text("\(group.entries.count.formatted(.number.locale(Locale(identifier: "en_US")))) 笔 ·").yubaiFont(YubaiFont.callout)
-                AmountLabel(cents: group.total, hide: store.current.preferences.hideAmounts, role: .small,
+                AmountLabel(cents: group.total, hide: store.preferences.hideAmounts, role: .small,
                             sign: group.inflow ? .inflow : .outflow, currency: false)
             }.foregroundStyle(YubaiColor.labelMuted)
         }
@@ -577,7 +577,7 @@ private struct UnsortedEntryRow: View {
     @State private var sourceFields: [UnsortedEntryField] = []
 
     var body: some View {
-        let hideAmounts = store.current.preferences.hideAmounts
+        let hideAmounts = store.preferences.hideAmounts
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             HStack(alignment: .top, spacing: YubaiSpace.space8) {
                 Button(action: toggle) {
@@ -607,7 +607,7 @@ private struct UnsortedEntryRow: View {
             }
             if expanded {
                 let fields = !hideAmounts && !sourceFields.isEmpty ? sourceFields
-                    : UnsortedEntryPresentation.fallbackFields(entry, account: store.current.accountName(entry.accountID), hideAmounts: hideAmounts)
+                    : UnsortedEntryPresentation.fallbackFields(entry, account: store.accountName(entry.accountID), hideAmounts: hideAmounts)
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     ForEach(fields.indices, id: \.self) { index in
                         Text(fields[index].key + "  " + fields[index].value).frame(maxWidth: .infinity, alignment: .leading)
@@ -621,7 +621,7 @@ private struct UnsortedEntryRow: View {
         }.padding(.vertical, YubaiSpace.space8).opacity(selected ? 1 : 0.55)
             .task(id: expanded && !hideAmounts) {
                 guard expanded, !hideAmounts, sourceFields.isEmpty, let row = entry.sourceRow else { return }
-                let batch = store.current.imports.first { $0.id == entry.batchID }
+                let batch = store.imports.first { $0.id == entry.batchID }
                 guard let attachmentID = entry.attachmentID ?? batch?.attachmentID,
                       let attachment = store.current.attachments.first(where: { $0.id == attachmentID }) else { return }
                 let repository = store.localRepository

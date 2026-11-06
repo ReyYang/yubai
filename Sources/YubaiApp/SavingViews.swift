@@ -2,7 +2,7 @@ import SwiftUI
 import YubaiCore
 
 enum SavingCardVisibility {
-    struct Snapshot: Sendable {
+    struct Snapshot: Equatable, Sendable {
         let queued: [ButlerCard]
         let visible: [ButlerCard]
         let collapsed: [ButlerCard]
@@ -29,7 +29,7 @@ struct ProfileChatEntry: View {
     var prominent = false
     @State private var showing = false
     @State private var configured = IntelligenceRuntime.isConfigured
-    private var enabled: Bool { configured && store.current.preferences.cloudAIEnabled && IntelligenceRuntime.cloud.unavailableModel == nil }
+    private var enabled: Bool { configured && store.preferences.cloudAIEnabled && IntelligenceRuntime.cloud.unavailableModel == nil }
     var body: some View {
         Button { showing = true } label: {
             HStack(spacing: YubaiSpace.gapGroup) {
@@ -55,9 +55,7 @@ struct ProfileChatEntry: View {
 struct SavingsHeader: View {
     @Environment(AppStore.self) private var store
     var body: some View {
-        let now: Date = Date()
-        let month: DateInterval = Dates.calendar.dateInterval(of: .month, for: now)!
-        let increase: Int64 = Savings.summary(ledger: store.current, from: month.start, to: now, now: now).total
+        let increase = store.savingsTotals.month
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text("没买，省下的").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             ViewThatFits(in: .horizontal) {
@@ -68,8 +66,8 @@ struct SavingsHeader: View {
     }
     private func numbers(_ increase: Int64) -> some View {
         Group {
-            AmountLabel(cents: Savings.total(ledger: store.current), hide: store.current.preferences.hideAmounts, role: .input)
-            if !store.current.preferences.hideAmounts {
+            AmountLabel(cents: store.savingsTotals.total, hide: store.preferences.hideAmounts, role: .input)
+            if !store.preferences.hideAmounts {
                 Text("这个月 +" + AmountLabel.text(increase)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
             }
         }
@@ -96,11 +94,11 @@ private struct CooldownWishCard: View {
         max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(wish.coolUntil ?? Date())).day ?? 0)
     }
     private var question: String {
-        let amount: String = store.current.preferences.hideAmounts ? "" : " " + Money.text(wish.amount, currency: false)
+        let amount: String = store.preferences.hideAmounts ? "" : " " + Money.text(wish.amount, currency: false)
         return wish.title + amount + "，还想要吗？"
     }
     private var purpose: String {
-        store.current.preferences.hideAmounts ? "金额已隐藏" : "当时说「" + wish.purpose + "」"
+        store.preferences.hideAmounts ? "金额已隐藏" : "当时说「" + wish.purpose + "」"
     }
     var body: some View {
         Card(background: YubaiColor.amberTint) {
@@ -139,7 +137,7 @@ struct WishRegretEntry: View {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     HStack(spacing: YubaiSpace.space8) {
                         Text(wish.title).yubaiFont(YubaiFont.rowTitle)
-                        AmountLabel(cents: wish.amount, hide: store.current.preferences.hideAmounts)
+                        AmountLabel(cents: wish.amount, hide: store.preferences.hideAmounts)
                         Text("· 有点后悔").yubaiFont(YubaiFont.callout)
                     }
                     ProfileChatEntry(title: "写进消费观", context: .wishRegret(wish.title + " · " + (wish.followUpAnswer ?? "有点后悔")))
@@ -171,7 +169,7 @@ struct LetterSavingsTiles: View {
         Card(style: .compact, background: YubaiColor.brandTint) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(title).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
-                AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .large, ink: YubaiColor.brandTintStrong)
+                AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .large, ink: YubaiColor.brandTintStrong)
             }
         }
     }
@@ -182,7 +180,7 @@ struct LetterSubscriptionCard: View {
     let candidates: [SubscriptionCandidate]
     let letterDate: Date
     @State private var answered: [String: SubscriptionAnswer] = [:]
-    private var currentCandidates: [SubscriptionCandidate] { SubscriptionCheck.candidates(ledger: store.current) }
+    private var currentCandidates: [SubscriptionCandidate] { store.subscriptionCandidates }
     var body: some View {
         Card(style: .list) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -206,7 +204,7 @@ struct LetterSubscriptionCard: View {
                 Text(candidate.title).yubaiFont(YubaiFont.rowTitle)
                 Text(schedule(candidate)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            AmountLabel(cents: candidate.amount, hide: store.current.preferences.hideAmounts)
+            AmountLabel(cents: candidate.amount, hide: store.preferences.hideAmounts)
         }
     }
     @ViewBuilder private func subscriptionActions(_ candidate: SubscriptionCandidate) -> some View {
@@ -221,8 +219,8 @@ struct LetterSubscriptionCard: View {
     }
     private func status(_ candidate: SubscriptionCandidate) -> String? {
         if let choice = answered[candidate.id] { return choice == .stop ? "已停掉" : "还在用" }
-        if let id = candidate.planID, store.current.plans.first(where: { $0.id == id })?.stoppedAt != nil { return "已停掉" }
-        if store.current.plans.contains(where: { stoppedPlan($0, matches: candidate) }) { return "已停掉" }
+        if let id = candidate.planID, store.plans.first(where: { $0.id == id })?.stoppedAt != nil { return "已停掉" }
+        if store.plans.contains(where: { stoppedPlan($0, matches: candidate) }) { return "已停掉" }
         if let month = store.current.subscriptionChecks[candidate.id], month >= String(Dates.text(letterDate).prefix(7)) { return "已回答" }
         if currentCandidates.contains(candidate) { return nil }
         return "已变更"
@@ -243,7 +241,7 @@ struct LetterSubscriptionCard: View {
         }
     }
     private func scheduleDate(_ candidate: SubscriptionCandidate) -> Date? {
-        if let id = candidate.planID, let plan = store.current.plans.first(where: { $0.id == id }) { return plan.dueDate }
+        if let id = candidate.planID, let plan = store.plans.first(where: { $0.id == id }) { return plan.dueDate }
         let dates: [Date] = candidate.entryIDs.compactMap { id in store.current.entries.first { $0.id == id }?.date }
         return dates.last
     }
@@ -286,7 +284,7 @@ struct RestrainNearRow: View {
         let visible: [RestrainProgress] = progress.filter { value in
             let key: String = "restrain:\(value.areaID):\(ButlerCards.isoWeek(Date()))"
             guard value.status == .near, !ButlerCards.isMuted(key, in: store.current) else { return false }
-            return store.current.cards.first { $0.dedupeKey == key }?.dismissedAt == nil
+            return store.cards.first { $0.dedupeKey == key }?.dismissedAt == nil
         }
         return visible.sorted { $0.ratio > $1.ratio }.first
     }
@@ -315,10 +313,10 @@ struct RestrainNearRow: View {
         return ratio >= p.ratio
     }
     private func usage(_ p: RestrainProgress) -> String {
-        countLeads(p) ? "本周第 \(p.weekCount) 次" : "本月 " + (store.current.preferences.hideAmounts ? "••••" : Money.text(p.monthAmount))
+        countLeads(p) ? "本周第 \(p.weekCount) 次" : "本月 " + (store.preferences.hideAmounts ? "••••" : Money.text(p.monthAmount))
     }
     private func limit(_ p: RestrainProgress) -> String {
         if countLeads(p), let count = p.perWeekCount { return "你写的最多 \(count) 次" }
-        return "你写的最多 " + (store.current.preferences.hideAmounts ? "••••" : Money.text(p.perMonthAmount ?? 0))
+        return "你写的最多 " + (store.preferences.hideAmounts ? "••••" : Money.text(p.perMonthAmount ?? 0))
     }
 }

@@ -43,7 +43,7 @@ struct SyncVersionsView: View {
                         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                             Text(entry.displayTitle).yubaiFont(YubaiFont.row)
                             Text(Dates.text(entry.date, time: true)).yubaiFont(YubaiFont.meta)
-                            AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts)
+                            AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts)
                             Text(entry.nature.entryLabel + " · " + Classification.displayCategory(entry.category)).yubaiFont(YubaiFont.caption)
                             Text(version.ledger.accountName(entry.accountID)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             let note = EntryNotePresentation.importedNote(entry)
