@@ -20,7 +20,7 @@ struct OverviewView: View {
     }
     private var scrollingContent: some View {
         ScrollView { content.padding(.horizontal, YubaiSpace.insetPage) }
-            .rootScrollContentMargins().accessibilityIdentifier("overviewScroll")
+            .rootScrollContentMargins().rootTabScroll(.overview).accessibilityIdentifier("overviewScroll")
     }
     private var content: some View {
         let funds = store.funds
@@ -56,8 +56,7 @@ struct OverviewView: View {
                         }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                     }.buttonStyle(PressButtonStyle())
                 } else if dueBills.isEmpty {
-                    Text("下一笔 · 还没有待付款").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
+                    EmptyState("calendar", "还没有待付款", action: "添加账单", onAction: { store.sheet = .addPlan })
                 }
             }
         }.foregroundStyle(YubaiColor.label).amountPrivacy(store.preferences.hideAmounts)
@@ -180,25 +179,22 @@ struct UpcomingPaymentsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             SectionHeading(title: "接下来要付的", subtitle: (throughHorizon ? store.funds.horizonTitle : "未来 90 天") + " · 含已到期")
-            if payments.isEmpty { Text("没有待完成的付款。")
-                .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
-            CardRows(payments) { item in
-                paymentRow(item)
-            }
-        }
-    }
-    private func endButton(_ item: Occurrence) -> some View {
-        Button("结束这个安排") { ending = item }.yubaiFont(YubaiFont.caption)
-            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("endArrangement_" + item.id)
-            .alert("停掉「\(item.title)」？",
-                   isPresented: Binding(get: { ending?.id == item.id }, set: { if !$0 { ending = nil } })) {
-            Button("停掉以后的", role: .destructive) {
-                if let id = item.planID ?? item.rentID {
-                    let change = ChangeSet(source: "用户操作", reason: "从现在起结束「\(item.title)」", items: [.endPlan(id, Date())])
-                    store.apply(change, label: "结束安排")
+            if payments.isEmpty { EmptyState("calendar", "还没有待付款", action: "添加账单", onAction: { store.sheet = .addPlan }) }
+            NativeCardRows(payments) { item in
+                paymentRow(item).accessibilityIdentifier("upcomingPayment_" + item.id).swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    if canEnd(item) {
+                        Button("停掉") { ending = item }.tint(YubaiColor.neutralStrong).foregroundStyle(YubaiColor.label)
+                            .accessibilityIdentifier("endArrangement_" + item.id)
+                    }
                 }
-                ending = nil
-            }.accessibilityIdentifier("endArrangementConfirm").accessibilityHint("只停以后的，已到期付款和历史记录保留")
+            }
+        }.alert("停掉「\(ending?.title ?? "")」？", isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } })) {
+            Button("停掉") {
+                if let item = ending, let id = item.planID ?? item.rentID {
+                    let change = ChangeSet(source: "用户操作", reason: "停掉", items: [.endPlan(id, Date())])
+                    if store.apply(change, label: "停掉") { store.toast = "已停掉 · " + item.title }
+                }; ending = nil
+            }.accessibilityIdentifier("endArrangementConfirm")
             Button("取消", role: .cancel) { ending = nil }.accessibilityIdentifier("endArrangementCancel")
         }
     }
@@ -217,9 +213,6 @@ struct UpcomingPaymentsView: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.gapGroup) { title(item); Spacer(); amount(item) }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) { title(item); amount(item) }
-            }
-            if canEnd(item) {
-                endButton(item)
             }
         }.padding(.vertical, YubaiSpace.space8)
     }
@@ -251,7 +244,7 @@ struct FundsCalculationView: View {
             }
             ForEach(funds.warnings, id: \.self) { InlineNote(text: $0, style: .attention) }
             UpcomingPaymentsView(throughHorizon: true)
-        }.navigationTitle("还能花是怎么算的").yubaiNavigation().toolbar { CloseButton() }
+        }.accessibilityIdentifier("fundsCalculationPage").navigationTitle("还能花是怎么算的").yubaiNavigation().manualSheetHeader("还能花是怎么算的", cancelTitle: "关闭", showsAction: false)
     }
     private func formula(_ title: String, _ amount: Int64) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))

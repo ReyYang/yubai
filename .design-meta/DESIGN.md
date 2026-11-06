@@ -1494,3 +1494,12 @@ Linux build／449 项测试通过（新增 1 项独立退款小项回归），�
 沿用第十五轮已采用稿与「少写字」规则，不新增页面、外观或说明文字。按 owner 的 Xcode 真编译错误修正分类枚举调用标签、抽出小项网格选择芯片，并逐个复核 SavingPurchaseViews、SavingViews、SubcategoryViews 及八个接线页面；把复杂选择状态、筛选／汇总、聊天气泡、行和导航拆开，让 SwiftUI 分别求类型。Core 签名／访问与可选性逐项对照定义。模型名按 owner 提供的官方原文更正为 deepseek-flash／deepseek-v4-pro。
 
 新增 judge-ask／judge-wait／judge-buy／judge-skip／wishlist-cool／letter-saving／profile-revisit／subcategory 八个合成截图脚本，限制仍为 Debug＋模拟器＋UUID 测试账本。问答继续通过脚本 transport 执行真实工具；来信通过真实 candidate 生成首封并保持未静音，周四以后从我页打开。截图入口、全部文件和验证见[交付续记](../docs/SAVING-UI-V15.md#2026-10-23--pr-34-编译修复与截图夹具)。Linux 449 项测试（445 通过／4 原有跳过／0 失败）、8 脚本离线 Core 执行及 App iOS／macOS 语法解析通过；新增 8 个 UI 流程仅静态检查，Apple 真编译／UI 实跑及截图验收待做。HTML、Figma 和分发包未改，无提交／推送。
+
+
+## 2026-11-06 · 第四十轮记一笔收口与细节打磨 A–D（owner 批准）
+
+本次明确的合并 brief 为当前范围，取代第三十三轮的首项实心预选、按住清空，以及当时推迟到下一轮的三项公共控件工作；第三十五轮 sections 两步分类与 Batch A 保留。建议仅从用户同用途最后记法及同方向 ±2h 历史生成，未点击按建议保存，无建议保持没分类；用途回填恢复主类、小项、账户。记一笔、改一笔、Ask 草稿和账单编辑使用同一 EntryForm／字段卡／金额区／托盘，连续记账回执单独撤销最后一笔，编辑统一拦截放弃。跨月搜索与 30 天最近删除规则均在 Core。
+
+本轮使用系统 List swipe、contextMenu、年月 wheel、confirmationDialog 和原生数字键盘 accessory。通则与专稿不同的主键采用专稿 brand 填充；显式词表及两位小数优先于稿中旧字。为让第 28 项的标签重选在推入页可达，iOS 浮栏在推入页保留、根 pager 仍禁横翻；Mac 侧栏保持。账目 List 采用原生分组外观，不再手画该组外投影；已有纸卡缓存九宫格阴影保持，返回按钮 representable 行为未改。iOS 根页移除内容 mask、改用系统 top soft，macOS 路径保持。
+
+逐项源码、所有可见中文、与规则／看板的取舍、工程成员及设备清单登记在 `docs/ROUND40-IMPLEMENTATION.md`。Linux Core build 与完整测试 908 项（904 通过、4 原有实网跳过、0 失败）；App／Widget／UI 三组条件语法解析共 135 个文件／配置全部通过，工程 285 个对象、App 文件成员与新测试成员检查通过。Apple SDK 类型检查、XCTest UI、视觉／触感／辅助功能与桌面入口冷热启动未验证，外部资源未同步。新 Core 文件由本地包编译，测试加入 Xcode 测试 sources；无新增 App-only／Widget 文件、依赖或 entitlement；Info.plist 仅加三项静态快捷操作。全部改动留工作树，未提交／推送。

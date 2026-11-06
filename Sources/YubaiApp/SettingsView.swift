@@ -43,7 +43,7 @@ struct SettingsView: View {
             TabNavigationLink(.accounts) { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { row("固定收付", detail: fixedFlowsDetail) }
+                    TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { row("会回来的账单", detail: fixedFlowsDetail) }
                         .accessibilityIdentifier("openFixedFlows")
                     separator
                     NavigationLink(value: CategorySettingsRoute.categories) { row("分类") }
@@ -71,7 +71,7 @@ struct SettingsView: View {
                     TabNavigationLink(.storage) { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
             }.buttonStyle(PressButtonStyle())
-        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("settingsScroll")
+        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().rootTabScroll(.settings).accessibilityIdentifier("settingsScroll")
             .navigationDestination(for: CategorySettingsRoute.self) { _ in CategoriesView() }
             .rootPageHeader { TabRootHeader(title: "我") }.navigationTitle("我")
             .modifier(SettingsStorageSizeTask(storageSize: $storageSize))
@@ -164,7 +164,7 @@ struct IntelligencePrivacyView: View {
                     VStack(spacing: YubaiSpace.none) {
                         Toggle("打开云端智能", isOn: Binding(get: { store.preferences.cloudAIEnabled }, set: { value in
                             store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value }
-                        })).tint(YubaiColor.brand).frame(minHeight: YubaiSize.headerHeight)
+                        })).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.headerHeight)
                         separator
                         settingsRow("服务", detail: "DeepSeek")
                         separator
@@ -274,8 +274,11 @@ struct BackupView: View {
                     Button("取消恢复", role: .cancel) { self.pendingRestore = nil; restoreData = nil; encryptedRestore = false; restorePassword = "" }
                 }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
             }
-            Section { NavigationLink("恢复版本") { RecoveryVersionsView() } }.listRowBackground(YubaiColor.card)
-        }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().toolbar { CloseButton() }
+            Section {
+                NavigationLink("最近删除 \(RecentlyDeleted.entries(in: store.current).count) 笔") { RecentlyDeletedView() }.accessibilityIdentifier("recentlyDeleted")
+                NavigationLink("恢复版本") { RecoveryVersionsView() }
+            }.listRowBackground(YubaiColor.card)
+        }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().manualSheetHeader("备份与恢复", cancelTitle: "关闭", showsAction: false)
             .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .yubaiBackup, defaultFilename: exportName) { result in
                 switch result {
                 case .success:
@@ -342,7 +345,7 @@ struct ImportHistoryView: View {
     @State private var filename = ""
     var body: some View {
         Page {
-            if store.imports.isEmpty { Text("还没有导入记录。").yubaiFont(YubaiFont.callout).accessibilityIdentifier("emptyImportHistory") }
+            if store.imports.isEmpty { EmptyState("square.and.arrow.down", "还没有导入记录", action: "导入账单", onAction: { store.sheet = .imports }).accessibilityIdentifier("emptyImportHistory") }
             CardRows(Array(store.imports.reversed())) { batch in
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text(batch.filename).yubaiFont(YubaiFont.rowTitle)
@@ -390,10 +393,63 @@ struct RecoveryVersionsView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space8).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle())
             }
-        }.navigationTitle("恢复版本").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("恢复版本").yubaiNavigation().manualSheetHeader("恢复版本", cancelTitle: "关闭", showsAction: false)
             .onAppear { do { recoveries = try store.repository.recoveries() } catch { store.error = error.localizedDescription } }
             .confirmationDialog("恢复到这个版本？当前账本会先保留。", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } })) {
                 Button("恢复所选版本") { if let target, store.recover(target) { dismiss() }; target = nil }
             }
+    }
+}
+
+struct RecentlyDeletedView: View {
+    @Environment(AppStore.self) private var store
+    @State private var confirmingClear = false
+    var body: some View {
+        let rows = RecentlyDeleted.entries(in: store.current)
+        Page(spacing: YubaiSpace.gapSection) {
+            if rows.isEmpty { EmptyState("trash", "最近删除里没有账目", action: "记一笔", onAction: { store.sheet = .addEntry }) }
+            group("今天", rows: rows.filter { Dates.calendar.isDateInToday($0.deletedAt!) })
+            group("更早", rows: rows.filter { !Dates.calendar.isDateInToday($0.deletedAt!) })
+            if !rows.isEmpty {
+                Button("全部清掉") { confirmingClear = true }.buttonStyle(DestructiveButtonStyle()).accessibilityIdentifier("clearRecentlyDeleted")
+            }
+        }.navigationTitle("最近删除").yubaiNavigation().accessibilityIdentifier("recentlyDeletedList")
+            .confirmationDialog("全部清掉后无法放回", isPresented: $confirmingClear, titleVisibility: .visible) {
+                Button("全部清掉", role: .destructive) {
+                    if store.update("清掉最近删除", recordUndo: false, entryMotion: false, { RecentlyDeleted.clear(in: &$0) }) { store.clearUndo() }
+                }
+                Button("取消", role: .cancel) {}
+            }
+    }
+    @ViewBuilder private func group(_ title: String, rows: [Entry]) -> some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.leading, 16)
+                CardRows(rows) { entry in
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) { summary(entry); Spacer(); restore(entry) }
+                        VStack(alignment: .leading, spacing: 8) { summary(entry); restore(entry) }
+                    }.padding(.vertical, 8)
+                }
+            }
+        }
+    }
+    private func summary(_ entry: Entry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(Classification.displayCategory(entry.category) + " · " + entry.displayTitle).yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
+            Text("删于 " + deletedTime(entry.deletedAt!) + " · 原记 " + ManualBookkeeping.dayLabel(entry.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            if !Dates.calendar.isDateInToday(entry.deletedAt!) { Text("\(RecentlyDeleted.daysRemaining(entry)) 天后清掉").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            Text(store.preferences.hideAmounts ? "••••" : AmountLabel.text(entry.amount, sign: entry.nature.inflow ? .inflow : .outflow))
+                .yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary).strikethrough()
+        }
+    }
+    private func restore(_ entry: Entry) -> some View {
+        Button("放回去") {
+            _ = store.update("放回去", entryMotion: false) { try RecentlyDeleted.restore(entry.id, in: &$0) }
+        }.yubaiFont(YubaiFont.callout).padding(.horizontal, 12).frame(minHeight: 32).background(YubaiColor.raised, in: Capsule())
+            .buttonStyle(PressButtonStyle()).fixedSize().yubaiHitTarget().accessibilityIdentifier("restoreDeleted_" + entry.id.uuidString)
+    }
+    private func deletedTime(_ date: Date) -> String {
+        Dates.calendar.isDateInToday(date) ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date)
     }
 }

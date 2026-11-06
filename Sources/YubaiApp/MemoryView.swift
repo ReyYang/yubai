@@ -6,7 +6,7 @@ struct MemoryView: View {
     var body: some View {
         List {
             if store.current.memories.isEmpty {
-                Text("还没有记下什么。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).accessibilityIdentifier("emptyMemories")
+                EmptyState("text.book.closed", "还没有记下的事", action: "问余白", onAction: { store.sheet = .ask("") }).accessibilityIdentifier("emptyMemories")
             }
             ForEach(MemoryKind.allCases, id: \.self) { kind in
                 let notes = store.current.memories.filter { $0.kind == kind }.sorted {
@@ -74,26 +74,25 @@ private struct MemoryEditor: View {
         Form {
             Section {
                 TextField("记忆文字", text: $text, axis: .vertical).lineLimit(2...8).accessibilityIdentifier("memoryText")
+                InlineFieldError(message: text.count > 200 || text.contains(where: { $0.isNewline }) ? "记忆须在一行内，最多 200 字" : nil)
             }.listRowBackground(YubaiColor.card)
             Section {
-                Button("删除这条记忆", role: .destructive) {
+                Button("删掉") {
                     if store.update("删除记忆", { ledger in
                         try check(ledger); Memory.reject(lineMemoryID: note.id, in: &ledger)
                     }) { dismiss() }
-                }.accessibilityIdentifier("deleteMemory")
+                }.buttonStyle(DestructiveButtonStyle()).accessibilityIdentifier("deleteMemory")
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("编辑记忆").yubaiNavigation()
             .toolbar {
                 Button("保存") {
-                    if store.update("修改记忆", { ledger in
-                        try check(ledger); try Memory.edit(noteID: note.id, text: text, in: &ledger)
-                    }) { dismiss() }
+                    if store.update("修改记忆", { ledger in try check(ledger); try Memory.edit(noteID: note.id, text: text, in: &ledger) }) { dismiss() }
                 }.disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 200 || text.contains(where: { $0.isNewline }))
                     .accessibilityIdentifier("saveMemory")
             }
     }
     private func check(_ ledger: Ledger) throws {
-        guard var current = ledger.memories.first(where: { $0.id == note.id }) else { throw YubaiError.invalid("这条记忆已删除。") }
+        guard var current = ledger.memories.first(where: { $0.id == note.id }) else { throw YubaiError.invalid("这条记忆已删掉。") }
         current.lastUsedAt = note.lastUsedAt
         guard current == note else { throw YubaiError.invalid("这条记忆已更新，请返回后重新打开。") }
     }
@@ -119,7 +118,7 @@ struct RememberedRows: View {
                     Text("已记下：" + note.text).frame(maxWidth: .infinity, alignment: .leading)
                     Button("撤销") {
                         if store.update("撤销记忆", { ledger in
-                            guard var current = ledger.memories.first(where: { $0.id == note.id }) else { throw YubaiError.invalid("这条记忆已删除。") }
+                            guard var current = ledger.memories.first(where: { $0.id == note.id }) else { throw YubaiError.invalid("这条记忆已删掉。") }
                             current.lastUsedAt = note.lastUsedAt
                             guard current == note else { throw YubaiError.invalid("这条记忆后来已更新，请在余白记得的里查看。") }
                             Memory.undo(noteID: note.id, in: &ledger)

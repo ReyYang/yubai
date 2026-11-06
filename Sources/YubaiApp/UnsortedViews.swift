@@ -283,7 +283,7 @@ private struct UnsortedSelectionSheet: View {
                     return false
                 }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space24)
-        }.paperBackground().foregroundStyle(YubaiColor.label)
+        }.paperBackground().foregroundStyle(YubaiColor.label).manualSheetHeader("分类", showsAction: false)
     }
 }
 

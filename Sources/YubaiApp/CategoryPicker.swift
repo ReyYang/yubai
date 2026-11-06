@@ -164,8 +164,7 @@ struct CategoryPickerField: View {
                             if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
                             choose(choice); showing = false; return true
                         }
-                    }.navigationTitle("分类").yubaiNavigation()
-                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { showing = false } } }
+                    }.manualSheetHeader("分类", showsAction: false, cancel: { showing = false })
                 }.environment(store).appErrors().yubaiSheetBackground()
             }
     }
@@ -192,7 +191,11 @@ struct CategoryAdditionSheet: View {
         self.applyingCount = applyingCount; self.add = add
     }
     private var addition: CategoryAddition { .init(name: name, parent: parent, income: income) }
-    private var valid: Bool { var ledger = store.current; return (try? addition.apply(to: &ledger)) != nil }
+    private var validationError: String? {
+        var ledger = store.current
+        do { try addition.apply(to: &ledger); return nil } catch { return error.localizedDescription }
+    }
+    private var valid: Bool { validationError == nil }
     private var parents: [YubaiCore.Category] {
         let ordered = store.current.orderedCategories(income: income).filter { !["其他支出", "其他收入"].contains($0.name) }
         return ordered.filter { $0.name == initialParent } + ordered.filter { $0.name != initialParent }
@@ -203,6 +206,7 @@ struct CategoryAdditionSheet: View {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text("名字").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     TextField("", text: $name).yubaiFont(YubaiFont.row).accessibilityLabel("名字").accessibilityIdentifier("categoryAdditionName")
+                    if !name.isEmpty { InlineFieldError(message: validationError) }
                 }.padding(.vertical, YubaiSpace.space8)
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -219,20 +223,9 @@ struct CategoryAdditionSheet: View {
                     }
                 }
             }
-        }.navigationTitle("加一个").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .cancellationAction) {
-                Button("取消") { dismiss() }.accessibilityIdentifier("categoryAdditionCancel")
-            } }
-            .safeAreaInset(edge: .bottom) {
-                Button {
-                    if add(addition) { dismiss() }
-                } label: {
-                    Text(applyingCount > 0 ? "加上，这 \(applyingCount) 笔记为\(addition.name)" : "加上")
-                        .fixedSize(horizontal: false, vertical: true)
-                }.buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.raised)).disabled(!valid)
-                    .accessibilityIdentifier("categoryAdditionSave")
-                    .padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
-            }
+        }.manualSheetHeader("加一个", actionTitle: "加上", enabled: valid, actionIdentifier: "categoryAdditionSave", action: {
+            if add(addition) { dismiss() }
+        })
     }
 }
 

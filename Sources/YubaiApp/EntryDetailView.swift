@@ -15,10 +15,10 @@ struct EntryDetailView: View {
                 classificationCard(entry)
                 sourceCard(entry)
                 if entry.deletedAt == nil {
-                    Button("删除记录", role: .destructive) { delete() }.frame(minHeight: YubaiSize.tapMin)
+                    Button("删掉") { delete() }.buttonStyle(DestructiveButtonStyle())
                 } else {
-                    Text("已删除").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                        .accessibilityLabel("这笔记录已删除，不计入汇总")
+                    Text("已删掉").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                        .accessibilityLabel("这笔记录已删掉，不计入汇总")
                     Button("恢复") {
                         store.update("恢复记录") { ledger in
                             if let i = ledger.entries.firstIndex(where: { $0.id == entryID }) { ledger.entries[i].deletedAt = nil }
@@ -29,7 +29,7 @@ struct EntryDetailView: View {
         }.navigationTitle("记录详情").yubaiNavigation()
     }
     private func delete() {
-        if store.update("删除记录", { ledger in
+        if store.update("删掉", { ledger in
             if let i = ledger.entries.firstIndex(where: { $0.id == entryID }) { ledger.entries[i].deletedAt = Date() }
         }) { dismiss() }
     }

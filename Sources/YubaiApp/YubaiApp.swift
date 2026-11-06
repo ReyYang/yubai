@@ -62,6 +62,7 @@ enum AppSheet: Identifiable {
     private(set) var ledger = Ledger() {
         didSet {
             if oldValue.id != ledger.id || oldValue.preferences.onboardingComplete != ledger.preferences.onboardingComplete {
+                askConversation = AskConversationState()
                 resetRootNavigation()
             }
             if oldValue != ledger { invalidateDerived() }
@@ -76,6 +77,7 @@ enum AppSheet: Identifiable {
     private(set) var plans: [Plan] = []
     private(set) var rents: [Rent] = []
     private(set) var imports: [ImportBatch] = []
+    private(set) var lastRecordedEntry: Entry?
     private(set) var mutedTopics: [String] = []
     private(set) var categoryAliases: [String: String] = [:]
     func resolveCategory(_ category: String) -> String {
@@ -338,6 +340,11 @@ enum AppSheet: Identifiable {
         ledgerRevision = sourceRevision
         let oldTimeline = cachedEntryTimeline
         if previousEntries != ledger.entries {
+            let last = ledger.entries.filter { $0.deletedAt == nil }.max {
+                let a = $0.recordedAt ?? $0.date, b = $1.recordedAt ?? $1.date
+                return a == b ? $0.id.uuidString < $1.id.uuidString : a < b
+            }
+            if lastRecordedEntry != last { lastRecordedEntry = last }
             let oldEntries = cachedEntries, oldPurposes = cachedManualPurposes
             cachedEntries = preparedDerived?.entries
             cachedEntriesByID = preparedDerived?.entriesByID
@@ -417,6 +424,8 @@ enum AppSheet: Identifiable {
     #if os(iOS)
     var pagingLocked = false
     #endif
+    var askConversation = AskConversationState()
+    var rootScrollRequest: [Destination: Int] = [:]
     var sheet: AppSheet?; var error: String?; var toast: String?
     var unsortedUndo: UnsortedUndoNotice?
     var unsortedUndoRestoration: UnsortedUndoRestoration?
@@ -498,12 +507,31 @@ enum AppSheet: Identifiable {
                 unsortedUndo = nil
                 undoLedger = undoSnapshot ?? before; undoLabel = reason
                 if showToast {
-                    if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = reason + "完成"; toast = nil }
-                    else { toast = reason + "完成" }
+                    if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = resultToast(reason, before: before, after: next); toast = nil }
+                    else { toast = resultToast(reason, before: before, after: next) }
                 }
             }
             return true
         } catch { if reportError { self.error = error.localizedDescription }; return false }
+    }
+    private func resultToast(_ reason: String, before: Ledger, after: Ledger) -> String {
+        let old = Dictionary(uniqueKeysWithValues: before.entries.map { ($0.id, $0) })
+        if let deleted = after.entries.first(where: { $0.deletedAt != nil && old[$0.id]?.deletedAt == nil }) {
+            return "已删掉 · " + deleted.displayTitle + " " + (preferences.hideAmounts ? "••••" : AmountLabel.text(deleted.amount))
+        }
+        if let account = after.accounts.first(where: { a in !before.accounts.contains { $0.id == a.id } }) { return "已加好 · " + account.name }
+        if let plan = after.plans.first(where: { p in p.stoppedAt != nil && before.plans.first { $0.id == p.id }?.stoppedAt == nil }) { return "已停掉 · " + plan.title }
+        if let entry = after.entries.first(where: { old[$0.id]?.deletedAt != nil && $0.deletedAt == nil }) { return "已放回 · " + entry.displayTitle }
+        if reason == "保存账户", let account = after.accounts.first(where: { a in before.accounts.first { $0.id == a.id } != a }) { return "已改好 · " + account.name }
+        if reason == "清掉最近删除" { return "已清掉最近删除" }
+        if reason.hasPrefix("删除") { return "已删掉 · " + String(reason.dropFirst(2)) }
+        if reason.hasPrefix("添加") { return "已加好 · " + String(reason.dropFirst(2)) }
+        return "已改好 · " + reason
+    }
+    func purgeExpiredEntries() {
+        var next = current
+        guard RecentlyDeleted.purge(in: &next) > 0 else { return }
+        if update("清掉过期账目", recordUndo: false, entryMotion: false, showToast: false, { $0 = next }) { clearUndo() }
     }
     /// Prepare the full import off the main actor, then publish one atomic update.
     func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = [],
@@ -548,7 +576,7 @@ enum AppSheet: Identifiable {
                 ledger.cards[i].dismissedAt = Date()
             }
         }
-        if saved, !silently, !skipped.isEmpty { toast = label + "完成；" + skipped.joined(separator: "；") }
+        if saved, !silently, !skipped.isEmpty { toast = "已改好 · " + label + "；" + skipped.joined(separator: "；") }
         return saved
     }
     func publishOrganizationCheckpoint(_ next: Ledger, pending: PendingImportOrganization, salary: SalaryCandidate?, day: Date, derived: LedgerDerivedSnapshot) {
@@ -637,7 +665,7 @@ enum AppSheet: Identifiable {
             let saved = try localRepository.deleteOldScreenshots(from: current, months: months, now: now)
             cancelEntrySaveMotion(); ledger = saved; undoLedger = nil; undoLabel = nil
             if ledgerLocation == .iCloud { pendingUpload = saved; pendingUploadPreservingRecovery = true; pendingUploadRecoveryReason = "删除旧截图"; Task { await synchronizeLedger() } }
-            toast = "已删除 \(count) 张截图"
+            toast = "已删掉 · \(count) 张截图"
             return true
         } catch {
             if !wasPending { try? localRepository.markPendingSync(false) }
@@ -682,6 +710,9 @@ enum AppSheet: Identifiable {
 }
 
 @main struct YubaiApp: App {
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(HomeActionDelegate.self) private var homeActionDelegate
+    #endif
     @State private var store = AppStore.shared
     private var colorScheme: ColorScheme? {
         switch store.preferences.appearance {
@@ -776,13 +807,16 @@ struct RootView: View {
         .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil; store.finishEntrySaveMotion() } }
         #if os(iOS)
         .sensoryFeedback(.success, trigger: store.entrySaveTrigger)
-        .sensoryFeedback(.impact(weight: .medium), trigger: store.entryDeleteTrigger)
         .sensoryFeedback(.impact(weight: .light), trigger: store.undoTrigger)
         .sensoryFeedback(.impact(weight: .light), trigger: store.fixedFlowSettleTrigger)
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
-        .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
-        .task { await store.configureSync(); store.autoSettleFixedFlows() }
+        .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .task {
+            store.purgeExpiredEntries()
+            if !store.locked && store.preferences.onboardingComplete, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+            await store.configureSync(); store.autoSettleFixedFlows()
+        }
         .modifier(ButlerRefreshTask())
         .modifier(WeeklyPushTask())
         .overlay(alignment: .top) {
@@ -799,7 +833,7 @@ struct RootView: View {
             guard url.isFileURL else { return }; store.importedURL = url
             if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
         }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.autoSettleFixedFlows() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.autoSettleFixedFlows() }; if store.preferences.onboardingComplete, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {
@@ -877,7 +911,7 @@ struct RootView: View {
                     if visibleTab == appearanceTarget && pagingAligned { if pagingTarget != nil { pagingTarget = nil } }
                 }
                 .overlay(alignment: .bottom) {
-                    if !tabBarHidden {
+                    if store.sheet == nil && !store.pickingInsightDates {
                         FloatingTabBar { scrollTo($0, using: proxy) }
                             .uiTestAccessibilityValue("destination=\(store.destination.rawValue); visible=\(visibleTab.rawValue); phase=\(pagingPhase == .idle ? "idle" : "moving"); locked=\(store.pagingLocked ? 1 : 0)")
                             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.floatingTabbarBottom)
@@ -897,7 +931,11 @@ struct RootView: View {
     }
     private func scrollTo(_ d: Destination, using proxy: ScrollViewProxy) {
         // Reselecting an already settled page has no scroll transition to perform.
-        guard d != store.destination || d != visibleTab || pagingPhase != .idle || !pagingAligned else { return }
+        if d == store.destination && d == visibleTab && pagingPhase == .idle && pagingAligned {
+            if tabPaths[d]?.isEmpty == false { tabPaths[d] = NavigationPath() }
+            else { store.rootScrollRequest[d, default: 0] += 1 }
+            return
+        }
         pagingTarget = d
         withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo(d, anchor: .leading) }
     }
@@ -909,6 +947,7 @@ struct RootView: View {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
                 .navigationDestination(for: TabRoute.self) { tabDestination($0) }
         }.toolbarBackground(.hidden, for: .navigationBar)
+            .safeAreaPadding(.bottom, tabPaths[d]?.isEmpty == false ? YubaiSize.rootBottomPadding : 0)
             .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
             .environment(\.isScrollEnabled, true)
             .scrollClipDisabled(false)
@@ -968,17 +1007,17 @@ struct RootView: View {
         case .accounts: AccountsView()
         case .ask(let text): AskYubaiView(initialText: text)
         case .capture(let data): AskYubaiView(initialImage: data)
-        case .wishlist(let id): WishlistView(focusedWishID: id)
+        case .wishlist(let id): WishlistView(focusedWishID: id).manualSheetHeader("心愿单", cancelTitle: "关闭", showsAction: false)
         case .backup: BackupView()
         case .history: RecoveryVersionsView()
         case .syncVersions: SyncVersionsView()
         case .fundsCalculation: FundsCalculationView()
-        case .intelligencePrivacy: IntelligencePrivacyView().toolbar { CloseButton() }
+        case .intelligencePrivacy: IntelligencePrivacyView().manualSheetHeader("智能与隐私", cancelTitle: "关闭", showsAction: false)
         case .cardEvidence(let id): ButlerEvidenceView(cardID: id)
         case .cardQuestion(let id): ButlerQuestionView(cardID: id)
         case .cardProposal(let id): ButlerProposalView(changeID: id)
         case .letters: LettersView()
-        case .letter(let id): LetterDetailView(cardID: id).toolbar { CloseButton() }
+        case .letter(let id): LetterDetailView(cardID: id).manualSheetHeader("每周来信", cancelTitle: "关闭", showsAction: false)
         case .reconcile(let id):
             if let account = store.accounts.first(where: { $0.id == id }) { AccountEditor(account: account, startsReconciling: true) }
         }
@@ -1047,6 +1086,15 @@ private struct FloatingTabBar: View {
                     .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background { Circle().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
             }.buttonStyle(RoundPressStyle()).padding(.horizontal, YubaiSpace.space8)
                 .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
+                .contextMenu {
+                    Button("截图记一笔", systemImage: "photo") { store.requestCaptureSheet(.screenshotCapture(nil)) }
+                    Button("导入账单", systemImage: "square.and.arrow.down") { store.requestCaptureSheet(.imports) }
+                    if let last = store.lastRecordedEntry {
+                        Button("再记一笔「" + last.displayTitle + " " + (store.preferences.hideAmounts ? "••••" : AmountLabel.text(last.amount)) + "」", systemImage: "plus") {
+                            store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(entry: last)))
+                        }
+                    }
+                }
             tab(.entries); tab(.settings)
         }.padding(.horizontal, YubaiSpace.space8).frame(height: YubaiSize.tabBarHeight)
             .background {

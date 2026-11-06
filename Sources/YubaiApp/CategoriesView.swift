@@ -131,6 +131,12 @@ private struct CategoryDetailView: View {
     @State private var merging = false
     private var categoryName: String { store.current.categoryAssignment(category: originalName).category }
     private var category: YubaiCore.Category? { store.current.categories.first { $0.name == categoryName } }
+    private var nameError: String? {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean != categoryName, !savedName.isEmpty else { return nil }
+        var ledger = store.current
+        do { try CategoryModel.rename(categoryName, to: clean, in: &ledger); return nil } catch { return error.localizedDescription }
+    }
     var body: some View {
         Page(spacing: YubaiSpace.space24, topPadding: YubaiSpace.space8) {
             if let category {
@@ -141,6 +147,7 @@ private struct CategoryDetailView: View {
                             TextField("", text: $name).multilineTextAlignment(.trailing).focused($nameFocused)
                                 .accessibilityLabel("名字").accessibilityIdentifier("categoryName").onSubmit(rename)
                         }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.buttonHeight)
+                        InlineFieldError(message: nameError)
                         categorySeparator
                         recordedCount(categoryName, ledger: store.current)
                     }
@@ -193,32 +200,35 @@ private struct CategoryDetailView: View {
     }
     private func rename() {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard category != nil, categoryName == savedName, clean != categoryName else { return }
+        guard category != nil, categoryName == savedName, clean != categoryName, nameError == nil else { return }
         if store.update("修改分类", { try CategoryModel.rename(categoryName, to: clean, in: &$0) }) { name = clean; savedName = clean }
         else { name = categoryName }
     }
 }
 
 private struct CategoryNameSheet: View {
+    @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let title: String
     let save: (String) -> Bool
     @State private var name = ""
+    private var validationError: String? {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty { return "填写名字" }
+        if clean.count > 200 || clean.contains("/") || clean == "其他" || Classification.isPending(clean) { return "分类名称无效" }
+        return store.current.categories.contains { $0.name == clean } ? "已有同名分类" : nil
+    }
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
             Card(style: .list) {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text("名字").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     TextField("", text: $name).yubaiFont(YubaiFont.row).accessibilityLabel("名字").accessibilityIdentifier("newCategoryName")
+                    if !name.isEmpty { InlineFieldError(message: validationError) }
                 }.padding(.vertical, YubaiSpace.space8)
             }
-        }.navigationTitle(title).yubaiNavigation().toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("加上") { if save(name.trimmingCharacters(in: .whitespacesAndNewlines)) { dismiss() } }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("saveNewCategory")
-            }
-        }
+        }.manualSheetHeader(title, actionTitle: "加上", enabled: validationError == nil,
+                             actionIdentifier: "saveNewCategory", action: { if save(name.trimmingCharacters(in: .whitespacesAndNewlines)) { dismiss() } })
     }
 }
 
@@ -228,6 +238,13 @@ private struct CategorySubcategoryEditor: View {
     let category: String
     let original: String
     @State private var name = ""
+    private var validationError: String? {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean == original { return nil }
+        var ledger = store.current
+        do { try CategoryModel.renameSubcategory(original, in: category, to: clean, ledger: &ledger); return nil }
+        catch { return error.localizedDescription }
+    }
     var body: some View {
         Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space8) {
             Card(style: .list) {
@@ -236,23 +253,20 @@ private struct CategorySubcategoryEditor: View {
                         Text("名字").fixedSize()
                         TextField("", text: $name).multilineTextAlignment(.trailing).accessibilityLabel("名字").accessibilityIdentifier("subcategoryName")
                     }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.buttonHeight)
+                    InlineFieldError(message: validationError)
                     categorySeparator
                     recordedCount(category, subcategory: original, ledger: store.current)
                 }
             }
-            Button("删掉这个小项") {
+            Button("删掉") {
                 if store.update("删除小项", { try CategoryModel.removeSubcategory(original, from: category, in: &$0) }) { dismiss() }
-            }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.card)).foregroundStyle(YubaiColor.amberInk)
+            }.buttonStyle(DestructiveButtonStyle())
                 .accessibilityIdentifier("deleteSubcategory")
-        }.navigationTitle("小项").yubaiNavigation().onAppear { name = original }.toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("好") {
-                    let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if clean == original || store.update("修改小项", { try CategoryModel.renameSubcategory(original, in: category, to: clean, ledger: &$0) }) { dismiss() }
-                }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("saveSubcategory")
-            }
-        }
+        }.onAppear { name = original }.manualSheetHeader("小项", enabled: validationError == nil,
+                                               actionIdentifier: "saveSubcategory", action: {
+            let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if clean == original || store.update("修改小项", { try CategoryModel.renameSubcategory(original, in: category, to: clean, ledger: &$0) }) { dismiss() }
+        })
     }
 }
 
@@ -274,17 +288,10 @@ private struct CategoryMergeView: View {
                 }.buttonStyle(.plain).accessibilityAddTraits(target == category.name ? .isSelected : [])
                     .accessibilityIdentifier("mergeInto_" + category.name)
             }
-        }.navigationTitle(source + "合并到").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
-            .safeAreaInset(edge: .bottom) {
-                Button {
-                    guard let target else { return }
-                    if store.update("合并分类", { try CategoryModel.merge(source, into: target, in: &$0) }) { dismiss(); merged() }
-                } label: {
-                    Text("\(categoryEntryCount(source, ledger: store.current)) 笔改成\(target ?? "")").fixedSize(horizontal: false, vertical: true)
-                }.buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.raised)).disabled(target == nil)
-                    .accessibilityIdentifier("confirmCategoryMerge").padding(YubaiSpace.insetPage).background(YubaiColor.canvas)
-            }
+        }.manualSheetHeader(source + "合并到", actionTitle: "合并", enabled: target != nil, actionIdentifier: "confirmCategoryMerge", action: {
+            guard let target else { return }
+            if store.update("合并分类", { try CategoryModel.merge(source, into: target, in: &$0) }) { dismiss(); merged() }
+        })
     }
 }
 

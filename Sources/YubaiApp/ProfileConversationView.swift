@@ -54,14 +54,8 @@ struct ProfileConversationView: View {
                     .padding(YubaiSpace.insetPage)
             }
         }.paperBackground().navigationTitle("和余白聊聊").yubaiNavigation()
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { CloseButton() }
-                if !revisit && proposal == nil && !messages.isEmpty {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("先跳过") { input = "暂时没想好，先跳过"; ask() }.disabled(busy).frame(minHeight: YubaiSize.tapMin)
-                    }
-                }
-            }
+            .manualSheetHeader("和余白聊聊", actionTitle: "先跳过", primary: false, enabled: !busy, cancelTitle: "关闭", showsAction: !revisit && proposal == nil && !messages.isEmpty,
+                               action: { input = "暂时没想好，先跳过"; ask() })
             .task {
                 guard messages.isEmpty && proposalID == nil else { return }
                 startedAsRevisit = revisit

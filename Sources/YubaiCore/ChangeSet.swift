@@ -357,7 +357,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         let stamp = source + "：" + reason
                 guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
-                e.id = draft.id; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
+                e.id = draft.id; e.subcategoryUserEdited = draft.categoryUserEdited == true; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
                 if let id = draft.planID, let occurrence = draft.occurrence {
                     guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,
                           !plan.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }

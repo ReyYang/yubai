@@ -36,7 +36,7 @@ struct StorageView: View {
                 VStack(spacing: YubaiSpace.none) {
                     cardHeading("截图和账单原件", subtitle: attachmentSummary)
                     EntryFormDivider()
-                    Button { sheet = .photos } label: { actionRow("删除旧截图", chevron: true) }
+                    Button { sheet = .photos } label: { actionRow("删掉旧截图", chevron: true) }
                         .accessibilityIdentifier("openStoragePhotos")
                 }
             }
@@ -143,8 +143,8 @@ private struct StoragePhotosSheet: View {
     @State private var now = Date()
     private var selected: [Attachment] { StorageAttachments.oldScreenshots(in: store.current, months: months, now: now) }
     var body: some View {
-        StorageSheet(title: "删除旧截图") {
-            Text("删除多久以前的").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+        StorageSheet(title: "旧截图") {
+            Text("多久以前").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 .padding(.top, YubaiSpace.gapSection)
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
             layout {
@@ -165,9 +165,9 @@ private struct StoragePhotosSheet: View {
                 .accessibilityIdentifier("storageOriginalsPreserved")
                 .disabled(true).accessibilityLabel("账单原件不删，导入记录里仍可撤销")
                 .padding(.top, YubaiSpace.gapGroup)
-            Button("删除 \(selected.count) 张截图") {
+            Button("删掉") {
                 if store.deleteOldScreenshots(months: months, now: now) { dismiss() }
-            }.buttonStyle(PrimaryButtonStyle()).disabled(selected.isEmpty).padding(.top, YubaiSpace.gapSection)
+            }.buttonStyle(DestructiveButtonStyle()).disabled(selected.isEmpty).padding(.top, YubaiSpace.gapSection)
                 .accessibilityIdentifier("deleteStoragePhotos")
             Button { dismiss() } label: {
                 Text("取消").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)
@@ -282,11 +282,11 @@ private struct StorageSheet<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: YubaiSpace.none) {
-                Text(title).yubaiFont(YubaiFont.amountSummary).fontDesign(.default).frame(maxWidth: .infinity).accessibilityAddTraits(.isHeader)
                 content
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
                 .background { GeometryReader { geometry in Color.clear.preference(key: StorageSheetHeight.self, value: geometry.size.height) } }
         }.scrollDismissesKeyboard(.interactively).foregroundStyle(YubaiColor.label).paperBackground()
+            .manualSheetHeader(title, cancelTitle: "关闭", showsAction: false)
             .onPreferenceChange(StorageSheetHeight.self) { contentHeight = $0 + YubaiSpace.gapSection }
             .presentationDetents([.height(contentHeight), .large]).presentationDragIndicator(.visible)
             .yubaiSheetBackground().presentationCornerRadius(28)

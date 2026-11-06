@@ -53,7 +53,7 @@ enum YubaiColor {
     static let outflow = adaptive(0xb09e80, 0x8c7b5f)
     static let chartRule = adaptive(0xb9ac93, 0x6b604d)
     static let chartGuide = adaptive(0x8c806b, 0x8c806b)
-    static let toggleOn = adaptive(0x817665, 0x8c806b)
+    static let toggleOn = adaptive(0x557f53, 0x86a884)
     static let iconTile = adaptive(0xede6d3, 0xede6d3)
     static let iconInk = adaptive(0x3e3224, 0x3e3224)
 
@@ -85,6 +85,9 @@ enum YubaiFont {
         var relativeTo: Font.TextStyle = .body
         var design: Font.Design { switch family { case .num: .rounded; case .serif: .serif; case .sans: .default; case .code: .monospaced } }
     }
+    static let entryAmount = Style(size: 48, lineHeight: 56, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
+    static let entrySheetTitle = Style(size: 17, lineHeight: 24, weight: .semibold, family: .sans, relativeTo: .headline)
+    static let destructiveAction = Style(size: 16, lineHeight: 22, weight: .medium, family: .sans, relativeTo: .headline)
     static let amountHero = Style(size: 48, lineHeight: 54, weight: .semibold, family: .num, tracking: -2, relativeTo: .largeTitle)
     static let amountDisplay = Style(size: 44, lineHeight: 50, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
     static let amountInput = Style(size: 38, lineHeight: 46, weight: .semibold, family: .num, tracking: -1, relativeTo: .title)
@@ -905,6 +908,7 @@ extension View {
         #if os(iOS)
         self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
             .scrollEdgeEffectHidden(true, for: .bottom)
+            .scrollEdgeEffectStyle(.soft, for: .top)
             // Root headers live outside this clipped scrolling body.
             .clipped()
         #else
@@ -916,6 +920,9 @@ extension View {
             header()
                 .padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+            #if os(iOS)
+            self
+            #else
             self
                 .mask(alignment: .top) {
                     GeometryReader { geometry in
@@ -928,6 +935,7 @@ extension View {
                         .padding(.horizontal, -geometry.size.width).padding(.bottom, -geometry.size.height)
                     }.allowsHitTesting(false).accessibilityHidden(true)
                 }
+            #endif
         }.modifier(RootPaperBackground())
     }
     func pageLocalHorizontalGestures() -> some View {
@@ -1542,17 +1550,18 @@ struct EmptyState: View {
         self.icon = icon; self.title = title; self.message = message; self.showsPlaceholder = showsPlaceholder; self.action = action; self.onAction = onAction
     }
     var body: some View {
-        VStack(spacing: YubaiSpace.gapGroup) {
-            if showsPlaceholder {
-                Circle().stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
-                    .frame(width: YubaiSize.iconButton * 3, height: YubaiSize.iconButton * 3).accessibilityHidden(true)
-            }
-            VStack(spacing: YubaiSpace.space8) {
-                Text(title).yubaiFont(YubaiFont.lead).foregroundStyle(YubaiColor.label)
-                if let message, !message.isEmpty { Text(message).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(maxWidth: 410) }
-            }.multilineTextAlignment(.center)
-            if let action, let onAction { Button(action, action: onAction).buttonStyle(PrimaryButtonStyle()) }
-        }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection).padding(.horizontal, YubaiSpace.insetPage)
+        Card(style: .compact) {
+            VStack(spacing: YubaiSpace.gapGroup) {
+                Image(systemName: icon).font(.system(size: 22)).foregroundStyle(YubaiColor.labelMuted)
+                    .frame(width: 44, height: 44).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
+                Text(title).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).multilineTextAlignment(.center)
+                if let action, let onAction {
+                    Button(action, action: onAction).yubaiFont(YubaiFont.body, weight: .medium)
+                        .padding(.horizontal, 18).frame(minHeight: 40).foregroundStyle(YubaiColor.onBrand)
+                        .background(YubaiColor.brand, in: Capsule()).buttonStyle(PressButtonStyle())
+                }
+            }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
+        }
     }
 }
 
@@ -1608,7 +1617,7 @@ extension View {
     func appErrors() -> some View { modifier(AppErrorPresenter()) }
     func numericInput() -> some View {
         #if os(iOS)
-        self.keyboardType(.decimalPad)
+        self.keyboardType(.decimalPad).background { NumberKeyboardAccessory().frame(width: 0, height: 0) }
         #else
         self
         #endif
@@ -1642,6 +1651,12 @@ private struct AppErrorPresenter: ViewModifier {
             .onAppear { if !store.errorHosts.contains(identity) { store.errorHosts.append(identity) } }
             .onDisappear { store.errorHosts.removeAll { $0 == identity } }
             .alert("需要留意", isPresented: Binding(get: { store.error != nil && store.errorHosts.last == identity }, set: { value in if !value && store.errorHosts.last == identity { store.error = nil } })) {
+                #if os(iOS)
+                if (store.error ?? "").contains("权限") || (store.error ?? "").contains("授权") {
+                    Button("去设置") { if let settings = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(settings) }; store.error = nil }
+                }
+                #endif
+                if store.loadFailure != nil { Button("恢复账本") { store.error = nil; store.sheet = .history } }
                 Button("知道了", role: .cancel) { store.error = nil }
             } message: { Text(store.error ?? "") }
     }
@@ -1686,6 +1701,7 @@ struct WelcomeView: View {
                                     .focused($focusedField, equals: .balance)
                                     .accessibilityLabel("现在手里的余额，元").accessibilityIdentifier("accountBalance")
                             }
+                            if !amount.isEmpty && (try? Money.parse(amount, allowNegative: true)) == nil { InlineFieldError(message: "填写有效金额") }
                             if let statement {
                                 if let balance = statement.preview.latestBalance {
                                     Text("流水 \(ImportStatementText.balanceDate(balance.date)) 的余额")
@@ -2277,3 +2293,43 @@ struct AssistantCard<Content: View>: View {
             .paperCardSurface(in: UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 22, bottomTrailingRadius: 22, topTrailingRadius: 22), background: YubaiColor.paperSheet, flat: true)
     }
 }
+
+#if os(iOS)
+/// A native input accessory avoids competing with the form's FocusState or duplicating keyboard toolbar items.
+private struct NumberKeyboardAccessory: UIViewRepresentable {
+    func makeUIView(context: Context) -> Anchor { Anchor(frame: .zero) }
+    func updateUIView(_ view: Anchor, context: Context) { DispatchQueue.main.async { view.install() } }
+    final class Anchor: UIView {
+        override init(frame: CGRect) { super.init(frame: frame); isUserInteractionEnabled = false; accessibilityElementsHidden = true }
+        required init?(coder: NSCoder) { fatalError() }
+        override func didMoveToWindow() { super.didMoveToWindow(); DispatchQueue.main.async { self.install() } }
+        func install() {
+            func fields(_ view: UIView) -> [UITextField] {
+                if let field = view as? UITextField { return [field] }
+                return view.subviews.flatMap(fields)
+            }
+            var host = superview
+            for _ in 0..<8 {
+                guard let container = host else { return }
+                let numeric = fields(container).filter { [.decimalPad, .numberPad, .asciiCapableNumberPad].contains($0.keyboardType) }
+                if !numeric.isEmpty {
+                    for field in numeric where field.inputAccessoryView?.accessibilityIdentifier != "numberKeyboardDone" {
+                        let toolbar = UIToolbar(); toolbar.autoresizingMask = [.flexibleWidth]; toolbar.accessibilityIdentifier = "numberKeyboardDone"; toolbar.sizeToFit()
+                        let done = UIBarButtonItem(title: "完成", style: .done, target: Target.shared, action: #selector(Target.finish))
+                        done.setTitleTextAttributes([.foregroundColor: UIColor(YubaiColor.brandInk), .font: UIFontMetrics.default.scaledFont(for: .systemFont(ofSize: 16, weight: .medium))], for: .normal)
+                        toolbar.items = [UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil), done]
+                        field.inputAccessoryView = toolbar
+                        if field.isFirstResponder { field.reloadInputViews() }
+                    }
+                    return
+                }
+                host = container.superview
+            }
+        }
+    }
+    @MainActor final class Target: NSObject {
+        static let shared = Target()
+        @objc func finish() { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+    }
+}
+#endif

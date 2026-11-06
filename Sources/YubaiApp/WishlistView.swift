@@ -135,7 +135,7 @@ struct WishEntryPicker: View {
                 let matches = Wishlist.candidates(for: wish, in: store.current, now: Date())
                 let used = Set(store.current.wishlist.compactMap(\.boughtEntryID))
                 let rows = all ? store.sortedEntries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.date <= Date() && !used.contains($0.id) } : matches
-                if rows.isEmpty { Text("没有匹配的支出") }
+                if rows.isEmpty { EmptyState("list.bullet", "没有匹配的支出", action: "查看全部支出", onAction: { all = true }) }
                 CardRows(rows) { entry in
                     Button {
                         if store.update("关联心愿购买记录", { try Wishlist.markBought(wishID, entryID: entry.id, in: &$0) }) { dismiss() }

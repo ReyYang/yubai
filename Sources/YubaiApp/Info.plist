@@ -3,6 +3,11 @@
 <plist version="1.0"><dict>
 <key>YubaiAppGroupIdentifier</key><string>$(YUBAI_APP_GROUP_IDENTIFIER)</string>
 <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>app.yubai.personal</string><key>CFBundleURLSchemes</key><array><string>yubai</string></array></dict></array>
+<key>UIApplicationShortcutItems</key><array>
+<dict><key>UIApplicationShortcutItemType</key><string>app.yubai.add</string><key>UIApplicationShortcutItemTitle</key><string>记一笔</string><key>UIApplicationShortcutItemIconSymbolName</key><string>plus</string></dict>
+<dict><key>UIApplicationShortcutItemType</key><string>app.yubai.capture</string><key>UIApplicationShortcutItemTitle</key><string>截图记一笔</string><key>UIApplicationShortcutItemIconSymbolName</key><string>photo</string></dict>
+<dict><key>UIApplicationShortcutItemType</key><string>app.yubai.ask</string><key>UIApplicationShortcutItemTitle</key><string>问余白</string><key>UIApplicationShortcutItemIconSymbolName</key><string>bubble.left</string></dict>
+</array>
 <key>CFBundleDisplayName</key><string>余白</string>
 <key>CFBundleName</key><string>Yubai</string>
 <key>CFBundleDevelopmentRegion</key><string>$(DEVELOPMENT_LANGUAGE)</string>
