@@ -84,9 +84,9 @@ struct SavingPurchaseCard: View {
     let notes: [MemoryNote]
     @State private var wishID: UUID?
     @State private var recording = false
-    private var hidden: Bool { store.current.preferences.hideAmounts }
+    private var hidden: Bool { store.preferences.hideAmounts }
     private var assessment: PurchaseAssessment {
-        Finance.assessPurchase(store.current, amount: purchase.amount, title: purchase.title, category: purchase.category, subcategory: purchase.subcategory)
+        store.purchaseAssessment(purchase)
     }
     private var conclusion: PurchaseVerdict { verdict?.verdict ?? assessment.verdict }
     private var reason: String { verdict?.reason ?? assessment.reason }
@@ -182,7 +182,7 @@ private struct PurchaseDetailsView: View {
     }
     private var values: JSONValue? { purchase.facts["values"] }
     private var principles: [JSONValue] { values?["principles"]?.arrayValue ?? [] }
-    private var evidenceRows: [Entry] { store.sortedEntries.filter { evidence.contains($0.id) && $0.deletedAt == nil } }
+    private var evidenceRows: [Entry] { store.evidenceEntries(Set(evidence), activeOnly: true) }
     var body: some View {
         Page {
             Card {
@@ -198,7 +198,7 @@ private struct PurchaseDetailsView: View {
                     }
                 }
             }
-            CardRows(evidenceRows) { entry in EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts) }
+            CardRows(evidenceRows) { entry in EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts) }
         }.navigationTitle("明细").yubaiNavigation()
     }
     private func areaQuotes(_ key: String) -> some View {
@@ -211,10 +211,10 @@ private struct PurchaseDetailsView: View {
     private func fact(_ title: String, _ value: String?) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            Text(store.current.preferences.hideAmounts ? "金额已隐藏" : value ?? "没有记录").yubaiFont(YubaiFont.body)
+            Text(store.preferences.hideAmounts ? "金额已隐藏" : value ?? "没有记录").yubaiFont(YubaiFont.body)
         }
     }
     private func quote(_ text: String) -> some View {
-        Text(store.current.preferences.hideAmounts ? "金额已隐藏" : "你写过「" + text + "」").yubaiFont(YubaiFont.body)
+        Text(store.preferences.hideAmounts ? "金额已隐藏" : "你写过「" + text + "」").yubaiFont(YubaiFont.body)
     }
 }

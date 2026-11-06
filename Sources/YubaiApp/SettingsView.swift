@@ -7,8 +7,8 @@ struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var storageSize: String?
-    private var thinkingCount: Int { store.current.wishlist.filter { $0.status == .thinking }.count }
-    private var followUpCount: Int { store.current.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= Date() } == true }.count }
+    private var thinkingCount: Int { store.settingsSummary.thinkingCount }
+    private var followUpCount: Int { store.settingsSummary.followUpCount }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.none) {
             TabNavigationLink(.profile) { ProfileView() } label: {
@@ -17,17 +17,17 @@ struct SettingsView: View {
                         HStack(spacing: YubaiSpace.gapGroup) {
                             Text("我的消费观").yubaiFont(YubaiFont.cardTitle)
                             Spacer(minLength: YubaiSpace.space8)
-                            Text("\(store.current.memories.count) 条").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                            Text("\(store.settingsSummary.memoryCount) 条").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                                 .accessibilityLabel("余白记得的，" + memoryCount)
                             chevron
                         }
-                        profileLine("想克制", store.current.profile.restrain.map(\.title).joined(separator: "、"))
-                        profileLine("愿意多花", store.current.profile.generous.map(\.title).joined(separator: "、"))
-                        if let floor = store.current.profile.floorAmount { profileLine("始终留着", store.current.preferences.hideAmounts ? "••••" : Money.text(floor, currency: false)) }
+                        profileLine("想克制", store.profile.restrain.map(\.title).joined(separator: "、"))
+                        profileLine("愿意多花", store.profile.generous.map(\.title).joined(separator: "、"))
+                        if let floor = store.profile.floorAmount { profileLine("始终留着", store.preferences.hideAmounts ? "••••" : Money.text(floor, currency: false)) }
                     }
                 }
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
-                .accessibilityHint(store.current.profile.restrain.isEmpty && store.current.profile.generous.isEmpty && store.current.profile.floorAmount == nil ? "还没写消费观，可进入添加" : "查看和编辑消费观")
+                .accessibilityHint(store.profile.restrain.isEmpty && store.profile.generous.isEmpty && store.profile.floorAmount == nil ? "还没写消费观，可进入添加" : "查看和编辑消费观")
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     TabNavigationLink(.wishlist) { WishlistView() } label: {
@@ -59,7 +59,7 @@ struct SettingsView: View {
                     TabNavigationLink(.intelligencePrivacy) { IntelligencePrivacyView() } label: {
                         HStack(spacing: YubaiSpace.gapGroup) {
                             Text("智能与隐私").yubaiFont(YubaiFont.row); Spacer()
-                            if store.current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured {
+                            if store.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured {
                                 Pill(text: "DeepSeek · 已配好", variant: .brand, height: YubaiSize.tagHeight, showsDot: false)
                             } else { Text("未配好").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                             chevron
@@ -71,29 +71,24 @@ struct SettingsView: View {
                     TabNavigationLink(.storage) { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
             }.buttonStyle(PressButtonStyle())
-        }.amountPrivacy(store.current.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("settingsScroll")
+        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("settingsScroll")
             .navigationDestination(for: CategorySettingsRoute.self) { _ in CategoriesView() }
             .rootPageHeader { TabRootHeader(title: "我") }.navigationTitle("我")
-            .task(id: store.current.updatedAt) {
-                let repository = store.localRepository
-                do { storageSize = StorageSize.text(try await Task.detached(priority: .utility) { try repository.storageUsage() }.value.totalBytes) }
-                catch { storageSize = nil }
-            }
+            .modifier(SettingsStorageSizeTask(storageSize: $storageSize))
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
     }
     private var latestLetter: String? {
-        store.current.cards.filter { $0.kind == .weeklyLetter }.max(by: { $0.createdAt < $1.createdAt })?.createdAt.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
+        store.cards.filter { $0.kind == .weeklyLetter }.max(by: { $0.createdAt < $1.createdAt })?.createdAt.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
     }
     private var fixedFlowsDetail: String {
-        let titles = FixedFlowArrangement.rows(in: store.current).map(\.title)
+        let titles = store.settingsSummary.fixedFlowTitles
         return (titles.isEmpty ? "" : titles.prefix(2).joined(separator: "、") + "等 ") + "\(titles.count) 项"
     }
     private var memoryCount: String {
-        let week = ButlerCards.isoWeek(Date())
-        let added = store.current.memories.filter { ButlerCards.isoWeek($0.createdAt) == week }.count
-        return "\(store.current.memories.count) 条 · 这周新记了 \(added) 条"
+        let added = store.settingsSummary.weeklyMemoryCount
+        return "\(store.settingsSummary.memoryCount) 条 · 这周新记了 \(added) 条"
     }
     private var wishlistTitle: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -105,14 +100,15 @@ struct SettingsView: View {
         if followUpCount > 0 { Pill(text: "\(followUpCount) 件买了一个月", variant: .amber, showsDot: false) }
     }
     private var accountsCard: some View {
-        let cash = store.current.accounts.filter { $0.kind == .bank || $0.kind == .cash }
-        let values = cash.map { max(0, Finance.balance($0, in: store.current)) }
+        let summary = store.settingsSummary
+        let cash = summary.cashAccounts
+        let values = summary.cashBalances.map { max(0, $0) }
         let total = values.reduce(Int64(0), +)
         return Card {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(spacing: YubaiSpace.gapGroup) { Text("账户").yubaiFont(YubaiFont.rowTitle); Spacer(); Text("\(store.current.accounts.count) 个账户").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary); chevron }
-                AmountLabel(cents: store.funds.cash, hide: store.current.preferences.hideAmounts, role: .account)
-                if !store.current.preferences.hideAmounts && total > 0 {
+                HStack(spacing: YubaiSpace.gapGroup) { Text("账户").yubaiFont(YubaiFont.rowTitle); Spacer(); Text("\(store.accounts.count) 个账户").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary); chevron }
+                AmountLabel(cents: store.funds.cash, hide: store.preferences.hideAmounts, role: .account)
+                if !store.preferences.hideAmounts && total > 0 {
                     GeometryReader { geometry in
                         HStack(spacing: YubaiSpace.space4) {
                             ForEach(values.indices, id: \.self) { i in
@@ -124,7 +120,7 @@ struct SettingsView: View {
                             }
                         }.clipShape(Capsule())
                     }.frame(height: 8).accessibilityElement(children: .ignore)
-                        .accessibilityLabel("现金分布：" + cash.map { $0.name + " " + Money.text(Finance.balance($0, in: store.current)) }.joined(separator: "；"))
+                        .accessibilityLabel("现金分布：" + cash.indices.map { cash[$0].name + " " + Money.text(summary.cashBalances[$0]) }.joined(separator: "；"))
                 }
             }
         }
@@ -142,6 +138,18 @@ struct SettingsView: View {
     private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
 }
 
+private struct SettingsStorageSizeTask: ViewModifier {
+    @Environment(AppStore.self) private var store
+    @Binding var storageSize: String?
+    func body(content: Content) -> some View {
+        content.task(id: store.current.updatedAt) {
+            let repository = store.localRepository
+            do { storageSize = StorageSize.text(try await Task.detached(priority: .utility) { try repository.storageUsage() }.value.totalBytes) }
+            catch { storageSize = nil }
+        }
+    }
+}
+
 struct IntelligencePrivacyView: View {
     @Environment(AppStore.self) private var store
     @State private var hasKey = APIKeyStore.shared.hasKeychainKey
@@ -154,7 +162,7 @@ struct IntelligencePrivacyView: View {
                 heading("云端智能")
                 Card(style: .list) {
                     VStack(spacing: YubaiSpace.none) {
-                        Toggle("打开云端智能", isOn: Binding(get: { store.current.preferences.cloudAIEnabled }, set: { value in
+                        Toggle("打开云端智能", isOn: Binding(get: { store.preferences.cloudAIEnabled }, set: { value in
                             store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value }
                         })).tint(YubaiColor.brand).frame(minHeight: YubaiSize.headerHeight)
                         separator
@@ -182,9 +190,9 @@ struct IntelligencePrivacyView: View {
                 heading("设备与界面")
                 Card(style: .list) {
                     VStack(spacing: YubaiSpace.none) {
-                        Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.current.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.headerHeight)
+                        Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.headerHeight)
                         separator
-                        Picker("外观", selection: Binding(get: { store.current.preferences.appearance }, set: { value in
+                        Picker("外观", selection: Binding(get: { store.preferences.appearance }, set: { value in
                             store.update("保存外观") { $0.preferences.appearance = value }
                         })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }.frame(minHeight: YubaiSize.rowSingle)
                     }
@@ -334,8 +342,8 @@ struct ImportHistoryView: View {
     @State private var filename = ""
     var body: some View {
         Page {
-            if store.current.imports.isEmpty { Text("还没有导入记录。").yubaiFont(YubaiFont.callout).accessibilityIdentifier("emptyImportHistory") }
-            CardRows(Array(store.current.imports.reversed())) { batch in
+            if store.imports.isEmpty { Text("还没有导入记录。").yubaiFont(YubaiFont.callout).accessibilityIdentifier("emptyImportHistory") }
+            CardRows(Array(store.imports.reversed())) { batch in
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text(batch.filename).yubaiFont(YubaiFont.rowTitle)
                     Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销"))

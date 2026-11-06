@@ -4,10 +4,7 @@ import YubaiCore
 struct QuickCaptureSettingsView: View {
     @Environment(AppStore.self) private var store
     @State private var notificationStatus = ""
-    private var recent: [Entry] {
-        let start = Dates.addDays(-6, to: Dates.day(Date()))
-        return store.current.activeEntries.filter { $0.quickCapture != nil && ($0.recordedAt ?? $0.date) >= start && ($0.recordedAt ?? $0.date) <= Date() }
-    }
+    private var recent: [Entry] { store.recentCaptures }
     var body: some View {
         Page {
             HStack(alignment: .top, spacing: YubaiSpace.gapSection) {
@@ -36,7 +33,7 @@ struct QuickCaptureSettingsView: View {
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     NavigationLink { CaptureRulesView(kind: .card) } label: {
-                        line("卡对应的账户", detail: "\(store.current.preferences.quickCapture.cardAccounts.count) 张", navigates: true)
+                        line("卡对应的账户", detail: "\(store.preferences.quickCapture.cardAccounts.count) 张", navigates: true)
                     }
                     EntryFormDivider()
                     NavigationLink { CaptureRulesView(kind: .merchant) } label: {
@@ -121,7 +118,7 @@ private struct CaptureRulesView: View {
     let kind: CaptureRuleKind
     @State private var editing: CaptureRuleSelection?
     private var names: [String] {
-        kind == .card ? store.current.preferences.quickCapture.cardAccounts.keys.sorted() : store.current.classificationMemory.keys.sorted()
+        kind == .card ? store.preferences.quickCapture.cardAccounts.keys.sorted() : store.current.classificationMemory.keys.sorted()
     }
     var body: some View {
         List {
@@ -147,7 +144,7 @@ private struct CaptureRulesView: View {
             .sheet(item: $editing) { selected in NavigationStack { CaptureRuleEditor(kind: kind, original: selected.name) }.environment(store).appErrors().yubaiSheetBackground() }
     }
     private func value(_ name: String) -> String {
-        if kind == .card { return store.current.accountName(store.current.preferences.quickCapture.cardAccounts[name]) }
+        if kind == .card { return store.accountName(store.preferences.quickCapture.cardAccounts[name]) }
         let choice = CategoryAssignment(path: store.current.classificationMemory[name] ?? "")
         let resolved = store.current.categoryAssignment(category: choice.category, subcategory: choice.subcategory)
         return Classification.displayCategory(resolved.category) + (resolved.subcategory.map { " · " + $0 } ?? "")
@@ -161,7 +158,7 @@ private struct CaptureRuleEditor: View {
     @State private var name = ""
     @State private var account: UUID?
     @State private var category = "餐饮"
-    private var accounts: [Account] { store.current.accounts.filter { !$0.archived } }
+    private var accounts: [Account] { store.accounts.filter { !$0.archived } }
     var body: some View {
         Form {
             TextField(kind == .card ? "卡名" : "商户", text: $name)
@@ -180,7 +177,7 @@ private struct CaptureRuleEditor: View {
             }
             .onAppear {
                 name = original ?? ""
-                account = original.flatMap { store.current.preferences.quickCapture.cardAccounts[$0] }.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first?.id
+                account = original.flatMap { store.preferences.quickCapture.cardAccounts[$0] }.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first?.id
                 category = original.flatMap { store.current.classificationMemory[$0] }.map { raw in
                     let choice = CategoryAssignment(path: raw)
                     return store.current.categoryAssignment(category: choice.category, subcategory: choice.subcategory).path

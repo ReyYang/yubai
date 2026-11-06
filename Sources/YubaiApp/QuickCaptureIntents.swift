@@ -26,7 +26,7 @@ struct CaptureSnippetIntent: SnippetIntent {
     @MainActor func perform() async throws -> some IntentResult & ShowsSnippetView {
         let store = AppStore.shared; let ids = Set(entryIDs.compactMap(UUID.init(uuidString:)))
         let entries = store.current.activeEntries.filter { ids.contains($0.id) }
-        let privateResult = store.current.preferences.lockEnabled || store.current.preferences.hideAmounts
+        let privateResult = store.preferences.lockEnabled || store.preferences.hideAmounts
         return .result(view: CaptureSnippetView(entries: entries, ledger: store.current, privateResult: privateResult))
     }
 }

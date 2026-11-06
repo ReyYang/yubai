@@ -57,12 +57,12 @@ struct AskYubaiView: View {
     @State private var appeared = false
     @State private var configured = IntelligenceRuntime.isConfigured
     @FocusState private var inputFocused: Bool
-    private var enabled: Bool { store.current.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
+    private var enabled: Bool { store.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
             conversation
             inputBar
-        }.amountPrivacy(store.current.preferences.hideAmounts).paperBackground().navigationTitle("问余白").yubaiNavigation()
+        }.amountPrivacy(store.preferences.hideAmounts).paperBackground().navigationTitle("问余白").yubaiNavigation()
             #if os(iOS)
             .toolbarBackground(.hidden, for: .navigationBar)
             #endif
@@ -93,7 +93,7 @@ struct AskYubaiView: View {
             .onDisappear { cancel(); connectivity.stop() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
             .onChange(of: store.current.id) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
-            .onChange(of: store.current.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
+            .onChange(of: store.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
             .onChange(of: store.locked) { _, value in if value { cancel(); messages = []; originalImage = nil; session = AskYubaiSession() } }
     }
     private var conversation: some View {
@@ -166,7 +166,7 @@ struct AskYubaiView: View {
                 .accessibilityIdentifier("configureAskKey")
         } else if !connectivity.connected {
             Pill(text: "没联网", variant: .amber, showsDot: false).frame(maxWidth: .infinity)
-        } else if !store.current.preferences.cloudAIEnabled {
+        } else if !store.preferences.cloudAIEnabled {
             NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "云端智能没开 ›", variant: .amber, showsDot: false) }
                 .buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity)
         } else if let model = IntelligenceRuntime.cloud.unavailableModel {
@@ -225,8 +225,8 @@ struct AskYubaiView: View {
         AssistantCard {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
-                Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
-                if let chart = reply.chart, !store.current.preferences.hideAmounts { AnswerChartView(chart: chart) }
+                Text(store.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
+                if let chart = reply.chart, !store.preferences.hideAmounts { AnswerChartView(chart: chart) }
                 replyEvidence(reply, message: message)
                 unverifiedAmounts(reply)
                 if message.protectedEdit { protectedRecords(message) }
@@ -243,7 +243,7 @@ struct AskYubaiView: View {
     @ViewBuilder private func unverifiedAmounts(_ reply: AssistantReply) -> some View {
         if !reply.unverifiedAmounts.isEmpty {
             HStack(spacing: YubaiSpace.space8) {
-                Text(store.current.preferences.hideAmounts ? "••••" : reply.unverifiedAmounts.joined(separator: "、"))
+                Text(store.preferences.hideAmounts ? "••••" : reply.unverifiedAmounts.joined(separator: "、"))
                     .yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.amberInk)
                 NavigationLink { AskRecordLookupView(ids: reply.evidenceEntryIDs) } label: { Pill(text: "核对 ›", variant: .amber, showsDot: false) }
             }.accessibilityElement(children: .contain).accessibilityLabel("回答中有金额尚未核实")
@@ -264,13 +264,13 @@ struct AskYubaiView: View {
     @ViewBuilder private func userBubble(_ message: AskMessage) -> some View {
         if let statement = message.tableExcerpt {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                Text(store.current.preferences.hideAmounts ? "账单表格" : (statement.preamble.isEmpty ? "帮我导入这些" : statement.preamble)).yubaiFont(YubaiFont.body)
-                Text(store.current.preferences.hideAmounts ? "金额已隐藏" : statement.text)
+                Text(store.preferences.hideAmounts ? "账单表格" : (statement.preamble.isEmpty ? "帮我导入这些" : statement.preamble)).yubaiFont(YubaiFont.body)
+                Text(store.preferences.hideAmounts ? "金额已隐藏" : statement.text)
                     .yubaiFont(YubaiFont.meta).lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
                     .padding(YubaiSpace.space8).background(YubaiColor.onBrand.opacity(0.15), in: RoundedRectangle(cornerRadius: YubaiRadius.control))
                 Text("共 \(statement.rowCount) 行").yubaiFont(YubaiFont.meta)
             }.accessibilityIdentifier("pastedStatementBubble")
-        } else { Text(store.current.preferences.hideAmounts ? "金额已隐藏" : message.text).yubaiFont(YubaiFont.body) }
+        } else { Text(store.preferences.hideAmounts ? "金额已隐藏" : message.text).yubaiFont(YubaiFont.body) }
     }
     @MainActor private func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -337,7 +337,7 @@ struct AskEvidenceView: View {
         let rows = store.sortedEntries.filter { ids.contains($0.id) && $0.deletedAt == nil }
         Page {
             CardRows(rows) { entry in
-                EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts).accessibilityIdentifier("evidenceEntry_" + entry.id.uuidString)
+                EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts).accessibilityIdentifier("evidenceEntry_" + entry.id.uuidString)
             }
             if rows.isEmpty { Text("没有可展示的记录，或原记录已移除。") }
         }.navigationTitle("明细").yubaiNavigation()
@@ -354,7 +354,7 @@ private struct AskRecordLookupView: View {
                 .accessibilityLabel("搜索核对记录").accessibilityHint("打开记录详情，可核对原始账单")
             let rows = store.sortedEntries.filter { $0.deletedAt == nil && (ids.isEmpty || ids.contains($0.id)) && (search.isEmpty || $0.displayTitle.localizedCaseInsensitiveContains(search)) }
             CardRows(rows) { entry in
-                EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts)
+                EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts)
             }
         }.navigationTitle("核对记录").yubaiNavigation()
     }
@@ -368,8 +368,8 @@ private struct AskChangeCard: View {
         if let status { Text(status).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin) }
         else {
             let count = Set(change.items.flatMap(\.entryIDs)).count
-            ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
-                         primaryTitle: count > 0 ? "改好这 \(count) 笔" : "改好这 \(change.items.count) 项", canConfirm: !store.current.preferences.hideAmounts, confirm: {
+            ProposalCard(title: store.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
+                         primaryTitle: count > 0 ? "改好这 \(count) 笔" : "改好这 \(change.items.count) 项", canConfirm: !store.preferences.hideAmounts, confirm: {
                 if store.apply(change, label: "问余白修改") {
                     status = "已改好，可撤销上一项修改。" + (store.toast?.contains("；") == true ? (store.toast ?? "") : "")
                 }
@@ -418,7 +418,7 @@ private struct AskPastedStatementCard: View {
     private func total(_ title: String, count: Int, amount: Int64) -> some View {
         HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
-            AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts, role: .small, sign: .none)
+            AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .small, sign: .none)
         }
     }
 }
@@ -448,7 +448,7 @@ private struct AskEntryDraftCard: View {
         let dates = drafts.map(\.date)
         let today = dates.allSatisfy { Dates.calendar.isDateInToday($0) }
         let accounts = Set(drafts.map(\.accountID))
-        return (today ? "今天" : ImportStatementText.range(dates)) + " · " + (accounts.count == 1 ? store.current.accountName(drafts[0].accountID) : "多个账户")
+        return (today ? "今天" : ImportStatementText.range(dates)) + " · " + (accounts.count == 1 ? store.accountName(drafts[0].accountID) : "多个账户")
     }
     var body: some View {
         if savedCount > 0 { Text("已记下 \(savedCount) 笔，可撤销上一项修改。").yubaiFont(YubaiFont.callout).accessibilityIdentifier("draftEntriesSaved") }
@@ -472,14 +472,14 @@ private struct AskEntryDraftCard: View {
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("合计").yubaiFont(YubaiFont.row)
                         Spacer()
-                        if let sum { AmountLabel(cents: sum, hide: store.current.preferences.hideAmounts, role: .small, sign: .none) }
+                        if let sum { AmountLabel(cents: sum, hide: store.preferences.hideAmounts, role: .small, sign: .none) }
                         else { Text("金额超出范围").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
                     }
                     Toggle("金额和原文对得上", isOn: $amountsConfirmed).tint(YubaiColor.toggleOn).yubaiFont(YubaiFont.row).accessibilityIdentifier("confirmDraftAmounts")
                     HStack(spacing: YubaiSpace.space8) {
                         Button("不记了", action: cancelDraft).buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("cancelDraftEntries")
                         Button("记下 \(chosen.count) 笔", action: save).buttonStyle(PrimaryButtonStyle(compact: true))
-                            .disabled(!amountsConfirmed || chosen.isEmpty || sum == nil || store.current.preferences.hideAmounts || chosen.contains { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                            .disabled(!amountsConfirmed || chosen.isEmpty || sum == nil || store.preferences.hideAmounts || chosen.contains { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
                             .accessibilityIdentifier("saveDraftEntries")
                     }
                 }
@@ -504,14 +504,14 @@ private struct AskEntryDraftCard: View {
                         Text(draft.purpose ?? draft.title).yubaiFont(YubaiFont.row)
                         Text(Classification.displayCategory(draft.category) + (draft.subcategory.map { " · " + $0 } ?? "")).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }.frame(maxWidth: .infinity, alignment: .leading)
-                    AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .none)
+                    AmountLabel(cents: draft.amount, hide: store.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .none)
                     Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("editDraft_" + draft.id.uuidString)
         }
     }
     private func save() {
-        guard amountsConfirmed, !chosen.isEmpty, sum != nil, !store.current.preferences.hideAmounts else { return }
+        guard amountsConfirmed, !chosen.isEmpty, sum != nil, !store.preferences.hideAmounts else { return }
         let chosen = self.chosen
         var confirmed = change
         confirmed.items = chosen.map { draft in var value = draft; value.amountConfirmed = true; return .addEntry(value) }
@@ -542,9 +542,9 @@ private struct AskDraftEditor: View {
         Form {
             Section {
                 TextField("用途", text: Binding(get: { draft.purpose ?? draft.title }, set: { draft.title = $0; if draft.purpose != nil { draft.purpose = $0 } })).accessibilityIdentifier("draftPurpose")
-                AmountLabel(cents: draft.amount, hide: store.current.preferences.hideAmounts)
+                AmountLabel(cents: draft.amount, hide: store.preferences.hideAmounts)
                 DatePicker("日期", selection: $draft.date, displayedComponents: .date)
-                Picker("账户", selection: $draft.accountID) { ForEach(store.current.accounts.filter { !$0.archived }) { Text($0.name).tag($0.id) } }
+                Picker("账户", selection: $draft.accountID) { ForEach(store.accounts.filter { !$0.archived }) { Text($0.name).tag($0.id) } }
                 CategoryPickerField(income: draft.nature == .refund ? false : draft.nature.inflow,
                                     selection: .init(category: draft.category, subcategory: draft.subcategory),
                                     identifier: "draftCategory") { choice in

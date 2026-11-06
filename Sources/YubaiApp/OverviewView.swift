@@ -5,7 +5,7 @@ struct OverviewView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var freshLetter: ButlerCard? {
-        store.current.cards.first { WeeklyLetter.isFresh($0, now: Date()) && !ButlerCards.isMuted($0.dedupeKey, in: store.current) }
+        store.freshLetter
     }
     private var dueBills: [Occurrence] {
         store.funds.occurrences.filter { !$0.inflow && ($0.planID != nil || $0.rentID != nil) && Dates.day($0.date) <= Dates.day(Date()) }
@@ -33,13 +33,13 @@ struct OverviewView: View {
                         .background(YubaiColor.raised, in: Capsule()).frame(minHeight: YubaiSize.tapMin)
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("freshLetter")
             }
-            if store.current.accounts.isEmpty {
+            if store.accounts.isEmpty {
                 EmptyAccountState { store.sheet = .account(nil) }
             } else {
                 VStack(alignment: .leading, spacing: YubaiSpace.none) {
                     HeroCard(available: funds.available, payable: funds.debt + funds.committed,
                              reserved: funds.goals + funds.living + funds.uncertainInflow,
-                             hideAmount: store.current.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
+                             hideAmount: store.preferences.hideAmounts, title: "还能花", horizon: funds.horizonTitle,
                              onDetails: { store.sheet = .fundsCalculation })
                     CashTimelineCard(timeline: store.cashTimeline).padding(.top, 14)
                 }
@@ -47,7 +47,7 @@ struct OverviewView: View {
                 RestrainNearRow()
                 if !dueBills.isEmpty { dueCard }
             }
-            if !store.current.accounts.isEmpty {
+            if !store.accounts.isEmpty {
                 if dueBills.isEmpty, let next = funds.occurrences.first(where: { !$0.inflow }) {
                     TabNavigationLink(.upcomingPayments) { Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation() } label: {
                         ViewThatFits(in: .horizontal) {
@@ -60,7 +60,7 @@ struct OverviewView: View {
                         .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
                 }
             }
-        }.foregroundStyle(YubaiColor.label).amountPrivacy(store.current.preferences.hideAmounts)
+        }.foregroundStyle(YubaiColor.label).amountPrivacy(store.preferences.hideAmounts)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.butlerVisibility.queued.first?.id)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: dueBills.map(\.id))
     }
@@ -102,14 +102,14 @@ struct OverviewView: View {
                 Text(row.title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.amberStrong)
                 Text(dueDetail(row)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts,
+            AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts,
                         ink: YubaiColor.amberStrong)
         }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private func dueDetail(_ row: Occurrence) -> String {
         let date = Dates.day(row.date) == Dates.day(Date()) ? "今天到期" : FixedFlowPresentation.monthDay(row.date) + "到期"
-        let account = store.current.plans.first { $0.id == row.planID }?.accountID ?? store.current.rents.first { $0.id == row.rentID }?.accountID
-        return date + (account.map { " · " + store.current.accountName($0) } ?? "")
+        let account = store.plans.first { $0.id == row.planID }?.accountID ?? store.rents.first { $0.id == row.rentID }?.accountID
+        return date + (account.map { " · " + store.accountName($0) } ?? "")
     }
     private func nextTitle(_ item: Occurrence) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -118,10 +118,10 @@ struct OverviewView: View {
         }
     }
     private func nextAmount(_ item: Occurrence) -> some View {
-        AmountLabel(cents: item.amount, hide: store.current.preferences.hideAmounts, sign: .outflow)
+        AmountLabel(cents: item.amount, hide: store.preferences.hideAmounts, sign: .outflow)
     }
     private func letterChip(_ card: ButlerCard) -> String {
-        guard !store.current.preferences.hideAmounts, let facts = card.letter else { return "每周来信" }
+        guard !store.preferences.hideAmounts, let facts = card.letter else { return "每周来信" }
         let change = facts.availableChange
         return "每周来信 · 还能花比上周" + (change >= 0 ? "多 " : "少 ") + Money.text(change == .min ? 0 : abs(change), currency: false)
     }
@@ -210,7 +210,7 @@ struct UpcomingPaymentsView: View {
         }
     }
     private func amount(_ item: Occurrence) -> some View {
-        AmountLabel(cents: item.amount, hide: store.current.preferences.hideAmounts, sign: .outflow)
+        AmountLabel(cents: item.amount, hide: store.preferences.hideAmounts, sign: .outflow)
     }
     private func paymentRow(_ item: Occurrence) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
@@ -224,8 +224,8 @@ struct UpcomingPaymentsView: View {
         }.padding(.vertical, YubaiSpace.space8)
     }
     private func canEnd(_ item: Occurrence) -> Bool {
-        if let id = item.planID, let plan = store.current.plans.first(where: { $0.id == id }) { return plan.endDate == nil }
-        if let id = item.rentID, let rent = store.current.rents.first(where: { $0.id == id }) { return rent.endDate == nil }
+        if let id = item.planID, let plan = store.plans.first(where: { $0.id == id }) { return plan.endDate == nil }
+        if let id = item.rentID, let rent = store.rents.first(where: { $0.id == id }) { return rent.endDate == nil }
         return false
     }
 }
@@ -245,8 +245,8 @@ struct FundsCalculationView: View {
                     formula("= 还能花", funds.available)
                 }
             }
-            if let floor = store.current.profile.floorAmount, let room = funds.floorRoom {
-                FloorLine(floor: floor, floorRoom: room, hideAmounts: store.current.preferences.hideAmounts)
+            if let floor = store.profile.floorAmount, let room = funds.floorRoom {
+                FloorLine(floor: floor, floorRoom: room, hideAmounts: store.preferences.hideAmounts)
                     .accessibilityIdentifier("floorLine")
             }
             ForEach(funds.warnings, id: \.self) { InlineNote(text: $0, style: .attention) }
@@ -256,7 +256,7 @@ struct FundsCalculationView: View {
     private func formula(_ title: String, _ amount: Int64) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return VStack(spacing: YubaiSpace.none) {
-            layout { Text(title).yubaiFont(YubaiFont.row); if !textSize.isAccessibilitySize { Spacer() }; AmountLabel(cents: amount, hide: store.current.preferences.hideAmounts) }.frame(minHeight: YubaiSize.rowSingle)
+            layout { Text(title).yubaiFont(YubaiFont.row); if !textSize.isAccessibilitySize { Spacer() }; AmountLabel(cents: amount, hide: store.preferences.hideAmounts) }.frame(minHeight: YubaiSize.rowSingle)
             if title != "= 还能花" { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
         }
     }

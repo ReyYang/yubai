@@ -53,7 +53,7 @@ struct WeeklyLetterReminder: View {
     @State private var denied = false
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            Toggle("每周来信提醒", isOn: Binding(get: { store.current.preferences.weeklyLetterPush }, set: { value in
+            Toggle("每周来信提醒", isOn: Binding(get: { store.preferences.weeklyLetterPush }, set: { value in
                 Task { await store.setWeeklyLetterPush(value); await refresh() }
             })).tint(YubaiColor.toggleOn).disabled(store.updatingWeeklyPush).frame(minHeight: YubaiSize.rowSingle)
             if denied {

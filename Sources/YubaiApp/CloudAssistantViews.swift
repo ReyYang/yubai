@@ -84,7 +84,7 @@ struct CloudModelMenu: View {
         if UITestSupport.script != nil { return }
         #endif
         // Opening settings during setup or before organizing an import is local.
-        guard store.current.preferences.onboardingComplete, store.current.preferences.cloudAIEnabled,
+        guard store.preferences.onboardingComplete, store.preferences.cloudAIEnabled,
               store.pendingOrganization.batchIDs.isEmpty else { return }
         guard let client = DeepSeekClient.configured() else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
         do {
@@ -181,7 +181,7 @@ struct CloudSendLogView: View {
                 if visible.isEmpty { Text("没有没成功的记录。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
             }
             Button("清空这份记录") { SendLog.shared.clear(); reload() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("clearCloudSendLog")
-        }.amountPrivacy(store.current.preferences.hideAmounts).navigationTitle("发给云端的内容").yubaiNavigation()
+        }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("发给云端的内容").yubaiNavigation()
             .onAppear(perform: reload)
             .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in reload() }
     }
@@ -210,9 +210,9 @@ struct CloudSendLogView: View {
     private func groupRow(_ group: SendLogGroup) -> some View {
         HStack(spacing: YubaiSpace.gapGroup) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text(group.purpose + (store.current.preferences.hideAmounts || group.title == group.purpose ? "" : " · " + group.title)).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
+                Text(group.purpose + (store.preferences.hideAmounts || group.title == group.purpose ? "" : " · " + group.title)).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
                 Text(ImportStatementText.time(group.startedAt) + " · " + CloudLogText.metadata(group)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                if group.hasFailure { Text(store.current.preferences.hideAmounts ? "这次没有成功" : group.failureReasons.joined(separator: "；")).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
+                if group.hasFailure { Text(store.preferences.hideAmounts ? "这次没有成功" : group.failureReasons.joined(separator: "；")).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
             }.frame(maxWidth: .infinity, alignment: .leading)
             if group.hasFailure { Circle().fill(YubaiColor.amberDot).frame(width: YubaiSize.marker, height: YubaiSize.marker).accessibilityHidden(true) }
             Image(systemName: "chevron.right").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
@@ -243,7 +243,7 @@ private struct CloudSendLogDetailView: View {
     @State private var rules: [String] = []
     @State private var rulesCharacters = 0
     @State private var steps: [SendLogTraceStep] = []
-    private var hidden: Bool { store.current.preferences.hideAmounts }
+    private var hidden: Bool { store.preferences.hideAmounts }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             if removed { Text("这份记录已清空或移出。").yubaiFont(YubaiFont.callout) }

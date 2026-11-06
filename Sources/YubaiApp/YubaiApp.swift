@@ -68,8 +68,105 @@ enum AppSheet: Identifiable {
         }
     }
     var current: Ledger { ledger }
+    // These slices never register access to ledger when a view reads them.
+    private(set) var preferences = Preferences()
+    private(set) var accounts: [Account] = []
+    private(set) var cards: [ButlerCard] = []
+    private(set) var profile = SpendingProfile()
+    private(set) var plans: [Plan] = []
+    private(set) var rents: [Rent] = []
+    private(set) var imports: [ImportBatch] = []
+    private(set) var mutedTopics: [String] = []
+    private(set) var categoryAliases: [String: String] = [:]
+    func resolveCategory(_ category: String) -> String {
+        _ = categoryAliases
+        return derivedSource.resolveCategory(category)
+    }
+    func subcategoryBreakdown(category: String, during interval: DateInterval) -> [Breakdown] {
+        _ = ledgerRevision
+        return presentationCache.subcategoryBreakdown(in: derivedSource, category: category, during: interval, revision: sourceRevision)
+    }
+    func evidenceEntries(_ ids: Set<UUID>, activeOnly: Bool = false) -> [Entry] {
+        // Resolve only the requested IDs, retaining sortedEntries' stable order
+        // for equal dates (including deleted rows where the caller allowed them).
+        _ = ledgerRevision
+        return presentationCache.evidenceEntries(in: derivedSource, ids: ids, activeOnly: activeOnly, revision: sourceRevision)
+    }
+    @ObservationIgnored private var derivedSource = Ledger()
+    @ObservationIgnored private var sourceRevision: UInt64 = 0
+    @ObservationIgnored private var preparedDerived: LedgerDerivedSnapshot?
+    @ObservationIgnored private var preparedPending: PendingImportOrganization?
+    @ObservationIgnored private var preparedSalary: (day: Date, value: SalaryCandidate?)?
+    private var fundsRevision = 0
+    private var cashRevision = 0
+    private var entriesRevision = 0
+    private var manualPurposesRevision = 0
+    private var entryTimelineRevision = 0
+    private var pendingRevision = 0
+    private var visibilityRevision = 0
+    private var progressRevision = 0
+    private var salaryRevision = 0
+    @ObservationIgnored private var visibilityBatches: Set<UUID> = []
+    @ObservationIgnored private var presentationCache = LedgerPresentationCache()
+    @ObservationIgnored private var cachedManualPurposes: [UUID: String]?
+    var manualNotePurposes: [UUID: String] {
+        _ = manualPurposesRevision
+        if let cachedManualPurposes { return cachedManualPurposes }
+        let value = EntryNotePresentation.manualPurposes(derivedSource.entries)
+        cachedManualPurposes = value; return value
+    }
+    var savingsTotals: LedgerSavingsTotals {
+        _ = ledgerRevision
+        return presentationCache.savings(in: derivedSource, revision: sourceRevision)
+    }
+    var recentCaptures: [Entry] {
+        _ = ledgerRevision
+        return presentationCache.recentCaptures(in: derivedSource, revision: sourceRevision)
+    }
+    private struct AssessmentKey: Hashable {
+        let amount: Int64; let title: String; let category: String?; let subcategory: String?
+    }
+    @ObservationIgnored private var cachedAssessments: [AssessmentKey: (at: Date, value: PurchaseAssessment)] = [:]
+    func purchaseAssessment(_ purchase: PurchaseJudgment) -> PurchaseAssessment {
+        _ = ledgerRevision
+        _ = funds
+        let at = cachedFunds!.at
+        let key = AssessmentKey(amount: purchase.amount, title: purchase.title, category: purchase.category, subcategory: purchase.subcategory)
+        if let cached = cachedAssessments[key], cached.at == at { return cached.value }
+        let value = Finance.assessPurchase(derivedSource, amount: purchase.amount, title: purchase.title, category: purchase.category, subcategory: purchase.subcategory)
+        if cachedAssessments.count >= 32 { cachedAssessments.removeAll(keepingCapacity: true) }
+        cachedAssessments[key] = (at, value); return value
+    }
+    func cashFlow(during interval: DateInterval) -> CashFlowSummary {
+        _ = ledgerRevision
+        return presentationCache.cashFlow(in: derivedSource, during: interval, revision: sourceRevision)
+    }
+    func cashFlowSlices(during interval: DateInterval, income: Bool) -> [CashFlowSlice] {
+        _ = ledgerRevision
+        return presentationCache.cashFlowSlices(in: derivedSource, during: interval, income: income, revision: sourceRevision)
+    }
+    func flowRecords(categories: [String], income: Bool, interval: DateInterval, subcategory: String? = nil) -> [Entry] {
+        _ = ledgerRevision
+        return presentationCache.flowRecords(in: derivedSource, categories: categories, income: income,
+                                             interval: interval, subcategory: subcategory, revision: sourceRevision)
+    }
+    var subscriptionCandidates: [SubscriptionCandidate] {
+        _ = ledgerRevision
+        return presentationCache.subscriptions(in: derivedSource, revision: sourceRevision)
+    }
+    var settingsSummary: LedgerSettingsSummary {
+        _ = ledgerRevision
+        return presentationCache.settings(in: derivedSource, revision: sourceRevision)
+    }
+    func accountName(_ id: UUID?) -> String { accounts.first { $0.id == id }?.name ?? "未指定账户" }
+    var freshLetter: ButlerCard? {
+        _ = mutedTopics
+        return cards.first { card in
+            WeeklyLetter.isFresh(card, now: Date()) && !ButlerCards.isMuted(card.dedupeKey, in: derivedSource)
+        }
+    }
     @ObservationIgnored var preparingImportOrganization = false
-    private var derivedRevision = 0
+    @ObservationIgnored private var derivedRevision = 0
     private(set) var ledgerRevision: UInt64 = 0
     // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
@@ -92,22 +189,34 @@ enum AppSheet: Identifiable {
     @ObservationIgnored private var cachedPendingOrganization: PendingImportOrganization?
     @ObservationIgnored private var cachedSalary: (day: Date, value: SalaryCandidate?)?
     var pendingOrganization: PendingImportOrganization {
-        _ = ledgerRevision
+        _ = pendingRevision
+        return pendingOrganizationValue()
+    }
+    private func pendingOrganizationValue() -> PendingImportOrganization {
         if let cachedPendingOrganization { return cachedPendingOrganization }
-        let value = PendingImportOrganization(in: current); cachedPendingOrganization = value; return value
+        let value = PendingImportOrganization(in: derivedSource); cachedPendingOrganization = value; return value
     }
     var nowSalaryCandidate: SalaryCandidate? {
-        _ = ledgerRevision
+        _ = salaryRevision
+        return salaryValue()
+    }
+    private func salaryValue() -> SalaryCandidate? {
         let day = Dates.day(Date())
         if let cachedSalary, cachedSalary.day == day { return cachedSalary.value }
-        let value = SalaryDetection.candidate(in: current); cachedSalary = (day, value); return value
+        let value = SalaryDetection.candidate(in: derivedSource); cachedSalary = (day, value); return value
     }
     @ObservationIgnored private var cachedButlerVisibility: (revision: Int, day: Date, batches: Set<UUID>, value: SavingCardVisibility.Snapshot)?
     var butlerVisibility: SavingCardVisibility.Snapshot {
-        let day = Dates.day(Date()), batches = organizingImportBatchIDs
+        _ = visibilityRevision
+        return visibilityValue()
+    }
+    private func visibilityValue() -> SavingCardVisibility.Snapshot {
+        let day = Dates.day(Date()), batches = visibilityBatches
         if let cached = cachedButlerVisibility, cached.revision == derivedRevision, cached.day == day, cached.batches == batches { return cached.value }
-        let value = SavingCardVisibility.snapshot(in: current, organizingBatchIDs: batches, progress: restrainProgress,
-                                                 fallbackEntryCount: { self.unsortedEntryCount(for: $0) })
+        let value = SavingCardVisibility.snapshot(in: derivedSource, organizingBatchIDs: batches, progress: progressValue(),
+                                                 fallbackEntryCount: { question in
+            self.cachedUnsortedGroups.snapshot(for: question.id, revision: self.sourceRevision, in: self.derivedSource)?.entryCount ?? 0
+        })
         cachedButlerVisibility = (derivedRevision, day, batches, value); return value
     }
     @ObservationIgnored private var cachedUnsortedGroups = UnsortedGroupsCache()
@@ -131,10 +240,13 @@ enum AppSheet: Identifiable {
                                       category: category, otherAccount: otherAccount, revision: ledgerRevision, in: current)
     }
     var funds: Funds {
-        _ = derivedRevision
+        _ = fundsRevision
+        return fundsValue()
+    }
+    private func fundsValue() -> Funds {
         let now = Date(); let zone = TimeZone.current
         if let cached = cachedFunds, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
-        let ledger = current; var expires = Dates.addDays(1, to: Dates.day(now))
+        let ledger = derivedSource; var expires = Dates.addDays(1, to: Dates.day(now))
         for entry in ledger.entries where entry.deletedAt == nil {
             if entry.date > now { expires = min(expires, entry.date) }
             if let date = entry.otherDate, date > now { expires = min(expires, date) }
@@ -147,26 +259,33 @@ enum AppSheet: Identifiable {
         cachedFunds = (value, now, expires, zone); return value
     }
     var cashTimeline: CashTimeline {
-        let funds = self.funds
+        _ = cashRevision
+        return cashTimelineValue()
+    }
+    private func cashTimelineValue() -> CashTimeline {
+        let funds = fundsValue()
         let at = cachedFunds?.at ?? Date()
         if let cachedCashTimeline, cachedCashTimeline.at == at { return cachedCashTimeline.value }
-        let value = Finance.cashTimeline(current, funds: funds, now: at)
+        let value = Finance.cashTimeline(derivedSource, funds: funds, now: at)
         cachedCashTimeline = (at, value); return value
     }
     var restrainProgress: [RestrainProgress] {
-        _ = derivedRevision
+        _ = progressRevision
+        return progressValue()
+    }
+    private func progressValue() -> [RestrainProgress] {
         if let cachedRestrainProgress { return cachedRestrainProgress }
-        let value = RestrainProgress.current(ledger: current); cachedRestrainProgress = value; return value
+        let value = RestrainProgress.current(ledger: derivedSource); cachedRestrainProgress = value; return value
     }
     var fixedFlowMonth: FixedFlowMonth {
-        _ = derivedRevision
+        _ = ledgerRevision
         if let cachedFixedMonth { return cachedFixedMonth }
-        let value = FixedFlows.month(containing: Date(), in: current); cachedFixedMonth = value; return value
+        let value = FixedFlows.month(containing: Date(), in: derivedSource); cachedFixedMonth = value; return value
     }
     var entriesByID: [UUID: Entry] {
         _ = ledgerRevision
         if let cachedEntriesByID { return cachedEntriesByID }
-        let value = Dictionary(uniqueKeysWithValues: current.entries.map { ($0.id, $0) })
+        let value = Dictionary(uniqueKeysWithValues: derivedSource.entries.map { ($0.id, $0) })
         cachedEntriesByID = value; return value
     }
     func accountEntries(_ id: UUID) -> [Entry] {
@@ -176,32 +295,97 @@ enum AppSheet: Identifiable {
         cachedAccountEntries[id] = value; return value
     }
     func balance(_ account: Account, at: Date? = nil) -> Int64 {
-        _ = derivedRevision
+        _ = ledgerRevision
         // Default balances share the funds cache's expiry (future posting dates).
         let moment = at ?? { _ = funds; return cachedFunds!.at }()
         if let cached = cachedBalances[account.id], cached.at == moment { return cached.value }
-        let value = Finance.balance(account, in: current, at: moment)
+        let value = Finance.balance(account, in: derivedSource, at: moment)
         cachedBalances[account.id] = (moment, value); return value
     }
     var sortedEntries: [Entry] {
-        _ = derivedRevision
+        _ = entriesRevision
+        return sortedEntriesValue()
+    }
+    private func sortedEntriesValue() -> [Entry] {
         if let cachedEntries { return cachedEntries }
-        let rows = current.entries.sorted { $0.date > $1.date }
+        let rows = derivedSource.entries.sorted { $0.date > $1.date }
         cachedEntries = rows; return rows
     }
     func entryTimeline(month: Date, search: String, filter: EntryTimeline.Filter) -> EntryTimeline.Snapshot {
-        _ = derivedRevision
+        _ = entryTimelineRevision
+        return entryTimelineValue(month: month, search: search, filter: filter)
+    }
+    private func entryTimelineValue(month: Date, search: String, filter: EntryTimeline.Filter) -> EntryTimeline.Snapshot {
         let calendar = Dates.calendar
         if let cached = cachedEntryTimeline, cached.month == month, cached.search == search, cached.filter == filter, cached.calendar == calendar { return cached.value }
-        let value = EntryTimeline.snapshot(sortedEntries: sortedEntries, ledger: current, month: month, search: search, filter: filter, calendar: calendar)
+        let value = EntryTimeline.snapshot(sortedEntries: sortedEntriesValue(), ledger: derivedSource, month: month, search: search, filter: filter, calendar: calendar)
         cachedEntryTimeline = (month, search, filter, calendar, value)
         return value
     }
     private func invalidateDerived() {
-        ledgerRevision &+= 1
-        cachedEntries = nil; cachedEntriesByID = nil; cachedAccountEntries = [:]; cachedEntryTimeline = nil; cachedPendingOrganization = nil; cachedSalary = nil; refreshTimeDerived()
+        let previousEntries = derivedSource.entries
+        derivedSource = ledger
+        if preferences != ledger.preferences { preferences = ledger.preferences }
+        if accounts != ledger.accounts { accounts = ledger.accounts }
+        if cards != ledger.cards { cards = ledger.cards }
+        if profile != ledger.profile { profile = ledger.profile }
+        if plans != ledger.plans { plans = ledger.plans }
+        if rents != ledger.rents { rents = ledger.rents }
+        if imports != ledger.imports { imports = ledger.imports }
+        if mutedTopics != ledger.mutedTopics { mutedTopics = ledger.mutedTopics }
+        if categoryAliases != ledger.categoryAliases { categoryAliases = ledger.categoryAliases }
+        sourceRevision &+= 1
+        ledgerRevision = sourceRevision
+        let oldTimeline = cachedEntryTimeline
+        if previousEntries != ledger.entries {
+            let oldEntries = cachedEntries, oldPurposes = cachedManualPurposes
+            cachedEntries = preparedDerived?.entries
+            cachedEntriesByID = preparedDerived?.entriesByID
+            cachedAccountEntries = [:]; cachedManualPurposes = nil
+            if let oldEntries, sortedEntriesValue() != oldEntries { entriesRevision &+= 1 }
+            if let oldPurposes {
+                let next = EntryNotePresentation.manualPurposes(derivedSource.entries)
+                cachedManualPurposes = next
+                if oldPurposes != next { manualPurposesRevision &+= 1 }
+            }
+        }
+        cachedEntryTimeline = nil
+        if let oldTimeline {
+            let next = entryTimelineValue(month: oldTimeline.month, search: oldTimeline.search, filter: oldTimeline.filter)
+            if next != oldTimeline.value { entryTimelineRevision &+= 1 }
+        }
+        let oldPending = cachedPendingOrganization
+        cachedPendingOrganization = preparedPending
+        if let oldPending, pendingOrganizationValue() != oldPending { pendingRevision &+= 1 }
+        refreshTimeDerived()
+        preparedDerived = nil; preparedPending = nil; preparedSalary = nil
     }
-    func refreshTimeDerived() { cachedFunds = nil; cachedCashTimeline = nil; cachedBalances = [:]; cachedFixedMonth = nil; cachedRestrainProgress = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
+    func refreshTimeDerived() {
+        let oldFunds = cachedFunds?.value, oldCash = cachedCashTimeline?.value
+        let oldProgress = cachedRestrainProgress, oldSalary = cachedSalary
+        let oldVisibility = cachedButlerVisibility?.value
+        cachedFunds = preparedDerived.map { ($0.funds, $0.at, $0.expires, $0.zone) }
+        cachedCashTimeline = preparedDerived.map { ($0.at, $0.timeline) }
+        cachedBalances = [:]; cachedAssessments = [:]; cachedFixedMonth = preparedDerived?.fixedMonth
+        cachedRestrainProgress = preparedDerived?.progress; cachedSalary = preparedSalary
+        derivedRevision &+= 1
+        cachedButlerVisibility = nil
+        if let preparedDerived, preparedDerived.organizingBatchIDs == visibilityBatches {
+            cachedButlerVisibility = (derivedRevision, Dates.day(preparedDerived.at), visibilityBatches, preparedDerived.visibility)
+        }
+        if let oldFunds, fundsValue() != oldFunds { fundsRevision &+= 1 }
+        if let oldCash, cashTimelineValue() != oldCash { cashRevision &+= 1 }
+        if let oldProgress, progressValue() != oldProgress { progressRevision &+= 1 }
+        if let oldSalary, salaryValue() != oldSalary.value { salaryRevision &+= 1 }
+        if let oldVisibility, visibilityValue() != oldVisibility { visibilityRevision &+= 1 }
+        CaptureSnapshotBridge.publish(ledger)
+    }
+    private func refreshVisibility() {
+        visibilityBatches = organizingImportBatchIDs
+        let previous = cachedButlerVisibility?.value
+        cachedButlerVisibility = nil
+        if let previous, visibilityValue() != previous { visibilityRevision &+= 1 }
+    }
     let localRepository: LedgerRepository
     var locations: LedgerLocations
     var ledgerLocation: LedgerLocation = .local
@@ -226,7 +410,7 @@ enum AppSheet: Identifiable {
         destination = .overview; pickingInsightDates = false
         unsortedUndo = nil; unsortedUndoRestoration = nil
         #if os(iOS)
-        pagingLocked = false
+        if pagingLocked { pagingLocked = false }
         #endif
         navigationRevision &+= 1
     }
@@ -250,7 +434,7 @@ enum AppSheet: Identifiable {
     var organizingBatchID: UUID?
     /// Progress across all batches in the current explicit run.
     var organizationProgress: ImportOrganizationProgress?
-    var organizingImportBatchIDs: Set<UUID> = []
+    var organizingImportBatchIDs: Set<UUID> = [] { didSet { if oldValue != organizingImportBatchIDs { refreshVisibility() } } }
     @ObservationIgnored var organizationExecution: ImportOrganizationExecution?
     var organizationContinuesInBackground = false
     var organizingPendingImports = false
@@ -275,6 +459,7 @@ enum AppSheet: Identifiable {
         localRepository = LedgerRepository(directory: directory)
         locations = LedgerLocations(local: localRepository, cloudDirectory: nil)
         syncAllowed = !args.contains("--test-ledger") && !args.contains("--data-directory") && ProcessInfo.processInfo.environment["YUBAI_DATA_DIR"] == nil
+        defer { invalidateDerived() }
         #if DEBUG && targetEnvironment(simulator)
         do { try UITestSupport.prepare(localRepository) } catch { loadFailure = error.localizedDescription; return }
         #endif
@@ -367,14 +552,9 @@ enum AppSheet: Identifiable {
         return saved
     }
     func publishOrganizationCheckpoint(_ next: Ledger, pending: PendingImportOrganization, salary: SalaryCandidate?, day: Date, derived: LedgerDerivedSnapshot) {
-        ledger = next
-        cachedPendingOrganization = pending; cachedSalary = (day, salary)
-        cachedFunds = (derived.funds, derived.at, derived.expires, derived.zone)
-        cachedCashTimeline = (derived.at, derived.timeline)
-        cachedEntries = derived.entries; cachedEntriesByID = derived.entriesByID
-        cachedFixedMonth = derived.fixedMonth; cachedRestrainProgress = derived.progress
-        if derived.organizingBatchIDs == organizingImportBatchIDs {
-            cachedButlerVisibility = (derivedRevision, day, derived.organizingBatchIDs, derived.visibility)
+        if ledger != next {
+            preparedDerived = derived; preparedPending = pending; preparedSalary = (day, salary)
+            ledger = next
         }
         undoLedger = organizationExecution?.before; undoLabel = "导入整理"
     }
@@ -504,7 +684,7 @@ enum AppSheet: Identifiable {
 @main struct YubaiApp: App {
     @State private var store = AppStore.shared
     private var colorScheme: ColorScheme? {
-        switch store.current.preferences.appearance {
+        switch store.preferences.appearance {
         case "dark": .dark
         case "light": .light
         default: nil
@@ -524,8 +704,8 @@ enum AppSheet: Identifiable {
         .defaultSize(width: 1240, height: 850)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked || !store.current.preferences.onboardingComplete)
-                Button("问余白") { store.sheet = .ask("") }.keyboardShortcut("k").disabled(store.locked || !store.current.preferences.onboardingComplete)
+                Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked || !store.preferences.onboardingComplete)
+                Button("问余白") { store.sheet = .ask("") }.keyboardShortcut("k").disabled(store.locked || !store.preferences.onboardingComplete)
             }
             CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled(store.undoLabel == nil || store.locked) }
         }
@@ -558,7 +738,7 @@ struct RootView: View {
         Group {
             if store.locked { lockedView }
             else if let failure = store.loadFailure { recoveryView(failure) }
-            else if !store.current.preferences.onboardingComplete { NavigationStack { WelcomeView() } }
+            else if !store.preferences.onboardingComplete { NavigationStack { WelcomeView() } }
             else { mainContent }
         }
         .sheet(item: $store.sheet) { sheet in
@@ -566,7 +746,7 @@ struct RootView: View {
                 .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
                 .yubaiZoomDestination(store.sheetSource ?? sheet.motionSource)
                 .appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()
-                .overlay { privacyCover }
+                .overlay { LedgerPrivacyCover() }
                 #if os(macOS)
                 .frame(minWidth: 540, idealWidth: 620, minHeight: 600, idealHeight: 720)
                 #endif
@@ -601,12 +781,10 @@ struct RootView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: store.fixedFlowSettleTrigger)
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
-        .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
         .task { await store.configureSync(); store.autoSettleFixedFlows() }
-        .task(id: "\(store.current.id)-\(store.current.updatedAt)-\(store.locked)-\(store.organizingBatchID != nil)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
-            if phase == .active { await store.refreshButler() }
-        }
-        .task(id: store.ledger.preferences.weeklyLetterPush) { await WeeklyPush.sync(enabled: store.ledger.preferences.weeklyLetterPush) }
+        .modifier(ButlerRefreshTask())
+        .modifier(WeeklyPushTask())
         .overlay(alignment: .top) {
             if !store.locked, store.syncBusy || store.syncChoice != nil {
                 VStack(spacing: YubaiSpace.gapGroup) {
@@ -615,7 +793,7 @@ struct RootView: View {
                 }.padding(YubaiSpace.insetCard).background(YubaiColor.raised)
             }
         }
-        .overlay { privacyCover }
+        .overlay { LedgerPrivacyCover() }
         .onOpenURL { url in
             if url.scheme?.lowercased() == "yubai" { store.handleCaptureURL(url); return }
             guard url.isFileURL else { return }; store.importedURL = url
@@ -662,20 +840,20 @@ struct RootView: View {
                     return PagingPosition(destination: destination, aligned: width > 0 && abs(offset - CGFloat(index) * width) <= 1, ready: width > 0)
                 } action: { _, next in
                     guard generation == store.navigationRevision else { return }
-                    visibleTab = next.destination; pagingAligned = next.aligned
+                    if visibleTab != next.destination { visibleTab = next.destination }; if pagingAligned != next.aligned { pagingAligned = next.aligned }
                     if needsInitialScroll {
                         guard next.ready else { return }
                         needsInitialScroll = false; pagingTarget = appearanceTarget
                         proxy.scrollTo(appearanceTarget, anchor: .leading)
                     }
                     if let target = pagingTarget, next.destination != target || !next.aligned { return }
-                    pagingTarget = nil
+                    if pagingTarget != nil { pagingTarget = nil }
                     if pagingPhase == .idle && store.destination != next.destination { store.destination = next.destination }
                 }
                 .onScrollPhaseChange { _, phase in
                     guard generation == store.navigationRevision else { return }
-                    pagingPhase = phase
-                    if phase == .interacting { pagingTarget = nil }
+                    if pagingPhase != phase { pagingPhase = phase }
+                    if phase == .interacting { if pagingTarget != nil { pagingTarget = nil } }
                     if phase == .idle && pagingTarget == nil && store.destination != visibleTab { store.destination = visibleTab }
                 }
                 .onChange(of: store.destination) { _, next in
@@ -688,7 +866,7 @@ struct RootView: View {
                 }
                 .onDisappear {
                     guard generation == store.navigationRevision else { return }
-                    needsInitialScroll = true; pagingTarget = nil
+                    needsInitialScroll = true; if pagingTarget != nil { pagingTarget = nil }
                 }
                 .task {
                     // Retry after the first layout; an onAppear scroll may run
@@ -696,7 +874,7 @@ struct RootView: View {
                     await Task.yield()
                     guard !Task.isCancelled, generation == store.navigationRevision else { return }
                     proxy.scrollTo(appearanceTarget, anchor: .leading)
-                    if visibleTab == appearanceTarget && pagingAligned { pagingTarget = nil }
+                    if visibleTab == appearanceTarget && pagingAligned { if pagingTarget != nil { pagingTarget = nil } }
                 }
                 .overlay(alignment: .bottom) {
                     if !tabBarHidden {
@@ -802,7 +980,7 @@ struct RootView: View {
         case .letters: LettersView()
         case .letter(let id): LetterDetailView(cardID: id).toolbar { CloseButton() }
         case .reconcile(let id):
-            if let account = store.current.accounts.first(where: { $0.id == id }) { AccountEditor(account: account, startsReconciling: true) }
+            if let account = store.accounts.first(where: { $0.id == id }) { AccountEditor(account: account, startsReconciling: true) }
         }
     }
     var lockedView: some View {
@@ -819,13 +997,34 @@ struct RootView: View {
             #endif
         }.padding(YubaiSpace.insetPage)
     }
-    @ViewBuilder var privacyCover: some View {
-        if (phase != .active || store.locked) && store.current.preferences.lockEnabled {
-            if phase != .active { ZStack { YubaiColor.canvas.ignoresSafeArea(); BrandMark(size: YubaiSize.tapMin * 2 + YubaiSpace.space8).accessibilityLabel("账本已保护") } }
-        }
-    }
     func recoveryView(_ message: String) -> some View {
         VStack(spacing: YubaiSpace.gapSection) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.gapSection).frame(maxWidth: 540)
+    }
+}
+
+/// Ledger-dependent task identity stays outside the pager's observation scope.
+private struct ButlerRefreshTask: ViewModifier {
+    @Environment(AppStore.self) private var store
+    @Environment(\.scenePhase) private var phase
+    func body(content: Content) -> some View {
+        content.task(id: "\(store.current.id)-\(store.current.updatedAt)-\(store.locked)-\(store.organizingBatchID != nil)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
+            if phase == .active { await store.refreshButler() }
+        }
+    }
+}
+private struct WeeklyPushTask: ViewModifier {
+    @Environment(AppStore.self) private var store
+    func body(content: Content) -> some View {
+        content.task(id: store.preferences.weeklyLetterPush) { await WeeklyPush.sync(enabled: store.preferences.weeklyLetterPush) }
+    }
+}
+private struct LedgerPrivacyCover: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.scenePhase) private var phase
+    var body: some View {
+        if (phase != .active || store.locked) && store.preferences.lockEnabled {
+            if phase != .active { ZStack { YubaiColor.canvas.ignoresSafeArea(); BrandMark(size: YubaiSize.tapMin * 2 + YubaiSpace.space8).accessibilityLabel("账本已保护") } }
+        }
     }
 }
 
@@ -845,20 +1044,18 @@ private struct FloatingTabBar: View {
             tab(.overview); tab(.insights)
             Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
                 Image(systemName: "plus").font(.system(size: min(scaledAddSize, YubaiFont.amountLarge.size), weight: YubaiFont.addIcon.weight)).foregroundStyle(YubaiColor.onBrand)
-                    .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background(YubaiColor.brand, in: Circle())
-                    .yubaiShadow(YubaiShadow.ask)
+                    .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background { Circle().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
             }.buttonStyle(RoundPressStyle()).padding(.horizontal, YubaiSpace.space8)
                 .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
             tab(.entries); tab(.settings)
         }.padding(.horizontal, YubaiSpace.space8).frame(height: YubaiSize.tabBarHeight)
             .background {
-                ZStack {
-                    if reduceTransparency { YubaiColor.raised }
-                    else { Rectangle().fill(.ultraThinMaterial); YubaiColor.glassBar }
-                }.clipShape(Capsule())
+                Capsule().fill(reduceTransparency ? AnyShapeStyle(YubaiColor.raised) : AnyShapeStyle(.ultraThinMaterial))
+                    .overlay { if !reduceTransparency { Capsule().fill(YubaiColor.glassBar) } }
+                    .yubaiShadow(YubaiShadow.float)
+                    .allowsHitTesting(false).accessibilityHidden(true)
             }
             .overlay { Capsule().strokeBorder(reduceTransparency ? YubaiColor.separator : Color.white.opacity(scheme == .dark ? 0.08 : 0.6), lineWidth: 1).allowsHitTesting(false) }
-            .yubaiShadow(YubaiShadow.float)
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.destination)
             .onChange(of: store.destination) { _, destination in if destination == .overview { tagJump &+= 1 } }
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")

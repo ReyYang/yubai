@@ -23,7 +23,7 @@ struct QuickEntryView: View {
     @State private var repeatsMonthly = false
     @State private var previewAvailable: Int64 = 0
     @FocusState private var purposeFocused: Bool
-    private var accounts: [Account] { store.current.accounts.filter { !$0.archived } }
+    private var accounts: [Account] { store.accounts.filter { !$0.archived } }
     private var transferAccounts: [Account] { accounts.filter { $0.id != accountID } }
     private var canSave: Bool { keypad.canSave && accountID != nil && (nature != .transfer || (otherAccountID != nil && otherAccountID != accountID)) }
     var body: some View {
@@ -47,7 +47,7 @@ struct QuickEntryView: View {
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                         Spacer()
-                        AmountLabel(cents: available, hide: store.current.preferences.hideAmounts, currency: true)
+                        AmountLabel(cents: available, hide: store.preferences.hideAmounts, currency: true)
                             .accessibilityIdentifier("afterEntryAvailable")
                     }
                     if let suggestion { matchChip(suggestion) }
@@ -211,7 +211,7 @@ struct QuickEntryView: View {
     private var addTransferAccountChip: some View {
         Button {
             purposeFocused = false
-            accountIDsBeforeAdding = Set(store.current.accounts.map(\.id))
+            accountIDsBeforeAdding = Set(store.accounts.map(\.id))
             showingTransferAccountEditor = true
         } label: {
             HStack(spacing: YubaiSpace.space4) {
@@ -254,14 +254,14 @@ struct QuickEntryView: View {
             guard store.apply(change, label: "记一笔") else { return }
             let title = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
             let sign: AmountLabel.Sign = nature.inflow ? .inflow : .outflow
-            let amount = store.current.preferences.hideAmounts ? "••••" : AmountLabel.text(keypad.amount ?? 0, sign: sign)
+            let amount = store.preferences.hideAmounts ? "••••" : AmountLabel.text(keypad.amount ?? 0, sign: sign)
             if again {
                 // Continuous entry keeps the sheet open, so the root's deferred
                 // sheet-dismissal success must be delivered here exactly once.
                 store.cancelEntrySaveMotion(); store.entrySaveTrigger &+= 1
             }
             let repeatSuffix = repeatsMonthly && nature != .transfer && selectedLink == nil ? " · 每月 \(Dates.calendar.component(.day, from: date)) 号" : ""
-            store.setEntrySaveToast("已记下 · " + (title.isEmpty ? category : title) + " " + amount + " · " + store.current.accountName(accountID) + repeatSuffix)
+            store.setEntrySaveToast("已记下 · " + (title.isEmpty ? category : title) + " " + amount + " · " + store.accountName(accountID) + repeatSuffix)
             if again {
                 keypad.reset(); purpose = ""; selectedMatchID = nil; repeatsMonthly = false
                 category = ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true).first ?? category

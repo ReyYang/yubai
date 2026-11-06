@@ -6,7 +6,7 @@ struct EntrySubcategoryRow: View {
     let entry: Entry
     @State private var selecting = false
     private var classificationEntry: Entry {
-        if entry.nature == .refund, let id = entry.relatedEntryID, let original = store.current.entries.first(where: { $0.id == id }) { return original }
+        if entry.nature == .refund, let id = entry.relatedEntryID, let original = store.entriesByID[id] { return original }
         return entry
     }
     private var editable: Bool { entry.deletedAt == nil && [.expense, .income, .refund].contains(entry.nature) }
@@ -48,7 +48,7 @@ private struct SubcategoryPicker: View {
     @Environment(\.dismiss) private var dismiss
     let entryID: UUID
     @State private var category: String?
-    private var entry: Entry? { store.current.activeEntries.first { $0.id == entryID } }
+    private var entry: Entry? { store.entriesByID[entryID].flatMap { $0.deletedAt == nil ? $0 : nil } }
     var body: some View {
         Page {
             if let entry {
@@ -123,7 +123,7 @@ struct SubcategoryInsightsView: View {
     let interval: DateInterval
     var periodTitle = "本月"
     private var lines: [SubcategoryLine] {
-        let rows: [Breakdown] = Finance.subcategoryBreakdown(store.current, category: category, during: interval)
+        let rows: [Breakdown] = store.subcategoryBreakdown(category: category, during: interval)
         let grouped: [String: [Breakdown]] = Dictionary(grouping: rows) { row in
             row.category == "没分类" || row.category.isEmpty ? "其他" : row.category
         }
@@ -161,15 +161,15 @@ struct SubcategoryInsightsView: View {
     }
     private func summary(rows: [SubcategoryLine], total: Int64) -> some View {
         let count: Int = rows.reduce(0) { $0 + $1.count }
-        let flow: CashFlowSummary = Finance.cashFlow(store.current, during: interval)
+        let flow: CashFlowSummary = store.cashFlow(during: interval)
         let denominator: Int64 = income ? flow.income : flow.spending
-        let previousRows: [Breakdown] = Finance.subcategoryBreakdown(store.current, category: category, during: previousInterval)
+        let previousRows: [Breakdown] = store.subcategoryBreakdown(category: category, during: previousInterval)
         let previous: Int64 = previousRows.reduce(0) { $0 + $1.amount }
         let comparisonText: String = shareText(total, denominator) + " · " + comparison(total - previous)
         return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(rangeText + " · \(count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: total, hide: store.current.preferences.hideAmounts, role: .input)
-            if !store.current.preferences.hideAmounts {
+            AmountLabel(cents: total, hide: store.preferences.hideAmounts, role: .input)
+            if !store.preferences.hideAmounts {
                 Text(comparisonText).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             }
         }
@@ -181,7 +181,7 @@ struct SubcategoryInsightsView: View {
         } label: {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 lineHeading(row, total: total)
-                if !store.current.preferences.hideAmounts { SavingProgressBar(ratio: ratio) }
+                if !store.preferences.hideAmounts { SavingProgressBar(ratio: ratio) }
             }.padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle())
     }
@@ -190,8 +190,8 @@ struct SubcategoryInsightsView: View {
             Text(row.title).yubaiFont(YubaiFont.row)
             if restrained(row.title) { Text("想克制").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
             Spacer(minLength: YubaiSpace.none)
-            AmountLabel(cents: row.amount, hide: store.current.preferences.hideAmounts)
-            if !store.current.preferences.hideAmounts {
+            AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts)
+            if !store.preferences.hideAmounts {
                 Text(percent(row.amount, total)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
         }
@@ -210,7 +210,7 @@ struct SubcategoryInsightsView: View {
         guard !income else { return false }
         var sample = Entry(date: interval.start, amount: 0, accountID: UUID(), title: sub, category: category)
         sample.subcategory = sub
-        return store.current.profile.restrain.contains { area in
+        return store.profile.restrain.contains { area in
             ButlerCards.matches(area, entry: sample, ledger: store.current) || area.title == sub
         }
     }
@@ -223,17 +223,10 @@ private struct SubcategoryRecordsView: View {
     let income: Bool
     let interval: DateInterval
     private var rows: [Entry] {
-        let byID: [UUID: Entry] = Dictionary(uniqueKeysWithValues: store.current.entries.map { ($0.id, $0) })
-        return store.sortedEntries.filter { entry in
-            let matchesNature: Bool = income ? entry.nature == .income : [.expense, .refund].contains(entry.nature)
-            guard entry.deletedAt == nil, entry.date >= interval.start, entry.date < interval.end,
-                  matchesNature,
-                  store.current.normalizedCategory(for: entry, entriesByID: byID).category == store.current.resolveCategory(category) else { return false }
-            return (store.current.normalizedCategory(for: entry, entriesByID: byID).subcategory ?? "其他") == subcategory
-        }
+        store.flowRecords(categories: [category], income: income, interval: interval, subcategory: subcategory)
     }
     var body: some View {
-        Page { CardRows(rows) { entry in EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts, editable: true) } }
+        Page { CardRows(rows) { entry in EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts, editable: true) } }
             .navigationTitle(subcategory).yubaiNavigation()
     }
 }

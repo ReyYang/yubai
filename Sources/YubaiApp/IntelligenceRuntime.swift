@@ -563,15 +563,23 @@ struct ActiveLedgerTransport: ChatTransport {
 @MainActor extension AppStore {
     func refreshButler() async {
         guard !locked, loadFailure == nil, organizingBatchID == nil, !organizingPendingImports, current.preferences.onboardingComplete else { return }
+        do { try await Task.sleep(for: .milliseconds(800)) } catch { return }
+        guard !Task.isCancelled else { return }
         // Pending imports pause automatic cloud work, while local cards still refresh.
         await classifySubcategoriesIfDue()
         await reflectMemoriesIfDue()
         guard !Task.isCancelled, !locked, organizingBatchID == nil else { return }
         let before = current; let now = Date()
-        var candidates = ButlerCards.detect(before, now: now)
-        if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
-        guard !candidates.isEmpty else { return }
-        let transport = PendingImportOrganization(in: before).batchIDs.isEmpty ? assistantTransport(for: before) : nil
+        let detection = Task.detached(priority: .utility) {
+            var candidates = ButlerCards.detect(before, now: now)
+            if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
+            return (candidates, PendingImportOrganization(in: before))
+        }
+        let (candidates, pending) = await withTaskCancellationHandler {
+            await detection.value
+        } onCancel: { detection.cancel() }
+        guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil, !candidates.isEmpty else { return }
+        let transport = pending.batchIDs.isEmpty ? assistantTransport(for: before) : nil
         let worded = await ButlerWording.word(candidates, ledger: before, transport: transport)
         guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil else { return }
         var next = before

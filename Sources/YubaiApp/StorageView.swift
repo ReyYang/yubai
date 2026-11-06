@@ -185,11 +185,11 @@ private struct StorageEraseSheet: View {
     @State private var currentRecoveryCount: Int?
     let recoveryCount: Int?
     private var backupDays: Int? {
-        store.current.preferences.lastBackupAt.map { max(0, Calendar.current.dateComponents([.day], from: Dates.day($0), to: Dates.day(Date())).day ?? 0) }
+        store.preferences.lastBackupAt.map { max(0, Calendar.current.dateComponents([.day], from: Dates.day($0), to: Dates.day(Date())).day ?? 0) }
     }
     private var entriesSinceBackup: Int? {
-        guard let date = store.current.preferences.lastBackupAt else { return nil }
-        let batches = Dictionary(uniqueKeysWithValues: store.current.imports.map { ($0.id, $0.importedAt) })
+        guard let date = store.preferences.lastBackupAt else { return nil }
+        let batches = Dictionary(uniqueKeysWithValues: store.imports.map { ($0.id, $0.importedAt) })
         return store.current.activeEntries.filter { entry in
             (entry.recordedAt ?? entry.batchID.flatMap { batches[$0] }).map { $0 > date } ?? false
         }.count
@@ -198,7 +198,7 @@ private struct StorageEraseSheet: View {
         StorageSheet(title: "抹掉全部数据") {
             StorageSummaryCard(rows: [
                 ("账目", "\(store.current.activeEntries.count.formatted()) 笔"),
-                ("账户", "\(store.current.accounts.count) 个"),
+                ("账户", "\(store.accounts.count) 个"),
                 ("余白记得的", "\(store.current.memories.count) 条"),
                 ("截图和账单原件", attachmentCount),
                 ("恢复历史", currentRecoveryCount.map { "\($0) 份" } ?? "正在读取…")

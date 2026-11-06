@@ -8,9 +8,9 @@ struct EntryDetailView: View {
     let entryID: UUID
     var body: some View {
         Page {
-            if let entry = store.current.entries.first(where: { $0.id == entryID }) {
+            if let entry = store.entriesByID[entryID] {
                 Text(entry.displayTitle).yubaiFont(YubaiFont.lead).accessibilityIdentifier("entryDetailTitle")
-                AmountLabel(cents: entry.amount, hide: store.current.preferences.hideAmounts, role: .display,
+                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .display,
                             sign: entry.nature.inflow ? .inflow : .outflow)
                 classificationCard(entry)
                 sourceCard(entry)
@@ -37,13 +37,13 @@ struct EntryDetailView: View {
         Card {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 LabeledContent("时间", value: Dates.text(entry.date, time: true)).frame(minHeight: YubaiSize.rowSingle)
-                LabeledContent("账户", value: store.current.accountName(entry.accountID)).frame(minHeight: YubaiSize.rowSingle)
-                if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.current.accountName(other)).frame(minHeight: YubaiSize.rowSingle) }
+                LabeledContent("账户", value: store.accountName(entry.accountID)).frame(minHeight: YubaiSize.rowSingle)
+                if let other = entry.otherAccountID { LabeledContent("关联账户", value: store.accountName(other)).frame(minHeight: YubaiSize.rowSingle) }
                 EntrySubcategoryRow(entry: entry)
                 let note = EntryNotePresentation.importedNote(entry)
                 if !note.isEmpty { Text(note) }
-                if let id = entry.planID, let plan = store.current.plans.first(where: { $0.id == id }) { Text("已关联：" + plan.title) }
-                if let id = entry.rentID, let rent = store.current.rents.first(where: { $0.id == id }) { Text("已关联：" + rent.title) }
+                if let id = entry.planID, let plan = store.plans.first(where: { $0.id == id }) { Text("已关联：" + plan.title) }
+                if let id = entry.rentID, let rent = store.rents.first(where: { $0.id == id }) { Text("已关联：" + rent.title) }
             }.yubaiFont(YubaiFont.row)
         }
     }

@@ -161,12 +161,12 @@ struct ButlerListView: View {
             : store.butlerVisibility.visible
         Page(spacing: YubaiSpace.gapGroup) {
             ForEach(cards) { card in
-                if let question = card.importQuestion, let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
+                if let question = card.importQuestion, let batch = store.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
                     ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
                 } else { ButlerCardView(card: card).transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion)) }
             }
-            if !store.current.mutedTopics.isEmpty {
-                Text("说过「以后别提」的：\(store.current.mutedTopics.count) 类").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            if !store.mutedTopics.isEmpty {
+                Text("说过「以后别提」的：\(store.mutedTopics.count) 类").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
         }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: cards.map(\.id)).navigationTitle("需要留意").yubaiNavigation()
     }
@@ -177,10 +177,10 @@ struct ButlerCardView: View {
     let card: ButlerCard
     var additionalCount = 0
     var nudgesOnce = false
-    private var hidden: Bool { store.current.preferences.hideAmounts }
+    private var hidden: Bool { store.preferences.hideAmounts }
     private var exceedsRestraint: Bool {
         guard card.kind == .restrain else { return false }
-        return RestrainProgress.current(ledger: store.current).contains { $0.areaID == card.areaID && $0.status == .over }
+        return store.restrainProgress.contains { $0.areaID == card.areaID && $0.status == .over }
     }
     private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) || exceedsRestraint }
     private var ink: Color { amber ? YubaiColor.amberInk : YubaiColor.labelSecondary }
@@ -253,7 +253,7 @@ struct ButlerCardView: View {
         case .duplicate: label = "可能记重了"
         case .weeklyLetter: label = "每周来信"
         }
-        let area = store.current.profile.restrain.first { $0.id == card.areaID }
+        let area = store.profile.restrain.first { $0.id == card.areaID }
         return label + (area.map { " · " + $0.title } ?? "") + " · " + card.createdAt.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
     }
     private var evidenceText: String {
@@ -290,15 +290,15 @@ struct ButlerEvidenceView: View {
     let cardID: UUID
     var body: some View {
         Page {
-            if let card = store.current.cards.first(where: { $0.id == cardID }) {
-                Text(store.current.preferences.hideAmounts ? "明细" : card.title).yubaiFont(YubaiFont.lead)
+            if let card = store.cards.first(where: { $0.id == cardID }) {
+                Text(store.preferences.hideAmounts ? "明细" : card.title).yubaiFont(YubaiFont.lead)
                 Text("明细生成于 " + Dates.text(card.createdAt, time: true)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 Card {
                     VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                         ForEach(Array((card.facts ?? []).enumerated()), id: \.offset) { _, fact in
                             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                                 Text(fact.label).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                                Text(store.current.preferences.hideAmounts && fact.cents != nil ? "••••" : fact.value).yubaiFont(YubaiFont.body)
+                                Text(store.preferences.hideAmounts && fact.cents != nil ? "••••" : fact.value).yubaiFont(YubaiFont.body)
                             }
                         }
                         if card.kind == .shortfall {
@@ -307,9 +307,9 @@ struct ButlerEvidenceView: View {
                     }
                 }
                 let ids = Set(card.evidence)
-                let rows = store.sortedEntries.filter { ids.contains($0.id) }
+                let rows = store.evidenceEntries(ids)
                 CardRows(rows) { entry in
-                    EntryLink(entry: entry, hideAmount: store.current.preferences.hideAmounts)
+                    EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts)
                 }
                 if card.evidence.count > rows.count { Text("部分原始记录已移除。").yubaiFont(YubaiFont.caption) }
             } else { Text("这张卡片已移除。") }
@@ -322,7 +322,7 @@ struct ButlerQuestionView: View {
     let cardID: UUID
     @State private var text = ""
     @State private var describing = false
-    private var fallback: ImportQuestion? { store.current.cards.first { $0.id == cardID }?.importQuestion }
+    private var fallback: ImportQuestion? { store.cards.first { $0.id == cardID }?.importQuestion }
     var body: some View {
         Group {
             if let fallback, fallback.isFallback { UnsortedGroupsView(questionID: fallback.id) }
@@ -332,9 +332,9 @@ struct ButlerQuestionView: View {
     private var questionContent: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-                if let card = store.current.cards.first(where: { $0.id == cardID }), let question = card.importQuestion,
-                   let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
-                    Text(store.current.preferences.hideAmounts ? "这几笔是什么用途？" : question.text).yubaiFont(YubaiFont.lead)
+                if let card = store.cards.first(where: { $0.id == cardID }), let question = card.importQuestion,
+                   let batch = store.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
+                    Text(store.preferences.hideAmounts ? "这几笔是什么用途？" : question.text).yubaiFont(YubaiFont.lead)
                     ForEach(question.options.indices, id: \.self) { index in
                         Button(question.options[index].title) {
                             store.answerImportQuestion(question, batchID: batch.id, option: index); store.sheet = nil
@@ -348,8 +348,8 @@ struct ButlerQuestionView: View {
                         }.disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 80)
                     }
                     let ids = Set(question.entryIDs)
-                    let rows = store.sortedEntries.filter { ids.contains($0.id) }
-                    CardRows(rows) { entry in EntryRow(entry: entry, hideAmount: store.current.preferences.hideAmounts) }
+                    let rows = store.evidenceEntries(ids)
+                    CardRows(rows) { entry in EntryRow(entry: entry, hideAmount: store.preferences.hideAmounts) }
                         .accessibilityIdentifier("questionEntries")
                 } else { Text("这个问题已经处理过了。") }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
@@ -365,7 +365,7 @@ struct ButlerProposalView: View {
     var body: some View {
         Page {
             if let change = store.current.pendingChanges.first(where: { $0.id == changeID }) {
-                ProposalCard(title: store.current.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.current.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: Set(change.items.flatMap(\.entryIDs)).isEmpty ? "改好这 \(change.items.count) 项" : "改好这 \(Set(change.items.flatMap(\.entryIDs)).count) 笔", canConfirm: !store.current.preferences.hideAmounts, confirm: {
+                ProposalCard(title: store.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: Set(change.items.flatMap(\.entryIDs)).isEmpty ? "改好这 \(change.items.count) 项" : "改好这 \(Set(change.items.flatMap(\.entryIDs)).count) 笔", canConfirm: !store.preferences.hideAmounts, confirm: {
                     if store.apply(change, label: "余白想这样改") { dismiss() }
                 }, cancel: {
                     if store.update("不改了", { ledger in
@@ -385,11 +385,11 @@ struct LetterDetailView: View {
     let cardID: UUID
     var body: some View {
         Page(topPadding: YubaiSpace.gapGroup) {
-            if let card = store.current.cards.first(where: { $0.id == cardID }) { WeeklyLetterCard(card: card) }
+            if let card = store.cards.first(where: { $0.id == cardID }) { WeeklyLetterCard(card: card) }
             else { Text("这封每周来信已移除。") }
         }.navigationTitle("每周来信").yubaiNavigation()
             .onAppear {
-                if store.current.cards.first(where: { $0.id == cardID })?.dismissedAt == nil {
+                if store.cards.first(where: { $0.id == cardID })?.dismissedAt == nil {
                     store.update("读过每周来信", recordUndo: false) { ledger in
                         if let i = ledger.cards.firstIndex(where: { $0.id == cardID }) { ledger.cards[i].dismissedAt = Date() }
                     }
@@ -413,12 +413,12 @@ struct WeeklyLetterCard: View {
                 Text(Dates.addDays(-6, to: facts.weekEnding).formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))) + " – " + facts.weekEnding.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))))
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
-            Text(store.current.preferences.hideAmounts ? "金额已隐藏。" : letterBody).yubaiFont(YubaiFont.quote).accessibilityIdentifier("letterBody")
+            Text(store.preferences.hideAmounts ? "金额已隐藏。" : letterBody).yubaiFont(YubaiFont.quote).accessibilityIdentifier("letterBody")
             if let facts = card.letter { LetterSavingsTiles(facts: facts) }
             if let subscriptions = card.letter?.subscriptions, !subscriptions.isEmpty {
                 LetterSubscriptionCard(candidates: subscriptions, letterDate: card.createdAt)
             }
-            if let facts = card.letter, !store.current.preferences.hideAmounts {
+            if let facts = card.letter, !store.preferences.hideAmounts {
                 letterChart(facts)
                 letterNumbers(facts)
             }
@@ -533,8 +533,8 @@ struct LettersView: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         Page {
-            if !store.current.cards.contains(where: { $0.kind == .weeklyLetter }) { Text("还没有每周来信。").yubaiFont(YubaiFont.callout) }
-            ForEach(store.current.cards.filter { $0.kind == .weeklyLetter }.sorted { $0.createdAt > $1.createdAt }) { card in
+            if !store.cards.contains(where: { $0.kind == .weeklyLetter }) { Text("还没有每周来信。").yubaiFont(YubaiFont.callout) }
+            ForEach(store.cards.filter { $0.kind == .weeklyLetter }.sorted { $0.createdAt > $1.createdAt }) { card in
                 NavigationLink {
                     LetterDetailView(cardID: card.id)
                 } label: {

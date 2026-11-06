@@ -3,9 +3,9 @@ import YubaiCore
 
 @MainActor extension AppStore {
     var cloudAIReady: Bool {
-        current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil
+        preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil
     }
-    var organizationAIReady: Bool { current.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured }
+    var organizationAIReady: Bool { preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured }
     func confirmSalary(_ candidate: SalaryCandidate) {
         guard SalaryDetection.candidate(in: current)?.key == candidate.key else { return }
         if update("工资", showToast: false, { ledger in
@@ -54,7 +54,7 @@ struct NowCardsSection: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             if !pages.isEmpty { deck }
             ForEach(butlerCards.filter { $0.importQuestion != nil }) { card in
-                if let question = card.importQuestion, let batch = store.current.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
+                if let question = card.importQuestion, let batch = store.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
                     ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
                 }
             }
@@ -121,7 +121,7 @@ private struct SalaryCard: View {
                     Text(candidate.payer + " · 每月 \(candidate.dayOfMonth) 日")
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).lineLimit(1)
                     Spacer(minLength: YubaiSpace.none)
-                    AmountLabel(cents: candidate.amount, hide: store.current.preferences.hideAmounts, role: .amount, sign: .inflow, currency: false)
+                    AmountLabel(cents: candidate.amount, hide: store.preferences.hideAmounts, role: .amount, sign: .inflow, currency: false)
                         .layoutPriority(1)
                 }
                 Text(candidate.recentDates.map(FixedFlowPresentation.monthDay).joined(separator: " · "))
@@ -145,7 +145,7 @@ private struct PendingImportsCard: View {
     let pending: PendingImportOrganization
     private var busy: Bool { store.organizingPendingImports || store.organizingBatchID != nil }
     private var accounts: String {
-        pending.accountIDs.count > 1 ? "\(pending.accountIDs.count) 个账户" : store.current.accountName(pending.accountIDs.first)
+        pending.accountIDs.count > 1 ? "\(pending.accountIDs.count) 个账户" : store.accountName(pending.accountIDs.first)
     }
     private var organizationError: String? {
         guard !busy, let error = pending.batchIDs.compactMap({ store.organizationErrors[$0] }).first else { return nil }
