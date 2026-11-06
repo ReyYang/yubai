@@ -252,7 +252,7 @@ struct NowCardButtonStyle: ButtonStyle {
             .padding(.horizontal, YubaiSpace.space16).frame(minHeight: 36)
             .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.brandInk)
             .background(primary ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
-            .frame(minHeight: YubaiSize.tapMin)
+            .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(YubaiMotion.instant, value: configuration.isPressed)
     }

@@ -422,8 +422,11 @@ struct WeeklyLetterCard: View {
                 letterChart(facts)
                 letterNumbers(facts)
             }
-            Button("明细：\(card.evidence.count) 笔 ›") { store.sheet = .cardEvidence(card.id) }
-                .yubaiFont(YubaiFont.caption).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin).background(YubaiColor.raised, in: Capsule())
+            Button { store.sheet = .cardEvidence(card.id) } label: {
+                Text("明细：\(card.evidence.count) 笔 ›")
+                    .yubaiFont(YubaiFont.caption).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin)
+                    .background(YubaiColor.raised, in: Capsule()).contentShape(Capsule())
+            }
             if let learned = card.letter?.learned, !learned.isEmpty {
                 Card(background: YubaiColor.brandTint) {
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) {

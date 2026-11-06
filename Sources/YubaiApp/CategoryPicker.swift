@@ -81,6 +81,7 @@ struct CategoryPicker: View {
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
                 .foregroundStyle(YubaiColor.brandInk)
                 .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+                .contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
     }
     private func mainTile(_ category: YubaiCore.Category) -> some View {
@@ -95,6 +96,7 @@ struct CategoryPicker: View {
                 .foregroundStyle(active ? YubaiColor.onBrand : (suggested == category.name ? YubaiColor.brandInk : YubaiColor.label))
                 .background(active ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
                 .overlay { if !active && suggested == category.name { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 2) } }
+                .contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).opacity(expanded != nil && expanded != category.name ? 0.45 : 1)
             .accessibilityAddTraits(active ? .isSelected : [])
             .accessibilityValue(expanded == category.name ? "已展开" : "")
@@ -130,7 +132,7 @@ struct CategoryChoiceChip: View {
                 .foregroundStyle(selected ? YubaiColor.onBrand : (outlined ? YubaiColor.brandInk : YubaiColor.label))
                 .background(selected ? YubaiColor.brand : (outlined ? Color.clear : YubaiColor.raised), in: Capsule())
                 .overlay { if outlined { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1) } }
-                .frame(minHeight: YubaiSize.tapMin)
+                .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

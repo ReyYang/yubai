@@ -19,7 +19,7 @@ struct MemoryView: View {
                                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                                     Text(note.text).yubaiFont(YubaiFont.row)
                                     Text(metadata(note)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                                }.padding(.vertical, YubaiSpace.space8)
+                                }.padding(.vertical, YubaiSpace.space8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                             }.accessibilityIdentifier("memory_" + note.id.uuidString)
                                 .listRowBackground(YubaiColor.paperSheet).listRowSeparatorTint(YubaiColor.separator)
                         }.onDelete { offsets in

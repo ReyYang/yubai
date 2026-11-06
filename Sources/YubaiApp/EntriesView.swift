@@ -144,9 +144,10 @@ struct EntriesView: View {
     }
     @ViewBuilder private var currentMonthButton: some View {
         if !Dates.calendar.isDate(month, equalTo: Date(), toGranularity: .month) {
-            Button("本月") { month = Dates.calendar.dateInterval(of: .month, for: Date())!.start }
-                .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
-                .padding(.horizontal, 14).frame(minHeight: 32).background(YubaiColor.raised, in: Capsule()).fixedSize()
+            Button { month = Dates.calendar.dateInterval(of: .month, for: Date())!.start } label: {
+                Text("本月").yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
+                    .padding(.horizontal, 14).frame(minHeight: 32).background(YubaiColor.raised, in: Capsule()).fixedSize().contentShape(Capsule())
+            }
         }
     }
     private var searchToggleButton: some View {

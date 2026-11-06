@@ -145,15 +145,17 @@ struct QuickEntryView: View {
         HStack(spacing: 10) {
             Image(systemName: "checkmark")
             Text("已记 \(savedCount) 笔")
-            Button("撤销") {
+            Button {
                 let ids = lastSavedIDs; let plans = lastAddedPlanIDs
                 if store.update("撤销记账", recordUndo: false, entryMotion: false, showToast: false, { ledger in
                     ledger.entries.removeAll { ids.contains($0.id) }
                     let linkedPlanIDs = Set(ledger.entries.compactMap(\.planID))
                     ledger.plans.removeAll { plan in plans.contains(plan.id) && !linkedPlanIDs.contains(plan.id) }
                 }) { store.clearUndo(); savedCount = max(0, savedCount - ids.count); lastSavedIDs = []; receiptVisible = false }
-            }.padding(.horizontal, 10).frame(minHeight: 26).background(YubaiColor.raised, in: Capsule())
-                .accessibilityIdentifier("undoSheetEntry")
+            } label: {
+                Text("撤销").padding(.horizontal, 10).frame(minHeight: 26)
+                    .background(YubaiColor.raised, in: Capsule()).contentShape(Capsule())
+            }.accessibilityIdentifier("undoSheetEntry")
         }.yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
             .padding(.leading, 14).padding(.trailing, 6).frame(minHeight: 32).background(YubaiColor.brandTint, in: Capsule())
             .frame(maxWidth: .infinity).accessibilityIdentifier("sheetEntryReceipt")
@@ -167,7 +169,7 @@ struct QuickEntryView: View {
             }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberStrong)
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8).background(YubaiColor.amberTint, in: Capsule())
                 .overlay { if selected { Capsule().strokeBorder(YubaiColor.amberDot, lineWidth: 1) } }
-                .frame(minHeight: YubaiSize.tapMin)
+                .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fixedFlowSuggestion")
             .accessibilityAddTraits(selected ? .isSelected : []).accessibilityHint(selected ? "再点取消关联" : "关联这期账单")
     }

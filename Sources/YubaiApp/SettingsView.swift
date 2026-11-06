@@ -444,10 +444,12 @@ struct RecentlyDeletedView: View {
         }
     }
     private func restore(_ entry: Entry) -> some View {
-        Button("放回去") {
+        Button {
             _ = store.update("放回去", entryMotion: false) { try RecentlyDeleted.restore(entry.id, in: &$0) }
-        }.yubaiFont(YubaiFont.callout).padding(.horizontal, 12).frame(minHeight: 32).background(YubaiColor.raised, in: Capsule())
-            .buttonStyle(PressButtonStyle()).fixedSize().yubaiHitTarget().accessibilityIdentifier("restoreDeleted_" + entry.id.uuidString)
+        } label: {
+            Text("放回去").yubaiFont(YubaiFont.callout).padding(.horizontal, 12).frame(minHeight: 32)
+                .background(YubaiColor.raised, in: Capsule()).fixedSize().yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("restoreDeleted_" + entry.id.uuidString)
     }
     private func deletedTime(_ date: Date) -> String {
         Dates.calendar.isDateInToday(date) ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date)
