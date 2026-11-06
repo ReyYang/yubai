@@ -13,6 +13,14 @@ enum YubaiColor {
     static let canvas = adaptive(0xf5f1e5, 0x1f1b14)
     static let card = adaptive(0xede6d3, 0x2a251c)
     static let raised = adaptive(0xfefbea, 0x353026)
+    static let keypadTray = adaptive(0xe4dac4, 0x2a251c)
+    static let key = adaptive(0xfefbea, 0x4a4436)
+    static let keyFn = adaptive(0xd6caaf, 0x353026)
+    static let keyPressed = adaptive(0xf1e9d5, 0x353026)
+    static let keyFnPressed = adaptive(0xccc0a4, 0x4a4436)
+    // Solid bottom edge: radius 0, x 0, y 1; removed at touch-down.
+    static let shadowKey = adaptive(0x4a4030, 0x000000, lightAlpha: 0x38 / 255.0, darkAlpha: 0x73 / 255.0)
+
     static let paperSheet = adaptive(0xfefbea, 0x2a251c)
     static let paperInset = adaptive(0xede6d3, 0x353026)
     static let glassBar = adaptive(0xfefbea, 0x353026, lightAlpha: 204.0 / 255, darkAlpha: 217.0 / 255)
@@ -110,6 +118,7 @@ enum YubaiFont {
     static let tabIcon = Style(size: 20, lineHeight: 24, weight: .regular, family: .sans, relativeTo: .title3)
     static let addIcon = Style(size: 24, lineHeight: 28, weight: .semibold, family: .sans, relativeTo: .title2)
     static let button = Style(size: 15, lineHeight: 20, weight: .medium, family: .sans, tracking: 0, relativeTo: .headline)
+    static let keypadAction = Style(size: 17, lineHeight: 22, weight: .semibold, family: .sans, relativeTo: .headline)
 }
 
 private struct YubaiTextStyle: ViewModifier {
@@ -261,6 +270,9 @@ extension View {
 }
 
 @MainActor enum YubaiMotion {
+    // Amount keypad: immediate color/edge feedback, no scale/opacity; release
+    // eases out over durationQuick. Prepared system haptics fire at touch-down:
+    // light for digits/delete, medium for operators/clear, rigid 0.5 if rejected.
     static let durationInstant = 0.100
     static let durationQuick = 0.160
     static let durationStandard = 0.240

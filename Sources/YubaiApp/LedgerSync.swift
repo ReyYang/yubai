@@ -62,10 +62,11 @@ struct SyncChoice {
 extension AppStore {
     private var locationKey: String { "ledgerLocation:" + localRepository.directory.path }
     func eraseLocalStorageAndResetLocation() throws {
+        ledgerWriter.flushBlocking()
         let previous = ledgerLocation
         // No await here: a cloud task cannot start between the location change and erase.
         ledgerLocation = .local
-        do { try localRepository.eraseAllLocalData() }
+        do { try localRepository.eraseAllLocalData(); persistenceEpoch &+= 1 }
         catch { ledgerLocation = previous; throw error }
         UserDefaults.standard.set(LedgerLocation.local.rawValue, forKey: locationKey)
         pendingUpload = nil; syncChoice = nil; syncStatus = nil
@@ -74,29 +75,65 @@ extension AppStore {
         locations = LedgerLocations(local: localRepository, cloudDirectory: nil)
     }
     func canEditLedger(allowLockedCapture: Bool = false) -> Bool {
+        guard !recoveringWriteFailure else { return false }
         guard !locked || allowLockedCapture else { error = "请先解锁账本。"; return false }
         guard syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { error = "请先完成账本位置或同步版本的选择。"; return false }
         return true
     }
     func persist(_ next: Ledger, reason: String, restoring: Bool = false, preservingRecovery: Bool = true) throws -> Ledger {
-        var saved: Ledger
-        let wasPending = localRepository.hasPendingSync
-        if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
-        do {
-            if restoring { saved = try localRepository.restoreBackup(next) }
-            else { saved = try localRepository.save(next, reason: reason, requiringUnchanged: true, preservingRecovery: preservingRecovery) }
-        } catch {
-            if !wasPending { try? localRepository.markPendingSync(false) }; throw error
+        try next.validate()
+        let repository = localRepository, location = ledgerLocation
+        let epoch = persistenceEpoch, revision = ledgerRevision &+ 1, id = UUID()
+        let receipt = ledgerWriter.submit {
+            let wasPending = repository.hasPendingSync
+            if location == .iCloud { try repository.markPendingSync(true) }
+            do {
+                if restoring { return try repository.restoreBackup(next) }
+                return try repository.save(next, reason: reason, requiringUnchanged: true, preservingRecovery: preservingRecovery)
+            } catch {
+                if !wasPending { try? repository.markPendingSync(false) }
+                throw error
+            }
         }
-        if ledgerLocation == .iCloud {
-            pendingUpload = saved
-            pendingUploadPreservingRecovery = preservingRecovery
-            pendingUploadRecoveryReason = reason
-            Task { await synchronizeLedger() }
+        persistenceTasks[id] = Task { @MainActor in
+            defer { persistenceTasks[id] = nil }
+            do {
+                let saved = try await receipt.value
+                guard persistenceEpoch == epoch else { return }
+                // Adopt unloaded attachment locations only for the newest snapshot.
+                let isCurrent = ledgerRevision == revision
+                if isCurrent { adoptPersistedPayloads(saved) }
+                if location == .iCloud, isCurrent, revision >= lastUploadedPersistenceRevision {
+                    lastUploadedPersistenceRevision = revision
+                    pendingUpload = saved; pendingUploadPreservingRecovery = preservingRecovery
+                    pendingUploadRecoveryReason = reason
+                    Task { await synchronizeLedger() }
+                }
+            } catch {
+                guard persistenceEpoch == epoch else { return }
+                persistenceEpoch &+= 1; recoveringWriteFailure = true
+                stopOrganizingImports()
+                cancelEntrySaveMotion(); clearUndo(); unsortedUndo = nil; unsortedUndoRestoration = nil; toast = nil
+                self.error = error.localizedDescription
+                let reload = ledgerWriter.reset { try repository.load() }
+                do {
+                    let durable = try await reload.value
+                    adoptSyncedLedger(durable)
+                    if location == .iCloud { pendingUpload = repository.hasPendingSync ? durable : nil }
+                } catch { loadFailure = error.localizedDescription }
+                recoveringWriteFailure = false
+            }
         }
-        return saved
+        return next
+    }
+    func flushPersistence() async {
+        while !persistenceTasks.isEmpty {
+            let tasks = Array(persistenceTasks.values)
+            for task in tasks { await task.value }
+        }
     }
     func configureSync() async {
+        await flushPersistence()
         guard syncAllowed, loadFailure == nil else { return }
         guard !syncBusy, !checkingCloudAvailability else { syncAvailabilityNeedsRefresh = true; return }
         checkingCloudAvailability = true; syncAvailabilityNeedsRefresh = false
@@ -135,6 +172,7 @@ extension AppStore {
     func switchLedgerLocation(to target: LedgerLocation) async {
         guard canEditLedger(), !syncBusy, target != ledgerLocation else { return }
         guard pendingUpload == nil || target == .local else { error = "本机修改还未同步，请重试同步或选择冲突版本后再切换。"; return }
+        await flushPersistence()
         let locations = locations; var before = current
         if target == .iCloud { before.preferences.lockEnabled = false }
         switchingLedgerLocation = true
@@ -163,6 +201,7 @@ extension AppStore {
         do { destination = try locations.repository(for: choice.target) }
         catch { self.error = error.localizedDescription; return }
         choosingSyncVersion = true
+        await flushPersistence()
         defer { choosingSyncVersion = false; finishSyncOperation() }
         syncBusy = true; syncStatus = "正在保存所选账本…"
         do {
@@ -172,7 +211,10 @@ extension AppStore {
                                         prepare: { LedgerMemoryMerge.merge(chosen: $0, others: choice.versions.filter { $0.id != id }.map(\.ledger)) })
             }.value
             selected.preferences.lockEnabled = current.preferences.lockEnabled
-            if choice.target == .iCloud { selected = try localRepository.restoreBackup(selected) }
+            if choice.target == .iCloud {
+                let mirror = localRepository, chosen = selected
+                selected = try await ledgerWriter.submit(invalidatingOnFailure: false) { try mirror.restoreBackup(chosen) }.value
+            }
             adoptSyncedLedger(selected)
             resetRootNavigation()
             ledgerLocation = choice.target; syncChoice = nil; pendingUpload = nil
@@ -199,6 +241,7 @@ extension AppStore {
         case uploaded(Ledger), loaded(Ledger), conflict([LedgerVersion])
     }
     func synchronizeLedger() async {
+        await flushPersistence()
         guard ledgerLocation == .iCloud, syncChoice == nil, !locked, let repository = locations.cloud else { return }
         guard !syncBusy else { syncRefreshRequested = true; return }
         syncRefreshRequested = false
@@ -225,7 +268,7 @@ extension AppStore {
             }.value
             switch result {
             case .uploaded(let uploaded):
-                if pendingUpload == uploaded { pendingUpload = nil; try? localRepository.markPendingSync(false) }
+                if pendingUpload == uploaded, persistenceTasks.isEmpty { pendingUpload = nil; try? localRepository.markPendingSync(false) }
                 syncStatus = pendingUpload == nil ? "已保存到 iCloud。" : "本机修改等待上传…"
             case .loaded(var remote):
                 remote.preferences.lockEnabled = current.preferences.lockEnabled
@@ -235,7 +278,16 @@ extension AppStore {
                     versions.insert(LedgerVersion(id: "device", ledger: shared, deviceName: "这台设备（尚未同步）"), at: 0)
                     presentSyncChoice(SyncChoice(versions: versions, source: source, target: .iCloud, switching: false))
                 } else if remote != current {
-                    remote = try localRepository.save(remote, reason: "接收同步前")
+                    let mirror = localRepository, revision = ledgerRevision, incoming = remote
+                    let write = ledgerWriter.submit(invalidatingOnFailure: false) { try mirror.save(incoming, reason: "接收同步前", requiringUnchanged: true) }
+                    remote = try await write.value
+                    if ledgerRevision != revision {
+                        var versions = try await Task.detached { try source.versions() }.value
+                        var shared = current; shared.preferences.lockEnabled = false
+                        versions.insert(LedgerVersion(id: "device", ledger: shared, deviceName: "这台设备（尚未同步）"), at: 0)
+                        presentSyncChoice(SyncChoice(versions: versions, source: source, target: .iCloud, switching: false))
+                        return
+                    }
                     adoptSyncedLedger(remote); syncStatus = "已读取 iCloud 账本。"
                 } else { syncStatus = "已读取 iCloud 账本。" }
             case .conflict(var versions):

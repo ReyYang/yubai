@@ -358,7 +358,6 @@ struct FixedFlowCheck: View {
     @Environment(AppStore.self) private var store
     @State private var editing = false
     @State private var editedAmount = ""
-    @FocusState private var amountFocused: Bool
     let planID: UUID
     let occurrence: Date
     let title: String
@@ -388,19 +387,11 @@ struct FixedFlowCheck: View {
         }
             .sheet(isPresented: $editing) {
                 NavigationStack {
-                    Page(topPadding: YubaiSpace.gapGroup) {
-                        ManualSheetHeader(title: title + " · 这期金额", actionTitle: "记下", enabled: (try? Money.parse(editedAmount)).map { $0 > 0 } ?? false,
-                                          cancel: { editing = false }, action: { if let amount = try? Money.parse(editedAmount), settle(amount) { editing = false } })
-                        TextField("金额", text: $editedAmount).numericInput().yubaiFont(YubaiFont.amountDisplay)
-                            .focused($amountFocused).accessibilityIdentifier("fixedFlowSettlementAmount")
-                    }
-                        #if os(iOS)
-                        .toolbar(.hidden, for: .navigationBar)
-                        #endif
-                        .onAppear { amountFocused = true }
-                }.environment(store).appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()
+                    FixedFlowSettlementEditor(title: title, amount: editedAmount) { amount in settle(amount) }
+                        .environment(store).appErrors()
+                }.presentationDragIndicator(.visible).yubaiSheetBackground()
                     #if os(iOS)
-                    .presentationDetents([.medium])
+                    .presentationDetents([.large])
                     #endif
             }
     }
@@ -417,6 +408,56 @@ struct FixedFlowCheck: View {
             store.toast = title + " " + value + " 已记下"
             return true
         } catch { store.error = error.localizedDescription; return false }
+    }
+}
+
+private struct FixedFlowSettlementEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let title: String
+    let record: (Int64) -> Bool
+    @State private var amount: String
+    @State private var keypad = EntryKeypad()
+    @State private var presented = false
+    @State private var selected = false
+    init(title: String, amount: String, record: @escaping (Int64) -> Bool) {
+        self.title = title; self.record = record; _amount = State(initialValue: amount)
+    }
+    var body: some View {
+        ScrollViewReader { scroll in
+            Page(topPadding: YubaiSpace.gapGroup) {
+                ManualSheetHeader(title: title + " · 这期金额", actionTitle: "记下",
+                                  enabled: presented ? keypad.canSave : (try? Money.parse(amount)).map { $0 > 0 } ?? false,
+                                  cancel: { dismiss() }, action: {
+                    finish()
+                    if let cents = try? Money.parse(amount), record(cents) { dismiss() }
+                })
+                EditableAmountDisplay(amount: amount, keypad: keypad, presented: presented, selected: selected,
+                                      identifier: "fixedFlowSettlementAmount") {
+                    guard !presented else { return }
+                    keypad = EntryKeypad(amount: (try? Money.parse(amount)) ?? 0); selected = true; presented = true
+                }.id("settlementAmount")
+            }.finishAmountOnOutsideTap(presented: presented, finish: finish)
+                .task(id: presented) {
+                    guard presented else { return }
+                    do { try await Task.sleep(for: .milliseconds(60)) } catch { return }
+                    withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scroll.scrollTo("settlementAmount", anchor: .top) }
+                }
+        }.safeAreaInset(edge: .bottom, spacing: 0) {
+            if presented {
+                AmountKeypad(keypad: $keypad, amountSelected: $selected, canSave: keypad.canSave,
+                             primaryTitle: "好", primaryIdentifier: "amountKeypadDone", save: finish)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom))
+            }
+        }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: presented)
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+    }
+    private func finish() {
+        guard presented else { return }
+        if let cents = keypad.resolve() { amount = Money.input(cents) }
+        selected = false; presented = false
     }
 }
 
@@ -439,6 +480,12 @@ struct FixedFlowEditor: View {
     @State private var initialized = false
     @State private var original: FixedFlowEdit?
     @State private var balances: [UUID: Int64] = [:]
+    @State private var keypad = EntryKeypad()
+    @State private var amountKeypadPresented = false
+    @State private var amountSelected = false
+    @State private var amountPreviewDates: [Date] = []
+    @FocusState private var titleFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var accounts: [Account] { store.current.accounts.filter { !$0.archived || (planID != nil && $0.id == accountID) } }
     private var hasAccount: Bool { accounts.contains { $0.id == accountID } }
     private var categories: [String] { FixedFlows.categories(inflow: inflow, in: store.current) }
@@ -468,69 +515,83 @@ struct FixedFlowEditor: View {
         return plan
     }
     var body: some View {
-        let change = editChange
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-            ManualSheetHeader(title: planID == nil ? "添加" : "改", actionTitle: "好",
-                              enabled: planID == nil ? plan != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : change != nil,
-                              cancel: { dismiss() }, action: save)
-            if planID == nil { Segmented(choices: [(false, "要付"), (true, "要收")], selection: $inflow) }
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-                TextField("0", text: $amount).numericInput().yubaiFont(YubaiFont.amountDisplay).accessibilityLabel("金额").accessibilityIdentifier("fixedFlowAmount")
-            }.frame(minHeight: YubaiSize.rowDouble)
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
-                    EntryFormRow(title: "名字") { TextField("", text: $title).multilineTextAlignment(.trailing).accessibilityLabel("名字").accessibilityIdentifier("fixedFlowTitle") }.frame(minHeight: YubaiSize.rowSingle)
-                    EntryFormDivider()
-                    EntryFormRow(title: frequency == .monthly ? "每月几号" : "多久一次") {
-                        Button(FixedFlowArrangement.schedule(frequency, date: scheduleDate, monthlyDay: monthlyDay).replacingOccurrences(of: " 日", with: " 号")) { pickingSchedule = true }
-                            .manualFormChip().accessibilityIdentifier("fixedFlowSchedule")
-                    }.frame(minHeight: YubaiSize.rowSingle)
-                    EntryFormDivider()
-                    EntryFormRow(title: inflow ? "收到哪里" : "从哪里付") {
-                        EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, optional: true, emptyTitle: "选账户后可自动记")
-                    }.frame(minHeight: YubaiSize.rowSingle)
-                    EntryFormDivider()
-                    EntryFormRow(title: "分类") {
-                        Menu {
-                            ForEach(categories, id: \.self) { name in Button(name) { category = name } }
-                        } label: { Text(Classification.displayCategory(category)) }.manualFormChip()
-                            .accessibilityLabel("分类").accessibilityValue(Classification.displayCategory(category))
-                            .accessibilityIdentifier("fixedFlowCategory")
-                    }.frame(minHeight: YubaiSize.rowSingle)
-                    EntryFormDivider()
-                    EntryFormRow(title: "共几期") {
-                        Menu {
-                            Button("一直") { installments = nil }
-                            ForEach(2...60, id: \.self) { count in Button("\(count) 期") { installments = count } }
-                        } label: { Text(installments.map { "\($0) 期" } ?? "一直") }.manualFormChip()
-                            .disabled(frequency == .once).accessibilityIdentifier("fixedFlowInstallments")
-                    }.frame(minHeight: YubaiSize.rowSingle)
+        let change = amountKeypadPresented ? nil : editChange
+        ScrollViewReader { scroll in
+            Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
+                ManualSheetHeader(title: planID == nil ? "添加" : "改", actionTitle: "好",
+                                  enabled: planID == nil ? plan != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : change != nil,
+                                  cancel: { dismiss() }, action: save)
+                if planID == nil { Segmented(choices: [(false, "要付"), (true, "要收")], selection: $inflow) }
+                EditableAmountDisplay(amount: amount, keypad: keypad, presented: amountKeypadPresented,
+                                      selected: amountSelected, identifier: "fixedFlowAmount", open: openAmount)
+                    .id("fixedFlowAmountRow")
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        EntryFormRow(title: "名字") { TextField("", text: $title).multilineTextAlignment(.trailing).focused($titleFocused).accessibilityLabel("名字").accessibilityIdentifier("fixedFlowTitle") }.frame(minHeight: YubaiSize.rowSingle)
+                        EntryFormDivider()
+                        EntryFormRow(title: frequency == .monthly ? "每月几号" : "多久一次") {
+                            Button(FixedFlowArrangement.schedule(frequency, date: scheduleDate, monthlyDay: monthlyDay).replacingOccurrences(of: " 日", with: " 号")) { pickingSchedule = true }
+                                .manualFormChip().accessibilityIdentifier("fixedFlowSchedule")
+                        }.frame(minHeight: YubaiSize.rowSingle)
+                        EntryFormDivider()
+                        EntryFormRow(title: inflow ? "收到哪里" : "从哪里付") {
+                            EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, optional: true, emptyTitle: "选账户后可自动记")
+                        }.frame(minHeight: YubaiSize.rowSingle)
+                        EntryFormDivider()
+                        EntryFormRow(title: "分类") {
+                            Menu {
+                                ForEach(categories, id: \.self) { name in Button(name) { category = name } }
+                            } label: { Text(Classification.displayCategory(category)) }.manualFormChip()
+                                .accessibilityLabel("分类").accessibilityValue(Classification.displayCategory(category))
+                                .accessibilityIdentifier("fixedFlowCategory")
+                        }.frame(minHeight: YubaiSize.rowSingle)
+                        EntryFormDivider()
+                        EntryFormRow(title: "共几期") {
+                            Menu {
+                                Button("一直") { installments = nil }
+                                ForEach(2...60, id: \.self) { count in Button("\(count) 期") { installments = count } }
+                            } label: { Text(installments.map { "\($0) 期" } ?? "一直") }.manualFormChip()
+                                .disabled(frequency == .once).accessibilityIdentifier("fixedFlowInstallments")
+                        }.frame(minHeight: YubaiSize.rowSingle)
+                    }
                 }
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        Toggle("到日子自动记", isOn: $autoPay).disabled(!hasAccount).accessibilityIdentifier("fixedFlowAutoPay").frame(minHeight: YubaiSize.rowSingle)
+                        EntryFormDivider()
+                        Toggle("金额会变", isOn: $estimated).accessibilityIdentifier("fixedFlowEstimated").frame(minHeight: YubaiSize.rowSingle)
+                    }.yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn)
+                }
+                preview(change: change)
+                if canStop {
+                    Button("停掉以后的") { confirmingStop = true }
+                        .yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.amberInk)
+                        .frame(maxWidth: .infinity).frame(height: 52)
+                        .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).buttonStyle(PressButtonStyle())
+                        .accessibilityIdentifier("fixedFlowEditStop")
+                }
+            }.accessibilityIdentifier("fixedFlowEditor")
+                .finishAmountOnOutsideTap(presented: amountKeypadPresented, finish: finishAmount)
+                .task(id: amountKeypadPresented) {
+                    guard amountKeypadPresented else { return }
+                    do { try await Task.sleep(for: .milliseconds(60)) } catch { return }
+                    withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scroll.scrollTo("fixedFlowAmountRow", anchor: .top) }
+                }
+        }.safeAreaInset(edge: .bottom, spacing: 0) {
+            if amountKeypadPresented {
+                AmountKeypad(keypad: $keypad, amountSelected: $amountSelected, canSave: keypad.canSave,
+                             primaryTitle: "好", primaryIdentifier: "amountKeypadDone", save: finishAmount)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom))
             }
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
-                    Toggle("到日子自动记", isOn: $autoPay).disabled(!hasAccount).accessibilityIdentifier("fixedFlowAutoPay").frame(minHeight: YubaiSize.rowSingle)
-                    EntryFormDivider()
-                    Toggle("金额会变", isOn: $estimated).accessibilityIdentifier("fixedFlowEstimated").frame(minHeight: YubaiSize.rowSingle)
-                }.yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn)
-            }
-            preview(change: change)
-            if canStop {
-                Button("停掉以后的") { confirmingStop = true }
-                    .yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.amberInk)
-                    .frame(maxWidth: .infinity).frame(height: 52)
-                    .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.card))
-                    .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).buttonStyle(PressButtonStyle())
-                    .accessibilityIdentifier("fixedFlowEditStop")
-            }
-        }
-            .environment(\.yubaiFormSurface, true).accessibilityIdentifier("fixedFlowEditor")
+        }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: amountKeypadPresented)
+            .environment(\.yubaiFormSurface, true)
             #if os(iOS)
             .presentationDetents([.large])
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .onAppear(perform: load)
+            .onChange(of: titleFocused) { _, focused in if focused { finishAmount() } }
             .onChange(of: accountID) { _, _ in if !hasAccount { autoPay = false } }
             .onChange(of: inflow) { _, _ in
                 if planID == nil, !categories.contains(category) { category = inflow ? "其他收入" : "其他支出" }
@@ -547,6 +608,18 @@ struct FixedFlowEditor: View {
                     .presentationCompactAdaptation(.popover)
                     #endif
             }
+    }
+    private func openAmount() {
+        guard !amountKeypadPresented else { return }
+        titleFocused = false
+        amountPreviewDates = previewDates(change: editChange)
+        keypad = EntryKeypad(amount: (try? Money.parse(amount)) ?? 0)
+        amountSelected = true; amountKeypadPresented = true
+    }
+    private func finishAmount() {
+        guard amountKeypadPresented else { return }
+        if let cents = keypad.resolve() { amount = Money.input(cents) }
+        amountSelected = false; amountKeypadPresented = false
     }
     private func load() {
         guard !initialized else { return }; initialized = true
@@ -571,6 +644,7 @@ struct FixedFlowEditor: View {
             .accessibilityLabel("接下来\(dates.count)期：" + dates.map(FixedFlowPresentation.monthDay).joined(separator: "、"))
     }
     private func previewDates(change: ChangeSet?) -> [Date] {
+        if amountKeypadPresented { return amountPreviewDates }
         var preview = savedPlan ?? Plan(title: title, amount: 1, dueDate: Dates.day(date), frequency: frequency)
         if let item = change?.items.first, case .updatePlan(let updated) = item { preview = updated }
         else {
@@ -595,6 +669,7 @@ struct FixedFlowEditor: View {
         return Array(Finance.occurrences(in: ledger, now: first, days: days).filter { Dates.day($0.date) >= first }.prefix(4).map(\.date))
     }
     private func save() {
+        finishAmount()
         if let planID {
             do {
                 let change = try update(planID)

@@ -4,6 +4,7 @@ import Foundation
 public struct EntryKeypad: Equatable, Sendable {
     public private(set) var expression = "0"
     public init() {}
+    public init(amount: Int64) { expression = Money.input(amount) }
     public var amount: Int64? { try? Self.evaluate(expression) }
     public var canSave: Bool { amount.map { $0 > 0 && $0 <= Money.limit } ?? false }
     public var resultText: String {
@@ -34,6 +35,7 @@ public struct EntryKeypad: Equatable, Sendable {
         if key == "⌫" { expression = expression.count > 1 ? String(expression.dropLast()) : "0"; return }
         let key = key == "−" ? "-" : key
         if key == "+" || key == "-" {
+            guard expression != "0" else { return }
             var next = expression
             if next.last == "+" || next.last == "-" { next.removeLast() }
             guard (try? Self.evaluate(next)) != nil else { return }
@@ -117,15 +119,103 @@ public enum ManualBookkeeping {
         change.createdAt = now; return change
     }
     public static func available(after change: ChangeSet, in ledger: Ledger, now: Date = Date()) throws -> Int64 {
-        var preview = ledger; try change.apply(to: &preview)
-        return Finance.funds(preview, now: now).available
+        guard change.items.count == 1, case .addEntry(let draft) = change.items[0],
+              !ledger.entries.contains(where: { $0.id == draft.id }) else {
+            var preview = ledger; try change.apply(to: &preview)
+            return Finance.funds(preview, now: now).available
+        }
+        try change.validateStructure(); try ledger.validate()
+        let entry = try change.addedEntry(draft, in: ledger)
+        // Validate the added row and its category memory against the same
+        // accounts/plans. Existing rows already passed validation above.
+        var isolated = ledger; isolated.entries = [entry]
+        if ledger.entries.count >= 200_000 { var full = ledger; full.entries.append(entry); try full.validate() }
+        if change.source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(entry, in: &isolated) }
+        try isolated.validate()
+        return available(removing: nil, adding: entry, in: ledger, now: now)
+    }
+    /// Editing callers can share the keypad calculation without changing a form's
+    /// ledger. Validation/refund propagation stays identical to the save action.
+    public static func available(after edited: Entry, in ledger: Ledger, now: Date = Date()) throws -> Int64 {
+        try ledger.validate()
+        guard let original = ledger.entries.first(where: { $0.id == edited.id && $0.deletedAt == nil }) else { throw YubaiError.invalid("记录已移除。") }
+        var isolated = ledger
+        var entry = try prepareEdit(edited, original: original, in: &isolated)
+        // Only this row, its refund target and refunds depending on either
+        // can introduce a validation failure. Other rows are unchanged.
+        let targets = Set([entry.id, entry.relatedEntryID].compactMap { $0 })
+        isolated.entries = ledger.entries.filter { row in
+            row.id != original.id && (row.id == entry.relatedEntryID || (row.deletedAt == nil && row.nature == .refund && row.relatedEntryID.map { targets.contains($0) } == true))
+        } + [entry]
+        LedgerOperations.syncLinkedRefundCategories(in: &isolated)
+        entry = isolated.entries.first { $0.id == edited.id }!
+        CategoryMemory.remember(entry, in: &isolated)
+        try isolated.validate()
+        return available(removing: original, adding: entry, in: ledger, now: now)
+    }
+    private static func available(removing original: Entry?, adding entry: Entry, in ledger: Ledger, now: Date) -> Int64 {
+        let base = Finance.funds(ledger, now: now)
+        let changes: [(Entry, Int64)] = (original.map { [($0, Int64(-1))] } ?? []) + [(entry, Int64(1))]
+        var deltas: [UUID: Int64] = [:], difference: Int64 = 0
+        for (row, sign) in changes where row.deletedAt == nil {
+            for account in ledger.accounts where account.id == row.accountID || (row.nature.paired && account.id == row.otherAccountID) {
+                let posting = row.postingDate(for: account.id)
+                if posting <= now, account.includes(row, posting: posting) { deltas[account.id, default: 0] += sign * row.delta(for: account.id) }
+            }
+            if row.nature == .unknownIn, row.date <= now,
+               ledger.accounts.contains(where: { $0.id == row.accountID && ($0.kind == .cash || $0.kind == .bank) && $0.includes(row, posting: row.date) }) {
+                difference -= sign * row.amount
+            }
+        }
+        for account in ledger.accounts {
+            let delta = deltas[account.id, default: 0]
+            if account.kind == .cash || account.kind == .bank { difference += delta }
+            else if account.kind == .credit, delta != 0 {
+                let old = Finance.balance(account, in: ledger, at: now)
+                difference -= max(0, -(old + delta)) - max(0, -old)
+            }
+        }
+        // Historical spending/refunds and linked payments can change reserves.
+        // Ordinary entries today use just the affected account deltas above.
+        let changesLiving = changes.contains { row, _ in row.date < Dates.day(now) && (row.nature == .expense || row.nature == .refund) }
+        let changesPayments = changes.contains { $0.0.planID != nil || $0.0.rentID != nil }
+        if changesLiving || changesPayments {
+            var preview = ledger
+            if let original, let index = preview.entries.firstIndex(where: { $0.id == original.id }) { preview.entries[index] = entry }
+            else { preview.entries.append(entry) }
+            if changesLiving {
+                let oldDaily = base.horizonDays > 0 ? base.living / Int64(base.horizonDays) : 0
+                difference -= (Finance.estimatedDailyLiving(preview, now: now) - oldDaily) * Int64(base.horizonDays)
+            }
+            if changesPayments {
+                let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
+                let occurrences = Finance.occurrences(in: preview, now: now, days: base.payday == nil ? Finance.observationDays : base.horizonDays + 1)
+                let committed = occurrences.filter { !$0.inflow && Dates.day($0.date) <= base.horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }.reduce(Int64(0)) { $0 + $1.amount }
+                difference -= committed - base.committed
+            }
+        }
+        return base.available + difference
     }
     public static func edit(_ edited: Entry, in ledger: inout Ledger) throws {
         guard let index = ledger.entries.firstIndex(where: { $0.id == edited.id && $0.deletedAt == nil }) else { throw YubaiError.invalid("记录已移除。") }
         let original = ledger.entries[index]
-        var next = ledger; var entry = edited
+        var next = ledger
+        let entry = try prepareEdit(edited, original: original, in: &next)
+        next.entries[index] = entry
+        LedgerOperations.syncLinkedRefundCategories(in: &next)
+        CategoryMemory.remember(entry, in: &next)
+        try next.validate(); ledger = next
+    }
+    private static func prepareEdit(_ edited: Entry, original: Entry, in next: inout Ledger) throws -> Entry {
+        var entry = edited
         entry.id = original.id; entry.source = original.source; entry.recordedAt = original.recordedAt
         entry.userEdited = true
+        // ImportOrganizer also sets userEdited. Persist a distinct manual marker
+        // for category corrections; conservatively protect any reviewed catch-all
+        // even when its category stayed the same. Legacy pending stays pending.
+        if entry.category != original.category || (!Classification.isPending(entry) && ["其他支出", "其他收入"].contains(entry.category)) {
+            entry.classificationReason = "手动选择"
+        }
         if entry.amount != original.amount { entry.personalExpense = nil; LedgerOperations.recordPersonalShare(&entry, ledger: next) }
         if entry.subcategory != original.subcategory || entry.category != original.category {
             if entry.category != original.category && entry.subcategory == original.subcategory {
@@ -135,10 +225,7 @@ public enum ManualBookkeeping {
             if let sub = entry.subcategory, !SubcategoryClassifier.valid(.init(category: entry.category, subcategory: sub), in: next, nature: entry.nature) { throw YubaiError.invalid("这个小项不属于该主项。") }
             CategoryMemory.remember(entry, in: &next)
         }
-        next.entries[index] = entry
-        LedgerOperations.syncLinkedRefundCategories(in: &next)
-        CategoryMemory.remember(entry, in: &next)
-        try next.validate(); ledger = next
+        return entry
     }
     public static func dayLabel(_ day: Date, now: Date = Date(), includeTodayDate: Bool = false) -> String {
         let c = Dates.calendar

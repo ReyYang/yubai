@@ -1,5 +1,101 @@
 # 余白 · 设计约定与资源登记
 
+## 2026-11-06 · PR #75 合并 main（#76／#78）
+
+本轮仅合并既有实现：保留批次 #70–#74 的金额托盘、用途／备注合一、两步分类、第三十六轮现金图及 LedgerWriteQueue 性能工作，同时采用 main 的超支条、PaperCanvas、纸面卡片、颜色和表单环境。现金图保留 endpoint／顶部标注结构，符号与胶囊采用 paperSheet；固定收付的两个 Toggle、预览与停掉按钮各保留一份。分类选择列表、排序行和小项面板沿用 main 的 paperSheet／paperCardSurface 模式。下方两侧历史记录按 HEAD、main 顺序完整保留。
+
+Swift 6.2.4 的 Core build 通过（65.25 秒）；离线全量测试 **874 项，870 通过／4 项原有实网 opt-in 跳过／0 失败（111.57 秒）**，含 MeterSegmentsTests 9 项。网络代理不可用，已从本机另一工作副本复制并核对锁文件对应的干净依赖缓存；未改 Package.swift／Package.resolved。35 个改动 App 文件、1 个 Widget 文件与1个 UI 测试文件的 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 语法解析 **111／111 通过**。工程 OpenStep 结构、282 个唯一对象定义、全部 ID 引用及双方目标登记并集通过 Python 校验；未发现冲突标记或 #78 已删除 API 的残留引用。日志位于 `/tmp/yubai-merge-{build,test}.log`，解析记录与工程校验脚本位于 `/tmp/yubai-merge-parse.json`、`/tmp/yubai-merge-validate-project.py`。
+
+冲突修复没有自行新增可见中文；相对合并前 HEAD 保留 main 的事实模板「还能花 X」「要付和日常 Y」「现金 X」「还差 Z」，均属于数字与事实。Apple SDK 类型检查、Xcode／XCTest UI 和真机视觉仍未验证，外部资源未同步。本会话 `.git` 只读，`git add -A` 无法创建 index.lock；工作树已消除冲突，实际分支的暂存与 merge commit 待外层可写环境完成。未推送。
+
+## 2026-11-05 · 批量记为后空白与同类页面滚动修复
+
+来源：owner 在 main `a0f21da` 的真机反馈及本轮修复 brief；工作分支 `fix/unsorted-blank-after-batch`。按对方分滚动选择 61 组／72 笔，记为其他支出后只剩导航与撤销条。源码确认列表缩短未复位滚动、批量 sheet 同时由父绑定与自身 dismiss 关闭，且列表缺少全分完返回；未在 Linux 将这几条机制各自对真机现象的贡献作为已实测结论。
+
+- 按对方分：外层改为普通 VStack，保留 CardRows 内的惰性行；计数头部为稳定顶部锚点。实际待分类笔数变化时重建行容器身份并用 ScrollViewReader 回顶部，覆盖批量／详情应用、后台减少与撤销恢复；选择与搜索状态仍属于父页。
+- 关闭与全分完：sheet 仅由父页绑定关闭；父页等 sheet 的 onDismiss 后才检查清空。详情改用列表层的绑定路由，清空时先让详情返回，再由列表防重复返回「现在」。判断基于实际 entryCount，搜索无匹配不会触发返回。沿用已批准的全分完回现在，AppStore 的撤销凭据与 RootView overlay 保留，返回后仍可撤销。
+- 一个个分：对方卡顶部加锚点，当前组身份／笔数变化时回顶部，覆盖应用、跳过、外部完成、详情部分应用及撤销恢复；原会话、卡片切换与减少动态效果逻辑保持。
+- 一组：顶部锚点随实际组笔数变化复位；记录区域按笔数重建惰性布局，部分应用后仍全选剩余，撤销恢复也回顶部。审读同文件所有 unsortedGroups 滚动视图，剩余批量 sheet 清空由父绑定关闭，无另一处可缩短的长组列表。
+
+`AppFlowTests.swift` 新增 3 项 UI 回归源码：64 组／75 笔中滚动选 61 组，记其他支出后断言剩 3 笔计数／搜索实际可见，再撤销回 75；64 笔单组取消一笔后深滚动、应用 63 笔、撤销及末组完成返回；快速页长控件列表深滚动后的跳过／应用／撤销都须看到卡片顶部。可见性断言不调用补救滚动，不能以 AX 节点存在代替可见。旧批量全选测试更新为返回现在、根撤销恢复后重新进入列表。新增两个 simulator Debug 合成情景，沿用离线 UITestTransport；专用撤销条复用现有显式 KEEP_UNDO 测试开关，设备／Release 及默认 4 秒寿命保持。
+
+验证：Core build 成功；全量 **788 项，784 通过／4 项原有实网 opt-in 跳过／0 失败（103.812 秒）**，禁用自动依赖解析并设置 `YUBAI_LIVE_EVAL=0`，日志 `/tmp/yubai-unsorted-build.log`、`/tmp/yubai-unsorted-test.log`。改动 App／UI 文件的 iOS 26 模拟器 Debug、App 的 iOS 26 设备 Release／macOS 14 Debug 条件语法解析通过。完整 UITestSupport 去除仅 simulator 的外围编译门后，在 Linux 以真实 Core 类型检查通过；临时可执行程序使用实际夹具、离线传输与整理器验证 75→3→75、[64,1]→[1,1]→[64,1]，日志 `/tmp/yubai-unsorted-fixture-{many,long}.log`。这些检查不替代 Apple SDK 类型检查、XCTest UI 实跑或真机白屏复验，均仍待 Mac／iPhone。
+
+新增／改动产品可见中文字符串：**无**；合成夹具仅增加测试事实名称「合成长列表.csv」「合成对方NN」「合成明细N」「合成分类NN」。原 V31 HTML 保留不变，外部画布、截图和分发资源未同步。未提交／推送、无新依赖、无网络／DeepSeek 调用。
+## 2026-11-05 · 第三十三轮「记账重新做」（owner 明确规格）
+
+本轮采用 owner 任务内给出的八节设计系统与交互规格，不另推定外部原稿。取代第四轮／第十七轮键盘的底色、按下透明度和缩放；运算符亮起、用途键盘轮流及既有保存动效保持。原型与历史记录继续保留；外部设计资源未同步。
+
+| 规格 | 实现与边界 |
+|---|---|
+| 1. 颜色 | `DesignSystem.swift / YubaiColor` 新增 keypadTray、key、keyFn、keyPressed、keyFnPressed、shadowKey 的浅／深色。实影为 y=1、blur=0，按下去掉；沿用品牌、字色和圆角 token。 |
+| 2. 托盘 | `EntryFormComponents.swift / AmountKeypad`：顶角22、左右8／上10、52高／6间距／14圆角；按可用宽度精确平分四列，主键占两列。「记下」禁用时40%，有效时带两位金额；编辑主键「好」。底延至安全区；连续记账按钮15pt／44pt，仅记一笔出现。 |
+| 3. 触感 | 专用 ButtonStyle 用 isPressed 在按下时立即换色／去影，不缩放或变透明，松开160ms ease-out；系统 Button 松手输入／滑出取消。UIKit 生成器出现时预热，副本预判拒绝给 rigid 0.5，数字／删除 light、运算符 medium。删除按住500ms reset／medium，松手抑制单删；连续保存清掉 deferred 状态并推进原 success trigger 一次，未改 AppStore。 |
+| 4. 输入帧 | QuickEntry 的预览和匹配以150ms可取消 Task 合并输入，原 Core 算法在 detached task 计算，回主线程前检查取消，结果存 State；body 不扫描账本。保存时重验匹配，避免抢在 debounce 前保存到失效建议。固定收付编辑的日期预览在托盘打开时保留快照。 |
+| 5. 表单 | 用途加 owner 指定的 secondary「可不填」。Core recentPurposes 在取前3项前过滤全部主项／显示名／子项／没分类，保留原 recency、去重及删除过滤；最近用途按账本更新时间缓存。用途聚焦时整个托盘及连续按钮收起。 |
+| 6. 编辑共用 | EntryEditView（含 Apple Pay）、FixedFlowEditor 添加／改及原第二个 numericInput「这期金额」均改用 EditableAmountDisplay 和同一托盘。打开整段高亮，数字／小数点替换、删除／运算符接原值；好／外部点按 resolve 再用 Money.input 回写。名字／用途／备注聚焦收起，ScrollViewReader 在布局后定位金额，沿用 layout 动画／减少动态效果。 |
+| 7. 重复 | 记一笔日期后、改一笔时间与备注间的32pt芯片；转账隐藏，已选固定收付建议隐藏并取消新重复。新计划与首笔关联同一 ChangeSet；改账用同一次 store.update 原子追加计划／更新关联。月日跟日期；连续记账重置。已有 planID 芯片显示计划月日或频率并打开原固定收付编辑，不能本地取消。Core `EntryRepetition.swift` 复用 ManualBookkeeping.change 的 link 和 edit，首期已付、下一期正常排入下月。 |
+| 8. 无障碍 | 保留 keypad_X、saveQuickEntry、saveAndAddAnother、editEntryAmount 等标识，新增 entryRepeat／amountKeypadDone。金额由 TextField 变为可点按钮；运算符和重复的选中 traits、重复 value、禁用主键保留。UI 测试查询同步更新，旧固定收付输入改为点托盘。 |
+
+新增／变化的可见中文：控件「重复」「不重复」「每月 N 号」「每月 N 号 ›」「频率 ›」「记下」（禁用态）、「好」（托盘），状态后缀「 · 每月 N 号」，金额事实「0.00」。既有「记下 X.XX 元」「记下，再记一笔」保留并统一样式。「可不填」由 owner 本轮第5节明确指定，作为四类之外的任务明确例外，不自行增写说明。Core 新错误原因「转账不能重复。」「请核对金额。」「这笔已有固定收付。」通过既有错误提示与按钮显示，属于出错例外。没有新增常驻说明。
+
+验证：新增12项Core测试（计划字段／空用途／收入／原子首期／月末／改账关联／失败回滚／非转账特殊性质／转账与无效金额／最近用途／选中替换／拒绝预判）及5项UI回归源码（替换结算与长删／连续重复重置／改账重复与跳转／转账与匹配互斥／固定收付键盘切换）；另更新既有金额控件和异步建议断言。`git diff --check` 通过。访问脚本输出41个App＋1个UI文件、1,236个访问声明、5个setter-only，632个同名候选；与HEAD比较新增34个同名候选已逐项核对，均为不同类型的属性／方法／枚举名，跨文件新共用组件保持internal；无非setter同类型候选。完整输出保存在 `/tmp/yubai-entry-v33-access.json` 与 TSV。
+
+首轮验证（安装前）：`/opt/swift-rootfs/usr/bin/swift` 未出现，加入 PATH 后 `swift build`／`YUBAI_LIVE_EVAL=0 swift test` 均为 command not found（127），没有测试执行或通过数。仓库安装脚本尝试在临时目录安装，因代理端口不可用退出；直连DNS也不可用。已向owner请求后台安装状态／可用路径。Swift条件语法解析、Core测试及Apple SDK类型检查／UI／触感真机验收均仍待验证，不能把静态审读或访问脚本当作编译通过。
+
+### 同日续作：用途与备注合一／不随用途换分类（owner 明确决定）
+
+本段取代本轮表格中「备注聚焦」及「时间与备注间」的描述：EntryEditView 删除备注行，仅保留用途；保存时在同一 store.update 中取当前账本原 note 并原样保留，旧表单不能覆盖它。重复行位于时间后、表单末尾。用途仍可不填；Core 字段／note并入purpose的加载迁移由 `feat/category-defaults-expand` 负责，本追加仅改 UI。
+
+EntryDetailView 的 UI-only `EntryNotePresentation` 复用 Import.swift 的四种导入来源（文件／微信／支付宝／BeeCount），或 sourceRow／batchID，识别导入证据。详情及同步版本差异仅显示导入 note；手记／Apple Pay／快捷指令／问余白／固定收付自动记录不显示独立 note。账目列表的 Core Row.note 是混合的一行展示投影，因此 UI 在账本 revision 变化时缓存手记用途并覆盖旧 note，滚动行不逐笔扫描账本；分类同名用途继续留空。ImportView 用 note 的待核对判断属于导入证据，保留；账户／目标等其他模型的备注保持。搜索读屏 hint 改为「可按用途、分类或金额搜索」。
+
+QuickEntryView 删除 purpose 的自动猜分类监听及 userChoseCategory；切换 nature 仅取对应方向常用分类首项，不再 guessCategory。显式预填分类保留；用途仍参与固定收付匹配与预览。EntryEditView 无用途猜分类逻辑，分类选择器未改。新增 UI 回归覆盖输入地铁后仍餐饮、手选购物后用途不改分类、带兼职用途切收入仍取工资奖金；改账回归断言无备注字段。没有新增可见中文；删除「备注」行及其「可不填」占位，变更的完整读屏文字不属于可见文案。
+
+续作最终验证（Swift 6.2.4）：
+
+- 已先后执行 build/test，完成追加后再次执行 `swift build` 和 `YUBAI_LIVE_EVAL=0 swift test`；初次默认 /root 缓存只读，后用 CLANG_MODULE_CACHE_PATH／SWIFTPM_MODULECACHE_OVERRIDE／XDG_CACHE_HOME 及 SwiftPM 的 cache-path／config-path／security-path 全部移至 `/tmp/yubai-entry-v33-*`。最终两命令均退出1，现有 swift-crypto／swift-asn1 因 `127.0.0.1:43067` 代理连接失败而无法拉取；关闭代理试读公共依赖仍无法解析 github.com。未进入 Core 编译或测试，没有通过／失败统计，也不能判定 main 原有失败。未修改任何基线测试或新增跳过；已请求缓存／外层 resolve。日志在 `/tmp/yubai-entry-v33-build-final.log`、`/tmp/yubai-entry-v33-test-final.log`。
+- 41个App文件逐个覆盖 iOS26模拟器Debug／macOS14 Debug，另1次UI条件解析：**83／83通过，0失败**。本轮Core及其测试语法解析也通过。记录在 `/tmp/yubai-entry-v33-parse-final.json`。Apple SDK类型检查／UI和真机触感仍未验证。
+- `python3 scripts/audit-swift-access.py --output /tmp/yubai-entry-v33-access-final.json --summary /tmp/yubai-entry-v33-access-final.tsv` 退出0：41 App＋1 UI，1,236访问声明、5 setter-only，630同名候选／130,524次匹配；新增同名候选复核为不同类型的 purposeFocused，非setter同类型跨文件候选0。新共用 EntryNotePresentation 保持internal。
+- 实际 UI note policy 抽取后以Foundation替身运行，**45个判断通过**（覆盖四种导入来源、行号／批次，以及手动、Apple Pay、快捷指令、Siri、问余白、用户操作、自动扣款；非Core/XCTest，不替代全量测试）。`git diff --check`通过。累计本轮Core12项／UI6项新增测试源码，未执行XCTest。
+
+本轮未触碰 Storage、YubaiApp／LedgerSync、CashTimeline、available(after:)、ChangeSet.apply、Editors 或 InsightsView；ManualBookkeeping.swift 仅新增金额初始化与空金额运算符防护。无新依赖、无外部设计稿链接、未提交／推送。
+## 2026-11-05 · 第三十四／三十五轮分类（owner 批准）
+
+owner 本轮批准分类管理与统一两步分类选择，取代第三十一轮即时分类的单层格子，并补齐此前仅有 Core API 的分类维护。其他分类固定末位不可编辑；快选取固定 categoryOrder 前五。改名沿用历史，小项删除只留大类，合并可撤销，隐藏不影响统计。建议仅描边置首，不自动确认；主项展开到所在行下方，选小项或只记大类才完成，无小项则立即完成。新增默认归当前展开主类，底部写结果。
+
+[逐文件行为、Core 迁移与词表、全部可见中文、原生适配及验证](../docs/CATEGORY-UI-V34-V35.md)。新组件独立于禁改记一笔与表单文件；我页独立值导航避免修改根 AppStore。新增与即时应用同次保存；快分的范围撤销保留新分类定义。手写备注只迁移一次、按 4,000 字符截断；这两项为实现选择，用户决定与上限边界分别登记于交付记录。
+
+原 HTML 仅阅读，不复制原稿、路径或链接；本节及交付记录保留可追溯的采用行为，外部资源未同步。Core 全量824项、820通过／4原有跳过／0失败，App／UI条件解析、访问审计与实际分类方法Linux替身通过；Apple SDK类型检查、UI／视觉／真机仍待Mac。「记一笔更多」专用全量小项画面按任务边界留给另一分支。
+## 2026-11-05 · 第三十六轮「现金会怎么走」（owner 确认）
+
+来源：第三十六轮设计稿。owner 已确认默认、按住、过去周期及低于始终留着四种状态，在 `feat/cashflow-cycle-pages`（基于 main `a0f21da`）授权实现；本节取代第三十二轮的头部读数、标注位置、刻度和图例规则。原稿只读，未复制来源路径或私有链接；外部设计资源与分发包未同步。未提交、未推送。
+
+### 实现与边界
+
+- `CashTimelineCard.swift`：标题 serif 16/600 与固定日期范围；第二行改为今天实际余额（26/600），历史周期为末日日期／余额，按住为所选日期／余额。第三行统一按距周期起点天数比较，只给差额上色；上周期缺该日时省略比较，不复制上一天，也不改用完整周期末值。旧大数字「发工资前还剩」删除。
+- 图继续使用 Swift Charts，当前实际线 brand 2.4pt、预测 4/4 虚线、上周期 chart-rule 1.5pt，网格 separator。终点文字和空心圈共用 `endpointPresentation` 的日期、整数分余额与底线状态。刻度只按两条线、预测阶跃及实际显示的底线定域，通常使用 1k／2k／5k／10k 的 3–4 条刻度，不强制包含 0，保留约 4% 的边界空间。平坦／不足 3k 的范围补足三个 1k 刻度；超大跨度无法同时满足四个指定步长与 3–4 条刻度时，沿 1／2／5 扩大步长，不裁掉余额。
+- 新增 `CashTimelinePresentation.swift`：独立提供读数、真实终点、最大一笔及剩余笔数、顶部标注选择、错行和预测穿越底线分段。原 `Finance.cashTimeline` 的整个计算主体逐字节保持，方便合并另一个分支的性能修改；旧窗口输出及 `.difference` 也保留兼容，新页面使用独立 `readout`。
+- 标注沿用工资／循环支出／达到日均三倍的资格规则，保留一笔工资与最大两笔合格支出，时间顺序排在图上方独立区域；测量系统字体后碰撞换行，用点状细线连到线上圆点。按住时只保留圆点，隐藏标签及引线；深色胶囊显示当天绝对金额最大一笔及「还有 N 笔」，无收付不显示，仅一笔省略后半句。超长事实按测量宽度分行，各行 fixedSize／lineLimit(1)，不丢文字、不挤压；图高随顶部所需空间增长。
+- 任何预测段低于始终留着即显示琥珀底线／左下金额，穿越点线性插值，保留同日账单的竖直阶跃；低于底线的虚线为 amber-dot，回升后恢复 brand。终点圈与文字是否琥珀仍只比较终点，相等不警示。已完成周期整条实线且无预测底线警示。
+- 沿用一页一个发薪周期、无工资用自然月、最早三个月前与 `cycleOffset` 边界。图例固定「这个月」「上个月」，右侧最多四个页点，选中 14×6、其余 6×6；历史页在页点左侧加 raised 底 28pt 的真实按钮「这个月 ›」。周薪等超过四页时显示包含选中页的四点窗口，读屏仍读真实总页数。
+- iOS 保留两个通过 `.gesture` 挂载的原生识别器、0.25 秒静止长按与互斥规则；普通横滑翻周期，长按后逐日吸附和原触感，松手恢复。macOS 继续长按与指针拖动，并记录拖动中已长按以阻止末尾误翻页。保留原 card／chart／minimum／comparison／floor／today／legend 标识，补 range／pages 标识与读屏逐日、前后周期和结束查看动作。金额隐藏时不构造图或金额辅助元素。
+
+### 终点贴近 0 的源码结论
+
+旧源码中的终点圆圈已经使用真实 `endpoint.balance`，没有发现把负值改成 0 的分支。旧刻度却强制含 0、向外取整到 −10k 并增加上下留白；在数万跨度下 −32.37 与 0 的纵向距离不足 1pt，单靠截图不能断言发生了数值替换。本轮收紧范围，并以同一数据对象生成终点金额文字与坐标；新增 −3,237 分夹具检查终点、预测折线最后点、分段最后点及「发工资前 −32.37」一致。真机像素位置仍待 Apple 渲染核验。
+
+### 可见中文字符串
+
+新增／改动的事实模板：「今天 X.XX」「M月D日 X.XX」「比上个月同一天多／少 X.XX」「发工资前 X.XX」「月底 X.XX」「收付标题 ±X.XX · 还有 N 笔」（仅一笔时无后半句）。日期范围「M/D – M/D」现在始终留在第一行；底线事实「始终留着 X.XX」移到图左下。保留标题「现金会怎么走」、图例「这个月」「上个月」、控件「这个月 ›」、标注「工资 +整数」「支出标题 −整数」和状态「金额已隐藏」。删除旧的「发工资前还剩／剩下」「月底还剩／剩下」「当天余额」「M/D 起」及历史完整周期对比。没有解释性文案或文案例外；新增读屏动作不作为可见文字。
+
+### 验证与未验证项
+
+- 新增 16 项 Core 回归源码，`CashTimelineTests` 共 43 项；保留 27 项原测试并更新旧强制含零的刻度断言。覆盖刻度范围／步长／空与平坦值、上周期／阶跃／底线范围、当天／历史／按住读数、缺少对齐日、最大一笔／稳定平票／剩余数量、负终点统一、斜线与竖直穿越／相等／回升，以及顶部标注资格／数量和错行。三项原 UI 测试同步今天实际余额、历史日期、固定图例、页点、返回按钮和独立负终点断言；UI 方法总数 107，未删测试。
+- Linux Swift 6.2.4 `swift test`：全量 804 项，800 通过／4 原有实网跳过／0 失败。
+- `scripts/audit-swift-access.py` 已执行：41 个 App＋1 个 UI 文件、1,214 处访问声明，0 个同属主跨文件私有命中；复核新增成员均在同文件使用，Core 供 App 使用的成员明确为 public。审计是保守命名检查，不能代替类型检查。五份改动 Swift 的词法括号配对检查、`git diff --check` 通过。
+- 刻度算法的独立 Python 转写检查 10,008 组范围／步长／刻度数量，未发现失败；这只是算法模型核对，不是执行 Swift 源码，不能计入单元测试结果。
+- 仍待 Apple SDK 类型检查／Xcode 构建、XCTest UI、390pt 渲染、长按／横滑竞争、标注真实坐标、Mac 指针、深色／大字号／VoiceOver 与真机仍未验证。
+
 ## 2026-11-05 · 第三十八轮「还能花图例与克制超出」
 
 来源：owner 指定本轮 brief、V38-Hero-Normal／Hero-Over／Restrain-Over 三份 HTML 和 HeroCard／Meter 两份组件规格；[原稿归档与哈希](mockups/hero-v38/README.md)。不采用已否决的 Hero-Over-NoBar。仅调整构成条的呈现，不改变资金、软线或提醒触发的计算规则。

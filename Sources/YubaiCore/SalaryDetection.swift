@@ -26,13 +26,19 @@ public enum SalaryDetection {
 
     public static func candidate(in ledger: Ledger, now: Date = Date()) -> SalaryCandidate? {
         guard !ledger.plans.contains(where: { $0.active && $0.inflow && $0.nature == .income && $0.frequency == .monthly }) else { return nil }
-        let groups = Dictionary(grouping: ledger.activeEntries.filter { $0.nature == .income && $0.date <= now && $0.amount > 0 }, by: { payerKey($0.title) })
-        return groups.compactMap { key, entries -> SalaryCandidate? in
+        if let cached = ledger.calculations.cachedSalary(now: now) { return cached }
+        let calendar = Dates.calendar
+        var payerKeys: [String: String] = [:]
+        let groups = Dictionary(grouping: ledger.entries.lazy.filter { $0.deletedAt == nil && $0.nature == .income && $0.date <= now && $0.amount > 0 }, by: { entry in
+            if let key = payerKeys[entry.title] { return key }
+            let key = payerKey(entry.title); payerKeys[entry.title] = key; return key
+        })
+        let value = groups.compactMap { key, entries -> SalaryCandidate? in
             guard !key.isEmpty, !ledger.dismissedSalaryKeys.contains(key), entries.count >= 2 else { return nil }
             // One dominant payment per month excludes occasional small remittances.
             // Keep a sustained stable run, rather than cherry-picking two similar
             // amounts out of an otherwise volatile salary history.
-            let months = Dictionary(grouping: entries, by: { Dates.calendar.dateInterval(of: .month, for: $0.date)!.start })
+            let months = Dictionary(grouping: entries, by: { calendar.dateInterval(of: .month, for: $0.date)!.start })
             let peaks = months.values.compactMap { rows in
                 rows.max { $0.amount == $1.amount ? $0.date < $1.date : $0.amount < $1.amount }
             }
@@ -44,7 +50,7 @@ public enum SalaryDetection {
             var runs: [[Entry]] = []
             for entry in stable {
                 if let previous = runs.last?.last,
-                   (26...35).contains(Dates.calendar.dateComponents([.day], from: Dates.day(previous.date), to: Dates.day(entry.date)).day ?? 0) {
+                   (26...35).contains(calendar.dateComponents([.day], from: Dates.day(previous.date), to: Dates.day(entry.date)).day ?? 0) {
                     runs[runs.count - 1].append(entry)
                 } else { runs.append([entry]) }
             }
@@ -54,16 +60,16 @@ public enum SalaryDetection {
                   run.count >= 2, run.count * 4 >= peaks.count * 3 else { return nil }
             let sorted = run.sorted { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date }
             for (previous, next) in zip(sorted, sorted.dropFirst()) {
-                let days = Dates.calendar.dateComponents([.day], from: Dates.day(previous.date), to: Dates.day(next.date)).day ?? 0
+                let days = calendar.dateComponents([.day], from: Dates.day(previous.date), to: Dates.day(next.date)).day ?? 0
                 guard (26...35).contains(days) else { return nil }
             }
-            let counts = Dictionary(grouping: sorted, by: { Dates.calendar.component(.day, from: $0.date) }).mapValues(\.count)
+            let counts = Dictionary(grouping: sorted, by: { calendar.component(.day, from: $0.date) }).mapValues(\.count)
             // Prefer the later day on a tie, so Jan 31 / Feb 28 / Mar 31
             // keeps its monthly anchor instead of drifting to February's end.
             let day = counts.keys.max { counts[$0] == counts[$1] ? $0 < $1 : counts[$0]! < counts[$1]! }!
             guard sorted.allSatisfy({ entry in
-                let last = Dates.calendar.range(of: .day, in: .month, for: entry.date)!.count
-                return abs(Dates.calendar.component(.day, from: entry.date) - min(day, last)) <= 3
+                let last = calendar.range(of: .day, in: .month, for: entry.date)!.count
+                return abs(calendar.component(.day, from: entry.date) - min(day, last)) <= 3
             }) else { return nil }
             let amounts = sorted.map { Double($0.amount) }.sorted()
             let middle = amounts.count / 2
@@ -73,6 +79,8 @@ public enum SalaryDetection {
             return SalaryCandidate(key: key, payer: payerTitle(latest.title), amount: latest.amount, dayOfMonth: day,
                                    recentDates: sorted.suffix(3).map(\.date), entryIDs: sorted.map(\.id), accountID: latest.accountID)
         }.sorted { $0.amount == $1.amount ? $0.key < $1.key : $0.amount > $1.amount }.first
+        ledger.calculations.storeSalary(value, in: ledger, now: now)
+        return value
     }
 
     /// The caller can snapshot the ledger to undo this entire change atomically.

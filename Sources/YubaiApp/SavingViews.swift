@@ -2,15 +2,15 @@ import SwiftUI
 import YubaiCore
 
 enum SavingCardVisibility {
-    struct Snapshot {
+    struct Snapshot: Sendable {
         let queued: [ButlerCard]
         let visible: [ButlerCard]
         let collapsed: [ButlerCard]
     }
-    static func snapshot(in ledger: Ledger, organizingBatchIDs: Set<UUID>,
+    static func snapshot(in ledger: Ledger, organizingBatchIDs: Set<UUID>, progress: [RestrainProgress]? = nil,
                          fallbackEntryCount: @escaping (ImportQuestion) -> Int) -> Snapshot {
         let queue = ButlerCards.queued(ledger, organizingBatchIDs: organizingBatchIDs, fallbackEntryCount: fallbackEntryCount)
-        let progress = Dictionary(uniqueKeysWithValues: RestrainProgress.current(ledger: ledger).map { ($0.areaID, $0) })
+        let progress = Dictionary(uniqueKeysWithValues: (progress ?? RestrainProgress.current(ledger: ledger)).map { ($0.areaID, $0) })
         let filtered = queue.filter { card in
             guard card.kind == .restrain, let id = card.areaID, let value = progress[id] else { return true }
             return value.status == .over
@@ -282,7 +282,7 @@ struct SavingProgressBar: View {
 struct RestrainNearRow: View {
     @Environment(AppStore.self) private var store
     private var nearestProgress: RestrainProgress? {
-        let progress: [RestrainProgress] = RestrainProgress.current(ledger: store.current)
+        let progress: [RestrainProgress] = store.restrainProgress
         let visible: [RestrainProgress] = progress.filter { value in
             let key: String = "restrain:\(value.areaID):\(ButlerCards.isoWeek(Date()))"
             guard value.status == .near, !ButlerCards.isMuted(key, in: store.current) else { return false }

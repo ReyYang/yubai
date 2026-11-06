@@ -21,10 +21,10 @@ final class SubcategorySavingTests: XCTestCase {
     }
     func testUnifiedCategoryTableHasTwoLevelsWithoutAutomaticOther() {
         let categories = Category.defaults
-        XCTAssertEqual(categories.filter { !$0.income && !$0.system }.map(\.name), ["餐饮", "购物", "交通", "居住", "医疗健康", "娱乐", "旅行", "会员订阅", "学习成长", "人情家庭", "利息手续费", "其他支出"])
-        XCTAssertEqual(categories.filter(\.income).map(\.name), ["工资奖金", "兼职劳务", "礼金赠与", "投资收益", "其他收入"])
+        XCTAssertEqual(categories.filter { !$0.income && !$0.system }.map(\.name), ["餐饮", "购物", "交通", "居住", "医疗健康", "美容个护", "娱乐", "旅行", "会员订阅", "学习成长", "人情家庭", "保险税费", "利息手续费", "其他支出"])
+        XCTAssertEqual(categories.filter(\.income).map(\.name), ["工资奖金", "兼职劳务", "礼金赠与", "投资收益", "报销", "二手转卖", "其他收入"])
         XCTAssertTrue(categories.allSatisfy { !$0.subcategories.contains("其他") && !$0.subcategories.contains(where: { $0.contains("/") }) })
-        XCTAssertEqual(ManualBookkeeping.defaults(for: .expense).count, 12)
+        XCTAssertEqual(ManualBookkeeping.defaults(for: .expense).count, 14)
         XCTAssertTrue(ManualBookkeeping.defaults(for: .expense).allSatisfy { name in categories.contains { $0.name == name } })
     }
     func testEditingUnlinkedRefundSubcategoryUsesExpenseCategoriesAndRemembersChoice() throws {

@@ -146,6 +146,7 @@ public enum ButlerCards {
     /// use this queue so reminders beyond the window are still reachable.
     public static func queued(_ ledger: Ledger, organizingBatchIDs: Set<UUID> = [],
                               fallbackEntryCount: ((ImportQuestion) -> Int)? = nil) -> [ButlerCard] {
+        guard !ledger.cards.isEmpty else { return [] }
         // Visibility is run-local, never persisted: stopped or relaunched apps
         // immediately expose the questions saved by completed checkpoints.
         let deferredQuestions = Set(ledger.imports.filter { organizingBatchIDs.contains($0.id) }

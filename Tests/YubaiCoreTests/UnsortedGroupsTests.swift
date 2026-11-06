@@ -535,7 +535,8 @@ final class UnsortedGroupsTests: XCTestCase {
         XCTAssertEqual(cache.snapshot(for: question.id, revision: 0, in: ledger)?.entryCount, 4)
         let added = Entry(date: now, amount: 99, nature: .unknownIn, accountID: ledger.accounts[0].id, title: "New Party · 来款")
         ledger.entries.append(added)
-        ledger.imports[0].organization?.questions[0].entryIDs = [added.id, ledger.entries[0].id]
+        let firstID = ledger.entries[0].id
+        ledger.imports[0].organization?.questions[0].entryIDs = [added.id, firstID]
         let updated = try XCTUnwrap(cache.snapshot(for: question.id, revision: 1, in: ledger))
         XCTAssertEqual(updated.entryCount, 2)
         XCTAssertEqual(updated.matching("new PARTY").map(\.id), ["in:New Party"])

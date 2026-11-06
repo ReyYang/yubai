@@ -9,6 +9,7 @@ struct EntriesView: View {
     @State private var search = ""
     @State private var showingSearch = false
     @State private var revealedEntryID: UUID?
+    @State private var manualNotePurposes: [UUID: String] = [:]
     @FocusState private var searchFocused: Bool
     var body: some View {
         let timeline = store.entryTimeline(month: month, search: search, filter: filter)
@@ -37,7 +38,7 @@ struct EntriesView: View {
                             AmountLabel(cents: -day.spending, hide: hideAmounts, role: .day)
                         }.foregroundStyle(YubaiColor.label).padding(.horizontal, YubaiSpace.insetCard)
                         CardRows(day.entries, hasLeadingIcon: true, rowHeight: YubaiSize.rowDouble) { entry in
-                            LedgerEntryRow(revealedEntryID: $revealedEntryID, entry: entry, hideAmounts: hideAmounts, isFresh: store.freshEntryIDs.contains(entry.id))
+                            LedgerEntryRow(revealedEntryID: $revealedEntryID, entry: entry, note: noteText(entry), hideAmounts: hideAmounts, isFresh: store.freshEntryIDs.contains(entry.id))
                         }
                     }
                 }
@@ -45,6 +46,11 @@ struct EntriesView: View {
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 780).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).amountPrivacy(hideAmounts).accessibilityIdentifier("entriesScroll")
+            .onChange(of: store.ledgerRevision, initial: true) { _, _ in
+                // Core's Row.note currently prefers legacy notes over purposes.
+                // Cache the UI override once per ledger revision, never per row.
+                manualNotePurposes = EntryNotePresentation.manualPurposes(store.current.entries)
+            }
             #if os(iOS)
             .rootScrollContentMargins()
             .simultaneousGesture(TapGesture().onEnded { revealedEntryID = nil })
@@ -64,6 +70,10 @@ struct EntriesView: View {
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+    }
+    private func noteText(_ row: EntryTimeline.Row) -> String {
+        guard let purpose = manualNotePurposes[row.id] else { return row.note }
+        return purpose == row.categoryName ? "" : purpose
     }
     private var monthPicker: some View {
         HStack(spacing: YubaiSpace.space4) {
@@ -91,7 +101,7 @@ struct EntriesView: View {
         HStack(spacing: YubaiSpace.space8) {
             Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
             TextField("搜索", text: $search).yubaiFont(YubaiFont.row).focused($searchFocused)
-                .accessibilityLabel("搜索账目").accessibilityHint("可按备注、分类或金额搜索").accessibilityIdentifier("entriesSearch")
+                .accessibilityLabel("搜索账目").accessibilityHint("可按用途、分类或金额搜索").accessibilityIdentifier("entriesSearch")
         }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin)
             .background(YubaiColor.raised, in: Capsule())
     }
@@ -146,6 +156,7 @@ private struct LedgerEntryRow: View {
     @State private var highlighted = true
     @Binding var revealedEntryID: UUID?
     let entry: EntryTimeline.Row
+    let note: String
     let hideAmounts: Bool
     let isFresh: Bool
     private let revealDistance = YubaiSize.swipeRevealDistance
@@ -214,13 +225,13 @@ private struct LedgerEntryRow: View {
             layout {
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     Text(entry.categoryName).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
-                    if !entry.note.isEmpty { Text(entry.note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                    if !note.isEmpty { Text(note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                 }.lineLimit(textSize.isAccessibilitySize ? nil : 1).frame(maxWidth: .infinity, alignment: .leading)
                 AmountLabel(cents: entry.amount, hide: hideAmounts,
                             sign: entry.inflow ? .inflow : .outflow, ink: entry.inflow ? YubaiColor.brandInk : YubaiColor.label)
                     .fixedSize(horizontal: true, vertical: false)
             }
-        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: entry.note.isEmpty ? YubaiSize.rowSingle : YubaiSize.rowDouble).contentShape(Rectangle())
+        }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: note.isEmpty ? YubaiSize.rowSingle : YubaiSize.rowDouble).contentShape(Rectangle())
             .background(isFresh && highlighted ? YubaiColor.brandTint : YubaiColor.paperSheet)
     }
     private func reset() {

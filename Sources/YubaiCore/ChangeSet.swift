@@ -132,17 +132,30 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
     /// Reports stale items. All validation happens on a copy, so throws never partially mutate the ledger.
     @discardableResult public func apply(to ledger: inout Ledger) throws -> [String] {
         try validateStructure(); try ledger.validate()
+        // A single append cannot reclassify existing entries. Avoid building
+        // whole-ledger indexes and comparing every original against its copy.
+        if items.count == 1, case .addEntry(let draft) = items[0], !ledger.entries.contains(where: { $0.id == draft.id }) {
+            var next = ledger
+            let entry = try addedEntry(draft, in: ledger)
+            next.entries.append(entry)
+            if source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(entry, in: &next) }
+            try next.validate(); ledger = next; return []
+        }
         var next = ledger; var skipped: [String] = []
         var changedExpenseCategories: [UUID: String] = [:]
         var incomingTransfers: Set<UUID> = []
         func validDate(_ d: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(d.timeIntervalSince1970) }
         var lines: [String]?
-        var entryIndex = Dictionary(uniqueKeysWithValues: next.entries.enumerated().map { ($0.element.id, $0.offset) })
-        var referenced = Set(next.entries.lazy.filter { $0.deletedAt == nil }.compactMap(\.relatedEntryID))
-        let merged = Set(next.entries.lazy.filter { $0.deletedAt == nil }.compactMap(\.mergedIntoID))
+        var entryIndex: [UUID: Int] = items.count > 1 ? Dictionary(uniqueKeysWithValues: next.entries.enumerated().map { ($0.element.id, $0.offset) }) : [:]
+        let needsReferences = items.contains { item in
+            switch item { case .setNature, .pairTransfer, .markDuplicate: return true; default: return false }
+        }
+        var referenced = needsReferences ? Set(next.entries.lazy.filter { $0.deletedAt == nil }.compactMap(\.relatedEntryID)) : []
+        let merged = needsReferences ? Set(next.entries.lazy.filter { $0.deletedAt == nil }.compactMap(\.mergedIntoID)) : []
         let stamp = source + "：" + reason
         func active(_ id: UUID) -> Int? {
-            guard let i = entryIndex[id], next.entries[i].deletedAt == nil else { return nil }; return i
+            guard let i = entryIndex[id] ?? next.entries.firstIndex(where: { $0.id == id }), next.entries[i].deletedAt == nil else { return nil }
+            entryIndex[id] = i; return i
         }
         func touch(_ index: Int) { next.entries[index].classificationReason = stamp; next.entries[index].userEdited = true }
         func skip(_ index: Int) {
@@ -289,17 +302,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 next.rents.append(r)
             case .addEntry(let draft):
                 guard !next.entries.contains(where: { $0.id == draft.id }) else { skip(position); continue }
-                guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
-                var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
-                e.id = draft.id; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
-                if let id = draft.planID, let occurrence = draft.occurrence {
-                    guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,
-                          !plan.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
-                    guard e.nature == plan.nature, plan.accountID == nil || plan.accountID == e.accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
-                    e.planID = id; e.occurrence = Dates.day(occurrence)
-                } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
-                e.source = source; e.classificationReason = stamp; e.userEdited = true
-                SubcategoryClassifier.classify(&e, ledger: next)
+                let e = try addedEntry(draft, in: next)
                 entryIndex[e.id] = next.entries.count
                 next.entries.append(e)
                 if source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(e, in: &next) }
@@ -330,9 +333,11 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 next.entries[i].category = category; next.entries[i].subcategory = next.entries[index].subcategory; touch(i)
             }
         }
-        let originals = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-        for i in next.entries.indices {
-            if let old = originals[next.entries[i].id], old != next.entries[i] {
+        // Operations preserve existing entry order and only append new rows.
+        // Compare by position, avoiding another full Entry dictionary.
+        for i in ledger.entries.indices {
+            let old = ledger.entries[i]
+            if old != next.entries[i] {
                 let entry = next.entries[i]
                 // A canonical incoming transfer changes the storage orientation,
                 // never its original account's amount, direction or posting day.
@@ -345,6 +350,23 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             }
         }
         try next.validate(); ledger = next; return skipped
+    }
+    /// Shared by the apply path and the incremental keypad preview.
+    func addedEntry(_ draft: EntryDraft, in next: Ledger) throws -> Entry {
+        func validDate(_ d: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(d.timeIntervalSince1970) }
+        let stamp = source + "：" + reason
+                guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
+                var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
+                e.id = draft.id; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
+                if let id = draft.planID, let occurrence = draft.occurrence {
+                    guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,
+                          !plan.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
+                    guard e.nature == plan.nature, plan.accountID == nil || plan.accountID == e.accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
+                    e.planID = id; e.occurrence = Dates.day(occurrence)
+                } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
+                e.source = source; e.classificationReason = stamp; e.userEdited = true
+                SubcategoryClassifier.classify(&e, ledger: next)
+        return e
     }
     private static func month(_ date: Date) -> Date { Dates.calendar.dateInterval(of: .month, for: date)?.start ?? Dates.day(date) }
 }

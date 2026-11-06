@@ -4,6 +4,8 @@ import LocalAuthentication
 import YubaiCore
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 enum Destination: String, CaseIterable, Identifiable {
@@ -62,7 +64,7 @@ enum AppSheet: Identifiable {
             if oldValue.id != ledger.id || oldValue.preferences.onboardingComplete != ledger.preferences.onboardingComplete {
                 resetRootNavigation()
             }
-            invalidateDerived()
+            if oldValue != ledger { invalidateDerived() }
         }
     }
     var current: Ledger { ledger }
@@ -73,6 +75,19 @@ enum AppSheet: Identifiable {
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
     @ObservationIgnored private var cachedCashTimeline: (at: Date, value: CashTimeline)?
     @ObservationIgnored private var cachedEntries: [Entry]?
+    @ObservationIgnored private var cachedEntriesByID: [UUID: Entry]?
+    @ObservationIgnored private var cachedAccountEntries: [UUID: [Entry]] = [:]
+    @ObservationIgnored private var cachedBalances: [UUID: (at: Date, value: Int64)] = [:]
+    @ObservationIgnored private var cachedFixedMonth: FixedFlowMonth?
+    @ObservationIgnored private var cachedRestrainProgress: [RestrainProgress]?
+    let ledgerWriter = LedgerWriteQueue()
+    @ObservationIgnored var persistenceTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored var persistenceEpoch: UInt64 = 0
+    @ObservationIgnored var lastUploadedPersistenceRevision: UInt64 = 0
+    #if os(macOS)
+    @ObservationIgnored private var terminationObserver: NSObjectProtocol?
+    #endif
+    var recoveringWriteFailure = false
     @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, calendar: Calendar, value: EntryTimeline.Snapshot)?
     @ObservationIgnored private var cachedPendingOrganization: PendingImportOrganization?
     @ObservationIgnored private var cachedSalary: (day: Date, value: SalaryCandidate?)?
@@ -91,7 +106,7 @@ enum AppSheet: Identifiable {
     var butlerVisibility: SavingCardVisibility.Snapshot {
         let day = Dates.day(Date()), batches = organizingImportBatchIDs
         if let cached = cachedButlerVisibility, cached.revision == derivedRevision, cached.day == day, cached.batches == batches { return cached.value }
-        let value = SavingCardVisibility.snapshot(in: current, organizingBatchIDs: batches,
+        let value = SavingCardVisibility.snapshot(in: current, organizingBatchIDs: batches, progress: restrainProgress,
                                                  fallbackEntryCount: { self.unsortedEntryCount(for: $0) })
         cachedButlerVisibility = (derivedRevision, day, batches, value); return value
     }
@@ -138,7 +153,36 @@ enum AppSheet: Identifiable {
         let value = Finance.cashTimeline(current, funds: funds, now: at)
         cachedCashTimeline = (at, value); return value
     }
-    var fixedFlowMonth: FixedFlowMonth { _ = derivedRevision; return FixedFlows.month(containing: Date(), in: current) }
+    var restrainProgress: [RestrainProgress] {
+        _ = derivedRevision
+        if let cachedRestrainProgress { return cachedRestrainProgress }
+        let value = RestrainProgress.current(ledger: current); cachedRestrainProgress = value; return value
+    }
+    var fixedFlowMonth: FixedFlowMonth {
+        _ = derivedRevision
+        if let cachedFixedMonth { return cachedFixedMonth }
+        let value = FixedFlows.month(containing: Date(), in: current); cachedFixedMonth = value; return value
+    }
+    var entriesByID: [UUID: Entry] {
+        _ = ledgerRevision
+        if let cachedEntriesByID { return cachedEntriesByID }
+        let value = Dictionary(uniqueKeysWithValues: current.entries.map { ($0.id, $0) })
+        cachedEntriesByID = value; return value
+    }
+    func accountEntries(_ id: UUID) -> [Entry] {
+        _ = ledgerRevision
+        if let cached = cachedAccountEntries[id] { return cached }
+        let value = Array(sortedEntries.lazy.filter { $0.deletedAt == nil && ($0.accountID == id || $0.otherAccountID == id) }.prefix(100))
+        cachedAccountEntries[id] = value; return value
+    }
+    func balance(_ account: Account, at: Date? = nil) -> Int64 {
+        _ = derivedRevision
+        // Default balances share the funds cache's expiry (future posting dates).
+        let moment = at ?? { _ = funds; return cachedFunds!.at }()
+        if let cached = cachedBalances[account.id], cached.at == moment { return cached.value }
+        let value = Finance.balance(account, in: current, at: moment)
+        cachedBalances[account.id] = (moment, value); return value
+    }
     var sortedEntries: [Entry] {
         _ = derivedRevision
         if let cachedEntries { return cachedEntries }
@@ -155,9 +199,9 @@ enum AppSheet: Identifiable {
     }
     private func invalidateDerived() {
         ledgerRevision &+= 1
-        cachedEntries = nil; cachedEntryTimeline = nil; cachedPendingOrganization = nil; cachedSalary = nil; refreshTimeDerived()
+        cachedEntries = nil; cachedEntriesByID = nil; cachedAccountEntries = [:]; cachedEntryTimeline = nil; cachedPendingOrganization = nil; cachedSalary = nil; refreshTimeDerived()
     }
-    func refreshTimeDerived() { cachedFunds = nil; cachedCashTimeline = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
+    func refreshTimeDerived() { cachedFunds = nil; cachedCashTimeline = nil; cachedBalances = [:]; cachedFixedMonth = nil; cachedRestrainProgress = nil; derivedRevision &+= 1; CaptureSnapshotBridge.publish(ledger) }
     let localRepository: LedgerRepository
     var locations: LedgerLocations
     var ledgerLocation: LedgerLocation = .local
@@ -239,6 +283,9 @@ enum AppSheet: Identifiable {
             locked = ledger.preferences.lockEnabled
         } catch { loadFailure = error.localizedDescription }
         CaptureSnapshotBridge.publish(ledger)
+        #if os(macOS)
+        terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [writer = ledgerWriter] _ in writer.flushBlocking() }
+        #endif
         #if os(iOS)
         CaptureNotifications.register()
         #endif
@@ -319,9 +366,16 @@ enum AppSheet: Identifiable {
         if saved, !silently, !skipped.isEmpty { toast = label + "完成；" + skipped.joined(separator: "；") }
         return saved
     }
-    func publishOrganizationCheckpoint(_ next: Ledger, pending: PendingImportOrganization, salary: SalaryCandidate?, day: Date) {
+    func publishOrganizationCheckpoint(_ next: Ledger, pending: PendingImportOrganization, salary: SalaryCandidate?, day: Date, derived: LedgerDerivedSnapshot) {
         ledger = next
         cachedPendingOrganization = pending; cachedSalary = (day, salary)
+        cachedFunds = (derived.funds, derived.at, derived.expires, derived.zone)
+        cachedCashTimeline = (derived.at, derived.timeline)
+        cachedEntries = derived.entries; cachedEntriesByID = derived.entriesByID
+        cachedFixedMonth = derived.fixedMonth; cachedRestrainProgress = derived.progress
+        if derived.organizingBatchIDs == organizingImportBatchIDs {
+            cachedButlerVisibility = (derivedRevision, day, derived.organizingBatchIDs, derived.visibility)
+        }
         undoLedger = organizationExecution?.before; undoLabel = "导入整理"
     }
     func autoSettleFixedFlows() {
@@ -368,9 +422,20 @@ enum AppSheet: Identifiable {
     }
     @discardableResult func recover(_ recovery: Recovery) -> Bool {
         guard canEditLedger() else { return false }
-        do { let restored = try localRepository.readRecovery(recovery); let saved = try persist(restored, reason: "恢复版本", restoring: true); cancelEntrySaveMotion(); ledger = saved; resetRootNavigation(); loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "已恢复到所选版本"; sheet = nil; return true }
-        catch { self.error = error.localizedDescription; return false }
+        let revision = ledgerRevision, repository = localRepository
+        let read = ledgerWriter.submit(invalidatingOnFailure: false) { try repository.readRecovery(recovery) }
+        Task { @MainActor in
+            do {
+                let restored = try await read.value
+                guard ledgerRevision == revision else { throw YubaiError.invalid("账本刚有变化，请重试这一步。") }
+                let saved = try persist(restored, reason: "恢复版本", restoring: true)
+                cancelEntrySaveMotion(); ledger = saved; resetRootNavigation(); loadFailure = nil
+                clearUndo(); toast = "已恢复到所选版本"; sheet = nil
+            } catch { self.error = error.localizedDescription }
+        }
+        return true
     }
+    func adoptPersistedPayloads(_ next: Ledger) { ledger = next }
     func adoptSyncedLedger(_ next: Ledger) {
         cancelEntrySaveMotion(); ledger = next; loadFailure = nil; undoLedger = nil; undoLabel = nil
     }
@@ -385,6 +450,7 @@ enum AppSheet: Identifiable {
         guard canEditLedger(), loadFailure == nil else { return false }
         let count = StorageAttachments.oldScreenshots(in: current, months: months, now: now).count
         guard count > 0 else { return false }
+        ledgerWriter.flushBlocking()
         let wasPending = localRepository.hasPendingSync
         do {
             if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
@@ -401,6 +467,7 @@ enum AppSheet: Identifiable {
     @discardableResult func clearStorageHistory() -> Bool {
         guard canEditLedger() else { return false }
         guard !syncBusy else { error = "请等同步完成后再清除恢复历史。"; return false }
+        ledgerWriter.flushBlocking()
         do {
             try localRepository.clearRecoveryHistory()
             // A pre-clear undo snapshot may refer to payloads that no longer exist.
@@ -534,7 +601,7 @@ struct RootView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: store.fixedFlowSettleTrigger)
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
-        .onChange(of: phase) { _, newValue in if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.current.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
         .task { await store.configureSync(); store.autoSettleFixedFlows() }
         .task(id: "\(store.current.id)-\(store.current.updatedAt)-\(store.locked)-\(store.organizingBatchID != nil)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
             if phase == .active { await store.refreshButler() }
@@ -819,3 +886,39 @@ private struct FloatingTabBar: View {
     }
 }
 #endif
+
+/// Checkpoint preparation computes every costly home input on the disk worker.
+struct LedgerDerivedSnapshot: Sendable {
+    let at: Date, expires: Date
+    let zone: TimeZone
+    let funds: Funds
+    let timeline: CashTimeline
+    let entries: [Entry]
+    let entriesByID: [UUID: Entry]
+    let fixedMonth: FixedFlowMonth
+    let progress: [RestrainProgress]
+    let visibility: SavingCardVisibility.Snapshot
+    let organizingBatchIDs: Set<UUID>
+    init(_ ledger: Ledger, now: Date = Date(), organizingBatchIDs: Set<UUID> = []) {
+        self.organizingBatchIDs = organizingBatchIDs
+        at = now; zone = .current
+        var expiry = Dates.addDays(1, to: Dates.day(now))
+        for entry in ledger.entries where entry.deletedAt == nil {
+            if entry.date > now { expiry = min(expiry, entry.date) }
+            if let date = entry.otherDate, date > now { expiry = min(expiry, date) }
+        }
+        for account in ledger.accounts {
+            let stale = account.anchorDate.addingTimeInterval(14 * 86400)
+            if stale >= now { expiry = min(expiry, stale) }
+        }
+        expires = expiry
+        funds = Finance.funds(ledger, now: now)
+        timeline = Finance.cashTimeline(ledger, funds: funds, now: now)
+        entries = ledger.entries.sorted { $0.date > $1.date }
+        entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        fixedMonth = FixedFlows.month(containing: now, in: ledger)
+        progress = RestrainProgress.current(ledger: ledger, now: now)
+        visibility = SavingCardVisibility.snapshot(in: ledger, organizingBatchIDs: organizingBatchIDs, progress: progress,
+                                                  fallbackEntryCount: { UnsortedGroups.entries(for: $0, in: ledger).count })
+    }
+}
