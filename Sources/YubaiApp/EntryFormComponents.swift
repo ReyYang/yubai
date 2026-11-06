@@ -751,7 +751,8 @@ struct EntryFormFields<Trailing: View>: View {
         Card(style: .list) {
             VStack(spacing: YubaiSpace.none) {
                 EntryFormRow(title: purposeTitle) {
-                    TextField("", text: $purpose).multilineTextAlignment(.trailing).focused(focus)
+                    TextField("", text: $purpose, prompt: purposeTitle == "用途" ? Text("可不填").foregroundStyle(YubaiColor.labelSecondary) : nil)
+                        .multilineTextAlignment(.trailing).focused(focus)
                         .accessibilityLabel(purposeTitle).accessibilityIdentifier(purposeIdentifier)
                         .submitLabel(.done).onSubmit { focus.wrappedValue = false }
                 }

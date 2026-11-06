@@ -857,7 +857,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(bar.waitForExistence(timeout: 5), file: file, line: line)
         XCTAssertTrue(bar.isHittable, file: file, line: line)
         XCTAssertEqual(bar.frame.minX, app.frame.minX, accuracy: 1, file: file, line: line)
-        XCTAssertTrue(app.otherElements["mainNavigation"].exists, file: file, line: line)
+        assertGone(app.otherElements["mainNavigation"], file: file, line: line)
+        for identifier in ["tab_overview", "tab_insights", "addEntry", "tab_entries", "tab_settings"] {
+            assertGone(app.buttons[identifier], file: file, line: line)
+        }
     }
 
     private func openFixedBills(_ app: XCUIApplication) {
@@ -1860,14 +1863,14 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["openIntelligencePrivacy"], in: app)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "intelligencePrivacyPage").firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["tab_settings"].exists); XCTAssertTrue(addEntryTab(app).exists)
+        assertGone(app.buttons["tab_settings"]); assertGone(addEntryTab(app))
         let middleLeft = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.4))
         let middleRight = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.4))
         middleRight.press(forDuration: 0.05, thenDragTo: middleLeft)
         XCTAssertTrue(app.navigationBars["智能与隐私"].exists)
         middleLeft.press(forDuration: 0.05, thenDragTo: middleRight)
         XCTAssertTrue(app.navigationBars["智能与隐私"].exists)
-        XCTAssertTrue(app.buttons["tab_entries"].exists)
+        assertGone(app.buttons["tab_entries"])
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.45))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.45)))
         XCTAssertTrue(app.buttons["openIntelligencePrivacy"].waitForExistence(timeout: 5))
@@ -1877,7 +1880,7 @@ final class AppFlowTests: XCTestCase {
         assertSelectedTab("tab_entries", in: app)
     }
 
-    func testCancelledInsightBackKeepsTabsVisibleAndPagerLocked() {
+    func testCancelledInsightBackKeepsTabBarHiddenAndPagingLocked() {
         let app = application("ask"); app.launch()
         tap(app.buttons["tab_insights"], in: app)
         tap(app.buttons["insightCategory_0"], in: app)
@@ -1912,7 +1915,7 @@ final class AppFlowTests: XCTestCase {
         assertCurrentTab("tab_entries", content: "entriesSearchButton", in: app)
     }
 
-    func testCancelledNestedBackKeepsTabsVisible() {
+    func testCancelledNestedBackKeepsTabBarHiddenUntilSettingsRoot() {
         let app = application("ask"); app.launch()
         tap(app.buttons["tab_settings"], in: app)
         tap(app.buttons["openIntelligencePrivacy"], in: app)
@@ -1934,7 +1937,7 @@ final class AppFlowTests: XCTestCase {
         assertCurrentTab("tab_overview", content: "fundsFormula", in: app)
     }
 
-    func testCancelledOverviewBackKeepsTabsVisible() {
+    func testCancelledOverviewBackRestoresTabBarOnlyAfterCompletedPop() {
         let app = application("bills-overdue"); app.launch()
         assertSelectedTab("tab_overview", in: app)
         let page = rootPage("tab_overview", in: app), navigation = app.otherElements["mainNavigation"]
@@ -2720,11 +2723,11 @@ final class AppFlowTests: XCTestCase {
         return collection.exists ? collection : app.tables["entriesScroll"]
     }
 
-    func testReselectingCurrentTabPopsToRootThenScrollsToTop() {
+    func testPushedPageHidesTabBarAndRootReselectionScrollsToTop() {
         let app = application("ask"); app.launch(); tap(app.buttons["tab_settings"], in: app)
         tap(app.buttons["openIntelligencePrivacy"], in: app)
-        XCTAssertTrue(app.navigationBars["智能与隐私"].waitForExistence(timeout: 5))
-        tap(app.buttons["tab_settings"], in: app)
+        assertPushedPage("智能与隐私", in: app)
+        dragBack(app, to: 0.95)
         XCTAssertTrue(app.buttons["openIntelligencePrivacy"].waitForExistence(timeout: 5))
         app.scrollViews["settingsScroll"].swipeUp()
         tap(app.buttons["tab_settings"], in: app)
@@ -2772,6 +2775,9 @@ final class AppFlowTests: XCTestCase {
         let restore = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'restoreDeleted_' ")).firstMatch
         XCTAssertTrue(restore.waitForExistence(timeout: 5)); tap(restore, in: app)
         XCTAssertFalse(restore.exists)
+        dragBack(app, to: 0.95)
+        assertPushedPage("备份与恢复", in: app)
+        dragBack(app, to: 0.95)
         tap(app.buttons["tab_entries"], in: app); tap(app.buttons["entriesSearchButton"], in: app)
         let field = app.textFields["entriesSearch"]; tap(field, in: app); field.typeText("合成放回测试")
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).count, 1)

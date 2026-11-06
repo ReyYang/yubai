@@ -230,15 +230,15 @@ private struct LedgerEntryRow: View {
         Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: { content }
             .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button(action: delete) { Text("删掉").foregroundStyle(YubaiColor.amberInk) }
+                Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.amberInk) }
                     .tint(YubaiColor.amberTint).accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
             }
             .contextMenu {
                 Button("改一笔", systemImage: "square.and.pencil") { store.sheet = .editEntry(entry.id) }
                 Button("再记一笔一样的", systemImage: "plus") { duplicate() }
-                Button("删掉", systemImage: "trash", action: delete)
+                Button("删掉", systemImage: "trash") { delete() }
             }
-            .accessibilityAction(named: "删掉", delete)
+            .accessibilityAction(named: "删掉") { delete() }
             .task(id: isFresh) {
                 guard isFresh, YubaiMotion.claim("new-row-" + entry.id.uuidString) else { highlighted = false; return }
                 withAnimation(YubaiMotion.wash(reduceMotion: reduceMotion)) { highlighted = false }
@@ -268,8 +268,9 @@ private struct LedgerEntryRow: View {
         }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: note.isEmpty ? YubaiSize.rowSingle : YubaiSize.rowDouble).contentShape(Rectangle())
             .background(isFresh && highlighted ? YubaiColor.brandTint : YubaiColor.paperSheet)
     }
-    private func delete() {
-        store.update("删掉") { ledger in
+    private func delete(systemFeedback: Bool = false) {
+        // Native swipe actions provide their own haptic.
+        store.update("删掉", entryMotion: !systemFeedback) { ledger in
             guard let index = ledger.entries.firstIndex(where: { $0.id == entry.id && $0.deletedAt == nil }) else { return }
             ledger.entries[index].deletedAt = Date()
         }

@@ -807,6 +807,7 @@ struct RootView: View {
         .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil; store.finishEntrySaveMotion() } }
         #if os(iOS)
         .sensoryFeedback(.success, trigger: store.entrySaveTrigger)
+        .sensoryFeedback(.impact(weight: .medium), trigger: store.entryDeleteTrigger)
         .sensoryFeedback(.impact(weight: .light), trigger: store.undoTrigger)
         .sensoryFeedback(.impact(weight: .light), trigger: store.fixedFlowSettleTrigger)
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
@@ -911,7 +912,7 @@ struct RootView: View {
                     if visibleTab == appearanceTarget && pagingAligned { if pagingTarget != nil { pagingTarget = nil } }
                 }
                 .overlay(alignment: .bottom) {
-                    if store.sheet == nil && !store.pickingInsightDates {
+                    if !tabBarHidden && store.sheet == nil && !store.pickingInsightDates {
                         FloatingTabBar { scrollTo($0, using: proxy) }
                             .uiTestAccessibilityValue("destination=\(store.destination.rawValue); visible=\(visibleTab.rawValue); phase=\(pagingPhase == .idle ? "idle" : "moving"); locked=\(store.pagingLocked ? 1 : 0)")
                             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.floatingTabbarBottom)
@@ -947,7 +948,6 @@ struct RootView: View {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
                 .navigationDestination(for: TabRoute.self) { tabDestination($0) }
         }.toolbarBackground(.hidden, for: .navigationBar)
-            .safeAreaPadding(.bottom, tabPaths[d]?.isEmpty == false ? YubaiSize.rootBottomPadding : 0)
             .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
             .environment(\.isScrollEnabled, true)
             .scrollClipDisabled(false)

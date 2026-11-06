@@ -1500,6 +1500,6 @@ Linux build／449 项测试通过（新增 1 项独立退款小项回归），�
 
 本次明确的合并 brief 为当前范围，取代第三十三轮的首项实心预选、按住清空，以及当时推迟到下一轮的三项公共控件工作；第三十五轮 sections 两步分类与 Batch A 保留。建议仅从用户同用途最后记法及同方向 ±2h 历史生成，未点击按建议保存，无建议保持没分类；用途回填恢复主类、小项、账户。记一笔、改一笔、Ask 草稿和账单编辑使用同一 EntryForm／字段卡／金额区／托盘，连续记账回执单独撤销最后一笔，编辑统一拦截放弃。跨月搜索与 30 天最近删除规则均在 Core。
 
-本轮使用系统 List swipe、contextMenu、年月 wheel、confirmationDialog 和原生数字键盘 accessory。通则与专稿不同的主键采用专稿 brand 填充；显式词表及两位小数优先于稿中旧字。为让第 28 项的标签重选在推入页可达，iOS 浮栏在推入页保留、根 pager 仍禁横翻；Mac 侧栏保持。账目 List 采用原生分组外观，不再手画该组外投影；已有纸卡缓存九宫格阴影保持，返回按钮 representable 行为未改。iOS 根页移除内容 mask、改用系统 top soft，macOS 路径保持。
+本轮使用系统 List swipe、contextMenu、年月 wheel、confirmationDialog 和原生数字键盘 accessory。通则与专稿不同的主键采用专稿 brand 填充；显式词表及两位小数优先于稿中旧字。第 28 项按已批准规则在推入页及 sheet 隐藏 iOS 浮栏，移除推入页额外底部留白；根页重选回顶与清栈分支保留，根 pager 在推入页仍禁横翻，Mac 侧栏保持。复核恢复非滑动删除的 medium impact，滑动删除跳过应用触感；空用途字段恢复 labelSecondary「可不填」，账单名字不加。该占位是 owner 明确要求的文案例外。账目 List 采用原生分组外观，不再手画该组外投影；已有纸卡缓存九宫格阴影保持，返回按钮 representable 行为未改。iOS 根页移除内容 mask、改用系统 top soft，macOS 路径保持。
 
 逐项源码、所有可见中文、与规则／看板的取舍、工程成员及设备清单登记在 `docs/ROUND40-IMPLEMENTATION.md`。Linux Core build 与完整测试 908 项（904 通过、4 原有实网跳过、0 失败）；App／Widget／UI 三组条件语法解析共 135 个文件／配置全部通过，工程 285 个对象、App 文件成员与新测试成员检查通过。Apple SDK 类型检查、XCTest UI、视觉／触感／辅助功能与桌面入口冷热启动未验证，外部资源未同步。新 Core 文件由本地包编译，测试加入 Xcode 测试 sources；无新增 App-only／Widget 文件、依赖或 entitlement；Info.plist 仅加三项静态快捷操作。全部改动留工作树，未提交／推送。
