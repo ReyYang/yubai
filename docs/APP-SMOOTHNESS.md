@@ -14,7 +14,7 @@
 | P2-5 | `SettingsView.accountsCard, thinkingCount, followUpCount, memoryCount, fixedFlowsDetail`：缓存现金账户余额、心愿／记忆计数与固定收付标题；未来入账／回访时间／午夜／时区和时钟回拨可失效。磁盘用量 task 移到独立 modifier。 |
 | P2-6 | `ImportView.open, screenshotOriginal`：打开待核对文件时解码 UIImage／NSImage 到 State，body 复用图片。 |
 | P2-7 | `SubcategoryViews`：小项统计、汇总、记录筛选复用缓存；`ButlerViews`／`SavingPurchaseViews`：证据行按 IDs＋是否排除删除缓存；`EntryEditView`／`EntryDetailView`／小项弹窗与心愿已买记录检查：复用 entriesByID；`EntriesView.noteText`：手记用途字典改在 AppStore 按结果变化通知，移除整页 ledgerRevision 的 onChange 扫描；`ButlerCardView.exceedsRestraint` 复用 restrainProgress。`SavingViews / SavingsHeader` 省钱合计、`SavingPurchaseViews` 购买建议、`QuickCaptureSettingsView` 近七天流水也加入缓存；省钱缓存保留月合计 `< now` 与总合计 `< now + 1ms` 的差别，捕获记录保留 recordedAt 和跨日边界。低频操作中的扫描及原本已有 task／缓存的计算保留。 |
-| P3-1 | `DesignSystem.swift / PaperShadowCache, PaperShadowImage, PaperCardSurface`：iOS 用 SwiftUI Canvas 的 shadowOnly 保留 near → far 链式 alpha 组合，经 ImageRenderer／UIGraphicsImageRenderer 生成一张带 capInsets 的阴影图。缓存包含圆角／样式、色彩方案、比例、对比度；短边保留实际尺寸，长边仅拉伸恒定中段。外扩 padding 不参与布局、交互或读屏。填充、顶部高光和增强对比描边仍为原有实时形状。macOS 和未来非圆角矩形形状保留原双阴影。 |
+| P3-1 | `DesignSystem.swift / PaperShadowCache, PaperShadowView, PaperCardSurface`：iOS 用 SwiftUI Canvas 的 shadowOnly 保留 near → far 链式 alpha 组合，经 ImageRenderer／UIGraphicsImageRenderer 生成一张带 capInsets 的阴影图。缓存包含圆角／样式、色彩方案、比例、对比度；短边保留实际尺寸，长边仅拉伸恒定中段。同日回归修复后，外扩只在卡片同尺寸 UIView 的隐藏 UIImageView 内，不参与 SwiftUI 布局、交互或读屏边界；缓存失败回退原双阴影。填充、顶部高光和增强对比描边仍为原有实时形状。macOS 和未来非圆角矩形形状保留原双阴影。 |
 | P3-2 | `DesignSystem.swift / BambooRasterCache, BambooShadow`：按色彩方案／比例预渲染原 tinted 230×299 分支和 blur 6，保留模糊外扩区与原对齐尺寸；旋转、翻转、offset、opacity、sway 和两种减少效果偏好保持。 |
 | P3-3 | `YubaiApp.swift / FloatingTabBar.body`：float 阴影移至同材质和 tint 的 Capsule 背景；ask 阴影移至加号 Circle 背景。 |
 | P3-4 | `rootPageHeader` 顶部 fade mask 保持原样。 |
@@ -31,3 +31,11 @@ Core 迁移逻辑的新增测试位于 `Tests/YubaiCoreTests/PresentationCacheTe
 Apple SDK 类型检查、Xcode／XCTest UI、真机帧耗与逐像素比对尚未运行。尤其应验证浅／深色及增强对比、不同 displayScale、短卡片／长日卡片九宫格阴影边缘、竹影动画、现金图选中点／竖线和极值处裁切；Linux 解析不能证明这些原生渲染结果。没有声称获得新的帧耗或逐像素验收证据。外部画布、截图与分发资源未同步。新增／改动产品可见中文字符串：无；辅助功能标识与 uiTestAccessibilityValue 字符串保留。
 
 原生 API 依据：[Apple shadow filter](https://developer.apple.com/documentation/swiftui/graphicscontext/filter/shadow%28color%3Aradius%3Ax%3Ay%3Ablendmode%3Aoptions%3A%29)、[ImageRenderer](https://developer.apple.com/documentation/swiftui/imagerenderer)。它们支持此次离屏生成方案，不能替代本项目的像素核对。
+
+## 2026-11-06 · 卡片阴影辅助功能边界修复
+
+owner 的 Mac UI 运行确认 `6785698` 中外扩 71pt 的 SwiftUI 阴影 Image 扩大了 `openProfile` 和 `welcomeBalanceCard` 的 AX frame，导致两项原有测试失败。改为直接挂在 highlightedPaper 背景的 `PaperShadowView: UIViewRepresentable`：SwiftUI 尺寸只取纸面提议尺寸，取消 GeometryReader／外扩 frame／offset；UIView 不裁切、禁用交互并隐藏全部辅助功能子项，唯一的 UIImageView 在 layoutSubviews 中按 bounds 外扩，使用缓存原有 caps 做九宫格拉伸。尺寸、圆角／样式、色彩方案、displayScale 或增强对比变化时刷新；有效尺寸下缓存失败，延后到主 actor 切回原双 yubaiShadow，零尺寸不触发失败。`PaperShadowCache` 渲染源码与 macOS 路径保持。
+
+巡检本提交的 Image／Canvas／负 offset／外扩尺寸：竹影仅在根页 PaperCanvas 中使用，竹影和全页背景均 accessibilityHidden／禁用命中，背景固定为页面尺寸并裁切，没有进入卡片按钮或欢迎卡的辅助功能容器；保留现状。现金图新增 Canvas 使用既有 chartOverlay 尺寸，没有外扩 frame。可见中文字符串无新增或改动；原 UI 测试断言保持。Apple SDK 编译、上述两项 UI 测试及实际 VoiceOver 边界仍待 Mac 复验；外部资源未同步，未提交／推送。
+
+验证：Swift 6.2.4 Linux `YUBAI_LIVE_EVAL=0 swift test` 退出 0，887 项、883 通过／4 原有实网跳过／0 失败（141.948 秒），日志 `/tmp/yubai-shadow-test.log`；改动的唯一 App 文件 DesignSystem.swift 通过 Linux、iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 四组 `swiftc -parse`，记录 `/tmp/yubai-shadow-parse.json`。缓存渲染源码未变比对与 `git diff --check` 通过。条件语法解析不代替 Apple SDK 类型检查或 AX 实测。

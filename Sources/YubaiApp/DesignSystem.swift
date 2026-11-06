@@ -632,6 +632,9 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.yubaiFormSurface) private var formSurface
     @Environment(\.yubaiCardContent) private var insideCard
+    #if os(iOS)
+    @State private var shadowRasterFailed = false
+    #endif
     let shape: S
     var background: Color?
     var flat = false
@@ -647,8 +650,12 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
     }
     @ViewBuilder private var paperWithShadow: some View {
         #if os(iOS)
-        if let rounded = shape as? RoundedRectangle {
-            highlightedPaper.background { PaperShadowImage(shape: rounded, scheme: scheme, increasedContrast: contrast == .increased) }
+        if let rounded = shape as? RoundedRectangle, !shadowRasterFailed {
+            highlightedPaper.background {
+                PaperShadowView(shape: rounded, scheme: scheme, increasedContrast: contrast == .increased) {
+                    shadowRasterFailed = true
+                }
+            }
         } else {
             highlightedPaper.yubaiShadow(YubaiShadow.cardNear).yubaiShadow(YubaiShadow.card)
         }
@@ -671,19 +678,86 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
 }
 
 #if os(iOS)
-private struct PaperShadowImage: View {
+/// SwiftUI only sees the card-sized container. The decorative overflow stays in
+/// UIKit, outside both SwiftUI layout and the enclosing element's AX bounds.
+@MainActor private struct PaperShadowView: UIViewRepresentable {
     @Environment(\.displayScale) private var displayScale
     let shape: RoundedRectangle
     let scheme: ColorScheme
     let increasedContrast: Bool
-    var body: some View {
-        GeometryReader { geometry in
-            if let raster = PaperShadowCache.image(shape: shape, size: geometry.size, scheme: scheme, scale: displayScale, increasedContrast: increasedContrast) {
-                Image(uiImage: raster.image).resizable(capInsets: raster.caps, resizingMode: .stretch)
-                    .frame(width: geometry.size.width + raster.padding * 2, height: geometry.size.height + raster.padding * 2)
-                    .offset(x: -raster.padding, y: -raster.padding)
+    let onRasterFailure: @MainActor () -> Void
+
+    func makeUIView(context: Context) -> ShadowView { ShadowView(frame: .zero) }
+    func updateUIView(_ view: ShadowView, context: Context) {
+        view.shape = shape
+        view.scheme = scheme
+        view.scale = displayScale
+        view.increasedContrast = increasedContrast
+        view.onRasterFailure = onRasterFailure
+        view.setNeedsLayout()
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: ShadowView, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: .zero)
+    }
+
+    final class ShadowView: UIView {
+        var shape = RoundedRectangle(cornerRadius: 0)
+        var scheme: ColorScheme = .light
+        var scale: CGFloat = 1
+        var increasedContrast = false
+        var onRasterFailure: (@MainActor () -> Void)?
+        private let imageView = UIImageView()
+        private var padding: CGFloat = 0
+        private struct RenderKey: Equatable {
+            let size: CGSize; let cornerSize: CGSize; let style: String
+            let dark: Bool; let scale: CGFloat; let increasedContrast: Bool
+        }
+        private var lastRender: RenderKey?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            clipsToBounds = false
+            isUserInteractionEnabled = false
+            isAccessibilityElement = false
+            accessibilityElementsHidden = true
+            imageView.contentMode = .scaleToFill
+            imageView.isUserInteractionEnabled = false
+            imageView.isAccessibilityElement = false
+            imageView.accessibilityElementsHidden = true
+            addSubview(imageView)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // A zero-sized layout is not a rendering failure (e.g. before mount).
+            guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else {
+                imageView.image = nil
+                lastRender = nil
+                return
             }
-        }.allowsHitTesting(false).accessibilityHidden(true)
+            let key = RenderKey(size: bounds.size, cornerSize: shape.cornerSize, style: String(describing: shape.style),
+                                dark: scheme == .dark, scale: scale, increasedContrast: increasedContrast)
+            if key != lastRender {
+                lastRender = key
+                if let raster = PaperShadowCache.image(shape: shape, size: bounds.size, scheme: scheme, scale: scale, increasedContrast: increasedContrast) {
+                    padding = raster.padding
+                    let caps = UIEdgeInsets(top: raster.caps.top, left: raster.caps.leading,
+                                            bottom: raster.caps.bottom, right: raster.caps.trailing)
+                    imageView.image = raster.image.resizableImage(withCapInsets: caps, resizingMode: .stretch)
+                } else {
+                    imageView.image = nil
+                    // Defer SwiftUI state changes until UIKit finishes layout.
+                    // A failed renderer uses the original live double shadow.
+                    Task { @MainActor [weak self] in
+                        guard let self, self.lastRender == key, self.imageView.image == nil else { return }
+                        self.onRasterFailure?()
+                    }
+                }
+            }
+            imageView.frame = bounds.insetBy(dx: -padding, dy: -padding)
+        }
     }
 }
 
