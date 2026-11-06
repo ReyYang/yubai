@@ -66,6 +66,8 @@ struct EntriesView: View {
         }
             #if os(iOS)
             .listStyle(.insetGrouped).listSectionSpacing(12)
+            .contentMargins(.top, YubaiSpace.none, for: .scrollContent)
+            .contentMargins(.horizontal, YubaiSpace.insetPage, for: .scrollContent)
             #else
             .listStyle(.inset)
             #endif

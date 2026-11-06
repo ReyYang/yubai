@@ -60,12 +60,12 @@ private struct SubcategoryPicker: View {
         }.manualSheetHeader((category ?? entry?.category ?? "") + "里的哪一类", cancelTitle: "关闭", showsAction: false)
     }
     private func mainCategories(for entry: Entry) -> [YubaiCore.Category] {
-        store.current.selectableCategories.filter { $0.income == (entry.nature == .income) }
+        store.current.selectableCategories.filter { $0.income == entry.nature.categoryIncome }
     }
     private func choices(for entry: Entry) -> some View {
         let choice: CategoryAssignment = store.current.normalizedCategory(for: entry)
         let main: String = category ?? choice.category
-        let subcategories: [String] = store.current.selectableCategories.first { $0.name == main }?.subcategories ?? []
+        let subcategories: [String] = store.current.selectableCategories.first { $0.name == main && $0.income == entry.nature.categoryIncome }?.subcategories ?? []
         return Card(background: YubaiColor.raised) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 ForEach(subcategories, id: \.self) { sub in
@@ -114,7 +114,7 @@ struct SubcategoryInsightsView: View {
     let interval: DateInterval
     var periodTitle = "本月"
     private var lines: [SubcategoryLine] {
-        let rows: [Breakdown] = store.subcategoryBreakdown(category: category, during: interval)
+        let rows: [Breakdown] = store.subcategoryBreakdown(category: category, income: income, during: interval)
         let grouped: [String: [Breakdown]] = Dictionary(grouping: rows) { row in
             row.category == "没分类" || row.category.isEmpty ? "其他" : row.category
         }
@@ -154,7 +154,7 @@ struct SubcategoryInsightsView: View {
         let count: Int = rows.reduce(0) { $0 + $1.count }
         let flow: CashFlowSummary = store.cashFlow(during: interval)
         let denominator: Int64 = income ? flow.income : flow.spending
-        let previousRows: [Breakdown] = store.subcategoryBreakdown(category: category, during: previousInterval)
+        let previousRows: [Breakdown] = store.subcategoryBreakdown(category: category, income: income, during: previousInterval)
         let previous: Int64 = previousRows.reduce(0) { $0 + $1.amount }
         let comparisonText: String = shareText(total, denominator) + " · " + comparison(total - previous)
         return VStack(alignment: .leading, spacing: YubaiSpace.space4) {

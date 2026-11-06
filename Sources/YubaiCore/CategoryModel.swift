@@ -24,8 +24,17 @@ public struct CategoryAddition: Equatable, Sendable {
     public func apply(to ledger: inout Ledger) throws {
         if let parent {
             guard ledger.selectableCategories.contains(where: { $0.name == parent && $0.income == income }) else { throw YubaiError.invalid("这个分类不能修改。") }
-            try CategoryModel.addSubcategory(name, to: parent, in: &ledger)
+            try CategoryModel.addSubcategory(name, to: parent, income: income, in: &ledger)
         } else { try CategoryModel.add(Category(name, income: income), in: &ledger) }
+    }
+}
+
+/// Leading slash cannot occur in a category name. Legacy unqualified keys remain readable.
+public enum CategoryNamespace {
+    public static func key(_ name: String, income: Bool) -> String { (income ? "/income/" : "/expense/") + name }
+    public static func split(_ key: String) -> (name: String, income: Bool?) {
+        for (prefix, income) in [("/income/", true), ("/expense/", false)] where key.hasPrefix(prefix) { return (String(key.dropFirst(prefix.count)), income) }
+        return (key, nil)
     }
 }
 
@@ -36,23 +45,45 @@ public extension Ledger {
         let table = categories.filter { !$0.system && $0.hidden == hidden && $0.income == income }
         let other = income ? "其他收入" : "其他支出"
         var seen = Set<String>()
-        let names = (preferences.categoryOrder + table.map(\.name)).filter { seen.insert($0).inserted && $0 != other }
+        let names = (categoryOrder(income: income) + table.map(\.name)).filter { seen.insert($0).inserted && $0 != other }
         let byName = Dictionary(uniqueKeysWithValues: table.map { ($0.name, $0) })
         return (names + [other]).compactMap { byName[$0] }
     }
-    func categoryNames(including current: String? = nil, income: Bool? = nil) -> [String] {
-        var names = selectableCategories.filter { income == nil || $0.income == income }.map(\.name)
-        if let current, !names.contains(current), !categories.contains(where: { $0.name == current && ($0.system || $0.hidden) }) { names.append(current) }
+    func categoryNames(including current: String? = nil, income: Bool) -> [String] {
+        var names = selectableCategories.filter { $0.income == income }.map(\.name)
+        if let current, !names.contains(current), !categories.contains(where: { $0.name == current && ($0.income != income || $0.system || $0.hidden) }) { names.append(current) }
         return names
     }
 
-    func categoryAssignment(category: String, subcategory: String? = nil) -> CategoryAssignment {
+    func categoryOrder(income: Bool) -> [String] {
+        preferences.categoryOrder.compactMap { let value = CategoryNamespace.split($0); return value.income == nil || value.income == income ? value.name : nil }
+    }
+    func categoryAlias(_ path: String, income: Bool) -> String? {
+        if let scoped = categoryAliases[CategoryNamespace.key(path, income: income)] { return scoped }
+        guard let legacy = categoryAliases[path] else { return nil }
+        var target = CategoryAssignment(path: legacy); var seen = Set<String>()
+        while seen.insert(target.path).inserted {
+            guard let next = categoryAliases[CategoryNamespace.key(target.path, income: income)] ?? categoryAliases[target.path] ?? categoryAliases[CategoryNamespace.key(target.category, income: income)] ?? categoryAliases[target.category] else { break }
+            target = CategoryAssignment(path: next)
+        }
+        let directions = Set(categories.filter { $0.name == target.category }.map(\.income))
+        if !directions.isEmpty, !directions.contains(income), categories.contains(where: { $0.name == CategoryAssignment(path: path).category && $0.income == income }) { return nil }
+        return legacy
+    }
+    func hasCategoryAlias(_ path: String, income: Bool) -> Bool {
+        guard categoryAlias(path, income: income) != nil else { return false }
+        let choice = CategoryAssignment(path: path)
+        let value = categoryAssignment(category: choice.category, subcategory: choice.subcategory, income: income)
+        let directions = Set(categories.filter { $0.name == value.category }.map(\.income))
+        return directions.isEmpty || directions.contains(income)
+    }
+    func categoryAssignment(category: String, subcategory: String? = nil, income: Bool) -> CategoryAssignment {
         var value = CategoryAssignment(category: category, subcategory: subcategory == "其他" ? nil : subcategory)
         var seen = Set<String>()
         while seen.insert(value.path).inserted {
-            if let path = categoryAliases[value.path] {
+            if let path = categoryAlias(value.path, income: income) {
                 value = CategoryAssignment(path: path)
-            } else if let main = categoryAliases[value.category] {
+            } else if let main = categoryAlias(value.category, income: income) {
                 let mapped = CategoryAssignment(path: main)
                 value = .init(category: mapped.category, subcategory: value.subcategory ?? mapped.subcategory)
             } else { break }
@@ -69,7 +100,7 @@ public extension Ledger {
         }
         if source.nature == .transfer { return .init(category: "内部移动") }
         if Classification.isPending(source) { return .init(category: Classification.pendingCategory) }
-        return categoryAssignment(category: source.category, subcategory: source.subcategory)
+        return categoryAssignment(category: source.category, subcategory: source.subcategory, income: source.nature.categoryIncome)
     }
 }
 
@@ -78,21 +109,21 @@ public enum CategoryGuesser {
     /// An existing main is a constraint: only pending can acquire a different main.
     public static func guess(_ entry: Entry, in ledger: Ledger, billLabel: String? = nil) -> CategoryAssignment? {
         if entry.nature == .transfer { return .init(category: "内部移动") }
-        let current = ledger.categoryAssignment(category: entry.category, subcategory: entry.subcategory)
+        let current = ledger.categoryAssignment(category: entry.category, subcategory: entry.subcategory, income: entry.nature.categoryIncome)
         let pending = Classification.isPending(entry) || Classification.isPending(current.category)
         let income = entry.nature != .refund && entry.nature.inflow
         var table = ledger.selectableCategories.filter { $0.income == income && (pending || $0.name == current.category) }
-        if !pending && ["其他支出", "其他收入"].contains(current.category) { return nil }
+        if !pending && current.category == (income ? "其他收入" : "其他支出") { return nil }
         for key in SubcategoryClassifier.keys(entry) + [CategoryMemory.key(UnsortedGroups.party(for: entry))] {
-            guard let path = ledger.classificationMemory[key] else { continue }
+            guard let path = CategoryMemory.value(key, income: income, in: ledger) else { continue }
             let value = CategoryAssignment(path: path)
-            let choice = ledger.categoryAssignment(category: value.category, subcategory: value.subcategory)
+            let choice = ledger.categoryAssignment(category: value.category, subcategory: value.subcategory, income: income)
             if table.contains(where: { $0.name == choice.category && (choice.subcategory == nil || $0.subcategories.contains(choice.subcategory!)) }) { return choice }
         }
         var hint: CategoryAssignment?
         if pending, let billLabel { hint = CategoryMapping.match(billLabel, in: ledger, income: income) }
         if let hint {
-            if hint.subcategory != nil || ["其他支出", "其他收入"].contains(hint.category) { return hint }
+            if hint.subcategory != nil || hint.category == (income ? "其他收入" : "其他支出") { return hint }
             table = table.filter { $0.name == hint.category }
         }
         let text = [entry.purpose ?? "", entry.quickCapture?.merchant ?? "", entry.title].joined(separator: " ")
@@ -129,12 +160,12 @@ public enum CategoryGuesser {
 public enum CategoryMapping {
     /// Bill labels are evidence, never new category definitions. Exact/alias first,
     /// then the longest contained main or small-item name, constrained by direction.
-    public static func match(_ label: String, in ledger: Ledger, income: Bool? = nil) -> CategoryAssignment? {
+    public static func match(_ label: String, in ledger: Ledger, income: Bool) -> CategoryAssignment? {
         let label = label.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !Classification.isPending(label) else { return nil }
-        let table = ledger.selectableCategories.filter { income == nil || $0.income == income }
+        let table = ledger.selectableCategories.filter { $0.income == income }
         let parts = CategoryAssignment(path: label)
-        let direct = ledger.categoryAssignment(category: parts.category, subcategory: parts.subcategory)
+        let direct = ledger.categoryAssignment(category: parts.category, subcategory: parts.subcategory, income: income)
         if let main = table.first(where: { $0.name == direct.category }) {
             let small = direct.subcategory ?? (main.subcategories.contains(label) ? label : nil)
             return .init(category: main.name, subcategory: small.flatMap { main.subcategories.contains($0) ? $0 : nil })
@@ -155,22 +186,46 @@ public enum CategoryMapping {
 /// rewrites retained undo snapshots and question options, so they cannot resurrect
 /// removed names after an import undo or a delayed proposal is accepted.
 enum CategoryReferences {
-    static func rewrite(_ ledger: inout Ledger, using map: (CategoryAssignment) -> CategoryAssignment) {
+    static func rewrite(_ ledger: inout Ledger, using map: (CategoryAssignment, Bool) -> CategoryAssignment) {
+        let before = ledger
+        let mappedCategories = before.categories.map { (map(.init(category: $0.name), $0.income).category, $0.income) }
+        func collision(_ name: String, income: Bool) -> Bool { mappedCategories.contains { $0.0 == name && $0.1 != income } }
+        var entryDirections = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0.nature.categoryIncome) })
+        for batch in ledger.imports { for entry in batch.undo?.entries ?? [] where entryDirections[entry.id] == nil { entryDirections[entry.id] = entry.nature.categoryIncome } }
+        func rewritePaths(_ values: [String: String]) -> [String: String] {
+            var result: [String: String] = [:]
+            let keys = values.keys.sorted { a, b in
+                let left = CategoryNamespace.split(a).income != nil, right = CategoryNamespace.split(b).income != nil
+                return left == right ? a < b : !left
+            }
+            for key in keys {
+                let path = values[key]!
+                let scoped = CategoryNamespace.split(key); let choice = CategoryAssignment(path: path)
+                let directions = scoped.income.map { [$0] } ?? CategoryMemory.directions(path, in: before)
+                for income in directions.isEmpty ? [false] : directions {
+                    let mapped = map(choice, income)
+                    let ambiguous = collision(mapped.category, income: income)
+                    let nextKey = scoped.income != nil || directions.count > 1 || ambiguous ? CategoryNamespace.key(scoped.name, income: income) : key
+                    result[nextKey] = mapped.path
+                }
+            }
+            return result
+        }
         func entry(_ old: Entry) -> Entry {
             var value = old
-            let choice = old.nature == .transfer ? CategoryAssignment(category: "内部移动") : map(.init(category: Classification.isPending(old) ? Classification.pendingCategory : old.category, subcategory: old.subcategory))
+            let choice = old.nature == .transfer ? CategoryAssignment(category: "内部移动") : map(.init(category: Classification.isPending(old) ? Classification.pendingCategory : old.category, subcategory: old.subcategory), old.nature.categoryIncome)
             value.category = choice.category; value.subcategory = choice.subcategory
             return value
         }
-        func plan(_ old: Plan) -> Plan { var value = old; value.category = map(.init(category: old.category)).category; return value }
+        func plan(_ old: Plan) -> Plan { var value = old; value.category = map(.init(category: old.category), old.nature.categoryIncome).category; return value }
         func unique(_ values: [String]) -> [String] { var seen = Set<String>(); return values.filter { seen.insert($0).inserted } }
         func area(_ old: ProfileArea) -> ProfileArea {
             var value = old
-            value.match.categories = unique(old.match.categories.map { map(.init(category: $0)).category })
+            value.match.categories = unique(old.match.categories.map { map(.init(category: $0), false).category })
             // A deleted small item becomes its main match rather than a dangling path.
             value.match.subcategories = []
             for path in old.match.subcategories {
-                let choice = map(CategoryAssignment(path: path))
+                let choice = map(CategoryAssignment(path: path), false)
                 if choice.subcategory != nil { value.match.subcategories.append(choice.path) }
                 else if !value.match.categories.contains(choice.category) { value.match.categories.append(choice.category) }
             }
@@ -179,9 +234,9 @@ enum CategoryReferences {
         }
         func item(_ old: ChangeItem) -> ChangeItem {
             switch old {
-            case .setCategory(let id, let name): return .setCategory(entry: id, category: map(.init(category: name)).category)
+            case .setCategory(let id, let name): return .setCategory(entry: id, category: map(CategoryAssignment(path: name), entryDirections[id] ?? false).path)
             case .addEntry(var draft):
-                let choice = map(.init(category: draft.category, subcategory: draft.subcategory))
+                let choice = map(.init(category: draft.category, subcategory: draft.subcategory), draft.nature.categoryIncome)
                 draft.category = choice.category; draft.subcategory = choice.subcategory; return .addEntry(draft)
             case .addPlan(let old): return .addPlan(plan(old))
             case .updatePlan(let old): return .updatePlan(plan(old))
@@ -189,26 +244,41 @@ enum CategoryReferences {
             default: return old
             }
         }
+        func items(_ old: [ChangeItem]) -> [ChangeItem] {
+            let saved = entryDirections
+            for value in old {
+                if case .addEntry(let draft) = value { entryDirections[draft.id] = draft.nature.categoryIncome }
+                if case .setNature(let id, let nature, _) = value { entryDirections[id] = nature.categoryIncome }
+            }
+            let result = old.map(item); entryDirections = saved; return result
+        }
         ledger.entries = ledger.entries.map(entry)
         ledger.plans = ledger.plans.map(plan)
         for i in ledger.stoppedSubscriptions.indices { ledger.stoppedSubscriptions[i].plan = plan(ledger.stoppedSubscriptions[i].plan) }
         for i in ledger.wishlist.indices {
             guard let main = ledger.wishlist[i].category else { continue }
-            let choice = map(.init(category: main, subcategory: ledger.wishlist[i].subcategory))
+            let choice = map(.init(category: main, subcategory: ledger.wishlist[i].subcategory), false)
             ledger.wishlist[i].category = choice.category; ledger.wishlist[i].subcategory = choice.subcategory
         }
         ledger.profile.generous = ledger.profile.generous.map(area); ledger.profile.restrain = ledger.profile.restrain.map(area)
-        ledger.classificationMemory = ledger.classificationMemory.mapValues { map(CategoryAssignment(path: $0)).path }
-        ledger.categoryAliases = ledger.categoryAliases.mapValues { map(CategoryAssignment(path: $0)).path }
-        ledger.preferences.quickCapture.merchantCategories = ledger.preferences.quickCapture.merchantCategories.mapValues { map(CategoryAssignment(path: $0)).path }
-        ledger.preferences.categoryOrder = unique(ledger.preferences.categoryOrder.map { map(.init(category: $0)).category })
-        for i in ledger.pendingChanges.indices { ledger.pendingChanges[i].items = ledger.pendingChanges[i].items.map(item) }
+        ledger.classificationMemory = rewritePaths(ledger.classificationMemory)
+        ledger.categoryAliases = rewritePaths(ledger.categoryAliases)
+        ledger.preferences.quickCapture.merchantCategories = rewritePaths(ledger.preferences.quickCapture.merchantCategories)
+        ledger.preferences.categoryOrder = unique(ledger.preferences.categoryOrder.flatMap { key -> [String] in
+            let scoped = CategoryNamespace.split(key)
+            let directions = scoped.income.map { [$0] } ?? Array(Set(before.categories.filter { $0.name == scoped.name }.map(\.income))).sorted { !$0 && $1 }
+            return (directions.isEmpty ? [false] : directions).map { income in
+                let name = map(.init(category: scoped.name), income).category
+                return scoped.income != nil || directions.count > 1 || collision(name, income: income) ? CategoryNamespace.key(name, income: income) : name
+            }
+        })
+        for i in ledger.pendingChanges.indices { ledger.pendingChanges[i].items = items(ledger.pendingChanges[i].items) }
         for i in ledger.imports.indices {
             if ledger.imports[i].undo != nil { ledger.imports[i].undo!.entries = ledger.imports[i].undo!.entries.map(entry) }
         }
         for i in ledger.cards.indices {
             guard var question = ledger.cards[i].importQuestion else { continue }
-            for j in question.options.indices { question.options[j].items = question.options[j].items.map(item) }
+            for j in question.options.indices { question.options[j].items = items(question.options[j].items) }
             ledger.cards[i].importQuestion = question
         }
         LedgerOperations.syncLinkedRefundCategories(in: &ledger)
@@ -233,96 +303,117 @@ public enum CategoryModel {
         guard !Classification.isPending(value), value.count <= 200, !value.contains("/"), value != "其他" else { throw YubaiError.invalid("分类名称无效。") }
         return value
     }
-    private static func index(_ category: String, in ledger: Ledger, protected: Bool = true) throws -> Int {
-        guard let index = ledger.categories.firstIndex(where: { $0.name == category }),
+    private static func index(_ category: String, income: Bool, in ledger: Ledger, protected: Bool = true) throws -> Int {
+        guard let index = ledger.categories.firstIndex(where: { $0.name == category && $0.income == income }),
               !ledger.categories[index].system,
-              !protected || !["其他支出", "其他收入"].contains(category) else { throw YubaiError.invalid("这个分类不能修改。") }
+              !protected || !ledger.categories[index].isCatchAll else { throw YubaiError.invalid("这个分类不能修改。") }
         return index
     }
     private static func update(_ ledger: inout Ledger, _ body: (inout Ledger) throws -> Void) throws {
         var next = ledger; try body(&next); try next.validate(); ledger = next
     }
+    /// Qualify legacy references before a second direction acquires the same name.
+    static func prepareAddition(_ category: Category, in next: inout Ledger) {
+        if let old = next.categories.first(where: { $0.name == category.name && $0.income != category.income }) {
+            for (key, path) in next.classificationMemory where CategoryNamespace.split(key).income == nil && CategoryMemory.directions(path, in: next) == [old.income] && next.resolveCategory(CategoryAssignment(path: path).category, income: old.income) == category.name {
+                next.classificationMemory.removeValue(forKey: key)
+                let scoped = CategoryNamespace.key(key, income: old.income)
+                if next.classificationMemory[scoped] == nil { next.classificationMemory[scoped] = path }
+            }
+            for (key, path) in next.categoryAliases where CategoryNamespace.split(key).income == nil {
+                let choice = CategoryAssignment(path: path)
+                if next.categoryAssignment(category: choice.category, subcategory: choice.subcategory, income: old.income).category == category.name {
+                    next.categoryAliases.removeValue(forKey: key); next.categoryAliases[CategoryNamespace.key(key, income: old.income)] = path
+                }
+            }
+            next.preferences.categoryOrder = next.preferences.categoryOrder.map { $0 == category.name ? old.id : $0 }
+            next.preferences.categoryOrder.append(category.id)
+        }
+    }
     public static func add(_ category: Category, in ledger: inout Ledger) throws {
         try update(&ledger) { next in
             let cleaned = try name(category.name)
-            guard !category.system, !next.categories.contains(where: { $0.name == cleaned }), next.categoryAliases[cleaned] == nil else { throw YubaiError.invalid("分类名称已存在。") }
-            var value = category; value.name = cleaned; next.categories.append(value)
+            guard !category.system, !next.categories.contains(where: { $0.name == cleaned && $0.income == category.income }), !next.hasCategoryAlias(cleaned, income: category.income) else { throw YubaiError.invalid("分类名称已存在。") }
+            var value = category; value.name = cleaned
+            prepareAddition(value, in: &next)
+            next.categories.append(value)
         }
     }
-    public static func rename(_ category: String, to rawName: String, in ledger: inout Ledger) throws {
+    public static func rename(_ category: String, to rawName: String, income: Bool, in ledger: inout Ledger) throws {
         try update(&ledger) { next in
-            let i = try index(category, in: next); let renamed = try name(rawName)
+            let i = try index(category, income: income, in: next); let renamed = try name(rawName)
             guard renamed != category else { return }
-            guard !next.categories.contains(where: { $0.name == renamed }), next.categoryAliases[renamed] == nil else { throw YubaiError.invalid("分类名称已存在。") }
+            guard !next.categories.contains(where: { $0.name == renamed && $0.income == income }), !next.hasCategoryAlias(renamed, income: income) else { throw YubaiError.invalid("分类名称已存在。") }
             let before = next
-            CategoryReferences.rewrite(&next) { old in
-                var value = before.categoryAssignment(category: old.category, subcategory: old.subcategory)
-                if value.category == category { value.category = renamed }; return value
+            CategoryReferences.rewrite(&next) { old, direction in
+                var value = before.categoryAssignment(category: old.category, subcategory: old.subcategory, income: direction)
+                if direction == income && value.category == category { value.category = renamed }; return value
             }
             next.categories[i].keywords.append(category)
-            next.categories[i].name = renamed; next.categoryAliases[category] = renamed
+            next.categories[i].name = renamed; next.categoryAliases[CategoryNamespace.key(category, income: income)] = renamed
         }
     }
-    public static func merge(_ source: String, into target: String, in ledger: inout Ledger) throws {
+    public static func merge(_ source: String, into target: String, income: Bool, in ledger: inout Ledger) throws {
         try update(&ledger) { next in
-            let a = try index(source, in: next); let b = try index(target, in: next, protected: false)
+            let a = try index(source, income: income, in: next); let b = try index(target, income: income, in: next, protected: false)
             guard a != b, next.categories[a].income == next.categories[b].income else { throw YubaiError.invalid("只能合并同一收支方向的不同分类。") }
             // Keep source small items and words, except intentional catch-all targets.
-            let catchAll = ["其他支出", "其他收入"].contains(target)
+            let catchAll = next.categories[b].isCatchAll
             if !catchAll {
                 for sub in next.categories[a].subcategories where !next.categories[b].subcategories.contains(sub) { next.categories[b].subcategories.append(sub) }
                 for (sub, words) in next.categories[a].subcategoryKeywords { next.categories[b].subcategoryKeywords[sub, default: []] += words }
                 next.categories[b].keywords += next.categories[a].keywords + [source]
             }
             let before = next
-            CategoryReferences.rewrite(&next) { old in
-                var value = before.categoryAssignment(category: old.category, subcategory: old.subcategory)
-                if value.category == source { value.category = target; if catchAll { value.subcategory = nil } }; return value
+            CategoryReferences.rewrite(&next) { old, direction in
+                var value = before.categoryAssignment(category: old.category, subcategory: old.subcategory, income: direction)
+                if direction == income && value.category == source { value.category = target; if catchAll { value.subcategory = nil } }; return value
             }
-            next.categories.remove(at: a); next.categoryAliases[source] = target
+            next.categories.remove(at: a); next.categoryAliases[CategoryNamespace.key(source, income: income)] = target
         }
     }
-    public static func setHidden(_ hidden: Bool, category: String, in ledger: inout Ledger) throws {
-        try update(&ledger) { next in let i = try index(category, in: next, protected: false); next.categories[i].hidden = hidden }
+    public static func setHidden(_ hidden: Bool, category: String, income: Bool, in ledger: inout Ledger) throws {
+        try update(&ledger) { next in let i = try index(category, income: income, in: next, protected: false); next.categories[i].hidden = hidden }
     }
-    public static func addSubcategory(_ raw: String, to category: String, keywords: [String] = [], in ledger: inout Ledger) throws {
+    public static func addSubcategory(_ raw: String, to category: String, income: Bool, keywords: [String] = [], in ledger: inout Ledger) throws {
         try update(&ledger) { next in
-            let i = try index(category, in: next); let sub = try name(raw)
-            guard !next.categories[i].subcategories.contains(sub), next.categoryAliases[category + "/" + sub] == nil else { throw YubaiError.invalid("小项已存在。") }
+            let i = try index(category, income: income, in: next); let sub = try name(raw)
+            guard !next.categories[i].subcategories.contains(sub), !next.hasCategoryAlias(category + "/" + sub, income: income) else { throw YubaiError.invalid("小项已存在。") }
             next.categories[i].subcategories.append(sub); next.categories[i].subcategoryKeywords[sub] = keywords
         }
     }
-    public static func renameSubcategory(_ sub: String, in category: String, to raw: String, ledger: inout Ledger) throws {
+    public static func renameSubcategory(_ sub: String, in category: String, to raw: String, income: Bool, ledger: inout Ledger) throws {
         try update(&ledger) { next in
-            let i = try index(category, in: next); let renamed = try name(raw)
-            guard let j = next.categories[i].subcategories.firstIndex(of: sub), !next.categories[i].subcategories.contains(renamed), next.categoryAliases[category + "/" + renamed] == nil else { throw YubaiError.invalid("小项不存在或名称重复。") }
+            let i = try index(category, income: income, in: next); let renamed = try name(raw)
+            guard let j = next.categories[i].subcategories.firstIndex(of: sub), !next.categories[i].subcategories.contains(renamed), !next.hasCategoryAlias(category + "/" + renamed, income: income) else { throw YubaiError.invalid("小项不存在或名称重复。") }
             let before = next
-            CategoryReferences.rewrite(&next) { old in
-                var value = before.categoryAssignment(category: old.category, subcategory: old.subcategory)
-                if value.category == category && value.subcategory == sub { value.subcategory = renamed }; return value
+            CategoryReferences.rewrite(&next) { old, direction in
+                var value = before.categoryAssignment(category: old.category, subcategory: old.subcategory, income: direction)
+                if direction == income && value.category == category && value.subcategory == sub { value.subcategory = renamed }; return value
             }
             next.categories[i].subcategories[j] = renamed
             next.categories[i].subcategoryKeywords[renamed] = (next.categories[i].subcategoryKeywords.removeValue(forKey: sub) ?? []) + [sub]
-            next.categoryAliases[category + "/" + sub] = category + "/" + renamed
+            next.categoryAliases[CategoryNamespace.key(category + "/" + sub, income: income)] = category + "/" + renamed
         }
     }
-    public static func removeSubcategory(_ sub: String, from category: String, in ledger: inout Ledger) throws {
+    public static func removeSubcategory(_ sub: String, from category: String, income: Bool, in ledger: inout Ledger) throws {
         try update(&ledger) { next in
-            let i = try index(category, in: next)
+            let i = try index(category, income: income, in: next)
             guard next.categories[i].subcategories.contains(sub) else { throw YubaiError.invalid("小项不存在。") }
             let before = next
-            CategoryReferences.rewrite(&next) { old in
-                var value = before.categoryAssignment(category: old.category, subcategory: old.subcategory)
-                if value.category == category && value.subcategory == sub { value.subcategory = nil }; return value
+            CategoryReferences.rewrite(&next) { old, direction in
+                var value = before.categoryAssignment(category: old.category, subcategory: old.subcategory, income: direction)
+                if direction == income && value.category == category && value.subcategory == sub { value.subcategory = nil }; return value
             }
             next.categories[i].subcategories.removeAll { $0 == sub }; next.categories[i].subcategoryKeywords.removeValue(forKey: sub)
-            next.categoryAliases[category + "/" + sub] = category
+            next.categoryAliases[CategoryNamespace.key(category + "/" + sub, income: income)] = category
         }
     }
-    public static func setOrder(_ names: [String], in ledger: inout Ledger) throws {
+    public static func setOrder(_ names: [String], income: Bool, in ledger: inout Ledger) throws {
         try update(&ledger) { next in
-            guard Set(names).count == names.count, names.allSatisfy({ name in next.categories.contains { $0.name == name && !$0.system } }) else { throw YubaiError.invalid("分类顺序无效。") }
-            next.preferences.categoryOrder = names
+            guard Set(names).count == names.count, names.allSatisfy({ name in next.categories.contains { $0.name == name && $0.income == income && !$0.system } }) else { throw YubaiError.invalid("分类顺序无效。") }
+            let other = next.categoryOrder(income: !income).filter { name in next.categories.contains { $0.name == name && $0.income != income && !$0.system } }
+            next.preferences.categoryOrder = names.map { CategoryNamespace.key($0, income: income) } + other.map { CategoryNamespace.key($0, income: !income) }
         }
     }
 }

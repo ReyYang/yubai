@@ -102,7 +102,7 @@ final class CategoryUIContractsTests: XCTestCase {
         var ledger = ledger()
         ledger.preferences.categoryOrder = ["其他支出", "交通", "美容个护", "交通", "不存在", "工资奖金"]
         try CategoryModel.add(Category("手作"), in: &ledger)
-        try CategoryModel.setHidden(true, category: "购物", in: &ledger)
+        try CategoryModel.setHidden(true, category: "购物", income: false, in: &ledger)
         let names = ledger.orderedCategories(income: false).map(\.name)
         XCTAssertEqual(Array(names.prefix(3)), ["交通", "美容个护", "餐饮"])
         XCTAssertEqual(names.suffix(2), ["手作", "其他支出"])

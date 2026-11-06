@@ -294,8 +294,8 @@ public enum BillImporter {
                 let rawMain = field(categoryCol), rawSub = field(subcategoryCol)
                 let rawCategory = rawSub.isEmpty ? rawMain : rawSub
                 let sourceCategory = rawCategory.isEmpty ? classification.category : rawCategory
-                let explicitCategory = categoryMappings[rawCategory] ?? categoryMappings[ledger.resolveCategory(sourceCategory)] ?? categoryMappings[rawMain]
                 let nature = explicitNature ?? classification.nature
+                let explicitCategory = categoryMappings[rawCategory] ?? categoryMappings[ledger.resolveCategory(sourceCategory, income: nature.categoryIncome)] ?? categoryMappings[rawMain]
                 var entry = Entry(date: date, amount: abs(signed), nature: nature, accountID: mappedAccount, title: title, category: Classification.pendingCategory)
                 let label = rawSub.isEmpty ? rawMain : rawMain + "/" + rawSub
                 let hint = explicitCategory.flatMap { CategoryMapping.match($0, in: ledger, income: nature != .refund && nature.inflow) }
@@ -369,8 +369,9 @@ public enum BillImporter {
         var candidate = ledger
         var confirmed = preview
         for name in confirmedNewCategories.sorted() {
-            guard let entry = confirmed.rows.first(where: { $0.included && $0.sourceCategory == name && $0.entry != nil })?.entry else { continue }
-            try CategoryModel.add(Category(name, income: entry.nature != .refund && entry.nature.inflow), in: &candidate)
+            let directions = Set(confirmed.rows.filter { $0.included && $0.sourceCategory == name }.compactMap { $0.entry?.nature.categoryIncome })
+            let missing = directions.filter { income in !candidate.categories.contains { $0.name == name && $0.income == income } }
+            for income in (missing.isEmpty ? directions : missing).sorted(by: { !$0 && $1 }) { try CategoryModel.add(Category(name, income: income), in: &candidate) }
             for i in confirmed.rows.indices where confirmed.rows[i].included && confirmed.rows[i].sourceCategory == name {
                 confirmed.rows[i].entry?.category = clean(name)
                 confirmed.rows[i].entry?.subcategory = nil
@@ -394,17 +395,17 @@ public enum BillImporter {
             guard let entry = row.entry else { continue }
             for label in [row.sourceCategory] where !Classification.isPending(label) {
                 if let mapped = CategoryMapping.match(label, in: ledger, income: entry.nature != .refund && entry.nature.inflow) {
-                    if label != mapped.category { ledger.categoryAliases[label] = mapped.category }
-                } else if entry.userEdited, ledger.selectableCategories.contains(where: { $0.name == entry.category }) {
-                    ledger.categoryAliases[label] = entry.category
+                    if label != mapped.category, ledger.categoryAlias(label, income: entry.nature.categoryIncome) != mapped.category { ledger.categoryAliases[CategoryNamespace.key(label, income: entry.nature.categoryIncome)] = mapped.category }
+                } else if entry.userEdited, ledger.selectableCategories.contains(where: { $0.name == entry.category && $0.income == entry.nature.categoryIncome }) {
+                    ledger.categoryAliases[CategoryNamespace.key(label, income: entry.nature.categoryIncome)] = entry.category
                 }
             }
         }
         for var entry in preview.selectedEntries {
             // Unconfirmed review labels must resolve to an existing main.
-            let choice = ledger.categoryAssignment(category: entry.category, subcategory: entry.subcategory)
+            let choice = ledger.categoryAssignment(category: entry.category, subcategory: entry.subcategory, income: entry.nature.categoryIncome)
             if entry.nature == .transfer { entry.category = "内部移动"; entry.subcategory = nil }
-            else if ledger.categories.contains(where: { $0.name == choice.category && !$0.system }) {
+            else if ledger.categories.contains(where: { $0.name == choice.category && $0.income == entry.nature.categoryIncome && !$0.system }) {
                 entry.category = choice.category; entry.subcategory = choice.subcategory
             } else {
                 entry.category = Classification.pendingCategory; entry.subcategory = nil

@@ -167,9 +167,10 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .setCategory(let id, let rawCategory):
                 guard let i = active(id) else { skip(position); continue }
                 guard !rawCategory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, rawCategory.count <= 200 else { throw YubaiError.invalid("分类不能为空或过长。") }
-                let assignment = CategoryMapping.match(rawCategory, in: next) ?? next.categoryAssignment(category: rawCategory)
+                let assignment = CategoryMapping.match(rawCategory, in: next, income: next.entries[i].nature.categoryIncome) ?? next.categoryAssignment(category: rawCategory, income: next.entries[i].nature.categoryIncome)
                 let category = assignment.category
-                if source == "导入整理", !Classification.isPending(next.entries[i]), next.resolveCategory(next.entries[i].category) != category { skip(position); continue }
+                guard Classification.isPending(category) || next.categories.contains(where: { $0.name == category && $0.income == next.entries[i].nature.categoryIncome && !$0.system }) else { throw YubaiError.invalid("请选择已有分类。") }
+                if source == "导入整理", !Classification.isPending(next.entries[i]), next.resolveCategory(next.entries[i].category, income: next.entries[i].nature.categoryIncome) != category { skip(position); continue }
                 guard !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, category.count <= 200 else { throw YubaiError.invalid("分类不能为空或过长。") }
                 guard next.entries[i].nature != .refund || next.entries[i].relatedEntryID == nil else { skip(position); continue }
                 if next.entries[i].category == category {

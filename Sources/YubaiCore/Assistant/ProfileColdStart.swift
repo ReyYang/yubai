@@ -28,7 +28,7 @@ public struct ProfileColdStart: Sendable {
         }
         let profile = ledger.profile
         let hasContent = !profile.generous.isEmpty || !profile.restrain.isEmpty || !profile.principles.isEmpty || profile.floorAmount != nil
-        let revisit = mode == .revisit || (mode == .automatic && hasContent)
+        let revisit = mode == .revisit || (mode == .automatic && (hasContent || ledger.preferences.profileColdStartDone))
         let questions = messages.filter { $0.role == .assistant }.count
         let final = !revisit && questions >= 3
         let topics = ["你愿意多花一点钱的事情是什么？", "你想在哪些花费上克制一点？可以说每周最多几次或每月最多多少钱。", "你希望始终留着多少钱，让自己踏实一点？"]

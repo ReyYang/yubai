@@ -14,7 +14,6 @@ struct QuickEntryView: View {
     @State private var category = ""
     @State private var categorySuggestion: CategoryAssignment?
     @State private var confirmingDiscard = false
-    @State private var initialFields = ""
     @State private var savedCount = 0
     @State private var receiptVisible = false
     @State private var receiptRevision = 0
@@ -55,10 +54,9 @@ struct QuickEntryView: View {
                     if nature != .transfer {
                         EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
                                            income: nature != .refund && nature.inflow, selection: effectiveCategory, suggestionOnly: category.isEmpty,
-                                           suggest: { categorySuggestion?.category }) { choice in
-                            if let value = store.current.categories.first(where: { $0.name == choice.category }), value.income != nature.inflow {
-                                skipNatureReset = true; nature = value.income ? .income : .expense
-                            }
+                                           directionChanged: { income in
+                                               if income != nature.categoryIncome { skipNatureReset = true; nature = income ? .income : .expense }
+                                           }, suggest: { categorySuggestion?.category }) { choice in
                             category = choice.category; subcategory = choice.subcategory; purposeFocused = false
                         }
                             .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
@@ -108,7 +106,7 @@ struct QuickEntryView: View {
                     if let amount = prefill.amount { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
                 }
                 previewAvailable = store.funds.available
-                refreshBalances(); initialFields = fieldsSignature
+                refreshBalances()
             }
             .onChange(of: store.current.updatedAt) { _, _ in refreshBalances() }
             .task(id: previewInput) { await refreshPreview() }
@@ -138,8 +136,7 @@ struct QuickEntryView: View {
         return category.isEmpty ? categorySuggestion ?? .init(category: Classification.pendingCategory) : .init(category: category, subcategory: subcategory)
     }
     private var suggestionInput: String { "\(store.ledgerRevision)-\(nature.rawValue)-\(purpose)" }
-    private var fieldsSignature: String { "\(nature.rawValue)|\(category)|\(subcategory ?? "")|\(accountID?.uuidString ?? "")|\(otherAccountID?.uuidString ?? "")|\(Dates.day(date))|\(repeatsMonthly)" }
-    private var dirty: Bool { loaded && ((keypad.amount ?? 0) != 0 || !purpose.isEmpty || fieldsSignature != initialFields) }
+    private var dirty: Bool { loaded && ((keypad.amount ?? 0) != 0 || !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || prefill?.screenshot != nil) }
     private func cancel() { if dirty { confirmingDiscard = true } else { dismiss() } }
     private var receipt: some View {
         HStack(spacing: 10) {
@@ -308,7 +305,7 @@ struct QuickEntryView: View {
                 AccessibilityNotification.Announcement("已记 \(savedCount) 笔，可撤销").post()
                 #endif
                 keypad.reset(); purpose = ""; selectedMatchID = nil; repeatsMonthly = false
-                category = ""; subcategory = nil; initialFields = fieldsSignature
+                category = ""; subcategory = nil
             } else {
                 store.setEntrySaveToast("已记下 · " + (title.isEmpty ? Classification.displayCategory(effectiveCategory.category) : title) + " " + amount + " · " + store.accountName(accountID) + repeatSuffix)
                 dismiss()

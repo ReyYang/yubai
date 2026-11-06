@@ -125,8 +125,8 @@ private struct CaptureRulesView: View {
             ForEach(names, id: \.self) { name in
                 Button { editing = CaptureRuleSelection(name: name) } label: {
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: YubaiSpace.gapGroup) { Text(name).lineLimit(1).fixedSize(); Spacer(); Text(value(name)).lineLimit(1).fixedSize().foregroundStyle(YubaiColor.labelSecondary) }
-                        VStack(alignment: .leading, spacing: YubaiSpace.space8) { Text(name).lineLimit(1).fixedSize(); Text(value(name)).lineLimit(1).fixedSize().foregroundStyle(YubaiColor.labelSecondary) }
+                        HStack(spacing: YubaiSpace.gapGroup) { Text(kind == .card ? name : CategoryNamespace.split(name).name).lineLimit(1).fixedSize(); Spacer(); Text(value(name)).lineLimit(1).fixedSize().foregroundStyle(YubaiColor.labelSecondary) }
+                        VStack(alignment: .leading, spacing: YubaiSpace.space8) { Text(kind == .card ? name : CategoryNamespace.split(name).name).lineLimit(1).fixedSize(); Text(value(name)).lineLimit(1).fixedSize().foregroundStyle(YubaiColor.labelSecondary) }
                     }.contentShape(Rectangle())
                 }.foregroundStyle(YubaiColor.label)
             }.onDelete { offsets in
@@ -146,7 +146,7 @@ private struct CaptureRulesView: View {
     private func value(_ name: String) -> String {
         if kind == .card { return store.accountName(store.preferences.quickCapture.cardAccounts[name]) }
         let choice = CategoryAssignment(path: store.current.classificationMemory[name] ?? "")
-        let resolved = store.current.categoryAssignment(category: choice.category, subcategory: choice.subcategory)
+        let resolved = store.current.categoryAssignment(category: choice.category, subcategory: choice.subcategory, income: captureRuleIncome(name, ledger: store.current))
         return Classification.displayCategory(resolved.category) + (resolved.subcategory.map { " · " + $0 } ?? "")
     }
 }
@@ -158,6 +158,7 @@ private struct CaptureRuleEditor: View {
     @State private var name = ""
     @State private var account: UUID?
     @State private var category = "餐饮"
+    @State private var income = false
     private var accounts: [Account] { store.accounts.filter { !$0.archived } }
     var body: some View {
         Form {
@@ -165,19 +166,21 @@ private struct CaptureRuleEditor: View {
             if kind == .card {
                 Picker("账户", selection: $account) { ForEach(accounts) { Text($0.name).tag(Optional($0.id)) } }
             } else {
-                CategoryPickerField(income: store.current.categories.first { $0.name == CategoryAssignment(path: category).category }?.income ?? false,
+                CategoryPickerField(income: income,
                                     selection: CategoryAssignment(path: category), allowsDirectionChange: true,
-                                    identifier: "captureRuleCategory") { category = $0.path }
+                                    identifier: "captureRuleCategory", directionChanged: { income = $0 }) { category = $0.path }
             }
             if let original { Button("删掉") { if store.update("删除映射", { remove(original, in: &$0) }) { dismiss() } }.buttonStyle(DestructiveButtonStyle()) }
         }.navigationTitle(original == nil ? "添加映射" : "修改映射")
             .manualSheetHeader(original == nil ? "添加映射" : "修改映射", enabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (kind != .card || account != nil), action: save)
             .onAppear {
-                name = original ?? ""
+                name = original.map { kind == .card ? $0 : CategoryNamespace.split($0).name } ?? ""
+                let direction = original.map { captureRuleIncome($0, ledger: store.current) } ?? false
+                income = direction
                 account = original.flatMap { store.preferences.quickCapture.cardAccounts[$0] }.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first?.id
                 category = original.flatMap { store.current.classificationMemory[$0] }.map { raw in
                     let choice = CategoryAssignment(path: raw)
-                    return store.current.categoryAssignment(category: choice.category, subcategory: choice.subcategory).path
+                    return store.current.categoryAssignment(category: choice.category, subcategory: choice.subcategory, income: direction).path
                 } ?? "餐饮"
             }
     }
@@ -193,7 +196,14 @@ private struct CaptureRuleEditor: View {
                 let old = ledger.preferences.quickCapture.cardAccounts.keys.filter { QuickCapture.cardKey($0) == QuickCapture.cardKey(clean) }
                 for name in old { ledger.preferences.quickCapture.cardAccounts.removeValue(forKey: name) }
                 ledger.preferences.quickCapture.cardAccounts[clean] = account
-            } else { try QuickCapture.remember(merchant: clean, category: category, in: &ledger) }
+            } else { try QuickCapture.remember(merchant: clean, category: category, income: income, in: &ledger) }
         }) { dismiss() }
     }
+}
+
+private func captureRuleIncome(_ key: String, ledger: Ledger) -> Bool {
+    if let income = CategoryNamespace.split(key).income { return income }
+    let value = CategoryAssignment(path: ledger.classificationMemory[key] ?? "")
+    let expense = ledger.categoryAssignment(category: value.category, subcategory: value.subcategory, income: false)
+    return !ledger.categories.contains { $0.name == expense.category && !$0.income }
 }

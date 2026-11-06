@@ -22,8 +22,9 @@ public struct ImportQuestion: Codable, Identifiable, Equatable, Sendable {
         guard !isFallback, options.indices.contains(option) else { return nil }
         let items = options[option].items.compactMap { item -> ChangeItem? in
             if let ledger, case .setCategory(let id, let category) = item {
-                let name = ledger.resolveCategory(category)
-                guard ledger.categories.contains(where: { $0.name == name }) else { return nil }
+                guard let entry = ledger.entries.first(where: { $0.id == id }) else { return nil }
+                let name = ledger.resolveCategory(category, income: entry.nature.categoryIncome)
+                guard ledger.categories.contains(where: { $0.name == name && $0.income == entry.nature.categoryIncome }) else { return nil }
                 return .setCategory(entry: id, category: name)
             }
             return item
@@ -252,7 +253,7 @@ public struct ImportOrganizer: Sendable {
             ("理发店/造型", "美容个护/理发", false), ("保险公司", "保险税费/保险", false), ("个税", "保险税费/税费", false),
             ("通信运营商", "居住/网费话费", false), ("差旅报销", "报销", true), ("闲鱼/转转", "二手转卖", true)]
         let validExamples = examples.compactMap { merchant, path, income -> String? in
-            let value = ledger.categoryAssignment(category: CategoryAssignment(path: path).category, subcategory: CategoryAssignment(path: path).subcategory)
+            let value = ledger.categoryAssignment(category: CategoryAssignment(path: path).category, subcategory: CategoryAssignment(path: path).subcategory, income: income)
             guard let main = ledger.selectableCategories.first(where: { $0.name == value.category && $0.income == income }) else { return nil }
             let sub = value.subcategory.flatMap { main.subcategories.contains($0) ? $0 : nil }
             return merchant + "→" + main.name + (sub.map { "/" + $0 } ?? "")
@@ -280,13 +281,13 @@ public struct ImportOrganizer: Sendable {
             let label = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !label.isEmpty, label.count <= 200, !Classification.isPending(label) else { return nil }
             func validated(_ value: CategoryAssignment) -> CategoryAssignment? {
-                let mapped = ledger.categoryAssignment(category: value.category, subcategory: value.subcategory)
-                guard let main = table.first(where: { $0.name == mapped.category }) else { return nil }
+                let mapped = ledger.categoryAssignment(category: value.category, subcategory: value.subcategory, income: income)
+                guard let main = table.first(where: { $0.name == mapped.category && $0.income == income }) ?? table.first(where: { $0.name == mapped.category && $0.income != income }) else { return nil }
                 return .init(category: main.name, subcategory: mapped.subcategory.flatMap { main.subcategories.contains($0) ? $0 : nil })
             }
             func direction(_ value: CategoryAssignment) -> CategoryAssignment? {
-                guard let main = table.first(where: { $0.name == value.category }) else { return nil }
-                if main.income == income { return value }
+                guard let main = table.first(where: { $0.name == value.category && $0.income == income }) ?? table.first(where: { $0.name == value.category && $0.income != income }) else { return nil }
+                if main.income == income { return .init(category: main.name, subcategory: value.subcategory.flatMap { main.subcategories.contains($0) ? $0 : nil }) }
                 if income {
                     let gift = ["红包", "礼物", "礼金", "赠与", "人情家庭"].contains { (label + " " + evidence).contains($0) }
                     if gift, let mapped = validated(.init(category: "礼金赠与")), table.contains(where: { $0.name == mapped.category && $0.income }) { return mapped }
@@ -296,7 +297,8 @@ public struct ImportOrganizer: Sendable {
             }
             // Exact mains and explicit paths/renames outrank aliases and words.
             if let direct = validated(CategoryAssignment(path: label)) { return direction(direct) }
-            let exact = table.flatMap { main in
+            let candidates = table.filter { main in main.income == income || !table.contains { $0.name == main.name && $0.income == income } }
+            let exact = candidates.flatMap { main in
                 main.subcategories.filter { $0.localizedCaseInsensitiveCompare(label) == .orderedSame }.map { CategoryAssignment(category: main.name, subcategory: $0) }
             }
             func unique(_ candidates: [CategoryAssignment]) -> CategoryAssignment? {
@@ -313,7 +315,7 @@ public struct ImportOrganizer: Sendable {
             let legacy = CategoryAssignment(category: old.category, subcategory: old.subcategory)
             if legacy.path != label, let value = validated(legacy) { return direction(value) }
             var matches: [(CategoryAssignment, Int)] = []
-            for main in table {
+            for main in candidates {
                 for word in main.keywords + [main.name] where !word.isEmpty && label.localizedCaseInsensitiveContains(word) {
                     matches.append((.init(category: main.name), word.count))
                 }
@@ -362,9 +364,9 @@ public struct ImportOrganizer: Sendable {
     private static func knownCategories(for batch: [Entry], ledger: Ledger) -> [UUID: String] {
         let resolver = CategoryResolver(ledger: ledger)
         return Dictionary(uniqueKeysWithValues: batch.compactMap { entry -> (UUID, String)? in
-            guard let category = !Classification.isPending(entry) ? ledger.resolveCategory(entry.category) : CategoryGuesser.guess(entry, in: ledger)?.category,
+            guard let category = !Classification.isPending(entry) ? ledger.resolveCategory(entry.category, income: entry.nature.categoryIncome) : CategoryGuesser.guess(entry, in: ledger)?.category,
                   case .setCategory(_, let name)? = categoryItem(id: entry.id, category: category, ledger: ledger, entry: entry, resolver: resolver) else { return nil }
-            return (entry.id, ledger.resolveCategory(name))
+            return (entry.id, ledger.resolveCategory(name, income: entry.nature.categoryIncome))
         })
     }
     private static func partyGroupSummary(_ group: UnsortedPartyGroup, id: String, known: [UUID: String]) -> JSONValue {
@@ -671,7 +673,7 @@ public struct ImportOrganizer: Sendable {
                 let assignment = CategoryAssignment(path: category)
                 let name = assignment.category
                 guard let i = entryIndex[id], known[id].map({ $0 == name }) ?? true,
-                      Classification.isPending(working.entries[i]) || working.resolveCategory(working.entries[i].category) == name else { return }
+                      Classification.isPending(working.entries[i]) || working.resolveCategory(working.entries[i].category, income: working.entries[i].nature.categoryIncome) == name else { return }
                 if working.entries[i].category == name && !Classification.isPending(working.entries[i]) { return }
                 working.entries[i].category = name
                 if !working.entries[i].subcategoryUserEdited { working.entries[i].subcategory = assignment.subcategory }
@@ -902,7 +904,7 @@ public struct ImportOrganizer: Sendable {
     private static func categoryItem(id: UUID, category: String, ledger: Ledger, entry: Entry? = nil, resolver: CategoryResolver? = nil) -> ChangeItem? {
         guard let e = entry ?? ledger.entries.first(where: { $0.id == id }),
               var assignment = (resolver ?? CategoryResolver(ledger: ledger)).resolve(category, income: e.nature.inflow && e.nature != .refund, evidence: e.title),
-              Classification.isPending(e) || ledger.resolveCategory(e.category) == assignment.category else { return nil }
+              Classification.isPending(e) || ledger.resolveCategory(e.category, income: e.nature.categoryIncome) == assignment.category else { return nil }
         if e.subcategoryUserEdited { assignment.subcategory = e.subcategory }
         return .setCategory(entry: id, category: assignment.path)
     }
@@ -916,7 +918,7 @@ public struct ImportOrganizer: Sendable {
         if kind == "set_category" {
             guard Set(fields.keys).isSubset(of: ["kind", "entry", "category"]), let name = fields["category"]?.stringValue else { return nil }
             guard let item = Self.categoryItem(id: id, category: name, ledger: ledger) else { return nil }
-            if let expected = known[id], case .setCategory(_, let actual) = item, ledger.resolveCategory(actual) != expected { return nil }
+            if let expected = known[id], case .setCategory(_, let actual) = item, ledger.resolveCategory(actual, income: ledger.entries.first { $0.id == id }?.nature.categoryIncome ?? false) != expected { return nil }
             return item
         }
         let allowed = ["set_nature", "set_purpose", "pair_transfer", "link_refund", "link_plan", "link_rent", "mark_duplicate"]

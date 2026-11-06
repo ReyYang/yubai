@@ -106,7 +106,7 @@ public struct JudgePurchaseTool: AssistantTool {
         facts["similar_followups"] = .array(ctx.ledger.wishlist.filter { wish in
             guard wish.followUpAnswer != nil else { return false }
             let entry = wish.boughtEntryID.flatMap { ctx.entriesByID[$0] }
-            let sameCategory = category.map { ctx.ledger.resolveCategory(wish.category ?? entry?.category ?? "") == ctx.ledger.resolveCategory($0) } ?? false
+            let sameCategory = category.map { ctx.ledger.resolveCategory(wish.category ?? entry?.category ?? "", income: false) == ctx.ledger.resolveCategory($0, income: false) } ?? false
             return sameCategory || Wishlist.similarTitles(title, wish.title)
         }.sorted {
             let a = $0.followUpAnsweredAt ?? $0.followUpAt ?? $0.createdAt, b = $1.followUpAnsweredAt ?? $1.followUpAt ?? $1.createdAt

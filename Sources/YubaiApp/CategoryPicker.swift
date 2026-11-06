@@ -145,6 +145,7 @@ struct CategoryPickerField: View {
     var suggested: String? = nil
     var allowsDirectionChange = false
     var identifier = "categoryField"
+    var directionChanged: (Bool) -> Void = { _ in }
     let choose: (CategoryAssignment) -> Void
     @State private var showing = false
     @State private var direction = false
@@ -162,9 +163,9 @@ struct CategoryPickerField: View {
                         if allowsDirectionChange {
                             Picker("收支", selection: $direction) { Text("支出").tag(false); Text("收入").tag(true) }.pickerStyle(.segmented)
                         }
-                        CategoryPicker(income: direction, selected: selection, suggested: suggested, identifier: identifier) { choice, addition in
+                        CategoryPicker(income: direction, selected: direction == income ? selection : nil, suggested: direction == income ? suggested : nil, identifier: identifier) { choice, addition in
                             if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
-                            choose(choice); showing = false; return true
+                            directionChanged(direction); choose(choice); showing = false; return true
                         }
                     }.manualSheetHeader("分类", showsAction: false, cancel: { showing = false })
                 }.environment(store).appErrors().yubaiSheetBackground()
@@ -199,7 +200,7 @@ struct CategoryAdditionSheet: View {
     }
     private var valid: Bool { validationError == nil }
     private var parents: [YubaiCore.Category] {
-        let ordered = store.current.orderedCategories(income: income).filter { !["其他支出", "其他收入"].contains($0.name) }
+        let ordered = store.current.orderedCategories(income: income).filter { !$0.isCatchAll }
         return ordered.filter { $0.name == initialParent } + ordered.filter { $0.name != initialParent }
     }
     var body: some View {
