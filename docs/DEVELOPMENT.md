@@ -8,7 +8,6 @@ Xcode 26 / Apple SDK，Swift 5 语言模式；最低 iOS 18 / macOS 14。Linux �
 - `Tests/YubaiUITests`：五条离线流程：空账本开户、CSV 整理问答与整批撤销、克制卡片静音、数字问答到依据详情、消费原则持久化与备份入口。
 - `scripts/generate-project.py`：生成 app、CoreTests 和 UITests 的工程引用与共享 scheme，包括签名配置和平台权限文件。源文件移动或删除后运行；生成结果纳入版本管理。
 - `scripts/testflight.sh [ios|mac|all]`：付费团队配置完成后归档、上传 TestFlight；默认 ios。当前本人暂不加入付费计划，免费团队直接安装仍是测试路径。设置、构建号和安装见 [TESTFLIGHT.md](TESTFLIGHT.md)。
-- `.design-meta/`、`.scratch/yubai-product/`：长期产品与设计资料。
 
 在 Apple 开发环境从仓库根目录运行：
 
@@ -68,7 +67,7 @@ export XDG_CACHE_HOME=/tmp/yubai-swift-cache
 
 Linux 的 SHA256、AES-GCM 与 PBKDF2 使用仅限 Linux 的 swift-crypto 产品；Apple 继续使用 CryptoKit 与 CommonCrypto。备份 v1 的 PBKDF2-HMAC-SHA256、32 字节密钥、16 字节盐、导出 210,000 轮（读取接受 100,000–1,000,000 轮）、nonce／密文／tag 布局与 `yubai-backup-v1` AAD 保持一致。兼容向量由独立的 Python hashlib／AESGCM 实现生成，覆盖含 NUL 的 UTF-8 密码与轮数边界。
 
-Linux 的 `KeychainAPIKeyStorage` 只在进程内共享密钥，不写磁盘；iCloud 下载、协调与系统冲突版本不可用，显式请求 iCloud 仓库访问会报错。本机目录中的存储、附件、权限、恢复与版本选择逻辑仍运行真实测试。默认四个实网评测沿用原有 opt-in 跳过条件，离线测试仍使用真实 URLSession 与内存 HTTP stub。Linux 结果不代表 Keychain、iCloud、SwiftUI 或 Apple SDK 已验收；实际结果见 [验证记录](VALIDATION.md#linux-core-构建与单元测试2026-10-21)。
+Linux 的 `KeychainAPIKeyStorage` 只在进程内共享密钥，不写磁盘；iCloud 下载、协调与系统冲突版本不可用，显式请求 iCloud 仓库访问会报错。本机目录中的存储、附件、权限、恢复与版本选择逻辑仍运行真实测试。默认四个实网评测沿用原有 opt-in 跳过条件，离线测试仍使用真实 URLSession 与内存 HTTP stub。
 
 ## GitHub Actions
 
@@ -126,7 +125,7 @@ YUBAI_ICLOUD = YES
 - 每次修改先存本机，后台上传；待上传状态跨重启保留。没有待上传修改时接收远端账本；有修改、上传前指纹已变或存在 NSFileVersion 未解决版本时，显示更新时间、版本时间、设备名（如有）、有效记录数与最多三笔差异。用户选定后，先把未选中版本保存为「同步冲突时的另一版本」，再替换和标记这些已展示的冲突已解决。选择期间再更新会要求重新选择。
 - 切到 iCloud 时若两处不同先选择，未选中版本记为「切换存储时的另一版本」。切回仅本机复制当前账本，包括未上传修改；不删除云端账本。退出 iCloud 后保留本机副本并回到仅本机，再次使用 iCloud 需要主动选择。恢复版本只在产生它的设备上可用。
 
-`LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；测试改为显式按需读取附件、解压恢复 JSON 后断言，容量与损坏断言遵循新语义。本轮验证见 [验证记录](VALIDATION.md#存储修复与对话压缩2026-10-21)。问余白截图保存前经 `ImageCompression`：ImageIO 缩长边至 2048、HEIC／JPEG 质量 0.8，仅更小时替换；Linux 或失败保留原件。
+`LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；测试改为显式按需读取附件、解压恢复 JSON 后断言，容量与损坏断言遵循新语义。问余白截图保存前经 `ImageCompression`：ImageIO 缩长边至 2048、HEIC／JPEG 质量 0.8，仅更小时替换；Linux 或失败保留原件。
 
 在 Xcode 验证默认 NO 的 iOS / Mac 构建与测试后，再用上方单行启用 YES，重复两端构建。真实同步需两端有效签名、同一 Apple ID、iCloud Drive；核对首次空云端、已有不同账本、下载占位、离线待上传、前台远端更新、同时编辑冲突、选择期间再次更新、切回本机及退出登录。静态检查与临时目录测试不能代替这些系统行为的设备验证。
 
@@ -137,7 +136,7 @@ YUBAI_ICLOUD = YES
 
 ## 第八轮存储空间（2026-10-21）
 
-从「我 → 备份与恢复」下一行进入「存储空间」。[三张已确认稿及归档](../.design-meta/mockups/storage-v8/README.md)、[稿到源码映射](../.design-meta/DESIGN.md#2026-10-21--第八轮存储空间)。入口在 `SettingsView.swift`，主页与两个 sheet 在 `StorageView.swift`，复用现有 DesignSystem、系统导航／sheet、恢复版本页和加密备份页，无新增动效或依赖。
+从「我 → 备份与恢复」下一行进入「存储空间」。入口在 `SettingsView.swift`，主页与两个 sheet 在 `StorageView.swift`，复用现有 DesignSystem、系统导航／sheet、恢复版本页和加密备份页，无新增动效或依赖。
 
 `LedgerRepository.storageUsage()` 返回三类实际文件字节数、恢复份数与最早时间：账本目录其余文件为账本，`Attachments` 为截图和账单原件，`Recovery`（含共享 `Payloads`、旧 sidecar）为恢复历史。App 查询本机副本，后台只读文件长度，不载入所有附件；显示按十进制 KB／MB／GB，一位小数。
 
@@ -147,4 +146,4 @@ YUBAI_ICLOUD = YES
 
 可选 `Preferences.lastBackupAt` 兼容旧存档 nil，只在系统文件导出回调成功后保存，取消／加密失败不写入。抹掉 sheet 的「之后记了」按手动 recordedAt 或导入批次 importedAt 计算，不给旧记录补造时间；没有备份记录显示「还没备份过」。
 
-本轮 Linux 全量测试见 [VALIDATION.md](VALIDATION.md#第八轮存储空间2026-10-21)。新增11项 `StorageManagementTests`；UI 增加 `openStorage`／`storagePage`／`storageHeadline` 等标识与 `testStorageEntryAndOverviewOpenFromMe`。在 Mac 重新生成工程后执行 iOS／Mac 编译与 UITests；当前 AppFlowTests 共9条，另有3条 MotionStateTests。人工验收按 [第八轮清单](V2-TEST-CHECKLIST.md#第八轮存储空间2026-10-21待-apple-设备验证)，包括真实数据量、空态、3／6／12月、备份成功／取消、确认文字、抹掉重开、iCloud 保留和 VoiceOver。
+新增11项 `StorageManagementTests`；UI 增加 `openStorage`／`storagePage`／`storageHeadline` 等标识与 `testStorageEntryAndOverviewOpenFromMe`。在 Mac 重新生成工程后执行 iOS／Mac 编译与 UITests；当前 AppFlowTests 共9条，另有3条 MotionStateTests。

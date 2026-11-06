@@ -1,6 +1,6 @@
 # 快速记账 · 第九轮
 
-2026-10-21，分支 `feat/quick-capture-entries`。选定稿与用户任务原文保存在 [.design-meta/mockups/quick-capture-v9](../.design-meta/mockups/quick-capture-v9/README.md)。本轮不改 TabView 结构；记一笔 sheet 只加预填参数和截图导入载荷，日期选择器及分段布局沿用原实现。
+2026-10-21，分支 `feat/quick-capture-entries`。本轮不改 TabView 结构；记一笔 sheet 只加预填参数和截图导入载荷，日期选择器及分段布局沿用原实现。
 
 Core 的 `QuickCapture` 共用 `EntryAmountParser`、`ManualBookkeeping.guessCategory/defaultAccount` 和 `Finance.funds`。没有云端解析或新增包。`Preferences.quickCapture` 保存卡名到账户、商户到分类的映射，旧账本缺失时为空。`Entry.quickCapture` 是可选的来源资料；旧记录仍能解码。Apple Pay 记录保留 source、卡、商户、外部身份及原始时间；同卡／商户／金额在 120 秒内重复触发不重复入账，撤销后的记录也保留去重依据。没有分类规则或本机猜测时为「其他支出」，`classificationReason` 为「没分类」。
 
@@ -38,7 +38,7 @@ App 在账本变化时原子写 `quick-capture.json`，随后 reloadAllTimelines
 
 ## 验证与限制
 
-Linux Swift 6.2.4：`swift build` 与 `swift test`；App Group 默认开启的本轮结果见 [VALIDATION.md](VALIDATION.md#app-group-默认开启2026-10-22)，第九轮原始结果保留。默认 `/root` 缓存只读，运行时使用可写缓存：
+Linux Swift 6.2.4：`swift build` 与 `swift test`。默认 `/root` 缓存只读，运行时使用可写缓存：
 
 ```bash
 CLANG_MODULE_CACHE_PATH=/tmp/yubai-swift-cache \
