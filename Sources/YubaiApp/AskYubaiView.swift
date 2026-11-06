@@ -1,12 +1,13 @@
 import SwiftUI
+import Observation
 import PhotosUI
 import ImageIO
 import UniformTypeIdentifiers
 import YubaiCore
 
-private struct AskImage { let data: Data; let name: String }
+struct AskImage { let data: Data; let name: String }
 
-private struct AskTableExcerpt {
+struct AskTableExcerpt {
     let preamble: String
     let text: String
     let rowCount: Int
@@ -18,7 +19,7 @@ private struct AskTableExcerpt {
     }
 }
 
-private struct AskMessage: Identifiable {
+struct AskMessage: Identifiable {
     let id = UUID()
     let text: String
     var reply: AssistantReply? = nil
@@ -31,6 +32,16 @@ private struct AskMessage: Identifiable {
         self.text = text; self.reply = reply; self.isUser = isUser; self.image = image; self.protectedEdit = protectedEdit; self.protectedRecords = protectedRecords
         tableExcerpt = isUser ? AskTableExcerpt(text) : nil
     }
+}
+
+@MainActor @Observable final class AskConversationState {
+    var day = Dates.day(Date())
+    var messages: [AskMessage] = []
+    var session = AskYubaiSession()
+    func expire() {
+        if day != Dates.day(Date()) { clear() }
+    }
+    func clear() { day = Dates.day(Date()); messages = []; session = AskYubaiSession() }
 }
 
 struct AskYubaiView: View {
@@ -55,6 +66,8 @@ struct AskYubaiView: View {
     @State private var captureTask: Task<Void, Never>?
     @State private var voiceTask: Task<Void, Never>?
     @State private var appeared = false
+    @State private var conversationDay = Dates.day(Date())
+    @State private var conversationLedgerID: UUID?
     @State private var configured = IntelligenceRuntime.isConfigured
     @FocusState private var inputFocused: Bool
     private var enabled: Bool { store.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
@@ -66,7 +79,9 @@ struct AskYubaiView: View {
             #if os(iOS)
             .toolbarBackground(.hidden, for: .navigationBar)
             #endif
-            .toolbar { CloseButton() }
+            .manualSheetHeader("问余白", actionTitle: "清空", primary: false, cancelTitle: "关闭", showsAction: !messages.isEmpty, actionIdentifier: "clearAskConversation", action: {
+                cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear()
+            })
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
                 do {
@@ -88,13 +103,13 @@ struct AskYubaiView: View {
                 }
             }
             .onChange(of: voice.transcript) { _, text in input = voicePrefix + text }
-            .onAppear { connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; input = initialText; if let initialImage { recognize(initialImage) } } }
+            .onAppear { connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; store.askConversation.expire(); messages = store.askConversation.messages; session = store.askConversation.session; conversationDay = store.askConversation.day; conversationLedgerID = store.current.id; input = initialText; if let initialImage { recognize(initialImage) } } }
             .onChange(of: IntelligenceRuntime.cloud.unavailableModel) { _, model in if model == nil { errorText = "" } }
-            .onDisappear { cancel(); connectivity.stop() }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
+            .onDisappear { cancel(); connectivity.stop(); if conversationDay == Dates.day(Date()) && conversationLedgerID == store.current.id { store.askConversation.messages = messages; store.askConversation.session = session } }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { if conversationDay != Dates.day(Date()) { cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear(); conversationDay = store.askConversation.day }; voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
             .onChange(of: store.current.id) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
             .onChange(of: store.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
-            .onChange(of: store.locked) { _, value in if value { cancel(); messages = []; originalImage = nil; session = AskYubaiSession() } }
+            .onChange(of: store.locked) { _, value in if value { cancel() } }
     }
     private var conversation: some View {
         ScrollViewReader { proxy in
@@ -123,7 +138,7 @@ struct AskYubaiView: View {
         return VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             if messages.isEmpty && !busy && !reading {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                    ForEach(["这周外卖花了多少？", "11月1日的房租够吗？", "想买一双 899 的鞋，该不该买？"], id: \.self) { question in
+                    ForEach(AskYubai.exampleQuestions(ledger: store.current, occurrences: store.funds.occurrences, now: Date()), id: \.self) { question in
                         Button { input = question; send() } label: {
                             Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.gapGroup)
                                 .frame(minHeight: YubaiSize.tapMin)
@@ -331,6 +346,7 @@ struct AskYubaiView: View {
 }
 
 struct AskEvidenceView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AppStore.self) private var store
     let ids: [UUID]
     var body: some View {
@@ -339,7 +355,7 @@ struct AskEvidenceView: View {
             CardRows(rows) { entry in
                 EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts).accessibilityIdentifier("evidenceEntry_" + entry.id.uuidString)
             }
-            if rows.isEmpty { Text("没有可展示的记录，或原记录已移除。") }
+            if rows.isEmpty { EmptyState("doc.questionmark", "记录已移除", action: "返回", onAction: { dismiss() }) }
         }.navigationTitle("明细").yubaiNavigation()
     }
 }
@@ -516,7 +532,7 @@ private struct AskEntryDraftCard: View {
         var confirmed = change
         confirmed.items = chosen.map { draft in var value = draft; value.amountConfirmed = true; return .addEntry(value) }
         if store.apply(confirmed, label: "问余白修改", finishing: { ledger in
-            for draft in chosen where draft.categoryUserEdited == true {
+            for draft in chosen where draft.categoryUserEdited == true && !Classification.isPending(draft.category) {
                 try CategoryModel.confirm(.init(category: draft.category, subcategory: draft.subcategory), entryIDs: [draft.id], in: &ledger)
             }
             if let image {
@@ -534,27 +550,24 @@ private struct AskEntryDraftCard: View {
 }
 
 private struct AskDraftEditor: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    @State var draft: EntryDraft
+    let draft: EntryDraft
     let save: (EntryDraft) -> Void
     var body: some View {
-        Form {
-            Section {
-                TextField("用途", text: Binding(get: { draft.purpose ?? draft.title }, set: { draft.title = $0; if draft.purpose != nil { draft.purpose = $0 } })).accessibilityIdentifier("draftPurpose")
-                AmountLabel(cents: draft.amount, hide: store.preferences.hideAmounts)
-                DatePicker("日期", selection: $draft.date, displayedComponents: .date)
-                Picker("账户", selection: $draft.accountID) { ForEach(store.accounts.filter { !$0.archived }) { Text($0.name).tag($0.id) } }
-                CategoryPickerField(income: draft.nature == .refund ? false : draft.nature.inflow,
-                                    selection: .init(category: draft.category, subcategory: draft.subcategory),
-                                    identifier: "draftCategory") { choice in
-                    draft.category = choice.category; draft.subcategory = choice.subcategory; draft.categoryUserEdited = true
-                }
-            }.listRowBackground(YubaiColor.card)
-        }.editorForm().navigationTitle("编辑这一笔").yubaiNavigation().toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) { Button("改好了") { save(draft); dismiss() }.disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("saveDraftEdit") }
+        let entry = editableEntry
+        EntryEditForm(entry: entry, title: "改这笔", primaryTitle: "放回") { edited in
+            var value = draft
+            value.amount = edited.amount; value.nature = edited.nature; value.date = edited.date
+            value.accountID = edited.accountID; value.otherAccountID = edited.otherAccountID
+            value.title = edited.title; value.purpose = edited.purpose
+            value.category = edited.category; value.subcategory = edited.subcategory; value.categoryUserEdited = true
+            save(value)
         }
+    }
+    private var editableEntry: Entry {
+        var value = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID,
+                          title: draft.title, category: draft.category)
+        value.id = draft.id; value.purpose = draft.purpose; value.subcategory = draft.subcategory; value.otherAccountID = draft.otherAccountID
+        return value
     }
 }
 

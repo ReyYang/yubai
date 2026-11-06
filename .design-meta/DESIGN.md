@@ -7,6 +7,21 @@
 按 owner 性能清单续接中断改动；分片观察、Core 展示缓存、管家防抖与后台检测、阴影／竹影预渲染、现金图基础层隔离及状态写入守卫的逐项实现、保留项和证据见 [性能整理记录](../docs/APP-SMOOTHNESS.md)。本轮没有新的产品或视觉决定；原稿、视觉 token、顶部 fade mask、动效参数与交互保持，后台页数值转场为避免滑入时变化而保留。新增／改动产品可见中文：无。
 
 Core build 与全量 887 项（883 通过／4 原有跳过／0 失败）、99 次 App 条件解析及 Swift 6 源码抽取 Observation 探针 24 个断言通过。Apple SDK 构建、原生逐像素比对及真机帧耗未验证，特别保留阴影 capInsets／竹影旋转／现金图选择层的原生核对项。外部资源未同步，未提交／推送，无新依赖。
+## 2026-11-06 · 第三十五轮记一笔／改一笔「更多」（owner 批准）
+
+owner 授权在 `feat/entry-more-category-picker`（main `35d13e3`）接入已批准的 V35-Add-More 画板。此节补齐下方第 34／35 轮留给记账入口的范围：`CategoryPicker` 增加 sections 样式，每个主类单独一行按钮，小项直接在下方完整换行；点主类立即确认只记主类，点小项立即确认两级路径，保留「加一个」及取消。其他入口继续使用原 grid 两步展开样式。原稿只读，未复制 HTML、来源路径或私有链接；外部画布、截图、分发包未同步。
+
+`EntryCategoryChips` 的更多 sheet 使用这一共享样式，方向跟随外层记账性质（退款用支出分类），不维护独立的收支选择；转账在两页均不显示分类。建议仅在打开更多时本机计算并描边，不改变草稿或排序。前五个 chip 始终取该方向固定 categoryOrder 前缀，选中范围外的主类另追加；记一笔与改一笔都显示五个。选中小项的 chip 显示完整「主类 · 小项」，文字 fixedSize，整块换行；主类行用较重字号区分层级，不新增说明文案。
+
+`QuickEntryView` 保存完整 EntryDraft 的 subcategory，并在原 store.apply 的 finishing 中使用 `CategoryModel.confirm`，包括默认主类的显式 nil；本机猜测不能回填未选的小项。重复记账的计划仍只保存主类，首笔保存完整两级路径，两者一次提交；连续记账及切换性质清空小项。`EntryEditView` 的 draft 同步两级选择，原 edit／repeatMonthly 后在同次 store.update 显式 confirm，覆盖旧新小项都为 nil 时 Core 可能产生的猜测；未选新分类的记录保留原小项。`FixedFlowsView` 没有使用 EntryCategoryChips，继续使用现有主类 Menu。Core API、资金计算及工程登记无需变化。
+
+保留现有金额、保存、取消、固定收付等测试标识，新增 `entryCategory_<主类>`、`entryCategoryMore`、`entryCategoryPicker`、`entryMoreCategory_<主类>`、`entryMoreSubcategory_<主类>/<小项>`、`entryMoreAdd`、`entryMoreCancel`，并为共享新增 sheet 的取消、主类归属选项补标识。新增四组 UI 回归源码覆盖两级直接可见、取消保留、固定前五、小项保存及编辑、只记主类抵抗猜测、切收支复位、新增取消／新增小项、重复与连续记账。原测试没有直接查询旧更多 List 的用例，其余标识和主类按钮文字保持。
+
+新增／改动的产品可见中文只有动态事实模板 **「主类 · 小项」**；本入口新复用的标题／字段为「分类」「加一个」「名字」「放在」，控件为「更多」「取消」「加一个」「新的大类」「更多…」「加上」及账本主类／小项名，状态复用原添加分类保存提示。均属于标题、事实、控件或状态；没有四类之外的说明文字。辅助功能新增完整「只记主类」hint，不作为可见文案。
+
+Linux Swift 6.2.4：`swift build --target YubaiCore` 通过；`YUBAI_LIVE_EVAL=0 swift test` 全量 **874 项，870 通过／4 原有实网 opt-in 跳过／0 失败（123.969 秒）**。抽取实际 QuickEntryView 的 draftChange／save 和 EntryEditForm 的 save／finishAmount，替换平台 store／动效后链接真实 Core，104 个判断通过，覆盖普通／每月／连续、nil／小项、同类清空／跨类两侧 nil、账本编解码后分类不回填及收入／转账；该替身不等于 SwiftUI 或真实 AppStore 验证。改动 App 的 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 及 UI 测试模拟器条件语法解析共 13 次通过；指定访问审计已执行，无新增跨文件 private 越权，diff 检查通过。日志位于 `/tmp/yubai-more-{build,test,logic}.log`，条件解析记录位于 `/tmp/yubai-more-parse.json`。Apple SDK 类型检查、Xcode 构建、XCTest UI 实跑、390pt／深色／大字号／VoiceOver与真机 sheet 交互仍待 Mac；语法检查不替代这些验收。按本轮授权以 ReyYang 提交，不推送。
+
+提交环境：常规 git add／commit 无法创建当前工作树的 index.lock，Git 元数据挂载只读。改用 `/tmp` 临时索引生成 ReyYang 提交，并保存在本地 `review/entry-more-category-picker`；原 `feat/entry-more-category-picker` 分支引用及索引尚待可写环境对齐到该提交，工作区保留实现，未推送。
 
 ## 2026-11-06 · PR #75 合并 main（#76／#78）
 
@@ -103,6 +118,31 @@ owner 本轮批准分类管理与统一两步分类选择，取代第三十一�
 - `scripts/audit-swift-access.py` 已执行：41 个 App＋1 个 UI 文件、1,214 处访问声明，0 个同属主跨文件私有命中；复核新增成员均在同文件使用，Core 供 App 使用的成员明确为 public。审计是保守命名检查，不能代替类型检查。五份改动 Swift 的词法括号配对检查、`git diff --check` 通过。
 - 刻度算法的独立 Python 转写检查 10,008 组范围／步长／刻度数量，未发现失败；这只是算法模型核对，不是执行 Swift 源码，不能计入单元测试结果。
 - 仍待 Apple SDK 类型检查／Xcode 构建、XCTest UI、390pt 渲染、长按／横滑竞争、标注真实坐标、Mac 指针、深色／大字号／VoiceOver 与真机仍未验证。
+## 2026-11-06 · Batch A 细节维护（外观保持）
+
+来源：owner 本轮明确任务，在 `feat/detail-polish` 实现，不提交。沿用现有选定稿与「少写字」规则；本轮只授权问余白示例的数据与文案变化，不新增说明文字。
+
+- `DesignSystem.swift / Toast` 在原有 `.task(id: text)` 显示时发送 iOS accessibility announcement，有撤销动作追加「，可撤销」；普通重绘不重复触发，macOS 不调用该 API。
+- `AskYubai.swift / exampleQuestions` 接收账本、现在页同源的 occurrences 与当前时间：第一笔非收入项生成付款问题，当前 ISO 周用 Finance.cashFlow 的最大正净支出分类及 Classification.displayCategory 生成消费问题，再加原购买问题。无待付款时跳过该题（两题），无本周正净支出时使用通用周消费问题。AskYubaiView 只传数据，按钮 UI 保持。
+- 同值 token 替换覆盖 DesignSystem 的使用处及 CashTimelineCard、EntriesView、FixedFlowsView、InsightsView、NowActionCards、OverviewView、ProfileConversationView、QuickEntryView、WishlistView；token 定义、实际数值与图内几何不变。6／10pt 原有间距使用已有兼容 token，不升级到其他网格值。
+- `AssistantTests.swift` 新增 7 项 Core 回归，覆盖待付款／仅收入／空账本、分类合计与别名、无本周支出、分类显示名、跨年 ISO 周边界、退款抵扣；`AppFlowTests.swift` 的无密钥断言同步为合成账本实际生成的两题。
+
+新增／改动可见中文只有控件文字：「M月D日的标题够付吗？」「这周分类显示名花了多少？」「这周花了多少？」；「，可撤销」仅用于读屏。没有新增其他类型的可见文字。
+
+保留的原始数值按用途列出（同值但异义的 token 不复用）：
+
+| 位置／用途 | 保留数值 | 原因 |
+|---|---|---|
+| ButlerViews 滑动标签、Overview／CashTimeline 顶距、CashTimeline 按钮与图例间距 | padding 22／14／5；spacing 14／5 | 没有同义的间距 token；radius 的 14／22 不用于 padding。 |
+| 分隔线与滚动锚点 | height 1 | 没有 1pt 尺寸 token。 |
+| Butler／Saving／Pill／InlineNote 状态点、聊天思考点、固定收付日期点 | 6×6、4×4、12×12 | 没有对应尺寸语义；不借用间距、messageTail 或 pageArrowGlyph。 |
+| Now 卡组背面、NowCardButton、AddEntryButton | height 40、minHeight 36、62×62 | 现有同值 token 分别表示图标／分段、行图标、标签栏高度，与这些表面／按钮不同义。 |
+| CashTimeline、Butler、Insights、Settings、ImportReadingProgress、Hero／AnswerChart 的图、图例标记与进度条 | 14×1、14×2；7／8／10／124／204 方形；圆角 2／3；高度 6／8／140／170／180／210；宽 64 | 按要求保留图形几何；进度条 6pt 也没有同义尺寸 token。 |
+| 固定内容、空态、日期选择器、窗口与页面最大宽度 | 120、220、230、240、299、300、320、340、360、400、410、460、520、540、600、610、620、680、720、760、780、920、1080 | 没有同值且同义的尺寸 token；230×299 是现有竹影资源。 |
+| BrandMark 图形、NavigationBackPaper 图片 renderer 与 UI 测试支持 | 现有绘图比例与坐标；renderer 60×48、绘图圆角 18 等 | 按任务排除，保持原始绘图及测试夹具。 |
+| frame 中的比例、倍数、索引和分母保护 | 0／1／2／3 等 | 无量纲计算数值，不是绝对间距／尺寸。 |
+
+验证：Swift 6.2.4 Linux `swift build` 退出 0（58.60 秒），完整 `YUBAI_LIVE_EVAL=0 swift test` 退出 0，**804 项，800 通过／4 原有实网 opt-in 跳过／0 失败，102.83 秒**；新增 7 项全部通过。依赖通过只读 GitHub 接口取得 Package.resolved 锁定 revision 的 818 个源码／manifest／license 文件，逐个 Git blob SHA-1 与长度校验后仅写 ignored `.build/checkouts`，未改依赖版本；SwiftPM 缓存使用可写的 /tmp。日志 `/tmp/yubai-batch-a-build.log`、`/tmp/yubai-batch-a-tests.log`。41 个 App 文件在 iOS 26 模拟器 Debug、iOS 26 设备、macOS 14 Debug 条件解析共 123 次通过，最终 DesignSystem 三组补检与更新 UI 测试的 iOS 条件解析通过；解析记录 `/tmp/yubai-batch-a-app-parse.json`。同值 token 还原对照、token 定义保持检查及 `git diff --check` 通过。Apple SDK 构建、UI 实跑与 VoiceOver 真机仍待 Mac。外部画布、原稿、截图和分发包未同步；无新依赖或工程引用变化，Core 由 Xcode 的本地 Swift package 产品引用。
 
 ## 2026-11-05 · 第三十八轮「还能花图例与克制超出」
 
@@ -1454,3 +1494,12 @@ Linux build／449 项测试通过（新增 1 项独立退款小项回归），�
 沿用第十五轮已采用稿与「少写字」规则，不新增页面、外观或说明文字。按 owner 的 Xcode 真编译错误修正分类枚举调用标签、抽出小项网格选择芯片，并逐个复核 SavingPurchaseViews、SavingViews、SubcategoryViews 及八个接线页面；把复杂选择状态、筛选／汇总、聊天气泡、行和导航拆开，让 SwiftUI 分别求类型。Core 签名／访问与可选性逐项对照定义。模型名按 owner 提供的官方原文更正为 deepseek-flash／deepseek-v4-pro。
 
 新增 judge-ask／judge-wait／judge-buy／judge-skip／wishlist-cool／letter-saving／profile-revisit／subcategory 八个合成截图脚本，限制仍为 Debug＋模拟器＋UUID 测试账本。问答继续通过脚本 transport 执行真实工具；来信通过真实 candidate 生成首封并保持未静音，周四以后从我页打开。截图入口、全部文件和验证见[交付续记](../docs/SAVING-UI-V15.md#2026-10-23--pr-34-编译修复与截图夹具)。Linux 449 项测试（445 通过／4 原有跳过／0 失败）、8 脚本离线 Core 执行及 App iOS／macOS 语法解析通过；新增 8 个 UI 流程仅静态检查，Apple 真编译／UI 实跑及截图验收待做。HTML、Figma 和分发包未改，无提交／推送。
+
+
+## 2026-11-06 · 第四十轮记一笔收口与细节打磨 A–D（owner 批准）
+
+本次明确的合并 brief 为当前范围，取代第三十三轮的首项实心预选、按住清空，以及当时推迟到下一轮的三项公共控件工作；第三十五轮 sections 两步分类与 Batch A 保留。建议仅从用户同用途最后记法及同方向 ±2h 历史生成，未点击按建议保存，无建议保持没分类；用途回填恢复主类、小项、账户。记一笔、改一笔、Ask 草稿和账单编辑使用同一 EntryForm／字段卡／金额区／托盘，连续记账回执单独撤销最后一笔，编辑统一拦截放弃。跨月搜索与 30 天最近删除规则均在 Core。
+
+本轮使用系统 List swipe、contextMenu、年月 wheel、confirmationDialog 和原生数字键盘 accessory。通则与专稿不同的主键采用专稿 brand 填充；显式词表及两位小数优先于稿中旧字。第 28 项按已批准规则在推入页及 sheet 隐藏 iOS 浮栏，移除推入页额外底部留白；根页重选回顶与清栈分支保留，根 pager 在推入页仍禁横翻，Mac 侧栏保持。复核恢复非滑动删除的 medium impact，滑动删除跳过应用触感；空用途字段恢复 labelSecondary「可不填」，账单名字不加。该占位是 owner 明确要求的文案例外。账目 List 采用原生分组外观，不再手画该组外投影；已有纸卡缓存九宫格阴影保持，返回按钮 representable 行为未改。iOS 根页移除内容 mask、改用系统 top soft，macOS 路径保持。
+
+逐项源码、所有可见中文、与规则／看板的取舍、工程成员及设备清单登记在 `docs/ROUND40-IMPLEMENTATION.md`。Linux Core build 与完整测试 908 项（904 通过、4 原有实网跳过、0 失败）；App／Widget／UI 三组条件语法解析共 135 个文件／配置全部通过，工程 285 个对象、App 文件成员与新测试成员检查通过。Apple SDK 类型检查、XCTest UI、视觉／触感／辅助功能与桌面入口冷热启动未验证，外部资源未同步。新 Core 文件由本地包编译，测试加入 Xcode 测试 sources；无新增 App-only／Widget 文件、依赖或 entitlement；Info.plist 仅加三项静态快捷操作。全部改动留工作树，未提交／推送。

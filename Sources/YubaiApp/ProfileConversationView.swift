@@ -50,18 +50,12 @@ struct ProfileConversationView: View {
             if proposal == nil || revising {
                 ChatInputBar(text: $input, placeholder: revising ? "想改哪里？" : "写下你的想法…",
                     accessibilityLabel: "告诉余白你的消费观", inputID: "profileInput", sendID: "sendProfile",
-                    busy: busy, send: ask, leading: { Color.clear.frame(width: YubaiSpace.space8, height: 0).accessibilityHidden(true) }, accessory: { EmptyView() })
+                    busy: busy, send: ask, leading: { Color.clear.frame(width: YubaiSpace.space8, height: YubaiSpace.none).accessibilityHidden(true) }, accessory: { EmptyView() })
                     .padding(YubaiSpace.insetPage)
             }
         }.paperBackground().navigationTitle("和余白聊聊").yubaiNavigation()
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { CloseButton() }
-                if !revisit && proposal == nil && !messages.isEmpty {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("先跳过") { input = "暂时没想好，先跳过"; ask() }.disabled(busy).frame(minHeight: YubaiSize.tapMin)
-                    }
-                }
-            }
+            .manualSheetHeader("和余白聊聊", actionTitle: "先跳过", primary: false, enabled: !busy, cancelTitle: "关闭", showsAction: !revisit && proposal == nil && !messages.isEmpty,
+                               action: { input = "暂时没想好，先跳过"; ask() })
             .task {
                 guard messages.isEmpty && proposalID == nil else { return }
                 startedAsRevisit = revisit

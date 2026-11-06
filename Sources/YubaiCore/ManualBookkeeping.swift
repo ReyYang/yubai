@@ -105,14 +105,18 @@ public enum ManualBookkeeping {
     public static func entryDate(for day: Date, now: Date) -> Date {
         Dates.calendar.isDate(day, inSameDayAs: now) ? now : Dates.calendar.date(bySettingHour: 12, minute: 0, second: 0, of: day)!
     }
+    public static func saveDate(for day: Date, now: Date) -> Date {
+        Dates.calendar.date(bySettingHour: Dates.calendar.component(.hour, from: now), minute: Dates.calendar.component(.minute, from: now), second: Dates.calendar.component(.second, from: now), of: day)!
+    }
     public static func change(amount: Int64, nature: Nature, accountID: UUID, otherAccountID: UUID? = nil,
                               day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Date()) throws -> ChangeSet {
         guard amount > 0, amount <= Money.limit, Dates.day(day) <= Dates.day(now) else { throw YubaiError.invalid("请核对金额和日期。") }
         if nature == .transfer { guard let otherAccountID, otherAccountID != accountID else { throw YubaiError.invalid("转账的两个账户必须不同。") } }
         let purpose = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
-        var draft = EntryDraft(date: entryDate(for: day, now: now), amount: amount, amountConfirmed: true,
+        var draft = EntryDraft(date: saveDate(for: day, now: now), amount: amount, amountConfirmed: true,
                                nature: nature, accountID: accountID, title: purpose.isEmpty ? category : purpose,
                                category: category, purpose: purpose.isEmpty ? nil : purpose)
+        draft.categoryUserEdited = nature != .transfer
         draft.otherAccountID = nature == .transfer ? otherAccountID : nil
         draft.planID = link?.planID; draft.occurrence = link?.occurrence
         var change = ChangeSet(source: "手动", reason: "记一笔", items: [.addEntry(draft)])
@@ -218,7 +222,7 @@ public enum ManualBookkeeping {
         }
         if entry.amount != original.amount { entry.personalExpense = nil; LedgerOperations.recordPersonalShare(&entry, ledger: next) }
         if entry.subcategory != original.subcategory || entry.category != original.category {
-            if entry.category != original.category && entry.subcategory == original.subcategory {
+            if entry.category != original.category && entry.subcategory == original.subcategory && (!entry.subcategoryUserEdited || entry.subcategory != nil) {
                 entry.subcategory = nil; entry.subcategoryUserEdited = false
                 SubcategoryClassifier.classify(&entry, ledger: next)
             } else { entry.subcategoryUserEdited = true }
@@ -239,6 +243,7 @@ public enum ManualBookkeeping {
 public struct EntryDay: Identifiable, Sendable {
     public var id: Date { date }; public var date: Date; public var entries: [Entry]; public var net: Int64
     public var spending: Int64 = 0
+    public var income: Int64 = 0
 }
 public struct EntryMonth: Identifiable, Sendable {
     public var id: Date { date }; public var date: Date; public var days: [EntryDay]; public var spending: Int64; public var income: Int64
@@ -269,12 +274,22 @@ public enum EntryTimeline {
         public var id: Date { date }
         public let date: Date
         public let spending: Int64
+        public let income: Int64
         public let entries: [Row]
+    }
+    public struct Month: Identifiable, Equatable, Sendable {
+        public var id: Date { date }
+        public let date: Date
+        public let spending: Int64
+        public let income: Int64
+        public let days: [Day]
     }
     public struct Snapshot: Equatable, Sendable {
         public let spending: Int64
         public let income: Int64
         public let days: [Day]
+        public var months: [Month] = []
+        public var count: Int { days.reduce(0) { $0 + $1.entries.count } }
     }
     public enum Filter: String, CaseIterable, Sendable {
         case all = "全部", expense = "支出", income = "收入", uncategorized = "没分类"
@@ -294,7 +309,8 @@ public enum EntryTimeline {
     public static func snapshot(sortedEntries: [Entry], ledger: Ledger, month: Date, search: String = "", filter: Filter = .all,
                                 calendar: Calendar = Dates.calendar) -> Snapshot {
         guard let interval = calendar.dateInterval(of: .month, for: month) else { return Snapshot(spending: 0, income: 0, days: []) }
-        let entries = sortedEntries.filter { $0.deletedAt == nil && $0.date >= interval.start && $0.date < interval.end }
+        let searching = !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let entries = sortedEntries.filter { $0.deletedAt == nil && (searching || ($0.date >= interval.start && $0.date < interval.end)) }
         let rents = Dictionary(uniqueKeysWithValues: ledger.rents.map { ($0.id, $0) })
         var spending: Int64 = 0; var income: Int64 = 0
         for entry in entries {
@@ -302,8 +318,9 @@ public enum EntryTimeline {
             if entry.nature == .income { income += entry.amount }
         }
         let symbols = Dictionary(uniqueKeysWithValues: ledger.categories.map { ($0.name, $0.symbol) })
-        let days = months(sortedEntries: entries, ledger: ledger, search: search, filter: filter, calendar: calendar).flatMap(\.days).map { day in
-            Day(date: day.date, spending: day.spending, entries: day.entries.map { entry in
+        let grouped = months(sortedEntries: entries, ledger: ledger, search: search, filter: filter, calendar: calendar)
+        let days = grouped.flatMap(\.days).map { day in
+            Day(date: day.date, spending: day.spending, income: day.income, entries: day.entries.map { entry in
                 let category = ledger.resolveCategory(entry.category)
                 let uncategorized = isUncategorized(entry)
                 let name = uncategorized ? "没分类" : Classification.displayCategory(category)
@@ -324,7 +341,12 @@ public enum EntryTimeline {
                            categoryName: name, note: note, symbol: symbol)
             })
         }
-        return Snapshot(spending: spending, income: income, days: days)
+        let displayMonths = grouped.map { group in
+            Month(date: group.date, spending: group.spending, income: group.income,
+                  days: days.filter { calendar.isDate($0.date, equalTo: group.date, toGranularity: .month) })
+        }
+        return Snapshot(spending: searching ? grouped.reduce(0) { $0 + $1.spending } : spending,
+                        income: searching ? grouped.reduce(0) { $0 + $1.income } : income, days: days, months: displayMonths)
     }
     public static func months(sortedEntries: [Entry], ledger: Ledger, search: String = "", filter: Filter = .all,
                               calendar: Calendar = Dates.calendar) -> [EntryMonth] {
@@ -360,7 +382,7 @@ public enum EntryTimeline {
             let spending = Finance.spendingAmount(entry, rent: entry.rentID.flatMap { rents[$0] })
             result[m].days[d].spending += spending
             result[m].spending += spending
-            if entry.nature == .income { result[m].income += entry.amount }
+            if entry.nature == .income { result[m].income += entry.amount; result[m].days[d].income += entry.amount }
         }
         return result
     }

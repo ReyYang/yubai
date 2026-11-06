@@ -139,7 +139,7 @@ private struct CaptureRulesView: View {
                 }
             }
         }.navigationTitle(kind.title).yubaiNavigation()
-            .overlay { if names.isEmpty { ContentUnavailableView("还没有映射", systemImage: kind == .card ? "creditcard" : "tag") } }
+            .overlay { if names.isEmpty { EmptyState(kind == .card ? "creditcard" : "tag", "还没有映射", action: "添加", onAction: { editing = CaptureRuleSelection(name: nil) }) } }
             .toolbar { ToolbarItem(placement: .primaryAction) { Button("添加", systemImage: "plus") { editing = CaptureRuleSelection(name: nil) } } }
             .sheet(item: $editing) { selected in NavigationStack { CaptureRuleEditor(kind: kind, original: selected.name) }.environment(store).appErrors().yubaiSheetBackground() }
     }
@@ -169,12 +169,9 @@ private struct CaptureRuleEditor: View {
                                     selection: CategoryAssignment(path: category), allowsDirectionChange: true,
                                     identifier: "captureRuleCategory") { category = $0.path }
             }
-            if let original { Button("删除", role: .destructive) { if store.update("删除映射", { remove(original, in: &$0) }) { dismiss() } } }
+            if let original { Button("删掉") { if store.update("删除映射", { remove(original, in: &$0) }) { dismiss() } }.buttonStyle(DestructiveButtonStyle()) }
         }.navigationTitle(original == nil ? "添加映射" : "修改映射")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("好了", action: save).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (kind == .card && account == nil)) }
-            }
+            .manualSheetHeader(original == nil ? "添加映射" : "修改映射", enabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (kind != .card || account != nil), action: save)
             .onAppear {
                 name = original ?? ""
                 account = original.flatMap { store.preferences.quickCapture.cardAccounts[$0] }.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first?.id

@@ -101,10 +101,11 @@ final class SubcategorySavingTests: XCTestCase {
         try ManualBookkeeping.edit(edited, in: &ledger)
         XCTAssertNil(ledger.entries[0].subcategory); XCTAssertFalse(ledger.entries[0].subcategoryUserEdited)
     }
-    func testManualQuickCaptureAndImportRunLocalClassification() throws {
+    func testManualKeepsMainOnlyWhileCaptureAndImportClassify() throws {
         var ledger = seed()
         let change = try ManualBookkeeping.change(amount: 3200, nature: .expense, accountID: ledger.accounts[0].id, day: now, purpose: "午餐", category: "餐饮", now: now)
-        try change.apply(to: &ledger); XCTAssertEqual(ledger.entries.last?.subcategory, "午餐")
+        try change.apply(to: &ledger); XCTAssertNil(ledger.entries.last?.subcategory)
+        XCTAssertTrue(ledger.entries.last?.subcategoryUserEdited == true)
         let pay = try QuickCapture.applePay(merchant: "滴滴", amount: "32", card: "合成卡", date: now, in: &ledger, now: now)
         XCTAssertEqual(pay.entry.subcategory, "打车")
         let csv = "日期,金额,收支,交易对方,分类\n2026-06-14,20,支出,外卖,餐饮\n"

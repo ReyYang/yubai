@@ -249,7 +249,7 @@ struct ButlerCardView: View {
         case .offCharacter: label = "比平时贵"
         case .followUp: label = "买了一个月 · 用得怎么样？"
         case .cooldownDue: label = "心愿单"
-        case .recurring: label = "像是固定收付"
+        case .recurring: label = "像是会回来的账单"
         case .duplicate: label = "可能记重了"
         case .weeklyLetter: label = "每周来信"
         }
@@ -313,7 +313,7 @@ struct ButlerEvidenceView: View {
                 }
                 if card.evidence.count > rows.count { Text("部分原始记录已移除。").yubaiFont(YubaiFont.caption) }
             } else { Text("这张卡片已移除。") }
-        }.navigationTitle("明细").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("明细").yubaiNavigation().manualSheetHeader("明细", cancelTitle: "关闭", showsAction: false)
     }
 }
 
@@ -327,7 +327,7 @@ struct ButlerQuestionView: View {
         Group {
             if let fallback, fallback.isFallback { UnsortedGroupsView(questionID: fallback.id) }
             else { questionContent.navigationTitle("补充用途").yubaiNavigation() }
-        }.toolbar { CloseButton() }
+        }.manualSheetHeader(fallback?.isFallback == true ? "待分类" : "补充用途", cancelTitle: "关闭", showsAction: false)
     }
     private var questionContent: some View {
         ScrollView {
@@ -376,7 +376,7 @@ struct ButlerProposalView: View {
                     }) { dismiss() }
                 })
             } else { Text("这份修改已经处理过了。") }
-        }.navigationTitle("余白想这样改").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("余白想这样改").yubaiNavigation().manualSheetHeader("余白想这样改", cancelTitle: "关闭", showsAction: false)
     }
 }
 
@@ -533,7 +533,7 @@ struct LettersView: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         Page {
-            if !store.cards.contains(where: { $0.kind == .weeklyLetter }) { Text("还没有每周来信。").yubaiFont(YubaiFont.callout) }
+            if !store.cards.contains(where: { $0.kind == .weeklyLetter }) { EmptyState("envelope", "还没有每周来信", action: "问余白", onAction: { store.sheet = .ask("") }) }
             ForEach(store.cards.filter { $0.kind == .weeklyLetter }.sorted { $0.createdAt > $1.createdAt }) { card in
                 NavigationLink {
                     LetterDetailView(cardID: card.id)
@@ -542,6 +542,6 @@ struct LettersView: View {
                         .yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle())
             }
-        }.navigationTitle("每周来信").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("每周来信").yubaiNavigation().manualSheetHeader("每周来信", cancelTitle: "关闭", showsAction: false)
     }
 }

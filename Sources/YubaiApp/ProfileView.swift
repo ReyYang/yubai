@@ -169,7 +169,7 @@ struct ProfileView: View {
             Spacer(minLength: YubaiSpace.none)
             if editing { Menu {
                 Button("编辑") { sheet = .area(area, stance) }
-                Button("删除", role: .destructive) {
+                Button("删掉") {
                     edit { $0.generous.removeAll { $0.id == area.id }; $0.restrain.removeAll { $0.id == area.id } }
                 }
             } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除" + area.title) }
@@ -221,7 +221,7 @@ struct ProfileView: View {
                 Spacer(minLength: YubaiSpace.none)
                 Menu {
                     Button("编辑") { sheet = .principle(text) }
-                    Button("删除", role: .destructive) { edit { $0.principles.removeAll { $0 == text } } }
+                    Button("删掉") { edit { $0.principles.removeAll { $0 == text } } }
                 } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除原则：" + text)
             }
         }
@@ -246,7 +246,7 @@ struct ProfileView: View {
             Spacer(minLength: YubaiSpace.none)
             Menu {
                 Button("调整存钱") { sheet = .goal(goal) }
-                Button("不存了", role: .destructive) { store.update("修改消费观") { $0.goals.removeAll { $0.id == goal.id } } }
+                Button("删掉") { store.update("修改消费观") { $0.goals.removeAll { $0.id == goal.id } } }
             } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("调整或移除" + goal.title)
         }.padding(.vertical, YubaiSpace.space8)
     }
@@ -257,10 +257,9 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     TextField("金额（元）", text: $floor).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("始终留着金额")
 
-                    Button("保存") {
-                        do { let amount = try Money.parse(floor); edit { $0.floorAmount = amount } }
-                        catch { store.error = error.localizedDescription }
-                    }
+                    if !floor.isEmpty && (try? Money.parse(floor)) == nil { InlineFieldError(message: "填写有效金额") }
+                    Button("保存") { if let amount = try? Money.parse(floor) { edit { $0.floorAmount = amount } } }
+                        .disabled((try? Money.parse(floor)) == nil)
                 }
             }
         }
@@ -317,6 +316,7 @@ private struct ProfileAreaEditor: View {
         Form {
             Section {
                 TextField("名称", text: $title)
+                if title.isEmpty { InlineFieldError(message: "填写名称") }
                 SuggestionChips(values: ["外卖", "学习", "旅行"], selected: title) { title = $0 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text("关键词").yubaiFont(YubaiFont.row)
@@ -344,20 +344,25 @@ private struct ProfileAreaEditor: View {
             if stance == .restrain {
                 Section("上限") {
                     TextField("每周次数", text: $weekly).numericInput().accessibilityHint("空着表示不限次数")
+                    InlineFieldError(message: !weekly.isEmpty && Int(weekly).map({ (0...10000).contains($0) }) != true ? "每周次数须为 0 至 10,000 的整数" : nil)
                     TextField("每月金额", text: $monthly).numericInput().accessibilityHint("单位元，空着表示不限金额")
+                    InlineFieldError(message: !monthly.isEmpty && (try? Money.parse(monthly)) == nil ? "填写有效金额" : nil)
                 }
             }
         }.editorForm().navigationTitle(stance == .restrain ? "想克制的" : "愿意多花的").yubaiNavigation()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存", action: save) }
-            }
+            .manualSheetHeader(stance == .restrain ? "想克制的" : "愿意多花的", actionTitle: "保存", enabled: validationError == nil, action: save)
             .onAppear {
                 guard !loaded else { return }; loaded = true
                 title = area.title; categories = Set(area.match.categories.map { store.current.resolveCategory($0) })
                 keywords = area.match.keywords; note = area.note
                 weekly = area.softLimit?.perWeekCount.map { String($0) } ?? ""; monthly = area.softLimit?.perMonthAmount.map { Money.input($0) } ?? ""
             }
+    }
+    private var validationError: String? {
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "填写名称" }
+        if !weekly.isEmpty && Int(weekly).map({ (0...10000).contains($0) }) != true { return "每周次数须为 0 至 10,000 的整数" }
+        if !monthly.isEmpty && (try? Money.parse(monthly)) == nil { return "填写有效金额" }
+        return nil
     }
     private func addKeyword() {
         let words = keywordInput.components(separatedBy: CharacterSet(charactersIn: "、,，\n"))
@@ -402,19 +407,16 @@ private struct ProfilePrincipleEditor: View {
         }
             .editorForm().navigationTitle("原则").yubaiNavigation()
             .onAppear { text = original ?? "" }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存") {
-                    let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !clean.isEmpty else { return }
-                    if store.update("修改消费观", { ledger in
-                        let old = ledger.profile
-                        if let original, let i = ledger.profile.principles.firstIndex(of: original) { ledger.profile.principles[i] = clean }
-                        else { ledger.profile.principles.append(clean) }
-                        ledger.profile.stamp(changedFrom: old, at: Date())
-                    }) { dismiss() }
-                }.accessibilityIdentifier("savePrinciple") }
-            }
+            .manualSheetHeader("原则", actionTitle: "保存", enabled: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                               actionIdentifier: "savePrinciple", action: {
+                let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if store.update("修改消费观", { ledger in
+                    let old = ledger.profile
+                    if let original, let i = ledger.profile.principles.firstIndex(of: original) { ledger.profile.principles[i] = clean }
+                    else { ledger.profile.principles.append(clean) }
+                    ledger.profile.stamp(changedFrom: old, at: Date())
+                }) { dismiss() }
+            })
     }
 }
 

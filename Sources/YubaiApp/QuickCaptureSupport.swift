@@ -8,10 +8,14 @@ import Photos
 struct QuickEntryPrefill {
     var category: String?; var amount: Int64?; var purpose: String?
     var screenshot: Data? = nil
+    var nature: Nature? = nil
+    var subcategory: String? = nil
+    var accountID: UUID? = nil
+    var otherAccountID: UUID? = nil
 }
 extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
-        if locked { pendingQuickSheet = next } else { sheetSource = nil; sheet = next }
+        if locked || !preferences.onboardingComplete { pendingQuickSheet = next } else { sheetSource = nil; sheet = next }
     }
     func handleCaptureURL(_ url: URL) {
         guard url.scheme?.lowercased() == "yubai", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
@@ -20,6 +24,7 @@ extension AppStore {
         case "add":
             let amount = value("amount").flatMap { try? Money.parse($0) }.flatMap { $0 > 0 ? $0 : nil }
             requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: value("category"), amount: amount, purpose: value("purpose"))))
+        case "ask": requestCaptureSheet(.ask(""))
         case "capture": requestCaptureSheet(.screenshotCapture(nil))
         case "entry": if let id = value("id").flatMap(UUID.init(uuidString:)) { requestCaptureSheet(.editEntry(id)) }
         default: break
@@ -98,7 +103,7 @@ struct ScreenshotCaptureView: View {
                 }
             }
             if let failure { InlineNote(text: failure, style: .attention) }
-        }.navigationTitle("截图记").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("截图记").yubaiNavigation().manualSheetHeader("截图记", cancelTitle: "关闭", showsAction: false)
             .task { await recognize() }
     }
     @MainActor private func recognize() async {
@@ -132,3 +137,41 @@ struct ScreenshotCaptureView: View {
         }) { dismiss() }
     }
 }
+
+extension QuickEntryPrefill {
+    init(entry: Entry) {
+        category = entry.category; amount = entry.amount; purpose = entry.purpose ?? entry.title
+        nature = entry.nature; subcategory = entry.subcategory; accountID = entry.accountID; otherAccountID = entry.otherAccountID
+    }
+}
+
+#if os(iOS)
+@MainActor final class HomeActionDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, configurationForConnecting session: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: session.configuration.name, sessionRole: session.role)
+        configuration.delegateClass = HomeActionSceneDelegate.self
+        return configuration
+    }
+    func application(_ application: UIApplication, performActionFor shortcut: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
+        completionHandler(Self.route(shortcut))
+    }
+    static func route(_ shortcut: UIApplicationShortcutItem) -> Bool {
+        let sheet: AppSheet
+        switch shortcut.type {
+        case "app.yubai.add": sheet = .addEntry
+        case "app.yubai.capture": sheet = .screenshotCapture(nil)
+        case "app.yubai.ask": sheet = .ask("")
+        default: return false
+        }
+        AppStore.shared.requestCaptureSheet(sheet); return true
+    }
+}
+@MainActor final class HomeActionSceneDelegate: NSObject, UIWindowSceneDelegate {
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+        if let shortcut = options.shortcutItem { _ = HomeActionDelegate.route(shortcut) }
+    }
+    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcut: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
+        completionHandler(HomeActionDelegate.route(shortcut))
+    }
+}
+#endif

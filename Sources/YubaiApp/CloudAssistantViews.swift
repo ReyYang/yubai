@@ -18,7 +18,7 @@ struct CloudAISettingsSection: View {
                 .accessibilityLabel(hasKey ? "密钥已保存在本机钥匙串，不进入账本或备份" : (configured ? "使用开发环境的密钥" : "还没配置密钥"))
             SecureField("DeepSeek API 密钥", text: $key).autocorrectionDisabled().privacySensitive()
             Button("保存或替换密钥") { saveKey() }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            Button("删除密钥", role: .destructive) { deleteKey() }
+            Button("删掉") { deleteKey() }.buttonStyle(DestructiveButtonStyle())
             Button(testing ? "正在连接…" : "测试连接") { testConnection() }.disabled(!configured || testing)
             if !status.isEmpty { Text(status).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
@@ -30,7 +30,7 @@ struct CloudAISettingsSection: View {
         catch { status = error.localizedDescription }
     }
     @MainActor private func deleteKey() {
-        do { try APIKeyStore.shared.delete(); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已删除" }
+        do { try APIKeyStore.shared.delete(); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已删掉" }
         catch { status = error.localizedDescription }
     }
     @MainActor private func testConnection() {
@@ -109,13 +109,13 @@ struct CloudModelEditor: View {
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     #endif
-                if !errorText.isEmpty { Text(errorText).foregroundStyle(YubaiColor.amberInk) }
+                InlineFieldError(message: !errorText.isEmpty ? errorText : name.count > 200 || name.contains(where: { $0.isNewline }) ? "模型名字须在一行内，最多 200 字" : nil)
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("模型").yubaiNavigation().toolbar {
             Button("保存") {
-                do { try IntelligenceRuntime.cloud.saveModel(name); dismiss() }
-                catch { errorText = error.localizedDescription }
-            }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("saveCloudModel")
+                do { try IntelligenceRuntime.cloud.saveModel(name); dismiss() } catch { errorText = error.localizedDescription }
+            }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 200 || name.contains(where: { $0.isNewline }))
+                .accessibilityIdentifier("saveCloudModel")
         }
     }
 }
@@ -169,7 +169,7 @@ struct CloudSendLogView: View {
                     .accessibilityHint("发送记录只存在本机内存，关掉应用就清空；汇总图仅包含保留的记录")
             }
             if groups.isEmpty {
-                Card { Text("还没有发送记录。").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelMuted).accessibilityIdentifier("emptyCloudSendLog") }
+                EmptyState("paperplane", "还没有发送记录", action: "问余白", onAction: { store.sheet = .ask("") }).accessibilityIdentifier("emptyCloudSendLog")
             } else {
                 summaryCard
                 Segmented(choices: [(false, "全部"), (true, "没成功 \(groups.filter(\.hasFailure).count)")], selection: $onlyFailures).accessibilityIdentifier("cloudLogFilter")
@@ -178,7 +178,7 @@ struct CloudSendLogView: View {
                     NavigationLink { CloudSendLogDetailView(group: group) } label: { groupRow(group) }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("cloudLogGroup_" + group.id.uuidString)
                 }
-                if visible.isEmpty { Text("没有没成功的记录。").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
+                if visible.isEmpty { EmptyState("checkmark", "没有没成功的记录", action: "查看全部", onAction: { onlyFailures = false }) }
             }
             Button("清空这份记录") { SendLog.shared.clear(); reload() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("clearCloudSendLog")
         }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("发给云端的内容").yubaiNavigation()
@@ -340,7 +340,7 @@ private struct CloudSendLogDetailView: View {
                 .task(id: rawFocus) {
                     if let rawFocus { proxy.scrollTo(rawFocus, anchor: .top) }
                 }
-        }.navigationTitle("原文").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("原文").yubaiNavigation().manualSheetHeader("原文", cancelTitle: "关闭", showsAction: false)
     }
     private func copyRaw() {
         guard !hidden else { return }

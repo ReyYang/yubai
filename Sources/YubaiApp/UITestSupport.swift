@@ -69,7 +69,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name)) else { return nil }
+              (screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -116,7 +116,12 @@ enum UITestSupport {
         ledger.mutedTopics = ["letter"] // Keep scripted flows independent of the weekday.
         let account = Account(name: "合成银行卡", balance: 100_000, at: now)
         ledger.accounts = [account]
-        if script == "overview-xl" {
+        if script == "round40" {
+            ledger.preferences.cloudAIEnabled = false
+            ledger.entries = (0..<3).map { Entry(date: Dates.addMonths(-$0, to: now), amount: 350_000, accountID: account.id, title: "合成跨月房租", category: "居住") }
+            var deleted = Entry(date: now, amount: 3200, accountID: account.id, title: "合成放回测试", category: "餐饮")
+            deleted.deletedAt = now; ledger.entries.append(deleted)
+        } else if script == "overview-xl" {
             ledger.entries = [Entry(date: now, amount: 3200, accountID: account.id, title: "合成测试的午饭和日用品以及下周旅行准备", category: "日用")]
         } else if script == "ask" || script == "restrain" {
             ledger.entries = [Entry(date: now, amount: 3200, accountID: account.id, title: "合成咖啡", category: "餐饮")]

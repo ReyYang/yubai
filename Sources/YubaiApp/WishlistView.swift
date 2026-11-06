@@ -43,7 +43,7 @@ struct WishlistView: View {
                     Page { ForEach(past.sorted { $0.createdAt > $1.createdAt }) { wish in wishRow(wish) } }.navigationTitle("过去的心愿").yubaiNavigation()
                 } label: {
                     HStack(spacing: YubaiSpace.gapGroup) { Text("买了 \(past.filter { $0.status == .bought }.count) 件 · 划掉 \(past.filter { $0.status == .dropped }.count) 件"); Spacer(); Image(systemName: "chevron.right") }
-                        .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: 18))
+                        .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
         }.navigationTitle("心愿单").yubaiNavigation()
@@ -135,7 +135,7 @@ struct WishEntryPicker: View {
                 let matches = Wishlist.candidates(for: wish, in: store.current, now: Date())
                 let used = Set(store.current.wishlist.compactMap(\.boughtEntryID))
                 let rows = all ? store.sortedEntries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.date <= Date() && !used.contains($0.id) } : matches
-                if rows.isEmpty { Text("没有匹配的支出") }
+                if rows.isEmpty { EmptyState("list.bullet", "没有匹配的支出", action: "查看全部支出", onAction: { all = true }) }
                 CardRows(rows) { entry in
                     Button {
                         if store.update("关联心愿购买记录", { try Wishlist.markBought(wishID, entryID: entry.id, in: &$0) }) { dismiss() }

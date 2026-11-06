@@ -52,21 +52,12 @@ private struct SubcategoryPicker: View {
     var body: some View {
         Page {
             if let entry {
+                Menu("换主项") {
+                    ForEach(mainCategories(for: entry)) { main in Button(Classification.displayCategory(main.name)) { category = main.name } }
+                }.foregroundStyle(YubaiColor.brandInk)
                 choices(for: entry)
             }
-        }.navigationTitle((category ?? entry?.category ?? "") + "里的哪一类").yubaiNavigation()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { CloseButton() }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu("换主项") {
-                        if let entry {
-                            ForEach(mainCategories(for: entry)) { main in
-                                Button(Classification.displayCategory(main.name)) { category = main.name }
-                            }
-                        }
-                    }
-                }
-            }
+        }.manualSheetHeader((category ?? entry?.category ?? "") + "里的哪一类", cancelTitle: "关闭", showsAction: false)
     }
     private func mainCategories(for entry: Entry) -> [YubaiCore.Category] {
         store.current.selectableCategories.filter { $0.income == (entry.nature == .income) }

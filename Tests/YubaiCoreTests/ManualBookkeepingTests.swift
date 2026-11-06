@@ -261,7 +261,7 @@ final class ManualBookkeepingTests: XCTestCase {
         let matching = EntryTimeline.months(sortedEntries: ledger.entries, ledger: ledger, search: "记录 19999")
         XCTAssertEqual(matching.flatMap(\.days).flatMap(\.entries).count, 1)
     }
-    func testSnapshotSearch4200RowsMatchesTimelineAndKeepsMonthlyTotals() throws {
+    func testSnapshotSearch4200RowsMatchesAllMonthsAndFilteredTotals() throws {
         var ledger = fixture(); let account = ledger.accounts[0].id
         ledger.entries = (0..<4200).map { index -> Entry in
             let date = Dates.addDays(-(index % 21), to: now).addingTimeInterval(-Double(index))
@@ -275,23 +275,22 @@ final class ManualBookkeepingTests: XCTestCase {
         ledger.entries += [deleted, outside]
         let before = ledger
         let sorted = ledger.entries.sorted { $0.date > $1.date }
-        let interval = try XCTUnwrap(Dates.calendar.dateInterval(of: .month, for: now))
-        let monthly = sorted.filter { $0.date >= interval.start && $0.date < interval.end }
-        let summary = try XCTUnwrap(EntryTimeline.months(sortedEntries: monthly, ledger: ledger).first)
         let snapshot = EntryTimeline.snapshot(sortedEntries: sorted, ledger: ledger, month: now, search: "5.00")
-        let expectedIDs = sorted.filter { $0.deletedAt == nil && $0.id != outside.id && $0.amount == 500 }.map(\.id)
+        let expectedIDs = sorted.filter { $0.deletedAt == nil && $0.amount == 500 }.map(\.id)
         XCTAssertEqual(snapshot.days.flatMap(\.entries).map(\.id), expectedIDs)
-        XCTAssertEqual(expectedIDs.count, 1400)
-        XCTAssertEqual(Set(snapshot.days.flatMap(\.entries).map(\.id)).count, 1400)
-        XCTAssertEqual(snapshot.spending, summary.spending); XCTAssertEqual(snapshot.income, summary.income)
+        XCTAssertEqual(expectedIDs.count, 1401)
+        XCTAssertEqual(Set(snapshot.days.flatMap(\.entries).map(\.id)).count, 1401)
+        let matchingSummary = EntryTimeline.months(sortedEntries: sorted, ledger: ledger, search: "5.00")
+        XCTAssertEqual(snapshot.spending, matchingSummary.reduce(0) { $0 + $1.spending }); XCTAssertEqual(snapshot.income, matchingSummary.reduce(0) { $0 + $1.income })
         for filter in EntryTimeline.Filter.allCases {
             for query in ["5.00", "−5.00", "-5.00", "¥5.00", "微信零钱", "没分类", "不存在"] {
-                let expected = EntryTimeline.months(sortedEntries: monthly, ledger: ledger, search: query, filter: filter).first?.days ?? []
+                let groups = EntryTimeline.months(sortedEntries: sorted, ledger: ledger, search: query, filter: filter)
+                let expected = groups.flatMap(\.days)
                 let actual = EntryTimeline.snapshot(sortedEntries: sorted, ledger: ledger, month: now, search: query, filter: filter)
                 XCTAssertEqual(actual.days.map(\.id), expected.map(\.id))
                 XCTAssertEqual(actual.days.map(\.spending), expected.map(\.spending))
                 XCTAssertEqual(actual.days.flatMap(\.entries).map(\.id), expected.flatMap(\.entries).map(\.id))
-                XCTAssertEqual(actual.spending, summary.spending); XCTAssertEqual(actual.income, summary.income)
+                XCTAssertEqual(actual.spending, groups.reduce(0) { $0 + $1.spending }); XCTAssertEqual(actual.income, groups.reduce(0) { $0 + $1.income })
             }
         }
         XCTAssertEqual(snapshot, EntryTimeline.snapshot(sortedEntries: sorted, ledger: ledger, month: now, search: "5.00"))
@@ -336,12 +335,15 @@ final class ManualBookkeepingTests: XCTestCase {
         let nextMonth = Entry(date: month.end, amount: 500, accountID: account, title: "下月")
         ledger.entries = [payment, refund, income, transfer, boundary, nextMonth].sorted { $0.date > $1.date }
         let value = EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now, search: "¥5.00", calendar: calendar)
-        XCTAssertEqual(value.spending, 29_500); XCTAssertEqual(value.income, 20_000)
-        XCTAssertEqual(value.days.flatMap(\.entries).map(\.id), [boundary.id])
-        XCTAssertEqual(value.days.first?.id, month.start)
+        XCTAssertEqual(value.spending, 1000); XCTAssertEqual(value.income, 0)
+        XCTAssertEqual(value.days.flatMap(\.entries).map(\.id), [nextMonth.id, boundary.id])
+        XCTAssertEqual(value.months.map(\.date), [month.end, month.start])
+        let unsearched = EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now, calendar: calendar)
+        XCTAssertEqual(unsearched.spending, 29_500); XCTAssertEqual(unsearched.income, 20_000)
         var west = calendar; west.timeZone = TimeZone(secondsFromGMT: -8 * 3600)!
         let shifted = EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now, search: "¥5.00", calendar: west)
-        XCTAssertEqual(shifted.days.flatMap(\.entries).map(\.id), [nextMonth.id])
+        XCTAssertEqual(shifted.days.flatMap(\.entries).map(\.id), [nextMonth.id, boundary.id])
+        XCTAssertNotEqual(shifted.days.map(\.date), value.days.map(\.date))
     }
 }
 

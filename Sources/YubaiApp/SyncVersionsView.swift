@@ -2,6 +2,7 @@ import SwiftUI
 import YubaiCore
 
 struct SyncVersionsView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     var body: some View {
@@ -15,8 +16,8 @@ struct SyncVersionsView: View {
                 }
                 if choice.switching { Button("取消切换", role: .cancel) { store.cancelSyncLocationChoice() }.disabled(store.syncBusy) }
                 if store.syncBusy { ProgressView("正在保存…") }
-            } else { Text("没有待选择的版本").yubaiFont(YubaiFont.callout) }
-        }.navigationTitle("选择账本版本").yubaiNavigation().toolbar { CloseButton() }
+            } else { EmptyState("clock", "没有待选择的版本", action: "返回", onAction: { dismiss() }) }
+        }.navigationTitle("选择账本版本").yubaiNavigation().manualSheetHeader("选择账本版本", cancelTitle: "关闭", showsAction: false)
     }
     private func versionCard(_ version: LedgerVersion, other: LedgerVersion?, choice: SyncChoice) -> some View {
         Card {
@@ -48,7 +49,7 @@ struct SyncVersionsView: View {
                             Text(version.ledger.accountName(entry.accountID)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             let note = EntryNotePresentation.importedNote(entry)
                             if !note.isEmpty { Text(note).yubaiFont(YubaiFont.caption).lineLimit(3) }
-                            if entry.deletedAt != nil { Text("已删除").yubaiFont(YubaiFont.caption) }
+                            if entry.deletedAt != nil { Text("已删掉").yubaiFont(YubaiFont.caption) }
                         }
                     }
                 }

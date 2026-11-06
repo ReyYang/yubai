@@ -51,11 +51,8 @@ struct InsightsView: View {
             }
             Card(style: .compact) {
                 VStack(spacing: YubaiSpace.gapGroup) {
-                    Segmented(choices: [(false, "支出"), (true, "收入")], selection: $income)
-                    if !store.preferences.hideAmounts {
-                        donut(slices, total: income ? summary.income : summary.spending)
-                    }
-                    if slices.isEmpty { Text("还没有收支记录").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).padding(.vertical, YubaiSpace.gapSection) }
+                    donut(slices, total: income ? summary.income : summary.spending)
+                    if slices.isEmpty { EmptyState("chart.pie", "还没有收支记录", action: "记一笔", onAction: { store.sheet = .addEntry }) }
                     VStack(spacing: YubaiSpace.none) {
                         ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
                             categoryLink(slice, rank: rank, slices: slices, range: range)
@@ -68,7 +65,7 @@ struct InsightsView: View {
                 Text("本期有跨期退款。")
                     .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }
-        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().accessibilityIdentifier("insightsScroll")
+        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().rootTabScroll(.insights).accessibilityIdentifier("insightsScroll")
             .rootPageHeader { TabRootHeader(title: "洞察") }.navigationTitle("洞察")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
@@ -85,9 +82,11 @@ struct InsightsView: View {
                     Form {
                         DatePicker("从", selection: $customStart, in: ...Date(), displayedComponents: .date)
                         DatePicker("至", selection: $customEnd, in: customStart...max(customStart, Date()), displayedComponents: .date)
-                    }.editorForm().navigationTitle("自定时间")
+                    }.editorForm().manualSheetNavigation()
                         .onChange(of: customStart) { _, value in if customEnd < value { customEnd = value } }
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("看这段时间") { store.pickingInsightDates = false } } }
+                        .safeAreaInset(edge: .top) {
+                            ManualSheetHeader(title: "自定时间", actionTitle: "看这段时间", cancel: { store.pickingInsightDates = false }, action: { store.pickingInsightDates = false }).padding(.horizontal, 20)
+                        }
                 }.presentationDragIndicator(.visible).yubaiSheetBackground()
             }
     }
@@ -125,7 +124,7 @@ struct InsightsView: View {
             Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(balance ? YubaiColor.brandInk : YubaiColor.labelSecondary)
             AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .summary)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: 18), background: balance ? YubaiColor.brandTint : nil)
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row), background: balance ? YubaiColor.brandTint : nil)
     }
     private func restrained(_ slice: CashFlowSlice) -> Bool {
         !income && store.profile.restrain.contains { area in
@@ -148,16 +147,25 @@ struct InsightsView: View {
                 ForEach(Array(slices.enumerated()), id: \.element.id) { rank, slice in
                     donutSlice(slice, rank: rank, slices: slices, positiveTotal: positiveTotal, progress: progress[min(rank, 5)])
                 }
-                Button { select(nil) } label: {
-                    VStack(spacing: YubaiSpace.space4) {
-                        Text(selected.map { $0.title + " · " + percentage($0) } ?? (income ? "收入" : "支出"))
-                            .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                        AmountLabel(cents: selected?.amount ?? total, role: .donut)
-                        if selected != nil { Text("共 " + Money.text(total, currency: false)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
-                    }.frame(width: 124, height: 124).contentShape(Circle())
-                }.buttonStyle(.plain).accessibilityIdentifier("donutSummary")
-                    .accessibilityLabel(selected.map { $0.title + " · " + percentage($0) + "，" + Money.text($0.amount) + "，共 " + Money.text(total) } ?? ((income ? "收入" : "支出") + "合计 " + Money.text(total)))
-                    .accessibilityHint("点两下回到全部")
+                VStack(spacing: 4) {
+                    Menu {
+                        Button("支出") { income = false; selectedSlice = nil }
+                        Button("收入") { income = true; selectedSlice = nil }
+                    } label: {
+                        HStack(spacing: 4) { Text(income ? "收入" : "支出"); Image(systemName: "chevron.down") }
+                            .yubaiFont(YubaiFont.callout, weight: .medium).fixedSize()
+                            .padding(.horizontal, 14).frame(minHeight: 32).background(YubaiColor.raised, in: Capsule())
+                    }.accessibilityIdentifier("insightNature")
+                    Button { select(nil) } label: {
+                        VStack(spacing: 4) {
+                            if let selected { Text(selected.title + " · " + percentage(selected)).yubaiFont(YubaiFont.caption) }
+                            AmountLabel(cents: selected?.amount ?? total, hide: store.preferences.hideAmounts, role: .donut)
+                        }
+                    }.buttonStyle(.plain).accessibilityIdentifier("donutSummary")
+                        .accessibilityLabel(store.preferences.hideAmounts ? (income ? "收入合计，金额已隐藏" : "支出合计，金额已隐藏") : selected.map { $0.title + " · " + percentage($0) + "，" + Money.text($0.amount) + "，共 " + Money.text(total) } ?? ((income ? "收入" : "支出") + "合计 " + Money.text(total)))
+                        .accessibilityHint("点两下回到全部")
+                }.frame(width: 124).foregroundStyle(YubaiColor.label)
+
             }.frame(width: 204, height: 204)
         }
             .frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapGroup)
@@ -174,7 +182,7 @@ struct InsightsView: View {
                     .contentShape(shape)
             }.buttonStyle(.plain)
                 .accessibilityLabel(slice.title + " · " + percentage(slice))
-                .accessibilityValue(Money.text(slice.amount))
+                .accessibilityValue(store.preferences.hideAmounts ? "••••" : Money.text(slice.amount))
                 .accessibilityAddTraits(selectedSlice == slice.id ? .isSelected : [])
                 .accessibilityIdentifier("donutSlice_\(rank)")
         }

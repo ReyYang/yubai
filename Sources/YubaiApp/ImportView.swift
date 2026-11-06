@@ -122,6 +122,10 @@ struct ImportView: View {
     }
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
+            if screenshot && preview != nil {
+                Menu { accountPicker; Button("添加账户") { showAccount = true } } label: { Label(store.accountName(accountID), systemImage: "creditcard") }
+                    .accessibilityLabel("选择截图记账的账户").padding(.horizontal, 20).frame(minHeight: 44)
+            }
             if let result { resultView(result) }
             else if let preview { previewView(preview) }
             else { intake }
@@ -129,23 +133,12 @@ struct ImportView: View {
         }
         .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
         .amountPrivacy(store.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) { CloseButton() }
-            ToolbarItem(placement: .primaryAction) {
-                if screenshot && preview != nil {
-                    Menu { accountPicker; Button("添加账户") { showAccount = true } } label: { Image(systemName: "creditcard") }
-                        .accessibilityLabel("选择截图记账的账户").accessibilityValue(store.accountName(accountID))
-                }
-            }
-            ToolbarItem(placement: .cancellationAction) {
-                if let result, let batch = store.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) {
-                    Button("整批撤销", role: .destructive) { store.undoImport(batch.id) }
-                        .disabled(store.organizingBatchID == batch.id).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportResult")
-                } else if preview != nil && welcomeReview == nil {
-                    Button("导入", action: returnToIntake)
-                }
-            }
-        }
+        .manualSheetHeader(resultTitle, actionTitle: result != nil ? "整批撤销" : "导入", primary: false,
+                           enabled: result.map { store.organizingBatchID != $0.id } ?? true, cancelTitle: "关闭",
+                           showsAction: result != nil || (preview != nil && welcomeReview == nil), actionIdentifier: "undoImportResult", action: {
+            if let result, let batch = store.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) { store.undoImport(batch.id) }
+            else if preview != nil && welcomeReview == nil { returnToIntake() }
+        })
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .image, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: true) { selection in
             switch selection {
             case .success(let urls): enqueue(urls.map { ImportQueueFile(input: .file($0), name: $0.lastPathComponent) })
@@ -371,7 +364,7 @@ struct ImportView: View {
                 if let image = screenshotImage { Image(nsImage: image).resizable().scaledToFit().accessibilityLabel("账单原图") }
                 #endif
             }
-        }.navigationTitle("原图").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("原图").yubaiNavigation().manualSheetHeader("原图", cancelTitle: "关闭", showsAction: false)
     }
     private func unknownCategories(_ p: ImportPreview) -> [String] {
         var seen = Set<String>()
@@ -456,7 +449,7 @@ struct ImportView: View {
                     }
                 }
             }
-        }.navigationTitle("分类对应").yubaiNavigation().toolbar { CloseButton() }
+        }.navigationTitle("分类对应").yubaiNavigation().manualSheetHeader("分类对应", cancelTitle: "关闭", showsAction: false)
     }
     private func sourceCategoryNames(_ preview: ImportPreview) -> [String] {
         var seen = Set<String>()
@@ -530,7 +523,7 @@ struct ImportView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
                             resultCount("归了类", organization.categoryCount)
                             resultCount("配成转账", organization.pairCount)
-                            resultCount("像是固定收付", organization.recurringCount)
+                            resultCount("像是会回来的账单", organization.recurringCount)
                             resultCount("可能记重了", organization.duplicateCount)
                         }
                         DisclosureGroup("看看改了什么") {
@@ -810,12 +803,7 @@ private struct ImportScreenshotEntryEditor: View {
             }.listRowBackground(YubaiColor.card)
         }.onChange(of: entry.nature) { _, _ in
             entry.category = Classification.pendingCategory; entry.subcategory = nil; entry.subcategoryUserEdited = false
-        }.editorForm().navigationTitle("核对这一笔").yubaiNavigation().toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("核对好了") { entry.userEdited = true; save(entry); dismiss() }
-                    .disabled(entry.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("saveScreenshotEntry")
-            }
-        }
+        } .editorForm().manualSheetHeader("核对这一笔", actionTitle: "核对好了", enabled: !entry.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                           actionIdentifier: "saveScreenshotEntry", action: { entry.userEdited = true; save(entry); dismiss() })
     }
 }
