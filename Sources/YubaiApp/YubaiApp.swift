@@ -859,7 +859,7 @@ struct RootView: View {
         NavigationSplitView {
             List(Destination.allCases, selection: $store.destination) { d in
                 Label { Text(d.title) } icon: {
-                    if d == .overview { BrandMark(size: 20, background: store.destination == d ? YubaiColor.card : YubaiColor.canvas) }
+                    if d == .overview { NowTabGlyph(size: 20, selected: store.destination == d) }
                     else { Image(systemName: d.symbol) }
                 }.tag(d).accessibilityIdentifier("tab_" + d.rawValue)
             }.listStyle(.sidebar).navigationTitle("余白")
@@ -1100,7 +1100,6 @@ private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var scheme
-    @State private var tagJump = 0
     @ScaledMetric(relativeTo: .title3) private var scaledIconSize = YubaiSize.tabIcon
     @ScaledMetric(relativeTo: .title2) private var scaledAddSize = YubaiFont.addIcon.size
     let progress: RootPagingProgress
@@ -1140,7 +1139,6 @@ private struct FloatingTabBar: View {
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
             .overlay { Capsule().strokeBorder(reduceTransparency ? YubaiColor.separator : Color.white.opacity(scheme == .dark ? 0.08 : 0.6), lineWidth: 1).allowsHitTesting(false) }
-            .onChange(of: store.destination) { _, destination in if destination == .overview { tagJump &+= 1 } }
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
     }
     private var pagePosition: CGFloat { max(0, min(CGFloat(Destination.allCases.count - 1), progress.position)) }
@@ -1159,7 +1157,7 @@ private struct FloatingTabBar: View {
         return Button { select(d) } label: {
             VStack(spacing: YubaiSpace.space2) {
                 Group {
-                    if d == .overview { BrandMark(size: iconSize, background: selected ? YubaiColor.card : YubaiColor.raised, jumpTrigger: tagJump) }
+                    if d == .overview { NowTabGlyph(size: iconSize, selected: selected) }
                     else { Image(systemName: d.symbol).symbolVariant(.none).font(.system(size: iconSize, weight: selected ? .medium : .regular)) }
                 }
                 .frame(width: iconSize, height: iconSize)

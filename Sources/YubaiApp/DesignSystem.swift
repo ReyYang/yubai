@@ -1337,7 +1337,7 @@ struct BrandMark: View {
     }
 }
 
-private struct PaperClothOutline: Shape {
+struct PaperClothOutline: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path(roundedRect: CGRect(x: 3, y: 3, width: 18, height: 18), cornerSize: CGSize(width: 5.2, height: 5.2))
         path.move(to: CGPoint(x: 15, y: 3)); path.addLine(to: CGPoint(x: 15, y: 6.4))
@@ -1345,6 +1345,15 @@ private struct PaperClothOutline: Shape {
         path.addRoundedRect(in: CGRect(x: 13.4, y: 6.4, width: 4.2, height: 3), cornerSize: CGSize(width: 1, height: 1))
         let scale = min(rect.width, rect.height) / 24
         return path.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: rect.midX - 12 * scale, ty: rect.midY - 12 * scale))
+    }
+}
+
+struct NowTabGlyph: View {
+    var size: CGFloat
+    var selected: Bool
+    var body: some View {
+        PaperClothOutline().stroke(.foreground, style: StrokeStyle(lineWidth: size * (selected ? 1.9 : 1.6) / 24, lineCap: .round, lineJoin: .round))
+            .frame(width: size, height: size).accessibilityHidden(true)
     }
 }
 
