@@ -7,6 +7,21 @@
 按 owner 性能清单续接中断改动；分片观察、Core 展示缓存、管家防抖与后台检测、阴影／竹影预渲染、现金图基础层隔离及状态写入守卫的逐项实现、保留项和证据见 [性能整理记录](../docs/APP-SMOOTHNESS.md)。本轮没有新的产品或视觉决定；原稿、视觉 token、顶部 fade mask、动效参数与交互保持，后台页数值转场为避免滑入时变化而保留。新增／改动产品可见中文：无。
 
 Core build 与全量 887 项（883 通过／4 原有跳过／0 失败）、99 次 App 条件解析及 Swift 6 源码抽取 Observation 探针 24 个断言通过。Apple SDK 构建、原生逐像素比对及真机帧耗未验证，特别保留阴影 capInsets／竹影旋转／现金图选择层的原生核对项。外部资源未同步，未提交／推送，无新依赖。
+## 2026-11-06 · 第三十五轮记一笔／改一笔「更多」（owner 批准）
+
+owner 授权在 `feat/entry-more-category-picker`（main `35d13e3`）接入已批准的 V35-Add-More 画板。此节补齐下方第 34／35 轮留给记账入口的范围：`CategoryPicker` 增加 sections 样式，每个主类单独一行按钮，小项直接在下方完整换行；点主类立即确认只记主类，点小项立即确认两级路径，保留「加一个」及取消。其他入口继续使用原 grid 两步展开样式。原稿只读，未复制 HTML、来源路径或私有链接；外部画布、截图、分发包未同步。
+
+`EntryCategoryChips` 的更多 sheet 使用这一共享样式，方向跟随外层记账性质（退款用支出分类），不维护独立的收支选择；转账在两页均不显示分类。建议仅在打开更多时本机计算并描边，不改变草稿或排序。前五个 chip 始终取该方向固定 categoryOrder 前缀，选中范围外的主类另追加；记一笔与改一笔都显示五个。选中小项的 chip 显示完整「主类 · 小项」，文字 fixedSize，整块换行；主类行用较重字号区分层级，不新增说明文案。
+
+`QuickEntryView` 保存完整 EntryDraft 的 subcategory，并在原 store.apply 的 finishing 中使用 `CategoryModel.confirm`，包括默认主类的显式 nil；本机猜测不能回填未选的小项。重复记账的计划仍只保存主类，首笔保存完整两级路径，两者一次提交；连续记账及切换性质清空小项。`EntryEditView` 的 draft 同步两级选择，原 edit／repeatMonthly 后在同次 store.update 显式 confirm，覆盖旧新小项都为 nil 时 Core 可能产生的猜测；未选新分类的记录保留原小项。`FixedFlowsView` 没有使用 EntryCategoryChips，继续使用现有主类 Menu。Core API、资金计算及工程登记无需变化。
+
+保留现有金额、保存、取消、固定收付等测试标识，新增 `entryCategory_<主类>`、`entryCategoryMore`、`entryCategoryPicker`、`entryMoreCategory_<主类>`、`entryMoreSubcategory_<主类>/<小项>`、`entryMoreAdd`、`entryMoreCancel`，并为共享新增 sheet 的取消、主类归属选项补标识。新增四组 UI 回归源码覆盖两级直接可见、取消保留、固定前五、小项保存及编辑、只记主类抵抗猜测、切收支复位、新增取消／新增小项、重复与连续记账。原测试没有直接查询旧更多 List 的用例，其余标识和主类按钮文字保持。
+
+新增／改动的产品可见中文只有动态事实模板 **「主类 · 小项」**；本入口新复用的标题／字段为「分类」「加一个」「名字」「放在」，控件为「更多」「取消」「加一个」「新的大类」「更多…」「加上」及账本主类／小项名，状态复用原添加分类保存提示。均属于标题、事实、控件或状态；没有四类之外的说明文字。辅助功能新增完整「只记主类」hint，不作为可见文案。
+
+Linux Swift 6.2.4：`swift build --target YubaiCore` 通过；`YUBAI_LIVE_EVAL=0 swift test` 全量 **874 项，870 通过／4 原有实网 opt-in 跳过／0 失败（123.969 秒）**。抽取实际 QuickEntryView 的 draftChange／save 和 EntryEditForm 的 save／finishAmount，替换平台 store／动效后链接真实 Core，104 个判断通过，覆盖普通／每月／连续、nil／小项、同类清空／跨类两侧 nil、账本编解码后分类不回填及收入／转账；该替身不等于 SwiftUI 或真实 AppStore 验证。改动 App 的 iOS 26 模拟器 Debug／设备 Release、macOS 14 Debug 及 UI 测试模拟器条件语法解析共 13 次通过；指定访问审计已执行，无新增跨文件 private 越权，diff 检查通过。日志位于 `/tmp/yubai-more-{build,test,logic}.log`，条件解析记录位于 `/tmp/yubai-more-parse.json`。Apple SDK 类型检查、Xcode 构建、XCTest UI 实跑、390pt／深色／大字号／VoiceOver与真机 sheet 交互仍待 Mac；语法检查不替代这些验收。按本轮授权以 ReyYang 提交，不推送。
+
+提交环境：常规 git add／commit 无法创建当前工作树的 index.lock，Git 元数据挂载只读。改用 `/tmp` 临时索引生成 ReyYang 提交，并保存在本地 `review/entry-more-category-picker`；原 `feat/entry-more-category-picker` 分支引用及索引尚待可写环境对齐到该提交，工作区保留实现，未推送。
 
 ## 2026-11-06 · PR #75 合并 main（#76／#78）
 

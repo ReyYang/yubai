@@ -9,6 +9,7 @@ struct QuickEntryView: View {
     @State private var keypad = EntryKeypad()
     @State private var nature = Nature.expense
     @State private var category = "餐饮"
+    @State private var subcategory: String?
     @State private var purpose = ""
     @State private var accountID: UUID?
     @State private var otherAccountID: UUID?
@@ -39,8 +40,10 @@ struct QuickEntryView: View {
                     amountDisplay
                     if nature != .transfer {
                         EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
-                                           all: ManualBookkeeping.categories(in: store.current, nature: nature), selection: $category,
-                                           didSelect: { purposeFocused = false })
+                                           income: nature.inflow, selection: .init(category: category, subcategory: subcategory),
+                                           suggest: { ManualBookkeeping.guessCategory(purpose, nature: nature, in: store.current) }) { choice in
+                            category = choice.category; subcategory = choice.subcategory; purposeFocused = false
+                        }
                             .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
                     }
                     form
@@ -92,6 +95,7 @@ struct QuickEntryView: View {
             .task(id: previewInput) { await refreshPreview() }
             .onChange(of: nature) { _, value in
                 category = ManualBookkeeping.categories(in: store.current, nature: value, frequentOnly: true).first ?? (value.inflow ? "其他收入" : "其他支出")
+                subcategory = nil
                 if value == .transfer { otherAccountID = accounts.first { $0.id != accountID }?.id }
             }
             .onChange(of: accountID) { _, id in
@@ -117,11 +121,12 @@ struct QuickEntryView: View {
     }
     private struct PreviewInput: Equatable {
         var expression: String; var nature: Nature; var purpose: String; var category: String
+        var subcategory: String?
         var date: Date; var accountID: UUID?; var otherAccountID: UUID?
         var selectedMatchID: String?; var repeatsMonthly: Bool; var ledgerUpdatedAt: Date
     }
     private var previewInput: PreviewInput {
-        PreviewInput(expression: keypad.expression, nature: nature, purpose: purpose, category: category, date: date,
+        PreviewInput(expression: keypad.expression, nature: nature, purpose: purpose, category: category, subcategory: subcategory, date: date,
                      accountID: accountID, otherAccountID: otherAccountID, selectedMatchID: selectedMatchID,
                      repeatsMonthly: repeatsMonthly, ledgerUpdatedAt: store.current.updatedAt)
     }
@@ -230,12 +235,24 @@ struct QuickEntryView: View {
     }
     private func draftChange(now: Date) throws -> ChangeSet {
         guard let accountID, let amount = keypad.amount else { throw YubaiError.invalid("请选择账户并填写金额。") }
+        var change: ChangeSet
         if repeatsMonthly && nature != .transfer && selectedLink == nil {
-            return try FixedFlows.monthlyEntryChange(amount: amount, nature: nature, accountID: accountID, day: date,
-                                                      purpose: purpose, category: category, now: now)
+            change = try FixedFlows.monthlyEntryChange(amount: amount, nature: nature, accountID: accountID, day: date,
+                                                       purpose: purpose, category: category, now: now)
+        } else {
+            change = try ManualBookkeeping.change(amount: amount, nature: nature, accountID: accountID, otherAccountID: otherAccountID,
+                                                  day: date, purpose: purpose, category: category, link: selectedLink, now: now)
         }
-        return try ManualBookkeeping.change(amount: amount, nature: nature, accountID: accountID, otherAccountID: otherAccountID,
-                                             day: date, purpose: purpose, category: category, link: selectedLink, now: now)
+        // The displayed default is also main-only until a small item is chosen.
+        // Save the draft's complete choice, then confirm it in the same transaction.
+        if nature != .transfer {
+            change.items = change.items.map { item in
+                guard case .addEntry(var draft) = item else { return item }
+                draft.subcategory = subcategory; draft.categoryUserEdited = true
+                return .addEntry(draft)
+            }
+        }
+        return change
     }
     private func refreshBalances() {
         balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) })
@@ -251,7 +268,11 @@ struct QuickEntryView: View {
         suggestion = match
         do {
             let change = try draftChange(now: Date())
-            guard store.apply(change, label: "记一笔") else { return }
+            guard store.apply(change, label: "记一笔", finishing: { ledger in
+                for case .addEntry(let draft) in change.items where draft.categoryUserEdited == true {
+                    try CategoryModel.confirm(.init(category: draft.category, subcategory: draft.subcategory), entryIDs: [draft.id], in: &ledger)
+                }
+            }) else { return }
             let title = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
             let sign: AmountLabel.Sign = nature.inflow ? .inflow : .outflow
             let amount = store.preferences.hideAmounts ? "••••" : AmountLabel.text(keypad.amount ?? 0, sign: sign)
@@ -265,6 +286,7 @@ struct QuickEntryView: View {
             if again {
                 keypad.reset(); purpose = ""; selectedMatchID = nil; repeatsMonthly = false
                 category = ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true).first ?? category
+                subcategory = nil
             } else { dismiss() }
         } catch { store.error = error.localizedDescription }
     }

@@ -56,8 +56,15 @@ private struct EntryEditForm: View {
                         EditableAmountDisplay(amount: amount, keypad: keypad, presented: amountKeypadPresented,
                                               selected: amountSelected, identifier: "editEntryAmount", open: openAmount)
                             .id("editAmount")
-                        EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: draft.nature, frequentOnly: true),
-                                           all: ManualBookkeeping.categories(in: store.current, nature: draft.nature), selection: $draft.category, didSelect: { choseCategory = true }, limit: 4)
+                        if draft.nature != .transfer {
+                            EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: draft.nature, frequentOnly: true),
+                                               income: draft.nature != .refund && draft.nature.inflow,
+                                               selection: .init(category: draft.category, subcategory: draft.subcategory),
+                                               suggest: { ManualBookkeeping.guessCategory(purpose, nature: draft.nature, in: store.current) }) { choice in
+                                draft.category = choice.category; draft.subcategory = choice.subcategory
+                                draft.subcategoryUserEdited = true; choseCategory = true; remembered = false; purposeFocused = false
+                            }
+                        }
                         Card(style: .list) {
                             VStack(spacing: YubaiSpace.none) {
                                 EntryFormRow(title: "用途") {
@@ -150,6 +157,7 @@ private struct EntryEditForm: View {
             .onChange(of: draft.nature) { _, nature in
                 draft.otherAccountID = nature == .transfer ? accounts.first { $0.id != draft.accountID }?.id : nil
                 draft.category = ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true).first ?? draft.category
+                draft.subcategory = nil; draft.subcategoryUserEdited = true; choseCategory = nature != .transfer
             }
 
     }
@@ -204,6 +212,9 @@ private struct EntryEditForm: View {
                 if repeatsMonthly && updated.planID == nil && updated.nature != .transfer {
                     try FixedFlows.repeatMonthly(updated, in: &ledger)
                 } else { try ManualBookkeeping.edit(updated, in: &ledger) }
+                if choseCategory {
+                    try CategoryModel.confirm(.init(category: updated.category, subcategory: updated.subcategory), entryIDs: [updated.id], in: &ledger)
+                }
             }) { dismiss() }
         } catch { store.error = error.localizedDescription }
     }

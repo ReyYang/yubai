@@ -62,48 +62,56 @@ struct EntryChipLayout: Layout {
 }
 
 struct EntryCategoryChips: View {
+    @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let frequent: [String]
-    let all: [String]
-    @Binding var selection: String
-    var didSelect: () -> Void = {}
-    var limit = 5
+    let income: Bool
+    let selection: CategoryAssignment
+    var suggest: () -> String? = { nil }
+    let choose: (CategoryAssignment) -> Void
     @State private var picking = false
+    @State private var suggested: String?
     private var visible: [String] {
-        var rows = Array(frequent.prefix(limit))
-        if !rows.contains(selection), !selection.isEmpty {
-            if rows.count == limit { rows.removeLast() }
-            rows.append(selection)
+        var rows = Array(frequent.prefix(5))
+        if !rows.contains(selection.category), !selection.category.isEmpty {
+            rows.append(selection.category)
         }
         return rows
     }
     var body: some View {
         EntryChipLayout {
             ForEach(visible, id: \.self) { name in
-                Button { selection = name; didSelect() } label: {
-                    Text(name).yubaiFont(YubaiFont.callout, weight: selection == name ? .medium : .regular)
+                let selected = selection.category == name
+                Button { choose(.init(category: name)) } label: {
+                    Text(name + (selected ? selection.subcategory.map { " · " + $0 } ?? "" : ""))
+                        .yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular).lineLimit(1).fixedSize()
                         .padding(.horizontal, YubaiSpace.gapGroup).frame(height: YubaiSize.chipHeight)
-                        .background(selection == name ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
-                        .overlay { if selection == name { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
+                        .background(selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
+                        .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
                         .yubaiHitTarget()
-                }.chipSelection(selection == name).accessibilityAddTraits(selection == name ? .isSelected : [])
+                }.chipSelection(selected).accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityIdentifier("entryCategory_" + name)
             }
-            Button { picking = true } label: {
-                Text("更多").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+            Button { suggested = suggest(); picking = true } label: {
+                Text("更多").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).fixedSize()
                     .padding(.horizontal, YubaiSpace.gapGroup).frame(height: YubaiSize.chipHeight)
                     .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
                     .yubaiHitTarget()
-            }
+            }.accessibilityIdentifier("entryCategoryMore")
         }.buttonStyle(PressButtonStyle()).animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
             .sheet(isPresented: $picking) {
                 NavigationStack {
-                    List(all, id: \.self) { name in
-                        Button { selection = name; didSelect(); picking = false } label: {
-                            HStack(spacing: YubaiSpace.gapGroup) { Text(name); Spacer(); if name == selection { Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk) } }.contentShape(Rectangle())
-                        }.listRowBackground(YubaiColor.paperSheet)
-                    }.scrollContentBackground(.hidden).navigationTitle("分类").yubaiNavigation()
-                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { picking = false } } }
-                }.presentationDragIndicator(.visible).yubaiSheetBackground()
+                    Page(topPadding: YubaiSpace.space8) {
+                        CategoryPicker(income: income, selected: selection, suggested: suggested,
+                                       identifier: "entryMore", style: .sections) { choice, addition in
+                            if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
+                            choose(choice); picking = false; return true
+                        }
+                    }.accessibilityIdentifier("entryCategoryPicker").navigationTitle("分类").yubaiNavigation()
+                        .toolbar { ToolbarItem(placement: .cancellationAction) {
+                            Button("取消") { picking = false }.accessibilityIdentifier("entryMoreCancel")
+                        } }
+                }.environment(store).appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()
             }
     }
 }

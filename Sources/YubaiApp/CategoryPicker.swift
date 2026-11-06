@@ -4,36 +4,27 @@ import YubaiCore
 /// The shared two-step picker. The caller commits additions and assignments in
 /// its own transaction, so quick sorting retains one save and one undo.
 struct CategoryPicker: View {
+    enum Style { case grid, sections }
     @Environment(AppStore.self) private var store
     let income: Bool
     var selected: CategoryAssignment? = nil
     var suggested: String? = nil
     var applyingCount = 0
     var identifier = "categoryPicker"
+    var style = Style.grid
     let choose: (CategoryAssignment, CategoryAddition?) -> Bool
     @State private var expanded: String?
     @State private var adding = false
 
     private var categories: [YubaiCore.Category] {
         let ordered = store.current.orderedCategories(income: income)
+        if style == .sections { return ordered }
         return ordered.filter { $0.name == suggested } + ordered.filter { $0.name != suggested }
     }
     var body: some View {
-        CategoryGridLayout {
-            ForEach(categories) { category in
-                mainTile(category)
-                    .layoutValue(key: CategoryExpandedKey.self, value: expanded == category.name)
-            }
-            Button { adding = true } label: {
-                Label("加一个", systemImage: "plus").yubaiFont(YubaiFont.button)
-                    .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
-                    .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
-                    .foregroundStyle(YubaiColor.brandInk)
-                    .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
-            if let category = categories.first(where: { $0.name == expanded }) {
-                smallItems(category).layoutValue(key: CategoryPanelKey.self, value: true)
-            }
+        Group {
+            if style == .sections { sections }
+            else { grid }
         }
         .sheet(isPresented: $adding) {
             NavigationStack {
@@ -45,6 +36,52 @@ struct CategoryPicker: View {
         }
         .onChange(of: income) { _, _ in expanded = nil }
         .onChange(of: store.current.id) { _, _ in expanded = nil; adding = false }
+    }
+    private var grid: some View {
+        CategoryGridLayout {
+            ForEach(categories) { category in
+                mainTile(category)
+                    .layoutValue(key: CategoryExpandedKey.self, value: expanded == category.name)
+            }
+            addButton
+            if let category = categories.first(where: { $0.name == expanded }) {
+                smallItems(category).layoutValue(key: CategoryPanelKey.self, value: true)
+            }
+        }
+    }
+    /// Entry forms show both levels together: a main button confirms main-only,
+    /// while a small-item button confirms the complete assignment immediately.
+    private var sections: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space16) {
+            ForEach(categories) { category in
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    CategoryChoiceChip(title: category.name, selected: selected?.category == category.name,
+                                       outlined: suggested == category.name && selected?.category != category.name, prominent: true) {
+                        _ = choose(.init(category: category.name), nil)
+                    }.accessibilityIdentifier(identifier + "Category_" + category.name)
+                        .accessibilityHint("只记" + category.name)
+                    if !category.subcategories.isEmpty {
+                        ChipFlow {
+                            ForEach(category.subcategories, id: \.self) { sub in
+                                CategoryChoiceChip(title: sub, selected: selected == .init(category: category.name, subcategory: sub)) {
+                                    _ = choose(.init(category: category.name, subcategory: sub), nil)
+                                }.accessibilityIdentifier(identifier + "Subcategory_" + category.name + "/" + sub)
+                            }
+                        }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            addButton
+        }
+    }
+    private var addButton: some View {
+        Button { adding = true } label: {
+            Label("加一个", systemImage: "plus").yubaiFont(YubaiFont.button)
+                .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
+                .foregroundStyle(YubaiColor.brandInk)
+                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
     }
     private func mainTile(_ category: YubaiCore.Category) -> some View {
         let active = expanded == category.name || (expanded == nil && selected?.category == category.name)
@@ -83,10 +120,12 @@ struct CategoryChoiceChip: View {
     let title: String
     var selected = false
     var outlined = false
+    var prominent = false
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).yubaiFont(YubaiFont.callout).lineLimit(1).fixedSize()
+            Text(title).yubaiFont(prominent ? YubaiFont.button : YubaiFont.callout, weight: prominent ? .semibold : nil)
+                .lineLimit(1).fixedSize()
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(selected ? YubaiColor.onBrand : (outlined ? YubaiColor.brandInk : YubaiColor.label))
                 .background(selected ? YubaiColor.brand : (outlined ? Color.clear : YubaiColor.raised), in: Capsule())
@@ -170,8 +209,10 @@ struct CategoryAdditionSheet: View {
                 Text("放在").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 ChipFlow {
                     CategoryChoiceChip(title: "新的大类", selected: parent == nil) { parent = nil }
+                        .accessibilityIdentifier("categoryAdditionMain")
                     ForEach(allParents ? parents : Array(parents.prefix(3))) { category in
                         CategoryChoiceChip(title: category.name, selected: parent == category.name) { parent = category.name }
+                            .accessibilityIdentifier("categoryAdditionParent_" + category.name)
                     }
                     if !allParents && parents.count > 3 {
                         CategoryChoiceChip(title: "更多…", outlined: true) { allParents = true }
@@ -179,7 +220,9 @@ struct CategoryAdditionSheet: View {
                 }
             }
         }.navigationTitle("加一个").yubaiNavigation()
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) {
+                Button("取消") { dismiss() }.accessibilityIdentifier("categoryAdditionCancel")
+            } }
             .safeAreaInset(edge: .bottom) {
                 Button {
                     if add(addition) { dismiss() }
