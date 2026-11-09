@@ -63,6 +63,7 @@ struct EntryEditForm: View {
                                               selected: amountSelected, identifier: "editEntryAmount", open: openAmount)
                             .id("editAmount")
                         InlineFieldError(message: currentAmount <= 0 ? "金额须大于 0.00 元" : nil)
+                        if draft.nature != .transfer { EntrySavingHintBar(hint: savingHint, afterOverride: previewAfter) }
                         if draft.nature != .transfer {
                             EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: draft.nature, frequentOnly: true),
                                                income: draft.nature != .refund && draft.nature.inflow,
@@ -81,18 +82,7 @@ struct EntryEditForm: View {
                             draft.category = entry.category; draft.subcategory = entry.subcategory; draft.subcategoryUserEdited = true; choseCategory = true; categoryIsSuggestion = false
                             if accounts.contains(where: { $0.id == entry.accountID }) { draft.accountID = entry.accountID }
                             purposeFocused = false
-                        }) {
-                            if draft.nature != .transfer && onSave == nil {
-                                EntryFormDivider()
-                                EntryFormRow(title: "重复") {
-                                    EntryRepeatChip(selected: draft.planID != nil || repeatsMonthly, value: repeatValue, opensPlan: draft.planID != nil) {
-                                        finishAmount(); purposeFocused = false
-                                        if let id = draft.planID { store.sheetSource = nil; store.sheet = .editPlan(id) }
-                                        else { repeatsMonthly.toggle() }
-                                    }
-                                }
-                            }
-                        }
+                        }) {}
                         if onSave == nil && draft.source != "Apple Pay" {
                             Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             Button {
@@ -127,10 +117,24 @@ struct EntryEditForm: View {
                 withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scroll.scrollTo("editAmount", anchor: .top) }
             }
         }.safeAreaInset(edge: .bottom, spacing: 0) {
-            if amountKeypadPresented {
-                AmountKeypad(keypad: $keypad, amountSelected: $amountSelected, canSave: keypad.canSave,
-                             primaryTitle: "好", primaryIdentifier: "amountKeypadDone", save: finishAmount)
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom))
+            EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
+                HStack(spacing: 8) {
+                    EntryDateChip(date: $draft.date, inTray: true)
+                    EntryAccountMenu(accounts: accounts, balances: balances, selection: Binding(get: { draft.accountID }, set: { if let value = $0 { draft.accountID = value } }), inTray: true)
+                    Spacer(minLength: 0)
+                    if draft.nature != .transfer {
+                        EntryRepeatChip(selected: draft.planID != nil || repeatsMonthly, value: repeatValue, opensPlan: draft.planID != nil, inTray: true) {
+                            finishAmount(); purposeFocused = false
+                            if let id = draft.planID { store.sheetSource = nil; store.sheet = .editPlan(id) }
+                            else { repeatsMonthly.toggle() }
+                        }
+                    }
+                }
+            } keys: {
+                if amountKeypadPresented {
+                    AmountKeypad(keypad: $keypad, amountSelected: $amountSelected, canSave: canSave,
+                                 primaryTitle: primaryTitle, primaryIdentifier: "saveEditedEntry", save: save, embedded: true)
+                }
             }
         }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: amountKeypadPresented)
             .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
@@ -140,8 +144,8 @@ struct EntryEditForm: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .entryDiscardGuard(dirty: dirty, amount: currentAmount, confirming: $confirmingDiscard)
-            .onAppear { balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) }) }
-            .onChange(of: purposeFocused) { _, focused in if focused { finishAmount() } }
+            .onAppear { balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) }); openAmount() }
+            .onChange(of: purposeFocused) { _, focused in if focused { finishAmount() } else { openAmount() } }
             .onChange(of: draft.category) { _, _ in remembered = false }
             .onChange(of: draft.nature) { _, nature in
                 if skipNatureReset { skipNatureReset = false; return }
@@ -152,6 +156,17 @@ struct EntryEditForm: View {
                 categoryIsSuggestion = suggestion != nil; choseCategory = nature != .transfer
             }
 
+    }
+    private var savingHint: EntryHint {
+        var ledger = store.current
+        ledger.entries.removeAll { $0.id == original.id }
+        return EntryHint.make(ledger: ledger, amount: currentAmount, category: draft.category, isFixedBill: draft.planID != nil || draft.rentID != nil || repeatsMonthly,
+                              nature: draft.nature, subcategory: draft.subcategory)
+    }
+    private var previewAfter: Int64? {
+        guard store.entriesByID[original.id] != nil else { return nil }
+        var entry = draft; entry.amount = currentAmount
+        return try? ManualBookkeeping.available(after: entry, in: store.current)
     }
     private var currentAmount: Int64 { amountKeypadPresented ? keypad.amount ?? 0 : (try? Money.parse(amount)) ?? 0 }
     private var dirty: Bool { draft != original || currentAmount != original.amount || purpose != original.displayTitle || repeatsMonthly }

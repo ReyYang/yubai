@@ -37,12 +37,12 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
     public var name: String { rawValue }
     public var description: String {
         switch self {
-        case .getFunds: return "本机计算的还能花与各项预留、始终留着目标、预计收入和警示。还能花看到下次发工资，包含发工资当天的付款；没有固定工资时看未来90天，预计收入仍看90天。"
+        case .getFunds: return "本机计算的还能花看到当前周期末：有固定工资时到下次发工资前一天，否则到自然月末。存着不动是固定存款，不算进还能花；要攒是这个月先留出的钱。日常开销不扣，未来收入不提前计入。"
         case .forecast: return "从今天预测指定日期的保守/预计余额及此前已知付款；可比较一笔金额。最远365天，预计收入不算保守资金。"
         case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，每页最多50条。offset从0开始，用next_offset继续查询。日期边界均包含当天，金额过滤用原始金额。"
         case .summarize: return "按日/周(周一开始)/月/分类汇总匹配记录；默认全部，不受查询默认条数限制。消费退款抵扣，房租只计个人承担。"
         case .compareToHabit: return "近90个自然日同类实际消费的均值、中位数、每周频次和最近记录；有数据时附last_year去年同期90天均值和次数，以及匹配的想克制领域柔性线soft_limits。不含未来记录或退款，可比较金额位置。"
-        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、始终留着目标和储蓄目标。附生活背景memories（可能过时，省略时用recall检索）和最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
+        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、存着不动和攒钱安排。附生活背景memories（可能过时，省略时用recall检索）和最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
         }
     }
     private static func field(_ type: String, _ description: String) -> JSONValue {
@@ -91,10 +91,17 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         case .getFunds:
             let f = Finance.funds(ctx.ledger, now: ctx.now)
             var fields: [String: JSONValue] = ["available": .money(f.available), "cash": .money(f.cash), "debt": .money(f.debt),
-                "committed": .money(f.committed), "goals": .money(f.goals), "floor_target": ctx.ledger.profile.floorAmount.map { .money($0) } ?? .null,
-                "floor_room": f.floorRoom.map { .money($0) } ?? .null,
+                "committed": .money(f.committed), "goals": .money(f.goals), "fixed_savings": .money(ctx.ledger.fixedSavings ?? 0),
+                "cycle_start": .string(Dates.text(f.cycleStart)), "cycle_end": .string(Dates.text(f.cycleEnd)), "cycle_is_payday": .bool(f.cycleIsPayday),
+                "liquid_start": .money(f.liquidStart), "cycle_income": .money(f.cycleIncome), "saving_target": .money(f.savingTarget),
+                "cycle_spent": .money(f.cycleSpent), "due_rest": .money(f.dueRest), "daily_allowance": .money(f.dailyAllowance), "saving_shortfall": .money(f.savingShortfall),
                 "living": .money(f.living), "uncertain": .money(f.uncertainInflow), "expected_income": .money(f.expectedIncome),
                 "horizon_days": .number(Double(f.horizonDays)), "warnings": .strings(f.warnings)]
+            switch ctx.ledger.savingRule {
+            case .fixed(let amount): fields["saving_rule"] = .object(["type": .string("fixed"), "amount": .money(amount)])
+            case .share(let percent): fields["saving_rule"] = .object(["type": .string("share"), "percent": .number(Double(percent))])
+            case nil: fields["saving_rule"] = .null
+            }
             if let payday = f.payday { fields["payday"] = .string(Dates.text(payday)) }
             if let title = f.paydayTitle { fields["payday_title"] = .string(title) }
             result = .object(fields)
@@ -149,7 +156,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             "recent_followups": .array(recent),
             "memories": Memory.context(ledger: ctx.ledger, now: ctx.now, characterBudget: ctx.memoryCharacterBudget),
             "categories": .strings(ctx.ledger.selectableCategories.filter { !$0.income }.map(\.name)),
-            "floor_amount": ctx.ledger.profile.floorAmount.map { .money($0) } ?? .null,
+            "fixed_savings": ctx.ledger.fixedSavings.map { .money($0) } ?? .null,
             "habits": .object(["label": .string("你常花的"), "meaning": .string("这是从账本里看到的，不是你的要求；分类与商户可能重叠，不可相加。"),
                 "window_days": .number(90), "lines": .array(ProfileHabits.summary(ctx.ledger, now: ctx.now).map {
                     .object(["kind": .string($0.kind.rawValue), "title": .string($0.title), "total": .money($0.total),

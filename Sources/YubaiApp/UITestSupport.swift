@@ -116,6 +116,19 @@ enum UITestSupport {
         ledger.mutedTopics = ["letter"] // Keep scripted flows independent of the weekday.
         let account = Account(name: "合成银行卡", balance: 100_000, at: now)
         ledger.accounts = [account]
+        if script.hasPrefix("v42") {
+            ledger.preferences.cloudAIEnabled = false
+            ledger.accounts[0].anchorBalance = script == "v42-over" ? 2_158_000 : 2_834_000
+            ledger.accounts[0].anchorDate = Dates.addDays(-1, to: Dates.day(now))
+            ledger.fixedSavings = 2_000_000; ledger.savingRule = .fixed(200_000)
+            if script == "v42-share" {
+                ledger.savingRule = .share(20)
+                ledger.entries = [Entry(date: now, amount: 840_000, nature: .income, accountID: account.id, title: "兼职", category: "兼职")]
+            }
+            let cycle = Finance.cycle(in: ledger, now: now)
+            let previous = Finance.cycle(in: ledger, now: cycle.start.addingTimeInterval(-1))
+            ledger.savingHistory = [CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: 800_000, target: 200_000, saved: 200_000)]
+        }
         if script == "round40" {
             ledger.preferences.cloudAIEnabled = false
             ledger.entries = (0..<3).map { Entry(date: Dates.addMonths(-$0, to: now), amount: 350_000, accountID: account.id, title: "合成跨月房租", category: "居住") }
@@ -218,7 +231,7 @@ enum UITestSupport {
         paid.planID = bill.id
         ledger.entries.append(paid)
         ledger.plans = [salary, bill]
-        if low { ledger.profile.floorAmount = 300_000 }
+        if low { ledger.fixedSavings = 300_000 }
         return ledger
     }
     static func salaryLedger(now: Date) -> Ledger {

@@ -16,24 +16,20 @@ final class FinanceTests: XCTestCase {
         for floor: Int64? in [nil, 0, 100_000, 700_000, 800_000] {
             ledger.profile.floorAmount = floor
             let funds = Finance.funds(ledger, now: now)
-            XCTAssertEqual(funds.available, before.available); XCTAssertEqual(funds.emergency, floor ?? 0)
-            XCTAssertEqual(funds.floorRoom, floor.map { 700_000 - $0 })
+            XCTAssertEqual(funds.available, before.available); XCTAssertEqual(funds.emergency, 0)
+            XCTAssertNil(funds.floorRoom)
             XCTAssertEqual(funds.points.map(\.date), before.points.map(\.date))
             XCTAssertEqual(funds.points.map(\.conservative), before.points.map(\.conservative))
             XCTAssertEqual(funds.points.map(\.expected), before.points.map(\.expected))
         }
     }
-    func testPurchaseFactsSeparateFloorTargetFromReservations() {
+    func testPurchaseFactsIncludeFixedSavingsAndSavingTarget() {
         var ledger = basic(); ledger.goals = [Goal(title: "旅行", target: 100_000, reserved: 30_000)]
-        let reserved = "在存钱与日常开销 \(Money.text(30_000))"
-        XCTAssertTrue(Finance.assessPurchase(ledger, amount: 1000, now: now).facts.contains(reserved))
-        XCTAssertFalse(Finance.assessPurchase(ledger, amount: 1000, now: now).facts.contains { $0.contains("始终留着") })
-        ledger.profile.floorAmount = 100_000
-        let positive = Finance.assessPurchase(ledger, amount: 1000, now: now)
-        XCTAssertTrue(positive.facts.contains(reserved)); XCTAssertTrue(positive.facts.contains("想始终留着 \(Money.text(100_000))，按现在能留住"))
-        ledger.profile.floorAmount = 800_000
-        let negative = Finance.assessPurchase(ledger, amount: 1000, now: now)
-        XCTAssertTrue(negative.facts.contains(reserved)); XCTAssertTrue(negative.facts.contains("想始终留着 \(Money.text(800_000))，还差 \(Money.text(30_000))"))
+        ledger.fixedSavings = 100_000; ledger.savingRule = .fixed(20_000)
+        let facts = Finance.assessPurchase(ledger, amount: 1000, now: now).facts
+        XCTAssertTrue(facts.contains("在存钱 \(Money.text(30_000))"))
+        XCTAssertTrue(facts.contains("存着不动 \(Money.text(100_000))"))
+        XCTAssertTrue(facts.contains("要攒 \(Money.text(20_000))"))
     }
     private func record(_ ledger: inout Ledger, date: Date, at recordedAt: Date, nature: Nature = .expense) throws {
         let draft = EntryDraft(date: date, amount: 3200, amountConfirmed: true, nature: nature, accountID: ledger.accounts[0].id, title: "补记")

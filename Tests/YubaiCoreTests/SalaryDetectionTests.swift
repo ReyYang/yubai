@@ -143,8 +143,8 @@ final class SalaryDetectionTests: XCTestCase {
         XCTAssertEqual(plan.accountID, ledger.accounts[0].id); XCTAssertEqual(plan.category, "工资奖金")
         XCTAssertEqual(plan.frequency, .monthly); XCTAssertTrue(plan.inflow); XCTAssertEqual(plan.nature, .income)
         let after = Finance.funds(ledger, now: now)
-        XCTAssertEqual(after.payday, date("2026-11-10")); XCTAssertEqual(after.horizonDays, 13)
-        XCTAssertLessThan(after.horizonDays, original.horizonDays); XCTAssertGreaterThan(after.available, original.available)
+        XCTAssertEqual(after.payday, date("2026-11-10")); XCTAssertEqual(after.horizonDays, 12)
+        XCTAssertGreaterThan(after.horizonDays, original.horizonDays); XCTAssertEqual(after.available, original.available)
         XCTAssertNil(SalaryDetection.candidate(in: ledger, now: now))
         XCTAssertNil(SalaryDetection.confirm(candidate, in: &ledger, now: now)); XCTAssertEqual(ledger.plans.count, 1)
         ledger = before

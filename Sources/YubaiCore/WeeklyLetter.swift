@@ -30,6 +30,9 @@ public enum WeeklyLetter {
     /// recorded postings; remove later entries so payments aren't marked paid early.
     /// Missing historical postings / past settings cannot be reconstructed.
     public static func available(_ ledger: Ledger, at date: Date) -> Int64 {
+        Finance.funds(snapshot(ledger, at: date), now: date).available
+    }
+    static func snapshot(_ ledger: Ledger, at date: Date) -> Ledger {
         var snapshot = ledger
         for i in snapshot.accounts.indices where snapshot.accounts[i].anchorDate > date {
             let account = snapshot.accounts[i]
@@ -51,7 +54,9 @@ public enum WeeklyLetter {
             snapshot.entries[i].planID = nil; snapshot.entries[i].occurrence = nil
             snapshot.entries[i].rentID = nil; snapshot.entries[i].rentPeriod = nil
         }
-        return Finance.funds(snapshot, now: date).available
+        let laterSavings = ledger.savingHistory.filter { $0.cycleEnd >= Dates.day(date) }.reduce(Int64(0)) { $0 + $1.saved }
+        snapshot.fixedSavings = max(0, (ledger.fixedSavings ?? 0) - laterSavings)
+        return snapshot
     }
     public static func facts(_ ledger: Ledger, weekEnding: Date) -> LetterFacts {
         let lastDay = Dates.day(weekEnding)

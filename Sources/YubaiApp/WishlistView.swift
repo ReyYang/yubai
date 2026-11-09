@@ -49,7 +49,7 @@ struct WishlistView: View {
         }.navigationTitle("心愿单").yubaiNavigation()
     }
     private func followUpCard(_ wish: WishItem) -> some View {
-        SwipeDismissCard(onDismiss: { store.dismissWishFollowUp(wish.id) }, onMute: { store.dismissWishFollowUp(wish.id, mute: true) }) { animateDismiss in
+        LetterDismissCard(onDismiss: { store.dismissWishFollowUp(wish.id) }, onMute: { store.dismissWishFollowUp(wish.id, mute: true) }) { animateDismiss in
             Card(style: .compact, background: YubaiColor.amberTint) {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     Text("买了一个月").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk).accessibilityIdentifier("wishFollowUpAge")

@@ -172,6 +172,7 @@ struct EntryAccountMenu: View {
     var showsBalance = false
     var optional = false
     var emptyTitle: String? = nil
+    var inTray = false
     var body: some View {
         Menu {
             if optional { Button("不指定") { selection = nil } }
@@ -180,9 +181,11 @@ struct EntryAccountMenu: View {
             }
         } label: {
             let account = accounts.first { $0.id == selection }
-            Text((account?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户")) + (showsBalance && account != nil ? " · 余额 " + balanceText(account!.id) : ""))
-                .yubaiFont(YubaiFont.callout).fixedSize().padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
-                .background(YubaiColor.raised, in: Capsule())
+            HStack(spacing: 6) {
+                if inTray { Image(systemName: "creditcard").accessibilityHidden(true) }
+                Text((account?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户")) + (showsBalance && account != nil ? " · 余额 " + balanceText(account!.id) : "")).lineLimit(1)
+            }.yubaiFont(YubaiFont.callout).fixedSize(horizontal: !inTray, vertical: true).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight)
+                .background(inTray ? YubaiColor.keyFn : YubaiColor.raised, in: Capsule())
                 .yubaiHitTarget()
         }.buttonStyle(PressButtonStyle()).accessibilityLabel("账户")
             .accessibilityValue(accounts.first { $0.id == selection }?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户"))
@@ -197,23 +200,27 @@ struct EntryDateChip: View {
     @Binding var date: Date
     var time = false
     var iconOnly = false
+    var inTray = false
+    var allowsFuture = false
     @State private var picking = false
     @State private var latestDate = Date()
     var body: some View {
         Button { latestDate = Date(); picking = true } label: {
             Group {
                 if iconOnly { Image(systemName: "calendar").frame(width: 20) }
+                else if inTray && !time { Label(ManualBookkeeping.dayLabel(date), systemImage: "calendar").fixedSize() }
                 else { Text(time ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date)).fixedSize() }
             }
                 .yubaiFont(time ? YubaiFont.amountSmall : YubaiFont.callout)
-                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight).background(YubaiColor.raised, in: Capsule())
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight).background(inTray ? YubaiColor.keyFn : YubaiColor.raised, in: Capsule())
                 .yubaiHitTarget()
         }.accessibilityLabel(iconOnly ? "选别的日子" : time ? "时间" : "日期").accessibilityValue(time ? date.formatted(.dateTime.hour().minute()) : ManualBookkeeping.dayLabel(date)).buttonStyle(PressButtonStyle()).popover(isPresented: $picking) {
             VStack(spacing: YubaiSpace.gapGroup) {
                 if time {
                     DatePicker("时间", selection: $date, in: ...latestDate, displayedComponents: .hourAndMinute).labelsHidden().frame(width: 240).fixedSize()
                 } else {
-                    DatePicker("日期", selection: $date, in: ...latestDate, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320, height: 360).fixedSize()
+                    if allowsFuture { DatePicker("日期", selection: $date, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320, height: 360).fixedSize() }
+                    else { DatePicker("日期", selection: $date, in: ...latestDate, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320, height: 360).fixedSize() }
                 }
                 Button("完成") { picking = false }.frame(minHeight: YubaiSize.tapMin)
             }.padding(YubaiSpace.insetCard).transaction { $0.animation = nil }
@@ -256,6 +263,7 @@ struct AmountKeypad: View {
     let primaryIdentifier: String
     let save: () -> Void
     var saveAnother: (() -> Void)? = nil
+    var embedded = false
     @StateObject private var feedback = AmountKeypadFeedback()
     @State private var secondaryTouched = false
     @ScaledMetric(relativeTo: .title2) private var keyHeight: CGFloat = 52
@@ -263,9 +271,9 @@ struct AmountKeypad: View {
     private let rows = [["1", "2", "3", "⌫"], ["4", "5", "6", "+"], ["7", "8", "9", "−"]]
 
     init(keypad: Binding<EntryKeypad>, amountSelected: Binding<Bool> = .constant(false), canSave: Bool,
-         primaryTitle: String, primaryIdentifier: String, save: @escaping () -> Void, saveAnother: (() -> Void)? = nil) {
+         primaryTitle: String, primaryIdentifier: String, save: @escaping () -> Void, saveAnother: (() -> Void)? = nil, embedded: Bool = false) {
         _keypad = keypad; _amountSelected = amountSelected; self.canSave = canSave
-        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.save = save; self.saveAnother = saveAnother
+        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.save = save; self.saveAnother = saveAnother; self.embedded = embedded
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -302,8 +310,10 @@ struct AmountKeypad: View {
         }.padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 8)
             .frame(maxWidth: 620).frame(maxWidth: .infinity)
             .background {
-                UnevenRoundedRectangle(topLeadingRadius: YubaiRadius.card, topTrailingRadius: YubaiRadius.card)
-                    .fill(YubaiColor.keypadTray).ignoresSafeArea(edges: .bottom)
+                if !embedded {
+                    UnevenRoundedRectangle(topLeadingRadius: YubaiRadius.card, topTrailingRadius: YubaiRadius.card)
+                        .fill(YubaiColor.keypadTray).ignoresSafeArea(edges: .bottom)
+                }
             }
             .accessibilityElement(children: .contain).accessibilityLabel("数字键盘")
             .onAppear { feedback.prepare() }
@@ -473,12 +483,13 @@ struct EntryRepeatChip: View {
     var selected: Bool
     var value: String
     var opensPlan = false
+    var inTray = false
     let action: () -> Void
     var body: some View {
         Button(action: action) {
             Text(value + (opensPlan ? " ›" : "")).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
-                .padding(.horizontal, YubaiSpace.gapGroup).frame(height: YubaiSize.chipHeight)
-                .background(selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(height: inTray ? 34 : YubaiSize.chipHeight)
+                .background(inTray ? YubaiColor.keyFn : selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
                 .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
                 .yubaiHitTarget()
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryRepeat")
@@ -753,41 +764,74 @@ struct EntryFormFields<Trailing: View>: View {
     var recall: (Entry) -> Void = { _ in }
     @ViewBuilder var trailing: () -> Trailing
     var body: some View {
-        Card(style: .list) {
-            VStack(spacing: YubaiSpace.none) {
-                EntryFormRow(title: purposeTitle) {
-                    TextField("", text: $purpose, prompt: purposeTitle == "用途" ? Text("可不填").foregroundStyle(YubaiColor.labelSecondary) : nil)
-                        .multilineTextAlignment(.trailing).focused(focus)
-                        .accessibilityLabel(purposeTitle).accessibilityIdentifier(purposeIdentifier)
-                        .submitLabel(.done).onSubmit { focus.wrappedValue = false }
-                }
-                InlineFieldError(message: purposeError)
-                if showsRecent {
-                    RecentPurposeChips(selection: $purpose, nature: nature, recall: recall)
-                }
-                if let beforeAccount { EntryFormDivider(); beforeAccount }
-                EntryFormDivider()
-                EntryFormRow(title: accountTitle ?? (nature == .transfer ? "转出" : "账户")) {
-                    EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, showsBalance: showsBalance, optional: optionalAccount)
-                        .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false })
-                }
-                if nature == .transfer || (nature.paired && otherAccountID != nil) {
-                    EntryFormDivider()
+        VStack(alignment: .leading, spacing: 12) {
+            InlineFieldError(message: purposeError)
+            if showsRecent { RecentPurposeChips(selection: $purpose, nature: nature, recall: recall) }
+            if nature == .transfer || (nature.paired && otherAccountID != nil) {
+                Card(style: .list) {
                     EntryFormRow(title: "转入") {
                         if accounts.filter({ $0.id != accountID }).isEmpty, let transferFallback { transferFallback }
                         else {
                             EntryAccountMenu(accounts: accounts.filter { $0.id != accountID }, balances: balances, selection: $otherAccountID, showsBalance: showsBalance)
                                 .accessibilityIdentifier("transferDestinationAccount")
-                                .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false })
                         }
                     }
                 }
-                if showsDate {
-                    EntryFormDivider()
-                    EntryDateRow(date: $date, showsTime: showsTime).simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false })
-                }
-                trailing()
             }
+            trailing()
+        }
+    }
+}
+
+struct EntryKeyboardTray<Controls: View, Keys: View>: View {
+    @Binding var purpose: String
+    var purposeIdentifier = "entryPurpose"
+    var focus: FocusState<Bool>.Binding
+    @ViewBuilder let controls: () -> Controls
+    @ViewBuilder let keys: () -> Keys
+    var body: some View {
+        VStack(spacing: 0) {
+            EntryPurposeWell(purpose: $purpose, identifier: purposeIdentifier, focus: focus).padding(.horizontal, 8).padding(.top, 10)
+            controls().padding(.horizontal, 8).padding(.top, 8)
+            if !focus.wrappedValue { keys() }
+        }.padding(.bottom, focus.wrappedValue ? 8 : 0)
+            .background { UnevenRoundedRectangle(topLeadingRadius: YubaiRadius.card, topTrailingRadius: YubaiRadius.card).fill(YubaiColor.keypadTray).ignoresSafeArea(edges: .bottom) }
+    }
+}
+
+struct EntrySavingHintBar: View {
+    @Environment(AppStore.self) private var store
+    let hint: EntryHint
+    var afterOverride: Int64? = nil
+    private var amber: Bool {
+        if let afterOverride, afterOverride < 0 { return true }
+        switch hint { case .restrain, .big: return true; case .normal(_, _, let over): return over }
+    }
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { labels; Spacer(minLength: 0); amount }
+            VStack(alignment: .leading, spacing: 2) { labels; amount }
+        }.padding(.horizontal, 14).frame(minHeight: 36)
+            .background(amber ? YubaiColor.amberTint : YubaiColor.brandTint, in: Capsule())
+            .foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.brandInk).accessibilityIdentifier("entrySavingHint")
+    }
+    @ViewBuilder private var labels: some View {
+        switch hint {
+        case .normal, .big: Text("记下后还能花").yubaiFont(YubaiFont.caption)
+        case .restrain(let title, let count, let limit, _):
+            Text(title + " · 本周第 \(count) 次" + (limit.map { " · 你写的最多 \($0) 次" } ?? "")).yubaiFont(YubaiFont.caption)
+        }
+    }
+    @ViewBuilder private var amount: some View {
+        switch hint {
+        case .normal(let after, let daily, _), .big(let after, let daily, _):
+            let value = afterOverride ?? after
+            let days = max(1, (Dates.calendar.dateComponents([.day], from: Dates.day(Date()), to: store.funds.cycleEnd).day ?? 0) + 1)
+            let allowance = afterOverride == nil ? daily : max(0, value) / Int64(days)
+            Text(store.preferences.hideAmounts ? "••••" : Money.text(value, currency: false) + " · 每天 " + savingDaily(allowance))
+                .yubaiFont(YubaiFont.amountSmall).accessibilityIdentifier("afterEntryAvailable")
+        case .restrain(_, _, _, let spent):
+            Text(store.preferences.hideAmounts ? "••••" : "这周 " + Money.text(spent, currency: false)).yubaiFont(YubaiFont.amountSmall)
         }
     }
 }

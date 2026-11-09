@@ -23,11 +23,10 @@ struct SettingsView: View {
                         }
                         profileLine("想克制", store.profile.restrain.map(\.title).joined(separator: "、"))
                         profileLine("愿意多花", store.profile.generous.map(\.title).joined(separator: "、"))
-                        if let floor = store.profile.floorAmount { profileLine("始终留着", store.preferences.hideAmounts ? "••••" : Money.text(floor, currency: false)) }
                     }
                 }
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
-                .accessibilityHint(store.profile.restrain.isEmpty && store.profile.generous.isEmpty && store.profile.floorAmount == nil ? "还没写消费观，可进入添加" : "查看和编辑消费观")
+                .accessibilityHint(store.profile.restrain.isEmpty && store.profile.generous.isEmpty && store.current.fixedSavings == nil ? "还没写消费观，可进入添加" : "查看和编辑消费观")
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     TabNavigationLink(.wishlist) { WishlistView() } label: {
@@ -40,6 +39,9 @@ struct SettingsView: View {
                     TabNavigationLink(.letters) { LettersView() } label: { row("每周来信", detail: latestLetter) }
                 }
             }.buttonStyle(PressButtonStyle())
+            TabNavigationLink(.savings("我")) { SavingsView(backTitle: "我") } label: {
+                Card(style: .list) { row("攒钱", detail: savingsSummary(store.current)) }
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openSavings")
             TabNavigationLink(.accounts) { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {

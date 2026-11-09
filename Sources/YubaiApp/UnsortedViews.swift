@@ -16,7 +16,7 @@ struct ImportQuestionCard: View {
                         .yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier(question.isFallback ? "unsortedQuestionTitle" : "nowImportQuestion")
                     if question.isFallback {
                         HStack(spacing: YubaiSpace.space8) {
-                            TabNavigationLink(.quickSortUnsorted(question.id)) { UnsortedQuickSortView(questionID: question.id) } label: { Text("一个个分") }
+                            TabNavigationLink(.triage(question.entryIDs)) { LetterTriageView(entryIDs: question.entryIDs) } label: { Text("一笔笔过") }
                                 .buttonStyle(NowCardButtonStyle(primary: true)).accessibilityIdentifier("quickSortUnsorted")
                             TabNavigationLink(.unsortedGroups(question.id)) { UnsortedGroupsView(questionID: question.id) } label: { Text("按对方分") }
                                 .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("groupUnsortedByParty")
@@ -632,5 +632,96 @@ private struct UnsortedEntryRow: View {
                 guard !Task.isCancelled else { return }
                 sourceFields = fields
             }
+    }
+}
+
+struct LetterTriageView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let entryIDs: [UUID]
+    @State private var queue: [UUID] = []
+    @State private var index = 0
+    @State private var total = 0
+    @State private var choice: CategoryAssignment?
+    @State private var suggestion: CategoryAssignment?
+    @State private var purpose = ""
+    private var entry: Entry? {
+        guard queue.indices.contains(index), let row = store.entriesByID[queue[index]], row.deletedAt == nil else { return nil }
+        return row
+    }
+    private var selection: CategoryAssignment { choice ?? suggestion ?? .init(category: Classification.pendingCategory) }
+    var body: some View {
+        VStack(spacing: 0) {
+            LedgerPageHeader(title: "没分类", backTitle: "来信", trailing: "\(min(index + 1, total)) / \(total)")
+                .padding(.horizontal, 20)
+            GeometryReader { geometry in
+                Capsule().fill(YubaiColor.paperInset)
+                    .overlay(alignment: .leading) { Capsule().fill(YubaiColor.brand).frame(width: geometry.size.width * CGFloat(index) / CGFloat(max(1, total))) }
+            }.frame(height: 4).padding(.horizontal, 20).padding(.top, 8)
+                .accessibilityLabel("分类进度").accessibilityValue("\(index) / \(total)")
+            ScrollView {
+                if let entry {
+                    Card {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text(ImportStatementText.balanceDate(entry.date) + " · " + store.accountName(entry.accountID))
+                                .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(entry.title.components(separatedBy: " · ")[0])
+                                    .yubaiFont(YubaiFont.Style(size: 22, lineHeight: 30, weight: .semibold, family: .sans, relativeTo: .title2))
+                                Spacer(minLength: 8)
+                                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .large, sign: entry.nature.inflow ? .inflow : .outflow)
+                            }
+                            Text(entry.note.isEmpty ? entry.title : entry.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: 14))
+                                .accessibilityLabel("原文：" + (entry.note.isEmpty ? entry.title : entry.note))
+                            Text("分类").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                            EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: entry.nature, frequentOnly: true),
+                                               income: entry.nature != .refund && entry.nature.inflow, selection: selection,
+                                               suggestionOnly: choice == nil, allowsDirectionChange: false, suggest: { suggestion?.category }) { choice = $0 }
+                            Text("用途").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                            RecentPurposeChips(selection: $purpose, nature: entry.nature, recall: { _ in })
+                        }
+                    }.padding(20)
+                }
+            }
+        }.safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack(spacing: 12) {
+                Button("先跳过") { advance() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("skipLetterEntry")
+                Button(Classification.displayCategory(selection.category) + " · 下一笔") { save() }
+                    .buttonStyle(PrimaryButtonStyle()).disabled(Classification.isPending(selection.category) || entry == nil)
+                    .accessibilityIdentifier("saveLetterEntry")
+            }.padding(.horizontal, 20).padding(.bottom, 8)
+        }.paperBackground().navigationTitle("没分类").yubaiNavigation().accessibilityIdentifier("letterTriage")
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+            .onAppear {
+                guard total == 0 else { return }
+                let ids = Set(entryIDs)
+                queue = store.sortedEntries.filter { ids.contains($0.id) && $0.deletedAt == nil && Classification.isPending($0) }.map(\.id)
+                total = queue.count
+                if queue.isEmpty { dismiss() } else { prepare() }
+            }
+            .onChange(of: entry?.id) { _, _ in prepare() }
+    }
+    private func prepare() {
+        choice = nil; purpose = ""
+        suggestion = entry.flatMap { CategoryGuesser.guess($0, in: store.current) }
+    }
+    private func advance() {
+        index += 1
+        while queue.indices.contains(index) && store.entriesByID[queue[index]].map({ $0.deletedAt != nil || !Classification.isPending($0) }) != false { index += 1 }
+        if index >= queue.count { dismiss() } else { prepare() }
+    }
+    private func save() {
+        guard var entry, !Classification.isPending(selection.category) else { return }
+        let selected = selection
+        entry.category = selected.category; entry.subcategory = selected.subcategory; entry.subcategoryUserEdited = true
+        if entry.nature.uncertain { entry.nature = entry.nature.inflow ? .income : .expense }
+        if !purpose.isEmpty { entry.purpose = purpose }
+        if store.update("分类", showToast: false, { ledger in
+            try ManualBookkeeping.edit(entry, in: &ledger)
+            try CategoryModel.confirm(selected, entryIDs: [entry.id], includingParty: true, in: &ledger)
+        }) { advance() }
     }
 }

@@ -139,38 +139,34 @@ final class FixedBillsTests: XCTestCase {
         let next = try XCTUnwrap(Finance.nextPayday(in: ledger, now: now))
         XCTAssertEqual(next.date, date("2026-11-10")); XCTAssertEqual(next.title, "工资")
         let funds = Finance.funds(ledger, now: now)
-        XCTAssertEqual(funds.horizonEnd, next.date); XCTAssertEqual(funds.horizonDays, 19)
+        XCTAssertEqual(funds.horizonEnd, date("2026-11-09")); XCTAssertEqual(funds.horizonDays, 18)
         XCTAssertEqual(funds.paydayTitle, "工资"); XCTAssertEqual(funds.payday, next.date)
-        XCTAssertEqual(funds.committed, 6000); XCTAssertEqual(funds.living, 19_000)
-        XCTAssertEqual(funds.available, funds.cash - 6000 - 19_000)
+        XCTAssertEqual(funds.committed, 3000); XCTAssertEqual(funds.living, 0)
+        XCTAssertEqual(funds.available, funds.cash - 3000)
         XCTAssertEqual(funds.occurrences.filter { !$0.inflow }.count, 4)
         XCTAssertEqual(funds.points.count, 91); XCTAssertEqual(funds.expectedIncome, 2_400_000)
         XCTAssertLessThan(funds.points.last!.conservative, 0)
-        XCTAssertTrue(ButlerCards.detect(ledger, now: now).contains { $0.kind == .shortfall && $0.facts.contains(CardFact("付款", "之后付款")) })
+        XCTAssertFalse(ButlerCards.detect(ledger, now: now).contains { $0.kind == .shortfall && $0.facts.contains(CardFact("付款", "之后付款")) })
         let tool = try ReadOnlyTool.getFunds.run(.object([:]), ToolContext(ledger: ledger, now: now))
-        XCTAssertEqual(tool["horizon_days"], .number(19)); XCTAssertEqual(tool["payday"], .string("2026-11-10"))
+        XCTAssertEqual(tool["horizon_days"], .number(18)); XCTAssertEqual(tool["payday"], .string("2026-11-10"))
         XCTAssertEqual(tool["payday_title"], .string("工资"))
         XCTAssertTrue(Finance.assessPurchase(ledger, amount: 100, now: now).facts.contains { $0.hasPrefix("发工资前已知付款 ") })
     }
-    func testNoPaydayMatchesNinetyDayCalculationAndCustomHorizon() throws {
+    func testNoPaydayUsesCalendarMonthRegardlessOfForecastLength() throws {
         var ledger = fixture(); dailySpending(in: &ledger)
         ledger.plans = [Plan(title: "房租", amount: 100_000, dueDate: date("2026-10-10"), frequency: .monthly)]
-        ledger.goals = [Goal(title: "旅行", target: 20_000, reserved: 10_000)]; ledger.profile.floorAmount = 50_000
+        ledger.goals = [Goal(title: "旅行", target: 20_000, reserved: 10_000)]
+        ledger.fixedSavings = 50_000
         for days in [90, 20] {
             let funds = Finance.funds(ledger, now: now, days: days)
-            let occurrences = Finance.occurrences(in: ledger, now: now, days: days)
-            let committed = occurrences.reduce(Int64(0)) { $0 + $1.amount }
-            let living = Finance.estimatedDailyLiving(ledger, now: now) * Int64(days)
             XCTAssertNil(funds.payday); XCTAssertNil(funds.paydayTitle)
-            XCTAssertEqual(funds.horizonDays, days); XCTAssertEqual(funds.horizonEnd, Dates.addDays(days, to: Dates.day(now)))
-            XCTAssertEqual(funds.committed, committed); XCTAssertEqual(funds.living, living)
-            XCTAssertEqual(funds.available, funds.cash - funds.debt - committed - funds.goals - living - funds.uncertainInflow)
-            XCTAssertEqual(funds.floorRoom, funds.available - 50_000)
-            XCTAssertEqual(funds.points.last!.conservative, funds.available)
+            XCTAssertEqual(funds.horizonDays, 9); XCTAssertEqual(funds.horizonEnd, date("2026-10-31"))
+            XCTAssertEqual(funds.committed, 100_000); XCTAssertEqual(funds.living, 0)
+            XCTAssertEqual(funds.available, funds.cash - funds.debt - 100_000 - funds.goals - 50_000 - funds.uncertainInflow)
+            XCTAssertNil(funds.floorRoom); XCTAssertEqual(funds.points.count, days + 1)
         }
-        XCTAssertTrue(Finance.assessPurchase(ledger, amount: 100, now: now).facts.contains { $0.hasPrefix("到 1月20日已知付款 ") })
         let tool = try ReadOnlyTool.getFunds.run(.object([:]), ToolContext(ledger: ledger, now: now))
-        XCTAssertEqual(tool["horizon_days"], .number(90)); XCTAssertNil(tool["payday"]); XCTAssertNil(tool["payday_title"])
+        XCTAssertEqual(tool["horizon_days"], .number(9)); XCTAssertNil(tool["payday"])
     }
     func testPaydaySkipsEndedOnceInactiveExhaustedAndDistantIncome() {
         var ledger = fixture()
@@ -194,21 +190,21 @@ final class FixedBillsTests: XCTestCase {
         ledger.plans = [salary(), Plan(title: "订阅", amount: 3000, dueDate: date("2026-11-09"))]
         let funds = Finance.funds(ledger, now: now, days: 7)
         XCTAssertEqual(funds.points.count, 8); XCTAssertFalse(funds.occurrences.contains { $0.title == "订阅" })
-        XCTAssertEqual(funds.horizonDays, 19); XCTAssertEqual(funds.committed, 3000); XCTAssertEqual(funds.living, 19_000)
+        XCTAssertEqual(funds.horizonDays, 18); XCTAssertEqual(funds.committed, 3000); XCTAssertEqual(funds.living, 0)
     }
     func testRecurringIncomeChangesNinetyDayFallbackAfterSaveAndStopRestoresIt() throws {
         var ledger = fixture()
         XCTAssertNil(Finance.funds(ledger, now: now).payday)
-        XCTAssertEqual(Finance.funds(ledger, now: now).horizonDays, 90)
+        XCTAssertEqual(Finance.funds(ledger, now: now).horizonDays, 9)
         let plan = salary()
         try ChangeSet(source: "用户操作", reason: "添加工资", items: [.addPlan(plan)]).apply(to: &ledger)
         ledger = try LedgerCodec.decode(LedgerCodec.encode(ledger))
         let funds = Finance.funds(ledger, now: now)
         XCTAssertEqual(funds.payday, date("2026-11-10")); XCTAssertEqual(funds.paydayTitle, "工资")
-        XCTAssertEqual(funds.horizonDays, 19)
+        XCTAssertEqual(funds.horizonDays, 18)
         try ChangeSet(source: "用户操作", reason: "停掉工资", items: [.endPlan(plan.id, now)]).apply(to: &ledger)
         XCTAssertNil(Finance.funds(ledger, now: now).payday)
-        XCTAssertEqual(Finance.funds(ledger, now: now).horizonDays, 90)
+        XCTAssertEqual(Finance.funds(ledger, now: now).horizonDays, 9)
     }
     func testStoppedWeeklyBillsKeepPaidAndDueRowsThroughStopDayOnly() throws {
         var ledger = fixture()

@@ -1,5 +1,68 @@
 import Foundation
 
+public enum SavingRule: Codable, Equatable, Sendable {
+    case fixed(Int64)
+    case share(Int)
+    public var isValid: Bool {
+        switch self { case .fixed(let amount): (0...Money.limit).contains(amount); case .share(let percent): (1...90).contains(percent) }
+    }
+    public func target(income: Int64) -> Int64 {
+        switch self {
+        case .fixed(let amount): return max(0, amount)
+        case .share(let percent):
+            var value = Decimal(max(0, income)) * Decimal(percent) / 100
+            var rounded = Decimal(); NSDecimalRound(&rounded, &value, 0, .plain)
+            return NSDecimalNumber(decimal: rounded).int64Value
+        }
+    }
+}
+public struct CycleSaving: Codable, Equatable, Sendable, Identifiable {
+    public var id: Date { cycleStart }
+    public var cycleStart: Date
+    public var cycleEnd: Date
+    public var income: Int64
+    public var target: Int64
+    public var saved: Int64
+    /// False when no saving rule existed during the cycle: it only marks the cycle
+    /// closed, so a rule set later is never applied to months before it.
+    public var tracked = true
+    public init(cycleStart: Date, cycleEnd: Date, income: Int64, target: Int64, saved: Int64, tracked: Bool = true) {
+        self.cycleStart = cycleStart; self.cycleEnd = cycleEnd; self.income = income; self.target = target; self.saved = saved; self.tracked = tracked
+    }
+    private enum CodingKeys: String, CodingKey { case cycleStart, cycleEnd, income, target, saved, tracked }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        cycleStart = try c.decode(Date.self, forKey: .cycleStart); cycleEnd = try c.decode(Date.self, forKey: .cycleEnd)
+        income = try c.decode(Int64.self, forKey: .income); target = try c.decode(Int64.self, forKey: .target)
+        saved = try c.decode(Int64.self, forKey: .saved); tracked = try c.decodeIfPresent(Bool.self, forKey: .tracked) ?? true
+    }
+}
+
+public enum EntryHint: Equatable, Sendable {
+    case normal(after: Int64, daily: Int64, over: Bool)
+    case restrain(areaTitle: String, countThisWeek: Int, limit: Int?, weekSpent: Int64)
+    case big(after: Int64, daily: Int64, over: Bool)
+    /// Non-expenses use a normal receipt; restraint takes precedence over size.
+    public static func make(ledger: Ledger, amount: Int64, category: String, isFixedBill: Bool, now: Date = Date(), nature: Nature = .expense, subcategory: String? = nil) -> EntryHint {
+        let funds = Finance.funds(ledger, now: now)
+        let expense = nature == .expense
+        let after = funds.available + (expense ? -amount : nature.inflow ? amount : 0)
+            - (nature == .income ? (ledger.savingRule?.target(income: funds.cycleIncome + amount) ?? 0) - funds.savingTarget : 0)
+        let days = max(1, (Dates.calendar.dateComponents([.day], from: Dates.day(now), to: funds.cycleEnd).day ?? 0) + 1)
+        let daily = max(0, after) / Int64(days)
+        var sample = Entry(date: now, amount: amount, accountID: UUID(), title: category, category: category)
+        sample.subcategory = subcategory
+        if expense, let area = ledger.profile.restrain.first(where: { ButlerCards.matches($0, entry: sample, ledger: ledger) }) {
+            let usage = area.usage(in: ledger, now: now)
+            let week = ButlerCards.calendar.dateInterval(of: .weekOfYear, for: now)!.start
+            let spent = area.usage(in: ledger, from: week, through: now).amount
+            return .restrain(areaTitle: area.title, countThisWeek: usage.weekCount + 1, limit: area.softLimit?.perWeekCount, weekSpent: spent + amount)
+        }
+        if expense && !isFixedBill && amount > max(0, funds.available) / 5 { return .big(after: after, daily: daily, over: after < 0) }
+        return .normal(after: after, daily: daily, over: after < 0)
+    }
+}
+
 public struct StoppedSubscription: Codable, Equatable, Identifiable, Sendable {
     public var id = UUID()
     public var plan: Plan
@@ -21,6 +84,30 @@ public struct SavingsSummary: Equatable, Sendable {
     public var total: Int64 { lines.reduce(0) { $0 + $1.amount } }
 }
 public enum Savings {
+    /// Close only the latest completed cycle; history makes repeated foreground
+    /// callbacks idempotent. Rewind anchors and payments to the closing instant.
+    public static func closeCycles(_ ledger: inout Ledger, now: Date = Date()) {
+        let current = Finance.cycle(in: ledger, now: now)
+        let close = current.start.addingTimeInterval(-0.001)
+        let previous = Finance.cycle(in: ledger, now: close)
+        // Stored calendar boundaries are instants created in the then-current zone.
+        // A later device-zone change must not turn the same period into a new saving.
+        let alreadyClosed = ledger.savingHistory.contains {
+            abs($0.cycleStart.timeIntervalSince(previous.start)) <= 36 * 3600 &&
+                abs($0.cycleEnd.timeIntervalSince(previous.end)) <= 36 * 3600
+        }
+        guard previous.end < Dates.day(now), !alreadyClosed else { return }
+        guard ledger.savingRule != nil else {
+            ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: 0, target: 0, saved: 0, tracked: false))
+            return
+        }
+        let snapshot = WeeklyLetter.snapshot(ledger, at: close)
+        let funds = Finance.funds(snapshot, now: close)
+        let saved = max(0, min(funds.savingTarget, funds.savingTarget + funds.available))
+        ledger.fixedSavings = (ledger.fixedSavings ?? 0) + saved
+        ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: funds.cycleIncome, target: funds.savingTarget, saved: saved))
+    }
+
     /// Half-open [from, to). A stopped subscription accrues on each elapsed due
     /// date, never as an annualized estimate or as a future saving.
     public static func summary(ledger: Ledger, from: Date, to: Date, now: Date = Date()) -> SavingsSummary {

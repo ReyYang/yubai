@@ -125,11 +125,11 @@ private enum ReferenceFinance {
         let payday = ledger.plans.filter { $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once }.flatMap { plan in
             (0..<2400).map { plan.frequency.advance(plan.dueDate, by: $0) }.filter { Dates.day($0) > today && $0 < end && (plan.endDate == nil || $0 <= plan.endDate!) }
         }.min().map(Dates.day)
-        let horizonDays = payday.map { Dates.calendar.dateComponents([.day], from: today, to: $0).day! } ?? 90
-        let committed = commitments.filter { payday == nil || Dates.day($0.date) <= payday! }.reduce(Int64(0)) { $0 + $1.amount }
+        let horizonEnd = payday.map { Dates.addDays(-1, to: $0) } ?? Dates.addDays(-1, to: Dates.calendar.dateInterval(of: .month, for: now)!.end)
+        let committed = commitments.filter { Dates.day($0.date) <= horizonEnd }.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
         let daily = Finance.estimatedDailyLiving(ledger, now: now)
-        let living = daily * Int64(horizonDays)
+        let living: Int64 = 0
         // An unresolved inflow after the most recent reconciliation is withheld until its nature is known.
         let uncertain = ledger.activeEntries.filter { e in
             e.nature == .unknownIn && e.date <= now && accounts.contains { $0.id == e.accountID && $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) }
@@ -153,8 +153,8 @@ private enum ReferenceFinance {
             points.append(ForecastPoint(date: date, conservative: conservative, expected: conservative + incoming))
         }
         return Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
-                     livingEstimated: true, committed: committed, goals: goals, emergency: (ledger.profile.floorAmount ?? 0), living: living,
+                     livingEstimated: true, committed: committed, goals: goals, emergency: (ledger.fixedSavings ?? 0), living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
-                     occurrences: occurrences, points: points, warnings: warnings, floorRoom: ledger.profile.floorAmount.map { available - $0 })
+                     occurrences: occurrences, points: points, warnings: warnings, floorRoom: nil)
     }
 }

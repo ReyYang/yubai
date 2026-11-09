@@ -501,10 +501,11 @@ struct FixedFlowEditor: View {
                                       selected: amountSelected, identifier: "fixedFlowAmount", open: openAmount)
                     .id("fixedFlowAmountRow")
                 InlineFieldError(message: amount.isEmpty ? nil : ((try? Money.parse(amount)).map { $0 <= 0 } ?? true) ? "金额须大于 0.00 元" : nil)
+                EntrySavingHintBar(hint: EntryHint.make(ledger: store.current, amount: amountKeypadPresented ? keypad.amount ?? 0 : (try? Money.parse(amount)) ?? 0,
+                                                       category: category, isFixedBill: true, nature: inflow ? .income : .expense))
                 EntryFormFields(purpose: $title, purposeTitle: "名字", purposeIdentifier: "fixedFlowTitle", purposeError: title.isEmpty && original != nil ? "填写账单名字" : nil, nature: inflow ? .income : .expense,
                                 accounts: accounts, balances: balances, accountID: $accountID, otherAccountID: .constant(nil), date: $date,
                                 showsRecent: false, showsDate: false, optionalAccount: true, accountTitle: inflow ? "收到哪里" : "从哪里付", beforeAccount: AnyView(scheduleRow), focus: $titleFocused) {
-                        EntryFormDivider()
                         EntryFormRow(title: "分类") {
                             Menu {
                                 ForEach(categories, id: \.self) { name in Button(name) { category = name } }
@@ -545,10 +546,20 @@ struct FixedFlowEditor: View {
                     withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scroll.scrollTo("fixedFlowAmountRow", anchor: .top) }
                 }
         }.safeAreaInset(edge: .bottom, spacing: 0) {
-            if amountKeypadPresented {
-                AmountKeypad(keypad: $keypad, amountSelected: $amountSelected, canSave: keypad.canSave,
-                             primaryTitle: "好", primaryIdentifier: "amountKeypadDone", save: finishAmount)
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom))
+            EntryKeyboardTray(purpose: $title, purposeIdentifier: "fixedFlowTitle", focus: $titleFocused) {
+                HStack(spacing: 8) {
+                    EntryDateChip(date: $date, inTray: true, allowsFuture: true)
+                    EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, optional: true, inTray: true)
+                    Spacer(minLength: 0)
+                    EntryRepeatChip(selected: frequency != .once,
+                                    value: frequency == .monthly ? "每月 \(monthlyDay ?? Dates.calendar.component(.day, from: date)) 号" : frequency == .once ? "不重复" : frequency.label,
+                                    inTray: true) { pickingSchedule = true }.accessibilityIdentifier("fixedFlowSchedule")
+                }
+            } keys: {
+                if amountKeypadPresented {
+                    AmountKeypad(keypad: $keypad, amountSelected: $amountSelected, canSave: keypad.canSave,
+                                 primaryTitle: "完成", primaryIdentifier: "amountKeypadDone", save: finishAmount, embedded: true)
+                }
             }
         }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: amountKeypadPresented)
             .environment(\.yubaiFormSurface, true)
@@ -557,8 +568,8 @@ struct FixedFlowEditor: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .entryDiscardGuard(dirty: initialized && signature != initialSignature, amount: amountKeypadPresented ? keypad.amount ?? 0 : (try? Money.parse(amount)) ?? 0, confirming: $confirmingDiscard)
-            .onAppear(perform: load)
-            .onChange(of: titleFocused) { _, focused in if focused { finishAmount() } }
+            .onAppear { load(); openAmount() }
+            .onChange(of: titleFocused) { _, focused in if focused { finishAmount() } else { openAmount() } }
             .onChange(of: accountID) { _, _ in if !hasAccount { autoPay = false } }
             .onChange(of: inflow) { _, _ in
                 if planID == nil, !categories.contains(category) { category = inflow ? "其他收入" : "其他支出" }

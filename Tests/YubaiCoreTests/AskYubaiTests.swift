@@ -101,7 +101,7 @@ final class AskYubaiTests: XCTestCase {
         XCTAssertEqual(purchase.facts["affordability"]?["forecast"], try ReadOnlyTool.forecast.run(.object(["days": .number(0), "amount": .string("32")]), ctx))
         XCTAssertEqual(purchase.facts["habit"], try ReadOnlyTool.compareToHabit.run(.object(["category": .string("餐饮"), "amount": .string("32")]), ctx))
         var ledger = ctx.ledger
-        ledger.profile.floorAmount = 5000
+        ledger.fixedSavings = 5000
         ledger.profile.restrain = [ProfileArea(title: "咖啡", match: AreaMatch(categories: ["餐饮"]), note: "下午少点外卖咖啡")]
         ledger.profile.principles = ["为每天用得上的东西花钱"]
         ledger.profile.restrain[0].confirmedAt = Dates.addDays(-200, to: ctx.now)
@@ -111,27 +111,25 @@ final class AskYubaiTests: XCTestCase {
         XCTAssertEqual(profiled.facts["values"]?["restrain"]?.arrayValue?.first?["quote"], .string("下午少点外卖咖啡"))
         XCTAssertEqual(profiled.facts["values"]?["restrain"]?.arrayValue?.first?["confirmed_at"], .string(Dates.text(Dates.addDays(-200, to: ctx.now))))
         XCTAssertEqual(profiled.facts["values"]?["principles"]?.arrayValue?.first?["confirmed_at"], .string(Dates.text(ctx.now)))
-        XCTAssertEqual(profiled.facts["affordability"]?["floor_target"], .money(5000))
-        XCTAssertEqual(profiled.facts["affordability"]?["floor_room"], .money(funds.available - 5000))
+        XCTAssertEqual(profiled.facts["affordability"]?["fixed_savings"], .money(5000))
+        XCTAssertEqual(profiled.facts["affordability"]?["saving_target"], .money(0))
         XCTAssertNil(profiled.facts["affordability"]?["floor_already_reserved"])
         XCTAssertEqual(profiled.facts["affordability"]?["available_after_purchase"], .money(Finance.funds(ledger, now: ctx.now).available - 3200))
     }
-    func testFloorTargetAndRoomFactsAreNullableAndSharedWithFundsTool() throws {
+    func testSavingsFactsAreSharedWithFundsTool() throws {
         let now = AssistantFixtures.context().now
         var ledger = Ledger(); ledger.accounts = [Account(name: "合成账户", balance: 10_000, at: now)]
-        for floor: Int64? in [nil, 0, 8000, 12_000] {
-            ledger.profile.floorAmount = floor
+        for fixed: Int64? in [nil, 0, 8000, 12_000] {
+            ledger.fixedSavings = fixed; ledger.savingRule = .fixed(1000)
             let ctx = ToolContext(ledger: ledger, now: now)
             let judgment = try JudgePurchaseTool().judge(.object(["title": .string("咖啡"), "amount": .string("20")]), ctx)
             let affordability = try XCTUnwrap(judgment.facts["affordability"])
             let funds = try ReadOnlyTool.getFunds.run(.object([:]), ctx)
-            let target: JSONValue = floor.map { .money($0) } ?? .null
-            let room: JSONValue = floor.map { .money(10_000 - $0) } ?? .null
-            XCTAssertEqual(affordability["floor_target"], target); XCTAssertEqual(affordability["floor_room"], room)
-            XCTAssertEqual(funds["floor_target"], target); XCTAssertEqual(funds["floor_room"], room)
-            XCTAssertEqual(affordability["available"], .money(10_000)); XCTAssertEqual(affordability["available_after_purchase"], .money(8000))
-            XCTAssertNil(affordability["floor_already_reserved"]); XCTAssertNil(funds["emergency"])
-            XCTAssertEqual(try ReadOnlyTool.getProfile.run(.object([:]), ctx)["floor_amount"], target)
+            XCTAssertEqual(affordability["fixed_savings"], .money(fixed ?? 0))
+            XCTAssertEqual(funds["fixed_savings"], affordability["fixed_savings"])
+            XCTAssertEqual(funds["saving_target"], affordability["saving_target"])
+            XCTAssertEqual(affordability["available"], .money(9000 - (fixed ?? 0)))
+            XCTAssertEqual(affordability["available_after_purchase"], .money(7000 - (fixed ?? 0)))
         }
     }
     func testSentenceDraftAmountIsLocalAndMustBeConfirmed() async throws {
