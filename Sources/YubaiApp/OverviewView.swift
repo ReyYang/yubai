@@ -39,6 +39,7 @@ struct LedgerHero: View {
                         .padding(.horizontal, 12).frame(height: 28).background(YubaiColor.brandTint, in: Capsule())
                 }
             }
+            if !store.current.spendingParts.isEmpty { SpendingPartsCard().padding(.top, 6) }
         }.foregroundStyle(YubaiColor.label).amountPrivacy(store.preferences.hideAmounts)
     }
     private var savingChip: String {
@@ -89,6 +90,13 @@ struct FundsCalculationView: View {
                     Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }.padding(.horizontal, 16).frame(minHeight: 52).paperCardSurface(in: Capsule())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openSavings")
+            NavigationLink { SpendingPartsView(backTitle: "还能花") } label: {
+                HStack {
+                    Text("分项").yubaiFont(YubaiFont.row)
+                    Spacer()
+                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                }.padding(.horizontal, 16).frame(minHeight: 52).paperCardSurface(in: Capsule())
+            }.buttonStyle(PressButtonStyle()).accessibilityLabel("分项，分配还能花").accessibilityIdentifier("openSpendingParts")
         }.accessibilityIdentifier("fundsCalculationPage").amountPrivacy(store.preferences.hideAmounts)
             .safeAreaInset(edge: .top, spacing: 0) { LedgerSheetHeader(title: "还能花怎么算", done: { dismiss() }).padding(.horizontal, 20) }
             .manualSheetNavigation()
@@ -285,7 +293,7 @@ struct SavingsView: View {
                 if row.saved == row.target { Image(systemName: "checkmark") }
                 Text(row.income == 0 && row.target == 0 ? "没进账" : row.saved >= row.target ? "攒够了" : "少攒 " + (store.preferences.hideAmounts ? "••••" : savingNumber(row.target - row.saved)))
             }.yubaiFont(YubaiFont.caption).foregroundStyle(row.saved < row.target ? YubaiColor.amberInk : YubaiColor.brandInk)
-            AmountLabel(cents: row.saved, hide: store.preferences.hideAmounts)
+            AmountLabel(cents: row.saved + row.leftover, hide: store.preferences.hideAmounts)
         }.frame(minHeight: 48)
     }
 }

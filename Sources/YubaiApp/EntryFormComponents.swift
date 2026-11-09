@@ -803,19 +803,63 @@ struct EntrySavingHintBar: View {
     @Environment(AppStore.self) private var store
     let hint: EntryHint
     var afterOverride: Int64? = nil
+    var category = ""
+    var ledgerOverride: Ledger? = nil
+    var allowsPartSelection = false
+    var allowsRememberPart = true
+    @Binding var partID: UUID?
+    @Binding var rememberPart: Bool
+    @State private var pickingPart = false
+    init(hint: EntryHint, afterOverride: Int64? = nil, category: String = "", ledgerOverride: Ledger? = nil, allowsPartSelection: Bool = false, allowsRememberPart: Bool = true,
+         partID: Binding<UUID?> = .constant(nil), rememberPart: Binding<Bool> = .constant(false)) {
+        self.hint = hint; self.afterOverride = afterOverride; self.category = category; self.ledgerOverride = ledgerOverride
+        self.allowsPartSelection = allowsPartSelection
+        self.allowsRememberPart = allowsRememberPart
+        _partID = partID; _rememberPart = rememberPart
+    }
+    private var part: SpendingPartHint? {
+        if case .normal(_, _, _, let part) = hint { return part }
+        return nil
+    }
     private var amber: Bool {
+        if let part, part.overBy > 0 { return true }
         if let afterOverride, afterOverride < 0 { return true }
-        switch hint { case .restrain, .big: return true; case .normal(_, _, let over): return over }
+        switch hint { case .restrain, .big: return true; case .normal(_, _, let over, _): return over }
+    }
+    private var selectionName: String? {
+        if let part { return part.name }
+        let ledger = ledgerOverride ?? store.current
+        guard allowsPartSelection, !ledger.spendingParts.isEmpty else { return nil }
+        var sample = Entry(amount: 0, accountID: UUID(), title: category, category: category)
+        sample.partID = partID
+        return SpendingParts.part(for: sample, in: ledger)?.name ?? "没分的"
     }
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) { labels; Spacer(minLength: 0); amount }
             VStack(alignment: .leading, spacing: 2) { labels; amount }
-        }.padding(.horizontal, 14).frame(minHeight: 36)
+        }.padding(.leading, selectionName == nil ? 14 : 4).padding(.trailing, 14).frame(minHeight: 36)
             .background(amber ? YubaiColor.amberTint : YubaiColor.brandTint, in: Capsule())
             .foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.brandInk).accessibilityIdentifier("entrySavingHint")
+            .sheet(isPresented: $pickingPart) {
+                SpendingPartPicker(ledger: ledgerOverride ?? store.current, category: category, partID: $partID, remember: $rememberPart, allowsRemember: allowsRememberPart)
+                    .environment(store)
+            }
     }
     @ViewBuilder private var labels: some View {
+        if let selectionName {
+            HStack(spacing: 8) {
+                Button { pickingPart = true } label: {
+                    HStack(spacing: 4) { Text(selectionName); Image(systemName: "chevron.down").font(.system(size: 10)) }
+                        .padding(.horizontal, 10).frame(height: 28).background(YubaiColor.raised, in: Capsule())
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel("花在哪一份，当前" + selectionName)
+                    .accessibilityIdentifier("pickEntryPart")
+                if let part { Text(part.overBy > 0 ? "记下后" : "记下后还剩") }
+                else { priorityLabel }
+            }.yubaiFont(YubaiFont.caption)
+        } else { priorityLabel }
+    }
+    @ViewBuilder private var priorityLabel: some View {
         switch hint {
         case .normal, .big: Text("记下后还能花").yubaiFont(YubaiFont.caption)
         case .restrain(let title, let count, let limit, _):
@@ -823,15 +867,22 @@ struct EntrySavingHintBar: View {
         }
     }
     @ViewBuilder private var amount: some View {
-        switch hint {
-        case .normal(let after, let daily, _), .big(let after, let daily, _):
-            let value = afterOverride ?? after
-            let days = max(1, (Dates.calendar.dateComponents([.day], from: Dates.day(Date()), to: store.funds.cycleEnd).day ?? 0) + 1)
-            let allowance = afterOverride == nil ? daily : max(0, value) / Int64(days)
-            Text(store.preferences.hideAmounts ? "••••" : Money.text(value, currency: false) + " · 每天 " + savingDaily(allowance))
-                .yubaiFont(YubaiFont.amountSmall).accessibilityIdentifier("afterEntryAvailable")
-        case .restrain(_, _, _, let spent):
-            Text(store.preferences.hideAmounts ? "••••" : "这周 " + Money.text(spent, currency: false)).yubaiFont(YubaiFont.amountSmall)
+        if let part {
+            let total: Int64 = { if case .normal(let after, _, _, _) = hint { return afterOverride ?? after }; return 0 }()
+            Text(store.preferences.hideAmounts ? "••••" : part.overBy > 0 ? "超 " + savingNumber(part.overBy) + " · 从没分的扣" :
+                 Money.text(part.after, currency: false) + " · 共 " + Money.text(total, currency: false))
+                .yubaiFont(YubaiFont.amountSmall, weight: .semibold).accessibilityIdentifier("afterEntryAvailable")
+        } else {
+            switch hint {
+            case .normal(let after, let daily, _, _), .big(let after, let daily, _):
+                let value = afterOverride ?? after
+                let days = max(1, (Dates.calendar.dateComponents([.day], from: Dates.day(Date()), to: store.funds.cycleEnd).day ?? 0) + 1)
+                let allowance = afterOverride == nil ? daily : max(0, value) / Int64(days)
+                Text(store.preferences.hideAmounts ? "••••" : Money.text(value, currency: false) + " · 每天 " + savingDaily(allowance))
+                    .yubaiFont(YubaiFont.amountSmall).accessibilityIdentifier("afterEntryAvailable")
+            case .restrain(_, _, _, let spent):
+                Text(store.preferences.hideAmounts ? "••••" : "这周 " + Money.text(spent, currency: false)).yubaiFont(YubaiFont.amountSmall)
+            }
         }
     }
 }

@@ -16,7 +16,7 @@ enum Destination: String, CaseIterable, Identifiable {
 }
 enum TabRoute: Hashable {
     case fixedFlows, inbox, ledgerSearch, profile, wishlist, letters, accounts
-    case savings(String), triage([UUID])
+    case spendingParts(String), savings(String), triage([UUID])
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
     case unsortedGroups(UUID), quickSortUnsorted(UUID)
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
@@ -897,6 +897,7 @@ struct RootView: View {
         case .fixedFlows: FixedFlowsView()
         case .inbox: LetterInboxView()
         case .ledgerSearch: EntriesView()
+        case .spendingParts(let source): SpendingPartsView(backTitle: source)
         case .savings(let source): SavingsView(backTitle: source)
         case .triage(let ids): LetterTriageView(entryIDs: ids)
         case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)

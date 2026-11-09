@@ -11,23 +11,38 @@ public struct PurchaseBounds: Equatable, Sendable {
     public static func compute(ledger: Ledger, amount: Int64, title: String, category: String? = nil, subcategory: String? = nil, now: Date = Date()) -> PurchaseBounds {
         let funds = Finance.funds(ledger, now: now)
         let after = funds.available - amount
+        var sample = Entry(date: now, amount: amount, accountID: UUID(), title: title, category: category ?? Classification.pendingCategory)
+        sample.subcategory = subcategory
+        let summary = ledger.spendingParts.isEmpty ? nil : SpendingParts.summary(ledger, now: now)
+        let balance = SpendingParts.part(for: sample, in: ledger).flatMap { part in summary?.parts.first { $0.id == part.id } }
+        func number(_ amount: Int64) -> String {
+            let text = Money.text(amount, currency: false)
+            return text.hasSuffix(".00") ? String(text.dropLast(3)) : text
+        }
+        let partReason = balance.map { value in
+            value.part.name + "这月还剩 " + number(value.remaining) + "，这笔 " + number(amount) +
+                (amount > value.remaining ? " 会用掉没分的 " + number(amount - value.remaining) : "") + "。"
+        } ?? ""
+
         if funds.liquidNow - funds.dueRest - amount < 0 {
-            return PurchaseBounds(allowedVerdicts: [.skip], boundReason: "买了以后，会回来的账单还差 \(Money.text(amount + funds.dueRest - funds.liquidNow))。")
+            return PurchaseBounds(allowedVerdicts: [.skip], boundReason: partReason + "买了以后，会回来的账单还差 \(Money.text(amount + funds.dueRest - funds.liquidNow))。")
         }
         if after < 0 {
-            return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: "买了以后，这个月少攒 \(Money.text(min(funds.savingTarget, -after)))。")
+            return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "买了以后，这个月少攒 \(Money.text(min(funds.savingTarget, -after)))。")
         }
-        var sample = Entry(date: now, amount: amount, accountID: UUID(), title: title, category: category ?? Classification.pendingCategory); sample.subcategory = subcategory
         for area in ledger.profile.restrain where ButlerCards.matches(area, entry: sample, ledger: ledger) {
             let usage = area.usage(in: ledger, now: now)
             if let count = area.softLimit?.perWeekCount, usage.weekCount >= count {
-                return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: "\(area.title)本周已有 \(usage.weekCount) 次，你写的每周最多 \(count) 次。")
+                return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "\(area.title)本周已有 \(usage.weekCount) 次，你写的每周最多 \(count) 次。")
             }
             if let limit = area.softLimit?.perMonthAmount, usage.monthAmount + amount > limit {
-                return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: "\(area.title)本月已花 \(Money.text(usage.monthAmount))，加这笔会超过你写的 \(Money.text(limit))。")
+                return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "\(area.title)本月已花 \(Money.text(usage.monthAmount))，加这笔会超过你写的 \(Money.text(limit))。")
             }
         }
-        return PurchaseBounds(allowedVerdicts: Set(PurchaseVerdict.allCases), boundReason: "买了以后还能花 \(Money.text(after))。")
+        if let balance, amount > balance.remaining {
+            return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason)
+        }
+        return PurchaseBounds(allowedVerdicts: Set(PurchaseVerdict.allCases), boundReason: partReason + "买了以后还能花 \(Money.text(after))。")
     }
 }
 public struct SubmittedPurchaseVerdict: Equatable, Sendable {
@@ -102,12 +117,16 @@ public struct SubmitVerdictTool: AssistantTool {
         }
         let groundedNumber = countsGrounded && reason.range(of: #"[¥￥]\s*-?\d|\d+(?:\.\d+)?\s*(?:元|次|笔)"#, options: .regularExpression) != nil
             && AssistantAmountGuard.unverified(in: reason, results: [judgment.facts]).isEmpty
+        // The approved part sentence has bare numbers. Accept that exact local
+        // fact without requiring the model to add a currency symbol or prose.
+        let groundedPart = judgment.facts["spending_part"] != nil &&
+            reason.trimmingCharacters(in: CharacterSet(charactersIn: "。")) == bounds.boundReason.components(separatedBy: "。").first
         let followups = judgment.facts["similar_followups"]?.arrayValue ?? []
         let groundedFollowup = followups.contains { row in
             guard let title = row["title"]?.stringValue, let answer = row["answer"]?.stringValue else { return false }
             return reason.contains(title) && reason.contains(answer)
         }
-        guard groundedNumber || quotes.contains(where: sharesPhrase) || groundedFollowup else { throw YubaiError.invalid("理由需要引用一个具体事实，例如买后还能花、已发生的次数、用户原话或心愿单回答。") }
+        guard groundedNumber || groundedPart || quotes.contains(where: sharesPhrase) || groundedFollowup else { throw YubaiError.invalid("理由需要引用一个具体事实，例如买后还能花、已发生的次数、用户原话或心愿单回答。") }
         return SubmittedPurchaseVerdict(verdict: verdict, reason: reason, need: need, boundReason: bounds.boundReason, usedMemoryIDs: ids)
     }
 }

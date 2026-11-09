@@ -252,6 +252,17 @@ enum CategoryReferences {
             }
             let result = old.map(item); entryDirections = saved; return result
         }
+        // Preserve the target owner on a merge; a rewritten category may only
+        // occur once across all parts, just as it did before the rewrite.
+        var owned = Set<String>()
+        let originals = Set(ledger.spendingParts.flatMap(\.categories))
+        for i in ledger.spendingParts.indices {
+            ledger.spendingParts[i].categories = unique(ledger.spendingParts[i].categories.compactMap { old in
+                let next = map(.init(category: old), false).category
+                if next != old && originals.contains(next) { return nil }
+                return owned.insert(next).inserted ? next : nil
+            })
+        }
         ledger.entries = ledger.entries.map(entry)
         ledger.plans = ledger.plans.map(plan)
         for i in ledger.stoppedSubscriptions.indices { ledger.stoppedSubscriptions[i].plan = plan(ledger.stoppedSubscriptions[i].plan) }

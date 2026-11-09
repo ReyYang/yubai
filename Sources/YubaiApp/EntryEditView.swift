@@ -23,6 +23,7 @@ struct EntryEditForm: View {
     @State private var draft: Entry
     @State private var amount: String
     @State private var purpose: String
+    @State private var rememberPart = false
     @State private var remembered = false
     @State private var choseCategory = false
     @State private var categoryIsSuggestion = false
@@ -63,7 +64,12 @@ struct EntryEditForm: View {
                                               selected: amountSelected, identifier: "editEntryAmount", open: openAmount)
                             .id("editAmount")
                         InlineFieldError(message: currentAmount <= 0 ? "金额须大于 0.00 元" : nil)
-                        if draft.nature != .transfer { EntrySavingHintBar(hint: savingHint, afterOverride: previewAfter) }
+                        if draft.nature != .transfer {
+                            EntrySavingHintBar(hint: savingHint, afterOverride: previewAfter, category: draft.category, ledgerOverride: hintLedger,
+                                               allowsPartSelection: draft.nature == .expense && draft.planID == nil && draft.rentID == nil && !repeatsMonthly,
+                                               allowsRememberPart: onSave == nil,
+                                               partID: $draft.partID, rememberPart: $rememberPart)
+                        }
                         if draft.nature != .transfer {
                             EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: draft.nature, frequentOnly: true),
                                                income: draft.nature != .refund && draft.nature.inflow,
@@ -146,7 +152,7 @@ struct EntryEditForm: View {
             .entryDiscardGuard(dirty: dirty, amount: currentAmount, confirming: $confirmingDiscard)
             .onAppear { balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) }); openAmount() }
             .onChange(of: purposeFocused) { _, focused in if focused { finishAmount() } else { openAmount() } }
-            .onChange(of: draft.category) { _, _ in remembered = false }
+            .onChange(of: draft.category) { _, _ in remembered = false; draft.partID = nil; rememberPart = false }
             .onChange(of: draft.nature) { _, nature in
                 if skipNatureReset { skipNatureReset = false; return }
                 draft.otherAccountID = nature == .transfer ? accounts.first { $0.id != draft.accountID }?.id : nil
@@ -157,11 +163,14 @@ struct EntryEditForm: View {
             }
 
     }
-    private var savingHint: EntryHint {
+    private var hintLedger: Ledger {
         var ledger = store.current
         ledger.entries.removeAll { $0.id == original.id }
-        return EntryHint.make(ledger: ledger, amount: currentAmount, category: draft.category, isFixedBill: draft.planID != nil || draft.rentID != nil || repeatsMonthly,
-                              nature: draft.nature, subcategory: draft.subcategory)
+        return ledger
+    }
+    private var savingHint: EntryHint {
+        return EntryHint.make(ledger: hintLedger, amount: currentAmount, category: draft.category, isFixedBill: draft.planID != nil || draft.rentID != nil || repeatsMonthly,
+                              nature: draft.nature, subcategory: draft.subcategory, partID: draft.partID)
     }
     private var previewAfter: Int64? {
         guard store.entriesByID[original.id] != nil else { return nil }
@@ -169,7 +178,7 @@ struct EntryEditForm: View {
         return try? ManualBookkeeping.available(after: entry, in: store.current)
     }
     private var currentAmount: Int64 { amountKeypadPresented ? keypad.amount ?? 0 : (try? Money.parse(amount)) ?? 0 }
-    private var dirty: Bool { draft != original || currentAmount != original.amount || purpose != original.displayTitle || repeatsMonthly }
+    private var dirty: Bool { draft != original || currentAmount != original.amount || purpose != original.displayTitle || repeatsMonthly || rememberPart }
     private func cancel() { if dirty { confirmingDiscard = true } else { dismiss() } }
     private var repeatValue: String {
         if let id = draft.planID, let plan = store.plans.first(where: { $0.id == id }) {
@@ -217,6 +226,11 @@ struct EntryEditForm: View {
                 // Note is retained source evidence, no longer an editable field.
                 // Read the saved value here so an older form cannot overwrite it.
                 var updated = edited
+                if rememberPart, updated.nature == .expense {
+                    let chosen = SpendingParts.part(for: updated, in: ledger)?.id
+                    SpendingParts.assign(category: updated.category, to: chosen, in: &ledger)
+                    updated.partID = nil
+                }
                 if let original = ledger.entries.first(where: { $0.id == updated.id }) { updated.note = original.note }
                 if repeatsMonthly && updated.planID == nil && updated.nature != .transfer {
                     try FixedFlows.repeatMonthly(updated, in: &ledger)

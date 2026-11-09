@@ -54,7 +54,7 @@ public enum WeeklyLetter {
             snapshot.entries[i].planID = nil; snapshot.entries[i].occurrence = nil
             snapshot.entries[i].rentID = nil; snapshot.entries[i].rentPeriod = nil
         }
-        let laterSavings = ledger.savingHistory.filter { $0.cycleEnd >= Dates.day(date) }.reduce(Int64(0)) { $0 + $1.saved }
+        let laterSavings = ledger.savingHistory.filter { $0.cycleEnd >= Dates.day(date) }.reduce(Int64(0)) { $0 + $1.saved + $1.leftover }
         snapshot.fixedSavings = max(0, (ledger.fixedSavings ?? 0) - laterSavings)
         return snapshot
     }

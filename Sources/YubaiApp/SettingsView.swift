@@ -42,6 +42,9 @@ struct SettingsView: View {
             TabNavigationLink(.savings("我")) { SavingsView(backTitle: "我") } label: {
                 Card(style: .list) { row("攒钱", detail: savingsSummary(store.current)) }
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openSavings")
+            TabNavigationLink(.spendingParts("我")) { SpendingPartsView(backTitle: "我") } label: {
+                Card(style: .list) { row("分项") }
+            }.buttonStyle(PressButtonStyle()).accessibilityLabel("分项，分配还能花").accessibilityIdentifier("openSpendingParts")
             TabNavigationLink(.accounts) { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {

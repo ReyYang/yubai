@@ -101,6 +101,14 @@ public struct JudgePurchaseTool: AssistantTool {
             "memory_instruction": .string(Memory.backgroundInstruction),
             "memories": Memory.context(ledger: ctx.ledger, now: ctx.now, characterBudget: ctx.memoryCharacterBudget),
             "referenced_memories": .array(ctx.ledger.memories.filter { used.contains($0.id) }.map { Memory.row($0, now: ctx.now) })]
+        if !ctx.ledger.spendingParts.isEmpty {
+            let summary = SpendingParts.summary(ctx.ledger, now: ctx.now)
+            if let part = SpendingParts.part(for: sample, in: ctx.ledger), let balance = summary.parts.first(where: { $0.id == part.id }) {
+                facts["spending_part"] = .object(["name": .string(part.name), "remaining": .money(balance.remaining),
+                    "after": .money(balance.remaining - amount), "from_unassigned": .money(max(0, amount - balance.remaining)),
+                    "unassigned": .money(summary.unassigned)])
+            }
+        }
         facts["allowed_verdicts"] = .strings(PurchaseVerdict.allCases.filter { bounds.allowedVerdicts.contains($0) }.map(\.rawValue))
         facts["bound_reason"] = .string(bounds.boundReason)
         facts["similar_followups"] = .array(ctx.ledger.wishlist.filter { wish in
