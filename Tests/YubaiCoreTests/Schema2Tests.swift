@@ -41,7 +41,7 @@ final class Schema2Tests: XCTestCase {
     func testLegacyEmergencyReserveDoesNotOverrideExplicitFloor() throws {
         var ledger = try LedgerCodec.decode(fixture())
         for floor in [Int64(150000), 0] {
-            ledger.profile.floorAmount = floor
+            ledger.profile.floorAmount = floor; ledger.fixedSavings = nil
             let decoded = try LedgerCodec.decode(LedgerCodec.encode(ledger))
             XCTAssertEqual(decoded.profile.floorAmount, floor)
             XCTAssertEqual(Finance.funds(decoded, now: decoded.updatedAt).emergency, floor)
@@ -118,12 +118,12 @@ final class Schema2Tests: XCTestCase {
         let before = Finance.funds(ledger, now: now)
         ledger.profile.floorAmount = 150000
         let after = Finance.funds(ledger, now: now)
-        XCTAssertEqual(after.emergency, 150000); XCTAssertEqual(after.goals, before.goals)
-        XCTAssertEqual(after.available, before.available); XCTAssertEqual(after.floorRoom, after.available - 150000)
+        XCTAssertEqual(after.emergency, 50000); XCTAssertEqual(after.goals, before.goals)
+        XCTAssertEqual(after.available, before.available); XCTAssertNil(after.floorRoom)
         for (a, b) in zip(after.points, before.points) {
             XCTAssertEqual(a.conservative, b.conservative); XCTAssertEqual(a.expected, b.expected)
         }
-        ledger.profile.floorAmount = 0; XCTAssertEqual(Finance.funds(ledger, now: now).emergency, 0)
+        ledger.profile.floorAmount = 0; XCTAssertEqual(Finance.funds(ledger, now: now).emergency, 50000)
         ledger.profile.floorAmount = nil; XCTAssertEqual(Finance.funds(ledger, now: now).available, before.available)
     }
 }

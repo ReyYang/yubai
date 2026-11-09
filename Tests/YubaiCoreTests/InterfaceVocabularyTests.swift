@@ -9,7 +9,7 @@ final class InterfaceVocabularyTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "swift" }
         XCTAssertFalse(files.isEmpty)
-        let banned = ["保守可动用", "还能自在支配", "软线", "柔性提醒", "提案", "待明确", "待整理", "回访", "管家的话", "余白助手", "使用指南"]
+        let banned = ["始终留着", "保守可动用", "还能自在支配", "软线", "柔性提醒", "提案", "待明确", "待整理", "回访", "管家的话", "余白助手", "使用指南"]
         for file in files {
             var scanner = SwiftStringScanner(try String(contentsOf: file, encoding: .utf8))
             for literal in scanner.literals() {

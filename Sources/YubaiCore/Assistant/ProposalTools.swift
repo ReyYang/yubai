@@ -11,7 +11,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         case .entryChanges: return "提议整理现有记录，只能改变分类、性质、用途或关联，不能改金额、主账户、原始日期。用户确认后才应用。"
         case .plan: return "提议新增/结束资金安排或新增房租；金额为人民币元。用户确认后才应用。"
         case .entry: return "提议语音或截图补记，多笔用entries一次提出全部。金额只能取本机从原文解析的候选或用户已核对金额；AI不能确认金额，草稿等待用户确认。"
-        case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或始终留着的底线；不搬动储蓄目标。可用items一次提交整份消费观，用户确认后才应用。"
+        case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或存着不动的固定存款；不搬动储蓄目标。可用items一次提交整份消费观，用户确认后才应用。"
         }
     }
     private static func string(_ description: String) -> JSONValue { .object(["type": .string("string"), "description": .string(description)]) }

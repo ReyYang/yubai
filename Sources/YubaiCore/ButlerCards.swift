@@ -97,25 +97,18 @@ public enum ButlerCards {
                 title: String(area.title.prefix(8)) + "这周的记录", body: detail,
                 action: .openEvidence, priority: over ? 1 : 2, areaID: area.id))
         }
-        // Forecast points exclude the floor target; below zero means a real cash shortfall.
-        // Include the payment day, after that day's outflows.
         let funds = Finance.funds(ledger, now: now)
         let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
-        let daily = Finance.estimatedDailyLiving(ledger, now: now)
-        let end = Dates.addDays(30, to: Dates.day(now))
-        for item in funds.occurrences where !item.inflow && Dates.day(item.date) >= Dates.day(now) && Dates.day(item.date) <= end {
-            let path = funds.points.filter { $0.date <= Dates.day(item.date) }
-            guard let low = path.min(by: { $0.conservative < $1.conservative }), low.conservative < 0 else { continue }
-            let out = funds.occurrences.filter { !$0.inflow && Dates.day($0.date) <= low.date && !($0.planID.map { repayments.contains($0) } ?? false) }.reduce(Int64(0)) { $0 + $1.amount }
-            let days = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: low.date).day ?? 0
-            var facts = [CardFact("付款", item.title), CardFact("付款日", Dates.text(item.date)), CardFact("待付", cents: item.amount),
-                         CardFact("付款前及当天最少还能花", cents: low.conservative),
-                         CardFact("现金", cents: funds.cash), CardFact("信用卡要还", cents: funds.debt), CardFact("在存钱", cents: funds.goals),
-                         CardFact("没写用途的进账", cents: funds.uncertainInflow), CardFact("最低点日期", Dates.text(low.date)),
-                         CardFact("此前及当天要付", cents: out), CardFact("此前日常开销", cents: daily * Int64(days))]
-            if let floor = ledger.profile.floorAmount { facts.append(CardFact("始终留着", cents: floor)) }
+        let bills = funds.occurrences.filter { !$0.inflow && Dates.day($0.date) <= funds.cycleEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
+        for item in bills where Dates.day(item.date) >= Dates.day(now) {
+            let out = bills.filter { Dates.day($0.date) <= Dates.day(item.date) }.reduce(Int64(0)) { $0 + $1.amount }
+            let remaining = funds.liquidNow - funds.savingTarget - out
+            guard remaining < 0 else { continue }
+            let facts = [CardFact("付款", item.title), CardFact("付款日", Dates.text(item.date)), CardFact("待付", cents: item.amount),
+                         CardFact("付款前及当天最少还能花", cents: remaining), CardFact("存着不动", cents: funds.emergency),
+                         CardFact("要攒", cents: funds.savingTarget), CardFact("此前及当天要付", cents: out)]
             result.append(CardCandidate(kind: .shortfall, dedupeKey: "shortfall:" + item.id, evidence: [], facts: facts,
-                title: String(item.title.prefix(9)) + "的缺口", body: "到这笔付款时，最少还能花 \(Money.text(low.conservative))。", action: .openEvidence, priority: 0))
+                title: "钱不够", body: "到这笔付款时，还能花 \(Money.text(remaining))。", action: .openEvidence, priority: 0))
         }
         let asked = questionEntryIDs(in: ledger)
         for entry in ledger.activeEntries where entry.nature == .unknownIn && entry.date < Dates.addDays(-3, to: now) && !asked.contains(entry.id) {

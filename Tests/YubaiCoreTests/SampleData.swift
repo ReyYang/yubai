@@ -4,7 +4,7 @@ import YubaiCore
 enum SampleData {
     static func ledger(now: Date = Date()) -> Ledger {
         var l = Ledger(); l.isSample = true; l.preferences.onboardingComplete = true
-        l.profile.floorAmount = 500_000
+        l.profile.floorAmount = 500_000; l.fixedSavings = 500_000
         let bank = Account(name: "工资卡", kind: .bank, balance: 3_680_000, at: now)
         let wechat = Account(name: "微信零钱", kind: .cash, balance: 186_050, at: now)
         let alipay = Account(name: "支付宝余额", kind: .cash, balance: 92_480, at: now)

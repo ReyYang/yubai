@@ -555,7 +555,7 @@ struct ImportView: View {
                     } }
                 }
                 if !queue.isEmpty { Button("继续下一份") { result = nil; readNext() }.buttonStyle(PrimaryButtonStyle()).disabled(store.organizingBatchID != nil) }
-                Button("回到现在") { store.destination = .overview; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
+                Button("回到账本") { store.destination = .ledger; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
             }
         } else {
             Page { EmptyState("arrow.uturn.backward", "这一批已撤销", action: "继续导入", onAction: { result = nil; preview = nil; data = nil })
@@ -580,7 +580,7 @@ struct ImportView: View {
             HStack(spacing: YubaiSpace.space8) {
                 Pill(text: "\(question.entryIDs.count) 笔", variant: .neutral, showsDot: false)
                 Spacer()
-                Button("稍后") { store.destination = .overview; store.sheet = nil }
+                Button("稍后") { store.destination = .ledger; store.sheet = nil }
                     .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
             }
             DisclosureGroup("看看这几笔") {

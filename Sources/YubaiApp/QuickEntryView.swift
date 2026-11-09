@@ -40,7 +40,6 @@ struct QuickEntryView: View {
     private var transferAccounts: [Account] { accounts.filter { $0.id != accountID } }
     private var canSave: Bool { keypad.canSave && purpose.count <= 4000 && accountID != nil && (nature != .transfer || (otherAccountID != nil && otherAccountID != accountID)) }
     var body: some View {
-        let available = previewAvailable
             EntryForm(title: "记一笔", actionTitle: "导入", actionImage: "photo", primary: false, cancel: cancel, save: {
                 store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports
             }) {
@@ -52,6 +51,7 @@ struct QuickEntryView: View {
                         Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature)
                     } else { Text(nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
                     amountDisplay
+                    if nature != .transfer { EntrySavingHintBar(hint: savingHint, afterOverride: previewAvailable) }
                     if nature != .transfer {
                         EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
                                            income: nature != .refund && nature.inflow, selection: effectiveCategory, suggestionOnly: category.isEmpty,
@@ -64,22 +64,34 @@ struct QuickEntryView: View {
                             .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
                     }
                     form
-                    HStack(spacing: YubaiSpace.gapGroup) {
-                        Text("记下后，还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                        Spacer()
-                        AmountLabel(cents: available, hide: store.preferences.hideAmounts, currency: true, ink: available < 0 ? YubaiColor.amberInk : YubaiColor.label)
-                            .accessibilityIdentifier("afterEntryAvailable")
-                    }
                     if let suggestion { matchChip(suggestion) }
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
-                if !accounts.isEmpty && !purposeFocused {
-                    AmountKeypad(keypad: $keypad, canSave: canSave,
-                                 primaryTitle: canSave ? "记下 \(keypad.resultText) 元" : "记下", primaryIdentifier: "saveQuickEntry",
-                                 save: { save(again: false) }, saveAnother: { save(again: true) })
-                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                        .ignoresSafeArea(.keyboard, edges: .bottom)
+                if !accounts.isEmpty {
+                    EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
+                        HStack(spacing: 8) {
+                            EntryDateChip(date: $date, inTray: true)
+                            EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, inTray: true)
+                            Spacer(minLength: 0)
+                            if nature != .transfer && selectedLink == nil {
+                                EntryRepeatChip(selected: repeatsMonthly, value: repeatsMonthly ? "每月 \(Dates.calendar.component(.day, from: date)) 号" : "不重复", inTray: true) {
+                                    purposeFocused = false; repeatsMonthly.toggle()
+                                }
+                            }
+                        }
+                    } keys: {
+                        AmountKeypad(keypad: $keypad, canSave: canSave,
+                                     primaryTitle: canSave ? "记下 \(keypad.resultText) 元" : "记下", primaryIdentifier: "saveQuickEntry",
+                                     save: { save(again: false) }, embedded: true)
+                        if case .big = savingHint {
+                            Button(action: saveWish) {
+                                Label("先放心愿单 · 7 天后再问", systemImage: "heart").yubaiFont(YubaiFont.body, weight: .medium)
+                                    .foregroundStyle(YubaiColor.brandInk).frame(maxWidth: .infinity).frame(height: 46)
+                                    .background(YubaiColor.key, in: RoundedRectangle(cornerRadius: 14))
+                            }.buttonStyle(PressButtonStyle()).disabled(!canSave).padding(.horizontal, 8).padding(.bottom, 8).accessibilityIdentifier("saveEntryWish")
+                        }
+                    }
                 }
             }
             .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: purposeFocused)
@@ -216,15 +228,24 @@ struct QuickEntryView: View {
             category = entry.category; subcategory = entry.subcategory
             if accounts.contains(where: { $0.id == entry.accountID }) { accountID = entry.accountID }
             purposeFocused = false
+        }) {}
+    }
+    private var savingHint: EntryHint {
+        EntryHint.make(ledger: store.current, amount: keypad.amount ?? 0, category: effectiveCategory.category,
+                       isFixedBill: repeatsMonthly || selectedLink != nil, nature: nature, subcategory: effectiveCategory.subcategory)
+    }
+    private func saveWish() {
+        guard canSave, let amount = keypad.amount else { return }
+        let title = purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Classification.displayCategory(effectiveCategory.category) : purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        let now = Date()
+        if store.update("心愿单", entryMotion: false, showToast: false, { ledger in
+            let verdict = SubmittedPurchaseVerdict(verdict: .wait, reason: "先放心愿单 · 7 天后再问", need: .want, boundReason: "")
+            let wish = try Wishlist.add(fromVerdict: verdict, title: title, amount: amount, category: effectiveCategory.category,
+                                        subcategory: effectiveCategory.subcategory, purpose: purpose, in: &ledger, now: now)
+            if let i = ledger.wishlist.firstIndex(where: { $0.id == wish.id }) { ledger.wishlist[i].coolUntil = Dates.addDays(7, to: now) }
         }) {
-            if nature != .transfer && selectedLink == nil {
-                EntryFormDivider()
-                EntryFormRow(title: "重复") {
-                    EntryRepeatChip(selected: repeatsMonthly, value: repeatsMonthly ? "每月 \(Dates.calendar.component(.day, from: date)) 号" : "不重复") {
-                        purposeFocused = false; repeatsMonthly.toggle()
-                    }
-                }
-            }
+            store.toast = "已放进心愿单 · " + title + " " + Money.text(amount, currency: false)
+            dismiss()
         }
     }
     private var addTransferAccountChip: some View {

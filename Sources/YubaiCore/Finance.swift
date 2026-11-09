@@ -14,7 +14,18 @@ public struct Funds: Equatable, Sendable {
     public var committed: Int64; public var goals: Int64; public var emergency: Int64; public var living: Int64
     public var uncertainInflow: Int64; public var available: Int64; public var expectedIncome: Int64
     public var occurrences: [Occurrence]; public var points: [ForecastPoint]; public var warnings: [String]
-    /// Horizon remainder above the floor target; negative is a gap, nil means no target.
+    public var cycleStart = Date.distantPast
+    public var cycleEnd = Date.distantPast
+    public var cycleIsPayday = false
+    public var liquidStart: Int64 = 0
+    public var cycleIncome: Int64 = 0
+    public var savingTarget: Int64 = 0
+    public var cycleSpent: Int64 = 0
+    public var dueRest: Int64 = 0
+    public var dailyAllowance: Int64 = 0
+    public var savingShortfall: Int64 = 0
+    public var liquidNow: Int64 { liquidStart + cycleIncome - cycleSpent }
+    /// Retained for source compatibility; fixed savings are deducted directly.
     public var floorRoom: Int64? = nil
     public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Date()))
     public var horizonDays: Int = Finance.observationDays; public var payday: Date? = nil; public var paydayTitle: String? = nil
@@ -155,6 +166,33 @@ public enum Finance {
             return nil
         }.min { $0.date == $1.date ? $0.title < $1.title : $0.date < $1.date }
     }
+    public static func cycle(in ledger: Ledger, now: Date = Date()) -> (start: Date, end: Date, payday: Bool) {
+        if let next = nextPayday(in: ledger, now: now),
+           let plan = ledger.plans.filter({ $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once && $0.title == next.title })
+            .sorted(by: { $0.id.uuidString < $1.id.uuidString }).first(where: { $0.occurrenceIndex(on: next.date) != nil }) {
+            // Derive from the original schedule, preserving Jan 31 → Feb 28 → Mar 31.
+            let calendar = Dates.calendar
+            let months = calendar.dateComponents([.month], from: calendar.dateInterval(of: .month, for: plan.dueDate)!.start,
+                                                  to: calendar.dateInterval(of: .month, for: next.date)!.start).month ?? 0
+            let index: Int
+            switch plan.frequency {
+            case .weekly: index = (calendar.dateComponents([.day], from: Dates.day(plan.dueDate), to: next.date).day ?? 0) / 7
+            case .monthly: index = months
+            case .quarterly: index = months / 3
+            case .yearly: index = months / 12
+            case .once: index = 0
+            }
+            var previousIndex = index - 1
+            var previous = Dates.day(plan.scheduledDate(at: previousIndex))
+            while previous > Dates.day(now) {
+                previousIndex -= 1
+                previous = Dates.day(plan.scheduledDate(at: previousIndex))
+            }
+            return (previous, Dates.addDays(-1, to: next.date), true)
+        }
+        let month = Dates.calendar.dateInterval(of: .month, for: now)!
+        return (month.start, Dates.addDays(-1, to: month.end), false)
+    }
     public static func funds(_ ledger: Ledger, now: Date = Date(), days: Int = Finance.observationDays) -> Funds {
         let horizon = max(0, min(366, days))
         if let cached = ledger.calculations.cachedFunds(now: now, days: horizon) { return cached }
@@ -183,22 +221,28 @@ public enum Finance {
         }
         let occurrences = occurrences(in: ledger, now: now, days: horizon)
         let payday = nextPayday(in: ledger, now: now)
-        let horizonEnd = payday?.date ?? Dates.addDays(horizon, to: Dates.day(now))
+        let cycle = cycle(in: ledger, now: now)
+        let horizonEnd = cycle.end
         let horizonDays = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: horizonEnd).day ?? horizon
         // Credit principal is reserved once as debt. A credit-repayment plan only changes its payment date.
         let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
-        let reserved = payday != nil ? self.occurrences(in: ledger, now: now, days: horizonDays + 1) : occurrences
+        let reserved = self.occurrences(in: ledger, now: now, days: horizonDays + 1)
         let commitments = reserved.filter { !$0.inflow && Dates.day($0.date) <= horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
         let committed = commitments.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
         let daily = estimatedDailyLiving(ledger, now: now)
-        let living = daily * Int64(horizonDays)
+        let living: Int64 = 0
         // An unresolved inflow after the most recent reconciliation is withheld until its nature is known.
         let uncertain = entries.filter { e in
             e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) } == true
         }.reduce(Int64(0)) { $0 + $1.amount }
-        let emergency = ledger.profile.floorAmount ?? 0
-        let available = cash - debt - committed - goals - living - uncertain
+        let emergency = ledger.fixedSavings ?? 0
+        let cycleRows = entries.filter { $0.date >= cycle.start && $0.date <= now }
+        let income = cycleRows.filter { $0.nature == .income }.reduce(Int64(0)) { $0 + $1.amount }
+        let spent = cycleRows.reduce(Int64(0)) { $0 + spendingAmount($1, ledger: ledger) }
+        let savingTarget = ledger.savingRule?.target(income: income) ?? 0
+        let liquid = cash - debt - emergency - goals - uncertain
+        let available = liquid - savingTarget - committed
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("还没有账户") }
@@ -222,11 +266,16 @@ public enum Finance {
             let conservative = baseline - out - Int64(offset) * daily
             points.append(ForecastPoint(date: date, conservative: conservative, expected: conservative + incoming))
         }
-        let value = Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
+        var value = Funds(cash: cash, debt: debt, investments: investment, receivables: receivables, netWorth: cash + creditNet + investment + receivables,
                      livingEstimated: true, committed: committed, goals: goals, emergency: emergency, living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
-                     occurrences: occurrences, points: points, warnings: warnings, floorRoom: ledger.profile.floorAmount.map { available - $0 },
+                     occurrences: occurrences, points: points, warnings: warnings, floorRoom: nil,
                      horizonEnd: horizonEnd, horizonDays: horizonDays, payday: payday?.date, paydayTitle: payday?.title)
+        value.cycleStart = cycle.start; value.cycleEnd = cycle.end; value.cycleIsPayday = cycle.payday
+        value.liquidStart = liquid - income + spent; value.cycleIncome = income; value.savingTarget = savingTarget
+        value.cycleSpent = spent; value.dueRest = committed
+        value.dailyAllowance = max(0, available) / Int64(max(1, horizonDays + 1))
+        value.savingShortfall = min(savingTarget, max(0, -available))
         ledger.calculations.storeFunds(value, in: ledger, now: now, days: horizon)
         return value
     }
@@ -290,15 +339,15 @@ public enum Finance {
     public static func assessPurchase(_ ledger: Ledger, amount: Int64, title purchaseTitle: String = "", category: String? = nil, subcategory: String? = nil, now: Date = Date()) -> PurchaseAssessment {
         let f = funds(ledger, now: now); let after = f.available - amount
         let incomplete = ledger.accounts.isEmpty || ledger.accounts.contains { !$0.reconciled } || !f.warnings.isEmpty
-        let severity = after < 0 ? 2 : (incomplete || amount > max(0, f.available) / 3 ? 1 : 0)
+        let severity = f.liquidNow - f.dueRest - amount < 0 ? 2 : (incomplete || amount > max(0, f.available) / 3 ? 1 : 0)
         let title = after < 0 ? "这笔购买会挤占已安排的资金" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
         let explanation = after < 0 ? "还差 \(Money.text(-after))，可以少花一些或晚点再买。" : "买了以后还能花 \(Money.text(after))。"
         let horizon = f.payday == nil ? "到 \(Dates.calendar.component(.month, from: f.horizonEnd))月\(Dates.calendar.component(.day, from: f.horizonEnd))日已知付款" : "发工资前已知付款"
         let bounds = PurchaseBounds.compute(ledger: ledger, amount: amount, title: purchaseTitle, category: category, subcategory: subcategory, now: now)
-        let verdict: PurchaseVerdict = after < 0 ? .skip : !bounds.allowedVerdicts.contains(.buy) || amount > max(0, f.available) / 3 ? .wait : .buy
+        let verdict: PurchaseVerdict = bounds.allowedVerdicts == [.skip] ? .skip : !bounds.allowedVerdicts.contains(.buy) || amount > max(0, f.available) / 3 ? .wait : .buy
         let reason = !bounds.allowedVerdicts.contains(.buy) ? bounds.boundReason : verdict == .wait ? "这笔 \(Money.text(amount)) 超过当前还能花 \(Money.text(f.available)) 的三分之一。" : bounds.boundReason
-        var facts = ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱与日常开销 \(Money.text(f.goals + f.living))"]
-        if let room = f.floorRoom { facts.append("想始终留着 \(Money.text(f.emergency))，" + (room >= 0 ? "按现在能留住" : "还差 \(Money.text(-room))")) }
+        let facts = ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱 \(Money.text(f.goals))", "存着不动 \(Money.text(f.emergency))", "要攒 \(Money.text(f.savingTarget))"]
+
         return PurchaseAssessment(verdict: verdict, reason: reason, title: title, explanation: explanation, afterPurchase: after, severity: severity,
                                   facts: facts + f.warnings,
                                   questions: ["它具体解决什么经常发生的问题？", "现有物品能否满足同样需要？", "如果等 48 小时，还会同样想买吗？"])

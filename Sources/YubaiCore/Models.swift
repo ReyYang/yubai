@@ -661,6 +661,9 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var accounts: [Account] = [] { didSet { calculations = LedgerCalculations() } }
     public var entries: [Entry] = [] { didSet { calculations = LedgerCalculations() } }
     public var plans: [Plan] = [] { didSet { calculations = LedgerCalculations() } }
+    public var fixedSavings: Int64? { didSet { calculations = LedgerCalculations() } }
+    public var savingRule: SavingRule? { didSet { calculations = LedgerCalculations() } }
+    public var savingHistory: [CycleSaving] = [] { didSet { calculations = LedgerCalculations() } }
     public var goals: [Goal] = [] { didSet { calculations = LedgerCalculations() } }
     public var rents: [Rent] = [] { didSet { calculations = LedgerCalculations() } }
     public var categories = Category.defaults { didSet { calculations = LedgerCalculations() } }
@@ -717,7 +720,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -756,6 +759,9 @@ public struct Ledger: Codable, Equatable, Sendable {
         if profile.floorAmount == nil && preferences.emergencyReserve > 0 {
             profile.floorAmount = preferences.emergencyReserve
         }
+        fixedSavings = try c.decodeIfPresent(Int64.self, forKey: .fixedSavings) ?? profile.floorAmount
+        savingRule = try c.decodeIfPresent(SavingRule.self, forKey: .savingRule)
+        savingHistory = try c.decodeIfPresent([CycleSaving].self, forKey: .savingHistory) ?? []
         cards = try c.decodeIfPresent([ButlerCard].self, forKey: .cards) ?? cards
         pendingChanges = try c.decodeIfPresent([ChangeSet].self, forKey: .pendingChanges) ?? pendingChanges
         wishlist = try c.decodeIfPresent([WishItem].self, forKey: .wishlist) ?? wishlist
@@ -794,6 +800,9 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(accounts, forKey: .accounts)
         try c.encode(entries, forKey: .entries)
         try c.encode(plans, forKey: .plans)
+        try c.encodeIfPresent(fixedSavings, forKey: .fixedSavings)
+        try c.encodeIfPresent(savingRule, forKey: .savingRule)
+        try c.encode(savingHistory, forKey: .savingHistory)
         try c.encode(goals, forKey: .goals)
         try c.encode(rents, forKey: .rents)
         try c.encode(categories, forKey: .categories)
@@ -824,6 +833,9 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.accounts == rhs.accounts &&
         lhs.entries == rhs.entries &&
         lhs.plans == rhs.plans &&
+        lhs.fixedSavings == rhs.fixedSavings &&
+        lhs.savingRule == rhs.savingRule &&
+        lhs.savingHistory == rhs.savingHistory &&
         lhs.goals == rhs.goals &&
         lhs.rents == rhs.rents &&
         lhs.categories == rhs.categories &&
@@ -868,6 +880,13 @@ public struct Ledger: Codable, Equatable, Sendable {
               Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或修改包含重复标识。") }
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.name)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
+        guard fixedSavings.map({ (0...Money.limit).contains($0) }) ?? true,
+              savingRule?.isValid ?? true,
+              savingHistory.count <= 5000,
+              Set(savingHistory.map(\.cycleStart)).count == savingHistory.count,
+              savingHistory.allSatisfy({ dateValid($0.cycleStart) && dateValid($0.cycleEnd) && $0.cycleStart <= $0.cycleEnd &&
+                  (0...Money.limit).contains($0.income) && (0...Money.limit).contains($0.target) && (0...$0.target).contains($0.saved) })
+        else { throw YubaiError.invalid("攒钱的金额或周期无效。") }
         guard preferences.lastBackupAt.map(dateValid) ?? true else { throw YubaiError.invalid("上次备份时间无效。") }
         guard Set(memories.map(\.id)).count == memories.count else { throw YubaiError.invalid("记忆包含重复标识。") }
         for note in memories { try Memory.validate(note) }

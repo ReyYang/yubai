@@ -2,173 +2,24 @@ import SwiftUI
 import Charts
 import YubaiCore
 
-struct ButlerSection: View {
-    var body: some View { NowCardsSection() }
-}
-
-/// The action runs only after the card has left. Returning false restores it
-/// when persistence fails, leaving the existing error presentation in charge.
 typealias CardDismissAnimation = (@escaping () -> Bool) -> Void
 
-struct SwipeDismissCard<Content: View>: View {
+/// Letter cards close only through ×. Their content keeps its existing actions.
+struct LetterDismissCard<Content: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("butlerSwipeNudgeShown") private var nudgeShown = false
     let onDismiss: () -> Bool
     var onMute: (() -> Bool)? = nil
-    var nudgesOnce = false
-    var reportsRevealState = true
     @ViewBuilder let content: (@escaping CardDismissAnimation) -> Content
-    @State private var width: CGFloat = 1
-    @State private var drag: CGFloat = 0
-    @State private var opacity = 1.0
-    @State private var departing = false
-    @State private var nudging = false
-    @State private var interacted = false
-    @State private var armedDirection = 0
-    @State private var thresholdTrigger = 0
-    #if os(macOS)
-    @GestureState private var dragging = false
-    @State private var horizontal: Bool?
-    #endif
-
-    private var threshold: CGFloat { width * 0.25 }
-    private var right: Bool { drag > 0 && onMute != nil }
-    private var labelOpacity: Double {
-        guard drag < 0 || right else { return 0 }
-        return min(1, Double(abs(drag) / threshold))
-    }
     var body: some View {
-        accessibleCard
-            #if os(iOS)
-            .sensoryFeedback(.impact(weight: .light), trigger: thresholdTrigger)
-            #endif
-            .task {
-                guard nudgesOnce, !nudgeShown else { return }
-                nudgeShown = true
-                guard !reduceMotion else { return }
-                do { try await Task.sleep(for: .milliseconds(600)) } catch { return }
-                guard !interacted, !departing else { return }
-                nudging = true
-                withAnimation(YubaiMotion.easeOut(duration: YubaiMotion.durationStandard)) { drag = -24 }
-                do { try await Task.sleep(for: .milliseconds(440)) } catch { return }
-                guard nudging, !departing else { return }
-                nudging = false
-                resetDrag()
+        content { action in withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { _ = action() } }
+            .overlay(alignment: .topTrailing) {
+                Button { withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { _ = onDismiss() } } label: {
+                    Image(systemName: "xmark").font(.system(size: 13)).foregroundStyle(YubaiColor.labelSecondary)
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).padding(4).accessibilityLabel("收起").accessibilityIdentifier("dismissLetterCard")
             }
-            .onDisappear {
-                nudging = false
-                if !departing { drag = 0; armedDirection = 0 }
-            }
-    }
-    @ViewBuilder private var accessibleCard: some View {
-        if let onMute {
-            gestureCard.accessibilityAction(named: "以后别提") { finish(direction: 1, action: onMute) }
-        } else { gestureCard }
-    }
-    private var gestureCard: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous)
-                .fill(right ? YubaiColor.amberTint : YubaiColor.neutralSoft)
-                .overlay(alignment: right ? .leading : .trailing) {
-                    Text(right ? "以后别提" : "知道了")
-                        .yubaiFont(YubaiFont.callout, weight: .medium)
-                        .foregroundStyle(right ? YubaiColor.amberInk : YubaiColor.label)
-                        .padding(.horizontal, 22).opacity(labelOpacity)
-                }.opacity(drag == 0 || (drag > 0 && onMute == nil) ? 0 : 1)
-                .allowsHitTesting(false).accessibilityHidden(true)
-            content { action in finish(direction: -1, action: action) }
-                .rotationEffect(.degrees(reduceMotion ? 0 : Double(max(-1, min(1, drag / width))) * 6))
-                .offset(x: drag).opacity(opacity)
-                .allowsHitTesting(!departing && drag == 0)
-        }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = max(1, $0) }
-        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.card))
-        #if os(iOS)
-        .gesture(HorizontalPan(shouldBegin: { _ in !departing }, changed: changeDrag,
-                               ended: endDrag, cancelled: resetDrag))
-        #else
-        .simultaneousGesture(DragGesture(minimumDistance: 18)
-            .updating($dragging) { _, state, _ in state = true }
-            .onChanged { value in
-                guard !departing else { return }
-                if horizontal == nil { horizontal = abs(value.translation.width) > abs(value.translation.height) * 1.3 }
-                guard horizontal == true else { return }
-                changeDrag(value.translation.width)
-            }.onEnded { value in
-                guard horizontal == true else { return }
-                horizontal = nil
-                endDrag(value.translation.width, value.velocity.width)
-            })
-        .onChange(of: dragging) { _, active in
-            if !active { horizontal = nil; if !departing { resetDrag() } }
-        }
-        #endif
-        .accessibilityElement(children: .contain)
-        .modifier(SwipeRevealValue(enabled: reportsRevealState, revealed: drag != 0))
-        .accessibilityAction(named: "知道了") { finish(direction: -1, action: onDismiss) }
-    }
-    private func changeDrag(_ distance: CGFloat) {
-        guard !departing else { return }
-        interacted = true; nudging = false
-        drag = distance > 0 && onMute == nil ? min(6, distance * 0.04) : distance
-        let direction = abs(drag) >= threshold ? (drag < 0 ? -1 : 1) : 0
-        if direction != 0 && direction != armedDirection { thresholdTrigger &+= 1 }
-        armedDirection = direction
-    }
-    private func endDrag(_ distance: CGFloat, _ velocity: CGFloat) {
-        guard !departing else { return }
-        let right = distance > 0
-        guard !right || onMute != nil else { resetDrag(); return }
-        if abs(distance) >= threshold || (abs(velocity) > 650 && abs(distance) > 20) {
-            finish(direction: right ? 1 : -1, action: right ? (onMute ?? onDismiss) : onDismiss)
-        } else { resetDrag() }
-    }
-    private func resetDrag() {
-        guard !departing else { return }
-        nudging = false; armedDirection = 0
-        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { drag = 0 }
-    }
-    private func finish(direction: CGFloat, action: @escaping () -> Bool) {
-        guard !departing else { return }
-        interacted = true; nudging = false; departing = true
-        withAnimation(YubaiMotion.dismiss(reduceMotion: reduceMotion)) {
-            if reduceMotion { opacity = 0 }
-            else { drag = direction * width * 1.5 }
-        } completion: {
-            withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) {
-                if !action() { departing = false; opacity = 1; drag = 0; armedDirection = 0 }
-            }
-        }
-    }
-}
-
-private struct SwipeRevealValue: ViewModifier {
-    let enabled: Bool
-    let revealed: Bool
-    @ViewBuilder func body(content: Content) -> some View {
-        if enabled { content.uiTestAccessibilityValue(revealed ? "revealed" : "closed") }
-        else { content }
-    }
-}
-
-struct ButlerListView: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var unknownInflowsOnly = false
-    var body: some View {
-        let cards = unknownInflowsOnly
-            ? store.butlerVisibility.queued.filter { $0.kind == .unknownInflow }
-            : store.butlerVisibility.visible
-        Page(spacing: YubaiSpace.gapGroup) {
-            ForEach(cards) { card in
-                if let question = card.importQuestion, let batch = store.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {
-                    ImportQuestionCard(question: question, batchID: batch.id, cardID: card.id)
-                } else { ButlerCardView(card: card).transition(YubaiMotion.cardTransition(reduceMotion: reduceMotion)) }
-            }
-            if !store.mutedTopics.isEmpty {
-                Text("说过「以后别提」的：\(store.mutedTopics.count) 类").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            }
-        }.animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: cards.map(\.id)).navigationTitle("需要留意").yubaiNavigation()
+            .accessibilityAction(named: "收起") { _ = onDismiss() }
+            .accessibilityAction(named: "以后别提") { _ = onMute?() }
     }
 }
 
@@ -185,7 +36,7 @@ struct ButlerCardView: View {
     private var amber: Bool { [.shortfall, .unknownInflow, .answerQuestion, .duplicate].contains(card.kind) || exceedsRestraint }
     private var ink: Color { amber ? YubaiColor.amberInk : YubaiColor.labelSecondary }
     var body: some View {
-        SwipeDismissCard(onDismiss: { store.dismissCard(card.id) }, onMute: { store.muteCard(card.id) }, nudgesOnce: nudgesOnce) { animateDismiss in
+        LetterDismissCard(onDismiss: { store.dismissCard(card.id) }, onMute: { store.muteCard(card.id) }) { animateDismiss in
             cardContent(animateDismiss: animateDismiss)
         }.accessibilityIdentifier("butlerCard_" + card.kind.rawValue)
     }
@@ -194,7 +45,7 @@ struct ButlerCardView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 HStack(spacing: YubaiSpace.space8) {
                     if amber { Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true) }
-                    Text(meta).yubaiFont(YubaiFont.meta).foregroundStyle(ink)
+                    Text(meta).yubaiFont(YubaiFont.meta).foregroundStyle(ink).padding(.trailing, 28)
                     Spacer(minLength: YubaiSpace.none)
                 }.frame(minHeight: YubaiSize.pillHeight)
                 Text(hidden ? "需要留意" : card.title).yubaiFont(YubaiFont.cardTitle)
@@ -204,8 +55,9 @@ struct ButlerCardView: View {
                     Text(evidenceText)
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).multilineTextAlignment(.leading)
                 }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin, alignment: .leading)
-                if exceedsRestraint {
-                    ProfileChatEntry(title: "调一下额度", context: .restrainExceeded(card.title + " · " + card.body))
+                if card.evidence.count > 1 {
+                    LetterEntryInset(entries: store.evidenceEntries(Set(card.evidence), activeOnly: true))
+                    if card.evidence.count > 3 { Text("还有 \(card.evidence.count - 3) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                 }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: YubaiSpace.gapGroup) { actions(animateDismiss: animateDismiss); Spacer(minLength: YubaiSpace.none); more }
@@ -226,14 +78,15 @@ struct ButlerCardView: View {
             }.buttonStyle(ButlerActionStyle(amber: true))
         } else {
             Button(actionTitle) {
-                if card.kind == .shortfall { store.present(.ask("接下来的付款有缺口，帮我看看怎么挪。" + card.title), from: "card-" + card.id.uuidString) }
+                if card.kind == .weeklyLetter { store.sheet = .letter(card.id) }
+                else if card.kind == .shortfall { store.present(.ask("接下来的付款有缺口，帮我看看怎么挪。" + card.title), from: "card-" + card.id.uuidString) }
                 else { store.sheetSource = "card-" + card.id.uuidString; store.performCardAction(card) }
             }.buttonStyle(ButlerActionStyle(amber: amber))
         }
     }
     @ViewBuilder private var more: some View {
         if additionalCount > 0 {
-            TabNavigationLink(.butlerCards) { ButlerListView() } label: { Text("还有 \(additionalCount) 件 ›").yubaiFont(YubaiFont.caption) }
+            TabNavigationLink(.inbox) { LetterInboxView() } label: { Text("还有 \(additionalCount) 件 ›").yubaiFont(YubaiFont.caption) }
                 .buttonStyle(PressButtonStyle()).foregroundStyle(ink).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("allButlerCards")
         }
     }
@@ -302,7 +155,7 @@ struct ButlerEvidenceView: View {
                             }
                         }
                         if card.kind == .shortfall {
-                            Button("查看接下来要付") { store.sheet = nil; store.destination = .overview }
+                            Button("查看接下来要付") { store.sheet = nil; store.destination = .ledger }
                         }
                     }
                 }

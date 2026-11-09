@@ -2,6 +2,11 @@ import SwiftUI
 import YubaiCore
 
 struct EntriesView: View {
+    var isHome = false
+    init(isHome: Bool = false) {
+        self.isHome = isHome
+        _showingSearch = State(initialValue: !isHome)
+    }
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
@@ -16,8 +21,14 @@ struct EntriesView: View {
     var body: some View {
         let timeline = store.entryTimeline(month: month, search: search, filter: filter)
         let hideAmounts = store.preferences.hideAmounts
+        let days = isHome ? cycleDays : timeline.days
         List {
             VStack(spacing: YubaiSpace.gapGroup) {
+                if isHome {
+                    if store.accounts.isEmpty { EmptyAccountState { store.sheet = .account(nil) } }
+                    else { LedgerHero() }
+                    LetterInboxChip()
+                } else {
                 monthPicker
                 if showingSearch { searchField }
                 if searching {
@@ -33,8 +44,9 @@ struct EntriesView: View {
                     }
                     filters
                 }
+                }
             }.listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 12, trailing: 0)).listRowBackground(Color.clear).listRowSeparator(.hidden)
-            if timeline.days.isEmpty {
+            if days.isEmpty {
                 EmptyState("list.bullet.rectangle", searching ? "没有找到这笔" : filter == .all ? "这个月还没有账目" : "还没有这类账目",
                            action: searching ? "清空搜索" : "记一笔", onAction: { if searching { search = "" } else { store.sheet = .addEntry } })
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
@@ -52,13 +64,13 @@ struct EntriesView: View {
                     }
                 }
             } else {
-                ForEach(timeline.days) { day in
+                ForEach(days) { day in
                     Section {
                         ForEach(day.entries) { entry in entryRow(entry, hideAmounts: hideAmounts) }
                     } header: {
                         ViewThatFits(in: .horizontal) {
-                            HStack { Text(dayLabel(day.date)).yubaiFont(YubaiFont.row, weight: .semibold); Spacer(); dayTotal(day, hide: hideAmounts) }
-                            VStack(alignment: .leading, spacing: 4) { Text(dayLabel(day.date)).yubaiFont(YubaiFont.row, weight: .semibold); dayTotal(day, hide: hideAmounts) }
+                            HStack { Text(dayLabel(day.date)).yubaiFont(YubaiFont.callout, weight: .semibold); Spacer(); dayTotal(day, hide: hideAmounts) }
+                            VStack(alignment: .leading, spacing: 4) { Text(dayLabel(day.date)).yubaiFont(YubaiFont.callout, weight: .semibold); dayTotal(day, hide: hideAmounts) }
                         }.textCase(nil).padding(.top, 12)
                     }
                 }
@@ -69,13 +81,13 @@ struct EntriesView: View {
             #else
             .listStyle(.inset)
             #endif
-            .scrollContentBackground(.hidden)
+            .scrollContentBackground(.hidden).contentMargins(.top, 0, for: .scrollContent)
             .environment(\.defaultMinListRowHeight, YubaiSize.rowDouble)
             .scrollDismissesKeyboard(.interactively).amountPrivacy(hideAmounts).accessibilityIdentifier("entriesScroll")
             .rootScrollContentMargins()
-            .rootTabScroll(.entries)
-            .rootPageHeader { TabRootHeader(title: "账目") }
-            .navigationTitle("账目").yubaiNavigation()
+            .rootTabScroll(.ledger)
+            .rootPageHeader { header }
+            .navigationTitle("账本").yubaiNavigation()
             .onChange(of: store.entryFilterRequest, initial: true) { _, request in
                 guard request != nil else { return }
                 filter = .uncategorized; search = ""; showingSearch = false
@@ -99,6 +111,22 @@ struct EntriesView: View {
                 }.padding(.horizontal, 20).yubaiSheetBackground().presentationDetents([.height(300 + YubaiSpace.sheetHeaderTop)])
             }
     }
+    @ViewBuilder private var header: some View {
+        if isHome { TabRootHeader(title: "账本", showsAmountVisibility: true) }
+        else { LedgerPageHeader(title: "账本", backTitle: "账本") }
+    }
+    private var cycleDays: [EntryTimeline.Day] {
+        let funds = store.funds
+        var month = Dates.calendar.dateInterval(of: .month, for: funds.cycleStart)!.start
+        var result: [EntryTimeline.Day] = []
+        while month <= funds.cycleEnd {
+            result += store.entryTimeline(month: month, search: "", filter: .all).days.filter {
+                $0.date >= funds.cycleStart && $0.date <= min(Dates.day(Date()), funds.cycleEnd)
+            }
+            month = Dates.addMonths(1, to: month)
+        }
+        return result.sorted { $0.date > $1.date }
+    }
     private var searching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var monthYears: ClosedRange<Int> {
         let years = store.sortedEntries.map { Dates.calendar.component(.year, from: $0.date) }
@@ -107,7 +135,7 @@ struct EntriesView: View {
     }
     private func monthTitle(_ date: Date) -> String { "\(Dates.calendar.component(.year, from: date)) 年 \(Dates.calendar.component(.month, from: date)) 月" }
     private func entryRow(_ entry: EntryTimeline.Row, hideAmounts: Bool, searchResult: Bool = false) -> some View {
-        LedgerEntryRow(entry: entry, note: searchResult ? searchNote(entry) : noteText(entry), hideAmounts: hideAmounts, isFresh: store.freshEntryIDs.contains(entry.id))
+        LedgerEntryRow(entry: entry, note: searchResult ? searchNote(entry) : noteText(entry), hideAmounts: hideAmounts, isFresh: store.freshEntryIDs.contains(entry.id), showsSearchContext: searchResult)
             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
             .listRowBackground(YubaiColor.paperSheet).listRowSeparatorTint(YubaiColor.separator)
     }
@@ -122,7 +150,7 @@ struct EntriesView: View {
                 AmountLabel(cents: day.spending, hide: hide)
                 Text("· 收入").yubaiFont(YubaiFont.caption)
                 AmountLabel(cents: day.income, hide: hide, ink: YubaiColor.brandInk)
-            } else { AmountLabel(cents: -day.spending, hide: hide, role: .day) }
+            } else { AmountLabel(cents: -day.spending, hide: hide, role: .small) }
         }.fixedSize().foregroundStyle(YubaiColor.labelSecondary)
     }
     private func noteText(_ row: EntryTimeline.Row) -> String {
@@ -218,7 +246,7 @@ struct EntriesView: View {
     }
 }
 
-private struct LedgerEntryRow: View {
+struct LedgerEntryRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
@@ -227,6 +255,7 @@ private struct LedgerEntryRow: View {
     let note: String
     let hideAmounts: Bool
     let isFresh: Bool
+    var showsSearchContext = false
     var body: some View {
         Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: { content }
             .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
@@ -245,6 +274,29 @@ private struct LedgerEntryRow: View {
                 withAnimation(YubaiMotion.wash(reduceMotion: reduceMotion)) { highlighted = false }
             }
     }
+    private var savedEntry: Entry? { store.entriesByID[entry.id] }
+    private var restraint: ProfileArea? {
+        guard let savedEntry, savedEntry.nature == .expense else { return nil }
+        return store.profile.restrain.first { ButlerCards.matches($0, entry: savedEntry, ledger: store.current) }
+    }
+    private var subtitle: String {
+        var parts = [entry.categoryName]
+        if showsSearchContext && !note.isEmpty { parts.append(note) }
+        else if let savedEntry, savedEntry.title != savedEntry.displayTitle { parts.append(savedEntry.title) }
+        if let area = restraint, let savedEntry {
+            let week = ButlerCards.calendar.dateInterval(of: .weekOfYear, for: savedEntry.date)!.start
+            let stamp = savedEntry.recordedAt ?? savedEntry.date
+            let count = store.current.activeEntries.filter { row in
+                guard row.nature == .expense, row.date >= week, row.date <= savedEntry.date,
+                      ButlerCards.matches(area, entry: row, ledger: store.current) else { return false }
+                if row.date < savedEntry.date { return true }
+                let other = row.recordedAt ?? row.date
+                return other < stamp || (other == stamp && row.id.uuidString <= savedEntry.id.uuidString)
+            }.count
+            parts.append("本周第 \(count) 次")
+        }
+        return parts.joined(separator: " · ")
+    }
     private func duplicate() {
         guard let saved = store.entriesByID[entry.id] else { return }
         store.sheetSource = nil; store.sheet = .prefilledEntry(QuickEntryPrefill(entry: saved))
@@ -259,8 +311,11 @@ private struct LedgerEntryRow: View {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
             layout {
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    Text(entry.categoryName).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
-                    if !note.isEmpty { Text(note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                    HStack(spacing: 6) {
+                        Text(savedEntry?.displayTitle ?? entry.categoryName).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
+                        if restraint != nil { Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true) }
+                    }
+                    Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }.lineLimit(textSize.isAccessibilitySize ? nil : 1).frame(maxWidth: .infinity, alignment: .leading)
                 AmountLabel(cents: entry.amount, hide: hideAmounts,
                             sign: entry.inflow ? .inflow : .outflow, ink: entry.inflow ? YubaiColor.brandInk : YubaiColor.label)

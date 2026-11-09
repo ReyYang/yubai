@@ -9,15 +9,16 @@ import AppKit
 #endif
 
 enum Destination: String, CaseIterable, Identifiable {
-    case overview, insights, entries, settings
+    case ledger, insights, settings
     var id: Self { self }
-    var title: String { switch self { case .overview: "现在"; case .insights: "洞察"; case .entries: "账目"; case .settings: "我" } }
-    var symbol: String { switch self { case .overview: "square.righthalf.filled"; case .insights: "chart.pie"; case .entries: "list.bullet"; case .settings: "person" } }
+    var title: String { switch self { case .ledger: "账本"; case .insights: "洞察"; case .settings: "我" } }
+    var symbol: String { switch self { case .ledger: "square.righthalf.filled"; case .insights: "chart.pie"; case .settings: "person" } }
 }
 enum TabRoute: Hashable {
-    case upcomingPayments, fixedFlows, butlerCards, profile, wishlist, letters, accounts
+    case fixedFlows, inbox, ledgerSearch, profile, wishlist, letters, accounts
+    case savings(String), triage([UUID])
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
-    case unsortedGroups(UUID), quickSortUnsorted(UUID), unknownInflows
+    case unsortedGroups(UUID), quickSortUnsorted(UUID)
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
     case subcategoryInsights(category: String, income: Bool, interval: DateInterval, periodTitle: String)
 }
@@ -268,7 +269,7 @@ enum AppSheet: Identifiable {
         let funds = fundsValue()
         let at = cachedFunds?.at ?? Date()
         if let cachedCashTimeline, cachedCashTimeline.at == at { return cachedCashTimeline.value }
-        let value = Finance.cashTimeline(derivedSource, funds: funds, now: at)
+        let value = Finance.cashTimeline(derivedSource, funds: funds, now: at, alignToFundsCycle: true)
         cachedCashTimeline = (at, value); return value
     }
     var restrainProgress: [RestrainProgress] {
@@ -411,10 +412,10 @@ enum AppSheet: Identifiable {
     var pendingUploadRecoveryReason = "修改"
     @ObservationIgnored var syncMonitor: CloudLedgerMonitor?
     var iCloudAvailable: Bool { locations.cloud != nil }
-    var destination: Destination = .overview
+    var destination: Destination = .ledger
     private(set) var navigationRevision: UInt64 = 0
     func resetRootNavigation() {
-        destination = .overview; pickingInsightDates = false
+        destination = .ledger; pickingInsightDates = false
         unsortedUndo = nil; unsortedUndoRestoration = nil
         #if os(iOS)
         if pagingLocked { pagingLocked = false }
@@ -485,6 +486,13 @@ enum AppSheet: Identifiable {
         #endif
     }
 
+    func closeSavingCycles() {
+        guard !locked, loadFailure == nil, preferences.onboardingComplete else { return }
+        var next = current
+        Savings.closeCycles(&next)
+        guard next != current else { return }
+        _ = update("攒钱", recordUndo: false, entryMotion: false, showToast: false) { Savings.closeCycles(&$0) }
+    }
     @discardableResult func update(_ reason: String, preservingUpdatedAt: Bool = false, preservingRecovery: Bool = true, undoSnapshot: Ledger? = nil, recordUndo: Bool = true, reportError: Bool = true, entryMotion: Bool = true, allowLockedCapture: Bool = false, showToast: Bool = true, recoveryReason: String? = nil, _ change: (inout Ledger) throws -> Void) -> Bool {
         guard canEditLedger(allowLockedCapture: allowLockedCapture) else { return false }
         guard loadFailure == nil else { error = "请先恢复账本，原文件将保持不变。"; return false }
@@ -689,7 +697,7 @@ enum AppSheet: Identifiable {
             try eraseLocalStorageAndResetLocation()
             cancelEntrySaveMotion(); ledger = Ledger(); undoLedger = nil; undoLabel = nil
             loadFailure = nil; locked = false; importedURL = nil; sheet = nil; sheetSource = nil; pendingQuickSheet = nil
-            destination = .overview; toast = nil; organizationErrors.removeAll(); pickingInsightDates = false
+            destination = .ledger; toast = nil; organizationErrors.removeAll(); pickingInsightDates = false
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
@@ -744,20 +752,6 @@ enum AppSheet: Identifiable {
     }
 }
 
-#if os(iOS)
-/// Only the tab bar observes this value, so scroll frames don't rebuild root pages.
-@MainActor @Observable private final class RootPagingProgress {
-    var position: CGFloat = 0
-}
-
-private struct HorizontalPageClip: Shape {
-    func path(in rect: CGRect) -> Path {
-        // Contain each page horizontally while preserving vertical scroll edge overflow.
-        Path(rect.insetBy(dx: 0, dy: -rect.height))
-    }
-}
-#endif
-
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var phase
@@ -766,19 +760,7 @@ struct RootView: View {
     #if os(iOS)
     @State private var tabPaths: [Destination: NavigationPath] = [:]
     @State private var keyboardVisible = false
-    @State private var visibleTab: Destination = .overview
-    @State private var pagingPhase: ScrollPhase = .idle
-    @State private var pagingAligned = false
-    @State private var pagingTarget: Destination?
-    @State private var needsInitialScroll = true
-    @State private var pagingProgress = RootPagingProgress()
-    private struct PagingPosition: Equatable {
-        let position: CGFloat
-        let destination: Destination
-        let aligned: Bool
-        let ready: Bool
-    }
-    private var tabBarHidden: Bool { tabPaths[visibleTab]?.isEmpty == false }
+    private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     #endif
     var body: some View {
         @Bindable var store = store
@@ -828,11 +810,11 @@ struct RootView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: store.fixedFlowSettleTrigger)
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
-        .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows() } }; if newValue == .background && store.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); Task { await store.configureSync(); store.autoSettleFixedFlows(); store.closeSavingCycles() } }; if newValue == .background && store.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
         .task {
             store.purgeExpiredEntries()
             if !store.locked && store.preferences.onboardingComplete, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
-            await store.configureSync(); store.autoSettleFixedFlows()
+            await store.configureSync(); store.autoSettleFixedFlows(); store.closeSavingCycles()
         }
         .modifier(ButlerRefreshTask())
         .modifier(WeeklyPushTask())
@@ -850,7 +832,7 @@ struct RootView: View {
             guard url.isFileURL else { return }; store.importedURL = url
             if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
         }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.autoSettleFixedFlows() }; if store.preferences.onboardingComplete, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.autoSettleFixedFlows(); store.closeSavingCycles() }; if store.preferences.onboardingComplete, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {
@@ -859,7 +841,7 @@ struct RootView: View {
         NavigationSplitView {
             List(Destination.allCases, selection: $store.destination) { d in
                 Label { Text(d.title) } icon: {
-                    if d == .overview { NowTabGlyph(size: 20, selected: store.destination == d) }
+                    if d == .ledger { NowTabGlyph(size: 20, selected: store.destination == d) }
                     else { Image(systemName: d.symbol) }
                 }.tag(d).accessibilityIdentifier("tab_" + d.rawValue)
             }.listStyle(.sidebar).navigationTitle("余白")
@@ -869,98 +851,34 @@ struct RootView: View {
         }
         #else
         let generation = store.navigationRevision
-        let appearanceTarget = store.destination
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                HStack(spacing: YubaiSpace.none) {
-                    ForEach(Destination.allCases) { d in
-                        tabNavigation(d, generation: generation).containerRelativeFrame(.horizontal).id(d)
-                            .clipShape(HorizontalPageClip())
-                            .accessibilityHidden(visibleTab != d)
+        ZStack {
+            ForEach(Destination.allCases) { destination in
+                tabNavigation(destination, generation: generation)
+                    .opacity(store.destination == destination ? 1 : 0)
+                    .allowsHitTesting(store.destination == destination)
+                    .accessibilityHidden(store.destination != destination)
+            }
+        }.id(generation)
+            .overlay(alignment: .bottom) {
+                if !tabBarHidden && store.sheet == nil && !store.pickingInsightDates {
+                    FloatingTabBar { selected in
+                        if selected == store.destination {
+                            store.rootScrollRequest[selected, default: 0] += 1
+                        } else {
+                            withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { store.destination = selected }
+                        }
                     }
-                }.scrollTargetLayout()
-            }.accessibilityIdentifier("rootPager").scrollTargetBehavior(.paging)
-                .scrollIndicators(.hidden)
-                .scrollDisabled(store.pagingLocked || tabBarHidden || store.sheet != nil || store.pickingInsightDates)
-                .scrollClipDisabled()
-                .background(YubaiColor.canvas.ignoresSafeArea())
-                .onScrollGeometryChange(for: PagingPosition.self) { geometry in
-                    let width = geometry.containerSize.width
-                    let offset = geometry.contentOffset.x + geometry.contentInsets.leading
-                    let last = Destination.allCases.count - 1
-                    let position = width > 0 ? max(0, min(CGFloat(last), offset / width)) : CGFloat(Destination.allCases.firstIndex(of: store.destination) ?? 0)
-                    let index = Int(position.rounded())
-                    return PagingPosition(position: position, destination: Destination.allCases[index], aligned: width > 0 && abs(offset - CGFloat(index) * width) <= 1, ready: width > 0)
-                } action: { _, next in
-                    guard generation == store.navigationRevision else { return }
-                    if pagingProgress.position != next.position {
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) { pagingProgress.position = next.position }
-                    }
-                    if visibleTab != next.destination { visibleTab = next.destination }; if pagingAligned != next.aligned { pagingAligned = next.aligned }
-                    if needsInitialScroll {
-                        guard next.ready else { return }
-                        needsInitialScroll = false; pagingTarget = appearanceTarget
-                        proxy.scrollTo(appearanceTarget, anchor: .leading)
-                    }
-                    if let target = pagingTarget, next.destination != target || !next.aligned { return }
-                    if pagingTarget != nil { pagingTarget = nil }
-                    if pagingPhase == .idle && store.destination != next.destination { store.destination = next.destination }
+                    .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
+                    .padding(.horizontal, 20).padding(.bottom, YubaiSize.floatingTabbarBottom)
+                    .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
                 }
-                .onScrollPhaseChange { _, phase in
-                    guard generation == store.navigationRevision else { return }
-                    if pagingPhase != phase { pagingPhase = phase }
-                    if phase == .interacting { if pagingTarget != nil { pagingTarget = nil } }
-                    if phase == .idle && pagingTarget == nil && store.destination != visibleTab { store.destination = visibleTab }
-                }
-                .onChange(of: store.destination) { _, next in
-                    if next != visibleTab { scrollTo(next, using: proxy) }
-                }
-                .onAppear {
-                    guard generation == store.navigationRevision else { return }
-                    pagingTarget = appearanceTarget
-                    proxy.scrollTo(appearanceTarget, anchor: .leading)
-                }
-                .onDisappear {
-                    guard generation == store.navigationRevision else { return }
-                    needsInitialScroll = true; if pagingTarget != nil { pagingTarget = nil }
-                }
-                .task {
-                    // Retry after the first layout; an onAppear scroll may run
-                    // before the pager has a usable width or registered targets.
-                    await Task.yield()
-                    guard !Task.isCancelled, generation == store.navigationRevision else { return }
-                    proxy.scrollTo(appearanceTarget, anchor: .leading)
-                    if visibleTab == appearanceTarget && pagingAligned { if pagingTarget != nil { pagingTarget = nil } }
-                }
-                .overlay(alignment: .bottom) {
-                    if !tabBarHidden && store.sheet == nil && !store.pickingInsightDates {
-                        FloatingTabBar(progress: pagingProgress) { scrollTo($0, using: proxy) }
-                            .uiTestAccessibilityValue("destination=\(store.destination.rawValue); visible=\(visibleTab.rawValue); phase=\(pagingPhase == .idle ? "idle" : "moving"); locked=\(store.pagingLocked ? 1 : 0)")
-                            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.floatingTabbarBottom)
-                            .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
-                    }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
-                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboardVisible = false }
-        }
+            }
+            .onChange(of: store.navigationRevision) { _, _ in tabPaths = [:] }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboardVisible = false }
         #endif
     }
     #if os(iOS)
-    private func scrollTo(_ d: Destination, using proxy: ScrollViewProxy) {
-        // Reselecting an already settled page has no scroll transition to perform.
-        if d == store.destination && d == visibleTab && pagingPhase == .idle && pagingAligned {
-            if tabPaths[d]?.isEmpty == false { tabPaths[d] = NavigationPath() }
-            else { store.rootScrollRequest[d, default: 0] += 1 }
-            return
-        }
-        pagingTarget = d
-        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) {
-            pagingProgress.position = CGFloat(Destination.allCases.firstIndex(of: d) ?? 0)
-            proxy.scrollTo(d, anchor: .leading)
-        }
-    }
     private func tabNavigation(_ d: Destination, generation: UInt64) -> some View {
         NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: {
             guard generation == store.navigationRevision else { return }
@@ -976,12 +894,13 @@ struct RootView: View {
     }
     @ViewBuilder private func tabDestination(_ route: TabRoute) -> some View {
         switch route {
-        case .upcomingPayments: Page { UpcomingPaymentsView() }.navigationTitle("接下来要付的").yubaiNavigation()
         case .fixedFlows: FixedFlowsView()
-        case .butlerCards: ButlerListView()
+        case .inbox: LetterInboxView()
+        case .ledgerSearch: EntriesView()
+        case .savings(let source): SavingsView(backTitle: source)
+        case .triage(let ids): LetterTriageView(entryIDs: ids)
         case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)
         case .quickSortUnsorted(let id): UnsortedQuickSortView(questionID: id)
-        case .unknownInflows: ButlerListView(unknownInflowsOnly: true)
         case .profile: ProfileView()
         case .wishlist: WishlistView()
         case .letters: LettersView()
@@ -1000,7 +919,7 @@ struct RootView: View {
         #if os(macOS)
         ZStack(alignment: .bottom) {
             destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if store.sheet == nil && !store.pickingInsightDates {
+            if d == .ledger && store.sheet == nil && !store.pickingInsightDates {
                 HStack(spacing: YubaiSpace.space8) {
                     Spacer()
                     AddEntryButton { store.present(.addEntry, from: "add") }.yubaiZoomSource("add")
@@ -1012,7 +931,7 @@ struct RootView: View {
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
-        switch d { case .overview: OverviewView(); case .insights: InsightsView(); case .entries: EntriesView(); case .settings: SettingsView() }
+        switch d { case .ledger: LedgerHomeView(); case .insights: InsightsView(); case .settings: SettingsView() }
     }
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
         switch sheet {
@@ -1089,89 +1008,57 @@ private struct LedgerPrivacyCover: View {
 }
 
 #if os(iOS)
-private struct TabSlotAnchors: PreferenceKey {
-    static var defaultValue: [Destination: Anchor<CGRect>] { [:] }
-    static func reduce(value: inout [Destination: Anchor<CGRect>], nextValue: () -> [Destination: Anchor<CGRect>]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
+private struct FloatingTabBar: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Namespace private var selectionNamespace
+    let select: (Destination) -> Void
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            HStack(spacing: 0) {
+                ForEach(Destination.allCases) { destination in tab(destination) }
+            }.padding(.horizontal, 6).frame(height: 62)
+                .background {
+                    Capsule().fill(reduceTransparency ? AnyShapeStyle(YubaiColor.raised) : AnyShapeStyle(.ultraThinMaterial))
+                        .overlay { if !reduceTransparency { Capsule().fill(YubaiColor.glassBar) } }
+                        .yubaiShadow(YubaiShadow.float)
+                }
+                .overlay { Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: 1).allowsHitTesting(false) }
+            if store.destination == .ledger {
+                Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
+                    Image(systemName: "plus").font(.system(size: 26, weight: .medium)).foregroundStyle(YubaiColor.onBrand)
+                        .frame(width: 62, height: 62).background { Circle().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
+                }.buttonStyle(RoundPressStyle()).accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
+                    .contextMenu {
+                        Button("截图记一笔", systemImage: "photo") { store.requestCaptureSheet(.screenshotCapture(nil)) }
+                        Button("导入账单", systemImage: "square.and.arrow.down") { store.requestCaptureSheet(.imports) }
+                    }
+            }
+        }.accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
+    }
+    private func tab(_ destination: Destination) -> some View {
+        let selected = store.destination == destination
+        return Button { select(destination) } label: {
+            VStack(spacing: 2) {
+                Group {
+                    if destination == .ledger { NowTabGlyph(size: 20, selected: selected) }
+                    else { Image(systemName: destination.symbol).font(.system(size: 20, weight: selected ? .medium : .regular)) }
+                }.frame(width: 20, height: 20)
+                Text(destination.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .medium : .regular)
+            }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
+                .frame(maxWidth: .infinity).frame(height: 50)
+                .background {
+                    if selected {
+                        Capsule().fill(YubaiColor.card)
+                            .matchedGeometryEffect(id: "selection", in: selectionNamespace)
+                    }
+                }.contentShape(Capsule())
+        }.buttonStyle(.plain).accessibilityLabel(destination.title).accessibilityIdentifier("tab_" + destination.rawValue)
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
-private struct FloatingTabBar: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorScheme) private var scheme
-    @ScaledMetric(relativeTo: .title3) private var scaledIconSize = YubaiSize.tabIcon
-    @ScaledMetric(relativeTo: .title2) private var scaledAddSize = YubaiFont.addIcon.size
-    let progress: RootPagingProgress
-    var select: (Destination) -> Void
-    var body: some View {
-        HStack(spacing: YubaiSpace.none) {
-            tab(.overview); tab(.insights)
-            Button { store.sheetSource = nil; store.sheet = .addEntry } label: {
-                Image(systemName: "plus").font(.system(size: min(scaledAddSize, YubaiFont.amountLarge.size), weight: YubaiFont.addIcon.weight)).foregroundStyle(YubaiColor.onBrand)
-                    .frame(width: YubaiSize.tabAdd, height: YubaiSize.tabAdd).background { Circle().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }.contentShape(Circle())
-            }.buttonStyle(RoundPressStyle()).padding(.horizontal, YubaiSpace.space8)
-                .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
-                .contextMenu {
-                    Button("截图记一笔", systemImage: "photo") { store.requestCaptureSheet(.screenshotCapture(nil)) }
-                    Button("导入账单", systemImage: "square.and.arrow.down") { store.requestCaptureSheet(.imports) }
-                    if let last = store.lastRecordedEntry {
-                        Button("再记一笔「" + last.displayTitle + " " + (store.preferences.hideAmounts ? "••••" : AmountLabel.text(last.amount)) + "」", systemImage: "plus") {
-                            store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(entry: last)))
-                        }
-                    }
-                }
-            tab(.entries); tab(.settings)
-        }.padding(.horizontal, YubaiSpace.space8).frame(height: YubaiSize.tabBarHeight)
-            .backgroundPreferenceValue(TabSlotAnchors.self) { anchors in
-                GeometryReader { geometry in
-                    if let rect = selectionFrame(anchors, in: geometry) {
-                        RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius).fill(YubaiColor.card)
-                            .frame(width: rect.width, height: rect.height)
-                            .offset(x: rect.minX, y: rect.minY)
-                    }
-                }.allowsHitTesting(false).accessibilityHidden(true)
-            }
-            .background {
-                Capsule().fill(reduceTransparency ? AnyShapeStyle(YubaiColor.raised) : AnyShapeStyle(.ultraThinMaterial))
-                    .overlay { if !reduceTransparency { Capsule().fill(YubaiColor.glassBar) } }
-                    .yubaiShadow(YubaiShadow.float)
-                    .allowsHitTesting(false).accessibilityHidden(true)
-            }
-            .overlay { Capsule().strokeBorder(reduceTransparency ? YubaiColor.separator : Color.white.opacity(scheme == .dark ? 0.08 : 0.6), lineWidth: 1).allowsHitTesting(false) }
-            .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
-    }
-    private var pagePosition: CGFloat { max(0, min(CGFloat(Destination.allCases.count - 1), progress.position)) }
-    private func selectionFrame(_ anchors: [Destination: Anchor<CGRect>], in geometry: GeometryProxy) -> CGRect? {
-        let position = pagePosition
-        let lower = Int(position), upper = min(lower + 1, Destination.allCases.count - 1)
-        guard let start = anchors[Destination.allCases[lower]], let end = anchors[Destination.allCases[upper]] else { return nil }
-        let a = geometry[start], b = geometry[end], fraction = position - CGFloat(lower)
-        // The measured slots include the larger gap occupied by the central +.
-        return CGRect(x: a.minX + (b.minX - a.minX) * fraction, y: a.minY + (b.minY - a.minY) * fraction,
-                      width: a.width + (b.width - a.width) * fraction, height: a.height + (b.height - a.height) * fraction)
-    }
-    private func tab(_ d: Destination) -> some View {
-        let selected = Destination.allCases[Int(pagePosition.rounded())] == d
-        let iconSize = min(scaledIconSize, YubaiSize.barMax)
-        return Button { select(d) } label: {
-            VStack(spacing: YubaiSpace.space2) {
-                Group {
-                    if d == .overview { NowTabGlyph(size: iconSize, selected: selected) }
-                    else { Image(systemName: d.symbol).symbolVariant(.none).font(.system(size: iconSize, weight: selected ? .medium : .regular)) }
-                }
-                .frame(width: iconSize, height: iconSize)
-                Text(d.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .medium : .regular).lineLimit(1)
-                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
-                .frame(maxWidth: .infinity).frame(height: YubaiSize.tabSelectionHeight)
-                .contentShape(RoundedRectangle(cornerRadius: YubaiSize.tabSelectionRadius))
-                .anchorPreference(key: TabSlotAnchors.self, value: .bounds) { [d: $0] }
-        }.buttonStyle(.plain).accessibilityLabel(d.title).accessibilityIdentifier("tab_" + d.rawValue)
-            // VoiceOver keeps the committed selection until the pager settles.
-            .accessibilityAddTraits(store.destination == d ? .isSelected : [])
-    }
-}
 #endif
 
 /// Checkpoint preparation computes every costly home input on the disk worker.
@@ -1200,7 +1087,7 @@ struct LedgerDerivedSnapshot: Sendable {
         }
         expires = expiry
         funds = Finance.funds(ledger, now: now)
-        timeline = Finance.cashTimeline(ledger, funds: funds, now: now)
+        timeline = Finance.cashTimeline(ledger, funds: funds, now: now, alignToFundsCycle: true)
         entries = ledger.entries.sorted { $0.date > $1.date }
         entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         fixedMonth = FixedFlows.month(containing: now, in: ledger)

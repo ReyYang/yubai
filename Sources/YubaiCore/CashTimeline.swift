@@ -177,7 +177,7 @@ extension Finance {
     }
 
     /// Reuses the app's funds anchor and payday; recognition never creates a plan.
-    public static func cashTimeline(_ ledger: Ledger, funds: Funds, now: Date) -> CashTimeline {
+    public static func cashTimeline(_ ledger: Ledger, funds: Funds, now: Date, alignToFundsCycle: Bool = false) -> CashTimeline {
         let calendar = Dates.calendar
         let today = calendar.startOfDay(for: now), boundary = Dates.addMonths(-3, to: calendar.startOfDay(for: now))
         let entries = ledger.entries.lazy.filter { $0.deletedAt == nil }
@@ -208,7 +208,7 @@ extension Finance {
                 && (plan.accountID == nil || entry.accountID == plan.accountID))
         }
         let salaryEntries = Array(entries.filter { isSalary($0) && cashIDs.contains($0.accountID) && $0.postingDate(for: $0.accountID) <= now })
-        let hasPayday = salaryPlan != nil || candidate != nil
+        let hasPayday = alignToFundsCycle ? funds.cycleIsPayday : salaryPlan != nil || candidate != nil
         let month = Dates.calendar.dateInterval(of: .month, for: today)!.start
         func monthly(_ offset: Int, day: Int) -> Date {
             let first = Dates.addMonths(offset, to: month)
@@ -224,13 +224,13 @@ extension Finance {
                 if nominal.count >= 3 && day < Dates.addMonths(-2, to: boundary) { break }
             }
         } else {
-            let anchor = candidate?.dayOfMonth ?? 1
+            let anchor = alignToFundsCycle ? 1 : candidate?.dayOfMonth ?? 1
             nominal = (-6...1).map { monthly($0, day: anchor) }.reversed()
         }
         let spacing = nominal.count > 1 ? abs(Dates.calendar.dateComponents([.day], from: nominal[1], to: nominal[0]).day ?? 30) : 30
         let tolerance = max(1, min(15, spacing / 2 - 1))
         let boundaries = Array(Set(nominal.map { expected -> Date in
-            guard hasPayday else { return expected }
+            guard hasPayday && !alignToFundsCycle else { return expected }
             let nearby = salaryEntries.filter { abs(Dates.calendar.dateComponents([.day], from: expected, to: Dates.day($0.postingDate(for: $0.accountID))).day ?? 999) <= tolerance }
             return nearby.min { lhs, rhs in
                 let a = abs(lhs.postingDate(for: lhs.accountID).timeIntervalSince(expected)), b = abs(rhs.postingDate(for: rhs.accountID).timeIntervalSince(expected))
@@ -318,6 +318,6 @@ extension Finance {
             forecast.append(CashTimelinePoint(date: date, balance: balance, events: events))
         }
         return CashTimeline(today: today, start: boundary, hasPayday: hasPayday, cycles: cycles, dailyLiving: daily,
-                            floor: ledger.profile.floorAmount, history: history, forecast: forecast, forecastLine: line)
+                            floor: alignToFundsCycle ? nil : ledger.profile.floorAmount, history: history, forecast: forecast, forecastLine: line)
     }
 }

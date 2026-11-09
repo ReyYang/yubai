@@ -20,7 +20,7 @@ final class ProfileTests: XCTestCase {
         ledger.profile.restrain = [ProfileArea(title: "外卖", match: AreaMatch(keywords: ["外卖"]),
             softLimit: SoftLimit(perWeekCount: 3, perMonthAmount: 50_000))]
         ledger.profile.principles = ["超过 2,000 等 48 小时"]
-        ledger.profile.floorAmount = 500_000
+        ledger.fixedSavings = 500_000
         ledger.preferences.purchaseValues = "旧的偏好，不应再引用"
         ledger.goals = [Goal(title: "旅行", target: 800_000, reserved: 120_000, dueDate: now)]
         ledger.entries = [entry(ledger, now, 2000, "午餐")]
@@ -33,7 +33,7 @@ final class ProfileTests: XCTestCase {
         XCTAssertEqual(limit?["per_week_count"], .number(3))
         XCTAssertEqual(limit?["per_month_amount"], .money(50_000))
         XCTAssertEqual(limit?["text"], .string("每周最多 3 次 · 每月最多 " + Money.text(50_000)))
-        XCTAssertEqual(first["floor_amount"], .money(500_000))
+        XCTAssertEqual(first["fixed_savings"], .money(500_000))
         let goal = first["goals"]?.arrayValue?.first
         XCTAssertEqual(goal?["title"], .string("旅行")); XCTAssertEqual(goal?["target"], .money(800_000))
         XCTAssertEqual(goal?["saved"], .money(120_000)); XCTAssertEqual(goal?["date"], .string(Dates.text(now)))
@@ -45,7 +45,7 @@ final class ProfileTests: XCTestCase {
             .profile(.removeArea(ledger.profile.restrain[0].id))])
         try change.apply(to: &ledger)
         let next = try profile(ledger)
-        XCTAssertEqual(next["principles"], .array([])); XCTAssertEqual(next["floor_amount"], .money(600_000))
+        XCTAssertEqual(next["principles"], .array([])); XCTAssertEqual(next["fixed_savings"], .money(600_000))
         XCTAssertEqual(next["restrain"], .array([]))
         XCTAssertFalse(try next.jsonText().contains("超过 2,000 等 48 小时"))
         XCTAssertFalse(try next["generous"]!.jsonText().contains("外卖"))

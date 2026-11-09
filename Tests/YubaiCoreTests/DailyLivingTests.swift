@@ -77,22 +77,22 @@ final class DailyLivingTests: XCTestCase {
     }
     func testFundsAndForecastIgnoreLegacyPreferencesAndTreatProfileFloorAsTarget() {
         var ledger = dailyLedger()
-        ledger.profile.floorAmount = 12345
+        ledger.fixedSavings = 12345
         let estimated = Finance.funds(ledger, now: now)
-        XCTAssertTrue(estimated.livingEstimated); XCTAssertEqual(estimated.living, 3000 * 90)
+        XCTAssertTrue(estimated.livingEstimated); XCTAssertEqual(estimated.living, 0)
         XCTAssertEqual(estimated.emergency, 12345)
         XCTAssertFalse(estimated.warnings.contains { $0.contains("日常生活预留") })
         XCTAssertEqual(estimated.points.first!.conservative - estimated.points.last!.conservative, 3000 * 90)
         ledger.preferences.dailyLiving = 4567
         ledger.preferences.horizonDays = 7; ledger.preferences.emergencyReserve = 99999
         let chosen = Finance.funds(ledger, now: now)
-        XCTAssertTrue(chosen.livingEstimated); XCTAssertEqual(chosen.living, 3000 * 90)
+        XCTAssertTrue(chosen.livingEstimated); XCTAssertEqual(chosen.living, 0)
         XCTAssertEqual(chosen.available, estimated.available); XCTAssertEqual(chosen.emergency, 12345)
         XCTAssertEqual(chosen.points.count, 91)
         XCTAssertEqual(chosen.points.first!.conservative - chosen.points.last!.conservative, 3000 * 90)
-        ledger.profile.floorAmount = nil
+        ledger.fixedSavings = nil
         let unset = Finance.funds(ledger, now: now)
-        XCTAssertEqual(unset.emergency, 0); XCTAssertNil(unset.floorRoom); XCTAssertEqual(unset.available, estimated.available)
+        XCTAssertEqual(unset.emergency, 0); XCTAssertNil(unset.floorRoom); XCTAssertEqual(unset.available, estimated.available + 12345)
         XCTAssertEqual(unset.points.map(\.conservative), estimated.points.map(\.conservative))
         XCTAssertEqual(unset.points.map(\.expected), estimated.points.map(\.expected))
     }

@@ -9,7 +9,6 @@ private enum ProfileSheet: Identifiable {
 struct ProfileView: View {
     @Environment(AppStore.self) private var store
     @State private var sheet: ProfileSheet?
-    @State private var floor = ""
     @State private var editing = false
     @State private var configured = IntelligenceRuntime.isConfigured
     private var profile: SpendingProfile { store.profile }
@@ -28,7 +27,6 @@ struct ProfileView: View {
             if editing {
                 areas(profile.generous, stance: .generous, title: "愿意多花的")
                 principles
-                floorSection
                 goals
             } else {
                 if profile.generous.isEmpty && profile.principles.isEmpty {
@@ -66,9 +64,8 @@ struct ProfileView: View {
             }
         }.navigationTitle("我的消费观").yubaiNavigation()
             .toolbar { Button(editing ? "完成" : "编辑") { editing.toggle() }.frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("editProfile") }
-            .onAppear { configured = IntelligenceRuntime.isConfigured; loadFloor() }
-            .onChange(of: store.profile.floorAmount) { _, _ in loadFloor() }
-            .onChange(of: store.current.id) { _, _ in sheet = nil; loadFloor() }
+            .onAppear { configured = IntelligenceRuntime.isConfigured }
+            .onChange(of: store.current.id) { _, _ in sheet = nil }
             .sheet(item: $sheet) { item in
                 NavigationStack {
                     switch item {
@@ -123,12 +120,6 @@ struct ProfileView: View {
         }
     }
     @ViewBuilder private var savings: some View {
-        if let floor = profile.floorAmount {
-            Card(style: .compact) { VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text("始终留着").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                AmountLabel(cents: floor, hide: store.preferences.hideAmounts, role: .card)
-            } }
-        }
         ForEach(store.current.goals) { goal in
             Button { sheet = .goal(goal) } label: {
                 Card(style: .compact) { VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -251,20 +242,6 @@ struct ProfileView: View {
             } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("调整或移除" + goal.title)
         }.padding(.vertical, YubaiSpace.space8)
     }
-    private var floorSection: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-            SectionHeading(title: "始终留着")
-            Card {
-                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                    TextField("金额（元）", text: $floor).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityLabel("始终留着金额")
-
-                    if !floor.isEmpty && (try? Money.parse(floor)) == nil { InlineFieldError(message: "填写有效金额") }
-                    Button("保存") { if let amount = try? Money.parse(floor) { edit { $0.floorAmount = amount } } }
-                        .disabled((try? Money.parse(floor)) == nil)
-                }
-            }
-        }
-    }
     private var habits: some View {
         let lines = ProfileHabits.summary(store.current)
         return VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -292,7 +269,6 @@ struct ProfileView: View {
             }
         }
     }
-    private func loadFloor() { floor = Money.input(profile.floorAmount ?? 0) }
     private func edit(_ change: (inout SpendingProfile) -> Void) {
         store.update("修改消费观") { ledger in
             let old = ledger.profile; change(&ledger.profile); ledger.profile.stamp(changedFrom: old, at: Date())

@@ -179,24 +179,18 @@ public enum ManualBookkeeping {
                 difference -= max(0, -(old + delta)) - max(0, -old)
             }
         }
-        // Historical spending/refunds and linked payments can change reserves.
-        // Ordinary entries today use just the affected account deltas above.
-        let changesLiving = changes.contains { row, _ in row.date < Dates.day(now) && (row.nature == .expense || row.nature == .refund) }
+        let incomeChange = changes.filter { $0.0.deletedAt == nil && $0.0.nature == .income && $0.0.date >= base.cycleStart && $0.0.date <= now }
+            .reduce(Int64(0)) { $0 + $1.0.amount * $1.1 }
+        difference -= (ledger.savingRule?.target(income: base.cycleIncome + incomeChange) ?? 0) - base.savingTarget
         let changesPayments = changes.contains { $0.0.planID != nil || $0.0.rentID != nil }
-        if changesLiving || changesPayments {
+        if changesPayments {
             var preview = ledger
             if let original, let index = preview.entries.firstIndex(where: { $0.id == original.id }) { preview.entries[index] = entry }
             else { preview.entries.append(entry) }
-            if changesLiving {
-                let oldDaily = base.horizonDays > 0 ? base.living / Int64(base.horizonDays) : 0
-                difference -= (Finance.estimatedDailyLiving(preview, now: now) - oldDaily) * Int64(base.horizonDays)
-            }
-            if changesPayments {
-                let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
-                let occurrences = Finance.occurrences(in: preview, now: now, days: base.payday == nil ? Finance.observationDays : base.horizonDays + 1)
-                let committed = occurrences.filter { !$0.inflow && Dates.day($0.date) <= base.horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }.reduce(Int64(0)) { $0 + $1.amount }
-                difference -= committed - base.committed
-            }
+            let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
+            let occurrences = Finance.occurrences(in: preview, now: now, days: base.horizonDays + 1)
+            let committed = occurrences.filter { !$0.inflow && Dates.day($0.date) <= base.horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }.reduce(Int64(0)) { $0 + $1.amount }
+            difference -= committed - base.committed
         }
         return base.available + difference
     }

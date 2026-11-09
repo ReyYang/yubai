@@ -957,13 +957,13 @@ extension View {
         self.safeAreaBar(edge: .top, spacing: 0) {
             header()
                 .padding(.horizontal, YubaiSpace.insetPage)
-                .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+                .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.space8)
         }.modifier(RootPaperBackground())
         #else
         VStack(spacing: YubaiSpace.none) {
             header()
                 .padding(.horizontal, YubaiSpace.insetPage)
-                .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+                .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.space8)
             self
                 .mask(alignment: .top) {
                     GeometryReader { geometry in
@@ -2242,22 +2242,67 @@ struct TabRootHeader: View {
     let title: String
     var showsAmountVisibility = false
     var body: some View {
-        GlassGroup {
-            ZStack {
-                Text(title).yubaiFont(YubaiFont.navTitle).accessibilityIdentifier("rootHeaderTitle")
-                HStack(spacing: YubaiSpace.gapGroup) {
-                    if showsAmountVisibility {
-                        HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
-                            Image(systemName: store.preferences.hideAmounts ? "eye.slash" : "eye")
-                                .font(.system(size: size))
-                        }.accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额")
-                            .accessibilityIdentifier("toggleAmountVisibility")
-                    } else { Color.clear.frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
-                    Spacer(); AskToolbarButton()
+        HStack(spacing: 0) {
+            HStack(spacing: 8) {
+                if showsAmountVisibility {
+                    HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
+                        Image(systemName: store.preferences.hideAmounts ? "eye.slash" : "eye").font(.system(size: size))
+                    }.accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额").accessibilityIdentifier("toggleAmountVisibility")
                 }
-            }.frame(minHeight: YubaiSize.headerHeight)
+                Spacer(minLength: 0)
+            }.frame(width: 88)
+            Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity).accessibilityIdentifier("rootHeaderTitle")
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                if showsAmountVisibility {
+                    TabNavigationLink(.ledgerSearch) { EntriesView() } label: {
+                        Image(systemName: "magnifyingglass").font(.system(size: 18))
+                            .frame(width: 40, height: 40).controlSurface(in: Circle())
+                    }.buttonStyle(RoundPressStyle()).accessibilityLabel("搜索账目").accessibilityIdentifier("entriesSearchButton")
+                }
+                AskToolbarButton().frame(width: 40, height: 44)
+            }.frame(width: 88)
+        }.frame(height: 48)
+    }
+}
+
+/// Pushed pages reserve identical side columns so their title never drifts.
+struct LedgerPageHeader: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let backTitle: String
+    var trailing: String = ""
+    var body: some View {
+        HStack(spacing: 0) {
+            Button { dismiss() } label: {
+                HStack(spacing: 4) { Image(systemName: "chevron.left"); Text(backTitle) }
+                    .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.brandInk)
+                    .frame(width: 88, height: 48, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerBack")
+            Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity)
+            Text(trailing).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                .frame(width: 88, height: 48, alignment: .trailing)
         }
     }
+}
+
+struct LedgerSheetHeader: View {
+    let title: String
+    let done: () -> Void
+    var body: some View {
+        HStack {
+            Color.clear.frame(width: 60, height: 44).accessibilityHidden(true)
+            Spacer(minLength: 0)
+            Text(title).yubaiFont(YubaiFont.navTitle).fixedSize()
+            Spacer(minLength: 0)
+            Button("完成", action: done).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.brandInk)
+                .frame(width: 60, height: 44, alignment: .trailing).accessibilityIdentifier("closeSheet")
+        }.padding(.top, YubaiSpace.sheetHeaderTop).buttonStyle(PressButtonStyle())
+    }
+}
+
+extension YubaiFont {
+    static let savingsHero = Style(size: 40, lineHeight: 48, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
 }
 
 struct RoundPressStyle: ButtonStyle {
@@ -2389,3 +2434,23 @@ private struct NumberKeyboardAccessory: UIViewRepresentable {
     }
 }
 #endif
+
+struct EntryPurposeWell: View {
+    @Binding var purpose: String
+    let identifier: String
+    var focus: FocusState<Bool>.Binding
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil").font(.system(size: 16)).foregroundStyle(YubaiColor.labelMuted)
+            TextField("用途", text: $purpose).yubaiFont(YubaiFont.row).focused(focus)
+                .submitLabel(.done).onSubmit { focus.wrappedValue = false }
+                .accessibilityLabel("用途").accessibilityIdentifier(identifier)
+        }.padding(.horizontal, 12).frame(height: 44)
+            .background(YubaiColor.key, in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12).strokeBorder(YubaiColor.keyFn.opacity(0.45), lineWidth: 1)
+                    .shadow(color: .black.opacity(0.10), radius: 2, x: 0, y: 1)
+                    .clipShape(RoundedRectangle(cornerRadius: 12)).allowsHitTesting(false)
+            }
+    }
+}

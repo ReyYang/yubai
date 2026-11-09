@@ -14,12 +14,12 @@ final class AssistantToolTests: XCTestCase {
         let output = try run(.getFunds)
         let f = Finance.funds(ctx.ledger, now: ctx.now)
         let expected = ["available": f.available, "cash": f.cash, "debt": f.debt, "committed": f.committed,
-                        "goals": f.goals, "floor_target": f.emergency, "living": f.living, "uncertain": f.uncertainInflow, "expected_income": f.expectedIncome]
+                        "goals": f.goals, "fixed_savings": f.emergency, "living": f.living, "uncertain": f.uncertainInflow, "expected_income": f.expectedIncome]
         for (key, amount) in expected {
             XCTAssertEqual(cents(output[key]), amount, key)
             XCTAssertEqual(output[key]?["text"]?.stringValue, Money.text(amount), key)
         }
-        XCTAssertEqual(output["floor_room"], f.floorRoom.map { .money($0) } ?? .null); XCTAssertNil(output["emergency"])
+        XCTAssertEqual(output["saving_target"], .money(f.savingTarget)); XCTAssertNil(output["emergency"])
         XCTAssertEqual(output["warnings"], .strings(f.warnings))
         XCTAssertEqual(f.available, 80500)
     }

@@ -112,7 +112,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 case .addPrinciple(let text): return "新增消费原则「\(text)」"
                 case .editPrinciple(let old, let new): return "将消费原则「\(old)」改为「\(new)」"
                 case .removePrinciple(let text): return "移除消费原则「\(text)」"
-                case .setFloorAmount(let amount): return amount.map { "将始终留着设为 \(Money.text($0))" } ?? "清除始终留着的金额"
+                case .setFloorAmount(let amount): return amount.map { "存着不动 \(Money.text($0))" } ?? "存着不动 0.00"
                 }
             }
         }
@@ -320,7 +320,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     guard let i = next.profile.principles.firstIndex(of: old) else { skip(position); continue }; next.profile.principles[i] = new
                 case .removePrinciple(let text):
                     guard next.profile.principles.contains(text) else { skip(position); continue }; next.profile.principles.removeAll { $0 == text }
-                case .setFloorAmount(let amount): next.profile.floorAmount = amount
+                case .setFloorAmount(let amount): next.fixedSavings = amount ?? 0; next.profile.floorAmount = amount
                 }
                 next.profile.stamp(changedFrom: ledger.profile, at: createdAt)
                 next.profile.updatedAt = createdAt
