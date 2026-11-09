@@ -86,9 +86,7 @@ public enum ManualBookkeeping {
     }
     public static func categories(in ledger: Ledger, nature: Nature, frequentOnly: Bool = false) -> [String] {
         guard nature != .transfer else { return [] }
-        let allowed = ledger.selectableCategories.filter { $0.income == (nature != .refund && nature.inflow) }.map(\.name)
-        var seen = Set<String>()
-        let ordered = (ledger.preferences.categoryOrder + allowed).filter { allowed.contains($0) && seen.insert($0).inserted }
+        let ordered = ledger.orderedCategories(income: nature.categoryIncome).map(\.name)
         return frequentOnly ? Array(ordered.prefix(5)) : ordered
     }
     public static func guessCategory(_ purpose: String, nature: Nature, in ledger: Ledger) -> String? {
@@ -211,12 +209,12 @@ public enum ManualBookkeeping {
         // ImportOrganizer also sets userEdited. Persist a distinct manual marker
         // for category corrections; conservatively protect any reviewed catch-all
         // even when its category stayed the same. Legacy pending stays pending.
-        if entry.category != original.category || (!Classification.isPending(entry) && ["其他支出", "其他收入"].contains(entry.category)) {
+        if entry.category != original.category || (!Classification.isPending(entry) && entry.category == (entry.nature.categoryIncome ? "其他收入" : "其他支出")) {
             entry.classificationReason = "手动选择"
         }
         if entry.amount != original.amount { entry.personalExpense = nil; LedgerOperations.recordPersonalShare(&entry, ledger: next) }
-        if entry.subcategory != original.subcategory || entry.category != original.category {
-            if entry.category != original.category && entry.subcategory == original.subcategory && (!entry.subcategoryUserEdited || entry.subcategory != nil) {
+        if entry.subcategory != original.subcategory || entry.category != original.category || entry.nature.categoryIncome != original.nature.categoryIncome {
+            if (entry.category != original.category || entry.nature.categoryIncome != original.nature.categoryIncome) && entry.subcategory == original.subcategory && (!entry.subcategoryUserEdited || entry.subcategory != nil) {
                 entry.subcategory = nil; entry.subcategoryUserEdited = false
                 SubcategoryClassifier.classify(&entry, ledger: next)
             } else { entry.subcategoryUserEdited = true }
@@ -311,16 +309,16 @@ public enum EntryTimeline {
             spending += Finance.spendingAmount(entry, rent: entry.rentID.flatMap { rents[$0] })
             if entry.nature == .income { income += entry.amount }
         }
-        let symbols = Dictionary(uniqueKeysWithValues: ledger.categories.map { ($0.name, $0.symbol) })
+        let symbols = Dictionary(uniqueKeysWithValues: ledger.categories.map { ($0.id, $0.symbol) })
         let grouped = months(sortedEntries: entries, ledger: ledger, search: search, filter: filter, calendar: calendar)
         let days = grouped.flatMap(\.days).map { day in
             Day(date: day.date, spending: day.spending, income: day.income, entries: day.entries.map { entry in
-                let category = ledger.resolveCategory(entry.category)
+                let category = ledger.resolveCategory(entry.category, income: entry.nature.categoryIncome)
                 let uncategorized = isUncategorized(entry)
                 let name = uncategorized ? "没分类" : Classification.displayCategory(category)
                 let note = entry.note.isEmpty ? (entry.displayTitle == name ? "" : entry.displayTitle) : entry.note
                 let symbol: String
-                if let known = symbols[category] { symbol = known }
+                if let known = symbols[CategoryNamespace.key(category, income: entry.nature.categoryIncome)] { symbol = known }
                 else {
                     switch category {
                     case "日用", "购物": symbol = "bag"
@@ -355,7 +353,7 @@ public enum EntryTimeline {
             if !query.isEmpty {
                 let amount = formatter.string(from: NSDecimalNumber(decimal: Decimal(entry.amount) / 100)) ?? ""
                 let signed = (entry.nature.inflow ? "+" : "−") + amount
-                let category = ledger.resolveCategory(entry.category)
+                let category = ledger.resolveCategory(entry.category, income: entry.nature.categoryIncome)
                 let displayCategory = isUncategorized(entry) ? "没分类" : Classification.displayCategory(category)
                 let fields = [entry.title, entry.purpose ?? "", entry.note, entry.category, category, displayCategory, accounts[entry.accountID] ?? "", entry.otherAccountID.flatMap { accounts[$0] } ?? "", Money.input(entry.amount), amount, signed, signed.replacingOccurrences(of: "−", with: "-"), "¥" + amount]
                 guard fields.contains(where: { $0.localizedCaseInsensitiveContains(query) }) else { continue }

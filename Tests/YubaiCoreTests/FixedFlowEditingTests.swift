@@ -354,7 +354,7 @@ final class FixedFlowEditingTests: XCTestCase {
     func testCategoryRenameRewritesPendingUpdatePlan() throws {
         var ledger = fixture(); ledger.plans[0].category = "会员订阅"
         ledger.pendingChanges = [try update(ledger) { $0.title = "订阅新名" }]
-        try CategoryModel.rename("会员订阅", to: "会员", in: &ledger)
+        try CategoryModel.rename("会员订阅", to: "会员", income: false, in: &ledger)
         guard case .updatePlan(let plan) = ledger.pendingChanges[0].items[0] else { return XCTFail("需要 updatePlan") }
         XCTAssertEqual(plan.category, "会员")
     }

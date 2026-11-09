@@ -68,10 +68,9 @@ struct EntryEditForm: View {
                             EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: draft.nature, frequentOnly: true),
                                                income: draft.nature != .refund && draft.nature.inflow,
                                                selection: .init(category: draft.category, subcategory: draft.subcategory), suggestionOnly: categoryIsSuggestion, allowsDirectionChange: standardNature && draft.planID == nil && draft.source != "Apple Pay",
-                                               suggest: { categoryIsSuggestion ? draft.category : nil }) { choice in
-                                if standardNature, let value = store.current.categories.first(where: { $0.name == choice.category }), value.income != draft.nature.inflow {
-                                    skipNatureReset = true; draft.nature = value.income ? .income : .expense
-                                }
+                                               directionChanged: { income in
+                                                   if income != draft.nature.categoryIncome { skipNatureReset = true; draft.nature = income ? .income : .expense }
+                                               }, suggest: { categoryIsSuggestion ? draft.category : nil }) { choice in
                                 draft.category = choice.category; draft.subcategory = choice.subcategory
                                 draft.subcategoryUserEdited = true; choseCategory = true; categoryIsSuggestion = false; remembered = false; purposeFocused = false
                             }
@@ -104,7 +103,7 @@ struct EntryEditForm: View {
                                 Text("以后「\(merchant)」都记到 \(Classification.displayCategory(draft.category))").yubaiFont(YubaiFont.caption)
                                 Text("·").foregroundStyle(YubaiColor.labelSecondary)
                                 Button(remembered ? "已记好" : "好") {
-                                    remembered = store.update("记下商户分类") { try QuickCapture.remember(merchant: merchant, category: draft.category, in: &$0) }
+                                    remembered = store.update("记下商户分类") { try QuickCapture.remember(merchant: merchant, category: draft.category, income: draft.nature.categoryIncome, in: &$0) }
                                 }.disabled(remembered).foregroundStyle(YubaiColor.brandInk)
                             }
                         }

@@ -264,6 +264,15 @@ final class LedgerSyncTests: XCTestCase {
 
 final class LedgerMemoryMergeTests: XCTestCase {
     private let now = Dates.parse("2026-06-17 12:00")!
+    func testProfileColdStartDoneSurvivesMergeInEitherDirectionAndIgnoresOtherLedgers() {
+        let fresh = AssistantFixtures.context().ledger
+        var done = fresh; done.preferences.profileColdStartDone = true
+        XCTAssertEqual(LedgerMemoryMerge.merge(chosen: fresh, others: [done]), done)
+        XCTAssertEqual(LedgerMemoryMerge.merge(chosen: done, others: [fresh]), done)
+        XCTAssertEqual(LedgerMemoryMerge.merge(chosen: fresh, others: [fresh]), fresh)
+        var foreign = done; foreign.id = UUID()
+        XCTAssertEqual(LedgerMemoryMerge.merge(chosen: fresh, others: [foreign]), fresh)
+    }
     func testNewestAreaAndStanceWinAndChosenTransactionsAndFloorStay() throws {
         var chosen = AssistantFixtures.context().ledger
         chosen.profile.updatedAt = Dates.addDays(-10, to: now)

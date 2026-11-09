@@ -90,10 +90,10 @@ public enum OffCharacter {
         for entry in rows.filter({ ids.contains($0.id) }).sorted(by: { $0.amount == $1.amount ? $0.id.uuidString < $1.id.uuidString : $0.amount > $1.amount }) {
             let key = "off:\(entry.id)"
             guard !ButlerCards.isMuted(key, in: ledger), !covered.contains(entry.id) else { continue }
-            let category = ledger.resolveCategory(entry.category)
+            let category = ledger.resolveCategory(entry.category, income: entry.nature.categoryIncome)
             let day = Dates.day(entry.date), start = Dates.addDays(-90, to: day), end = Dates.addDays(1, to: day)
             let history = rows.filter { $0.id != entry.id && $0.date >= start && $0.date < end }
-            let previous = history.filter { ledger.resolveCategory($0.category) == category }
+            let previous = history.filter { ledger.resolveCategory($0.category, income: $0.nature.categoryIncome) == category }
             let average = previous.isEmpty ? 0 : previous.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ledger) } / Int64(previous.count)
             let spending = Finance.spendingAmount(entry, ledger: ledger)
             let area = ledger.profile.restrain.first { ButlerCards.matches($0, entry: entry, ledger: ledger) }
@@ -158,7 +158,7 @@ public enum OffCharacter {
             let ordinal = first.previous.isEmpty ? "第一次" : "第 2 次"
             heading = merged ? "\(group.count) 笔\(subject)，共 \(Money.text(total))，近 90 天少见" : entryTitle + "，近 90 天\(ordinal)花在\(subject)上"
             var seen = Set<UUID>()
-            let others = group.flatMap(\.history).filter { ledger.resolveCategory($0.category) != subject && seen.insert($0.id).inserted }.count
+            let others = group.flatMap(\.history).filter { ledger.resolveCategory($0.category, income: $0.nature.categoryIncome) != subject && seen.insert($0.id).inserted }.count
             detail = "同期其他开销 \(others) 笔"
             facts.append(CardFact("同期其他开销", "\(others) 笔"))
         }

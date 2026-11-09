@@ -87,7 +87,7 @@ final class CategoryModelTests: XCTestCase {
         XCTAssertFalse(migrated.categories.contains { ["娱乐旅行", "学习工作"].contains($0.name) || $0.subcategories.contains("其他") })
         var again = migrated; CategoryMigration.apply(to: &again); XCTAssertEqual(again, migrated)
         XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(migrated)), migrated)
-        XCTAssertEqual(migrated.categoryAssignment(category: "学习工作", subcategory: "软件工具"), .init(category: "会员订阅", subcategory: "软件云服务"))
+        XCTAssertEqual(migrated.categoryAssignment(category: "学习工作", subcategory: "软件工具", income: false), .init(category: "会员订阅", subcategory: "软件云服务"))
     }
     func testMigrationRewritesEveryReferenceIncludingDelayedChangesAndUndo() throws {
         var ledger = seed(); ledger.categories += [Category("学习工作"), Category("娱乐旅行")]
@@ -122,8 +122,8 @@ final class CategoryModelTests: XCTestCase {
         ledger.entries = [row(ledger, "餐饮美食"), row(ledger, "交通出行"), row(ledger, "私人收藏", "藏品"), row(ledger, "吃喝旧名")]
         let result = try decode(oldJSON(ledger))
         XCTAssertEqual(result.entries.map(\.category), ["餐饮", "交通", "私人收藏", "餐饮"])
-        XCTAssertEqual(result.resolveCategory("餐饮美食"), "餐饮")
-        XCTAssertEqual(result.resolveCategory("吃喝旧名"), "餐饮")
+        XCTAssertEqual(result.resolveCategory("餐饮美食", income: false), "餐饮")
+        XCTAssertEqual(result.resolveCategory("吃喝旧名", income: false), "餐饮")
         XCTAssertEqual(result.categories.filter { $0.name == "私人收藏" }.first?.subcategories, ["藏品"])
     }
     func testSchema1FixtureStillMigratesAllTheWayToFour() throws {
@@ -134,7 +134,7 @@ final class CategoryModelTests: XCTestCase {
     }
     func testLegacyThreeMemoriesNormalizeAndHaveDeterministicPrecedence() throws {
         let ledger = seed(); var json = try oldJSON(ledger)
-        json["categoryMemory"] = ["SHOP-123": "餐饮", " old 2! ": "工资"]
+        json["categoryMemory"] = ["SHOP-123": "餐饮", " old 2! ": "工资", "/expense/legacy123": "购物"]
         json["subcategoryMemory"] = ["shop456": "学习工作/办公用品"]
         var prefs = json["preferences"] as! [String: Any]
         prefs["quickCapture"] = ["merchantCategories": [" SHOP789! ": "交通", "merchant123": "日用购物"], "cardAccounts": [:]]
@@ -142,6 +142,7 @@ final class CategoryModelTests: XCTestCase {
         let result = try decode(json)
         XCTAssertEqual(result.classificationMemory["shop"], "购物/书和文具")
         XCTAssertEqual(result.classificationMemory["old"], "工资奖金/工资")
+        XCTAssertEqual(result.classificationMemory["expenselegacy"], "购物")
         XCTAssertEqual(result.classificationMemory["merchant"], "购物/日用百货")
         XCTAssertEqual(result.classificationMemory["fresh"], "旅行/住宿")
         let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: LedgerCodec.encode(result)) as? [String: Any])
@@ -175,7 +176,7 @@ final class CategoryModelTests: XCTestCase {
     }
     func testMemoryWinsOverKeywordsAndPurposeMerchantTitleUseOneKey() throws {
         var ledger = seed()
-        try QuickCapture.remember(merchant: " 滴滴-订单123! ", category: "购物", in: &ledger)
+        try QuickCapture.remember(merchant: " 滴滴-订单123! ", category: "购物", income: false, in: &ledger)
         XCTAssertEqual(QuickCapture.key("滴滴-订单456!"), CategoryMemory.key("滴滴-订单123!"))
         XCTAssertEqual(ManualBookkeeping.guessCategory("滴滴-订单456!", nature: .expense, in: ledger), "购物")
         var entry = row(ledger, title: "咖啡"); entry.quickCapture = .init(merchant: "滴滴-订单789", withoutOpeningApp: true)
@@ -233,7 +234,7 @@ final class CategoryModelTests: XCTestCase {
         XCTAssertEqual(preview.selectedEntries.last?.subcategory, "书和文具")
         _ = try BillImporter.commit(preview, data: bytes, to: &ledger)
         XCTAssertEqual(ledger.categories, before)
-        XCTAssertEqual(ledger.categoryAliases["餐饮美食"], "餐饮"); XCTAssertEqual(ledger.categoryAliases["交通出行"], "交通")
+        XCTAssertEqual(ledger.categoryAlias("餐饮美食", income: false), "餐饮"); XCTAssertEqual(ledger.categoryAlias("交通出行", income: false), "交通")
         XCTAssertNil(ledger.categoryAliases["私人名目"])
     }
     func testImportCreatesOnlyConfirmedMainsAndUsesSourceDirections() throws {
@@ -327,12 +328,12 @@ final class CategoryModelTests: XCTestCase {
         var ledger = seed(); ledger.entries = (0..<10).map { _ in row(ledger, "交通") }
         XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense, frequentOnly: true), ["餐饮", "购物", "交通", "居住", "医疗健康"])
         try CategoryModel.add(Category("收藏"), in: &ledger)
-        try CategoryModel.setOrder(["收藏", "交通", "餐饮"], in: &ledger)
-        try CategoryModel.setHidden(true, category: "交通", in: &ledger)
+        try CategoryModel.setOrder(["收藏", "交通", "餐饮"], income: false, in: &ledger)
+        try CategoryModel.setHidden(true, category: "交通", income: false, in: &ledger)
         XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense).prefix(2), ["收藏", "餐饮"])
-        try CategoryModel.setHidden(false, category: "交通", in: &ledger)
+        try CategoryModel.setHidden(false, category: "交通", income: false, in: &ledger)
         XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense).prefix(3), ["收藏", "交通", "餐饮"])
-        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)).preferences.categoryOrder, ["收藏", "交通", "餐饮"])
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)).categoryOrder(income: false), ["收藏", "交通", "餐饮"])
     }
     func testRenameThenMergeRewriteAllReferencesAndRefunds() throws {
         var ledger = seed(); try CategoryModel.add(Category("收藏", subcategories: ["藏品"], keywords: ["藏品消费"]), in: &ledger)
@@ -345,56 +346,56 @@ final class CategoryModelTests: XCTestCase {
         ledger.profile.generous = [area]; var restraint = area; restraint.id = UUID(); ledger.profile.restrain = [restraint]
         ledger.categoryAliases = ["旧收藏": "收藏"]
         ledger.pendingChanges = [ChangeSet(source: "测试", reason: "待确认", items: [.setCategory(entry: expense.id, category: "收藏"), .addPlan(ledger.plans[0]), .profile(.upsertArea(area, stance: .restrain))])]
-        try CategoryModel.setOrder(["收藏", "餐饮"], in: &ledger)
-        try CategoryModel.rename("收藏", to: "珍藏", in: &ledger)
+        try CategoryModel.setOrder(["收藏", "餐饮"], income: false, in: &ledger)
+        try CategoryModel.rename("收藏", to: "珍藏", income: false, in: &ledger)
         XCTAssertEqual(ledger.entries.map(\.category), ["珍藏", "珍藏"])
-        XCTAssertEqual(ledger.resolveCategory("旧收藏"), "珍藏"); XCTAssertEqual(ledger.resolveCategory("收藏"), "珍藏")
+        XCTAssertEqual(ledger.resolveCategory("旧收藏", income: false), "珍藏"); XCTAssertEqual(ledger.resolveCategory("收藏", income: false), "珍藏")
         XCTAssertEqual(ledger.plans[0].category, "珍藏"); XCTAssertEqual(ledger.wishlist[0].category, "珍藏")
         XCTAssertEqual(ledger.profile.generous[0].match.subcategories, ["珍藏/藏品"])
         XCTAssertEqual(ledger.classificationMemory["常用用途"], "珍藏/藏品")
-        try CategoryModel.merge("珍藏", into: "购物", in: &ledger)
+        try CategoryModel.merge("珍藏", into: "购物", income: false, in: &ledger)
         XCTAssertEqual(ledger.entries.map(\.category), ["购物", "购物"]); XCTAssertEqual(ledger.entries[1].subcategory, "藏品")
         XCTAssertEqual(ledger.plans[0].category, "购物"); XCTAssertEqual(ledger.wishlist[0].category, "购物")
         XCTAssertEqual(ledger.profile.restrain[0].match.categories, ["购物"])
         XCTAssertEqual(ledger.classificationMemory["常用用途"], "购物/藏品")
-        XCTAssertEqual(ledger.resolveCategory("旧收藏"), "购物"); XCTAssertEqual(ledger.resolveCategory("收藏"), "购物")
+        XCTAssertEqual(ledger.resolveCategory("旧收藏", income: false), "购物"); XCTAssertEqual(ledger.resolveCategory("收藏", income: false), "购物")
         XCTAssertTrue(ledger.categories.first { $0.name == "购物" }!.subcategories.contains("藏品"))
         if case .setCategory(_, let name) = ledger.pendingChanges[0].items[0] { XCTAssertEqual(name, "购物") } else { XCTFail() }
-        XCTAssertEqual(ledger.preferences.categoryOrder, ["购物", "餐饮"])
+        XCTAssertEqual(ledger.categoryOrder(income: false), ["购物", "餐饮"])
         XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)), ledger)
     }
     func testAddRenameDeleteSmallItemsRewritePathsAndMemory() throws {
         var ledger = seed(); try CategoryModel.add(Category("收藏"), in: &ledger)
-        try CategoryModel.addSubcategory("书画", to: "收藏", keywords: ["画作"], in: &ledger)
+        try CategoryModel.addSubcategory("书画", to: "收藏", income: false, keywords: ["画作"], in: &ledger)
         ledger.entries = [row(ledger, "收藏", "书画")]; ledger.classificationMemory["商店"] = "收藏/书画"
         ledger.profile.generous = [ProfileArea(title: "书画", match: .init(subcategories: ["收藏/书画"]))]
         var wish = WishItem(title: "画", amount: 100); wish.category = "收藏"; wish.subcategory = "书画"; ledger.wishlist = [wish]
-        try CategoryModel.renameSubcategory("书画", in: "收藏", to: "艺术", ledger: &ledger)
+        try CategoryModel.renameSubcategory("书画", in: "收藏", to: "艺术", income: false, ledger: &ledger)
         XCTAssertEqual(ledger.entries[0].subcategory, "艺术"); XCTAssertEqual(ledger.wishlist[0].subcategory, "艺术")
         XCTAssertEqual(ledger.classificationMemory["商店"], "收藏/艺术")
-        XCTAssertEqual(ledger.categoryAssignment(category: "收藏", subcategory: "书画").subcategory, "艺术")
+        XCTAssertEqual(ledger.categoryAssignment(category: "收藏", subcategory: "书画", income: false).subcategory, "艺术")
         XCTAssertEqual(CategoryGuesser.guess("画作", nature: .expense, in: ledger)?.subcategory, "艺术")
-        try CategoryModel.removeSubcategory("艺术", from: "收藏", in: &ledger)
+        try CategoryModel.removeSubcategory("艺术", from: "收藏", income: false, in: &ledger)
         XCTAssertNil(ledger.entries[0].subcategory); XCTAssertNil(ledger.wishlist[0].subcategory)
         XCTAssertEqual(ledger.classificationMemory["商店"], "收藏")
         XCTAssertEqual(ledger.profile.generous[0].match.categories, ["收藏"])
         XCTAssertTrue(ledger.profile.generous[0].match.subcategories.isEmpty)
-        XCTAssertNil(ledger.categoryAssignment(category: "收藏", subcategory: "书画").subcategory)
+        XCTAssertNil(ledger.categoryAssignment(category: "收藏", subcategory: "书画", income: false).subcategory)
     }
     func testInvalidOperationsAreAtomicAndProtectSystemAndOther() throws {
         var ledger = seed()
         for name in ["内部移动", "其他支出", "其他收入"] {
             let before = ledger
-            XCTAssertThrowsError(try CategoryModel.rename(name, to: "新名", in: &ledger))
-            XCTAssertThrowsError(try CategoryModel.merge(name, into: "购物", in: &ledger))
+            XCTAssertThrowsError(try CategoryModel.rename(name, to: "新名", income: false, in: &ledger))
+            XCTAssertThrowsError(try CategoryModel.merge(name, into: "购物", income: false, in: &ledger))
             XCTAssertEqual(ledger, before)
         }
         let before = ledger
-        XCTAssertThrowsError(try CategoryModel.merge("餐饮", into: "工资奖金", in: &ledger))
-        XCTAssertThrowsError(try CategoryModel.setHidden(true, category: "内部移动", in: &ledger))
+        XCTAssertThrowsError(try CategoryModel.merge("餐饮", into: "工资奖金", income: false, in: &ledger))
+        XCTAssertThrowsError(try CategoryModel.setHidden(true, category: "内部移动", income: false, in: &ledger))
         XCTAssertThrowsError(try CategoryModel.add(Category("购物"), in: &ledger))
-        XCTAssertThrowsError(try CategoryModel.addSubcategory("A/B", to: "购物", in: &ledger))
-        XCTAssertThrowsError(try CategoryModel.setOrder(["购物", "购物"], in: &ledger))
+        XCTAssertThrowsError(try CategoryModel.addSubcategory("A/B", to: "购物", income: false, in: &ledger))
+        XCTAssertThrowsError(try CategoryModel.setOrder(["购物", "购物"], income: false, in: &ledger))
         XCTAssertEqual(ledger, before)
     }
     func testStatsToolsHabitsAndProfileResolveAliasesAndRefundOriginalConsistently() throws {
@@ -409,7 +410,7 @@ final class CategoryModelTests: XCTestCase {
         let flow = Finance.cashFlow(ledger, during: interval)
         XCTAssertEqual(flow.spendingByCategory.first?.amount, 800); XCTAssertEqual(flow.incomeByCategory.count, 1)
         XCTAssertEqual(flow.incomeByCategory.first?.category, "工资奖金")
-        XCTAssertEqual(Finance.subcategoryBreakdown(ledger, category: "旧餐饮", during: interval).first?.amount, 800)
+        XCTAssertEqual(Finance.subcategoryBreakdown(ledger, category: "旧餐饮", income: false, during: interval).first?.amount, 800)
         let area = ProfileArea(title: "午餐", match: .init(subcategories: ["餐饮/午餐"]))
         XCTAssertTrue(ButlerCards.matches(area, entry: refund, ledger: ledger))
         XCTAssertEqual(ProfileHabits.summary(ledger, now: now).first { $0.kind == .category }?.title, "餐饮")
@@ -431,7 +432,7 @@ final class CategoryModelTests: XCTestCase {
     }
     func testAIRejectsChangingKnownMainAndHidesSystemAndHiddenInPayload() async throws {
         var ledger = seed(); ledger.entries = [row(ledger, "餐饮")]
-        try CategoryModel.setHidden(true, category: "购物", in: &ledger)
+        try CategoryModel.setHidden(true, category: "购物", income: false, in: &ledger)
         let reply = "{\"items\":[{\"id\":\"\(ledger.entries[0].id)\",\"category\":\"交通\",\"subcategory\":\"打车\"}]}"
         let transport = ScriptedChatTransport([ChatMessage(role: .assistant, content: reply)])
         do { _ = try await SubcategoryBatch.run(transport: transport, ledger: ledger, now: now); XCTFail() } catch { }
@@ -469,10 +470,10 @@ final class CategoryModelTests: XCTestCase {
         var ledger = seed(); ledger.classificationMemory = ["商店": "购物/日用百货"]
         ledger.categoryMemory["餐厅"] = "餐饮"
         XCTAssertEqual(ledger.classificationMemory["商店"], "购物/日用百货")
-        XCTAssertEqual(ledger.resolveCategory("购物/日用百货"), "购物")
-        XCTAssertFalse(ledger.categoryNames(including: "内部移动").contains("内部移动"))
-        try CategoryModel.setHidden(true, category: "购物", in: &ledger)
-        XCTAssertFalse(ledger.categoryNames(including: "购物").contains("购物"))
+        XCTAssertEqual(ledger.resolveCategory("购物/日用百货", income: false), "购物")
+        XCTAssertFalse(ledger.categoryNames(including: "内部移动", income: false).contains("内部移动"))
+        try CategoryModel.setHidden(true, category: "购物", income: false, in: &ledger)
+        XCTAssertFalse(ledger.categoryNames(including: "购物", income: false).contains("购物"))
         XCTAssertNil(CategoryGuesser.guess("商店", nature: .expense, in: ledger))
     }
 
@@ -485,6 +486,220 @@ final class CategoryModelTests: XCTestCase {
         let requests = await transport.recorded(); XCTAssertTrue(requests.isEmpty)
         try result.apply(to: &ledger, now: now)
         XCTAssertEqual(ledger.entries[0].category, "购物"); XCTAssertEqual(ledger.entries[0].subcategory, "日用百货")
+    }
+
+    func testSameNameNamespacesValidateAndRejectOnlySameDirectionDuplicates() throws {
+        var ledger = seed()
+        try CategoryModel.add(Category("红包", subcategories: ["送礼"], keywords: ["送红包"]), in: &ledger)
+        try CategoryModel.add(Category("红包", income: true, subcategories: ["收礼"], keywords: ["收红包"]), in: &ledger)
+        try ledger.validate()
+        XCTAssertEqual(Set(ledger.categories.map(\.id)).count, ledger.categories.count)
+        for income in [false, true] {
+            let before = ledger
+            XCTAssertThrowsError(try CategoryModel.add(Category("红包", income: income), in: &ledger)) { XCTAssertEqual($0.localizedDescription, "分类名称已存在。") }
+            XCTAssertEqual(ledger, before)
+        }
+        XCTAssertEqual(CategoryGuesser.guess("送红包", nature: .expense, in: ledger)?.subcategory, nil)
+        XCTAssertEqual(CategoryGuesser.guess("收红包", nature: .income, in: ledger)?.category, "红包")
+    }
+    func testSameNameMutationsRewriteOnlyTheirDirectionAndRetainedReferences() throws {
+        var ledger = seed()
+        for income in [false, true] { try CategoryModel.add(Category("红包", income: income, subcategories: ["节日"]), in: &ledger) }
+        let originalIncome = ledger.categories.first { $0.name == "红包" && $0.income }!
+        var expense = row(ledger, "红包", "节日"), income = expense
+        income.id = UUID(); income.nature = .income; income.title = "收红包"
+        var refund = expense; refund.id = UUID(); refund.nature = .refund; refund.relatedEntryID = expense.id; refund.amount = 100
+        ledger.entries = [expense, income, refund]
+        ledger.plans = [Plan(title: "送礼", amount: 100, dueDate: now, category: "红包"), Plan(title: "收礼", amount: 100, dueDate: now, inflow: true, category: "红包", nature: .income), Plan(title: "退款", amount: 100, dueDate: now, inflow: true, category: "红包", nature: .refund)]
+        ledger.pendingChanges = [ChangeSet(source: "测试", reason: "测试", items: [.setCategory(entry: expense.id, category: "红包"), .setCategory(entry: income.id, category: "红包")])]
+        CategoryMemory.remember(expense, in: &ledger); CategoryMemory.remember(income, in: &ledger)
+        try CategoryModel.addSubcategory("婚礼", to: "红包", income: false, in: &ledger)
+        try CategoryModel.renameSubcategory("节日", in: "红包", to: "过节", income: false, ledger: &ledger)
+        try CategoryModel.setHidden(true, category: "红包", income: false, in: &ledger)
+        XCTAssertEqual(ledger.categories.first { $0.name == "红包" && $0.income }, originalIncome)
+        XCTAssertEqual(ledger.entries[1].subcategory, "节日")
+        try CategoryModel.rename("红包", to: "礼金支出", income: false, in: &ledger)
+        XCTAssertEqual(ledger.entries.map(\.category), ["礼金支出", "红包", "礼金支出"])
+        XCTAssertEqual(ledger.plans.map(\.category), ["礼金支出", "红包", "礼金支出"])
+        XCTAssertEqual(ledger.resolveCategory("红包", income: false), "礼金支出")
+        XCTAssertEqual(ledger.resolveCategory("红包", income: true), "红包")
+        XCTAssertEqual(ledger.normalizedCategory(for: income), .init(category: "红包", subcategory: "节日"))
+        XCTAssertEqual(CategoryMemory.value("收红包", income: true, in: ledger), "红包/节日")
+        try CategoryModel.merge("礼金支出", into: "购物", income: false, in: &ledger)
+        XCTAssertEqual(ledger.entries.map(\.category), ["购物", "红包", "购物"])
+        XCTAssertEqual(ledger.categories.first { $0.name == "红包" && $0.income }, originalIncome)
+        if case .setCategory(_, let value) = ledger.pendingChanges[0].items[1] { XCTAssertEqual(value, "红包") } else { XCTFail() }
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)), ledger)
+    }
+    func testSameNameSubcategoryDeletionAndIncomeRenameDoNotTouchExpense() throws {
+        var ledger = seed()
+        for income in [false, true] { try CategoryModel.add(Category("红包", income: income, subcategories: ["节日"]), in: &ledger) }
+        var expense = row(ledger, "红包", "节日"), income = expense; income.id = UUID(); income.nature = .income
+        ledger.entries = [expense, income]
+        try CategoryModel.removeSubcategory("节日", from: "红包", income: true, in: &ledger)
+        XCTAssertEqual(ledger.entries[0].subcategory, "节日"); XCTAssertNil(ledger.entries[1].subcategory)
+        try CategoryModel.rename("红包", to: "进账红包", income: true, in: &ledger)
+        XCTAssertEqual(ledger.entries.map(\.category), ["红包", "进账红包"])
+        XCTAssertEqual(ledger.resolveCategory("红包", income: false), "红包")
+        XCTAssertEqual(ledger.resolveCategory("红包", income: true), "进账红包")
+    }
+    func testSameNameStatsCacheTimelineAndAIKeepDirectionsSeparate() throws {
+        var ledger = seed()
+        for income in [false, true] { try CategoryModel.add(Category("红包", income: income, subcategories: [income ? "收礼" : "送礼"]), in: &ledger) }
+        var expense = row(ledger, "红包", "送礼"), income = expense; income.id = UUID(); income.nature = .income; income.amount = 3000; income.subcategory = "收礼"
+        var refund = expense; refund.id = UUID(); refund.nature = .refund; refund.amount = 200; refund.relatedEntryID = expense.id
+        ledger.entries = [expense, income, refund]
+        let interval = DateInterval(start: Dates.day(now), end: Dates.addDays(1, to: now))
+        let flow = Finance.cashFlow(ledger, during: interval)
+        XCTAssertEqual(flow.spendingByCategory.first?.amount, 800); XCTAssertEqual(flow.incomeByCategory.first?.amount, 3000)
+        var cache = LedgerPresentationCache()
+        XCTAssertEqual(cache.subcategoryBreakdown(in: ledger, category: "红包", income: false, during: interval, revision: 1).map(\.category), ["送礼"])
+        XCTAssertEqual(cache.subcategoryBreakdown(in: ledger, category: "红包", income: true, during: interval, revision: 1).map(\.category), ["收礼"])
+        XCTAssertEqual(cache.flowRecords(in: ledger, categories: ["红包"], income: true, interval: interval, revision: 1).map(\.id), [income.id])
+        XCTAssertEqual(EntryTimeline.snapshot(sortedEntries: ledger.entries, ledger: ledger, month: now).count, 3)
+        let area = ProfileArea(title: "红包", match: .init(categories: ["红包"]))
+        XCTAssertTrue(ButlerCards.matches(area, entry: expense, ledger: ledger)); XCTAssertFalse(ButlerCards.matches(area, entry: income, ledger: ledger))
+        let result = try ReadOnlyTool.summarize.run(.object(["group_by": .string("category")]), ToolContext(ledger: ledger, now: now))
+        XCTAssertEqual(result["groups"]?.arrayValue?.count, 2)
+        XCTAssertEqual(result["groups"]!.arrayValue!.filter { $0["category_income"] == .bool(true) }.count, 1)
+        XCTAssertFalse(SubcategoryClassifier.valid(.init(category: "红包", subcategory: "收礼"), in: ledger, nature: .expense))
+        XCTAssertTrue(SubcategoryClassifier.valid(.init(category: "红包", subcategory: "送礼"), in: ledger, nature: .refund))
+    }
+    func testSameNameOrderAndMemoryPersistIndependently() throws {
+        var ledger = seed()
+        try CategoryModel.add(Category("红包", subcategories: ["节日"]), in: &ledger)
+        let expense = row(ledger, "红包", "节日", title: "同一对方")
+        CategoryMemory.remember(expense, in: &ledger)
+        let longKey = String(repeating: "长", count: 4000); ledger.classificationMemory[longKey] = "红包/节日"
+        try CategoryModel.add(Category("红包", income: true, subcategories: ["节日"]), in: &ledger)
+        var income = expense; income.id = UUID(); income.nature = .income; income.subcategory = nil
+        CategoryMemory.remember(income, in: &ledger)
+        try CategoryModel.setOrder(["红包", "餐饮"], income: false, in: &ledger)
+        try CategoryModel.setOrder(["工资奖金", "红包"], income: true, in: &ledger)
+        XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .expense).prefix(2), ["红包", "餐饮"])
+        XCTAssertEqual(ManualBookkeeping.categories(in: ledger, nature: .income).prefix(2), ["工资奖金", "红包"])
+        let decoded = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        XCTAssertEqual(decoded, ledger)
+        XCTAssertEqual(CategoryMemory.value(longKey, income: false, in: decoded), "红包/节日")
+        XCTAssertEqual(CategoryMemory.value("同一对方", income: false, in: decoded), "红包/节日")
+        XCTAssertEqual(CategoryMemory.value("同一对方", income: true, in: decoded), "红包")
+        XCTAssertEqual(CategoryGuesser.guess("同一对方", nature: .expense, in: decoded)?.subcategory, "节日")
+        XCTAssertNil(CategoryGuesser.guess("同一对方", nature: .income, in: decoded)?.subcategory)
+    }
+    func testLegacyCurrentJSONRoundTripsWithoutRekeying() throws {
+        var ledger = seed(); ledger.categoryAliases = ["旧购物": "购物", "旧工资": "工资奖金", "旧购物/老项": "购物/日用百货"]
+        ledger.preferences.categoryOrder = ["交通", "餐饮", "工资奖金"]
+        ledger.classificationMemory = ["商店": "购物/日用百货", "公司": "工资奖金/工资"]
+        let data = try LedgerCodec.encode(ledger), decoded = try LedgerCodec.decode(data)
+        XCTAssertEqual(decoded, ledger)
+        XCTAssertEqual(decoded.resolveCategory("旧购物", income: false), "购物")
+        XCTAssertEqual(decoded.resolveCategory("旧工资", income: true), "工资奖金")
+        XCTAssertEqual(decoded.categoryAssignment(category: "旧购物", subcategory: "老项", income: false).path, "购物/日用百货")
+        XCTAssertEqual(try LedgerCodec.encode(decoded), data)
+        try CategoryModel.add(Category("旧购物", income: true), in: &ledger)
+        XCTAssertEqual(ledger.resolveCategory("旧购物", income: true), "旧购物")
+        XCTAssertEqual(ledger.resolveCategory("旧购物", income: false), "购物")
+    }
+
+    func testLegacyAliasesStayInOriginalNamespaceWhenSameNameIsAdded() throws {
+        var ledger = seed()
+        try CategoryModel.add(Category("红包", subcategories: ["送礼"]), in: &ledger)
+        ledger.categoryAliases = ["旧红包": "红包", "红包/旧项": "红包/送礼"]
+        try CategoryModel.add(Category("红包", income: true), in: &ledger)
+        try CategoryModel.addSubcategory("旧项", to: "红包", income: true, in: &ledger)
+        XCTAssertEqual(ledger.categoryAssignment(category: "红包", subcategory: "旧项", income: false).path, "红包/送礼")
+        XCTAssertEqual(ledger.categoryAssignment(category: "红包", subcategory: "旧项", income: true).path, "红包/旧项")
+        XCTAssertEqual(ledger.resolveCategory("旧红包", income: true), "旧红包")
+        try CategoryModel.add(Category("旧红包", income: true), in: &ledger)
+        XCTAssertEqual(ledger.resolveCategory("旧红包", income: false), "红包")
+        try CategoryModel.rename("红包", to: "送出红包", income: false, in: &ledger)
+        XCTAssertEqual(ledger.resolveCategory("红包", income: true), "红包")
+    }
+    func testRenamingIntoOtherDirectionNameScopesLegacyAliasAndFutureDrafts() throws {
+        var ledger = seed()
+        try CategoryModel.add(Category("赠礼", subcategories: ["节日"]), in: &ledger)
+        try CategoryModel.add(Category("红包", income: true), in: &ledger)
+        ledger.categoryAliases = ["旧赠礼": "赠礼"]
+        let expense = EntryDraft(date: now, amount: 100, amountConfirmed: true, accountID: ledger.accounts[0].id, title: "送礼", category: "赠礼")
+        var income = expense; income.id = UUID(); income.nature = .income; income.category = "红包"
+        ledger.pendingChanges = [ChangeSet(source: "测试", reason: "测试", items: [.addEntry(expense), .setCategory(entry: expense.id, category: "赠礼/节日"), .addEntry(income), .setCategory(entry: income.id, category: "红包")])]
+        try CategoryModel.rename("赠礼", to: "红包", income: false, in: &ledger)
+        XCTAssertEqual(ledger.resolveCategory("旧赠礼", income: true), "旧赠礼")
+        try CategoryModel.add(Category("旧赠礼", income: true), in: &ledger)
+        if case .setCategory(_, let path) = ledger.pendingChanges[0].items[1] { XCTAssertEqual(path, "红包/节日") } else { XCTFail() }
+        var change = ledger.pendingChanges[0]; change.createdAt = now; try change.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries.map(\.category), ["红包", "红包"])
+        XCTAssertEqual(ledger.entries.map(\.nature), [.expense, .income])
+    }
+    func testCatchAllNamesAreProtectedOnlyInTheirOwnDirection() throws {
+        var ledger = seed()
+        try CategoryModel.add(Category("其他支出", income: true), in: &ledger)
+        try CategoryModel.addSubcategory("定制", to: "其他支出", income: true, in: &ledger)
+        try CategoryModel.rename("其他支出", to: "自定进账", income: true, in: &ledger)
+        XCTAssertTrue(ledger.categories.contains { $0.name == "其他支出" && !$0.income && $0.isCatchAll })
+        XCTAssertFalse(ledger.categories.first { $0.name == "自定进账" }!.isCatchAll)
+        XCTAssertThrowsError(try CategoryModel.rename("其他支出", to: "新支出", income: false, in: &ledger))
+    }
+    func testMemoryMergeKeepsOppositeDirectionChoicesAndAliasResolution() throws {
+        var chosen = seed(); try CategoryModel.add(Category("红包", subcategories: ["送礼"]), in: &chosen)
+        chosen.classificationMemory = ["对方": "红包/送礼"]
+        var other = chosen; other.categories.removeAll { $0.name == "红包" }; other.categories.append(Category("红包", income: true, subcategories: ["收礼"]))
+        other.classificationMemory = ["对方": "红包/收礼"]
+        try CategoryModel.add(Category("红包", income: true, subcategories: ["收礼"]), in: &chosen)
+        let merged = LedgerMemoryMerge.merge(chosen: chosen, others: [other])
+        XCTAssertEqual(CategoryMemory.value("对方", income: false, in: merged), "红包/送礼")
+        XCTAssertEqual(CategoryMemory.value("对方", income: true, in: merged), "红包/收礼")
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(merged)), merged)
+    }
+    func testAIProposalsRejectOppositeDirectionCategoryAndHonorSameNamePair() throws {
+        var ledger = seed()
+        let args: JSONValue = .object(["reason": .string("补记"), "title": .string("红包"), "amount": .string("10"), "date": .string(Dates.text(now)), "account": .string(ledger.accounts[0].id.uuidString), "nature": .string("expense"), "category": .string("工资奖金")])
+        XCTAssertThrowsError(try ProposalTool.entry.propose(args, ToolContext(ledger: ledger, now: now, confirmedEntryAmount: 1000)))
+        try CategoryModel.add(Category("工资奖金", subcategories: ["支出项"]), in: &ledger)
+        let proposal = try ProposalTool.entry.propose(args, ToolContext(ledger: ledger, now: now, confirmedEntryAmount: 1000))
+        try proposal.apply(to: &ledger)
+        XCTAssertEqual(ledger.entries[0].category, "工资奖金"); XCTAssertEqual(ledger.entries[0].nature, .expense)
+    }
+
+    func testImportCanCreateMissingDirectionAndBothNewDirectionsForSameLabel() throws {
+        for existing in [false, true] {
+            var ledger = seed()
+            if existing { try CategoryModel.add(Category("红包"), in: &ledger) }
+            let data = Data("日期,金额,收支,用途,分类\n2026-10-20,10,支出,未知甲,红包\n2026-10-20,20,收入,未知乙,红包\n".utf8)
+            let preview = try BillImporter.preview(data: data, filename: "分类.csv", accountID: ledger.accounts[0].id, ledger: ledger)
+            _ = try BillImporter.commit(preview, data: data, confirmedNewCategories: ["红包"], to: &ledger)
+            XCTAssertEqual(ledger.categories.filter { $0.name == "红包" }.count, 2)
+            XCTAssertEqual(ledger.entries.map(\.category), ["红包", "红包"])
+            XCTAssertEqual(ledger.entries.map(\.nature), [.expense, .income]); try ledger.validate()
+        }
+    }
+    func testOrganizerUsesOnlyOwnSmallItemsAndKeywordsForSameNamePair() throws {
+        var ledger = seed()
+        try CategoryModel.add(Category("红包", subcategories: ["送礼"], keywords: ["送方专用"]), in: &ledger)
+        try CategoryModel.add(Category("红包", income: true, subcategories: ["收礼"], keywords: ["收方专用"]), in: &ledger)
+        let resolver = ImportOrganizer.CategoryResolver(ledger: ledger)
+        XCTAssertEqual(resolver.resolve("红包/送礼", income: false), .init(category: "红包", subcategory: "送礼"))
+        XCTAssertEqual(resolver.resolve("红包/收礼", income: true), .init(category: "红包", subcategory: "收礼"))
+        XCTAssertEqual(resolver.resolve("红包/收礼", income: false), .init(category: "红包"))
+        XCTAssertEqual(resolver.resolve("收方专用", income: true), .init(category: "红包"))
+        XCTAssertNil(resolver.resolve("收方专用", income: false))
+        XCTAssertNil(resolver.resolve("送礼", income: true))
+    }
+    func testDefaultsUpgradeDoesNotBorrowOppositeDirectionKeywordsOrAliases() throws {
+        var ledger = seed(); ledger.defaultCategoriesVersion = 1
+        ledger.categories.removeAll { $0.name == "报销" }
+        ledger.categories.append(Category("报销", keywords: ["自定支出"]))
+        ledger.classificationMemory = ["对方": "报销"]
+        ledger.categoryAliases = ["老报销": "报销"]
+        ledger.preferences.categoryOrder = ["报销", "工资奖金", "其他支出", "其他收入"]
+        CategoryMigration.addMissingDefaults(to: &ledger); CategoryMigration.upgradeKeywords(to: &ledger)
+        XCTAssertEqual(ledger.categories.filter { $0.name == "报销" }.count, 2)
+        XCTAssertEqual(ledger.categories.first { $0.name == "报销" && !$0.income }?.keywords, ["自定支出"])
+        XCTAssertEqual(ledger.resolveCategory("老报销", income: true), "老报销")
+        XCTAssertEqual(CategoryMemory.value("对方", income: false, in: ledger), "报销")
+        XCTAssertNil(CategoryMemory.value("对方", income: true, in: ledger))
+        XCTAssertEqual(ledger.preferences.categoryOrder.filter { CategoryNamespace.split($0).name == "报销" }.count, 2)
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(ledger)), ledger)
     }
 
 }

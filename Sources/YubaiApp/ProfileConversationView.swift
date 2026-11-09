@@ -18,7 +18,7 @@ struct ProfileConversationView: View {
     private var revisit: Bool {
         if let startedAsRevisit { return startedAsRevisit }
         let profile = store.profile
-        return openingContext != nil || !profile.generous.isEmpty || !profile.restrain.isEmpty || !profile.principles.isEmpty || (store.current.fixedSavings ?? 0) > 0
+        return store.preferences.profileColdStartDone || openingContext != nil || !profile.generous.isEmpty || !profile.restrain.isEmpty || !profile.principles.isEmpty || (store.current.fixedSavings ?? 0) > 0
     }
     private var proposal: ChangeSet? { store.current.pendingChanges.first { $0.id == proposalID } }
     var body: some View {
@@ -130,16 +130,20 @@ struct ProfileConversationView: View {
     }
     @MainActor private func ask() {
         guard !busy else { return }
-        let before = store.current
-        guard !store.locked, before.preferences.cloudAIEnabled, let transport = store.assistantTransport(for: before) else {
+        guard !store.locked, store.preferences.cloudAIEnabled else {
             errorText = "还没配密钥"; return
         }
         var turn = messages
         let answer = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if !answer.isEmpty {
+            if !revisit && !store.preferences.profileColdStartDone {
+                guard store.update("保存消费观对话", recordUndo: false, entryMotion: false, showToast: false, { $0.preferences.profileColdStartDone = true }) else { return }
+            }
             if pendingUserTurn, turn.last?.role == .user { turn.removeLast() }
             turn.append(ChatMessage(role: .user, content: answer))
         } else if !messages.isEmpty { return }
+        let before = store.current
+        guard let transport = store.assistantTransport(for: before) else { errorText = "还没配密钥"; return }
         let conversation = turn
         input = ""
         messages = conversation; pendingUserTurn = conversation.last?.role == .user

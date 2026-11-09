@@ -97,6 +97,7 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
         case .adjustmentIn: "调增余额"; case .adjustmentOut: "调减余额"; case .unknownIn: "没写用途的进账"; case .unknownOut: "没写用途的出账"
         }
     }
+    public var categoryIncome: Bool { self != .refund && inflow }
     public var inflow: Bool { [.income, .borrow, .loanRecovery, .refund, .contribution, .investSell, .adjustmentIn, .unknownIn].contains(self) }
     public var paired: Bool { [.transfer, .repayment, .investBuy, .investSell, .borrow, .lend, .loanReturn, .loanRecovery].contains(self) }
     public var uncertain: Bool { self == .unknownIn || self == .unknownOut }
@@ -328,7 +329,8 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
     public var subcategoryKeywords: [String: [String]]
     public var system: Bool
     public var hidden: Bool
-    public var id: String { name }
+    public var id: String { CategoryNamespace.key(name, income: income) }
+    public var isCatchAll: Bool { name == (income ? "其他收入" : "其他支出") }
     public init(_ name: String, _ symbol: String = "square.grid.2x2", income: Bool = false,
                 subcategories: [String] = [], keywords: [String] = [], subcategoryKeywords: [String: [String]] = [:],
                 system: Bool = false, hidden: Bool = false) {
@@ -464,12 +466,13 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var quickCapture = QuickCapturePreferences()
     public var categoryOrder: [String] = Category.defaults.filter { !$0.system }.map(\.name)
     public var onboardingComplete = false
+    public var profileColdStartDone = false
     public var lastBackupAt: Date?
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
-        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
+        case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, profileColdStartDone, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
     }
     // Decode the former master switch without including it in newly encoded ledgers.
     private enum LegacyCodingKeys: String, CodingKey {
@@ -492,6 +495,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder
         quickCapture = try values.decodeIfPresent(QuickCapturePreferences.self, forKey: .quickCapture) ?? QuickCapturePreferences()
         onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
+        profileColdStartDone = try values.decodeIfPresent(Bool.self, forKey: .profileColdStartDone) ?? false
         lastBackupAt = try values.decodeIfPresent(Date.self, forKey: .lastBackupAt)
     }
 }
@@ -598,13 +602,41 @@ public enum CategoryMemory {
             .replacingOccurrences(of: #"[\p{N}\p{P}]+"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    static func directions(_ path: String, in ledger: Ledger) -> [Bool] {
+        let choice = CategoryAssignment(path: path)
+        let direct = [false, true].filter { income in
+            let value = ledger.categoryAssignment(category: choice.category, subcategory: choice.subcategory, income: income)
+            return ledger.categories.contains { $0.name == value.category && $0.income == income }
+        }
+        if !direct.isEmpty { return direct }
+        let legacy = CategoryMigration.canonical(choice.category)
+        return [false, true].filter { income in ledger.categories.contains { $0.name == legacy.category && $0.income == income } }
+    }
+    public static func value(_ key: String, income: Bool, in ledger: Ledger) -> String? {
+        ledger.classificationMemory[CategoryNamespace.key(key, income: income)] ?? ledger.classificationMemory[key]
+    }
+    public static func store(_ path: String, key: String, income: Bool, in ledger: inout Ledger) {
+        let category = CategoryAssignment(path: path).category
+        let scoped = CategoryNamespace.key(key, income: income)
+        if let old = ledger.classificationMemory[key] {
+            let directions = Set(self.directions(old, in: ledger))
+            if directions == [!income] {
+                ledger.classificationMemory.removeValue(forKey: key)
+                ledger.classificationMemory[CategoryNamespace.key(key, income: !income)] = old
+                ledger.classificationMemory[scoped] = path; return
+            }
+        }
+        if ledger.classificationMemory[scoped] != nil || ledger.classificationMemory[CategoryNamespace.key(key, income: !income)] != nil || ledger.categories.contains(where: { $0.name == category && $0.income != income }) {
+            ledger.classificationMemory[scoped] = path
+        } else { ledger.classificationMemory[key] = path }
+    }
     public static func remember(_ entry: Entry, includingParty: Bool = false, in ledger: inout Ledger) {
         let choice = ledger.normalizedCategory(for: entry)
-        guard !Classification.isPending(choice.category), ledger.categories.contains(where: { $0.name == choice.category && !$0.system }) else { return }
-        for key in SubcategoryClassifier.keys(entry) { ledger.classificationMemory[key] = choice.path }
+        guard !Classification.isPending(choice.category), ledger.categories.contains(where: { $0.name == choice.category && $0.income == entry.nature.categoryIncome && !$0.system }) else { return }
+        for key in SubcategoryClassifier.keys(entry) { store(choice.path, key: key, income: entry.nature.categoryIncome, in: &ledger) }
         if includingParty {
             let key = self.key(UnsortedGroups.party(for: entry))
-            if !key.isEmpty { ledger.classificationMemory[key] = choice.path }
+            if !key.isEmpty { store(choice.path, key: key, income: entry.nature.categoryIncome, in: &ledger) }
         }
     }
 }
@@ -776,9 +808,11 @@ public struct Ledger: Codable, Equatable, Sendable {
         }
         // Deterministic legacy precedence: main < merchant < subcategory < new store.
         var importedMemory: [String: String] = [:]
-        for source in [oldMain, preferences.quickCapture.merchantCategories, oldSmall, classificationMemory] {
+        for (index, source) in [oldMain, preferences.quickCapture.merchantCategories, oldSmall, classificationMemory].enumerated() {
             for key in source.keys.sorted() {
-                let normalized = CategoryMemory.key(key)
+                let scoped: (name: String, income: Bool?) = index == 3 ? CategoryNamespace.split(key) : (key, nil)
+                let plain = CategoryMemory.key(scoped.name)
+                let normalized = scoped.income.map { CategoryNamespace.key(plain, income: $0) } ?? plain
                 if !normalized.isEmpty { importedMemory[normalized] = source[key] }
             }
         }
@@ -860,9 +894,9 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public var activeEntries: [Entry] { entries.filter { $0.deletedAt == nil } }
     public func accountName(_ id: UUID?) -> String { accounts.first { $0.id == id }?.name ?? "未指定账户" }
-    public func resolveCategory(_ category: String) -> String {
+    public func resolveCategory(_ category: String, income: Bool) -> String {
         let value = CategoryAssignment(path: category)
-        return categoryAssignment(category: value.category, subcategory: value.subcategory).category
+        return categoryAssignment(category: value.category, subcategory: value.subcategory, income: income).category
     }
     public func validate() throws {
         if calculations.isValidated { return }
@@ -878,7 +912,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         guard Set(cards.map(\.id)).count == cards.count, Set(wishlist.map(\.id)).count == wishlist.count,
               Set(pendingChanges.map(\.id)).count == pendingChanges.count,
               Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或修改包含重复标识。") }
-        let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.name)
+        let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.id)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
         guard fixedSavings.map({ (0...Money.limit).contains($0) }) ?? true,
               savingRule?.isValid ?? true,
@@ -893,12 +927,12 @@ public struct Ledger: Codable, Equatable, Sendable {
         if let week = lastReflectionWeek {
             guard MemoryReflection.validWeek(week) else { throw YubaiError.invalid("每周来信的周次无效。") }
         }
-        guard classificationMemory.allSatisfy({ !$0.key.isEmpty && $0.key.count <= 4000 && CategoryMemory.key($0.key) == $0.key &&
+        guard classificationMemory.allSatisfy({ !CategoryNamespace.split($0.key).name.isEmpty && CategoryNamespace.split($0.key).name.count <= 4000 && CategoryMemory.key(CategoryNamespace.split($0.key).name) == CategoryNamespace.split($0.key).name &&
             !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.value.count <= 401 && $0.value.split(separator: "/", omittingEmptySubsequences: false).count <= 2 }) else { throw YubaiError.invalid("分类对照表无效。") }
         if let day = lastSubcategoryBatchDay {
             guard Dates.parse(day).map({ Dates.text($0) == day }) ?? false else { throw YubaiError.invalid("小项归类日期无效。") }
         }
-        guard subcategoryMemory.allSatisfy({ !$0.key.isEmpty && $0.key.count <= 4000 && CategoryMemory.key($0.key) == $0.key && $0.value.split(separator: "/", omittingEmptySubsequences: false).count == 2 }),
+        guard subcategoryMemory.allSatisfy({ !CategoryNamespace.split($0.key).name.isEmpty && CategoryNamespace.split($0.key).name.count <= 4000 && CategoryMemory.key(CategoryNamespace.split($0.key).name) == CategoryNamespace.split($0.key).name && $0.value.split(separator: "/", omittingEmptySubsequences: false).count == 2 }),
               subscriptionChecks.allSatisfy({ item in !item.key.isEmpty && item.key.count <= 200 && item.value.count == 7 && Dates.parse(item.value + "-01").map { String(Dates.text($0).prefix(7)) == item.value } == true }) else { throw YubaiError.invalid("小项或固定收付对照表无效。") }
         guard stoppedSubscriptions.count <= 5000, Set(stoppedSubscriptions.map(\.id)).count == stoppedSubscriptions.count else { throw YubaiError.invalid("停掉的固定收付记录无效。") }
         for stopped in stoppedSubscriptions {

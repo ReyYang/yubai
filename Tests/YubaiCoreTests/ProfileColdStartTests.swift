@@ -3,6 +3,29 @@ import XCTest
 
 final class ProfileColdStartTests: XCTestCase {
     private let wholeProfile = #"{"reason":"根据这次聊天整理，等你确认","items":[{"operation":"upsert_area","stance":"generous","title":"学习","categories":["学习"],"keywords":["书"]},{"operation":"upsert_area","stance":"restrain","title":"外卖","keywords":["外卖"],"per_week_count":3,"per_month_amount":"500"},{"operation":"add_principle","text":"大件先等两天"},{"operation":"set_floor","amount":"5000"}]}"#
+    func testAutomaticModeUsesDoneFlagWithEmptyProfile() async throws {
+        let ctx = AssistantFixtures.context(); var ledger = ctx.ledger; ledger.profile = SpendingProfile()
+        for done in [false, true] {
+            ledger.preferences.profileColdStartDone = done
+            let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: "想聊哪件事？")])
+            let reply = try await ProfileColdStart(transport: script).next(ledger: ledger, messages: [], now: ctx.now)
+            XCTAssertTrue(reply.proposedChangeSets.isEmpty)
+            let requests = await script.recorded()
+            XCTAssertEqual(requests[0].messages[0].content?.contains("这是再聊"), done)
+            XCTAssertEqual(requests[0].tools.contains { $0.function.name == "remember" }, done)
+            XCTAssertFalse(requests[0].tools.contains { $0.function.name == "propose_profile_change" })
+        }
+    }
+    func testActiveColdStartContinuesAfterDoneFlagIsSet() async throws {
+        let ctx = AssistantFixtures.context(); var ledger = ctx.ledger; ledger.profile = SpendingProfile()
+        ledger.preferences.profileColdStartDone = true
+        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: "你想克制哪些花费？")])
+        let messages = [ChatMessage(role: .assistant, content: "愿意多花的？"), ChatMessage(role: .user, content: "先跳过")]
+        _ = try await ProfileColdStart(transport: script).next(ledger: ledger, messages: messages, mode: .coldStart, now: ctx.now)
+        let requests = await script.recorded()
+        XCTAssertTrue(requests[0].messages[0].content?.contains("你想在哪些花费上克制一点") == true)
+        XCTAssertEqual(requests[0].tools.map(\.function.name), ["get_profile", "recall"])
+    }
     func testThreeQuestionsThenOneProposalAndOnlyConfirmationChangesProfile() async throws {
         let ctx = AssistantFixtures.context()
         let script = ScriptedChatTransport([

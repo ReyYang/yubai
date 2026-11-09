@@ -326,10 +326,9 @@ public enum Finance {
         return CashFlowSummary(income: review.income, spending: review.spending,
                                incomeByCategory: income, spendingByCategory: spending)
     }
-    public static func subcategoryBreakdown(_ ledger: Ledger, category: String, during interval: DateInterval) -> [Breakdown] {
+    public static func subcategoryBreakdown(_ ledger: Ledger, category: String, income: Bool, during interval: DateInterval) -> [Breakdown] {
         let byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-        let income = ledger.categories.first { $0.name == ledger.resolveCategory(category) }?.income ?? false
-        let rows = ledger.activeEntries.filter { $0.date >= interval.start && $0.date < interval.end && (income ? $0.nature == .income : ($0.nature == .expense || $0.nature == .refund)) && ledger.normalizedCategory(for: $0, entriesByID: byID).category == ledger.resolveCategory(category) }
+        let rows = ledger.activeEntries.filter { $0.date >= interval.start && $0.date < interval.end && (income ? $0.nature == .income : ($0.nature == .expense || $0.nature == .refund)) && ledger.normalizedCategory(for: $0, entriesByID: byID).category == ledger.resolveCategory(category, income: income) }
         let grouped = Dictionary(grouping: rows) { entry in
             return ledger.normalizedCategory(for: entry, entriesByID: byID).subcategory ?? "没分类"
         }
@@ -369,7 +368,7 @@ public struct LedgerPresentationCache {
     private var flows: [FlowKey: CashFlowSummary] = [:]
     private var slices: [FlowKey: (income: [CashFlowSlice], spending: [CashFlowSlice])] = [:]
     private var records: [RecordsKey: [Entry]] = [:]
-    private struct SubcategoryKey: Hashable { let category: String; let interval: DateInterval }
+    private struct SubcategoryKey: Hashable { let category: String; let income: Bool; let interval: DateInterval }
     private struct EvidenceKey: Hashable { let ids: Set<UUID>; let activeOnly: Bool }
     private var subcategories: [SubcategoryKey: [Breakdown]] = [:]
     private var evidence: [EvidenceKey: [Entry]] = [:]
@@ -419,7 +418,7 @@ public struct LedgerPresentationCache {
         if sortedEntries == nil { sortedEntries = ledger.entries.sorted { $0.date > $1.date } }
         if byID == nil { byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) }) }
         let lookup = byID!
-        let resolved = Set(categories.map { ledger.resolveCategory($0) })
+        let resolved = Set(categories.map { ledger.resolveCategory($0, income: income) })
         let value = sortedEntries!.filter { entry in
             guard entry.deletedAt == nil, entry.date >= interval.start, entry.date < interval.end,
                   income ? entry.nature == .income : (entry.nature == .expense || entry.nature == .refund) else { return false }
@@ -429,11 +428,11 @@ public struct LedgerPresentationCache {
         if records.count >= 32 { records.removeAll(keepingCapacity: true) }
         records[key] = value; return value
     }
-    public mutating func subcategoryBreakdown(in ledger: Ledger, category: String, during interval: DateInterval, revision: UInt64) -> [Breakdown] {
+    public mutating func subcategoryBreakdown(in ledger: Ledger, category: String, income: Bool, during interval: DateInterval, revision: UInt64) -> [Breakdown] {
         prepare(ledger, revision: revision)
-        let key = SubcategoryKey(category: category, interval: interval)
+        let key = SubcategoryKey(category: category, income: income, interval: interval)
         if let value = subcategories[key] { return value }
-        let value = Finance.subcategoryBreakdown(ledger, category: category, during: interval)
+        let value = Finance.subcategoryBreakdown(ledger, category: category, income: income, during: interval)
         if subcategories.count >= 32 { subcategories.removeAll(keepingCapacity: true) }
         subcategories[key] = value; return value
     }

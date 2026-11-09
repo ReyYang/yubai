@@ -99,6 +99,12 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
     }
     public func propose(_ args: JSONValue, _ ctx: ToolContext) throws -> ChangeSet {
         let a = try Arguments(args, schema: parameters)
+        func category(_ raw: String, nature: Nature) throws -> String {
+            if nature == .transfer { return "内部移动" }
+            if Classification.isPending(raw) { return Classification.pendingCategory }
+            guard let choice = CategoryMapping.match(raw, in: ctx.ledger, income: nature.categoryIncome) else { throw YubaiError.invalid("请选择已有分类。") }
+            return choice.category
+        }
         let items: [ChangeItem]
         switch self {
         case .entryChanges:
@@ -138,7 +144,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                 let frequencyText = try a.optionalText("frequency") ?? "once"
                 guard let frequency = Frequency(rawValue: frequencyText) else { throw YubaiError.invalid("安排周期无效。") }
                 var plan = Plan(title: try a.text("title"), amount: try a.amount("amount"), dueDate: try a.date("date"),
-                                frequency: frequency, inflow: nature.inflow, category: try a.optionalText("category") ?? Classification.pendingCategory, nature: nature)
+                                frequency: frequency, inflow: nature.inflow, category: try category(a.optionalText("category") ?? Classification.pendingCategory, nature: nature), nature: nature)
                 plan.accountID = try a.optionalUUID("account"); items = [.addPlan(plan)]
             case "end_plan": items = [.endPlan(try a.uuid("id"), try a.date("date"))]
             case "add_rent":
@@ -170,9 +176,10 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                 available[amount, default: 0] -= 1
                 let confirmed = confirmedAvailable && ctx.confirmedEntryAmount == amount
                 if confirmed { confirmedAvailable = false }
+                let nature = try row.nature(default: .expense)
                 return .addEntry(EntryDraft(date: try row.date("date"), amount: amount, amountConfirmed: confirmed,
-                    nature: try row.nature(default: .expense), accountID: try row.uuid("account"), title: try row.text("title"),
-                    category: try row.optionalText("category") ?? Classification.pendingCategory, purpose: try row.optionalText("purpose")))
+                    nature: nature, accountID: try row.uuid("account"), title: try row.text("title"),
+                    category: try category(row.optionalText("category") ?? Classification.pendingCategory, nature: nature), purpose: try row.optionalText("purpose")))
             }
         case .profile:
             if let rows = a.fields["items"]?.arrayValue {

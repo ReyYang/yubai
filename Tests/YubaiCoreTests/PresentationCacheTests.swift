@@ -104,9 +104,9 @@ final class PresentationCacheTests: XCTestCase {
     func testSubcategoryBreakdownInvalidatesWithClassificationRevision() {
         var ledger = Ledger(); var row = entry(100); row.subcategory = "早餐"; ledger.entries = [row]
         var cache = LedgerPresentationCache(); let interval = DateInterval(start: start, duration: 30)
-        XCTAssertEqual(cache.subcategoryBreakdown(in: ledger, category: "餐饮", during: interval, revision: 1).map(\.category), ["早餐"])
+        XCTAssertEqual(cache.subcategoryBreakdown(in: ledger, category: "餐饮", income: false, during: interval, revision: 1).map(\.category), ["早餐"])
         ledger.entries[0].subcategory = "午餐"
-        XCTAssertEqual(cache.subcategoryBreakdown(in: ledger, category: "餐饮", during: interval, revision: 2).map(\.category), ["午餐"])
+        XCTAssertEqual(cache.subcategoryBreakdown(in: ledger, category: "餐饮", income: false, during: interval, revision: 2).map(\.category), ["午餐"])
     }
     func testSavingsRetainsDistinctStrictMonthlyAndMillisecondTotalBoundaries() {
         var ledger = Ledger(); var wish = WishItem(title: "没买", amount: 100)

@@ -86,6 +86,7 @@ struct EntryCategoryChips: View {
     let selection: CategoryAssignment
     var suggestionOnly = false
     var allowsDirectionChange = true
+    var directionChanged: (Bool) -> Void = { _ in }
     var suggest: () -> String? = { nil }
     let choose: (CategoryAssignment) -> Void
     @State private var picking = false
@@ -126,10 +127,10 @@ struct EntryCategoryChips: View {
                 NavigationStack {
                     Page(topPadding: YubaiSpace.space8) {
                         if allowsDirectionChange { Segmented(choices: [(false, "支出"), (true, "收入")], selection: $pickerIncome) }
-                        CategoryPicker(income: pickerIncome, selected: suggestionOnly ? nil : selection, suggested: suggested,
+                        CategoryPicker(income: pickerIncome, selected: suggestionOnly || pickerIncome != income ? nil : selection, suggested: pickerIncome == income ? suggested : nil,
                                        identifier: "entryMore", style: .sections) { choice, addition in
                             if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
-                            choose(choice); picking = false; return true
+                            directionChanged(pickerIncome); choose(choice); picking = false; return true
                         }
                     }.accessibilityIdentifier("entryCategoryPicker").manualSheetNavigation()
                         .safeAreaInset(edge: .top) {
@@ -598,7 +599,7 @@ private struct EntryDiscardGuard: ViewModifier {
             #if os(iOS)
             .background { DismissAttempt(dirty: dirty) { confirming = true }.frame(width: 0, height: 0) }
             #endif
-            .confirmationDialog("已经填了 \(Money.text(amount, currency: false)) 元", isPresented: $confirming, titleVisibility: .visible) {
+            .confirmationDialog(amount == 0 ? "放弃修改？" : "已经填了 \(Money.text(amount, currency: false)) 元", isPresented: $confirming, titleVisibility: .visible) {
                 Button("放弃这笔", role: .destructive) { dismiss() }.foregroundStyle(YubaiColor.amberInk)
                 Button("继续记", role: .cancel) {}
             }

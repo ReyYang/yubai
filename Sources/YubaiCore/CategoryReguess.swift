@@ -79,7 +79,7 @@ public enum CategoryReguess {
 
     private static func target(for entry: Entry, in ledger: Ledger) -> CategoryAssignment? {
         guard entry.deletedAt == nil, entry.mergedIntoID == nil, [.expense, .income].contains(entry.nature), entry.otherAccountID == nil else { return nil }
-        let current = ledger.categoryAssignment(category: entry.category, subcategory: entry.subcategory)
+        let current = ledger.categoryAssignment(category: entry.category, subcategory: entry.subcategory, income: entry.nature.categoryIncome)
         let pending = Classification.isPending(entry) || Classification.isPending(current.category)
         // userEdited is also set by ImportOrganizer, so it cannot identify an
         // explicit “other”. Require its recorded source; missing/legacy/other AI
@@ -91,7 +91,7 @@ public enum CategoryReguess {
         unclassified.subcategory = nil
         guard var target = CategoryGuesser.guess(unclassified, in: ledger),
               SubcategoryClassifier.valid(target, in: ledger, nature: entry.nature),
-              !["其他支出", "其他收入"].contains(target.category) else { return nil }
+              target.category != (entry.nature.categoryIncome ? "其他收入" : "其他支出") else { return nil }
         if entry.subcategoryUserEdited {
             // Preserve explicit “no small item”. A selected small item belongs
             // to its old main, so do not relocate that row to a different main.

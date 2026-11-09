@@ -119,7 +119,7 @@ struct InsightsView: View {
     private func restrained(_ slice: CashFlowSlice) -> Bool {
         !income && store.profile.restrain.contains { area in
             slice.categories.contains { category in
-                area.match.categories.contains { store.resolveCategory($0) == store.resolveCategory(category) } || area.title == category
+                area.match.categories.contains { store.resolveCategory($0, income: false) == store.resolveCategory(category, income: false) } || area.title == category
             }
         }
     }
