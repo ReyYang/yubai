@@ -785,13 +785,14 @@ struct EntryFormFields<Trailing: View>: View {
 
 struct EntryKeyboardTray<Controls: View, Keys: View>: View {
     @Binding var purpose: String
+    var purposeTitle: String = "用途"
     var purposeIdentifier = "entryPurpose"
     var focus: FocusState<Bool>.Binding
     @ViewBuilder let controls: () -> Controls
     @ViewBuilder let keys: () -> Keys
     var body: some View {
         VStack(spacing: 0) {
-            EntryPurposeWell(purpose: $purpose, identifier: purposeIdentifier, focus: focus).padding(.horizontal, 8).padding(.top, 10)
+            EntryPurposeWell(purpose: $purpose, title: purposeTitle, identifier: purposeIdentifier, focus: focus).padding(.horizontal, 8).padding(.top, 10)
             controls().padding(.horizontal, 8).padding(.top, 8)
             if !focus.wrappedValue { keys() }
         }.padding(.bottom, focus.wrappedValue ? 8 : 0)

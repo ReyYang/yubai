@@ -1391,6 +1391,20 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["fixedFlowSchedule"].waitForExistence(timeout: 5))
     }
 
+    func testFixedBillAddNameAcceptsTypingWithoutOpeningSchedule() {
+        let app = application("bills"); app.launch(); openFixedBills(app)
+        tap(app.buttons["addFixedFlow"], in: app)
+        XCTAssertTrue(app.staticTexts["添加账单"].waitForExistence(timeout: 5))
+        let name = app.textFields["fixedFlowTitle"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        XCTAssertEqual(name.label, "名字"); XCTAssertEqual(name.placeholderValue, "名字")
+        tap(name, in: app)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        name.typeText("房租")
+        XCTAssertEqual(name.value as? String, "房租")
+        XCTAssertFalse(app.datePickers.firstMatch.exists); XCTAssertFalse(app.popovers.firstMatch.exists)
+    }
+
     func testFixedBillAddCategoryTracksDirectionAndKeepsExistingDefaults() {
         let app = application("bills"); app.launch(); openFixedBills(app)
         tap(app.buttons["addFixedFlow"], in: app)
