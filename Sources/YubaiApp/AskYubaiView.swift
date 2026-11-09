@@ -561,6 +561,7 @@ private struct AskDraftEditor: View {
             value.accountID = edited.accountID; value.otherAccountID = edited.otherAccountID
             value.title = edited.title; value.purpose = edited.purpose
             value.category = edited.category; value.subcategory = edited.subcategory; value.categoryUserEdited = true
+            value.partID = edited.partID
             save(value)
         }
     }
@@ -568,6 +569,7 @@ private struct AskDraftEditor: View {
         var value = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID,
                           title: draft.title, category: draft.category)
         value.id = draft.id; value.purpose = draft.purpose; value.subcategory = draft.subcategory; value.otherAccountID = draft.otherAccountID
+        value.partID = draft.partID
         return value
     }
 }

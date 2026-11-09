@@ -112,6 +112,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var nature: Nature; public var accountID: UUID; public var otherAccountID: UUID?
     public var title: String; public var category: String; public var note: String = ""
     public var purpose: String?
+    public var partID: UUID?
     public var subcategory: String?
     public var subcategoryUserEdited = false
     public var displayTitle: String { purpose.flatMap { $0.isEmpty ? nil : $0 } ?? title }
@@ -127,7 +128,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public init(date: Date = Date(), amount: Int64, nature: Nature = .expense, accountID: UUID, title: String, category: String = Classification.pendingCategory) {
         self.date = date; self.amount = amount; self.nature = nature; self.accountID = accountID; self.title = title; self.category = category
     }
-    private enum CodingKeys: String, CodingKey { case id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
+    private enum CodingKeys: String, CodingKey { case partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -140,6 +141,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         title = try c.decode(String.self, forKey: .title)
         category = try c.decode(String.self, forKey: .category)
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+        partID = try c.decodeIfPresent(UUID.self, forKey: .partID)
         purpose = try c.decodeIfPresent(String.self, forKey: .purpose)
         subcategory = try c.decodeIfPresent(String.self, forKey: .subcategory)
         subcategoryUserEdited = try c.decodeIfPresent(Bool.self, forKey: .subcategoryUserEdited) ?? false
@@ -172,6 +174,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         try c.encode(title, forKey: .title); try c.encode(category, forKey: .category)
         try c.encodeIfPresent(recordedAt, forKey: .recordedAt); try c.encodeIfPresent(otherAccountID, forKey: .otherAccountID)
         if !note.isEmpty { try c.encode(note, forKey: .note) }
+        try c.encodeIfPresent(partID, forKey: .partID)
         try c.encodeIfPresent(purpose, forKey: .purpose); try c.encodeIfPresent(subcategory, forKey: .subcategory)
         if subcategoryUserEdited { try c.encode(true, forKey: .subcategoryUserEdited) }
         if source != "手动" { try c.encode(source, forKey: .source) }
@@ -693,6 +696,11 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var accounts: [Account] = [] { didSet { calculations = LedgerCalculations() } }
     public var entries: [Entry] = [] { didSet { calculations = LedgerCalculations() } }
     public var plans: [Plan] = [] { didSet { calculations = LedgerCalculations() } }
+    public var spendingParts: [SpendingPart] = [] { didSet { calculations = LedgerCalculations() } }
+    public var partsMode: PartsMode = .amount { didSet { calculations = LedgerCalculations() } }
+    public var partLeftover: PartLeftover = .mergeIntoFixedSavings { didSet { calculations = LedgerCalculations() } }
+    public var partCarry: [UUID: Int64] = [:] { didSet { calculations = LedgerCalculations() } }
+    public var partCarryCycleStart: Date? { didSet { calculations = LedgerCalculations() } }
     public var fixedSavings: Int64? { didSet { calculations = LedgerCalculations() } }
     public var savingRule: SavingRule? { didSet { calculations = LedgerCalculations() } }
     public var savingHistory: [CycleSaving] = [] { didSet { calculations = LedgerCalculations() } }
@@ -752,7 +760,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -791,6 +799,11 @@ public struct Ledger: Codable, Equatable, Sendable {
         if profile.floorAmount == nil && preferences.emergencyReserve > 0 {
             profile.floorAmount = preferences.emergencyReserve
         }
+        spendingParts = try c.decodeIfPresent([SpendingPart].self, forKey: .spendingParts) ?? []
+        partsMode = try c.decodeIfPresent(PartsMode.self, forKey: .partsMode) ?? .amount
+        partLeftover = try c.decodeIfPresent(PartLeftover.self, forKey: .partLeftover) ?? .mergeIntoFixedSavings
+        partCarry = try c.decodeIfPresent([UUID: Int64].self, forKey: .partCarry) ?? [:]
+        partCarryCycleStart = try c.decodeIfPresent(Date.self, forKey: .partCarryCycleStart)
         fixedSavings = try c.decodeIfPresent(Int64.self, forKey: .fixedSavings) ?? profile.floorAmount
         savingRule = try c.decodeIfPresent(SavingRule.self, forKey: .savingRule)
         savingHistory = try c.decodeIfPresent([CycleSaving].self, forKey: .savingHistory) ?? []
@@ -834,6 +847,11 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(accounts, forKey: .accounts)
         try c.encode(entries, forKey: .entries)
         try c.encode(plans, forKey: .plans)
+        try c.encode(spendingParts, forKey: .spendingParts)
+        try c.encode(partsMode, forKey: .partsMode)
+        try c.encode(partLeftover, forKey: .partLeftover)
+        try c.encode(partCarry, forKey: .partCarry)
+        try c.encodeIfPresent(partCarryCycleStart, forKey: .partCarryCycleStart)
         try c.encodeIfPresent(fixedSavings, forKey: .fixedSavings)
         try c.encodeIfPresent(savingRule, forKey: .savingRule)
         try c.encode(savingHistory, forKey: .savingHistory)
@@ -867,6 +885,11 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.accounts == rhs.accounts &&
         lhs.entries == rhs.entries &&
         lhs.plans == rhs.plans &&
+        lhs.spendingParts == rhs.spendingParts &&
+        lhs.partsMode == rhs.partsMode &&
+        lhs.partLeftover == rhs.partLeftover &&
+        lhs.partCarry == rhs.partCarry &&
+        lhs.partCarryCycleStart == rhs.partCarryCycleStart &&
         lhs.fixedSavings == rhs.fixedSavings &&
         lhs.savingRule == rhs.savingRule &&
         lhs.savingHistory == rhs.savingHistory &&
@@ -914,12 +937,22 @@ public struct Ledger: Codable, Equatable, Sendable {
               Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或修改包含重复标识。") }
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.id)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
+        let partCategories = spendingParts.flatMap(\.categories)
+        guard spendingParts.count <= 1000, Set(spendingParts.map(\.id)).count == spendingParts.count,
+              !spendingParts.contains(where: { $0.id == SpendingPart.unassignedID }),
+              Set(partCategories).count == partCategories.count,
+              spendingParts.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.count <= 100 &&
+                  ($0.amount.map { (0...Money.limit).contains($0) } ?? true) && ($0.share.map { (1...10).contains($0) } ?? true) }),
+              spendingParts.compactMap(\.share).reduce(0, +) <= 10,
+              partCarry.values.allSatisfy({ (0...Money.limit).contains($0) }), partCarryCycleStart.map(dateValid) ?? true
+        else { throw YubaiError.invalid("分项的金额、成数或分类无效。") }
         guard fixedSavings.map({ (0...Money.limit).contains($0) }) ?? true,
               savingRule?.isValid ?? true,
               savingHistory.count <= 5000,
               Set(savingHistory.map(\.cycleStart)).count == savingHistory.count,
               savingHistory.allSatisfy({ dateValid($0.cycleStart) && dateValid($0.cycleEnd) && $0.cycleStart <= $0.cycleEnd &&
-                  (0...Money.limit).contains($0.income) && (0...Money.limit).contains($0.target) && (0...$0.target).contains($0.saved) })
+                  (0...Money.limit).contains($0.income) && (0...Money.limit).contains($0.target) && (0...$0.target).contains($0.saved) &&
+                  (0...Money.limit).contains($0.leftover) })
         else { throw YubaiError.invalid("攒钱的金额或周期无效。") }
         guard preferences.lastBackupAt.map(dateValid) ?? true else { throw YubaiError.invalid("上次备份时间无效。") }
         guard Set(memories.map(\.id)).count == memories.count else { throw YubaiError.invalid("记忆包含重复标识。") }

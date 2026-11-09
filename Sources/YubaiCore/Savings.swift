@@ -23,27 +23,30 @@ public struct CycleSaving: Codable, Equatable, Sendable, Identifiable {
     public var income: Int64
     public var target: Int64
     public var saved: Int64
-    /// False when no saving rule existed during the cycle: it only marks the cycle
-    /// closed, so a rule set later is never applied to months before it.
+    /// Unspent funds beyond the saving target, merged when spending parts use that mode.
+    public var leftover: Int64 = 0
+    /// False when no saving rule existed during the cycle, so a rule set later
+    /// is never applied to months before it. Leftover may still have been merged.
     public var tracked = true
-    public init(cycleStart: Date, cycleEnd: Date, income: Int64, target: Int64, saved: Int64, tracked: Bool = true) {
-        self.cycleStart = cycleStart; self.cycleEnd = cycleEnd; self.income = income; self.target = target; self.saved = saved; self.tracked = tracked
+    public init(cycleStart: Date, cycleEnd: Date, income: Int64, target: Int64, saved: Int64, leftover: Int64 = 0, tracked: Bool = true) {
+        self.cycleStart = cycleStart; self.cycleEnd = cycleEnd; self.income = income; self.target = target; self.saved = saved; self.leftover = leftover; self.tracked = tracked
     }
-    private enum CodingKeys: String, CodingKey { case cycleStart, cycleEnd, income, target, saved, tracked }
+    private enum CodingKeys: String, CodingKey { case cycleStart, cycleEnd, income, target, saved, leftover, tracked }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         cycleStart = try c.decode(Date.self, forKey: .cycleStart); cycleEnd = try c.decode(Date.self, forKey: .cycleEnd)
         income = try c.decode(Int64.self, forKey: .income); target = try c.decode(Int64.self, forKey: .target)
         saved = try c.decode(Int64.self, forKey: .saved); tracked = try c.decodeIfPresent(Bool.self, forKey: .tracked) ?? true
+        leftover = try c.decodeIfPresent(Int64.self, forKey: .leftover) ?? 0
     }
 }
 
 public enum EntryHint: Equatable, Sendable {
-    case normal(after: Int64, daily: Int64, over: Bool)
+    case normal(after: Int64, daily: Int64, over: Bool, part: SpendingPartHint? = nil)
     case restrain(areaTitle: String, countThisWeek: Int, limit: Int?, weekSpent: Int64)
     case big(after: Int64, daily: Int64, over: Bool)
     /// Non-expenses use a normal receipt; restraint takes precedence over size.
-    public static func make(ledger: Ledger, amount: Int64, category: String, isFixedBill: Bool, now: Date = Date(), nature: Nature = .expense, subcategory: String? = nil) -> EntryHint {
+    public static func make(ledger: Ledger, amount: Int64, category: String, isFixedBill: Bool, now: Date = Date(), nature: Nature = .expense, subcategory: String? = nil, partID: UUID? = nil) -> EntryHint {
         let funds = Finance.funds(ledger, now: now)
         let expense = nature == .expense
         let after = funds.available + (expense ? -amount : nature.inflow ? amount : 0)
@@ -59,7 +62,17 @@ public enum EntryHint: Equatable, Sendable {
             return .restrain(areaTitle: area.title, countThisWeek: usage.weekCount + 1, limit: area.softLimit?.perWeekCount, weekSpent: spent + amount)
         }
         if expense && !isFixedBill && amount > max(0, funds.available) / 5 { return .big(after: after, daily: daily, over: after < 0) }
-        return .normal(after: after, daily: daily, over: after < 0)
+        var partHint: SpendingPartHint?
+        if expense && !isFixedBill && !ledger.spendingParts.isEmpty {
+            sample.partID = partID
+            let summary = SpendingParts.summary(ledger, now: now)
+            let part = SpendingParts.part(for: sample, in: ledger)
+            let balance = part.flatMap { p in summary.parts.first { $0.id == p.id } }
+            let remaining = balance.map { $0.allowance - $0.spent } ?? summary.unassigned
+            partHint = SpendingPartHint(id: part?.id, name: part?.name ?? "没分的", after: remaining - amount,
+                overBy: part == nil ? 0 : max(0, amount - remaining))
+        }
+        return .normal(after: after, daily: daily, over: after < 0, part: partHint)
     }
 }
 
@@ -97,15 +110,19 @@ public enum Savings {
                 abs($0.cycleEnd.timeIntervalSince(previous.end)) <= 36 * 3600
         }
         guard previous.end < Dates.day(now), !alreadyClosed else { return }
+        let snapshot = WeeklyLetter.snapshot(ledger, at: close)
+        SpendingParts.closeCycle(&ledger, snapshot: snapshot, close: close, nextStart: current.start)
+        let funds = Finance.funds(snapshot, now: close)
+        // Available already excludes the saving target; do not add part balances again.
+        let leftover = !snapshot.spendingParts.isEmpty && snapshot.partLeftover == .mergeIntoFixedSavings ? max(0, funds.available) : 0
         guard ledger.savingRule != nil else {
-            ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: 0, target: 0, saved: 0, tracked: false))
+            if leftover > 0 { ledger.fixedSavings = (ledger.fixedSavings ?? 0) + leftover }
+            ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: 0, target: 0, saved: 0, leftover: leftover, tracked: false))
             return
         }
-        let snapshot = WeeklyLetter.snapshot(ledger, at: close)
-        let funds = Finance.funds(snapshot, now: close)
         let saved = max(0, min(funds.savingTarget, funds.savingTarget + funds.available))
-        ledger.fixedSavings = (ledger.fixedSavings ?? 0) + saved
-        ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: funds.cycleIncome, target: funds.savingTarget, saved: saved))
+        ledger.fixedSavings = (ledger.fixedSavings ?? 0) + saved + leftover
+        ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: funds.cycleIncome, target: funds.savingTarget, saved: saved, leftover: leftover))
     }
 
     /// Half-open [from, to). A stopped subscription accrues on each elapsed due

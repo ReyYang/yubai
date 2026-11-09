@@ -19,6 +19,8 @@ struct QuickEntryView: View {
     @State private var receiptRevision = 0
     @State private var lastSavedIDs: Set<UUID> = []
     @State private var lastAddedPlanIDs: Set<UUID> = []
+    @State private var partID: UUID?
+    @State private var rememberPart = false
     @State private var subcategory: String?
     @State private var purpose = ""
     @State private var accountID: UUID?
@@ -50,7 +52,11 @@ struct QuickEntryView: View {
                         Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature)
                     } else { Text(nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
                     amountDisplay
-                    if nature != .transfer { EntrySavingHintBar(hint: savingHint, afterOverride: previewAvailable) }
+                    if nature != .transfer {
+                        EntrySavingHintBar(hint: savingHint, afterOverride: previewAvailable, category: effectiveCategory.category,
+                                           allowsPartSelection: nature == .expense && !repeatsMonthly && selectedLink == nil,
+                                           partID: $partID, rememberPart: $rememberPart)
+                    }
                     if nature != .transfer {
                         EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
                                            income: nature != .refund && nature.inflow, selection: effectiveCategory, suggestionOnly: category.isEmpty,
@@ -121,9 +127,11 @@ struct QuickEntryView: View {
                 refreshBalances()
             }
             .onChange(of: store.current.updatedAt) { _, _ in refreshBalances() }
+            .onChange(of: effectiveCategory.category) { _, _ in partID = nil; rememberPart = false }
             .task(id: previewInput) { await refreshPreview() }
             .onChange(of: nature) { _, value in
                 if skipNatureReset { skipNatureReset = false; return }
+                partID = nil; rememberPart = false
                 category = ""; categorySuggestion = nil
                 subcategory = nil
                 if value == .transfer { otherAccountID = accounts.first { $0.id != accountID }?.id }
@@ -189,11 +197,12 @@ struct QuickEntryView: View {
     private struct PreviewInput: Equatable {
         var expression: String; var nature: Nature; var purpose: String; var category: String
         var subcategory: String?
+        var partID: UUID?
         var date: Date; var accountID: UUID?; var otherAccountID: UUID?
         var selectedMatchID: String?; var repeatsMonthly: Bool; var ledgerUpdatedAt: Date
     }
     private var previewInput: PreviewInput {
-        PreviewInput(expression: keypad.expression, nature: nature, purpose: purpose, category: category, subcategory: subcategory, date: date,
+        PreviewInput(expression: keypad.expression, nature: nature, purpose: purpose, category: category, subcategory: subcategory, partID: partID, date: date,
                      accountID: accountID, otherAccountID: otherAccountID, selectedMatchID: selectedMatchID,
                      repeatsMonthly: repeatsMonthly, ledgerUpdatedAt: store.current.updatedAt)
     }
@@ -229,7 +238,7 @@ struct QuickEntryView: View {
     }
     private var savingHint: EntryHint {
         EntryHint.make(ledger: store.current, amount: keypad.amount ?? 0, category: effectiveCategory.category,
-                       isFixedBill: repeatsMonthly || selectedLink != nil, nature: nature, subcategory: effectiveCategory.subcategory)
+                       isFixedBill: repeatsMonthly || selectedLink != nil, nature: nature, subcategory: effectiveCategory.subcategory, partID: partID)
     }
     private func saveWish() {
         guard canSave, let amount = keypad.amount else { return }
@@ -281,6 +290,7 @@ struct QuickEntryView: View {
             change.items = change.items.map { item in
                 guard case .addEntry(var draft) = item else { return item }
                 if purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { draft.title = Classification.displayCategory(draft.category) }
+                draft.partID = rememberPart ? nil : partID
                 draft.otherAccountID = nature.paired ? otherAccountID : nil
                 draft.subcategory = effectiveCategory.subcategory; draft.categoryUserEdited = true
                 return .addEntry(draft)
@@ -304,6 +314,12 @@ struct QuickEntryView: View {
             if category.isEmpty { categorySuggestion = EntryHistory.suggestion(purpose: purpose, nature: nature, in: store.current) }
             let change = try draftChange(now: Date())
             guard store.apply(change, label: "记一笔", finishing: { ledger in
+                if rememberPart, nature == .expense {
+                    var sample = Entry(amount: 0, accountID: UUID(), title: "", category: effectiveCategory.category)
+                    sample.partID = partID
+                    let chosen = SpendingParts.part(for: sample, in: ledger)?.id
+                    SpendingParts.assign(category: effectiveCategory.category, to: chosen, in: &ledger)
+                }
                 for case .addEntry(let draft) in change.items where draft.categoryUserEdited == true && !Classification.isPending(draft.category) {
                     let choice = CategoryAssignment(category: draft.category, subcategory: draft.subcategory)
                     if SubcategoryClassifier.valid(choice, in: ledger, nature: draft.nature) { try CategoryModel.confirm(choice, entryIDs: [draft.id], in: &ledger) }
@@ -326,7 +342,7 @@ struct QuickEntryView: View {
                 AccessibilityNotification.Announcement("已记 \(savedCount) 笔，可撤销").post()
                 #endif
                 keypad.reset(); purpose = ""; selectedMatchID = nil; repeatsMonthly = false
-                category = ""; subcategory = nil
+                category = ""; subcategory = nil; partID = nil; rememberPart = false
             } else {
                 store.setEntrySaveToast("已记下 · " + (title.isEmpty ? Classification.displayCategory(effectiveCategory.category) : title) + " " + amount + " · " + store.accountName(accountID) + repeatSuffix)
                 dismiss()
