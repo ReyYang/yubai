@@ -59,10 +59,11 @@ public enum ButlerCards {
         }
     }
     public static func matches(_ area: ProfileArea, entry: Entry, ledger: Ledger) -> Bool {
+        guard !entry.nature.categoryIncome else { return false }
         let choice = ledger.normalizedCategory(for: entry)
         let category = choice.category
         let text = entry.title + " " + (entry.purpose ?? "") + " " + entry.note
-        return area.match.subcategories.contains { ledger.categoryAssignment(category: CategoryAssignment(path: $0).category, subcategory: CategoryAssignment(path: $0).subcategory).path == choice.path } || area.match.categories.contains { ledger.resolveCategory($0) == category } || area.match.keywords.contains {
+        return area.match.subcategories.contains { ledger.categoryAssignment(category: CategoryAssignment(path: $0).category, subcategory: CategoryAssignment(path: $0).subcategory, income: false).path == choice.path } || area.match.categories.contains { ledger.resolveCategory($0, income: false) == category } || area.match.keywords.contains {
             let word = $0.trimmingCharacters(in: .whitespacesAndNewlines)
             return !word.isEmpty && text.localizedCaseInsensitiveContains(word)
         }
@@ -219,7 +220,7 @@ public enum ButlerCards {
         let ids = Set(card.evidence).union(offCharacterEntryIDs(card))
         let entries = ledger.entries
         let entry = card.evidence.lazy.compactMap { id in entries.first { $0.id == id } }.first ?? entries.first { ids.contains($0.id) }
-        let category = entry.map { ledger.resolveCategory($0.category) }
+        let category = entry.map { ledger.resolveCategory($0.category, income: $0.nature.categoryIncome) }
         let existing = (ledger.profile.restrain + ledger.profile.generous).first { $0.id == card.areaID }
         guard let title = existing?.title ?? category else { return }
         var area = existing ?? ProfileArea(title: title, match: AreaMatch(categories: [title]))
@@ -229,7 +230,7 @@ public enum ButlerCards {
             guard date >= Dates.addDays(-60, to: now), date <= now else { return false }
             if let existing { return other.areaID == existing.id }
             let otherIDs = Set(other.evidence).union(offCharacterEntryIDs(other))
-            return other.areaID == nil && ledger.entries.contains { otherIDs.contains($0.id) && ledger.resolveCategory($0.category) == category }
+            return other.areaID == nil && ledger.entries.contains { otherIDs.contains($0.id) && $0.nature.categoryIncome == (entry?.nature.categoryIncome ?? false) && ledger.resolveCategory($0.category, income: $0.nature.categoryIncome) == category }
         }
         let regrets = relevant.filter { $0.feedback == .regret }
         let worth = relevant.filter { $0.feedback == .worth }

@@ -2751,12 +2751,25 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["keypad_3"], in: app); tap(app.buttons["keypad_2"], in: app)
         tap(app.buttons["cancelManualSheet"], in: app)
         XCTAssertTrue(app.buttons["放弃这笔"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["已经填了 32.00 元"].exists)
         tap(app.buttons["继续记"], in: app)
         XCTAssertEqual(app.buttons["entryKeypadAmount"].value as? String, "32.00")
         tap(app.buttons["cancelManualSheet"], in: app); tap(app.buttons["放弃这笔"], in: app)
         assertGone(app.buttons["saveQuickEntry"])
         tap(addEntryTab(app), in: app); tap(app.buttons["cancelManualSheet"], in: app)
         assertGone(app.buttons["saveQuickEntry"]); XCTAssertFalse(app.buttons["放弃这笔"].exists)
+        for choice in ["entryCategory_交通", "收入", "昨天"] {
+            tap(addEntryTab(app), in: app); tap(app.buttons[choice], in: app)
+            tap(app.buttons["cancelManualSheet"], in: app)
+            assertGone(app.buttons["saveQuickEntry"]); XCTAssertFalse(app.buttons["放弃这笔"].exists)
+        }
+        tap(addEntryTab(app), in: app)
+        let purpose = app.textFields["entryPurpose"]
+        tap(purpose, in: app); purpose.typeText("合成用途\n")
+        tap(app.buttons["cancelManualSheet"], in: app)
+        XCTAssertTrue(app.buttons["放弃这笔"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["放弃修改？"].exists); XCTAssertFalse(app.staticTexts["已经填了 0.00 元"].exists)
+        tap(app.buttons["放弃这笔"], in: app); assertGone(app.buttons["saveQuickEntry"])
     }
 
     func testEntrySearchIncludesOtherMonths() {
@@ -2918,6 +2931,10 @@ final class AppFlowTests: XCTestCase {
         app.buttons["keypad_⌫"].press(forDuration: 1.2)
         XCTAssertEqual(amount.value as? String, "0.00")
         XCTAssertFalse(app.buttons["amountKeypadDone"].isEnabled)
+        tap(app.buttons["cancelManualSheet"], in: app)
+        XCTAssertTrue(app.buttons["继续记"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["放弃修改？"].exists); XCTAssertFalse(app.staticTexts["已经填了 0.00 元"].exists)
+        tap(app.buttons["继续记"], in: app)
         tap(app.buttons["keypad_8"], in: app)
         XCTAssertEqual(amount.value as? String, "8.00")
         tap(app.buttons["amountKeypadDone"], in: app)

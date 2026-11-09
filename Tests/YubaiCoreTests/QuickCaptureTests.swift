@@ -48,7 +48,7 @@ final class QuickCaptureTests: XCTestCase {
     }
     func testApplePayRulesAndUnclassifiedFallback() throws {
         var ledger = fixture(); ledger.preferences.quickCapture.cardAccounts["招行"] = ledger.accounts[1].id
-        try QuickCapture.remember(merchant: "瑞幸", category: "餐饮", in: &ledger)
+        try QuickCapture.remember(merchant: "瑞幸", category: "餐饮", income: false, in: &ledger)
         let first = try QuickCapture.applePay(merchant: "瑞幸", amount: "¥18", card: "招行", date: now, in: &ledger, now: now)
         XCTAssertEqual(first.entry.accountID, ledger.accounts[1].id); XCTAssertEqual(first.entry.category, "餐饮")
         XCTAssertEqual(first.entry.source, "Apple Pay"); XCTAssertFalse(first.entry.externalID.isEmpty)
@@ -83,12 +83,12 @@ final class QuickCaptureTests: XCTestCase {
     func testArchivedCardMappingFallsBackAndRuleReplacement() throws {
         var ledger = fixture(); ledger.accounts[1].archived = true
         ledger.preferences.quickCapture.cardAccounts["卡"] = ledger.accounts[1].id
-        try QuickCapture.remember(merchant: "SHOP", category: "购物", in: &ledger)
-        try QuickCapture.remember(merchant: " shop ", category: "日用", in: &ledger)
+        try QuickCapture.remember(merchant: "SHOP", category: "购物", income: false, in: &ledger)
+        try QuickCapture.remember(merchant: " shop ", category: "日用", income: false, in: &ledger)
         XCTAssertEqual(ledger.classificationMemory.count, 1)
         let entry = try QuickCapture.applePay(merchant: "Shop", amount: "1", card: "卡", date: now, in: &ledger, now: now).entry
         XCTAssertEqual(entry.category, "购物"); XCTAssertEqual(entry.subcategory, "日用百货"); XCTAssertEqual(entry.accountID, ledger.accounts[0].id)
-        XCTAssertThrowsError(try QuickCapture.remember(merchant: "", category: "餐饮", in: &ledger))
+        XCTAssertThrowsError(try QuickCapture.remember(merchant: "", category: "餐饮", income: false, in: &ledger))
     }
     func testPreferencesAndEntryOldJSONCompatibilityAndRoundTrip() throws {
         var ledger = fixture()
@@ -117,7 +117,7 @@ final class QuickCaptureTests: XCTestCase {
         var ledger = fixture()
         ledger.preferences.lastBackupAt = now
         ledger.preferences.quickCapture.cardAccounts["卡"] = ledger.accounts[1].id
-        try QuickCapture.remember(merchant: "咖啡", category: "餐饮", in: &ledger)
+        try QuickCapture.remember(merchant: "咖啡", category: "餐饮", income: false, in: &ledger)
         let ids = try QuickCapture.record(drafts("午饭32", ledger: ledger), in: &ledger, source: "截图记", withoutOpeningApp: false, now: now)
         let payload = Data("synthetic receipt".utf8)
         let attachment = Attachment(name: "截图.png", data: payload)

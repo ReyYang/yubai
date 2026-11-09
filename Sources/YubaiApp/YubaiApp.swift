@@ -80,13 +80,13 @@ enum AppSheet: Identifiable {
     private(set) var lastRecordedEntry: Entry?
     private(set) var mutedTopics: [String] = []
     private(set) var categoryAliases: [String: String] = [:]
-    func resolveCategory(_ category: String) -> String {
+    func resolveCategory(_ category: String, income: Bool) -> String {
         _ = categoryAliases
-        return derivedSource.resolveCategory(category)
+        return derivedSource.resolveCategory(category, income: income)
     }
-    func subcategoryBreakdown(category: String, during interval: DateInterval) -> [Breakdown] {
+    func subcategoryBreakdown(category: String, income: Bool, during interval: DateInterval) -> [Breakdown] {
         _ = ledgerRevision
-        return presentationCache.subcategoryBreakdown(in: derivedSource, category: category, during: interval, revision: sourceRevision)
+        return presentationCache.subcategoryBreakdown(in: derivedSource, category: category, income: income, during: interval, revision: sourceRevision)
     }
     func evidenceEntries(_ ids: Set<UUID>, activeOnly: Bool = false) -> [Entry] {
         // Resolve only the requested IDs, retaining sortedEntries' stable order

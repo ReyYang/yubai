@@ -31,6 +31,20 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(restored.preferences.colorTheme, "jade-vivid")
         XCTAssertEqual(restored, ledger)
     }
+    func testProfileColdStartPreferenceDefaultsForLegacyJSONAndRoundTrips() throws {
+        var preferences = Preferences()
+        XCTAssertFalse(preferences.profileColdStartDone)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(preferences)) as? [String: Any])
+        legacy.removeValue(forKey: "profileColdStartDone")
+        XCTAssertEqual(try JSONDecoder().decode(Preferences.self, from: JSONSerialization.data(withJSONObject: legacy)), preferences)
+        for done in [false, true] {
+            preferences.profileColdStartDone = done
+            let data = try JSONEncoder().encode(preferences)
+            let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(encoded["profileColdStartDone"] as? Bool, done)
+            XCTAssertEqual(try JSONDecoder().decode(Preferences.self, from: data), preferences)
+        }
+    }
     func testLegacyAIPreferencesDecodeAndMigrateWithoutReencodingOldKeys() throws {
         let original = sample()
         let oldKeys = ["localAIEnabled", "downloadedModelEnabled", "appleSystemModelEnabled", "experimentalMockLocalAI"]

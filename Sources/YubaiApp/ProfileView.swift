@@ -354,7 +354,7 @@ private struct ProfileAreaEditor: View {
             .manualSheetHeader(stance == .restrain ? "想克制的" : "愿意多花的", actionTitle: "保存", enabled: validationError == nil, action: save)
             .onAppear {
                 guard !loaded else { return }; loaded = true
-                title = area.title; categories = Set(area.match.categories.map { store.current.resolveCategory($0) })
+                title = area.title; categories = Set(area.match.categories.map { store.current.resolveCategory($0, income: false) })
                 keywords = area.match.keywords; note = area.note
                 weekly = area.softLimit?.perWeekCount.map { String($0) } ?? ""; monthly = area.softLimit?.perMonthAmount.map { Money.input($0) } ?? ""
             }
