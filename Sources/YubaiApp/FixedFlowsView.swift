@@ -505,7 +505,7 @@ struct FixedFlowEditor: View {
                                                        category: category, isFixedBill: true, nature: inflow ? .income : .expense))
                 EntryFormFields(purpose: $title, purposeTitle: "名字", purposeIdentifier: "fixedFlowTitle", purposeError: title.isEmpty && original != nil ? "填写账单名字" : nil, nature: inflow ? .income : .expense,
                                 accounts: accounts, balances: balances, accountID: $accountID, otherAccountID: .constant(nil), date: $date,
-                                showsRecent: false, showsDate: false, optionalAccount: true, accountTitle: inflow ? "收到哪里" : "从哪里付", beforeAccount: AnyView(scheduleRow), focus: $titleFocused) {
+                                showsRecent: false, showsDate: false, optionalAccount: true, accountTitle: inflow ? "收到哪里" : "从哪里付", focus: $titleFocused) {
                         EntryFormRow(title: "分类") {
                             Menu {
                                 ForEach(categories, id: \.self) { name in Button(name) { category = name } }
@@ -546,7 +546,7 @@ struct FixedFlowEditor: View {
                     withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scroll.scrollTo("fixedFlowAmountRow", anchor: .top) }
                 }
         }.safeAreaInset(edge: .bottom, spacing: 0) {
-            EntryKeyboardTray(purpose: $title, purposeIdentifier: "fixedFlowTitle", focus: $titleFocused) {
+            EntryKeyboardTray(purpose: $title, purposeTitle: "名字", purposeIdentifier: "fixedFlowTitle", focus: $titleFocused) {
                 HStack(spacing: 8) {
                     EntryDateChip(date: $date, inTray: true, allowsFuture: true)
                     EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, optional: true, inTray: true)
@@ -586,14 +586,6 @@ struct FixedFlowEditor: View {
                     .presentationCompactAdaptation(.popover)
                     #endif
             }
-    }
-    private var scheduleRow: some View {
-        EntryFormRow(title: frequency == .monthly ? "每月几号" : "多久一次") {
-            Button { pickingSchedule = true } label: {
-                Text(FixedFlowArrangement.schedule(frequency, date: scheduleDate, monthlyDay: monthlyDay).replacingOccurrences(of: " 日", with: " 号"))
-                    .manualFormChip()
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fixedFlowSchedule")
-        }
     }
     private func openAmount() {
         guard !amountKeypadPresented else { return }

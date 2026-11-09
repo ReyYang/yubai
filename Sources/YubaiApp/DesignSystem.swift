@@ -2437,14 +2437,15 @@ private struct NumberKeyboardAccessory: UIViewRepresentable {
 
 struct EntryPurposeWell: View {
     @Binding var purpose: String
+    var title: String = "用途"
     let identifier: String
     var focus: FocusState<Bool>.Binding
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "pencil").font(.system(size: 16)).foregroundStyle(YubaiColor.labelMuted)
-            TextField("用途", text: $purpose).yubaiFont(YubaiFont.row).focused(focus)
+            TextField(title, text: $purpose).yubaiFont(YubaiFont.row).focused(focus)
                 .submitLabel(.done).onSubmit { focus.wrappedValue = false }
-                .accessibilityLabel("用途").accessibilityIdentifier(identifier)
+                .accessibilityLabel(title).accessibilityIdentifier(identifier)
         }.padding(.horizontal, 12).frame(height: 44)
             .background(YubaiColor.key, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
