@@ -2808,33 +2808,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["emptyMemories"].waitForExistence(timeout: 5))
         snapshot("memory-deleted", app)
     }
-}
 
-/// The same Foundation-only source is compiled into the app and this test bundle.
-final class MotionStateTests: XCTestCase {
-    func testChartClaimsSurviveViewLifetimesAndStayIndependent() {
-        var session = MotionSessionState()
-        XCTAssertFalse(session.contains("cashTimeline"))
-        XCTAssertTrue(session.claim("cashTimeline"))
-        XCTAssertTrue(session.contains("cashTimeline"))
-        XCTAssertFalse(session.claim("cashTimeline"))
-        XCTAssertTrue(session.claim("donut"))
-        var nextLaunch = MotionSessionState()
-        XCTAssertTrue(nextLaunch.claim("cashTimeline"))
-    }
-    func testTabDirectionAndReselection() {
-        XCTAssertEqual(MotionSessionState.direction(from: 0, to: 2), 1)
-        XCTAssertEqual(MotionSessionState.direction(from: 2, to: 1), -1)
-        XCTAssertEqual(MotionSessionState.direction(from: 1, to: 1), 0)
-    }
-    func testOnlyNewActiveEntriesTriggerSaveAndMissingActiveEntriesTriggerDeletion() {
-        let old = UUID(), added = UUID(), alreadyDeleted = UUID()
-        let change = MotionEntryChange(previous: [old, alreadyDeleted], previousActive: [old], currentActive: [added, alreadyDeleted])
-        XCTAssertEqual(change.saved, [added])
-        XCTAssertEqual(change.deleted, [old])
-        let edit = MotionEntryChange(previous: [old], previousActive: [old], currentActive: [old])
-        XCTAssertTrue(edit.saved.isEmpty); XCTAssertTrue(edit.deleted.isEmpty)
-    }
     func testLedgerMonthWheelRemainsOnHome() {
         let app = application("round40"); app.launch()
         let month = app.buttons.matching(identifier: "entriesMonth").firstMatch
@@ -2843,8 +2817,8 @@ final class MotionStateTests: XCTestCase {
         let previous = Calendar.current.date(byAdding: .month, value: -1, to: Date())!
         let year = Calendar.current.component(.year, from: previous)
         let number = Calendar.current.component(.month, from: previous)
-        app.pickerWheels.element(boundBy: 0).adjust(toPickerWheelValue: "(year) 年")
-        app.pickerWheels.element(boundBy: 1).adjust(toPickerWheelValue: "(number) 月")
+        app.pickerWheels.element(boundBy: 0).adjust(toPickerWheelValue: "\(year) 年")
+        app.pickerWheels.element(boundBy: 1).adjust(toPickerWheelValue: "\(number) 月")
         tap(app.buttons["saveManualSheet"], in: app)
         assertGone(app.pickerWheels.firstMatch)
         XCTAssertTrue(app.buttons["entriesSearchButton"].isHittable)
@@ -2873,5 +2847,31 @@ final class MotionStateTests: XCTestCase {
         assertGone(app.staticTexts["从常花的分类开始"])
         XCTAssertTrue(app.staticTexts["餐饮"].firstMatch.exists)
     }
+}
 
+/// The same Foundation-only source is compiled into the app and this test bundle.
+final class MotionStateTests: XCTestCase {
+    func testChartClaimsSurviveViewLifetimesAndStayIndependent() {
+        var session = MotionSessionState()
+        XCTAssertFalse(session.contains("cashTimeline"))
+        XCTAssertTrue(session.claim("cashTimeline"))
+        XCTAssertTrue(session.contains("cashTimeline"))
+        XCTAssertFalse(session.claim("cashTimeline"))
+        XCTAssertTrue(session.claim("donut"))
+        var nextLaunch = MotionSessionState()
+        XCTAssertTrue(nextLaunch.claim("cashTimeline"))
+    }
+    func testTabDirectionAndReselection() {
+        XCTAssertEqual(MotionSessionState.direction(from: 0, to: 2), 1)
+        XCTAssertEqual(MotionSessionState.direction(from: 2, to: 1), -1)
+        XCTAssertEqual(MotionSessionState.direction(from: 1, to: 1), 0)
+    }
+    func testOnlyNewActiveEntriesTriggerSaveAndMissingActiveEntriesTriggerDeletion() {
+        let old = UUID(), added = UUID(), alreadyDeleted = UUID()
+        let change = MotionEntryChange(previous: [old, alreadyDeleted], previousActive: [old], currentActive: [added, alreadyDeleted])
+        XCTAssertEqual(change.saved, [added])
+        XCTAssertEqual(change.deleted, [old])
+        let edit = MotionEntryChange(previous: [old], previousActive: [old], currentActive: [old])
+        XCTAssertTrue(edit.saved.isEmpty); XCTAssertTrue(edit.deleted.isEmpty)
+    }
 }
