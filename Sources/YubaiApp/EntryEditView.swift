@@ -68,7 +68,7 @@ struct EntryEditForm: View {
                             EntrySavingHintBar(hint: savingHint, afterOverride: previewAfter, category: draft.category, ledgerOverride: hintLedger,
                                                allowsPartSelection: draft.nature == .expense && draft.planID == nil && draft.rentID == nil && !repeatsMonthly,
                                                allowsRememberPart: onSave == nil,
-                                               partID: $draft.partID, rememberPart: $rememberPart)
+                                               fixedSavingsTotals: fixedSavingsTotals, partID: $draft.partID, rememberPart: $rememberPart)
                         }
                         if draft.nature != .transfer {
                             EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: draft.nature, frequentOnly: true),
@@ -124,10 +124,10 @@ struct EntryEditForm: View {
             }
         }.safeAreaInset(edge: .bottom, spacing: 0) {
             EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
-                HStack(spacing: 8) {
+                ChipFlow {
                     EntryDateChip(date: $draft.date, inTray: true)
                     EntryAccountMenu(accounts: accounts, balances: balances, selection: Binding(get: { draft.accountID }, set: { if let value = $0 { draft.accountID = value } }), inTray: true)
-                    Spacer(minLength: 0)
+                    if draft.nature == .income { EntryFixedSavingsChip(selected: $draft.intoFixedSavings, action: { finishAmount(); purposeFocused = false }) }
                     if draft.nature != .transfer {
                         EntryRepeatChip(selected: draft.planID != nil || repeatsMonthly, value: repeatValue, opensPlan: draft.planID != nil, inTray: true) {
                             finishAmount(); purposeFocused = false
@@ -154,6 +154,7 @@ struct EntryEditForm: View {
             .onChange(of: purposeFocused) { _, focused in if focused { finishAmount() } else { openAmount() } }
             .onChange(of: draft.category) { _, _ in remembered = false; draft.partID = nil; rememberPart = false }
             .onChange(of: draft.nature) { _, nature in
+                if nature != .income { draft.intoFixedSavings = false }
                 if skipNatureReset { skipNatureReset = false; return }
                 draft.otherAccountID = nature == .transfer ? accounts.first { $0.id != draft.accountID }?.id : nil
                 let suggestion = EntryHistory.suggestion(purpose: purpose, nature: nature, in: store.current)
@@ -171,6 +172,15 @@ struct EntryEditForm: View {
     private var savingHint: EntryHint {
         return EntryHint.make(ledger: hintLedger, amount: currentAmount, category: draft.category, isFixedBill: draft.planID != nil || draft.rentID != nil || repeatsMonthly,
                               nature: draft.nature, subcategory: draft.subcategory, partID: draft.partID)
+    }
+    private var fixedSavingsTotals: (current: Int64, new: Int64)? {
+        guard draft.nature == .income, draft.intoFixedSavings else { return nil }
+        let value = EntryDraft(date: draft.date, amount: currentAmount, nature: draft.nature, accountID: draft.accountID,
+                               title: purpose, category: draft.category, intoFixedSavings: true)
+        if case .fixedSavings(let total) = EntryHint.make(ledger: hintLedger, draft: value, isFixedBill: draft.planID != nil || repeatsMonthly) {
+            return (store.funds.fixedSavingsTotal, total)
+        }
+        return nil
     }
     private var previewAfter: Int64? {
         guard store.entriesByID[original.id] != nil else { return nil }

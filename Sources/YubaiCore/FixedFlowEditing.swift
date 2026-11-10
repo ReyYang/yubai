@@ -3,6 +3,7 @@ import Foundation
 public struct FixedFlowEdit: Equatable, Sendable {
     public var title: String; public var amount: Int64; public var frequency: Frequency; public var date: Date
     public var accountID: UUID?; public var category: String; public var installments: Int?
+    public var intoFixedSavings = false
     public var autoPay: Bool; public var estimated: Bool; public var inflow: Bool; public var stopped: Bool
 }
 
@@ -28,7 +29,7 @@ extension FixedFlows {
         }
         return FixedFlowEdit(title: plan.title, amount: payments.amount(for: plan), frequency: plan.frequency,
                              date: Dates.day(date), accountID: plan.accountID,
-                             category: plan.category, installments: plan.installments, autoPay: plan.autoPay,
+                             category: plan.category, installments: plan.installments, intoFixedSavings: plan.intoFixedSavings, autoPay: plan.autoPay,
                              estimated: plan.estimated, inflow: plan.inflow,
                              stopped: !plan.active || ((plan.stoppedAt ?? plan.endDate).map { $0 <= now } ?? false))
     }
@@ -39,7 +40,7 @@ extension FixedFlows {
 
     public static func update(planID: UUID, title: String, amount: Int64, frequency: Frequency, date: Date,
                               accountID: UUID?, category: String, installments: Int?, autoPay: Bool, estimated: Bool,
-                              in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+                              in ledger: Ledger, now: Date = Date(), intoFixedSavings: Bool? = nil) throws -> ChangeSet {
         guard let old = ledger.plans.first(where: { $0.id == planID }), let edit = edit(planID: planID, in: ledger, now: now) else {
             throw YubaiError.invalid("找不到要修改的安排。")
         }
@@ -47,9 +48,10 @@ extension FixedFlows {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard title != edit.title || amount != edit.amount || frequency != edit.frequency || Dates.day(date) != edit.date ||
                 accountID != edit.accountID || category != edit.category || installments != edit.installments ||
-                autoPay != edit.autoPay || estimated != edit.estimated else { throw FixedFlowEditError.noChanges }
+                autoPay != edit.autoPay || estimated != edit.estimated || (intoFixedSavings ?? old.intoFixedSavings) != old.intoFixedSavings else { throw FixedFlowEditError.noChanges }
         var plan = old
         plan.title = title
+        plan.intoFixedSavings = plan.inflow && plan.nature == .income && (intoFixedSavings ?? old.intoFixedSavings)
         // Saving another field must not overwrite an estimate's stored fallback.
         if amount != edit.amount || estimated != edit.estimated { plan.amount = amount }
         plan.frequency = frequency; plan.accountID = accountID; plan.category = category
@@ -125,6 +127,7 @@ extension FixedFlows {
         if old.installments != plan.installments { fields.append("共几期：\(old.installments.map(String.init) ?? "一直") → \(plan.installments.map(String.init) ?? "一直")") }
         if old.autoPay != plan.autoPay { fields.append("自动记：\(plan.autoPay ? "开" : "关")") }
         if old.estimated != plan.estimated { fields.append("金额会变：\(plan.estimated ? "开" : "关")") }
+        if old.intoFixedSavings != plan.intoFixedSavings { fields.append("存着不动：\(plan.intoFixedSavings ? "开" : "关")") }
         return "修改安排「\(plan.title)」" + (fields.isEmpty ? "" : "，" + fields.joined(separator: "，"))
     }
 }

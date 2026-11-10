@@ -57,7 +57,7 @@ enum LetterItem: Identifiable {
             return !Set(question.entryIDs).isSubset(of: pendingIDs)
         }.map(LetterItem.butler)
         result += funds.occurrences.filter {
-            !$0.inflow && ($0.planID != nil || $0.rentID != nil) && Dates.day($0.date) <= Dates.day(Date()) &&
+            ($0.planID != nil || (!$0.inflow && $0.rentID != nil)) && Dates.day($0.date) <= Dates.day(Date()) &&
                 !hiddenPendingImportKeys.contains("due:" + $0.id)
         }.map(LetterItem.bill)
         if let letter = freshLetter, letter.dismissedAt == nil { result.append(.butler(letter)) }
@@ -71,16 +71,24 @@ struct LetterInboxChip: View {
         let items = store.inboxItems
         if let first = items.first {
             TabNavigationLink(.inbox) { LetterInboxView() } label: {
-                HStack(spacing: 10) {
-                    AssistantMark(size: 20, color: YubaiColor.brandInk)
-                    Text("来信 · \(items.count) 件").yubaiFont(YubaiFont.row, weight: .medium).fixedSize()
-                    Text(first.summary).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                }.padding(.horizontal, 16).frame(height: 48).paperCardSurface(in: Capsule())
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { inboxTitle(items.count); Text(first.summary).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize(); Spacer(minLength: 0); chevron }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack { inboxTitle(items.count); Spacer(minLength: 0); chevron }
+                        Text(first.summary).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    }.padding(.vertical, 8)
+                }.padding(.horizontal, 16).frame(minHeight: 48).paperCardSurface(in: RoundedRectangle(cornerRadius: 24))
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openLetterInbox")
         }
     }
+    private func inboxTitle(_ count: Int) -> some View {
+        HStack(spacing: 10) {
+            AssistantMark(size: 20, color: YubaiColor.brandInk)
+            Text("来信 · \(count) 件").yubaiFont(YubaiFont.row, weight: .medium).fixedSize()
+        }
+    }
+    private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+
 }
 
 struct LetterInboxView: View {
@@ -115,22 +123,7 @@ struct LetterInboxView: View {
             LetterDismissCard(onDismiss: { store.hiddenSalaryKeys.insert(salary.key); return true }) { _ in SalaryCard(candidate: salary) }
         case .bill(let bill):
             LetterDismissCard(onDismiss: { store.hiddenPendingImportKeys.insert("due:" + bill.id); return true }) { _ in
-                Card(style: .compact) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("会回来的账单").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).padding(.trailing, 24)
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(bill.title).yubaiFont(YubaiFont.cardTitle)
-                                Text(FixedFlowPresentation.monthDay(bill.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                            }
-                            Spacer()
-                            AmountLabel(cents: bill.amount, hide: store.preferences.hideAmounts, sign: .outflow)
-                            if let id = bill.planID { FixedFlowCheck(planID: id, occurrence: bill.date, title: bill.title, amount: bill.amount) }
-                        }
-                        TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { Text("会回来的账单").yubaiFont(YubaiFont.callout) }
-                            .buttonStyle(NowCardButtonStyle())
-                    }
-                }.accessibilityIdentifier("dueBills")
+                LetterBillCard(bill: bill)
             }
         case .butler(let card):
             if let question = card.importQuestion,
@@ -140,6 +133,67 @@ struct LetterInboxView: View {
                 }
             } else { ButlerCardView(card: card) }
         }
+    }
+}
+
+private struct LetterBillCard: View {
+    @Environment(AppStore.self) private var store
+    let bill: Occurrence
+    @State private var editingAmount = false
+    private var intoFixedSavings: Bool { bill.planID.flatMap { id in store.plans.first { $0.id == id } }?.intoFixedSavings == true }
+    private var amountText: String { store.preferences.hideAmounts ? "••••" : Money.text(bill.amount, currency: false) }
+    var body: some View {
+        Card(style: .compact) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text((bill.inflow ? "要收 · " : "要付 · ") + FixedFlowPresentation.monthDay(bill.date))
+                    .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).padding(.trailing, 24)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { title.fixedSize(); amount.fixedSize() }
+                    VStack(alignment: .leading, spacing: 4) { title; amount }
+                }
+                if bill.inflow && intoFixedSavings {
+                    Label("到账放进存着不动", systemImage: "lock").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk)
+                }
+                if bill.planID != nil {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { actions }
+                        VStack(alignment: .leading, spacing: 8) { actions }
+                    }
+                    if bill.inflow {
+                        Button("还没到") { store.hiddenPendingImportKeys.insert("due:" + bill.id) }.buttonStyle(NowCardButtonStyle())
+                            .accessibilityIdentifier("notYetReceived_" + bill.id)
+                    }
+                } else {
+                    TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { Text("会回来的账单").yubaiFont(YubaiFont.callout) }
+                        .buttonStyle(NowCardButtonStyle())
+                }
+            }
+        }.accessibilityIdentifier("dueBills")
+            .sheet(isPresented: $editingAmount) {
+                NavigationStack {
+                    FixedFlowSettlementEditor(title: bill.title, amount: Money.input(bill.amount)) { value in settle(value) }
+                        .environment(store).appErrors()
+                }.presentationDragIndicator(.visible).yubaiSheetBackground()
+                    #if os(iOS)
+                    .presentationDetents([.large])
+                    #endif
+            }
+    }
+    private var title: some View { Text(bill.title).yubaiFont(YubaiFont.cardTitle) }
+    private var amount: some View {
+        AmountLabel(cents: bill.amount, hide: store.preferences.hideAmounts, role: .summary, sign: bill.inflow ? .inflow : .outflow, ink: bill.inflow ? YubaiColor.brandInk : YubaiColor.label)
+    }
+    private var actions: some View {
+        Group {
+            Button((bill.inflow ? "收到了 " : "付了 ") + amountText) { _ = settle() }.buttonStyle(NowCardButtonStyle(primary: true))
+                .accessibilityIdentifier("settleLetterBill_" + bill.id)
+            Button("金额不一样") { editingAmount = true }.buttonStyle(NowCardButtonStyle())
+                .accessibilityIdentifier("editLetterBillAmount_" + bill.id)
+        }
+    }
+    private func settle(_ override: Int64? = nil) -> Bool {
+        guard let id = bill.planID else { return false }
+        return FixedFlowCheck.record(planID: id, occurrence: bill.date, title: bill.title, amount: override ?? bill.amount, inflow: bill.inflow, store: store, override: override)
     }
 }
 

@@ -54,11 +54,11 @@ struct SpendingPartsCard: View {
 
 struct SpendingPartsView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
     var backTitle = "账本"
     @State private var adding = false
     @State private var newName = ""
     @State private var categoryPart: SpendingPart?
+    @State private var starters = ["餐饮", "购物", "交通", "娱乐"]
     private var summary: SpendingPartsSummary { SpendingParts.summary(store.current) }
     var body: some View {
         Page(spacing: 12, topPadding: 12) {
@@ -81,11 +81,24 @@ struct SpendingPartsView: View {
                     Text(unassignedText).yubaiFont(YubaiFont.amountSummary).padding(.trailing, 12)
                 }.foregroundStyle(YubaiColor.labelSecondary).frame(minHeight: 52)
             }.padding(.horizontal, 16).paperCardSurface(in: RoundedRectangle(cornerRadius: 22))
+            if store.current.spendingParts.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("从常花的分类开始").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    ChipFlow {
+                        ForEach(starters, id: \.self) { category in
+                            Button { addStarter(category) } label: {
+                                Label(category, systemImage: "plus").yubaiFont(YubaiFont.callout)
+                                    .padding(.horizontal, 12).frame(minHeight: 36).background(YubaiColor.raised, in: Capsule()).fixedSize()
+                            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("startPart_" + category)
+                        }
+                    }
+                }.padding(.horizontal, 16)
+            }
             HStack(spacing: 8) {
                 Button { newName = ""; adding = true } label: {
-                    Label("加一份", systemImage: "plus").frame(maxWidth: .infinity, minHeight: 44)
+                    Label("新分项", systemImage: "plus").frame(maxWidth: .infinity, minHeight: 44)
                         .background(YubaiColor.raised, in: Capsule())
-                }.accessibilityLabel("加一份，输入分项名字")
+                }.accessibilityLabel("新分项，输入分项名字")
                 Button("按前三个月分", action: suggest)
                     .frame(maxWidth: .infinity, minHeight: 44).foregroundStyle(YubaiColor.brandInk)
                     .background(YubaiColor.brandTint, in: Capsule()).accessibilityLabel("按前三个月的分类支出分配")
@@ -96,12 +109,15 @@ struct SpendingPartsView: View {
                 VStack(alignment: .leading, spacing: 8) { Text("月底没花完"); leftoverChoices }
             }.yubaiFont(YubaiFont.body).frame(minHeight: 52).padding(.horizontal, 16)
                 .paperCardSurface(in: RoundedRectangle(cornerRadius: 22)).padding(.top, 2)
-        }.safeAreaInset(edge: .top, spacing: 0) { header.padding(.horizontal, 20) }
+        }.safeAreaInset(edge: .top, spacing: 0) { LedgerPageHeader(title: "分项", backTitle: backTitle).padding(.horizontal, 20) }
             .navigationTitle("分项").yubaiNavigation().accessibilityIdentifier("spendingPartsPage")
-            .alert("加一份", isPresented: $adding) {
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+            .alert("新分项", isPresented: $adding) {
                 TextField("", text: $newName).accessibilityLabel("分项名字")
                 Button("取消", role: .cancel) {}
-                Button("加一份") {
+                Button("新分项") {
                     let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !name.isEmpty else { return }
                     store.update("分项", showToast: false) { $0.spendingParts.append(SpendingPart(name: name, amount: 0)) }
@@ -125,6 +141,19 @@ struct SpendingPartsView: View {
                     store.update("分项", showToast: false) { $0.partsMode = .share }
                 }
             }
+            .task(id: store.ledgerRevision) {
+                guard store.current.spendingParts.isEmpty else { return }
+                let ledger = store.current
+                let categories = await Task.detached { SpendingParts.topCategories(ledger: ledger) }.value
+                guard !Task.isCancelled else { return }; starters = categories
+            }
+    }
+    private func addStarter(_ category: String) {
+        store.update("分项", showToast: false) { ledger in
+            let part = SpendingPart(name: category, amount: 0)
+            ledger.spendingParts.append(part)
+            SpendingParts.assign(category: category, to: part.id, in: &ledger)
+        }
     }
     private var heroTitle: String {
         if store.current.partsMode == .share, !store.funds.cycleIsPayday, case .share(let percent) = store.current.savingRule {
@@ -135,15 +164,6 @@ struct SpendingPartsView: View {
     private var unassignedText: String {
         if store.current.partsMode == .share { return partShare(10 - store.current.spendingParts.compactMap(\.share).reduce(0, +)) }
         return store.preferences.hideAmounts ? "••••" : Money.text(summary.unassigned, currency: false)
-    }
-    private var header: some View {
-        HStack(spacing: 0) {
-            Button { dismiss() } label: { Label(backTitle, systemImage: "chevron.left").frame(width: 88, height: 48, alignment: .leading) }
-                .foregroundStyle(YubaiColor.brandInk).accessibilityLabel("返回" + backTitle)
-            Text("分项").yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity)
-            Button("完成") { dismiss() }.yubaiFont(YubaiFont.callout).padding(.horizontal, 12).frame(height: 36)
-                .background(YubaiColor.card, in: Capsule()).frame(width: 88, alignment: .trailing).accessibilityLabel("完成分项设置")
-        }.yubaiFont(YubaiFont.body).buttonStyle(PressButtonStyle())
     }
     private var leftoverChoices: some View {
         HStack(spacing: 6) {

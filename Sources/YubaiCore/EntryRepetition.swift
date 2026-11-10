@@ -37,17 +37,18 @@ extension FixedFlows {
                         inflow: entry.nature.inflow, category: entry.category, nature: entry.nature)
         plan.monthlyDay = Dates.calendar.component(.day, from: entry.date)
         plan.accountID = entry.accountID
+        plan.intoFixedSavings = entry.intoFixedSavings
         return plan
     }
 
     /// The first payment and its plan are applied/undone as one ChangeSet.
     public static func monthlyEntryChange(amount: Int64, nature: Nature, accountID: UUID, day: Date,
-                                          purpose: String, category: String, now: Date = Date()) throws -> ChangeSet {
-        var entry = Entry(date: day, amount: amount, nature: nature, accountID: accountID, title: category, category: category)
+                                          purpose: String, category: String, now: Date = Date(), intoFixedSavings: Bool = false) throws -> ChangeSet {
+        var entry = Entry(date: day, amount: amount, nature: nature, accountID: accountID, title: category, category: category, intoFixedSavings: intoFixedSavings)
         entry.purpose = purpose
         let plan = try monthlyPlan(from: entry)
         var change = try ManualBookkeeping.change(amount: amount, nature: nature, accountID: accountID, day: day,
-                                                  purpose: purpose, category: category, link: (plan.id, plan.dueDate), now: now)
+                                                  purpose: purpose, category: category, link: (plan.id, plan.dueDate), now: now, intoFixedSavings: intoFixedSavings)
         change.items.insert(.addPlan(plan), at: 0)
         return change
     }

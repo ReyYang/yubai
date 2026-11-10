@@ -91,7 +91,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         case .getFunds:
             let f = Finance.funds(ctx.ledger, now: ctx.now)
             var fields: [String: JSONValue] = ["available": .money(f.available), "cash": .money(f.cash), "debt": .money(f.debt),
-                "committed": .money(f.committed), "goals": .money(f.goals), "fixed_savings": .money(ctx.ledger.fixedSavings ?? 0),
+                "committed": .money(f.committed), "goals": .money(f.goals), "fixed_savings": .money(f.fixedSavingsTotal),
                 "cycle_start": .string(Dates.text(f.cycleStart)), "cycle_end": .string(Dates.text(f.cycleEnd)), "cycle_is_payday": .bool(f.cycleIsPayday),
                 "liquid_start": .money(f.liquidStart), "cycle_income": .money(f.cycleIncome), "saving_target": .money(f.savingTarget),
                 "cycle_spent": .money(f.cycleSpent), "due_rest": .money(f.dueRest), "daily_allowance": .money(f.dailyAllowance), "saving_shortfall": .money(f.savingShortfall),
@@ -124,6 +124,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
     }
 
     private func profile(_ ctx: ToolContext) -> JSONValue {
+        let fixedSavings = ctx.ledger.fixedSavingsTotal(now: ctx.now)
         func area(_ a: ProfileArea) -> JSONValue {
             var row: [String: JSONValue] = ["id": .string(a.id.uuidString), "title": .string(a.title),
                 "match": .object(["categories": .strings(a.match.categories), "subcategories": .strings(a.match.subcategories), "keywords": .strings(a.match.keywords)]),
@@ -156,13 +157,13 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             "recent_followups": .array(recent),
             "memories": Memory.context(ledger: ctx.ledger, now: ctx.now, characterBudget: ctx.memoryCharacterBudget),
             "categories": .strings(ctx.ledger.selectableCategories.filter { !$0.income }.map(\.name)),
-            "fixed_savings": ctx.ledger.fixedSavings.map { .money($0) } ?? .null,
+            "fixed_savings": ctx.ledger.fixedSavings == nil && fixedSavings == 0 ? .null : .money(fixedSavings),
             "habits": .object(["label": .string("你常花的"), "meaning": .string("这是从账本里看到的，不是你的要求；分类与商户可能重叠，不可相加。"),
                 "window_days": .number(90), "lines": .array(ProfileHabits.summary(ctx.ledger, now: ctx.now).map {
                     .object(["kind": .string($0.kind.rawValue), "title": .string($0.title), "total": .money($0.total),
                         "count": .number(Double($0.count)), "count_per_week": .number($0.countPerWeek), "average": .money($0.average)]) })]),
             "accounts": .array(ctx.ledger.accounts.enumerated().map { index, a in .object(["id": .string(a.id.uuidString), "title": .string("账户\(index + 1)"), "kind": .string(a.kind.rawValue)]) }),
-            "plans": .array(ctx.ledger.plans.map { .object(["id": .string($0.id.uuidString), "title": .string($0.title), "amount": .money($0.amount), "date": .string(Dates.text($0.dueDate))]) }),
+            "plans": .array(ctx.ledger.plans.map { .object(["id": .string($0.id.uuidString), "title": .string($0.title), "amount": .money($0.amount), "date": .string(Dates.text($0.dueDate)), "into_fixed_savings": .bool($0.intoFixedSavings)]) }),
             "rents": .array(ctx.ledger.rents.map { .object(["id": .string($0.id.uuidString), "title": .string($0.title)]) }),
             "goals": .array(ctx.ledger.goals.map { .object(["id": .string($0.id.uuidString), "title": .string($0.title),
                 "target": .money($0.target), "saved": .money($0.reserved), "reserved": .money($0.reserved),
@@ -312,6 +313,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             "amount": .money(entry.amount), "spending_amount": .money(Finance.spendingAmount(entry, ledger: ctx.ledger)),
             "direction": .string(entry.nature.paired ? "transfer" : (entry.nature.inflow ? "income" : "spending")),
             "nature": .string(entry.nature.rawValue), "title": .string(entry.displayTitle), "category": .string(ctx.ledger.normalizedCategory(for: entry, entriesByID: ctx.entriesByID).category),
+            "into_fixed_savings": .bool(entry.intoFixedSavings),
             "subcategory": ctx.ledger.normalizedCategory(for: entry, entriesByID: ctx.entriesByID).subcategory.map(JSONValue.string) ?? .null,
             "account": .string(entry.accountID.uuidString),
             "account_kind": .string(ctx.ledger.accounts.first { $0.id == entry.accountID }?.kind.rawValue ?? "unknown")])

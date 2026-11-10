@@ -9,7 +9,9 @@ public enum ProfileChange: Codable, Equatable, Sendable {
 }
 public struct EntryDraft: Codable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64; public var amountConfirmed: Bool
-    public var nature: Nature; public var accountID: UUID; public var title: String; public var category: String
+    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var intoFixedSavings = false { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var accountID: UUID; public var title: String; public var category: String
     public var partID: UUID?
     public var purpose: String?
     public var subcategory: String?
@@ -18,10 +20,28 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var otherAccountID: UUID?
     public var planID: UUID?; public var occurrence: Date?
     public init(date: Date, amount: Int64, amountConfirmed: Bool = false, nature: Nature = .expense,
-                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil) {
+                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil, intoFixedSavings: Bool = false) {
         self.date = date; self.amount = amount; self.amountConfirmed = amountConfirmed; self.nature = nature
         self.accountID = accountID; self.title = title; self.category = category; self.subcategory = subcategory; self.purpose = purpose
         self.planID = planID; self.occurrence = occurrence
+        self.intoFixedSavings = nature == .income && intoFixedSavings
+    }
+    private enum CodingKeys: String, CodingKey {
+        case id, date, amount, amountConfirmed, nature, intoFixedSavings, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); date = try c.decode(Date.self, forKey: .date)
+        amount = try c.decode(Int64.self, forKey: .amount); amountConfirmed = try c.decode(Bool.self, forKey: .amountConfirmed)
+        nature = try c.decode(Nature.self, forKey: .nature)
+        let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
+        intoFixedSavings = nature == .income && intoFixed
+        accountID = try c.decode(UUID.self, forKey: .accountID); title = try c.decode(String.self, forKey: .title)
+        category = try c.decode(String.self, forKey: .category); partID = try c.decodeIfPresent(UUID.self, forKey: .partID)
+        purpose = try c.decodeIfPresent(String.self, forKey: .purpose); subcategory = try c.decodeIfPresent(String.self, forKey: .subcategory)
+        categoryUserEdited = try c.decodeIfPresent(Bool.self, forKey: .categoryUserEdited)
+        otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
+        planID = try c.decodeIfPresent(UUID.self, forKey: .planID); occurrence = try c.decodeIfPresent(Date.self, forKey: .occurrence)
     }
 }
 public enum ChangeItem: Codable, Equatable, Sendable {
@@ -90,7 +110,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .linkPlan(let id, let plan, let date): return "把 \(entry(id)) 关联为 \(Dates.text(date)) \(ledger.plans.first { $0.id == plan }?.title ?? "资金安排")"
             case .linkRent(let id, let rent, let date): return "把 \(entry(id)) 关联为 \(Dates.calendar.component(.month, from: date)) 月\(ledger.rents.first { $0.id == rent }?.title ?? "房租")\(entries[id]?.nature.inflow == true ? "分摊" : "付款")"
             case .markDuplicate(let id, let original): return "把 \(entry(id)) 作为 \(entry(original)) 的重复记录标为已删除"
-            case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
+            case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "") + (p.intoFixedSavings ? "，存着不动" : "")
             case .updatePlan(let p): return FixedFlows.describeUpdate(p, in: ledger)
             case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
             case .resumePlan(let id): return "恢复「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」"
@@ -98,7 +118,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .addRent(let r): return "新增「\(r.title)」，月租 \(Money.text(r.monthlyTotal))，个人承担 \(Money.text(r.personalShare))，每 \(r.monthsPerPayment) 月支付，从 \(Dates.text(r.startDate)) 起，首付 \(Dates.text(r.nextDueDate))，每月 \(r.receiveDay) 日收分摊" + (r.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .addEntry(let d):
                 let link = d.planID.flatMap { id in d.occurrence.map { "，关联为 \(Dates.text($0)) \(ledger.plans.first { $0.id == id }?.title ?? d.title)" } } ?? ""
-                return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）" + link
+                return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）" + link + (d.intoFixedSavings ? "，存着不动" : "")
             case .profile(let change):
                 switch change {
                 case .upsertArea(let area, let stance):
@@ -113,7 +133,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 case .addPrinciple(let text): return "新增消费原则「\(text)」"
                 case .editPrinciple(let old, let new): return "将消费原则「\(old)」改为「\(new)」"
                 case .removePrinciple(let text): return "移除消费原则「\(text)」"
-                case .setFloorAmount(let amount): return amount.map { "存着不动 \(Money.text($0))" } ?? "存着不动 0.00"
+                case .setFloorAmount(let amount):
+                    let total = max(amount ?? 0, ledger.fixedSavingsFromIncome(now: createdAt))
+                    return amount == nil && total == 0 ? "存着不动 0.00" : "存着不动 \(Money.text(total))"
                 }
             }
         }
@@ -322,7 +344,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     guard let i = next.profile.principles.firstIndex(of: old) else { skip(position); continue }; next.profile.principles[i] = new
                 case .removePrinciple(let text):
                     guard next.profile.principles.contains(text) else { skip(position); continue }; next.profile.principles.removeAll { $0 == text }
-                case .setFloorAmount(let amount): next.fixedSavings = amount ?? 0; next.profile.floorAmount = amount
+                case .setFloorAmount(let amount):
+                    guard amount.map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("存着不动的金额无效。") }
+                    next.setFixedSavingsTotal(amount ?? 0, now: createdAt); next.profile.floorAmount = amount
                 }
                 next.profile.stamp(changedFrom: ledger.profile, at: createdAt)
                 next.profile.updatedAt = createdAt
@@ -359,6 +383,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
         let stamp = source + "：" + reason
                 guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
+                e.intoFixedSavings = draft.intoFixedSavings
                 e.partID = draft.partID; e.id = draft.id; e.subcategoryUserEdited = draft.categoryUserEdited == true; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
                 if let id = draft.planID, let occurrence = draft.occurrence {
                     guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,

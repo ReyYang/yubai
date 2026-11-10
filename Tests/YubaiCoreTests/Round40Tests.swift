@@ -101,3 +101,39 @@ final class Round40Tests: XCTestCase {
         XCTAssertEqual(Dates.calendar.component(.day, from: value), 1)
     }
 }
+
+
+extension Round40Tests {
+    func testContinuousLedgerKeepsPreviousDayAtPaydayAndFiltersMonthTotals() {
+        var l = fixture()
+        let today = Dates.parse("2026-11-10 12:00")!
+        l.plans = [Plan(title: "工资", amount: 800_000, dueDate: Dates.parse("2026-10-10")!, frequency: .monthly, inflow: true, nature: .income)]
+        var fixed = row(l, "2026-11-10", "补贴", "补贴", .income); fixed.intoFixedSavings = true
+        var deleted = row(l, "2026-10-20"); deleted.deletedAt = today
+        l.entries = [fixed, row(l, "2026-11-09"), row(l, "2026-10-31"), row(l, "2026-09-30"), deleted]
+        let sorted = l.entries.sorted { $0.date > $1.date }
+        let all = EntryTimeline.snapshot(sortedEntries: sorted, ledger: l, month: today, allMonths: true)
+        XCTAssertEqual(Finance.cycle(in: l, now: today).start, Dates.parse("2026-11-10"))
+        XCTAssertEqual(all.count, 4); XCTAssertEqual(all.months.count, 3)
+        XCTAssertEqual(all.days.map(\.date), ["2026-11-10", "2026-11-09", "2026-10-31", "2026-09-30"].map { Dates.parse($0)! })
+        XCTAssertEqual(all.months[0].spending, 3200); XCTAssertEqual(all.months[0].income, 3200)
+        XCTAssertTrue(all.months[0].days[0].entries[0].intoFixedSavings)
+        let income = EntryTimeline.snapshot(sortedEntries: sorted, ledger: l, month: today, filter: .income, allMonths: true)
+        XCTAssertEqual(income.count, 1); XCTAssertEqual(income.spending, 0); XCTAssertEqual(income.months[0].spending, 0)
+        let expenses = EntryTimeline.snapshot(sortedEntries: sorted, ledger: l, month: today, filter: .expense, allMonths: true)
+        XCTAssertEqual(expenses.count, 3); XCTAssertEqual(expenses.income, 0); XCTAssertEqual(expenses.months[0].income, 0)
+    }
+
+    func testContinuousLedgerHandlesFourThousandRowsInDescendingMonths() {
+        var l = fixture()
+        let start = Dates.parse("2026-11-10")!
+        l.entries = (0..<4000).map { i in
+            Entry(date: Dates.addDays(-i, to: start), amount: 100, accountID: l.accounts[0].id, title: "午饭", category: "餐饮")
+        }
+        let result = EntryTimeline.snapshot(sortedEntries: l.entries, ledger: l, month: start, allMonths: true)
+        XCTAssertEqual(result.count, 4000); XCTAssertEqual(result.spending, 400_000)
+        XCTAssertEqual(result.months.flatMap(\.days), result.days)
+        XCTAssertEqual(result.months.map(\.date), result.months.map(\.date).sorted(by: >))
+        XCTAssertEqual(result.days.last?.entries.first?.id, l.entries.last?.id)
+    }
+}

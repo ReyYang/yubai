@@ -326,3 +326,36 @@ final class SpendingPartsTests: XCTestCase {
         l = original; l.partCarry[l.spendingParts[0].id] = -1; XCTAssertThrowsError(try l.validate())
     }
 }
+
+
+extension SpendingPartsTests {
+    func testTopCategoriesUsesThreeCompletedMonthsNetSpendingAndPersonalShares() {
+        var l = ledger()
+        var food = entry(l, amount: 40_000, at: "2026-08-01")
+        food.personalExpense = 30_000
+        var refund = entry(l, amount: 20_000, category: "其他收入", at: "2026-10-31", nature: .refund)
+        refund.relatedEntryID = food.id
+        var deleted = entry(l, amount: 999_999, category: "娱乐", at: "2026-10-20"); deleted.deletedAt = now
+        l.entries = [food, refund, deleted,
+            entry(l, amount: 15_000, category: "交通", at: "2026-09-01"),
+            entry(l, amount: 12_000, category: "购物", at: "2026-10-01"),
+            entry(l, amount: 999_999, category: "娱乐", at: "2026-07-31"),
+            entry(l, amount: 999_999, category: "娱乐", at: "2026-11-01"),
+            entry(l, amount: 999_999, category: "工资", at: "2026-10-10", nature: .income),
+            entry(l, amount: 999_999, category: Classification.pendingCategory, at: "2026-10-10")]
+        XCTAssertEqual(SpendingParts.topCategories(ledger: l, now: now), ["交通", "购物", "餐饮"])
+    }
+
+    func testTopCategoriesDefaultsAndLimitsToFour() {
+        var l = ledger()
+        XCTAssertEqual(SpendingParts.topCategories(ledger: l, now: now), ["餐饮", "购物", "交通", "娱乐"])
+        l.entries = ["餐饮", "购物", "交通", "娱乐", "居住"].enumerated().map { i, category in
+            entry(l, amount: Int64(5000 - i * 500), category: category, at: "2026-10-01")
+        }
+        XCTAssertEqual(SpendingParts.topCategories(ledger: l, now: now), ["餐饮", "购物", "交通", "娱乐"])
+        let part = SpendingPart(name: "餐饮", amount: 0); l.spendingParts.append(part)
+        SpendingParts.assign(category: "餐饮", to: part.id, in: &l)
+        XCTAssertEqual(l.spendingParts.last?.categories, ["餐饮"])
+        XCTAssertFalse(l.spendingParts[0].categories.contains("餐饮"))
+    }
+}

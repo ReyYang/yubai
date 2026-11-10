@@ -359,3 +359,32 @@ final class FixedFlowEditingTests: XCTestCase {
         XCTAssertEqual(plan.category, "会员")
     }
 }
+
+
+extension FixedFlowEditingTests {
+    func testIncomeDestinationCanBeTheOnlyEditAndDoesNotRewriteSettledEntries() throws {
+        var l = fixture()
+        l.plans[0].inflow = true; l.plans[0].nature = .income; l.plans[0].category = "补贴"
+        pay("2026-09-01", in: &l)
+        let history = l.entries
+        let value = try XCTUnwrap(FixedFlows.edit(planID: l.plans[0].id, in: l, now: now))
+        XCTAssertFalse(value.intoFixedSavings)
+        let change = try FixedFlows.update(planID: l.plans[0].id, title: value.title, amount: value.amount,
+            frequency: value.frequency, date: value.date, accountID: value.accountID, category: value.category,
+            installments: value.installments, autoPay: value.autoPay, estimated: value.estimated, in: l, now: now, intoFixedSavings: true)
+        try change.apply(to: &l)
+        XCTAssertTrue(l.plans[0].intoFixedSavings)
+        XCTAssertTrue(try XCTUnwrap(FixedFlows.edit(planID: l.plans[0].id, in: l, now: now)).intoFixedSavings)
+        XCTAssertEqual(l.entries, history)
+        try FixedFlows.settle(planID: l.plans[0].id, occurrence: value.date, in: l, now: now).apply(to: &l)
+        XCTAssertTrue(try XCTUnwrap(l.entries.last).intoFixedSavings)
+        XCTAssertEqual(l.fixedSavingsTotal(now: now), value.amount)
+        let after = try XCTUnwrap(FixedFlows.edit(planID: l.plans[0].id, in: l, now: now))
+        let turnOff = try FixedFlows.update(planID: l.plans[0].id, title: after.title, amount: after.amount,
+            frequency: after.frequency, date: after.date, accountID: after.accountID, category: after.category,
+            installments: after.installments, autoPay: after.autoPay, estimated: after.estimated, in: l, now: now, intoFixedSavings: false)
+        try turnOff.apply(to: &l)
+        XCTAssertFalse(l.plans[0].intoFixedSavings)
+        XCTAssertTrue(try XCTUnwrap(l.entries.last).intoFixedSavings)
+    }
+}

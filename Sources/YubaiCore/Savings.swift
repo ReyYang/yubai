@@ -16,6 +16,34 @@ public enum SavingRule: Codable, Equatable, Sendable {
         }
     }
 }
+
+extension Ledger {
+    public mutating func switchSavingMode(sharing: Bool) {
+        savingRule = sharing ? .share(lastSavingSharePercent ?? 20) : .fixed(lastFixedSavingTarget ?? 0)
+    }
+
+    /// Only posted income in cash/bank accounts contributes, using the same
+    /// reconciliation boundary as Finance's cash balance (including archived accounts).
+    func fixedSavingsFromIncome(now: Date) -> Int64 {
+        let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+        return entries.reduce(Int64(0)) { total, entry in
+            guard entry.deletedAt == nil, entry.nature == .income, entry.intoFixedSavings,
+                  let account = accountsByID[entry.accountID], account.kind == .cash || account.kind == .bank else { return total }
+            let posting = entry.postingDate(for: account.id)
+            return posting <= now && account.includes(entry, posting: posting) ? total + entry.amount : total
+        }
+    }
+
+    public func fixedSavingsTotal(now: Date = Date()) -> Int64 {
+        (fixedSavings ?? 0) + fixedSavingsFromIncome(now: now)
+    }
+
+    /// Clamp the requested total to the posted, earmarked income minimum. This
+    /// keeps the base nonnegative; editing/deleting income always reverses its contribution.
+    public mutating func setFixedSavingsTotal(_ total: Int64, now: Date = Date()) {
+        fixedSavings = max(0, min(Money.limit, total) - fixedSavingsFromIncome(now: now))
+    }
+}
 public struct CycleSaving: Codable, Equatable, Sendable, Identifiable {
     public var id: Date { cycleStart }
     public var cycleStart: Date
@@ -42,6 +70,24 @@ public struct CycleSaving: Codable, Equatable, Sendable, Identifiable {
 }
 
 public enum EntryHint: Equatable, Sendable {
+    /// Separate draft result keeps existing receipt consumers source compatible
+    /// until the app adds the destination control and its rendering.
+    public enum DraftResult: Equatable, Sendable {
+        case fixedSavings(newTotal: Int64)
+        case receipt(EntryHint)
+    }
+    public static func make(ledger: Ledger, draft: EntryDraft, isFixedBill: Bool, now: Date = Date()) -> DraftResult {
+        if draft.nature == .income && draft.intoFixedSavings {
+            var projected = ledger
+            var entry = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID,
+                              title: draft.title, intoFixedSavings: true)
+            entry.recordedAt = now
+            projected.entries.append(entry)
+            return .fixedSavings(newTotal: projected.fixedSavingsTotal(now: now))
+        }
+        return .receipt(make(ledger: ledger, amount: draft.amount, category: draft.category, isFixedBill: isFixedBill,
+                             now: now, nature: draft.nature, subcategory: draft.subcategory, partID: draft.partID))
+    }
     case normal(after: Int64, daily: Int64, over: Bool, part: SpendingPartHint? = nil)
     case restrain(areaTitle: String, countThisWeek: Int, limit: Int?, weekSpent: Int64)
     case big(after: Int64, daily: Int64, over: Bool)
@@ -104,15 +150,20 @@ public enum Savings {
         let close = current.start.addingTimeInterval(-0.001)
         let previous = Finance.cycle(in: ledger, now: close)
         // Stored calendar boundaries are instants created in the then-current zone.
-        // A later device-zone change must not turn the same period into a new saving.
+        // A later device-zone or anchor change must not reserve an already
+        // closed period again. A changed anchor starts closing at its next full,
+        // nonoverlapping period, preserving the existing history and balances.
         let alreadyClosed = ledger.savingHistory.contains {
-            abs($0.cycleStart.timeIntervalSince(previous.start)) <= 36 * 3600 &&
-                abs($0.cycleEnd.timeIntervalSince(previous.end)) <= 36 * 3600
+            (abs($0.cycleStart.timeIntervalSince(previous.start)) <= 36 * 3600 &&
+                abs($0.cycleEnd.timeIntervalSince(previous.end)) <= 36 * 3600) ||
+                ($0.cycleStart <= previous.end && previous.start <= $0.cycleEnd)
         }
         guard previous.end < Dates.day(now), !alreadyClosed else { return }
         let snapshot = WeeklyLetter.snapshot(ledger, at: close)
         SpendingParts.closeCycle(&ledger, snapshot: snapshot, close: close, nextStart: current.start)
         let funds = Finance.funds(snapshot, now: close)
+        // Funds excludes earmarked income from both cycle income and liquid
+        // funds, so it can never be merged into the base a second time.
         // Available already excludes the saving target; do not add part balances again.
         let leftover = !snapshot.spendingParts.isEmpty && snapshot.partLeftover == .mergeIntoFixedSavings ? max(0, funds.available) : 0
         guard ledger.savingRule != nil else {

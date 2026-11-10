@@ -183,8 +183,8 @@ struct EntryAccountMenu: View {
             let account = accounts.first { $0.id == selection }
             HStack(spacing: 6) {
                 if inTray { Image(systemName: "creditcard").accessibilityHidden(true) }
-                Text((account?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户")) + (showsBalance && account != nil ? " · 余额 " + balanceText(account!.id) : "")).lineLimit(1)
-            }.yubaiFont(YubaiFont.callout).fixedSize(horizontal: !inTray, vertical: true).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight)
+                Text((account?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户")) + (showsBalance && account != nil ? " · 余额 " + balanceText(account!.id) : "")).fixedSize(horizontal: false, vertical: true)
+            }.yubaiFont(YubaiFont.callout).fixedSize(horizontal: false, vertical: true).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight)
                 .background(inTray ? YubaiColor.keyFn : YubaiColor.raised, in: Capsule())
                 .yubaiHitTarget()
         }.buttonStyle(PressButtonStyle()).accessibilityLabel("账户")
@@ -488,7 +488,7 @@ struct EntryRepeatChip: View {
     var body: some View {
         Button(action: action) {
             Text(value + (opensPlan ? " ›" : "")).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
-                .padding(.horizontal, YubaiSpace.gapGroup).frame(height: inTray ? 34 : YubaiSize.chipHeight)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight)
                 .background(inTray ? YubaiColor.keyFn : selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
                 .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
                 .yubaiHitTarget()
@@ -800,9 +800,25 @@ struct EntryKeyboardTray<Controls: View, Keys: View>: View {
     }
 }
 
+struct EntryFixedSavingsChip: View {
+    @Binding var selected: Bool
+    var action: () -> Void = {}
+    var body: some View {
+        Button { action(); selected.toggle() } label: {
+            Label("存着不动", systemImage: "lock").yubaiFont(YubaiFont.caption)
+                .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
+                .padding(.horizontal, 10).frame(minHeight: 28)
+                .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
+                .fixedSize(horizontal: true, vertical: false).yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityIdentifier("entryIntoFixedSavings")
+    }
+}
+
 struct EntrySavingHintBar: View {
     @Environment(AppStore.self) private var store
     let hint: EntryHint
+    var fixedSavingsTotals: (current: Int64, new: Int64)?
     var afterOverride: Int64? = nil
     var category = ""
     var ledgerOverride: Ledger? = nil
@@ -811,8 +827,9 @@ struct EntrySavingHintBar: View {
     @Binding var partID: UUID?
     @Binding var rememberPart: Bool
     @State private var pickingPart = false
-    init(hint: EntryHint, afterOverride: Int64? = nil, category: String = "", ledgerOverride: Ledger? = nil, allowsPartSelection: Bool = false, allowsRememberPart: Bool = true,
+    init(hint: EntryHint, afterOverride: Int64? = nil, category: String = "", ledgerOverride: Ledger? = nil, allowsPartSelection: Bool = false, allowsRememberPart: Bool = true, fixedSavingsTotals: (current: Int64, new: Int64)? = nil,
          partID: Binding<UUID?> = .constant(nil), rememberPart: Binding<Bool> = .constant(false)) {
+        self.fixedSavingsTotals = fixedSavingsTotals
         self.hint = hint; self.afterOverride = afterOverride; self.category = category; self.ledgerOverride = ledgerOverride
         self.allowsPartSelection = allowsPartSelection
         self.allowsRememberPart = allowsRememberPart
@@ -823,6 +840,7 @@ struct EntrySavingHintBar: View {
         return nil
     }
     private var amber: Bool {
+        if fixedSavingsTotals != nil { return false }
         if let part, part.overBy > 0 { return true }
         if let afterOverride, afterOverride < 0 { return true }
         switch hint { case .restrain, .big: return true; case .normal(_, _, let over, _): return over }
@@ -848,7 +866,8 @@ struct EntrySavingHintBar: View {
             }
     }
     @ViewBuilder private var labels: some View {
-        if let selectionName {
+        if fixedSavingsTotals != nil { Label("存着不动", systemImage: "lock").yubaiFont(YubaiFont.caption).fixedSize() }
+        else if let selectionName {
             HStack(spacing: 8) {
                 Button { pickingPart = true } label: {
                     HStack(spacing: 4) { Text(selectionName); Image(systemName: "chevron.down").font(.system(size: 10)) }
@@ -868,7 +887,11 @@ struct EntrySavingHintBar: View {
         }
     }
     @ViewBuilder private var amount: some View {
-        if let part {
+        if let totals = fixedSavingsTotals {
+            Text(store.preferences.hideAmounts ? "•••• → ••••" : Money.text(totals.current, currency: false) + " → " + Money.text(totals.new, currency: false))
+                .yubaiFont(YubaiFont.amountSmall).lineLimit(1).minimumScaleFactor(0.7)
+                .accessibilityIdentifier("afterEntryFixedSavings")
+        } else if let part {
             let total: Int64 = { if case .normal(let after, _, _, _) = hint { return afterOverride ?? after }; return 0 }()
             Text(store.preferences.hideAmounts ? "••••" : part.overBy > 0 ? "超 " + savingNumber(part.overBy) + " · 从没分的扣" :
                  Money.text(part.after, currency: false) + " · 共 " + Money.text(total, currency: false))

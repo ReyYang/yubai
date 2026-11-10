@@ -12,6 +12,7 @@ struct QuickEntryPrefill {
     var subcategory: String? = nil
     var accountID: UUID? = nil
     var otherAccountID: UUID? = nil
+    var intoFixedSavings = false
 }
 extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
@@ -140,6 +141,7 @@ struct ScreenshotCaptureView: View {
 
 extension QuickEntryPrefill {
     init(entry: Entry) {
+        intoFixedSavings = entry.intoFixedSavings
         category = entry.category; amount = entry.amount; purpose = entry.purpose ?? entry.title
         nature = entry.nature; subcategory = entry.subcategory; accountID = entry.accountID; otherAccountID = entry.otherAccountID
     }

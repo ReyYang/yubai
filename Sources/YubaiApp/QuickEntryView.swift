@@ -34,6 +34,7 @@ struct QuickEntryView: View {
     @State private var balances: [UUID: Int64] = [:]
     @State private var suggestion: Occurrence?
     @State private var selectedMatchID: String?
+    @State private var intoFixedSavings = false
     @State private var repeatsMonthly = false
     @State private var previewAvailable: Int64 = 0
     @FocusState private var purposeFocused: Bool
@@ -55,7 +56,7 @@ struct QuickEntryView: View {
                     if nature != .transfer {
                         EntrySavingHintBar(hint: savingHint, afterOverride: previewAvailable, category: effectiveCategory.category,
                                            allowsPartSelection: nature == .expense && !repeatsMonthly && selectedLink == nil,
-                                           partID: $partID, rememberPart: $rememberPart)
+                                           fixedSavingsTotals: fixedSavingsTotals, partID: $partID, rememberPart: $rememberPart)
                     }
                     if nature != .transfer {
                         EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
@@ -74,10 +75,10 @@ struct QuickEntryView: View {
             .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
                 if !accounts.isEmpty {
                     EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
-                        HStack(spacing: 8) {
+                        ChipFlow {
                             EntryDateChip(date: $date, inTray: true)
                             EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, inTray: true)
-                            Spacer(minLength: 0)
+                            if nature == .income { EntryFixedSavingsChip(selected: $intoFixedSavings, action: { purposeFocused = false }) }
                             if nature != .transfer && selectedLink == nil {
                                 EntryRepeatChip(selected: repeatsMonthly, value: repeatsMonthly ? "每月 \(Dates.calendar.component(.day, from: date)) 号" : "不重复", inTray: true) {
                                     purposeFocused = false; repeatsMonthly.toggle()
@@ -120,6 +121,7 @@ struct QuickEntryView: View {
                     subcategory = prefill.subcategory
                     if let id = prefill.accountID, accounts.contains(where: { $0.id == id }) { accountID = id }
                     otherAccountID = prefill.otherAccountID
+                    intoFixedSavings = nature == .income && prefill.intoFixedSavings
                     purpose = prefill.purpose ?? ""
                     if let amount = prefill.amount { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
                 }
@@ -130,6 +132,7 @@ struct QuickEntryView: View {
             .onChange(of: effectiveCategory.category) { _, _ in partID = nil; rememberPart = false }
             .task(id: previewInput) { await refreshPreview() }
             .onChange(of: nature) { _, value in
+                if value != .income { intoFixedSavings = false }
                 if skipNatureReset { skipNatureReset = false; return }
                 partID = nil; rememberPart = false
                 category = ""; categorySuggestion = nil
@@ -199,12 +202,12 @@ struct QuickEntryView: View {
         var subcategory: String?
         var partID: UUID?
         var date: Date; var accountID: UUID?; var otherAccountID: UUID?
-        var selectedMatchID: String?; var repeatsMonthly: Bool; var ledgerUpdatedAt: Date
+        var selectedMatchID: String?; var repeatsMonthly: Bool; var intoFixedSavings: Bool; var ledgerUpdatedAt: Date
     }
     private var previewInput: PreviewInput {
         PreviewInput(expression: keypad.expression, nature: nature, purpose: purpose, category: category, subcategory: subcategory, partID: partID, date: date,
                      accountID: accountID, otherAccountID: otherAccountID, selectedMatchID: selectedMatchID,
-                     repeatsMonthly: repeatsMonthly, ledgerUpdatedAt: store.current.updatedAt)
+                     repeatsMonthly: repeatsMonthly, intoFixedSavings: intoFixedSavings, ledgerUpdatedAt: store.current.updatedAt)
     }
     @MainActor private func refreshPreview() async {
         // No ledger work runs in body or the key action. Cancellation coalesces
@@ -239,6 +242,15 @@ struct QuickEntryView: View {
     private var savingHint: EntryHint {
         EntryHint.make(ledger: store.current, amount: keypad.amount ?? 0, category: effectiveCategory.category,
                        isFixedBill: repeatsMonthly || selectedLink != nil, nature: nature, subcategory: effectiveCategory.subcategory, partID: partID)
+    }
+    private var fixedSavingsTotals: (current: Int64, new: Int64)? {
+        guard nature == .income, intoFixedSavings else { return nil }
+        let draft = EntryDraft(date: date, amount: keypad.amount ?? 0, nature: nature, accountID: accountID ?? UUID(),
+                               title: purpose, category: effectiveCategory.category, intoFixedSavings: true)
+        if case .fixedSavings(let total) = EntryHint.make(ledger: store.current, draft: draft, isFixedBill: repeatsMonthly || selectedLink != nil) {
+            return (store.funds.fixedSavingsTotal, total)
+        }
+        return nil
     }
     private func saveWish() {
         guard canSave, let amount = keypad.amount else { return }
@@ -279,10 +291,10 @@ struct QuickEntryView: View {
         var change: ChangeSet
         if repeatsMonthly && nature != .transfer && selectedLink == nil {
             change = try FixedFlows.monthlyEntryChange(amount: amount, nature: nature, accountID: accountID, day: date,
-                                                       purpose: purpose, category: effectiveCategory.category, now: now)
+                                                       purpose: purpose, category: effectiveCategory.category, now: now, intoFixedSavings: intoFixedSavings)
         } else {
             change = try ManualBookkeeping.change(amount: amount, nature: nature, accountID: accountID, otherAccountID: otherAccountID,
-                                                  day: date, purpose: purpose, category: effectiveCategory.category, link: selectedLink, now: now)
+                                                  day: date, purpose: purpose, category: effectiveCategory.category, link: selectedLink, now: now, intoFixedSavings: intoFixedSavings)
         }
         // The displayed default is also main-only until a small item is chosen.
         // Save the draft's complete choice, then confirm it in the same transaction.
@@ -341,7 +353,7 @@ struct QuickEntryView: View {
                 #if os(iOS)
                 AccessibilityNotification.Announcement("已记 \(savedCount) 笔，可撤销").post()
                 #endif
-                keypad.reset(); purpose = ""; selectedMatchID = nil; repeatsMonthly = false
+                keypad.reset(); purpose = ""; intoFixedSavings = false; selectedMatchID = nil; repeatsMonthly = false
                 category = ""; subcategory = nil; partID = nil; rememberPart = false
             } else {
                 store.setEntrySaveToast("已记下 · " + (title.isEmpty ? Classification.displayCategory(effectiveCategory.category) : title) + " " + amount + " · " + store.accountName(accountID) + repeatSuffix)

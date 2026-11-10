@@ -51,7 +51,7 @@ struct CategoriesView: View {
                                     Spacer(); categoryChevron
                                 }.foregroundStyle(YubaiColor.labelSecondary).frame(minHeight: YubaiSize.tapMin)
                             }
-                        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("hiddenCategories")
+                        }.hidesListDisclosure().buttonStyle(PressButtonStyle()).accessibilityIdentifier("hiddenCategories")
                     }
                 }
             }

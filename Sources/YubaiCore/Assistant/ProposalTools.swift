@@ -9,8 +9,8 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
     public var description: String {
         switch self {
         case .entryChanges: return "提议整理现有记录，只能改变分类、性质、用途或关联，不能改金额、主账户、原始日期。用户确认后才应用。"
-        case .plan: return "提议新增/结束资金安排或新增房租；金额为人民币元。用户确认后才应用。"
-        case .entry: return "提议语音或截图补记，多笔用entries一次提出全部。金额只能取本机从原文解析的候选或用户已核对金额；AI不能确认金额，草稿等待用户确认。"
+        case .plan: return "提议新增/结束资金安排或新增房租；金额为人民币元。收入安排可用into_fixed_savings直接存着不动。用户确认后才应用。"
+        case .entry: return "提议语音或截图补记，多笔用entries一次提出全部。金额只能取本机从原文解析的候选或用户已核对金额；AI不能确认金额，草稿等待用户确认。收入可用into_fixed_savings直接存着不动，不计入要攒的收入比例。"
         case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或存着不动的固定存款；不搬动储蓄目标。可用items一次提交整份消费观，用户确认后才应用。"
         }
     }
@@ -24,6 +24,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         let id = Self.string("本地UUID，从查询结果取，不猜测")
         let amount = Self.string("人民币元，十进制文本，最多两位小数")
         let date = Self.string("yyyy-MM-dd")
+        let intoFixedSavings: JSONValue = .object(["type": .string("boolean"), "description": .string("仅nature=income可用；true表示进账直接存着不动，不计入周期收入及要攒比例；默认false")])
         switch self {
         case .entryChanges:
             fields["items"] = .object(["type": .string("array"), "minItems": .number(1), "maxItems": .number(200), "items": Self.object([
@@ -36,13 +37,13 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
             fields.merge(["operation": Self.choice(["add_plan", "end_plan", "add_rent"]), "id": id,
                 "title": Self.string("安排标题"), "amount": amount, "date": date,
                 "frequency": Self.choice(Frequency.allCases.map(\.rawValue)), "nature": Self.choice(Nature.allCases.map(\.rawValue)),
-                "category": Self.string("分类"), "account": id, "personal_share": amount,
+                "category": Self.string("分类"), "account": id, "personal_share": amount, "into_fixed_savings": intoFixedSavings,
                 "start_date": date, "months_per_payment": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(12)]),
                 "receive_day": .object(["type": .string("integer"), "minimum": .number(1), "maximum": .number(28)])
             ]) { _, new in new }
         case .entry:
             let entryFields: [String: JSONValue] = ["title": Self.string("原始描述，参考parsed_entries"), "amount": amount, "date": date, "account": id,
-                "nature": Self.choice(Nature.allCases.map(\.rawValue)), "category": Self.string("分类"), "purpose": Self.string("用途")]
+                "nature": Self.choice(Nature.allCases.map(\.rawValue)), "category": Self.string("分类"), "purpose": Self.string("用途"), "into_fixed_savings": intoFixedSavings]
             fields.merge(entryFields) { _, new in new }
             fields["entries"] = .object(["type": .string("array"), "minItems": .number(1),
                 "description": .string("一次提出全部补记；与顶层单笔字段二选一，金额及同额次数必须来自本机候选。"),
@@ -144,10 +145,14 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                 let frequencyText = try a.optionalText("frequency") ?? "once"
                 guard let frequency = Frequency(rawValue: frequencyText) else { throw YubaiError.invalid("安排周期无效。") }
                 var plan = Plan(title: try a.text("title"), amount: try a.amount("amount"), dueDate: try a.date("date"),
-                                frequency: frequency, inflow: nature.inflow, category: try category(a.optionalText("category") ?? Classification.pendingCategory, nature: nature), nature: nature)
+                                frequency: frequency, inflow: nature.inflow, category: try category(a.optionalText("category") ?? Classification.pendingCategory, nature: nature), nature: nature,
+                                intoFixedSavings: try a.intoFixedSavings(nature: nature))
                 plan.accountID = try a.optionalUUID("account"); items = [.addPlan(plan)]
-            case "end_plan": items = [.endPlan(try a.uuid("id"), try a.date("date"))]
+            case "end_plan":
+                guard a.fields["into_fixed_savings"] == nil else { throw YubaiError.invalid("只有收入安排可以直接存着不动。") }
+                items = [.endPlan(try a.uuid("id"), try a.date("date"))]
             case "add_rent":
+                guard a.fields["into_fixed_savings"] == nil else { throw YubaiError.invalid("只有收入安排可以直接存着不动。") }
                 var rent = Rent(title: try a.text("title"), monthlyTotal: try a.amount("amount"), personalShare: try a.amount("personal_share"),
                                 startDate: try a.date("start_date"), nextDueDate: try a.date("date"),
                                 monthsPerPayment: try a.integer("months_per_payment", fallback: 3, range: 1...12),
@@ -179,7 +184,8 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                 let nature = try row.nature(default: .expense)
                 return .addEntry(EntryDraft(date: try row.date("date"), amount: amount, amountConfirmed: confirmed,
                     nature: nature, accountID: try row.uuid("account"), title: try row.text("title"),
-                    category: try category(row.optionalText("category") ?? Classification.pendingCategory, nature: nature), purpose: try row.optionalText("purpose")))
+                    category: try category(row.optionalText("category") ?? Classification.pendingCategory, nature: nature), purpose: try row.optionalText("purpose"),
+                    intoFixedSavings: try row.intoFixedSavings(nature: nature)))
             }
         case .profile:
             if let rows = a.fields["items"]?.arrayValue {
@@ -239,6 +245,11 @@ private struct Arguments {
     func nature(default fallback: Nature? = nil) throws -> Nature {
         if fields["nature"] == nil, let fallback { return fallback }
         guard let nature = Nature(rawValue: try text("nature")) else { throw YubaiError.invalid("资金性质无效。") }; return nature
+    }
+    func intoFixedSavings(nature: Nature) throws -> Bool {
+        guard let value = fields["into_fixed_savings"] else { return false }
+        guard nature == .income, case .bool(let flag) = value else { throw YubaiError.invalid("只有收入可以直接存着不动，into_fixed_savings需要布尔值。") }
+        return flag
     }
     func strings(_ key: String) throws -> [String] {
         guard let value = fields[key] else { return [] }

@@ -15,7 +15,7 @@ enum Destination: String, CaseIterable, Identifiable {
     var symbol: String { switch self { case .ledger: "square.righthalf.filled"; case .insights: "chart.pie"; case .settings: "person" } }
 }
 enum TabRoute: Hashable {
-    case fixedFlows, inbox, ledgerSearch, profile, wishlist, letters, accounts
+    case fixedFlows, inbox, profile, wishlist, letters, accounts
     case spendingParts(String), savings(String), triage([UUID])
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
     case unsortedGroups(UUID), quickSortUnsorted(UUID)
@@ -33,8 +33,8 @@ struct TabNavigationLink<Content: View, Label: View>: View {
     }
     var body: some View {
         #if os(iOS)
-        if inSheet { NavigationLink(destination: destination, label: label) }
-        else { NavigationLink(value: route, label: label) }
+        if inSheet { NavigationLink(destination: destination, label: label).navigationLinkIndicatorVisibility(.hidden) }
+        else { NavigationLink(value: route, label: label).navigationLinkIndicatorVisibility(.hidden) }
         #else
         NavigationLink(destination: destination, label: label)
         #endif
@@ -188,7 +188,7 @@ enum AppSheet: Identifiable {
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     #endif
     var recoveringWriteFailure = false
-    @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, calendar: Calendar, value: EntryTimeline.Snapshot)?
+    @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, allMonths: Bool, calendar: Calendar, value: EntryTimeline.Snapshot)?
     @ObservationIgnored private var cachedPendingOrganization: PendingImportOrganization?
     @ObservationIgnored private var cachedSalary: (day: Date, value: SalaryCandidate?)?
     var pendingOrganization: PendingImportOrganization {
@@ -314,15 +314,15 @@ enum AppSheet: Identifiable {
         let rows = derivedSource.entries.sorted { $0.date > $1.date }
         cachedEntries = rows; return rows
     }
-    func entryTimeline(month: Date, search: String, filter: EntryTimeline.Filter) -> EntryTimeline.Snapshot {
+    func entryTimeline(month: Date, search: String, filter: EntryTimeline.Filter, allMonths: Bool = false) -> EntryTimeline.Snapshot {
         _ = entryTimelineRevision
-        return entryTimelineValue(month: month, search: search, filter: filter)
+        return entryTimelineValue(month: month, search: search, filter: filter, allMonths: allMonths)
     }
-    private func entryTimelineValue(month: Date, search: String, filter: EntryTimeline.Filter) -> EntryTimeline.Snapshot {
+    private func entryTimelineValue(month: Date, search: String, filter: EntryTimeline.Filter, allMonths: Bool = false) -> EntryTimeline.Snapshot {
         let calendar = Dates.calendar
-        if let cached = cachedEntryTimeline, cached.month == month, cached.search == search, cached.filter == filter, cached.calendar == calendar { return cached.value }
-        let value = EntryTimeline.snapshot(sortedEntries: sortedEntriesValue(), ledger: derivedSource, month: month, search: search, filter: filter, calendar: calendar)
-        cachedEntryTimeline = (month, search, filter, calendar, value)
+        if let cached = cachedEntryTimeline, cached.month == month, cached.search == search, cached.filter == filter, cached.allMonths == allMonths, cached.calendar == calendar { return cached.value }
+        let value = EntryTimeline.snapshot(sortedEntries: sortedEntriesValue(), ledger: derivedSource, month: month, search: search, filter: filter, calendar: calendar, allMonths: allMonths)
+        cachedEntryTimeline = (month, search, filter, allMonths, calendar, value)
         return value
     }
     private func invalidateDerived() {
@@ -359,7 +359,7 @@ enum AppSheet: Identifiable {
         }
         cachedEntryTimeline = nil
         if let oldTimeline {
-            let next = entryTimelineValue(month: oldTimeline.month, search: oldTimeline.search, filter: oldTimeline.filter)
+            let next = entryTimelineValue(month: oldTimeline.month, search: oldTimeline.search, filter: oldTimeline.filter, allMonths: oldTimeline.allMonths)
             if next != oldTimeline.value { entryTimelineRevision &+= 1 }
         }
         let oldPending = cachedPendingOrganization
@@ -853,7 +853,7 @@ struct RootView: View {
         let generation = store.navigationRevision
         ZStack {
             ForEach(Destination.allCases) { destination in
-                tabNavigation(destination, generation: generation)
+                tabNavigation(destination, generation: generation, hidden: store.destination != destination)
                     .opacity(store.destination == destination ? 1 : 0)
                     .allowsHitTesting(store.destination == destination)
                     .accessibilityHidden(store.destination != destination)
@@ -879,13 +879,14 @@ struct RootView: View {
         #endif
     }
     #if os(iOS)
-    private func tabNavigation(_ d: Destination, generation: UInt64) -> some View {
+    private func tabNavigation(_ d: Destination, generation: UInt64, hidden: Bool) -> some View {
         NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: {
             guard generation == store.navigationRevision else { return }
             tabPaths[d] = $0
         })) {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
-                .navigationDestination(for: TabRoute.self) { tabDestination($0) }
+                .accessibilityHidden(hidden)
+                .navigationDestination(for: TabRoute.self) { tabDestination($0).accessibilityHidden(hidden) }
         }.toolbarBackground(.hidden, for: .navigationBar)
             .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
             .environment(\.isScrollEnabled, true)
@@ -896,7 +897,6 @@ struct RootView: View {
         switch route {
         case .fixedFlows: FixedFlowsView()
         case .inbox: LetterInboxView()
-        case .ledgerSearch: EntriesView()
         case .spendingParts(let source): SpendingPartsView(backTitle: source)
         case .savings(let source): SavingsView(backTitle: source)
         case .triage(let ids): LetterTriageView(entryIDs: ids)
@@ -958,7 +958,7 @@ struct RootView: View {
         case .cardQuestion(let id): ButlerQuestionView(cardID: id)
         case .cardProposal(let id): ButlerProposalView(changeID: id)
         case .letters: LettersView()
-        case .letter(let id): LetterDetailView(cardID: id).manualSheetHeader("每周来信", cancelTitle: "关闭", showsAction: false)
+        case .letter(let id): LetterDetailView(cardID: id)
         case .reconcile(let id):
             if let account = store.accounts.first(where: { $0.id == id }) { AccountEditor(account: account, startsReconciling: true) }
         }

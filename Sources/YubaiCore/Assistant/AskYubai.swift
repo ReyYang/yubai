@@ -94,7 +94,7 @@ public struct JudgePurchaseTool: AssistantTool {
         }) }
         var facts: [String: JSONValue] = ["title": .string(title), "amount": .money(amount), "hasProfile": .bool(hasProfile),
             "affordability": .object(["available": .money(funds.available), "available_after_purchase": .money(funds.available - amount),
-                "fixed_savings": .money(ctx.ledger.fixedSavings ?? 0), "saving_target": .money(funds.savingTarget), "forecast": forecast,
+                "fixed_savings": .money(funds.fixedSavingsTotal), "saving_target": .money(funds.savingTarget), "forecast": forecast,
                 "upcoming_payments": .array(funds.occurrences.filter { !$0.inflow }.map { .object([
                     "title": .string($0.title), "date": .string(Dates.text($0.date)), "amount": .money($0.amount)]) }), "warnings": .strings(funds.warnings)]),
             "habit": habit, "similar_recent": similar,
