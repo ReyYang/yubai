@@ -120,6 +120,7 @@ struct EntriesView: View {
                     }
                 }.padding(.horizontal, 14).frame(minHeight: 40).background(YubaiColor.raised, in: Capsule())
                 Button("取消", action: endSearch).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).fixedSize()
+                    .yubaiHitTarget().accessibilityIdentifier("entriesSearchCancel")
             }.frame(minHeight: 48).buttonStyle(PressButtonStyle())
                 .task { await Task.yield(); guard !Task.isCancelled, showingSearch else { return }; searchFocused = true }
         } else {
@@ -176,7 +177,7 @@ struct EntriesView: View {
             HStack(spacing: 4) {
                 Text(monthTitle(date)).yubaiFont(YubaiFont.callout, weight: .semibold)
                 if !showingSearch { Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta) }
-            }.fixedSize()
+            }.fixedSize().yubaiHitTarget(alignment: .leading)
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entriesMonth")
     }
     @ViewBuilder private func monthTotal(_ group: EntryTimeline.Month, hide: Bool) -> some View {

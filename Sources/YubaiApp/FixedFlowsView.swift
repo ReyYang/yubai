@@ -544,7 +544,8 @@ struct FixedFlowEditor: View {
                     Button("停掉") { confirmingStop = true }.buttonStyle(DestructiveButtonStyle())
                         .accessibilityIdentifier("fixedFlowEditStop")
                 }
-            }.accessibilityIdentifier("fixedFlowEditor")
+            }
+                // No identifier here: it would replace the sheet header buttons' own ones.
                 .finishAmountOnOutsideTap(presented: amountKeypadPresented, finish: finishAmount)
                 .task(id: amountKeypadPresented) {
                     guard amountKeypadPresented else { return }
