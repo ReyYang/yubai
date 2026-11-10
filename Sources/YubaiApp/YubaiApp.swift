@@ -853,7 +853,7 @@ struct RootView: View {
         let generation = store.navigationRevision
         ZStack {
             ForEach(Destination.allCases) { destination in
-                tabNavigation(destination, generation: generation)
+                tabNavigation(destination, generation: generation, hidden: store.destination != destination)
                     .opacity(store.destination == destination ? 1 : 0)
                     .allowsHitTesting(store.destination == destination)
                     .accessibilityHidden(store.destination != destination)
@@ -879,13 +879,14 @@ struct RootView: View {
         #endif
     }
     #if os(iOS)
-    private func tabNavigation(_ d: Destination, generation: UInt64) -> some View {
+    private func tabNavigation(_ d: Destination, generation: UInt64, hidden: Bool) -> some View {
         NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: {
             guard generation == store.navigationRevision else { return }
             tabPaths[d] = $0
         })) {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
-                .navigationDestination(for: TabRoute.self) { tabDestination($0) }
+                .accessibilityHidden(hidden)
+                .navigationDestination(for: TabRoute.self) { tabDestination($0).accessibilityHidden(hidden) }
         }.toolbarBackground(.hidden, for: .navigationBar)
             .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
             .environment(\.isScrollEnabled, true)

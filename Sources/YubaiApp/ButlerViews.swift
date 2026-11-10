@@ -38,7 +38,7 @@ struct ButlerCardView: View {
     var body: some View {
         LetterDismissCard(onDismiss: { store.dismissCard(card.id) }, onMute: { store.muteCard(card.id) }) { animateDismiss in
             cardContent(animateDismiss: animateDismiss)
-        }.accessibilityIdentifier("butlerCard_" + card.kind.rawValue)
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("butlerCard_" + card.kind.rawValue)
     }
     private func cardContent(animateDismiss: @escaping CardDismissAnimation) -> some View {
         Card(style: .compact, background: amber ? YubaiColor.amberTint : YubaiColor.paperSheet) {

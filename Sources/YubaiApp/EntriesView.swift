@@ -119,8 +119,9 @@ struct EntriesView: View {
                             .accessibilityLabel("清空搜索")
                     }
                 }.padding(.horizontal, 14).frame(minHeight: 40).background(YubaiColor.raised, in: Capsule())
-                Button("取消", action: endSearch).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).fixedSize()
-                    .yubaiHitTarget().accessibilityIdentifier("entriesSearchCancel")
+                Button(action: endSearch) {
+                    Text("取消").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).fixedSize().yubaiHitTarget()
+                }.accessibilityIdentifier("entriesSearchCancel")
             }.frame(minHeight: 48).buttonStyle(PressButtonStyle())
                 .task { await Task.yield(); guard !Task.isCancelled, showingSearch else { return }; searchFocused = true }
         } else {

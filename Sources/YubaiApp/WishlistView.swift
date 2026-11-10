@@ -58,7 +58,7 @@ struct WishlistView: View {
                     WishFollowUpView(wishID: wish.id, showsTitle: false, animateDismiss: animateDismiss)
                 }
             }
-        }.accessibilityIdentifier("butlerCard_followUp")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("butlerCard_followUp")
     }
     private func ageText(_ wish: WishItem) -> String? {
         let now: Date = Date()

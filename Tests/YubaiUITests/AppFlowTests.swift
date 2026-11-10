@@ -1452,6 +1452,18 @@ final class AppFlowTests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count) + text)
     }
 
+    private func toggleSwitch(_ element: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let value = (element.value as? String) == "1" ? "0" : "1"
+        tap(element, in: app, file: file, line: line)
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
+        if XCTWaiter.wait(for: [changed], timeout: 2) != .completed {
+            element.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+            let retried = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
+            XCTAssertEqual(XCTWaiter.wait(for: [retried], timeout: 2), .completed, file: file, line: line)
+        }
+        XCTAssertEqual(element.value as? String, value, file: file, line: line)
+    }
+
     func testFixedBillEditorUsesInstallmentsAndAccountGatesAutomaticRecording() {
         let app = application("bills"); app.launch(); openFixedBills(app)
         tap(app.buttons["addFixedFlow"], in: app)
@@ -1470,7 +1482,9 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["账户"], in: app)
         tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '合成银行卡 · 余额'")).firstMatch, in: app)
         XCTAssertTrue(app.switches["fixedFlowAutoPay"].isEnabled)
-        tap(app.switches["fixedFlowAutoPay"], in: app); tap(app.switches["fixedFlowEstimated"], in: app)
+        toggleSwitch(app.switches["fixedFlowAutoPay"], in: app); toggleSwitch(app.switches["fixedFlowEstimated"], in: app)
+        XCTAssertEqual(app.switches["fixedFlowAutoPay"].value as? String, "1")
+        XCTAssertEqual(app.switches["fixedFlowEstimated"].value as? String, "1")
         tap(app.buttons["saveManualSheet"], in: app)
         XCTAssertTrue(app.buttons["付了 自动测试"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '1/2 期' AND label CONTAINS '自动' AND label CONTAINS '大约'")).firstMatch.exists)
@@ -2835,7 +2849,7 @@ final class AppFlowTests: XCTestCase {
         let chip = app.buttons["entryIntoFixedSavings"]
         XCTAssertTrue(chip.waitForExistence(timeout: 5)); tap(chip, in: app)
         XCTAssertTrue(chip.isSelected)
-        XCTAssertTrue(app.staticTexts["afterEntryFixedSavings"].exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'entrySavingHint' AND label CONTAINS '→'")).firstMatch.exists)
         tap(natureButton("支出", in: app), in: app); assertGone(chip)
         tap(natureButton("收入", in: app), in: app); XCTAssertFalse(chip.isSelected)
         tap(app.buttons["cancelManualSheet"], in: app)
