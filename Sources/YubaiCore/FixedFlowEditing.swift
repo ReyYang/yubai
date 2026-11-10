@@ -125,6 +125,7 @@ extension FixedFlows {
         if old.installments != plan.installments { fields.append("共几期：\(old.installments.map(String.init) ?? "一直") → \(plan.installments.map(String.init) ?? "一直")") }
         if old.autoPay != plan.autoPay { fields.append("自动记：\(plan.autoPay ? "开" : "关")") }
         if old.estimated != plan.estimated { fields.append("金额会变：\(plan.estimated ? "开" : "关")") }
+        if old.intoFixedSavings != plan.intoFixedSavings { fields.append("存着不动：\(plan.intoFixedSavings ? "开" : "关")") }
         return "修改安排「\(plan.title)」" + (fields.isEmpty ? "" : "，" + fields.joined(separator: "，"))
     }
 }

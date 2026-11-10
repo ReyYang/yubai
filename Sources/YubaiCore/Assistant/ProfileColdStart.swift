@@ -27,7 +27,7 @@ public struct ProfileColdStart: Sendable {
             throw YubaiError.invalid("消费观对话只需要问题和回答。")
         }
         let profile = ledger.profile
-        let hasContent = !profile.generous.isEmpty || !profile.restrain.isEmpty || !profile.principles.isEmpty || (ledger.fixedSavings ?? 0) > 0 || ledger.savingRule != nil
+        let hasContent = !profile.generous.isEmpty || !profile.restrain.isEmpty || !profile.principles.isEmpty || ledger.fixedSavingsTotal(now: now) > 0 || ledger.savingRule != nil
         let revisit = mode == .revisit || (mode == .automatic && (hasContent || ledger.preferences.profileColdStartDone))
         let questions = messages.filter { $0.role == .assistant }.count
         let final = !revisit && questions >= 3

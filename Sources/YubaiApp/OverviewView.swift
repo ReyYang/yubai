@@ -184,6 +184,7 @@ struct SavingsView: View {
     private var sharing: Bool { if case .share = store.current.savingRule { true } else { false } }
     private var percent: Int { if case .share(let value) = store.current.savingRule { value } else { 20 } }
     private var target: Int64 { store.funds.savingTarget }
+    private var fixedTarget: Int64 { if case .fixed(let amount) = store.current.savingRule { amount } else { 0 } }
     var body: some View {
         Page(spacing: 24, topPadding: 8) {
             VStack(spacing: 4) {
@@ -207,7 +208,7 @@ struct SavingsView: View {
                         Text("要攒").yubaiFont(YubaiFont.row)
                         Spacer(minLength: 8)
                         Segmented(choices: [(false, "固定金额"), (true, "每笔进账留")], selection: Binding(get: { sharing }, set: { value in
-                            store.update("攒钱") { $0.savingRule = value ? .share(20) : .fixed(target) }
+                            store.update("攒钱") { $0.switchSavingMode(sharing: value) }
                         })).frame(maxWidth: 220)
                     }.frame(minHeight: 56)
                     EntryFormDivider()
@@ -228,7 +229,7 @@ struct SavingsView: View {
                                 if store.funds.cycleIsPayday { Text("发工资那天先留出").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                             }
                             Spacer()
-                            amountButton(target, field: .target)
+                            amountButton(fixedTarget, field: .target)
                         }.frame(minHeight: 56)
                     }
                     EntryFormDivider()
@@ -260,7 +261,7 @@ struct SavingsView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .sheet(item: $editing) { field in
-                SavingsAmountEditor(field: field, initial: field == .fixed ? fixed : field == .target ? target : Int64(percent) * 100) { value in
+                SavingsAmountEditor(field: field, initial: field == .fixed ? fixed : field == .target ? fixedTarget : Int64(percent) * 100) { value in
                     store.update("攒钱") { ledger in
                         switch field {
                         case .fixed: ledger.fixedSavings = value

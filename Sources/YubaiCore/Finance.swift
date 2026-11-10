@@ -20,6 +20,7 @@ public struct Funds: Equatable, Sendable {
     public var liquidStart: Int64 = 0
     public var cycleIncome: Int64 = 0
     public var savingTarget: Int64 = 0
+    public var fixedSavingsTotal: Int64 { emergency }
     public var cycleSpent: Int64 = 0
     public var dueRest: Int64 = 0
     public var dailyAllowance: Int64 = 0
@@ -236,9 +237,9 @@ public enum Finance {
         let uncertain = entries.filter { e in
             e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) } == true
         }.reduce(Int64(0)) { $0 + $1.amount }
-        let emergency = ledger.fixedSavings ?? 0
+        let emergency = ledger.fixedSavingsTotal(now: now)
         let cycleRows = entries.filter { $0.date >= cycle.start && $0.date <= now }
-        let income = cycleRows.filter { $0.nature == .income }.reduce(Int64(0)) { $0 + $1.amount }
+        let income = cycleRows.filter { $0.nature == .income && !$0.intoFixedSavings }.reduce(Int64(0)) { $0 + $1.amount }
         let spent = cycleRows.reduce(Int64(0)) { $0 + spendingAmount($1, ledger: ledger) }
         let savingTarget = ledger.savingRule?.target(income: income) ?? 0
         let liquid = cash - debt - emergency - goals - uncertain

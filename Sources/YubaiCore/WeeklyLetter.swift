@@ -55,6 +55,8 @@ public enum WeeklyLetter {
             snapshot.entries[i].rentID = nil; snapshot.entries[i].rentPeriod = nil
         }
         let laterSavings = ledger.savingHistory.filter { $0.cycleEnd >= Dates.day(date) }.reduce(Int64(0)) { $0 + $1.saved + $1.leftover }
+        // Rewind only the base's cycle merges. Finance derives earmarked income
+        // from the snapshot's entries and rewound posting boundaries separately.
         snapshot.fixedSavings = max(0, (ledger.fixedSavings ?? 0) - laterSavings)
         return snapshot
     }

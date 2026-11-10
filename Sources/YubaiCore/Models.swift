@@ -109,7 +109,9 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
 public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64
     public var recordedAt: Date? // In-app recording time; imports and old ledgers keep nil.
-    public var nature: Nature; public var accountID: UUID; public var otherAccountID: UUID?
+    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var intoFixedSavings = false { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var accountID: UUID; public var otherAccountID: UUID?
     public var title: String; public var category: String; public var note: String = ""
     public var purpose: String?
     public var partID: UUID?
@@ -125,10 +127,11 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var rentID: UUID?; public var rentPeriod: Date?
     public var attachmentID: UUID?; public var classificationReason: String = "手动选择"
     public var otherDate: Date?; public var mergedIntoID: UUID?; public var personalExpense: Int64?
-    public init(date: Date = Date(), amount: Int64, nature: Nature = .expense, accountID: UUID, title: String, category: String = Classification.pendingCategory) {
+    public init(date: Date = Date(), amount: Int64, nature: Nature = .expense, accountID: UUID, title: String, category: String = Classification.pendingCategory, intoFixedSavings: Bool = false) {
         self.date = date; self.amount = amount; self.nature = nature; self.accountID = accountID; self.title = title; self.category = category
+        self.intoFixedSavings = nature == .income && intoFixedSavings
     }
-    private enum CodingKeys: String, CodingKey { case partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
+    private enum CodingKeys: String, CodingKey { case intoFixedSavings, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -136,6 +139,8 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         amount = try c.decode(Int64.self, forKey: .amount)
         recordedAt = try c.decodeIfPresent(Date.self, forKey: .recordedAt)
         nature = try c.decode(Nature.self, forKey: .nature)
+        let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
+        intoFixedSavings = nature == .income && intoFixed
         accountID = try c.decode(UUID.self, forKey: .accountID)
         otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
         title = try c.decode(String.self, forKey: .title)
@@ -171,6 +176,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id); try c.encode(date, forKey: .date); try c.encode(amount, forKey: .amount)
         try c.encode(nature, forKey: .nature); try c.encode(accountID, forKey: .accountID)
+        if intoFixedSavings { try c.encode(true, forKey: .intoFixedSavings) }
         try c.encode(title, forKey: .title); try c.encode(category, forKey: .category)
         try c.encodeIfPresent(recordedAt, forKey: .recordedAt); try c.encodeIfPresent(otherAccountID, forKey: .otherAccountID)
         if !note.isEmpty { try c.encode(note, forKey: .note) }
@@ -210,8 +216,13 @@ public enum Frequency: String, Codable, CaseIterable, Identifiable, Sendable {
 }
 public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var amount: Int64; public var dueDate: Date
-    public var frequency: Frequency; public var inflow: Bool; public var accountID: UUID?
-    public var category: String; public var nature: Nature; public var active = true
+    public var frequency: Frequency
+    public var inflow: Bool { didSet { if !inflow { intoFixedSavings = false } } }
+    public var accountID: UUID?
+    public var category: String
+    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var intoFixedSavings = false { didSet { if nature != .income || !inflow { intoFixedSavings = false } } }
+    public var active = true
     public var endDate: Date?; public var stoppedAt: Date?; public var note = ""
     public var autoPay = false; public var autoPaySince: Date?
     public var installments: Int?; public var estimated = false
@@ -225,10 +236,11 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     /// A period still needs a live linked payment to remain paid.
     public var settledOccurrences: [Date] = []
     public var estimatedAmountSince: Date?
-    public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = Classification.pendingCategory, nature: Nature = .expense) {
+    public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = Classification.pendingCategory, nature: Nature = .expense, intoFixedSavings: Bool = false) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
+        self.intoFixedSavings = nature == .income && inflow && intoFixedSavings
     }
-    private enum CodingKeys: String, CodingKey { case id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
+    private enum CodingKeys: String, CodingKey { case intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
@@ -236,6 +248,8 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         frequency = try c.decode(Frequency.self, forKey: .frequency); inflow = try c.decode(Bool.self, forKey: .inflow)
         accountID = try c.decodeIfPresent(UUID.self, forKey: .accountID)
         category = try c.decode(String.self, forKey: .category); nature = try c.decode(Nature.self, forKey: .nature)
+        let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
+        intoFixedSavings = nature == .income && inflow && intoFixed
         active = try c.decodeIfPresent(Bool.self, forKey: .active) ?? true; endDate = try c.decodeIfPresent(Date.self, forKey: .endDate)
         stoppedAt = try c.decodeIfPresent(Date.self, forKey: .stoppedAt)
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
@@ -701,8 +715,21 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var partLeftover: PartLeftover = .mergeIntoFixedSavings { didSet { calculations = LedgerCalculations() } }
     public var partCarry: [UUID: Int64] = [:] { didSet { calculations = LedgerCalculations() } }
     public var partCarryCycleStart: Date? { didSet { calculations = LedgerCalculations() } }
+    /// User-set base plus closed-cycle merges. Read fixedSavingsTotal(now:) for
+    /// the total including earmarked income; recording income never changes this base.
     public var fixedSavings: Int64? { didSet { calculations = LedgerCalculations() } }
-    public var savingRule: SavingRule? { didSet { calculations = LedgerCalculations() } }
+    public var savingRule: SavingRule? {
+        didSet {
+            switch savingRule {
+            case .fixed(let amount): lastFixedSavingTarget = amount
+            case .share(let percent): lastSavingSharePercent = percent
+            case nil: break
+            }
+            calculations = LedgerCalculations()
+        }
+    }
+    public var lastFixedSavingTarget: Int64? { didSet { calculations = LedgerCalculations() } }
+    public var lastSavingSharePercent: Int? { didSet { calculations = LedgerCalculations() } }
     public var savingHistory: [CycleSaving] = [] { didSet { calculations = LedgerCalculations() } }
     public var goals: [Goal] = [] { didSet { calculations = LedgerCalculations() } }
     public var rents: [Rent] = [] { didSet { calculations = LedgerCalculations() } }
@@ -760,7 +787,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -806,6 +833,14 @@ public struct Ledger: Codable, Equatable, Sendable {
         partCarryCycleStart = try c.decodeIfPresent(Date.self, forKey: .partCarryCycleStart)
         fixedSavings = try c.decodeIfPresent(Int64.self, forKey: .fixedSavings) ?? profile.floorAmount
         savingRule = try c.decodeIfPresent(SavingRule.self, forKey: .savingRule)
+        lastFixedSavingTarget = try c.decodeIfPresent(Int64.self, forKey: .lastFixedSavingTarget)
+        lastSavingSharePercent = try c.decodeIfPresent(Int.self, forKey: .lastSavingSharePercent)
+        // Property observers do not run during decoding. Seed memory from the active rule in old backups too.
+        switch savingRule {
+        case .fixed(let amount): lastFixedSavingTarget = amount
+        case .share(let percent): lastSavingSharePercent = percent
+        case nil: break
+        }
         savingHistory = try c.decodeIfPresent([CycleSaving].self, forKey: .savingHistory) ?? []
         cards = try c.decodeIfPresent([ButlerCard].self, forKey: .cards) ?? cards
         pendingChanges = try c.decodeIfPresent([ChangeSet].self, forKey: .pendingChanges) ?? pendingChanges
@@ -854,6 +889,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encodeIfPresent(partCarryCycleStart, forKey: .partCarryCycleStart)
         try c.encodeIfPresent(fixedSavings, forKey: .fixedSavings)
         try c.encodeIfPresent(savingRule, forKey: .savingRule)
+        try c.encodeIfPresent(lastFixedSavingTarget, forKey: .lastFixedSavingTarget)
+        try c.encodeIfPresent(lastSavingSharePercent, forKey: .lastSavingSharePercent)
         try c.encode(savingHistory, forKey: .savingHistory)
         try c.encode(goals, forKey: .goals)
         try c.encode(rents, forKey: .rents)
@@ -892,6 +929,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.partCarryCycleStart == rhs.partCarryCycleStart &&
         lhs.fixedSavings == rhs.fixedSavings &&
         lhs.savingRule == rhs.savingRule &&
+        lhs.lastFixedSavingTarget == rhs.lastFixedSavingTarget &&
+        lhs.lastSavingSharePercent == rhs.lastSavingSharePercent &&
         lhs.savingHistory == rhs.savingHistory &&
         lhs.goals == rhs.goals &&
         lhs.rents == rhs.rents &&
@@ -948,6 +987,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         else { throw YubaiError.invalid("分项的金额、成数或分类无效。") }
         guard fixedSavings.map({ (0...Money.limit).contains($0) }) ?? true,
               savingRule?.isValid ?? true,
+              lastFixedSavingTarget.map({ SavingRule.fixed($0).isValid }) ?? true,
+              lastSavingSharePercent.map({ SavingRule.share($0).isValid }) ?? true,
               savingHistory.count <= 5000,
               Set(savingHistory.map(\.cycleStart)).count == savingHistory.count,
               savingHistory.allSatisfy({ dateValid($0.cycleStart) && dateValid($0.cycleEnd) && $0.cycleStart <= $0.cycleEnd &&
@@ -1001,6 +1042,8 @@ public struct Ledger: Codable, Equatable, Sendable {
                 guard rents.contains(where: { $0.id == rID }), e.rentPeriod != nil, e.nature == .expense || e.nature == .contribution else { throw YubaiError.invalid("房租记录需要保留支出或收到分摊的性质；请先解除关联再修改。") }
             }
         }
+        // Include future postings too, so advancing time cannot invalidate a stored total.
+        guard fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存着不动的总额超出范围。") }
         let refunds = Dictionary(grouping: entries.lazy.filter { $0.deletedAt == nil && $0.nature == .refund && $0.relatedEntryID != nil }, by: { $0.relatedEntryID! })
         if !refunds.isEmpty {
             let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })

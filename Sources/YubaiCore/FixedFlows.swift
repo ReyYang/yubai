@@ -118,7 +118,7 @@ extension FixedFlows {
         let day = Dates.day(occurrence); let today = Dates.day(now)
         let draft = EntryDraft(date: ManualBookkeeping.entryDate(for: min(day, today), now: now), amount: amount ?? remaining,
                                amountConfirmed: true, nature: plan.nature, accountID: account, title: plan.title, category: plan.category,
-                               planID: plan.id, occurrence: day)
+                               planID: plan.id, occurrence: day, intoFixedSavings: plan.intoFixedSavings)
         let c = Dates.calendar; let label = "\(c.component(.month, from: day))月\(c.component(.day, from: day))日"
         var change = ChangeSet(source: "用户操作", reason: "「\(plan.title)」\(label)这期" + (plan.inflow ? "收到了" : "付了"), items: [.addEntry(draft)])
         change.createdAt = now
@@ -157,7 +157,7 @@ extension FixedFlows {
                   Dates.day(occurrence.date) >= Dates.day(plan.autoPaySince ?? plan.dueDate), Dates.day(occurrence.date) <= today else { return nil }
             let draft = EntryDraft(date: ManualBookkeeping.entryDate(for: Dates.day(occurrence.date), now: now), amount: occurrence.amount,
                                    amountConfirmed: true, nature: plan.nature, accountID: account, title: plan.title, category: plan.category,
-                                   planID: id, occurrence: Dates.day(occurrence.date))
+                                   planID: id, occurrence: Dates.day(occurrence.date), intoFixedSavings: plan.intoFixedSavings)
             return .addEntry(draft)
         }
         guard !items.isEmpty else { return nil }
