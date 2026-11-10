@@ -1415,8 +1415,11 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["要收"], in: app)
         XCTAssertEqual(category.value as? String, "其他收入")
         tap(category, in: app)
-        XCTAssertTrue(app.buttons["entryCategory_工资奖金"].exists); XCTAssertFalse(app.buttons["会员订阅"].exists)
-        tap(app.buttons["entryCategory_工资奖金"], in: app)
+        // Fixed-flow categories are Menu items exposed by their titles.
+        let salary = app.buttons["工资奖金"]
+        XCTAssertTrue(salary.waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["会员订阅"].exists)
+        tap(salary, in: app)
+        XCTAssertEqual(category.value as? String, "工资奖金")
         tap(app.buttons["要付"], in: app)
         XCTAssertEqual(category.value as? String, "其他支出")
         tap(app.buttons["cancelManualSheet"], in: app)
@@ -1454,8 +1457,11 @@ final class AppFlowTests: XCTestCase {
         enterAmount("10", identifier: "fixedFlowAmount", in: app)
         tap(app.textFields["名字"], in: app); app.textFields["名字"].typeText("自动测试")
         tap(app.buttons["fixedFlowSchedule"], in: app)
-        XCTAssertTrue(app.datePickers.firstMatch.waitForExistence(timeout: 5))
-        tap(app.buttons["完成"], in: app)
+        let schedule = app.popovers.firstMatch
+        XCTAssertTrue(schedule.datePickers.firstMatch.waitForExistence(timeout: 5))
+        // The name keyboard can also expose a button labeled 完成.
+        tap(schedule.buttons["完成"], in: app)
+        assertGone(schedule)
         tap(app.buttons["增加期数"], in: app); tap(app.buttons["增加期数"], in: app)
         tap(app.buttons["账户"], in: app)
         tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '合成银行卡 · 余额'")).firstMatch, in: app)
