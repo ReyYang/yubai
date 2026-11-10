@@ -100,6 +100,17 @@ public enum SpendingParts {
         }
     }
 
+    /// Ranked net spending in the three completed calendar months. Refunds use
+    /// the original expense category and personal shares follow Finance.
+    public static func topCategories(ledger: Ledger, now: Date = Date()) -> [String] {
+        let end = Dates.calendar.dateInterval(of: .month, for: now)!.start
+        let start = Dates.addMonths(-3, to: end)
+        let rows = Finance.cashFlow(ledger, during: DateInterval(start: start, end: end)).spendingByCategory
+            .filter { $0.amount > 0 && $0.category != Classification.pendingCategory }
+            .sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
+        return rows.isEmpty ? ["餐饮", "购物", "交通", "娱乐"] : Array(rows.prefix(4).map(\.category))
+    }
+
     /// Pure suggestion over up to three completed Finance cycles. A cycle before
     /// the earliest recorded row is unavailable; zero-spend categories still count.
     public static func suggestions(ledger: Ledger, now: Date = Date()) -> [SpendingPartSuggestion] {

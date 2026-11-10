@@ -1811,18 +1811,22 @@ final class AppFlowTests: XCTestCase {
 
     func testTabButtonsPreserveInsightWindowWithoutPaging() {
         let app = application("ask"); app.launch()
-        tap(app.buttons["tab_insights"], in: app); tap(app.buttons["本周"], in: app)
+        tap(app.buttons["tab_insights"], in: app); tap(app.buttons["今年"], in: app)
         for tab in ["tab_settings", "tab_ledger", "tab_insights"] { tap(app.buttons[tab], in: app); assertSelectedTab(tab, in: app) }
-        XCTAssertTrue(app.buttons["本周"].isSelected)
+        XCTAssertTrue(app.buttons["今年"].isSelected)
         XCTAssertFalse(addEntryTab(app).exists)
     }
 
-    func testLedgerSearchOwnsFiltersAndPreservesRootSelection() {
+    func testLedgerSearchStaysOnHomeAndCancelRestoresHeader() {
         let app = application("entries"); app.launch(); tap(app.buttons["entriesSearchButton"], in: app)
         XCTAssertTrue(app.textFields["entriesSearch"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.otherElements["mainNavigation"].isHittable)
-        tap(app.buttons["支出"], in: app)
-        tap(app.buttons["ledgerBack"], in: app)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["ledgerBack"].exists)
+        tap(app.buttons["entriesFilter_支出"], in: app)
+        tap(app.buttons["取消"], in: app)
+        assertGone(app.textFields["entriesSearch"])
+        XCTAssertTrue(app.buttons["entriesSearchButton"].isHittable)
+        XCTAssertTrue(app.buttons["entriesFilter_支出"].isSelected)
         assertSelectedTab("tab_ledger", in: app)
     }
 
@@ -1933,21 +1937,22 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
     }
 
-    func testSearchPageOwnsMonthFiltersAndSearch() {
+    func testHomeSearchFiltersAllMonthsAndCancelClearsQuery() {
         let app = application("ask"); app.launch(); tap(app.buttons["entriesSearchButton"], in: app)
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' "))
         XCTAssertTrue(app.textFields["entriesSearch"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         tap(app.buttons["entriesFilter_收入"], in: app); XCTAssertEqual(rows.count, 0)
         tap(app.buttons["entriesFilter_支出"], in: app); XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
         tap(app.buttons["entriesFilter_全部"], in: app)
-        tap(app.buttons["entriesPreviousMonth"], in: app); XCTAssertEqual(rows.count, 0)
-        tap(app.buttons["entriesNextMonth"], in: app)
         let search = app.textFields["entriesSearch"]
-        tap(search, in: app); search.typeText("32.00")
+        search.typeText("32.00")
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
         search.typeText("999"); XCTAssertTrue(app.staticTexts["没有找到这笔"].waitForExistence(timeout: 5))
-        tap(app.buttons["ledgerBack"], in: app)
+        tap(app.buttons["取消"], in: app)
         assertSelectedTab("tab_ledger", in: app)
+        tap(app.buttons["entriesSearchButton"], in: app)
+        XCTAssertEqual(app.textFields["entriesSearch"].value as? String, "搜索")
     }
 
     func testLedgerSwipeDeleteAndUndoRestoresRow() {
@@ -2241,14 +2246,18 @@ final class AppFlowTests: XCTestCase {
         }
     }
 
-    func testLedgerSearchKeyboardLeavesNavigationOnThePushedPage() {
+    func testLedgerSearchFocusesImmediatelyAndCancelDismissesKeyboard() {
         let app = application("entries"); app.launch(); tap(app.buttons["entriesSearchButton"], in: app)
         let field = app.textFields["entriesSearch"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5)); tap(field, in: app); field.typeText("合成")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        field.typeText("合成")
         XCTAssertFalse(app.otherElements["mainNavigation"].isHittable)
-        tap(app.buttons["ledgerBack"], in: app)
+        tap(app.buttons["取消"], in: app)
+        assertGone(app.keyboards.firstMatch)
         assertSelectedTab("tab_ledger", in: app)
         XCTAssertTrue(addEntryTab(app).isHittable)
+        XCTAssertTrue(app.buttons["entriesSearchButton"].isHittable)
     }
 
     func testManualKeypadOperatorsAndPurposeKeyboard() {
@@ -2826,4 +2835,43 @@ final class MotionStateTests: XCTestCase {
         let edit = MotionEntryChange(previous: [old], previousActive: [old], currentActive: [old])
         XCTAssertTrue(edit.saved.isEmpty); XCTAssertTrue(edit.deleted.isEmpty)
     }
+    func testLedgerMonthWheelRemainsOnHome() {
+        let app = application("round40"); app.launch()
+        let month = app.buttons.matching(identifier: "entriesMonth").firstMatch
+        tap(month, in: app)
+        XCTAssertTrue(app.pickerWheels.firstMatch.waitForExistence(timeout: 5))
+        let previous = Calendar.current.date(byAdding: .month, value: -1, to: Date())!
+        let year = Calendar.current.component(.year, from: previous)
+        let number = Calendar.current.component(.month, from: previous)
+        app.pickerWheels.element(boundBy: 0).adjust(toPickerWheelValue: "(year) 年")
+        app.pickerWheels.element(boundBy: 1).adjust(toPickerWheelValue: "(number) 月")
+        tap(app.buttons["saveManualSheet"], in: app)
+        assertGone(app.pickerWheels.firstMatch)
+        XCTAssertTrue(app.buttons["entriesSearchButton"].isHittable)
+        XCTAssertFalse(app.buttons["ledgerBack"].exists)
+    }
+
+    func testIncomeFixedSavingsChipResetsWhenDirectionChanges() {
+        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        tap(app.buttons["收入"], in: app)
+        let chip = app.buttons["entryIntoFixedSavings"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5)); tap(chip, in: app)
+        XCTAssertTrue(chip.isSelected)
+        XCTAssertTrue(app.staticTexts["afterEntryFixedSavings"].exists)
+        tap(app.buttons["支出"], in: app); assertGone(chip)
+        tap(app.buttons["收入"], in: app); XCTAssertFalse(chip.isSelected)
+        tap(app.buttons["cancelManualSheet"], in: app)
+    }
+
+    func testEmptyPartsUsesSingleHeaderAndCategoryStarters() {
+        let app = application("manual"); app.launch(); tap(app.buttons["tab_settings"], in: app)
+        tap(app.buttons["openSpendingParts"], in: app)
+        XCTAssertTrue(app.staticTexts["从常花的分类开始"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["完成分项设置"].exists)
+        XCTAssertTrue(app.buttons["新分项，输入分项名字"].exists)
+        tap(app.buttons["startPart_餐饮"], in: app)
+        assertGone(app.staticTexts["从常花的分类开始"])
+        XCTAssertTrue(app.staticTexts["餐饮"].firstMatch.exists)
+    }
+
 }

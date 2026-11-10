@@ -13,17 +13,73 @@ struct CloudAISettingsSection: View {
     @State private var status = ""
     @State private var testing = false
     var body: some View {
-        Section("DeepSeek 密钥") {
-            LabeledContent("密钥", value: hasKey ? "钥匙串 ✓" : (configured ? "环境变量" : "未配置"))
-                .accessibilityLabel(hasKey ? "密钥已保存在本机钥匙串，不进入账本或备份" : (configured ? "使用开发环境的密钥" : "还没配置密钥"))
-            SecureField("DeepSeek API 密钥", text: $key).autocorrectionDisabled().privacySensitive()
-            Button("保存或替换密钥") { saveKey() }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            Button("删掉") { deleteKey() }.buttonStyle(DestructiveButtonStyle())
-            Button(testing ? "正在连接…" : "测试连接") { testConnection() }.disabled(!configured || testing)
-            if !status.isEmpty { Text(status).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted) }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+        Page(spacing: 16, topPadding: 8) {
+            Card(style: .list) {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("DeepSeek").yubaiFont(YubaiFont.row)
+                        Spacer(minLength: 8)
+                        HStack(spacing: 4) {
+                            if configured { Image(systemName: "lock") }
+                            Text(configured ? "已配好" : "未配好")
+                        }.yubaiFont(YubaiFont.caption).foregroundStyle(configured ? YubaiColor.brandInk : YubaiColor.amberInk)
+                            .padding(.horizontal, 12).frame(minHeight: 28).background(configured ? YubaiColor.brandTint : YubaiColor.amberTint, in: Capsule()).fixedSize()
+                    }.frame(minHeight: 48).accessibilityIdentifier("cloudKeyStatus")
+                    if configured {
+                        EntryFormDivider()
+                        HStack {
+                            Text("存在").yubaiFont(YubaiFont.row)
+                            Spacer(minLength: 8)
+                            Text(hasKey ? "本机钥匙串" : "环境变量").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                        }.frame(minHeight: 48)
+                    }
+                }
+            }
+            if configured {
+                VStack(spacing: 8) {
+                    Button(testing ? "正在连接…" : "测试连接") { testConnection() }.buttonStyle(SecondaryButtonStyle()).disabled(testing)
+                        .accessibilityIdentifier("testCloudKey")
+                    if !status.isEmpty { statusText }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("换一个").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, 16)
+                    keyInput
+                    saveButton
+                }.padding(.top, 8)
+                if hasKey {
+                    Button("删掉密钥") { deleteKey() }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
+                        .frame(maxWidth: .infinity, minHeight: 44).buttonStyle(PressButtonStyle()).padding(.top, 24)
+                        .accessibilityIdentifier("deleteCloudKey")
+                }
+            } else {
+                keyInput
+                saveButton
+                if !status.isEmpty { statusText }
+            }
+        }.safeAreaInset(edge: .top, spacing: 0) { LedgerPageHeader(title: "密钥", backTitle: "智能与隐私").padding(.horizontal, 20) }
+            .navigationTitle("密钥").yubaiNavigation().accessibilityIdentifier("cloudKeyPage")
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
             .onAppear { configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey }
             .onDisappear { key = "" }
+    }
+    private var keyInput: some View {
+        SecureField(configured ? "新的密钥" : "sk-••••••••••••", text: $key).autocorrectionDisabled().privacySensitive()
+            .yubaiFont(YubaiFont.row).padding(.horizontal, 16).frame(minHeight: 52)
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .accessibilityLabel("DeepSeek 密钥").accessibilityIdentifier("cloudKeyInput")
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
+    }
+    private var saveButton: some View {
+        Button("保存密钥") { saveKey() }.buttonStyle(PrimaryButtonStyle()).disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityIdentifier("saveCloudKey")
+    }
+    private var statusText: some View {
+        Text(status).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            .frame(maxWidth: .infinity, alignment: .center).accessibilityIdentifier("cloudKeyConnectionStatus")
     }
     @MainActor private func saveKey() {
         do { try APIKeyStore.shared.save(key); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已保存" }
@@ -41,7 +97,7 @@ struct CloudAISettingsSection: View {
             do {
                 _ = try await client.chat(system: "请只回复：连接正常。", user: "你好", maxTokens: 64, thinking: false, purpose: "测试连接")
                 IntelligenceRuntime.cloud.succeeded(model: client.configuration.model)
-                status = "连接正常。"
+                status = "连接正常"
             } catch { IntelligenceRuntime.cloud.failed(error, model: client.configuration.model); status = error.localizedDescription }
         }
     }

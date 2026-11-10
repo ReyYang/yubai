@@ -292,6 +292,9 @@ public enum EntryTimeline {
         public let spending: Int64
         public let income: Int64
         public let days: [Day]
+        public init(date: Date, spending: Int64, income: Int64, days: [Day]) {
+            self.date = date; self.spending = spending; self.income = income; self.days = days
+        }
     }
     public struct Snapshot: Equatable, Sendable {
         public let spending: Int64
@@ -316,10 +319,10 @@ public enum EntryTimeline {
     }
     /// Deterministic for the supplied ledger, query, month and calendar; cache at the ledger revision boundary.
     public static func snapshot(sortedEntries: [Entry], ledger: Ledger, month: Date, search: String = "", filter: Filter = .all,
-                                calendar: Calendar = Dates.calendar) -> Snapshot {
+                                calendar: Calendar = Dates.calendar, allMonths: Bool = false) -> Snapshot {
         guard let interval = calendar.dateInterval(of: .month, for: month) else { return Snapshot(spending: 0, income: 0, days: []) }
         let searching = !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let entries = sortedEntries.filter { $0.deletedAt == nil && (searching || ($0.date >= interval.start && $0.date < interval.end)) }
+        let entries = sortedEntries.filter { $0.deletedAt == nil && (allMonths || searching || ($0.date >= interval.start && $0.date < interval.end)) }
         let rents = Dictionary(uniqueKeysWithValues: ledger.rents.map { ($0.id, $0) })
         var spending: Int64 = 0; var income: Int64 = 0
         for entry in entries {
@@ -328,34 +331,34 @@ public enum EntryTimeline {
         }
         let symbols = Dictionary(uniqueKeysWithValues: ledger.categories.map { ($0.id, $0.symbol) })
         let grouped = months(sortedEntries: entries, ledger: ledger, search: search, filter: filter, calendar: calendar)
-        let days = grouped.flatMap(\.days).map { day in
-            Day(date: day.date, spending: day.spending, income: day.income, entries: day.entries.map { entry in
-                let category = ledger.resolveCategory(entry.category, income: entry.nature.categoryIncome)
-                let uncategorized = isUncategorized(entry)
-                let name = uncategorized ? "没分类" : Classification.displayCategory(category)
-                let note = entry.note.isEmpty ? (entry.displayTitle == name ? "" : entry.displayTitle) : entry.note
-                let symbol: String
-                if let known = symbols[CategoryNamespace.key(category, income: entry.nature.categoryIncome)] { symbol = known }
-                else {
-                    switch category {
-                    case "日用", "购物": symbol = "bag"
-                    case "娱乐": symbol = "sparkles"
-                    case "工资", "奖金": symbol = "banknote"
-                    case "兼职": symbol = "hammer"
-                    case "理财收益": symbol = "chart.line.uptrend.xyaxis"
-                    default: symbol = entry.nature.symbol
-                    }
-                }
-                return Row(id: entry.id, amount: entry.amount, inflow: entry.nature.inflow, intoFixedSavings: entry.intoFixedSavings,
-                           uncategorized: uncategorized, categoryName: name, note: note, symbol: symbol)
-            })
-        }
         let displayMonths = grouped.map { group in
-            Month(date: group.date, spending: group.spending, income: group.income,
-                  days: days.filter { calendar.isDate($0.date, equalTo: group.date, toGranularity: .month) })
+            let days = group.days.map { day in
+                Day(date: day.date, spending: day.spending, income: day.income, entries: day.entries.map { entry in
+                    let category = ledger.resolveCategory(entry.category, income: entry.nature.categoryIncome)
+                    let uncategorized = isUncategorized(entry)
+                    let name = uncategorized ? "没分类" : Classification.displayCategory(category)
+                    let note = entry.note.isEmpty ? (entry.displayTitle == name ? "" : entry.displayTitle) : entry.note
+                    let symbol: String
+                    if let known = symbols[CategoryNamespace.key(category, income: entry.nature.categoryIncome)] { symbol = known }
+                    else {
+                        switch category {
+                        case "日用", "购物": symbol = "bag"
+                        case "娱乐": symbol = "sparkles"
+                        case "工资", "奖金": symbol = "banknote"
+                        case "兼职": symbol = "hammer"
+                        case "理财收益": symbol = "chart.line.uptrend.xyaxis"
+                        default: symbol = entry.nature.symbol
+                        }
+                    }
+                    return Row(id: entry.id, amount: entry.amount, inflow: entry.nature.inflow, intoFixedSavings: entry.intoFixedSavings,
+                               uncategorized: uncategorized, categoryName: name, note: note, symbol: symbol)
+                })
+            }
+            return Month(date: group.date, spending: group.spending, income: group.income, days: days)
         }
-        return Snapshot(spending: searching ? grouped.reduce(0) { $0 + $1.spending } : spending,
-                        income: searching ? grouped.reduce(0) { $0 + $1.income } : income, days: days, months: displayMonths)
+        let days = displayMonths.flatMap(\.days)
+        return Snapshot(spending: (allMonths || searching) ? grouped.reduce(0) { $0 + $1.spending } : spending,
+                        income: (allMonths || searching) ? grouped.reduce(0) { $0 + $1.income } : income, days: days, months: displayMonths)
     }
     public static func months(sortedEntries: [Entry], ledger: Ledger, search: String = "", filter: Filter = .all,
                               calendar: Calendar = Dates.calendar) -> [EntryMonth] {

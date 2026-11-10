@@ -986,6 +986,13 @@ extension View {
         self
         #endif
     }
+    func hidesListDisclosure() -> some View {
+        #if os(iOS)
+        self.navigationLinkIndicatorVisibility(.hidden)
+        #else
+        self
+        #endif
+    }
     func floatingSurface<S: Shape>(in shape: S, tint: Color? = nil, shadow: YubaiShadow.Token = YubaiShadow.float) -> some View { modifier(FloatingSurface(shape: shape, tint: tint, shadow: shadow)) }
     func yubaiZoomSource(_ id: String) -> some View { modifier(ContentZoom(id: id, source: true)) }
     func yubaiZoomDestination(_ id: String?) -> some View { modifier(ContentZoom(id: id)) }
@@ -2241,6 +2248,7 @@ struct TabRootHeader: View {
     @Environment(AppStore.self) private var store
     let title: String
     var showsAmountVisibility = false
+    var onSearch: (() -> Void)? = nil
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -2255,7 +2263,7 @@ struct TabRootHeader: View {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 if showsAmountVisibility {
-                    TabNavigationLink(.ledgerSearch) { EntriesView() } label: {
+                    Button { onSearch?() } label: {
                         Image(systemName: "magnifyingglass").font(.system(size: 18))
                             .frame(width: 40, height: 40).controlSurface(in: Circle())
                     }.buttonStyle(RoundPressStyle()).accessibilityLabel("搜索账目").accessibilityIdentifier("entriesSearchButton")
@@ -2269,21 +2277,32 @@ struct TabRootHeader: View {
 /// Pushed pages reserve identical side columns so their title never drifts.
 struct LedgerPageHeader: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
     let title: String
     let backTitle: String
     var trailing: String = ""
     var body: some View {
-        HStack(spacing: 0) {
-            Button { dismiss() } label: {
-                HStack(spacing: 4) { Image(systemName: "chevron.left"); Text(backTitle) }
-                    .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.brandInk)
-                    .frame(width: 88, height: 48, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerBack")
-            Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity)
-            Text(trailing).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                .frame(width: 88, height: 48, alignment: .trailing)
+        if textSize.isAccessibilitySize {
+            VStack(spacing: 0) {
+                Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity, minHeight: 48)
+                HStack(spacing: 8) { backButton; Spacer(minLength: 0); trailingLabel }
+            }
+        } else {
+            HStack(spacing: 0) {
+                backButton.frame(width: 88, height: 48, alignment: .leading)
+                Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity)
+                trailingLabel.frame(width: 88, height: 48, alignment: .trailing)
+            }
         }
     }
+    private var backButton: some View {
+        Button { dismiss() } label: {
+            HStack(spacing: 4) { Image(systemName: "chevron.left"); Text(backTitle) }
+                .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.brandInk)
+                .frame(minHeight: 48, alignment: .leading).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerBack")
+    }
+    private var trailingLabel: some View { Text(trailing).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
 }
 
 struct LedgerSheetHeader: View {

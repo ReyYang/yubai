@@ -165,3 +165,84 @@ final class SavingRuleLaterTests: XCTestCase {
         XCTAssertFalse(decoded.savingHistory[0].tracked)
     }
 }
+
+
+extension SavingCycleTests {
+    func testCycleAnchorRoundTripLegacyEqualityAndInvalidValue() throws {
+        var l = ledger()
+        let automatic = l
+        XCTAssertNil(try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(l)).cycleAnchor)
+        for anchor in [CycleAnchor.calendarMonth, .payday] {
+            l.cycleAnchor = anchor
+            XCTAssertNotEqual(l, automatic)
+            try l.validate()
+            XCTAssertEqual(try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(l)), l)
+        }
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(l)) as? [String: Any])
+        object.removeValue(forKey: "cycleAnchor")
+        XCTAssertNil(try JSONDecoder().decode(Ledger.self, from: JSONSerialization.data(withJSONObject: object)).cycleAnchor)
+        object["cycleAnchor"] = "invalid"
+        XCTAssertThrowsError(try JSONDecoder().decode(Ledger.self, from: JSONSerialization.data(withJSONObject: object)))
+    }
+
+    func testExplicitCalendarAnchorOverridesSalaryAndInvalidatesFunds() {
+        var l = ledger(); l.savingRule = .share(20)
+        l.plans = [Plan(title: "工资", amount: 800_000, dueDate: date("2026-09-15"), frequency: .monthly, inflow: true, nature: .income)]
+        l.spendingParts = [SpendingPart(name: "餐饮", amount: 50_000, categories: ["餐饮"])]
+        l.entries = [Entry(date: date("2026-10-20"), amount: 100_000, nature: .income, accountID: l.accounts[0].id, title: "收入"),
+                     Entry(date: date("2026-10-21"), amount: 12_000, accountID: l.accounts[0].id, title: "吃饭", category: "餐饮")]
+        XCTAssertEqual(Finance.funds(l, now: now).cycleIncome, 100_000)
+        XCTAssertEqual(SpendingParts.summary(l, now: now).parts[0].spent, 12_000)
+        let automatic = l
+        l.cycleAnchor = .calendarMonth
+        let funds = Finance.funds(l, now: now)
+        XCTAssertFalse(funds.cycleIsPayday)
+        XCTAssertEqual(funds.cycleStart, date("2026-11-01")); XCTAssertEqual(funds.cycleEnd, date("2026-11-30"))
+        XCTAssertEqual(funds.cycleIncome, 0); XCTAssertEqual(funds.savingTarget, 0)
+        XCTAssertEqual(SpendingParts.summary(l, now: now).parts[0].spent, 0)
+        XCTAssertEqual(WeeklyLetter.available(l, at: now), funds.available)
+        l.cycleAnchor = .payday
+        XCTAssertEqual(Finance.funds(l, now: now), Finance.funds(automatic, now: now))
+    }
+
+    func testExplicitPaydayNeedsMonthlyIncomeAndPreservesEndOfMonth() {
+        var l = ledger(); l.cycleAnchor = .payday
+        XCTAssertFalse(Finance.cycle(in: l, now: now).payday)
+        l.plans = [Plan(title: "每周收入", amount: 5000, dueDate: date("2026-11-01"), frequency: .weekly, inflow: true, nature: .income)]
+        XCTAssertFalse(Finance.cycle(in: l, now: now).payday)
+        l.plans.append(Plan(title: "工资", amount: 800_000, dueDate: date("2026-01-31"), frequency: .monthly, inflow: true, nature: .income))
+        let cycle = Finance.cycle(in: l, now: date("2026-03-01"))
+        XCTAssertTrue(cycle.payday); XCTAssertEqual(cycle.start, date("2026-02-28")); XCTAssertEqual(cycle.end, date("2026-03-30"))
+        l.plans[1].active = false
+        XCTAssertFalse(Finance.cycle(in: l, now: now).payday)
+    }
+
+    func testCalendarAnchorClosesCalendarPeriodWithSalaryOnlyOnce() {
+        var l = ledger(); l.cycleAnchor = .calendarMonth; l.savingRule = .fixed(10_000)
+        l.plans = [Plan(title: "工资", amount: 800_000, dueDate: date("2026-09-15"), frequency: .monthly, inflow: true, nature: .income)]
+        Savings.closeCycles(&l, now: now)
+        XCTAssertEqual(l.savingHistory.first?.cycleStart, date("2026-10-01"))
+        XCTAssertEqual(l.savingHistory.first?.cycleEnd, date("2026-10-31"))
+        let saved = l; Savings.closeCycles(&l, now: now); XCTAssertEqual(l, saved)
+    }
+}
+
+extension SavingCycleTests {
+    func testChangingCycleAnchorNeverMergesAnOverlappingClosedPeriodTwice() {
+        var l = ledger(); l.savingRule = .fixed(10_000); l.cycleAnchor = .calendarMonth
+        l.plans = [Plan(title: "工资", amount: 800_000, dueDate: date("2026-09-10"), frequency: .monthly, inflow: true, nature: .income)]
+        Savings.closeCycles(&l, now: date("2026-11-20"))
+        let base = l.fixedSavings, history = l.savingHistory
+        l.cycleAnchor = .payday
+        Savings.closeCycles(&l, now: date("2026-11-20"))
+        XCTAssertEqual(l.fixedSavings, base); XCTAssertEqual(l.savingHistory, history)
+        Savings.closeCycles(&l, now: date("2026-12-20"))
+        XCTAssertEqual(l.savingHistory.count, 2)
+        XCTAssertEqual(l.savingHistory.last?.cycleStart, date("2026-11-10"))
+        XCTAssertEqual(l.savingHistory.last?.cycleEnd, date("2026-12-09"))
+        let closed = l; Savings.closeCycles(&l, now: date("2026-12-20")); XCTAssertEqual(l, closed)
+        l.cycleAnchor = .calendarMonth
+        Savings.closeCycles(&l, now: date("2026-12-20"))
+        XCTAssertEqual(l.fixedSavings, closed.fixedSavings); XCTAssertEqual(l.savingHistory, closed.savingHistory)
+    }
+}

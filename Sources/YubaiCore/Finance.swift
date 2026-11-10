@@ -168,8 +168,15 @@ public enum Finance {
         }.min { $0.date == $1.date ? $0.title < $1.title : $0.date < $1.date }
     }
     public static func cycle(in ledger: Ledger, now: Date = Date()) -> (start: Date, end: Date, payday: Bool) {
-        if let next = nextPayday(in: ledger, now: now),
-           let plan = ledger.plans.filter({ $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once && $0.title == next.title })
+        let month = Dates.calendar.dateInterval(of: .month, for: now)!
+        let natural = (start: month.start, end: Dates.addDays(-1, to: month.end), payday: false)
+        if ledger.cycleAnchor == .calendarMonth { return natural }
+        // Explicit payday mode uses a monthly income schedule. Legacy nil keeps
+        // the automatic behavior, including older non-monthly schedules.
+        var source = ledger
+        if ledger.cycleAnchor == .payday { source.plans.removeAll { $0.frequency != .monthly } }
+        if let next = nextPayday(in: source, now: now),
+           let plan = source.plans.filter({ $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once && $0.title == next.title })
             .sorted(by: { $0.id.uuidString < $1.id.uuidString }).first(where: { $0.occurrenceIndex(on: next.date) != nil }) {
             // Derive from the original schedule, preserving Jan 31 → Feb 28 → Mar 31.
             let calendar = Dates.calendar
@@ -191,8 +198,7 @@ public enum Finance {
             }
             return (previous, Dates.addDays(-1, to: next.date), true)
         }
-        let month = Dates.calendar.dateInterval(of: .month, for: now)!
-        return (month.start, Dates.addDays(-1, to: month.end), false)
+        return natural
     }
     public static func funds(_ ledger: Ledger, now: Date = Date(), days: Int = Finance.observationDays) -> Funds {
         let horizon = max(0, min(366, days))

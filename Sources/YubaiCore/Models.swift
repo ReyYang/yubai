@@ -699,6 +699,8 @@ public struct WishItem: Codable, Identifiable, Equatable, Sendable {
         id = advice.id; createdAt = advice.createdAt
     }
 }
+public enum CycleAnchor: String, Codable, Sendable { case payday, calendarMonth }
+
 public struct Ledger: Codable, Equatable, Sendable {
     // Every stored domain field invalidates the cache, including nested array/
     // struct edits. Keep this observer when adding fields; copies then stay isolated.
@@ -715,6 +717,8 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var partLeftover: PartLeftover = .mergeIntoFixedSavings { didSet { calculations = LedgerCalculations() } }
     public var partCarry: [UUID: Int64] = [:] { didSet { calculations = LedgerCalculations() } }
     public var partCarryCycleStart: Date? { didSet { calculations = LedgerCalculations() } }
+    /// nil preserves the automatic schedule used by existing ledgers.
+    public var cycleAnchor: CycleAnchor? { didSet { calculations = LedgerCalculations() } }
     /// User-set base plus closed-cycle merges. Read fixedSavingsTotal(now:) for
     /// the total including earmarked income; recording income never changes this base.
     public var fixedSavings: Int64? { didSet { calculations = LedgerCalculations() } }
@@ -787,7 +791,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -831,6 +835,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         partLeftover = try c.decodeIfPresent(PartLeftover.self, forKey: .partLeftover) ?? .mergeIntoFixedSavings
         partCarry = try c.decodeIfPresent([UUID: Int64].self, forKey: .partCarry) ?? [:]
         partCarryCycleStart = try c.decodeIfPresent(Date.self, forKey: .partCarryCycleStart)
+        cycleAnchor = try c.decodeIfPresent(CycleAnchor.self, forKey: .cycleAnchor)
         fixedSavings = try c.decodeIfPresent(Int64.self, forKey: .fixedSavings) ?? profile.floorAmount
         savingRule = try c.decodeIfPresent(SavingRule.self, forKey: .savingRule)
         lastFixedSavingTarget = try c.decodeIfPresent(Int64.self, forKey: .lastFixedSavingTarget)
@@ -887,6 +892,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(partLeftover, forKey: .partLeftover)
         try c.encode(partCarry, forKey: .partCarry)
         try c.encodeIfPresent(partCarryCycleStart, forKey: .partCarryCycleStart)
+        try c.encodeIfPresent(cycleAnchor, forKey: .cycleAnchor)
         try c.encodeIfPresent(fixedSavings, forKey: .fixedSavings)
         try c.encodeIfPresent(savingRule, forKey: .savingRule)
         try c.encodeIfPresent(lastFixedSavingTarget, forKey: .lastFixedSavingTarget)
@@ -927,6 +933,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.partLeftover == rhs.partLeftover &&
         lhs.partCarry == rhs.partCarry &&
         lhs.partCarryCycleStart == rhs.partCarryCycleStart &&
+        lhs.cycleAnchor == rhs.cycleAnchor &&
         lhs.fixedSavings == rhs.fixedSavings &&
         lhs.savingRule == rhs.savingRule &&
         lhs.lastFixedSavingTarget == rhs.lastFixedSavingTarget &&

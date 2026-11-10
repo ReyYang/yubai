@@ -150,10 +150,13 @@ public enum Savings {
         let close = current.start.addingTimeInterval(-0.001)
         let previous = Finance.cycle(in: ledger, now: close)
         // Stored calendar boundaries are instants created in the then-current zone.
-        // A later device-zone change must not turn the same period into a new saving.
+        // A later device-zone or anchor change must not reserve an already
+        // closed period again. A changed anchor starts closing at its next full,
+        // nonoverlapping period, preserving the existing history and balances.
         let alreadyClosed = ledger.savingHistory.contains {
-            abs($0.cycleStart.timeIntervalSince(previous.start)) <= 36 * 3600 &&
-                abs($0.cycleEnd.timeIntervalSince(previous.end)) <= 36 * 3600
+            (abs($0.cycleStart.timeIntervalSince(previous.start)) <= 36 * 3600 &&
+                abs($0.cycleEnd.timeIntervalSince(previous.end)) <= 36 * 3600) ||
+                ($0.cycleStart <= previous.end && previous.start <= $0.cycleEnd)
         }
         guard previous.end < Dates.day(now), !alreadyClosed else { return }
         let snapshot = WeeklyLetter.snapshot(ledger, at: close)

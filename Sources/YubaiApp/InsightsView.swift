@@ -38,6 +38,14 @@ struct InsightsView: View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.none) {
             Segmented(choices: Window.allCases.map { ($0, $0.rawValue) }, selection: $window)
             if window == .custom { Button("选择日期范围") { store.pickingInsightDates = true }.frame(minHeight: YubaiSize.tapMin) }
+            Card(style: .compact) {
+                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
+                layout {
+                    flowNumber("收入", cents: summary.income, ink: YubaiColor.brandInk)
+                    flowNumber("支出", cents: summary.spending)
+                    flowNumber("结余", cents: summary.balance)
+                }
+            }.accessibilityIdentifier("insightsCashFlowSummary")
             CashTimelineCard(timeline: store.cashTimeline)
             Card(style: .compact) {
                 VStack(spacing: YubaiSpace.gapGroup) {
@@ -84,6 +92,12 @@ struct InsightsView: View {
         TabNavigationLink(categoryRoute(slice, range: range)) { categoryDestination(slice, range: range) } label: {
             legend(slice, rank: rank, slices: slices)
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
+    }
+    private func flowNumber(_ title: String, cents: Int64, ink: Color = YubaiColor.label) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            AmountLabel(cents: cents, hide: store.preferences.hideAmounts, role: .summary, ink: ink)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private func categoryRoute(_ slice: CashFlowSlice, range: DateInterval) -> TabRoute {
         if slice.categories.count == 1, let category = slice.categories.first {

@@ -2,7 +2,7 @@ import SwiftUI
 import YubaiCore
 
 struct LedgerHomeView: View {
-    var body: some View { EntriesView(isHome: true) }
+    var body: some View { EntriesView() }
 }
 
 struct LedgerHero: View {
@@ -26,7 +26,7 @@ struct LedgerHero: View {
             }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula")
                 .accessibilityLabel("还能花，" + funds.horizonTitle + "，" + (store.preferences.hideAmounts ? "金额已隐藏" : Money.text(funds.available)))
                 .accessibilityHint("点开看怎么算")
-            HStack(spacing: 8) {
+            ChipFlow {
                 if funds.available < 0 {
                     chip("这个月少攒 " + compact(funds.savingShortfall), amber: true)
                     chip("要攒 " + compact(funds.savingTarget))
@@ -36,7 +36,7 @@ struct LedgerHero: View {
                         if case .share = store.current.savingRule {} else { Image(systemName: "lock").font(.system(size: 12)) }
                         Text(savingChip)
                     }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk)
-                        .padding(.horizontal, 12).frame(height: 28).background(YubaiColor.brandTint, in: Capsule())
+                        .padding(.horizontal, 12).frame(minHeight: 28).background(YubaiColor.brandTint, in: Capsule())
                 }
             }
             if !store.current.spendingParts.isEmpty { SpendingPartsCard().padding(.top, 6) }
@@ -49,7 +49,7 @@ struct LedgerHero: View {
     private func compact(_ value: Int64) -> String { store.preferences.hideAmounts ? "••••" : savingNumber(value) }
     private func chip(_ text: String, amber: Bool = false) -> some View {
         Text(text).yubaiFont(YubaiFont.caption).foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.label)
-            .padding(.horizontal, 12).frame(height: 28).background(amber ? YubaiColor.amberTint : YubaiColor.raised, in: Capsule())
+            .padding(.horizontal, 12).frame(minHeight: 28).background(amber ? YubaiColor.amberTint : YubaiColor.raised, in: Capsule())
     }
 }
 
@@ -107,8 +107,8 @@ struct FundsCalculationView: View {
     }
     private var liquidDetail: String {
         guard !store.preferences.hideAmounts else { return "" }
-        if funds.debt > 0 || funds.goals > 0 || funds.uncertainInflow > 0 { return "存着不动 " + savingNumber(store.current.fixedSavings ?? 0) }
-        return "存款 " + savingNumber(funds.liquidStart + (store.current.fixedSavings ?? 0)) + " − 存着不动 " + savingNumber(store.current.fixedSavings ?? 0)
+        if funds.debt > 0 || funds.goals > 0 || funds.uncertainInflow > 0 { return "存着不动 " + savingNumber(store.funds.fixedSavingsTotal) }
+        return "存款 " + savingNumber(funds.liquidStart + funds.fixedSavingsTotal) + " − 存着不动 " + savingNumber(store.funds.fixedSavingsTotal)
     }
     private var incomeDetail: String? {
         guard !incomeRows.isEmpty else { return nil }
@@ -169,7 +169,7 @@ func savingsSummary(_ ledger: Ledger) -> String {
     if case .share(let percent) = ledger.savingRule { rule = savingShare(percent) }
     else if case .fixed(let amount) = ledger.savingRule { rule = savingNumber(amount) }
     else { rule = "0" }
-    return savingNumber(ledger.fixedSavings ?? 0) + " · " + rule
+    return savingNumber(ledger.fixedSavingsTotal()) + " · " + rule
 }
 
 extension Funds {
@@ -180,7 +180,8 @@ struct SavingsView: View {
     @Environment(AppStore.self) private var store
     let backTitle: String
     @State private var editing: SavingsAmountField?
-    private var fixed: Int64 { store.current.fixedSavings ?? 0 }
+    @State private var addingPayday = false
+    private var fixed: Int64 { store.funds.fixedSavingsTotal }
     private var sharing: Bool { if case .share = store.current.savingRule { true } else { false } }
     private var percent: Int { if case .share(let value) = store.current.savingRule { value } else { 20 } }
     private var target: Int64 { store.funds.savingTarget }
@@ -189,33 +190,22 @@ struct SavingsView: View {
         Page(spacing: 24, topPadding: 8) {
             VStack(spacing: 4) {
                 Text("存着不动").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                Text(store.preferences.hideAmounts ? "••••" : Money.text(fixed)).yubaiFont(YubaiFont.savingsHero)
+                Text(store.preferences.hideAmounts ? "••••" : Money.text(fixed)).yubaiFont(YubaiFont.savingsHero).lineLimit(1).minimumScaleFactor(0.7)
                 Text(store.preferences.hideAmounts ? "••••" : sharing ? "这个月已留 " + Money.text(target, currency: false) : "这个月攒完 → " + Money.text(fixed + target, currency: false))
                     .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
             }.frame(maxWidth: .infinity).padding(.bottom, 4)
             Card(style: .list) {
                 VStack(spacing: 0) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("存着不动").yubaiFont(YubaiFont.row)
-                            Text("不算进还能花").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                        }
-                        Spacer()
-                        amountButton(fixed, field: .fixed)
-                    }.frame(minHeight: 56)
+                    savingsAmountRow("存着不动", subtitle: "不算进还能花", value: fixed, field: .fixed)
                     EntryFormDivider()
-                    HStack {
-                        Text("要攒").yubaiFont(YubaiFont.row)
-                        Spacer(minLength: 8)
-                        Segmented(choices: [(false, "固定金额"), (true, "每笔进账留")], selection: Binding(get: { sharing }, set: { value in
-                            store.update("攒钱") { $0.switchSavingMode(sharing: value) }
-                        })).frame(maxWidth: 220)
-                    }.frame(minHeight: 56)
+                    ViewThatFits(in: .horizontal) {
+                        HStack { Text("要攒").fixedSize(); Spacer(minLength: 8); savingMode.fixedSize() }
+                        VStack(alignment: .leading, spacing: 8) { Text("要攒"); savingMode }
+                    }.yubaiFont(YubaiFont.row).padding(.vertical, 8).frame(minHeight: 56)
                     EntryFormDivider()
                     if sharing {
-                        HStack(spacing: 6) {
+                        ChipFlow {
                             Text("每笔进账留").yubaiFont(YubaiFont.row)
-                            Spacer(minLength: 0)
                             ForEach([10, 20, 30], id: \.self) { value in
                                 Button(savingShare(value)) { store.update("攒钱") { $0.savingRule = .share(value) } }
                                     .buttonStyle(SavingsChoiceStyle(selected: percent == value))
@@ -223,22 +213,26 @@ struct SavingsView: View {
                             Button("自定") { editing = .share }.buttonStyle(SavingsChoiceStyle(selected: ![10, 20, 30].contains(percent)))
                         }.frame(minHeight: 56)
                     } else {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("每月要攒").yubaiFont(YubaiFont.row)
-                                if store.funds.cycleIsPayday { Text("发工资那天先留出").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-                            }
-                            Spacer()
-                            amountButton(fixedTarget, field: .target)
-                        }.frame(minHeight: 56)
+                        savingsAmountRow("每月要攒", subtitle: store.funds.cycleIsPayday ? "发工资那天先留出" : nil, value: fixedTarget, field: .target)
                     }
                     EntryFormDivider()
-                    HStack(spacing: 8) {
-                        Text("每月从哪天算").yubaiFont(YubaiFont.row)
-                        Spacer(minLength: 0)
-                        automaticChoice("发工资那天", selected: store.funds.cycleIsPayday)
-                        automaticChoice("每月 1 号", selected: !store.funds.cycleIsPayday)
-                    }.frame(minHeight: 56)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { Text("每月从哪天算").fixedSize(); Spacer(minLength: 8); cycleAnchorControl.fixedSize() }
+                        VStack(alignment: .leading, spacing: 8) { Text("每月从哪天算"); cycleAnchorControl }
+                    }.yubaiFont(YubaiFont.row).padding(.vertical, 8).frame(minHeight: 56)
+                }
+            }
+            if !directIncome.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("直接放进来的").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, 16)
+                    CardRows(directIncome) { entry in
+                        NavigationLink { EntryDetailView(entryID: entry.id) } label: {
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 8) { directIncomeTitle(entry).fixedSize(); Spacer(minLength: 8); directIncomeAmount(entry).fixedSize() }
+                                VStack(alignment: .leading, spacing: 8) { directIncomeTitle(entry); directIncomeAmount(entry) }
+                            }.frame(minHeight: 56).contentShape(Rectangle())
+                        }.hidesListDisclosure().buttonStyle(PressButtonStyle()).accessibilityIdentifier("directSavingsEntry_" + entry.id.uuidString)
+                    }
                 }
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -264,26 +258,60 @@ struct SavingsView: View {
                 SavingsAmountEditor(field: field, initial: field == .fixed ? fixed : field == .target ? fixedTarget : Int64(percent) * 100) { value in
                     store.update("攒钱") { ledger in
                         switch field {
-                        case .fixed: ledger.fixedSavings = value
+                        case .fixed: ledger.setFixedSavingsTotal(value)
                         case .target: ledger.savingRule = .fixed(value)
                         case .share: ledger.savingRule = .share(Int(value / 100))
+                        case .salary: break
                         }
                     }
                 }.environment(store).yubaiSheetBackground().presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $addingPayday) { SavingsPaydayEditor().environment(store).yubaiSheetBackground() }
+    }
+    private func savingsAmountRow(_ title: String, subtitle: String?, value: Int64, field: SavingsAmountField) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { savingsAmountTitle(title, subtitle: subtitle).fixedSize(); Spacer(minLength: 8); amountButton(value, field: field).fixedSize() }
+            VStack(alignment: .leading, spacing: 8) { savingsAmountTitle(title, subtitle: subtitle); amountButton(value, field: field) }.padding(.vertical, 8)
+        }.frame(minHeight: 56)
+    }
+    private func savingsAmountTitle(_ title: String, subtitle: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).yubaiFont(YubaiFont.row)
+            if let subtitle { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+        }
     }
     private func amountButton(_ value: Int64, field: SavingsAmountField) -> some View {
         Button { editing = field } label: {
             AmountLabel(cents: value, hide: store.preferences.hideAmounts, role: .summary)
-                .padding(.horizontal, 12).frame(height: 36).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 12).frame(minHeight: 36).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: 12))
         }.buttonStyle(PressButtonStyle()).accessibilityLabel(field == .fixed ? "修改存着不动" : "修改每月要攒")
             .accessibilityIdentifier(field == .fixed ? "editFixedSavings" : "editSavingTarget")
     }
-    private func automaticChoice(_ title: String, selected: Bool) -> some View {
-        Text(title).yubaiFont(YubaiFont.caption, weight: selected ? .semibold : .regular)
-            .padding(.horizontal, 10).frame(height: 32).background(selected ? YubaiColor.raised : .clear, in: Capsule())
-            .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
-            .accessibilityAddTraits(selected ? .isSelected : [])
+    private var savingMode: some View {
+        Segmented(choices: [(false, "固定金额"), (true, "每笔进账留")], selection: Binding(get: { sharing }, set: { value in
+            store.update("攒钱") { $0.switchSavingMode(sharing: value) }
+        })).accessibilityIdentifier("savingMode")
+    }
+    private var cycleAnchorControl: some View {
+        Segmented(choices: [(true, "发工资那天"), (false, "每月 1 号")], selection: Binding(get: { store.funds.cycleIsPayday }, set: { payday in
+            if payday {
+                var monthly = store.current
+                monthly.plans.removeAll { $0.frequency != .monthly }
+                if Finance.nextPayday(in: monthly, now: Date()) == nil { addingPayday = true; return }
+            }
+            store.update("攒钱") { $0.cycleAnchor = payday ? .payday : .calendarMonth }
+        })).accessibilityIdentifier("savingCycleAnchor")
+    }
+    private var directIncome: [Entry] { store.sortedEntries.filter { $0.deletedAt == nil && $0.nature == .income && $0.intoFixedSavings } }
+    private func directIncomeTitle(_ entry: Entry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(entry.displayTitle).yubaiFont(YubaiFont.row)
+            Text(FixedFlowPresentation.monthDay(entry.date) + " · " + store.accountName(entry.accountID))
+                .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func directIncomeAmount(_ entry: Entry) -> some View {
+        AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, sign: .inflow, ink: YubaiColor.brandInk)
     }
     private func historyRow(_ row: CycleSaving) -> some View {
         HStack(spacing: 8) {
@@ -299,11 +327,11 @@ struct SavingsView: View {
     }
 }
 
-private enum SavingsAmountField: String, Identifiable { case fixed, target, share; var id: String { rawValue } }
+private enum SavingsAmountField: String, Identifiable { case fixed, target, share, salary; var id: String { rawValue } }
 private struct SavingsChoiceStyle: ButtonStyle {
     var selected: Bool
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular).padding(.horizontal, 10).frame(height: 32)
+        configuration.label.yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular).padding(.horizontal, 10).frame(minHeight: 32)
             .background(selected ? YubaiColor.raised : .clear, in: Capsule())
             .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }.opacity(configuration.isPressed ? 0.7 : 1)
     }
@@ -317,10 +345,10 @@ private struct SavingsAmountEditor: View {
     init(field: SavingsAmountField, initial: Int64, save: @escaping (Int64) -> Bool) {
         self.field = field; self.save = save; _keypad = State(initialValue: EntryKeypad(amount: initial))
     }
-    private var title: String { field == .fixed ? "存着不动" : field == .target ? "每月要攒" : "每笔进账留" }
+    private var title: String { field == .fixed ? "存着不动" : field == .target ? "每月要攒" : field == .salary ? "大概多少" : "每笔进账留" }
     private var valid: Bool {
         guard let value = keypad.amount else { return false }
-        return field == .share ? value % 100 == 0 && (100...9000).contains(value) : value >= 0
+        return field == .share ? value % 100 == 0 && (100...9000).contains(value) : field == .salary ? value > 0 : value >= 0
     }
     var body: some View {
         VStack(spacing: 16) {
@@ -331,5 +359,68 @@ private struct SavingsAmountEditor: View {
                 if save(value) { dismiss() }
             })
         }.presentationDetents([.height(440 + YubaiSpace.sheetHeaderTop)])
+    }
+}
+
+private struct SavingsPaydayEditor: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var day = min(28, Dates.calendar.component(.day, from: Date()))
+    @State private var amount: Int64 = 0
+    @State private var accountID: UUID?
+    @State private var editingAmount = false
+    private var accounts: [Account] { store.accounts.filter { !$0.archived } }
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                Card(style: .list) {
+                    VStack(spacing: 0) {
+                        EntryFormRow(title: "每月几号") { Text("\(day) 号").foregroundStyle(YubaiColor.labelSecondary) }.frame(minHeight: 48)
+                        EntryFormDivider()
+                        EntryFormRow(title: "大概多少") {
+                            Button { editingAmount = true } label: {
+                                AmountLabel(cents: amount, role: .summary).padding(.horizontal, 12).frame(minHeight: 36)
+                                    .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: 12))
+                            }.accessibilityLabel("大概多少").accessibilityIdentifier("paydayAmount")
+                        }.frame(minHeight: 48)
+                        EntryFormDivider()
+                        EntryFormRow(title: "到哪张卡") {
+                            Menu {
+                                ForEach(accounts) { account in Button(account.name) { accountID = account.id } }
+                            } label: { Text(store.accountName(accountID)).foregroundStyle(YubaiColor.labelSecondary) }
+                                .accessibilityIdentifier("paydayAccount")
+                        }.frame(minHeight: 48)
+                    }.yubaiFont(YubaiFont.row)
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: textSize.isAccessibilitySize ? 4 : 7), spacing: 6) {
+                    ForEach(1...28, id: \.self) { value in
+                        Button { day = value } label: {
+                            Text("\(value)").yubaiFont(YubaiFont.callout).lineLimit(1).frame(maxWidth: .infinity, minHeight: 44)
+                                .foregroundStyle(day == value ? YubaiColor.onBrand : YubaiColor.label)
+                                .background(day == value ? YubaiColor.label : YubaiColor.raised, in: RoundedRectangle(cornerRadius: 12))
+                        }.accessibilityLabel("每月 \(value) 号").accessibilityAddTraits(day == value ? .isSelected : [])
+                    }
+                }
+            }.padding(.horizontal, 20).padding(.bottom, 20)
+        }.safeAreaInset(edge: .top, spacing: 0) {
+            ManualSheetHeader(title: "发工资那天", actionTitle: "好", enabled: amount > 0 && accountID != nil, cancel: { dismiss() }, action: save).padding(.horizontal, 20)
+        }.buttonStyle(PressButtonStyle()).paperBackground()
+            .onAppear { accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id }
+            .sheet(isPresented: $editingAmount) {
+                SavingsAmountEditor(field: .salary, initial: amount) { value in amount = value; return true }.yubaiSheetBackground()
+            }
+            .presentationDetents([.large])
+    }
+    private func save() {
+        guard amount > 0, let accountID else { return }
+        let month = Dates.calendar.dateInterval(of: .month, for: Date())!.start
+        // Start at the next payday so a day already passed this month isn't shown as due.
+        let thisMonth = Dates.addDays(day - 1, to: month)
+        let due = thisMonth < Dates.day(Date()) ? Dates.addMonths(1, to: thisMonth) : thisMonth
+        var plan = Plan(title: "工资", amount: amount, dueDate: due, frequency: .monthly, inflow: true, category: "工资", nature: .income)
+        plan.accountID = accountID; plan.monthlyDay = day
+        let change = ChangeSet(source: "用户操作", reason: "添加工资", items: [.addPlan(plan)])
+        if store.apply(change, label: "发工资那天", finishing: { $0.cycleAnchor = .payday }) { dismiss() }
     }
 }

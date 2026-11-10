@@ -374,7 +374,7 @@ struct FixedFlowCheck: View {
     }
 }
 
-private struct FixedFlowSettlementEditor: View {
+struct FixedFlowSettlementEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let title: String
@@ -441,6 +441,7 @@ struct FixedFlowEditor: View {
     @State private var installments: Int?
     @State private var autoPay = false
     @State private var estimated = false
+    @State private var intoFixedSavings = false
     @State private var pickingSchedule = false
     @State private var confirmingStop = false
     @State private var confirmingDiscard = false
@@ -471,7 +472,7 @@ struct FixedFlowEditor: View {
         guard !name.isEmpty,
               name != original.title || cents != original.amount || frequency != original.frequency || Dates.day(date) != original.date ||
                 accountID != original.accountID || category != original.category || installments != original.installments ||
-                autoPay != original.autoPay || estimated != original.estimated else { return nil }
+                autoPay != original.autoPay || estimated != original.estimated || intoFixedSavings != original.intoFixedSavings else { return nil }
         return try? update(planID)
     }
     private var plan: Plan? {
@@ -479,7 +480,7 @@ struct FixedFlowEditor: View {
         var plan = Plan(title: title.trimmingCharacters(in: .whitespacesAndNewlines), amount: cents, dueDate: Dates.day(date),
                         frequency: frequency, inflow: inflow, category: category, nature: inflow ? .income : .expense)
         plan.accountID = hasAccount ? accountID : nil; plan.installments = frequency == .once ? nil : installments
-        plan.autoPay = autoPay && hasAccount; plan.autoPaySince = plan.autoPay ? Dates.day(Date()) : nil; plan.estimated = estimated
+        plan.autoPay = autoPay && hasAccount; plan.autoPaySince = plan.autoPay ? Dates.day(Date()) : nil; plan.estimated = estimated; plan.intoFixedSavings = inflow && intoFixedSavings
         return plan
     }
     private var validationError: String? {
@@ -493,7 +494,7 @@ struct FixedFlowEditor: View {
     var body: some View {
         let change = amountKeypadPresented ? nil : editChange
         ScrollViewReader { scroll in
-                EntryForm(title: planID == nil ? "添加账单" : "改账单", actionTitle: "保存",
+                EntryForm(title: planID == nil ? "添加账单" : "改账单", actionTitle: "好",
                           enabled: planID == nil ? plan != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : change != nil,
                           scrollIdentifier: "fixedFlowEditor", cancel: cancel, save: save) {
                 if planID == nil { Segmented(choices: [(false, "要付"), (true, "要收")], selection: $inflow) }
@@ -531,6 +532,11 @@ struct FixedFlowEditor: View {
                         Toggle("到日子自动记", isOn: $autoPay).tint(YubaiColor.toggleOn).disabled(!hasAccount).accessibilityIdentifier("fixedFlowAutoPay").frame(minHeight: YubaiSize.rowSingle)
                         EntryFormDivider()
                         Toggle("金额会变", isOn: $estimated).tint(YubaiColor.toggleOn).accessibilityIdentifier("fixedFlowEstimated").frame(minHeight: YubaiSize.rowSingle)
+                        if inflow {
+                            EntryFormDivider()
+                            Toggle(isOn: $intoFixedSavings) { Label("到账放进存着不动", systemImage: "lock") }
+                                .tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.rowSingle).accessibilityIdentifier("fixedFlowIntoFixedSavings")
+                        }
                     }.yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn)
                 }
                 preview(change: change)
@@ -547,10 +553,9 @@ struct FixedFlowEditor: View {
                 }
         }.safeAreaInset(edge: .bottom, spacing: 0) {
             EntryKeyboardTray(purpose: $title, purposeTitle: "名字", purposeIdentifier: "fixedFlowTitle", focus: $titleFocused) {
-                HStack(spacing: 8) {
+                ChipFlow {
                     EntryDateChip(date: $date, inTray: true, allowsFuture: true)
                     EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, optional: true, inTray: true)
-                    Spacer(minLength: 0)
                     EntryRepeatChip(selected: frequency != .once,
                                     value: frequency == .monthly ? "每月 \(monthlyDay ?? Dates.calendar.component(.day, from: date)) 号" : frequency == .once ? "不重复" : frequency.label,
                                     inTray: true) { pickingSchedule = true }.accessibilityIdentifier("fixedFlowSchedule")
@@ -571,7 +576,8 @@ struct FixedFlowEditor: View {
             .onAppear { load(); openAmount() }
             .onChange(of: titleFocused) { _, focused in if focused { finishAmount() } else { openAmount() } }
             .onChange(of: accountID) { _, _ in if !hasAccount { autoPay = false } }
-            .onChange(of: inflow) { _, _ in
+            .onChange(of: inflow) { _, value in
+                if !value { intoFixedSavings = false }
                 if planID == nil, !categories.contains(category) { category = inflow ? "其他收入" : "其他支出" }
             }
             .modifier(FixedFlowStopConfirmation(planID: planID, title: savedPlan?.title ?? title, inflow: inflow,
@@ -605,11 +611,11 @@ struct FixedFlowEditor: View {
             guard let value = FixedFlows.edit(planID: planID, in: store.current) else { dismiss(); return }
             original = value; title = value.title; amount = Money.input(value.amount); frequency = value.frequency; date = value.date
             inflow = value.inflow; accountID = value.accountID; category = value.category
-            installments = value.installments; autoPay = value.autoPay; estimated = value.estimated
+            installments = value.installments; autoPay = value.autoPay; estimated = value.estimated; intoFixedSavings = value.intoFixedSavings
         }
         balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) }); initialSignature = signature
     }
-    private var signature: String { "\(inflow)|\(amountKeypadPresented ? keypad.amount ?? 0 : (try? Money.parse(amount)) ?? 0)|\(title)|\(frequency)|\(Dates.day(date))|\(accountID?.uuidString ?? "")|\(category)|\(installments ?? 0)|\(autoPay)|\(estimated)" }
+    private var signature: String { "\(inflow)|\(amountKeypadPresented ? keypad.amount ?? 0 : (try? Money.parse(amount)) ?? 0)|\(title)|\(frequency)|\(Dates.day(date))|\(accountID?.uuidString ?? "")|\(category)|\(installments ?? 0)|\(autoPay)|\(estimated)|\(intoFixedSavings)" }
     private func cancel() { if signature != initialSignature { confirmingDiscard = true } else { dismiss() } }
     private func preview(change: ChangeSet?) -> some View {
         let dates = previewDates(change: change)
@@ -665,7 +671,7 @@ struct FixedFlowEditor: View {
     private func update(_ planID: UUID) throws -> ChangeSet {
         try FixedFlows.update(planID: planID, title: title, amount: Money.parse(amount), frequency: frequency, date: date,
                               accountID: accountID, category: category, installments: installments,
-                              autoPay: autoPay, estimated: estimated, in: store.current)
+                              autoPay: autoPay, estimated: estimated, in: store.current, intoFixedSavings: intoFixedSavings)
     }
 }
 

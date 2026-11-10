@@ -26,7 +26,7 @@ struct SettingsView: View {
                     }
                 }
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
-                .accessibilityHint(store.profile.restrain.isEmpty && store.profile.generous.isEmpty && store.current.fixedSavings == nil ? "还没写消费观，可进入添加" : "查看和编辑消费观")
+                .accessibilityHint(store.profile.restrain.isEmpty && store.profile.generous.isEmpty && store.funds.fixedSavingsTotal == 0 ? "还没写消费观，可进入添加" : "查看和编辑消费观")
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     TabNavigationLink(.wishlist) { WishlistView() } label: {
@@ -51,7 +51,7 @@ struct SettingsView: View {
                     TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { row("会回来的账单", detail: fixedFlowsDetail) }
                         .accessibilityIdentifier("openFixedFlows")
                     separator
-                    NavigationLink(value: CategorySettingsRoute.categories) { row("分类") }
+                    NavigationLink(value: CategorySettingsRoute.categories) { row("分类") }.hidesListDisclosure()
                         .accessibilityIdentifier("openCategories")
                 }
             }.buttonStyle(PressButtonStyle())
@@ -175,16 +175,16 @@ struct IntelligencePrivacyView: View {
                         separator
                         CloudModelMenu()
                         separator
-                        NavigationLink { Form { CloudAISettingsSection() }.editorForm().navigationTitle("密钥").yubaiNavigation() } label: {
-                            settingsRow("密钥", detail: hasKey ? "钥匙串 ✓" : (configured ? "环境变量" : "未配好"), chevron: true)
-                        }.accessibilityLabel(hasKey ? "密钥，保存在本机钥匙串，不进入账本或备份" : (configured ? "密钥，使用环境变量" : "密钥，未配好"))
+                        NavigationLink { CloudAISettingsSection() } label: {
+                            settingsRow("密钥", detail: configured ? "已配好" : "未配好", chevron: true)
+                        }.hidesListDisclosure().accessibilityLabel(hasKey ? "密钥，保存在本机钥匙串，不进入账本或备份" : (configured ? "密钥，使用环境变量" : "密钥，未配好"))
                     }.buttonStyle(PressButtonStyle())
                 }
             }
             privacyChips("会发给云端", values: ["问题", "金额", "日期", "分类", "商户", "备注", "转账姓名 → 联系人A"])
             privacyChips("不发", values: ["账户名", "卡号", "交易单号", "附件"], excluded: true)
             Card(style: .list) {
-                NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开 \(sendCount) 次", chevron: true) }
+                NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开 \(sendCount) 次", chevron: true) }.hidesListDisclosure()
                     .buttonStyle(PressButtonStyle())
             }
             // Retain the existing device and notification preferences below the cloud/privacy groups.

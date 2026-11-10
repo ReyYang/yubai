@@ -2,11 +2,6 @@ import SwiftUI
 import YubaiCore
 
 struct EntriesView: View {
-    var isHome = false
-    init(isHome: Bool = false) {
-        self.isHome = isHome
-        _showingSearch = State(initialValue: !isHome)
-    }
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
@@ -17,125 +12,204 @@ struct EntriesView: View {
     @State private var pickingMonth = false
     @State private var pickerYear = Dates.calendar.component(.year, from: Date())
     @State private var pickerMonth = Dates.calendar.component(.month, from: Date())
+    @State private var scrollMonth: Date?
+    @State private var scrollToTop = false
     @FocusState private var searchFocused: Bool
+
     var body: some View {
-        let timeline = store.entryTimeline(month: month, search: search, filter: filter)
+        // Cached once per ledger revision/query. List creates the display rows
+        // lazily, including when thousands of entries span many months.
+        let timeline = store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
         let hideAmounts = store.preferences.hideAmounts
-        let days = isHome ? cycleDays : timeline.days
-        List {
-            VStack(spacing: YubaiSpace.gapGroup) {
-                if isHome {
-                    if store.accounts.isEmpty { EmptyAccountState { store.sheet = .account(nil) } }
-                    else { LedgerHero() }
-                    LetterInboxChip()
-                } else {
-                monthPicker
-                if showingSearch { searchField }
-                if searching {
-                    HStack {
-                        Text("全部月份 · \(timeline.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                        Spacer()
-                        AmountLabel(cents: timeline.income - timeline.spending, hide: hideAmounts)
-                    }.accessibilityIdentifier("entriesSearchTotal")
-                } else {
-                    HStack(spacing: YubaiSpace.gapGroup) {
-                        total("本月支出", cents: timeline.spending)
-                        total("本月收入", cents: timeline.income, inflow: true)
+        let groups = displayMonths(timeline)
+        let previousDay = store.funds.cycleIsPayday ? timeline.days.first { $0.date < store.funds.cycleStart }?.date : nil
+        ScrollViewReader { proxy in
+            List {
+                VStack(spacing: YubaiSpace.gapGroup) {
+                    if !showingSearch {
+                        if store.accounts.isEmpty { EmptyAccountState { store.sheet = .account(nil) } }
+                        else { LedgerHero() }
+                        LetterInboxChip()
                     }
                     filters
-                }
-                }
-            }.listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 12, trailing: 0)).listRowBackground(Color.clear).listRowSeparator(.hidden)
-            if days.isEmpty {
-                EmptyState("list.bullet.rectangle", searching ? "没有找到这笔" : filter == .all ? "这个月还没有账目" : "还没有这类账目",
-                           action: searching ? "清空搜索" : "记一笔", onAction: { if searching { search = "" } else { store.sheet = .addEntry } })
-                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
-            }
-            if searching {
-                ForEach(timeline.months) { group in
-                    Section {
-                        ForEach(group.days.flatMap(\.entries)) { entry in entryRow(entry, hideAmounts: hideAmounts, searchResult: true) }
-                    } header: {
+                    if showingSearch {
                         HStack {
-                            Text(monthTitle(group.date)).yubaiFont(YubaiFont.row, weight: .semibold)
+                            Text("全部月份 · \(timeline.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             Spacer()
-                            AmountLabel(cents: group.income - group.spending, hide: hideAmounts, role: .day)
-                        }.textCase(nil).padding(.top, 12)
+                            AmountLabel(cents: timeline.income - timeline.spending, hide: hideAmounts)
+                        }.accessibilityIdentifier("entriesSearchTotal")
                     }
                 }
-            } else {
-                ForEach(days) { day in
-                    Section {
-                        ForEach(day.entries) { entry in entryRow(entry, hideAmounts: hideAmounts) }
-                    } header: {
-                        ViewThatFits(in: .horizontal) {
-                            HStack { Text(dayLabel(day.date)).yubaiFont(YubaiFont.callout, weight: .semibold); Spacer(); dayTotal(day, hide: hideAmounts) }
-                            VStack(alignment: .leading, spacing: 4) { Text(dayLabel(day.date)).yubaiFont(YubaiFont.callout, weight: .semibold); dayTotal(day, hide: hideAmounts) }
-                        }.textCase(nil).padding(.top, 12)
+                .id("entriesTop")
+                .listRowInsets(EdgeInsets(top: 16, leading: 0, bottom: 12, trailing: 0))
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                if timeline.days.isEmpty {
+                    EmptyState("list.bullet.rectangle", showingSearch ? "没有找到这笔" : filter == .all ? "还没有账目" : "还没有这类账目",
+                               action: showingSearch ? "清空搜索" : "记一笔", onAction: { if showingSearch { search = "" } else { store.sheet = .addEntry } })
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                }
+                ForEach(groups) { group in
+                    monthHeader(group, hide: hideAmounts)
+                        .id(group.date)
+                        .listRowInsets(EdgeInsets(top: 16, leading: 0, bottom: 4, trailing: 0))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    if showingSearch {
+                        Section {
+                            ForEach(group.days.flatMap(\.entries)) { entry in entryRow(entry, hideAmounts: hideAmounts, searchResult: true) }
+                        }
+                    } else {
+                        ForEach(group.days) { day in
+                            if day.date == previousDay {
+                                cycleDivider.listRowBackground(Color.clear).listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                            }
+                            Section {
+                                ForEach(day.entries) { entry in entryRow(entry, hideAmounts: hideAmounts) }
+                            } header: {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack { Text(dayLabel(day.date)).fixedSize(); Spacer(); dayTotal(day, hide: hideAmounts) }
+                                    VStack(alignment: .leading, spacing: 4) { Text(dayLabel(day.date)); dayTotal(day, hide: hideAmounts) }
+                                }.yubaiFont(YubaiFont.callout, weight: .semibold).textCase(nil).padding(.top, 8)
+                            }
+                        }
                     }
                 }
             }
-        }
             #if os(iOS)
             .listStyle(.insetGrouped).listSectionSpacing(12)
-            .contentMargins(.top, YubaiSpace.none, for: .scrollContent)
             .contentMargins(.horizontal, YubaiSpace.insetPage, for: .scrollContent)
             #else
             .listStyle(.inset)
             #endif
             .scrollContentBackground(.hidden).contentMargins(.top, 0, for: .scrollContent)
-            .environment(\.defaultMinListRowHeight, YubaiSize.rowDouble)
+            .environment(\.defaultMinListRowHeight, 0)
             .scrollDismissesKeyboard(.interactively).amountPrivacy(hideAmounts).accessibilityIdentifier("entriesScroll")
-            .rootScrollContentMargins()
-            .rootTabScroll(.ledger)
+            .rootScrollContentMargins().rootTabScroll(.ledger)
             .rootPageHeader { header }
             .navigationTitle("账本").yubaiNavigation()
+            .onChange(of: scrollToTop) { _, value in
+                guard value else { return }
+                proxy.scrollTo("entriesTop", anchor: .top); scrollToTop = false
+            }
+            .onChange(of: scrollMonth) { _, value in
+                guard let value else { return }
+                withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo(value, anchor: .top) }
+                scrollMonth = nil
+            }
             .onChange(of: store.entryFilterRequest, initial: true) { _, request in
                 guard request != nil else { return }
-                filter = .uncategorized; search = ""; showingSearch = false
-                month = Dates.calendar.dateInterval(of: .month, for: store.entryFilterDate ?? Date())!.start
+                filter = .uncategorized; endSearch()
+                jump(to: store.entryFilterDate ?? Date())
             }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
-            .sheet(isPresented: $pickingMonth) {
-                VStack(spacing: 12) {
-                    ManualSheetHeader(title: "月份", actionTitle: "好", cancel: { pickingMonth = false }, action: {
-                        month = Dates.calendar.date(from: DateComponents(year: pickerYear, month: pickerMonth, day: 1))!; pickingMonth = false
-                    })
-                    HStack(spacing: 0) {
-                        Picker("年", selection: $pickerYear) { ForEach(monthYears, id: \.self) { Text("\($0) 年").tag($0) } }
-                        Picker("月", selection: $pickerMonth) { ForEach(1...12, id: \.self) { Text("\($0) 月").tag($0) } }
-                    }
-                    #if os(iOS)
-                    .pickerStyle(.wheel)
-                    #endif
-                }.padding(.horizontal, 20).yubaiSheetBackground().presentationDetents([.height(300 + YubaiSpace.sheetHeaderTop)])
-            }
+            .sheet(isPresented: $pickingMonth) { monthSheet }
+        }
     }
     @ViewBuilder private var header: some View {
-        if isHome { TabRootHeader(title: "账本", showsAmountVisibility: true) }
-        else { LedgerPageHeader(title: "账本", backTitle: "账本") }
-    }
-    private var cycleDays: [EntryTimeline.Day] {
-        let funds = store.funds
-        var month = Dates.calendar.dateInterval(of: .month, for: funds.cycleStart)!.start
-        var result: [EntryTimeline.Day] = []
-        while month <= funds.cycleEnd {
-            result += store.entryTimeline(month: month, search: "", filter: .all).days.filter {
-                $0.date >= funds.cycleStart && $0.date <= min(Dates.day(Date()), funds.cycleEnd)
-            }
-            month = Dates.addMonths(1, to: month)
+        if showingSearch {
+            HStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                    TextField("搜索", text: $search).yubaiFont(YubaiFont.row).focused($searchFocused)
+                        .submitLabel(.search).accessibilityLabel("搜索账目").accessibilityHint("可按用途、分类或金额搜索").accessibilityIdentifier("entriesSearch")
+                    if !search.isEmpty {
+                        Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(YubaiColor.labelMuted) }
+                            .accessibilityLabel("清空搜索")
+                    }
+                }.padding(.horizontal, 14).frame(minHeight: 40).background(YubaiColor.raised, in: Capsule())
+                Button("取消", action: endSearch).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).fixedSize()
+            }.frame(minHeight: 48).buttonStyle(PressButtonStyle())
+                .task { await Task.yield(); guard !Task.isCancelled, showingSearch else { return }; searchFocused = true }
+        } else {
+            TabRootHeader(title: "账本", showsAmountVisibility: true, onSearch: { showingSearch = true; scrollToTop = true })
         }
-        return result.sorted { $0.date > $1.date }
     }
-    private var searching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var monthSheet: some View {
+        VStack(spacing: 12) {
+            ManualSheetHeader(title: "月份", actionTitle: "好", cancel: { pickingMonth = false }, action: {
+                if let date = Dates.calendar.date(from: DateComponents(year: pickerYear, month: pickerMonth, day: 1)) { jump(to: date) }
+                pickingMonth = false
+            })
+            HStack(spacing: 0) {
+                Picker("年", selection: $pickerYear) { ForEach(monthYears, id: \.self) { Text("\($0) 年").tag($0) } }
+                Picker("月", selection: $pickerMonth) { ForEach(1...12, id: \.self) { Text("\($0) 月").tag($0) } }
+            }
+            #if os(iOS)
+            .pickerStyle(.wheel)
+            #endif
+        }.padding(.horizontal, 20).yubaiSheetBackground().presentationDetents([.height(300 + YubaiSpace.sheetHeaderTop)])
+    }
+    private func displayMonths(_ timeline: EntryTimeline.Snapshot) -> [EntryTimeline.Month] {
+        if showingSearch { return timeline.months }
+        guard !timeline.months.contains(where: { $0.date == month }) else { return timeline.months }
+        return (timeline.months + [.init(date: month, spending: 0, income: 0, days: [])]).sorted { $0.date > $1.date }
+    }
+    private func jump(to date: Date) {
+        month = Dates.calendar.dateInterval(of: .month, for: date)!.start
+        // Scroll after List has received the target header (also for an empty month).
+        Task { @MainActor in await Task.yield(); scrollMonth = month }
+    }
+    private func endSearch() { searchFocused = false; search = ""; showingSearch = false; scrollToTop = true }
     private var monthYears: ClosedRange<Int> {
         let years = store.sortedEntries.map { Dates.calendar.component(.year, from: $0.date) }
         let year = Dates.calendar.component(.year, from: Date())
         return min(years.min() ?? year, year - 2)...max(years.max() ?? year, year + 1)
     }
-    private func monthTitle(_ date: Date) -> String { "\(Dates.calendar.component(.year, from: date)) 年 \(Dates.calendar.component(.month, from: date)) 月" }
+    private func monthTitle(_ date: Date) -> String {
+        if showingSearch || !Dates.calendar.isDate(date, equalTo: Date(), toGranularity: .year) {
+            return "\(Dates.calendar.component(.year, from: date)) 年 \(Dates.calendar.component(.month, from: date)) 月"
+        }
+        return "\(Dates.calendar.component(.month, from: date))月"
+    }
+    private func monthHeader(_ group: EntryTimeline.Month, hide: Bool) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack { monthButton(group.date); Spacer(minLength: 8); monthTotal(group, hide: hide) }
+            VStack(alignment: .leading, spacing: 4) { monthButton(group.date); monthTotal(group, hide: hide) }
+        }
+    }
+    private func monthButton(_ date: Date) -> some View {
+        Button {
+            pickerYear = Dates.calendar.component(.year, from: date); pickerMonth = Dates.calendar.component(.month, from: date); pickingMonth = true
+        } label: {
+            HStack(spacing: 4) {
+                Text(monthTitle(date)).yubaiFont(YubaiFont.callout, weight: .semibold)
+                if !showingSearch { Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta) }
+            }.fixedSize()
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entriesMonth")
+    }
+    @ViewBuilder private func monthTotal(_ group: EntryTimeline.Month, hide: Bool) -> some View {
+        if showingSearch { AmountLabel(cents: group.income - group.spending, hide: hide, role: .day) }
+        else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { monthSpending(group, hide: hide); Text("·"); monthIncome(group, hide: hide) }.fixedSize()
+                VStack(alignment: .leading, spacing: 4) { monthSpending(group, hide: hide); monthIncome(group, hide: hide) }
+            }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+        }
+    }
+    private func monthSpending(_ group: EntryTimeline.Month, hide: Bool) -> some View {
+        HStack(spacing: 4) { Text("支出"); AmountLabel(cents: group.spending, hide: hide, role: .day) }.fixedSize()
+    }
+    private func monthIncome(_ group: EntryTimeline.Month, hide: Bool) -> some View {
+        HStack(spacing: 4) { Text("收入"); AmountLabel(cents: group.income, hide: hide, role: .day, ink: YubaiColor.brandInk) }.fixedSize()
+    }
+    private var cycleDivider: some View {
+        let start = store.funds.cycleStart
+        let previous = Finance.cycle(in: store.current, now: start.addingTimeInterval(-0.001))
+        let title = "上一期 · " + FixedFlowPresentation.monthDay(previous.start) + " – " + FixedFlowPresentation.monthDay(Dates.addDays(-1, to: start))
+        return HStack(spacing: 8) {
+            dashedLine
+            Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
+            dashedLine
+        }.accessibilityIdentifier("entriesPreviousCycle")
+    }
+    private var dashedLine: some View {
+        Line().stroke(style: StrokeStyle(lineWidth: 1, dash: [3, 3])).foregroundStyle(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+    }
+    private struct Line: Shape {
+        func path(in rect: CGRect) -> Path { Path { $0.move(to: .zero); $0.addLine(to: CGPoint(x: rect.width, y: 0)) } }
+    }
     private func entryRow(_ entry: EntryTimeline.Row, hideAmounts: Bool, searchResult: Bool = false) -> some View {
         LedgerEntryRow(entry: entry, note: searchResult ? searchNote(entry) : noteText(entry), hideAmounts: hideAmounts, isFresh: store.freshEntryIDs.contains(entry.id), showsSearchContext: searchResult)
             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
@@ -143,108 +217,42 @@ struct EntriesView: View {
     }
     private func searchNote(_ row: EntryTimeline.Row) -> String {
         guard let entry = store.entriesByID[row.id] else { return noteText(row) }
-        return ManualBookkeeping.dayLabel(entry.date) + " · " + store.accountName(entry.accountID)
+        return FixedFlowPresentation.monthDay(entry.date) + " · " + store.accountName(entry.accountID)
     }
-    @ViewBuilder private func dayTotal(_ day: EntryTimeline.Day, hide: Bool) -> some View {
-        HStack(spacing: 4) {
-            if day.income > 0 {
-                Text("支出").yubaiFont(YubaiFont.caption)
-                AmountLabel(cents: day.spending, hide: hide)
-                Text("· 收入").yubaiFont(YubaiFont.caption)
-                AmountLabel(cents: day.income, hide: hide, ink: YubaiColor.brandInk)
-            } else { AmountLabel(cents: -day.spending, hide: hide, role: .small) }
-        }.fixedSize().foregroundStyle(YubaiColor.labelSecondary)
+    private func dayTotal(_ day: EntryTimeline.Day, hide: Bool) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) { daySpending(day, hide: hide); if day.income > 0 { Text("·"); dayIncome(day, hide: hide) } }.fixedSize()
+            VStack(alignment: .leading, spacing: 4) { daySpending(day, hide: hide); if day.income > 0 { dayIncome(day, hide: hide) } }
+        }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+    }
+    private func daySpending(_ day: EntryTimeline.Day, hide: Bool) -> some View {
+        HStack(spacing: 4) { if day.income > 0 { Text("支出") }; AmountLabel(cents: day.income > 0 ? day.spending : -day.spending, hide: hide, role: .day) }.fixedSize()
+    }
+    private func dayIncome(_ day: EntryTimeline.Day, hide: Bool) -> some View {
+        HStack(spacing: 4) { Text("收入"); AmountLabel(cents: day.income, hide: hide, role: .day, ink: YubaiColor.brandInk) }.fixedSize()
     }
     private func noteText(_ row: EntryTimeline.Row) -> String {
         guard let purpose = store.manualNotePurposes[row.id] else { return row.note }
         return purpose == row.categoryName ? "" : purpose
     }
-    private var monthTitleButton: some View {
-        Button {
-            pickerYear = Dates.calendar.component(.year, from: month); pickerMonth = Dates.calendar.component(.month, from: month); pickingMonth = true
-        } label: { Text(monthTitle(month)).fixedSize().yubaiFont(YubaiFont.navTitle) }.accessibilityIdentifier("entriesMonth")
-    }
-    private var previousMonthButton: some View {
-        Button { changeMonth(-1) } label: { Image(systemName: "chevron.left").yubaiPageArrowTarget(edge: .leading) }
-            .accessibilityLabel("上个月").accessibilityIdentifier("entriesPreviousMonth")
-    }
-    private var nextMonthButton: some View {
-        Button { changeMonth(1) } label: { Image(systemName: "chevron.right").yubaiHitTarget() }
-            .accessibilityLabel("下个月").accessibilityIdentifier("entriesNextMonth")
-    }
-    @ViewBuilder private var currentMonthButton: some View {
-        if !Dates.calendar.isDate(month, equalTo: Date(), toGranularity: .month) {
-            Button { month = Dates.calendar.dateInterval(of: .month, for: Date())!.start } label: {
-                Text("本月").yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
-                    .padding(.horizontal, 14).frame(minHeight: 32).background(YubaiColor.raised, in: Capsule()).fixedSize().contentShape(Capsule())
-            }
-        }
-    }
-    private var searchToggleButton: some View {
-        Button {
-            withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { showingSearch.toggle() }
-            searchFocused = showingSearch
-            if !showingSearch { search = "" }
-        } label: {
-            Image(systemName: showingSearch ? "xmark" : "magnifyingglass")
-                .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
-                .controlSurface(in: Circle()).yubaiHitTarget(alignment: .trailing)
-        }.accessibilityLabel(showingSearch ? "关闭搜索" : "搜索账目").accessibilityIdentifier("entriesSearchButton")
-    }
-    private var monthPicker: some View {
-        Group {
-            if textSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 8) {
-                    monthTitleButton
-                    HStack(spacing: 4) { previousMonthButton; nextMonthButton; currentMonthButton; Spacer(minLength: 0); searchToggleButton }
-                }
-            } else {
-                HStack(spacing: 4) { previousMonthButton; monthTitleButton; nextMonthButton; currentMonthButton; Spacer(minLength: 0); searchToggleButton }
-            }
-        }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).buttonStyle(PressButtonStyle())
-    }
-    private var searchField: some View {
-        HStack(spacing: YubaiSpace.space8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-            TextField("搜索", text: $search).yubaiFont(YubaiFont.row).focused($searchFocused)
-                .accessibilityLabel("搜索账目").accessibilityHint("可按用途、分类或金额搜索").accessibilityIdentifier("entriesSearch")
-        }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin)
-            .background(YubaiColor.raised, in: Capsule())
-    }
     private var filters: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: YubaiSpace.space8) {
-                ForEach(EntryTimeline.Filter.allCases, id: \.self) { choice in
-                    Button { filter = choice } label: {
-                        Text(choice.rawValue).yubaiFont(YubaiFont.callout, weight: filter == choice ? .medium : .regular)
-                            .foregroundStyle(filter == choice ? YubaiColor.canvas : YubaiColor.label)
-                            .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.chipHeight)
-                            .background(filter == choice ? YubaiColor.label : YubaiColor.raised, in: Capsule())
-                            .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                    }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(filter == choice ? .isSelected : [])
-                        .accessibilityIdentifier("entriesFilter_" + choice.rawValue)
-                }
+        ChipFlow {
+            ForEach(EntryTimeline.Filter.allCases, id: \.self) { choice in
+                Button { filter = choice } label: {
+                    Text(choice.rawValue).yubaiFont(YubaiFont.callout, weight: filter == choice ? .medium : .regular)
+                        .foregroundStyle(filter == choice ? YubaiColor.canvas : YubaiColor.label)
+                        .padding(.horizontal, 16).frame(minHeight: 32)
+                        .background(filter == choice ? YubaiColor.label : YubaiColor.raised, in: Capsule())
+                        .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(filter == choice ? .isSelected : [])
+                    .accessibilityIdentifier("entriesFilter_" + choice.rawValue)
             }
-        }.pageLocalHorizontalGestures()
-            #if os(iOS)
-            .contentMargins(.bottom, YubaiSpace.none, for: .scrollContent)
-            #endif
-            .accessibilityElement(children: .contain).accessibilityLabel("筛选账目")
+        }.accessibilityElement(children: .contain).accessibilityLabel("筛选账目")
     }
-    private func total(_ title: String, cents: Int64, inflow: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: cents, hide: store.preferences.hideAmounts, role: .donut,
-                        sign: inflow ? .inflow : .automatic,
-                        ink: inflow ? YubaiColor.brandInk : YubaiColor.label)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
-    }
-    private func changeMonth(_ offset: Int) { searchFocused = false; month = Dates.addMonths(offset, to: month) }
     private func dayLabel(_ date: Date) -> String {
         let label = ManualBookkeeping.dayLabel(date)
-        if label == "今天" || label == "昨天" { return label }
-        return label + " " + date.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "zh_CN")))
+        if label == "今天" || label == "昨天" { return label + " · " + FixedFlowPresentation.monthDay(date) }
+        return FixedFlowPresentation.monthDay(date)
     }
 }
 
@@ -313,12 +321,16 @@ struct LedgerEntryRow: View {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
             layout {
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    HStack(spacing: 6) {
+                    ChipFlow(rowSpacing: 4) {
                         Text(savedEntry?.displayTitle ?? entry.categoryName).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
+                        if entry.intoFixedSavings {
+                            Label("存着不动", systemImage: "lock").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
+                                .padding(.horizontal, 6).frame(minHeight: 20).background(YubaiColor.brandTint, in: Capsule()).fixedSize()
+                        }
                         if restraint != nil { Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true) }
                     }
                     Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                }.lineLimit(textSize.isAccessibilitySize ? nil : 1).frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(maxWidth: .infinity, alignment: .leading)
                 AmountLabel(cents: entry.amount, hide: hideAmounts,
                             sign: entry.inflow ? .inflow : .outflow, ink: entry.inflow ? YubaiColor.brandInk : YubaiColor.label)
                     .fixedSize(horizontal: true, vertical: false)
