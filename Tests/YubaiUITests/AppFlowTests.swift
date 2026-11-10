@@ -1483,7 +1483,15 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '合成银行卡 · 余额'")).firstMatch, in: app)
         XCTAssertTrue(app.switches["fixedFlowAutoPay"].isEnabled)
         let editor = app.scrollViews["fixedFlowEditor"]
-        scrollVertically(editor, in: app)
+        for _ in 0..<4 {
+            let frame = visibleFrame(editor, in: app)
+            let trayTop = min(frame.maxY, app.textFields["fixedFlowTitle"].frame.minY)
+            if ["fixedFlowAutoPay", "fixedFlowEstimated"].allSatisfy({ app.switches[$0].frame.maxY < trayTop }) { break }
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: frame.midX - app.frame.minX, dy: frame.minY + (trayTop - frame.minY) * 0.85 - app.frame.minY))
+            let end = origin.withOffset(CGVector(dx: frame.midX - app.frame.minX, dy: frame.minY + (trayTop - frame.minY) * 0.15 - app.frame.minY))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
         let trayTop = min(visibleFrame(editor, in: app).maxY, app.textFields["fixedFlowTitle"].frame.minY)
         for identifier in ["fixedFlowAutoPay", "fixedFlowEstimated"] {
             XCTAssertLessThan(app.switches[identifier].frame.maxY, trayTop)
