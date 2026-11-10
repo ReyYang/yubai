@@ -135,7 +135,7 @@ struct EntriesView: View {
                 pickingMonth = false
             })
             HStack(spacing: 0) {
-                Picker("年", selection: $pickerYear) { ForEach(monthYears, id: \.self) { Text("\($0) 年").tag($0) } }
+                Picker("年", selection: $pickerYear) { ForEach(monthYears, id: \.self) { Text(verbatim: "\($0) 年").tag($0) } }
                 Picker("月", selection: $pickerMonth) { ForEach(1...12, id: \.self) { Text("\($0) 月").tag($0) } }
             }
             #if os(iOS)
