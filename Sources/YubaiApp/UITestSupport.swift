@@ -66,7 +66,8 @@ enum UITestSupport {
     }
     /// Round 45 fixtures. Numbers follow the design boards; dates follow the simulator clock.
     static let v45Scripts: Set<String> = [
-        "v45-home", "v45-fast", "v45-over", "v45-bill", "v45-payday", "v45-late", "v45-newcycle", "v45-gap", "v45-new"
+        "v45-home", "v45-fast", "v45-over", "v45-bill", "v45-payday", "v45-late", "v45-newcycle", "v45-gap", "v45-new",
+        "v45-share", "v45-bill-match", "v45-entry-history", "v45-ask"
     ]
     static var script: String? {
         let args = ProcessInfo.processInfo.arguments
@@ -211,6 +212,38 @@ enum UITestSupport {
     }
     /// 现在页各状态。手上的钱、每月存、固定存款和账单照画板：还能花 = 手上 − 存着不动 5,000 − 每月存 2,000 − 固定账单还要付。
     static func v45Ledger(_ script: String, now: Date) throws -> Ledger {
+        if ["v45-share", "v45-bill-match", "v45-entry-history", "v45-ask"].contains(script) {
+            var ledger = try v45Ledger(script == "v45-bill-match" ? "v45-bill" : "v45-home", now: now)
+            let accountID = ledger.accounts[0].id
+            switch script {
+            case "v45-share":
+                ledger.cycleAnchor = .calendarMonth; ledger.savingRule = .share(20)
+                ledger.entries.append(Entry(date: now, amount: 840_000, nature: .income, accountID: accountID,
+                                            title: "合成兼职", category: "兼职"))
+                seedClosedV45Cycle(&ledger, now: now)
+            case "v45-bill-match":
+                // Loaded data predates autoLink: paying the bill must offer this
+                // existing record instead of recording the same expense twice.
+                ledger.entries.append(Entry(date: now, amount: 15_800, accountID: accountID,
+                                            title: "话费和宽带", category: "居住"))
+            case "v45-entry-history":
+                // The latest choice is the exception; two of the last three
+                // still suggest 餐饮. The two manual expenses also form a repeat.
+                for offset in 1...3 {
+                    let date = Dates.addDays(-offset, to: now)
+                    var entry = Entry(date: date, amount: 1800, accountID: accountID,
+                                      title: "合成咖啡", category: offset == 1 ? "购物" : "餐饮")
+                    entry.purpose = "合成咖啡"; entry.recordedAt = date; entry.categoryUserEdited = true
+                    ledger.entries.append(entry)
+                }
+            default:
+                ledger.preferences.cloudAIEnabled = true
+                ledger.entries.append(Entry(date: now, amount: 3200, accountID: accountID,
+                                            title: "合成咖啡", category: "餐饮"))
+            }
+            try ledger.validate()
+            return ledger
+        }
         var ledger = Ledger()
         ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = false
         ledger.lastReflectionWeek = ButlerCards.isoWeek(now); ledger.lastSubcategoryBatchDay = Dates.text(now)
@@ -223,7 +256,7 @@ enum UITestSupport {
         func spend(_ cents: Int64, _ title: String, _ category: String, on date: Date) {
             spending.append(Entry(date: date, amount: cents, accountID: accountID, title: title, category: category))
         }
-        func earlier(_ minutes: Double) -> Date { now.addingTimeInterval(-60 * minutes) }
+        func earlier(_ minutes: Double) -> Date { max(today, now.addingTimeInterval(-60 * minutes)) }
         var hand: Int64 = 1_217_400
         var paydayOffset = 20
         var bills: [(title: String, amount: Int64, due: Int, estimated: Bool)] = [
@@ -256,7 +289,7 @@ enum UITestSupport {
             hand = 1_522_200; paydayOffset = 0; bills = []
             for offset in 5...12 { spend(22_350, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
         case "v45-gap":
-            hand = 921_400
+            hand = 1_201_400
             for offset in 4...11 { spend(10_000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
         default: // v45-new
             hand = 800_000; bills = []
@@ -288,12 +321,23 @@ enum UITestSupport {
             ledger.paydayConfirmSince = day(paydayOffset)
         }
         if script == "v45-newcycle", let planID = ledger.plans.first?.id {
-            var receipt = Entry(date: earlier(10), amount: 801_000, nature: .income, accountID: accountID, title: "工资", category: "工资奖金")
+            var receipt = Entry(date: max(today, earlier(10)), amount: 801_000, nature: .income, accountID: accountID, title: "工资", category: "工资奖金")
             receipt.planID = planID; receipt.occurrence = today
             ledger.entries.append(receipt)
+            ledger.accounts[0].anchorBalance -= receipt.amount
         }
+        // The board's 5,000 already includes older savings. Startup maintenance
+        // must not merge a synthetic previous cycle into it a second time.
+        seedClosedV45Cycle(&ledger, now: now, unspent: script == "v45-newcycle" ? 21_200 : 0)
         try ledger.validate()
         return ledger
+    }
+    private static func seedClosedV45Cycle(_ ledger: inout Ledger, now: Date, unspent: Int64 = 0) {
+        let cycle = Finance.cycle(in: ledger, now: now)
+        let previous = Finance.cycle(in: ledger, now: cycle.start.addingTimeInterval(-1))
+        ledger.savingHistory = [CycleSaving(cycleStart: previous.start, cycleEnd: previous.end,
+                                           income: 801_000, target: 200_000, saved: 200_000,
+                                           unspent: unspent, leftoverChoice: unspent == 0 ? .keep : nil)]
     }
     static func cashTimelineLedger(low: Bool, now: Date) -> Ledger {
         var ledger = Ledger()
@@ -337,6 +381,9 @@ enum UITestSupport {
         ledger.mutedTopics = ["letter"]
         let account = Account(name: "合成工资卡", balance: 200_000, at: now)
         ledger.accounts = [account]
+        // Keep 待处理 reachable after dismissing the salary candidate too.
+        var pendingBill = Plan(title: "合成待处理账单", amount: 99, dueDate: Dates.day(now))
+        pendingBill.accountID = account.id; ledger.plans = [pendingBill]
         let month = Dates.calendar.dateInterval(of: .month, for: now)!.start
         let latestMonth = Dates.calendar.component(.day, from: now) >= 10 ? month : Dates.addMonths(-1, to: month)
         var batch = ImportBatch(filename: "合成工资流水.csv", importedCount: 6, duplicateCount: 0, skippedCount: 0)
@@ -440,7 +487,7 @@ enum UITestSupport {
         case "judge-skip":
             // ¥3,029 less ¥1,750 rent leaves ¥1,279 against a ¥1,899 purchase.
             let month = Dates.calendar.dateInterval(of: .month, for: now)!
-            var rent = Plan(title: "房租", amount: 175_000, dueDate: month.end, category: "居住")
+            var rent = Plan(title: "房租", amount: 175_000, dueDate: month.end.addingTimeInterval(-1), category: "居住")
             rent.accountID = account.id; ledger.plans = [rent]
         case "wishlist-cool":
             ledger.wishlist = cooldownWishes(now: now)
@@ -671,7 +718,7 @@ struct UITestTransport: ChatTransport {
             let result = JSONValue.object(["rows": .array(rows), "items": .array([]), "series": .array([]), "questions": .array(questions)])
             return ChatMessage(role: .assistant, content: try result.jsonText())
         }
-        if script == "ask" {
+        if script == "ask" || script == "v45-ask" {
             if request.messages.last?.role != .tool {
                 return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "coffee-total", name: "summarize",
                     arguments: #"{"nature":"spending","keyword":"咖啡","group_by":"category"}"#)])
