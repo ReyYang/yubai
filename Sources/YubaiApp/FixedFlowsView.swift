@@ -682,3 +682,675 @@ private extension View {
             .background(YubaiColor.raised, in: Capsule()).yubaiHitTarget()
     }
 }
+
+// MARK: - Round 45 · 固定账单：勾、菜单、付了、对上了、加一项、详情
+
+/// 在「付了」「这笔对上了」「不是，另记一笔」之间来回时，记住用户已经给过的选择（只在内存里）。
+@MainActor enum BillSession {
+    static var declined: Set<String> = []
+    static var amounts: [String: Int64] = [:]
+    static func key(_ planID: UUID, _ occurrence: Date) -> String { planID.uuidString + "_" + Dates.text(occurrence) }
+    static func clear(_ planID: UUID, _ occurrence: Date) {
+        let id = Self.key(planID, occurrence)
+        declined.remove(id); amounts[id] = nil
+    }
+}
+
+@MainActor enum BillPayFlow {
+    /// 点勾或菜单里的「付了」：金额会变 → 键盘；否则先找账本里已有的一笔；都没有才直接记下。
+    static func pay(planID: UUID, occurrence: Date, store: AppStore) {
+        guard let plan = store.plans.first(where: { $0.id == planID }) else { return }
+        store.sheetSource = nil
+        if plan.estimated {
+            store.sheet = .billPay(planID: planID, occurrence: occurrence)
+            return
+        }
+        if let match = FixedFlows.matchingEntries(planID: planID, occurrence: occurrence, in: store.current, now: Date()).first {
+            store.sheet = .billMatch(planID: planID, occurrence: occurrence, entryID: match.id)
+            return
+        }
+        let amount = FixedFlows.expectedAmount(planID: planID, in: store.current) ?? plan.amount
+        FixedFlowCheck.record(planID: planID, occurrence: occurrence, title: plan.title, amount: amount, inflow: plan.inflow, store: store)
+    }
+    static func skip(planID: UUID, occurrence: Date, store: AppStore) {
+        let change = ChangeSet(source: "用户操作", reason: "跳过这期", items: [.skipOccurrence(planID, occurrence)])
+        _ = store.apply(change, label: "这个月不用付")
+    }
+    /// 这期留出的钱：算式里有就按算式的，没有按安排里的。
+    static func reserved(planID: UUID, occurrence: Date, store: AppStore) -> Int64? {
+        let day = Dates.day(occurrence)
+        return store.formula.bills.first { $0.planID == planID && Dates.day($0.date) == day && $0.state != .paid }?.amount
+    }
+}
+
+@MainActor enum BillEditing {
+    /// 改一项安排里的某几个字段（金额、几号、账户、自动记），其余原样带上。
+    @discardableResult static func change(planID: UUID, store: AppStore, label: String, _ mutate: (inout FixedFlowEdit) -> Void) -> Bool {
+        guard var edit = FixedFlows.edit(planID: planID, in: store.current) else { return false }
+        mutate(&edit)
+        do {
+            let change = try FixedFlows.update(planID: planID, title: edit.title, amount: edit.amount, frequency: edit.frequency, date: edit.date,
+                                               accountID: edit.accountID, category: edit.category, installments: edit.installments,
+                                               autoPay: edit.autoPay, estimated: edit.estimated, in: store.current,
+                                               intoFixedSavings: edit.intoFixedSavings)
+            return store.apply(change, label: label)
+        } catch FixedFlowEditError.noChanges {
+            return false
+        } catch {
+            store.error = error.localizedDescription
+            return false
+        }
+    }
+}
+
+/// 首页「接下来 7 天」和算式页同一颗勾。点：金额会变的先问金额，否则先找账本里已有的一笔，都没有才直接记下；长按：六项菜单。
+struct BillCheck: View {
+    @Environment(AppStore.self) private var store
+    let planID: UUID
+    let occurrence: Date
+    private var plan: Plan? { store.plans.first { $0.id == planID } }
+    private var paid: Bool {
+        let day = Dates.day(occurrence)
+        if store.formula.bills.contains(where: { $0.planID == planID && Dates.day($0.date) == day && $0.state == .paid }) { return true }
+        return plan?.settledOccurrences.contains { Dates.day($0) == day } ?? false
+    }
+    var body: some View {
+        let title = plan?.title ?? ""
+        let inflow = plan?.inflow ?? false
+        if paid {
+            mark(filled: true).accessibilityElement(children: .ignore)
+                .accessibilityLabel((inflow ? "已收到 " : "已付 ") + title)
+                .accessibilityIdentifier("billCheck_" + planID.uuidString)
+        } else {
+            Button { BillPayFlow.pay(planID: planID, occurrence: occurrence, store: store) } label: { mark(filled: false) }
+                .buttonStyle(PressButtonStyle())
+                .accessibilityLabel((inflow ? "收到了 " : "付了 ") + title)
+                .accessibilityHint("长按有更多选项")
+                .accessibilityIdentifier("billCheck_" + planID.uuidString)
+                .billRowMenu(planID: planID, occurrence: occurrence)
+        }
+    }
+    private func mark(filled: Bool) -> some View {
+        Image(systemName: "checkmark").yubaiFont(YubaiFont.row, weight: .semibold)
+            .foregroundStyle(filled ? YubaiColor.onBrand : YubaiColor.labelSecondary)
+            .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
+            .background(filled ? YubaiColor.brand : YubaiColor.neutralSoft, in: Circle())
+            .yubaiHitTarget()
+    }
+}
+
+/// 长按一项账单出的菜单：几种情况各一行，都是一步完成；最后一项是真的停掉，用琥珀色。
+struct BillRowMenu: View {
+    @Environment(AppStore.self) private var store
+    let planID: UUID
+    let occurrence: Date
+    let stop: () -> Void
+    var body: some View {
+        let plan = store.plans.first { $0.id == planID }
+        let amount = BillPayFlow.reserved(planID: planID, occurrence: occurrence, store: store) ?? plan?.amount ?? 0
+        let payTitle = (plan?.inflow == true ? "收到了 " : "付了 ") + amount2(amount, hide: store.preferences.hideAmounts)
+        Button(payTitle) { BillPayFlow.pay(planID: planID, occurrence: occurrence, store: store) }
+            .accessibilityIdentifier("billMenu_pay")
+        Button("已经记过了") { present(.billLink(planID: planID, occurrence: occurrence)) }
+            .accessibilityIdentifier("billMenu_linked")
+        Button("金额不一样") { present(.billPay(planID: planID, occurrence: occurrence)) }
+            .accessibilityIdentifier("billMenu_amount")
+        Button("这个月不用付") { BillPayFlow.skip(planID: planID, occurrence: occurrence, store: store) }
+            .accessibilityIdentifier("billMenu_skip")
+        Button("改到别的日子") { present(.editPlan(planID)) }
+            .accessibilityIdentifier("billMenu_move")
+        Button("以后都没有这项了", action: stop)
+            .foregroundStyle(YubaiColor.amberInk).accessibilityIdentifier("billMenu_stop")
+    }
+    private func present(_ sheet: AppSheet) {
+        store.sheetSource = nil; store.sheet = sheet
+    }
+}
+
+private struct BillRowMenuModifier: ViewModifier {
+    @Environment(AppStore.self) private var store
+    @State private var confirmingStop = false
+    let planID: UUID
+    let occurrence: Date
+    func body(content: Content) -> some View {
+        let plan = store.plans.first { $0.id == planID }
+        content.contextMenu { BillRowMenu(planID: planID, occurrence: occurrence, stop: { confirmingStop = true }) }
+            .modifier(FixedFlowStopConfirmation(planID: planID, title: plan?.title ?? "", inflow: plan?.inflow ?? false, isPresented: $confirmingStop))
+    }
+}
+
+extension View {
+    /// 长按出 `BillRowMenu`；停掉要确认。
+    func billRowMenu(planID: UUID, occurrence: Date) -> some View {
+        modifier(BillRowMenuModifier(planID: planID, occurrence: occurrence))
+    }
+}
+
+/// 账单弹窗的标题行：名字、一个小数、取消。
+private struct BillSheetHeader: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    var subtitle: String? = nil
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+            Text(title).yubaiFont(YubaiFont.entrySheetTitle)
+            if let subtitle { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            Spacer(minLength: YubaiSpace.space8)
+            Button("取消") { dismiss() }
+                .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.label)
+                .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
+                .background(YubaiColor.card, in: Capsule()).contentShape(Capsule())
+                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("amountSheetCancel")
+        }
+    }
+}
+
+/// 账本里的一笔：首字、名字、日期·账户·来源、金额。
+private struct BillEntryRow: View {
+    @Environment(AppStore.self) private var store
+    let entry: Entry
+    var body: some View {
+        let outflow = entry.nature == .expense
+        let detail = FixedFlowPresentation.monthDay(entry.date) + " · " + store.accountName(entry.accountID) + (entry.batchID != nil ? " · 导入" : "")
+        HStack(spacing: YubaiSpace.gapGroup) {
+            Text(String(entry.displayTitle.prefix(1))).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.iconInk)
+                .frame(width: YubaiSize.rowIcon + YubaiSpace.space4, height: YubaiSize.rowIcon + YubaiSpace.space4)
+                .background(YubaiColor.iconTile, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle)
+                Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small, sign: outflow ? .outflow : .inflow,
+                        ink: outflow ? YubaiColor.label : YubaiColor.brandInk).fixedSize(horizontal: true, vertical: false)
+        }.contentShape(Rectangle())
+    }
+}
+
+// MARK: 付了（金额会变的先改金额）
+
+struct BillPaySheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let planID: UUID
+    let occurrence: Date
+    var body: some View {
+        if let plan = store.plans.first(where: { $0.id == planID }) {
+            let expected = FixedFlows.expectedAmount(planID: planID, in: store.current) ?? plan.amount
+            BillPayEditor(plan: plan, occurrence: occurrence, expected: expected)
+        } else {
+            Color.clear.onAppear { dismiss() }
+        }
+    }
+}
+
+private struct BillPayEditor: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let plan: Plan
+    let occurrence: Date
+    let expected: Int64
+    @State private var keypad: EntryKeypad
+
+    init(plan: Plan, occurrence: Date, expected: Int64) {
+        self.plan = plan; self.occurrence = occurrence; self.expected = expected
+        let remembered = MainActor.assumeIsolated { BillSession.amounts[BillSession.key(plan.id, occurrence)] }
+        _keypad = State(initialValue: EntryKeypad(amount: remembered ?? expected))
+    }
+
+    private var amount: Int64 { keypad.amount ?? 0 }
+    private var valid: Bool { amount > 0 && amount <= Money.limit }
+    private var rows: [AmountSheetRow] {
+        guard valid, !plan.inflow, let reserved = BillPayFlow.reserved(planID: plan.id, occurrence: occurrence, store: store) else { return [] }
+        let hide = store.preferences.hideAmounts
+        let diff = reserved - amount
+        let available = store.funds.available + diff
+        if diff == 0 { return [AmountSheetRow(label: "还能花", value: amount2(available, hide: hide))] }
+        let label = (diff > 0 ? "比留出的少 " : "比留出的多 ") + amount2(abs(diff), hide: hide)
+        return [AmountSheetRow(label: label, value: "还能花 " + amount2(available, hide: hide), amber: diff < 0)]
+    }
+
+    var body: some View {
+        AmountEntrySheet(title: plan.title, subtitle: "上次 " + amount2(expected, hide: store.preferences.hideAmounts),
+                         keypad: $keypad, rows: rows, primaryTitle: plan.inflow ? "收到了" : "付了", canSave: valid, save: save)
+            #if os(iOS)
+            .presentationDetents([.height(640), .large])
+            #endif
+    }
+
+    private func save() {
+        guard valid else { return }
+        let value = amount
+        let key = BillSession.key(plan.id, occurrence)
+        if !BillSession.declined.contains(key),
+           let match = FixedFlows.matchingEntries(planID: plan.id, occurrence: occurrence, in: store.current, now: Date()).first {
+            BillSession.amounts[key] = value
+            store.sheet = .billMatch(planID: plan.id, occurrence: occurrence, entryID: match.id)
+            return
+        }
+        if FixedFlowCheck.record(planID: plan.id, occurrence: occurrence, title: plan.title, amount: value, inflow: plan.inflow, store: store, override: value) {
+            BillSession.clear(plan.id, occurrence)
+            dismiss()
+        }
+    }
+}
+
+// MARK: 其实已经记过了
+
+struct BillMatchSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let planID: UUID
+    let occurrence: Date
+    let entryID: UUID
+    var body: some View {
+        if let plan = store.plans.first(where: { $0.id == planID }), let entry = store.entriesByID[entryID] {
+            BillMatchContent(plan: plan, entry: entry, occurrence: occurrence,
+                             expected: FixedFlows.expectedAmount(planID: planID, in: store.current) ?? plan.amount)
+        } else {
+            Color.clear.onAppear { dismiss() }
+        }
+    }
+}
+
+private struct BillMatchContent: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let plan: Plan
+    let entry: Entry
+    let occurrence: Date
+    let expected: Int64
+    private var resultRow: (label: String, value: String, amber: Bool)? {
+        guard !plan.inflow, let reserved = BillPayFlow.reserved(planID: plan.id, occurrence: occurrence, store: store) else { return nil }
+        let hide = store.preferences.hideAmounts
+        let diff = reserved - entry.amount
+        let available = amount2(store.funds.available + diff, hide: hide)
+        if diff == 0 { return ("还能花", available, false) }
+        return ((diff > 0 ? "比留出的少 " : "比留出的多 ") + amount2(abs(diff), hide: hide), "还能花 " + available, diff < 0)
+    }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                BillSheetHeader(title: plan.title, subtitle: amount2(expected, hide: store.preferences.hideAmounts))
+                Text("账本里已经有一笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                Card { BillEntryRow(entry: entry) }
+                if let row = resultRow { ResultBar(label: row.label, value: row.value, amber: row.amber) }
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
+        }.scrollBounceBehavior(.basedOnSize)
+            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+                VStack(spacing: YubaiSpace.space8) {
+                    Button("就是这笔", action: confirm).buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("billMatchConfirm")
+                    Button("不是，另记一笔", action: separate).buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("billMatchSeparate")
+                }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space8)
+            }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            .presentationDetents([.height(520), .large])
+            #endif
+    }
+    private func confirm() {
+        let planID = plan.id, entryID = entry.id, day = occurrence
+        if store.update("账单已付", { ledger in try FixedFlows.markPaid(planID: planID, occurrence: day, with: entryID, in: &ledger) }) {
+            BillSession.clear(planID, day)
+            dismiss()
+        }
+    }
+    private func separate() {
+        let key = BillSession.key(plan.id, occurrence)
+        BillSession.declined.insert(key)
+        if plan.estimated {
+            store.sheet = .billPay(planID: plan.id, occurrence: occurrence)
+            return
+        }
+        if FixedFlowCheck.record(planID: plan.id, occurrence: occurrence, title: plan.title, amount: expected, inflow: plan.inflow, store: store) {
+            BillSession.clear(plan.id, occurrence)
+            dismiss()
+        }
+    }
+}
+
+// MARK: 已经记过了（从最近的账里挑）
+
+struct BillLinkSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let planID: UUID
+    let occurrence: Date
+    @State private var candidates: [Entry] = []
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                BillSheetHeader(title: store.plans.first { $0.id == planID }?.title ?? "")
+                if candidates.isEmpty {
+                    Text("没有可选的账").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                } else {
+                    Text("账本里已经有一笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    CardRows(candidates) { entry in
+                        Button { link(entry) } label: { BillEntryRow(entry: entry).padding(.vertical, YubaiSpace.space8) }
+                            .buttonStyle(PressButtonStyle()).accessibilityIdentifier("billLink_" + entry.id.uuidString)
+                    }
+                }
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapSection)
+        }.paperBackground().accessibilityIdentifier("billLinkSheet")
+            .task { candidates = Array(FixedFlows.linkCandidates(planID: planID, in: store.current, now: Date()).prefix(40)) }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            .presentationDetents([.large])
+            #endif
+    }
+    private func link(_ entry: Entry) {
+        let planID = planID, day = occurrence, entryID = entry.id
+        if store.update("账单已付", { ledger in try FixedFlows.markPaid(planID: planID, occurrence: day, with: entryID, in: &ledger) }) {
+            BillSession.clear(planID, day)
+            dismiss()
+        }
+    }
+}
+
+// MARK: 每月几号
+
+private struct BillDayPicker: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
+    let current: Int
+    let pick: (Int) -> Void
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                BillSheetHeader(title: "每月几号")
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: textSize.isAccessibilitySize ? 4 : 7), spacing: YubaiSpace.space8) {
+                    ForEach(1...28, id: \.self) { value in
+                        Button { pick(value); dismiss() } label: {
+                            Text("\(value)").yubaiFont(YubaiFont.callout).lineLimit(1)
+                                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
+                                .foregroundStyle(current == value ? YubaiColor.onBrand : YubaiColor.label)
+                                .background(current == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                        }.buttonStyle(PressButtonStyle()).accessibilityLabel("每月 \(value) 号")
+                            .accessibilityAddTraits(current == value ? .isSelected : [])
+                            .accessibilityIdentifier("billDay_\(value)")
+                    }
+                }
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapSection)
+        }.paperBackground()
+            #if os(iOS)
+            .presentationDetents([.medium, .large])
+            #endif
+    }
+}
+
+// MARK: 加一项固定账单
+
+struct BillAddSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var inflow = false
+    @State private var name = ""
+    @State private var cents: Int64 = 0
+    @State private var day = min(28, Dates.calendar.component(.day, from: Date()))
+    @State private var autoPay = true
+    @State private var editingAmount = false
+    @State private var editingDay = false
+    @State private var keypad = EntryKeypad()
+    private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var accountID: UUID? { ManualBookkeeping.defaultAccount(in: store.current)?.id }
+    private var canSave: Bool { !cleanName.isEmpty && cents > 0 }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                BillSheetHeader(title: "加一项固定账单")
+                SegmentedWide(choices: [(false, "要付"), (true, "要收")], selection: $inflow,
+                              identifier: { $0 ? "billAddInflow" : "billAddOutflow" })
+                fieldsCard
+                autoCard
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
+        }.scrollDismissesKeyboard(.interactively).paperBackground()
+            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+                Button("加上", action: save).buttonStyle(PrimaryButtonStyle()).disabled(!canSave)
+                    .padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space8)
+                    .accessibilityIdentifier("billAddDone")
+            }
+            .sheet(isPresented: $editingAmount) {
+                AmountEntrySheet(title: "金额", keypad: $keypad, primaryTitle: "好", canSave: keypad.canSave, save: {
+                    if let value = keypad.resolve() { cents = value }
+                    editingAmount = false
+                }).presentationDragIndicator(.visible).yubaiSheetBackground()
+                    #if os(iOS)
+                    .presentationDetents([.height(520), .large])
+                    #endif
+            }
+            .sheet(isPresented: $editingDay) {
+                BillDayPicker(current: day, pick: { day = $0 }).presentationDragIndicator(.visible).yubaiSheetBackground()
+            }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            .presentationDetents([.large])
+            #endif
+    }
+
+    private var fieldsCard: some View {
+        Card(style: .list) {
+            VStack(spacing: YubaiSpace.none) {
+                fieldRow("名字") {
+                    TextField("", text: $name).multilineTextAlignment(.trailing).yubaiFont(YubaiFont.rowTitle)
+                        .accessibilityLabel("名字").accessibilityIdentifier("billAddName")
+                }
+                Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+                fieldRow("金额") {
+                    Button { keypad = EntryKeypad(amount: cents); editingAmount = true } label: {
+                        Text(amount2(cents, hide: false)).yubaiFont(YubaiFont.rowTitle).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billAddAmount")
+                }
+                Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+                fieldRow("每月几号") {
+                    Button { editingDay = true } label: {
+                        Text("\(day) 号").yubaiFont(YubaiFont.rowTitle).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billAddDay")
+                }
+            }
+        }
+    }
+    private func fieldRow<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            Text(title).yubaiFont(YubaiFont.row)
+            Spacer(minLength: YubaiSpace.space8)
+            value()
+        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
+    }
+    private var autoCard: some View {
+        Card(style: .list) {
+            Toggle("到日子自动记一笔", isOn: $autoPay).tint(YubaiColor.toggleOn).yubaiFont(YubaiFont.row)
+                .disabled(accountID == nil).frame(minHeight: YubaiSize.rowDouble).accessibilityIdentifier("billAddAutoPay")
+        }
+    }
+
+    private func save() {
+        guard canSave else { return }
+        let calendar = Dates.calendar
+        let today = Dates.day(Date())
+        var parts = calendar.dateComponents([.year, .month], from: today)
+        parts.day = day
+        var due = calendar.date(from: parts) ?? today
+        if due < today { due = Dates.addMonths(1, to: due) }
+        var plan = Plan(title: cleanName, amount: cents, dueDate: due, frequency: .monthly, inflow: inflow,
+                        category: inflow ? "其他收入" : "其他支出", nature: inflow ? .income : .expense)
+        plan.monthlyDay = day
+        plan.accountID = accountID
+        plan.autoPay = autoPay && accountID != nil
+        plan.autoPaySince = plan.autoPay ? today : nil
+        plan.estimated = !plan.autoPay
+        let change = ChangeSet(source: "用户操作", reason: "添加安排「\(cleanName)」", items: [.addPlan(plan)])
+        if store.apply(change, label: "添加安排") { dismiss() }
+    }
+}
+
+// MARK: 一项固定账单
+
+struct BillDetailView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let planID: UUID
+    @State private var history: FixedFlows.History?
+    @State private var editingAmount = false
+    @State private var editingDay = false
+    @State private var confirmingStop = false
+    @State private var keypad = EntryKeypad()
+    private var plan: Plan? { store.plans.first { $0.id == planID } }
+
+    var body: some View {
+        Group {
+            if let plan { content(plan) } else { Color.clear.onAppear { dismiss() } }
+        }.navigationTitle(plan?.title ?? "").yubaiNavigation()
+            .task(id: store.ledgerRevision) { history = FixedFlows.history(planID: planID, in: store.current) }
+    }
+
+    private func content(_ plan: Plan) -> some View {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
+            settingsCard(plan)
+            if let history, !history.entries.isEmpty { historyBlock(plan, history) }
+            if plan.active && plan.endDate == nil && plan.stoppedAt == nil { stopButton }
+        }.amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("billDetailPage")
+            .sheet(isPresented: $editingAmount) {
+                AmountEntrySheet(title: "金额", keypad: $keypad, primaryTitle: "好", canSave: keypad.canSave, save: {
+                    if let value = keypad.resolve() { BillEditing.change(planID: planID, store: store, label: plan.title) { $0.amount = value } }
+                    editingAmount = false
+                }).presentationDragIndicator(.visible).yubaiSheetBackground()
+                    #if os(iOS)
+                    .presentationDetents([.height(520), .large])
+                    #endif
+            }
+            .sheet(isPresented: $editingDay) {
+                BillDayPicker(current: monthlyDay(plan), pick: { changeDay($0) }).presentationDragIndicator(.visible).yubaiSheetBackground()
+            }
+            .modifier(FixedFlowStopConfirmation(planID: planID, title: plan.title, inflow: plan.inflow, isPresented: $confirmingStop,
+                                                onStopped: { dismiss() }))
+    }
+
+    private func monthlyDay(_ plan: Plan) -> Int {
+        plan.monthlyDay ?? Dates.calendar.component(.day, from: plan.dueDate)
+    }
+    private func expected(_ plan: Plan) -> Int64 {
+        FixedFlows.expectedAmount(planID: plan.id, in: store.current) ?? plan.amount
+    }
+
+    // MARK: 设置
+    private func settingsCard(_ plan: Plan) -> some View {
+        Card(style: .list) {
+            VStack(spacing: YubaiSpace.none) {
+                amountRow(plan)
+                rowDivider
+                dayRow(plan)
+                rowDivider
+                accountRow(plan)
+                rowDivider
+                autoRow(plan)
+            }
+        }
+    }
+    private var rowDivider: some View {
+        Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+    }
+    private func detailRow<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.gapGroup) {
+                Text(title).yubaiFont(YubaiFont.row)
+                Spacer(minLength: YubaiSpace.space8)
+                value()
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text(title).yubaiFont(YubaiFont.row)
+                value()
+            }.padding(.vertical, YubaiSpace.space8)
+        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
+    }
+    private func amountRow(_ plan: Plan) -> some View {
+        let value = amount2(expected(plan), hide: store.preferences.hideAmounts)
+        let text = plan.estimated ? "每月不一样 · 约 " + value : value
+        return Button {
+            keypad = EntryKeypad(amount: expected(plan)); editingAmount = true
+        } label: {
+            detailRow("金额") { Text(text).yubaiFont(YubaiFont.rowTitle, weight: .semibold).multilineTextAlignment(.trailing) }
+                .contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billDetailAmount")
+    }
+    private func dayRow(_ plan: Plan) -> some View {
+        let monthly = plan.frequency == .monthly
+        return Button {
+            if monthly { editingDay = true } else { store.sheetSource = nil; store.sheet = .editPlan(plan.id) }
+        } label: {
+            detailRow(monthly ? "每月几号" : "多久一次") {
+                Text(monthly ? "\(monthlyDay(plan)) 号" : plan.frequency.label).yubaiFont(YubaiFont.rowTitle, weight: .semibold)
+            }.contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billDetailDay")
+    }
+    private func accountRow(_ plan: Plan) -> some View {
+        let accounts = store.accounts.filter { !$0.archived }
+        return Menu {
+            ForEach(accounts) { account in
+                Button(account.name) { BillEditing.change(planID: plan.id, store: store, label: plan.title) { $0.accountID = account.id } }
+            }
+        } label: {
+            detailRow(plan.inflow ? "收到哪里" : "从哪付") {
+                Text(store.accountName(plan.accountID)).yubaiFont(YubaiFont.rowTitle, weight: .semibold)
+            }.contentShape(Rectangle())
+        }.accessibilityIdentifier("billDetailAccount")
+    }
+    private func autoRow(_ plan: Plan) -> some View {
+        let binding = Binding(get: { plan.autoPay }, set: { value in
+            BillEditing.change(planID: plan.id, store: store, label: plan.title) { $0.autoPay = value; $0.estimated = !value }
+        })
+        return Toggle("到日子自动记一笔", isOn: binding).tint(YubaiColor.toggleOn).yubaiFont(YubaiFont.row)
+            .disabled(plan.accountID == nil).frame(minHeight: YubaiSize.rowDouble).accessibilityIdentifier("billDetailAutoPay")
+    }
+
+    // MARK: 付过的
+    private func historyBlock(_ plan: Plan, _ history: FixedFlows.History) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("付过的").yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                Spacer(minLength: YubaiSpace.space8)
+                Text("平均 " + amount2(history.average, hide: store.preferences.hideAmounts))
+                    .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            }.padding(.horizontal, YubaiSpace.insetCard)
+            CardRows(history.entries, rowHeight: YubaiSize.rowSingle) { entry in historyRow(entry, plan: plan) }
+        }.accessibilityIdentifier("billDetailHistory")
+    }
+    private func historyRow(_ entry: Entry, plan: Plan) -> some View {
+        let note = entry.displayTitle == plan.title ? "" : entry.displayTitle
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.space8) {
+                Text(FixedFlowPresentation.monthDay(entry.date)).yubaiFont(YubaiFont.row)
+                if !note.isEmpty { Text("· " + note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1) }
+                Spacer(minLength: YubaiSpace.space8)
+                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small, sign: plan.inflow ? .inflow : .outflow)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text(FixedFlowPresentation.monthDay(entry.date) + (note.isEmpty ? "" : " · " + note)).yubaiFont(YubaiFont.row)
+                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small, sign: plan.inflow ? .inflow : .outflow)
+            }.padding(.vertical, YubaiSpace.space8)
+        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            .contextMenu {
+                Button("和账单分开") { separate(entry) }.accessibilityIdentifier("billDetailUnlink")
+            }
+    }
+    private func separate(_ entry: Entry) {
+        let id = entry.id
+        store.update("分开这一笔") { ledger in try FixedFlows.unlink(entryID: id, in: &ledger) }
+    }
+
+    private var stopButton: some View {
+        Button { confirmingStop = true } label: {
+            Text("以后都没有这项了").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billDetailStop")
+    }
+
+    private func changeDay(_ day: Int) {
+        guard let edit = FixedFlows.edit(planID: planID, in: store.current) else { return }
+        let calendar = Dates.calendar
+        var parts = calendar.dateComponents([.year, .month], from: edit.date)
+        parts.day = day
+        guard let date = calendar.date(from: parts) else { return }
+        BillEditing.change(planID: planID, store: store, label: plan?.title ?? "") { $0.date = Dates.day(date) }
+    }
+}

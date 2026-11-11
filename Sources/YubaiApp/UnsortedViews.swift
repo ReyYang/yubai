@@ -635,66 +635,52 @@ private struct UnsortedEntryRow: View {
     }
 }
 
+/// 一笔笔分：一屏一笔，金额、名字、日期放中间，下面是余白猜的分类和别的选项，底下的钮直接写着「数码，下一笔」。
 struct LetterTriageView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
     let entryIDs: [UUID]
     @State private var queue: [UUID] = []
     @State private var index = 0
     @State private var total = 0
     @State private var choice: CategoryAssignment?
     @State private var suggestion: CategoryAssignment?
-    @State private var purpose = ""
+    @State private var rememberParty = true
+    @State private var showsSource = false
+    @State private var showingMore = false
     private var entry: Entry? {
         guard queue.indices.contains(index), let row = store.entriesByID[queue[index]], row.deletedAt == nil else { return nil }
         return row
     }
     private var selection: CategoryAssignment { choice ?? suggestion ?? .init(category: Classification.pendingCategory) }
+    private var hasSelection: Bool { !Classification.isPending(selection.category) }
+    private func party(_ entry: Entry) -> String { entry.title.components(separatedBy: " · ")[0] }
     var body: some View {
-        VStack(spacing: 0) {
-            LedgerPageHeader(title: "没分类", backTitle: "来信", trailing: "\(min(index + 1, total)) / \(total)")
-                .padding(.horizontal, 20)
-            GeometryReader { geometry in
-                Capsule().fill(YubaiColor.paperInset)
-                    .overlay(alignment: .leading) { Capsule().fill(YubaiColor.brand).frame(width: geometry.size.width * CGFloat(index) / CGFloat(max(1, total))) }
-            }.frame(height: 4).padding(.horizontal, 20).padding(.top, 8)
-                .accessibilityLabel("分类进度").accessibilityValue("\(index) / \(total)")
+        VStack(spacing: YubaiSpace.none) {
+            LedgerPageHeader(title: "分一分", backTitle: "账本", trailing: "\(min(index + 1, total)) / \(total)")
+                .padding(.horizontal, YubaiSpace.insetPage)
             ScrollView {
                 if let entry {
-                    Card {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text(ImportStatementText.balanceDate(entry.date) + " · " + store.accountName(entry.accountID))
-                                .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(entry.title.components(separatedBy: " · ")[0])
-                                    .yubaiFont(YubaiFont.Style(size: 22, lineHeight: 30, weight: .semibold, family: .sans, relativeTo: .title2))
-                                Spacer(minLength: 8)
-                                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .large, sign: entry.nature.inflow ? .inflow : .outflow)
-                            }
-                            Text(entry.note.isEmpty ? entry.title : entry.note).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
-                                .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: 14))
-                                .accessibilityLabel("原文：" + (entry.note.isEmpty ? entry.title : entry.note))
-                            Text("分类").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
-                            EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: entry.nature, frequentOnly: true),
-                                               income: entry.nature != .refund && entry.nature.inflow, selection: selection,
-                                               suggestionOnly: choice == nil, allowsDirectionChange: false, suggest: { suggestion?.category }) { choice = $0 }
-                            Text("用途").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
-                            RecentPurposeChips(selection: $purpose, nature: entry.nature, recall: { _ in })
-                        }
-                    }.padding(20)
+                    VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
+                        summaryCard(entry)
+                        guessBlock(entry)
+                        othersBlock(entry)
+                        partyToggle(entry)
+                    }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
                 }
             }
-        }.safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack(spacing: 12) {
-                Button("先跳过") { advance() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("skipLetterEntry")
-                Button(Classification.displayCategory(selection.category) + " · 下一笔") { save() }
-                    .buttonStyle(PrimaryButtonStyle()).disabled(Classification.isPending(selection.category) || entry == nil)
-                    .accessibilityIdentifier("saveLetterEntry")
-            }.padding(.horizontal, 20).padding(.bottom, 8)
-        }.paperBackground().navigationTitle("没分类").yubaiNavigation().accessibilityIdentifier("letterTriage")
+        }.safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { bottomBar }
+            .paperBackground().navigationTitle("分一分").yubaiNavigation().accessibilityIdentifier("letterTriage")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+            .sheet(isPresented: $showingMore) {
+                EntryMoreCategorySheet(income: entry.map { $0.nature != .refund && $0.nature.inflow } ?? false, selection: selection,
+                                       suggested: suggestion?.category, choose: { picked in
+                    choice = picked; showingMore = false
+                }, dismiss: { showingMore = false })
+            }
             .onAppear {
                 guard total == 0 else { return }
                 let ids = Set(entryIDs)
@@ -704,8 +690,82 @@ struct LetterTriageView: View {
             }
             .onChange(of: entry?.id) { _, _ in prepare() }
     }
+
+    private func summaryCard(_ entry: Entry) -> some View {
+        let line = ImportStatementText.balanceDate(entry.date) + " · " + store.accountName(entry.accountID)
+        let original = entry.note.isEmpty ? entry.title : entry.note
+        return Card {
+            VStack(spacing: YubaiSpace.space8) {
+                Text(line).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .display, sign: entry.nature.inflow ? .inflow : .outflow)
+                Text(party(entry)).yubaiFont(YubaiFont.body, weight: .medium).multilineTextAlignment(.center)
+                Button { showsSource.toggle() } label: {
+                    Text("看原文").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).yubaiHitTarget()
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("sortSourceToggle")
+                    .accessibilityValue(showsSource ? "已展开" : "已收起")
+                if showsSource {
+                    Text(original).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.gapGroup)
+                        .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                        .accessibilityLabel("原文：" + original)
+                }
+            }.frame(maxWidth: .infinity)
+        }
+    }
+    @ViewBuilder private func guessBlock(_ entry: Entry) -> some View {
+        if let suggestion {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                sectionLabel("余白猜是")
+                ChipFlow {
+                    CategoryChoiceChip(title: suggestion.category, selected: selection.category == suggestion.category) { choice = suggestion }
+                        .accessibilityIdentifier("sortGuess_" + suggestion.category)
+                }
+            }
+        }
+    }
+    private func othersBlock(_ entry: Entry) -> some View {
+        let income = entry.nature != .refund && entry.nature.inflow
+        let names = store.current.orderedCategories(income: income).map(\.name).filter { $0 != suggestion?.category }
+        var shown = Array(names.prefix(5))
+        if let picked = choice?.category, picked != suggestion?.category, !shown.contains(picked) { shown.insert(picked, at: 0) }
+        return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            sectionLabel("别的")
+            ChipFlow {
+                ForEach(shown, id: \.self) { name in
+                    CategoryChoiceChip(title: name, selected: selection.category == name) { choice = .init(category: name) }
+                        .accessibilityIdentifier("sortCategory_" + name)
+                }
+                CategoryChoiceChip(title: "更多") { showingMore = true }.accessibilityIdentifier("sortCategoryMore")
+            }
+        }
+    }
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space4)
+    }
+    private func partyToggle(_ entry: Entry) -> some View {
+        Toggle(isOn: $rememberParty) {
+            Text("以后「" + party(entry) + "」都这样分").yubaiFont(YubaiFont.row)
+        }.tint(YubaiColor.toggleOn).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.rowDouble)
+            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .accessibilityIdentifier("sortRememberParty")
+    }
+    private var bottomBar: some View {
+        let title = hasSelection ? Classification.displayCategory(selection.category) + "，下一笔" : "下一笔"
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.gapGroup) { skipButton.fixedSize(); nextButton(title).frame(maxWidth: .infinity) }
+            VStack(spacing: YubaiSpace.space8) { nextButton(title); skipButton }
+        }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.space8)
+    }
+    private var skipButton: some View {
+        Button("跳过") { advance() }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised))
+            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("skipLetterEntry")
+    }
+    private func nextButton(_ title: String) -> some View {
+        Button(title) { save() }.buttonStyle(PrimaryButtonStyle()).disabled(!hasSelection || entry == nil)
+            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("saveLetterEntry")
+    }
     private func prepare() {
-        choice = nil; purpose = ""
+        choice = nil; showsSource = false; rememberParty = true
         suggestion = entry.flatMap { CategoryGuesser.guess($0, in: store.current) }
     }
     private func advance() {
@@ -714,14 +774,13 @@ struct LetterTriageView: View {
         if index >= queue.count { dismiss() } else { prepare() }
     }
     private func save() {
-        guard var entry, !Classification.isPending(selection.category) else { return }
-        let selected = selection
+        guard var entry, hasSelection else { return }
+        let selected = selection; let remember = rememberParty
         entry.category = selected.category; entry.subcategory = selected.subcategory; entry.subcategoryUserEdited = true
         if entry.nature.uncertain { entry.nature = entry.nature.inflow ? .income : .expense }
-        if !purpose.isEmpty { entry.purpose = purpose }
         if store.update("分类", showToast: false, { ledger in
             try ManualBookkeeping.edit(entry, in: &ledger)
-            try CategoryModel.confirm(selected, entryIDs: [entry.id], includingParty: true, in: &ledger)
+            try CategoryModel.confirm(selected, entryIDs: [entry.id], includingParty: remember, in: &ledger)
         }) { advance() }
     }
 }

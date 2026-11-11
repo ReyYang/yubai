@@ -9,25 +9,22 @@ struct QuickEntryView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var keypad = EntryKeypad()
     @State private var nature = Nature.expense
     @State private var category = ""
-    @State private var categorySuggestion: CategoryAssignment?
-    @State private var confirmingDiscard = false
-    @State private var savedCount = 0
-    @State private var receiptVisible = false
-    @State private var receiptRevision = 0
-    @State private var lastSavedIDs: Set<UUID> = []
-    @State private var lastAddedPlanIDs: Set<UUID> = []
-    @State private var partID: UUID?
-    @State private var rememberPart = false
     @State private var subcategory: String?
+    @State private var categoryHint: CategoryAssignment?
+    @State private var recalls: [EntryHistory.Recall] = []
+    @State private var confirmingDiscard = false
+    @State private var addedRows: [EntryAddedRow] = []
+    @State private var addedDay = Date()
     @State private var purpose = ""
     @State private var accountID: UUID?
     @State private var otherAccountID: UUID?
     @State private var showingTransferAccountEditor = false
+    @State private var showingMoreCategories = false
     @State private var accountIDsBeforeAdding: Set<UUID> = []
-    @State private var transferAccountHighlighted = false
     @State private var date = Date()
     @State private var loaded = false
     @State private var skipNatureReset = false
@@ -35,150 +32,232 @@ struct QuickEntryView: View {
     @State private var suggestion: Occurrence?
     @State private var selectedMatchID: String?
     @State private var intoFixedSavings = false
+    @State private var fromReserve = false
     @State private var repeatsMonthly = false
     @State private var previewAvailable: Int64 = 0
+    @State private var big: BigPurchase?
     @FocusState private var purposeFocused: Bool
     private var accounts: [Account] { store.accounts.filter { !$0.archived || $0.id == prefill?.accountID || $0.id == prefill?.otherAccountID } }
     private var transferAccounts: [Account] { accounts.filter { $0.id != accountID } }
-    private var canSave: Bool { keypad.canSave && purpose.count <= 4000 && accountID != nil && (nature != .transfer || (otherAccountID != nil && otherAccountID != accountID)) }
+    private var amountCents: Int64 { keypad.amount ?? 0 }
+    private var reserveTotal: Int64 { store.funds.fixedSavingsTotal }
+    private var useReserve: Bool { nature == .expense && fromReserve && !repeatsMonthly && selectedLink == nil }
+    private var isBig: Bool { nature == .expense && big != nil && !repeatsMonthly && selectedLink == nil }
+    private var showsDestination: Bool { isBig || (nature == .expense && prefill?.fromReserve == true) }
+    private var wishInHeader: Bool { isBig }
+    private var reserveEnough: Bool { !useReserve || amountCents <= reserveTotal }
+    private var canSave: Bool {
+        keypad.canSave && purpose.count <= 4000 && accountID != nil && reserveEnough
+            && (nature != .transfer || (otherAccountID != nil && otherAccountID != accountID))
+    }
+
     var body: some View {
-            EntryForm(title: "记一笔", actionTitle: "导入", actionImage: "photo", primary: false, cancel: cancel, save: {
-                store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports
-            }) {
-                if receiptVisible { receipt }
-                if accounts.isEmpty {
-                    EmptyAccountState { store.sheet = .account(nil) }
-                } else {
-                    if [.expense, .income, .transfer].contains(nature) {
-                        Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature)
-                    } else { Text(nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
-                    amountDisplay
-                    if nature != .transfer {
-                        EntrySavingHintBar(hint: savingHint, afterOverride: previewAvailable, category: effectiveCategory.category,
-                                           allowsPartSelection: nature == .expense && !repeatsMonthly && selectedLink == nil,
-                                           fixedSavingsTotals: fixedSavingsTotals, partID: $partID, rememberPart: $rememberPart)
-                    }
-                    if nature != .transfer {
-                        EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
-                                           income: nature != .refund && nature.inflow, selection: effectiveCategory, suggestionOnly: category.isEmpty,
-                                           directionChanged: { income in
-                                               if income != nature.categoryIncome { skipNatureReset = true; nature = income ? .income : .expense }
-                                           }, suggest: { categorySuggestion?.category }) { choice in
-                            category = choice.category; subcategory = choice.subcategory; purposeFocused = false
+        EntryForm(title: "记一笔", actionTitle: wishInHeader ? "放心愿单" : "导入", primary: false,
+                  enabled: wishInHeader ? canSave : true,
+                  actionIdentifier: wishInHeader ? "saveEntryWish" : "importFromEntry",
+                  cancelTitle: addedRows.isEmpty ? "取消" : "完成", cancel: cancel, save: headerAction) {
+            formContent
+        }
+        .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { bottomTray }
+        .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: purposeFocused)
+        .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+        .environment(\.yubaiFormSurface, true).paperBackground().yubaiSheetBackground()
+        #if os(iOS)
+        .presentationDetents([.large])
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
+        .sheet(isPresented: $showingTransferAccountEditor, onDismiss: selectAddedTransferAccount) {
+            NavigationStack { AccountEditor(account: nil) }
+                .environment(store).tint(YubaiColor.brandInk).appErrors()
+                .presentationDragIndicator(.visible).yubaiSheetBackground().frame(minWidth: 340, minHeight: 520)
+        }
+        .sheet(isPresented: $showingMoreCategories) { moreCategorySheet }
+        .onAppear(perform: load)
+        .onChange(of: store.current.updatedAt) { _, _ in refreshBalances() }
+        .task(id: previewInput) { await refreshPreview() }
+        .onChange(of: nature) { _, value in natureChanged(value) }
+        .onChange(of: accountID) { _, id in
+            if nature == .transfer && id == otherAccountID { otherAccountID = accounts.first { $0.id != id }?.id }
+        }
+        .entryDiscardGuard(dirty: dirty, amount: amountCents, confirming: $confirmingDiscard)
+        .task(id: suggestionInput) { await refreshHints() }
+    }
+
+    // MARK: 内容
+
+    @ViewBuilder private var formContent: some View {
+        if accounts.isEmpty {
+            EmptyAccountState { store.sheet = .account(nil) }
+        } else {
+            if !addedRows.isEmpty { EntryAddedList(dayTitle: ManualBookkeeping.dayLabel(addedDay), rows: addedRows) }
+            natureControl
+            amountDisplay
+            if showsDestination { destinationBlock }
+            resultBar
+            categorySection
+            if let suggestion { matchChip(suggestion) }
+        }
+    }
+    @ViewBuilder private var natureControl: some View {
+        if [.expense, .income, .transfer].contains(nature) {
+            SegmentedWide(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $nature,
+                          identifier: { "entryNature_" + $0.rawValue })
+        } else {
+            Text(nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+        }
+    }
+    private var amountDisplay: some View {
+        EditableAmountDisplay(amount: keypad.resultText, keypad: keypad, presented: true, selected: false,
+                              identifier: "entryKeypadAmount", open: { purposeFocused = false })
+    }
+    /// 大件：一行换算和「算这个月的 / 从存着的钱出」。
+    private var destinationBlock: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            if let big {
+                Text("约 \(big.days) 天的日常").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    .accessibilityIdentifier("bigPurchaseDays")
+            }
+            SegmentedWide(choices: [(false, "算这个月的"), (true, "从存着的钱出")], selection: $fromReserve,
+                          identifier: { $0 ? "bigFromReserve" : "bigFromCycle" })
+        }
+    }
+    @ViewBuilder private var resultBar: some View {
+        let hide = store.preferences.hideAmounts
+        let compact = textSize.isAccessibilitySize
+        if nature == .transfer {
+            ResultBar(label: "还能花", value: "不变", identifier: "entrySavingHint")
+        } else if let totals = fixedSavingsTotals {
+            ResultBar(label: "存着不动", value: compact ? amount2(totals.new, hide: hide) : ResultBar.change(totals.current, totals.new, hide: hide),
+                      identifier: "entrySavingHint")
+        } else if useReserve {
+            let after = reserveTotal - amountCents
+            ResultBar(label: "存着的钱", value: compact ? amount2(after, hide: hide) : ResultBar.change(reserveTotal, after, hide: hide),
+                      amber: after < 0, identifier: "entrySavingHint")
+        } else if isBig, let big {
+            let daily = big.dailyAfter.map { " · 日均 " + amount2($0, hide: hide) } ?? ""
+            let value = amount2(big.availableAfter, hide: hide) + (compact ? "" : daily)
+            ResultBar(label: "记下后还能花", value: value, amber: big.tight, identifier: "entrySavingHint")
+        } else {
+            let before = store.funds.available
+            ResultBar(label: "记下后还能花", value: compact ? amount2(previewAvailable, hide: hide) : ResultBar.change(before, previewAvailable, hide: hide),
+                      identifier: "entrySavingHint")
+        }
+    }
+    @ViewBuilder private var categorySection: some View {
+        if nature == .expense {
+            EntryCategoryGrid(nature: nature, selection: currentAssignment, hint: categoryHint?.category,
+                              choose: { choice in
+                                  category = choice?.category ?? ""; subcategory = choice?.subcategory; purposeFocused = false
+                              }, more: { purposeFocused = false; showingMoreCategories = true })
+                .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+        } else if nature == .income {
+            EntryCategoryChips(frequent: ManualBookkeeping.categories(in: store.current, nature: nature, frequentOnly: true),
+                               income: true, selection: category.isEmpty ? (categoryHint ?? currentAssignment) : currentAssignment,
+                               suggestionOnly: category.isEmpty, allowsDirectionChange: false,
+                               suggest: { categoryHint?.category }) { choice in
+                category = choice.category; subcategory = choice.subcategory; purposeFocused = false
+            }.simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
+        } else if nature == .transfer {
+            EntryTransferCards(accounts: accounts, balances: balances, from: $accountID, to: $otherAccountID,
+                               fallback: AnyView(addTransferAccountChip))
+        }
+    }
+    private var currentAssignment: CategoryAssignment { CategoryAssignment(category: category, subcategory: subcategory) }
+    private var moreCategorySheet: some View {
+        EntryMoreCategorySheet(income: nature == .income, selection: currentAssignment, suggested: categoryHint?.category,
+                               choose: { choice in
+                                   category = choice.category; subcategory = choice.subcategory; showingMoreCategories = false
+                               }, dismiss: { showingMoreCategories = false })
+    }
+
+    // MARK: 键盘上方
+
+    private var bottomTray: some View {
+        Group {
+            if !accounts.isEmpty {
+                EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) { trayControls } keys: { keypadBlock }
+            }
+        }
+    }
+    @ViewBuilder private var trayControls: some View {
+        if purposeFocused && !recalls.isEmpty && !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            EntryRecallList(recalls: recalls, choose: recall)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: YubaiSpace.space8) {
+                    EntryDayChips(date: $date)
+                    Rectangle().fill(YubaiColor.grabber).frame(width: 1, height: 20).accessibilityHidden(true)
+                    EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, inTray: true, identifier: "entryAccountChip")
+                    if nature == .income { EntryFixedSavingsChip(selected: $intoFixedSavings, action: { purposeFocused = false }) }
+                    if nature != .transfer && selectedLink == nil {
+                        EntryRepeatChip(selected: repeatsMonthly, value: repeatsMonthly ? "每月 \(Dates.calendar.component(.day, from: date)) 号" : "不重复", inTray: true) {
+                            purposeFocused = false; repeatsMonthly.toggle()
                         }
-                            .simultaneousGesture(TapGesture().onEnded { purposeFocused = false })
                     }
-                    form
-                    if let suggestion { matchChip(suggestion) }
-                }
+                }.padding(.horizontal, YubaiSpace.space2)
             }
-            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
-                if !accounts.isEmpty {
-                    EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
-                        ChipFlow {
-                            EntryDateChip(date: $date, inTray: true)
-                            EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, inTray: true)
-                            if nature == .income { EntryFixedSavingsChip(selected: $intoFixedSavings, action: { purposeFocused = false }) }
-                            if nature != .transfer && selectedLink == nil {
-                                EntryRepeatChip(selected: repeatsMonthly, value: repeatsMonthly ? "每月 \(Dates.calendar.component(.day, from: date)) 号" : "不重复", inTray: true) {
-                                    purposeFocused = false; repeatsMonthly.toggle()
-                                }
-                            }
-                        }
-                    } keys: {
-                        AmountKeypad(keypad: $keypad, canSave: canSave,
-                                     primaryTitle: canSave ? "记下 \(keypad.resultText) 元" : "记下", primaryIdentifier: "saveQuickEntry",
-                                     save: { save(again: false) }, embedded: true)
-                        if case .big = savingHint {
-                            Button(action: saveWish) {
-                                Label("先放心愿单 · 7 天后再问", systemImage: "heart").yubaiFont(YubaiFont.body, weight: .medium)
-                                    .foregroundStyle(YubaiColor.brandInk).frame(maxWidth: .infinity).frame(height: 46)
-                                    .background(YubaiColor.key, in: RoundedRectangle(cornerRadius: 14))
-                            }.buttonStyle(PressButtonStyle()).disabled(!canSave).padding(.horizontal, 8).padding(.bottom, 8).accessibilityIdentifier("saveEntryWish")
-                        }
-                    }
-                }
-            }
-            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: purposeFocused)
-            .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
-            .environment(\.yubaiFormSurface, true).paperBackground().yubaiSheetBackground()
-            #if os(iOS)
-            .presentationDetents([.large])
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
-            .sheet(isPresented: $showingTransferAccountEditor, onDismiss: selectAddedTransferAccount) {
-                NavigationStack { AccountEditor(account: nil) }
-                    .environment(store).tint(YubaiColor.brandInk).appErrors()
-                    .presentationDragIndicator(.visible).yubaiSheetBackground().frame(minWidth: 340, minHeight: 520)
-            }
-            .onAppear {
-                guard !loaded else { return }; loaded = true
-                accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
-                if let prefill {
-                    skipNatureReset = (prefill.nature ?? .expense) != nature
-                    nature = prefill.nature ?? .expense
-                    if let selected = prefill.category { category = selected }
-                    subcategory = prefill.subcategory
-                    if let id = prefill.accountID, accounts.contains(where: { $0.id == id }) { accountID = id }
-                    otherAccountID = prefill.otherAccountID
-                    intoFixedSavings = nature == .income && prefill.intoFixedSavings
-                    purpose = prefill.purpose ?? ""
-                    if let amount = prefill.amount { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
-                }
-                previewAvailable = store.funds.available
-                refreshBalances()
-            }
-            .onChange(of: store.current.updatedAt) { _, _ in refreshBalances() }
-            .onChange(of: effectiveCategory.category) { _, _ in partID = nil; rememberPart = false }
-            .task(id: previewInput) { await refreshPreview() }
-            .onChange(of: nature) { _, value in
-                if value != .income { intoFixedSavings = false }
-                if skipNatureReset { skipNatureReset = false; return }
-                partID = nil; rememberPart = false
-                category = ""; categorySuggestion = nil
-                subcategory = nil
-                if value == .transfer { otherAccountID = accounts.first { $0.id != accountID }?.id }
-            }
-            .onChange(of: accountID) { _, id in
-                if nature == .transfer && id == otherAccountID { otherAccountID = accounts.first { $0.id != id }?.id }
-            }
-            .entryDiscardGuard(dirty: dirty, amount: keypad.amount ?? 0, confirming: $confirmingDiscard)
-            .task(id: suggestionInput) {
-                let ledger = store.current; let text = purpose; let kind = nature; let at = Date()
-                let value = await Task.detached { EntryHistory.suggestion(purpose: text, nature: kind, in: ledger, at: at) }.value
-                guard !Task.isCancelled else { return }; categorySuggestion = value
-            }
-            .task(id: receiptRevision) {
-                guard receiptVisible else { return }
-                do { try await Task.sleep(for: .seconds(4)) } catch { return }
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { receiptVisible = false }
-            }
+        }
+    }
+    private var keypadBlock: some View {
+        AmountKeypad(keypad: $keypad, canSave: canSave, primaryTitle: "记下", primaryIdentifier: "saveQuickEntry",
+                     save: save, embedded: true)
+    }
+
+    // MARK: 状态
+
+    private func load() {
+        guard !loaded else { return }; loaded = true
+        accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
+        if let prefill {
+            skipNatureReset = (prefill.nature ?? .expense) != nature
+            nature = prefill.nature ?? .expense
+            if let selected = prefill.category, !Classification.isPending(selected) { category = selected }
+            subcategory = prefill.subcategory
+            if let id = prefill.accountID, accounts.contains(where: { $0.id == id }) { accountID = id }
+            otherAccountID = prefill.otherAccountID
+            intoFixedSavings = nature == .income && prefill.intoFixedSavings
+            fromReserve = nature == .expense && prefill.fromReserve
+            purpose = prefill.purpose ?? ""
+            if let day = prefill.date, Dates.day(day) <= Dates.day(Date()) { date = day }
+            if let amount = prefill.amount { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
+        }
+        previewAvailable = store.funds.available
+        refreshBalances()
+    }
+    private func natureChanged(_ value: Nature) {
+        if value != .income { intoFixedSavings = false }
+        if value != .expense { fromReserve = false; big = nil }
+        if skipNatureReset { skipNatureReset = false; return }
+        category = ""; categoryHint = nil; subcategory = nil
+        if value == .transfer { otherAccountID = accounts.first { $0.id != accountID }?.id }
     }
     private var effectiveCategory: CategoryAssignment {
         if nature == .transfer { return .init(category: "内部移动") }
-        return category.isEmpty ? categorySuggestion ?? .init(category: Classification.pendingCategory) : .init(category: category, subcategory: subcategory)
+        return category.isEmpty ? .init(category: Classification.pendingCategory) : .init(category: category, subcategory: subcategory)
     }
     private var suggestionInput: String { "\(store.ledgerRevision)-\(nature.rawValue)-\(purpose)" }
-    private var dirty: Bool { loaded && ((keypad.amount ?? 0) != 0 || !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || prefill?.screenshot != nil) }
+    private var dirty: Bool { loaded && (amountCents != 0 || !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || prefill?.screenshot != nil) }
     private func cancel() { if dirty { confirmingDiscard = true } else { dismiss() } }
-    private var receipt: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark")
-            Text("已记 \(savedCount) 笔")
-            Button {
-                let ids = lastSavedIDs; let plans = lastAddedPlanIDs
-                if store.update("撤销记账", recordUndo: false, entryMotion: false, showToast: false, { ledger in
-                    ledger.entries.removeAll { ids.contains($0.id) }
-                    let linkedPlanIDs = Set(ledger.entries.compactMap(\.planID))
-                    ledger.plans.removeAll { plan in plans.contains(plan.id) && !linkedPlanIDs.contains(plan.id) }
-                }) { store.clearUndo(); savedCount = max(0, savedCount - ids.count); lastSavedIDs = []; receiptVisible = false }
-            } label: {
-                Text("撤销").padding(.horizontal, 10).frame(minHeight: 26)
-                    .background(YubaiColor.raised, in: Capsule()).contentShape(Capsule())
-            }.accessibilityIdentifier("undoSheetEntry")
-        }.yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
-            .padding(.leading, 14).padding(.trailing, 6).frame(minHeight: 32).background(YubaiColor.brandTint, in: Capsule())
-            .frame(maxWidth: .infinity).accessibilityIdentifier("sheetEntryReceipt")
+    private func headerAction() {
+        if wishInHeader { saveWish(); return }
+        store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports
+    }
+    @MainActor private func refreshHints() async {
+        let ledger = store.current; let text = purpose; let kind = nature; let at = Date()
+        let found = await Task.detached { (EntryHistory.categoryHint(purpose: text, nature: kind, in: ledger, now: at),
+                                          EntryHistory.recalls(matching: text, nature: kind, in: ledger, now: at)) }.value
+        guard !Task.isCancelled else { return }
+        categoryHint = found.0; recalls = found.1
+    }
+    /// 点了记过的用途：分类、金额一起填上并选中。
+    private func recall(_ item: EntryHistory.Recall) {
+        let entry = item.entry
+        purpose = item.purpose
+        category = Classification.isPending(entry.category) ? "" : entry.category
+        subcategory = category.isEmpty ? nil : entry.subcategory
+        keypad = EntryKeypad(amount: entry.amount)
+        if accounts.contains(where: { $0.id == entry.accountID }) { accountID = entry.accountID }
+        purposeFocused = false
     }
     private func matchChip(_ match: Occurrence) -> some View {
         let selected = selectedMatchID == match.id
@@ -200,14 +279,13 @@ struct QuickEntryView: View {
     private struct PreviewInput: Equatable {
         var expression: String; var nature: Nature; var purpose: String; var category: String
         var subcategory: String?
-        var partID: UUID?
         var date: Date; var accountID: UUID?; var otherAccountID: UUID?
-        var selectedMatchID: String?; var repeatsMonthly: Bool; var intoFixedSavings: Bool; var ledgerUpdatedAt: Date
+        var selectedMatchID: String?; var repeatsMonthly: Bool; var intoFixedSavings: Bool; var fromReserve: Bool; var ledgerUpdatedAt: Date
     }
     private var previewInput: PreviewInput {
-        PreviewInput(expression: keypad.expression, nature: nature, purpose: purpose, category: category, subcategory: subcategory, partID: partID, date: date,
+        PreviewInput(expression: keypad.expression, nature: nature, purpose: purpose, category: category, subcategory: subcategory, date: date,
                      accountID: accountID, otherAccountID: otherAccountID, selectedMatchID: selectedMatchID,
-                     repeatsMonthly: repeatsMonthly, intoFixedSavings: intoFixedSavings, ledgerUpdatedAt: store.current.updatedAt)
+                     repeatsMonthly: repeatsMonthly, intoFixedSavings: intoFixedSavings, fromReserve: fromReserve, ledgerUpdatedAt: store.current.updatedAt)
     }
     @MainActor private func refreshPreview() async {
         // No ledger work runs in body or the key action. Cancellation coalesces
@@ -215,37 +293,21 @@ struct QuickEntryView: View {
         do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
         guard !Task.isCancelled else { return }
         let ledger = store.current; let now = Date(); let fallback = store.funds.available
-        let amount = keypad.amount ?? 0; let nature = self.nature; let purpose = self.purpose; let day = date; let account = accountID
+        let amount = amountCents; let nature = self.nature; let purpose = self.purpose; let day = date; let account = accountID
         let change = canSave ? (try? draftChange(now: now)) : nil
         let result = await Task.detached(priority: .userInitiated) {
             let match = FixedFlows.suggestions(amount: amount, nature: nature, purpose: purpose, day: day, accountID: account, in: ledger).first
             let available = change.flatMap { try? ManualBookkeeping.available(after: $0, in: ledger, now: now) } ?? fallback
-            return (match, available)
+            let large = nature == .expense && amount > 0 ? Finance.bigPurchase(ledger, amount: amount, now: now) : nil
+            return (match, available, large)
         }.value
         guard !Task.isCancelled else { return }
         if result.0?.id != suggestion?.id { selectedMatchID = nil }
-        suggestion = result.0; previewAvailable = result.1
-    }
-    private var amountDisplay: some View {
-        EditableAmountDisplay(amount: keypad.resultText, keypad: keypad, presented: true, selected: false,
-                              identifier: "entryKeypadAmount", open: { purposeFocused = false })
-    }
-    private var form: some View {
-        EntryFormFields(purpose: $purpose, purposeError: purpose.count > 4000 ? "用途最多 4,000 字" : nil, nature: nature, accounts: accounts, balances: balances, accountID: $accountID,
-                        otherAccountID: $otherAccountID, date: $date, showsBalance: true,
-                        transferFallback: AnyView(addTransferAccountChip), focus: $purposeFocused, recall: { entry in
-            category = entry.category; subcategory = entry.subcategory
-            if accounts.contains(where: { $0.id == entry.accountID }) { accountID = entry.accountID }
-            purposeFocused = false
-        }) {}
-    }
-    private var savingHint: EntryHint {
-        EntryHint.make(ledger: store.current, amount: keypad.amount ?? 0, category: effectiveCategory.category,
-                       isFixedBill: repeatsMonthly || selectedLink != nil, nature: nature, subcategory: effectiveCategory.subcategory, partID: partID)
+        suggestion = result.0; previewAvailable = result.1; big = result.2
     }
     private var fixedSavingsTotals: (current: Int64, new: Int64)? {
         guard nature == .income, intoFixedSavings else { return nil }
-        let draft = EntryDraft(date: date, amount: keypad.amount ?? 0, nature: nature, accountID: accountID ?? UUID(),
+        let draft = EntryDraft(date: date, amount: amountCents, nature: nature, accountID: accountID ?? UUID(),
                                title: purpose, category: effectiveCategory.category, intoFixedSavings: true)
         if case .fixedSavings(let total) = EntryHint.make(ledger: store.current, draft: draft, isFixedBill: repeatsMonthly || selectedLink != nil) {
             return (store.funds.fixedSavingsTotal, total)
@@ -254,7 +316,8 @@ struct QuickEntryView: View {
     }
     private func saveWish() {
         guard canSave, let amount = keypad.amount else { return }
-        let title = purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Classification.displayCategory(effectiveCategory.category) : purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = clean.isEmpty ? Classification.displayCategory(effectiveCategory.category) : clean
         let now = Date()
         if store.update("心愿单", entryMotion: false, showToast: false, { ledger in
             let verdict = SubmittedPurchaseVerdict(verdict: .wait, reason: "先放心愿单 · 7 天后再问", need: .want, boundReason: "")
@@ -262,7 +325,7 @@ struct QuickEntryView: View {
                                         subcategory: effectiveCategory.subcategory, purpose: purpose, in: &ledger, now: now)
             if let i = ledger.wishlist.firstIndex(where: { $0.id == wish.id }) { ledger.wishlist[i].coolUntil = Dates.addDays(7, to: now) }
         }) {
-            store.toast = "已放进心愿单 · " + title + " " + Money.text(amount, currency: false)
+            store.toast = "放进心愿单了 · " + title + " " + amount2(amount, hide: store.preferences.hideAmounts)
             dismiss()
         }
     }
@@ -284,7 +347,6 @@ struct QuickEntryView: View {
         defer { accountIDsBeforeAdding.removeAll() }
         guard let added = transferAccounts.first(where: { !accountIDsBeforeAdding.contains($0.id) }) else { return }
         otherAccountID = added.id
-        transferAccountHighlighted = true
     }
     private func draftChange(now: Date) throws -> ChangeSet {
         guard let accountID, let amount = keypad.amount else { throw YubaiError.invalid("请选择账户并填写金额。") }
@@ -294,17 +356,19 @@ struct QuickEntryView: View {
                                                        purpose: purpose, category: effectiveCategory.category, now: now, intoFixedSavings: intoFixedSavings)
         } else {
             change = try ManualBookkeeping.change(amount: amount, nature: nature, accountID: accountID, otherAccountID: otherAccountID,
-                                                  day: date, purpose: purpose, category: effectiveCategory.category, link: selectedLink, now: now, intoFixedSavings: intoFixedSavings)
+                                                  day: date, purpose: purpose, category: effectiveCategory.category, link: selectedLink, now: now,
+                                                  intoFixedSavings: intoFixedSavings, fromReserve: useReserve)
         }
-        // The displayed default is also main-only until a small item is chosen.
-        // Save the draft's complete choice, then confirm it in the same transaction.
         if nature != .transfer {
+            let chosen = effectiveCategory
+            let known = !Classification.isPending(chosen.category)
+            let blank = purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             change.items = change.items.map { item in
                 guard case .addEntry(var draft) = item else { return item }
-                if purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { draft.title = Classification.displayCategory(draft.category) }
-                draft.partID = rememberPart ? nil : partID
+                if blank { draft.title = Classification.displayCategory(draft.category) }
+                draft.partID = nil
                 draft.otherAccountID = nature.paired ? otherAccountID : nil
-                draft.subcategory = effectiveCategory.subcategory; draft.categoryUserEdited = true
+                draft.subcategory = chosen.subcategory; draft.categoryUserEdited = known
                 return .addEntry(draft)
             }
         }
@@ -313,52 +377,52 @@ struct QuickEntryView: View {
     private func refreshBalances() {
         balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) })
     }
-    private func save(again: Bool) {
+    private func save() {
         guard canSave else { return }
         _ = keypad.resolve(); purposeFocused = false
         // Saving may beat the debounce. Revalidate the user's selected match
         // against the final input before constructing its linked payment.
-        let match = FixedFlows.suggestions(amount: keypad.amount ?? 0, nature: nature, purpose: purpose, day: date,
+        let match = FixedFlows.suggestions(amount: amountCents, nature: nature, purpose: purpose, day: date,
                                            accountID: accountID, in: store.current).first
         if match?.id != suggestion?.id { selectedMatchID = nil }
         suggestion = match
         do {
-            if category.isEmpty { categorySuggestion = EntryHistory.suggestion(purpose: purpose, nature: nature, in: store.current) }
             let change = try draftChange(now: Date())
             guard store.apply(change, label: "记一笔", finishing: { ledger in
-                if rememberPart, nature == .expense {
-                    var sample = Entry(amount: 0, accountID: UUID(), title: "", category: effectiveCategory.category)
-                    sample.partID = partID
-                    let chosen = SpendingParts.part(for: sample, in: ledger)?.id
-                    SpendingParts.assign(category: effectiveCategory.category, to: chosen, in: &ledger)
-                }
                 for case .addEntry(let draft) in change.items where draft.categoryUserEdited == true && !Classification.isPending(draft.category) {
                     let choice = CategoryAssignment(category: draft.category, subcategory: draft.subcategory)
                     if SubcategoryClassifier.valid(choice, in: ledger, nature: draft.nature) { try CategoryModel.confirm(choice, entryIDs: [draft.id], in: &ledger) }
                 }
             }) else { return }
-            let title = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
-            let sign: AmountLabel.Sign = nature.inflow ? .inflow : .outflow
-            let amount = store.preferences.hideAmounts ? "••••" : AmountLabel.text(keypad.amount ?? 0, sign: sign)
-            if again {
-                // Continuous entry keeps the sheet open, so the root's deferred
-                // sheet-dismissal success must be delivered here exactly once.
-                store.cancelEntrySaveMotion()
-            }
-            let repeatSuffix = repeatsMonthly && nature != .transfer && selectedLink == nil ? " · 每月 \(Dates.calendar.component(.day, from: date)) 号" : ""
-            if again {
-                lastSavedIDs = Set(change.items.compactMap { if case .addEntry(let draft) = $0 { return draft.id }; return nil })
-                lastAddedPlanIDs = Set(change.items.compactMap { if case .addPlan(let plan) = $0 { return plan.id }; return nil })
-                savedCount += lastSavedIDs.count; receiptRevision += 1; receiptVisible = true
-                #if os(iOS)
-                AccessibilityNotification.Announcement("已记 \(savedCount) 笔，可撤销").post()
-                #endif
-                keypad.reset(); purpose = ""; intoFixedSavings = false; selectedMatchID = nil; repeatsMonthly = false
-                category = ""; subcategory = nil; partID = nil; rememberPart = false
-            } else {
-                store.setEntrySaveToast("已记下 · " + (title.isEmpty ? Classification.displayCategory(effectiveCategory.category) : title) + " " + amount + " · " + store.accountName(accountID) + repeatSuffix)
-                dismiss()
-            }
+            finishSaved(change)
         } catch { store.error = error.localizedDescription }
+    }
+    /// 日期选了昨天、前天，说明在补账：不收起，清空等下一笔，上面列出刚补的。今天的记一笔就收起。
+    private func finishSaved(_ change: ChangeSet) {
+        let title = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = title.isEmpty ? Classification.displayCategory(effectiveCategory.category) : title
+        let backfill = !Dates.calendar.isDateInToday(date) && nature == .expense
+        if backfill {
+            // Continuous entry keeps the sheet open, so the root's deferred
+            // sheet-dismissal success must be delivered here exactly once.
+            store.cancelEntrySaveMotion()
+            let label = Classification.displayCategory(effectiveCategory.category)
+            let rows = change.items.compactMap { item -> EntryAddedRow? in
+                guard case .addEntry(let draft) = item else { return nil }
+                return EntryAddedRow(id: draft.id, title: name, category: label, amount: draft.amount)
+            }
+            addedRows.insert(contentsOf: rows.reversed(), at: 0); addedDay = date
+            #if os(iOS)
+            AccessibilityNotification.Announcement("已记 \(addedRows.count) 笔").post()
+            #endif
+            keypad.reset(); purpose = ""; intoFixedSavings = false; fromReserve = false; selectedMatchID = nil; repeatsMonthly = false
+            category = ""; subcategory = nil; categoryHint = nil; big = nil
+        } else {
+            let sign: AmountLabel.Sign = nature.inflow ? .inflow : .outflow
+            let amount = store.preferences.hideAmounts ? "••••" : AmountLabel.text(amountCents, sign: sign)
+            let repeatSuffix = repeatsMonthly && nature != .transfer && selectedLink == nil ? " · 每月 \(Dates.calendar.component(.day, from: date)) 号" : ""
+            store.setEntrySaveToast("已记下 · " + name + " " + amount + " · " + store.accountName(accountID) + repeatSuffix)
+            dismiss()
+        }
     }
 }

@@ -4,7 +4,7 @@ import YubaiCore
 /// The shared two-step picker. The caller commits additions and assignments in
 /// its own transaction, so quick sorting retains one save and one undo.
 struct CategoryPicker: View {
-    enum Style { case grid, sections }
+    enum Style { case grid, sections, entry }
     @Environment(AppStore.self) private var store
     let income: Bool
     var selected: CategoryAssignment? = nil
@@ -18,13 +18,16 @@ struct CategoryPicker: View {
 
     private var categories: [YubaiCore.Category] {
         let ordered = store.current.orderedCategories(income: income)
-        if style == .sections { return ordered }
+        if style != .grid { return ordered }
         return ordered.filter { $0.name == suggested } + ordered.filter { $0.name != suggested }
     }
     var body: some View {
         Group {
-            if style == .sections { sections }
-            else { grid }
+            switch style {
+            case .sections: sections
+            case .entry: entrySections
+            case .grid: grid
+            }
         }
         .sheet(isPresented: $adding) {
             NavigationStack {
@@ -72,6 +75,49 @@ struct CategoryPicker: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
             addButton
+        }
+    }
+    /// 记一笔的「选分类」：常用在上，全部在下；选中的大类若有小项，小项列在下面。
+    private var entrySections: some View {
+        let frequent = Array(categories.prefix(4))
+        let rest = Array(categories.dropFirst(4))
+        return VStack(alignment: .leading, spacing: YubaiSpace.space20) {
+            entryGroup("常用", frequent)
+            if !rest.isEmpty { entryGroup("全部", rest) }
+            if let main = categories.first(where: { $0.name == selected?.category }), !main.subcategories.isEmpty {
+                entrySubcategories(main)
+            }
+            Button { adding = true } label: {
+                Label("新分类", systemImage: "plus").yubaiFont(YubaiFont.callout, weight: .medium)
+                    .foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func entryGroup(_ title: String, _ list: [YubaiCore.Category]) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text(title).yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                .padding(.horizontal, YubaiSpace.space4)
+            ChipFlow {
+                ForEach(list) { category in
+                    CategoryChoiceChip(title: category.name, selected: selected?.category == category.name,
+                                       outlined: suggested == category.name && selected?.category != category.name) {
+                        _ = choose(.init(category: category.name), nil)
+                    }.accessibilityIdentifier(identifier + "Category_" + category.name)
+                }
+            }
+        }
+    }
+    private func entrySubcategories(_ main: YubaiCore.Category) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text(main.name).yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                .padding(.horizontal, YubaiSpace.space4)
+            ChipFlow {
+                ForEach(main.subcategories, id: \.self) { sub in
+                    CategoryChoiceChip(title: sub, selected: selected == .init(category: main.name, subcategory: sub)) {
+                        _ = choose(.init(category: main.name, subcategory: sub), nil)
+                    }.accessibilityIdentifier(identifier + "Subcategory_" + main.name + "/" + sub)
+                }
+            }
         }
     }
     private var addButton: some View {

@@ -3,44 +3,31 @@ import YubaiCore
 
 struct MemoryView: View {
     @Environment(AppStore.self) private var store
-    var body: some View {
-        List {
-            if store.current.memories.isEmpty {
-                EmptyState("text.book.closed", "还没有记下的事", action: "问余白", onAction: { store.sheet = .ask("") }).accessibilityIdentifier("emptyMemories")
-            }
-            ForEach(MemoryKind.allCases, id: \.self) { kind in
-                let notes = store.current.memories.filter { $0.kind == kind }.sorted {
-                    $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt > $1.updatedAt
-                }
-                if !notes.isEmpty {
-                    Section {
-                        ForEach(notes) { note in
-                            NavigationLink { MemoryEditor(note: note) } label: {
-                                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                                    Text(note.text).yubaiFont(YubaiFont.row)
-                                    Text(metadata(note)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                                }.padding(.vertical, YubaiSpace.space8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                            }.accessibilityIdentifier("memory_" + note.id.uuidString)
-                                .listRowBackground(YubaiColor.paperSheet).listRowSeparatorTint(YubaiColor.separator)
-                        }.onDelete { offsets in
-                            let ids = offsets.map { notes[$0].id }
-                            store.update("删除记忆") { ledger in
-                                for id in ids { Memory.reject(lineMemoryID: id, in: &ledger) }
-                            }
-                        }
-                    } header: { Text(title(kind)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-                }
-            }
-        }.editorForm()
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.inset)
-            #endif
-            .navigationTitle("余白记得的").yubaiNavigation()
+    private var notes: [MemoryNote] {
+        store.current.memories.sorted { $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt > $1.updatedAt }
     }
-    private func title(_ kind: MemoryKind) -> String {
-        switch kind { case .plan: "计划"; case .value: "在乎的事"; case .life: "生活情况" }
+    var body: some View {
+        Page(topPadding: YubaiSpace.space8) {
+            if notes.isEmpty {
+                EmptyState("text.book.closed", "还没有记下的事", action: "问余白", onAction: { store.sheet = .ask("") }).accessibilityIdentifier("emptyMemories")
+            } else {
+                NativeCardRows(notes) { note in
+                    NavigationLink { MemoryEditor(note: note) } label: {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                            Text(note.text).yubaiFont(YubaiFont.row)
+                            Text(metadata(note)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                        }.padding(.vertical, YubaiSpace.space8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.hidesListDisclosure().accessibilityIdentifier("memory_" + note.id.uuidString)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button("删掉", role: .destructive) { remove(note) }.accessibilityIdentifier("swipeDeleteMemory_" + note.id.uuidString)
+                        }
+                }
+            }
+        }.navigationTitle("余白记得的").yubaiNavigation()
+            .toolbar { ToolbarItem(placement: .primaryAction) { Text("\(notes.count) 条").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) } }
+    }
+    private func remove(_ note: MemoryNote) {
+        store.update("删除记忆") { ledger in Memory.reject(lineMemoryID: note.id, in: &ledger) }
     }
     private func metadata(_ note: MemoryNote) -> String {
         if let previous = note.previousText {

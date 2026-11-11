@@ -96,30 +96,76 @@ struct AccountEditor: View {
 
 struct AccountsView: View {
     @Environment(AppStore.self) private var store
+    private var handAccounts: [Account] { store.accounts.filter { !$0.archived && ($0.kind == .cash || $0.kind == .bank) } }
+    private var otherAccounts: [Account] { store.accounts.filter { $0.archived || ($0.kind != .cash && $0.kind != .bank) } }
     var body: some View {
-        Page {
+        let hand = handAccounts, other = otherAccounts
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             if store.accounts.isEmpty { EmptyState("creditcard", "还没有账户", action: "添加账户", onAction: { store.sheet = .account(nil) }) }
-            ForEach(AccountKind.allCases) { kind in
-                let accounts = store.accounts.filter { $0.kind == kind }
-                if !accounts.isEmpty {
-                    VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                        SectionHeading(title: kind.label).padding(.horizontal, YubaiSpace.insetCard)
-                        CardRows(accounts) { a in
-                            NavigationLink { accountDetail(a) } label: {
-                                ViewThatFits(in: .horizontal) {
-                                    HStack(spacing: YubaiSpace.gapGroup) { accountName(a); Spacer(); AmountLabel(cents: store.balance(a)) }
-                                    VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); AmountLabel(cents: store.balance(a)) }
-                                }.padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-                            }.buttonStyle(PressButtonStyle())
-                        }
-                    }
-                }
+            if !hand.isEmpty { totalBlock(hand) }
+            if !hand.isEmpty { accountGroup(hand, heading: nil) }
+            if !other.isEmpty { accountGroup(other, heading: "不算在手上的") }
+            actions(hasHand: !hand.isEmpty)
+        }.amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("accountsPage")
+            .navigationTitle("手上的钱").yubaiNavigation().manualSheetHeader("手上的钱", cancelTitle: "关闭", showsAction: false)
+    }
+    private func totalBlock(_ hand: [Account]) -> some View {
+        let names = ["零", "一", "两", "三", "四", "五", "六", "七", "八", "九", "十"]
+        let count = hand.count < names.count ? names[hand.count] : String(hand.count)
+        return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text(count + "个账户一共").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            AmountLabel(cents: store.formula.hand, hide: store.preferences.hideAmounts, role: .display)
+        }.padding(.horizontal, YubaiSpace.space4).accessibilityElement(children: .combine).accessibilityIdentifier("accountsTotal")
+    }
+    private func accountGroup(_ accounts: [Account], heading: String?) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+            if let heading {
+                Text(heading).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.leading, YubaiSpace.insetCard)
             }
-            if !store.accounts.isEmpty { NavigationLink { AccountEditor(account: nil) } label: { Label("添加账户", systemImage: "plus.circle") }.buttonStyle(SecondaryButtonStyle()) }
-        }.navigationTitle("账户").yubaiNavigation().manualSheetHeader("账户", cancelTitle: "关闭", showsAction: false)
+            CardRows(accounts) { a in
+                NavigationLink { accountDetail(a) } label: {
+                    HStack(spacing: YubaiSpace.gapGroup) { accountRow(a); chevron }
+                        .padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("accountRow_" + a.name)
+            }
+        }
+    }
+    private var chevron: some View {
+        Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption, weight: .medium)
+            .foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+    }
+    private func accountRow(_ a: Account) -> some View {
+        let balance = AmountLabel(cents: store.balance(a), hide: store.preferences.hideAmounts, role: .amount).fixedSize(horizontal: true, vertical: false)
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.gapGroup) { accountName(a); Spacer(minLength: YubaiSpace.space8); balance }
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); balance }
+        }
+    }
+    private func actions(hasHand: Bool) -> some View {
+        VStack(spacing: YubaiSpace.space8) {
+            if hasHand {
+                Button("对一下余额") { store.sheetSource = nil; store.sheet = .reconcileAll }
+                    .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("reconcileAll")
+            }
+            if !store.accounts.isEmpty {
+                NavigationLink { AccountEditor(account: nil) } label: { Text("加一个账户") }
+                    .buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("addAccount")
+            }
+        }
     }
     private func accountName(_ a: Account) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(a.name + (a.archived ? " · 已归档" : "")).yubaiFont(YubaiFont.rowTitle); Text(a.reconciled ? "上次对账 \(Dates.text(a.anchorDate))" : "还没对过账").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+        let detail: String
+        if a.archived { detail = "已归档" }
+        else if a.kind == .credit { detail = "欠的" }
+        else if a.kind != .cash && a.kind != .bank { detail = a.note.isEmpty ? "看得见，花不了" : a.note }
+        else {
+            let checked = a.reconciled ? "上次对 " + FixedFlowPresentation.monthDay(a.anchorDate) : "还没对过账"
+            detail = a.note.isEmpty ? checked : a.note + " · " + checked
+        }
+        return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text(a.name).yubaiFont(YubaiFont.rowTitle)
+            Text(detail).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+        }
     }
     func accountDetail(_ a: Account) -> some View {
         Page {

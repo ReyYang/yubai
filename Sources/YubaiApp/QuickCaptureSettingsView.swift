@@ -7,6 +7,7 @@ struct QuickCaptureSettingsView: View {
     private var recent: [Entry] { store.recentCaptures }
     var body: some View {
         Page {
+            repeatsSection
             HStack(alignment: .top, spacing: YubaiSpace.gapSection) {
                 statistic("近 7 天", count: recent.count)
                 Spacer()
@@ -64,6 +65,25 @@ struct QuickCaptureSettingsView: View {
                 NavigationLink { ImportView() } label: { line("支付宝、微信付款", detail: "截图记", navigates: true) }
             }
         }.buttonStyle(PressButtonStyle()).navigationTitle("快速记账").yubaiNavigation()
+    }
+    @ViewBuilder private var repeatsSection: some View {
+        let rows = EntryHistory.repeats(in: store.current, now: Date())
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                SectionHeading(title: "常记的几笔")
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        ForEach(rows) { row in
+                            HStack(spacing: YubaiSpace.gapGroup) {
+                                Text(row.purpose).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
+                                AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts, role: .amount)
+                            }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
+                            if row.id != rows.last?.id { EntryFormDivider() }
+                        }
+                    }
+                }.accessibilityIdentifier("commonRepeats")
+            }
+        }
     }
     private func statistic(_ title: String, count: Int) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {

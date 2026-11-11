@@ -124,20 +124,45 @@ struct EntryCategoryChips: View {
             }.accessibilityIdentifier("entryCategoryMore")
         }.buttonStyle(PressButtonStyle()).animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
             .sheet(isPresented: $picking) {
-                NavigationStack {
-                    Page(topPadding: YubaiSpace.space8) {
-                        if allowsDirectionChange { Segmented(choices: [(false, "支出"), (true, "收入")], selection: $pickerIncome) }
-                        CategoryPicker(income: pickerIncome, selected: suggestionOnly || pickerIncome != income ? nil : selection, suggested: pickerIncome == income ? suggested : nil,
-                                       identifier: "entryMore", style: .sections) { choice, addition in
-                            if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
-                            directionChanged(pickerIncome); choose(choice); picking = false; return true
-                        }
-                    }.accessibilityIdentifier("entryCategoryPicker").manualSheetNavigation()
-                        .safeAreaInset(edge: .top) {
-                            ManualSheetHeader(title: "分类", showsAction: false, cancelIdentifier: "entryMoreCancel", cancel: { picking = false }, action: {}).padding(.horizontal, 20)
-                        }
+                EntryMoreCategorySheet(income: pickerIncome, selection: selection, suggestionOnly: suggestionOnly,
+                                       suggested: suggested, choose: { choice in
+                    directionChanged(pickerIncome); choose(choice); picking = false
+                }, dismiss: { picking = false })
+            }
+    }
+}
 
-                }.environment(store).appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()
+/// 「全部」格和「更多」芯片共用的选分类页：常用在上，全部在下，点一颗就选中并回去。
+struct EntryMoreCategorySheet: View {
+    @Environment(AppStore.self) private var store
+    let income: Bool
+    let selection: CategoryAssignment
+    var suggestionOnly = false
+    var suggested: String? = nil
+    let choose: (CategoryAssignment) -> Void
+    let dismiss: () -> Void
+    @State private var managing = false
+    private var selected: CategoryAssignment? {
+        suggestionOnly || selection.category.isEmpty || Classification.isPending(selection.category) ? nil : selection
+    }
+    var body: some View {
+        NavigationStack {
+            Page(topPadding: YubaiSpace.space8) {
+                CategoryPicker(income: income, selected: selected, suggested: suggested,
+                               identifier: "entryMore", style: .entry) { choice, addition in
+                    if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
+                    choose(choice); return true
+                }
+            }.accessibilityIdentifier("entryCategoryPicker").manualSheetNavigation()
+                .safeAreaInset(edge: .top) {
+                    ManualSheetHeader(title: "选分类", actionTitle: "管理", primary: false, cancelTitle: "返回",
+                                      actionIdentifier: "entryMoreManage", cancelIdentifier: "entryMoreCancel",
+                                      cancel: dismiss, action: { managing = true }).padding(.horizontal, 20)
+                }
+        }.environment(store).appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()
+            .sheet(isPresented: $managing) {
+                NavigationStack { CategoriesView().manualSheetHeader("分类", cancelTitle: "关闭", showsAction: false) }
+                    .environment(store).appErrors().yubaiSheetBackground()
             }
     }
 }
@@ -173,6 +198,7 @@ struct EntryAccountMenu: View {
     var optional = false
     var emptyTitle: String? = nil
     var inTray = false
+    var identifier = ""
     var body: some View {
         Menu {
             if optional { Button("不指定") { selection = nil } }
@@ -189,6 +215,7 @@ struct EntryAccountMenu: View {
                 .yubaiHitTarget()
         }.buttonStyle(PressButtonStyle()).accessibilityLabel("账户")
             .accessibilityValue(accounts.first { $0.id == selection }?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户"))
+            .accessibilityIdentifier(identifier)
     }
     @Environment(AppStore.self) private var store
     private func balanceText(_ id: UUID) -> String {
@@ -266,8 +293,9 @@ struct AmountKeypad: View {
     var embedded = false
     @StateObject private var feedback = AmountKeypadFeedback()
     @State private var secondaryTouched = false
-    @ScaledMetric(relativeTo: .title2) private var keyHeight: CGFloat = 52
-    @ScaledMetric(relativeTo: .body) private var secondaryHeight: CGFloat = 46
+    // The keys never grow with Dynamic Type; the amount above them is what scales.
+    private let keyHeight: CGFloat = 52
+    private let secondaryHeight: CGFloat = 46
     private let rows = [["1", "2", "3", "⌫"], ["4", "5", "6", "+"], ["7", "8", "9", "−"]]
 
     init(keypad: Binding<EntryKeypad>, amountSelected: Binding<Bool> = .constant(false), canSave: Bool,
@@ -308,6 +336,7 @@ struct AmountKeypad: View {
                     .padding(.top, 6).opacity(canSave ? 1 : 0.4).disabled(!canSave).accessibilityIdentifier("saveAndAddAnother")
             }
         }.padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 8)
+            .dynamicTypeSize(...DynamicTypeSize.large)
             .frame(maxWidth: 620).frame(maxWidth: .infinity)
             .background {
                 if !embedded {
@@ -507,13 +536,14 @@ struct EntryForm<Content: View>: View {
     var enabled = true
     var actionIdentifier: String? = nil
     var scrollIdentifier = "entryFormScroll"
+    var cancelTitle = "取消"
     let cancel: () -> Void
     let save: () -> Void
     @ViewBuilder var content: () -> Content
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
             ManualSheetHeader(title: title, actionTitle: actionTitle, actionImage: actionImage, primary: primary,
-                              showsAction: showsAction, enabled: enabled, actionIdentifier: actionIdentifier,
+                              showsAction: showsAction, enabled: enabled, cancelTitle: cancelTitle, actionIdentifier: actionIdentifier,
                               cancel: cancel, action: save).padding(.horizontal, YubaiSpace.insetPage)
             ScrollView {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup, content: content)
@@ -908,5 +938,222 @@ struct EntrySavingHintBar: View {
                 Text(store.preferences.hideAmounts ? "••••" : "这周 " + Money.text(spent, currency: false)).yubaiFont(YubaiFont.amountSmall)
             }
         }
+    }
+}
+
+// MARK: - Round 45 entry components
+
+/// 记一笔的分类：两排五格带图标，顺序是用户自己排的，最后一格是「全部」。
+/// 不预选；`hint` 只描边，由用户点一下才选中。最大字号时排成一行左右滑。
+struct EntryCategoryGrid: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
+    let nature: Nature
+    let selection: CategoryAssignment
+    var hint: String? = nil
+    let choose: (CategoryAssignment?) -> Void
+    let more: () -> Void
+    private enum Slot: Identifiable {
+        case category(YubaiCore.Category), all
+        var id: String { switch self { case .category(let value): value.id; case .all: "all" } }
+    }
+    private var income: Bool { nature != .refund && nature.inflow }
+    private var slots: [Slot] {
+        let ordered = store.current.orderedCategories(income: income)
+        var shown = Array(ordered.prefix(9))
+        let name = selection.category
+        if !name.isEmpty, !shown.contains(where: { $0.name == name }), let picked = ordered.first(where: { $0.name == name }) {
+            if shown.count == 9 { shown[8] = picked } else { shown.append(picked) }
+        }
+        return shown.map { Slot.category($0) } + [Slot.all]
+    }
+    var body: some View {
+        let items = slots
+        Group {
+            if textSize.isAccessibilitySize {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: YubaiSpace.space8) {
+                        ForEach(items) { slot in cell(slot).frame(width: 88) }
+                    }
+                }
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: 5), spacing: YubaiSpace.space8) {
+                    ForEach(items) { slot in cell(slot) }
+                }
+            }
+        }.accessibilityElement(children: .contain).accessibilityLabel("分类")
+    }
+    @ViewBuilder private func cell(_ slot: Slot) -> some View {
+        switch slot {
+        case .category(let category):
+            let selected = selection.category == category.name
+            let mode: IconGridCell.Mode = selected ? .selected : (hint == category.name ? .outlined : .normal)
+            IconGridCell(title: category.name, symbol: category.symbol, mode: mode,
+                         identifier: "entryCategory_" + category.name) {
+                choose(selected ? nil : CategoryAssignment(category: category.name))
+            }
+        case .all:
+            IconGridCell(title: "全部", symbol: "ellipsis", mode: .normal, identifier: "entryCategoryMore", action: more)
+        }
+    }
+}
+
+/// 今天 / 昨天 / 前天 三颗；长按这一排升起月历。选了更早的日子，多出一颗显示那一天。
+struct EntryDayChips: View {
+    @Binding var date: Date
+    var allowsFuture = false
+    @State private var picking = false
+    @State private var latest = Date()
+    private func day(_ offset: Int) -> Date { Dates.addDays(offset, to: Date()) }
+    private func choose(_ day: Date) {
+        let c = Dates.calendar
+        date = c.date(bySettingHour: c.component(.hour, from: date), minute: c.component(.minute, from: date),
+                      second: c.component(.second, from: date), of: day) ?? day
+    }
+    private var isStandard: Bool { [0, -1, -2].contains { Dates.calendar.isDate(date, inSameDayAs: day($0)) } }
+    var body: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            chip("今天", id: "entryDate_today", offset: 0)
+            chip("昨天", id: "entryDate_yesterday", offset: -1)
+            chip("前天", id: "entryDate_before", offset: -2)
+            if !isStandard {
+                Text(ManualBookkeeping.dayLabel(date)).yubaiFont(YubaiFont.callout, weight: .medium).fixedSize()
+                    .foregroundStyle(YubaiColor.canvas).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: 34)
+                    .background(YubaiColor.label, in: Capsule()).yubaiHitTarget()
+                    .accessibilityAddTraits(.isSelected).accessibilityIdentifier("entryDate_other")
+            }
+        }.simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in latest = Date(); picking = true })
+            .accessibilityElement(children: .contain)
+            .accessibilityAction(named: "选别的日子") { latest = Date(); picking = true }
+            .sheet(isPresented: $picking) { calendar }
+    }
+    private func chip(_ title: String, id: String, offset: Int) -> some View {
+        let target = day(offset)
+        let selected = Dates.calendar.isDate(date, inSameDayAs: target)
+        return Button { choose(target) } label: {
+            Text(title).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular).fixedSize()
+                .foregroundStyle(selected ? YubaiColor.canvas : YubaiColor.label)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: 34)
+                .background(selected ? YubaiColor.label : YubaiColor.keyFn, in: Capsule())
+                .yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier(id)
+    }
+    private var calendar: some View {
+        VStack(alignment: .trailing, spacing: YubaiSpace.space8) {
+            Button { picking = false } label: {
+                Text("好").yubaiFont(YubaiFont.body, weight: .medium).foregroundStyle(YubaiColor.onBrand)
+                    .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).background(YubaiColor.brand, in: Circle())
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryDateDone")
+            if allowsFuture { DatePicker("日期", selection: $date, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden() }
+            else { DatePicker("日期", selection: $date, in: ...latest, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden() }
+            Spacer(minLength: YubaiSpace.none)
+        }.padding(YubaiSpace.insetPage).yubaiSheetBackground()
+            #if os(iOS)
+            .presentationDetents([.medium]).presentationDragIndicator(.visible)
+            #endif
+    }
+}
+
+/// 转账：从哪到哪，两个账户并排，各带当前余额。
+struct EntryTransferCards: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
+    let accounts: [Account]
+    let balances: [UUID: Int64]
+    @Binding var from: UUID?
+    @Binding var to: UUID?
+    var fallback: AnyView? = nil
+    private var destinations: [Account] { accounts.filter { $0.id != from } }
+    var body: some View {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
+        layout {
+            card(title: "从", list: accounts, selection: $from, identifier: "transferSourceAccount")
+            if !textSize.isAccessibilitySize {
+                Image(systemName: "arrow.right").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+            }
+            if destinations.isEmpty, let fallback { fallback.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble) }
+            else { card(title: "到", list: destinations, selection: $to, identifier: "transferDestinationAccount") }
+        }
+    }
+    private func card(title: String, list: [Account], selection: Binding<UUID?>, identifier: String) -> some View {
+        let account = list.first { $0.id == selection.wrappedValue }
+        let hide = store.preferences.hideAmounts
+        let balance = account.map { amount2(balances[$0.id] ?? 0, hide: hide) } ?? ""
+        return Menu {
+            ForEach(list) { item in
+                Button(item.name + " · " + amount2(balances[item.id] ?? 0, hide: hide)) { selection.wrappedValue = item.id }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                Text(account?.name ?? "选择账户").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(balance).yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary)
+            }.padding(YubaiSpace.gapGroup).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+        }.buttonStyle(PressButtonStyle()).accessibilityLabel(title).accessibilityValue((account?.name ?? "") + " " + balance)
+            .accessibilityIdentifier(identifier)
+    }
+}
+
+/// 输用途时列出记过的同名账目，连分类和金额一起带出来。
+struct EntryRecallList: View {
+    @Environment(AppStore.self) private var store
+    let recalls: [EntryHistory.Recall]
+    let choose: (EntryHistory.Recall) -> Void
+    var body: some View {
+        VStack(spacing: YubaiSpace.space8) {
+            ForEach(recalls) { item in
+                Button { choose(item) } label: {
+                    HStack(spacing: YubaiSpace.gapGroup) {
+                        Text(item.purpose).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).lineLimit(1)
+                        Spacer(minLength: YubaiSpace.space8)
+                        Text(Classification.displayCategory(item.entry.category)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        AmountLabel(cents: item.entry.amount, hide: store.preferences.hideAmounts, role: .summary).fixedSize()
+                    }.padding(.horizontal, YubaiSpace.gapGroup).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
+                        .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("recentPurpose_" + item.purpose)
+            }
+        }.accessibilityElement(children: .contain).accessibilityLabel("记过的用途")
+    }
+}
+
+struct EntryAddedRow: Identifiable, Equatable {
+    var id: UUID
+    var title: String
+    var category: String
+    var amount: Int64
+}
+
+/// 补账时顶部列出刚补的几笔：「昨天 · 已记 2 笔」加合计，下面是每一笔。
+struct EntryAddedList: View {
+    @Environment(AppStore.self) private var store
+    let dayTitle: String
+    let rows: [EntryAddedRow]
+    var body: some View {
+        let hide = store.preferences.hideAmounts
+        let total = rows.reduce(Int64(0)) { $0 + $1.amount }
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            HStack {
+                Text(dayTitle + " · 已记 \(rows.count) 笔").yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                Spacer(minLength: YubaiSpace.space8)
+                AmountLabel(cents: total, hide: hide, role: .small, sign: .outflow, ink: YubaiColor.labelSecondary)
+            }.padding(.horizontal, YubaiSpace.space4)
+            Card(style: .list) {
+                VStack(spacing: YubaiSpace.none) {
+                    ForEach(rows) { row in
+                        HStack(spacing: YubaiSpace.gapGroup) {
+                            Text(row.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+                            Text(row.category).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
+                            Spacer(minLength: YubaiSpace.space8)
+                            AmountLabel(cents: row.amount, hide: hide, role: .amount, sign: .outflow).fixedSize()
+                        }.frame(minHeight: YubaiSize.rowSingle)
+                        if row.id != rows.last?.id { EntryFormDivider() }
+                    }
+                }
+            }
+        }.accessibilityIdentifier("entryAddedList")
     }
 }

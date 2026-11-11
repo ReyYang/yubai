@@ -90,6 +90,7 @@ struct WishlistCooldownCards: View {
 private struct CooldownWishCard: View {
     @Environment(AppStore.self) private var store
     let wish: WishItem
+    @State private var recording = false
     private var days: Int {
         max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(wish.coolUntil ?? Date())).day ?? 0)
     }
@@ -109,6 +110,10 @@ private struct CooldownWishCard: View {
                 actions
             }
         }.accessibilityIdentifier("cooldownWish_" + wish.id.uuidString)
+            .sheet(isPresented: $recording) {
+                NavigationStack { QuickEntryView(prefill: QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title)) }
+                    .environment(store).appErrors().yubaiSheetBackground()
+            }
     }
     private var heading: some View {
         HStack(spacing: YubaiSpace.space8) {
@@ -118,11 +123,13 @@ private struct CooldownWishCard: View {
     }
     private var actions: some View {
         HStack(spacing: YubaiSpace.space8) {
-            Button("还想要") { answer(.keep) }
+            Button("还想要") { if answer(.keep) { recording = true } }
+                .buttonStyle(PrimaryButtonStyle(compact: true)).frame(maxWidth: .infinity).accessibilityIdentifier("cooldownKeep")
             Button("不要了") { answer(.drop) }
-        }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+                .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).frame(maxWidth: .infinity).accessibilityIdentifier("cooldownDrop")
+        }
     }
-    private func answer(_ choice: CooldownChoice) {
+    @discardableResult private func answer(_ choice: CooldownChoice) -> Bool {
         store.update("回答心愿", showToast: false) { try Wishlist.answerCooldown(wish.id, choice: choice, in: &$0, now: Date()) }
     }
 }

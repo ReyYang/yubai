@@ -5,139 +5,60 @@ import YubaiCore
 
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
     @State private var storageSize: String?
-    private var thinkingCount: Int { store.settingsSummary.thinkingCount }
-    private var followUpCount: Int { store.settingsSummary.followUpCount }
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.none) {
-            TabNavigationLink(.profile) { ProfileView() } label: {
-                Card {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                        HStack(spacing: YubaiSpace.gapGroup) {
-                            Text("我的消费观").yubaiFont(YubaiFont.cardTitle)
-                            Spacer(minLength: YubaiSpace.space8)
-                            Text("\(store.settingsSummary.memoryCount) 条").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                                .accessibilityLabel("余白记得的，" + memoryCount)
-                            chevron
-                        }
-                        profileLine("想克制", store.profile.restrain.map(\.title).joined(separator: "、"))
-                        profileLine("愿意多花", store.profile.generous.map(\.title).joined(separator: "、"))
-                    }
-                }
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
-                .accessibilityHint(store.profile.restrain.isEmpty && store.profile.generous.isEmpty && store.funds.fixedSavingsTotal == 0 ? "还没写消费观，可进入添加" : "查看和编辑消费观")
+        Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8) {
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    TabNavigationLink(.wishlist) { WishlistView() } label: {
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: YubaiSpace.gapGroup) { wishlistTitle; Spacer(); followUp; chevron }
-                            VStack(alignment: .leading, spacing: YubaiSpace.space8) { wishlistTitle; followUp }
-                        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-                    }.accessibilityIdentifier("openWishlist")
+                    TabNavigationLink(.categories) { CategoriesView() } label: { row("分类") }.accessibilityIdentifier("openCategories")
                     separator
-                    TabNavigationLink(.letters) { LettersView() } label: { row("每周来信", detail: latestLetter) }
+                    TabNavigationLink(.quickCapture) { QuickCaptureSettingsView() } label: { row("常记的几笔", detail: repeatCount) }
+                        .accessibilityIdentifier("openQuickCapture")
+                    separator
+                    TabNavigationLink(.importHistory) { ImportHistoryView() } label: { row("导入记录", detail: lastImport) }
+                        .accessibilityIdentifier("openImportHistory")
                 }
-            }.buttonStyle(PressButtonStyle())
-            TabNavigationLink(.savings("我")) { SavingsView(backTitle: "我") } label: {
-                Card(style: .list) { row("攒钱", detail: savingsSummary(store.current)) }
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openSavings")
-            TabNavigationLink(.spendingParts("我")) { SpendingPartsView(backTitle: "我") } label: {
-                Card(style: .list) { row("分项") }
-            }.buttonStyle(PressButtonStyle()).accessibilityLabel("分项，分配还能花").accessibilityIdentifier("openSpendingParts")
-            TabNavigationLink(.accounts) { AccountsView() } label: { accountsCard }.buttonStyle(PressButtonStyle())
+            }
+            Card(style: .list) { intelligenceRow }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { row("会回来的账单", detail: fixedFlowsDetail) }
-                        .accessibilityIdentifier("openFixedFlows")
-                    separator
-                    NavigationLink(value: CategorySettingsRoute.categories) { row("分类") }.hidesListDisclosure()
-                        .accessibilityIdentifier("openCategories")
-                }
-            }.buttonStyle(PressButtonStyle())
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
-                    TabNavigationLink(.quickCapture) { QuickCaptureSettingsView() } label: { row("快速记账") }.accessibilityIdentifier("openQuickCapture")
-                    separator
-                    TabNavigationLink(.importHistory) { ImportHistoryView() } label: { row("导入记录") }.accessibilityIdentifier("openImportHistory")
-                    separator
-                    TabNavigationLink(.intelligencePrivacy) { IntelligencePrivacyView() } label: {
-                        HStack(spacing: YubaiSpace.gapGroup) {
-                            Text("智能与隐私").yubaiFont(YubaiFont.row); Spacer()
-                            if store.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured {
-                                Pill(text: "DeepSeek · 已配好", variant: .brand, height: YubaiSize.tagHeight, showsDot: false)
-                            } else { Text("未配好").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-                            chevron
-                        }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
-                    }.accessibilityIdentifier("openIntelligencePrivacy")
-                    separator
-                    TabNavigationLink(.backup) { BackupView() } label: { row("备份与恢复") }.accessibilityIdentifier("openBackup")
+                    TabNavigationLink(.backup) { BackupView() } label: { row("备份与恢复", detail: backupDetail) }.accessibilityIdentifier("openBackup")
                     separator
                     TabNavigationLink(.storage) { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
-            }.buttonStyle(PressButtonStyle())
-        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().rootTabScroll(.yubai).accessibilityIdentifier("settingsScroll")
-            .navigationDestination(for: CategorySettingsRoute.self) { _ in CategoriesView() }
-            .rootPageHeader { TabRootHeader(title: "我") }.navigationTitle("我")
-            .modifier(SettingsStorageSizeTask(storageSize: $storageSize))
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
-    }
-    private var latestLetter: String? {
-        store.cards.filter { $0.kind == .weeklyLetter }.max(by: { $0.createdAt < $1.createdAt })?.createdAt.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
-    }
-    private var fixedFlowsDetail: String {
-        let titles = store.settingsSummary.fixedFlowTitles
-        return (titles.isEmpty ? "" : titles.prefix(2).joined(separator: "、") + "等 ") + "\(titles.count) 项"
-    }
-    private var memoryCount: String {
-        let added = store.settingsSummary.weeklyMemoryCount
-        return "\(store.settingsSummary.memoryCount) 条 · 这周新记了 \(added) 条"
-    }
-    private var wishlistTitle: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            Text("心愿单").yubaiFont(YubaiFont.rowTitle)
-            Text("\(thinkingCount) 件在想").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-        }
-    }
-    @ViewBuilder private var followUp: some View {
-        if followUpCount > 0 { Pill(text: "\(followUpCount) 件买了一个月", variant: .amber, showsDot: false) }
-    }
-    private var accountsCard: some View {
-        let summary = store.settingsSummary
-        let cash = summary.cashAccounts
-        let values = summary.cashBalances.map { max(0, $0) }
-        let total = values.reduce(Int64(0), +)
-        return Card {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(spacing: YubaiSpace.gapGroup) { Text("账户").yubaiFont(YubaiFont.rowTitle); Spacer(); Text("\(store.accounts.count) 个账户").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary); chevron }
-                AmountLabel(cents: store.funds.cash, hide: store.preferences.hideAmounts, role: .account)
-                if !store.preferences.hideAmounts && total > 0 {
-                    GeometryReader { geometry in
-                        HStack(spacing: YubaiSpace.space4) {
-                            ForEach(values.indices, id: \.self) { i in
-                                let colors = [YubaiColor.brand, YubaiColor.series2, YubaiColor.series3, YubaiColor.neutralStrong, YubaiColor.neutralSoft]
-                                let gapWidth = CGFloat(max(0, values.count - 1)) * YubaiSpace.space4
-                                let availableWidth = max(CGFloat(0), geometry.size.width - gapWidth)
-                                let share = CGFloat(values[i]) / CGFloat(total)
-                                colors[min(i, colors.count - 1)].frame(width: availableWidth * share)
-                            }
-                        }.clipShape(Capsule())
-                    }.frame(height: 8).accessibilityElement(children: .ignore)
-                        .accessibilityLabel("现金分布：" + cash.indices.map { cash[$0].name + " " + Money.text(summary.cashBalances[$0]) }.joined(separator: "；"))
-                }
             }
-        }
+        }.buttonStyle(PressButtonStyle()).amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("settingsScroll")
+            .modifier(SettingsStorageSizeTask(storageSize: $storageSize))
+            .navigationTitle("设置").yubaiNavigation()
     }
-    @ViewBuilder private func profileLine(_ title: String, _ value: String) -> some View {
-        if !value.isEmpty {
-            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .top, spacing: YubaiSpace.space8))
-            layout { Text(title).foregroundStyle(YubaiColor.labelSecondary); Text(value) }.yubaiFont(YubaiFont.callout)
-        }
+    private var repeatCount: String {
+        "\(EntryHistory.repeats(in: store.current, now: Date()).count) 笔"
+    }
+    private var lastImport: String? {
+        guard let date = store.imports.filter({ $0.undoneAt == nil }).map(\.importedAt).max() else { return nil }
+        return "上次 " + FixedFlowPresentation.monthDay(date)
+    }
+    private var backupDetail: String {
+        guard let date = store.preferences.lastBackupAt else { return "仅本机" }
+        return FixedFlowPresentation.monthDay(date)
+    }
+    private var intelligenceRow: some View {
+        TabNavigationLink(.intelligencePrivacy) { IntelligencePrivacyView() } label: {
+            HStack(spacing: YubaiSpace.gapGroup) {
+                Text("智能与隐私").yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
+                if store.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured {
+                    Pill(text: "DeepSeek · 已配好", variant: .brand, height: YubaiSize.tagHeight, showsDot: false)
+                } else { Text("未配好").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                chevron
+            }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+        }.accessibilityIdentifier("openIntelligencePrivacy")
     }
     private func row(_ title: String, detail: String? = nil) -> some View {
-        HStack(spacing: YubaiSpace.gapGroup) { Text(title).yubaiFont(YubaiFont.row); Spacer(); if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }; chevron }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
+        HStack(spacing: YubaiSpace.gapGroup) {
+            Text(title).yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
+            if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            chevron
+        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
     private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
@@ -163,29 +84,35 @@ struct IntelligencePrivacyView: View {
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             if let model = IntelligenceRuntime.cloud.unavailableModel { ModelUnavailableNote(model: model) }
+            Card(style: .list) {
+                VStack(spacing: YubaiSpace.none) {
+                    Toggle("用云端 AI", isOn: Binding(get: { store.preferences.cloudAIEnabled }, set: { value in
+                        store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value }
+                    })).yubaiFont(YubaiFont.rowTitle).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.rowDouble).accessibilityIdentifier("cloudAIToggle")
+                    separator
+                    HStack(spacing: YubaiSpace.space8) {
+                        Text("服务").yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
+                        if configured { Pill(text: "已配好", variant: .brand, height: YubaiSize.tagHeight, showsDot: false) }
+                        Text("DeepSeek").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    }.frame(minHeight: YubaiSize.rowDouble)
+                    separator
+                    CloudModelMenu()
+                    separator
+                    NavigationLink { CloudAISettingsSection() } label: {
+                        settingsRow("密钥", detail: hasKey ? "只存在这台手机" : (configured ? "使用环境变量" : "未配好"), chevron: true)
+                    }.hidesListDisclosure().accessibilityLabel(hasKey ? "密钥，保存在本机钥匙串，不进入账本或备份" : (configured ? "密钥，使用环境变量" : "密钥，未配好"))
+                        .accessibilityIdentifier("openCloudKey")
+                }.buttonStyle(PressButtonStyle())
+            }
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                heading("云端智能")
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        Toggle("打开云端智能", isOn: Binding(get: { store.preferences.cloudAIEnabled }, set: { value in
-                            store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value }
-                        })).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.headerHeight)
-                        separator
-                        settingsRow("服务", detail: "DeepSeek")
-                        separator
-                        CloudModelMenu()
-                        separator
-                        NavigationLink { CloudAISettingsSection() } label: {
-                            settingsRow("密钥", detail: configured ? "已配好" : "未配好", chevron: true)
-                        }.hidesListDisclosure().accessibilityLabel(hasKey ? "密钥，保存在本机钥匙串，不进入账本或备份" : (configured ? "密钥，使用环境变量" : "密钥，未配好"))
-                    }.buttonStyle(PressButtonStyle())
+                heading("发出去的只有")
+                Card(style: .compact, background: YubaiColor.raised) {
+                    Text("商户名、金额、日期、分类。不发账户号、不发余额、不发你的名字。").yubaiFont(YubaiFont.callout)
                 }
             }
-            privacyChips("会发给云端", values: ["问题", "金额", "日期", "分类", "商户", "备注", "转账姓名 → 联系人A"])
-            privacyChips("不发", values: ["账户名", "卡号", "交易单号", "附件"], excluded: true)
             Card(style: .list) {
-                NavigationLink { CloudSendLogView() } label: { settingsRow("发给云端的内容", detail: "本次打开 \(sendCount) 次", chevron: true) }.hidesListDisclosure()
-                    .buttonStyle(PressButtonStyle())
+                NavigationLink { CloudSendLogView() } label: { settingsRow("看最近发出去了什么", detail: "本次打开 \(sendCount) 次", chevron: true) }.hidesListDisclosure()
+                    .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openCloudSendLog")
             }
             // Retain the existing device and notification preferences below the cloud/privacy groups.
             Card(style: .list) {
@@ -261,16 +188,24 @@ struct BackupView: View {
     @State private var pendingRestore: Ledger?; @State private var restoreData: Data?; @State private var busy = false; @State private var message: String?
     @State private var exportedLedgerID: UUID?; @State private var exportedAt: Date?
     @State private var encryptedRestore = false
+    @State private var exportExpanded = false
     private struct BackupHeader: Decodable { let format: String; let version: Int; let encrypted: Bool }
     private enum PasswordField: Hashable { case export, restore }
     @FocusState private var passwordFocus: PasswordField?
     var body: some View {
         Form {
+            Section { lastBackup }.listRowBackground(Color.clear).listRowSeparator(.hidden)
             if busy { Section { ProgressView("正在本机处理…") }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
             if let message { Section { Text(message).yubaiFont(YubaiFont.callout).textSelection(.enabled) }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator) }
+            Section {
+                Button { exportExpanded.toggle() } label: { backupRow("备份到文件", detail: "存到「文件」或隔空投送") }
+                    .accessibilityIdentifier("backupToFile")
+                Button { passwordFocus = nil; importing = true } label: { backupRow("从备份恢复", detail: nil) }
+                    .disabled(busy).accessibilityIdentifier("restoreFromBackup")
+            }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+            if exportExpanded { exportSection }
+            if encryptedRestore { restoreSection }
             LedgerSyncSection()
-            exportSection
-            restoreSection
             if let pendingRestore {
                 Section("已验证的备份") {
                     Text("\(pendingRestore.accounts.count) 个账户 · \(pendingRestore.activeEntries.count) 笔有效记录 · \(pendingRestore.attachments.count) 份附件")
@@ -283,6 +218,7 @@ struct BackupView: View {
                 NavigationLink("最近删除 \(RecentlyDeleted.entries(in: store.current).count) 笔") { RecentlyDeletedView() }.accessibilityIdentifier("recentlyDeleted")
                 NavigationLink("恢复版本") { RecoveryVersionsView() }
             }.listRowBackground(YubaiColor.card)
+            Section { EraseAllDataButton() }.listRowBackground(Color.clear).listRowSeparator(.hidden)
         }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().manualSheetHeader("备份与恢复", cancelTitle: "关闭", showsAction: false)
             .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .yubaiBackup, defaultFilename: exportName) { result in
                 switch result {
@@ -324,21 +260,38 @@ struct BackupView: View {
     }
 
     private var exportSection: some View {
-        Section("完整备份") {
+        Section {
             SecureField("备份密码（至少 8 位）", text: $password).focused($passwordFocus, equals: .export)
             Button("导出完整备份", action: exportBackup).disabled(busy || password.count < 8)
             Text("密码无法找回，请妥善保存。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var restoreSection: some View {
-        Section("恢复到这台设备") {
-            Button("选择备份文件") { passwordFocus = nil; importing = true }.disabled(busy)
-            if encryptedRestore {
-                SecureField("备份密码", text: $restorePassword).focused($passwordFocus, equals: .restore)
-                    .accessibilityHint("填写创建这份加密备份时使用的密码")
-                Button("读取备份", action: readBackup).disabled(busy || restorePassword.isEmpty)
-            }
+        Section {
+            SecureField("备份密码", text: $restorePassword).focused($passwordFocus, equals: .restore)
+                .accessibilityHint("填写创建这份加密备份时使用的密码")
+            Button("读取备份", action: readBackup).disabled(busy || restorePassword.isEmpty)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+    }
+    private var lastBackup: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text("上次备份").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            if let date = store.preferences.lastBackupAt {
+                let days = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(Date())).day ?? 0)
+                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                    Text(FixedFlowPresentation.monthDay(date)).yubaiFont(YubaiFont.amountLarge)
+                    Text(days == 0 ? "今天" : "\(days) 天前").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                }
+            } else { Text("还没备份过").yubaiFont(YubaiFont.amountLarge) }
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine).accessibilityIdentifier("lastBackup")
+    }
+    private func backupRow(_ title: String, detail: String?) -> some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            Text(title).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
+            Spacer(minLength: YubaiSpace.space8)
+            if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
 }
 

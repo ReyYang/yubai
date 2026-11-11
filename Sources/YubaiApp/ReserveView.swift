@@ -1,7 +1,51 @@
 import SwiftUI
 import YubaiCore
 
-// STUB: replaced whole-file by P4.
+/// 存着的钱的进出记录。大数字可以点着改；「补回来」留给第二批。
 struct ReserveView: View {
-    var body: some View { Text("") }
+    @Environment(AppStore.self) private var store
+    @State private var editing = false
+    @State private var keypad = EntryKeypad(amount: 0)
+    private var hide: Bool { store.preferences.hideAmounts }
+    private var overview: ReserveOverview { store.reserve }
+    var body: some View {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
+            hero
+            if !overview.lines.isEmpty { lines }
+        }.amountPrivacy(hide).navigationTitle("进出记录").yubaiNavigation().accessibilityIdentifier("reservePage")
+            .sheet(isPresented: $editing) {
+                AmountEntrySheet(title: "存着不动", keypad: $keypad, primaryTitle: "完成", primaryIdentifier: "saveReserveTotal",
+                                 canSave: keypad.amount != nil, save: saveTotal)
+                    .environment(store).yubaiSheetBackground().presentationDetents([.large]).presentationDragIndicator(.visible)
+            }
+    }
+    private var hero: some View {
+        VStack(spacing: YubaiSpace.space4) {
+            Text("存着不动").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            HStack(spacing: YubaiSpace.gapGroup) {
+                AmountLabel(cents: overview.total, hide: hide, role: .hero).accessibilityIdentifier("reserveTotal")
+                Button {
+                    keypad = EntryKeypad(amount: overview.total); editing = true
+                } label: {
+                    Image(systemName: "pencil").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                        .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).controlSurface(in: Circle()).yubaiHitTarget()
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel("修改存着的钱").accessibilityIdentifier("editReserveTotal")
+            }
+        }.frame(maxWidth: .infinity)
+    }
+    private var lines: some View {
+        Card(style: .list) {
+            VStack(spacing: YubaiSpace.none) {
+                ForEach(Array(overview.lines.enumerated()), id: \.element.id) { index, line in
+                    ReserveLineRow(line: line, hide: hide).accessibilityIdentifier("reserveLine_\(index)")
+                    if index < overview.lines.count - 1 { EntryFormDivider() }
+                }
+            }
+        }
+    }
+    private func saveTotal() {
+        guard let value = keypad.resolve() else { return }
+        let base = max(0, value - overview.setAside)
+        if store.update("调整存着的钱", { Reserve.setTotal(base, in: &$0, now: Date()) }) { editing = false }
+    }
 }

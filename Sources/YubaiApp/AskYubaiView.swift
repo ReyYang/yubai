@@ -48,6 +48,9 @@ struct AskYubaiView: View {
     @Environment(AppStore.self) private var store
     var initialText = ""
     var initialImage: Data? = nil
+    var autoSend = false
+    @Environment(\.yubaiSheetSurface) private var inSheet
+    @State private var pendingAutoSend = false
     @State private var input = ""
     @State private var messages: [AskMessage] = []
     @State private var session = AskYubaiSession()
@@ -71,17 +74,36 @@ struct AskYubaiView: View {
     @State private var configured = IntelligenceRuntime.isConfigured
     @FocusState private var inputFocused: Bool
     private var enabled: Bool { store.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
+    private var headerTitle: String {
+        let replies = messages.compactMap(\.reply)
+        if replies.contains(where: { $0.purchaseJudgment != nil || !($0.purchaseQuestions ?? []).isEmpty }) { return "该不该买" }
+        if replies.contains(where: { reply in
+            !reply.proposedChangeSets.isEmpty && reply.proposedChangeSets.allSatisfy { change in
+                change.items.allSatisfy { if case .addEntry = $0 { return true }; return false }
+            }
+        }) { return "帮我记" }
+        if replies.contains(where: { $0.chart != nil }) { return "钱去哪了" }
+        return "问余白"
+    }
+    private func clearConversation() {
+        cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear()
+    }
+    @MainActor private func sendPendingQuestion() {
+        guard pendingAutoSend, enabled, !busy, !input.isEmpty else { return }
+        pendingAutoSend = false
+        send()
+    }
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
             conversation
             inputBar
-        }.amountPrivacy(store.preferences.hideAmounts).paperBackground().navigationTitle("问余白").yubaiNavigation()
+        }.amountPrivacy(store.preferences.hideAmounts).paperBackground().navigationTitle(headerTitle).yubaiNavigation()
             #if os(iOS)
             .toolbarBackground(.hidden, for: .navigationBar)
             #endif
-            .manualSheetHeader("问余白", actionTitle: "清空", primary: false, cancelTitle: "关闭", showsAction: !messages.isEmpty, actionIdentifier: "clearAskConversation", action: {
-                cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear()
-            })
+            .modifier(AskPageHeader(inSheet: inSheet, showsClear: !messages.isEmpty, clear: clearConversation))
+            .onChange(of: enabled) { _, _ in sendPendingQuestion() }
+            .task { try? await Task.sleep(nanoseconds: 400_000_000); sendPendingQuestion() }
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
                 do {
@@ -103,7 +125,7 @@ struct AskYubaiView: View {
                 }
             }
             .onChange(of: voice.transcript) { _, text in input = voicePrefix + text }
-            .onAppear { connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; store.askConversation.expire(); messages = store.askConversation.messages; session = store.askConversation.session; conversationDay = store.askConversation.day; conversationLedgerID = store.current.id; input = initialText; if let initialImage { recognize(initialImage) } } }
+            .onAppear { connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; store.askConversation.expire(); messages = store.askConversation.messages; session = store.askConversation.session; conversationDay = store.askConversation.day; conversationLedgerID = store.current.id; input = initialText; pendingAutoSend = autoSend && !initialText.isEmpty; if let initialImage { recognize(initialImage) } } }
             .onChange(of: IntelligenceRuntime.cloud.unavailableModel) { _, model in if model == nil { errorText = "" } }
             .onDisappear { cancel(); connectivity.stop(); if conversationDay == Dates.day(Date()) && conversationLedgerID == store.current.id { store.askConversation.messages = messages; store.askConversation.session = session } }
             .onChange(of: scenePhase) { _, phase in if phase == .active { if conversationDay != Dates.day(Date()) { cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear(); conversationDay = store.askConversation.day }; voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
@@ -294,6 +316,7 @@ struct AskYubaiView: View {
         let ledger = store.current; let image = originalImage
         guard let transport = store.assistantTransport(for: ledger) else { return }
         input = ""; errorText = ""; busy = true; messages.append(AskMessage(text: text, isUser: true))
+        store.recordQuestion(text)
         task = Task { @MainActor in
             defer { busy = false }
             do {
@@ -611,5 +634,25 @@ struct ChatInputBar<Leading: View, Accessory: View>: View {
             .fixedSize(horizontal: false, vertical: true)
             .buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
             .opacity(enabled ? 1 : 0.6)
+    }
+}
+
+private struct AskPageHeader: ViewModifier {
+    let inSheet: Bool
+    let showsClear: Bool
+    let clear: () -> Void
+    @ViewBuilder func body(content: Content) -> some View {
+        if inSheet {
+            content.manualSheetHeader("问余白", actionTitle: "清空", primary: false, cancelTitle: "关闭", showsAction: showsClear,
+                                      actionIdentifier: "clearAskConversation", action: clear)
+        } else {
+            content.toolbar {
+                if showsClear {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("清空", action: clear).accessibilityIdentifier("clearAskConversation")
+                    }
+                }
+            }
+        }
     }
 }

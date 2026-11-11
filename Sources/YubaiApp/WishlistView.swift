@@ -110,16 +110,16 @@ struct WishlistView: View {
     }
     @ViewBuilder private func wishActions(_ wish: WishItem) -> some View {
         if wish.status == .thinking {
-            NavigationLink("已经买了") { WishEntryPicker(wishID: wish.id) }
+            NavigationLink("已经买了") { WishEntryPicker(wishID: wish.id) }.frame(maxWidth: .infinity)
             Button("不买了") { store.update("放下心愿") { ledger in
                 if let i = ledger.wishlist.firstIndex(where: { $0.id == wish.id && $0.status == .thinking }) {
                     ledger.wishlist[i].status = .dropped
                     ledger.wishlist[i].droppedAt = Date(); ledger.wishlist[i].coolUntil = nil
                     for j in ledger.cards.indices where ledger.cards[j].dedupeKey == "cooldown:\(wish.id)" { ledger.cards[j].dismissedAt = Date() }
                 }
-            } }
+            } }.frame(maxWidth: .infinity)
         }
-        NavigationLink("再问一次") { AskYubaiView(initialText: "我还想再看看「\(wish.title)」，\(Money.text(wish.amount, currency: false))元，该不该买？") }
+        NavigationLink("再问一次") { AskYubaiView(initialText: "我还想再看看「\(wish.title)」，\(Money.text(wish.amount, currency: false))元，该不该买？") }.frame(maxWidth: .infinity)
     }
 
 }

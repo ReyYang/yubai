@@ -17,16 +17,7 @@ struct CashTimelineCard: View {
         let scale = CashTimelineScale(window: visible)
         Card {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("现金这个月").yubaiFont(YubaiFont.heroLabel)
-                    Spacer()
-                    Text(short(visible.start) + " – " + short(visible.end)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(selected.map { ManualBookkeeping.dayLabel($0.date) } ?? "今天").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    AmountLabel(cents: selected?.balance ?? visible.history.last?.balance ?? store.funds.cash,
-                                hide: store.preferences.hideAmounts, role: .account)
-                }.accessibilityIdentifier("cashTimelineReadout")
+                header(visible)
                 if !store.preferences.hideAmounts {
                     Chart {
                         ForEach(visible.history) { point in
@@ -67,13 +58,33 @@ struct CashTimelineCard: View {
                                 AxisValueLabel { if let value = axis.as(Double.self) { Text(value.formatted(.number.notation(.compactName))).foregroundStyle(YubaiColor.labelSecondary) } }
                             }
                         }.chartXSelection(value: $selectedDate)
-                        .accessibilityIdentifier("cashTimelineChart").accessibilityLabel("现金这个月")
+                        .accessibilityIdentifier("cashTimelineChart").accessibilityLabel("手上的钱")
                         .accessibilityHint("长按后拖动查看一天")
                 }
             }
         }.accessibilityIdentifier("cashTimelineCard")
             .onChange(of: timeline.cycles) { _, _ in selectedDate = nil }
             .onChange(of: store.preferences.hideAmounts) { _, _ in selectedDate = nil }
+    }
+    private func header(_ visible: CashTimelineWindow) -> some View {
+        let balance = selected?.balance ?? visible.history.last?.balance ?? store.funds.cash
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                Text("手上的钱").yubaiFont(YubaiFont.heroLabel)
+                Spacer(minLength: YubaiSpace.space8)
+                readout(balance)
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text("手上的钱").yubaiFont(YubaiFont.heroLabel)
+                readout(balance)
+            }
+        }
+    }
+    private func readout(_ balance: Int64) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+            if let selected { Text(ManualBookkeeping.dayLabel(selected.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            AmountLabel(cents: balance, hide: store.preferences.hideAmounts, role: .summary, sign: .none).fixedSize()
+        }.accessibilityIdentifier("cashTimelineReadout")
     }
     private func short(_ day: Date) -> String { "\(Dates.calendar.component(.month, from: day))/\(Dates.calendar.component(.day, from: day))" }
 }

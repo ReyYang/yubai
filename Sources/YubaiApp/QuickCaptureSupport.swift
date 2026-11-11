@@ -13,6 +13,10 @@ struct QuickEntryPrefill {
     var accountID: UUID? = nil
     var otherAccountID: UUID? = nil
     var intoFixedSavings = false
+    /// 「从存着的钱出」：存钱页和问余白的「从存着的钱买」带过来，记一笔里直接选中。
+    var fromReserve = false
+    /// 补记某一天；`nil` 为今天。
+    var date: Date? = nil
 }
 extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
