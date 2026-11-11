@@ -104,11 +104,12 @@ public enum ManualBookkeeping {
         Dates.calendar.isDate(day, inSameDayAs: now) ? now : Dates.calendar.date(bySettingHour: 12, minute: 0, second: 0, of: day)!
     }
     public static func saveDate(for day: Date, now: Date) -> Date {
-        Dates.calendar.date(bySettingHour: Dates.calendar.component(.hour, from: now), minute: Dates.calendar.component(.minute, from: now), second: Dates.calendar.component(.second, from: now), of: day)!
+        if Dates.day(day) > Dates.day(now) { return Dates.day(day) }
+        return Dates.calendar.date(bySettingHour: Dates.calendar.component(.hour, from: now), minute: Dates.calendar.component(.minute, from: now), second: Dates.calendar.component(.second, from: now), of: day)!
     }
     public static func change(amount: Int64, nature: Nature, accountID: UUID, otherAccountID: UUID? = nil,
                               day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Date(), intoFixedSavings: Bool = false, fromReserve: Bool = false) throws -> ChangeSet {
-        guard amount > 0, amount <= Money.limit, Dates.day(day) <= Dates.day(now) else { throw YubaiError.invalid("请核对金额和日期。") }
+        guard amount > 0, amount <= Money.limit, (-2_208_988_800...7_258_118_400).contains(day.timeIntervalSince1970) else { throw YubaiError.invalid("请核对金额和日期。") }
         if nature == .transfer { guard let otherAccountID, otherAccountID != accountID else { throw YubaiError.invalid("转账的两个账户必须不同。") } }
         let purpose = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         var draft = EntryDraft(date: saveDate(for: day, now: now), amount: amount, amountConfirmed: true,
@@ -175,7 +176,7 @@ public enum ManualBookkeeping {
     private static func available(removing original: Entry?, adding entry: Entry, in ledger: Ledger, now: Date) -> Int64 {
         let base = Finance.funds(ledger, now: now)
         let reserveRefund = [entry, original].compactMap { $0 }.contains { row in row.nature == .refund && ledger.entries.contains { $0.id == row.relatedEntryID && $0.fromReserve } }
-        if entry.fromReserve || original?.fromReserve == true || reserveRefund || !ledger.cycleCovers.isEmpty || ledger.paydayConfirmSince != nil {
+        if entry.fromReserve || original?.fromReserve == true || reserveRefund || !ledger.cycleCovers.isEmpty || !(ledger.reservePaybacks?.isEmpty ?? true) || ledger.paydayConfirmSince != nil {
             var projected = ledger
             if let original, let index = projected.entries.firstIndex(where: { $0.id == original.id }) { projected.entries[index] = entry }
             else { projected.entries.append(entry) }
@@ -280,7 +281,7 @@ public struct TodayEntries: Equatable, Sendable {
     public var count = 0; public var net: Int64 = 0; public var latest: Entry?
     public init(in ledger: Ledger, now: Date = Date()) {
         let start = Dates.day(now); let end = Dates.addDays(1, to: start)
-        for entry in ledger.entries where entry.deletedAt == nil && entry.date >= start && entry.date < end {
+        for entry in ledger.entries where entry.deletedAt == nil && entry.date >= start && entry.date < end && entry.date <= now {
             count += 1; net += entry.nature.inflow ? entry.amount : -entry.amount
             if latest == nil || (entry.recordedAt ?? entry.date) > (latest!.recordedAt ?? latest!.date) { latest = entry }
         }
@@ -445,7 +446,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
     public var pending: [Occurrence] = []
     public var pendingAmount: Int64 { pending.reduce(0) { $0 + $1.amount } }
     public static func stopped(in ledger: Ledger, now: Date = Date()) -> [Self] {
-        let payments = FixedFlowPayments(in: ledger)
+        let payments = FixedFlowPayments(in: ledger, now: now)
         let pendingByPlan = Dictionary(grouping: Finance.occurrences(in: ledger, now: now, days: 1).filter { $0.planID != nil && Dates.day($0.date) <= Dates.day(now) }, by: { $0.planID! })
         var rows = ledger.plans.compactMap { plan -> Self? in
             let date = plan.stoppedAt ?? plan.endDate
@@ -484,7 +485,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
             else if !occurrence.inflow, let id = occurrence.rentID, next[id] == nil { next[id] = occurrence }
         }
         let horizon = Dates.addDays(90, to: Dates.day(now))
-        let payments = FixedFlowPayments(in: ledger)
+        let payments = FixedFlowPayments(in: ledger, now: now)
         var rows = ledger.plans.filter {
             $0.active && ($0.endDate == nil || $0.endDate! > now)
                 && !($0.frequency == .once && $0.dueDate <= horizon && next[$0.id] == nil)

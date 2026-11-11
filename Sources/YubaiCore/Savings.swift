@@ -167,18 +167,21 @@ public enum Savings {
                 ($0.cycleStart <= previous.end && previous.start <= $0.cycleEnd)
         }
         guard previous.end < Dates.day(now), !alreadyClosed else { return }
-        let snapshot = WeeklyLetter.snapshot(ledger, at: close)
+        var snapshot = WeeklyLetter.snapshot(ledger, at: close)
+        snapshot.entries = ledger.entries
         SpendingParts.closeCycle(&ledger, snapshot: snapshot, close: close, nextStart: current.start)
         let funds = Finance.funds(snapshot, now: close)
         // Funds excludes earmarked income from both cycle income and liquid
         // funds, so it can never be merged into the base a second time.
         // Available already excludes the saving target; do not add part balances again.
         let unspent = max(0, funds.available)
-        guard ledger.savingRule != nil else {
+        guard ledger.savingRule != nil || funds.savingRuleTarget > 0 else {
             ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: 0, target: 0, saved: 0, tracked: false, unspent: unspent))
             return
         }
         let saved = max(0, min(funds.savingTarget, funds.savingTarget + funds.available))
+        let baseTarget = snapshot.effectiveSavingTarget(snapshot.savingRule?.target(income: funds.cycleIncome) ?? 0, cycleStart: previous.start, now: close)
+        Reserve.recordPaybacks(&ledger, cycleStart: previous.start, saved: saved, baseTarget: baseTarget, close: close)
         ledger.fixedSavings = (ledger.fixedSavings ?? 0) + saved
         ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: funds.cycleIncome, target: funds.savingRuleTarget, saved: saved, unspent: unspent))
     }
@@ -226,7 +229,7 @@ public enum Savings {
                 guard due > stop.stoppedAt, due >= from, due < to, stop.resumedAt.map({ due < $0 }) ?? true else { continue }
                 let next = index + 1 < schedule.count ? schedule[index + 1].date : plan.frequency.advance(due, by: 1)
                 let paid = ledger.activeEntries.contains { entry in
-                    guard entry.nature == .expense else { return false }
+                    guard entry.nature == .expense, entry.date <= now else { return false }
                     if entry.planID == plan.id, let occurrence = entry.occurrence, Dates.day(occurrence) == Dates.day(due) { return true }
                     // An unlinked charge by the same merchant also disproves a saving.
                     return entry.date >= Dates.day(due) && entry.date < next && CategoryMemory.key(entry.title) == CategoryMemory.key(plan.title)
@@ -268,7 +271,7 @@ public enum SubscriptionCheck {
         !plan.inflow && plan.nature == .expense && plan.frequency != .once && plan.amount > 0 && plan.amount <= 20_000
     }
     public static func candidates(ledger: Ledger, now: Date = Date()) -> [SubscriptionCandidate] {
-        let month = String(Dates.text(now).prefix(7)); let payments = FixedFlowPayments(in: ledger)
+        let month = String(Dates.text(now).prefix(7)); let payments = FixedFlowPayments(in: ledger, now: now)
         var result = ledger.plans.compactMap { plan -> SubscriptionCandidate? in
             let id = "plan:" + plan.id.uuidString
             guard eligible(plan, ledger: ledger), payments.amount(for: plan) <= 20_000, plan.active,

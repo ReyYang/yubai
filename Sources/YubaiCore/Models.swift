@@ -245,11 +245,13 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     /// A period still needs a live linked payment to remain paid.
     public var settledOccurrences: [Date] = []
     public var estimatedAmountSince: Date?
+    /// Original scheduled day → replacement day. Nil preserves the recurring schedule.
+    public var occurrenceDateOverrides: [Date: Date]?
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = Classification.pendingCategory, nature: Nature = .expense, intoFixedSavings: Bool = false) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
         self.intoFixedSavings = nature == .income && inflow && intoFixedSavings
     }
-    private enum CodingKeys: String, CodingKey { case intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
+    private enum CodingKeys: String, CodingKey { case occurrenceDateOverrides, intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
@@ -271,8 +273,31 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         previousOccurrences = try c.decodeIfPresent([Date].self, forKey: .previousOccurrences) ?? []
         settledOccurrences = try c.decodeIfPresent([Date].self, forKey: .settledOccurrences) ?? []
         estimatedAmountSince = try c.decodeIfPresent(Date.self, forKey: .estimatedAmountSince)
+        occurrenceDateOverrides = try c.decodeIfPresent([Date: Date].self, forKey: .occurrenceDateOverrides)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(title, forKey: .title); try c.encode(amount, forKey: .amount)
+        try c.encode(dueDate, forKey: .dueDate); try c.encode(frequency, forKey: .frequency); try c.encode(inflow, forKey: .inflow)
+        try c.encodeIfPresent(accountID, forKey: .accountID); try c.encode(category, forKey: .category); try c.encode(nature, forKey: .nature)
+        try c.encode(intoFixedSavings, forKey: .intoFixedSavings); try c.encode(active, forKey: .active)
+        try c.encodeIfPresent(endDate, forKey: .endDate); try c.encodeIfPresent(stoppedAt, forKey: .stoppedAt); try c.encode(note, forKey: .note)
+        try c.encode(autoPay, forKey: .autoPay); try c.encodeIfPresent(autoPaySince, forKey: .autoPaySince)
+        try c.encodeIfPresent(installments, forKey: .installments); try c.encode(estimated, forKey: .estimated)
+        try c.encodeIfPresent(monthlyDay, forKey: .monthlyDay); try c.encode(skippedOccurrences, forKey: .skippedOccurrences)
+        try c.encode(previousOccurrences, forKey: .previousOccurrences); try c.encode(settledOccurrences, forKey: .settledOccurrences)
+        try c.encodeIfPresent(estimatedAmountSince, forKey: .estimatedAmountSince)
+        if let occurrenceDateOverrides, !occurrenceDateOverrides.isEmpty { try c.encode(occurrenceDateOverrides, forKey: .occurrenceDateOverrides) }
     }
     func schedule(through end: Date) -> [(index: Int, date: Date)] {
+        guard let overrides = occurrenceDateOverrides, !overrides.isEmpty else { return baseSchedule(through: end) }
+        let through = max(end, overrides.keys.max() ?? end)
+        return baseSchedule(through: through).compactMap { item in
+            let date = overrides[Dates.day(item.date)] ?? item.date
+            return date <= end ? (item.index, date) : nil
+        }.sorted { $0.date == $1.date ? $0.index < $1.index : $0.date < $1.date }
+    }
+    func baseSchedule(through end: Date) -> [(index: Int, date: Date)] {
         let previous = Set(previousOccurrences.map(Dates.day))
         var dates = previousOccurrences
         let limit = min(2400, max(0, installments ?? 2400))
@@ -298,6 +323,9 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     /// The earliest scheduled, non-waived day after a boundary, without expanding
     /// an unlimited arrangement to the end of the supported date range.
     func nextScheduledDate(after boundary: Date) -> Date? {
+        if let overrides = occurrenceDateOverrides, !overrides.isEmpty {
+            return schedule(through: Date(timeIntervalSince1970: 7_258_118_400)).first { $0.date > boundary && !isSkipped(on: $0.date) }?.date
+        }
         let previous = Set(previousOccurrences.map(Dates.day))
         let historical = previousOccurrences.filter { $0 > boundary && !isSkipped(on: $0) }.min()
         let limit = min(2400, max(0, installments ?? 2400))
@@ -315,7 +343,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         return historical
     }
     func occurrenceIndex(on date: Date) -> Int? {
-        if !previousOccurrences.isEmpty {
+        if !previousOccurrences.isEmpty || !(occurrenceDateOverrides?.isEmpty ?? true) {
             return schedule(through: Dates.addDays(1, to: Dates.day(date)).addingTimeInterval(-0.001)).first { Dates.day($0.date) == Dates.day(date) }?.index
         }
         let day = Dates.day(date); let start = Dates.day(dueDate)
@@ -494,9 +522,16 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var onboardingComplete = false
     public var profileColdStartDone = false
     public var lastBackupAt: Date?
+    public var weeklyAutoBackup: Bool?
+    // Disabled flags let nil and false retain the old opt-in master-switch behavior.
+    public var aiImportClassificationDisabled: Bool?
+    public var aiAnswersDisabled: Bool?
+    public var aiWeeklyReviewDisabled: Bool?
+    public var aiReceiptRecognitionDisabled: Bool?
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
+        case weeklyAutoBackup, aiImportClassificationDisabled, aiAnswersDisabled, aiWeeklyReviewDisabled, aiReceiptRecognitionDisabled
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
         case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, profileColdStartDone, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
     }
@@ -523,6 +558,27 @@ public struct Preferences: Codable, Equatable, Sendable {
         onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
         profileColdStartDone = try values.decodeIfPresent(Bool.self, forKey: .profileColdStartDone) ?? false
         lastBackupAt = try values.decodeIfPresent(Date.self, forKey: .lastBackupAt)
+        weeklyAutoBackup = try values.decodeIfPresent(Bool.self, forKey: .weeklyAutoBackup)
+        aiImportClassificationDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiImportClassificationDisabled)
+        aiAnswersDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiAnswersDisabled)
+        aiWeeklyReviewDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiWeeklyReviewDisabled)
+        aiReceiptRecognitionDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiReceiptRecognitionDisabled)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(horizonDays, forKey: .horizonDays); try c.encode(emergencyReserve, forKey: .emergencyReserve)
+        try c.encode(dailyLiving, forKey: .dailyLiving); try c.encode(hideAmounts, forKey: .hideAmounts)
+        try c.encode(lockEnabled, forKey: .lockEnabled); try c.encode(appearance, forKey: .appearance)
+        try c.encode(purchaseValues, forKey: .purchaseValues); try c.encode(colorTheme, forKey: .colorTheme)
+        try c.encode(cloudAIEnabled, forKey: .cloudAIEnabled); try c.encode(weeklyLetterPush, forKey: .weeklyLetterPush)
+        try c.encode(quickCapture, forKey: .quickCapture); try c.encode(categoryOrder, forKey: .categoryOrder)
+        try c.encode(onboardingComplete, forKey: .onboardingComplete); try c.encode(profileColdStartDone, forKey: .profileColdStartDone)
+        try c.encodeIfPresent(lastBackupAt, forKey: .lastBackupAt)
+        if weeklyAutoBackup == true { try c.encode(true, forKey: .weeklyAutoBackup) }
+        if aiImportClassificationDisabled == true { try c.encode(true, forKey: .aiImportClassificationDisabled) }
+        if aiAnswersDisabled == true { try c.encode(true, forKey: .aiAnswersDisabled) }
+        if aiWeeklyReviewDisabled == true { try c.encode(true, forKey: .aiWeeklyReviewDisabled) }
+        if aiReceiptRecognitionDisabled == true { try c.encode(true, forKey: .aiReceiptRecognitionDisabled) }
     }
 }
 public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
@@ -731,6 +787,8 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var paydayConfirmSince: Date? { didSet { calculations = LedgerCalculations() } }
     public var cycleCovers: [CycleCover] = [] { didSet { calculations = LedgerCalculations() } }
     public var reserveAdjustments: [ReserveAdjustment] = [] { didSet { calculations = LedgerCalculations() } }
+    public var reservePaybacks: [ReservePayback]? { didSet { calculations = LedgerCalculations() } }
+    public var repeatPreferences: [RepeatPreference]? { didSet { calculations = LedgerCalculations() } }
     /// User-set base plus closed-cycle merges. Read fixedSavingsTotal(now:) for
     /// the total including earmarked income; recording income never changes this base.
     public var fixedSavings: Int64? { didSet { calculations = LedgerCalculations() } }
@@ -803,7 +861,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case paydayConfirmSince, cycleCovers, reserveAdjustments, cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case reservePaybacks, repeatPreferences, paydayConfirmSince, cycleCovers, reserveAdjustments, cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -851,6 +909,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         paydayConfirmSince = try c.decodeIfPresent(Date.self, forKey: .paydayConfirmSince)
         cycleCovers = try c.decodeIfPresent([CycleCover].self, forKey: .cycleCovers) ?? []
         reserveAdjustments = try c.decodeIfPresent([ReserveAdjustment].self, forKey: .reserveAdjustments) ?? []
+        reservePaybacks = try c.decodeIfPresent([ReservePayback].self, forKey: .reservePaybacks)
+        repeatPreferences = try c.decodeIfPresent([RepeatPreference].self, forKey: .repeatPreferences)
         fixedSavings = try c.decodeIfPresent(Int64.self, forKey: .fixedSavings) ?? profile.floorAmount
         savingRule = try c.decodeIfPresent(SavingRule.self, forKey: .savingRule)
         lastFixedSavingTarget = try c.decodeIfPresent(Int64.self, forKey: .lastFixedSavingTarget)
@@ -911,6 +971,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encodeIfPresent(paydayConfirmSince, forKey: .paydayConfirmSince)
         if !cycleCovers.isEmpty { try c.encode(cycleCovers, forKey: .cycleCovers) }
         if !reserveAdjustments.isEmpty { try c.encode(reserveAdjustments, forKey: .reserveAdjustments) }
+        if let reservePaybacks, !reservePaybacks.isEmpty { try c.encode(reservePaybacks, forKey: .reservePaybacks) }
+        if let repeatPreferences, !repeatPreferences.isEmpty { try c.encode(repeatPreferences, forKey: .repeatPreferences) }
         try c.encodeIfPresent(fixedSavings, forKey: .fixedSavings)
         try c.encodeIfPresent(savingRule, forKey: .savingRule)
         try c.encodeIfPresent(lastFixedSavingTarget, forKey: .lastFixedSavingTarget)
@@ -955,6 +1017,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.paydayConfirmSince == rhs.paydayConfirmSince &&
         lhs.cycleCovers == rhs.cycleCovers &&
         lhs.reserveAdjustments == rhs.reserveAdjustments &&
+        lhs.reservePaybacks == rhs.reservePaybacks &&
+        lhs.repeatPreferences == rhs.repeatPreferences &&
         lhs.fixedSavings == rhs.fixedSavings &&
         lhs.savingRule == rhs.savingRule &&
         lhs.lastFixedSavingTarget == rhs.lastFixedSavingTarget &&
@@ -1029,6 +1093,8 @@ public struct Ledger: Codable, Equatable, Sendable {
               Set(reserveAdjustments.map(\.id)).count == reserveAdjustments.count,
               reserveAdjustments.allSatisfy({ dateValid($0.date) && (-Money.limit...Money.limit).contains($0.delta) })
         else { throw YubaiError.invalid("攒钱的金额或周期无效。") }
+        try Reserve.validatePaybacks(in: self)
+        try EntryHistory.validateRepeatPreferences(in: self)
         guard preferences.lastBackupAt.map(dateValid) ?? true else { throw YubaiError.invalid("上次备份时间无效。") }
         guard Set(memories.map(\.id)).count == memories.count else { throw YubaiError.invalid("记忆包含重复标识。") }
         for note in memories { try Memory.validate(note) }
@@ -1090,6 +1156,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         try validateProfileAndCards()
         for change in pendingChanges { try change.validateStructure() }
         for p in plans {
+            try FixedFlows.validateDateOverrides(p)
             var schedule = p; schedule.endDate = nil
             guard p.amount > 0, p.amount <= Money.limit, !p.title.isEmpty, dateValid(p.dueDate), p.endDate.map({ dateValid($0) && ($0 >= p.dueDate || p.stoppedAt != nil || !p.active) }) ?? true,
                               p.stoppedAt.map(dateValid) ?? true, p.autoPaySince.map(dateValid) ?? true, p.installments.map({ $0 > 0 }) ?? true,

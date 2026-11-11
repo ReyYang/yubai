@@ -171,7 +171,7 @@ final class ButlerTests: XCTestCase {
         let rejected = await ButlerWording.word(candidates, ledger: ledger, transport: bad)
         XCTAssertEqual(rejected, candidates)
         let requests = await bad.recorded(); XCTAssertEqual(requests.count, 1)
-        XCTAssertNotNil(requests[0].groupID); XCTAssertEqual(requests[0].groupTitle, "管家卡片与每周来信")
+        XCTAssertNotNil(requests[0].groupID); XCTAssertEqual(requests[0].groupTitle, "管家卡片与周回顾")
         let good = ScriptedChatTransport([ChatMessage(role: .assistant, content: try JSONValue.object(["cards": .array([
             .object(["key": .string("c0"), "title": .string("外卖到线了"), "body": .string("本月外卖 ¥60.00，到了你留的线。")])])]).jsonText())])
         let accepted = await ButlerWording.word(candidates, ledger: ledger, transport: good)

@@ -16,7 +16,7 @@ extension FixedFlows {
     /// Installments always means the total, including retained linked periods.
     public static func edit(planID: UUID, in ledger: Ledger, now: Date = Date()) -> FixedFlowEdit? {
         guard let plan = ledger.plans.first(where: { $0.id == planID }) else { return nil }
-        let payments = FixedFlowPayments(in: ledger)
+        let payments = FixedFlowPayments(in: ledger, now: now)
         let end = Date(timeIntervalSince1970: 7_258_118_400)
         let schedule = plan.schedule(through: end)
         let pending = schedule.first { !plan.isSkipped(on: $0.date) && payments.remaining(for: plan, on: $0.date) > 0 }
@@ -94,12 +94,13 @@ extension FixedFlows {
     private static func replacement(_ proposed: Plan, replacing old: Plan, amountChanged: Bool, in ledger: Ledger, now: Date) throws -> Plan {
         try validateUpdate(proposed, replacing: old, in: ledger)
         var plan = proposed; plan.title = plan.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let payments = FixedFlowPayments(in: ledger)
+        let payments = FixedFlowPayments(in: ledger, now: now)
         let linked = payments.plans.keys.filter { $0.id == old.id && old.occurrenceIndex(on: $0.day) != nil }
         plan.settledOccurrences = Array(Set(old.settledOccurrences + linked.filter {
             !old.isSkipped(on: $0.day) && payments.remaining(for: old, on: $0.day) == 0
         }.map(\.day))).sorted()
         let rescheduled = Dates.day(plan.dueDate) != Dates.day(old.dueDate) || plan.frequency != old.frequency || plan.monthlyDay != old.monthlyDay
+        if rescheduled { plan.occurrenceDateOverrides = nil }
         plan.previousOccurrences = rescheduled ? Array(Set(old.previousOccurrences + linked.map(\.day))).sorted() : old.previousOccurrences
         if let total = plan.installments {
             guard total >= plan.previousOccurrences.count else { throw YubaiError.invalid("共几期不能少于已保留的期数。") }

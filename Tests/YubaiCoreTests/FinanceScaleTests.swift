@@ -77,7 +77,7 @@ private enum ReferenceFinance {
     }
     static func occurrences(in ledger: Ledger, now: Date = Date(), days: Int? = nil) -> [Occurrence] {
         let start = Dates.day(now); let end = Dates.addDays(days ?? 90, to: start)
-        let entries = ledger.activeEntries
+        let entries = ledger.activeEntries.filter { $0.date <= now }
         var result: [Occurrence] = []
         for p in ledger.plans where p.active {
             // Always derive from the original day (Jan 31 → Feb 28 → Mar 31), never chained dates.

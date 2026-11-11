@@ -5,8 +5,8 @@ struct FixedFlowPayments {
     var plans: [FixedFlowPaymentKey: Int64] = [:]
     var rentPaid: [FixedFlowPaymentKey: Int64] = [:]; var rentReceived: [FixedFlowPaymentKey: Int64] = [:]
     var latest: [UUID: Entry] = [:]
-    init(in ledger: Ledger) {
-        for entry in ledger.entries where entry.deletedAt == nil {
+    init(in ledger: Ledger, now: Date = .distantFuture) {
+        for entry in ledger.entries where entry.deletedAt == nil && entry.date <= now {
             if let id = entry.planID, let date = entry.occurrence {
                 plans[FixedFlowPaymentKey(id: id, day: Dates.day(date)), default: 0] += entry.amount
                 if latest[id] == nil || entry.date > latest[id]!.date || (entry.date == latest[id]!.date && (entry.recordedAt ?? entry.date) > (latest[id]!.recordedAt ?? latest[id]!.date)) { latest[id] = entry }
@@ -117,7 +117,7 @@ extension FixedFlows {
     }
     public static func settle(planID: UUID, occurrence: Date, amount: Int64? = nil, accountID: UUID? = nil, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
         guard let plan = ledger.plans.first(where: { $0.id == planID && $0.active }), plan.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("找不到这期固定收付。") }
-        let payments = FixedFlowPayments(in: ledger); let remaining = payments.remaining(for: plan, on: occurrence)
+        let payments = FixedFlowPayments(in: ledger, now: now); let remaining = payments.remaining(for: plan, on: occurrence)
         guard remaining > 0 else { throw YubaiError.invalid(plan.inflow ? "这期已经收到了。" : "这期已经付了。") }
         guard let account = accountID ?? plan.accountID ?? ManualBookkeeping.defaultAccount(in: ledger)?.id else { throw YubaiError.invalid("先添加一个收付款账户。") }
         let day = Dates.day(occurrence); let today = Dates.day(now)
@@ -157,8 +157,13 @@ extension FixedFlows {
         let anchor = ledger.paydayConfirmSince != nil ? Finance.anchorPlan(in: ledger, now: now)?.id : nil
         let plans = Dictionary(uniqueKeysWithValues: ledger.plans.filter { $0.autoPay && $0.accountID != nil && $0.id != anchor }.map { ($0.id, $0) })
         let today = Dates.day(now)
+        let scheduled = Set(ledger.entries.compactMap { entry -> FixedFlowPaymentKey? in
+            guard entry.deletedAt == nil, entry.date > now, let id = entry.planID, let day = entry.occurrence else { return nil }
+            return FixedFlowPaymentKey(id: id, day: Dates.day(day))
+        })
         let items = Finance.occurrences(in: ledger, now: now, days: 1).compactMap { occurrence -> ChangeItem? in
             guard let id = occurrence.planID, let plan = plans[id], let account = plan.accountID,
+                  !scheduled.contains(FixedFlowPaymentKey(id: id, day: Dates.day(occurrence.date))),
                   ledger.accounts.contains(where: { $0.id == account }),
                   Dates.day(occurrence.date) >= Dates.day(plan.autoPaySince ?? plan.dueDate), Dates.day(occurrence.date) <= today else { return nil }
             let draft = EntryDraft(date: ManualBookkeeping.entryDate(for: Dates.day(occurrence.date), now: now), amount: occurrence.amount,
@@ -170,9 +175,12 @@ extension FixedFlows {
         var change = ChangeSet(source: "自动扣款", reason: "记录已到期的固定收付", items: items); change.createdAt = now
         return change
     }
-    public static func month(containing now: Date, in ledger: Ledger) -> FixedFlowMonth {
-        let interval = Dates.calendar.dateInterval(of: .month, for: now)!; let end = interval.end.addingTimeInterval(-0.001)
-        let today = Dates.day(now); let payments = FixedFlowPayments(in: ledger)
+    public static func month(containing date: Date, in ledger: Ledger) -> FixedFlowMonth {
+        month(containing: date, in: ledger, asOf: date)
+    }
+    public static func month(containing date: Date, in ledger: Ledger, asOf now: Date) -> FixedFlowMonth {
+        let interval = Dates.calendar.dateInterval(of: .month, for: date)!; let end = interval.end.addingTimeInterval(-0.001)
+        let today = Dates.day(now); let payments = FixedFlowPayments(in: ledger, now: now)
         let stopped = FixedFlowArrangement.stopped(in: ledger, now: now); let stoppedIDs = Set(stopped.map(\.id))
         let pending = stopped.flatMap(\.pending)
         var rows: [FixedFlowOccurrence] = []
@@ -238,6 +246,9 @@ extension FixedFlows {
     public static func expectedAmount(planID: UUID, in ledger: Ledger) -> Int64? {
         ledger.plans.first { $0.id == planID }.map { FixedFlowPayments(in: ledger).amount(for: $0) }
     }
+    public static func expectedAmount(planID: UUID, in ledger: Ledger, now: Date) -> Int64? {
+        ledger.plans.first { $0.id == planID }.map { FixedFlowPayments(in: ledger, now: now).amount(for: $0) }
+    }
     private static func overlap(_ entry: Entry, _ plan: Plan) -> Bool {
         func clean(_ text: String) -> String { String(text.filter { !$0.isWhitespace }).lowercased() }
         let name = clean(entry.displayTitle), title = clean(plan.title)
@@ -250,8 +261,8 @@ extension FixedFlows {
     }
     public static func matchingEntries(planID: UUID, occurrence: Date, in ledger: Ledger, now: Date) -> [Entry] {
         guard let plan = ledger.plans.first(where: { $0.id == planID }), plan.occurrenceIndex(on: occurrence) != nil,
-              FixedFlowPayments(in: ledger).remaining(for: plan, on: occurrence) > 0 else { return [] }
-        let amount = FixedFlowPayments(in: ledger).amount(for: plan)
+              FixedFlowPayments(in: ledger, now: now).remaining(for: plan, on: occurrence) > 0 else { return [] }
+        let amount = FixedFlowPayments(in: ledger, now: now).amount(for: plan)
         return Array(ledger.entries.filter { $0.deletedAt == nil && $0.date <= now && $0.planID == nil && $0.rentID == nil && !$0.fromReserve &&
             matches($0, plan: plan, occurrence: occurrence, amount: amount, allowEstimateWithoutName: true) }.sorted {
                 let aExact = $0.amount == amount, bExact = $1.amount == amount
@@ -293,7 +304,8 @@ extension FixedFlows {
         try next.validate(); ledger = next
     }
     @discardableResult public static func autoLink(_ ledger: inout Ledger, addedEntryIDs: Set<UUID>, now: Date) -> [(planID: UUID, occurrence: Date)] {
-        let payments = FixedFlowPayments(in: ledger)
+        let addedEntryIDs = BillImporter.mergeAddedManualEntries(addedEntryIDs, in: &ledger, now: now)
+        let payments = FixedFlowPayments(in: ledger, now: now)
         let entries = ledger.entries.filter { addedEntryIDs.contains($0.id) && $0.deletedAt == nil && $0.date <= now && $0.planID == nil && $0.rentID == nil && !$0.fromReserve }
         var candidates: [UUID: [FixedFlowPaymentKey]] = [:], owners: [FixedFlowPaymentKey: Set<UUID>] = [:]
         let end = Dates.addDays(4, to: Dates.day(now)).addingTimeInterval(-0.001)
@@ -317,7 +329,10 @@ extension FixedFlows {
     }
     public struct History: Equatable, Sendable { public var entries: [Entry]; public var average: Int64 }
     public static func history(planID: UUID, in ledger: Ledger) -> History {
-        let rows = Array(ledger.entries.filter { $0.deletedAt == nil && $0.planID == planID }.sorted {
+        history(planID: planID, in: ledger, now: .distantFuture)
+    }
+    public static func history(planID: UUID, in ledger: Ledger, now: Date) -> History {
+        let rows = Array(ledger.entries.filter { $0.deletedAt == nil && $0.planID == planID && $0.date <= now }.sorted {
             $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date > $1.date
         }.prefix(12))
         return History(entries: rows, average: rows.isEmpty ? 0 : rows.reduce(0) { $0 + $1.amount } / Int64(rows.count))

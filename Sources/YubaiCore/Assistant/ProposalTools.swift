@@ -9,9 +9,9 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
     public var description: String {
         switch self {
         case .entryChanges: return "提议整理现有记录，只能改变分类、性质、用途或关联，不能改金额、主账户、原始日期。用户确认后才应用。"
-        case .plan: return "提议新增/结束资金安排或新增房租；金额为人民币元。收入安排可用into_fixed_savings直接存着不动。用户确认后才应用。"
-        case .entry: return "提议语音或截图补记，多笔用entries一次提出全部。金额只能取本机从原文解析的候选或用户已核对金额；AI不能确认金额，草稿等待用户确认。收入可用into_fixed_savings直接存着不动，不计入要攒的收入比例。"
-        case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或存着不动的固定存款；不搬动储蓄目标。可用items一次提交整份消费观，用户确认后才应用。"
+        case .plan: return "提议新增/结束资金安排或新增房租；金额为人民币元。收入安排可用into_fixed_savings直接放入存着的钱。用户确认后才应用。"
+        case .entry: return "提议语音或截图补记，多笔用entries一次提出全部。金额只能取本机从原文解析的候选或用户已核对金额；AI不能确认金额，草稿等待用户确认。收入可用into_fixed_savings直接放入存着的钱，不计入每月存的收入比例。"
+        case .profile: return "提议新增/修改/移除愿意多花或想克制的领域、消费原则或存着的钱；不搬动储蓄目标。可用items一次提交整份消费观，用户确认后才应用。"
         }
     }
     private static func string(_ description: String) -> JSONValue { .object(["type": .string("string"), "description": .string(description)]) }
@@ -24,7 +24,7 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
         let id = Self.string("本地UUID，从查询结果取，不猜测")
         let amount = Self.string("人民币元，十进制文本，最多两位小数")
         let date = Self.string("yyyy-MM-dd")
-        let intoFixedSavings: JSONValue = .object(["type": .string("boolean"), "description": .string("仅nature=income可用；true表示进账直接存着不动，不计入周期收入及要攒比例；默认false")])
+        let intoFixedSavings: JSONValue = .object(["type": .string("boolean"), "description": .string("仅nature=income可用；true表示进账直接放入存着的钱，不计入周期收入及每月存比例；默认false")])
         switch self {
         case .entryChanges:
             fields["items"] = .object(["type": .string("array"), "minItems": .number(1), "maxItems": .number(200), "items": Self.object([
@@ -149,10 +149,10 @@ public enum ProposalTool: String, CaseIterable, AssistantTool {
                                 intoFixedSavings: try a.intoFixedSavings(nature: nature))
                 plan.accountID = try a.optionalUUID("account"); items = [.addPlan(plan)]
             case "end_plan":
-                guard a.fields["into_fixed_savings"] == nil else { throw YubaiError.invalid("只有收入安排可以直接存着不动。") }
+                guard a.fields["into_fixed_savings"] == nil else { throw YubaiError.invalid("只有收入安排可以直接放入存着的钱。") }
                 items = [.endPlan(try a.uuid("id"), try a.date("date"))]
             case "add_rent":
-                guard a.fields["into_fixed_savings"] == nil else { throw YubaiError.invalid("只有收入安排可以直接存着不动。") }
+                guard a.fields["into_fixed_savings"] == nil else { throw YubaiError.invalid("只有收入安排可以直接放入存着的钱。") }
                 var rent = Rent(title: try a.text("title"), monthlyTotal: try a.amount("amount"), personalShare: try a.amount("personal_share"),
                                 startDate: try a.date("start_date"), nextDueDate: try a.date("date"),
                                 monthsPerPayment: try a.integer("months_per_payment", fallback: 3, range: 1...12),
@@ -248,7 +248,7 @@ private struct Arguments {
     }
     func intoFixedSavings(nature: Nature) throws -> Bool {
         guard let value = fields["into_fixed_savings"] else { return false }
-        guard nature == .income, case .bool(let flag) = value else { throw YubaiError.invalid("只有收入可以直接存着不动，into_fixed_savings需要布尔值。") }
+        guard nature == .income, case .bool(let flag) = value else { throw YubaiError.invalid("只有收入可以直接放入存着的钱，into_fixed_savings需要布尔值。") }
         return flag
     }
     func strings(_ key: String) throws -> [String] {

@@ -107,11 +107,20 @@ extension EntryHistory {
         return Array(recentPurposes(in: ledger, nature: nature, now: now, limit: ledger.entries.count)
             .filter { clean.isEmpty || $0.purpose.range(of: clean, options: .caseInsensitive) != nil }.prefix(max(0, limit)))
     }
-    public struct Repeat: Equatable, Sendable, Identifiable {
+    public struct Repeat: Codable, Equatable, Sendable, Identifiable {
         public var id: String; public var purpose: String; public var amount: Int64
         public var category: String; public var subcategory: String?; public var accountID: UUID
     }
     public static func repeats(in ledger: Ledger, now: Date, limit: Int = 3) -> [Repeat] {
+        let preferences = ledger.repeatPreferences ?? []
+        let hidden = Set(preferences.filter { $0.hidden == true }.map(\.id))
+        let automatic = automaticRepeats(in: ledger, now: now)
+        let lookup = Dictionary(uniqueKeysWithValues: automatic.map { ($0.id, $0) })
+        let maintained = preferences.filter { !hidden.contains($0.id) }.compactMap { lookup[$0.id] ?? $0.pinned }
+        let seen = Set(maintained.map(\.id)).union(hidden)
+        return Array((maintained + automatic.filter { !seen.contains($0.id) }).prefix(max(0, limit)))
+    }
+    private static func automaticRepeats(in ledger: Ledger, now: Date) -> [Repeat] {
         let from = Dates.addDays(-30, to: now)
         let rows = ledger.entries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.recordedAt != nil && $0.batchID == nil && $0.date >= from && $0.date <= now && $0.planID == nil && $0.rentID == nil && !purpose($0).isEmpty }
         func key(_ entry: Entry) -> String {
@@ -123,7 +132,7 @@ extension EntryHistory {
             let aScore = Double($0.value.count) / max(1, now.timeIntervalSince(a.date) / 86_400)
             let bScore = Double($1.value.count) / max(1, now.timeIntervalSince(b.date) / 86_400)
             return aScore == bScore ? $0.key < $1.key : aScore > bScore
-        }.prefix(max(0, limit)).map { id, rows in
+        }.map { id, rows in
             let entry = rows.max(by: older)!, assignment = ledger.normalizedCategory(for: entry)
             return Repeat(id: id, purpose: purpose(entry), amount: entry.amount, category: assignment.category,
                           subcategory: assignment.subcategory, accountID: entry.accountID)

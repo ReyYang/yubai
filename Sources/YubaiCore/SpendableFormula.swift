@@ -13,7 +13,7 @@ extension Finance {
         var bills: [FixedFlowOccurrence] = []
         var cursor = Dates.calendar.dateInterval(of: .month, for: interval.start)!.start
         while cursor < interval.end {
-            bills += FixedFlows.month(containing: cursor, in: ledger).occurrences.filter {
+            bills += FixedFlows.month(containing: cursor, in: ledger, asOf: now).occurrences.filter {
                 !$0.inflow && $0.date >= interval.start && $0.date < interval.end
             }.map { row in
                 var row = row

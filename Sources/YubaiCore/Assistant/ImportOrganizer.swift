@@ -62,6 +62,7 @@ public struct ImportUndo: Codable, Equatable, Sendable {
     public var updatedAt: Date
     public var entries: [Entry] = []
     public var planIDs: [UUID] = []
+    public var plans: [Plan]? = nil
     public var cardIDs: [UUID] = []
     public var memoryIDs: [UUID]? = nil
     public init(updatedAt: Date) { self.updatedAt = updatedAt }
@@ -129,6 +130,10 @@ public struct ImportOrganization: Codable, Equatable, Sendable {
         for old in before.entries where old.batchID != batchID && current[old.id] != old && recorded.insert(old.id).inserted {
             undo.entries.append(old)
         }
+        let currentPlans = Dictionary(uniqueKeysWithValues: ledger.plans.map { ($0.id, $0) })
+        let capturedPlans = Set((undo.plans ?? []).map(\.id)).union(undo.planIDs)
+        let changedPlans = before.plans.filter { !capturedPlans.contains($0.id) && currentPlans[$0.id] != $0 }
+        if !changedPlans.isEmpty { undo.plans = (undo.plans ?? []) + changedPlans }
         let plans = Set(before.plans.map(\.id)), cards = Set(before.cards.map(\.id))
         undo.planIDs += ledger.plans.filter { !plans.contains($0.id) }.map(\.id)
         undo.cardIDs += ledger.cards.filter { !cards.contains($0.id) }.map(\.id)

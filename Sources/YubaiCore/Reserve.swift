@@ -84,6 +84,7 @@ public struct ReserveLine: Equatable, Sendable, Identifiable {
     // Structural rows use kind for the App's labels; title carries an original
     // entry's displayTitle. Core does not duplicate those presentation strings.
     public var id: String; public var date: Date; public var title: String; public var amount: Int64; public var kind: Kind
+    public var paybackID: UUID? = nil
 }
 public struct ReserveOverview: Equatable, Sendable {
     public var total: Int64; public var setAside: Int64; public var lines: [ReserveLine]
@@ -93,18 +94,36 @@ public enum Reserve {
         let funds = Finance.funds(ledger, now: now)
         let setAside = funds.savingTarget
         var lines: [ReserveLine] = []
-        for cycle in ledger.savingHistory {
+        var paidByCycle: [Date: Int64] = [:]
+        for payback in ledger.reservePaybacks ?? [] {
+            for payment in payback.payments ?? [] where payment.date <= now {
+                paidByCycle[payment.cycleStart, default: 0] += payment.amount
+                lines.append(ReserveLine(id: "payback:" + payback.id.uuidString + ":" + String(payment.cycleStart.timeIntervalSince1970),
+                    date: payment.cycleStart, title: "", amount: payment.amount, kind: .monthly(cycleStart: payment.cycleStart, pending: false), paybackID: payback.id))
+            }
+        }
+        for cycle in ledger.savingHistory where cycle.cycleEnd < now {
             let key = String(cycle.cycleStart.timeIntervalSince1970)
-            if cycle.saved != 0 {
-                lines.append(ReserveLine(id: "monthly:" + key, date: cycle.cycleStart, title: "", amount: cycle.saved,
+            let monthly = cycle.saved - paidByCycle[cycle.cycleStart, default: 0]
+            if monthly != 0 {
+                lines.append(ReserveLine(id: "monthly:" + key, date: cycle.cycleStart, title: "", amount: monthly,
                                          kind: .monthly(cycleStart: cycle.cycleStart, pending: false)))
             }
             if cycle.leftover != 0 {
                 lines.append(ReserveLine(id: "leftover:" + key, date: Dates.addDays(1, to: cycle.cycleEnd), title: "", amount: cycle.leftover, kind: .leftover))
             }
         }
-        if setAside > 0 {
-            lines.append(ReserveLine(id: "pending", date: funds.cycleStart, title: "", amount: setAside,
+        let paybacks = paybackAmounts(ledger, cycleStart: funds.cycleStart, now: now)
+        var pendingPayback = min(setAside, paybacks.reduce(0) { $0 + $1.amount })
+        let monthly = setAside - pendingPayback
+        for row in paybacks {
+            let amount = min(pendingPayback, row.amount); pendingPayback -= amount
+            if amount > 0 {
+                lines.append(ReserveLine(id: "pending:" + row.id.uuidString, date: funds.cycleStart, title: "", amount: amount, kind: .monthly(cycleStart: funds.cycleStart, pending: true), paybackID: row.id))
+            }
+        }
+        if monthly > 0 {
+            lines.append(ReserveLine(id: "pending", date: funds.cycleStart, title: "", amount: monthly,
                                      kind: .monthly(cycleStart: funds.cycleStart, pending: true)))
         }
         let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })

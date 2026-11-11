@@ -33,7 +33,10 @@ extension Finance {
         let today = Dates.day(now)
         var confirmations: [Date: Date] = [:]
         for entry in ledger.entries where entry.deletedAt == nil && entry.nature == .income && entry.planID == plan.id {
-            guard let occurrence = entry.occurrence else { continue }
+            // A future-dated record made at this evaluation instant is pending.
+            // Later actual confirmations still close retrospective intervals.
+            guard !(entry.date > now && entry.recordedAt.map { $0 <= now } == true),
+                  let occurrence = entry.occurrence else { continue }
             let key = Dates.day(occurrence), date = Dates.day(entry.date)
             confirmations[key] = min(confirmations[key] ?? date, date)
         }
@@ -80,14 +83,14 @@ public enum Payday {
         let lastConfirmed = paid.max()
         guard let day = plan.schedule(through: Dates.addDays(1, to: today).addingTimeInterval(-0.001)).map({ Dates.day($0.date) })
             .first(where: { day in day >= since && (lastConfirmed.map { day > $0 } ?? true) && !plan.isSkipped(on: day) && !paid.contains(day) }) else { return nil }
-        return Due(planID: plan.id, occurrence: day, title: plan.title, usual: FixedFlowPayments(in: ledger).amount(for: plan),
+        return Due(planID: plan.id, occurrence: day, title: plan.title, usual: FixedFlowPayments(in: ledger, now: now).amount(for: plan),
                    lateDays: Dates.calendar.dateComponents([.day], from: day, to: today).day ?? 0)
     }
 
     public static func confirm(_ due: Due, amount: Int64, extraToSavings: Bool, accountID: UUID?, in ledger: inout Ledger, now: Date) throws {
         guard amount > 0, amount <= Money.limit, let plan = ledger.plans.first(where: { $0.id == due.planID && $0.active }),
               plan.inflow, plan.nature == .income, plan.occurrenceIndex(on: due.occurrence) != nil, !plan.isSkipped(on: due.occurrence),
-              !ledger.entries.contains(where: { $0.deletedAt == nil && $0.nature == .income && $0.planID == due.planID && $0.occurrence.map(Dates.day) == Dates.day(due.occurrence) }) else {
+              !ledger.entries.contains(where: { $0.deletedAt == nil && $0.date <= now && $0.nature == .income && $0.planID == due.planID && $0.occurrence.map(Dates.day) == Dates.day(due.occurrence) }) else {
             throw YubaiError.invalid("找不到这期固定收付。")
         }
         guard let account = accountID ?? plan.accountID ?? ManualBookkeeping.defaultAccount(in: ledger)?.id else {
@@ -98,6 +101,11 @@ public enum Payday {
                           category: plan.category, intoFixedSavings: plan.intoFixedSavings)
         entry.planID = due.planID; entry.occurrence = Dates.day(due.occurrence); entry.recordedAt = now
         var next = ledger
+        let pending = next.entries.filter { $0.deletedAt == nil && $0.date > now && $0.nature == .income && $0.planID == due.planID && $0.occurrence.map(Dates.day) == Dates.day(due.occurrence) }
+            .sorted { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date }
+        if let original = pending.first { entry.id = original.id }
+        let pendingIDs = Set(pending.map(\.id))
+        next.entries.removeAll { pendingIDs.contains($0.id) }
         next.entries.append(entry)
         if extra > 0 {
             var saved = Entry(date: now, amount: extra, nature: .income, accountID: account, title: plan.title,
@@ -105,7 +113,8 @@ public enum Payday {
             saved.planID = due.planID; saved.occurrence = Dates.day(due.occurrence); saved.recordedAt = now
             next.entries.append(saved)
         }
-        if let index = next.plans.firstIndex(where: { $0.id == due.planID }) {
+        if let index = next.plans.firstIndex(where: { $0.id == due.planID }),
+           !next.plans[index].settledOccurrences.contains(where: { Dates.day($0) == Dates.day(due.occurrence) }) {
             next.plans[index].settledOccurrences.append(Dates.day(due.occurrence))
         }
         next.updatedAt = max(next.updatedAt, now)

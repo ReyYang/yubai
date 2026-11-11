@@ -131,6 +131,10 @@ public enum ReceiptTextParser {
     public struct Draft: Equatable, Sendable {
         public var date: Date; public var amount: Int64; public var title: String; public var nature: Nature
         public var dateNeedsReview: Bool; public var directionNeedsReview: Bool
+        public init(date: Date, amount: Int64, title: String, nature: Nature = .expense, dateNeedsReview: Bool = false, directionNeedsReview: Bool = false) {
+            self.date = date; self.amount = amount; self.title = title; self.nature = nature
+            self.dateNeedsReview = dateNeedsReview; self.directionNeedsReview = directionNeedsReview
+        }
         public func entryDraft(in ledger: Ledger, accountID: UUID) -> EntryDraft {
             let choice = CategoryGuesser.guess(title, nature: nature, date: date, in: ledger)
             return EntryDraft(date: date, amount: amount, amountConfirmed: true, nature: nature, accountID: accountID,

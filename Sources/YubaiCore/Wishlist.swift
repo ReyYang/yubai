@@ -3,14 +3,45 @@ import Foundation
 public enum FollowUpChoice: String, CaseIterable, Sendable { case worth = "值得", neutral = "一般", regret = "有点后悔" }
 public enum CooldownChoice: String, Sendable { case keep, drop }
 public enum Wishlist {
+    public struct PrincipleCooldown: Equatable, Sendable {
+        public var threshold: Int64
+        public var hours: Int
+    }
+    /// Recognizes the literal form 「超过 2,000 等 48 小时」 (also 元 / 天).
+    public static func cooldown(fromPrinciples principles: [String]) -> [PrincipleCooldown] {
+        let pattern = #"超过\s*([0-9][0-9,，]*(?:\.[0-9]{1,2})?)\s*元?\s*等\s*([0-9]+)\s*(小时|天)"#
+        let regex = try! NSRegularExpression(pattern: pattern)
+        return principles.flatMap { text in
+            regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { match -> PrincipleCooldown? in
+                guard let amountRange = Range(match.range(at: 1), in: text), let waitRange = Range(match.range(at: 2), in: text),
+                      let unitRange = Range(match.range(at: 3), in: text),
+                      let amount = try? Money.parse(String(text[amountRange]).replacingOccurrences(of: "，", with: ",")), amount > 0,
+                      let wait = Int(text[waitRange]), (1...8760).contains(wait) else { return nil }
+                let hours = wait * (text[unitRange] == "天" ? 24 : 1)
+                guard hours <= 8760 else { return nil }
+                return PrincipleCooldown(threshold: amount, hours: hours)
+            }
+        }.sorted { $0.threshold == $1.threshold ? $0.hours > $1.hours : $0.threshold > $1.threshold }
+    }
+    public static func cooldownHours(amount: Int64, fromPrinciples principles: [String]) -> Int {
+        guard amount > 0 else { return 0 }
+        return cooldown(fromPrinciples: principles).first { amount > $0.threshold }?.hours ?? defaultCooldownDays(amount: amount) * 24
+    }
+    public static func cooldownUntil(amount: Int64, fromPrinciples principles: [String], now: Date) -> Date? {
+        guard amount > 0 else { return nil }
+        if let rule = cooldown(fromPrinciples: principles).first(where: { amount > $0.threshold }) {
+            return now.addingTimeInterval(Double(rule.hours) * 3600)
+        }
+        let days = defaultCooldownDays(amount: amount)
+        return days == 0 ? nil : Dates.addDays(days, to: now)
+    }
     public static func defaultCooldownDays(amount: Int64) -> Int { amount < 20_000 ? 0 : amount <= 100_000 ? 3 : 7 }
     @discardableResult public static func add(fromVerdict verdict: SubmittedPurchaseVerdict, title: String, amount: Int64,
         category: String? = nil, subcategory: String? = nil, purpose: String = "", in ledger: inout Ledger, now: Date = Date()) throws -> WishItem {
         guard amount > 0, amount <= Money.limit, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw YubaiError.invalid("请核对心愿单的名称和金额。") }
         var wish = WishItem(title: title, amount: amount, purpose: purpose, judgment: verdict.verdict.label + "：" + verdict.reason)
         wish.createdAt = now; wish.source = "fromVerdict"; wish.category = category; wish.subcategory = subcategory
-        let days = defaultCooldownDays(amount: amount)
-        wish.coolUntil = days == 0 ? nil : Dates.addDays(days, to: now)
+        wish.coolUntil = cooldownUntil(amount: amount, fromPrinciples: ledger.profile.principles, now: now)
         var next = ledger; next.wishlist.append(wish); next.updatedAt = max(now, next.updatedAt)
         try next.validate(); ledger = next; return wish
     }

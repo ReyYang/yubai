@@ -124,7 +124,7 @@ public enum Finance {
         let start = Dates.day(now); let end = Dates.addDays(days ?? observationDays, to: start)
         let calendar = Dates.calendar
         func month(_ date: Date) -> Date { calendar.date(from: calendar.dateComponents([.year, .month], from: date))! }
-        let payments = FixedFlowPayments(in: ledger)
+        let payments = FixedFlowPayments(in: ledger, now: now)
         var result: [Occurrence] = []
         for p in ledger.plans where p.active {
             // Always derive from the original day (Jan 31 → Feb 28 → Mar 31), never chained dates.
@@ -164,7 +164,10 @@ public enum Finance {
             for offset in 1...observationDays {
                 let day = Dates.addDays(offset, to: today)
                 if let index = plan.occurrenceIndex(on: day), !plan.isSkipped(on: day),
-                   plan.endDate.map({ (plan.previousOccurrences.isEmpty ? plan.scheduledDate(at: index) : day) <= $0 }) ?? true { return (day, plan.title) }
+                   !(plan.occurrenceDateOverrides?.isEmpty ?? true) ||
+                    (plan.endDate.map({ (plan.previousOccurrences.isEmpty ? plan.scheduledDate(at: index) : day) <= $0 }) ?? true) {
+                    return (day, plan.title)
+                }
             }
             return nil
         }.min { $0.date == $1.date ? $0.title < $1.title : $0.date < $1.date }
@@ -175,6 +178,10 @@ public enum Finance {
         if ledger.cycleAnchor == .calendarMonth { return natural }
         if let plan = anchorPlan(in: ledger, now: now),
            let next = nextPayday(in: { var source = ledger; source.plans = [plan]; return source }(), now: now) {
+            if !(plan.occurrenceDateOverrides?.isEmpty ?? true),
+               let previous = plan.schedule(through: Dates.addDays(1, to: Dates.day(now)).addingTimeInterval(-0.001)).last(where: { !plan.isSkipped(on: $0.date) }) {
+                return (Dates.day(previous.date), Dates.addDays(-1, to: next.date), true)
+            }
             // Derive from the original schedule, preserving Jan 31 → Feb 28 → Mar 31.
             let calendar = Dates.calendar
             let months = calendar.dateComponents([.month], from: calendar.dateInterval(of: .month, for: plan.dueDate)!.start,
@@ -248,7 +255,8 @@ public enum Finance {
             if row.fromReserve || (row.nature == .refund && row.relatedEntryID.map { reserveIDs.contains($0) } == true) { return total }
             return total + spendingAmount(row, ledger: ledger)
         }
-        let savingRuleTarget = ledger.savingRule?.target(income: income) ?? 0
+        let savingRuleTarget = (ledger.savingRule?.target(income: income) ?? 0) +
+            Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).reduce(0) { $0 + $1.amount }
         let savingTarget = ledger.effectiveSavingTarget(savingRuleTarget, cycleStart: cycle.start, now: now)
         let liquid = cash - debt - emergency - goals - uncertain
         let available = liquid - savingTarget - committed
