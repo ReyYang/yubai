@@ -311,7 +311,7 @@ struct SetupCard: View {
         store.sheetSource = nil
         switch item {
         case .hand: store.sheet = .account(nil)
-        case .payday: store.sheet = .addPlan
+        case .payday: store.sheet = .paydaySetup
         case .saving: store.sheet = .formulaEdit(.saving)
         case .bills: store.sheet = .addBill
         }

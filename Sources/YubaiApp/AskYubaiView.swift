@@ -73,7 +73,8 @@ struct AskYubaiView: View {
     @State private var conversationLedgerID: UUID?
     @State private var configured = IntelligenceRuntime.isConfigured
     @FocusState private var inputFocused: Bool
-    private var enabled: Bool { store.preferences.cloudAIEnabled && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
+    private var enabled: Bool { store.preferences.isAIEnabled(for: .answers) && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
+    private var canRecognizeReceipt: Bool { enabled && store.preferences.isAIEnabled(for: .receiptRecognition) }
     private var headerTitle: String {
         let replies = messages.compactMap(\.reply)
         if replies.contains(where: { $0.purchaseJudgment != nil || !($0.purchaseQuestions ?? []).isEmpty }) { return "该不该买" }
@@ -97,7 +98,10 @@ struct AskYubaiView: View {
         VStack(spacing: YubaiSpace.none) {
             conversation
             inputBar
-        }.amountPrivacy(store.preferences.hideAmounts).paperBackground().navigationTitle(headerTitle).yubaiNavigation()
+        }.amountPrivacy(store.preferences.hideAmounts).paperBackground().navigationTitle(headerTitle).yubaiNavigation().accessibilityIdentifier("askPage")
+            #if DEBUG && targetEnvironment(simulator)
+            .uiTestAccessibilityValue(UITestSupport.secondBatchState(in: store.current))
+            #endif
             #if os(iOS)
             .toolbarBackground(.hidden, for: .navigationBar)
             #endif
@@ -131,6 +135,10 @@ struct AskYubaiView: View {
             .onChange(of: scenePhase) { _, phase in if phase == .active { if conversationDay != Dates.day(Date()) { cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear(); conversationDay = store.askConversation.day }; voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
             .onChange(of: store.current.id) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
             .onChange(of: store.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
+            .onChange(of: store.preferences.isAIEnabled(for: .answers)) { _, value in if !value { cancel() } }
+            .onChange(of: store.preferences.isAIEnabled(for: .receiptRecognition)) { _, value in
+                if !value { captureTask?.cancel(); reading = false; if originalImage != nil { cancel(); originalImage = nil; input = "" } }
+            }
             .onChange(of: store.locked) { _, value in if value { cancel() } }
     }
     private var conversation: some View {
@@ -176,12 +184,12 @@ struct AskYubaiView: View {
                 accessibilityLabel: enabled ? "问余白" : "问余白（暂不可用）", inputID: "askInput", sendID: "sendAsk",
                 enabled: enabled, busy: busy || reading, showSend: !(voice.recording || (trimmed.isEmpty && (voice.available || voice.permissionDenied))), focus: $inputFocused, send: send) {
                 Menu {
-                    Button("从照片选择截图") { photoPicker = true }
-                    Button("选择图片文件") { filePicker = true }
+                    Button("从照片选择截图") { photoPicker = true }.accessibilityIdentifier("askChooseReceiptPhoto")
+                    Button("选择图片文件") { filePicker = true }.accessibilityIdentifier("askChooseReceiptFile")
                 } label: {
                     Image(systemName: "plus").frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
                         .yubaiHitTarget()
-                }.accessibilityLabel("添加截图或照片")
+                }.disabled(!canRecognizeReceipt).accessibilityLabel("添加截图或照片").accessibilityIdentifier("askReceiptMenu")
             } accessory: {
                 if voice.recording || (trimmed.isEmpty && (voice.available || voice.permissionDenied)) {
                     Button {
@@ -204,9 +212,9 @@ struct AskYubaiView: View {
                 .accessibilityIdentifier("configureAskKey")
         } else if !connectivity.connected {
             Pill(text: "没联网", variant: .amber, showsDot: false).frame(maxWidth: .infinity)
-        } else if !store.preferences.cloudAIEnabled {
+        } else if !store.preferences.isAIEnabled(for: .answers) {
             NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "云端智能没开 ›", variant: .amber, showsDot: false) }
-                .buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity)
+                .buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity).accessibilityIdentifier("enableAskAI")
         } else if let model = IntelligenceRuntime.cloud.unavailableModel {
             NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "模型不可用 ›", variant: .amber, showsDot: false) }
                 .buttonStyle(PressButtonStyle()).accessibilityLabel("模型「\(model)」不可用，换个模型")
@@ -314,7 +322,8 @@ struct AskYubaiView: View {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard enabled, !busy, !text.isEmpty else { return }
         let ledger = store.current; let image = originalImage
-        guard let transport = store.assistantTransport(for: ledger) else { return }
+        guard image == nil || canRecognizeReceipt,
+              let transport = store.assistantTransport(for: ledger, feature: image == nil ? .answers : .receiptRecognition) else { return }
         input = ""; errorText = ""; busy = true; messages.append(AskMessage(text: text, isUser: true))
         store.recordQuestion(text)
         task = Task { @MainActor in
@@ -346,18 +355,19 @@ struct AskYubaiView: View {
         }
     }
     @MainActor private func recognize(_ bytes: Data) {
-        guard enabled else { return }
+        guard canRecognizeReceipt else { return }
         captureTask?.cancel(); reading = true; errorText = ""
         captureTask = Task { @MainActor in await readImage(bytes) }
     }
     @MainActor private func readImage(_ bytes: Data) async {
+        guard canRecognizeReceipt else { return }
         let ledgerID = store.current.id
         defer { if !Task.isCancelled { reading = false } }
         do {
             guard bytes.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("图片请小于 50 MB。") }
             let receipt = try await Task.detached(priority: .userInitiated) { try ReceiptReader.recognize(bytes) }.value
             try Task.checkCancellation()
-            guard store.current.id == ledgerID, !store.locked, enabled else { return }
+            guard store.current.id == ledgerID, !store.locked, canRecognizeReceipt else { return }
             let source = CGImageSourceCreateWithData(bytes as CFData, nil)
             let type = source.flatMap { CGImageSourceGetType($0) }.map { $0 as String }
             let ext = type.flatMap { UTType($0)?.preferredFilenameExtension } ?? "image"

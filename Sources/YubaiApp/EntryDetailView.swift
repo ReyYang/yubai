@@ -7,6 +7,7 @@ struct EntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let entryID: UUID
     @State private var sourceFields: [UnsortedEntryField] = []
+    @State private var splitting = false
     private var hide: Bool { store.preferences.hideAmounts }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection) {
@@ -31,6 +32,11 @@ struct EntryDetailView: View {
                 }
             } else { EmptyState("doc.questionmark", "记录已不存在", action: "返回", onAction: { dismiss() }) }
         }.navigationTitle("这一笔").yubaiNavigation()
+            .sheet(isPresented: $splitting, onDismiss: {
+                if store.entriesByID[entryID]?.deletedAt != nil { dismiss() }
+            }) {
+                UnitemizedSplitSheet(entryID: entryID).environment(store).appErrors().yubaiSheetBackground()
+            }
     }
 
     private func header(_ entry: Entry) -> some View {
@@ -44,10 +50,14 @@ struct EntryDetailView: View {
         }.frame(maxWidth: .infinity).padding(.top, YubaiSpace.gapSection)
     }
     private func actions(_ entry: Entry) -> some View {
-        let repeatable = entry.planID == nil && entry.rentID == nil && entry.nature != .transfer
+        let repeatable = entry.planID == nil && entry.rentID == nil && entry.nature != .transfer && !entry.isUnitemized
         return Card(style: .list) {
             VStack(spacing: YubaiSpace.none) {
                 row("改这笔", value: nil, identifier: "entryDetailEdit") { store.sheetSource = nil; store.sheet = .editEntry(entry.id) }
+                if entry.isUnitemized && entry.nature == .expense {
+                    EntryFormDivider()
+                    row("拆成几笔", value: nil, identifier: "entryDetailSplit") { splitting = true }
+                }
                 if repeatable {
                     EntryFormDivider()
                     row("每月都有？设成固定账单", value: nil, identifier: "entryDetailRepeat") { makeFixed(entry) }

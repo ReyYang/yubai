@@ -18,6 +18,7 @@ struct WhereView: View {
     @State private var customEnd = Date()
     @State private var spent: WhereSpent?
     @State private var comparison: CycleComparison?
+    @State private var applyingRange = false
 
     init(mode: Binding<LedgerMode> = .constant(.whereTo), request: Binding<LedgerPreset?> = .constant(nil)) {
         _mode = mode; _request = request
@@ -41,7 +42,7 @@ struct WhereView: View {
     }
     private var interval: DateInterval {
         let full = fullInterval
-        return DateInterval(start: full.start, end: max(full.start, min(full.end, Date().addingTimeInterval(1))))
+        return DateInterval(start: full.start, end: max(full.start, min(full.end, store.financialNow.addingTimeInterval(0.001))))
     }
     private var queryKey: String {
         "\(store.ledgerRevision)-\(interval.start.timeIntervalSince1970)-\(interval.end.timeIntervalSince1970)-\(window.rawValue)"
@@ -64,7 +65,10 @@ struct WhereView: View {
             CashTimelineCard(timeline: store.cashTimeline)
         }.amountPrivacy(hide).rootScrollContentMargins().rootTabScroll(.ledger).accessibilityIdentifier("insightsScroll")
             .task(id: queryKey) { await refresh() }
-            .onChange(of: window) { _, value in if value == .custom { store.pickingInsightDates = true } }
+            .onChange(of: window) { _, value in
+                if applyingRange { applyingRange = false }
+                else if value == .custom { store.pickingInsightDates = true }
+            }
             .onChange(of: request, initial: true) { _, value in applyRequest(value) }
             .sheet(isPresented: Binding(get: { store.pickingInsightDates }, set: { store.pickingInsightDates = $0 })) { customSheet }
     }
@@ -152,14 +156,17 @@ struct WhereView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text("花在哪").yubaiFont(YubaiFont.heroLabel).padding(.bottom, YubaiSpace.space4)
                 ForEach(Array(flexible.enumerated()), id: \.element.id) { rank, row in
-                    TabNavigationLink(.subcategoryInsights(category: row.category, income: false, interval: range, periodTitle: periodTitle)) {
-                        SubcategoryInsightsView(category: row.category, income: false, interval: range, periodTitle: periodTitle)
+                    TabNavigationLink(.whereCategory(category: row.category, interval: range)) {
+                        WhereCategoryView(category: row.category, interval: range)
                     } label: { whereRow(title: Classification.displayCategory(row.category), amount: row.amount, share: Double(row.amount) / Double(total), rank: rank, link: true) }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
                     if rank < flexible.count - 1 || unitemized > 0 { EntryFormDivider() }
                 }
                 if unitemized > 0 {
-                    whereRow(title: "没细记", amount: unitemized, share: Double(unitemized) / Double(total), rank: flexible.count, link: false)
+                    TabNavigationLink(.whereCategory(category: Reconciliation.unitemizedTitle, interval: range)) {
+                        WhereCategoryView(category: Reconciliation.unitemizedTitle, interval: range)
+                    } label: { whereRow(title: "没细记", amount: unitemized, share: Double(unitemized) / Double(total), rank: flexible.count, link: true) }
+                        .buttonStyle(PressButtonStyle()).accessibilityIdentifier("whereUnitemized")
                 }
             }
         }
@@ -234,6 +241,7 @@ struct WhereView: View {
         guard let range = value.interval else { return }
         let cycle = currentCycle
         if Dates.calendar.isDate(range.start, inSameDayAs: cycle.start) { window = .cycle; return }
+        if window != .custom { applyingRange = true }
         customStart = range.start; customEnd = Dates.addDays(-1, to: range.end); window = .custom
     }
     private var customSheet: some View {

@@ -31,14 +31,15 @@ struct LedgerPreset: Equatable {
     var token = UUID()
 }
 enum TabRoute: Hashable {
-    case fixedFlows, inbox, profile, wishlist, letters, accounts
-    case spendingParts(String), savings(String), triage([UUID])
+    case fixedFlows, profile, wishlist, accounts
+    case spendingParts(String), triage([UUID])
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
     case unsortedGroups(UUID), quickSortUnsorted(UUID)
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
     case subcategoryInsights(category: String, income: Bool, interval: DateInterval, periodTitle: String)
     case formula, budget, billDetail(UUID), todo, settings, categories, savingRule, reserve
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
+    case entryDetail(UUID)
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -62,11 +63,12 @@ struct TabNavigationLink<Content: View, Label: View>: View {
 enum AppSheet: Identifiable {
     case account(Account?), imports, accounts, backup, history, syncVersions, addEntry, addPlan, intelligencePrivacy
     case editEntry(UUID), editPlan(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
-    case ask(String), capture(Data), wishlist(UUID?)
-    case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letters, letter(UUID), reconcile(UUID)
-    case reconcileAll, overspend(CycleCover.Source), paydayAmount
+    case ask(String), wishlist(UUID?)
+    case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letter(UUID), reconcile(UUID)
+    case reconcileAll, overspend(CycleCover.Source), paydayAmount, paydaySetup
     case billPay(planID: UUID, occurrence: Date), billMatch(planID: UUID, occurrence: Date, entryID: UUID), billLink(planID: UUID, occurrence: Date)
     case addBill, formulaEdit(FormulaField)
+    case billMove(planID: UUID, occurrence: Date)
     var id: String { String(describing: self) }
     var motionSource: String? {
         switch self {
@@ -306,6 +308,8 @@ enum AppSheet: Identifiable {
     private let paceSlot = TimedSlot<CyclePace?>()
     private let formulaSlot = TimedSlot<SpendableFormula>()
     private let reserveSlot = TimedSlot<ReserveOverview>()
+    private let paybackOffersSlot = TimedSlot<[ReservePaybackOffer]>()
+    private let paybackProgressSlot = TimedSlot<[ReservePaybackProgress]>()
     private let paydaySlot = TimedSlot<Payday.Due?>()
     private let gapSlot = TimedSlot<Reconciliation.Gap?>()
     private let leftoverSlot = TimedSlot<CycleSaving?>()
@@ -325,6 +329,9 @@ enum AppSheet: Identifiable {
     var formula: SpendableFormula { derived(formulaSlot) { Finance.formula($0, now: $1) } }
     /// 存钱页：存下的总额与最近进出。
     var reserve: ReserveOverview { derived(reserveSlot) { Reserve.overview($0, now: $1) } }
+    var paybackOffers: [ReservePaybackOffer] { derived(paybackOffersSlot) { Reserve.paybackOffers($0, now: $1) } }
+    var paybackProgress: [ReservePaybackProgress] { derived(paybackProgressSlot) { Reserve.paybackProgress($0, now: $1) } }
+    var financialNow: Date { _ = timeRevision; _ = fundsValue(); return cachedFunds?.at ?? Date() }
     /// 发薪日到了或晚了、还没确认到账。
     var paydayDue: Payday.Due? { derived(paydaySlot) { Payday.due(in: $0, now: $1) } }
     /// 几天没记。
@@ -375,7 +382,8 @@ enum AppSheet: Identifiable {
     var fixedFlowMonth: FixedFlowMonth {
         _ = ledgerRevision
         if let cachedFixedMonth { return cachedFixedMonth }
-        let value = FixedFlows.month(containing: Date(), in: derivedSource); cachedFixedMonth = value; return value
+        let now = financialNow
+        let value = FixedFlows.month(containing: now, in: derivedSource, asOf: now); cachedFixedMonth = value; return value
     }
     var entriesByID: [UUID: Entry] {
         _ = ledgerRevision
@@ -470,6 +478,7 @@ enum AppSheet: Identifiable {
         cachedRestrainProgress = preparedDerived?.progress; cachedSalary = preparedSalary
         if let preparedDerived { paceSlot.prime(at: preparedDerived.at, preparedDerived.pace) } else { paceSlot.clear() }
         formulaSlot.clear(); reserveSlot.clear(); paydaySlot.clear(); gapSlot.clear()
+        paybackOffersSlot.clear(); paybackProgressSlot.clear()
         leftoverSlot.clear(); overspendSlot.clear(); setupSlot.clear()
         timeRevision &+= 1
         derivedRevision &+= 1
@@ -595,6 +604,18 @@ enum AppSheet: Identifiable {
         enablePaydayConfirmationIfNeeded()
         autoSettleFixedFlows()
         closeSavingCycles()
+        runAutomaticBackupIfDue()
+    }
+    /// 在前台跨过预记账目的日期或午夜时，也刷新并重新关联。
+    func refreshAtPostingDates() async {
+        while !Task.isCancelled && !locked {
+            _ = fundsValue()
+            let next = cachedFunds?.expires ?? Dates.addDays(1, to: Dates.day(Date()))
+            do { try await Task.sleep(for: .seconds(max(1, next.timeIntervalSinceNow))) } catch { return }
+            guard !Task.isCancelled, !locked else { return }
+            refreshTimeDerived()
+            runCycleMaintenance()
+        }
     }
     func closeSavingCycles() {
         guard !locked, loadFailure == nil, preferences.onboardingComplete else { return }
@@ -656,13 +677,14 @@ enum AppSheet: Identifiable {
     func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = [],
                       account: Account? = nil, completingOnboarding: Bool = false) async throws -> ImportBatch? {
         let before = current
+        let now = Date()
         let preparation = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             var next = before
             if let account { next.accounts.append(account) }
             let batch: ImportBatch?
             if let preview, let data, !preview.selectedEntries.isEmpty {
-                batch = try BillImporter.commit(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &next)
+                batch = try BillImporter.commit(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &next, now: now)
             } else { batch = nil }
             if completingOnboarding { next.preferences.onboardingComplete = true }
             try next.validate()
@@ -706,8 +728,17 @@ enum AppSheet: Identifiable {
         undoLedger = organizationExecution?.before; undoLabel = "导入整理"
     }
     func autoSettleFixedFlows() {
-        guard !locked, loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
-              let change = FixedFlows.autoSettle(in: current) else { return }
+        guard !locked, loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { return }
+        let now = Date()
+        let posted = Set(current.entries.filter { entry in
+            entry.deletedAt == nil && entry.date <= now && entry.recordedAt.map { $0 < entry.date } == true
+        }.map(\.id))
+        if !posted.isEmpty {
+            var next = current
+            FixedFlows.autoLink(&next, addedEntryIDs: posted, now: now)
+            if next != current { _ = update("固定账单", recordUndo: false, entryMotion: false, showToast: false) { $0 = next } }
+        }
+        guard let change = FixedFlows.autoSettle(in: current, now: now) else { return }
         cancelEntrySaveMotion()
         if apply(change, label: "自动记下", silently: true) { toast = nil }
     }
@@ -768,9 +799,12 @@ enum AppSheet: Identifiable {
     }
     func recordSuccessfulBackup(of ledgerID: UUID, at date: Date) {
         guard current.id == ledgerID else { return }
-        if update("记录备份时间", preservingUpdatedAt: true, recordUndo: false, { $0.preferences.lastBackupAt = date }) {
+        if update("记录备份时间", preservingUpdatedAt: true, recordUndo: false, entryMotion: false, showToast: false, { LedgerBackup.recordDone(in: &$0.preferences, now: date) }) {
             // Undoing the preceding edit must not forget a successfully exported backup.
-            undoLedger?.preferences.lastBackupAt = date
+            if var previous = undoLedger {
+                LedgerBackup.recordDone(in: &previous.preferences, now: date)
+                undoLedger = previous
+            }
         }
     }
     @discardableResult func deleteOldScreenshots(months: Int, now: Date) -> Bool {
@@ -923,6 +957,10 @@ struct RootView: View {
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
         .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); Task { await store.configureSync(); store.runCycleMaintenance() } }; if newValue == .background && store.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .task(id: phase == .active && !store.locked) {
+            guard phase == .active, !store.locked else { return }
+            await store.refreshAtPostingDates()
+        }
         .task {
             store.purgeExpiredEntries()
             if !store.locked && store.preferences.onboardingComplete, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
@@ -1036,17 +1074,15 @@ struct RootView: View {
     @ViewBuilder private func tabDestination(_ route: TabRoute) -> some View {
         switch route {
         case .fixedFlows: FixedFlowsView()
-        case .inbox: LetterInboxView()
         case .spendingParts(let source): SpendingPartsView(backTitle: source)
-        case .savings(let source): SavingsView(backTitle: source)
         case .triage(let ids): LetterTriageView(entryIDs: ids)
         case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)
         case .quickSortUnsorted(let id): UnsortedQuickSortView(questionID: id)
         case .profile: ProfileView()
         case .wishlist: WishlistView()
-        case .letters: LettersView()
         case .accounts: AccountsView()
         case .formula: FormulaView()
+        case .entryDetail(let id): EntryDetailView(entryID: id)
         case .budget: BudgetView()
         case .billDetail(let id): BillDetailView(planID: id)
         case .todo: TodoView()
@@ -1055,9 +1091,9 @@ struct RootView: View {
         case .savingRule: SavingsView(backTitle: "存钱")
         case .reserve: ReserveView()
         case .weekly(let id): weeklyDestination(id)
-        case let .whereCategory(category, interval): SubcategoryInsightsView(category: category, income: false, interval: interval, periodTitle: "本月")
+        case let .whereCategory(category, interval): WhereCategoryView(category: category, interval: interval)
         case .memories: MemoryView()
-        case .quickCapture: QuickCaptureSettingsView()
+        case .quickCapture: FrequentEntriesView()
         case .importHistory: ImportHistoryView()
         case .intelligencePrivacy: IntelligencePrivacyView()
         case .backup: BackupView()
@@ -1098,7 +1134,7 @@ struct RootView: View {
         case .addEntry: QuickEntryView()
         case .prefilledEntry(let prefill): QuickEntryView(prefill: prefill)
         case .screenshotCapture(let data): ScreenshotCaptureView(imageData: data)
-        case .screenshotReview(let data): ImportView(initialScreenshot: data)
+        case .screenshotReview(let data): ScreenshotCaptureView(imageData: data)
         case .editEntry(let id): EntryEditView(entryID: id)
         case .addPlan: FixedFlowEditor()
         case .editPlan(let id): FixedFlowEditor(planID: id)
@@ -1106,7 +1142,6 @@ struct RootView: View {
         case .imports: ImportView()
         case .accounts: AccountsView()
         case .ask(let text): AskYubaiView(initialText: text)
-        case .capture(let data): AskYubaiView(initialImage: data)
         case .wishlist(let id): WishlistView(focusedWishID: id).manualSheetHeader("心愿单", cancelTitle: "关闭", showsAction: false)
         case .backup: BackupView()
         case .history: RecoveryVersionsView()
@@ -1114,16 +1149,17 @@ struct RootView: View {
         case .reconcileAll: ReconcileView()
         case .overspend(let source): OverspendSheet(source: source)
         case .paydayAmount: PaydaySheet()
+        case .paydaySetup: PaydaySetupSheet()
         case .billPay(let planID, let occurrence): BillPaySheet(planID: planID, occurrence: occurrence)
         case .billMatch(let planID, let occurrence, let entryID): BillMatchSheet(planID: planID, occurrence: occurrence, entryID: entryID)
         case .billLink(let planID, let occurrence): BillLinkSheet(planID: planID, occurrence: occurrence)
+        case .billMove(let planID, let occurrence): BillMoveSheet(planID: planID, occurrence: occurrence)
         case .addBill: BillAddSheet()
         case .formulaEdit(let field): FormulaEditSheet(field: field)
         case .intelligencePrivacy: IntelligencePrivacyView().manualSheetHeader("智能与隐私", cancelTitle: "关闭", showsAction: false)
         case .cardEvidence(let id): ButlerEvidenceView(cardID: id)
         case .cardQuestion(let id): ButlerQuestionView(cardID: id)
         case .cardProposal(let id): ButlerProposalView(changeID: id)
-        case .letters: LettersView()
         case .letter(let id): LetterDetailView(cardID: id)
         case .reconcile(let id):
             if let account = store.accounts.first(where: { $0.id == id }) { AccountEditor(account: account, startsReconciling: true) }
@@ -1269,7 +1305,7 @@ struct LedgerDerivedSnapshot: Sendable {
         timeline = Finance.cashTimeline(ledger, funds: funds, now: now, alignToFundsCycle: true)
         entries = ledger.entries.sorted { $0.date > $1.date }
         entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-        fixedMonth = FixedFlows.month(containing: now, in: ledger)
+        fixedMonth = FixedFlows.month(containing: now, in: ledger, asOf: now)
         pace = Finance.pace(ledger, now: now)
         progress = RestrainProgress.current(ledger: ledger, now: now)
         visibility = SavingCardVisibility.snapshot(in: ledger, organizingBatchIDs: organizingBatchIDs, progress: progress,

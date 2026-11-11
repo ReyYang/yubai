@@ -53,6 +53,11 @@ private struct ImportDayGroup: Identifiable {
     let rows: [ImportRow]
 }
 
+private struct ImportReceiptSelection: Identifiable {
+    let id = UUID()
+    let data: Data
+}
+
 /// Observe the existing mapper's sample count for the source pill; forward unchanged.
 private struct ImportSourceMapper: ImportColumnMapper {
     let base: any ImportColumnMapper
@@ -100,8 +105,6 @@ struct ImportView: View {
     @State private var confirmedNewCategories: Set<String> = []
     @State private var rowSelections: [Int: Bool] = [:]
     @State private var parseID = UUID()
-    @State private var questionText: [UUID: String] = [:]
-    @State private var freeTextQuestion: UUID?
     @State private var parsingTask: Task<Void, Never>?
     @State private var queueTask: Task<Void, Never>?
     @State private var queueRunID = UUID()
@@ -111,6 +114,7 @@ struct ImportView: View {
     @State private var rowEdits: [Int: Entry] = [:]
     @State private var editingScreenshotRow: ImportRow?
     @State private var showScreenshot = false
+    @State private var receiptCapture: ImportReceiptSelection?
     init(pasted: PastedStatement? = nil, initialScreenshot: Data? = nil, welcomeReview: Binding<ImportPreview>? = nil) {
         self.pasted = pasted; self.initialScreenshot = initialScreenshot; self.welcomeReview = welcomeReview
         _preview = State(initialValue: welcomeReview?.wrappedValue)
@@ -135,7 +139,7 @@ struct ImportView: View {
         .amountPrivacy(store.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
         .manualSheetHeader(resultTitle, actionTitle: result != nil ? "整批撤销" : "导入", primary: false,
                            enabled: result.map { store.organizingBatchID != $0.id } ?? true, cancelTitle: result != nil ? "关闭" : "取消",
-                           showsAction: result != nil || (preview != nil && welcomeReview == nil), actionIdentifier: "undoImportResult", action: {
+                           showsAction: result == nil && preview != nil && welcomeReview == nil, actionIdentifier: "undoImportResult", action: {
             if let result, let batch = store.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) { store.undoImport(batch.id) }
             else if preview != nil && welcomeReview == nil { returnToIntake() }
         })
@@ -151,6 +155,9 @@ struct ImportView: View {
             enqueue(selection.enumerated().map { ImportQueueFile(input: .photo($0.element), name: "截图 \($0.offset + 1)") }); photos = []
         }
         .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().yubaiSheetBackground().frame(minWidth: 340, minHeight: 520) }
+        .sheet(item: $receiptCapture, onDismiss: prepareQueue) { selection in
+            NavigationStack { ScreenshotCaptureView(imageData: selection.data) }.environment(store).appErrors().yubaiSheetBackground()
+        }
         .sheet(isPresented: $showCategories) { NavigationStack { categoryCorrespondence }.environment(store).yubaiSheetBackground() }
         .sheet(isPresented: $showScreenshot) { NavigationStack { screenshotOriginal }.environment(store).yubaiSheetBackground() }
         .sheet(item: $editingScreenshotRow) { row in
@@ -227,7 +234,9 @@ struct ImportView: View {
                     EntryFormDivider()
                     sourceRow("银行卡", hint: "网银导出的 CSV 或 Excel", identifier: "importSource_bank") { filePicker = true }
                     EntryFormDivider()
-                    sourceRow("截图或照片", hint: "付款成功页、小票", identifier: "chooseBillScreenshots") { photoPicker = true }
+                    if store.preferences.isAIEnabled(for: .receiptRecognition) && IntelligenceRuntime.isConfigured {
+                        sourceRow("截图或照片", hint: "付款成功页、小票", identifier: "chooseBillScreenshots") { photoPicker = true }
+                    }
                 }
             }
             importedBefore
@@ -539,102 +548,9 @@ struct ImportView: View {
         }.padding(YubaiSpace.insetPage)
     }
     @ViewBuilder func resultView(_ savedBatch: ImportBatch) -> some View {
-        if let batch = store.imports.first(where: { $0.id == savedBatch.id && $0.undoneAt == nil }) {
-            Page {
-                if store.organizingBatchID == batch.id { ProgressView("正在整理…").padding(YubaiSpace.insetCard) }
-                Text("\(batch.importedCount) 笔，" + (batch.needsOrganization == true ? "已经保存了。" : "都进账本了。"))
-                    .yubaiFont(YubaiFont.lead)
-                resultNote(batch)
-                if let organization = batch.organization {
-                    Card { VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        let unsorted = organization.questions.reduce(0) { $0 + store.unsortedEntryCount(for: $1) }
-                        let counts: [(String, Int, Bool)] = [("归了类", organization.categoryCount, false), ("配成转账", organization.pairCount, false),
-                                                             ("可能记重了", organization.duplicateCount, false), ("还没分类", unsorted, true)].filter { $0.1 > 0 }
-                        if !counts.isEmpty {
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
-                                ForEach(counts.indices, id: \.self) { index in resultCount(counts[index].0, counts[index].1, amber: counts[index].2) }
-                            }
-                        }
-                        DisclosureGroup("看看改了什么") {
-                            ForEach(Array(organization.changeSet.preview(in: store.current).enumerated()), id: \.offset) { _, line in
-                                Text(store.preferences.hideAmounts ? "金额已隐藏" : line).yubaiFont(YubaiFont.caption).frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            ForEach(Array(organization.skipped.enumerated()), id: \.offset) { _, line in
-                                Text(store.preferences.hideAmounts ? "金额已隐藏" : line).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                            }
-                        }
-                    } }
-                    let questions = organization.questions.filter { !$0.isFallback || store.unsortedEntryCount(for: $0) > 0 }
-                    if !questions.isEmpty {
-                        Text("还有 \(min(5, questions.count)) 个问题")
-                            .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk)
-                        ForEach(Array(questions.prefix(5))) { question in questionCard(question, batchID: batch.id) }
-                    }
-                    ForEach(organization.comments ?? []) { comment in
-                        if let card = store.cards.first(where: { $0.dedupeKey == comment.dedupeKey }), card.dismissedAt == nil, !ButlerCards.isMuted(card.dedupeKey, in: store.current) {
-                            ButlerCardView(card: card)
-                        }
-                    }
-                }
-                if batch.needsOrganization == true {
-                    Card { VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                        Text(store.organizationErrors[batch.id] ?? "记录已保存").yubaiFont(YubaiFont.callout)
-                        Button("现在整理") { Task { await store.organizeImport(batch.id) } }
-                            .buttonStyle(SecondaryButtonStyle()).disabled(store.organizingBatchID != nil || store.assistantTransport(for: store.current) == nil)
-                    } }
-                }
-                if !queue.isEmpty { Button("继续下一份") { result = nil; readNext() }.buttonStyle(PrimaryButtonStyle()).disabled(store.organizingBatchID != nil) }
-                Button("回到账本") { store.destination = .now; store.sheet = nil }.buttonStyle(PrimaryButtonStyle())
-            }
-        } else {
-            Page { EmptyState("arrow.uturn.backward", "这一批已撤销", action: "继续导入", onAction: { result = nil; preview = nil; data = nil })
-                Text("有效记录 \(store.current.activeEntries.count) 笔").accessibilityIdentifier("activeEntryCount")
-            }
-        }
-    }
-    private func resultCount(_ title: String, _ count: Int, amber: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            Text("\(count)").yubaiFont(YubaiFont.amountDonut).foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.label)
-            Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-        }
-    }
-    /// 重复和没导入的行数只在不是 0 的时候写出来。
-    @ViewBuilder private func resultNote(_ batch: ImportBatch) -> some View {
-        let parts = [batch.duplicateCount > 0 ? "跳过 \(batch.duplicateCount) 笔重复" : "", batch.skippedCount > 0 ? "\(batch.skippedCount) 行未导入" : ""].filter { !$0.isEmpty }
-        if !parts.isEmpty { Text(parts.joined(separator: "，")).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-    }
-    @ViewBuilder private func questionCard(_ question: ImportQuestion, batchID: UUID) -> some View {
-        if question.isFallback { ImportQuestionCard(question: question, batchID: batchID) }
-        else { ordinaryQuestionCard(question, batchID: batchID) }
-    }
-    private func ordinaryQuestionCard(_ question: ImportQuestion, batchID: UUID) -> some View {
-        let covered = Set(question.entryIDs)
-        return Card(style: .compact, background: YubaiColor.amberTint) { VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            Text(store.preferences.hideAmounts ? "有几笔记录要你核对" : question.text).yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier("importQuestion")
-            HStack(spacing: YubaiSpace.space8) {
-                Pill(text: "\(question.entryIDs.count) 笔", variant: .neutral, showsDot: false)
-                Spacer()
-                Button("稍后") { store.destination = .now; store.sheet = nil }
-                    .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
-            }
-            DisclosureGroup("看看这几笔") {
-                LazyVStack(spacing: YubaiSpace.gapGroup) { ForEach(store.sortedEntries.filter { covered.contains($0.id) }) { EntryRow(entry: $0) } }
-            }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], alignment: .leading, spacing: YubaiSpace.space8) {
-            ForEach(question.options.indices, id: \.self) { index in
-                Button(store.preferences.hideAmounts ? "选项 \(index + 1)" : question.options[index].title) { store.answerImportQuestion(question, batchID: batchID, option: index) }
-                    .disabled(store.preferences.hideAmounts)
-                    .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("importAnswer_" + String(index))
-            }
-            Button("都不是") { freeTextQuestion = question.id }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
-            }
-            if freeTextQuestion == question.id {
-                TextField("用自己的话补充用途", text: Binding(get: { questionText[question.id] ?? "" }, set: { questionText[question.id] = $0 }))
-                Button("记下用途") { store.describeImportQuestion(question, batchID: batchID, text: questionText[question.id] ?? "") }
-                    .disabled((questionText[question.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Text("没写用途").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            }
-        } }
+        ImportResultPage(batchID: savedBatch.id, hasNext: !queue.isEmpty,
+                         next: { result = nil; readNext() },
+                         restart: { result = nil; preview = nil; data = nil })
     }
     private func select(_ row: ImportRow, included: Bool) {
         guard let index = preview?.rows.firstIndex(where: { $0.id == row.id }) else { return }
@@ -673,6 +589,13 @@ struct ImportView: View {
                     }
                     try Task.checkCancellation()
                     guard original.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个文件请小于 50 MB。") }
+                    if image {
+                        guard store.preferences.isAIEnabled(for: .receiptRecognition), IntelligenceRuntime.isConfigured else { throw YubaiError.invalid("云端智能没开") }
+                        queue.removeAll { $0.id == id }
+                        processed += 1
+                        receiptCapture = ImportReceiptSelection(data: original)
+                        return
+                    }
                     updateQueue(id) { $0.progress = 1 }
                     let table: Data
                     if image {
@@ -682,7 +605,7 @@ struct ImportView: View {
                     updateQueue(id) { $0.progress = 2 }
                     let ledger = previewLedger()
                     guard let account = accountID ?? ledger.accounts.last?.id else { throw YubaiError.invalid("请选择导入账户。") }
-                    let transport = store.assistantTransport(for: store.current)
+                    let transport = store.assistantTransport(for: store.current, feature: image ? .receiptRecognition : .importClassification)
                     let mapper = transport.map { transport in
                         ImportSourceMapper(base: AIImportColumnMapper(transport: transport), sampleCount: { count in cloudSampleCounts[id] = count })
                     }

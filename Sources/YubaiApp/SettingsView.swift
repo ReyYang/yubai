@@ -5,14 +5,21 @@ import YubaiCore
 
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var storageSize: String?
+    @State private var frequentCount = 0
+    @State private var paydayDetail: String?
     var body: some View {
         Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8) {
+            if let paydayDetail {
+                Text(paydayDetail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    .accessibilityIdentifier("settingsPaydayDetail")
+            }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     TabNavigationLink(.categories) { CategoriesView() } label: { row("分类") }.accessibilityIdentifier("openCategories")
                     separator
-                    TabNavigationLink(.quickCapture) { QuickCaptureSettingsView() } label: { row("常记的几笔", detail: repeatCount) }
+                    TabNavigationLink(.quickCapture) { FrequentEntriesView() } label: { row("常记的几笔", detail: "\(frequentCount) 笔") }
                         .accessibilityIdentifier("openQuickCapture")
                     separator
                     TabNavigationLink(.importHistory) { ImportHistoryView() } label: { row("导入记录", detail: lastImport) }
@@ -29,10 +36,17 @@ struct SettingsView: View {
             }
         }.buttonStyle(PressButtonStyle()).amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("settingsScroll")
             .modifier(SettingsStorageSizeTask(storageSize: $storageSize))
+            .task(id: store.ledgerRevision) {
+                let ledger = store.current, now = Date()
+                let result = await Task.detached(priority: .utility) {
+                    let count = EntryHistory.repeats(in: ledger, now: now, limit: 1000).count
+                    let plan = ledger.cycleAnchor == .calendarMonth ? nil : Finance.anchorPlan(in: ledger, now: now)
+                    let day = plan.map { $0.monthlyDay ?? Dates.calendar.component(.day, from: $0.dueDate) }
+                    return (count, day.map { "发工资那天 · \($0) 号" })
+                }.value
+                guard !Task.isCancelled else { return }; frequentCount = result.0; paydayDetail = result.1
+            }
             .navigationTitle("设置").yubaiNavigation()
-    }
-    private var repeatCount: String {
-        "\(EntryHistory.repeats(in: store.current, now: Date()).count) 笔"
     }
     private var lastImport: String? {
         guard let date = store.imports.filter({ $0.undoneAt == nil }).map(\.importedAt).max() else { return nil }
@@ -44,8 +58,10 @@ struct SettingsView: View {
     }
     private var intelligenceRow: some View {
         TabNavigationLink(.intelligencePrivacy) { IntelligencePrivacyView() } label: {
-            HStack(spacing: YubaiSpace.gapGroup) {
-                Text("智能与隐私").yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+            layout {
+                Text("智能与隐私").yubaiFont(YubaiFont.row)
+                if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
                 if store.preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured {
                     Pill(text: "DeepSeek · 已配好", variant: .brand, height: YubaiSize.tagHeight, showsDot: false)
                 } else { Text("未配好").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
@@ -54,8 +70,10 @@ struct SettingsView: View {
         }.accessibilityIdentifier("openIntelligencePrivacy")
     }
     private func row(_ title: String, detail: String? = nil) -> some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
-            Text(title).yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+        return layout {
+            Text(title).yubaiFont(YubaiFont.row)
+            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
             if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             chevron
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
@@ -105,6 +123,20 @@ struct IntelligencePrivacyView: View {
                 }.buttonStyle(PressButtonStyle())
             }
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                heading("它用来做这些")
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        featureToggle("给导入的账单归类", feature: .importClassification)
+                        separator
+                        featureToggle("回答你问的问题", feature: .answers)
+                        separator
+                        featureToggle("写周回顾", feature: .weeklyReview)
+                        separator
+                        featureToggle("拍小票、认截图", feature: .receiptRecognition)
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 heading("发出去的只有")
                 Card(style: .compact, background: YubaiColor.raised) {
                     Text("商户名、金额、日期、分类。不发账户号、不发余额、不发你的名字。").yubaiFont(YubaiFont.callout)
@@ -135,6 +167,15 @@ struct IntelligencePrivacyView: View {
             configured = IntelligenceRuntime.isConfigured; sendCount = SendLog.shared.totalCount
         }
         .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.totalCount }
+    }
+    private func featureToggle(_ title: String, feature: AIFeature) -> some View {
+        Toggle(title, isOn: Binding(get: { store.preferences.isAIEnabled(for: feature) }, set: { enabled in
+            if store.update("保存智能偏好", entryMotion: false, showToast: false, { $0.preferences.setAIEnabled(enabled, for: feature) }), !enabled, feature == .importClassification {
+                store.stopOrganizingImports()
+            }
+        })).yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn)
+            .frame(minHeight: YubaiSize.rowDouble).disabled(!store.preferences.cloudAIEnabled)
+            .accessibilityIdentifier("aiFeature_" + feature.rawValue)
     }
     private func privacyChips(_ title: String, values: [String], excluded: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -174,7 +215,7 @@ struct IntelligencePrivacyView: View {
 
 extension UTType { static let yubaiBackup = UTType(exportedAs: "app.yubai.backup", conformingTo: .data) }
 struct ExportDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.data, .json, .yubaiBackup] }
+    static var readableContentTypes: [UTType] { [.data, .json, .yubaiBackup, .commaSeparatedText] }
     var data: Data
     init(data: Data = Data()) { self.data = data }
     init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
@@ -183,12 +224,16 @@ struct ExportDocument: FileDocument {
 
 struct BackupView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var password = ""; @State private var restorePassword = ""; @State private var exportDocument = ExportDocument()
     @State private var exporting = false; @State private var importing = false; @State private var exportName = ""
     @State private var pendingRestore: Ledger?; @State private var restoreData: Data?; @State private var busy = false; @State private var message: String?
     @State private var exportedLedgerID: UUID?; @State private var exportedAt: Date?
     @State private var encryptedRestore = false
     @State private var exportExpanded = false
+    @State private var csvExport = false
+    @State private var choosingBackupFolder = false
+    @State private var backupFolderLedgerID: UUID?
     private struct BackupHeader: Decodable { let format: String; let version: Int; let encrypted: Bool }
     private enum PasswordField: Hashable { case export, restore }
     @FocusState private var passwordFocus: PasswordField?
@@ -202,7 +247,10 @@ struct BackupView: View {
                     .accessibilityIdentifier("backupToFile")
                 Button { passwordFocus = nil; importing = true } label: { backupRow("从备份恢复", detail: nil) }
                     .disabled(busy).accessibilityIdentifier("restoreFromBackup")
+                Button(action: exportCSV) { backupRow("导出成表格", detail: "CSV") }
+                    .disabled(busy).accessibilityIdentifier("exportEntriesCSV")
             }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
+            Section { weeklyBackupToggle }.listRowBackground(YubaiColor.card)
             if exportExpanded { exportSection }
             if encryptedRestore { restoreSection }
             LedgerSyncSection()
@@ -220,11 +268,11 @@ struct BackupView: View {
             }.listRowBackground(YubaiColor.card)
             Section { EraseAllDataButton() }.listRowBackground(Color.clear).listRowSeparator(.hidden)
         }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().manualSheetHeader("备份与恢复", cancelTitle: "关闭", showsAction: false)
-            .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .yubaiBackup, defaultFilename: exportName) { result in
+            .fileExporter(isPresented: $exporting, document: exportDocument, contentType: csvExport ? .commaSeparatedText : .yubaiBackup, defaultFilename: exportName) { result in
                 switch result {
                 case .success:
                     message = "文件已保存到你选择的位置。"
-                    if let exportedLedgerID, let exportedAt {
+                    if !csvExport, let exportedLedgerID, let exportedAt {
                         store.recordSuccessfulBackup(of: exportedLedgerID, at: exportedAt)
                     }
                 case .failure(let error): message = error.localizedDescription
@@ -250,8 +298,46 @@ struct BackupView: View {
     func exportBackup() {
         passwordFocus = nil
         let ledger = store.current; let password = password; busy = true; message = nil
-        exportedLedgerID = ledger.id; exportedAt = Date()
+        csvExport = false; exportedLedgerID = ledger.id; exportedAt = Date()
         Task { do { let data = try await Task.detached { try Backup.export(ledger, password: password) }.value; exportDocument = ExportDocument(data: data); exportName = "余白备份-" + Dates.text(Date()) + ".yubaibackup"; exporting = true; busy = false } catch { message = error.localizedDescription; busy = false } }
+    }
+    private func exportCSV() {
+        passwordFocus = nil
+        let ledger = store.current
+        busy = true; message = nil; csvExport = true; exportedLedgerID = nil; exportedAt = nil
+        Task { @MainActor in
+            let data = await Task.detached(priority: .userInitiated) { LedgerBackup.entriesCSV(ledger) }.value
+            exportDocument = ExportDocument(data: data)
+            exportName = "余白账目-" + Dates.text(Date()) + ".csv"
+            busy = false; exporting = true
+        }
+    }
+    private var weeklyBackupToggle: some View {
+        Toggle("每周自动备份一次", isOn: Binding(get: { store.preferences.weeklyAutoBackup == true }, set: { enabled in
+            if !enabled {
+                store.update("保存备份偏好", entryMotion: false, showToast: false) { $0.preferences.weeklyAutoBackup = nil }
+            } else if WeeklyBackupAccess.shared.hasFolder(for: store.current.id) {
+                if store.update("保存备份偏好", entryMotion: false, showToast: false, { $0.preferences.weeklyAutoBackup = true }) { store.runAutomaticBackupIfDue() }
+            } else {
+                backupFolderLedgerID = store.current.id; choosingBackupFolder = true
+            }
+        })).yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.rowDouble)
+            .accessibilityIdentifier("weeklyAutoBackup")
+            .onAppear {
+                if store.preferences.weeklyAutoBackup == true && !WeeklyBackupAccess.shared.hasFolder(for: store.current.id) {
+                    backupFolderLedgerID = store.current.id; choosingBackupFolder = true
+                }
+            }
+            .fileImporter(isPresented: $choosingBackupFolder, allowedContentTypes: [.folder]) { result in
+                do {
+                    let folder = try result.get()
+                    guard backupFolderLedgerID == store.current.id else { return }
+                    try WeeklyBackupAccess.shared.remember(folder, for: store.current.id)
+                    if store.update("保存备份偏好", entryMotion: false, showToast: false, { $0.preferences.weeklyAutoBackup = true }) { store.runAutomaticBackupIfDue() }
+                } catch {
+                    if (error as NSError).code != NSUserCancelledError { message = error.localizedDescription }
+                }
+            }
     }
     func readBackup() {
         passwordFocus = nil
@@ -278,17 +364,22 @@ struct BackupView: View {
             Text("上次备份").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             if let date = store.preferences.lastBackupAt {
                 let days = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(Date())).day ?? 0)
-                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: YubaiSpace.space8))
+                layout {
                     Text(FixedFlowPresentation.monthDay(date)).yubaiFont(YubaiFont.amountLarge)
                     Text(days == 0 ? "今天" : "\(days) 天前").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }
             } else { Text("还没备份过").yubaiFont(YubaiFont.amountLarge) }
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine).accessibilityIdentifier("lastBackup")
+            #if DEBUG && targetEnvironment(simulator)
+            .uiTestAccessibilityValue("files=\(UITestSupport.secondBatchBackupFileCount);csv=\(csvExport && exportDocument.data.starts(with: [0xEF, 0xBB, 0xBF]) ? 1 : 0)")
+            #endif
     }
     private func backupRow(_ title: String, detail: String?) -> some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+        return layout {
             Text(title).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
-            Spacer(minLength: YubaiSpace.space8)
+            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
             if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
@@ -306,19 +397,26 @@ struct ImportHistoryView: View {
             if store.imports.isEmpty { EmptyState("square.and.arrow.down", "还没有导入记录", action: "导入账单", onAction: { store.sheet = .imports }).accessibilityIdentifier("emptyImportHistory") }
             CardRows(Array(store.imports.reversed())) { batch in
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text(batch.filename).yubaiFont(YubaiFont.rowTitle)
+                    NavigationLink {
+                        ImportResultPage(batchID: batch.id, hasNext: false, next: {}, restart: { store.sheet = .imports })
+                            .navigationTitle("整理好了").yubaiNavigation()
+                    } label: { Text(batch.filename).yubaiFont(YubaiFont.rowTitle).frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading) }
+                        .disabled(batch.undoneAt != nil).accessibilityIdentifier("openImportBatch_" + batch.id.uuidString)
                     Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销"))
                         .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     if batch.undoneAt == nil {
                         if batch.needsOrganization == true || !(batch.organization?.questions.isEmpty ?? true) {
-                            Button("继续整理") { store.sheet = .imports }.frame(minHeight: YubaiSize.rowSingle)
+                            NavigationLink("继续整理") {
+                                ImportResultPage(batchID: batch.id, hasNext: false, next: {}, restart: { store.sheet = .imports })
+                                    .navigationTitle("整理好了").yubaiNavigation()
+                            }.frame(minHeight: YubaiSize.rowSingle).accessibilityIdentifier("continueImportBatch_" + batch.id.uuidString)
                         }
                         Button("整批撤销", role: .destructive) { undoBatch = batch }
                             .disabled(store.organizingBatchID != nil).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportBatch")
                     }
                     if let attachment = store.current.attachments.first(where: { $0.id == batch.attachmentID }) {
                         Button("导出原文件") { do { document = ExportDocument(data: try store.localRepository.attachmentData(attachment.id)); filename = attachment.name; exporting = true } catch { store.error = error.localizedDescription } }
-                            .frame(minHeight: YubaiSize.tapMin)
+                            .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("exportImportOriginal_" + batch.id.uuidString)
                     }
                 }.buttonStyle(.borderless).padding(.vertical, YubaiSpace.space8)
             }

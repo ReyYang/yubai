@@ -32,6 +32,8 @@ struct EntryEditForm: View {
     @State private var amountKeypadPresented = false
     @State private var amountSelected = false
     @State private var repeatsMonthly = false
+    @State private var previewAvailable: Int64?
+    @State private var projectedFixedSavings: Int64?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var purposeFocused: Bool
     init(entry: Entry, title: String = "改一笔", primaryTitle: String = "好", onSave: ((Entry) -> Void)? = nil) {
@@ -106,7 +108,7 @@ struct EntryEditForm: View {
         }.safeAreaInset(edge: .bottom, spacing: 0) {
             EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
                 ChipFlow {
-                    EntryDateChip(date: $draft.date, inTray: true)
+                    EntryDateChip(date: $draft.date, inTray: true, allowsFuture: true, identifier: "editEntryDate")
                     EntryAccountMenu(accounts: accounts, balances: balances, selection: Binding(get: { draft.accountID }, set: { if let value = $0 { draft.accountID = value } }), inTray: true)
                     if draft.nature == .income { EntryFixedSavingsChip(selected: $draft.intoFixedSavings, action: { finishAmount(); purposeFocused = false }) }
                     if draft.nature != .transfer {
@@ -132,6 +134,7 @@ struct EntryEditForm: View {
             #endif
             .entryDiscardGuard(dirty: dirty, amount: currentAmount, confirming: $confirmingDiscard)
             .onAppear { balances = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, Finance.balance($0, in: store.current)) }); openAmount() }
+            .task(id: previewInput) { await refreshPreview() }
             .onChange(of: purposeFocused) { _, focused in if focused { finishAmount() } else { openAmount() } }
             .onChange(of: draft.category) { _, _ in remembered = false; draft.partID = nil }
             .onChange(of: draft.nature) { _, nature in
@@ -141,7 +144,7 @@ struct EntryEditForm: View {
                 let suggestion = EntryHistory.suggestion(purpose: purpose, nature: nature, in: store.current)
                 draft.category = suggestion?.category ?? Classification.pendingCategory
                 draft.subcategory = suggestion?.subcategory; draft.subcategoryUserEdited = true
-                categoryIsSuggestion = suggestion != nil; choseCategory = nature != .transfer
+                categoryIsSuggestion = suggestion != nil; choseCategory = false
             }
 
     }
@@ -150,7 +153,7 @@ struct EntryEditForm: View {
         if let totals = fixedSavingsTotals {
             ResultBar(label: "存着不动", value: ResultBar.change(totals.current, totals.new, hide: hide), identifier: "entrySavingHint")
         } else {
-            let value = previewAfter ?? store.funds.available
+            let value = previewAvailable ?? store.funds.available
             ResultBar(label: "改完还能花", value: amount2(value, hide: hide), amber: value < 0, identifier: "entrySavingHint")
         }
     }
@@ -180,24 +183,35 @@ struct EntryEditForm: View {
             }
         }.buttonStyle(PressButtonStyle())
     }
-    private var hintLedger: Ledger {
-        var ledger = store.current
-        ledger.entries.removeAll { $0.id == original.id }
-        return ledger
-    }
     private var fixedSavingsTotals: (current: Int64, new: Int64)? {
-        guard draft.nature == .income, draft.intoFixedSavings else { return nil }
-        let value = EntryDraft(date: draft.date, amount: currentAmount, nature: draft.nature, accountID: draft.accountID,
-                               title: purpose, category: draft.category, intoFixedSavings: true)
-        if case .fixedSavings(let total) = EntryHint.make(ledger: hintLedger, draft: value, isFixedBill: draft.planID != nil || repeatsMonthly) {
-            return (store.funds.fixedSavingsTotal, total)
-        }
-        return nil
+        guard draft.nature == .income, draft.intoFixedSavings, let projectedFixedSavings else { return nil }
+        return (store.funds.fixedSavingsTotal, projectedFixedSavings)
     }
-    private var previewAfter: Int64? {
-        guard store.entriesByID[original.id] != nil else { return nil }
+    private struct PreviewInput: Equatable {
+        var revision: UInt64
+        var entry: Entry
+        var amount: Int64
+        var purpose: String
+        var moment: Date
+    }
+    private var previewInput: PreviewInput {
+        PreviewInput(revision: store.ledgerRevision, entry: draft, amount: currentAmount, purpose: purpose, moment: store.financialNow)
+    }
+    @MainActor private func refreshPreview() async {
+        do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
+        let ledger = store.current; let now = Date()
         var entry = draft; entry.amount = currentAmount
-        return try? ManualBookkeeping.available(after: entry, in: store.current)
+        if Dates.day(entry.date) > Dates.day(now) { entry.date = Dates.day(entry.date) }
+        let edited = entry
+        let value = await Task.detached(priority: .userInitiated) {
+            let available = try? ManualBookkeeping.available(after: edited, in: ledger, now: now)
+            var projected = ledger
+            let saved = (try? ManualBookkeeping.edit(edited, in: &projected, now: now)) != nil
+            let fixed: Int64? = saved ? Finance.funds(projected, now: now).fixedSavingsTotal : nil
+            return (available, fixed)
+        }.value
+        guard !Task.isCancelled else { return }
+        previewAvailable = value.0; projectedFixedSavings = value.1
     }
     private var currentAmount: Int64 { amountKeypadPresented ? keypad.amount ?? 0 : (try? Money.parse(amount)) ?? 0 }
     private var dirty: Bool { draft != original || currentAmount != original.amount || purpose != original.displayTitle || repeatsMonthly }
@@ -236,12 +250,16 @@ struct EntryEditForm: View {
         guard canSave else { return }
         do {
             var edited = draft
+            let now = Date()
+            if Dates.day(edited.date) > Dates.day(now) { edited.date = Dates.day(edited.date) }
+            if categoryIsSuggestion && !choseCategory { edited.category = Classification.pendingCategory; edited.subcategory = nil }
             if edited.hasNoCaptureCategory && choseCategory { edited.classificationReason = "手动选择" }
             edited.amount = try Money.parse(amount)
             let clean = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
             edited.purpose = clean.isEmpty ? nil : clean
             if clean.isEmpty { edited.title = Classification.displayCategory(edited.category) }
             if let onSave { onSave(edited); dismiss(); return }
+            let justPosted = original.date > now && edited.date <= now
             if store.update("改一笔", { ledger in
                 // Note is retained source evidence, no longer an editable field.
                 // Read the saved value here so an older form cannot overwrite it.
@@ -249,10 +267,11 @@ struct EntryEditForm: View {
                 if let original = ledger.entries.first(where: { $0.id == updated.id }) { updated.note = original.note }
                 if repeatsMonthly && updated.planID == nil && updated.nature != .transfer {
                     try FixedFlows.repeatMonthly(updated, in: &ledger)
-                } else { try ManualBookkeeping.edit(updated, in: &ledger) }
+                } else { try ManualBookkeeping.edit(updated, in: &ledger, now: now) }
                 if choseCategory && !Classification.isPending(updated.category) {
                     try CategoryModel.confirm(.init(category: updated.category, subcategory: updated.subcategory), entryIDs: [updated.id], in: &ledger)
                 }
+                if justPosted { FixedFlows.autoLink(&ledger, addedEntryIDs: [updated.id], now: now) }
             }) { dismiss() }
         } catch { store.error = error.localizedDescription }
     }

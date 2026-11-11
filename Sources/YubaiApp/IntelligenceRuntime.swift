@@ -236,31 +236,52 @@ struct ActiveLedgerTransport: ChatTransport {
     }
 }
 
+/// Rebuild the backend with current feature preferences immediately before every request.
+private struct FeatureCloudTransport: ChatTransport {
+    let backend: @MainActor @Sendable () -> (any ChatTransport)?
+    func send(_ request: ChatRequest) async throws -> ChatMessage {
+        try Task.checkCancellation()
+        guard let transport = await backend() else { throw CancellationError() }
+        return try await transport.send(request)
+    }
+}
+
 @MainActor extension AppStore {
-    func assistantTransport(for snapshot: Ledger, reportingLedgerChanges: Bool = false, preparedRedactor: Redactor? = nil) -> (any ChatTransport)? {
+    func assistantTransport(for snapshot: Ledger, feature: AIFeature = .answers, reportingLedgerChanges: Bool = false, preparedRedactor: Redactor? = nil) -> (any ChatTransport)? {
         let revision = ledgerRevision
         let continuingOrganization = reportingLedgerChanges && organizationContinuesInBackground
-        guard snapshot.preferences.cloudAIEnabled, !locked || continuingOrganization, reportingLedgerChanges || IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
+        guard preferences.isAIEnabled(for: feature), !locked || continuingOrganization, reportingLedgerChanges || IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
         #if DEBUG && targetEnvironment(simulator)
         if let script = UITestSupport.script {
             guard IntelligenceRuntime.isConfigured else { return nil }
             return ActiveLedgerTransport(base: UITestTransport(script: script), staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
-                (reportingLedgerChanges || self.ledgerRevision == revision) && self.current.preferences.cloudAIEnabled && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground))
+                (reportingLedgerChanges || self.ledgerRevision == revision) && self.preferences.isAIEnabled(for: feature) && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground))
             }
         }
         #endif
         let configuration = continuingOrganization ? organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
         guard let configuration else { return nil }
-        let client = DeepSeekClient(configuration: configuration, redactor: preparedRedactor ?? Redactor(ledger: snapshot))
-        return ActiveLedgerTransport(base: client, model: reportingLedgerChanges ? nil : client.configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
+        let snapshotConfiguration = configuration
+        let redactor = preparedRedactor ?? Redactor(ledger: snapshot)
+        let live = FeatureCloudTransport { [weak self] in
+            guard let self, self.preferences.isAIEnabled(for: feature), !self.locked || (continuingOrganization && self.organizationContinuesInBackground) else { return nil }
+            #if os(iOS)
+            if continuingOrganization && UIApplication.shared.applicationState != .active {
+                guard let authorized = self.organizationExecution?.configurationForTransport() else { return nil }
+                return CloudBackend(client: DeepSeekClient(configuration: authorized, redactor: redactor))
+            }
+            #endif
+            return CloudBackend.configured(preferences: self.preferences, feature: feature, redactor: redactor)
+        }
+        return ActiveLedgerTransport(base: live, model: reportingLedgerChanges ? nil : configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
             let configuration = continuingOrganization ? self.organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
-            return (reportingLedgerChanges || self.ledgerRevision == revision) && self.current.preferences.cloudAIEnabled && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground)) && (reportingLedgerChanges ? configuration?.baseURL == client.configuration.baseURL && configuration?.apiKey == client.configuration.apiKey : configuration == client.configuration)
+            return (reportingLedgerChanges || self.ledgerRevision == revision) && self.preferences.isAIEnabled(for: feature) && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground)) && (reportingLedgerChanges ? configuration?.baseURL == snapshotConfiguration.baseURL && configuration?.apiKey == snapshotConfiguration.apiKey : configuration == snapshotConfiguration)
         }
     }
     // Called only by the now-page's explicit organization button.
     func startOrganizingPendingImports() {
         guard pendingOrganizationTask == nil, organizationExecution == nil, !preparingImportOrganization, !organizingPendingImports, organizingBatchID == nil,
-              !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
+              !locked, loadFailure == nil, preferences.isAIEnabled(for: .importClassification) else { return }
         let ids = pendingOrganization.batchIDs
         guard !ids.isEmpty else { return }
         pendingOrganizationTask = Task { @MainActor in
@@ -323,7 +344,7 @@ struct ActiveLedgerTransport: ChatTransport {
         guard !organizingPendingImports, organizingBatchID == nil else { return }
         defer { organizingPendingImports = false; finishImportOrganization() }
         guard !Task.isCancelled, !locked || organizationContinuesInBackground,
-              loadFailure == nil, current.preferences.cloudAIEnabled else { return }
+              loadFailure == nil, preferences.isAIEnabled(for: .importClassification) else { return }
         let ids = current.imports.filter {
             $0.needsOrganization == true && $0.undoneAt == nil && (organizationExecution == nil || organizingImportBatchIDs.contains($0.id))
         }.map(\.id)
@@ -339,7 +360,7 @@ struct ActiveLedgerTransport: ChatTransport {
         guard !Task.isCancelled, importOrganizationTask == nil else { return }
         let ownsExecution = organizationExecution == nil
         if ownsExecution {
-            guard !locked, loadFailure == nil, current.preferences.cloudAIEnabled,
+            guard !locked, loadFailure == nil, preferences.isAIEnabled(for: .importClassification),
                   current.imports.contains(where: { $0.id == batchID && $0.needsOrganization == true && $0.undoneAt == nil }) else { return }
             guard await beginImportOrganization(batchIDs: [batchID]) else { return }
         }
@@ -356,7 +377,7 @@ struct ActiveLedgerTransport: ChatTransport {
     private func performImportOrganization(_ batchID: UUID) async {
         guard !Task.isCancelled, organizingBatchID == nil, !locked || organizationContinuesInBackground,
               let batch = current.imports.first(where: { $0.id == batchID }), batch.needsOrganization == true,
-              batch.undoneAt == nil, current.preferences.cloudAIEnabled,
+              batch.undoneAt == nil, preferences.isAIEnabled(for: .importClassification),
               IntelligenceRuntime.isConfigured else { return }
         let before = current
         let ids = ImportOrganizer.pendingEntryIDs(in: before, batchID: batchID)
@@ -369,7 +390,7 @@ struct ActiveLedgerTransport: ChatTransport {
                 let redactor = Redactor(ledger: snapshot)
                 return try await MainActor.run {
                     guard !self.locked || self.organizationContinuesInBackground,
-                          let transport = self.assistantTransport(for: snapshot, reportingLedgerChanges: true, preparedRedactor: redactor) else {
+                          let transport = self.assistantTransport(for: snapshot, feature: .importClassification, reportingLedgerChanges: true, preparedRedactor: redactor) else {
                         throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
                     }
                     return transport
@@ -404,7 +425,7 @@ struct ActiveLedgerTransport: ChatTransport {
             try Task.checkCancellation()
             guard organizationExecution != nil, !locked || organizationContinuesInBackground,
                   loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
-                  current.preferences.cloudAIEnabled else { throw ImportOrganizer.Failure.ledgerChanged }
+                  preferences.isAIEnabled(for: .importClassification) else { throw ImportOrganizer.Failure.ledgerChanged }
             await flushPersistence()
             try Task.checkCancellation()
             let before = current, revision = ledgerRevision, repository = localRepository
@@ -579,7 +600,8 @@ struct ActiveLedgerTransport: ChatTransport {
             await detection.value
         } onCancel: { detection.cancel() }
         guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil, !candidates.isEmpty else { return }
-        let transport = pending.batchIDs.isEmpty ? assistantTransport(for: before) : nil
+        // Weekly prose has its own consent; local reminders remain available with it off.
+        let transport = pending.batchIDs.isEmpty ? assistantTransport(for: before, feature: .weeklyReview) : nil
         let worded = await ButlerWording.word(candidates, ledger: before, transport: transport)
         guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil else { return }
         var next = before
@@ -588,16 +610,16 @@ struct ActiveLedgerTransport: ChatTransport {
     }
     private func classifySubcategoriesIfDue() async {
         guard !reflectingMemories, pendingOrganization.batchIDs.isEmpty,
-              current.preferences.cloudAIEnabled, SubcategoryBatch.isDue(current),
+              preferences.isAIEnabled(for: .importClassification), SubcategoryBatch.isDue(current),
               !SubcategoryBatch.pending(current).isEmpty, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
-              let transport = assistantTransport(for: current) else { return }
+              let transport = assistantTransport(for: current, feature: .importClassification) else { return }
         let before = current; let now = Date()
         reflectingMemories = true
         defer { reflectingMemories = false }
         do {
             let result = try await SubcategoryBatch.run(transport: transport, ledger: before, now: now)
             try Task.checkCancellation()
-            guard current == before, !locked, current.preferences.cloudAIEnabled else { return }
+            guard current == before, !locked, preferences.isAIEnabled(for: .importClassification) else { return }
             update("归小项", recordUndo: false) { try result.apply(to: &$0, now: now) }
         } catch { /* Keep the local classification and retry the unpersisted round later. */ }
     }
@@ -605,7 +627,7 @@ struct ActiveLedgerTransport: ChatTransport {
         guard !reflectingMemories, pendingOrganization.batchIDs.isEmpty,
               MemoryReflection.isDue(ledger: current),
               syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
-              let transport = assistantTransport(for: current) else { return }
+              let transport = assistantTransport(for: current, feature: .weeklyReview) else { return }
         let before = current
         reflectingMemories = true
         defer { reflectingMemories = false }

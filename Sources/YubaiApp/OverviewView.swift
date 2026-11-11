@@ -1,54 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-struct LedgerHero: View {
-    @Environment(AppStore.self) private var store
-    private var funds: Funds { store.funds }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TabNavigationLink(.formula) { FormulaView() } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("还能花").yubaiFont(YubaiFont.heroLabel)
-                        Text(funds.horizonTitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    }
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        AmountLabel(cents: funds.available, hide: store.preferences.hideAmounts, role: .hero,
-                                    ink: funds.available < 0 ? YubaiColor.amberInk : YubaiColor.label)
-                            .accessibilityIdentifier("availableFunds")
-                        Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                    }
-                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula")
-                .accessibilityLabel("还能花，" + funds.horizonTitle + "，" + (store.preferences.hideAmounts ? "金额已隐藏" : Money.text(funds.available)))
-                .accessibilityHint("点开看怎么算")
-            ChipFlow {
-                if funds.available < 0 {
-                    chip("这个月少攒 " + compact(funds.savingShortfall), amber: true)
-                    chip("要攒 " + compact(funds.savingTarget))
-                } else {
-                    chip("每天约 " + (store.preferences.hideAmounts ? "••••" : savingDaily(funds.dailyAllowance)))
-                    HStack(spacing: 6) {
-                        if case .share = store.current.savingRule {} else { Image(systemName: "lock").font(.system(size: 12)) }
-                        Text(savingChip)
-                    }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk)
-                        .padding(.horizontal, 12).frame(minHeight: 28).background(YubaiColor.brandTint, in: Capsule())
-                }
-            }
-            if !store.current.spendingParts.isEmpty { SpendingPartsCard().padding(.top, 6) }
-        }.foregroundStyle(YubaiColor.label).amountPrivacy(store.preferences.hideAmounts)
-    }
-    private var savingChip: String {
-        if case .share(let percent) = store.current.savingRule { return "进账留" + savingShare(percent) + " · " + compact(funds.savingTarget) }
-        return "要攒 " + compact(funds.savingTarget) + " · 已留出"
-    }
-    private func compact(_ value: Int64) -> String { store.preferences.hideAmounts ? "••••" : savingNumber(value) }
-    private func chip(_ text: String, amber: Bool = false) -> some View {
-        Text(text).yubaiFont(YubaiFont.caption).foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.label)
-            .padding(.horizontal, 12).frame(minHeight: 28).background(amber ? YubaiColor.amberTint : YubaiColor.raised, in: Capsule())
-    }
-}
-
 func savingNumber(_ value: Int64) -> String {
     let text = Money.text(value, currency: false)
     return text.hasSuffix(".00") ? String(text.dropLast(3)) : text
@@ -81,6 +33,7 @@ struct SavingsView: View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
             hero
             howCard
+            ReservePaybackProgressList(identifier: "monthlyPaybackProgress")
             if !directIncome.isEmpty { directSection }
             if !history.isEmpty { historySection }
         }.safeAreaInset(edge: .top, spacing: 0) { LedgerPageHeader(title: "每月存", backTitle: backTitle).padding(.horizontal, 20) }
@@ -101,7 +54,7 @@ struct SavingsView: View {
                     }
                 }.environment(store).yubaiSheetBackground().presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $addingPayday) { SavingsPaydayEditor().environment(store).yubaiSheetBackground() }
+            .sheet(isPresented: $addingPayday) { PaydaySetupSheet().environment(store).yubaiSheetBackground() }
     }
 
     // MARK: 存着不动
@@ -131,12 +84,20 @@ struct SavingsView: View {
                 }), identifier: { $0 ? "savingMode_share" : "savingMode_fixed" }).accessibilityIdentifier("savingMode")
                 EntryFormDivider()
                 if sharing { shareChoices } else { fixedTargetRow }
+                if paybackTarget > 0 {
+                    EntryFormDivider()
+                    EntryFormRow(title: "补回来") {
+                        AmountLabel(cents: paybackTarget, hide: hide, role: .summary, sign: .inflow, ink: YubaiColor.brandInk)
+                    }.accessibilityElement(children: .combine).accessibilityIdentifier("monthlyPaybackAmount")
+                    ResultBar(label: "每月存", value: amount2(target, hide: hide), identifier: "monthlySavingTotal")
+                }
                 EntryFormDivider()
                 Text("每月从哪天算").yubaiFont(YubaiFont.rowTitle)
                 cycleAnchorControl
             }
         }
     }
+    private var paybackTarget: Int64 { store.paybackProgress.reduce(0) { $0 + $1.thisCycle } }
     private var fixedTargetRow: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             ViewThatFits(in: .horizontal) {
@@ -272,7 +233,7 @@ private struct SavingsAmountEditor: View {
     init(field: SavingsAmountField, initial: Int64, save: @escaping (Int64) -> Bool) {
         self.field = field; self.save = save; _keypad = State(initialValue: EntryKeypad(amount: initial))
     }
-    private var title: String { field == .fixed ? "存着不动" : field == .target ? "每月要攒" : field == .salary ? "大概多少" : "每笔进账留" }
+    private var title: String { field == .fixed ? "存着不动" : field == .target ? "每月存" : field == .salary ? "大概多少" : "每笔进账留" }
     private var valid: Bool {
         guard let value = keypad.amount else { return false }
         return field == .share ? value % 100 == 0 && (100...9000).contains(value) : field == .salary ? value > 0 : value >= 0

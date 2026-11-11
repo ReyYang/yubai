@@ -1,6 +1,89 @@
 import SwiftUI
 import YubaiCore
 
+/// 首次只设发薪日和平时的金额；到账仍由用户确认。
+struct PaydaySetupSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
+    @State private var day = 10
+    @State private var amount: Int64 = 0
+    @State private var editingAmount = false
+    @State private var keypad = EntryKeypad()
+    @State private var accountID: UUID?
+    private var valid: Bool { amount > 0 && amount <= Money.limit && accountID != nil }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                header
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        EntryFormRow(title: "每月几号") { Text("\(day) 号").yubaiFont(YubaiFont.rowTitle) }
+                        EntryFormDivider()
+                        EntryFormRow(title: "平时") {
+                            Button { keypad = EntryKeypad(amount: amount); editingAmount = true } label: {
+                                AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .summary)
+                                    .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                            }.buttonStyle(PressButtonStyle()).accessibilityLabel("工资金额").accessibilityIdentifier("paydaySetupAmount")
+                        }
+                    }
+                }
+                days
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
+                .padding(.bottom, YubaiSpace.gapSection)
+        }.paperBackground().accessibilityIdentifier("paydaySetupSheet")
+            .onAppear { if accountID == nil { accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id } }
+            .sheet(isPresented: $editingAmount) {
+                AmountEntrySheet(title: "工资", keypad: $keypad, primaryTitle: "好", primaryIdentifier: "paydaySetupAmountDone",
+                                 canSave: keypad.canSave, save: {
+                    guard let value = keypad.resolve(), value > 0 else { return }
+                    amount = value; editingAmount = false
+                }).environment(store).yubaiSheetBackground().presentationDragIndicator(.visible)
+            }
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            .presentationDetents([.medium, .large])
+            #endif
+    }
+    private var header: some View {
+        ManualSheetHeader(title: "哪天发工资", actionTitle: "好", enabled: valid,
+                          actionIdentifier: "paydaySetupDone", cancelIdentifier: "paydaySetupCancel", cancel: { dismiss() }, action: save)
+    }
+    private var days: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: textSize.isAccessibilitySize ? 4 : 7), spacing: YubaiSpace.space8) {
+            ForEach(1...31, id: \.self) { value in
+                Button { day = value } label: {
+                    Text("\(value)").yubaiFont(YubaiFont.callout)
+                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
+                        .foregroundStyle(day == value ? YubaiColor.onBrand : YubaiColor.label)
+                        .background(day == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel("每月 \(value) 号")
+                    .accessibilityAddTraits(day == value ? .isSelected : []).accessibilityIdentifier("paydaySetupDay_\(value)")
+            }
+        }
+    }
+    private func save() {
+        guard valid, let accountID else { return }
+        let now = Date(), calendar = Dates.calendar
+        let today = Dates.day(now)
+        let month = calendar.dateInterval(of: .month, for: today)!.start
+        func scheduled(in start: Date) -> Date {
+            let last = calendar.range(of: .day, in: .month, for: start)!.count
+            return Dates.addDays(min(day, last) - 1, to: start)
+        }
+        let thisMonth = scheduled(in: month)
+        let due = thisMonth < today ? scheduled(in: Dates.addMonths(1, to: month)) : thisMonth
+        var plan = Plan(title: "工资", amount: amount, dueDate: due, frequency: .monthly, inflow: true, category: "工资", nature: .income)
+        plan.monthlyDay = day; plan.accountID = accountID; plan.autoPay = false
+        let change = ChangeSet(source: "用户操作", reason: "哪天发工资", items: [.addPlan(plan)])
+        if store.apply(change, label: "哪天发工资", silently: true, finishing: { ledger in
+            ledger.cycleAnchor = .payday
+            Finance.enablePaydayConfirmation(&ledger, now: now)
+        }) { dismiss() }
+    }
+}
+
 /// 发工资那天：默认填平时的数，改成这次实际到账的；多出来的可以顺手存起来。
 struct PaydaySheet: View {
     @Environment(AppStore.self) private var store

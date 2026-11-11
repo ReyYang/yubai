@@ -6,6 +6,9 @@ import YubaiCore
 struct FormulaView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
+    @State private var pastCycles: [DateInterval] = []
+    @State private var selectedStart: Date?
+    @State private var closed: ClosedFormula?
     private var editingField: FormulaField? {
         if case .formulaEdit(let field)? = store.sheet { return field }
         return nil
@@ -14,21 +17,90 @@ struct FormulaView: View {
         let formula = store.formula
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
             cycleLabel(formula)
-            equationCard(formula)
-            SpendingPartsCard()
-            incomingBlock(formula)
+            if selectedStart == nil {
+                equationCard(formula)
+                SpendingPartsCard()
+                incomingBlock(formula)
+            } else if let closed {
+                closedCard(closed)
+                closedWhereButton(closed)
+            } else { ProgressView() }
         }.amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("formulaPage")
             .navigationTitle("还能花").yubaiNavigation()
+            .task(id: historyKey) { await loadHistory() }
     }
 
-    // MARK: 顶部日期（只是标签，不可点）
+    // MARK: 周期
+    private var historyKey: String {
+        "\(store.ledgerRevision)-\(store.formula.cycleStart)-\(String(describing: selectedStart))"
+    }
     private func cycleLabel(_ formula: SpendableFormula) -> some View {
-        let text = FixedFlowPresentation.monthDay(formula.cycleStart) + " – " + FixedFlowPresentation.monthDay(formula.cycleEnd)
-        return Text(text).yubaiFont(YubaiFont.callout)
-            .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.chipHeight)
-            .background(YubaiColor.card, in: Capsule())
-            .frame(maxWidth: .infinity)
+        let start = selectedStart ?? formula.cycleStart
+        let end = pastCycles.first { $0.start == selectedStart }.map { Dates.addDays(-1, to: $0.end) } ?? formula.cycleEnd
+        let text = cycleText(start, end)
+        return Menu {
+            Button(cycleText(formula.cycleStart, formula.cycleEnd)) { selectedStart = nil; closed = nil }
+                .accessibilityIdentifier("formulaCycleCurrent")
+            ForEach(Array(pastCycles.enumerated()), id: \.element.start) { index, cycle in
+                Button(cycleText(cycle.start, Dates.addDays(-1, to: cycle.end))) { closed = nil; selectedStart = cycle.start }
+                    .accessibilityIdentifier("formulaCyclePast_\(index)")
+            }
+        } label: {
+            HStack(spacing: YubaiSpace.space4) {
+                Text(text).yubaiFont(YubaiFont.callout)
+                Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta).accessibilityHidden(true)
+            }.padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
+                .background(YubaiColor.card, in: Capsule())
+        }.buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity)
             .accessibilityLabel("这个周期 " + text).accessibilityIdentifier("formulaCycle")
+    }
+    private func cycleText(_ start: Date, _ end: Date) -> String {
+        FixedFlowPresentation.monthDay(start) + " – " + FixedFlowPresentation.monthDay(end)
+    }
+    @MainActor private func loadHistory() async {
+        let ledger = store.current; let now = Date(); let selection = selectedStart
+        let result = await Task.detached(priority: .userInitiated) {
+            let cycles = Finance.pastCycles(ledger, now: now)
+            let formula = selection.flatMap { start in
+                cycles.contains { $0.start == start } ? Finance.closedFormula(ledger, cycleStart: start) : nil
+            }
+            return (cycles, formula)
+        }.value
+        guard !Task.isCancelled else { return }
+        pastCycles = result.0; closed = result.1
+        if selection != nil && result.1 == nil { selectedStart = nil }
+    }
+
+    private func closedCard(_ formula: ClosedFormula) -> some View {
+        let saved = store.current.savingHistory.first { $0.cycleStart == formula.cycleStart }
+        let status: String? = saved.flatMap { row in
+            guard row.tracked else { return nil }
+            return row.saved < row.target ? "少存 " + amount2(row.target - row.saved, hide: store.preferences.hideAmounts) : "存够了"
+        }
+        let handTitle = store.funds.cycleIsPayday ? "发工资那天手上" : "手上的钱"
+        return Card(style: .list) {
+            VStack(spacing: YubaiSpace.none) {
+                rowLabel(minus: false, title: handTitle, detail: FixedFlowPresentation.monthDay(formula.cycleStart), cents: formula.hand, chevron: false, highlighted: false)
+                plainRow(title: "存着不动", cents: formula.fixedSavings, identifier: "closedFormulaFixed")
+                divider
+                rowLabel(minus: true, title: "每月存", detail: status, cents: formula.saving, chevron: false, highlighted: false)
+                plainRow(title: "固定账单", cents: formula.bills, identifier: "closedFormulaBills")
+                plainRow(title: "花掉的", cents: formula.spent, identifier: "closedFormulaSpent")
+                formulaResult(title: "剩下", amount: formula.remaining, identifier: "closedFormulaResult")
+            }
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("closedFormulaCard")
+    }
+    private func closedWhereButton(_ formula: ClosedFormula) -> some View {
+        Button {
+            store.resetRootNavigation()
+            store.ledgerPreset = LedgerPreset(mode: .whereTo, interval: DateInterval(start: formula.cycleStart, end: Dates.addDays(1, to: formula.cycleEnd)))
+            store.destination = .ledger
+        } label: {
+            HStack(spacing: YubaiSpace.space4) {
+                Text("看这个周期花在哪")
+                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).accessibilityHidden(true)
+            }.frame(maxWidth: .infinity)
+        }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("closedFormulaWhere")
     }
 
     // MARK: 算式
@@ -138,24 +210,27 @@ struct FormulaView: View {
 
     // MARK: 结果
     private func resultRow(_ formula: SpendableFormula) -> some View {
-        let ink = formula.available < 0 ? YubaiColor.amberInk : YubaiColor.brandInk
+        formulaResult(title: "还能花", amount: formula.available, identifier: "formulaResult")
+    }
+    private func formulaResult(title: String, amount: Int64, identifier: String) -> some View {
+        let ink = amount < 0 ? YubaiColor.amberInk : YubaiColor.brandInk
         return VStack(spacing: YubaiSpace.none) {
             Rectangle().fill(YubaiColor.label).frame(height: 2).accessibilityHidden(true)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.space8) {
                     Text("=").yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelSecondary)
                         .frame(width: YubaiSpace.space16, alignment: .leading).accessibilityHidden(true)
-                    Text("还能花").yubaiFont(YubaiFont.rowTitle, weight: .semibold)
+                    Text(title).yubaiFont(YubaiFont.rowTitle, weight: .semibold)
                     Spacer(minLength: YubaiSpace.space8)
-                    AmountLabel(cents: formula.available, hide: store.preferences.hideAmounts, role: .account, ink: ink)
+                    AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .account, ink: ink)
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    Text("还能花").yubaiFont(YubaiFont.rowTitle, weight: .semibold)
-                    AmountLabel(cents: formula.available, hide: store.preferences.hideAmounts, role: .account, ink: ink)
+                    Text(title).yubaiFont(YubaiFont.rowTitle, weight: .semibold)
+                    AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .account, ink: ink)
                 }
             }.padding(.vertical, YubaiSpace.space12).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
-        }.accessibilityElement(children: .combine).accessibilityIdentifier("formulaResult")
+        }.accessibilityElement(children: .combine).accessibilityIdentifier(identifier)
     }
 
     // MARK: 要进来的
@@ -209,6 +284,7 @@ private struct FormulaBillRow: View {
             if let planID = row.planID {
                 TabNavigationLink(.billDetail(planID)) { BillDetailView(planID: planID) } label: { summary }
                     .buttonStyle(PressButtonStyle()).accessibilityLabel("看" + row.title)
+                    .accessibilityValue(FixedFlowPresentation.monthDay(row.date))
                     .accessibilityIdentifier("formulaBill_" + planID.uuidString)
                     .modifier(RowMenuIfOpen(open: !paid, planID: planID, occurrence: row.date))
                 BillCheck(planID: planID, occurrence: row.date)
@@ -261,7 +337,8 @@ struct FormulaEditSheet: View {
             FormulaAmountEditor(field: field, amount: store.formula.fixedSavings, percent: nil, sharing: false)
         case .saving:
             let current = store.current
-            FormulaAmountEditor(field: field, amount: store.formula.savingRuleTarget,
+            let base: Int64 = { if case .fixed(let amount)? = current.savingRule { return amount }; return 0 }()
+            FormulaAmountEditor(field: field, amount: base,
                                 percent: sharePercent(current.savingRule) ?? current.lastSavingSharePercent,
                                 sharing: sharePercent(current.savingRule) != nil)
         }

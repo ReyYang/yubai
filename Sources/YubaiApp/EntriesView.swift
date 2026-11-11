@@ -12,6 +12,8 @@ struct EntriesView: View {
     @State private var filter = EntryTimeline.Filter.all
     @State private var search = ""
     @State private var scope: DateInterval?
+    @State private var categoryScope: String?
+    @State private var categoryTimeline: EntryTimeline.Snapshot?
     @State private var pickingMonth = false
     @State private var pickerYear = Dates.calendar.component(.year, from: Date())
     @State private var pickerMonth = Dates.calendar.component(.month, from: Date())
@@ -30,7 +32,8 @@ struct EntriesView: View {
     var body: some View {
         // Cached once per ledger revision/query. List creates the display rows
         // lazily, including when thousands of entries span many months.
-        let timeline = store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
+        let timeline = categoryScope == nil ? store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
+            : categoryTimeline ?? store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
         let hideAmounts = store.preferences.hideAmounts
         let groups = scoped(displayMonths(timeline))
         ScrollViewReader { proxy in
@@ -68,6 +71,7 @@ struct EntriesView: View {
                 jump(to: store.entryFilterDate ?? Date())
             }
             .onChange(of: request, initial: true) { _, value in applyRequest(value) }
+            .task(id: categoryQuery) { await refreshCategoryTimeline() }
             .sheet(isPresented: $pickingMonth) { monthSheet }
             .sheet(item: $categoryTarget) { target in categorySheet(target.id) }
         }
@@ -85,6 +89,12 @@ struct EntriesView: View {
                 }
                 searchField
                 if !searching { filters }
+                if let categoryScope {
+                    Button { self.categoryScope = nil; categoryTimeline = nil; scope = nil } label: {
+                        Label(Classification.displayCategory(categoryScope), systemImage: "xmark.circle")
+                            .yubaiFont(YubaiFont.callout).frame(minHeight: YubaiSize.tapMin)
+                    }.buttonStyle(PressButtonStyle()).accessibilityLabel("清掉分类筛选").accessibilityIdentifier("clearLedgerCategory")
+                }
                 summary(groups, hide: hide)
             }
         }.padding(.top, YubaiSpace.space4)
@@ -267,7 +277,8 @@ struct EntriesView: View {
     private func applyRequest(_ value: LedgerPreset?) {
         guard let value, value.mode == .detail else { return }
         filter = .all
-        search = value.search.isEmpty ? (value.category ?? "") : value.search
+        search = value.search
+        categoryScope = value.category; categoryTimeline = nil
         scope = value.interval
         scrollToTop = true
         request = nil
@@ -277,7 +288,27 @@ struct EntriesView: View {
         // Scroll after List has received the target header (also for an empty month).
         Task { @MainActor in await Task.yield(); scrollMonth = month }
     }
-    private func endSearch() { searchFocused = false; search = ""; scope = nil; scrollToTop = true }
+    private func endSearch() { searchFocused = false; search = ""; scope = nil; categoryScope = nil; categoryTimeline = nil; scrollToTop = true }
+    private var categoryQuery: String { "\(store.ledgerRevision)-\(store.financialNow)-\(categoryScope ?? "")-\(String(describing: scope))-\(search)-\(filter.rawValue)-\(month)" }
+    @MainActor private func refreshCategoryTimeline() async {
+        guard let categoryScope else { categoryTimeline = nil; return }
+        let ledger = store.current; let at = store.financialNow; let interval = scope
+        let query = search; let filter = filter; let month = month
+        let value = await Task.detached(priority: .userInitiated) {
+            let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+            let category = ledger.resolveCategory(categoryScope, income: false)
+            let rows = ledger.entries.filter { entry in
+                guard entry.deletedAt == nil, entry.date <= at, entry.nature == .expense || entry.nature == .refund else { return false }
+                if let interval, entry.date < interval.start || entry.date >= interval.end { return false }
+                let source = entry.relatedEntryID.flatMap { lookup[$0] } ?? entry
+                if categoryScope == Reconciliation.unitemizedTitle { return source.isUnitemized && Classification.isPending(source) }
+                return ledger.normalizedCategory(for: entry, entriesByID: lookup).category == category
+            }.sorted { $0.date > $1.date }
+            return EntryTimeline.snapshot(sortedEntries: rows, ledger: ledger, month: month, search: query, filter: filter, allMonths: true)
+        }.value
+        guard !Task.isCancelled else { return }
+        categoryTimeline = value
+    }
     private var monthYears: ClosedRange<Int> {
         let years = store.sortedEntries.map { Dates.calendar.component(.year, from: $0.date) }
         let year = Dates.calendar.component(.year, from: Date())
@@ -363,8 +394,9 @@ struct LedgerEntryRow: View {
     let isFresh: Bool
     var onSortCategory: () -> Void = {}
     var body: some View {
-        Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: { content }
+        entryButton
             .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+            .accessibilityValue(isFuture ? "未来" : "")
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.amberInk) }
                     .tint(YubaiColor.amberTint).accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
@@ -383,6 +415,13 @@ struct LedgerEntryRow: View {
                 withAnimation(YubaiMotion.wash(reduceMotion: reduceMotion)) { highlighted = false }
             }
     }
+    @ViewBuilder private var entryButton: some View {
+        if savedEntry?.isUnitemized == true {
+            TabNavigationLink(.entryDetail(entry.id)) { EntryDetailView(entryID: entry.id) } label: { content }
+        } else {
+            Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: { content }
+        }
+    }
     private var savedEntry: Entry? { store.entriesByID[entry.id] }
     private var title: String { savedEntry?.displayTitle ?? entry.categoryName }
     private func duplicate() {
@@ -399,8 +438,12 @@ struct LedgerEntryRow: View {
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
             HStack(spacing: YubaiSpace.space8) {
-                Text(title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
+                Text(title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(isFuture ? YubaiColor.labelSecondary : YubaiColor.label)
                     .lineLimit(textSize.isAccessibilitySize ? 3 : 1).truncationMode(.tail)
+                if isFuture {
+                    Image(systemName: "calendar").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityLabel("未来")
+                        .accessibilityIdentifier("futureEntry_" + entry.id.uuidString)
+                }
                 if entry.intoFixedSavings {
                     Label("存着不动", systemImage: "lock").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
                         .padding(.horizontal, 6).frame(minHeight: 20).background(YubaiColor.brandTint, in: Capsule()).fixedSize()
@@ -414,9 +457,10 @@ struct LedgerEntryRow: View {
     }
     private var amountView: some View {
         AmountLabel(cents: entry.amount, hide: hideAmounts, sign: entry.inflow ? .inflow : .outflow,
-                    ink: entry.inflow ? YubaiColor.brandInk : YubaiColor.label)
+                    ink: isFuture ? YubaiColor.labelSecondary : entry.inflow ? YubaiColor.brandInk : YubaiColor.label)
             .fixedSize(horizontal: true, vertical: false)
     }
+    private var isFuture: Bool { savedEntry.map { $0.date > store.financialNow } ?? false }
     private var content: some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
         return HStack(spacing: YubaiSpace.gapGroup) {

@@ -12,6 +12,7 @@ struct SavingTabView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
                 hero
                 monthlyRow
+                ReservePaybackProgressList(identifier: "savingPaybackProgress")
                 recentSection
                 wishSection
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
@@ -57,6 +58,9 @@ struct SavingTabView: View {
     }
     private var monthlyValue: String {
         if hide { return "••••" }
+        if store.paybackProgress.contains(where: { $0.thisCycle > 0 && !$0.completed }) {
+            return amount2(store.funds.savingTarget, hide: false)
+        }
         switch store.current.savingRule {
         case .fixed(let value): return amount2(value, hide: false)
         case .share(let percent): return savingShare(percent)
@@ -165,6 +169,7 @@ struct ReserveLineRow: View {
     let line: ReserveLine
     let hide: Bool
     private var title: String {
+        if line.paybackID != nil { return "补回来" }
         if !line.title.isEmpty { return line.title }
         switch line.kind {
         case .monthly: return "这个月存的"

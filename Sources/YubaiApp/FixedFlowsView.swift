@@ -364,8 +364,15 @@ struct FixedFlowCheck: View {
     }
     @MainActor @discardableResult static func record(planID: UUID, occurrence: Date, title: String, amount: Int64, inflow: Bool, store: AppStore, override: Int64? = nil) -> Bool {
         do {
-            let change = try FixedFlows.settle(planID: planID, occurrence: occurrence, amount: override, in: store.current)
-            guard store.apply(change, label: (inflow ? "收到了 " : "付了 ") + title) else { return false }
+            let now = Date()
+            let label = (inflow ? "收到了 " : "付了 ") + title
+            if var pending = store.current.activeEntries.first(where: { $0.planID == planID && $0.occurrence.map(Dates.day) == Dates.day(occurrence) && $0.date > now }) {
+                pending.date = now; pending.amount = override ?? pending.amount
+                guard store.update(label, { try ManualBookkeeping.edit(pending, in: &$0, now: now) }) else { return false }
+            } else {
+                let change = try FixedFlows.settle(planID: planID, occurrence: occurrence, amount: override, in: store.current, now: now)
+                guard store.apply(change, label: label) else { return false }
+            }
             store.cancelEntrySaveMotion(); store.fixedFlowSettleTrigger &+= 1
             let value = store.preferences.hideAmounts ? "••••" : AmountLabel.text(amount)
             store.toast = "已记下 · " + title + " " + value
@@ -709,7 +716,7 @@ private extension View {
             store.sheet = .billMatch(planID: planID, occurrence: occurrence, entryID: match.id)
             return
         }
-        let amount = FixedFlows.expectedAmount(planID: planID, in: store.current) ?? plan.amount
+        let amount = FixedFlows.expectedAmount(planID: planID, in: store.current, now: store.financialNow) ?? plan.amount
         FixedFlowCheck.record(planID: planID, occurrence: occurrence, title: plan.title, amount: amount, inflow: plan.inflow, store: store)
     }
     static func skip(planID: UUID, occurrence: Date, store: AppStore) {
@@ -751,7 +758,8 @@ struct BillCheck: View {
     private var plan: Plan? { store.plans.first { $0.id == planID } }
     private var paid: Bool {
         let day = Dates.day(occurrence)
-        if store.formula.bills.contains(where: { $0.planID == planID && Dates.day($0.date) == day && $0.state == .paid }) { return true }
+        if let bill = store.formula.bills.first(where: { $0.planID == planID && Dates.day($0.date) == day }) { return bill.state == .paid }
+        if store.sortedEntries.contains(where: { $0.deletedAt == nil && $0.planID == planID && $0.occurrence.map(Dates.day) == day && $0.date > store.financialNow }) { return false }
         return plan?.settledOccurrences.contains { Dates.day($0) == day } ?? false
     }
     var body: some View {
@@ -797,13 +805,65 @@ struct BillRowMenu: View {
             .accessibilityIdentifier("billMenu_amount")
         Button("这个月不用付") { BillPayFlow.skip(planID: planID, occurrence: occurrence, store: store) }
             .accessibilityIdentifier("billMenu_skip")
-        Button("改到别的日子") { present(.editPlan(planID)) }
+        Button("改到别的日子") { present(.billMove(planID: planID, occurrence: occurrence)) }
             .accessibilityIdentifier("billMenu_move")
         Button("以后都没有这项了", action: stop)
             .foregroundStyle(YubaiColor.amberInk).accessibilityIdentifier("billMenu_stop")
     }
     private func present(_ sheet: AppSheet) {
         store.sheetSource = nil; store.sheet = sheet
+    }
+}
+
+/// 只挪当前这一期；清掉改期时把 Core 保存的原排程日交回去。
+struct BillMoveSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let planID: UUID
+    let occurrence: Date
+    @State private var day: Date
+    @State private var today = Date()
+    init(planID: UUID, occurrence: Date) {
+        self.planID = planID; self.occurrence = occurrence
+        _day = State(initialValue: Dates.day(occurrence))
+    }
+    private var original: Date? {
+        store.plans.first { $0.id == planID }?.occurrenceDateOverrides?.first { Dates.day($0.value) == Dates.day(occurrence) }?.key
+    }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                ManualSheetHeader(title: "改到别的日子", actionTitle: "好", actionIdentifier: "billMoveDone", cancelIdentifier: "billMoveCancel",
+                                  cancel: { dismiss() }, action: save)
+                EntryCalendarView(selection: $day, today: today, identifier: "billMoveCalendar")
+                if let original {
+                    Button { clear() } label: {
+                        Label(FixedFlowPresentation.monthDay(original), systemImage: "arrow.uturn.backward")
+                            .yubaiFont(YubaiFont.callout).frame(minHeight: YubaiSize.tapMin)
+                    }.buttonStyle(SecondaryButtonStyle()).accessibilityLabel("回到原定日期，" + FixedFlowPresentation.monthDay(original))
+                        .accessibilityIdentifier("billMoveClear")
+                }
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
+        }.paperBackground().accessibilityIdentifier("billMoveSheet")
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            .presentationDetents([.medium, .large])
+            #endif
+    }
+    private func save() {
+        let planID = planID, occurrence = occurrence, date = day
+        let title = store.plans.first { $0.id == planID }?.title ?? "固定账单"
+        if store.update("改到别的日子", entryMotion: false, showToast: false, { ledger in
+            try FixedFlows.moveOccurrence(planID: planID, occurrence: occurrence, to: date, in: &ledger, now: Date())
+        }) { store.toast = title + " · " + FixedFlowPresentation.monthDay(date); dismiss() }
+    }
+    private func clear() {
+        let planID = planID, occurrence = occurrence
+        let date = original ?? occurrence
+        let title = store.plans.first { $0.id == planID }?.title ?? "固定账单"
+        if store.update("改到别的日子", entryMotion: false, showToast: false, { ledger in
+            try FixedFlows.clearOccurrenceMove(planID: planID, occurrence: occurrence, in: &ledger, now: Date())
+        }) { store.toast = title + " · " + FixedFlowPresentation.monthDay(date); dismiss() }
     }
 }
 
@@ -875,7 +935,7 @@ struct BillPaySheet: View {
     let occurrence: Date
     var body: some View {
         if let plan = store.plans.first(where: { $0.id == planID }) {
-            let expected = FixedFlows.expectedAmount(planID: planID, in: store.current) ?? plan.amount
+            let expected = FixedFlows.expectedAmount(planID: planID, in: store.current, now: store.financialNow) ?? plan.amount
             BillPayEditor(plan: plan, occurrence: occurrence, expected: expected)
         } else {
             Color.clear.onAppear { dismiss() }
@@ -945,7 +1005,7 @@ struct BillMatchSheet: View {
     var body: some View {
         if let plan = store.plans.first(where: { $0.id == planID }), let entry = store.entriesByID[entryID] {
             BillMatchContent(plan: plan, entry: entry, occurrence: occurrence,
-                             expected: FixedFlows.expectedAmount(planID: planID, in: store.current) ?? plan.amount)
+                             expected: FixedFlows.expectedAmount(planID: planID, in: store.current, now: store.financialNow) ?? plan.amount)
         } else {
             Color.clear.onAppear { dismiss() }
         }
@@ -1200,7 +1260,7 @@ struct BillDetailView: View {
         Group {
             if let plan { content(plan) } else { Color.clear.onAppear { dismiss() } }
         }.navigationTitle(plan?.title ?? "").yubaiNavigation()
-            .task(id: store.ledgerRevision) { history = FixedFlows.history(planID: planID, in: store.current) }
+            .task(id: "\(store.ledgerRevision)-\(store.financialNow)") { await refreshHistory() }
     }
 
     private func content(_ plan: Plan) -> some View {
@@ -1229,7 +1289,13 @@ struct BillDetailView: View {
         plan.monthlyDay ?? Dates.calendar.component(.day, from: plan.dueDate)
     }
     private func expected(_ plan: Plan) -> Int64 {
-        FixedFlows.expectedAmount(planID: plan.id, in: store.current) ?? plan.amount
+        FixedFlows.expectedAmount(planID: plan.id, in: store.current, now: store.financialNow) ?? plan.amount
+    }
+    @MainActor private func refreshHistory() async {
+        let ledger = store.current; let planID = planID; let now = store.financialNow
+        let value = await Task.detached(priority: .userInitiated) { FixedFlows.history(planID: planID, in: ledger, now: now) }.value
+        guard !Task.isCancelled else { return }
+        history = value
     }
 
     // MARK: 设置

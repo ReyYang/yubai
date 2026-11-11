@@ -13,7 +13,7 @@ struct ProfileView: View {
     @State private var editing = false
     @State private var configured = IntelligenceRuntime.isConfigured
     private var profile: SpendingProfile { store.profile }
-    private var canChat: Bool { configured && store.preferences.cloudAIEnabled && IntelligenceRuntime.cloud.unavailableModel == nil }
+    private var canChat: Bool { configured && store.preferences.isAIEnabled(for: .answers) && IntelligenceRuntime.cloud.unavailableModel == nil }
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
             ForEach(store.current.pendingChanges.filter(\.isProfileOnly)) { change in
@@ -78,7 +78,7 @@ struct ProfileView: View {
                 Text("和余白聊聊").yubaiFont(YubaiFont.rowTitle)
                 Spacer()
                 if !canChat {
-                    Text(!configured ? "还没配密钥" : (!store.preferences.cloudAIEnabled ? "云端智能没开" : "模型不可用")).yubaiFont(YubaiFont.caption)
+                    Text(!configured ? "还没配密钥" : (!store.preferences.isAIEnabled(for: .answers) ? "云端智能没开" : "模型不可用")).yubaiFont(YubaiFont.caption)
                 }
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
             }.foregroundStyle(canChat ? YubaiColor.brandTintStrong : YubaiColor.amberInk).frame(minHeight: YubaiSize.rowDouble)
@@ -162,7 +162,7 @@ struct ProfileView: View {
             Button { sheet = .principle(text) } label: {
                 Text(text).yubaiFont(YubaiFont.row).multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle())
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("profilePrinciple_" + text)
             if editing {
                 Menu {
                     Button("编辑") { sheet = .principle(text) }

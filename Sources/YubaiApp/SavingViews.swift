@@ -29,7 +29,7 @@ struct ProfileChatEntry: View {
     var prominent = false
     @State private var showing = false
     @State private var configured = IntelligenceRuntime.isConfigured
-    private var enabled: Bool { configured && store.preferences.cloudAIEnabled && IntelligenceRuntime.cloud.unavailableModel == nil }
+    private var enabled: Bool { configured && store.preferences.isAIEnabled(for: .answers) && IntelligenceRuntime.cloud.unavailableModel == nil }
     var body: some View {
         Button { showing = true } label: {
             HStack(spacing: YubaiSpace.gapGroup) {
@@ -91,9 +91,6 @@ private struct CooldownWishCard: View {
     @Environment(AppStore.self) private var store
     let wish: WishItem
     @State private var recording = false
-    private var days: Int {
-        max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(wish.coolUntil ?? Date())).day ?? 0)
-    }
     private var question: String {
         let amount: String = store.preferences.hideAmounts ? "" : " " + Money.text(wish.amount, currency: false)
         return wish.title + amount + "，还想要吗？"
@@ -118,7 +115,8 @@ private struct CooldownWishCard: View {
     private var heading: some View {
         HStack(spacing: YubaiSpace.space8) {
             Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true)
-            Text("冷静了 \(days) 天").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
+            Text("冷静了 " + WishWaitText.duration(from: wish.createdAt, to: wish.coolUntil ?? wish.createdAt))
+                .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
         }
     }
     private var actions: some View {
@@ -131,6 +129,20 @@ private struct CooldownWishCard: View {
     }
     @discardableResult private func answer(_ choice: CooldownChoice) -> Bool {
         store.update("回答心愿", showToast: false) { try Wishlist.answerCooldown(wish.id, choice: choice, in: &$0, now: Date()) }
+    }
+}
+
+enum WishWaitText {
+    static func remaining(until: Date, now: Date) -> String {
+        let hours = max(1, Int(ceil(until.timeIntervalSince(now) / 3600)))
+        return hours < 24 ? "\(hours) 小时" : "\(Int(ceil(Double(hours) / 24))) 天"
+    }
+    static func duration(from: Date, to: Date) -> String {
+        let hours = max(0, Int((to.timeIntervalSince(from) / 3600).rounded()))
+        if hours < 24 { return "\(hours) 小时" }
+        let components = Dates.calendar.dateComponents([.day, .hour, .minute], from: from, to: to)
+        if components.hour == 0 && components.minute == 0 { return "\(max(0, components.day ?? 0)) 天" }
+        return "\(hours) 小时"
     }
 }
 
@@ -150,33 +162,6 @@ struct WishRegretEntry: View {
                     ProfileChatEntry(title: "写进消费观", context: .wishRegret(wish.title + " · " + (wish.followUpAnswer ?? "有点后悔")))
                     Button("收起") { dismissed = true }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
                 }
-            }
-        }
-    }
-}
-
-struct LetterSavingsTiles: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
-    let facts: LetterFacts
-    private var hasSavings: Bool { (facts.totalSavings ?? 0) > 0 || (facts.weeklySavings ?? 0) > 0 }
-    private var layout: AnyLayout {
-        if textSize.isAccessibilitySize { return AnyLayout(VStackLayout(spacing: YubaiSpace.gapGroup)) }
-        return AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-    }
-    var body: some View {
-        if hasSavings {
-            layout {
-                tile("这周省下", facts.weeklySavings ?? 0)
-                tile("一共省下", facts.totalSavings ?? 0)
-            }.accessibilityIdentifier("letterSavings")
-        }
-    }
-    private func tile(_ title: String, _ amount: Int64) -> some View {
-        Card(style: .compact, background: YubaiColor.brandTint) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text(title).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
-                AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .large, ink: YubaiColor.brandTintStrong)
             }
         }
     }

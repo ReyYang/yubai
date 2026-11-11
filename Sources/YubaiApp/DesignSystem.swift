@@ -2272,36 +2272,6 @@ struct AskToolbarButton: View {
     }
 }
 
-struct TabRootHeader: View {
-    @Environment(AppStore.self) private var store
-    let title: String
-    var showsAmountVisibility = false
-    var onSearch: (() -> Void)? = nil
-    var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 8) {
-                if showsAmountVisibility {
-                    HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
-                        Image(systemName: store.preferences.hideAmounts ? "eye.slash" : "eye").font(.system(size: size))
-                    }.accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额").accessibilityIdentifier("toggleAmountVisibility")
-                }
-                Spacer(minLength: 0)
-            }.frame(width: 88)
-            Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity).accessibilityIdentifier("rootHeaderTitle")
-            HStack(spacing: 8) {
-                Spacer(minLength: 0)
-                if showsAmountVisibility {
-                    Button { onSearch?() } label: {
-                        Image(systemName: "magnifyingglass").font(.system(size: 18))
-                            .frame(width: 40, height: 40).controlSurface(in: Circle())
-                    }.buttonStyle(RoundPressStyle()).accessibilityLabel("搜索账目").accessibilityIdentifier("entriesSearchButton")
-                }
-                AskToolbarButton().frame(width: 40, height: 44)
-            }.frame(width: 88)
-        }.frame(height: 48)
-    }
-}
-
 /// Pushed pages reserve identical side columns so their title never drifts.
 struct LedgerPageHeader: View {
     @Environment(\.dismiss) private var dismiss

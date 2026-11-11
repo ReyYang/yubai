@@ -3,7 +3,10 @@ import YubaiCore
 
 struct WishlistView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.scenePhase) private var phase
     var focusedWishID: UUID? = nil
+    @State private var now = Date()
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
             SavingsHeader()
@@ -46,7 +49,8 @@ struct WishlistView: View {
                         .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
-        }.navigationTitle("心愿单").yubaiNavigation()
+        }.navigationTitle("心愿单").yubaiNavigation().task(id: store.ledgerRevision) { now = Date() }
+            .onChange(of: phase) { _, value in if value == .active { now = Date() } }
     }
     private func followUpCard(_ wish: WishItem) -> some View {
         LetterDismissCard(onDismiss: { store.dismissWishFollowUp(wish.id) }, onMute: { store.dismissWishFollowUp(wish.id, mute: true) }) { animateDismiss in
@@ -61,13 +65,11 @@ struct WishlistView: View {
         }.accessibilityElement(children: .contain).accessibilityIdentifier("butlerCard_followUp")
     }
     private func ageText(_ wish: WishItem) -> String? {
-        let now: Date = Date()
         let days: Int = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(wish.createdAt), to: Dates.day(now)).day ?? 0)
         guard wish.status == .thinking else { return "加入 \(days) 天 · " + Dates.text(wish.createdAt) }
         guard let until = wish.coolUntil else { return "放了 \(days) 天" }
         guard until > now else { return nil }
-        let remaining: Int = max(until > now ? 1 : 0, Dates.calendar.dateComponents([.day], from: Dates.day(now), to: Dates.day(until)).day ?? 0)
-        return "冷静中 · 还有 \(remaining) 天"
+        return "冷静中 · 还有 " + WishWaitText.remaining(until: until, now: now)
     }
     private func followUpVisible(_ wish: WishItem) -> Bool {
         guard wish.status == .bought, wish.followUpAnswer == nil, wish.followUpAt.map({ $0 <= Date() }) == true else { return false }
@@ -79,13 +81,12 @@ struct WishlistView: View {
     }
     private func wishContent(_ wish: WishItem) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            HStack(spacing: YubaiSpace.gapGroup) {
-                Text(wish.title).yubaiFont(YubaiFont.rowTitle)
-                if wish.status == .bought { Pill(text: "已买", variant: .brand, showsDot: false) }
-                Spacer(minLength: YubaiSpace.space8)
-                AmountLabel(cents: wish.amount, hide: store.preferences.hideAmounts)
+            wishHeading(wish)
+            if let age = ageText(wish) {
+                Text(age).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    .accessibilityIdentifier("wishWait_" + wish.id.uuidString)
+                    .accessibilityValue(wish.coolUntil.map { "等待 \(Int(($0.timeIntervalSince(wish.createdAt) / 3600).rounded())) 小时" } ?? "")
             }
-            if let age = ageText(wish) { Text(age).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             if !wish.judgment.isEmpty { Text(store.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
             if wish.status != .bought {
                 ViewThatFits(in: .horizontal) {
@@ -107,6 +108,14 @@ struct WishlistView: View {
                 else if let due = wish.followUpAt, due <= Date() { WishFollowUpView(wishID: wish.id) }
             }
         }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+    }
+    private func wishHeading(_ wish: WishItem) -> some View {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+        return layout {
+            Text(wish.title).yubaiFont(YubaiFont.rowTitle).frame(maxWidth: .infinity, alignment: .leading)
+            if wish.status == .bought { Pill(text: "已买", variant: .brand, showsDot: false) }
+            AmountLabel(cents: wish.amount, hide: store.preferences.hideAmounts)
+        }
     }
     @ViewBuilder private func wishActions(_ wish: WishItem) -> some View {
         if wish.status == .thinking {

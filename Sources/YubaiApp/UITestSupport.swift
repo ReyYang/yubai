@@ -67,18 +67,19 @@ enum UITestSupport {
     /// Round 45 fixtures. Numbers follow the design boards; dates follow the simulator clock.
     static let v45Scripts: Set<String> = [
         "v45-home", "v45-fast", "v45-over", "v45-bill", "v45-payday", "v45-late", "v45-newcycle", "v45-gap", "v45-new",
-        "v45-share", "v45-bill-match", "v45-entry-history", "v45-ask"
+        "v45-share", "v45-bill-match", "v45-entry-history", "v45-ask",
+        "v45-category", "v45-payback", "v45-split"
     ]
     static var script: String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name) || v45Scripts.contains(name)) else { return nil }
+              (screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
-        guard ["import", "welcome-import"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
+        guard ["import", "welcome-import", "v45-import-merge"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1] + (erasesThenReimports ? "-input" : ""))
             .appendingPathComponent("合成账单.csv")
@@ -87,7 +88,7 @@ enum UITestSupport {
         script == "welcome-import" && ProcessInfo.processInfo.environment["YUBAI_UI_ERASE_REIMPORT"] == "1"
     }
     static var welcomeStatementURL: URL? { script == "welcome-import" ? statementURL : nil }
-    static func prepare(_ repository: LedgerRepository) throws {
+    @MainActor static func prepare(_ repository: LedgerRepository) throws {
         guard let script else { return }
         if let url = statementURL, let encoded = ProcessInfo.processInfo.environment["YUBAI_UI_STATEMENT"],
            let data = Data(base64Encoded: encoded), data.count < 1_000_000 {
@@ -97,6 +98,10 @@ enum UITestSupport {
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty",
               script != "welcome-import" || erasesThenReimports else { return }
         let now = Date()
+        if secondBatchScripts.contains(script) {
+            try prepareSecondBatch(repository, script: script, now: now)
+            return
+        }
         if erasesThenReimports {
             var ledger = Ledger(); ledger.preferences.onboardingComplete = true
             ledger.accounts = [Account(name: "合成卡")]; ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
@@ -212,6 +217,7 @@ enum UITestSupport {
     }
     /// 现在页各状态。手上的钱、每月存、固定存款和账单照画板：还能花 = 手上 − 存着不动 5,000 − 每月存 2,000 − 固定账单还要付。
     static func v45Ledger(_ script: String, now: Date) throws -> Ledger {
+        if ["v45-category", "v45-payback", "v45-split"].contains(script) { return try v45SecondBatchLedger(script, now: now) }
         if ["v45-share", "v45-bill-match", "v45-entry-history", "v45-ask"].contains(script) {
             var ledger = try v45Ledger(script == "v45-bill-match" ? "v45-bill" : "v45-home", now: now)
             let accountID = ledger.accounts[0].id
@@ -233,7 +239,7 @@ enum UITestSupport {
                     let date = Dates.addDays(-offset, to: now)
                     var entry = Entry(date: date, amount: 1800, accountID: accountID,
                                       title: "合成咖啡", category: offset == 1 ? "购物" : "餐饮")
-                    entry.purpose = "合成咖啡"; entry.recordedAt = date; entry.categoryUserEdited = true
+                    entry.purpose = "合成咖啡"; entry.recordedAt = date; entry.userEdited = true
                     ledger.entries.append(entry)
                 }
             default:
@@ -332,10 +338,37 @@ enum UITestSupport {
         try ledger.validate()
         return ledger
     }
+    private static func v45SecondBatchLedger(_ script: String, now: Date) throws -> Ledger {
+        var ledger = try v45Ledger(script == "v45-split" ? "v45-gap" : "v45-home", now: now)
+        let account = ledger.accounts[0]
+        switch script {
+        case "v45-category":
+            ledger.cycleAnchor = .calendarMonth; ledger.entries = []
+            let start = Finance.cycle(in: ledger, now: now).start
+            let lunch = Entry(date: start, amount: 2800, accountID: account.id, title: "合成午饭", category: "餐饮")
+            var refund = Entry(date: now, amount: 500, nature: .refund, accountID: account.id, title: "合成退款", category: "餐饮")
+            refund.relatedEntryID = lunch.id
+            ledger.entries = [lunch, Entry(date: now, amount: 3200, accountID: account.id, title: "合成午饭", category: "餐饮"), refund,
+                              Entry(date: now, amount: 100, accountID: account.id, title: "合成餐饮备注", category: "购物")]
+            for (offset, amount) in [62_400, 70_200, 58_800].enumerated() {
+                ledger.entries.append(Entry(date: Dates.addMonths(-offset - 1, to: start), amount: Int64(amount), accountID: account.id, title: "合成午饭", category: "餐饮"))
+            }
+            seedClosedV45Cycle(&ledger, now: now)
+        case "v45-payback":
+            var purchase = Entry(date: now, amount: 120_000, accountID: account.id, title: "大衣", category: "购物", fromReserve: true)
+            purchase.recordedAt = now
+            ledger.entries.append(purchase)
+        default:
+            let actual = Finance.balance(account, in: ledger, at: now) - 41_200
+            try Reconciliation.apply(&ledger, actual: [account.id: actual], now: now)
+        }
+        try ledger.validate()
+        return ledger
+    }
     private static func seedClosedV45Cycle(_ ledger: inout Ledger, now: Date, unspent: Int64 = 0) {
         let cycle = Finance.cycle(in: ledger, now: now)
         let previous = Finance.cycle(in: ledger, now: cycle.start.addingTimeInterval(-1))
-        ledger.savingHistory = [CycleSaving(cycleStart: previous.start, cycleEnd: previous.end,
+        ledger.savingHistory = [CycleSaving(cycleStart: previous.start, cycleEnd: min(previous.end, Dates.addDays(-1, to: cycle.start)),
                                            income: 801_000, target: 200_000, saved: 200_000,
                                            unspent: unspent, leftoverChoice: unspent == 0 ? .keep : nil)]
     }
@@ -572,6 +605,7 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
+        if let reply = try UITestSupport.secondBatchReceiptReply(request, script: script) { return reply }
         if ["导入整理", "导入整理·按对方"].contains(request.purpose), UITestSupport.usesBackgroundFixture {
             try await Task.sleep(for: .seconds(8))
         }
@@ -680,7 +714,7 @@ struct UITestTransport: ChatTransport {
             return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array(rows), "items": .array([]),
                 "series": .array([]), "questions": .array(questions)]).jsonText())
         }
-        if script.hasPrefix("judge-") { return try purchaseReply(request) }
+        if script.hasPrefix("judge-") || script == "v45-principles" { return try purchaseReply(request) }
         if script == "profile-revisit", request.purpose == "消费观对话" {
             let reply = profileReply(request)
             if reply.toolCalls == nil, request.messages.contains(where: { $0.role == .assistant && $0.toolCalls == nil }),
@@ -745,7 +779,7 @@ struct UITestTransport: ChatTransport {
         if !judged {
             let skip: Bool = script == "judge-skip"
             var fields: [String: JSONValue] = ["title": .string(skip ? "降噪耳机" : "徒步鞋"),
-                "amount": .string(skip ? "1899" : "899"), "category": .string("购物"),
+                "amount": .string(script == "v45-principles" ? "2480" : (skip ? "1899" : "899")), "category": .string("购物"),
                 "subcategory": .string(skip ? "数码电器" : "运动户外")]
             if skip {
                 let rentDate = Dates.calendar.dateInterval(of: .month, for: Date())!.end

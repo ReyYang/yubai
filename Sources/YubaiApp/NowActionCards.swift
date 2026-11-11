@@ -3,9 +3,9 @@ import YubaiCore
 
 @MainActor extension AppStore {
     var cloudAIReady: Bool {
-        preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil
+        preferences.isAIEnabled(for: .answers) && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil
     }
-    var organizationAIReady: Bool { preferences.cloudAIEnabled && IntelligenceRuntime.isConfigured }
+    var organizationAIReady: Bool { preferences.isAIEnabled(for: .importClassification) && IntelligenceRuntime.isConfigured }
     func confirmSalary(_ candidate: SalaryCandidate) {
         guard SalaryDetection.candidate(in: current)?.key == candidate.key else { return }
         if update("工资", showToast: false, { ledger in

@@ -43,7 +43,7 @@ struct QuickEntryView: View {
     private var reserveTotal: Int64 { store.funds.fixedSavingsTotal }
     private var useReserve: Bool { nature == .expense && fromReserve && !repeatsMonthly && selectedLink == nil }
     private var isBig: Bool { nature == .expense && big != nil && !repeatsMonthly && selectedLink == nil }
-    private var showsDestination: Bool { isBig || (nature == .expense && prefill?.fromReserve == true) }
+    private var showsDestination: Bool { isBig || (nature == .expense && (fromReserve || prefill?.fromReserve == true)) }
     private var wishInHeader: Bool { isBig }
     private var reserveEnough: Bool { !useReserve || amountCents <= reserveTotal }
     private var canSave: Bool {
@@ -130,7 +130,7 @@ struct QuickEntryView: View {
             ResultBar(label: "存着不动", value: compact ? amount2(totals.new, hide: hide) : ResultBar.change(totals.current, totals.new, hide: hide),
                       identifier: "entrySavingHint")
         } else if useReserve {
-            let after = reserveTotal - amountCents
+            let after = Dates.day(date) > Dates.day(store.financialNow) ? reserveTotal : reserveTotal - amountCents
             ResultBar(label: "存着的钱", value: compact ? amount2(after, hide: hide) : ResultBar.change(reserveTotal, after, hide: hide),
                       amber: after < 0, identifier: "entrySavingHint")
         } else if isBig, let big {
@@ -185,7 +185,7 @@ struct QuickEntryView: View {
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: YubaiSpace.space8) {
-                    EntryDayChips(date: $date)
+                    EntryDayChips(date: $date, allowsFuture: true)
                     Rectangle().fill(YubaiColor.grabber).frame(width: 1, height: 20).accessibilityHidden(true)
                     EntryAccountMenu(accounts: accounts, balances: balances, selection: $accountID, inTray: true, identifier: "entryAccountChip")
                     if nature == .income { EntryFixedSavingsChip(selected: $intoFixedSavings, action: { purposeFocused = false }) }
@@ -218,7 +218,7 @@ struct QuickEntryView: View {
             intoFixedSavings = nature == .income && prefill.intoFixedSavings
             fromReserve = nature == .expense && prefill.fromReserve
             purpose = prefill.purpose ?? ""
-            if let day = prefill.date, Dates.day(day) <= Dates.day(Date()) { date = day }
+            if let day = prefill.date { date = day }
             if let amount = prefill.amount { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
         }
         previewAvailable = store.funds.available
@@ -298,7 +298,7 @@ struct QuickEntryView: View {
         let result = await Task.detached(priority: .userInitiated) {
             let match = FixedFlows.suggestions(amount: amount, nature: nature, purpose: purpose, day: day, accountID: account, in: ledger).first
             let available = change.flatMap { try? ManualBookkeeping.available(after: $0, in: ledger, now: now) } ?? fallback
-            let large = nature == .expense && amount > 0 ? Finance.bigPurchase(ledger, amount: amount, now: now) : nil
+            let large = nature == .expense && amount > 0 && Dates.day(day) <= Dates.day(now) ? Finance.bigPurchase(ledger, amount: amount, now: now) : nil
             return (match, available, large)
         }.value
         guard !Task.isCancelled else { return }
@@ -307,6 +307,7 @@ struct QuickEntryView: View {
     }
     private var fixedSavingsTotals: (current: Int64, new: Int64)? {
         guard nature == .income, intoFixedSavings else { return nil }
+        if Dates.day(date) > Dates.day(store.financialNow) { return (reserveTotal, reserveTotal) }
         let draft = EntryDraft(date: date, amount: amountCents, nature: nature, accountID: accountID ?? UUID(),
                                title: purpose, category: effectiveCategory.category, intoFixedSavings: true)
         if case .fixedSavings(let total) = EntryHint.make(ledger: store.current, draft: draft, isFixedBill: repeatsMonthly || selectedLink != nil) {
@@ -401,7 +402,7 @@ struct QuickEntryView: View {
     private func finishSaved(_ change: ChangeSet) {
         let title = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = title.isEmpty ? Classification.displayCategory(effectiveCategory.category) : title
-        let backfill = !Dates.calendar.isDateInToday(date) && nature == .expense
+        let backfill = Dates.day(date) < Dates.day(Date()) && nature == .expense
         if backfill {
             // Continuous entry keeps the sheet open, so the root's deferred
             // sheet-dismissal success must be delivered here exactly once.

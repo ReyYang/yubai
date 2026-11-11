@@ -5,6 +5,7 @@ import YubaiCore
 /// 点完任何一行调 `dismiss()`。
 struct QuickRepeatMenu: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
     let dismiss: () -> Void
     @State private var items: [EntryHistory.Repeat] = []
 
@@ -14,19 +15,24 @@ struct QuickRepeatMenu: View {
                 row(item, index: index)
                 EntryFormDivider()
             }
-            receiptRow
-        }.padding(.horizontal, YubaiSpace.insetCard).frame(width: 230)
+            if store.preferences.isAIEnabled(for: .receiptRecognition) && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil { receiptRow }
+        }.padding(.horizontal, YubaiSpace.insetCard).frame(maxWidth: textSize.isAccessibilitySize ? .infinity : 230)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
-            .task { items = EntryHistory.repeats(in: store.current, now: Date()) }
+            .task(id: store.ledgerRevision) {
+                let ledger = store.current, now = Date()
+                let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now) }.value
+                guard !Task.isCancelled else { return }; items = value
+            }
     }
 
     private func row(_ item: EntryHistory.Repeat, index: Int) -> some View {
         let hide = store.preferences.hideAmounts
         return Button { record(item) } label: {
-            HStack(spacing: YubaiSpace.space8) {
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
+            layout {
                 Text(item.purpose).yubaiFont(YubaiFont.row).lineLimit(1)
-                Spacer(minLength: YubaiSpace.space8)
+                if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
                 AmountLabel(cents: item.amount, hide: hide, role: .amount, sign: .none).fixedSize()
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("quickRepeat_\(index)")

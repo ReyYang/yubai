@@ -85,6 +85,7 @@ struct SavingPurchaseCard: View {
     @State private var wishID: UUID?
     @State private var recording = false
     @State private var recordingFromReserve = false
+    @State private var waitHours = 0
     private var hidden: Bool { store.preferences.hideAmounts }
     private var assessment: PurchaseAssessment { store.purchaseAssessment(purchase) }
     private var conclusion: PurchaseVerdict { verdict?.verdict ?? assessment.verdict }
@@ -130,6 +131,9 @@ struct SavingPurchaseCard: View {
                                                           fromReserve: recordingFromReserve))
             }.environment(store).appErrors().yubaiSheetBackground()
         }
+        .task(id: "\(purchase.amount):" + store.profile.principles.joined(separator: "\n")) {
+            waitHours = Wishlist.cooldownHours(amount: purchase.amount, fromPrinciples: store.profile.principles)
+        }
     }
     private func numberRow(_ title: String, from: Int64, to: Int64) -> some View {
         let shown = hidden ? "••••" : amount2(from, hide: false) + " → " + amount2(to, hide: false)
@@ -161,8 +165,10 @@ struct SavingPurchaseCard: View {
         if monthEnough {
             Button("买了，记一笔") { recordingFromReserve = false; recording = true }.buttonStyle(PrimaryButtonStyle(compact: true))
             Button(wishTitle, action: saveWish).buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).disabled(wishID != nil)
+                .accessibilityIdentifier("purchaseSaveWish").accessibilityHint(waitHours > 0 ? "加入后等待 \(waitHours) 小时" : "加入心愿单")
         } else {
             Button(wishTitle, action: saveWish).buttonStyle(PrimaryButtonStyle(compact: true)).disabled(wishID != nil)
+                .accessibilityIdentifier("purchaseSaveWish").accessibilityHint(waitHours > 0 ? "加入后等待 \(waitHours) 小时" : "加入心愿单")
             if reserveEnough {
                 Button("从存着的钱买") { recordingFromReserve = true; recording = true }
                     .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("buyFromReserve")
@@ -175,10 +181,11 @@ struct SavingPurchaseCard: View {
     private func saveWish() {
         guard wishID == nil else { return }
         let submitted = verdict ?? SubmittedPurchaseVerdict(verdict: conclusion, reason: reason, need: .unclear, boundReason: assessment.reason)
+        let now = Date()
         var addedID: UUID?
         if store.update("加入心愿单", showToast: false, { ledger in
             addedID = try Wishlist.add(fromVerdict: submitted, title: purchase.title, amount: purchase.amount, category: purchase.category,
-                                     subcategory: purchase.subcategory, in: &ledger).id
+                                     subcategory: purchase.subcategory, in: &ledger, now: now).id
         }) { wishID = addedID }
     }
 }

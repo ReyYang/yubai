@@ -64,7 +64,7 @@ struct ProfileConversationView: View {
             .onDisappear { runningTask?.cancel() }
             .onChange(of: store.current.id) { _, _ in runningTask?.cancel(); dismiss() }
             .onChange(of: store.locked) { _, locked in if locked { runningTask?.cancel(); dismiss() } }
-            .onChange(of: store.preferences.cloudAIEnabled) { _, enabled in if !enabled { runningTask?.cancel(); dismiss() } }
+            .onChange(of: store.preferences.isAIEnabled(for: .answers)) { _, enabled in if !enabled { runningTask?.cancel(); dismiss() } }
     }
     private var assistantCount: Int { messages.filter { $0.role == .assistant }.count }
     private var progressDots: some View {
@@ -130,7 +130,7 @@ struct ProfileConversationView: View {
     }
     @MainActor private func ask() {
         guard !busy else { return }
-        guard !store.locked, store.preferences.cloudAIEnabled else {
+        guard !store.locked, store.preferences.isAIEnabled(for: .answers) else {
             errorText = "还没配密钥"; return
         }
         var turn = messages

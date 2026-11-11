@@ -228,7 +228,8 @@ struct EntryDateChip: View {
     var time = false
     var iconOnly = false
     var inTray = false
-    var allowsFuture = false
+    var allowsFuture = true
+    var identifier = ""
     @State private var picking = false
     @State private var latestDate = Date()
     var body: some View {
@@ -241,15 +242,15 @@ struct EntryDateChip: View {
                 .yubaiFont(time ? YubaiFont.amountSmall : YubaiFont.callout)
                 .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight).background(inTray ? YubaiColor.keyFn : YubaiColor.raised, in: Capsule())
                 .yubaiHitTarget()
-        }.accessibilityLabel(iconOnly ? "选别的日子" : time ? "时间" : "日期").accessibilityValue(time ? date.formatted(.dateTime.hour().minute()) : ManualBookkeeping.dayLabel(date)).buttonStyle(PressButtonStyle()).popover(isPresented: $picking) {
+        }.accessibilityLabel(iconOnly ? "选别的日子" : time ? "时间" : "日期").accessibilityValue(time ? date.formatted(.dateTime.hour().minute()) : ManualBookkeeping.dayLabel(date))
+            .accessibilityIdentifier(identifier.isEmpty ? (time ? "entryTimeChip" : "entryDatePicker") : identifier).buttonStyle(PressButtonStyle()).popover(isPresented: $picking) {
             VStack(spacing: YubaiSpace.gapGroup) {
                 if time {
-                    DatePicker("时间", selection: $date, in: ...latestDate, displayedComponents: .hourAndMinute).labelsHidden().frame(width: 240).fixedSize()
+                    DatePicker("时间", selection: $date, displayedComponents: .hourAndMinute).labelsHidden().accessibilityIdentifier("entryTimePicker")
                 } else {
-                    if allowsFuture { DatePicker("日期", selection: $date, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320, height: 360).fixedSize() }
-                    else { DatePicker("日期", selection: $date, in: ...latestDate, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().frame(width: 320, height: 360).fixedSize() }
+                    EntryCalendarView(selection: $date, today: latestDate, bounds: allowsFuture ? nil : Date.distantPast...latestDate)
                 }
-                Button("完成") { picking = false }.frame(minHeight: YubaiSize.tapMin)
+                Button("好") { picking = false }.frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("entryDateDone")
             }.padding(YubaiSpace.insetCard).transaction { $0.animation = nil }
                 #if os(iOS)
                 .presentationCompactAdaptation(.popover)
@@ -457,21 +458,18 @@ struct EditableAmountDisplay: View {
     let selected: Bool
     let identifier: String
     let open: () -> Void
+    @ScaledMetric(relativeTo: .largeTitle) private var amountLineHeight = YubaiFont.entryAmount.lineHeight
     var body: some View {
         Button(action: open) {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: YubaiSpace.none) {
                 Text(presented ? keypad.expressionText ?? "" : "").yubaiFont(YubaiFont.amount).foregroundStyle(YubaiColor.labelSecondary)
-                    .lineLimit(1).minimumScaleFactor(0.5).frame(height: 20)
+                    .fixedSize(horizontal: false, vertical: true).frame(minHeight: YubaiSpace.space20)
                     .accessibilityIdentifier("entryKeypadExpression").accessibilityHidden(!presented || keypad.expressionText == nil)
-                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                    Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-                    Text(presented ? keypad.resultText : ((try? Money.parse(amount)).map { EntryKeypad(amount: $0).resultText } ?? "0.00"))
-                        .yubaiFont(YubaiFont.entryAmount).lineLimit(1).minimumScaleFactor(0.5)
-                        .padding(.horizontal, 6)
-                        .background(selected ? YubaiColor.brandTint : .clear, in: RoundedRectangle(cornerRadius: 10))
-                    if presented { EntryAmountCursor() }
-                    Spacer(minLength: 0)
-                }.frame(minHeight: YubaiSize.rowDouble)
+                ViewThatFits(in: .horizontal) {
+                    amountLine
+                    ScrollView(.horizontal, showsIndicators: false) { amountLine }
+                        .frame(height: max(YubaiSize.rowDouble, amountLineHeight))
+                }
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).foregroundStyle(YubaiColor.label)
             .accessibilityLabel("金额").accessibilityValue(presented ? keypad.resultText : EntryKeypad(amount: (try? Money.parse(amount)) ?? 0).resultText)
@@ -481,6 +479,17 @@ struct EditableAmountDisplay: View {
                     Color.clear.preference(key: AmountEditorFrame.self, value: proxy.frame(in: .named("amountEditor")))
                 }
             }
+    }
+    private var amountLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+            Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
+            Text(presented ? keypad.resultText : ((try? Money.parse(amount)).map { EntryKeypad(amount: $0).resultText } ?? "0.00"))
+                .yubaiFont(YubaiFont.entryAmount).fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, YubaiSpace.space4)
+                .background(selected ? YubaiColor.brandTint : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            if presented { EntryAmountCursor() }
+            Spacer(minLength: YubaiSpace.none)
+        }.frame(minHeight: YubaiSize.rowDouble)
     }
 }
 
@@ -537,6 +546,7 @@ struct EntryForm<Content: View>: View {
     var actionIdentifier: String? = nil
     var scrollIdentifier = "entryFormScroll"
     var cancelTitle = "取消"
+    var cancelIdentifier = "cancelManualSheet"
     let cancel: () -> Void
     let save: () -> Void
     @ViewBuilder var content: () -> Content
@@ -544,7 +554,7 @@ struct EntryForm<Content: View>: View {
         VStack(spacing: YubaiSpace.none) {
             ManualSheetHeader(title: title, actionTitle: actionTitle, actionImage: actionImage, primary: primary,
                               showsAction: showsAction, enabled: enabled, cancelTitle: cancelTitle, actionIdentifier: actionIdentifier,
-                              cancel: cancel, action: save).padding(.horizontal, YubaiSpace.insetPage)
+                              cancelIdentifier: cancelIdentifier, cancel: cancel, action: save).padding(.horizontal, YubaiSpace.insetPage)
             ScrollView {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup, content: content)
                     .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
@@ -1001,7 +1011,7 @@ struct EntryCategoryGrid: View {
 /// 今天 / 昨天 / 前天 三颗；长按这一排升起月历。选了更早的日子，多出一颗显示那一天。
 struct EntryDayChips: View {
     @Binding var date: Date
-    var allowsFuture = false
+    var allowsFuture = true
     @State private var picking = false
     @State private var latest = Date()
     private func day(_ offset: Int) -> Date { Dates.addDays(offset, to: Date()) }
@@ -1017,10 +1027,11 @@ struct EntryDayChips: View {
             chip("昨天", id: "entryDate_yesterday", offset: -1)
             chip("前天", id: "entryDate_before", offset: -2)
             if !isStandard {
-                Text(ManualBookkeeping.dayLabel(date)).yubaiFont(YubaiFont.callout, weight: .medium).fixedSize()
+                Button { latest = Date(); picking = true } label: {
+                    Text(ManualBookkeeping.dayLabel(date)).yubaiFont(YubaiFont.callout, weight: .medium).fixedSize()
                     .foregroundStyle(YubaiColor.canvas).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: 34)
                     .background(YubaiColor.label, in: Capsule()).yubaiHitTarget()
-                    .accessibilityAddTraits(.isSelected).accessibilityIdentifier("entryDate_other")
+                }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(.isSelected).accessibilityIdentifier("entryDate_other")
             }
         }.simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in latest = Date(); picking = true })
             .accessibilityElement(children: .contain)
@@ -1039,17 +1050,17 @@ struct EntryDayChips: View {
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier(id)
     }
     private var calendar: some View {
-        VStack(alignment: .trailing, spacing: YubaiSpace.space8) {
-            Button { picking = false } label: {
-                Text("好").yubaiFont(YubaiFont.body, weight: .medium).foregroundStyle(YubaiColor.onBrand)
-                    .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).background(YubaiColor.brand, in: Circle())
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryDateDone")
-            if allowsFuture { DatePicker("日期", selection: $date, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden() }
-            else { DatePicker("日期", selection: $date, in: ...latest, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden() }
-            Spacer(minLength: YubaiSpace.none)
-        }.padding(YubaiSpace.insetPage).yubaiSheetBackground()
+        ScrollView {
+            VStack(alignment: .trailing, spacing: YubaiSpace.space8) {
+                Button { picking = false } label: {
+                    Text("好").yubaiFont(YubaiFont.body, weight: .medium).foregroundStyle(YubaiColor.onBrand)
+                        .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).background(YubaiColor.brand, in: Circle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryDateDone")
+                EntryCalendarView(selection: $date, today: latest, bounds: allowsFuture ? nil : Date.distantPast...latest)
+            }.padding(YubaiSpace.insetPage)
+        }.yubaiSheetBackground()
             #if os(iOS)
-            .presentationDetents([.medium]).presentationDragIndicator(.visible)
+            .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
             #endif
     }
 }
