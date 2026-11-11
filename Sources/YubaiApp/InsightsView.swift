@@ -63,7 +63,7 @@ struct InsightsView: View {
                     }
                 }
             }
-        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().rootTabScroll(.insights).accessibilityIdentifier("insightsScroll")
+        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().rootTabScroll(.ledger).accessibilityIdentifier("insightsScroll")
             .rootPageHeader { TabRootHeader(title: "洞察") }.navigationTitle("洞察")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)

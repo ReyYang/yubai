@@ -64,12 +64,16 @@ enum UITestSupport {
         default: return usesBackgroundFixture ? true : nil
         }
     }
+    /// Round 45 fixtures. Numbers follow the design boards; dates follow the simulator clock.
+    static let v45Scripts: Set<String> = [
+        "v45-home", "v45-fast", "v45-over", "v45-bill", "v45-payday", "v45-late", "v45-newcycle", "v45-gap", "v45-new"
+    ]
     static var script: String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name)) else { return nil }
+              (screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name) || v45Scripts.contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -108,6 +112,10 @@ enum UITestSupport {
         }
         if screenshotScripts.contains(script) {
             try repository.save(screenshotLedger(script, now: now), reason: "合成截图夹具")
+            return
+        }
+        if v45Scripts.contains(script) {
+            try repository.save(v45Ledger(script, now: now), reason: "合成测试夹具")
             return
         }
         var ledger = Ledger()
@@ -200,6 +208,92 @@ enum UITestSupport {
             }
         }
         try repository.save(ledger, reason: "合成测试夹具")
+    }
+    /// 现在页各状态。手上的钱、每月存、固定存款和账单照画板：还能花 = 手上 − 存着不动 5,000 − 每月存 2,000 − 固定账单还要付。
+    static func v45Ledger(_ script: String, now: Date) throws -> Ledger {
+        var ledger = Ledger()
+        ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = false
+        ledger.lastReflectionWeek = ButlerCards.isoWeek(now); ledger.lastSubcategoryBatchDay = Dates.text(now)
+        ledger.mutedTopics = ["letter"]
+        let today = Dates.day(now)
+        func day(_ offset: Int) -> Date { Dates.addDays(offset, to: today) }
+        var account = Account(name: script == "v45-new" ? "微信零钱" : "合成银行卡", kind: .bank, balance: 0, at: day(-12))
+        let accountID = account.id
+        var spending: [Entry] = []
+        func spend(_ cents: Int64, _ title: String, _ category: String, on date: Date) {
+            spending.append(Entry(date: date, amount: cents, accountID: accountID, title: title, category: category))
+        }
+        func earlier(_ minutes: Double) -> Date { now.addingTimeInterval(-60 * minutes) }
+        var hand: Int64 = 1_217_400
+        var paydayOffset = 20
+        var bills: [(title: String, amount: Int64, due: Int, estimated: Bool)] = [
+            ("房租", 327_000, 12, false), ("话费和宽带", 16_000, 5, false), ("电费", 18_000, 7, true)
+        ]
+        switch script {
+        case "v45-home":
+            for offset in 1...8 { spend(10_000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+            spend(2800, "午饭", "餐饮", on: earlier(30)); spend(800, "地铁", "交通", on: earlier(20))
+        case "v45-fast":
+            hand = 1_200_000
+            for offset in 4...8 { spend(6000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+            spend(40_000, "合成购物", "购物", on: day(-3).addingTimeInterval(12 * 3600))
+            spend(38_000, "合成娱乐", "娱乐", on: day(-2).addingTimeInterval(12 * 3600))
+            spend(36_000, "合成聚餐", "餐饮", on: day(-1).addingTimeInterval(12 * 3600))
+            spend(2800, "午饭", "餐饮", on: earlier(30)); spend(800, "地铁", "交通", on: earlier(20))
+        case "v45-over":
+            hand = 1_029_000; paydayOffset = 5
+            bills = [("房租", 327_000, 2, false), ("话费和宽带", 16_000, 3, false), ("电费", 18_000, 4, true)]
+            for offset in 1...10 { spend(27_200, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+        case "v45-bill":
+            hand = 1_200_000; paydayOffset = 15
+            bills = [("房租", 327_000, 10, false), ("话费和宽带", 16_000, 0, false), ("电费", 18_000, 1, true)]
+            for offset in 1...8 { spend(14_000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+            spend(3200, "午饭", "餐饮", on: day(-1).addingTimeInterval(13 * 3600)); spend(800, "地铁", "交通", on: day(-1).addingTimeInterval(14 * 3600))
+        case "v45-payday", "v45-late":
+            hand = 721_200; paydayOffset = script == "v45-late" ? -3 : 0; bills = []
+            spend(4600, "晚饭", "餐饮", on: day(-1).addingTimeInterval(19 * 3600)); spend(800, "地铁", "交通", on: day(-1).addingTimeInterval(20 * 3600))
+        case "v45-newcycle":
+            hand = 1_522_200; paydayOffset = 0; bills = []
+            for offset in 5...12 { spend(22_350, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+        case "v45-gap":
+            hand = 921_400
+            for offset in 4...11 { spend(10_000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+        default: // v45-new
+            hand = 800_000; bills = []
+        }
+        account.anchorBalance = hand + spending.reduce(0) { $0 + $1.amount }
+        ledger.accounts = [account]
+        ledger.entries = spending
+        if script == "v45-gap" {
+            var wallet = Account(name: "微信零钱", kind: .cash, balance: 30_000, at: day(-12)); wallet.reconciled = true
+            ledger.accounts.append(wallet)
+        }
+        if script == "v45-new" { return ledger }
+        ledger.fixedSavings = 500_000; ledger.savingRule = .fixed(200_000)
+        var salary = Plan(title: "工资", amount: 801_000, dueDate: day(paydayOffset), frequency: .monthly, inflow: true, category: "工资奖金", nature: .income)
+        salary.accountID = accountID
+        ledger.plans = [salary]
+        for bill in bills {
+            var plan = Plan(title: bill.title, amount: bill.amount, dueDate: day(bill.due), frequency: .monthly, category: "居住")
+            plan.accountID = accountID; plan.estimated = bill.estimated
+            ledger.plans.append(plan)
+        }
+        if script == "v45-bill", let power = ledger.plans.first(where: { $0.title == "电费" }) {
+            var paid = Entry(date: Dates.addMonths(-1, to: day(1)).addingTimeInterval(12 * 3600), amount: 18_000, accountID: accountID, title: "电费", category: "居住")
+            paid.planID = power.id; paid.occurrence = Dates.addMonths(-1, to: day(1))
+            ledger.entries.append(paid)
+        }
+        if ["v45-payday", "v45-late", "v45-newcycle"].contains(script) {
+            // 发薪日改成「确认到账才开新周期」：从这一期起要点「到了」。
+            ledger.paydayConfirmSince = day(paydayOffset)
+        }
+        if script == "v45-newcycle", let planID = ledger.plans.first?.id {
+            var receipt = Entry(date: earlier(10), amount: 801_000, nature: .income, accountID: accountID, title: "工资", category: "工资奖金")
+            receipt.planID = planID; receipt.occurrence = today
+            ledger.entries.append(receipt)
+        }
+        try ledger.validate()
+        return ledger
     }
     static func cashTimelineLedger(low: Bool, now: Date) -> Ledger {
         var ledger = Ledger()

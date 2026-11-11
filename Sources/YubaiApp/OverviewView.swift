@@ -10,7 +10,7 @@ struct LedgerHero: View {
     private var funds: Funds { store.funds }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { store.present(.fundsCalculation, from: "funds") } label: {
+            TabNavigationLink(.formula) { FormulaView() } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("还能花").yubaiFont(YubaiFont.heroLabel)

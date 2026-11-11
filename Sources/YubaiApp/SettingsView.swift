@@ -76,7 +76,7 @@ struct SettingsView: View {
                     TabNavigationLink(.storage) { StorageView() } label: { row("存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
                 }
             }.buttonStyle(PressButtonStyle())
-        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().rootTabScroll(.settings).accessibilityIdentifier("settingsScroll")
+        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().rootTabScroll(.yubai).accessibilityIdentifier("settingsScroll")
             .navigationDestination(for: CategorySettingsRoute.self) { _ in CategoriesView() }
             .rootPageHeader { TabRootHeader(title: "我") }.navigationTitle("我")
             .modifier(SettingsStorageSizeTask(storageSize: $storageSize))
