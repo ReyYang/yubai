@@ -114,7 +114,7 @@ final class SpendingPartsTests: XCTestCase {
         }
     }
 
-    func testMergeModeMergesAvailableBeyondTargetOnceAndSurvivesReload() throws {
+    func testMergeModeAsksBeforeMergingAvailableOnceAndSurvivesReload() throws {
         var l = ledger(); l.savingRule = .fixed(10_000); l.fixedSavings = 100_000
         l.entries = [entry(l, amount: 50_000, at: "2026-10-05"),
                      entry(l, amount: 200_000, at: "2026-11-05", nature: .income)]
@@ -122,6 +122,10 @@ final class SpendingPartsTests: XCTestCase {
         XCTAssertEqual(WeeklyLetter.available(l, at: close), 840_000)
         Savings.closeCycles(&l, now: now)
         XCTAssertEqual(l.savingHistory[0].saved, 10_000)
+        XCTAssertEqual(l.savingHistory[0].leftover, 0)
+        XCTAssertEqual(l.savingHistory[0].unspent, 840_000)
+        XCTAssertEqual(l.fixedSavings, 110_000)
+        try Savings.resolveLeftover(cycleStart: l.savingHistory[0].cycleStart, choice: .save, in: &l)
         // Includes both named parts and unassigned funds, excluding the target,
         // existing fixed savings and income received after the closing instant.
         XCTAssertEqual(l.savingHistory[0].leftover, 840_000)
@@ -138,16 +142,23 @@ final class SpendingPartsTests: XCTestCase {
         Savings.closeCycles(&l, now: date("2026-12-02"))
         XCTAssertEqual(l.savingHistory.count, 2)
         XCTAssertEqual(l.savingHistory[1].saved, 10_000)
+        XCTAssertEqual(l.savingHistory[1].leftover, 0)
+        XCTAssertEqual(l.savingHistory[1].unspent, 190_000)
+        try Savings.resolveLeftover(cycleStart: l.savingHistory[1].cycleStart, choice: .save, in: &l)
         XCTAssertEqual(l.savingHistory[1].leftover, 190_000)
         XCTAssertEqual(l.fixedSavings, 1_150_000)
         XCTAssertEqual(WeeklyLetter.available(l, at: close), 840_000)
         XCTAssertEqual(WeeklyLetter.available(l, at: now), 190_000)
     }
 
-    func testMergeModeWithoutSavingRuleMergesLeftoverOnce() throws {
+    func testMergeModeWithoutSavingRuleAsksBeforeMergingLeftoverOnce() throws {
         var l = ledger()
         l.entries = [entry(l, amount: 50_000, at: "2026-10-05")]
         Savings.closeCycles(&l, now: now)
+        XCTAssertNil(l.fixedSavings)
+        XCTAssertEqual(l.savingHistory[0].unspent, 950_000)
+        XCTAssertEqual(l.savingHistory[0].leftover, 0)
+        try Savings.resolveLeftover(cycleStart: l.savingHistory[0].cycleStart, choice: .save, in: &l)
         XCTAssertEqual(l.fixedSavings, 950_000)
         XCTAssertEqual(l.savingHistory.count, 1)
         XCTAssertEqual(l.savingHistory[0].saved, 0)

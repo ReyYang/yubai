@@ -107,13 +107,13 @@ public enum ManualBookkeeping {
         Dates.calendar.date(bySettingHour: Dates.calendar.component(.hour, from: now), minute: Dates.calendar.component(.minute, from: now), second: Dates.calendar.component(.second, from: now), of: day)!
     }
     public static func change(amount: Int64, nature: Nature, accountID: UUID, otherAccountID: UUID? = nil,
-                              day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Date(), intoFixedSavings: Bool = false) throws -> ChangeSet {
+                              day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Date(), intoFixedSavings: Bool = false, fromReserve: Bool = false) throws -> ChangeSet {
         guard amount > 0, amount <= Money.limit, Dates.day(day) <= Dates.day(now) else { throw YubaiError.invalid("请核对金额和日期。") }
         if nature == .transfer { guard let otherAccountID, otherAccountID != accountID else { throw YubaiError.invalid("转账的两个账户必须不同。") } }
         let purpose = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         var draft = EntryDraft(date: saveDate(for: day, now: now), amount: amount, amountConfirmed: true,
                                nature: nature, accountID: accountID, title: purpose.isEmpty ? category : purpose,
-                               category: category, purpose: purpose.isEmpty ? nil : purpose, intoFixedSavings: intoFixedSavings)
+                               category: category, purpose: purpose.isEmpty ? nil : purpose, intoFixedSavings: intoFixedSavings, fromReserve: fromReserve)
         draft.categoryUserEdited = nature != .transfer
         draft.otherAccountID = nature == .transfer ? otherAccountID : nil
         draft.planID = link?.planID; draft.occurrence = link?.occurrence
@@ -134,7 +134,7 @@ public enum ManualBookkeeping {
         if ledger.entries.count >= 200_000 { var full = ledger; full.entries.append(entry); try full.validate() }
         if change.source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(entry, in: &isolated) }
         try isolated.validate()
-        try validateFixedSavings(removing: nil, adding: entry, in: ledger)
+        try validateFixedSavings(removing: nil, adding: entry, in: ledger, now: now)
         return available(removing: nil, adding: entry, in: ledger, now: now)
     }
     /// Editing callers can share the keypad calculation without changing a form's
@@ -154,10 +154,16 @@ public enum ManualBookkeeping {
         entry = isolated.entries.first { $0.id == edited.id }!
         CategoryMemory.remember(entry, in: &isolated)
         try isolated.validate()
-        try validateFixedSavings(removing: original, adding: entry, in: ledger)
+        try validateFixedSavings(removing: original, adding: entry, in: ledger, now: now)
         return available(removing: original, adding: entry, in: ledger, now: now)
     }
-    private static func validateFixedSavings(removing original: Entry?, adding entry: Entry, in ledger: Ledger) throws {
+    private static func validateFixedSavings(removing original: Entry?, adding entry: Entry, in ledger: Ledger, now: Date) throws {
+        if entry.fromReserve || original?.fromReserve == true {
+            var projected = ledger
+            projected.entries.removeAll { $0.id == original?.id }
+            projected.entries.append(entry)
+            guard projected.fixedSavingsTotal(now: now) >= 0 else { throw YubaiError.invalid("存着的钱不够。") }
+        }
         guard entry.intoFixedSavings || original?.intoFixedSavings == true else { return }
         // Isolated row validation cannot see the other earmarked income. Check
         // the combined total too, just as the full save does, including future rows.
@@ -168,6 +174,13 @@ public enum ManualBookkeeping {
     }
     private static func available(removing original: Entry?, adding entry: Entry, in ledger: Ledger, now: Date) -> Int64 {
         let base = Finance.funds(ledger, now: now)
+        let reserveRefund = [entry, original].compactMap { $0 }.contains { row in row.nature == .refund && ledger.entries.contains { $0.id == row.relatedEntryID && $0.fromReserve } }
+        if entry.fromReserve || original?.fromReserve == true || reserveRefund || !ledger.cycleCovers.isEmpty || ledger.paydayConfirmSince != nil {
+            var projected = ledger
+            if let original, let index = projected.entries.firstIndex(where: { $0.id == original.id }) { projected.entries[index] = entry }
+            else { projected.entries.append(entry) }
+            return Finance.funds(projected, now: now).available
+        }
         let changes: [(Entry, Int64)] = (original.map { [($0, Int64(-1))] } ?? []) + [(entry, Int64(1))]
         var deltas: [UUID: Int64] = [:], difference: Int64 = 0
         for (row, sign) in changes where row.deletedAt == nil {
@@ -209,10 +222,17 @@ public enum ManualBookkeeping {
         return base.available + difference
     }
     public static func edit(_ edited: Entry, in ledger: inout Ledger) throws {
+        // Preserve the original API without reading the clock. New callers can
+        // supply their evaluation instant explicitly through the overload below.
+        let now = max(ledger.updatedAt, max(edited.date, edited.recordedAt ?? edited.date))
+        try edit(edited, in: &ledger, now: now)
+    }
+    public static func edit(_ edited: Entry, in ledger: inout Ledger, now: Date) throws {
         guard let index = ledger.entries.firstIndex(where: { $0.id == edited.id && $0.deletedAt == nil }) else { throw YubaiError.invalid("记录已移除。") }
         let original = ledger.entries[index]
         var next = ledger
         let entry = try prepareEdit(edited, original: original, in: &next)
+        try validateFixedSavings(removing: original, adding: entry, in: ledger, now: now)
         next.entries[index] = entry
         LedgerOperations.syncLinkedRefundCategories(in: &next)
         CategoryMemory.remember(entry, in: &next)

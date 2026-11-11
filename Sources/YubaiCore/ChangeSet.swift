@@ -9,8 +9,9 @@ public enum ProfileChange: Codable, Equatable, Sendable {
 }
 public struct EntryDraft: Codable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64; public var amountConfirmed: Bool
-    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false }; if nature != .expense { fromReserve = false } } }
     public var intoFixedSavings = false { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var fromReserve = false { didSet { if nature != .expense { fromReserve = false } } }
     public var accountID: UUID; public var title: String; public var category: String
     public var partID: UUID?
     public var purpose: String?
@@ -20,14 +21,15 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var otherAccountID: UUID?
     public var planID: UUID?; public var occurrence: Date?
     public init(date: Date, amount: Int64, amountConfirmed: Bool = false, nature: Nature = .expense,
-                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil, intoFixedSavings: Bool = false) {
+                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil, intoFixedSavings: Bool = false, fromReserve: Bool = false) {
         self.date = date; self.amount = amount; self.amountConfirmed = amountConfirmed; self.nature = nature
         self.accountID = accountID; self.title = title; self.category = category; self.subcategory = subcategory; self.purpose = purpose
         self.planID = planID; self.occurrence = occurrence
         self.intoFixedSavings = nature == .income && intoFixedSavings
+        self.fromReserve = nature == .expense && fromReserve
     }
     private enum CodingKeys: String, CodingKey {
-        case id, date, amount, amountConfirmed, nature, intoFixedSavings, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
+        case id, date, amount, amountConfirmed, nature, fromReserve, intoFixedSavings, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -36,6 +38,8 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         nature = try c.decode(Nature.self, forKey: .nature)
         let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
         intoFixedSavings = nature == .income && intoFixed
+        let reserve = try c.decodeIfPresent(Bool.self, forKey: .fromReserve) ?? false
+        fromReserve = nature == .expense && reserve
         accountID = try c.decode(UUID.self, forKey: .accountID); title = try c.decode(String.self, forKey: .title)
         category = try c.decode(String.self, forKey: .category); partID = try c.decodeIfPresent(UUID.self, forKey: .partID)
         purpose = try c.decodeIfPresent(String.self, forKey: .purpose); subcategory = try c.decodeIfPresent(String.self, forKey: .subcategory)
@@ -43,6 +47,20 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
         planID = try c.decodeIfPresent(UUID.self, forKey: .planID); occurrence = try c.decodeIfPresent(Date.self, forKey: .occurrence)
     }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(date, forKey: .date)
+        try c.encode(amount, forKey: .amount); try c.encode(amountConfirmed, forKey: .amountConfirmed)
+        try c.encode(nature, forKey: .nature)
+        if intoFixedSavings { try c.encode(true, forKey: .intoFixedSavings) }
+        if fromReserve { try c.encode(true, forKey: .fromReserve) }
+        try c.encode(accountID, forKey: .accountID); try c.encode(title, forKey: .title); try c.encode(category, forKey: .category)
+        try c.encodeIfPresent(partID, forKey: .partID); try c.encodeIfPresent(purpose, forKey: .purpose)
+        try c.encodeIfPresent(subcategory, forKey: .subcategory); try c.encodeIfPresent(categoryUserEdited, forKey: .categoryUserEdited)
+        try c.encodeIfPresent(otherAccountID, forKey: .otherAccountID); try c.encodeIfPresent(planID, forKey: .planID)
+        try c.encodeIfPresent(occurrence, forKey: .occurrence)
+    }
+
 }
 public enum ChangeItem: Codable, Equatable, Sendable {
     case setCategory(entry: UUID, category: String)
@@ -384,6 +402,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
                 e.intoFixedSavings = draft.intoFixedSavings
+                e.fromReserve = draft.fromReserve
+                if e.fromReserve, e.amount > next.fixedSavingsTotal(now: createdAt) { throw YubaiError.invalid("存着的钱不够。") }
                 e.partID = draft.partID; e.id = draft.id; e.subcategoryUserEdited = draft.categoryUserEdited == true; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
                 if let id = draft.planID, let occurrence = draft.occurrence {
                     guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,

@@ -19,6 +19,8 @@ public struct Funds: Equatable, Sendable {
     public var cycleIsPayday = false
     public var liquidStart: Int64 = 0
     public var cycleIncome: Int64 = 0
+    public var savingRuleTarget: Int64 = 0
+    public var salaryLateDays: Int? = nil
     public var savingTarget: Int64 = 0
     public var fixedSavingsTotal: Int64 { emergency }
     public var cycleSpent: Int64 = 0
@@ -167,17 +169,12 @@ public enum Finance {
             return nil
         }.min { $0.date == $1.date ? $0.title < $1.title : $0.date < $1.date }
     }
-    public static func cycle(in ledger: Ledger, now: Date = Date()) -> (start: Date, end: Date, payday: Bool) {
+    static func scheduledCycle(in ledger: Ledger, now: Date) -> (start: Date, end: Date, payday: Bool) {
         let month = Dates.calendar.dateInterval(of: .month, for: now)!
         let natural = (start: month.start, end: Dates.addDays(-1, to: month.end), payday: false)
         if ledger.cycleAnchor == .calendarMonth { return natural }
-        // Explicit payday mode uses a monthly income schedule. Legacy nil keeps
-        // the automatic behavior, including older non-monthly schedules.
-        var source = ledger
-        if ledger.cycleAnchor == .payday { source.plans.removeAll { $0.frequency != .monthly } }
-        if let next = nextPayday(in: source, now: now),
-           let plan = source.plans.filter({ $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once && $0.title == next.title })
-            .sorted(by: { $0.id.uuidString < $1.id.uuidString }).first(where: { $0.occurrenceIndex(on: next.date) != nil }) {
+        if let plan = anchorPlan(in: ledger, now: now),
+           let next = nextPayday(in: { var source = ledger; source.plans = [plan]; return source }(), now: now) {
             // Derive from the original schedule, preserving Jan 31 → Feb 28 → Mar 31.
             let calendar = Dates.calendar
             let months = calendar.dateComponents([.month], from: calendar.dateInterval(of: .month, for: plan.dueDate)!.start,
@@ -228,7 +225,7 @@ public enum Finance {
         }
         let occurrences = occurrences(in: ledger, now: now, days: horizon)
         let payday = nextPayday(in: ledger, now: now)
-        let cycle = cycle(in: ledger, now: now)
+        let cycle = cycleInfo(in: ledger, now: now)
         let horizonEnd = cycle.end
         let horizonDays = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: horizonEnd).day ?? horizon
         // Credit principal is reserved once as debt. A credit-repayment plan only changes its payment date.
@@ -246,8 +243,13 @@ public enum Finance {
         let emergency = ledger.fixedSavingsTotal(now: now)
         let cycleRows = entries.filter { $0.date >= cycle.start && $0.date <= now }
         let income = cycleRows.filter { $0.nature == .income && !$0.intoFixedSavings }.reduce(Int64(0)) { $0 + $1.amount }
-        let spent = cycleRows.reduce(Int64(0)) { $0 + spendingAmount($1, ledger: ledger) }
-        let savingTarget = ledger.savingRule?.target(income: income) ?? 0
+        let reserveIDs = Set(entries.filter { $0.fromReserve }.map(\.id))
+        let spent = cycleRows.reduce(Int64(0)) { total, row in
+            if row.fromReserve || (row.nature == .refund && row.relatedEntryID.map { reserveIDs.contains($0) } == true) { return total }
+            return total + spendingAmount(row, ledger: ledger)
+        }
+        let savingRuleTarget = ledger.savingRule?.target(income: income) ?? 0
+        let savingTarget = ledger.effectiveSavingTarget(savingRuleTarget, cycleStart: cycle.start, now: now)
         let liquid = cash - debt - emergency - goals - uncertain
         let available = liquid - savingTarget - committed
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
@@ -281,6 +283,8 @@ public enum Finance {
         value.cycleStart = cycle.start; value.cycleEnd = cycle.end; value.cycleIsPayday = cycle.payday
         value.liquidStart = liquid - income + spent; value.cycleIncome = income; value.savingTarget = savingTarget
         value.cycleSpent = spent; value.dueRest = committed
+        value.savingRuleTarget = savingRuleTarget
+        value.salaryLateDays = cycle.lateSince.map { Dates.calendar.dateComponents([.day], from: $0, to: Dates.day(now)).day ?? 0 }
         value.dailyAllowance = max(0, available) / Int64(max(1, horizonDays + 1))
         value.savingShortfall = min(savingTarget, max(0, -available))
         ledger.calculations.storeFunds(value, in: ledger, now: now, days: horizon)
@@ -329,7 +333,15 @@ public enum Finance {
         let income = incomeBreakdown.sorted {
             $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount
         }
-        let spending = review.byCategory.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
+        let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        let expenseRows = ledger.entries.filter { $0.deletedAt == nil && $0.date >= interval.start && $0.date < interval.end && ($0.nature == .expense || $0.nature == .refund) }
+        let expenseGroups = Dictionary(grouping: expenseRows) { entry -> String in
+            let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { lookup[$0] } ?? entry : entry
+            return source.isUnitemized && Classification.isPending(source) ? Reconciliation.unitemizedTitle : ledger.normalizedCategory(for: entry, entriesByID: lookup).category
+        }
+        let spending = expenseGroups.map { name, rows in
+            Breakdown(category: name, amount: rows.reduce(0) { $0 + spendingAmount($1, ledger: ledger) }, count: rows.count)
+        }.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
         return CashFlowSummary(income: review.income, spending: review.spending,
                                incomeByCategory: income, spendingByCategory: spending)
     }

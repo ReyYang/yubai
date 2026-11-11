@@ -89,3 +89,44 @@ public enum RecentlyDeleted {
     }
     public static func clear(in ledger: inout Ledger) { ledger.entries.removeAll { $0.deletedAt != nil } }
 }
+
+extension EntryHistory {
+    public static func categoryHint(purpose text: String, nature: Nature, in ledger: Ledger, now: Date) -> CategoryAssignment? {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, nature != .transfer else { return nil }
+        let rows = Array(ledger.entries.filter { $0.deletedAt == nil && $0.nature == nature && $0.date <= now && purpose($0) == clean }
+            .sorted { older($1, $0) }.prefix(3))
+        guard !rows.isEmpty else { return CategoryGuesser.guess(clean, nature: nature, in: ledger) }
+        let assignments = rows.map { ledger.normalizedCategory(for: $0) }
+        let winner = assignments.first { choice in assignments.filter { $0 == choice }.count >= (rows.count == 1 ? 1 : 2) }
+        guard let winner, ledger.selectableCategories.contains(where: { $0.name == winner.category && $0.income == nature.categoryIncome }) else { return nil }
+        return winner
+    }
+    public static func recalls(matching text: String, nature: Nature, in ledger: Ledger, now: Date, limit: Int = 4) -> [Recall] {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Array(recentPurposes(in: ledger, nature: nature, now: now, limit: ledger.entries.count)
+            .filter { clean.isEmpty || $0.purpose.range(of: clean, options: .caseInsensitive) != nil }.prefix(max(0, limit)))
+    }
+    public struct Repeat: Equatable, Sendable, Identifiable {
+        public var id: String; public var purpose: String; public var amount: Int64
+        public var category: String; public var subcategory: String?; public var accountID: UUID
+    }
+    public static func repeats(in ledger: Ledger, now: Date, limit: Int = 3) -> [Repeat] {
+        let from = Dates.addDays(-30, to: now)
+        let rows = ledger.entries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.recordedAt != nil && $0.batchID == nil && $0.date >= from && $0.date <= now && $0.planID == nil && $0.rentID == nil && !purpose($0).isEmpty }
+        func key(_ entry: Entry) -> String {
+            let name = purpose(entry), category = ledger.normalizedCategory(for: entry).category
+            return "\(name.utf8.count):\(name):\(entry.amount):\(category)"
+        }
+        return Dictionary(grouping: rows, by: key).filter { $0.value.count >= 2 }.sorted {
+            let a = $0.value.max(by: older)!, b = $1.value.max(by: older)!
+            let aScore = Double($0.value.count) / max(1, now.timeIntervalSince(a.date) / 86_400)
+            let bScore = Double($1.value.count) / max(1, now.timeIntervalSince(b.date) / 86_400)
+            return aScore == bScore ? $0.key < $1.key : aScore > bScore
+        }.prefix(max(0, limit)).map { id, rows in
+            let entry = rows.max(by: older)!, assignment = ledger.normalizedCategory(for: entry)
+            return Repeat(id: id, purpose: purpose(entry), amount: entry.amount, category: assignment.category,
+                          subcategory: assignment.subcategory, accountID: entry.accountID)
+        }
+    }
+}

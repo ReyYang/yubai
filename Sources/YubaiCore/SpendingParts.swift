@@ -60,7 +60,7 @@ public enum SpendingParts {
         var source = entry
         if entry.nature == .refund, let id = entry.relatedEntryID,
            let original = entriesByID.map({ $0[id] }) ?? ledger.entries.first(where: { $0.id == id }) { source = original }
-        guard source.planID == nil, source.rentID == nil else { return 0 }
+        guard source.planID == nil, source.rentID == nil, !source.fromReserve else { return 0 }
         return Finance.spendingAmount(entry, ledger: ledger)
     }
 
@@ -159,5 +159,32 @@ public enum SpendingParts {
         let previous = summary(snapshot, now: close)
         ledger.partCarry = Dictionary(uniqueKeysWithValues: previous.parts.map { ($0.id, $0.remaining) })
         ledger.partCarryCycleStart = nextStart
+    }
+}
+
+extension SpendingParts {
+    public static func proposal(ledger: Ledger, now: Date) -> [SpendingPart] {
+        let cycles = Finance.completedCycles(ledger, now: now, limit: 3)
+        guard !cycles.isEmpty else { return [] }
+        let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        let from = cycles.last!.start, to = cycles.first!.end
+        var totals: [String: Int64] = [:]
+        for entry in ledger.entries where entry.deletedAt == nil && entry.date >= from && entry.date < to {
+            let amount = flexibleAmount(entry, in: ledger, entriesByID: lookup)
+            let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { lookup[$0] } ?? entry : entry
+            guard amount != 0, !Classification.isPending(source) else { continue }
+            totals[ledger.normalizedCategory(for: entry, entriesByID: lookup).category, default: 0] += amount
+        }
+        let ranked = totals.filter { $0.value > 0 }.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+        return ranked.prefix(3).map { item -> SpendingPart in
+            let category = item.key, amount = item.value
+            let average = amount / Int64(cycles.count)
+            // Stable ids keep repeated previews equal without persisting them.
+            let hex = LedgerCodec.checksum(Data(category.utf8)).padding(toLength: 32, withPad: "0", startingAt: 0)
+            let pieces = [String(hex.prefix(8)), String(hex.dropFirst(8).prefix(4)), String(hex.dropFirst(12).prefix(4)), String(hex.dropFirst(16).prefix(4)), String(hex.dropFirst(20).prefix(12))]
+            let uuid = pieces.joined(separator: "-")
+            return SpendingPart(id: UUID(uuidString: uuid) ?? SpendingPart.unassignedID, name: category,
+                                amount: (average + 2500) / 5000 * 5000, categories: [category])
+        }
     }
 }

@@ -35,15 +35,17 @@ extension Ledger {
     }
 
     public func fixedSavingsTotal(now: Date = Date()) -> Int64 {
-        (fixedSavings ?? 0) + fixedSavingsFromIncome(now: now)
+        (fixedSavings ?? 0) + fixedSavingsFromIncome(now: now) - reserveSpent(now: now) - reserveCovered(now: now)
     }
 
-    /// Clamp the requested total to the posted, earmarked income minimum. This
-    /// keeps the base nonnegative; editing/deleting income always reverses its contribution.
+    /// Reverse all derived income and withdrawals to keep the stored base
+    /// nonnegative; editing/deleting source entries reverses their contribution.
     public mutating func setFixedSavingsTotal(_ total: Int64, now: Date = Date()) {
-        fixedSavings = max(0, min(Money.limit, total) - fixedSavingsFromIncome(now: now))
+        fixedSavings = max(0, min(Money.limit, total) - fixedSavingsFromIncome(now: now) + reserveSpent(now: now) + reserveCovered(now: now))
     }
 }
+public enum LeftoverChoice: String, Codable, Equatable, Sendable { case keep, save }
+
 public struct CycleSaving: Codable, Equatable, Sendable, Identifiable {
     public var id: Date { cycleStart }
     public var cycleStart: Date
@@ -51,21 +53,26 @@ public struct CycleSaving: Codable, Equatable, Sendable, Identifiable {
     public var income: Int64
     public var target: Int64
     public var saved: Int64
-    /// Unspent funds beyond the saving target, merged when spending parts use that mode.
+    /// Unspent funds explicitly saved, or merged by versions before round 45.
     public var leftover: Int64 = 0
+    public var unspent: Int64?
+    public var leftoverChoice: LeftoverChoice?
     /// False when no saving rule existed during the cycle, so a rule set later
     /// is never applied to months before it. Leftover may still have been merged.
     public var tracked = true
-    public init(cycleStart: Date, cycleEnd: Date, income: Int64, target: Int64, saved: Int64, leftover: Int64 = 0, tracked: Bool = true) {
+    public init(cycleStart: Date, cycleEnd: Date, income: Int64, target: Int64, saved: Int64, leftover: Int64 = 0, tracked: Bool = true, unspent: Int64? = nil, leftoverChoice: LeftoverChoice? = nil) {
         self.cycleStart = cycleStart; self.cycleEnd = cycleEnd; self.income = income; self.target = target; self.saved = saved; self.leftover = leftover; self.tracked = tracked
+        self.unspent = unspent; self.leftoverChoice = leftoverChoice
     }
-    private enum CodingKeys: String, CodingKey { case cycleStart, cycleEnd, income, target, saved, leftover, tracked }
+    private enum CodingKeys: String, CodingKey { case cycleStart, cycleEnd, income, target, saved, leftover, tracked, unspent, leftoverChoice }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         cycleStart = try c.decode(Date.self, forKey: .cycleStart); cycleEnd = try c.decode(Date.self, forKey: .cycleEnd)
         income = try c.decode(Int64.self, forKey: .income); target = try c.decode(Int64.self, forKey: .target)
         saved = try c.decode(Int64.self, forKey: .saved); tracked = try c.decodeIfPresent(Bool.self, forKey: .tracked) ?? true
         leftover = try c.decodeIfPresent(Int64.self, forKey: .leftover) ?? 0
+        unspent = try c.decodeIfPresent(Int64.self, forKey: .unspent)
+        leftoverChoice = try c.decodeIfPresent(LeftoverChoice.self, forKey: .leftoverChoice)
     }
 }
 
@@ -146,7 +153,8 @@ public enum Savings {
     /// Close only the latest completed cycle; history makes repeated foreground
     /// callbacks idempotent. Rewind anchors and payments to the closing instant.
     public static func closeCycles(_ ledger: inout Ledger, now: Date = Date()) {
-        let current = Finance.cycle(in: ledger, now: now)
+        let current = Finance.cycleInfo(in: ledger, now: now)
+        guard current.lateSince == nil else { return }
         let close = current.start.addingTimeInterval(-0.001)
         let previous = Finance.cycle(in: ledger, now: close)
         // Stored calendar boundaries are instants created in the then-current zone.
@@ -165,15 +173,31 @@ public enum Savings {
         // Funds excludes earmarked income from both cycle income and liquid
         // funds, so it can never be merged into the base a second time.
         // Available already excludes the saving target; do not add part balances again.
-        let leftover = !snapshot.spendingParts.isEmpty && snapshot.partLeftover == .mergeIntoFixedSavings ? max(0, funds.available) : 0
+        let unspent = max(0, funds.available)
         guard ledger.savingRule != nil else {
-            if leftover > 0 { ledger.fixedSavings = (ledger.fixedSavings ?? 0) + leftover }
-            ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: 0, target: 0, saved: 0, leftover: leftover, tracked: false))
+            ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: 0, target: 0, saved: 0, tracked: false, unspent: unspent))
             return
         }
         let saved = max(0, min(funds.savingTarget, funds.savingTarget + funds.available))
-        ledger.fixedSavings = (ledger.fixedSavings ?? 0) + saved + leftover
-        ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: funds.cycleIncome, target: funds.savingTarget, saved: saved, leftover: leftover))
+        ledger.fixedSavings = (ledger.fixedSavings ?? 0) + saved
+        ledger.savingHistory.append(CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: funds.cycleIncome, target: funds.savingRuleTarget, saved: saved, unspent: unspent))
+    }
+
+    public static func pendingLeftover(in ledger: Ledger) -> CycleSaving? {
+        ledger.savingHistory.filter { $0.leftoverChoice == nil && ($0.unspent ?? 0) > 0 }.max { $0.cycleStart < $1.cycleStart }
+    }
+    public static func resolveLeftover(cycleStart: Date, choice: LeftoverChoice, in ledger: inout Ledger) throws {
+        guard let index = ledger.savingHistory.firstIndex(where: { abs($0.cycleStart.timeIntervalSince(cycleStart)) <= 36 * 3600 }),
+              ledger.savingHistory[index].leftoverChoice == nil, let unspent = ledger.savingHistory[index].unspent, unspent > 0 else {
+            throw YubaiError.invalid("攒钱的金额或周期无效。")
+        }
+        var next = ledger
+        if choice == .save {
+            next.fixedSavings = (next.fixedSavings ?? 0) + unspent
+            next.savingHistory[index].leftover = unspent
+        }
+        next.savingHistory[index].leftoverChoice = choice
+        try next.validate(); ledger = next
     }
 
     /// Half-open [from, to). A stopped subscription accrues on each elapsed due

@@ -109,6 +109,11 @@ public struct JudgePurchaseTool: AssistantTool {
                     "unassigned": .money(summary.unassigned)])
             }
         }
+        if let purchase = Finance.bigPurchase(ctx.ledger, amount: amount, now: ctx.now) {
+            facts["big_purchase"] = .object(["days": .number(Double(purchase.days)),
+                "reserve_before": .money(purchase.reserveBefore), "reserve_after": .money(purchase.reserveAfter),
+                "can_use_reserve": .bool(purchase.canUseReserve)])
+        }
         facts["allowed_verdicts"] = .strings(PurchaseVerdict.allCases.filter { bounds.allowedVerdicts.contains($0) }.map(\.rawValue))
         facts["bound_reason"] = .string(bounds.boundReason)
         facts["similar_followups"] = .array(ctx.ledger.wishlist.filter { wish in
