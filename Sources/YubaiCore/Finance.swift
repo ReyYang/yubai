@@ -347,9 +347,11 @@ public enum Finance {
             let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { lookup[$0] } ?? entry : entry
             return source.isUnitemized && Classification.isPending(source) ? Reconciliation.unitemizedTitle : ledger.normalizedCategory(for: entry, entriesByID: lookup).category
         }
-        let spending = expenseGroups.map { name, rows in
-            Breakdown(category: name, amount: rows.reduce(0) { $0 + spendingAmount($1, ledger: ledger) }, count: rows.count)
-        }.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
+        let spendingBreakdown: [Breakdown] = expenseGroups.map { name, rows in
+            let amount = rows.reduce(Int64(0)) { $0 + spendingAmount($1, ledger: ledger) }
+            return Breakdown(category: name, amount: amount, count: rows.count)
+        }
+        let spending = spendingBreakdown.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
         return CashFlowSummary(income: review.income, spending: review.spending,
                                incomeByCategory: income, spendingByCategory: spending)
     }
