@@ -15,6 +15,7 @@ final class ScreenGalleryTests: XCTestCase {
     private let latinName = "SupercalifragilisticexpialidociousPneumonoultramicroscopicsilicovolcanoconiosis"
 
     private struct Miss: Error, CustomStringConvertible { let description: String }
+    private var relaunch: (() throws -> Void)?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -38,7 +39,7 @@ final class ScreenGalleryTests: XCTestCase {
     override func tearDownWithError() throws {
         if directory != nil {
             app.terminate()
-            let label = prefix.isEmpty ? "full" : String(prefix.dropLast())
+            let label = prefix.isEmpty ? String(name.filter { $0.isLetter || $0.isNumber }.suffix(40)) : String(prefix.dropLast())
             let report = missing.joined(separator: "\n") + (missing.isEmpty ? "" : "\n")
             try? report.write(to: directory.appendingPathComponent("missing-\(label).txt"), atomically: true, encoding: .utf8)
             try? (planned.joined(separator: "\n") + "\n").write(to: directory.appendingPathComponent("planned-\(label).txt"), atomically: true, encoding: .utf8)
@@ -88,6 +89,8 @@ final class ScreenGalleryTests: XCTestCase {
             shot(name + "-MISSING")
             let hierarchy = XCTAttachment(string: app.debugDescription)
             hierarchy.name = name + "-MISSING-hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
+            // Start the next stop from a known screen instead of whatever the failed one left open.
+            if let relaunch { try? relaunch() }
             return false
         }
     }
@@ -104,6 +107,7 @@ final class ScreenGalleryTests: XCTestCase {
         guard element(id).waitForExistence(timeout: timeout) else { throw Miss(description: "Missing identifier: " + id) }
     }
     private func launch(_ fixture: String = "gallery", dark: Bool = false, large: Bool = false, organization: String? = nil, statement: String? = nil) throws {
+        relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement) }
         app.terminate(); app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityL" : "UICTContentSizeCategoryL"]
@@ -131,8 +135,11 @@ final class ScreenGalleryTests: XCTestCase {
     }
     private func reveal(_ target: XCUIElement) throws {
         _ = target.waitForExistence(timeout: 3)
-        for _ in 0..<24 {
+        // A stop that cannot be reached must fail fast: an unbounded search costs minutes per stop on CI.
+        let deadline = Date().addingTimeInterval(20)
+        for _ in 0..<8 {
             if target.exists && target.isHittable { return }
+            if Date() > deadline { break }
             guard app.alerts.count == 0 else { break }
             let containers = app.scrollViews.allElementsBoundByIndex + app.collectionViews.allElementsBoundByIndex + app.tables.allElementsBoundByIndex
             let scrolls = containers.filter { $0.isHittable && $0.frame.height > 120 && $0.frame.width > app.frame.width * 0.65 }
@@ -213,19 +220,18 @@ final class ScreenGalleryTests: XCTestCase {
         try tap("wishBoughtEntry_" + galleryID(406)); try require("entryDetailTitle")
     }
 
-    func testFullWalk() {
-        rootsAndLedger()
-        formulaAndAccounts()
-        bills()
-        saving()
-        entrySheets()
-        categories()
-        yubai()
-        settingsPages()
-        importsAndReceipt()
-        specificStates()
-        emptyAndWelcome()
-    }
+    // One method per area: each starts from a fresh launch, so one area cannot stall the others.
+    func testWalk01RootsAndLedger() { rootsAndLedger() }
+    func testWalk02FormulaAndAccounts() { try? launch(); formulaAndAccounts() }
+    func testWalk03Bills() { try? launch(); bills() }
+    func testWalk04Saving() { try? launch(); saving() }
+    func testWalk05EntrySheets() { try? launch(); entrySheets() }
+    func testWalk06Categories() { try? launch(); categories() }
+    func testWalk07Yubai() { try? launch(); yubai() }
+    func testWalk08Settings() { try? launch(); settingsPages() }
+    func testWalk09Imports() { try? launch(); importsAndReceipt() }
+    func testWalk10States() { try? launch(); specificStates() }
+    func testWalk11Empty() { try? launch(); emptyAndWelcome() }
 
     private func rootsAndLedger() {
         stop("01-now-01-top") { try launch(); try require("fundsFormula") }
