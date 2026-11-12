@@ -215,7 +215,7 @@ struct BudgetView: View {
                 partTitle(part)
                 if part.categories.isEmpty { Image(systemName: "plus").foregroundStyle(YubaiColor.brandInk).accessibilityHidden(true) }
             }.frame(minHeight: YubaiSize.tapMin, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityLabel(part.name + "，改分类")
+        }.buttonStyle(PressButtonStyle()).accessibilityLabel(part.name + "，改分类").accessibilityIdentifier("budgetCategory_" + part.id.uuidString)
     }
     @ViewBuilder private func amountControl(_ part: SpendingPart, hide: Bool) -> some View {
         if store.current.partsMode == .amount {

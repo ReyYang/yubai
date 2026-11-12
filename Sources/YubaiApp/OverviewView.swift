@@ -193,7 +193,7 @@ struct SavingsView: View {
                     }
                 }
             }
-        }
+        }.accessibilityIdentifier("savingHistory")
     }
     private func historyRow(_ row: CycleSaving) -> some View {
         let short = row.saved < row.target

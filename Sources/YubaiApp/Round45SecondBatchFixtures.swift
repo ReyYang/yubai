@@ -27,6 +27,7 @@ extension UITestSupport {
     }
     @MainActor static func prepareSecondBatch(_ repository: LedgerRepository, script: String, now: Date) throws {
         var ledger = Ledger()
+        if let appearance = galleryAppearance { ledger.preferences.appearance = appearance }
         ledger.preferences.onboardingComplete = true
         ledger.preferences.cloudAIEnabled = ["v45-receipt", "v45-principles", "v45-ai"].contains(script)
         ledger.cycleAnchor = .calendarMonth

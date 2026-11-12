@@ -29,7 +29,7 @@ struct ProfileView: View {
             principles
             memories
             chat
-        }.navigationTitle("我的消费观").yubaiNavigation()
+        }.navigationTitle("我的消费观").yubaiNavigation().accessibilityIdentifier("profilePage")
             .toolbar { Button(editing ? "完成" : "编辑") { editing.toggle() }.frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("editProfile") }
             .onAppear { configured = IntelligenceRuntime.isConfigured }
             .onChange(of: store.current.id) { _, _ in sheet = nil }
@@ -112,7 +112,7 @@ struct ProfileView: View {
                         Text(area.note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).multilineTextAlignment(.leading)
                     }
                 }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle())
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("profileArea_" + area.id.uuidString)
             if editing { Menu {
                 Button("编辑") { sheet = .area(area, stance) }
                 Button("删掉") {
@@ -194,7 +194,7 @@ private struct ProfileAreaEditor: View {
     var body: some View {
         Form {
             Section {
-                TextField("名称", text: $title)
+                TextField("名称", text: $title).accessibilityIdentifier("profileAreaTitle")
                 if title.isEmpty { InlineFieldError(message: "填写名称") }
                 SuggestionChips(values: ["外卖", "学习", "旅行"], selected: title) { title = $0 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {

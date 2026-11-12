@@ -1177,7 +1177,7 @@ struct RootView: View {
             #else
             Button("用设备密码") { Task { await store.unlock(useBiometrics: false) } }.frame(minHeight: YubaiSize.tapMin)
             #endif
-        }.padding(YubaiSpace.insetPage)
+        }.padding(YubaiSpace.insetPage).accessibilityIdentifier("lockedPage")
     }
     func recoveryView(_ message: String) -> some View {
         VStack(spacing: YubaiSpace.gapSection) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.gapSection).frame(maxWidth: 540)

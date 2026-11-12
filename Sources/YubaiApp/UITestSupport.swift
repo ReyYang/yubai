@@ -75,7 +75,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
+              (galleryScripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -90,14 +90,30 @@ enum UITestSupport {
     static var welcomeStatementURL: URL? { script == "welcome-import" ? statementURL : nil }
     @MainActor static func prepare(_ repository: LedgerRepository) throws {
         guard let script else { return }
+        func save(_ fixture: Ledger, reason: String) throws {
+            var fixture = fixture
+            if let appearance = galleryAppearance { fixture.preferences.appearance = appearance }
+            try repository.save(fixture, reason: reason)
+        }
         if let url = statementURL, let encoded = ProcessInfo.processInfo.environment["YUBAI_UI_STATEMENT"],
            let data = Data(base64Encoded: encoded), data.count < 1_000_000 {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
         }
+        if script == "empty", galleryAppearance != nil, !FileManager.default.fileExists(atPath: repository.file.path) {
+            try save(Ledger(), reason: "合成截图夹具")
+            return
+        }
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty",
               script != "welcome-import" || erasesThenReimports else { return }
         let now = Date()
+        if galleryScripts.contains(script) {
+            let ledger = try galleryLedger(script, now: now)
+            resetGalleryDeviceState(for: ledger.id)
+            try save(ledger, reason: "合成截图夹具")
+            if script == "gallery" { try repository.preserveRecovery(ledger, reason: "合成截图历史") }
+            return
+        }
         if secondBatchScripts.contains(script) {
             try prepareSecondBatch(repository, script: script, now: now)
             return
@@ -105,23 +121,23 @@ enum UITestSupport {
         if erasesThenReimports {
             var ledger = Ledger(); ledger.preferences.onboardingComplete = true
             ledger.accounts = [Account(name: "合成卡")]; ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
-            try repository.save(ledger, reason: "合成测试夹具")
+            try save(ledger, reason: "合成测试夹具")
             return
         }
         if script == "salary" {
-            try repository.save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
+            try save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
             return
         }
         if script.hasPrefix("cashflow") {
-            try repository.save(cashTimelineLedger(low: script == "cashflow-low", now: now), reason: "合成测试夹具")
+            try save(cashTimelineLedger(low: script == "cashflow-low", now: now), reason: "合成测试夹具")
             return
         }
         if screenshotScripts.contains(script) {
-            try repository.save(screenshotLedger(script, now: now), reason: "合成截图夹具")
+            try save(screenshotLedger(script, now: now), reason: "合成截图夹具")
             return
         }
         if v45Scripts.contains(script) {
-            try repository.save(v45Ledger(script, now: now), reason: "合成测试夹具")
+            try save(v45Ledger(script, now: now), reason: "合成测试夹具")
             return
         }
         var ledger = Ledger()
@@ -213,7 +229,7 @@ enum UITestSupport {
                 plan.accountID = account.id; plan.installments = 7; ledger.plans = [plan]
             }
         }
-        try repository.save(ledger, reason: "合成测试夹具")
+        try save(ledger, reason: "合成测试夹具")
     }
     /// 现在页各状态。手上的钱、每月存、固定存款和账单照画板：还能花 = 手上 − 存着不动 5,000 − 每月存 2,000 − 固定账单还要付。
     static func v45Ledger(_ script: String, now: Date) throws -> Ledger {
@@ -606,6 +622,7 @@ struct UITestTransport: ChatTransport {
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
         if let reply = try UITestSupport.secondBatchReceiptReply(request, script: script) { return reply }
+        if let reply = try UITestSupport.galleryReply(request, script: script) { return reply }
         if ["导入整理", "导入整理·按对方"].contains(request.purpose), UITestSupport.usesBackgroundFixture {
             try await Task.sleep(for: .seconds(8))
         }

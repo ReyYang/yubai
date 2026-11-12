@@ -17,7 +17,7 @@ struct NowView: View {
             .rootScrollContentMargins().rootTabScroll(.now)
             .rootPageHeader { RootHeader(title: "现在") }
             .navigationTitle("现在").yubaiNavigation()
-            .amountPrivacy(hide)
+            .amountPrivacy(hide).accessibilityIdentifier("nowScroll")
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif

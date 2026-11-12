@@ -23,7 +23,7 @@ struct MemoryView: View {
                         }
                 }
             }
-        }.navigationTitle("余白记得的").yubaiNavigation()
+        }.navigationTitle("余白记得的").yubaiNavigation().accessibilityIdentifier("memoriesPage")
             .toolbar { ToolbarItem(placement: .primaryAction) { Text("\(notes.count) 条").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) } }
     }
     private func remove(_ note: MemoryNote) {

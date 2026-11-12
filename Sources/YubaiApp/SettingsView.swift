@@ -264,10 +264,10 @@ struct BackupView: View {
             }
             Section {
                 NavigationLink("最近删除 \(RecentlyDeleted.entries(in: store.current).count) 笔") { RecentlyDeletedView() }.accessibilityIdentifier("recentlyDeleted")
-                NavigationLink("恢复版本") { RecoveryVersionsView() }
+                NavigationLink("恢复版本") { RecoveryVersionsView() }.accessibilityIdentifier("openRecoveryVersions")
             }.listRowBackground(YubaiColor.card)
             Section { EraseAllDataButton() }.listRowBackground(Color.clear).listRowSeparator(.hidden)
-        }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().manualSheetHeader("备份与恢复", cancelTitle: "关闭", showsAction: false)
+        }.editorForm().navigationTitle("备份与恢复").yubaiNavigation().manualSheetHeader("备份与恢复", cancelTitle: "关闭", showsAction: false).accessibilityIdentifier("backupPage")
             .fileExporter(isPresented: $exporting, document: exportDocument, contentType: csvExport ? .commaSeparatedText : .yubaiBackup, defaultFilename: exportName) { result in
                 switch result {
                 case .success:
@@ -347,7 +347,7 @@ struct BackupView: View {
 
     private var exportSection: some View {
         Section {
-            SecureField("备份密码（至少 8 位）", text: $password).focused($passwordFocus, equals: .export)
+            SecureField("备份密码（至少 8 位）", text: $password).focused($passwordFocus, equals: .export).accessibilityIdentifier("backupPassword")
             Button("导出完整备份", action: exportBackup).disabled(busy || password.count < 8)
             Text("密码无法找回，请妥善保存。").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
@@ -420,7 +420,7 @@ struct ImportHistoryView: View {
                     }
                 }.buttonStyle(.borderless).padding(.vertical, YubaiSpace.space8)
             }
-        }.navigationTitle("导入记录").yubaiNavigation()
+        }.navigationTitle("导入记录").yubaiNavigation().accessibilityIdentifier("importHistoryPage")
             .confirmationDialog("撤销这批 \(undoBatch?.importedCount ?? 0) 笔？整理产生的关联和安排也会还原。",
                                 isPresented: Binding(get: { undoBatch != nil }, set: { if !$0 { undoBatch = nil } })) {
                 Button("撤销这一批", role: .destructive) { if let batch = undoBatch { store.undoImport(batch.id) }; undoBatch = nil }
@@ -447,7 +447,7 @@ struct RecoveryVersionsView: View {
                         Text(Dates.text(recovery.date, time: true)).yubaiFont(YubaiFont.rowTitle)
                         Text(recovery.name).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space8).contentShape(Rectangle())
-                }.buttonStyle(PressButtonStyle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("recoveryVersion_" + recovery.name)
             }
         }.navigationTitle("恢复版本").yubaiNavigation().manualSheetHeader("恢复版本", cancelTitle: "关闭", showsAction: false)
             .onAppear { do { recoveries = try store.repository.recoveries() } catch { store.error = error.localizedDescription } }

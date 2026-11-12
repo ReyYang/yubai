@@ -54,7 +54,7 @@ struct ButlerCardView: View {
                 Button { store.present(.cardEvidence(card.id), from: "card-" + card.id.uuidString) } label: {
                     Text(evidenceText)
                         .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).multilineTextAlignment(.leading)
-                }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin, alignment: .leading)
+                }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin, alignment: .leading).accessibilityIdentifier("butlerEvidence_" + card.id.uuidString)
                 if card.evidence.count > 1 {
                     LetterEntryInset(entries: store.evidenceEntries(Set(card.evidence), activeOnly: true))
                     if card.evidence.count > 3 { Text("还有 \(card.evidence.count - 3) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
@@ -81,7 +81,7 @@ struct ButlerCardView: View {
                 if card.kind == .weeklyLetter { store.sheet = .letter(card.id) }
                 else if card.kind == .shortfall { store.present(.ask("接下来的付款有缺口，帮我看看怎么挪。" + card.title), from: "card-" + card.id.uuidString) }
                 else { store.sheetSource = "card-" + card.id.uuidString; store.performCardAction(card) }
-            }.buttonStyle(ButlerActionStyle(amber: amber))
+            }.buttonStyle(ButlerActionStyle(amber: amber)).accessibilityIdentifier("butlerPrimary_" + card.id.uuidString)
         }
     }
     @ViewBuilder private var more: some View {
@@ -227,7 +227,7 @@ struct ButlerEvidenceView: View {
                 }
                 if card.evidence.count > rows.count { Text("部分原始记录已移除。").yubaiFont(YubaiFont.caption) }
             } else { Text("这张卡片已移除。") }
-        }.navigationTitle("明细").yubaiNavigation().manualSheetHeader("明细", cancelTitle: "关闭", showsAction: false)
+        }.navigationTitle("明细").yubaiNavigation().manualSheetHeader("明细", cancelTitle: "关闭", showsAction: false).accessibilityIdentifier("butlerEvidencePage")
     }
 }
 
@@ -290,7 +290,7 @@ struct ButlerProposalView: View {
                     }) { dismiss() }
                 })
             } else { Text("这份修改已经处理过了。") }
-        }.navigationTitle("余白想这样改").yubaiNavigation().manualSheetHeader("余白想这样改", cancelTitle: "关闭", showsAction: false)
+        }.navigationTitle("余白想这样改").yubaiNavigation().manualSheetHeader("余白想这样改", cancelTitle: "关闭", showsAction: false).accessibilityIdentifier("butlerProposalPage")
     }
 }
 

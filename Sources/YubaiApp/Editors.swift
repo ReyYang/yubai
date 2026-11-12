@@ -178,14 +178,14 @@ struct AccountsView: View {
                 if !a.note.isEmpty { Divider().overlay(YubaiColor.separator); Text(a.note).frame(minHeight: YubaiSize.rowSingle) }
                 Divider().overlay(YubaiColor.separator)
                 NavigationLink("对一下余额") { AccountEditor(account: a, startsReconciling: true) }.frame(minHeight: YubaiSize.rowSingle)
-                NavigationLink("编辑账户") { AccountEditor(account: a) }.frame(minHeight: YubaiSize.rowSingle)
+                NavigationLink("编辑账户") { AccountEditor(account: a) }.frame(minHeight: YubaiSize.rowSingle).accessibilityIdentifier("editAccount")
             }.yubaiFont(YubaiFont.row) }
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 SectionHeading(title: "关联记录").padding(.horizontal, YubaiSpace.insetCard)
                 CardRows(store.accountEntries(a.id)) { e in EntryLink(entry: e, hideAmount: store.preferences.hideAmounts, editable: true) }
             }
             Button(a.archived ? "取消归档" : "归档账户") { store.update(a.archived ? "取消归档" : "归档账户") { l in if let i = l.accounts.firstIndex(where: { $0.id == a.id }) { l.accounts[i].archived.toggle() } } }.buttonStyle(SecondaryButtonStyle())
-        }.navigationTitle(a.name).yubaiNavigation()
+        }.navigationTitle(a.name).yubaiNavigation().accessibilityIdentifier("accountDetailPage")
     }
 }
 

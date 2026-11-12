@@ -49,7 +49,7 @@ struct WishlistView: View {
                         .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
-        }.navigationTitle("心愿单").yubaiNavigation().task(id: store.ledgerRevision) { now = Date() }
+        }.navigationTitle("心愿单").yubaiNavigation().accessibilityIdentifier("wishlistPage").task(id: store.ledgerRevision) { now = Date() }
             .onChange(of: phase) { _, value in if value == .active { now = Date() } }
     }
     private func followUpCard(_ wish: WishItem) -> some View {
@@ -102,12 +102,12 @@ struct WishlistView: View {
                         .accessibilityIdentifier("wishFollowUpDate_" + wish.id.uuidString)
                 }
                 if let id = wish.boughtEntryID, store.entriesByID[id].map { $0.deletedAt == nil } == true {
-                    NavigationLink("购买记录") { EntryDetailView(entryID: id) }
+                    NavigationLink("购买记录") { EntryDetailView(entryID: id) }.accessibilityIdentifier("wishBoughtEntry_" + wish.id.uuidString)
                 }
                 if let answer = wish.followUpAnswer { Text("一个月后的感受：" + answer).yubaiFont(YubaiFont.callout) }
                 else if let due = wish.followUpAt, due <= Date() { WishFollowUpView(wishID: wish.id) }
             }
-        }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+        }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("wish_" + wish.id.uuidString)
     }
     private func wishHeading(_ wish: WishItem) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
@@ -119,7 +119,7 @@ struct WishlistView: View {
     }
     @ViewBuilder private func wishActions(_ wish: WishItem) -> some View {
         if wish.status == .thinking {
-            NavigationLink("已经买了") { WishEntryPicker(wishID: wish.id) }.frame(maxWidth: .infinity)
+            NavigationLink("已经买了") { WishEntryPicker(wishID: wish.id) }.frame(maxWidth: .infinity).accessibilityIdentifier("wishPurchase_" + wish.id.uuidString)
             Button("不买了") { store.update("放下心愿") { ledger in
                 if let i = ledger.wishlist.firstIndex(where: { $0.id == wish.id && $0.status == .thinking }) {
                     ledger.wishlist[i].status = .dropped
@@ -153,7 +153,7 @@ struct WishEntryPicker: View {
                 Toggle("查看全部支出", isOn: $all).tint(YubaiColor.toggleOn)
                 NavigationLink("先记下购买") { AskYubaiView(initialText: "记一笔：\(wish.title) \(Money.text(wish.amount, currency: false))元") }
             } else { Text("这条心愿已经处理过了。") }
-        }.navigationTitle("对应哪一笔").yubaiNavigation()
+        }.navigationTitle("对应哪一笔").yubaiNavigation().accessibilityIdentifier("wishEntryPicker")
     }
 }
 
