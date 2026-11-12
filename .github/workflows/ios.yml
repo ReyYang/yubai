@@ -117,7 +117,23 @@ jobs:
   gallery:
     if: inputs.mode != 'tests'
     runs-on: macos-26
-    timeout-minutes: 120
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: reduced
+            walks: testAccessibilityWalk testDarkWalk
+          - part: roots
+            walks: testWalk01RootsAndLedger testWalk02FormulaAndAccounts
+          - part: money
+            walks: testWalk03Bills testWalk04Saving testWalk05EntrySheets
+          - part: pages
+            walks: testWalk06Categories testWalk07Yubai testWalk08Settings
+          - part: states
+            walks: testWalk09Imports testWalk10States testWalk11Empty
+    env:
+      GALLERY_ONLY: ${{ matrix.walks }}
     steps:
       - uses: actions/checkout@v4
       - name: 选择 Xcode 26
@@ -143,7 +159,13 @@ jobs:
           xcrun simctl list devices | grep "$udid"
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
       - name: 逐屏截图
-        run: scripts/gallery.sh "$SIM_UDID" > gallery-run.log 2>&1 || { tail -80 gallery-run.log; exit 1; }
+        shell: bash
+        run: |
+          set -o pipefail
+          # Print each test's start and result as it happens so a stall is visible from outside.
+          scripts/gallery.sh "$SIM_UDID" 2>&1 | tee gallery-run.log \
+            | grep --line-buffered -E "GALLERY-STOP|Test Case|Test Suite|error:|Gallery:|\*\* (BUILD|TEST)" \
+            || { tail -80 gallery-run.log; exit 1; }
       - name: 摘要
         if: always()
         run: |
@@ -153,11 +175,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: screen-gallery
+          name: screen-gallery-${{ matrix.part }}
           path: .shots
           include-hidden-files: true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: screen-gallery-log
+          name: screen-gallery-log-${{ matrix.part }}
           path: gallery-run.log

@@ -82,12 +82,16 @@ final class ScreenGalleryTests: XCTestCase {
             if !issues.isEmpty { throw Miss(description: issues.joined(separator: "; ")) }
             shot(name)
             if !issues.isEmpty { throw Miss(description: issues.joined(separator: "; ")) }
+            print("GALLERY-STOP ok " + name)
             return true
         } catch {
+            print("GALLERY-STOP MISSING " + name + ": " + String(describing: error).replacingOccurrences(of: "\n", with: " "))
             missing.append(name + "-MISSING: " + String(describing: error).replacingOccurrences(of: "\n", with: " "))
             // Attach the current pixels and hierarchy even if a host-path write fails.
             shot(name + "-MISSING")
-            let hierarchy = XCTAttachment(string: app.debugDescription)
+            let tree = app.debugDescription
+            if let directory { try? tree.write(to: directory.appendingPathComponent(name + "-MISSING-hierarchy.txt"), atomically: true, encoding: .utf8) }
+            let hierarchy = XCTAttachment(string: tree)
             hierarchy.name = name + "-MISSING-hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
             // Start the next stop from a known screen instead of whatever the failed one left open.
             if let relaunch { try? relaunch() }
@@ -122,8 +126,10 @@ final class ScreenGalleryTests: XCTestCase {
         try require(fixture == "empty" ? "welcomeScroll" : fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
     }
     private func drag(_ scroll: XCUIElement, up: Bool = true) throws {
-        guard scroll.exists && scroll.isHittable else { throw Miss(description: "Scroll container unavailable: " + scroll.identifier) }
-        var frame = scroll.frame.intersection(app.frame).insetBy(dx: 12, dy: 12)
+        // XCUITest reports some SwiftUI scroll containers as not hittable although a finger can drag them;
+        // drag by screen coordinates inside the container's frame, or the window when it has none.
+        let bounds = scroll.exists && !scroll.frame.isEmpty ? scroll.frame.intersection(app.frame) : app.frame.insetBy(dx: 0, dy: 110)
+        var frame = bounds.insetBy(dx: 12, dy: 12)
         let navigation = element("mainNavigation"), keyboard = app.keyboards.firstMatch
         if navigation.exists && navigation.isHittable { frame.size.height = min(frame.maxY, navigation.frame.minY) - frame.minY }
         if keyboard.exists { frame.size.height = min(frame.maxY, keyboard.frame.minY) - frame.minY }
@@ -133,27 +139,43 @@ final class ScreenGalleryTests: XCTestCase {
         let end = origin.withOffset(CGVector(dx: frame.midX - app.frame.minX, dy: frame.minY + frame.height * (up ? 0.22 : 0.78) - app.frame.minY))
         start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
     }
+    /// On screen where a finger could press it: inside the window, not under the tab bar, and either
+    /// in the fixed page header or below it.
+    private func onScreen(_ target: XCUIElement) -> Bool {
+        guard target.exists, !target.frame.isEmpty else { return false }
+        let center = CGPoint(x: target.frame.midX, y: target.frame.midY)
+        guard app.frame.insetBy(dx: 4, dy: 4).contains(center) else { return false }
+        let navigation = element("mainNavigation")
+        if navigation.exists, !navigation.frame.isEmpty, center.y > navigation.frame.minY - 4, !navigation.frame.contains(center) { return false }
+        return true
+    }
+    private func pressable(_ target: XCUIElement) -> Bool { target.exists && (target.isHittable || onScreen(target)) }
+    private func press(_ target: XCUIElement) {
+        if target.isHittable { target.tap(); return }
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: target.frame.midX - app.frame.minX, dy: target.frame.midY - app.frame.minY)).tap()
+    }
     private func reveal(_ target: XCUIElement) throws {
         _ = target.waitForExistence(timeout: 3)
         // A stop that cannot be reached must fail fast: an unbounded search costs minutes per stop on CI.
         let deadline = Date().addingTimeInterval(20)
         for _ in 0..<8 {
-            if target.exists && target.isHittable { return }
+            if pressable(target) { return }
             if Date() > deadline { break }
             guard app.alerts.count == 0 else { break }
             let containers = app.scrollViews.allElementsBoundByIndex + app.collectionViews.allElementsBoundByIndex + app.tables.allElementsBoundByIndex
-            let scrolls = containers.filter { $0.isHittable && $0.frame.height > 120 && $0.frame.width > app.frame.width * 0.65 }
+            let scrolls = containers.filter { $0.exists && $0.frame.height > 120 && $0.frame.width > app.frame.width * 0.65 }
             let containing = scrolls.last { target.exists && $0.descendants(matching: target.elementType).matching(identifier: target.identifier).count > 0 }
-            guard let scroll = containing ?? scrolls.last else { break }
+            let scroll = containing ?? scrolls.last ?? app
             let above = target.exists && !target.frame.isEmpty && target.frame.maxY < scroll.frame.minY + 20
             try drag(scroll, up: !above)
         }
-        try wait({ target.exists && target.isHittable }, "Not reachable: " + (target.exists ? target.identifier : target.description), timeout: 2)
+        try wait({ self.pressable(target) }, "Not reachable: " + (target.exists ? target.identifier : target.description), timeout: 2)
     }
     private func tap(_ target: XCUIElement) throws {
         try reveal(target)
-        try wait({ target.exists && target.isEnabled && target.isHittable }, "Control disabled: " + target.identifier)
-        target.tap()
+        try wait({ target.exists && target.isEnabled && self.pressable(target) }, "Control disabled: " + target.identifier)
+        press(target)
     }
     private func tap(_ id: String) throws { try tap(element(id)) }
     private func type(_ value: String, into id: String) throws {

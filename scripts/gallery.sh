@@ -15,11 +15,15 @@ mkdir -p -- "$shots"
 run_dir="$(mktemp -d /tmp/yubai-gallery.XXXXXX)"
 result="$run_dir/gallery.xcresult"
 printf 'Simulator: %s\nResults and log: %s\n' "$simulator" "$run_dir"
+# GALLERY_ONLY="testWalk01RootsAndLedger testWalk02FormulaAndAccounts" runs just those walks (CI splits the gallery this way).
+only=()
+for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalleryTests/$name"); done
+(( ${#only[@]} )) || only=("-only-testing:YubaiUITests/ScreenGalleryTests")
 set +e
 env TEST_RUNNER_YUBAI_GALLERY_DIR="$shots" xcodebuild test \
     -project "$repo_root/Yubai.xcodeproj" -scheme Yubai -configuration Debug \
     -destination "platform=iOS Simulator,id=$simulator" \
-    -only-testing:YubaiUITests/ScreenGalleryTests \
+    "${only[@]}" \
     -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
     -derivedDataPath "$run_dir/DerivedData" -resultBundlePath "$result" \
     ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$run_dir/xcodebuild.log"
@@ -35,6 +39,7 @@ fi
 
 python3 - "$shots" "$repo_root" "$build_status" "$result" <<'PY'
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -95,6 +100,9 @@ full, reduced = source.split("    private func reduced(", 1)
 names = re.findall(r'\bstop\("([^"\n]+)"', full)
 small = re.findall(r'\bstop\("([^"\n]+)"', reduced)
 expected = sorted(names + [prefix + name for prefix in ("80-a11y-", "90-dark-") for name in small])
+if os.environ.get("GALLERY_ONLY"):
+    # A partial run is only accountable for the stops its own walks planned.
+    expected = sorted({line for report in shots.glob("planned-*.txt") for line in report.read_text().splitlines() if line.strip()})
 (shots / "expected.txt").write_text("\n".join(expected) + "\n")
 
 missing = set()
