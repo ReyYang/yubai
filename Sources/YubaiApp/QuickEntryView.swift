@@ -261,10 +261,12 @@ struct QuickEntryView: View {
     }
     private func matchChip(_ match: Occurrence) -> some View {
         let selected = selectedMatchID == match.id
+        let question: String = selected ? "已选 · \(match.title)这期" : "是\(match.title)这期吗"
+        let label: String = question + " · " + FixedFlowPresentation.monthDay(match.date)
         return Button { purposeFocused = false; selectedMatchID = selected ? nil : match.id; if !selected { repeatsMonthly = false } } label: {
             HStack(spacing: YubaiSpace.space8) {
                 if selected { Image(systemName: "checkmark") }
-                Text((selected ? "已选 · " + match.title + "这期" : "是" + match.title + "这期吗") + " · " + FixedFlowPresentation.monthDay(match.date))
+                Text(label)
             }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberStrong)
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8).background(YubaiColor.amberTint, in: Capsule())
                 .overlay { if selected { Capsule().strokeBorder(YubaiColor.amberDot, lineWidth: 1) } }
