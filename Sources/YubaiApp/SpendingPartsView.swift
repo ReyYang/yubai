@@ -47,7 +47,9 @@ struct SpendingPartsCard: View {
         let over = overflow > 0
         let progress = allowance.map { $0 > 0 ? Double(remaining) / Double($0) : 0 } ?? 1
         let value = over ? overflow : remaining
-        let amountText = (over ? "多 " : "剩 ") + amount2(value, hide: hide) + (allowance.map { " / " + amount2($0, hide: hide) } ?? "")
+        let prefix: String = over ? "多 " : "剩 "
+        let limit: String = allowance.map { " / " + amount2($0, hide: hide) } ?? ""
+        let amountText: String = prefix + amount2(value, hide: hide) + limit
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
             Text(name).yubaiFont(YubaiFont.row).frame(minWidth: 56, alignment: .leading)

@@ -207,9 +207,12 @@ struct EntryAccountMenu: View {
             }
         } label: {
             let account = accounts.first { $0.id == selection }
+            let fallback: String = emptyTitle ?? (optional ? "不指定" : "选择账户")
+            let name: String = account?.name ?? fallback
+            let balance: String = (showsBalance ? account : nil).map { " · 余额 " + balanceText($0.id) } ?? ""
             HStack(spacing: 6) {
                 if inTray { Image(systemName: "creditcard").accessibilityHidden(true) }
-                Text((account?.name ?? emptyTitle ?? (optional ? "不指定" : "选择账户")) + (showsBalance && account != nil ? " · 余额 " + balanceText(account!.id) : "")).fixedSize(horizontal: false, vertical: true)
+                Text(name + balance).fixedSize(horizontal: false, vertical: true)
             }.yubaiFont(YubaiFont.callout).fixedSize(horizontal: false, vertical: true).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight)
                 .background(inTray ? YubaiColor.keyFn : YubaiColor.raised, in: Capsule())
                 .yubaiHitTarget()

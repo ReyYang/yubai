@@ -498,7 +498,9 @@ private struct AskEntryDraftCard: View {
         let dates = drafts.map(\.date)
         let today = dates.allSatisfy { Dates.calendar.isDateInToday($0) }
         let accounts = Set(drafts.map(\.accountID))
-        return (today ? "今天" : ImportStatementText.range(dates)) + " · " + (accounts.count == 1 ? store.accountName(drafts[0].accountID) : "多个账户")
+        let day: String = today ? "今天" : ImportStatementText.range(dates)
+        let account: String = accounts.count == 1 ? store.accountName(drafts[0].accountID) : "多个账户"
+        return day + " · " + account
     }
     var body: some View {
         if savedCount > 0 { Text("已记下 \(savedCount) 笔，可撤销上一项修改。").yubaiFont(YubaiFont.callout).accessibilityIdentifier("draftEntriesSaved") }
