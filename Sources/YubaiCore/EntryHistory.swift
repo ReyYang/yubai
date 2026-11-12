@@ -111,6 +111,35 @@ extension EntryHistory {
         public var id: String; public var purpose: String; public var amount: Int64
         public var category: String; public var subcategory: String?; public var accountID: UUID
     }
+    public struct HiddenRepeat: Equatable, Sendable, Identifiable {
+        public let id: String
+        public let entry: Repeat?
+        public let purpose: String?
+        public let amount: Int64?
+        init(id: String, entry: Repeat?) {
+            self.id = id; self.entry = entry
+            let legacy = entry == nil ? Self.legacyDisplayData(id) : nil
+            purpose = entry?.purpose ?? legacy?.purpose; amount = entry?.amount ?? legacy?.amount
+        }
+        private static func legacyDisplayData(_ id: String) -> (purpose: String, amount: Int64)? {
+            // The name length counts UTF-8 bytes, and the name itself may contain colons.
+            let bytes = Array(id.utf8)
+            guard let separator = bytes.firstIndex(of: 58),
+                  let count = Int(String(decoding: bytes[..<separator], as: UTF8.self)),
+                  count > 0, count < bytes.count - separator - 1 else { return nil }
+            let start = separator + 1, end = start + count
+            guard bytes[end] == 58, let purpose = String(bytes: bytes[start..<end], encoding: .utf8) else { return nil }
+            let tail = String(decoding: bytes[(end + 1)...], as: UTF8.self).split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard tail.count == 2, !tail[1].isEmpty, let amount = Int64(tail[0]), (1...Money.limit).contains(amount) else { return nil }
+            return (purpose, amount)
+        }
+    }
+    public static func hiddenRepeats(in ledger: Ledger, now: Date) -> [HiddenRepeat] {
+        let automatic = Dictionary(uniqueKeysWithValues: automaticRepeats(in: ledger, now: now).map { ($0.id, $0) })
+        return (ledger.repeatPreferences ?? []).filter { $0.hidden == true }.map {
+            HiddenRepeat(id: $0.id, entry: $0.snapshot ?? automatic[$0.id])
+        }
+    }
     public static func repeats(in ledger: Ledger, now: Date, limit: Int = 3) -> [Repeat] {
         let preferences = ledger.repeatPreferences ?? []
         let hidden = Set(preferences.filter { $0.hidden == true }.map(\.id))

@@ -1,20 +1,12 @@
 import SwiftUI
 import YubaiCore
 
-private struct HiddenFrequentEntry: Identifiable {
-    let id: String
-    let entry: EntryHistory.Repeat?
-}
 private struct FrequentEntriesSnapshot: Sendable {
     var visible: [EntryHistory.Repeat]
-    var hidden: [RepeatPreference]
-    var recovered: [EntryHistory.Repeat]
+    var hidden: [EntryHistory.HiddenRepeat]
     init(ledger: Ledger, now: Date) {
         visible = EntryHistory.repeats(in: ledger, now: now, limit: 1000)
-        hidden = (ledger.repeatPreferences ?? []).filter { $0.hidden == true }
-        var unhidden = ledger
-        unhidden.repeatPreferences = (ledger.repeatPreferences ?? []).filter { $0.hidden != true }
-        recovered = EntryHistory.repeats(in: unhidden, now: now, limit: 1000)
+        hidden = EntryHistory.hiddenRepeats(in: ledger, now: now)
     }
 }
 
@@ -22,9 +14,8 @@ struct FrequentEntriesView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var items: [EntryHistory.Repeat] = []
-    @State private var hidden: [HiddenFrequentEntry] = []
+    @State private var hidden: [EntryHistory.HiddenRepeat] = []
     @State private var pinned = Set<String>()
-    @State private var known: [String: EntryHistory.Repeat] = [:]
     var body: some View {
         Page(spacing: YubaiSpace.gapGroup) {
             CardRows(Array(items.enumerated()).map { IndexedFrequentEntry(index: $0.offset, entry: $0.element) }) { row in
@@ -51,14 +42,13 @@ struct FrequentEntriesView: View {
     }
     private func entryRow(_ item: EntryHistory.Repeat, index: Int) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            summary(item)
+            summary(item.purpose, amount: item.amount)
             HStack(spacing: YubaiSpace.space4) {
                 icon(pinned.contains(item.id) ? "pin.fill" : "pin", label: (pinned.contains(item.id) ? "取消固定" : "固定") + item.purpose,
                      identifier: "frequentPin_\(index)", selected: pinned.contains(item.id)) {
                     store.update("常记的几笔", entryMotion: false, showToast: false) { try EntryHistory.setPinned(item, pinned: !pinned.contains(item.id), in: &$0) }
                 }
                 icon("eye.slash", label: "隐藏" + item.purpose, identifier: "frequentHide_\(index)") {
-                    known[item.id] = item
                     store.update("常记的几笔", entryMotion: false, showToast: false) { try EntryHistory.setHidden(item, hidden: true, in: &$0) }
                 }
                 Spacer(minLength: YubaiSpace.none)
@@ -67,25 +57,22 @@ struct FrequentEntriesView: View {
             }
         }.padding(.vertical, YubaiSpace.space4).accessibilityElement(children: .contain).accessibilityIdentifier("frequentEntry_\(index)")
     }
-    private func summary(_ item: EntryHistory.Repeat) -> some View {
+    private func summary(_ purpose: String, amount: Int64) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
-            Text(item.purpose).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
-            AmountLabel(cents: item.amount, hide: store.preferences.hideAmounts)
+            Text(purpose).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
+            AmountLabel(cents: amount, hide: store.preferences.hideAmounts)
         }.frame(minHeight: YubaiSize.tapMin).accessibilityElement(children: .combine)
     }
-    private func hiddenRow(_ row: HiddenFrequentEntry) -> some View {
+    private func hiddenRow(_ row: EntryHistory.HiddenRepeat) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            if let entry = row.entry { summary(entry).foregroundStyle(YubaiColor.labelSecondary) }
+            if let purpose = row.purpose, let amount = row.amount { summary(purpose, amount: amount).foregroundStyle(YubaiColor.labelSecondary) }
             HStack(spacing: YubaiSpace.space8) {
                 Image(systemName: "eye.slash").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-                if row.entry == nil { Text("1 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+                if row.purpose == nil { Text("1 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                 Spacer(minLength: YubaiSpace.none)
-                icon("eye", label: "重新显示" + (row.entry?.purpose ?? "常记的几笔"), identifier: "frequentUnhide_" + row.id) {
-                    store.update("常记的几笔", entryMotion: false, showToast: false) { ledger in
-                        if let entry = row.entry { try EntryHistory.setHidden(entry, hidden: false, in: &ledger) }
-                        else { ledger.repeatPreferences?.removeAll { $0.id == row.id } }
-                    }
+                icon("eye", label: "重新显示" + (row.purpose ?? "常记的几笔"), identifier: "frequentUnhide_" + row.id) {
+                    store.update("常记的几笔", entryMotion: false, showToast: false) { try EntryHistory.unhide(row.id, in: &$0, now: Date()) }
                 }
             }
         }.padding(.vertical, YubaiSpace.space4)
@@ -108,9 +95,8 @@ struct FrequentEntriesView: View {
         let ledger = store.current, now = Date(), revision = store.ledgerRevision
         let result = await Task.detached(priority: .userInitiated) { FrequentEntriesSnapshot(ledger: ledger, now: now) }.value
         guard !Task.isCancelled, store.ledgerRevision == revision else { return }
-        for item in result.visible + result.recovered { known[item.id] = item }
         items = result.visible
-        hidden = result.hidden.map { HiddenFrequentEntry(id: $0.id, entry: known[$0.id]) }
+        hidden = result.hidden
         pinned = Set((ledger.repeatPreferences ?? []).filter { $0.pinned != nil }.map(\.id))
     }
 }

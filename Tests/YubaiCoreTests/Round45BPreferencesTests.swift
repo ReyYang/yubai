@@ -115,6 +115,147 @@ final class Round45BPreferencesTests: XCTestCase {
         XCTAssertThrowsError(try EntryHistory.reorder([repeats[1], repeats[1]], in: &ledger)); XCTAssertEqual(ledger, before)
         XCTAssertTrue(EntryHistory.repeats(in: ledger, now: now, limit: 0).isEmpty)
     }
+    func testHiddenRepeatSnapshotSurvivesWindowAndUnhidesAsPinned() throws {
+        var ledger = frequentLedger()
+        let item = try XCTUnwrap(EntryHistory.repeats(in: ledger, now: now).first)
+        try EntryHistory.setHidden(item, hidden: true, in: &ledger)
+        XCTAssertNil(ledger.repeatPreferences?.first?.pinned)
+        XCTAssertEqual(ledger.repeatPreferences?.first?.snapshot, item)
+        XCTAssertTrue(EntryHistory.repeats(in: ledger, now: now).isEmpty)
+        let later = Dates.addDays(31, to: now)
+        let decoded = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(ledger))
+        XCTAssertEqual(decoded.schema, 4); XCTAssertEqual(decoded, ledger); try decoded.validate()
+        ledger = decoded
+        let hidden = try XCTUnwrap(EntryHistory.hiddenRepeats(in: ledger, now: later).first)
+        XCTAssertEqual(hidden.entry, item); XCTAssertEqual(hidden.purpose, item.purpose); XCTAssertEqual(hidden.amount, item.amount)
+        try EntryHistory.setHidden(item, hidden: false, in: &ledger)
+        XCTAssertTrue(EntryHistory.hiddenRepeats(in: ledger, now: later).isEmpty)
+        XCTAssertEqual(EntryHistory.repeats(in: ledger, now: later), [item])
+        XCTAssertEqual(ledger.repeatPreferences?.first?.pinned, item)
+        XCTAssertNil(ledger.repeatPreferences?.first?.snapshot)
+        try EntryHistory.setPinned(item, pinned: false, in: &ledger)
+        XCTAssertTrue(EntryHistory.repeats(in: ledger, now: later).isEmpty); XCTAssertNil(ledger.repeatPreferences)
+    }
+    func testHiddenListingPrefersSnapshotThenLiveAutomaticRepeat() throws {
+        var ledger = frequentLedger()
+        let item = try XCTUnwrap(EntryHistory.repeats(in: ledger, now: now).first)
+        try EntryHistory.setPinned(item, pinned: true, in: &ledger)
+        XCTAssertNil(ledger.repeatPreferences?.first?.snapshot)
+        try EntryHistory.setHidden(item, hidden: true, in: &ledger)
+        let account = Account(name: "现金", kind: .cash, at: now); ledger.accounts.append(account)
+        ledger.entries[1].accountID = account.id
+        XCTAssertEqual(EntryHistory.hiddenRepeats(in: ledger, now: now).first?.entry, item)
+        ledger.repeatPreferences?[0].snapshot = nil
+        var live = item; live.accountID = account.id
+        XCTAssertEqual(EntryHistory.hiddenRepeats(in: ledger, now: now).first?.entry, live)
+        try EntryHistory.unhide(item.id, in: &ledger, now: now)
+        XCTAssertEqual(EntryHistory.repeats(in: ledger, now: now), [live])
+        XCTAssertNil(ledger.repeatPreferences)
+    }
+    func testLegacyHiddenRepeatDecodesAndFallsBackToUTF8NameAndAmount() throws {
+        var ledger = frequentLedger(purpose: "午饭:🍜", amount: 1234)
+        let item = try XCTUnwrap(EntryHistory.repeats(in: ledger, now: now).first)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(ledger)) as? [String: Any])
+        json["repeatPreferences"] = [["id": item.id, "hidden": true]]
+        ledger = try JSONDecoder().decode(Ledger.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(ledger.schema, 4); XCTAssertNil(ledger.repeatPreferences?.first?.snapshot); try ledger.validate()
+        XCTAssertEqual(EntryHistory.hiddenRepeats(in: ledger, now: now).first?.entry, item)
+        let later = Dates.addDays(31, to: now)
+        let hidden = try XCTUnwrap(EntryHistory.hiddenRepeats(in: ledger, now: later).first)
+        XCTAssertNil(hidden.entry); XCTAssertEqual(hidden.purpose, "午饭:🍜"); XCTAssertEqual(hidden.amount, 1234)
+        XCTAssertEqual(Money.text(try XCTUnwrap(hidden.amount), currency: false), "12.34")
+        let encoded = try JSONEncoder().encode(ledger)
+        XCTAssertFalse(try XCTUnwrap(String(data: encoded, encoding: .utf8)).contains("\"snapshot\""))
+        XCTAssertEqual(try JSONDecoder().decode(Ledger.self, from: encoded), ledger)
+        try EntryHistory.unhide(item.id, in: &ledger, now: later)
+        XCTAssertNil(ledger.repeatPreferences); XCTAssertTrue(EntryHistory.repeats(in: ledger, now: later).isEmpty)
+    }
+    func testLegacyHiddenDisplayRejectsMalformedIDsWithoutInventingEntries() {
+        var ledger = Round45BFixture.ledger()
+        let ids = ["old-id", "999999999999999999999999:x:1:餐饮", "3:午饭:1000:餐饮", "1:午:1000:餐饮",
+                   "6:午饭:0:餐饮", "6:午饭:-1:餐饮", "6:午饭:1.00:餐饮", "6:午饭:1000", "6:午饭:1000:",
+                   "6:午饭:\(Money.limit + 1):餐饮"]
+        ledger.repeatPreferences = ids.map { RepeatPreference(id: $0, hidden: true) }
+        let hidden = EntryHistory.hiddenRepeats(in: ledger, now: now)
+        XCTAssertEqual(hidden.map(\.id), ids)
+        XCTAssertTrue(hidden.allSatisfy { $0.entry == nil && $0.purpose == nil && $0.amount == nil })
+    }
+    func testHiddenSnapshotsValidateTheSameContentAsPinnedRows() throws {
+        var ledger = frequentLedger()
+        let item = try XCTUnwrap(EntryHistory.repeats(in: ledger, now: now).first)
+        var wrongID = item; wrongID.id = "wrong"
+        var empty = item; empty.purpose = ""
+        var long = item; long.purpose = String(repeating: "字", count: 4001)
+        var zero = item; zero.amount = 0
+        var negative = item; negative.amount = -1
+        var excessive = item; excessive.amount = Money.limit + 1
+        for invalid in [wrongID, empty, long, zero, negative, excessive] {
+            ledger.repeatPreferences = [RepeatPreference(id: item.id, hidden: true, snapshot: invalid)]
+            XCTAssertThrowsError(try ledger.validate())
+            ledger.repeatPreferences = [RepeatPreference(id: item.id, pinned: invalid)]
+            XCTAssertThrowsError(try ledger.validate())
+        }
+        ledger.repeatPreferences = [RepeatPreference(id: "", hidden: true, snapshot: item)]
+        XCTAssertThrowsError(try ledger.validate())
+        ledger.repeatPreferences = [RepeatPreference(id: item.id, hidden: true, snapshot: item)]
+        XCTAssertNoThrow(try ledger.validate())
+    }
+    func testOnlyHiddenSnapshotsMayReferenceMissingAccounts() throws {
+        var ledger = frequentLedger()
+        let item = try XCTUnwrap(EntryHistory.repeats(in: ledger, now: now).first)
+        try EntryHistory.setHidden(item, hidden: true, in: &ledger)
+        ledger.entries = []; ledger.accounts = []
+        XCTAssertNoThrow(try ledger.validate())
+        let decoded = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(ledger))
+        XCTAssertEqual(decoded, ledger); XCTAssertNoThrow(try decoded.validate())
+        XCTAssertEqual(EntryHistory.hiddenRepeats(in: decoded, now: Dates.addDays(31, to: now)).first?.entry, item)
+        ledger.repeatPreferences = [RepeatPreference(id: item.id, snapshot: item)]
+        XCTAssertThrowsError(try ledger.validate())
+        ledger.repeatPreferences = [RepeatPreference(id: item.id, pinned: item)]
+        XCTAssertThrowsError(try ledger.validate())
+        ledger.repeatPreferences = [RepeatPreference(id: item.id, pinned: item, hidden: true, snapshot: item)]
+        XCTAssertThrowsError(try ledger.validate())
+    }
+    func testUnhideReplacesDeletedOrArchivedAccountWithActiveDefault() throws {
+        for deleted in [false, true] {
+            var ledger = frequentLedger()
+            let item = try XCTUnwrap(EntryHistory.repeats(in: ledger, now: now).first)
+            try EntryHistory.setHidden(item, hidden: true, in: &ledger)
+            ledger.entries = []
+            if deleted { ledger.accounts = [] } else { ledger.accounts[0].archived = true }
+            let account = Account(name: "现金", kind: .cash, at: now); ledger.accounts.append(account)
+            XCTAssertNoThrow(try ledger.validate())
+            let later = Dates.addDays(31, to: now)
+            XCTAssertEqual(EntryHistory.hiddenRepeats(in: ledger, now: later).first?.entry, item)
+            try EntryHistory.unhide(item.id, in: &ledger, now: later)
+            var restored = item; restored.accountID = account.id
+            XCTAssertEqual(EntryHistory.repeats(in: ledger, now: later), [restored])
+            XCTAssertEqual(ledger.repeatPreferences?.first?.pinned, restored); XCTAssertNoThrow(try ledger.validate())
+        }
+    }
+    func testUnhideWithoutActiveAccountsKeepsHiddenSnapshotAtomically() throws {
+        for deleted in [false, true] {
+            var ledger = frequentLedger()
+            let item = try XCTUnwrap(EntryHistory.repeats(in: ledger, now: now).first)
+            try EntryHistory.setHidden(item, hidden: true, in: &ledger)
+            ledger.entries = []
+            if deleted { ledger.accounts = [] } else { ledger.accounts[0].archived = true }
+            let before = ledger
+            XCTAssertThrowsError(try EntryHistory.unhide(item.id, in: &ledger, now: Dates.addDays(31, to: now))) {
+                XCTAssertEqual($0 as? YubaiError, .invalid("请先添加账户。"))
+            }
+            XCTAssertEqual(ledger, before); XCTAssertNoThrow(try ledger.validate())
+        }
+    }
+    private func frequentLedger(purpose: String = "午饭", amount: Int64 = 1000) -> Ledger {
+        var ledger = Round45BFixture.ledger()
+        for day in ["2026-11-18", "2026-11-19"] {
+            var entry = Round45BFixture.entry(ledger, date: day, amount: amount, title: purpose)
+            entry.recordedAt = entry.date; entry.subcategory = ledger.categories.first { $0.name == "餐饮" }?.subcategories.first
+            ledger.entries.append(entry)
+        }
+        return ledger
+    }
     func testAssistantDescriptionUsesRound45WordsAndMoneyValuesAreUnchanged() throws {
         let description = ReadOnlyTool.getFunds.description
         for word in ["每月存", "存着的钱", "这个周期", "日均"] { XCTAssertTrue(description.contains(word), word) }
