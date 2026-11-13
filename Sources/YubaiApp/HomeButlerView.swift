@@ -59,6 +59,8 @@ struct HomeTaskCard: View {
         case .salary(let candidate): salaryCard(candidate)
         case .imports(let pending): importsCard(pending)
         case .butler(let card): confirmationCard(card)
+        case .suggestion(let suggestion): ButlerSuggestionCard(suggestion: suggestion, more: more)
+        case .suggestionReview(let review): ButlerSuggestionReviewCard(review: review, more: more)
         }
     }
     @ViewBuilder private func renewalCard(_ renewal: HomeRenewal) -> some View {
@@ -165,17 +167,27 @@ struct HomeTaskCard: View {
 struct ButlerKicker: View {
     let title: String
     var more = 0
+    var evidenceTitle: String? = nil
+    var onEvidence: (() -> Void)? = nil
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                 Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: YubaiSpace.none)
+                evidenceLink
                 if more > 0 { MoreLink(count: more).fixedSize() }
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
+                evidenceLink
                 if more > 0 { MoreLink(count: more) }
             }
+        }
+    }
+    @ViewBuilder private var evidenceLink: some View {
+        if let evidenceTitle, let onEvidence {
+            Button(evidenceTitle, action: onEvidence).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
+                .fixedSize().yubaiHitTarget().buttonStyle(PressButtonStyle()).accessibilityIdentifier("butlerAIEvidence")
         }
     }
 }

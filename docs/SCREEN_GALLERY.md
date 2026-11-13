@@ -16,13 +16,14 @@ bash scripts/check-ui-consistency.sh --self-test
 
 ## 覆盖与命名
 
-当前规划 **95 块稿（第四十六轮 88 块、第四十七轮 A 批 7 块）、37 条巡游、829 个截屏停点**，其中第四十七轮 A 批 88 个。数量是源码清单，不代表已经取得截图。
+当前规划 **99 块稿（第四十六轮 88 块、第四十七轮 A 批 7 块、C 批 4 块）、41 条巡游、909 个截屏停点**，其中第四十七轮 A 批 88 个、C 批 80 个。数量是源码清单，不代表已经取得截图。
 
 第四十七轮统一命名为 `V47-{light|dark|a11y|hidden}-{BoardOrState}`，已有巡游继续保留 V46 前缀并使用当前界面。四种状态分别为浅色、深色、最大辅助字号（Accessibility XXXL）、隐藏金额；每块稿在四种状态中各有一个同名停点。补充交互状态使用独立名称，避免同图多名。`scripts/round46-boards.txt` 与 `scripts/round47-boards.txt` 只保存稿名，不保存私有设计地址。
 
 | 巡游方法 | 条数 | 每条停点 |
 |---|---:|---:|
 | testWalk47BatchA / Dark / Large / Hidden | 4 | 22 |
+| testWalk47BatchC / Dark / Large / Hidden | 4 | 20 |
 | testWalk46Batch1 / Dark / Large / Hidden | 4 | 25 |
 | testWalk46Batch2 / Dark / Large / Hidden | 4 | 28 |
 | testWalk46Batch3 / Dark / Large / Hidden | 4 | 27 |
@@ -42,7 +43,7 @@ bash scripts/check-ui-consistency.sh --self-test
 | testAccessibilityWalk | 1 | 21 |
 | testDarkWalk | 1 | 21 |
 
-`Tests/YubaiUITests/ScreenGalleryTests.swift` 是停点的来源。`scripts/gallery_inventory.py` 从实际方法和共享巡游生成清单，检查重复名称、95 块稿的四种状态以及 CI 是否逐条排入。`scripts/gallery.sh` 使用同一清单生成 `expected.txt`；未执行的停点也会报缺失。CI 每个 part 只跑一条巡游，测试方法最多 30 分钟，作业上限 50 分钟。实际耗时仍需在 Mac 验证。
+`Tests/YubaiUITests/ScreenGalleryTests.swift` 是停点的来源。`scripts/gallery_inventory.py` 从实际方法和共享巡游生成清单，检查重复名称、99 块稿的四种状态以及 CI 是否逐条排入。`scripts/gallery.sh` 使用同一清单生成 `expected.txt`；未执行的停点也会报缺失。CI 每个 part 只跑一条巡游，测试方法最多 30 分钟，作业上限 50 分钟。实际耗时仍需在 Mac 验证。
 
 ## 每个停点的检查
 
@@ -75,3 +76,5 @@ DerivedData、xcresult 和构建日志在脚本打印的 `/tmp/yubai-gallery.*` 
 Linux 可运行清单、脚本合约、UI lint、条件语法解析与 Core 单测；Apple SDK 构建、UI XCTest 与实际截图须在 Mac 上执行。
 
 第四十七轮 A 批覆盖：三标签和居中记账宽钮、推入的存钱页、存钱卡四态、小票空态／正常／新增／滑出撤销／撤销后／超过六笔、首次「窗」场景与减弱动态效果、首笔后工资设置／延期／新收入触发／日期到期，以及超长名称与大额。小票新增态通过正式记账流程产生，不伪造页面状态。存钱页新存取按钮由 B 批承接，本批只验推入和返回。
+
+第四十七轮 C 批覆盖：十种空态、常用模板添加、首页建议、证据首四笔／全部／纠正、两周回看、设置开关与上次运行、零建议、长名称和大额。首页建议由脚本回复经过正式每周请求、Core 验算和队列产生；错误合计、未知记录、未知动作与损坏 JSON 另由流程测试验证。`V47-Butler-AI` 是 Core 合约板，画廊对应其设置入口；不新增一张解释机制的产品页面。

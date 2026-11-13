@@ -594,16 +594,12 @@ private struct FeatureCloudTransport: ChatTransport {
             if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
             return (candidates, PendingImportOrganization(in: before))
         }
-        let (candidates, pending) = await withTaskCancellationHandler {
+        let (candidates, _) = await withTaskCancellationHandler {
             await detection.value
         } onCancel: { detection.cancel() }
         guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil, !candidates.isEmpty else { return }
-        // Weekly prose has its own consent; local reminders remain available with it off.
-        let transport = pending.batchIDs.isEmpty ? assistantTransport(for: before, feature: .weeklyReview) : nil
-        let worded = await ButlerWording.word(candidates, ledger: before, transport: transport)
-        guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil else { return }
         var next = before
-        guard ButlerCards.refresh(&next, candidates: worded, now: now) else { return }
+        guard ButlerCards.refresh(&next, candidates: candidates, now: now) else { return }
         update("更新管家卡片", recordUndo: false) { $0.cards = next.cards }
     }
     private func classifySubcategoriesIfDue() async {
@@ -623,19 +619,48 @@ private struct FeatureCloudTransport: ChatTransport {
     }
     private func reflectMemoriesIfDue() async {
         guard !reflectingMemories, pendingOrganization.batchIDs.isEmpty,
-              MemoryReflection.isDue(ledger: current),
               syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
-              let transport = assistantTransport(for: current, feature: .weeklyReview) else { return }
-        let before = current
+              IntelligenceRuntime.isConfigured else { return }
+        let now = Date(), suggestions = preferences.isAIEnabled(for: .butlerSuggestions)
+        let weekly = preferences.isAIEnabled(for: .weeklyReview)
+        if suggestions {
+            let ended = ButlerCadence.endedSpikes(current, now: now)
+            if !ended.isEmpty {
+                guard update("管家回看", preservingUpdatedAt: true, recordUndo: false, entryMotion: false, showToast: false, {
+                    ButlerCadence.endSpikes(ended, in: &$0)
+                }) else { return }
+            }
+        }
+        let triggers = ButlerCadence.due(current, now: now, suggestions: suggestions).filter { $0 != .weekly || weekly || suggestions }
+        guard !triggers.isEmpty, assistantTransport(for: current, feature: suggestions ? .butlerSuggestions : .weeklyReview) != nil else { return }
         reflectingMemories = true
         defer { reflectingMemories = false }
+        // The attempt is saved even on failure; repeated opens cannot re-send it.
+        // Keeping the content timestamp prevents this bookkeeping save from
+        // cancelling ButlerRefreshTask, whose identity includes updatedAt.
+        guard update("管家回看", preservingUpdatedAt: true, recordUndo: false, entryMotion: false, showToast: false, {
+            ButlerCadence.recordAttempt(triggers, in: &$0, now: now)
+        }) else { return }
+        let before = current
+        guard let transport = assistantTransport(for: before, feature: suggestions ? .butlerSuggestions : .weeklyReview) else { return }
         do {
-            let result = try await MemoryReflection.run(ledger: before, transport: transport)
+            let result: MemoryReflectionResult?
+            let proposed: [ButlerSuggestion]
+            if triggers.contains(.weekly) && weekly {
+                result = try await MemoryReflection.run(ledger: before, transport: transport, now: now, includeButler: suggestions)
+                proposed = []
+            } else {
+                result = nil
+                proposed = try await ButlerIntelligence.run(ledger: before, transport: transport, now: now)
+            }
             try Task.checkCancellation()
             guard current == before, !locked, organizingBatchID == nil, loadFailure == nil,
                   syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { return }
-            update("每周来信", recordUndo: false, reportError: false) { try result.apply(to: &$0) }
-        } catch { /* Leave the week pending so a later refresh can retry. */ }
+            update("每周来信", recordUndo: false, reportError: false, entryMotion: false, showToast: false) {
+                if let result { try result.apply(to: &$0, now: now) }
+                ButlerIntelligence.enqueue(proposed, in: &$0, now: now)
+            }
+        } catch { /* Keep code-only cards and the persisted cadence after a failed reply. */ }
     }
     @discardableResult func dismissCard(_ id: UUID) -> Bool {
         guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return false }

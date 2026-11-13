@@ -468,7 +468,7 @@ struct BillLinkSheet: View {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 BillSheetHeader(title: store.plans.first { $0.id == planID }?.title ?? "")
                 if candidates.isEmpty {
-                    Text("没有可选的账").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    EmptyState("list.bullet", "没有可选的账", action: "记一笔", onAction: { store.requestCaptureSheet(.addEntry) })
                 } else {
                     Text("账本里已经有一笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                     CardRows(candidates) { entry in

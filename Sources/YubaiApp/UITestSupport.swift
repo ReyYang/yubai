@@ -75,7 +75,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (home47Scripts.contains(name) || galleryScripts.contains(name) || billGalleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
+              (butler47Scripts.contains(name) || home47Scripts.contains(name) || galleryScripts.contains(name) || billGalleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -103,6 +103,12 @@ enum UITestSupport {
         }
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
         let now = Date()
+        if butler47Scripts.contains(script) {
+            let value = try butler47Ledger(script, now: now)
+            resetGalleryDeviceState(for: value.id)
+            try save(value, reason: "合成管家夹具")
+            return
+        }
         if home47Scripts.contains(script) {
             let value = try home47Ledger(script, now: now)
             resetGalleryDeviceState(for: value.id)
@@ -587,6 +593,7 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
+        if let reply = try UITestSupport.butler47Reply(request, script: script) { return reply }
         if let reply = try UITestSupport.addEntryReceiptReply(request, script: script) { return reply }
         if let reply = try UITestSupport.secondBatchReceiptReply(request, script: script) { return reply }
         if let reply = try UITestSupport.galleryReply(request, script: script) { return reply }

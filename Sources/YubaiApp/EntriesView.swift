@@ -145,15 +145,13 @@ struct EntriesView: View {
     }
     @ViewBuilder private var emptyRow: some View {
         if store.sortedEntries.allSatisfy({ $0.deletedAt != nil }) && search.isEmpty && scope == nil {
-            VStack(spacing: YubaiSpace.gapGroup) {
-                EmptyState("", "还没有账", showsPlaceholder: false, action: "记一笔", onAction: { store.requestCaptureSheet(.addEntry) })
-                Button("导入账单") { store.sheet = .imports }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised))
-                    .accessibilityIdentifier("emptyLedgerImport")
-            }.frame(maxWidth: .infinity).listRowBackground(Color.clear).listRowSeparator(.hidden)
+            EmptyState(.ledger, actionIdentifier: "emptyLedgerAdd", secondaryIdentifier: "emptyLedgerImport",
+                       onAction: { store.requestCaptureSheet(.addEntry) }, onSecondary: { store.sheet = .imports })
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
         } else {
-            EmptyState("list.bullet.rectangle", search.isEmpty && scope == nil ? "还没有这类账目" : "没有找到这笔",
-                       action: search.isEmpty && scope == nil ? "记一笔" : "清空搜索",
-                       onAction: { if search.isEmpty && scope == nil { store.sheet = .addEntry } else { endSearch() } })
+            EmptyState(.search, title: search.isEmpty ? "没有找到" : "没有找到「\(search)」",
+                       onAction: { searchFocused = false; search = ""; filter = .all; categoryScope = nil; categoryTimeline = nil },
+                       onSecondary: { scope = nil; scrollMonth = nil; month = Dates.calendar.dateInterval(of: .month, for: store.financialNow)!.start })
                 .listRowBackground(Color.clear).listRowSeparator(.hidden)
         }
     }

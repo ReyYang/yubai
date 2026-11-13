@@ -314,9 +314,37 @@ final class ScreenGalleryTests: XCTestCase {
     func testWalk47BatchADark() { walk47(.dark) }
     func testWalk47BatchALarge() { walk47(.a11y) }
     func testWalk47BatchAHidden() { walk47(.hidden) }
-    private func walk47(_ mode: GalleryMode) {
+    func testWalk47BatchC() { walk47(.light, round47BatchC) }
+    func testWalk47BatchCDark() { walk47(.dark, round47BatchC) }
+    func testWalk47BatchCLarge() { walk47(.a11y, round47BatchC) }
+    func testWalk47BatchCHidden() { walk47(.hidden, round47BatchC) }
+    private func walk47(_ mode: GalleryMode, _ area: ((Bool, Bool) -> Void)? = nil) {
         galleryMode = mode; prefix = "V47-" + mode.rawValue + "-"
-        round47BatchA(dark: mode == .dark, large: mode == .a11y)
+        if let area { area(mode == .dark, mode == .a11y) }
+        else { round47BatchA(dark: mode == .dark, large: mode == .a11y) }
+    }
+    private func round47BatchC(dark: Bool, large: Bool) {
+        func load(_ fixture: String = "v47-c-empty") throws { try launch(fixture, dark: dark, large: large) }
+        stop("Home-AI") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try reveal(element("butlerAIAccept")) }
+        stop("AI-Why") { try tap("butlerAIEvidence"); try require("butlerAIEvidencePage"); try require("butlerEvidenceMore") }
+        stop("AI-Why-All") { try tap("butlerEvidenceMore"); try require("butlerEvidenceEntry_" + galleryID(472107)) }
+        stop("AI-Why-Correction") { try back(); try tap("butlerAIIncorrect"); try type("周四是和同事拼单", into: "butlerAICorrectionText"); try require("butlerAICorrectionSave") }
+        stop("Home-AI-Hard") { try load("v47-ai-hard"); try require("butlerSuggestionCard", timeout: 12); try reveal(element("butlerAIAccept")) }
+        stop("AI-Why-Hard") { try tap("butlerAIEvidence"); try require("butlerAIEvidencePage"); try require("butlerEvidenceMore") }
+        stop("Home-AI-Review") { try load("v47-ai-review"); try require("butlerAIReviewCard") }
+        stop("Butler-AI") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try settings("openIntelligencePrivacy"); try reveal(element("butlerLastRun")); try require("aiFeature_butlerSuggestions") }
+        stop("Home-AI-None") { try load("v47-ai-none"); try settings("openIntelligencePrivacy"); try reveal(element("butlerLastRun")) }
+        stop("Empty") { try load(); try root("ledger"); try require("emptyState_ledger") }
+        stop("Empty-Saving") { try load(); try savingPage(); try require("emptyState_saving") }
+        stop("Empty-Wish") { try tap("openWishlist"); try require("emptyState_wish") }
+        stop("Empty-Bills") { try load(); try settings("openFixedFlows"); try require("emptyState_bills") }
+        stop("Empty-Assistant") { try load(); try root("yubai"); try require("emptyState_assistant"); try reveal(element("askSuggestion_2")) }
+        stop("Empty-Profile") { try tap("openProfile"); try require("emptyState_profile") }
+        stop("Empty-Memories") { try load(); try root("yubai"); try tap("openMemories"); try require("emptyState_memories") }
+        stop("Empty-Frequent") { try load(); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("emptyState_frequent") }
+        stop("Empty-Frequent-Add") { try tap("emptyAction_frequent"); try type(longName, into: "frequentEntryPurpose"); try require("saveFrequentEntry") }
+        stop("Empty-Budget") { try load(); try settings("openSpendingParts"); try require("emptyState_budget") }
+        stop("Empty-Search") { try load("v47-home-hard"); try search("星巴克"); try drag(element("entriesScroll")); try require("emptyState_search"); try reveal(element("emptySecondary_search")) }
     }
     private func round47BatchA(dark: Bool, large: Bool) {
         func load(_ fixture: String) throws { try launch(fixture, dark: dark, large: large) }
@@ -675,7 +703,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("13-empty-12-privacy") { try launch("empty"); try settings("openIntelligencePrivacy"); try require("intelligencePrivacyPage") }
         stop("13-empty-13-fixed-bills") { try launch("manual"); try formula(); try tap("formulaRow_bills"); try require("fixedFlowsScroll") }
         stop("13-empty-14-frequent-entries") { try launch("gallery-empty"); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("frequentEntriesPage") }
-        stop("13-empty-15-budget") { try launch("manual"); try settings("openSpendingParts"); try require("budgetTotal") }
+        stop("13-empty-15-budget") { try launch("manual"); try settings("openSpendingParts"); try require("emptyState_budget") }
     }
 
     private func hideAmounts() throws {
@@ -807,7 +835,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Weekly") { try book(); try tap("ledgerMode_where"); try tap("openWeekly"); try require("weeklyNumbers"); try require("letterSubscriptions") }
         stop("Sort") { try book(); try tap("entriesFilter_没分类"); try tap("quickSortFromLedger"); try tap("skipLetterEntry"); try require("sortGuess_会员订阅"); try require("sortRememberParty"); try require("saveLetterEntry") }
         stop("Budget") { try load(); try settings("openSpendingParts"); try require("budgetTotal") }
-        stop("Budget-Empty") { try load("v46-b3-budget-empty"); try settings("openSpendingParts"); try require("acceptProposal") }
+        stop("Budget-Empty") { try load("v46-b3-budget-empty"); try settings("openSpendingParts"); try require("emptyState_budget") }
         stop("Save") { try saving(); try require("reserveTotal"); try require("savingWishFunding_" + galleryID(460400)); try require("openWishlist") }
         stop("Save-Empty") { try saving("v46-b3-save-empty"); try require("setFirstSavingTarget"); try require("openReserve") }
         stop("Saved-From-Save") { try saving(); try tap("openButlerSaved"); try require("butlerSavedTotal") }

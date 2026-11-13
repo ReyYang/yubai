@@ -5,3 +5,7 @@ V47-Receipt
 V47-First-A
 V47-First-After
 V47-Save-Page
+V47-Empty
+V47-Butler-AI
+V47-Home-AI
+V47-AI-Why

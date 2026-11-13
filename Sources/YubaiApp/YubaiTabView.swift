@@ -13,6 +13,9 @@ struct YubaiTabView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
+                if store.recentQuestions.isEmpty {
+                    EmptyState(.assistant, onExample: { openQuestion($0) })
+                }
                 recentSection
                 valuesCard
                 memoriesRow
@@ -116,11 +119,11 @@ struct YubaiTabView: View {
     // MARK: 输入
     private var askArea: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            ChipFlow {
+            if !store.recentQuestions.isEmpty { ChipFlow {
                 ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
                     CategoryChoiceChip(title: text) { choose(text, send: index == 1) }.accessibilityIdentifier("askSuggestion_\(index)")
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading)
+            }.frame(maxWidth: .infinity, alignment: .leading) }
             field
         }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding - YubaiSpace.gapGroup)
             .background(YubaiColor.canvas).overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -YubaiSize.iconButton) }

@@ -23,9 +23,13 @@ struct ProfileView: View {
                     }
                 }
             }
-            areas(profile.restrain, stance: .restrain, title: "想克制的")
-            areas(profile.generous, stance: .generous, title: "愿意多花的")
-            principles
+            if profile.restrain.isEmpty && profile.generous.isEmpty && profile.principles.isEmpty {
+                EmptyState(.profile, actionIdentifier: "addPrinciple", onAction: { sheet = .principle(nil) })
+            } else {
+                areas(profile.restrain, stance: .restrain, title: "想克制的")
+                areas(profile.generous, stance: .generous, title: "愿意多花的")
+                principles
+            }
             memories
             chat
         }.navigationTitle("消费观").yubaiNavigation().accessibilityIdentifier("profilePage")

@@ -24,6 +24,18 @@ public struct RepeatPreference: Codable, Equatable, Sendable, Identifiable {
     }
 }
 extension EntryHistory {
+    /// An explicit frequent item is a template, not a transaction.
+    public static func addRepeat(purpose: String, amount: Int64, in ledger: inout Ledger, now: Date) throws {
+        let clean = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean.count <= 100, !clean.contains(where: { $0.isNewline }), (1...Money.limit).contains(amount) else { throw YubaiError.invalid("填写用途和有效金额。") }
+        var next = ledger
+        FirstUse.prepareForEntry(&next, now: now)
+        guard let account = ManualBookkeeping.defaultAccount(in: next) else { throw YubaiError.invalid("请先添加账户。") }
+        let category = Classification.pendingCategory
+        let key = "\(clean.utf8.count):\(clean):\(amount):\(category)"
+        let value = Repeat(id: key, purpose: clean, amount: amount, category: category, subcategory: nil, accountID: account.id)
+        try setPinned(value, pinned: true, in: &next); ledger = next
+    }
     public static func setPinned(_ repeatEntry: Repeat, pinned: Bool, in ledger: inout Ledger) throws {
         var preferences = ledger.repeatPreferences ?? []
         let index = preferences.firstIndex { $0.id == repeatEntry.id }

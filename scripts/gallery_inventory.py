@@ -29,7 +29,9 @@ def inventory(root=ROOT):
             prefix = legacy_prefix[1]
         called = set(re.findall(r'\b(\w+)\(', body))
         called.update(re.findall(r'walk46\(\.\w+,\s*(\w+)\)', body))
-        if 'walk47(' in body:
+        areas47 = re.findall(r'walk47\(\.\w+,\s*(\w+)\)', body)
+        called.update(areas47)
+        if 'walk47(' in body and not areas47:
             called.add('round47BatchA')
         names = [prefix + value for owner in sorted(called & owners.keys()) for value in owners[owner]]
         if not names:

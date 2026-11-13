@@ -102,12 +102,7 @@ struct WhereView: View {
         }
     }
     private func insufficient(_ value: SavingOpportunities) -> some View {
-        VStack(spacing: YubaiSpace.gapGroup) {
-            Text("记满两个周期，这里才有得比").yubaiFont(YubaiFont.lead).multilineTextAlignment(.center)
-            Text("现在是第 1 个周期 · 已记 \(value.entryCount) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-            TabNavigationLink(.allCategories(range)) { AllCategoriesView(interval: range) } label: { Label("看全部分类", systemImage: "chevron.right") }
-                .buttonStyle(SecondaryButtonStyle(compact: true)).accessibilityIdentifier("whereAllCategories")
-        }.frame(maxWidth: .infinity).padding(.top, YubaiSpace.emptyTop)
+        EmptyState("square.grid.2x2", "现在是第 1 个周期 · 已记 \(value.entryCount) 笔", action: "看全部分类", actionIdentifier: "whereAllCategories", onAction: { store.tabRouteRequest = .allCategories(range) })
             .accessibilityIdentifier("whereInsufficientData")
     }
     private func destinations(_ value: SavingOpportunities) -> some View {
@@ -137,7 +132,7 @@ struct AllCategoriesView: View {
     @State private var rows: [CashFlowSlice] = []
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
-            if rows.isEmpty { EmptyState("square.grid.2x2", "还没有支出", showsPlaceholder: false) }
+            if rows.isEmpty { EmptyState("square.grid.2x2", "还没有支出", action: "记一笔", onAction: { store.requestCaptureSheet(.addEntry) }) }
             else {
                 CardRows(Array(rows.enumerated()).map { CategorySpendingRow(index: $0.offset, value: $0.element) }) { row in
                     TabNavigationLink(.whereCategory(category: row.value.title, interval: interval)) {

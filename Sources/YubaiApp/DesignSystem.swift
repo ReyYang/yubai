@@ -1449,39 +1449,164 @@ struct InlineNote: View {
     }
 }
 
+enum EmptyStateKind: String, CaseIterable {
+    case ledger, saving, wish, bills, assistant, profile, memories, frequent, budget, search
+    var title: String {
+        switch self {
+        case .ledger: "还没有账"
+        case .saving: "先定每月存多少"
+        case .wish: "想要的东西写在这里"
+        case .bills: "房租、话费、会员"
+        case .assistant: "问一句试试"
+        case .profile: "钱该怎么花，你说了算"
+        case .memories: "聊过的会记在这里"
+        case .frequent: "常记的会自己出现"
+        case .budget: "给一类定个数"
+        case .search: "没有找到"
+        }
+    }
+    var action: String? {
+        switch self {
+        case .ledger: "记一笔"
+        case .saving: "开始存钱"
+        case .wish: "写一个心愿"
+        case .bills: "加一张账单"
+        case .assistant: nil
+        case .profile: "写一句"
+        case .memories: "去聊一句"
+        case .frequent: "自己加一个"
+        case .budget: "定一个"
+        case .search: "清掉筛选"
+        }
+    }
+    var secondary: String? { switch self { case .ledger: "导入"; case .search: "看全部时间"; default: nil } }
+    static let questions = ["这个月哪里花多了", "我买得起这台相机吗", "帮我记一笔 午饭 28"]
+}
+
+/// One empty-state layout for every page, including missing/deleted records.
 struct EmptyState: View {
-    var icon: String
+    var kind: EmptyStateKind
     var title: String
-    var message: String?
-    var action: String? = nil
+    var action: String?
     var onAction: (() -> Void)?
-    var showsPlaceholder: Bool
-    init(_ icon: String, _ title: String, _ message: String? = nil, showsPlaceholder: Bool = true, action: String? = nil, onAction: (() -> Void)? = nil) {
-        self.icon = icon; self.title = title; self.message = message; self.showsPlaceholder = showsPlaceholder; self.action = action; self.onAction = onAction
+    var secondary: String?
+    var onSecondary: (() -> Void)?
+    var onExample: ((String) -> Void)?
+    var actionIdentifier: String
+    var secondaryIdentifier: String
+    init(_ kind: EmptyStateKind, title: String? = nil, actionIdentifier: String = "", secondaryIdentifier: String = "",
+         onAction: (() -> Void)? = nil, onSecondary: (() -> Void)? = nil, onExample: ((String) -> Void)? = nil) {
+        self.kind = kind; self.title = title ?? kind.title; self.action = kind.action; self.secondary = kind.secondary
+        self.onAction = onAction; self.onSecondary = onSecondary; self.onExample = onExample
+        self.actionIdentifier = actionIdentifier; self.secondaryIdentifier = secondaryIdentifier
+    }
+    // Compatibility for other pages: they receive the same ghost and serif line.
+    init(_ icon: String, _ title: String, _ message: String? = nil, showsPlaceholder: Bool = true, action: String? = nil, actionIdentifier: String = "", onAction: (() -> Void)? = nil) {
+        self.kind = icon == "calendar" ? .bills : icon == "heart" ? .wish : icon == "text.book.closed" ? .memories : .ledger
+        self.title = title; self.action = action; self.onAction = onAction
+        self.actionIdentifier = actionIdentifier; self.secondaryIdentifier = ""
     }
     var body: some View {
-        if icon.isEmpty {
-            VStack(spacing: YubaiSpace.gapSection) {
-                Text(title).yubaiFont(YubaiFont.lead).multilineTextAlignment(.center)
+        VStack(spacing: YubaiSpace.gapSection) {
+            if kind == .assistant {
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    ForEach(Array(EmptyStateKind.questions.enumerated()), id: \.offset) { index, question in
+                        Button { onExample?(question) } label: {
+                            Text(question).yubaiFont(YubaiFont.callout).fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, YubaiSpace.space12).padding(.vertical, YubaiSpace.space8)
+                                .background(YubaiColor.raised, in: Capsule()).yubaiShadow(YubaiShadow.control)
+                                .frame(minHeight: YubaiSize.tapMin)
+                        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("askSuggestion_\(index)")
+                    }
+                }.padding(.vertical, YubaiSpace.space16)
+            } else if kind != .search {
+                EmptyGhostDrawing(kind: kind).frame(maxWidth: 240).frame(height: 156).accessibilityHidden(true)
+            }
+            Text(title).yubaiFont(YubaiFont.cardTitle).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            ChipFlow {
                 if let action, let onAction {
-                    Button(action, action: onAction).buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("emptyLedgerAdd")
+                    Button(action, action: onAction).buttonStyle(PrimaryButtonStyle(compact: true))
+                        .accessibilityIdentifier(actionIdentifier.isEmpty ? "emptyAction_" + kind.rawValue : actionIdentifier)
                 }
-            }.frame(maxWidth: .infinity).padding(.top, YubaiSpace.emptyTop)
-        } else {
-        Card(style: .compact) {
-            VStack(spacing: YubaiSpace.gapGroup) {
-                Image(systemName: icon).font(.system(size: 22)).foregroundStyle(YubaiColor.labelMuted)
-                    .frame(width: 44, height: 44).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
-                Text(title).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).multilineTextAlignment(.center)
-                if let action, let onAction {
-                    Button(action: onAction) {
-                        Text(action).yubaiFont(YubaiFont.body, weight: .medium)
-                            .padding(.horizontal, 18).frame(minHeight: 40).foregroundStyle(YubaiColor.onBrand)
-                            .background(YubaiColor.brand, in: Capsule()).contentShape(Capsule())
-                    }.buttonStyle(PressButtonStyle())
+                if let secondary, let onSecondary {
+                    Button(secondary, action: onSecondary).buttonStyle(SecondaryButtonStyle(background: YubaiColor.card, compact: true))
+                        .accessibilityIdentifier(secondaryIdentifier.isEmpty ? "emptySecondary_" + kind.rawValue : secondaryIdentifier)
                 }
-            }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
-        }
+            }
+        }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("emptyState_" + kind.rawValue)
+    }
+}
+
+/// Native, token-colored drawings of the future content, on the same warm paper.
+private struct EmptyGhostDrawing: View {
+    let kind: EmptyStateKind
+    var body: some View {
+        Canvas { context, size in
+            let scale = min(size.width / 240, size.height / 156)
+            context.translateBy(x: (size.width - 240 * scale) / 2, y: (size.height - 156 * scale) / 2)
+            context.scaleBy(x: scale, y: scale)
+            let dash = StrokeStyle(lineWidth: 1, lineCap: .round, dash: [4, 4])
+            func box(_ rect: CGRect, radius: CGFloat = 14, paper: Bool = false) {
+                let path = Path(roundedRect: rect, cornerRadius: radius)
+                if paper { context.fill(path, with: .color(YubaiColor.raised)) }
+                context.stroke(path, with: .color(YubaiColor.separator), style: dash)
+            }
+            func line(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, brand: Bool = false) {
+                let path = Path(roundedRect: CGRect(x: x, y: y, width: width, height: 7), cornerRadius: 4)
+                context.fill(path, with: .color(brand ? YubaiColor.brand : YubaiColor.paperInset))
+            }
+            switch kind {
+            case .ledger:
+                box(CGRect(x: 12, y: 12, width: 216, height: 132), paper: true)
+                for i in 0..<3 {
+                    let y = CGFloat(28 + i * 38)
+                    box(CGRect(x: 25, y: y, width: 26, height: 26), radius: 8)
+                    line(62, y + 9, CGFloat(70 - i * 10)); line(171, y + 9, 42)
+                }
+            case .saving:
+                var jar = Path(); jar.move(to: CGPoint(x: 101, y: 20)); jar.addLine(to: CGPoint(x: 139, y: 20))
+                jar.move(to: CGPoint(x: 106, y: 20)); jar.addLine(to: CGPoint(x: 106, y: 36))
+                jar.addCurve(to: CGPoint(x: 88, y: 60), control1: CGPoint(x: 89, y: 40), control2: CGPoint(x: 88, y: 50))
+                jar.addLine(to: CGPoint(x: 88, y: 116)); jar.addQuadCurve(to: CGPoint(x: 102, y: 130), control: CGPoint(x: 88, y: 130))
+                jar.addLine(to: CGPoint(x: 138, y: 130)); jar.addQuadCurve(to: CGPoint(x: 152, y: 116), control: CGPoint(x: 152, y: 130))
+                jar.addLine(to: CGPoint(x: 152, y: 60)); jar.addQuadCurve(to: CGPoint(x: 134, y: 36), control: CGPoint(x: 152, y: 41))
+                jar.addLine(to: CGPoint(x: 134, y: 20))
+                context.stroke(jar, with: .color(YubaiColor.separator), style: StrokeStyle(lineWidth: 2, dash: [5, 6]))
+                line(88, 108, 64, brand: true)
+            case .wish:
+                box(CGRect(x: 25, y: 47, width: 190, height: 60), paper: true)
+                line(40, 63, 86); line(40, 86, 160); line(40, 86, 12, brand: true)
+            case .bills:
+                box(CGRect(x: 12, y: 30, width: 216, height: 96), paper: true)
+                for i in 0..<21 {
+                    let day = i + 8, x = CGFloat(34 + (i % 7) * 29), y = CGFloat(51 + (i / 7) * 27)
+                    let text = Text(String(day)).font(.system(size: YubaiFont.chartLabel.size, design: YubaiFont.chartLabel.design)).foregroundColor(YubaiColor.labelMuted)
+                    context.draw(text, at: CGPoint(x: x, y: y))
+                    if day == 20 { context.stroke(Path(roundedRect: CGRect(x: x - 12, y: y - 12, width: 24, height: 24), cornerRadius: 8), with: .color(YubaiColor.brand), style: dash) }
+                }
+            case .profile:
+                context.draw(Text("“ ”").font(.system(size: 48, design: .serif)).foregroundColor(YubaiColor.separator), at: CGPoint(x: 120, y: 68))
+                var rule = Path(); rule.move(to: CGPoint(x: 42, y: 105)); rule.addLine(to: CGPoint(x: 198, y: 105))
+                context.stroke(rule, with: .color(YubaiColor.separator), style: dash)
+            case .memories:
+                for i in 0..<3 {
+                    let x: CGFloat = i == 1 ? 20 : 34, y = CGFloat(21 + i * 43), width: CGFloat = i == 1 ? 200 : 180
+                    box(CGRect(x: x, y: y, width: width, height: 34), paper: true)
+                    line(x + 14, y + 14, CGFloat(110 - i * 15))
+                }
+            case .frequent:
+                for i in 0..<5 {
+                    let x: CGFloat = i == 4 ? 86 : (i % 2 == 0 ? 35 : 118), y = CGFloat(33 + (i / 2) * 38)
+                    box(CGRect(x: x, y: y, width: i == 3 ? 84 : 70, height: 29), radius: 15)
+                }
+            case .budget:
+                box(CGRect(x: 12, y: 43, width: 216, height: 70), paper: true)
+                line(27, 61, 186); line(27, 86, 186)
+                var marker = Path(); marker.move(to: CGPoint(x: 161, y: 53)); marker.addLine(to: CGPoint(x: 161, y: 81))
+                context.stroke(marker, with: .color(YubaiColor.brand), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
+            case .assistant, .search: break
+            }
         }
     }
 }
@@ -1921,6 +2046,9 @@ struct QuestionCard: View {
     var amber = false
     var more = 0
     var onMore: (() -> Void)? = nil
+    var evidenceTitle: String? = nil
+    var onEvidence: (() -> Void)? = nil
+    var titleIdentifier = ""
     let yesTitle: String
     let noTitle: String
     var yesIdentifier = ""
@@ -1939,16 +2067,17 @@ struct QuestionCard: View {
                 topLine
                 Text(headline).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(titleIdentifier)
                 answers.padding(.top, YubaiSpace.space4)
             }
         }.accessibilityElement(children: .contain)
     }
-    private var topLine: some View { ButlerKicker(title: eyebrow, more: more) }
+    private var topLine: some View { ButlerKicker(title: eyebrow, more: more, evidenceTitle: evidenceTitle, onEvidence: onEvidence) }
     private var answers: some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
             Button(yesTitle, action: yes).buttonStyle(NowCardButtonStyle(primary: true)).accessibilityIdentifier(yesIdentifier)
-            Button(noTitle, action: no).buttonStyle(NowCardButtonStyle(primary: false)).accessibilityIdentifier(noIdentifier)
+            if !noTitle.isEmpty { Button(noTitle, action: no).buttonStyle(NowCardButtonStyle(primary: false)).accessibilityIdentifier(noIdentifier) }
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
         }
     }

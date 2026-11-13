@@ -1,7 +1,7 @@
 import Foundation
 
 public enum AIFeature: String, Codable, Equatable, Sendable, CaseIterable {
-    case importClassification, answers, weeklyReview, receiptRecognition
+    case importClassification, answers, weeklyReview, receiptRecognition, butlerSuggestions
 }
 extension Preferences {
     public func isAIEnabled(for feature: AIFeature) -> Bool {
@@ -11,6 +11,7 @@ extension Preferences {
         case .answers: return aiAnswersDisabled != true
         case .weeklyReview: return aiWeeklyReviewDisabled != true
         case .receiptRecognition: return aiReceiptRecognitionDisabled != true
+        case .butlerSuggestions: return butlerSuggestionsEnabled == true
         }
     }
     public mutating func setAIEnabled(_ enabled: Bool, for feature: AIFeature) {
@@ -20,6 +21,7 @@ extension Preferences {
         case .answers: aiAnswersDisabled = disabled
         case .weeklyReview: aiWeeklyReviewDisabled = disabled
         case .receiptRecognition: aiReceiptRecognitionDisabled = disabled
+        case .butlerSuggestions: butlerSuggestionsEnabled = enabled
         }
     }
 }
