@@ -45,7 +45,7 @@ public struct HomeRenewal: Equatable, Identifiable, Sendable {
     public var explicitlyUnused: Bool
     public var unusedFact: String?
     public var lastMonthUnused: Bool { unusedFact != nil }
-    public var id: String { "renewal:" + plan.id.uuidString }
+    public var id: String { "renewal:" + plan.id.uuidString + (plan.frequency == .yearly ? ":" + String(Dates.calendar.component(.year, from: date)) : "") }
 }
 
 public struct HomeFunding: Equatable, Identifiable, Sendable {
@@ -148,8 +148,8 @@ public enum HomeButler {
         let today = Dates.day(now), payments = FixedFlowPayments(in: ledger, now: now)
         return ledger.plans.compactMap { plan in
             guard plan.active, plan.stoppedAt == nil, !plan.inflow, plan.nature == .expense,
-                  [.monthly, .quarterly, .yearly].contains(plan.frequency),
-                  plan.category == "订阅" || plan.title.contains("会员") || plan.title.contains("订阅") || plan.title.contains("年付") else { return nil }
+                  [.monthly, .quarterly, .yearly, .halfYearly, .fortnightly].contains(plan.frequency),
+                  plan.frequency == .yearly || plan.category.contains("订阅") || BrandIcons.match(plan.title) != nil || plan.title.contains("会员") || plan.title.contains("订阅") || plan.title.contains("年付") else { return nil }
             let limit = Dates.addDays(plan.frequency == .yearly ? 7 : 1, to: today)
             guard let due = plan.schedule(through: limit).first(where: {
                 $0.date > today && !plan.isSkipped(on: $0.date) && payments.remaining(for: plan, on: $0.date) > 0

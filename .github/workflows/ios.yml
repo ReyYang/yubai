@@ -134,6 +134,8 @@ jobs:
             walks: testWalk09Imports testWalk10States testWalk11Empty
           - part: entry46
             walks: testWalk46Batch2 testWalk46Batch2Dark testWalk46Batch2Large
+          - part: round46-bills
+            walks: testWalk46Batch4 testWalk46Batch4Dark testWalk46Batch4Large
     env:
       GALLERY_ONLY: ${{ matrix.walks }}
     steps:

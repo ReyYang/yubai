@@ -8,6 +8,7 @@ struct AccountEditor: View {
     @State private var name = ""; @State private var kind = AccountKind.bank; @State private var amount = ""
     @State private var at = Date(); @State private var verified = true; @State private var note = ""; @State private var limit = ""
     @State private var loaded = false; @State private var reconcileNow = false
+    @State private var creditPaymentDay = 0
     @State private var confirmingDiscard = false
     @State private var initialSignature = ""
     var body: some View {
@@ -24,6 +25,7 @@ struct AccountEditor: View {
             .onAppear {
                 guard !loaded else { return }; loaded = true; reconcileNow = startsReconciling
                 if let a = account { name = a.name; kind = a.kind; amount = Money.input(a.kind == .credit ? max(0, -store.balance(a)) : store.balance(a)); verified = a.reconciled; note = a.note; limit = a.creditLimit == 0 ? "" : Money.input(a.creditLimit) }
+                creditPaymentDay = account?.creditPaymentDay ?? 0
                 initialSignature = signature
             }
     }
@@ -35,7 +37,7 @@ struct AccountEditor: View {
     private var balanceError: String? { (try? Money.parse(amount, allowNegative: kind != .credit)) == nil ? "填写有效金额" : nil }
     private var limitError: String? { !limit.isEmpty && (try? Money.parse(limit)) == nil ? "填写有效金额" : nil }
     private var validationError: String? { nameError ?? balanceError ?? limitError }
-    private var signature: String { "\(name)|\(kind)|\(amount)|\(at)|\(verified)|\(note)|\(limit)|\(reconcileNow)" }
+    private var signature: String { "\(name)|\(kind)|\(amount)|\(at)|\(verified)|\(note)|\(limit)|\(reconcileNow)|\(creditPaymentDay)" }
     private func cancel() { if signature != initialSignature { confirmingDiscard = true } else { dismiss() } }
     func save() {
         do {
@@ -46,6 +48,7 @@ struct AccountEditor: View {
             var a = account ?? Account(name: clean); a.name = clean; a.kind = kind; a.note = note
             if account == nil || reconcileNow { a.anchorBalance = kind == .credit ? -cents : cents; a.anchorDate = at; a.reconciled = verified }
             a.creditLimit = limit.isEmpty ? 0 : try Money.parse(limit)
+            a.creditPaymentDay = kind == .credit && creditPaymentDay > 0 ? creditPaymentDay : nil
             if store.update("保存账户", { ledger in
                 if let i = ledger.accounts.firstIndex(where: { $0.id == a.id }) { ledger.accounts[i] = a }
                 else { ledger.accounts.append(a) }
@@ -60,7 +63,7 @@ struct AccountEditor: View {
 
     private var accountSection: some View {
         Section("账户") {
-            TextField("名称", text: $name).accessibilityIdentifier("accountName").accessibilityLabel("账户名称")
+            CardTextFieldRow(title: "名称", text: $name, identifier: "accountName")
             if !name.isEmpty { InlineFieldError(message: nameError) }
             SuggestionChips(values: ["微信零钱", "支付宝", "招行储蓄卡", "信用卡"], selected: name) { name = $0 }
             Picker("账户类型", selection: $kind) { ForEach(AccountKind.allCases) { Text($0.label).tag($0) } }.disabled(account != nil)
@@ -69,8 +72,8 @@ struct AccountEditor: View {
     private var balanceSection: some View {
         Section(kind == .credit ? "当前待还款" : kind == .investment ? "当前市值" : "对一下余额") {
             if account != nil { Toggle("本次重新核对真实余额", isOn: $reconcileNow).tint(YubaiColor.toggleOn) }
-            TextField(kind == .credit ? "当前待还款" : "余额", text: $amount).numericInput().yubaiFont(YubaiFont.amountInput)
-                .accessibilityIdentifier("accountBalance").disabled(account != nil && !reconcileNow)
+            CardTextFieldRow(title: kind == .credit ? "当前待还款" : "余额", text: $amount, identifier: "accountBalance", numeric: true, hidesValue: store.preferences.hideAmounts)
+                .disabled(account != nil && !reconcileNow)
                 .accessibilityHint(kind == .credit ? "填写实际欠款，单位元，填写正数" : "填写此刻的真实余额，单位元")
             if !amount.isEmpty { InlineFieldError(message: balanceError) }
             if account == nil || reconcileNow {
@@ -86,9 +89,15 @@ struct AccountEditor: View {
     private var noteSection: some View {
         Section {
             DisclosureGroup("更多") {
-                if kind == .credit { TextField("信用额度", text: $limit).numericInput().yubaiFont(YubaiFont.amountInput).accessibilityHint("单位元，可留空") }
+                if kind == .credit {
+                    CardTextFieldRow(title: "信用额度", text: $limit, identifier: "accountCreditLimit", numeric: true, hidesValue: store.preferences.hideAmounts)
+                    Picker("还款日", selection: $creditPaymentDay) {
+                        Text("未指定").tag(0)
+                        ForEach(1...31, id: \.self) { Text("每月 \($0) 号").tag($0) }
+                    }.accessibilityIdentifier("accountCreditPaymentDay")
+                }
                 InlineFieldError(message: limitError)
-                TextField("备注", text: $note, axis: .vertical)
+                CardTextFieldRow(title: "备注", text: $note, identifier: "accountNote")
             }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
@@ -114,7 +123,7 @@ struct AccountsView: View {
         let count = hand.count < names.count ? names[hand.count] : String(hand.count)
         return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(count + "个账户一共").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: store.formula.hand, hide: store.preferences.hideAmounts, role: .display)
+            AmountLabel(cents: hand.reduce(Int64(0)) { $0 + store.balance($1) }, hide: store.preferences.hideAmounts, role: .display)
         }.padding(.horizontal, YubaiSpace.space4).accessibilityElement(children: .combine).accessibilityIdentifier("accountsTotal")
     }
     private func accountGroup(_ accounts: [Account], heading: String?) -> some View {
@@ -156,20 +165,22 @@ struct AccountsView: View {
     private func accountName(_ a: Account) -> some View {
         let detail: String
         if a.archived { detail = "已归档" }
-        else if a.kind == .credit { detail = "欠的" }
+        else if a.kind == .credit {
+            detail = "欠的" + (a.creditPaymentDay.map { " · " + FixedFlowPresentation.monthDay(CreditPaymentDate.next(day: $0, now: store.financialNow)) + "还" } ?? "")
+        }
         else if a.kind != .cash && a.kind != .bank { detail = a.note.isEmpty ? "看得见，花不了" : a.note }
         else {
             let checked = a.reconciled ? "上次对 " + FixedFlowPresentation.monthDay(a.anchorDate) : "还没对过账"
             detail = a.note.isEmpty ? checked : a.note + " · " + checked
         }
         return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            Text(a.name).yubaiFont(YubaiFont.rowTitle)
+            Text(a.name).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
             Text(detail).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
         }
     }
     func accountDetail(_ a: Account) -> some View {
         Page {
-            AmountLabel(cents: store.balance(a), role: .display)
+            AmountLabel(cents: store.balance(a), hide: store.preferences.hideAmounts, role: .display)
             Card(style: .list) { VStack(spacing: YubaiSpace.none) {
                 LabeledContent("类型", value: a.kind.label).frame(minHeight: YubaiSize.rowSingle)
                 Divider().overlay(YubaiColor.separator)

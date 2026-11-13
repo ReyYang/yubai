@@ -4,6 +4,7 @@ public struct SpendableFormula: Equatable, Sendable {
     public var cycleStart: Date; public var cycleEnd: Date; public var hand: Int64; public var handAccounts: [String]
     public var creditDebt: Int64; public var goals: Int64; public var uncertainInflow: Int64; public var fixedSavings: Int64
     public var saving: Int64; public var savingRuleTarget: Int64; public var billsRest: Int64; public var billCount: Int; public var billsPaid: Int
+    public var yearlySetAside: Int64 = 0
     public var bills: [FixedFlowOccurrence]; public var available: Int64; public var incoming: [Occurrence]
 }
 extension Finance {
@@ -40,7 +41,7 @@ extension Finance {
                                 handAccounts: ledger.accounts.filter { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }.map(\.name),
                                 creditDebt: funds.debt, goals: funds.goals, uncertainInflow: funds.uncertainInflow, fixedSavings: funds.emergency,
                                 saving: funds.savingTarget, savingRuleTarget: funds.savingRuleTarget, billsRest: funds.committed,
-                                billCount: bills.count, billsPaid: bills.filter { $0.state == .paid }.count, bills: bills, available: funds.available,
+                                billCount: bills.count, billsPaid: bills.filter { $0.state == .paid }.count, yearlySetAside: funds.yearlySetAside, bills: bills, available: funds.available,
                                 incoming: occurrences(in: ledger, now: now, days: max(0, funds.horizonDays + 1)).filter { $0.inflow && Dates.day($0.date) <= funds.cycleEnd })
     }
 }

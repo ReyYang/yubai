@@ -76,6 +76,7 @@ public struct Account: Codable, Identifiable, Equatable, Sendable {
     public var anchorBalance: Int64; public var anchorDate: Date
     public var reconciled: Bool; public var archived = false
     public var note = ""; public var creditLimit: Int64 = 0
+    public var creditPaymentDay: Int?
     public init(name: String, kind: AccountKind = .bank, balance: Int64 = 0, at: Date = Date(), reconciled: Bool = true) {
         self.name = name; self.kind = kind; self.anchorBalance = balance; self.anchorDate = at; self.reconciled = reconciled
     }
@@ -216,16 +217,19 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
 }
 
 public enum Frequency: String, Codable, CaseIterable, Identifiable, Sendable {
-    case once, weekly, monthly, quarterly, yearly
+    case once, weekly, monthly, quarterly, yearly, halfYearly, fortnightly
     public var id: String { rawValue }
-    public var label: String { switch self { case .once: "一次"; case .weekly: "每周"; case .monthly: "每月"; case .quarterly: "每季"; case .yearly: "每年" } }
+    public var label: String { switch self { case .once: "一次"; case .weekly: "每周"; case .monthly: "每月"; case .quarterly: "每季"; case .yearly: "每年"; case .halfYearly: "每半年"; case .fortnightly: "每两周" } }
     public func advance(_ original: Date, by count: Int) -> Date {
-        switch self { case .once: return original; case .weekly: return Dates.addDays(7 * count, to: original); case .monthly: return Dates.addMonths(count, to: original); case .quarterly: return Dates.addMonths(3 * count, to: original); case .yearly: return Dates.addMonths(12 * count, to: original) }
+        switch self { case .once: return original; case .weekly: return Dates.addDays(7 * count, to: original); case .monthly: return Dates.addMonths(count, to: original); case .quarterly: return Dates.addMonths(3 * count, to: original); case .yearly: return Dates.addMonths(12 * count, to: original); case .halfYearly: return Dates.addMonths(6 * count, to: original); case .fortnightly: return Dates.addDays(14 * count, to: original) }
     }
 }
 public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var amount: Int64; public var dueDate: Date
     public var frequency: Frequency
+    /// Amount is in this currency; entries and all finance totals remain CNY.
+    public var currency: BillCurrency = .cny
+    public var yearlyReserveSince: Date?
     public var inflow: Bool { didSet { if !inflow { intoFixedSavings = false } } }
     public var accountID: UUID?
     public var category: String
@@ -250,13 +254,16 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = Classification.pendingCategory, nature: Nature = .expense, intoFixedSavings: Bool = false) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
         self.intoFixedSavings = nature == .income && inflow && intoFixedSavings
+        if frequency == .yearly { yearlyReserveSince = Dates.day(Date()) }
     }
-    private enum CodingKeys: String, CodingKey { case occurrenceDateOverrides, intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
+    private enum CodingKeys: String, CodingKey { case currency, yearlyReserveSince, occurrenceDateOverrides, intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
         amount = try c.decode(Int64.self, forKey: .amount); dueDate = try c.decode(Date.self, forKey: .dueDate)
-        frequency = try c.decode(Frequency.self, forKey: .frequency); inflow = try c.decode(Bool.self, forKey: .inflow)
+        frequency = try c.decodeIfPresent(Frequency.self, forKey: .frequency) ?? .once; inflow = try c.decode(Bool.self, forKey: .inflow)
+        currency = try c.decodeIfPresent(BillCurrency.self, forKey: .currency) ?? .cny
+        yearlyReserveSince = try c.decodeIfPresent(Date.self, forKey: .yearlyReserveSince) ?? (frequency == .yearly ? Dates.day(Date()) : nil)
         accountID = try c.decodeIfPresent(UUID.self, forKey: .accountID)
         category = try c.decode(String.self, forKey: .category); nature = try c.decode(Nature.self, forKey: .nature)
         let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
@@ -279,6 +286,8 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id); try c.encode(title, forKey: .title); try c.encode(amount, forKey: .amount)
         try c.encode(dueDate, forKey: .dueDate); try c.encode(frequency, forKey: .frequency); try c.encode(inflow, forKey: .inflow)
+        if currency != .cny { try c.encode(currency, forKey: .currency) }
+        try c.encodeIfPresent(yearlyReserveSince, forKey: .yearlyReserveSince)
         try c.encodeIfPresent(accountID, forKey: .accountID); try c.encode(category, forKey: .category); try c.encode(nature, forKey: .nature)
         try c.encode(intoFixedSavings, forKey: .intoFixedSavings); try c.encode(active, forKey: .active)
         try c.encodeIfPresent(endDate, forKey: .endDate); try c.encodeIfPresent(stoppedAt, forKey: .stoppedAt); try c.encode(note, forKey: .note)
@@ -351,11 +360,11 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         let count: Int
         switch frequency {
         case .once: count = 0
-        case .weekly: count = (Dates.calendar.dateComponents([.day], from: start, to: day).day ?? -1) / 7
-        case .monthly, .quarterly, .yearly:
+        case .weekly, .fortnightly: count = (Dates.calendar.dateComponents([.day], from: start, to: day).day ?? -1) / (frequency == .weekly ? 7 : 14)
+        case .monthly, .quarterly, .halfYearly, .yearly:
             let c = Dates.calendar
             let months = c.dateComponents([.month], from: c.dateInterval(of: .month, for: start)!.start, to: c.dateInterval(of: .month, for: day)!.start).month ?? -1
-            count = months / (frequency == .monthly ? 1 : (frequency == .quarterly ? 3 : 12))
+            count = months / (frequency == .monthly ? 1 : (frequency == .quarterly ? 3 : (frequency == .halfYearly ? 6 : 12)))
         }
         guard count >= 0, installments.map({ count < $0 }) ?? true,
               Dates.day(scheduledDate(at: count)) == day else { return nil }
@@ -518,6 +527,10 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var cloudAIEnabled = false
     public var weeklyLetterPush = false
     public var butlerNotices: ButlerNoticePreferences?
+    public var billExchangeRates: [ManualExchangeRate]?
+    public var lastBillCurrency: BillCurrency?
+    /// Nil, including an old ledger, means enabled.
+    public var yearlyBillsSetAside: Bool?
     public var quickCapture = QuickCapturePreferences()
     public var categoryOrder: [String] = Category.defaults.filter { !$0.system }.map(\.name)
     public var onboardingComplete = false
@@ -532,7 +545,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case butlerNotices
+        case butlerNotices, billExchangeRates, lastBillCurrency, yearlyBillsSetAside
         case weeklyAutoBackup, aiImportClassificationDisabled, aiAnswersDisabled, aiWeeklyReviewDisabled, aiReceiptRecognitionDisabled
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
         case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, profileColdStartDone, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
@@ -556,6 +569,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         cloudAIEnabled = (try values.decodeIfPresent(Bool.self, forKey: .cloudAIEnabled) ?? false) && wasEnabled
         weeklyLetterPush = try values.decodeIfPresent(Bool.self, forKey: .weeklyLetterPush) ?? false
         butlerNotices = try values.decodeIfPresent(ButlerNoticePreferences.self, forKey: .butlerNotices)
+        billExchangeRates = try values.decodeIfPresent([ManualExchangeRate].self, forKey: .billExchangeRates)
+        lastBillCurrency = try values.decodeIfPresent(BillCurrency.self, forKey: .lastBillCurrency)
+        yearlyBillsSetAside = try values.decodeIfPresent(Bool.self, forKey: .yearlyBillsSetAside)
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder
         quickCapture = try values.decodeIfPresent(QuickCapturePreferences.self, forKey: .quickCapture) ?? QuickCapturePreferences()
         onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
@@ -575,6 +591,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encode(purchaseValues, forKey: .purchaseValues); try c.encode(colorTheme, forKey: .colorTheme)
         try c.encode(cloudAIEnabled, forKey: .cloudAIEnabled); try c.encode(weeklyLetterPush, forKey: .weeklyLetterPush)
         try c.encodeIfPresent(butlerNotices, forKey: .butlerNotices)
+        try c.encodeIfPresent(billExchangeRates, forKey: .billExchangeRates)
+        try c.encodeIfPresent(lastBillCurrency, forKey: .lastBillCurrency)
+        try c.encodeIfPresent(yearlyBillsSetAside, forKey: .yearlyBillsSetAside)
         try c.encode(quickCapture, forKey: .quickCapture); try c.encode(categoryOrder, forKey: .categoryOrder)
         try c.encode(onboardingComplete, forKey: .onboardingComplete); try c.encode(profileColdStartDone, forKey: .profileColdStartDone)
         try c.encodeIfPresent(lastBackupAt, forKey: .lastBackupAt)
@@ -1079,6 +1098,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         guard Set(cards.map(\.id)).count == cards.count, Set(wishlist.map(\.id)).count == wishlist.count,
               Set(pendingChanges.map(\.id)).count == pendingChanges.count,
               Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或修改包含重复标识。") }
+        try FixedFlows.validateCurrencies(in: self)
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.id)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
         guard butlerSavings.count <= 10_000, butlerAnswers.count <= 20_000,
@@ -1092,7 +1112,7 @@ public struct Ledger: Codable, Equatable, Sendable {
                   record.undoneAt.map({ $0 >= record.date }) ?? true,
                   record.waitedHours.map({ $0 >= 0 }) ?? true else { throw YubaiError.invalid("省下的钱或管家记录无效。") }
             if let plan = record.plan {
-                guard plan.amount == record.amount, !plan.title.isEmpty, plan.nature == .expense, !plan.inflow,
+                guard (plan.currency != .cny || plan.amount == record.amount), !plan.title.isEmpty, plan.nature == .expense, !plan.inflow,
                       plan.frequency != .once, record.cadence == .from(plan.frequency), dateValid(plan.dueDate),
                       plan.endDate.map(dateValid) ?? true, plan.installments.map({ $0 > 0 }) ?? true
                 else { throw YubaiError.invalid("省下的钱或管家记录无效。") }
@@ -1151,7 +1171,7 @@ public struct Ledger: Codable, Equatable, Sendable {
                   category.subcategories.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 200 && !$0.contains("/") }) else { throw YubaiError.invalid("主项和小项只支持两级。") }
         }
         guard Set(categoryNames).count == categoryNames.count else { throw YubaiError.invalid("分类名称不能重复。") }
-        for a in accounts { guard !a.name.trimmingCharacters(in: .whitespaces).isEmpty, a.anchorBalance >= -Money.limit, a.anchorBalance <= Money.limit, (0...Money.limit).contains(a.creditLimit), dateValid(a.anchorDate) else { throw YubaiError.invalid("账户信息无效。") } }
+        for a in accounts { guard !a.name.trimmingCharacters(in: .whitespaces).isEmpty, a.anchorBalance >= -Money.limit, a.anchorBalance <= Money.limit, (0...Money.limit).contains(a.creditLimit), a.creditPaymentDay.map({ (1...31).contains($0) }) ?? true, dateValid(a.anchorDate) else { throw YubaiError.invalid("账户信息无效。") } }
         for e in entries {
             guard ids.contains(e.accountID), e.amount > 0, e.amount <= Money.limit, !e.title.isEmpty,
                   dateValid(e.date), e.recordedAt.map(dateValid) ?? true, e.otherDate.map(dateValid) ?? true,

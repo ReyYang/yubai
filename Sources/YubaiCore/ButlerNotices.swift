@@ -42,7 +42,8 @@ public struct HomeTaskCopy: Equatable, Sendable {
         case .renewal(let renewal):
             let days = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: Dates.day(renewal.date)).day ?? 1
             return Self(kicker: (days == 1 ? "明天续费" : "\(days) 天后续费") + " · " + renewal.plan.title,
-                        title: (renewal.unusedFact.map { $0 + "，" } ?? "") + renewal.plan.frequency.label + " " + money(renewal.amount))
+                        title: (renewal.unusedFact.map { $0 + "，" } ?? "") + (renewal.plan.frequency == .yearly ? "一年 " : renewal.plan.frequency.label + " ") +
+                            (renewal.plan.currency == .cny ? money(renewal.amount) : renewal.plan.currency.amountText(renewal.plan.amount, hidden: hidden) + "，约 " + money(renewal.amount)))
         case .funding(let funding):
             return Self(kicker: monthDay(funding.bill.date) + " · " + funding.bill.title,
                         title: funding.target.name + "里还差 " + money(funding.amount))

@@ -2568,31 +2568,39 @@ struct FormTextRow: View {
     }
 }
 
-// MARK: - Round 46 ledger and values controls
-
-/// Form text follows the same row layout as amounts and account controls.
+/// A text input in the same card row as its label; no separate input well.
 struct CardTextFieldRow: View {
     let title: String
     @Binding var text: String
     var placeholder = ""
     var identifier = ""
     var multiline = false
+    var numeric = false
+    var hidesValue = false
+    var leading: AnyView? = nil
+    var trailing: AnyView? = nil
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.gapGroup) {
-                if !title.isEmpty { Text(title).yubaiFont(YubaiFont.row).fixedSize() }
-                field.multilineTextAlignment(title.isEmpty ? .leading : .trailing)
+        EntryFormRow(title: title) {
+            HStack(spacing: YubaiSpace.space8) {
+                if let leading { leading }
+                input.multilineTextAlignment(title.isEmpty ? .leading : .trailing).yubaiFont(numeric ? YubaiFont.amount : YubaiFont.row)
+                    .frame(minWidth: 64, idealWidth: trailing == nil ? 160 : 80, maxWidth: .infinity)
+                    .accessibilityLabel(title.isEmpty ? placeholder : title).accessibilityIdentifier(identifier)
+                if let trailing { trailing }
             }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                if !title.isEmpty { Text(title).yubaiFont(YubaiFont.row) }
-                field
-            }
-        }.padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.rowSingle)
+        }
     }
-    private var field: some View {
-        TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal)
-            .yubaiFont(YubaiFont.row).lineLimit(multiline ? 1...6 : 1...1)
-            .accessibilityLabel(title.isEmpty ? placeholder : title).accessibilityIdentifier(identifier)
+    @ViewBuilder private var input: some View {
+        if hidesValue {
+            if numeric { SecureField(placeholder, text: $text).numericInput() }
+            else { SecureField(placeholder, text: $text) }
+        } else {
+            if numeric { TextField(placeholder, text: $text).numericInput() }
+            else {
+                TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal)
+                    .lineLimit(multiline ? 1...6 : 1...1)
+            }
+        }
     }
 }
 

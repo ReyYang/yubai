@@ -41,6 +41,7 @@ enum TabRoute: Hashable {
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
     case entryDetail(UUID)
     case allCategories(DateInterval), categoryBudget(String), savingWish(UUID), askQuestion(String)
+    case yearlyBills
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -1107,6 +1108,7 @@ struct RootView: View {
         case .askQuestion(let text): AskYubaiView(initialText: text, autoSend: true)
         case .budget: BudgetView()
         case .billDetail(let id): BillDetailView(planID: id)
+        case .yearlyBills: YearlyBillsView()
         case .todo: TodoView()
         case .settings: SettingsView()
         case .categories: CategoriesView()

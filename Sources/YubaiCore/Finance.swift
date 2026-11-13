@@ -19,6 +19,7 @@ public struct Funds: Equatable, Sendable {
     public var cycleIsPayday = false
     public var liquidStart: Int64 = 0
     public var cycleIncome: Int64 = 0
+    public var yearlySetAside: Int64 = 0
     public var savingRuleTarget: Int64 = 0
     public var salaryLateDays: Int? = nil
     public var savingTarget: Int64 = 0
@@ -191,6 +192,8 @@ public enum Finance {
             case .weekly: index = (calendar.dateComponents([.day], from: Dates.day(plan.dueDate), to: next.date).day ?? 0) / 7
             case .monthly: index = months
             case .quarterly: index = months / 3
+            case .halfYearly: index = months / 6
+            case .fortnightly: index = (calendar.dateComponents([.day], from: Dates.day(plan.dueDate), to: next.date).day ?? 0) / 14
             case .yearly: index = months / 12
             case .once: index = 0
             }
@@ -259,7 +262,8 @@ public enum Finance {
             Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).reduce(0) { $0 + $1.amount }
         let savingTarget = ledger.effectiveSavingTarget(savingRuleTarget, cycleStart: cycle.start, now: now)
         let liquid = cash - debt - emergency - goals - uncertain
-        let available = liquid - savingTarget - committed
+        let yearlySetAside = YearlyBillReserves.rows(in: ledger, now: now, committedThrough: horizonEnd).reduce(Int64(0)) { $0 + $1.reserved }
+        let available = liquid - savingTarget - committed - yearlySetAside
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("还没有账户") }
@@ -291,6 +295,7 @@ public enum Finance {
         value.cycleStart = cycle.start; value.cycleEnd = cycle.end; value.cycleIsPayday = cycle.payday
         value.liquidStart = liquid - income + spent; value.cycleIncome = income; value.savingTarget = savingTarget
         value.cycleSpent = spent; value.dueRest = committed
+        value.yearlySetAside = yearlySetAside
         value.savingRuleTarget = savingRuleTarget
         value.salaryLateDays = cycle.lateSince.map { Dates.calendar.dateComponents([.day], from: $0, to: Dates.day(now)).day ?? 0 }
         value.dailyAllowance = max(0, available) / Int64(max(1, horizonDays + 1))
