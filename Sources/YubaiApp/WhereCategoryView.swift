@@ -41,9 +41,16 @@ struct WhereCategoryView: View {
             }
         }.accessibilityElement(children: .combine).accessibilityIdentifier("whereCategorySummary")
     }
-    private func comparisonText(_ delta: Int64) -> some View {
-        Text("比上个周期同一天" + (delta > 0 ? "多 " : "少 ") + amount2(abs(delta), hide: hide))
-            .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+    @ViewBuilder private func comparisonText(_ delta: Int64) -> some View {
+        let label = "比上个周期同一天" + (delta > 0 ? "多" : "少")
+        if textSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text(label).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                AmountLabel(cents: abs(delta), hide: hide, role: .account, ink: delta > 0 ? YubaiColor.amberInk : YubaiColor.label)
+            }
+        } else {
+            Text(label + " " + amount2(abs(delta), hide: hide)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+        }
     }
 
     private func comparison(_ cycles: [CategoryCycleSpending]) -> some View {

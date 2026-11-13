@@ -60,16 +60,17 @@ struct StorageView: View {
                         .background(YubaiColor.card, in: Capsule()).contentShape(Capsule())
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openStorageErase")
                     .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
-                    .padding(.top, YubaiSpace.gapGroup).frame(maxWidth: 1080).frame(maxWidth: .infinity)
+                    .padding(.top, YubaiSpace.gapGroup).frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity)
                     .background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
             }
             .navigationTitle("存储空间").yubaiNavigation()
             .task(id: store.current.updatedAt) { await refreshUsage() }
-            .confirmationDialog("清除恢复历史？", isPresented: $clearing, titleVisibility: .visible) {
-                Button("清除 \(usage?.recoveryCount ?? 0) 份恢复历史", role: .destructive) {
-                    if store.clearStorageHistory() { Task { await refreshUsage() } }
-                }
-                Button("取消", role: .cancel) {}
+            .sheet(isPresented: $clearing) {
+                ConfirmationSheet(title: "清除恢复历史？") {
+                    Button("清除 \(usage?.recoveryCount ?? 0) 份恢复历史") {
+                        if store.clearStorageHistory() { clearing = false; Task { await refreshUsage() } }
+                    }.buttonStyle(DestructiveButtonStyle())
+                }.environment(store)
             }
             .sheet(item: $sheet, onDismiss: { Task { await refreshUsage() } }) { destination in
                 // Both destinations share the stationary page light.
@@ -222,14 +223,9 @@ private struct StorageEraseSheet: View {
             }.padding(.top, YubaiSpace.gapGroup)
             Button("先加密备份") { backingUp = true }.buttonStyle(PrimaryButtonStyle()).padding(.top, YubaiSpace.gapAction)
                 .accessibilityIdentifier("backupBeforeErase")
-            Text("输入「抹掉」确认").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                .padding(.top, YubaiSpace.gapSection)
-            TextField("抹掉", text: $confirmation).textFieldStyle(.plain).yubaiFont(YubaiFont.body)
-                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin)
-                .background(YubaiColor.canvas, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).stroke(YubaiColor.borderDashed, lineWidth: 1) }
-                .accessibilityLabel("输入「抹掉」确认").accessibilityIdentifier("storageEraseConfirmation")
-                .padding(.top, YubaiSpace.space8)
+            Card(style: .list) {
+                CardTextFieldRow(title: "输入「抹掉」确认", text: $confirmation, identifier: "storageEraseConfirmation", autofocus: true)
+            }.padding(.top, YubaiSpace.gapSection)
             Button { if store.eraseAllDeviceData() { dismiss() } } label: {
                 Text("抹掉这台手机上的全部数据").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberInk)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight)
@@ -250,7 +246,7 @@ private struct StorageEraseSheet: View {
             NavigationStack { BackupView() }.environment(store).environment(\.yubaiSheetSurface, true).appErrors()
                 .presentationDragIndicator(.visible).yubaiSheetBackground()
                 #if os(macOS)
-                .frame(minWidth: 540, minHeight: 600)
+                .frame(minWidth: YubaiSize.sheetMinimumWidth, minHeight: YubaiSize.sheetMinimumHeight)
                 #endif
         }
     }
@@ -284,14 +280,14 @@ private struct StorageSummaryCard: View {
 }
 
 private struct StorageSheetHeight: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static var defaultValue: CGFloat = .zero
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 private struct StorageSheet<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
-    @State private var contentHeight: CGFloat = 600
+    @State private var contentHeight: CGFloat = YubaiSize.sheetMinimumHeight
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: YubaiSpace.none) {
@@ -302,9 +298,9 @@ private struct StorageSheet<Content: View>: View {
             .manualSheetHeader(title, cancelTitle: "关闭", showsAction: false)
             .onPreferenceChange(StorageSheetHeight.self) { contentHeight = $0 + YubaiSpace.gapSection + YubaiSize.headerHeight + YubaiSpace.sheetHeaderTop }
             .presentationDetents([.height(contentHeight), .large]).presentationDragIndicator(.visible)
-            .yubaiSheetBackground().presentationCornerRadius(28)
+            .yubaiSheetBackground().presentationCornerRadius(YubaiSize.sheetCorner)
             #if os(macOS)
-            .frame(minWidth: 540, idealWidth: 620, minHeight: 600, idealHeight: 720)
+            .frame(minWidth: YubaiSize.sheetMinimumWidth, idealWidth: YubaiSize.sheetIdealWidth, minHeight: YubaiSize.sheetMinimumHeight, idealHeight: YubaiSize.sheetIdealHeight)
             #endif
     }
 }

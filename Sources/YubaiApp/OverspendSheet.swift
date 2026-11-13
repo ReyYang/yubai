@@ -49,9 +49,7 @@ private struct OverspendEditor: View {
     var body: some View {
         AmountEntrySheet(title: title, presets: presets, keypad: $keypad, rows: rows, primaryTitle: "好",
                          canSave: valid, save: save)
-            #if os(iOS)
-            .presentationDetents([.height(700), .large])
-            #endif
+
     }
 
     private func save() {

@@ -15,7 +15,7 @@ struct WeeklyReviewView: View {
                         .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     Text(conclusion(review)).yubaiFont(YubaiFont.lead).accessibilityIdentifier("letterBody")
                 }
-                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space12)) : AnyLayout(HStackLayout(alignment: .top, spacing: YubaiSpace.space12))
                 layout {
                     fact("花得最多" + (review.largestCategory.map { " · " + Classification.displayCategory($0) } ?? ""), amount: review.largestAmount)
                     fact("没买，省下", amount: review.droppedWishes)
@@ -37,7 +37,7 @@ struct WeeklyReviewView: View {
     }
     private func fact(_ title: String, amount: Int64) -> some View {
         Card {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 AmountLabel(cents: amount, hide: hide, role: .summary)
             }.frame(maxWidth: .infinity, alignment: .leading)

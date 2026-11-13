@@ -37,7 +37,7 @@ struct SavingTabView: View {
             Text("存下了").yubaiFont(YubaiFont.cardTitle)
             AmountLabel(cents: overview.total, hide: hide, role: .hero).accessibilityIdentifier("reserveTotal")
             if let change = monthlyIncrease, store.current.savingRule != nil || overview.total != 0 {
-                HStack(spacing: 4) {
+                HStack(spacing: YubaiSpace.space4) {
                     Text("这个月").yubaiFont(YubaiFont.callout)
                     AmountLabel(cents: change, hide: hide, role: .small, sign: change >= 0 ? .inflow : .outflow, ink: YubaiColor.brandInk)
                 }.foregroundStyle(YubaiColor.brandInk).accessibilityIdentifier("savingMonthlyIncrease")
@@ -46,7 +46,7 @@ struct SavingTabView: View {
     }
     private var firstSaving: some View {
         Card {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 Text("每月先存").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 Text("发工资那天，先留出多少？").yubaiFont(YubaiFont.cardTitle)
                 ChipFlow {
@@ -61,10 +61,10 @@ struct SavingTabView: View {
             HStack {
                 TabNavigationLink(.wishlist) { WishlistView() } label: { Text("心愿").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary) }
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openWishlist")
-                Spacer(minLength: 8)
+                Spacer(minLength: YubaiSpace.space8)
                 Button { addingWish = true } label: { Label("添一个", systemImage: "chevron.right").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk) }
                     .buttonStyle(PressButtonStyle()).yubaiHitTarget().accessibilityIdentifier("addSavingWish")
-            }.padding(.horizontal, 4)
+            }.padding(.horizontal, YubaiSpace.space4)
             CardRows(wishes) { wish in
                 TabNavigationLink(.savingWish(wish.id)) { WishlistView(focusedWishID: wish.id) } label: { wishRow(wish) }
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("savingWish_" + wish.id.uuidString)
@@ -72,25 +72,25 @@ struct SavingTabView: View {
         }
     }
     private func wishRow(_ wish: WishItem) -> some View {
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { Text(wish.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1); Spacer(minLength: 8); AmountLabel(cents: wish.amount, hide: hide) }
-                VStack(alignment: .leading, spacing: 4) { Text(wish.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1); AmountLabel(cents: wish.amount, hide: hide) }
+                HStack(spacing: YubaiSpace.space8) { Text(wish.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1); Spacer(minLength: YubaiSpace.space8); AmountLabel(cents: wish.amount, hide: hide) }
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(wish.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1); AmountLabel(cents: wish.amount, hide: hide) }
             }
             if let funding = fundingByWish[wish.id] {
                 if funding.shortfall > 0 && !hide { ProgressLine(value: funding.progress, tint: YubaiColor.brand) }
                 fundingFacts(funding).accessibilityIdentifier("savingWishFunding_" + wish.id.uuidString)
             }
-        }.padding(.vertical, 12).contentShape(Rectangle())
+        }.padding(.vertical, YubaiSpace.space12).contentShape(Rectangle())
     }
     @ViewBuilder private func fundingFacts(_ funding: WishFunding) -> some View {
         if funding.shortfall == 0 {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 4) { Text("存下的钱够了，买完还剩").fixedSize(); fundingAmount(funding.remainingAfterPurchase).fixedSize() }
-                VStack(alignment: .leading, spacing: 4) { Text("存下的钱够了，买完还剩"); fundingAmount(funding.remainingAfterPurchase) }
+                HStack(spacing: YubaiSpace.space4) { Text("存下的钱够了，买完还剩").fixedSize(); fundingAmount(funding.remainingAfterPurchase).fixedSize() }
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text("存下的钱够了，买完还剩"); fundingAmount(funding.remainingAfterPurchase) }
             }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
         } else {
-            ChipFlow(spacing: 4, rowSpacing: 4) {
+            ChipFlow(spacing: YubaiSpace.space4, rowSpacing: YubaiSpace.space4) {
                 Text("还差").yubaiFont(YubaiFont.callout)
                 fundingAmount(funding.shortfall)
                 if let date = funding.enoughOn, let monthly = funding.monthly {
@@ -115,7 +115,7 @@ struct SavingTabView: View {
     }
     private var settingsRows: some View {
         Card(style: .list) {
-            VStack(spacing: 0) {
+            VStack(spacing: YubaiSpace.none) {
                 if store.current.savingRule != nil || postponed {
                     TabNavigationLink(.savingRule) { SavingsView() } label: { navigationRow("每月先存", value: monthlyValue) }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openSavings")
@@ -140,8 +140,8 @@ struct SavingTabView: View {
     }
     private func navigationRow(_ title: String, value: String) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { Text(title).yubaiFont(YubaiFont.row).fixedSize(); Spacer(minLength: 8); Text(value).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); chevron }
-            VStack(alignment: .leading, spacing: 4) { Text(title).yubaiFont(YubaiFont.row); HStack { Text(value).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Spacer(); chevron } }
+            HStack(spacing: YubaiSpace.space8) { Text(title).yubaiFont(YubaiFont.row).fixedSize(); Spacer(minLength: YubaiSpace.space8); Text(value).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); chevron }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(title).yubaiFont(YubaiFont.row); HStack { Text(value).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Spacer(); chevron } }
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
@@ -172,7 +172,7 @@ struct ReserveLineRow: View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         layout {
             Text(dateText).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                .frame(minWidth: textSize.isAccessibilitySize ? 0 : 56, alignment: .leading)
+                .frame(minWidth: textSize.isAccessibilitySize ? YubaiSpace.none : YubaiSize.rowDouble, alignment: .leading)
             Text(title).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
             amountView
         }.frame(minHeight: YubaiSize.rowDouble).accessibilityElement(children: .combine)

@@ -306,7 +306,7 @@ public enum UnsortedEntryPresentation {
         [UnsortedEntryField(key: "时间", value: Dates.text(entry.date, time: true)),
          UnsortedEntryField(key: "金额", value: hideAmounts ? "••••" : Money.text(entry.nature.inflow ? entry.amount : -entry.amount)),
          UnsortedEntryField(key: "账户", value: account),
-         UnsortedEntryField(key: "明细", value: entry.title),
+         UnsortedEntryField(key: "账目", value: entry.title),
          UnsortedEntryField(key: "备注", value: entry.note)]
     }
 

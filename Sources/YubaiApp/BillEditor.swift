@@ -7,14 +7,14 @@ struct BillRateLabel: View {
     var body: some View {
         let rate = FixedFlows.exchangeRate(for: currency, in: store.current, now: store.financialNow)
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { labels(rate) }
-            VStack(alignment: .leading, spacing: 4) { labels(rate) }
+            HStack(spacing: YubaiSpace.space8) { labels(rate) }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { labels(rate) }
         }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
     }
     @ViewBuilder private func labels(_ rate: ManualExchangeRate?) -> some View {
         Text(rate?.equation ?? "填写汇率").fixedSize(horizontal: false, vertical: true)
         if let rate {
-            Spacer(minLength: 0)
+            Spacer(minLength: YubaiSpace.none)
             Text(Dates.calendar.isDate(rate.updatedAt, inSameDayAs: store.financialNow) ? "今天 " + rate.updatedAt.formatted(.dateTime.hour().minute()) + " 更新" : Dates.text(rate.updatedAt, time: true) + " 更新")
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -35,7 +35,7 @@ struct BillRateEditor: View {
     var body: some View {
         EntryForm(title: "汇率", actionTitle: "保存", enabled: rate != nil, scrollIdentifier: "billRateEditor", cancel: { dismiss() }, save: save) {
             Card(style: .list) {
-                CardTextFieldRow(title: "1 " + currency.unit + " =", text: $value, identifier: "billRateValue", numeric: true)
+                CardTextFieldRow(title: "1 " + currency.unit + " =", text: $value, identifier: "billRateValue", numeric: true, autofocus: true)
             }
             if rate == nil && !value.isEmpty { InlineFieldError(message: "填写有效汇率。") }
         }.onAppear { value = FixedFlows.exchangeRate(for: currency, in: store.current, now: store.financialNow)?.valueText ?? "" }
@@ -119,12 +119,12 @@ struct FixedFlowEditor: View {
     }
     private var amountCard: some View {
         Card(style: .list) {
-            VStack(spacing: 0) {
+            VStack(spacing: YubaiSpace.none) {
                 CardTextFieldRow(title: "名字", text: $title, identifier: "fixedFlowTitle",
-                                 leading: AnyView(BillBrandIcon(title: title, category: category, inflow: inflow)))
+                                 leading: AnyView(BillBrandIcon(title: title, category: category, inflow: inflow)), autofocus: true)
                 EntryFormDivider()
-                CardTextFieldRow(title: "金额", text: $amount, identifier: "fixedFlowAmount", numeric: true, hidesValue: store.preferences.hideAmounts,
-                                 trailing: AnyView(currencyChips))
+                MoneyInputRow(title: "金额", text: $amount, identifier: "fixedFlowAmount", currencySymbol: currency.symbol,
+                              trailing: AnyView(currencyChips))
                 if currency != .cny { foreignRows }
             }
         }
@@ -137,13 +137,13 @@ struct FixedFlowEditor: View {
                 ForEach(BillCurrency.allCases.filter { $0 != .cny }) { item in
                     Button(item.symbol + " · " + item.unit) { currency = item }
                 }
-            } label: { Text("其他").fixedSize().padding(.horizontal, 12).frame(minHeight: 44).background(YubaiColor.card, in: Capsule()) }
+            } label: { Text("其他").fixedSize().padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin).background(YubaiColor.card, in: Capsule()) }
                 .accessibilityIdentifier("billCurrencyOther")
         }
     }
     private func currencyChip(_ value: BillCurrency) -> some View {
         Button { currency = value } label: {
-            Text(value.symbol).yubaiFont(YubaiFont.callout).fixedSize().padding(.horizontal, 12).frame(minHeight: 44)
+            Text(value.symbol).yubaiFont(YubaiFont.callout).fixedSize().padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin)
                 .foregroundStyle(currency == value ? YubaiColor.canvas : YubaiColor.label)
                 .background(currency == value ? YubaiColor.label : YubaiColor.card, in: Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billCurrency_" + value.rawValue)
@@ -157,9 +157,9 @@ struct FixedFlowEditor: View {
         Button { editingRate.toggle() } label: {
             HStack {
                 Text(quote(currency)?.equation ?? "填写汇率").fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
+                Spacer(minLength: YubaiSpace.space4)
                 if let rate = quote(currency) { Text(Dates.calendar.isDate(rate.updatedAt, inSameDayAs: store.financialNow) ? "今天" : FixedFlowPresentation.monthDay(rate.updatedAt)).fixedSize() }
-            }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).frame(minHeight: 44).contentShape(Rectangle())
+            }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billEditRate")
         if editingRate {
             CardTextFieldRow(title: "1 " + currency.unit + " =", text: rateText, identifier: "billRateValue", numeric: true)
@@ -168,13 +168,13 @@ struct FixedFlowEditor: View {
     }
     private var scheduleCard: some View {
         Card(style: .list) {
-            VStack(spacing: 0) {
+            VStack(spacing: YubaiSpace.none) {
                 EntryFormRow(title: "多久一次") { cycles }.accessibilityIdentifier("fixedFlowSchedule")
                 EntryFormDivider()
                 EntryFormRow(title: "哪一天") {
                     Button { pickingDate.toggle() } label: {
                         Text(frequency == .monthly ? "\(Dates.calendar.component(.day, from: date)) 号" : FixedFlowPresentation.monthDay(date))
-                            .yubaiFont(YubaiFont.row).fixedSize().frame(minHeight: 44)
+                            .yubaiFont(YubaiFont.row).fixedSize().frame(minHeight: YubaiSize.tapMin)
                     }.buttonStyle(PressButtonStyle()).accessibilityLabel(frequency == .yearly ? "几月几号" : "哪一天")
                         .accessibilityIdentifier("fixedFlowDate")
                 }
@@ -197,14 +197,14 @@ struct FixedFlowEditor: View {
             Menu {
                 ForEach(Frequency.allCases.filter { $0 != .monthly && $0 != .yearly }) { value in Button(value.label) { frequency = value } }
             } label: {
-                Text(frequency == .monthly || frequency == .yearly ? "其他" : frequency.label).fixedSize().padding(.horizontal, 12).frame(minHeight: 44)
+                Text(frequency == .monthly || frequency == .yearly ? "其他" : frequency.label).fixedSize().padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin)
                     .background(YubaiColor.card, in: Capsule())
             }.accessibilityIdentifier("billCycleOther")
         }
     }
     private func cycleChip(_ value: Frequency) -> some View {
         Button { frequency = value } label: {
-            Text(value.label).yubaiFont(YubaiFont.callout).fixedSize().padding(.horizontal, 12).frame(minHeight: 44)
+            Text(value.label).yubaiFont(YubaiFont.callout).fixedSize().padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin)
                 .foregroundStyle(frequency == value ? YubaiColor.canvas : YubaiColor.label)
                 .background(frequency == value ? YubaiColor.label : YubaiColor.card, in: Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billCycle_" + value.rawValue)
@@ -213,21 +213,21 @@ struct FixedFlowEditor: View {
     private var moreCard: some View {
         Card(style: .list) {
             DisclosureGroup("更多") {
-                VStack(spacing: 0) {
-                    if planID == nil { Toggle("要收", isOn: $inflow).frame(minHeight: 52) }
+                VStack(spacing: YubaiSpace.none) {
+                    if planID == nil { Toggle("要收", isOn: $inflow).frame(minHeight: YubaiSize.buttonHeight) }
                     EntryFormRow(title: "分类") {
                         Picker("分类", selection: $category) {
                             ForEach(FixedFlows.categories(inflow: inflow, in: store.current), id: \.self) { Text(Classification.displayCategory($0)).tag($0) }
                         }.labelsHidden().accessibilityIdentifier("fixedFlowCategory")
                     }
-                    Toggle("金额会变", isOn: Binding(get: { estimated }, set: { value in estimated = value; if value { autoPay = false } })).frame(minHeight: 52).accessibilityIdentifier("fixedFlowEstimated")
-                    Toggle("到日子自动记一笔", isOn: $autoPay).frame(minHeight: 52).disabled(accountID == nil || estimated).accessibilityIdentifier("fixedFlowAutoPay")
-                    if inflow { Toggle("到账放进存着不动", isOn: $intoFixedSavings).frame(minHeight: 52).accessibilityIdentifier("fixedFlowIntoFixedSavings") }
+                    Toggle("金额会变", isOn: Binding(get: { estimated }, set: { value in estimated = value; if value { autoPay = false } })).frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("fixedFlowEstimated")
+                    Toggle("到日子自动记一笔", isOn: $autoPay).frame(minHeight: YubaiSize.buttonHeight).disabled(accountID == nil || estimated).accessibilityIdentifier("fixedFlowAutoPay")
+                    if inflow { Toggle("到账放进存着不动", isOn: $intoFixedSavings).frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("fixedFlowIntoFixedSavings") }
                     Stepper(value: Binding(get: { installments ?? 0 }, set: { installments = $0 == 0 ? nil : $0 }), in: 0...2400) {
                         Text(installments.map { "共 \($0) 期" } ?? "一直")
-                    }.frame(minHeight: 52).accessibilityIdentifier("fixedFlowInstallments")
+                    }.frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("fixedFlowInstallments")
                 }
-            }.yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn).padding(.vertical, 8)
+            }.yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn).padding(.vertical, YubaiSpace.space8)
         }
     }
     private func load() {

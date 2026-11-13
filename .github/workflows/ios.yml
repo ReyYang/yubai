@@ -117,25 +117,77 @@ jobs:
   gallery:
     if: inputs.mode != 'tests'
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
         include:
-          - part: reduced
-            walks: testAccessibilityWalk testDarkWalk
-          - part: roots
-            walks: testWalk01RootsAndLedger testWalk02FormulaAndAccounts
-          - part: money
-            walks: testWalk03Bills testWalk04Saving testWalk05EntrySheets
-          - part: pages
-            walks: testWalk06Categories testWalk07Yubai testWalk08Settings
-          - part: states
-            walks: testWalk09Imports testWalk10States testWalk11Empty
-          - part: entry46
-            walks: testWalk46Batch2 testWalk46Batch2Dark testWalk46Batch2Large
-          - part: round46-bills
-            walks: testWalk46Batch4 testWalk46Batch4Dark testWalk46Batch4Large
+          - part: 46-batch1
+            walks: testWalk46Batch1
+          - part: 46-batch1-dark
+            walks: testWalk46Batch1Dark
+          - part: 46-batch1-large
+            walks: testWalk46Batch1Large
+          - part: 46-batch1-hidden
+            walks: testWalk46Batch1Hidden
+          - part: 46-batch2
+            walks: testWalk46Batch2
+          - part: 46-batch2-dark
+            walks: testWalk46Batch2Dark
+          - part: 46-batch2-large
+            walks: testWalk46Batch2Large
+          - part: 46-batch2-hidden
+            walks: testWalk46Batch2Hidden
+          - part: 46-batch3
+            walks: testWalk46Batch3
+          - part: 46-batch3-dark
+            walks: testWalk46Batch3Dark
+          - part: 46-batch3-large
+            walks: testWalk46Batch3Large
+          - part: 46-batch3-hidden
+            walks: testWalk46Batch3Hidden
+          - part: 46-batch4
+            walks: testWalk46Batch4
+          - part: 46-batch4-dark
+            walks: testWalk46Batch4Dark
+          - part: 46-batch4-large
+            walks: testWalk46Batch4Large
+          - part: 46-batch4-hidden
+            walks: testWalk46Batch4Hidden
+          - part: 46-batch5
+            walks: testWalk46Batch5
+          - part: 46-batch5-dark
+            walks: testWalk46Batch5Dark
+          - part: 46-batch5-large
+            walks: testWalk46Batch5Large
+          - part: 46-batch5-hidden
+            walks: testWalk46Batch5Hidden
+          - part: 01-roots-and-ledger
+            walks: testWalk01RootsAndLedger
+          - part: 02-formula-and-accounts
+            walks: testWalk02FormulaAndAccounts
+          - part: 03-bills
+            walks: testWalk03Bills
+          - part: 04-saving
+            walks: testWalk04Saving
+          - part: 05-entry-sheets
+            walks: testWalk05EntrySheets
+          - part: 06-categories
+            walks: testWalk06Categories
+          - part: 07-yubai
+            walks: testWalk07Yubai
+          - part: 08-settings
+            walks: testWalk08Settings
+          - part: 09-imports
+            walks: testWalk09Imports
+          - part: 10-states
+            walks: testWalk10States
+          - part: 11-empty
+            walks: testWalk11Empty
+          - part: accessibility-walk
+            walks: testAccessibilityWalk
+          - part: dark-walk
+            walks: testDarkWalk
     env:
       GALLERY_ONLY: ${{ matrix.walks }}
     steps:
@@ -162,6 +214,8 @@ jobs:
           ')
           xcrun simctl list devices | grep "$udid"
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+      - name: 检查界面与逐屏覆盖
+        run: bash scripts/check-ui-consistency.sh
       - name: 逐屏截图
         shell: bash
         run: |

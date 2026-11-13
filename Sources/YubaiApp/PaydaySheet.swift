@@ -50,19 +50,7 @@ struct PaydaySetupSheet: View {
         ManualSheetHeader(title: "哪天发工资", actionTitle: "好", enabled: valid,
                           actionIdentifier: "paydaySetupDone", cancelIdentifier: "paydaySetupCancel", cancel: { dismiss() }, action: save)
     }
-    private var days: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: textSize.isAccessibilitySize ? 4 : 7), spacing: YubaiSpace.space8) {
-            ForEach(1...31, id: \.self) { value in
-                Button { day = value } label: {
-                    Text("\(value)").yubaiFont(YubaiFont.callout)
-                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
-                        .foregroundStyle(day == value ? YubaiColor.onBrand : YubaiColor.label)
-                        .background(day == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel("每月 \(value) 号")
-                    .accessibilityAddTraits(day == value ? .isSelected : []).accessibilityIdentifier("paydaySetupDay_\(value)")
-            }
-        }
-    }
+    private var days: some View { MonthDayChoices(selection: $day, identifier: "paydaySetupDay_") }
     private func save() {
         guard valid, let accountID else { return }
         let now = Date(), calendar = Dates.calendar
@@ -128,9 +116,7 @@ private struct PaydayEditor: View {
                          canSave: valid, save: save) {
             if delta > 0 { extraChip }
         }
-        #if os(iOS)
-        .presentationDetents([.height(700), .large])
-        #endif
+
     }
 
     private var extraChip: some View {

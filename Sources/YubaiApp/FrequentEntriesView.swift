@@ -31,11 +31,11 @@ struct FrequentEntriesView: View {
         }.accessibilityIdentifier("frequentEntriesPage")
             .task(id: store.ledgerRevision) { await refresh() }
             #if os(iOS)
-            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(560), .large])
+            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(YubaiSize.sheet560), .large])
             #endif
     }
     private func entryRow(_ item: EntryHistory.Repeat, index: Int) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(spacing: 8))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
         return layout {
             summary(item.purpose, amount: item.amount)
             HStack(spacing: YubaiSpace.space8) {
@@ -55,7 +55,7 @@ struct FrequentEntriesView: View {
         }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).accessibilityElement(children: .combine)
     }
     private func hiddenRow(_ row: EntryHistory.HiddenRepeat) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(spacing: 8))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
         return layout {
             if let purpose = row.purpose, let amount = row.amount { summary(purpose, amount: amount).foregroundStyle(YubaiColor.labelSecondary) }
             action("放回去", identifier: "frequentUnhide_" + row.id) {

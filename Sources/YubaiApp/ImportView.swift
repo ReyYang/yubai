@@ -125,7 +125,7 @@ struct ImportView: View {
         VStack(spacing: YubaiSpace.none) {
             if screenshot && preview != nil {
                 Menu { accountPicker; Button("添加账户") { showAccount = true } } label: { Label(store.accountName(accountID), systemImage: "creditcard") }
-                    .accessibilityLabel("选择截图记账的账户").padding(.horizontal, 20).frame(minHeight: 44)
+                    .accessibilityLabel("选择截图记账的账户").padding(.horizontal, YubaiSpace.space20).frame(minHeight: YubaiSize.tapMin)
             }
             if let result { resultView(result) }
             else if let preview { previewView(preview) }
@@ -151,7 +151,7 @@ struct ImportView: View {
             guard !selection.isEmpty else { return }
             enqueue(selection.enumerated().map { ImportQueueFile(input: .photo($0.element), name: "截图 \($0.offset + 1)") }); photos = []
         }
-        .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().yubaiSheetBackground().frame(minWidth: 340, minHeight: 520) }
+        .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().yubaiSheetBackground().frame(minWidth: YubaiSize.compactWindowMinimum, minHeight: YubaiSize.editorIdealHeight) }
         .sheet(item: $receiptCapture, onDismiss: prepareQueue) { selection in
             NavigationStack { ScreenshotCaptureView(imageData: selection.data) }.environment(store).appErrors().yubaiSheetBackground()
         }
@@ -301,7 +301,7 @@ struct ImportView: View {
                                 accountPicker
                                 Divider().overlay(YubaiColor.separator)
                                 Button { showCategories = true } label: {
-                                    HStack(spacing: YubaiSpace.gapGroup) { Text("分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
+                                    HStack(spacing: YubaiSpace.gapGroup) { Text("导入的分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
                                         .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
                                 if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
@@ -474,7 +474,7 @@ struct ImportView: View {
                     let choice = CategoryMapping.match(raw, in: store.current, income: income) ?? CategoryAssignment(path: raw)
                     Card(style: .list) {
                         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                            Text(name).yubaiFont(YubaiFont.caption).lineLimit(1).fixedSize()
+                            Text(name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.caption).lineLimit(1).fixedSize()
                             CategoryPickerField(income: income, selection: choice, identifier: "importCategory_" + name) { selected in
                                 confirmedNewCategories.remove(name); categoryMappings[name] = selected.path
                             }
@@ -482,7 +482,7 @@ struct ImportView: View {
                     }
                 }
             }
-        }.navigationTitle("分类对应").yubaiNavigation().manualSheetHeader("分类对应", cancelTitle: "关闭", showsAction: false)
+        }.navigationTitle("导入的分类对应").yubaiNavigation().manualSheetHeader("导入的分类对应", cancelTitle: "关闭", showsAction: false)
     }
     private func sourceCategoryNames(_ preview: ImportPreview) -> [String] {
         var seen = Set<String>()
@@ -743,9 +743,9 @@ private struct ImportScreenshotEntryEditor: View {
     var body: some View {
         Form {
             Section {
-                TextField("用途", text: $entry.title)
+                CardTextFieldRow(title: "用途", text: $entry.title, identifier: "screenshotPurpose", autofocus: true)
                 AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts)
-                DatePicker("日期", selection: $entry.date, displayedComponents: [.date, .hourAndMinute])
+                EntryDateRow(date: $entry.date, showsTime: true)
                 Picker("收支", selection: $entry.nature) { Text("支出").tag(Nature.expense); Text("收入").tag(Nature.income) }
                 CategoryPickerField(income: entry.nature.categoryIncome,
                                     selection: .init(category: entry.category, subcategory: entry.subcategory),

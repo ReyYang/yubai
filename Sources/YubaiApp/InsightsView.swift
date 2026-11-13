@@ -16,7 +16,7 @@ struct WhereView: View {
     }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space4) {
-            SegmentedWide(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "明细" : "去向") }, selection: $mode,
+            Segmented(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "账目" : "去向") }, selection: $mode,
                           identifier: { "ledgerMode_" + $0.rawValue })
             if let insights {
                 if !insights.charges.isEmpty { charges(insights) }
@@ -44,7 +44,7 @@ struct WhereView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             HStack {
                 heading("每月都在扣")
-                Spacer(minLength: 8)
+                Spacer(minLength: YubaiSpace.space8)
                 AmountLabel(cents: value.chargesTotal, hide: hide, role: .summary, ink: YubaiColor.labelSecondary)
             }
             CardRows(value.charges) { charge in
@@ -56,13 +56,13 @@ struct WhereView: View {
     }
     private func chargeRow(_ charge: MonthlyCharge) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { chargeTitle(charge); Spacer(minLength: 8); AmountLabel(cents: charge.amount, hide: hide); chevron }
-            VStack(alignment: .leading, spacing: 4) { chargeTitle(charge); HStack { AmountLabel(cents: charge.amount, hide: hide); chevron } }
+            HStack(spacing: YubaiSpace.space8) { chargeTitle(charge); Spacer(minLength: YubaiSpace.space8); AmountLabel(cents: charge.amount, hide: hide); chevron }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { chargeTitle(charge); HStack { AmountLabel(cents: charge.amount, hide: hide); chevron } }
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private func chargeTitle(_ charge: MonthlyCharge) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(charge.plan.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail)
+        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+            Text(charge.plan.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail)
             Text(charge.lastUsed.map { "上次去是 " + FixedFlowPresentation.monthDay($0) } ?? "在用")
                 .yubaiFont(YubaiFont.caption).foregroundStyle(charge.lastUsed == nil ? YubaiColor.labelSecondary : YubaiColor.amberInk)
         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -81,21 +81,21 @@ struct WhereView: View {
     }
     private func comparisonRow(_ row: UsualSpending, more: Bool) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { comparisonTitle(row); comparisonAmount(row, more: more) }
-            VStack(alignment: .leading, spacing: 4) { comparisonTitle(row); comparisonAmount(row, more: more) }
+            HStack(spacing: YubaiSpace.space8) { comparisonTitle(row); comparisonAmount(row, more: more) }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { comparisonTitle(row); comparisonAmount(row, more: more) }
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private func comparisonTitle(_ row: UsualSpending) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
             Text(row.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
             Text("平时到这天 " + amount2(row.usual, hide: hide)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private func comparisonAmount(_ row: UsualSpending, more: Bool) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: YubaiSpace.space8) {
             Text((more ? "多 " : "少 ") + amount2(abs(row.difference), hide: hide))
                 .yubaiFont(YubaiFont.caption, weight: .semibold).lineLimit(1).minimumScaleFactor(0.5)
-                .padding(.horizontal, 8).padding(.vertical, 2)
+                .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space2)
                 .foregroundStyle(more ? YubaiColor.amberInk : YubaiColor.brandInk)
                 .background(more ? YubaiColor.amberTint : YubaiColor.brandTint, in: Capsule())
             AmountLabel(cents: row.amount, hide: hide)
@@ -112,7 +112,7 @@ struct WhereView: View {
     }
     private func destinations(_ value: SavingOpportunities) -> some View {
         Card(style: .list) {
-            VStack(spacing: 0) {
+            VStack(spacing: YubaiSpace.none) {
                 TabNavigationLink(.allCategories(range)) { AllCategoriesView(interval: range) } label: { destinationRow("全部分类", amount: value.spent) }
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("whereAllCategories")
                 EntryFormDivider()
@@ -124,8 +124,8 @@ struct WhereView: View {
     }
     private func destinationRow(_ title: String, amount: Int64) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { Text(title).yubaiFont(YubaiFont.row); Spacer(minLength: 8); Text("花了 " + amount2(amount, hide: hide)).yubaiFont(YubaiFont.caption); chevron }
-            VStack(alignment: .leading, spacing: 4) { Text(title).yubaiFont(YubaiFont.row); HStack { Text("花了 " + amount2(amount, hide: hide)).yubaiFont(YubaiFont.caption); chevron } }
+            HStack(spacing: YubaiSpace.space8) { Text(title).yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8); Text("花了 " + amount2(amount, hide: hide)).yubaiFont(YubaiFont.caption); chevron }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(title).yubaiFont(YubaiFont.row); HStack { Text("花了 " + amount2(amount, hide: hide)).yubaiFont(YubaiFont.caption); chevron } }
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
@@ -144,8 +144,8 @@ struct AllCategoriesView: View {
                         WhereCategoryView(category: row.value.title, interval: interval)
                     } label: {
                         ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) { categoryTitle(row.value); Spacer(minLength: 8); AmountLabel(cents: row.value.amount, hide: store.preferences.hideAmounts); Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta) }
-                            VStack(alignment: .leading, spacing: 4) { categoryTitle(row.value); AmountLabel(cents: row.value.amount, hide: store.preferences.hideAmounts) }
+                            HStack(spacing: YubaiSpace.space8) { categoryTitle(row.value); Spacer(minLength: YubaiSpace.space8); AmountLabel(cents: row.value.amount, hide: store.preferences.hideAmounts); Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta) }
+                            VStack(alignment: .leading, spacing: YubaiSpace.space4) { categoryTitle(row.value); AmountLabel(cents: row.value.amount, hide: store.preferences.hideAmounts) }
                         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(row.index)")
                 }
@@ -158,26 +158,10 @@ struct AllCategoriesView: View {
             }
     }
     private func categoryTitle(_ row: CashFlowSlice) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
             Text(Classification.displayCategory(row.title)).yubaiFont(YubaiFont.row).lineLimit(1)
             if !store.preferences.hideAmounts { Text(String(format: "%.0f%%", row.share * 100)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
         }
     }
     private struct CategorySpendingRow: Identifiable { var index: Int; var value: CashFlowSlice; var id: String { value.title } }
-}
-
-struct FlowRecordsView: View {
-    @Environment(AppStore.self) private var store
-    let categories: [String]
-    let title: String
-    let income: Bool
-    let interval: DateInterval
-    var body: some View {
-        let rows = store.flowRecords(categories: categories, income: income, interval: interval)
-        Page {
-            CardRows(rows) { entry in
-                EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts, editable: true)
-            }
-        }.navigationTitle(title).yubaiNavigation()
-    }
 }

@@ -102,7 +102,7 @@ struct WishlistView: View {
     private func wishHeading(_ wish: WishItem) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
-            Text(wish.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
+            Text(wish.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
             if wish.status == .bought { Pill(text: "已买", variant: .brand, showsDot: false) }
             AmountLabel(cents: wish.amount, hide: store.preferences.hideAmounts)
         }
@@ -157,7 +157,7 @@ private struct WishFollowUpView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             if showsTitle { Text("用得怎么样？").yubaiFont(YubaiFont.rowTitle) }
             DisclosureGroup("更多") {
-                TextField("补充", text: $text, axis: .vertical).lineLimit(1...4)
+                CardTextFieldRow(title: "补充", text: $text, identifier: "wishFollowUpText", multiline: true)
             }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.gapGroup) { choices }

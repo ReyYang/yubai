@@ -68,7 +68,7 @@ struct ButlerNoticeSettings: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         Card(style: .list) {
-            VStack(spacing: 0) {
+            VStack(spacing: YubaiSpace.none) {
                 ForEach(ButlerNoticeTier.allCases) { tier in
                     Toggle(tier.title, isOn: Binding(get: {
                         (store.preferences.butlerNotices ?? ButlerNoticePreferences())[tier]

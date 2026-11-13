@@ -26,7 +26,7 @@ public struct CardCandidate: Equatable, Sendable {
                               evidence: kind == .offCharacter ? evidence : Array(evidence.prefix(1000)), action: action, dedupeKey: dedupeKey)
         card.createdAt = now; card.letter = letter; card.facts = facts; card.areaID = areaID; card.priority = priority
         card.meta = meta
-        if kind != .offCharacter && evidence.count > 1000 { card.facts?.append(CardFact("明细", "显示 1000 笔")) }
+        if kind != .offCharacter && evidence.count > 1000 { card.facts?.append(CardFact("依据", "显示 1000 笔")) }
         return card
     }
 }

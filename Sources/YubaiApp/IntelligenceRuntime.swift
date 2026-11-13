@@ -506,9 +506,8 @@ private struct FeatureCloudTransport: ChatTransport {
         }
         if saved, quickSort, let group = snapshot.groupsByID[groupID] {
             let count = Set(change.items.flatMap(\.entryIDs)).count
-            let title = choice.map { $0.category + ($0.subcategory.map { " · " + $0 } ?? "") } ?? use.title
             showUnsortedUndo(questionID: questionID, groups: [group], change: change, before: before,
-                             label: "\(group.party) · \(count) 笔记为\(title)")
+                             label: "已整理 \(count) 笔")
         }
         return saved
     }
@@ -537,9 +536,8 @@ private struct FeatureCloudTransport: ChatTransport {
         }
         if saved {
             let count = Set(change.items.flatMap(\.entryIDs)).count
-            let title = choice.map { $0.category + ($0.subcategory.map { " · " + $0 } ?? "") } ?? use.title
             showUnsortedUndo(questionID: questionID, groups: groups, change: change, before: before,
-                             label: "\(groups.count) 组 · \(count) 笔记为\(title)")
+                             label: "已整理 \(count) 笔")
         }
         return saved
     }

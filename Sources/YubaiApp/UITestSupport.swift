@@ -88,6 +88,7 @@ enum UITestSupport {
         guard let script else { return }
         func save(_ fixture: Ledger, reason: String) throws {
             var fixture = fixture
+            if ProcessInfo.processInfo.environment["YUBAI_GALLERY_HIDE_AMOUNTS"] == "1" { fixture.preferences.hideAmounts = true }
             if let appearance = galleryAppearance { fixture.preferences.appearance = appearance }
             try repository.save(fixture, reason: reason)
         }
@@ -435,7 +436,7 @@ enum UITestSupport {
             }
             if !many {
                 // Force the quick card's controls to extend below an iPhone viewport.
-                ledger.categories += (0..<24).map { Category(String(format: "合成分类%02d", $0)) }
+                ledger.categories += (0..<24).map { YubaiCore.Category(String(format: "合成分类%02d", $0)) }
             }
             ButlerCards.refresh(&ledger, now: now)
             return ledger

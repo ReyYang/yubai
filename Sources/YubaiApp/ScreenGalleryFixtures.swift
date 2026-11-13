@@ -81,7 +81,7 @@ extension UITestSupport {
         let bank = ledger.accounts[0].id
         for index in 0..<18 {
             let name = index == 0 ? galleryLongTitle : index == 1 ? galleryLatinTitle : String(format: "合成自建分类%02d", index)
-            ledger.categories.append(Category(name, subcategories: ["小项", "小项" + galleryLongTitle, galleryLatinTitle], hidden: index == 17))
+            ledger.categories.append(YubaiCore.Category(name, subcategories: ["小项", "小项" + galleryLongTitle, galleryLatinTitle], hidden: index == 17))
         }
         // 72 ordinary rows over three real calendar cycles, plus special cases below.
         let categoryNames = ["餐饮", "交通", "购物", "居住", ledger.categories[ledger.categories.count - 18].name]
@@ -382,6 +382,23 @@ extension UITestSupport {
         ledger.accounts[0].anchorBalance += target - Finance.funds(ledger, now: now).available
         ledger.updatedAt = now
         try ledger.validate(); return ledger
+    }
+}
+#endif
+
+#if DEBUG && targetEnvironment(simulator)
+extension UITestSupport {
+    @MainActor static func stageGalleryVersions(_ store: AppStore) {
+        guard script == "gallery", ProcessInfo.processInfo.environment["YUBAI_GALLERY_VERSIONS"] == "1" else { return }
+        let first = store.current
+        var second = first
+        second.updatedAt = first.updatedAt.addingTimeInterval(60)
+        if !second.entries.isEmpty { second.entries[0].title = galleryLongTitle; second.entries[0].amount = 123456789 }
+        let source = FileLedgerVersionSource(repository: store.localRepository)
+        _ = try? source.versions() // Capture the real local file fingerprint; no cloud access.
+        store.syncChoice = SyncChoice(versions: [LedgerVersion(id: "current", ledger: first, deviceName: "这台手机"),
+                                                 LedgerVersion(id: "gallery-other", ledger: second, deviceName: galleryLatinTitle)],
+                                      source: source, target: .local, switching: false)
     }
 }
 #endif

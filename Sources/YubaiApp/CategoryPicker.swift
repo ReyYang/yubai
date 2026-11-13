@@ -127,7 +127,7 @@ struct CategoryPicker: View {
                 .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
                 .foregroundStyle(YubaiColor.brandInk)
-                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: YubaiSize.separator) }
                 .contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
     }
@@ -138,11 +138,11 @@ struct CategoryPicker: View {
             else { withAnimation(YubaiMotion.quick) { expanded = expanded == category.name ? nil : category.name } }
         } label: {
             Text(category.name).yubaiFont(YubaiFont.button, weight: active || suggested == category.name ? .semibold : .regular)
-                .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
+                .fixedSize(horizontal: false, vertical: true).padding(.horizontal, YubaiSpace.gapGroup)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
                 .foregroundStyle(active ? YubaiColor.onBrand : (suggested == category.name ? YubaiColor.brandInk : YubaiColor.label))
                 .background(active ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
-                .overlay { if !active && suggested == category.name { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 2) } }
+                .overlay { if !active && suggested == category.name { Capsule().strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
                 .contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).opacity(expanded != nil && expanded != category.name ? 0.45 : 1)
             .accessibilityAddTraits(active ? .isSelected : [])
@@ -162,25 +162,6 @@ struct CategoryPicker: View {
             }.accessibilityIdentifier(identifier + "MainOnly_" + category.name)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.gapGroup)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
-    }
-}
-
-struct CategoryChoiceChip: View {
-    let title: String
-    var selected = false
-    var outlined = false
-    var prominent = false
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Text(title).yubaiFont(prominent ? YubaiFont.button : YubaiFont.callout, weight: prominent ? .semibold : nil)
-                .lineLimit(1).fixedSize()
-                .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
-                .foregroundStyle(selected ? YubaiColor.onBrand : (outlined ? YubaiColor.brandInk : YubaiColor.label))
-                .background(selected ? YubaiColor.brand : (outlined ? Color.clear : YubaiColor.raised), in: Capsule())
-                .overlay { if outlined { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1) } }
-                .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
-        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -255,9 +236,8 @@ struct CategoryAdditionSheet: View {
     var body: some View {
         Page(spacing: YubaiSpace.space24, topPadding: YubaiSpace.space8) {
             Card(style: .list) {
-                FormTextRow(title: "名字", text: $name, identifier: "categoryAdditionName")
+                CardTextFieldRow(title: "名字", text: $name, identifier: "categoryAdditionName", autofocus: true, error: name.isEmpty ? nil : validationError)
             }
-            if !name.isEmpty { InlineFieldError(message: validationError) }
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 Text("放在").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 ChipFlow {
@@ -302,23 +282,24 @@ private struct CategoryGridLayout: Layout {
         let base = max(0, (width - gap * 2) / 3)
         let panel = subviews.indices.first { subviews[$0][CategoryPanelKey.self] }
         var frames = Array(repeating: CGRect.zero, count: subviews.count)
-        var row: [Int] = []; var rowWidth: CGFloat = 0; var rowHeight: CGFloat = 0; var y: CGFloat = 0
+        var row: [Int] = []; var rowWidth: CGFloat = .zero; var rowHeight: CGFloat = .zero; var y: CGFloat = .zero
         func flush() {
             guard !row.isEmpty else { return }
             y += rowHeight + gap
             if row.contains(where: { subviews[$0][CategoryExpandedKey.self] }), let panel {
                 let size = subviews[panel].sizeThatFits(ProposedViewSize(width: width, height: nil))
-                frames[panel] = CGRect(x: 0, y: y, width: width, height: size.height); y += size.height + gap
+                frames[panel] = CGRect(x: YubaiSpace.none, y: y, width: width, height: size.height); y += size.height + gap
             }
             row = []; rowWidth = 0; rowHeight = 0
         }
         for i in subviews.indices where i != panel {
             let ideal = subviews[i].sizeThatFits(.unspecified)
-            let tileWidth = max(base, ideal.width)
+            let tileWidth = min(width, max(base, ideal.width))
+            let size = subviews[i].sizeThatFits(ProposedViewSize(width: tileWidth, height: nil))
             if !row.isEmpty && (row.count == 3 || rowWidth + gap + tileWidth > width + 0.5) { flush() }
             let x = row.isEmpty ? 0 : rowWidth + gap
-            frames[i] = CGRect(x: x, y: y, width: tileWidth, height: ideal.height)
-            row.append(i); rowWidth = x + tileWidth; rowHeight = max(rowHeight, ideal.height)
+            frames[i] = CGRect(x: x, y: y, width: tileWidth, height: size.height)
+            row.append(i); rowWidth = x + tileWidth; rowHeight = max(rowHeight, size.height)
         }
         flush()
         return (CGSize(width: width, height: max(0, y - gap)), frames)

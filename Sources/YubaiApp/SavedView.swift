@@ -10,7 +10,7 @@ struct SavedView: View {
     private var years: [Int] { Set(results.map { Dates.calendar.component(.year, from: $0.record.date) }).sorted(by: >) }
     var body: some View {
         Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 AmountLabel(cents: results.reduce(0) { $0 + $1.amount }, hide: hide, role: .display, currency: true)
                     .accessibilityIdentifier("butlerSavedTotal")
                 if results.isEmpty { yearLabel(year) }
@@ -18,7 +18,7 @@ struct SavedView: View {
             ForEach(years, id: \.self) { year in
                 yearLabel(year)
                 Card(style: .list) {
-                    VStack(spacing: 0) {
+                    VStack(spacing: YubaiSpace.none) {
                         let rows = results.filter { Dates.calendar.component(.year, from: $0.record.date) == year }
                         ForEach(rows) { result in
                             row(result)
@@ -38,14 +38,14 @@ struct SavedView: View {
         Text("\(value.formatted(.number.grouping(.never))) 年").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
     }
     private func row(_ result: ButlerSavingResult) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(spacing: 8))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
         return layout {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                 Text(result.record.item).yubaiFont(YubaiFont.rowTitle, weight: .medium).lineLimit(1)
                 Text(detail(result)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
             AmountLabel(cents: result.amount, hide: hide, role: .summary, ink: YubaiColor.brandInk).fixedSize()
-        }.padding(.vertical, 8).frame(minHeight: YubaiSize.rowDouble).accessibilityElement(children: .combine)
+        }.padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.rowDouble).accessibilityElement(children: .combine)
             .accessibilityIdentifier("butlerSaving_" + result.id)
     }
     private func detail(_ result: ButlerSavingResult) -> String {
@@ -53,7 +53,7 @@ struct SavedView: View {
         if record.plan != nil {
             let cadence = record.plan?.frequency.label ?? "每月"
             let unit: String
-            switch record.cadence { case .yearly: unit = "年"; case .quarterly: unit = "季"; case .weekly: unit = "周"; default: unit = "个月" }
+            switch record.cadence { case .yearly: unit = "年"; case .quarterly: unit = "季"; case .weekly: unit = "周"; case .monthly: unit = "个月"; case .halfYearly, .fortnightly, .once: unit = "期" }
             return "\(month)月停掉 · " + cadence + amount2(record.amount, hide: hide) + "，已 \(result.periods) \(unit)"
         }
         if record.wishID != nil { return "\(month)月 · 等了 \(record.waitedHours ?? 0) 小时，没买" }

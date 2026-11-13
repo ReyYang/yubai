@@ -42,7 +42,7 @@ struct EntryDetailView: View {
         let line = [category, store.accountName(entry.accountID), FixedFlowPresentation.monthDay(entry.date)].joined(separator: " · ")
         return VStack(spacing: YubaiSpace.space8) {
             AmountLabel(cents: entry.amount, hide: hide, role: .display, sign: entry.nature.inflow ? .inflow : .outflow)
-            Text(entry.displayTitle).yubaiFont(YubaiFont.cardTitle).multilineTextAlignment(.center).accessibilityIdentifier("entryDetailTitle")
+            Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.cardTitle).multilineTextAlignment(.center).accessibilityIdentifier("entryDetailTitle")
             Text(line).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity).padding(.top, YubaiSpace.gapSection)
     }

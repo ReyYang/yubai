@@ -153,8 +153,8 @@ struct AskYubaiView: View {
                     }
                     if !errorText.isEmpty { InlineNote(text: errorText, style: .attention) }
                     if !voice.errorText.isEmpty && !voice.permissionDenied { InlineNote(text: voice.errorText) }
-                    Color.clear.frame(height: 1).id("latest")
-                }.padding(YubaiSpace.space20).frame(maxWidth: 760).frame(maxWidth: .infinity)
+                    Color.clear.frame(height: YubaiSize.separator).id("latest")
+                }.padding(YubaiSpace.space20).frame(maxWidth: YubaiSize.contentMedium).frame(maxWidth: .infinity)
             }.onChange(of: messages.count) { _, _ in
                 if let last = messages.last, !(last.reply?.purchaseQuestions ?? []).isEmpty {
                     inputFocused = false
@@ -172,7 +172,7 @@ struct AskYubaiView: View {
                         Button { input = question; send() } label: {
                             Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.gapGroup)
                                 .frame(minHeight: YubaiSize.tapMin)
-                                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+                                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: YubaiSize.separator) }
                                 .contentShape(Capsule())
                         }.foregroundStyle(enabled ? YubaiColor.label : YubaiColor.labelSecondary)
                             .buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.55)
@@ -276,7 +276,7 @@ struct AskYubaiView: View {
     private func standardReplyCard(_ reply: AssistantReply, message: AskMessage) -> some View {
         AssistantCard {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                HStack(spacing: YubaiSpace.space8) { AssistantMark(size: YubaiFont.row.size).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                 Text(store.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
                 replyEvidence(reply, message: message)
                 unverifiedAmounts(reply)
@@ -402,7 +402,7 @@ struct AskEvidenceView: View {
                 EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts).accessibilityIdentifier("evidenceEntry_" + entry.id.uuidString)
             }
             if rows.isEmpty { EmptyState("doc.questionmark", "记录已移除", action: "返回", onAction: { dismiss() }) }
-        }.navigationTitle("明细").yubaiNavigation()
+        }.navigationTitle("依据").yubaiNavigation()
     }
 }
 
@@ -412,7 +412,7 @@ private struct AskRecordLookupView: View {
     @State private var search = ""
     var body: some View {
         Page {
-            TextField("搜索", text: $search).frame(minHeight: YubaiSize.tapMin)
+            SearchInput(text: $search, identifier: "askRecordSearch", label: "搜索核对记录")
                 .accessibilityLabel("搜索核对记录").accessibilityHint("打开记录详情，可核对原始账单")
             let rows = store.sortedEntries.filter { $0.deletedAt == nil && (ids.isEmpty || ids.contains($0.id)) && (search.isEmpty || $0.displayTitle.localizedCaseInsensitiveContains(search)) }
             CardRows(rows) { entry in
@@ -453,7 +453,7 @@ private struct AskPastedStatementCard: View {
         else {
             Card(style: .compact) {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                    HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                    HStack(spacing: YubaiSpace.space8) { AssistantMark(size: YubaiFont.row.size); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                     if let summary = statement.summary {
                         Text("\(ImportStatementText.source(summary.source))导出 · \(count) 笔").yubaiFont(YubaiFont.cardTitle)
                         Text(ImportStatementText.range(start: summary.startDate, end: summary.endDate))
@@ -606,46 +606,6 @@ private struct AskDraftEditor: View {
         value.id = draft.id; value.purpose = draft.purpose; value.subcategory = draft.subcategory; value.otherAccountID = draft.otherAccountID
         value.partID = draft.partID
         return value
-    }
-}
-
-/// Shared text field and send styling; callers supply screenshot and voice controls.
-struct ChatInputBar<Leading: View, Accessory: View>: View {
-    @Binding var text: String
-    var placeholder: String
-    var accessibilityLabel: String
-    var inputID: String
-    var sendID: String
-    var enabled = true
-    var busy = false
-    var showSend = true
-    var focus: FocusState<Bool>.Binding? = nil
-    var send: () -> Void
-    @ViewBuilder var leading: () -> Leading
-    @ViewBuilder var accessory: () -> Accessory
-    @FocusState private var localFocus: Bool
-    var body: some View {
-        HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
-            leading().frame(height: YubaiSize.iconButton)
-            TextField(placeholder, text: $text, axis: .vertical)
-                .focused(focus ?? $localFocus)
-                .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
-                .padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.iconButton)
-                .accessibilityIdentifier(inputID).accessibilityLabel(accessibilityLabel)
-            accessory().frame(height: YubaiSize.iconButton)
-            if showSend {
-                Button(action: send) {
-                    Image(systemName: "arrow.up").fontWeight(.semibold)
-                        .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
-                        .foregroundStyle(Color.white).background(YubaiColor.brand, in: Circle())
-                        .yubaiHitTarget()
-                }.accessibilityLabel("发送").accessibilityIdentifier(sendID)
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }.disabled(!enabled || busy).padding(YubaiSpace.space8).frame(minHeight: YubaiSize.buttonHeight)
-            .fixedSize(horizontal: false, vertical: true)
-            .buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
-            .opacity(enabled ? 1 : 0.6)
     }
 }
 

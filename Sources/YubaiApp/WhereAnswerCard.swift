@@ -7,7 +7,7 @@ struct WhereAnswerCard: View {
     private var hide: Bool { store.preferences.hideAmounts }
     var body: some View {
         AssistantCard {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 Text("余白").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 if let answer {
                     Text(hide ? "金额已隐藏" : answer.conclusion).yubaiFont(YubaiFont.lead).accessibilityIdentifier("askAnswer")
@@ -30,7 +30,7 @@ struct WhereAnswerCard: View {
                             TabNavigationLink(.categoryBudget(category)) { BudgetView(initialCategory: category) } label: { Text("给" + Classification.displayCategory(category) + "定个预算") }
                                 .buttonStyle(SecondaryButtonStyle(background: YubaiColor.card, compact: true)).accessibilityIdentifier("askCategoryBudget")
                         }
-                    }.padding(.top, 8)
+                    }.padding(.top, YubaiSpace.space8)
                 } else { ProgressView() }
             }
         }.accessibilityIdentifier("whereAnswerCard")
@@ -50,13 +50,13 @@ struct AnswerComparisonRow: View {
     let hide: Bool
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { label; Spacer(minLength: 8); values }
-            VStack(alignment: .leading, spacing: 4) { label; values }
+            HStack(spacing: YubaiSpace.space8) { label; Spacer(minLength: YubaiSpace.space8); values }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { label; values }
         }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
     }
     private var label: some View { Text(title).yubaiFont(YubaiFont.row).lineLimit(1) }
     private var values: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: YubaiSpace.space4) {
             AmountLabel(cents: before, hide: hide, role: .small, ink: YubaiColor.labelSecondary)
             Text("→").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             AmountLabel(cents: after, hide: hide, role: .small, ink: after < 0 ? YubaiColor.amberInk : YubaiColor.label)

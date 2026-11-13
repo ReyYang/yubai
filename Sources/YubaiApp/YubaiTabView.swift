@@ -17,7 +17,7 @@ struct YubaiTabView: View {
                 valuesCard
                 memoriesRow
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
-                .frame(maxWidth: 1080).frame(maxWidth: .infinity)
+                .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity)
         }.rootScrollContentMargins().rootTabScroll(.yubai)
             .rootPageHeader { RootHeader(title: "余白") }
             .scrollDismissesKeyboard(.interactively)
@@ -91,7 +91,7 @@ struct YubaiTabView: View {
         if !value.isEmpty {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .top, spacing: YubaiSpace.gapGroup))
             layout {
-                Text(title).foregroundStyle(YubaiColor.labelSecondary).frame(minWidth: textSize.isAccessibilitySize ? 0 : 64, alignment: .leading)
+                Text(title).foregroundStyle(YubaiColor.labelSecondary).frame(minWidth: textSize.isAccessibilitySize ? YubaiSpace.none : YubaiSize.fieldMinimum, alignment: .leading)
                 Text(store.preferences.hideAmounts ? "••••" : value).multilineTextAlignment(.leading)
             }.yubaiFont(YubaiFont.callout)
         }
@@ -118,18 +118,18 @@ struct YubaiTabView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             ChipFlow {
                 ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
-                    SuggestionChip(value: text, identifier: "askSuggestion_\(index)") { choose(text, send: index == 1) }
+                    CategoryChoiceChip(title: text) { choose(text, send: index == 1) }.accessibilityIdentifier("askSuggestion_\(index)")
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
             field
         }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding - YubaiSpace.gapGroup)
-            .background(YubaiColor.canvas).overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -40) }
+            .background(YubaiColor.canvas).overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -YubaiSize.iconButton) }
     }
     private var field: some View {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         return ChatInputBar(text: $input, placeholder: "问一句", accessibilityLabel: "问余白", inputID: "askYubai", sendID: "sendAskHome",
                             showSend: !trimmed.isEmpty, focus: $focused, send: { ask(trimmed) }) {
-            AssistantMark(size: 16).accessibilityHidden(true)
+            AssistantMark(size: YubaiFont.navTitle.size).accessibilityHidden(true)
         } accessory: { EmptyView() }
     }
     private func choose(_ text: String, send: Bool) {

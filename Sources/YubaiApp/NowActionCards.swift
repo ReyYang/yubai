@@ -29,30 +29,10 @@ typealias LetterItem = HomeTask
     }
 }
 
-struct LetterEntryInset: View {
-    @Environment(AppStore.self) private var store
-    let entries: [Entry]
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(entries.prefix(3))) { entry in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.displayTitle).yubaiFont(YubaiFont.row)
-                        Text(ImportStatementText.balanceDate(entry.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    }
-                    Spacer(minLength: 4)
-                    AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .outflow)
-                }.frame(minHeight: 48)
-                if entry.id != entries.prefix(3).last?.id { EntryFormDivider() }
-            }
-        }.padding(.horizontal, 12).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: 14))
-    }
-}
-
 struct NowCardButtonStyle: ButtonStyle {
     var primary = false
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.yubaiFont(YubaiFont.row, weight: primary ? .semibold : .regular).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 16).frame(minHeight: 40)
+        configuration.label.yubaiFont(YubaiFont.row, weight: primary ? .semibold : .regular).fixedSize(horizontal: false, vertical: true).padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.iconButton)
             .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
             .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
             .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())

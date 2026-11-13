@@ -29,7 +29,7 @@ struct AddEntryCalendar: View {
             EntryCalendarView(selection: Binding(get: { date }, set: { date = $0; done() }), today: Date(), customHeader: { month in
                 AnyView(AddEntryCalendarHeader(month: month, done: done))
             }).padding(.horizontal, YubaiSpace.space12)
-        }.frame(height: 350).accessibilityIdentifier("entryInlineCalendar")
+        }.frame(height: YubaiSize.calendarMinimumHeight).accessibilityIdentifier("entryInlineCalendar")
     }
 }
 
@@ -144,7 +144,7 @@ struct AddEntryCategories: View {
         }.accessibilityIdentifier("entryCategoryPicker")
     }
     private var picker: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: YubaiSpace.none) {
             ManualSheetHeader(title: "选分类", actionTitle: "管理", primary: false, cancelTitle: "返回",
                               actionIdentifier: "entryMoreManage", cancelIdentifier: "entryMoreCancel",
                               cancel: cancel, action: { managing = true }).padding(.horizontal, YubaiSpace.insetPage)
@@ -157,7 +157,7 @@ struct AddEntryCategories: View {
         }
     }
     private var manager: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: YubaiSpace.none) {
             ManualSheetHeader(title: "分类", actionTitle: "新分类", primary: false, cancelTitle: "返回",
                               actionIdentifier: "addMainCategory", cancelIdentifier: "entryCategoryManageBack",
                               cancel: { managing = false }, action: { parent = nil; adding = true })
@@ -165,10 +165,10 @@ struct AddEntryCategories: View {
             List {
                 ForEach(rows) { row in
                     HStack {
-                        Text(row.name).yubaiFont(YubaiFont.row).lineLimit(1)
+                        Text(row.name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1)
                         Spacer(minLength: YubaiSpace.space8)
                         if !row.isCatchAll {
-                            Button("不显示") { hide(row, true) }.yubaiFont(YubaiFont.callout).frame(minHeight: 44)
+                            Button("不显示") { hide(row, true) }.yubaiFont(YubaiFont.callout).frame(minHeight: YubaiSize.tapMin)
                                 .accessibilityIdentifier("entryHideCategory_" + row.name)
                         }
                     }.listRowBackground(YubaiColor.paperSheet)
@@ -179,7 +179,7 @@ struct AddEntryCategories: View {
                         ForEach(hidden) { row in
                             HStack {
                                 Text(row.name).lineLimit(1); Spacer()
-                                Button("放回去") { hide(row, false) }.frame(minHeight: 44)
+                                Button("放回去") { hide(row, false) }.frame(minHeight: YubaiSize.tapMin)
                                     .accessibilityIdentifier("entryUnhideCategory_" + row.name)
                             }.listRowBackground(YubaiColor.paperSheet)
                         }
@@ -212,8 +212,8 @@ struct AddEntryAccountForm: View {
     private var valid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (keypad.amount ?? -1) >= 0 }
     var body: some View {
         EntryForm(title: "添加账户", actionTitle: "加上", enabled: valid, actionIdentifier: "saveManualSheet", cancel: cancel, save: save) {
-            Card(style: .list) { FormTextRow(title: "名称", text: $name, identifier: "accountName", focus: $nameFocused) }
-            SegmentedWide(choices: [(AccountKind.bank, "银行卡"), (.cash, "现金"), (.credit, "信用卡")], selection: $kind)
+            Card(style: .list) { CardTextFieldRow(title: "名称", text: $name, identifier: "accountName", focus: $nameFocused) }
+            Segmented(choices: [(AccountKind.bank, "银行卡"), (.cash, "现金"), (.credit, "信用卡")], selection: $kind)
             EditableAmountDisplay(amount: keypad.resultText, keypad: keypad, presented: true, selected: false,
                                   identifier: "accountBalance", open: { nameFocused = false }, hide: store.preferences.hideAmounts)
         }.safeAreaInset(edge: .bottom) {

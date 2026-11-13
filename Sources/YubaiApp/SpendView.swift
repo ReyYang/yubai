@@ -33,7 +33,7 @@ struct FormulaView: View {
     }
     private func sources(_ value: SpendingDerivation) -> some View {
         let salary = value.salary.flatMap { value.income == $0.amount ? $0 : nil }
-        return VStack(spacing: 0) {
+        return VStack(spacing: YubaiSpace.none) {
             if value.otherFunds != 0 {
                 TabNavigationLink(.accounts) { AccountsView() } label: {
                     row("手上的钱", amount: value.otherFunds)
@@ -67,7 +67,7 @@ struct FormulaView: View {
         }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaCard")
     }
     private func result(_ value: SpendingDerivation) -> some View {
-        VStack(spacing: 0) {
+        VStack(spacing: YubaiSpace.none) {
             Button { showEntries(value.interval) } label: { row("已经花了", detail: "\(value.entryIDs.count) 笔", amount: -value.spent) }
                 .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_spent")
             EntryFormDivider()
@@ -87,24 +87,24 @@ struct FormulaView: View {
         return unique.prefix(2).joined(separator: "、") + "等 \(unique.count) 样"
     }
     private func source(_ title: String, detail: String? = nil, amount: Int64, id: String, action: @escaping () -> Void) -> some View {
-        VStack(spacing: 0) {
+        VStack(spacing: YubaiSpace.none) {
             EntryFormDivider()
             Button(action: action) { row(title, detail: detail, amount: -amount) }
                 .buttonStyle(PressButtonStyle()).accessibilityIdentifier(id)
         }
     }
     private func row(_ title: String, detail: String? = nil, amount: Int64, chevron: Bool = true, strong: Bool = false, ink: Color = YubaiColor.label) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(spacing: 8))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
         return layout {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                 Text(title).yubaiFont(YubaiFont.rowTitle, weight: strong ? .semibold : .regular).lineLimit(1)
                 if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1) }
             }.frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 8) {
+            HStack(spacing: YubaiSpace.space8) {
                 AmountLabel(cents: amount, hide: hide, role: strong ? .summary : .amount, ink: ink).fixedSize()
                 if chevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
             }
-        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).padding(.vertical, 2).contentShape(Rectangle())
+        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).padding(.vertical, YubaiSpace.space2).contentShape(Rectangle())
     }
     private func showEntries(_ interval: DateInterval) {
         store.resetRootNavigation(); store.ledgerPreset = LedgerPreset(mode: .detail, interval: interval); store.destination = .ledger
