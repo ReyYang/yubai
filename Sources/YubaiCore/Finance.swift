@@ -234,8 +234,10 @@ public enum Finance {
             }
         }
         let occurrences = occurrences(in: ledger, now: now, days: horizon)
-        let payday = nextPayday(in: ledger, now: now)
         let cycle = cycleInfo(in: ledger, now: now)
+        let payday = nextPayday(in: ledger, now: now)
+        let paydayDate = cycle.payday ? cycle.nextPayday : payday?.date
+        let paydayTitle = cycle.payday ? anchorPlan(in: ledger, now: now)?.title : payday?.title
         let horizonEnd = cycle.end
         let horizonDays = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: horizonEnd).day ?? horizon
         // Credit principal is reserved once as debt. A credit-repayment plan only changes its payment date.
@@ -291,7 +293,7 @@ public enum Finance {
                      livingEstimated: true, committed: committed, goals: goals, emergency: emergency, living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
                      occurrences: occurrences, points: points, warnings: warnings, floorRoom: nil,
-                     horizonEnd: horizonEnd, horizonDays: horizonDays, payday: payday?.date, paydayTitle: payday?.title)
+                     horizonEnd: horizonEnd, horizonDays: horizonDays, payday: paydayDate, paydayTitle: paydayTitle)
         value.cycleStart = cycle.start; value.cycleEnd = cycle.end; value.cycleIsPayday = cycle.payday
         value.liquidStart = liquid - income + spent; value.cycleIncome = income; value.savingTarget = savingTarget
         value.cycleSpent = spent; value.dueRest = committed

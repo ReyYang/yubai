@@ -1,6 +1,6 @@
 import XCTest
 
-/// Opt-in pixel inventory. Run scripts/gallery.sh; ordinary UI tests skip this class.
+/// Opt-in pixel inventory. Run scripts/gallery.sh; the tests matrix excludes this class.
 /// All navigation uses the same controls as the owner. Each area gets a fresh ledger.
 final class ScreenGalleryTests: XCTestCase {
     private var app = XCUIApplication()
@@ -227,6 +227,18 @@ final class ScreenGalleryTests: XCTestCase {
         }
         try require(id)
     }
+    private func billDecision(_ title: String) throws {
+        if element("openLetterInbox").exists { try tap("openLetterInbox") }
+        let card = element("dueBills")
+        let expected = card.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+        for _ in 0..<16 {
+            if expected.exists { break }
+            guard element("butlerDeckNext").exists else { break }
+            try tap("butlerDeckNext")
+        }
+        guard expected.exists else { throw Miss(description: "Missing bill decision: " + title) }
+        try require("billDuePaid")
+    }
     private func longPress(_ target: XCUIElement) throws { try reveal(target); target.press(forDuration: 0.8) }
     private func toast() throws { try require("toastMessage"); try require("undoLastChange") }
     private func search(_ value: String) throws {
@@ -264,9 +276,7 @@ final class ScreenGalleryTests: XCTestCase {
         return rows.joined(separator: "\n")
     }
     private func detail() throws {
-        // Ordinary ledger rows open 改一笔. A bought wish exposes the existing detail route.
-        try root("saving"); try tap("openWishlist"); try tap("pastWishes")
-        try tap("wishBoughtEntry_" + galleryID(406)); try require("entryDetailTitle")
+        try root("ledger"); try tap("ledgerEntry_" + galleryID(106)); try require("entryDetailTitle")
     }
 
     private func walk46(_ mode: GalleryMode, _ walk: (Bool, Bool, Bool) -> Void) {
@@ -560,10 +570,10 @@ final class ScreenGalleryTests: XCTestCase {
         stop("11-import-09-batch-undone-toast") { try tap(app.buttons["撤销这一批"]); try require("toastMessage") }
         stop("11-import-10-receipt-separate") { try launch("v45-receipt"); try longPress(element("addEntry")); try tap("quickReceipt"); try require("receiptSummary", timeout: 15) }
         stop("11-import-11-receipt-merged") { try tap("receiptSelect_2"); try tap("receiptMode_merged"); try wait({ self.element("saveReceiptEntries").value as? String == "1 笔" }, "Merged receipt preparation") }
-        stop("11-import-12-receipt-category") { try tap("receiptCategory_0"); try require("receiptPickCategory_0Category_餐饮") }
+        stop("11-import-12-receipt-category") { try tap("receiptCategory_-1"); try require("entryMoreCategory_餐饮") }
         stop("11-import-13-fallback-groups") { try launch("v46-sort", organization: "by-party"); try require("groupUnsortedByParty", timeout: 20); try tap("groupUnsortedByParty"); try require("unsortedGroupsScroll") }
         stop("11-import-14-fallback-group-detail") { try tap("unsortedGroup_out:合成对方甲"); try require("unsortedGroupScroll") }
-        stop("11-import-15-unsorted-undo-bar") { try launch("v46-sort", organization: "by-party"); try require("groupUnsortedByParty", timeout: 20); try tap("groupUnsortedByParty"); try tap("unsortedGroup_out:合成对方甲"); try tap("unsortedCategory_餐饮"); try tap("unsortedMainOnly_餐饮"); try tap("applyUnsortedGroup"); try require("unsortedUndoMessage"); try require("quickSortUndo") }
+        stop("11-import-15-unsorted-undo-bar") { try launch("v46-sort", organization: "by-party"); try require("groupUnsortedByParty", timeout: 20); try tap("groupUnsortedByParty"); try tap("unsortedGroup_out:合成对方甲"); try tap("unsortedCategory_餐饮"); try tap("unsortedMainOnly_餐饮"); try tap("applyUnsortedGroup"); try toast() }
         stop("11-import-16-preview") { try launch("import", statement: galleryStatement); try tap("addEntry"); try tap("importFromEntry"); try require("commitImport", timeout: 20) }
         stop("11-import-17-preview-category-mapping") { try tap("importCategoryMapping"); try require("createImportCategory_合成导入分类" + longName) }
     }
@@ -792,7 +802,7 @@ final class ScreenGalleryTests: XCTestCase {
         }
         stop("Home-Yearly") { try load("v46-bills-yearly"); try require("renewalCard"); try require("keepRenewal") }
         stop("Bill-Pay") {
-            try load("v46-bills-pay"); try tap("billDuePaid"); try require("amountSheetAmount"); try keys("163.40")
+            try load("v46-bills-pay"); try billDecision("电费"); try tap("billDuePaid"); try require("amountSheetAmount"); try keys("163.40")
         }
         stop("Bill-Detail") {
             try load(); try calendar(); try select(27); try tap("editFixedFlow_" + galleryID(46425)); try require("billDetailHistory")

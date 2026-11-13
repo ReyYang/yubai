@@ -19,10 +19,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test-shards:
+    if: inputs.mode != 'gallery'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.shards.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: shards
+        name: 从源码生成测试分片
+        run: python3 scripts/ui-test-shards.py --github-output >> "$GITHUB_OUTPUT"
+
   simulator:
     if: inputs.mode != 'gallery'
+    needs: test-shards
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.test-shards.outputs.matrix) }}
+    env:
+      YUBAI_TEST_PART: ${{ matrix.part }}
+      YUBAI_TEST_SELECTORS: ${{ toJSON(matrix.tests) }}
+      YUBAI_LIVE_EVAL: '0'
     steps:
       - uses: actions/checkout@v4
       - name: 选择 Xcode 26
@@ -47,14 +66,11 @@ jobs:
           ')
           xcrun simctl list devices | grep "$udid"
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
-      - name: 编译并运行单元与 UI 测试
+      - name: 编译并运行当前测试分片
+        timeout-minutes: 34
         run: |
-          mkdir -p build
           status=0
-          xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Debug \
-            -destination "id=$SIM_UDID" -parallel-testing-enabled NO \
-            -resultBundlePath build/Yubai.xcresult ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO test \
-            > build/xcodebuild-test.log 2>&1 || status=$?
+          python3 scripts/run-simulator-tests.py || status=$?
           grep -E '(error:|Test Case .* (passed|failed)|Executed|\*\* TEST)' build/xcodebuild-test.log || tail -100 build/xcodebuild-test.log
           exit $status
       - name: 导出截图和测试摘要
@@ -85,34 +101,43 @@ jobs:
                           os.rename(src, dst)
           PY
           ls build/screenshots
-          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
-          import json
-          try: s = json.load(open("build/test-summary.json"))
-          except Exception: s = {}
-          print(f"测试结果：{s.get('result', '未知')}，共 {s.get('totalTestCount', '?')} 项，通过 {s.get('passedTests', '?')}，失败 {s.get('failedTests', '?')}，跳过 {s.get('skippedTests', '?')}")
-          for f in s.get("testFailures", []):
-              print(f"- 失败：{f.get('testIdentifierString', f.get('testName', ''))}：{f.get('failureText', '')}")
-          PY
+          set -o pipefail
+          python3 scripts/test-result-summary.py | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ios-screenshots
+          name: ios-screenshots-${{ matrix.part }}
           path: build/screenshots
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ios-test-logs
+          name: ios-test-logs-${{ matrix.part }}
           path: |
             build/xcodebuild-test.log
             build/test-summary.json
+            build/test-exit-status
       - name: Release 构建（iOS 与 macOS，不签名）
-        if: inputs.release_builds
+        if: inputs.release_builds && matrix.part == 'unit'
         run: |
           set -o pipefail
           xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
             -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -20
           xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
             -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build | tail -20
+
+  simulator-results:
+    if: always() && inputs.mode != 'gallery'
+    needs: [test-shards, simulator]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 所有测试分片必须完成
+        env:
+          SHARDS_RESULT: ${{ needs.test-shards.result }}
+          TESTS_RESULT: ${{ needs.simulator.result }}
+        run: |
+          echo "分片生成：$SHARDS_RESULT；测试分片：$TESTS_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          test "$SHARDS_RESULT" = success
+          test "$TESTS_RESULT" = success
 
   gallery:
     if: inputs.mode != 'tests'

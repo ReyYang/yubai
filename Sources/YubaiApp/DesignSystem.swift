@@ -1847,6 +1847,10 @@ struct RootHeader: View {
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("rootHeaderTitle")
             settingsLink
         }.frame(minHeight: YubaiSize.headerHeight)
+            .accessibilityElement(children: .contain)
+            // Safe-area headers can escape a hidden NavigationStack's AX
+            // boundary. Hide the header at its own boundary as well.
+            .accessibilityHidden(store.destination.title != title)
     }
     private var amountToggle: some View {
         Button { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } } label: {

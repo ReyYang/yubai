@@ -19,7 +19,9 @@ final class Round46AddEntryFlowTests: XCTestCase {
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
     private func prefix(_ id: String) -> XCUIElement { app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", id)).firstMatch }
     private func tap(_ id: String) {
-        let target = element(id); XCTAssertTrue(target.waitForExistence(timeout: 5)); target.tap()
+        let target = element(id)
+        XCTAssertTrue(target.exists || target.waitForExistence(timeout: 5), id)
+        XCTAssertTrue(target.isHittable, id); target.tap()
     }
     private func keys(_ text: String) { for key in text { tap("keypad_" + String(key)) } }
     private func purpose(_ text: String) {

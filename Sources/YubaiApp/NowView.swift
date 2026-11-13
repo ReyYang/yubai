@@ -13,11 +13,12 @@ struct NowView: View {
             content
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8).padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity, alignment: .leading)
-        }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+        }.accessibilityIdentifier("nowScroll")
+            .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
             .rootScrollContentMargins().rootTabScroll(.now)
             .rootPageHeader { RootHeader(title: "现在") }
             .navigationTitle("现在").yubaiNavigation()
-            .amountPrivacy(hide).accessibilityIdentifier("nowScroll")
+            .amountPrivacy(hide)
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif

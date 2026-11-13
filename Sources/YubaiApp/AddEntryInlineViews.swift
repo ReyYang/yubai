@@ -141,7 +141,7 @@ struct AddEntryCategories: View {
                 }
             } else if managing { manager }
             else { picker }
-        }.accessibilityIdentifier("entryCategoryPicker")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("entryCategoryPicker")
     }
     private var picker: some View {
         VStack(spacing: YubaiSpace.none) {

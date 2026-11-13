@@ -169,16 +169,18 @@ final class AppFlowTests: XCTestCase {
         showDeckAction("confirmSalary", in: app)
         tap(app.buttons["confirmSalary"], in: app); assertGone(app.buttons["confirmSalary"])
         openFixedBills(app)
-        let edit = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'editFixedFlow_' AND label == '改工资' ")).firstMatch
+        let edit = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'editFixedFlow_' AND label CONTAINS '工资' ")).firstMatch
         scrollToVisible(edit, in: app, scroll: app.scrollViews["fixedFlowsScroll"])
         XCTAssertTrue(app.staticTexts["工资"].firstMatch.exists)
         tap(edit, in: app)
-        XCTAssertTrue(app.buttons["fixedFlowSchedule"].waitForExistence(timeout: 5))
+        tap(app.buttons["billDetailAmount"], in: app)
+        XCTAssertTrue(anyElement("fixedFlowSchedule", in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(app.textFields["fixedFlowTitle"].value as? String, "工资")
         XCTAssertEqual(app.buttons["fixedFlowAmount"].value as? String, "8,000.00")
         XCTAssertFalse(app.buttons["saveManualSheet"].isEnabled)
         tap(app.buttons["cancelManualSheet"], in: app)
-        assertGone(app.buttons["fixedFlowSchedule"])
+        assertGone(anyElement("fixedFlowSchedule", in: app))
+        goBack(app)
         XCTAssertTrue(app.navigationBars["账单"].exists)
         snapshot("salary-fixed-flows", app)
     }
@@ -253,7 +255,7 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["applyUnsortedGroup"], in: app)
         XCTAssertTrue(app.staticTexts["unsortedEntryCount"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["unsortedEntryCount"].label, "3")
-        tap(app.buttons["quickSortUndo"], in: app)
+        tapUndo(messagePrefix: "已改好", in: app)
         XCTAssertEqual(app.staticTexts["unsortedEntryCount"].label, "9")
     }
 
@@ -270,7 +272,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(save.label, "加上"); tap(save, in: app)
         XCTAssertTrue(app.staticTexts["unsortedEntryCount"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["unsortedEntryCount"].label, "3")
-        tap(app.buttons["quickSortUndo"], in: app)
+        tapUndo(messagePrefix: "已改好", in: app)
         XCTAssertEqual(app.staticTexts["unsortedEntryCount"].label, "9")
     }
 
@@ -417,7 +419,7 @@ final class AppFlowTests: XCTestCase {
         tap(remaining, in: app)
         XCTAssertFalse(apply.isEnabled); XCTAssertEqual(apply.label, "选一个分类")
         tap(remaining, in: app)
-        tap(app.buttons["ledgerBack"], in: app)
+        goBack(app)
         XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "4")
         let group = app.buttons["unsortedGroup_out:合成对方甲"]
         XCTAssertTrue(group.exists); XCTAssertTrue(app.buttons["unsortedGroup_out:合成对方乙"].exists)
@@ -426,7 +428,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons[toggleID].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons[toggleID].value as? String, "已选择")
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'unsortedEntryToggle_' ")).count, 1)
-        tap(app.buttons["ledgerBack"], in: app)
+        goBack(app)
         tap(app.navigationBars.buttons.firstMatch, in: app)
         XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].label.hasPrefix("4 笔还没分类"))
         app.terminate(); app.launch(); openInbox(in: app, required: false)
@@ -507,15 +509,16 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_ledger"], in: app)
         let rows = ledgerRows(app)
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5)); let count = rows.count
-        tap(addEntryTab(app), in: app); pressAmount("1500", in: app)
+        openNewEntry(app); pressAmount("1500", in: app)
         let field = app.textFields["entryPurpose"]
         tap(field, in: app); field.typeText("合成耳机\n")
         tap(app.buttons["saveEntryWish"], in: app)
-        assertGone(app.buttons["saveQuickEntry"]); XCTAssertEqual(rows.count, count)
+        assertGone(app.buttons["saveQuickEntry"])
+        tap(app.buttons["tab_ledger"], in: app); XCTAssertEqual(rows.count, count)
         tap(app.buttons["tab_now"], in: app); XCTAssertEqual(app.buttons["fundsFormula"].label, before)
         tap(app.buttons["tab_saving"], in: app); tap(app.buttons["openWishlist"], in: app)
         XCTAssertTrue(app.staticTexts["合成耳机"].waitForExistence(timeout: 5))
-        tapUndo(messagePrefix: "已放进心愿单", in: app)
+        tapUndo(messagePrefix: "放进心愿单了", in: app)
         assertGone(app.staticTexts["合成耳机"])
         snapshot("big-entry-wish-undone", app)
     }
@@ -558,8 +561,10 @@ final class AppFlowTests: XCTestCase {
     }
     private func tap(_ element: XCUIElement, in app: XCUIApplication, scroll: XCUIElement? = nil, file: StaticString = #filePath, line: UInt = #line) {
         scrollToVisible(element, in: app, scroll: scroll, file: file, line: line)
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in element.exists && element.isEnabled && element.isHittable }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, file: file, line: line)
+        if !(element.exists && element.isEnabled && element.isHittable) {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in element.exists && element.isEnabled && element.isHittable }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, file: file, line: line)
+        }
         let identifier = element.identifier
         element.tap()
         if ["tab_now", "tab_saving", "tab_ledger", "tab_yubai"].contains(identifier) { assertSelectedTab(identifier, in: app, file: file, line: line) }
@@ -567,7 +572,7 @@ final class AppFlowTests: XCTestCase {
     private func scrollToVisible(_ element: XCUIElement, in app: XCUIApplication, scroll: XCUIElement? = nil, file: StaticString = #filePath, line: UInt = #line) {
         // Only the containing vertical scroller may move; alerts, undo and navigation never scroll.
         var container = scroll
-        if container == nil && element.waitForExistence(timeout: 5) && !element.isHittable && app.alerts.count == 0 {
+        if container == nil && (element.exists || element.waitForExistence(timeout: 5)) && !element.isHittable && app.alerts.count == 0 {
             let identifier = element.identifier.isEmpty ? element.label : element.identifier
             if !element.identifier.hasPrefix("tab_") && !["undoLastChange", "addEntry", "closeSheet", "cancelManualSheet"].contains(element.identifier) {
                 container = app.scrollViews.allElementsBoundByIndex.last { candidate in
@@ -587,8 +592,10 @@ final class AppFlowTests: XCTestCase {
                 scrollVertically(container, up: !above, in: app, file: file, line: line)
             }
         }
-        let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in element.exists && element.isHittable }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed, file: file, line: line)
+        if !(element.exists && element.isHittable) {
+            let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in element.exists && element.isHittable }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed, file: file, line: line)
+        }
     }
     private func swipeRow(_ element: XCUIElement, left: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
         guard let app = currentApp else { XCTFail("No launched app", file: file, line: line); return }
@@ -601,6 +608,21 @@ final class AppFlowTests: XCTestCase {
     private func assertState(_ element: XCUIElement, value: String, enabled: Bool, file: StaticString = #filePath, line: UInt = #line) {
         let state = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@ AND enabled == %@", value, NSNumber(value: enabled)), object: element)
         XCTAssertEqual(XCTWaiter.wait(for: [state], timeout: 5), .completed, file: file, line: line)
+    }
+    private func assertSelected(_ element: XCUIElement, _ selected: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == %@", NSNumber(value: selected)), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, file: file, line: line)
+    }
+    private func settledFrame(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) -> CGRect {
+        var previous = CGRect.null, stableSince = Date()
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard element.exists && element.isHittable else { return false }
+            let frame = element.frame
+            if frame != previous { previous = frame; stableSince = Date(); return false }
+            return Date().timeIntervalSince(stableSince) >= 0.5
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed, file: file, line: line)
+        return previous
     }
     private func assertNotHittable(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         let hidden = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !element.exists || !element.isHittable }, object: nil)
@@ -642,7 +664,7 @@ final class AppFlowTests: XCTestCase {
         }
     }
     private func assertSelectedTab(_ identifier: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let page = rootPage(identifier, in: app), anchor = page.staticTexts["rootHeaderTitle"]
+        let page = rootPage(identifier, in: app), anchor = page.descendants(matching: .any).matching(identifier: "rootHeaderTitle").firstMatch
         let navigation = app.otherElements["mainNavigation"]
         let destination = identifier.replacingOccurrences(of: "tab_", with: "")
         var previous = CGRect.null, stableSince = Date()
@@ -657,7 +679,7 @@ final class AppFlowTests: XCTestCase {
             return Date().timeIntervalSince(stableSince) >= 0.35
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed,
-                       "Tab \(identifier): \(String(describing: navigation.value)); page=\(page.frame); anchor=\(anchor.frame)", file: file, line: line)
+                       "Tab \(identifier): page=\(page.exists ? page.frame : CGRect.null); anchor=\(anchor.exists ? anchor.frame : CGRect.null)", file: file, line: line)
     }
     private func assertCurrentTab(_ identifier: String, content: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         assertSelectedTab(identifier, in: app, file: file, line: line)
@@ -676,17 +698,24 @@ final class AppFlowTests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label == %@ AND NOT (identifier BEGINSWITH %@)", title, "entriesFilter_")).firstMatch
     }
     private func addEntryTab(_ app: XCUIApplication) -> XCUIElement {
-        if !app.buttons["addEntry"].isHittable {
-            backToRoot(app); tap(app.buttons["tab_now"], in: app)
-        }
-        return app.buttons["addEntry"]
+        app.buttons["addEntry"]
+    }
+    private func openNewEntry(_ app: XCUIApplication) {
+        backToRoot(app)
+        if !app.buttons["tab_now"].isSelected { tap(app.buttons["tab_now"], in: app) }
+        tap(addEntryTab(app), in: app)
     }
     private func openLedgerEditor(_ row: XCUIElement, in app: XCUIApplication) {
         tap(row, in: app)
         XCTAssertTrue(app.buttons["entryDetailEdit"].waitForExistence(timeout: 5))
         tap(app.buttons["entryDetailEdit"], in: app)
     }
-    /// v45: 设置不再是标签页，从任一根页右上角的 `openSettings` 进入（推入页，底栏隐藏）。
+    private func saveLedgerEditor(_ app: XCUIApplication) {
+        let keypadSave = app.buttons["saveEditedEntry"]
+        tap(keypadSave.exists ? keypadSave : app.buttons["saveManualSheet"], in: app)
+        assertGone(anyElement("editEntryAmount", in: app))
+    }
+    /// The shared root header pushes settings and hides the floating navigation.
     private func openSettings(_ app: XCUIApplication) {
         tap(app.buttons["openSettings"], in: app)
     }
@@ -734,8 +763,13 @@ final class AppFlowTests: XCTestCase {
         }
         XCTAssertTrue(app.otherElements["mainNavigation"].waitForExistence(timeout: 5), file: file, line: line)
     }
+    private func goBack(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let back = app.navigationBars.buttons.matching(NSPredicate(format: "identifier IN {'BackButton', 'ledgerBack'} OR label == '返回'")).firstMatch
+        tap(back, in: app, file: file, line: line)
+    }
     /// v45 的问答从余白页输入后推入；测试回复由 UITestTransport 提供。
     private func ask(_ question: String, in app: XCUIApplication) {
+        backToRoot(app)
         tap(app.buttons["tab_yubai"], in: app)
         let field = app.textFields["askYubai"]
         tap(field, in: app); field.typeText(question)
@@ -767,10 +801,11 @@ final class AppFlowTests: XCTestCase {
     }
 
     private func openInbox(in app: XCUIApplication, required: Bool = true) {
+        if anyElement("letterInbox", in: app).exists { return }
         let chip = app.buttons["openLetterInbox"]
         if required { XCTAssertTrue(chip.waitForExistence(timeout: 10)) }
         else { _ = chip.waitForExistence(timeout: 2) }
-        if chip.exists && chip.isHittable { tap(chip, in: app) }
+        if chip.exists { tap(chip, in: app); XCTAssertTrue(anyElement("letterInbox", in: app).waitForExistence(timeout: 5)) }
     }
 
     private func showDeckAction(_ id: String, in app: XCUIApplication) {
@@ -781,6 +816,17 @@ final class AppFlowTests: XCTestCase {
         }
         XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5))
     }
+    private func showBillDecision(_ title: String, in app: XCUIApplication) {
+        openInbox(in: app, required: false)
+        let card = anyElement("dueBills", in: app)
+        for _ in 0..<16 {
+            if card.exists && card.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch.exists { break }
+            guard app.buttons["butlerDeckNext"].exists else { break }
+            tap(app.buttons["butlerDeckNext"], in: app)
+        }
+        XCTAssertTrue(card.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch.exists)
+        XCTAssertTrue(app.buttons["billDuePaid"].exists)
+    }
     private func homeBillCheck(_ title: String, in app: XCUIApplication) -> XCUIElement {
         let check = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'billCheck_' AND label == %@", "付了 " + title)).firstMatch
         if !check.exists && app.buttons["billDueNotYet"].exists { tap(app.buttons["billDueNotYet"], in: app) }
@@ -788,9 +834,8 @@ final class AppFlowTests: XCTestCase {
     }
     private func openFixedBills(_ app: XCUIApplication) {
         backToRoot(app)
-        tap(app.buttons["tab_now"], in: app)
-        tap(app.buttons["fundsFormula"], in: app)
-        tap(anyElement("formulaRow_bills", in: app), in: app)
+        openSettings(app)
+        tap(app.buttons["openFixedFlows"], in: app)
         XCTAssertTrue(app.navigationBars["账单"].waitForExistence(timeout: 5))
     }
 
@@ -863,7 +908,9 @@ final class AppFlowTests: XCTestCase {
     func testJudgeSkipScreenshotFixture() {
         let app = openPurchaseFixture("judge-skip", question: "想买个 1,899 的降噪耳机，该不该买？")
         assertPurchaseVerdict("先别买", in: app)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '还能花' AND label CONTAINS '620'")).firstMatch.exists)
+        let comparison = app.buttons["answerEvidence"]
+        XCTAssertEqual(displayedAmount(comparison), 127_900)
+        XCTAssertTrue(comparison.label.replacingOccurrences(of: "−", with: "-").replacingOccurrences(of: "¥", with: "").contains("-620.00"))
         snapshot("purchase-skip", app)
     }
 
@@ -1046,7 +1093,7 @@ final class AppFlowTests: XCTestCase {
     func testYearlyKeepDismissesOnlyThatRenewalAndPersists() {
         let app = application("v46-bills-yearly"); app.launch()
         XCTAssertTrue(app.buttons["keepRenewal"].waitForExistence(timeout: 5))
-        XCTAssertTrue(anyElement("renewalCard", in: app).label.contains("US$35.88"))
+        XCTAssertTrue(anyElement("renewalCard", in: app).staticTexts.matching(NSPredicate(format: "label CONTAINS 'US$35.88'")).firstMatch.exists)
         tap(app.buttons["keepRenewal"], in: app)
         XCTAssertFalse(app.buttons["keepRenewal"].exists)
         app.terminate(); app.launch(); XCTAssertFalse(app.buttons["keepRenewal"].exists)
@@ -1055,12 +1102,13 @@ final class AppFlowTests: XCTestCase {
         let app = application("v46-bills-yearly", keepingUndo: true); app.launch()
         tap(app.buttons["stopRenewal"], in: app)
         XCTAssertTrue(anyElement("butlerReceipt", in: app).waitForExistence(timeout: 5))
-        XCTAssertTrue(anyElement("butlerReceipt", in: app).label.contains("255.47"))
+        XCTAssertTrue(anyElement("butlerReceipt", in: app).staticTexts.matching(NSPredicate(format: "label CONTAINS '255.47'")).firstMatch.exists)
         tap(app.buttons["undoButlerReceipt"], in: app)
         XCTAssertTrue(app.buttons["keepRenewal"].waitForExistence(timeout: 5))
     }
     func testVariableBillPaymentUsesActualAmountAndUndo() {
         let app = application("v46-bills-pay", keepingUndo: true); app.launch()
+        showBillDecision("电费", in: app)
         tap(app.buttons["billDuePaid"], in: app)
         XCTAssertTrue(anyElement("amountSheetAmount", in: app).waitForExistence(timeout: 5))
         pressAmount("163.40", in: app)
@@ -1149,23 +1197,14 @@ final class AppFlowTests: XCTestCase {
 
     func testDueBillInLetterStillSettles() {
         let app = application("bills"); app.launch(); openInbox(in: app, required: false)
-        let card = app.descendants(matching: .any).matching(identifier: "dueBills")
-            .containing(NSPredicate(format: "label BEGINSWITH '房租' ")).firstMatch
-        let check = card.buttons["billDuePaid"]
+        showBillDecision("房租", in: app)
+        let check = app.buttons["billDuePaid"]
         XCTAssertTrue(check.waitForExistence(timeout: 5))
         tap(check, in: app)
         XCTAssertTrue(app.buttons["undoLastChange"].waitForExistence(timeout: 5))
         backToRoot(app); tap(app.buttons["tab_ledger"], in: app)
         XCTAssertTrue(ledgerRows(app).firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(ledgerRows(app).count, 1)
-    }
-
-    private func enterAmount(_ text: String, identifier: String, in app: XCUIApplication) {
-        tap(app.buttons[identifier], in: app)
-        XCTAssertFalse(app.keyboards.firstMatch.exists)
-        for key in text { tap(app.buttons["keypad_" + String(key)], in: app) }
-        tap(app.buttons["amountKeypadDone"], in: app)
-        assertGone(app.buttons["amountKeypadDone"])
     }
 
     private func replaceFixedFlowName(_ text: String, in app: XCUIApplication) {
@@ -1190,23 +1229,24 @@ final class AppFlowTests: XCTestCase {
 
     func testOverdueBillsAppearInLetter() {
         let app = application("bills-overdue"); app.launch(); openInbox(in: app, required: false)
+        showBillDecision("上月账单", in: app)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "dueBills").firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["askYubai"].isHittable)
     }
 
     func testManualBillSuggestionRequiresSelectionAndCanBeCancelled() {
         let app = application("bills"); app.launch()
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         for digit in ["3", "0", "0"] { tap(app.buttons["keypad_" + digit], in: app) }
         let suggestion = app.buttons["fixedFlowSuggestion"]
         XCTAssertTrue(suggestion.waitForExistence(timeout: 5)); XCTAssertFalse(suggestion.isSelected)
-        tap(suggestion, in: app); XCTAssertTrue(suggestion.isSelected)
-        tap(suggestion, in: app); XCTAssertFalse(suggestion.isSelected)
+        tap(suggestion, in: app); assertSelected(suggestion, true)
+        tap(suggestion, in: app); assertSelected(suggestion, false)
         tap(suggestion, in: app)
         tap(app.buttons["keypad_⌫"], in: app)
         assertGone(suggestion)
         tap(app.buttons["keypad_0"], in: app)
-        XCTAssertTrue(suggestion.waitForExistence(timeout: 5)); XCTAssertFalse(suggestion.isSelected)
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 5)); assertSelected(suggestion, false)
         tap(suggestion, in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         openFixedBills(app)
         billCalendarDay(in: app)
@@ -1229,7 +1269,8 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, 1)
         openFixedBills(app)
         billCalendarDay(in: app)
-        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '已付'")).count, 1)
+        XCTAssertEqual(anyElement("billsSelectedDay", in: app).staticTexts.matching(NSPredicate(format: "label CONTAINS '已付'")).count, 1)
+        XCTAssertEqual(displayedAmount(anyElement("fixedFlowRemaining", in: app)), 0)
         XCTAssertFalse(app.buttons["付了 房租"].exists)
     }
 
@@ -1262,6 +1303,7 @@ final class AppFlowTests: XCTestCase {
     func testRootHeadersStayFixedAndAddOnlyBelongsToNow() {
         let app = application("v46-quiet"); app.launch()
         let capsule = anyElement("navigationCapsule", in: app)
+        XCTAssertTrue(capsule.waitForExistence(timeout: 5))
         let original = capsule.frame
         for tab in ["tab_now", "tab_saving", "tab_ledger", "tab_yubai"] {
             tap(app.buttons[tab], in: app)
@@ -1273,17 +1315,31 @@ final class AppFlowTests: XCTestCase {
         }
     }
 
+    func testRootAccessibilityExposesOneHeaderAndDistinctNavigationControls() {
+        let app = application("v46-quiet"); app.launch()
+        let tabs = ["tab_now", "tab_saving", "tab_ledger", "tab_yubai"]
+        for tab in tabs {
+            tap(app.buttons[tab], in: app)
+            for id in ["rootHeaderTitle", "openSettings", "toggleAmountVisibility", "navigationCapsule", "mainNavigation"] {
+                XCTAssertEqual(app.descendants(matching: .any).matching(identifier: id).count, 1, id)
+            }
+            for id in tabs { XCTAssertEqual(app.buttons.matching(identifier: id).count, 1, id) }
+            XCTAssertEqual(anyElement("rootHeaderTitle", in: app).label, app.buttons[tab].label)
+            for hidden in tabs where hidden != tab { XCTAssertFalse(rootPage(hidden, in: app).exists, hidden) }
+        }
+    }
+
     func testEntrySheetWithPurposeSuggestionsKeepsActionsAboveHomeIndicator() {
         let app = application("entries"); app.launch()
         let safeBottom = app.otherElements["mainNavigation"].frame.maxY + 8
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         let field = app.textFields["entryPurpose"], save = app.buttons["saveQuickEntry"]
         XCTAssertTrue(field.waitForExistence(timeout: 5)); XCTAssertTrue(save.isHittable)
         XCTAssertLessThan(field.frame.maxY, save.frame.minY)
         XCTAssertLessThanOrEqual(save.frame.maxY, safeBottom)
-        let original = save.frame
+        let original = settledFrame(save)
         app.scrollViews["entryFormScroll"].swipeUp()
-        XCTAssertEqual(save.frame.minY, original.minY, accuracy: 1)
+        XCTAssertEqual(settledFrame(save).minY, original.minY, accuracy: 1)
         tap(field, in: app); field.typeText("午饭")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(save.exists); XCTAssertTrue(field.isHittable)
@@ -1348,6 +1404,7 @@ final class AppFlowTests: XCTestCase {
 
     func testTabBarHasFourTabsAndSeparateAddOnTheRight() {
         let app = application("manual"); app.launch()
+        XCTAssertTrue(anyElement("mainNavigation", in: app).waitForExistence(timeout: 5))
         let identifiers = ["tab_now", "tab_saving", "tab_ledger", "tab_yubai", "addEntry"]
         let buttons = app.buttons.matching(NSPredicate(format: "identifier IN %@", identifiers)).allElementsBoundByIndex
         XCTAssertEqual(buttons.count, 5)
@@ -1363,7 +1420,7 @@ final class AppFlowTests: XCTestCase {
 
     func testAddEntryOpensFromNowAndSettingsPushesFromEveryRoot() {
         let app = application("manual"); app.launch()
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
         tap(app.buttons["cancelManualSheet"], in: app)
         for tab in ["tab_now", "tab_saving", "tab_ledger", "tab_yubai"] {
@@ -1404,13 +1461,13 @@ final class AppFlowTests: XCTestCase {
     func testSheetNavigationDoesNotHideRootTabBarAfterDismissal() {
         let app = application("manual"); app.launch(); tap(app.buttons["tab_yubai"], in: app)
         ask("这个月钱去哪了", in: app)
-        tap(app.buttons["云端智能没开 ›"], in: app)
+        tap(app.buttons["enableAskAI"], in: app)
         assertPushedPage("智能与隐私", in: app)
         backToRoot(app); assertSelectedTab("tab_yubai", in: app)
-        tap(addEntryTab(app), in: app); tap(app.buttons["importFromEntry"], in: app)
+        openNewEntry(app); tap(app.buttons["importFromEntry"], in: app)
         XCTAssertTrue(app.buttons["chooseBillFile"].waitForExistence(timeout: 5))
         tap(app.buttons["cancelManualSheet"], in: app)
-        assertSelectedTab("tab_yubai", in: app)
+        assertSelectedTab("tab_now", in: app)
         tap(app.buttons["tab_ledger"], in: app)
         assertCurrentTab("tab_ledger", content: "entriesSearch", in: app)
     }
@@ -1490,7 +1547,7 @@ final class AppFlowTests: XCTestCase {
         openLedgerEditor(row, in: app)
         XCTAssertTrue(app.buttons["editEntryAmount"].waitForExistence(timeout: 5))
         tap(app.buttons["cancelManualSheet"], in: app)
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
     }
 
@@ -1566,7 +1623,7 @@ final class AppFlowTests: XCTestCase {
 
     func testManualEntryAndAskReturnToTheirOwnRoot() {
         let app = application("ask"); app.launch()
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
         tap(app.buttons["cancelManualSheet"], in: app); assertSelectedTab("tab_now", in: app)
         ask("咖啡共花了多少钱？", in: app)
@@ -1584,12 +1641,12 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["entriesSearchCancel"], in: app)
         assertGone(app.keyboards.firstMatch)
         assertSelectedTab("tab_ledger", in: app)
-        XCTAssertTrue(addEntryTab(app).isHittable); XCTAssertTrue(field.isHittable)
+        XCTAssertFalse(addEntryTab(app).exists); XCTAssertTrue(field.isHittable)
     }
 
     func testManualKeypadOperatorsAndPurposeKeyboard() {
         let app = application("manual"); app.launch()
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         tap(app.buttons["keypad_1"], in: app); tap(app.buttons["keypad_2"], in: app); tap(app.buttons["keypad_+"], in: app)
         XCTAssertTrue(app.buttons["keypad_+"].isSelected)
         XCTAssertEqual(app.staticTexts["entryKeypadExpression"].label, "12 +")
@@ -1610,7 +1667,7 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testEntryPurposeKeepsExplicitCategoryAndNatureDoesNotPreselect() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         let purpose = app.textFields["entryPurpose"]
         XCTAssertFalse(app.buttons["entryCategory_餐饮"].isSelected)
         tap(purpose, in: app); purpose.typeText("地铁\n")
@@ -1657,21 +1714,21 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testEntryDiscardDialogContinuesOrDiscards() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         pressAmount("32", in: app); tap(app.buttons["cancelManualSheet"], in: app)
         XCTAssertTrue(app.buttons["放弃这笔"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["已经填了 32.00 元"].exists)
-        tap(app.buttons["继续记"], in: app)
+        tap(app.buttons["cancelConfirmation"], in: app)
         XCTAssertEqual(app.buttons["entryKeypadAmount"].value as? String, "32.00")
         tap(app.buttons["cancelManualSheet"], in: app); tap(app.buttons["放弃这笔"], in: app)
         assertGone(app.buttons["saveQuickEntry"])
-        tap(addEntryTab(app), in: app); tap(app.buttons["cancelManualSheet"], in: app)
+        openNewEntry(app); tap(app.buttons["cancelManualSheet"], in: app)
         assertGone(app.buttons["saveQuickEntry"])
         for choice in ["entryCategory_交通", "entryNature_income", "entryDate_yesterday"] {
-            tap(addEntryTab(app), in: app); tap(app.buttons[choice], in: app)
+            openNewEntry(app); tap(app.buttons[choice], in: app)
             tap(app.buttons["cancelManualSheet"], in: app); assertGone(app.buttons["saveQuickEntry"])
         }
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         let purpose = app.textFields["entryPurpose"]
         tap(purpose, in: app); purpose.typeText("合成用途\n")
         tap(app.buttons["cancelManualSheet"], in: app)
@@ -1716,7 +1773,7 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testEntryMoreShowsBothLevelsKeepsGridAndPersistsSmallItem() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         pressAmount("3", in: app)
         let purpose = app.textFields["entryPurpose"]
         tap(purpose, in: app); purpose.typeText("合成剪头发\n")
@@ -1731,13 +1788,13 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'entryCategory_' ")).count, 9)
         XCTAssertTrue(app.buttons["entryCategoryMore"].exists)
         tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app); tap(app.buttons["tab_ledger"], in: app)
-        tap(ledgerRows(app).firstMatch, in: app)
+        openLedgerEditor(ledgerRows(app).firstMatch, in: app)
         XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护 · 理发")
         snapshot("category-small-item-saved", app)
     }
 
     func testEditMoreConfirmsMainOnlyAndSmallItemDespiteLocalGuess() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         pressAmount("3", in: app)
         let purpose = app.textFields["entryPurpose"]
         tap(purpose, in: app); purpose.typeText("合成剪头发\n")
@@ -1747,20 +1804,20 @@ final class AppFlowTests: XCTestCase {
         var scroll = openEntryMore(app)
         tap(app.buttons["entryMoreCategory_美容个护"], in: app, scroll: scroll); assertGone(scroll)
         XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护")
-        tap(app.buttons["saveManualSheet"], in: app); assertGone(app.buttons["editEntryAmount"]); tap(app.buttons["entryDetailEdit"], in: app)
+        saveLedgerEditor(app); tap(app.buttons["entryDetailEdit"], in: app)
         XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护")
         scroll = openEntryMore(app)
         tap(app.buttons["entryMoreSubcategory_美容个护/理发"], in: app, scroll: scroll)
-        tap(app.buttons["saveManualSheet"], in: app); assertGone(app.buttons["editEntryAmount"]); tap(app.buttons["entryDetailEdit"], in: app)
+        saveLedgerEditor(app); tap(app.buttons["entryDetailEdit"], in: app)
         XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护 · 理发")
         scroll = openEntryMore(app); tap(app.buttons["entryMoreCategory_美容个护"], in: app, scroll: scroll)
-        tap(app.buttons["saveManualSheet"], in: app); assertGone(app.buttons["editEntryAmount"])
+        saveLedgerEditor(app)
         app.terminate(); app.launch(); tap(app.buttons["tab_ledger"], in: app); openLedgerEditor(row, in: app)
         XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护")
     }
 
     func testEntryMoreFollowsNatureAndClearsOldSmallItem() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         _ = openEntryMore(app); tap(app.buttons["entryMoreCategory_餐饮"], in: app)
         _ = openEntryMore(app); tap(app.buttons["entryMoreSubcategory_餐饮/早餐"], in: app)
         tap(natureButton("收入", in: app), in: app)
@@ -1779,7 +1836,7 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testEntryMoreAddsSmallItemInlineAndPersistsIt() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         var scroll = openEntryMore(app)
         tap(app.buttons["entryMoreAdd"], in: app, scroll: scroll)
         tap(app.buttons["cancelManualSheet"], in: app)
@@ -1791,30 +1848,31 @@ final class AppFlowTests: XCTestCase {
         assertGone(scroll)
         XCTAssertTrue(app.buttons["entryCategory_餐饮"].isSelected)
         pressAmount("3", in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
-        assertGone(app.buttons["saveQuickEntry"]); tap(app.buttons["tab_ledger"], in: app); tap(ledgerRows(app).firstMatch, in: app)
+        assertGone(app.buttons["saveQuickEntry"]); tap(app.buttons["tab_ledger"], in: app); openLedgerEditor(ledgerRows(app).firstMatch, in: app)
         XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮 · 合成小项")
     }
 
     func testEditAmountTrayReplacesSelectionResolvesAndRepeatsDeletion() {
         let app = application("manual"); app.launch()
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         tap(app.buttons["keypad_3"], in: app); tap(app.buttons["keypad_2"], in: app)
         tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         tap(app.buttons["tab_ledger"], in: app)
         openLedgerEditor(ledgerRows(app).firstMatch, in: app)
         XCTAssertFalse(app.textFields["备注"].exists); XCTAssertFalse(app.staticTexts["备注"].exists)
         let amount = app.buttons["editEntryAmount"]
-        enterAmount("5.5+2", identifier: "editEntryAmount", in: app)
+        pressAmount("5.5+2", in: app)
         XCTAssertEqual(amount.value as? String, "7.50")
+        saveLedgerEditor(app); tap(app.buttons["entryDetailEdit"], in: app)
         tap(amount, in: app); tap(app.buttons["keypad_⌫"], in: app)
         XCTAssertEqual(amount.value as? String, "7.00")
         app.buttons["keypad_⌫"].press(forDuration: 1.2)
         XCTAssertEqual(amount.value as? String, "0.00")
         XCTAssertFalse(app.buttons["saveEditedEntry"].isEnabled)
         tap(app.buttons["cancelManualSheet"], in: app)
-        XCTAssertTrue(app.buttons["继续记"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["cancelConfirmation"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["放弃修改？"].exists); XCTAssertFalse(app.staticTexts["已经填了 0.00 元"].exists)
-        tap(app.buttons["继续记"], in: app)
+        tap(app.buttons["cancelConfirmation"], in: app)
         tap(app.buttons["keypad_8"], in: app)
         XCTAssertEqual(amount.value as? String, "8.00")
         tap(app.buttons["saveEditedEntry"], in: app)
@@ -1822,23 +1880,23 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testEditRepeatCreatesPlanAndLinkedChipOpensItsEditor() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         tap(app.buttons["keypad_3"], in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         tap(app.buttons["tab_ledger"], in: app)
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
         openLedgerEditor(row, in: app); tap(app.buttons["entryRepeat"], in: app)
         XCTAssertTrue(app.buttons["entryRepeat"].isSelected)
-        tap(app.buttons["saveManualSheet"], in: app)
+        saveLedgerEditor(app)
         XCTAssertTrue(app.buttons["entryDetailEdit"].waitForExistence(timeout: 5)); tap(app.buttons["entryDetailEdit"], in: app)
         let repeatChip = app.buttons["entryRepeat"]
         XCTAssertTrue(repeatChip.isSelected)
         tap(repeatChip, in: app)
-        XCTAssertTrue(app.buttons["fixedFlowSchedule"].waitForExistence(timeout: 5))
+        XCTAssertTrue(anyElement("fixedFlowSchedule", in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["改账单"].exists)
     }
 
     func testEntryKeepsBillMatchWithoutARepeatControl() {
-        let app = application("bills"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("bills"); app.launch(); openNewEntry(app)
         XCTAssertFalse(app.buttons["entryRepeat"].exists)
         tap(natureButton("转账", in: app), in: app); XCTAssertFalse(app.buttons["entryRepeat"].exists)
         tap(natureButton("支出", in: app), in: app)
@@ -1850,7 +1908,7 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testTransferWithOneAccountCanAddDestinationWithoutLosingDraft() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         tap(natureButton("转账", in: app), in: app); pressAmount("500", in: app)
         let purpose = app.textFields["entryPurpose"]
         tap(purpose, in: app); purpose.typeText("UI Transfer\n")
@@ -1867,11 +1925,11 @@ final class AppFlowTests: XCTestCase {
         tap(save, in: app); finishQuickEntry(app); assertGone(save)
         tap(app.buttons["tab_ledger"], in: app); XCTAssertTrue(ledgerRows(app).firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(ledgerRows(app).count, 1)
-        tap(ledgerRows(app).firstMatch, in: app)
+        openLedgerEditor(ledgerRows(app).firstMatch, in: app)
         XCTAssertEqual(app.buttons["editEntryAmount"].value as? String, "500.00")
         XCTAssertTrue(natureButton("转账", in: app).isSelected)
         tap(app.buttons["cancelManualSheet"], in: app)
-        tap(addEntryTab(app), in: app); tap(natureButton("转账", in: app), in: app)
+        openNewEntry(app); tap(natureButton("转账", in: app), in: app)
         XCTAssertTrue((app.buttons["transferDestinationAccount"].value as? String ?? "").contains("UI Transfer Bank"))
         XCTAssertFalse(addAccount.exists)
     }
@@ -1880,7 +1938,7 @@ final class AppFlowTests: XCTestCase {
         let app = application("manual"); app.launch()
         let funds = app.buttons["fundsFormula"]
         XCTAssertTrue(funds.waitForExistence(timeout: 10)); XCTAssertTrue(funds.label.contains("1,000.00"))
-        tap(addEntryTab(app), in: app); pressAmount("32", in: app)
+        openNewEntry(app); pressAmount("32", in: app)
         XCTAssertEqual(app.buttons["entryKeypadAmount"].value as? String, "32.00")
         tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app); assertGone(app.buttons["saveQuickEntry"])
         let decreased = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '968.00'"), object: funds)
@@ -1901,7 +1959,7 @@ final class AppFlowTests: XCTestCase {
         app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(csv.utf8).base64EncodedString()
         app.launch()
         snapshot("overview", app)
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         tap(app.buttons["importFromEntry"], in: app)
         snapshot("import-preview", app)
         let incoming = app.descendants(matching: .any).matching(identifier: "importTotal_流入").firstMatch
@@ -1931,7 +1989,7 @@ final class AppFlowTests: XCTestCase {
         // Reimport is no longer a duplicate. The pre-existing record survives undo.
         backToRoot(app)
         tap(app.buttons["tab_ledger"], in: app)
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         tap(app.buttons["importFromEntry"], in: app)
         XCTAssertTrue(app.buttons["commitImport"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["commitImport"].isEnabled)
@@ -1966,14 +2024,14 @@ final class AppFlowTests: XCTestCase {
         let field = anyElement("principleText", in: app)
         tap(field, in: app); field.typeText("为每天用得上的东西花钱")
         tap(app.buttons["savePrinciple"], in: app)
-        XCTAssertTrue(app.staticTexts["为每天用得上的东西花钱"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["profilePrinciple_为每天用得上的东西花钱"].waitForExistence(timeout: 5))
         app.terminate(); app.launch(); tap(app.buttons["tab_yubai"], in: app); tap(app.buttons["openProfile"], in: app)
-        XCTAssertTrue(app.staticTexts["为每天用得上的东西花钱"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["profilePrinciple_为每天用得上的东西花钱"].waitForExistence(timeout: 5))
         backToRoot(app); openSettings(app); tap(app.buttons["openBackup"], in: app)
         XCTAssertTrue(app.navigationBars["备份与恢复"].waitForExistence(timeout: 5))
         XCTAssertTrue(anyElement("lastBackup", in: app).exists); XCTAssertTrue(app.buttons["restoreFromBackup"].exists)
         tap(app.buttons["backupToFile"], in: app)
-        XCTAssertTrue(app.secureTextFields["备份密码（至少 8 位）"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.secureTextFields["backupPassword"].waitForExistence(timeout: 5))
         XCTAssertFalse(addEntryTab(app).isHittable)
         snapshot("backup", app)
     }
@@ -2015,15 +2073,20 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testIncomeFixedSavingsChipResetsWhenDirectionChanges() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("manual"); app.launch(); openNewEntry(app)
         tap(natureButton("收入", in: app), in: app)
+        pressAmount("100", in: app)
+        tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
+        tap(app.buttons["tab_ledger"], in: app); openLedgerEditor(ledgerRows(app).firstMatch, in: app)
         let chip = app.buttons["entryIntoFixedSavings"]
         XCTAssertTrue(chip.waitForExistence(timeout: 5)); tap(chip, in: app)
         XCTAssertTrue(chip.isSelected)
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'entrySavingHint' AND label CONTAINS '→'")).firstMatch.exists)
+        let hint = anyElement("entrySavingHint", in: app)
+        let updated = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '→' AND label CONTAINS '100.00'"), object: hint)
+        XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 5), .completed)
         tap(natureButton("支出", in: app), in: app); assertGone(chip)
         tap(natureButton("收入", in: app), in: app); XCTAssertFalse(chip.isSelected)
-        tap(app.buttons["cancelManualSheet"], in: app)
+        tap(app.buttons["cancelManualSheet"], in: app); tap(app.buttons["放弃这笔"], in: app)
     }
 
 
@@ -2056,7 +2119,7 @@ final class AppFlowTests: XCTestCase {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.dateFormat = "yyyy-MM-dd"
         let csv = "时间,收支,金额,名称,交易类型,交易单号\n" + formatter.string(from: Date()) + " 00:00:00,支出,18.00,合成银行咖啡,商户消费,v45-merged-coffee\n"
         app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(csv.utf8).base64EncodedString()
-        app.launch(); tap(addEntryTab(app), in: app); tap(app.buttons["importFromEntry"], in: app)
+        app.launch(); openNewEntry(app); tap(app.buttons["importFromEntry"], in: app)
         XCTAssertTrue(app.buttons["commitImport"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["commitImport"].isEnabled)
         tap(app.buttons["commitImport"], in: app)
@@ -2158,7 +2221,7 @@ final class AppFlowTests: XCTestCase {
         backToRoot(app); ask("现在还能花多少？", in: app)
         XCTAssertTrue(app.buttons["enableAskAI"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["sendAsk"].isEnabled)
         XCTAssertTrue((anyElement("askPage", in: app).value as? String ?? "").contains("requests=0"))
-        backToRoot(app); addEntryTab(app).press(forDuration: 0.8)
+        backToRoot(app); tap(app.buttons["tab_now"], in: app); addEntryTab(app).press(forDuration: 0.8)
         XCTAssertTrue(app.buttons["quickRepeat_0"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["quickReceipt"].exists)
         app.terminate(); app.launch(); openSettings(app); tap(app.buttons["openIntelligencePrivacy"], in: app)
         XCTAssertEqual(app.switches["aiFeature_answers"].value as? String, "0")
@@ -2170,7 +2233,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(anyElement("frequentEntriesPage", in: app).waitForExistence(timeout: 5))
         tap(app.buttons["frequentPin_2"], in: app)
         let first = anyElement("frequentEntry_0", in: app)
-        XCTAssertTrue(first.staticTexts["咖啡"].waitForExistence(timeout: 5))
+        XCTAssertTrue(first.staticTexts.matching(NSPredicate(format: "label CONTAINS '咖啡'")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["frequentPin_0"].label, "取消置顶咖啡")
         tap(app.buttons["frequentHide_1"], in: app)
         let restore = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'frequentUnhide_' ")).firstMatch
@@ -2266,7 +2329,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 0)
         XCTAssertFalse(app.buttons["coverSaveLess"].exists)
         tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), 200_000 - over)
+        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), -(200_000 - over))
         snapshot("overspend-level", app)
     }
 
@@ -2287,8 +2350,8 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(anyElement("dailyPace", in: app).exists)
         XCTAssertFalse(app.buttons["coverFromReserve"].exists)
         tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), 500_000 - covered)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), 200_000)
+        XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), -(500_000 - covered))
+        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), -200_000)
         snapshot("overspend-reserve-cushion", app)
     }
 
@@ -2323,7 +2386,7 @@ final class AppFlowTests: XCTestCase {
             assertGone(app.buttons["leftoverSave"]); assertGone(app.buttons["leftoverKeep"])
             XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before - (save ? 21_200 : 0))
             tap(app.buttons["fundsFormula"], in: app)
-            XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), 500_000 + (save ? 21_200 : 0))
+            XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), -(500_000 + (save ? 21_200 : 0)))
             app.terminate(); app.launch()
             XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
             XCTAssertFalse(app.buttons["leftoverSave"].exists); XCTAssertFalse(app.buttons["leftoverKeep"].exists)
@@ -2358,7 +2421,7 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testV45CategoryGridOutlinesHistoryHintUntilSelected() {
-        let app = application("v45-entry-history"); app.launch(); tap(addEntryTab(app), in: app)
+        let app = application("v45-entry-history"); app.launch(); openNewEntry(app)
         let cells = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'entryCategory_' "))
         XCTAssertTrue(app.buttons["entryCategoryMore"].waitForExistence(timeout: 5))
         XCTAssertEqual(cells.count, 9)
@@ -2377,7 +2440,7 @@ final class AppFlowTests: XCTestCase {
     func testV45BigPurchaseFromReserveKeepsCycleAvailable() {
         let app = application("v45-home"); app.launch()
         let before = displayedAmount(anyElement("availableFunds", in: app))
-        tap(addEntryTab(app), in: app); pressAmount("1200", in: app)
+        openNewEntry(app); pressAmount("1200", in: app)
         XCTAssertTrue(anyElement("bigPurchaseDays", in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["bigFromCycle"].isSelected)
         tap(app.buttons["bigFromReserve"], in: app)
@@ -2388,7 +2451,7 @@ final class AppFlowTests: XCTestCase {
         assertGone(app.buttons["saveQuickEntry"])
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before)
         tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), 380_000)
+        XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), -380_000)
         backToRoot(app); tap(app.buttons["tab_ledger"], in: app)
         let search = app.textFields["entriesSearch"]
         tap(search, in: app); search.typeText("合成大衣"); assertSearchCount(1, in: app)
@@ -2512,7 +2575,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(displayedAmount(anyElement("monthlyPaybackAmount", in: app)), 40_000)
         XCTAssertEqual(displayedAmount(anyElement("monthlySavingTotal", in: app)), 240_000)
         backToRoot(app); tap(app.buttons["tab_now"], in: app); tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), 240_000)
+        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), -240_000)
         app.terminate(); app.launch()
         tap(app.buttons["tab_saving"], in: app); tap(app.buttons["openReserve"], in: app)
         XCTAssertTrue(anyElement("reservePaybackProgress", in: app).waitForExistence(timeout: 5))
@@ -2564,13 +2627,13 @@ final class AppFlowTests: XCTestCase {
         let app = application("v45-home"); app.launch()
         let before = displayedAmount(anyElement("availableFunds", in: app))
         let today = Date(), tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
-        tap(addEntryTab(app), in: app)
+        openNewEntry(app)
         app.buttons["entryDate_today"].press(forDuration: 0.7)
         selectV45CalendarDay(tomorrow, displayed: today, identifier: "entryCalendar", in: app)
-        tap(app.buttons["entryDateDone"], in: app)
+        assertGone(anyElement("entryInlineCalendar", in: app))
         pressAmount("32", in: app)
         let purpose = app.textFields["entryPurpose"]
-        tap(purpose, in: app); purpose.typeText("合成未来餐")
+        tap(purpose, in: app); purpose.typeText("合成未来餐\n")
         tap(app.buttons["entryCategory_餐饮"], in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         assertGone(app.buttons["saveQuickEntry"])
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before)
@@ -2583,6 +2646,7 @@ final class AppFlowTests: XCTestCase {
         selectV45CalendarDay(today, displayed: tomorrow, identifier: "entryCalendar", in: app)
         tap(app.buttons["entryDateDone"], in: app); tap(app.buttons["saveEditedEntry"], in: app)
         assertGone(app.buttons["saveEditedEntry"])
+        goBack(app)
         XCTAssertEqual(ledgerRows(app).firstMatch.identifier, entryID)
         XCTAssertEqual(ledgerRows(app).firstMatch.value as? String ?? "", "")
         tap(app.buttons["entriesSearchCancel"], in: app); tap(app.buttons["tab_now"], in: app)
@@ -2616,7 +2680,14 @@ final class AppFlowTests: XCTestCase {
         let to = calendar.dateComponents([.year, .month], from: target)
         let months = (to.year! - from.year!) * 12 + to.month! - from.month!
         if months != 0 {
-            for _ in 0..<abs(months) { tap(app.buttons[identifier + (months > 0 ? "Next" : "Previous")], in: app) }
+            if identifier == "entryCalendar" && app.buttons["entryCalendarMonth"].exists {
+                tap(app.buttons["entryCalendarMonth"], in: app)
+                app.pickerWheels.element(boundBy: 0).adjust(toPickerWheelValue: "\(to.year!)年")
+                app.pickerWheels.element(boundBy: 1).adjust(toPickerWheelValue: "\(to.month!)月")
+                tap(app.buttons["entryDateDone"], in: app)
+            } else {
+                for _ in 0..<abs(months) { tap(app.buttons[identifier + (months > 0 ? "Next" : "Previous")], in: app) }
+            }
         }
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.dateFormat = "yyyy-MM-dd"
         tap(app.buttons[identifier + "Day_" + formatter.string(from: target)], in: app)

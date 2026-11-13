@@ -1250,7 +1250,7 @@ private struct FloatingTabBar: View {
             }.padding(.horizontal, YubaiSpace.space8).frame(height: YubaiSize.floatingTabbarHeight)
                 .background { barSurface }
                 .overlay { Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: YubaiSize.separator).allowsHitTesting(false) }
-                .accessibilityIdentifier("navigationCapsule")
+                .accessibilityElement(children: .contain).accessibilityIdentifier("navigationCapsule")
             Color.clear.frame(width: Self.addSize, height: Self.addSize)
                 .overlay {
                     if store.destination == .now {

@@ -17,7 +17,7 @@ extension Finance {
 
     public static func enablePaydayConfirmation(_ ledger: inout Ledger, now: Date) {
         guard ledger.paydayConfirmSince == nil, let plan = anchorPlan(in: ledger, now: now) else { return }
-        ledger.paydayConfirmSince = plan.nextScheduledDate(after: Dates.day(now)).map(Dates.day)
+        ledger.paydayConfirmSince = plan.nextScheduledDate(after: Dates.day(now)).map { plan.originalOccurrenceDate(on: $0) }
     }
 
     /// All actual starts are derived from the full ledger, including later
@@ -47,17 +47,29 @@ extension Finance {
         periods.append(scheduled.start)
         periods.append(scheduledCycle(in: ledger, now: min(scheduled.start, Dates.day(since)).addingTimeInterval(-0.001)).start)
         periods = Array(Set(periods)).filter { !plan.isSkipped(on: $0) }.sorted()
-        let starts: [Date] = periods.compactMap { day in day < Dates.day(since) ? day : confirmations[day] }.sorted()
-        let start = starts.last { $0 <= today } ?? scheduled.start
-        if let nextStart = starts.first(where: { $0 > start && $0 > today }) {
+        let starts: [(occurrence: Date, date: Date)] = periods.compactMap { day in
+            let original = plan.originalOccurrenceDate(on: day)
+            let actual = original < Dates.day(since) ? day : confirmations[day]
+            return actual.map { (original, $0) }
+        }.sorted { $0.date == $1.date ? $0.occurrence < $1.occurrence : $0.date < $1.date }
+        let current = starts.last { $0.date <= today }
+        let start = current?.date ?? scheduled.start
+        if let nextStart = starts.first(where: { candidate in
+            candidate.date > today && (current.map { candidate.occurrence > $0.occurrence } ?? true)
+        }) {
             // A known next actual start closes historical dates even if a missed
             // scheduled payday lies between them.
-            return CycleInfo(start: start, end: Dates.addDays(-1, to: nextStart), payday: true,
-                             nextPayday: nextStart, known: true)
+            return CycleInfo(start: start, end: Dates.addDays(-1, to: nextStart.date), payday: true,
+                             nextPayday: nextStart.date, known: true)
         }
-        let late = periods.first { $0 > start && $0 <= today && $0 >= Dates.day(since) && confirmations[$0] == nil }
-            ?? periods.first { $0 == today && $0 == start && $0 >= Dates.day(since) && confirmations[$0] == nil }
-        let next = periods.first { $0 > max(start, today) } ?? Dates.addDays(1, to: scheduled.end)
+        // An early arrival consumes its scheduled occurrence. Compare period
+        // identities, not actual start dates, for both overdue and next paydays.
+        let remaining = periods.filter { day in
+            let original = plan.originalOccurrenceDate(on: day)
+            return confirmations[day] == nil && (current.map { original > $0.occurrence } ?? true)
+        }
+        let late = remaining.first { $0 <= today && plan.originalOccurrenceDate(on: $0) >= Dates.day(since) }
+        let next = remaining.first { $0 > max(start, today) } ?? Dates.addDays(1, to: scheduled.end)
         return CycleInfo(start: start, end: late == nil ? Dates.addDays(-1, to: next) : today,
                          payday: true, lateSince: late, nextPayday: late == nil ? next : nil, known: true)
     }
@@ -80,9 +92,11 @@ public enum Payday {
         let paid = Set(ledger.entries.filter { $0.deletedAt == nil && $0.nature == .income && $0.planID == plan.id && $0.date <= now }
             .compactMap { $0.occurrence.map(Dates.day) })
         let since = ledger.paydayConfirmSince.map(Dates.day) ?? today
-        let lastConfirmed = paid.max()
+        let lastConfirmed = paid.map { plan.originalOccurrenceDate(on: $0) }.max()
         guard let day = plan.schedule(through: Dates.addDays(1, to: today).addingTimeInterval(-0.001)).map({ Dates.day($0.date) })
-            .first(where: { day in day >= since && (lastConfirmed.map { day > $0 } ?? true) && !plan.isSkipped(on: day) && !paid.contains(day) }) else { return nil }
+            .first(where: { day in plan.originalOccurrenceDate(on: day) >= since &&
+                (lastConfirmed.map { plan.originalOccurrenceDate(on: day) > $0 } ?? true) &&
+                !plan.isSkipped(on: day) && !paid.contains(day) }) else { return nil }
         return Due(planID: plan.id, occurrence: day, title: plan.title, usual: FixedFlowPayments(in: ledger, now: now).amount(for: plan),
                    lateDays: Dates.calendar.dateComponents([.day], from: day, to: today).day ?? 0)
     }

@@ -1,5 +1,14 @@
 import Foundation
 
+extension Plan {
+    /// The scheduled identity survives a one-period move across the date at
+    /// which payday confirmation was enabled.
+    func originalOccurrenceDate(on date: Date) -> Date {
+        let day = Dates.day(date)
+        return occurrenceDateOverrides?.first { Dates.day($0.value) == day }?.key ?? day
+    }
+}
+
 extension FixedFlows {
     /// `occurrence` is the currently displayed date, including an earlier move.
     public static func moveOccurrence(planID: UUID, occurrence: Date, to date: Date, in ledger: inout Ledger, now: Date) throws {
@@ -16,7 +25,7 @@ extension FixedFlows {
               replacement.map({ validOverrideDate($0) }) ?? true else { throw YubaiError.invalid("找不到这期固定收付。") }
         var next = ledger, plan = next.plans[index]
         let old = Dates.day(occurrence)
-        let original = plan.occurrenceDateOverrides?.first { Dates.day($0.value) == old }?.key ?? old
+        let original = plan.originalOccurrenceDate(on: old)
         let new = replacement.map(Dates.day) ?? original
         var overrides = plan.occurrenceDateOverrides ?? [:]
         overrides.removeValue(forKey: original)

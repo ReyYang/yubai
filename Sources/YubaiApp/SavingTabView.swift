@@ -15,11 +15,12 @@ struct SavingTabView: View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
             hero
             if store.current.savingRule == nil && !postponed { firstSaving }
-            if !wishes.isEmpty { wishSection }
+            if !store.current.wishlist.isEmpty { wishSection }
             settingsRows
-        }.rootScrollContentMargins().rootTabScroll(.saving)
+        }.accessibilityIdentifier("savingTabScroll")
+            .rootScrollContentMargins().rootTabScroll(.saving)
             .rootPageHeader { RootHeader(title: "存钱") }
-            .amountPrivacy(hide).accessibilityIdentifier("savingTabScroll")
+            .amountPrivacy(hide)
             .navigationTitle("存钱").yubaiNavigation()
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
