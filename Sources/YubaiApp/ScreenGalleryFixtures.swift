@@ -217,8 +217,9 @@ extension UITestSupport {
 
 #if DEBUG && targetEnvironment(simulator)
 extension UITestSupport {
-    static let v46Scripts: Set<String> = ["v46-sort", "v46-home", "v46-quiet", "v46-bill", "v46-gap", "v46-over", "v46-payday", "v46-leftover", "v46-empty", "v46-hard", "v46-big", "v46-busy", "v46-deck", "v46-saved", "v46-spend"]
+    static let v46Scripts: Set<String> = Set(["v46-sort", "v46-home", "v46-quiet", "v46-bill", "v46-gap", "v46-over", "v46-payday", "v46-leftover", "v46-empty", "v46-hard", "v46-big", "v46-busy", "v46-deck", "v46-saved", "v46-spend"]).union(addEntryScripts)
     static func v46Ledger(_ script: String, now: Date) throws -> Ledger {
+        if addEntryScripts.contains(script) { return try addEntryLedger(script, now: now) }
         let today = Dates.day(now)
         if script == "v46-empty" {
             var empty = Ledger(); empty.id = galleryID(4600)

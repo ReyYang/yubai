@@ -573,6 +573,7 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
+        if let reply = try UITestSupport.addEntryReceiptReply(request, script: script) { return reply }
         if let reply = try UITestSupport.secondBatchReceiptReply(request, script: script) { return reply }
         if let reply = try UITestSupport.galleryReply(request, script: script) { return reply }
         if ["导入整理", "导入整理·按对方"].contains(request.purpose), UITestSupport.usesBackgroundFixture {

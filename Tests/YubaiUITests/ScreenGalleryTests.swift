@@ -119,6 +119,7 @@ final class ScreenGalleryTests: XCTestCase {
         app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
         app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1"
         app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
+        app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         if let organization { app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = organization }
         if let statement { app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(statement.utf8).base64EncodedString() }
@@ -229,7 +230,16 @@ final class ScreenGalleryTests: XCTestCase {
         let calendar = Calendar.current
         let from = calendar.dateComponents([.year, .month], from: displayed), to = calendar.dateComponents([.year, .month], from: date)
         let months = (to.year! - from.year!) * 12 + to.month! - from.month!
-        if months != 0 { for _ in 0..<abs(months) { try tap(id + (months > 0 ? "Next" : "Previous")) } }
+        if months != 0 {
+            if id == "entryCalendar", element("entryCalendarMonth").exists {
+                try tap("entryCalendarMonth")
+                let year = element("entryCalendarYearWheel").descendants(matching: .pickerWheel).firstMatch
+                let month = element("entryCalendarMonthWheel").descendants(matching: .pickerWheel).firstMatch
+                (year.exists ? year : app.pickerWheels.element(boundBy: 0)).adjust(toPickerWheelValue: "\(to.year!)年")
+                (month.exists ? month : app.pickerWheels.element(boundBy: 1)).adjust(toPickerWheelValue: "\(to.month!)月")
+                try tap("entryDateDone")
+            } else { for _ in 0..<abs(months) { try tap(id + (months > 0 ? "Next" : "Previous")) } }
+        }
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.dateFormat = "yyyy-MM-dd"
         try tap(id + "Day_" + formatter.string(from: date))
     }
@@ -438,25 +448,25 @@ final class ScreenGalleryTests: XCTestCase {
         stop("07-entry-03-more-categories") { try tap("entryCategoryMore"); try require("entryCategoryPicker") }
         stop("07-entry-04-more-categories-bottom") { for _ in 0..<8 { try drag(element("entryCategoryPicker")) } }
         stop("07-entry-05-date-calendar") { try close("entryMoreCancel"); try longPress(element("entryDate_today")); try require("entryCalendar") }
-        stop("07-entry-06-future-date") { try calendarDay(Calendar.current.date(byAdding: .day, value: 2, to: Date())!); try tap("entryDateDone"); try require("entryDate_other") }
-        stop("07-entry-07-account-menu") { try tap("entryAccountChip"); try wait({ self.app.buttons.matching(NSPredicate(format: "label CONTAINS '余额'")).count > 0 }, "Account menu") }
+        stop("07-entry-06-future-date") { try calendarDay(Calendar.current.date(byAdding: .day, value: 2, to: Date())!); try require("entryDate_other") }
+        stop("07-entry-07-account-inline") { try tap("entryAccountChip"); try require("entryInlineAccounts") }
         stop("07-entry-08-purpose-keyboard") { try launch(); try tap("addEntry"); try type(longName + latinName, into: "entryPurpose"); try requireKeyboard() }
-        stop("07-entry-09-income") { try launch(); try tap("addEntry"); try tap("entryNature_income"); try keys("1234567.89"); try require("entryIntoFixedSavings") }
+        stop("07-entry-09-income") { try launch(); try tap("addEntry"); try tap("entryNature_income"); try keys("1234567.89"); try require("entryIncomeCategories") }
         stop("07-entry-10-transfer") { try launch(); try tap("addEntry"); try tap("entryNature_transfer"); try require("transferDestinationAccount") }
         stop("07-entry-11-big-purchase-hint") { try launch("v45-home"); try tap("addEntry"); try keys("1200"); try require("bigPurchaseDays") }
         stop("07-entry-12-big-from-reserve") { try tap("bigFromReserve"); try require("entrySavingHint") }
         stop("07-entry-13-discard-confirmation") { try close(); try wait({ self.app.buttons["放弃这笔"].exists }, "Discard confirmation") }
-        stop("07-entry-14-saved-in-sheet") { try launch(); try tap("addEntry"); try tap("entryDate_yesterday"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try require("entryAddedList") }
-        stop("07-entry-15-saved-toast") { try launch(); try tap("addEntry"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try toast() }
+        stop("07-entry-14-saved-in-sheet") { try launch(); try tap("addEntry"); try tap("entryDate_yesterday"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try tap("entrySessionSummary"); try require("entryAddedList") }
+        stop("07-entry-15-saved-receipt") { try launch(); try tap("addEntry"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try require("entrySessionSummary") }
         stop("07-entry-16-quick-repeat-menu") { try launch(); try longPress(element("addEntry")); try require("quickRepeatMenu") }
-        stop("07-entry-17-long-repeat-toast") { try tap("quickRepeat_0"); try toast(); try wait({ self.element("toastMessage").label.contains(self.longName) }, "Long receipt text") }
+        stop("07-entry-17-long-repeat-toast") { try tap("quickRepeat_0"); try toast(); try wait({ self.element("toastMessage").label.contains("已记下 1 笔") }, "Repeat receipt text") }
         stop("07-entry-18-undone-receipt") { try tap("undoLastChange"); try require("toastMessage") }
         stop("07-entry-19-delete-toast") { try launch(); try detail(); try tap("deleteEntryDetail"); try toast() }
         stop("07-entry-20-short-repeat-toast") { try launch("v45-repeats"); try longPress(element("addEntry")); try tap("quickRepeat_0"); try toast() }
-        stop("07-entry-21-long-saved-toast") { try launch(); try tap("addEntry"); try keys("1234567.89"); try type(longName + "\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("entryAccountChip"); try tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", latinName + " · 余额")).firstMatch); try tap("saveQuickEntry"); try toast() }
-        stop("07-entry-22-income-toast") { try launch(); try tap("addEntry"); try tap("entryNature_income"); try keys("0.01"); try tap("saveQuickEntry"); try toast() }
-        stop("07-entry-23-transfer-toast") { try launch(); try tap("addEntry"); try tap("entryNature_transfer"); try keys("0.01"); try tap("saveQuickEntry"); try toast() }
-        stop("07-entry-24-calendar-future-selected") { try launch(); try tap("addEntry"); try longPress(element("entryDate_today")); try calendarDay(Calendar.current.date(byAdding: .day, value: 2, to: Date())!); try require("entryCalendar") }
+        stop("07-entry-21-long-saved-receipt") { try launch(); try tap("addEntry"); try keys("1234567.89"); try type(longName + "\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("entryAccountChip"); try tap(buttonPrefix("entryAccountChoice_47000000-0000-0000-0000-000000000012")); try tap("saveQuickEntry"); try require("entrySessionSummary") }
+        stop("07-entry-22-income-receipt") { try launch(); try tap("addEntry"); try tap("entryNature_income"); try keys("0.01"); try tap("saveQuickEntry"); try require("entrySessionSummary") }
+        stop("07-entry-23-transfer-receipt") { try launch(); try tap("addEntry"); try tap("entryNature_transfer"); try keys("0.01"); try tap("saveQuickEntry"); try require("entrySessionSummary") }
+        stop("07-entry-24-calendar-future-selected") { try launch(); try tap("addEntry"); try longPress(element("entryDate_today")); try calendarDay(Calendar.current.date(byAdding: .day, value: 2, to: Date())!); try require("entryDate_other") }
     }
 
     private func categories() {
@@ -502,9 +512,9 @@ final class ScreenGalleryTests: XCTestCase {
 
     private func settingsPages() {
         stop("10-settings-01-settings") { try launch(); try settings() }
-        stop("10-settings-02-frequent-entries") { try tap("openQuickCapture"); try require("frequentEntriesPage") }
+        stop("10-settings-02-frequent-entries") { try launch(); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("frequentEntriesPage") }
         stop("10-settings-03-frequent-hidden") { try reveal(buttonPrefix("frequentUnhide_")) }
-        stop("10-settings-04-quick-capture") { try tap("openQuickCaptureSettings"); try require("addCaptureShortcut") }
+        stop("10-settings-04-quick-capture") { try launch(); try settings("openQuickCapture"); try require("addCaptureShortcut") }
         stop("10-settings-05-card-mappings") { try tap("openCaptureCardRules"); try require("captureRulesPage") }
         stop("10-settings-06-intelligence-privacy-top") { try launch(); try settings("openIntelligencePrivacy"); try require("intelligencePrivacyPage") }
         stop("10-settings-07-intelligence-privacy-bottom") { for _ in 0..<6 { try drag(element("intelligencePrivacyPage")) } }
@@ -520,8 +530,8 @@ final class ScreenGalleryTests: XCTestCase {
         stop("10-settings-17-delete-photos-sheet") { try tap("openStoragePhotos"); try require("storageOriginalsPreserved") }
         stop("10-settings-18-erase-confirmation-sheet") { try launch(); try settings("openStorage"); try tap("openStorageErase"); try require("storageEraseConfirmation") }
         stop("10-settings-19-erase-keyboard") { try type("抹掉", into: "storageEraseConfirmation"); try requireKeyboard() }
-        stop("10-settings-20-card-mapping-editor") { try launch(); try settings("openQuickCapture"); try tap("openQuickCaptureSettings"); try tap("openCaptureCardRules"); try tap("addCaptureRule"); try require("captureRuleName") }
-        stop("10-settings-21-merchant-mappings") { try launch(); try settings("openQuickCapture"); try tap("openQuickCaptureSettings"); try tap("openCaptureMerchantRules"); try require("captureRulesPage") }
+        stop("10-settings-20-card-mapping-editor") { try launch(); try settings("openQuickCapture"); try tap("openCaptureCardRules"); try tap("addCaptureRule"); try require("captureRuleName") }
+        stop("10-settings-21-merchant-mappings") { try launch(); try settings("openQuickCapture"); try tap("openCaptureMerchantRules"); try require("captureRulesPage") }
         stop("10-settings-22-merchant-mapping-editor") { try tap("addCaptureRule"); try require("captureRuleName") }
         stop("10-settings-23-backup-password-keyboard") { try launch(); try settings("openBackup"); try tap("backupToFile"); try type("GalleryOnly123", into: "backupPassword"); try requireKeyboard() }
         stop("10-settings-24-backup-restore-picker") { try launch(); try settings("openBackup"); try tap("restoreFromBackup"); try wait({ self.app.buttons["取消"].exists }, "Restore file picker") }
@@ -596,7 +606,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("13-empty-11-first-entry-keyboard") { try tap("firstEntry"); try type(longName, into: "entryPurpose"); try requireKeyboard() }
         stop("13-empty-12-privacy") { try launch("empty"); try settings("openIntelligencePrivacy"); try require("intelligencePrivacyPage") }
         stop("13-empty-13-fixed-bills") { try launch("manual"); try formula(); try tap("formulaRow_bills"); try require("fixedFlowsScroll") }
-        stop("13-empty-14-frequent-entries") { try launch("gallery-empty"); try settings("openQuickCapture"); try require("frequentEntriesPage") }
+        stop("13-empty-14-frequent-entries") { try launch("gallery-empty"); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("frequentEntriesPage") }
         stop("13-empty-15-budget") { try launch("manual"); try settings("openSpendingParts"); try require("budgetTotal") }
     }
 
@@ -609,6 +619,112 @@ final class ScreenGalleryTests: XCTestCase {
 
     func testAccessibilityWalk() { prefix = "80-a11y-"; reduced(large: true, dark: false) }
     func testDarkWalk() { prefix = "90-dark-"; reduced(large: false, dark: true) }
+
+    func testWalk46Batch2() { round46Batch2(dark: false, large: false) }
+    func testWalk46Batch2Dark() { prefix = "46-dark-"; round46Batch2(dark: true, large: false) }
+    func testWalk46Batch2Large() { prefix = "46-a11y-"; round46Batch2(dark: false, large: true) }
+
+    private func round46Batch2(dark: Bool, large: Bool) {
+        func load(_ fixture: String = "v46-entry") throws { try launch(fixture, dark: dark, large: large) }
+        func add(_ amount: String, purpose: String? = nil, category: String = "餐饮") throws {
+            try keys(amount)
+            if let purpose { try type(purpose + "\n", into: "entryPurpose") }
+            try tap("entryCategory_" + category); try tap("saveQuickEntry"); try require("entrySavedReceipt")
+        }
+        stop("46b2-Add") {
+            try load(); try tap("addEntry"); try add("32"); try require("entrySessionSummary"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Again") { try keys("8"); try require("saveQuickEntry"); try require("entrySessionSummary"); try round46EntryAudit() }
+        stop("46b2-Add-List") {
+            try load(); try tap("addEntry"); try add("28", purpose: "午饭"); try add("8", purpose: "地铁", category: "交通")
+            try tap("entrySessionSummary"); try require("entryAddedList"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Inline") {
+            try load(); try tap("addEntry"); try keys("32"); try tap("entryAccountChip"); try require("entryInlineAccounts"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Purpose") {
+            try load(); try tap("addEntry"); try type("咖", into: "entryPurpose"); try require("recentPurpose_咖啡"); try require("recentPurpose_咖啡豆"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Cats") {
+            try load(); try tap("addEntry"); try tap("entryCategoryMore"); try require("entryMoreManage"); try require("entryMoreAdd"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Date") {
+            try load(); try tap("addEntry"); try keys("32"); try longPress(element("entryDate_today")); try require("entryInlineCalendar"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Date-Month") { try tap("entryCalendarMonth"); try require("entryCalendarYearWheel"); try require("entryCalendarMonthWheel"); try round46EntryAudit() }
+        stop("46b2-Add-Income") {
+            try load(); try tap("addEntry"); try tap("entryNature_income"); try keys("320"); try type("出差报销\n", into: "entryPurpose")
+            try tap("entryCategory_报销"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Transfer") {
+            try load(); try tap("addEntry"); try tap("entryNature_transfer"); try keys("500"); try require("transferSourceAccount"); try require("transferDestinationAccount"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Big") {
+            try load("v46-entry-big"); try tap("addEntry"); try keys("1200"); try type("大衣\n", into: "entryPurpose")
+            try tap("entryCategory_购物"); try require("bigPurchaseDays"); try tap("bigFromReserve"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Big-Month") { try tap("bigFromCycle"); try require("saveEntryWish"); try round46EntryAudit() }
+        stop("46b2-Add-Wish") { try tap("saveEntryWish"); try toast(); try require("availableFunds"); try round46EntryAudit() }
+        stop("46b2-Add-Receipt") {
+            try load("v46-entry-receipt"); try longPress(element("addEntry")); try tap("quickReceipt")
+            try require("receiptSummary"); try require("receiptAvailableAfter"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Hint") {
+            try load(); try tap("addEntry"); try keys("68"); try type("剪头发\n", into: "entryPurpose")
+            try wait({ self.element("entryCategory_美容").value as? String == "建议" }, "Category hint missing"); try round46EntryAudit()
+        }
+        stop("46b2-Big-Add") {
+            try launch("v46-entry", dark: dark, large: true); try tap("addEntry"); try keys("32"); try type("咖啡\n", into: "entryPurpose")
+            try tap("entryCategory_餐饮"); try round46EntryAudit()
+        }
+        stop("46b2-Quick") { try load("v46-entry-receipt"); try longPress(element("addEntry")); try require("quickReceipt"); try require("manageQuickRepeats"); try round46EntryAudit() }
+        stop("46b2-Quick-Manage") { try tap("manageQuickRepeats"); try require("frequentEntriesPage"); try require("frequentPin_0"); try require("frequentHide_0"); try round46EntryAudit() }
+        stop("46b2-Add-Edit") {
+            try load(); try tap("addEntry"); try add("32", purpose: "咖啡"); try tap("entrySessionSummary")
+            try tap(buttonPrefix("editSessionEntry_")); try require("saveSessionEdit"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Delete-Undo") {
+            try tap("cancelManualSheet"); let row = buttonPrefix("editSessionEntry_"); try reveal(row); row.swipeLeft()
+            try tap(buttonPrefix("deleteSessionEntry_")); try toast(); try tap("undoLastChange"); try require("entryAddedList"); try round46EntryAudit()
+        }
+        stop("46b2-Add-New-Category") {
+            try load(); try tap("addEntry"); try tap("entryCategoryMore"); try tap("entryMoreAdd"); try require("categoryAdditionName"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Category-Manage") {
+            try tap("cancelManualSheet"); try tap("entryMoreManage"); try require("entryInlineCategoryManager"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Transfer-Accounts") {
+            try load(); try tap("addEntry"); try tap("entryNature_transfer"); try keys("500"); try tap("transferDestinationAccount"); try require("entryInlineAccounts"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Receipt-Merged") {
+            try load("v46-entry-receipt"); try longPress(element("addEntry")); try tap("quickReceipt"); try require("receiptSummary"); try tap("receiptMode_merged"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Receipt-Unchecked") { try tap("receiptMode_separate"); try tap("receiptSelect_1"); try require("receiptAvailableAfter"); try round46EntryAudit() }
+        stop("46b2-Add-Hidden") {
+            try load("v46-entry-hard"); try tap("toggleAmountVisibility"); try tap("addEntry"); try keys("1234567.89")
+            try wait({ self.element("entryKeypadAmount").value as? String == "金额已隐藏" }, "Amount privacy missing"); try round46EntryAudit()
+        }
+        stop("46b2-Add-Hard") {
+            try load("v46-entry-hard"); try tap("addEntry"); try keys("1234567.89"); try type(longName + latinName + "\n", into: "entryPurpose")
+            try tap("entryAccountChip"); try require("entryInlineAccounts"); try round46EntryAudit()
+        }
+        stop("46b2-Quick-Manage-Hard") {
+            try load("v46-entry-hard"); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("frequentEntriesPage"); try round46EntryAudit()
+        }
+    }
+
+    private func round46EntryAudit() throws {
+        for id in ["entryKeypadAmount", "entrySavingHint", "entryPurpose", "saveQuickEntry", "entrySavedReceipt", "entryNature_expense", "entryNature_income", "entryNature_transfer"] {
+            let target = element(id)
+            guard target.exists, onScreen(target) else { continue }
+            guard target.frame.minX >= app.frame.minX - 1, target.frame.maxX <= app.frame.maxX + 1 else { throw Miss(description: id + " extends beyond screen") }
+            if target.label.contains("…"), id != "entryPurpose" { throw Miss(description: id + " truncates") }
+        }
+        let expense = element("entryNature_expense"), income = element("entryNature_income"), transfer = element("entryNature_transfer")
+        if expense.exists && income.exists && transfer.exists {
+            guard abs(expense.frame.midY - income.frame.midY) < 2, abs(expense.frame.midY - transfer.frame.midY) < 2 else { throw Miss(description: "Nature segments stack") }
+        }
+    }
 
     /// YubaiColor.adaptive + the appearance setting support dark mode; neither is forced light.
     private func reduced(large: Bool, dark: Bool) {
@@ -630,7 +746,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("17-category-long") { try type(longName + latinName, into: "newCategoryName") }
         stop("18-entry-expense") { try launch(dark: dark, large: large); try tap("addEntry"); try require("entryKeypadAmount") }
         stop("19-entry-keyboard") { try type(longName + latinName, into: "entryPurpose"); try requireKeyboard() }
-        stop("20-entry-income") { try launch(dark: dark, large: large); try tap("addEntry"); try tap("entryNature_income"); try keys("1234567.89"); try require("entryIntoFixedSavings") }
+        stop("20-entry-income") { try launch(dark: dark, large: large); try tap("addEntry"); try tap("entryNature_income"); try keys("1234567.89"); try require("entryIncomeCategories") }
         stop("21-entry-transfer") { try tap("entryNature_transfer"); try require("transferDestinationAccount") }
         stop("22-long-repeat-toast") { try launch(dark: dark, large: large); try longPress(element("addEntry")); try tap("quickRepeat_0"); try toast() }
     }

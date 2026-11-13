@@ -132,6 +132,8 @@ jobs:
             walks: testWalk06Categories testWalk07Yubai testWalk08Settings
           - part: states
             walks: testWalk09Imports testWalk10States testWalk11Empty
+          - part: entry46
+            walks: testWalk46Batch2 testWalk46Batch2Dark testWalk46Batch2Large
     env:
       GALLERY_ONLY: ${{ matrix.walks }}
     steps:

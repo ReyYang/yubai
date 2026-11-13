@@ -23,6 +23,7 @@ final class AppFlowTests: XCTestCase {
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
         app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
+        app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
         if keepingUndo { app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1" }
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         currentApp = app; snapshotNumber = 0
@@ -97,10 +98,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["firstEntry"].waitForExistence(timeout: 5))
         tap(app.buttons["firstEntry"], in: app)
         tap(app.buttons["entryNature_income"], in: app); pressAmount("100", in: app)
-        tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 10000)
         tap(app.buttons["addEntry"], in: app); pressAmount("25", in: app)
-        tap(app.buttons["entryCategory_餐饮"], in: app); tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["entryCategory_餐饮"], in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 7500)
         app.terminate(); app.launch()
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 7500)
@@ -118,7 +119,7 @@ final class AppFlowTests: XCTestCase {
     }
 
     func testRound46QuickMenuOffersReceiptAndManagement() {
-        let app = application("v46-home"); app.launch()
+        let app = application("v46-entry-receipt"); app.launch()
         let add = app.buttons["addEntry"]; XCTAssertTrue(add.waitForExistence(timeout: 5)); add.press(forDuration: 0.8)
         for id in ["quickRepeat_0", "quickReceipt", "manageQuickRepeats"] { XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5)) }
         tap(app.buttons["manageQuickRepeats"], in: app)
@@ -1407,7 +1408,7 @@ final class AppFlowTests: XCTestCase {
         assertGone(suggestion)
         tap(app.buttons["keypad_0"], in: app)
         XCTAssertTrue(suggestion.waitForExistence(timeout: 5)); XCTAssertFalse(suggestion.isSelected)
-        tap(suggestion, in: app); tap(app.buttons["saveQuickEntry"], in: app)
+        tap(suggestion, in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         openFixedBills(app)
         XCTAssertFalse(app.buttons["付了 房租"].exists); XCTAssertTrue(app.images["已付 房租"].exists)
     }
@@ -1897,7 +1898,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["keypad_+"].isSelected)
         XCTAssertEqual(app.staticTexts["entryKeypadExpression"].label, "12 + 3")
         XCTAssertEqual(app.buttons["entryKeypadAmount"].value as? String, "15.00")
-        XCTAssertEqual(app.buttons["saveQuickEntry"].label, "记下 15.00 元")
+        XCTAssertEqual(app.buttons["saveQuickEntry"].label, "记下")
     }
 
     func testEntryPurposeKeepsExplicitCategoryAndNatureDoesNotPreselect() {
@@ -1910,7 +1911,7 @@ final class AppFlowTests: XCTestCase {
         replaceText("兼职", in: purpose, app: app, submit: true)
         XCTAssertTrue(app.buttons["entryCategory_购物"].isSelected)
         tap(natureButton("收入", in: app), in: app)
-        XCTAssertFalse(app.buttons["entryCategory_工资奖金"].isSelected)
+        XCTAssertFalse(app.buttons["entryCategory_工资"].isSelected)
         tap(natureButton("支出", in: app), in: app)
         XCTAssertFalse(app.buttons["entryCategory_餐饮"].isSelected)
     }
@@ -1991,9 +1992,17 @@ final class AppFlowTests: XCTestCase {
         assertSearchCount(1, in: app); XCTAssertEqual(ledgerRows(app).count, 1)
     }
 
+    private func finishQuickEntry(_ app: XCUIApplication) {
+        let summary = app.buttons["entrySessionSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(anyElement("entrySavedReceipt", in: app).exists)
+        tap(app.buttons["cancelManualSheet"], in: app)
+        assertGone(summary)
+    }
+
     private func openEntryMore(_ app: XCUIApplication) -> XCUIElement {
         tap(app.buttons["entryCategoryMore"], in: app)
-        let scroll = app.scrollViews["entryCategoryPicker"]
+        let scroll = anyElement("entryCategoryPicker", in: app)
         XCTAssertTrue(scroll.waitForExistence(timeout: 5))
         return scroll
     }
@@ -2013,7 +2022,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["entryCategory_美容个护"].isSelected)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'entryCategory_' ")).count, 9)
         XCTAssertTrue(app.buttons["entryCategoryMore"].exists)
-        tap(app.buttons["saveQuickEntry"], in: app); tap(app.buttons["tab_ledger"], in: app)
+        tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app); tap(app.buttons["tab_ledger"], in: app)
         tap(ledgerRows(app).firstMatch, in: app)
         XCTAssertEqual(app.buttons["entryCategory_美容个护"].label, "美容个护 · 理发")
         snapshot("category-small-item-saved", app)
@@ -2024,7 +2033,7 @@ final class AppFlowTests: XCTestCase {
         pressAmount("3", in: app)
         let purpose = app.textFields["entryPurpose"]
         tap(purpose, in: app); purpose.typeText("合成剪头发\n")
-        tap(app.buttons["saveQuickEntry"], in: app); tap(app.buttons["tab_ledger"], in: app)
+        tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app); tap(app.buttons["tab_ledger"], in: app)
         let row = ledgerRows(app).firstMatch
         tap(row, in: app)
         var scroll = openEntryMore(app)
@@ -2050,7 +2059,7 @@ final class AppFlowTests: XCTestCase {
         _ = openEntryMore(app); XCTAssertFalse(app.buttons["entryMoreCategory_餐饮"].exists)
         tap(app.buttons["entryMoreCategory_工资奖金"], in: app)
         _ = openEntryMore(app); tap(app.buttons["entryMoreSubcategory_工资奖金/工资"], in: app)
-        XCTAssertEqual(app.buttons["entryCategory_工资奖金"].label, "工资奖金 · 工资")
+        XCTAssertTrue(app.buttons["entryCategory_工资"].isSelected)
         tap(natureButton("支出", in: app), in: app)
         _ = openEntryMore(app); tap(app.buttons["entryMoreCategory_餐饮"], in: app)
         _ = openEntryMore(app)
@@ -2061,7 +2070,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["entryCategoryMore"].exists)
     }
 
-    func testEntryMoreAddsSmallItemAndRepeatKeepsPlanMainOnly() {
+    func testEntryMoreAddsSmallItemInlineAndPersistsIt() {
         let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
         var scroll = openEntryMore(app)
         tap(app.buttons["entryMoreAdd"], in: app, scroll: scroll)
@@ -2073,18 +2082,16 @@ final class AppFlowTests: XCTestCase {
         tap(name, in: app); name.typeText("合成小项\n"); tap(app.buttons["categoryAdditionSave"], in: app)
         assertGone(scroll)
         XCTAssertTrue(app.buttons["entryCategory_餐饮"].isSelected)
-        pressAmount("3", in: app); tap(app.buttons["entryRepeat"], in: app); tap(app.buttons["saveQuickEntry"], in: app)
+        pressAmount("3", in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         assertGone(app.buttons["saveQuickEntry"]); tap(app.buttons["tab_ledger"], in: app); tap(ledgerRows(app).firstMatch, in: app)
         XCTAssertEqual(app.buttons["entryCategory_餐饮"].label, "餐饮 · 合成小项")
-        tap(app.buttons["entryRepeat"], in: app)
-        XCTAssertEqual(app.buttons["fixedFlowCategory"].value as? String, "餐饮")
     }
 
     func testEditAmountTrayReplacesSelectionResolvesAndRepeatsDeletion() {
         let app = application("manual"); app.launch()
         tap(addEntryTab(app), in: app)
         tap(app.buttons["keypad_3"], in: app); tap(app.buttons["keypad_2"], in: app)
-        tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         tap(app.buttons["tab_ledger"], in: app)
         tap(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch, in: app)
         XCTAssertFalse(app.textFields["备注"].exists); XCTAssertFalse(app.staticTexts["备注"].exists)
@@ -2107,22 +2114,9 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(amount.exists)
     }
 
-    func testQuickEntryRepeatSavesFirstPeriodAndNextSheetResetsRepeat() {
-        let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
-        tap(app.buttons["keypad_2"], in: app); tap(app.buttons["entryRepeat"], in: app)
-        XCTAssertTrue(app.buttons["entryRepeat"].isSelected)
-        tap(app.buttons["saveQuickEntry"], in: app)
-        XCTAssertTrue(app.buttons["addEntry"].waitForExistence(timeout: 5))
-        tap(addEntryTab(app), in: app)
-        XCTAssertFalse(app.buttons["entryRepeat"].isSelected)
-        tap(app.buttons["cancelManualSheet"], in: app)
-        openFixedBills(app)
-        XCTAssertTrue(app.images.matching(NSPredicate(format: "label BEGINSWITH '已付 ' ")).firstMatch.waitForExistence(timeout: 5))
-    }
-
     func testEditRepeatCreatesPlanAndLinkedChipOpensItsEditor() {
         let app = application("manual"); app.launch(); tap(addEntryTab(app), in: app)
-        tap(app.buttons["keypad_3"], in: app); tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["keypad_3"], in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         tap(app.buttons["tab_ledger"], in: app)
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' ")).firstMatch
         tap(row, in: app); tap(app.buttons["entryRepeat"], in: app)
@@ -2136,16 +2130,16 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["改账单"].exists)
     }
 
-    func testEntryRepeatIsHiddenForTransferAndSelectedBillMatch() {
+    func testEntryKeepsBillMatchWithoutARepeatControl() {
         let app = application("bills"); app.launch(); tap(addEntryTab(app), in: app)
-        XCTAssertTrue(app.buttons["entryRepeat"].exists)
+        XCTAssertFalse(app.buttons["entryRepeat"].exists)
         tap(natureButton("转账", in: app), in: app); XCTAssertFalse(app.buttons["entryRepeat"].exists)
         tap(natureButton("支出", in: app), in: app)
         for key in "300" { tap(app.buttons["keypad_" + String(key)], in: app) }
         let match = app.buttons["fixedFlowSuggestion"]
         XCTAssertTrue(match.waitForExistence(timeout: 5)); tap(match, in: app)
         XCTAssertFalse(app.buttons["entryRepeat"].exists)
-        tap(match, in: app); XCTAssertTrue(app.buttons["entryRepeat"].exists)
+        tap(match, in: app); XCTAssertFalse(app.buttons["entryRepeat"].exists)
     }
 
     func testFixedFlowAmountUsesSameTrayAndNameFocusClosesIt() {
@@ -2176,7 +2170,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(app.buttons["entryKeypadAmount"].value as? String, "500.00")
         XCTAssertEqual(purpose.value as? String, "UI Transfer")
         XCTAssertTrue(app.buttons["transferDestinationAccount"].value as? String == "UI Transfer Bank 0.00")
-        tap(save, in: app); assertGone(save)
+        tap(save, in: app); finishQuickEntry(app); assertGone(save)
         tap(app.buttons["tab_ledger"], in: app); XCTAssertTrue(ledgerRows(app).firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(ledgerRows(app).count, 1)
         tap(ledgerRows(app).firstMatch, in: app)
@@ -2194,7 +2188,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(funds.waitForExistence(timeout: 10)); XCTAssertTrue(funds.label.contains("1,000.00"))
         tap(addEntryTab(app), in: app); pressAmount("32", in: app)
         XCTAssertEqual(app.buttons["entryKeypadAmount"].value as? String, "32.00")
-        tap(app.buttons["saveQuickEntry"], in: app); assertGone(app.buttons["saveQuickEntry"])
+        tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app); assertGone(app.buttons["saveQuickEntry"])
         let decreased = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '968.00'"), object: funds)
         XCTAssertEqual(XCTWaiter.wait(for: [decreased], timeout: 5), .completed)
         XCTAssertTrue(anyElement("todayEntries", in: app).waitForExistence(timeout: 5))
@@ -2476,21 +2470,25 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(app.switches["aiFeature_answers"].value as? String, "0")
     }
 
-    func testV45FrequentEntriesPinReorderHideAndLongPressRespectSavedOrder() {
-        let app = application("v45-repeats"); app.launch(); openSettings(app); tap(app.buttons["openQuickCapture"], in: app)
+    func testFrequentEntriesPinHideRestoreAndLongPressRespectSavedChoices() {
+        let app = application("v45-repeats"); app.launch()
+        addEntryTab(app).press(forDuration: 0.8); tap(app.buttons["manageQuickRepeats"], in: app)
         XCTAssertTrue(anyElement("frequentEntriesPage", in: app).waitForExistence(timeout: 5))
         tap(app.buttons["frequentPin_2"], in: app)
         let first = anyElement("frequentEntry_0", in: app)
         XCTAssertTrue(first.staticTexts["咖啡"].waitForExistence(timeout: 5))
-        tap(app.buttons["frequentMoveDown_0"], in: app)
-        XCTAssertTrue(first.staticTexts["地铁"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["frequentPin_0"].label, "取消置顶咖啡")
+        tap(app.buttons["frequentHide_1"], in: app)
+        let restore = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'frequentUnhide_' ")).firstMatch
+        XCTAssertTrue(restore.waitForExistence(timeout: 5)); tap(restore, in: app)
         tap(app.buttons["frequentHide_0"], in: app)
-        XCTAssertTrue(first.staticTexts["咖啡"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'frequentUnhide_' ")).firstMatch.exists)
         app.terminate(); app.launch(); addEntryTab(app).press(forDuration: 0.8)
         XCTAssertTrue(app.buttons["quickRepeat_0"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["quickRepeat_0"].label.contains("咖啡"))
-        XCTAssertTrue(app.buttons["quickRepeat_1"].label.contains("午饭")); XCTAssertFalse(app.buttons["quickRepeat_2"].exists)
+        XCTAssertFalse(app.buttons["quickRepeat_0"].label.contains("咖啡"))
+        tap(app.buttons["manageQuickRepeats"], in: app)
+        let putBack = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'frequentUnhide_' AND label CONTAINS '咖啡' ")).firstMatch
+        XCTAssertTrue(putBack.waitForExistence(timeout: 5)); tap(putBack, in: app)
+        XCTAssertTrue(anyElement("frequentEntriesPage", in: app).exists)
     }
 
     func testV45SettingsShowsPaydayDayAsFact() {
@@ -2690,7 +2688,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["bigFromReserve"].isSelected)
         let field = app.textFields["entryPurpose"]
         tap(field, in: app); field.typeText("合成大衣\n")
-        tap(app.buttons["entryCategory_购物"], in: app); tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["entryCategory_购物"], in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         assertGone(app.buttons["saveQuickEntry"])
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before)
         tap(app.buttons["fundsFormula"], in: app)
@@ -2708,6 +2706,7 @@ final class AppFlowTests: XCTestCase {
         let search = app.textFields["entriesSearch"]
         tap(search, in: app); search.typeText("合成咖啡"); assertSearchCount(3, in: app)
         tap(app.buttons["entriesSearchCancel"], in: app)
+        tap(app.buttons["tab_now"], in: app)
         addEntryTab(app).press(forDuration: 0.8)
         XCTAssertTrue(anyElement("quickRepeatMenu", in: app).waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["quickReceipt"].exists)
@@ -2715,9 +2714,10 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["quickRepeat_0"].label.contains("合成咖啡"))
         tap(app.buttons["quickRepeat_0"], in: app)
         assertGone(anyElement("quickRepeatMenu", in: app)); XCTAssertFalse(app.buttons["saveQuickEntry"].exists)
+        tap(app.buttons["tab_ledger"], in: app)
         tap(search, in: app); search.typeText("合成咖啡"); assertSearchCount(4, in: app)
         tap(app.buttons["entriesSearchCancel"], in: app)
-        tapUndo(messagePrefix: "已记下 · 合成咖啡", in: app)
+        tapUndo(messagePrefix: "已记下 1 笔", in: app)
         tap(search, in: app); search.typeText("合成咖啡"); assertSearchCount(3, in: app)
         snapshot("quick-repeat-undone", app)
     }
@@ -2874,7 +2874,7 @@ final class AppFlowTests: XCTestCase {
         pressAmount("32", in: app)
         let purpose = app.textFields["entryPurpose"]
         tap(purpose, in: app); purpose.typeText("合成未来餐")
-        tap(app.buttons["entryCategory_餐饮"], in: app); tap(app.buttons["saveQuickEntry"], in: app)
+        tap(app.buttons["entryCategory_餐饮"], in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         assertGone(app.buttons["saveQuickEntry"])
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before)
         tap(app.buttons["tab_ledger"], in: app)

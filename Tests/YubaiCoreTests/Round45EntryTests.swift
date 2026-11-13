@@ -6,12 +6,12 @@ final class Round45EntryTests: XCTestCase {
     func testCategoryHintThreeTwoOneAndNoTimeFallback() {
         var l = Round45Fixture.ledger(); l.entries = []
         XCTAssertNil(EntryHistory.categoryHint(purpose: "   ", nature: .expense, in: l, now: now))
-        XCTAssertNotNil(EntryHistory.categoryHint(purpose: "地铁", nature: .expense, in: l, now: now))
+        XCTAssertNil(EntryHistory.categoryHint(purpose: "地铁", nature: .expense, in: l, now: now))
         let a = Round45Fixture.entry(l, amount: 1000, date: "2026-11-17", title: "Lunch", category: "餐饮")
         var b = a; b.id = UUID(); b.date = Dates.addDays(1, to: a.date)
         var c = b; c.id = UUID(); c.date = Dates.addDays(1, to: b.date); c.category = "交通"
         l.entries = [a]
-        XCTAssertEqual(EntryHistory.categoryHint(purpose: " Lunch ", nature: .expense, in: l, now: now)?.category, "餐饮")
+        XCTAssertNil(EntryHistory.categoryHint(purpose: " Lunch ", nature: .expense, in: l, now: now))
         l.entries = [b, c]; XCTAssertNil(EntryHistory.categoryHint(purpose: "Lunch", nature: .expense, in: l, now: now))
         l.entries = [a, b, c]; XCTAssertEqual(EntryHistory.categoryHint(purpose: "Lunch", nature: .expense, in: l, now: now)?.category, "餐饮")
         c.category = "购物"; b.category = "交通"; l.entries = [a, b, c]

@@ -7,11 +7,14 @@ struct EntryCalendarView: View {
     let today: Date
     var bounds: ClosedRange<Date>? = nil
     var identifier = "entryCalendar"
+    var customHeader: ((Binding<Date>) -> AnyView)? = nil
     @State private var month: Date
     @ScaledMetric(relativeTo: .callout) private var dayWidth = YubaiSize.tapMin
 
-    init(selection: Binding<Date>, today: Date, bounds: ClosedRange<Date>? = nil, identifier: String = "entryCalendar") {
+    init(selection: Binding<Date>, today: Date, bounds: ClosedRange<Date>? = nil, identifier: String = "entryCalendar",
+         customHeader: ((Binding<Date>) -> AnyView)? = nil) {
         _selection = selection; self.today = today; self.bounds = bounds; self.identifier = identifier
+        self.customHeader = customHeader
         _month = State(initialValue: Dates.calendar.dateInterval(of: .month, for: selection.wrappedValue)!.start)
     }
     private var monthTitle: String {
@@ -21,7 +24,7 @@ struct EntryCalendarView: View {
     private var count: Int { Dates.calendar.range(of: .day, in: .month, for: month)?.count ?? 0 }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            monthHeader
+            if let customHeader { customHeader($month) } else { monthHeader }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(dayWidth), spacing: YubaiSpace.space4), count: 7), spacing: YubaiSpace.space4) {
                     ForEach(Array(["一", "二", "三", "四", "五", "六", "日"].enumerated()), id: \.offset) { _, day in

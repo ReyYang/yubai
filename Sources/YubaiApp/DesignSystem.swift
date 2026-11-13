@@ -2092,7 +2092,7 @@ struct EntryPurposeWell: View {
             TextField(title, text: $purpose).yubaiFont(YubaiFont.row).focused(focus)
                 .submitLabel(.done).onSubmit { focus.wrappedValue = false }
                 .accessibilityLabel(title).accessibilityIdentifier(identifier)
-        }.padding(.horizontal, 12).frame(height: 44)
+        }.padding(.horizontal, 12).frame(minHeight: 44)
             .background(YubaiColor.key, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12).strokeBorder(YubaiColor.keyFn.opacity(0.45), lineWidth: 1)
@@ -2412,7 +2412,7 @@ struct SegmentedWide<Value: Hashable>: View {
     @Binding var selection: Value
     var identifier: ((Value) -> String)? = nil
     var body: some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
+        let layout = textSize.isAccessibilitySize && choices.contains(where: { $0.1.count > 3 }) ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
         layout {
             ForEach(choices.indices, id: \.self) { index in segment(choices[index].0, title: choices[index].1) }
         }.padding(YubaiSpace.space4)
@@ -2423,6 +2423,7 @@ struct SegmentedWide<Value: Hashable>: View {
         let on = selection == value
         return Button { selection = value } label: {
             Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
+                .dynamicTypeSize(...(title.count <= 3 ? DynamicTypeSize.xxxLarge : .accessibility5))
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin - YubaiSpace.space4)
                 .background { if on { selectedSurface } }
@@ -2470,7 +2471,26 @@ struct ManualSheetHeader: View {
     var cancelIdentifier = "cancelManualSheet"
     let cancel: () -> Void
     let action: () -> Void
+    var subtitle: String? = nil
+    var subtitleIdentifier = ""
+    var subtitleAction: (() -> Void)? = nil
+    var preservesCancelIdentifier = false
     private var titleView: some View {
+        Group {
+            if let subtitle, let subtitleAction {
+                Button(action: subtitleAction) {
+                    VStack(spacing: 2) {
+                        titleText
+                        HStack(spacing: 2) {
+                            Text(subtitle).lineLimit(1).minimumScaleFactor(0.35)
+                            Image(systemName: "chevron.down").font(.system(size: 9))
+                        }.yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
+                    }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                }.accessibilityIdentifier(subtitleIdentifier)
+            } else { titleText }
+        }
+    }
+    private var titleText: some View {
         Text(title).yubaiFont(["记一笔", "改一笔", "改这笔"].contains(title) ? YubaiFont.entrySheetTitle : YubaiFont.navTitle).lineLimit(1)
     }
     private var cancelButton: some View {
@@ -2478,7 +2498,7 @@ struct ManualSheetHeader: View {
             Text(cancelTitle).yubaiFont(YubaiFont.body).fixedSize()
                 .padding(.horizontal, 16).frame(minHeight: 36).background(YubaiColor.card, in: Capsule())
                 .frame(minHeight: 44).contentShape(Capsule())
-        }.accessibilityIdentifier(cancelIdentifier == "cancelManualSheet" && cancelTitle != "取消" ? "closeSheet" : cancelIdentifier)
+        }.accessibilityIdentifier(!preservesCancelIdentifier && cancelIdentifier == "cancelManualSheet" && cancelTitle != "取消" ? "closeSheet" : cancelIdentifier)
     }
     @ViewBuilder private var actionButton: some View {
         if showsAction {
@@ -2518,5 +2538,23 @@ struct ManualSheetHeader: View {
                 VStack(spacing: 8) { cancelButton; actionButton }
             }
         }
+    }
+}
+
+/// Text forms share the same label/value row as the rest of a card.
+struct FormTextRow: View {
+    let title: String
+    @Binding var text: String
+    var identifier = ""
+    var focus: FocusState<Bool>.Binding? = nil
+    @FocusState private var localFocus: Bool
+    private var fieldFocus: FocusState<Bool>.Binding { focus ?? $localFocus }
+    var body: some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            Text(title).yubaiFont(YubaiFont.row).fixedSize()
+            TextField("", text: $text).yubaiFont(YubaiFont.row).multilineTextAlignment(.trailing)
+                .focused(fieldFocus).submitLabel(.done).onSubmit { fieldFocus.wrappedValue = false }
+                .accessibilityLabel(title).accessibilityIdentifier(identifier)
+        }.frame(minHeight: YubaiSize.rowSingle)
     }
 }
