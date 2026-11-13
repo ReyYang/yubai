@@ -4,7 +4,7 @@ import YubaiCore
 struct HomeReceiptView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
     let receipt: DailyReceipt
     private var hide: Bool { store.preferences.hideAmounts }

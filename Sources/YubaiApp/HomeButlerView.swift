@@ -219,7 +219,7 @@ struct ButlerReceiptRow: View {
 struct TodoView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var deck = ButlerDeck()
     private var items: [HomeTask] { store.inboxItems }
     private var ids: [String] { items.map(\.id) }

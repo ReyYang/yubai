@@ -5,7 +5,7 @@ import YubaiCore
 struct NowView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     private var homeHero: HomeHero { store.homeHero }
 
     private var hide: Bool { store.preferences.hideAmounts }

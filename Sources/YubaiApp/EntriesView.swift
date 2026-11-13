@@ -4,7 +4,7 @@ import YubaiCore
 /// 账本「账目」：常驻搜索、筛选、按月按天的流水。根页的页头和「账目 / 去向」切换由 `LedgerTabView` 提供。
 struct EntriesView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
     @Binding var mode: LedgerMode
     @Binding var request: LedgerPreset?
@@ -377,7 +377,7 @@ struct EntriesView: View {
 
 struct LedgerEntryRow: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var highlighted = true
     let entry: EntryTimeline.Row

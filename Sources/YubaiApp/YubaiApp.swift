@@ -907,11 +907,6 @@ enum AppSheet: Identifiable {
             // pager state together, rather than only changing its selected tab.
             RootView().id(store.navigationRevision).environment(store).tint(YubaiColor.brandInk)
                 .preferredColorScheme(colorScheme)
-                #if DEBUG && targetEnvironment(simulator)
-                .transformEnvironment(\.accessibilityReduceMotion) { value in
-                    if UITestSupport.script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_REDUCE_MOTION"] == "1" { value = true }
-                }
-                #endif
                 #if os(macOS)
                 .frame(minWidth: YubaiSize.desktopMinimumWidth, minHeight: YubaiSize.contentNarrow)
                 #endif
@@ -932,7 +927,7 @@ enum AppSheet: Identifiable {
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var phase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Namespace private var motionNamespace
     @State private var tabPaths: [Destination: NavigationPath] = [:]
     #if os(iOS)
@@ -1296,7 +1291,7 @@ private struct LedgerPrivacyCover: View {
 /// 三个标签和主页正中的记账宽钮。底栏不随动态字号放大（固定 `.large`），改用大字号预览（Large Content Viewer）。
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Namespace private var selectionNamespace
     let select: (Destination) -> Void

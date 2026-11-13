@@ -6,7 +6,7 @@ import UIKit
 
 struct EntryCategoryChips: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let frequent: [String]
     let income: Bool
     let selection: CategoryAssignment
@@ -230,7 +230,7 @@ extension View {
 
 private struct RootTabScroll: ViewModifier {
     @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let tab: Destination
     #if os(iOS)
     @State private var position = ScrollPosition(edge: .top)

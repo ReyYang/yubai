@@ -5,7 +5,7 @@ typealias CardDismissAnimation = (@escaping () -> Bool) -> Void
 
 /// Letter cards close only through ×. Their content keeps its existing actions.
 struct LetterDismissCard<Content: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let onDismiss: () -> Bool
     var onMute: (() -> Bool)? = nil
     @ViewBuilder let content: (@escaping CardDismissAnimation) -> Content

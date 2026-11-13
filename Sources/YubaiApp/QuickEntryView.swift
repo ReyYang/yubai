@@ -8,7 +8,7 @@ struct QuickEntryView: View {
     var prefill: QuickEntryPrefill? = nil
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
     @State private var keypad = EntryKeypad()

@@ -34,7 +34,7 @@ struct EntryEditForm: View {
     @State private var repeatsMonthly = false
     @State private var previewAvailable: Int64?
     @State private var projectedFixedSavings: Int64?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @FocusState private var purposeFocused: Bool
     init(entry: Entry, title: String = "改一笔", primaryTitle: String = "好", onSave: ((Entry) -> Void)? = nil) {
         original = entry; formTitle = title; self.primaryTitle = primaryTitle; self.onSave = onSave

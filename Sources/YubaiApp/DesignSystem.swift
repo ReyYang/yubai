@@ -438,7 +438,7 @@ struct SmallActionStyle: ButtonStyle {
 }
 
 private struct NumberChange: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let value: Double
     var enabled: Bool
     func body(content: Content) -> some View {
@@ -457,6 +457,13 @@ private struct FormSurfaceKey: EnvironmentKey { static let defaultValue = false 
 private struct CardContentKey: EnvironmentKey { static let defaultValue = false }
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
 extension EnvironmentValues {
+    /// SwiftUI's system value is read-only; scripted tests opt in at the readers.
+    var yubaiReduceMotion: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_REDUCE_MOTION"] == "1" { return true }
+        #endif
+        return accessibilityReduceMotion
+    }
     var yubaiSheetSurface: Bool { get { self[SheetSurfaceKey.self] } set { self[SheetSurfaceKey.self] = newValue } }
     var yubaiRootSurface: Bool { get { self[RootSurfaceKey.self] } set { self[RootSurfaceKey.self] = newValue } }
     var yubaiFormSurface: Bool { get { self[FormSurfaceKey.self] } set { self[FormSurfaceKey.self] = newValue } }
@@ -554,7 +561,7 @@ struct PaperCanvas: View {
 
 private struct BambooShadow: View {
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
     let trigger: Int
     @ViewBuilder private var branch: some View {
@@ -929,7 +936,7 @@ private struct FloatingSurface<S: Shape>: ViewModifier {
 
 private struct ContentZoom: ViewModifier {
     @Environment(\.yubaiZoomNamespace) private var namespace
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let id: String?
     var source = false
     @ViewBuilder func body(content: Content) -> some View {
@@ -945,7 +952,7 @@ private struct ContentZoom: ViewModifier {
 }
 
 private struct MessageEntrance: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var visible = false
     let user: Bool
     func body(content: Content) -> some View {
@@ -958,7 +965,7 @@ private struct MessageEntrance: ViewModifier {
 }
 
 private struct ChipSelection: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var scale: CGFloat = 1
     let selected: Bool
     func body(content: Content) -> some View {
@@ -1099,7 +1106,7 @@ struct Card<Content: View>: View {
 
 /// A single list surface with lazy rows, including large ledgers and matching candidates.
 struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Element: Identifiable {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let rows: Data
     private let rowSequence: Int
     var hasLeadingIcon: Bool
@@ -1175,7 +1182,7 @@ struct AmountLabel: View {
     }
     enum Sign { case automatic, inflow, outflow, none }
     @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let cents: Int64
     var large = false
     var hide = false
@@ -1234,7 +1241,7 @@ struct Pill: View {
 struct EntryRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var highlighted = true
     var entry: Entry
     var hideAmount = false
@@ -1297,7 +1304,7 @@ struct EntryLink: View {
 
 /// Monochrome paper and cloth; the small tag is separated with its host surface color.
 struct BrandMark: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     var size: CGFloat = 43
     var background = YubaiColor.canvas
     var jumpTrigger = 0
@@ -1351,7 +1358,7 @@ struct NowTabGlyph: View {
 }
 
 struct AssistantMark: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     var size: CGFloat = 26
     var color = YubaiColor.brandGlyph
     var thinking = false
@@ -1630,7 +1637,7 @@ private struct ToastNaturalHeight: PreferenceKey {
 }
 
 struct Toast: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var visible = false
     @State private var expanded = false
     @State private var naturalHeight: CGFloat = 0
@@ -1933,7 +1940,7 @@ extension YubaiFont {
 }
 
 struct RoundPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.92 : 1)
             .animation(configuration.isPressed ? YubaiMotion.instant : (reduceMotion ? YubaiMotion.quick : YubaiMotion.lively), value: configuration.isPressed)
@@ -2342,7 +2349,7 @@ struct IconGridCell: View {
 
 /// 整行等宽的分段；短选项保持横排，每项可点区域至少 44pt。
 struct Segmented<Value: Hashable>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
     @Namespace private var selectionNamespace
     let choices: [(Value, String)]
@@ -2377,7 +2384,7 @@ struct Segmented<Value: Hashable>: View {
 
 /// 细进度线（0…1）。首启清单、心愿单等待。
 struct ProgressLine: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let value: Double
     var tint = YubaiColor.brand
     var track = YubaiColor.neutralSoft
@@ -2932,7 +2939,7 @@ struct EntryDateRow: View {
 }
 
 struct EntryAmountCursor: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var visible = true
     var body: some View {
         Rectangle().fill(YubaiColor.brand).frame(width: 2, height: 34)
@@ -3396,7 +3403,7 @@ struct BrandBambooShadow: View {
 }
 
 struct FirstWindowWall: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         GeometryReader { geometry in
@@ -3463,7 +3470,7 @@ struct ReceiptRule: View {
 
 /// A swipe is local to this row, so undo never restores an unrelated ledger snapshot.
 struct ReceiptSwipeRow<Content: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
     let enabled: Bool
     let identifier: String
@@ -3490,7 +3497,7 @@ struct ReceiptSwipeRow<Content: View>: View {
 }
 
 private struct ReceiptPrint: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let highlighted: Bool
     let trigger: Int
     @ViewBuilder func body(content: Content) -> some View {

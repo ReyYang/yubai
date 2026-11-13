@@ -4,7 +4,7 @@ import YubaiCore
 
 /// Shared with the import queue, including its three local reading stages.
 struct ImportReadingProgress: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let value: Double
     private var fraction: Double { value.isFinite ? min(1, max(0, value / 3)) : 0 }
     var body: some View {
