@@ -543,7 +543,7 @@ struct QuickEntryView: View {
         entry.title = text.isEmpty ? Classification.displayCategory(effectiveCategory.category) : text
         entry.purpose = text.isEmpty ? nil : text
         entry.category = effectiveCategory.category; entry.subcategory = effectiveCategory.subcategory
-        entry.categoryUserEdited = !Classification.isPending(entry.category); entry.subcategoryUserEdited = true
+        entry.subcategoryUserEdited = true
         entry.partID = nil; entry.fromReserve = useReserve; entry.intoFixedSavings = nature == .income && intoFixedSavings
         return entry
     }

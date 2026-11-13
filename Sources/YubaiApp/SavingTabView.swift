@@ -90,7 +90,7 @@ struct SavingTabView: View {
                 VStack(alignment: .leading, spacing: 4) { Text("存下的钱够了，买完还剩"); fundingAmount(funding.remainingAfterPurchase) }
             }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
         } else {
-            ChipFlow(spacing: 4, rowSpacing: 4) {
+            ChipFlow(rowSpacing: YubaiSpace.space4) {
                 Text("还差").yubaiFont(YubaiFont.callout)
                 fundingAmount(funding.shortfall)
                 if let date = funding.enoughOn, let monthly = funding.monthly {
