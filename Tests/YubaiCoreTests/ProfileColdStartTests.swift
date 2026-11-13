@@ -34,7 +34,7 @@ final class ProfileColdStartTests: XCTestCase {
             ChatMessage(role: .assistant, content: "你希望始终留着多少钱？"),
             ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "read", name: "get_profile")]),
             ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "whole", name: "propose_profile_change", arguments: wholeProfile)]),
-            ChatMessage(role: .assistant, content: "整理好了一份消费观，确认后才会生效。")])
+            ChatMessage(role: .assistant, content: "导入结果一份消费观，确认后才会生效。")])
         let coldStart = ProfileColdStart(transport: script)
         var messages: [ChatMessage] = []
         let original = try LedgerCodec.encode(ctx.ledger)

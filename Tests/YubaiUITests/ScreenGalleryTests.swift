@@ -114,7 +114,7 @@ final class ScreenGalleryTests: XCTestCase {
         relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement) }
         app.terminate(); app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
-        app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityL" : "UICTContentSizeCategoryL"]
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
         app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
         app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
         app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1"
@@ -123,7 +123,7 @@ final class ScreenGalleryTests: XCTestCase {
         if let organization { app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = organization }
         if let statement { app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(statement.utf8).base64EncodedString() }
         app.launch()
-        try require(fixture == "empty" ? "welcomeScroll" : fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
+        try require(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
     }
     private func drag(_ scroll: XCUIElement, up: Bool = true) throws {
         // XCUITest reports some SwiftUI scroll containers as not hittable although a finger can drag them;
@@ -207,7 +207,17 @@ final class ScreenGalleryTests: XCTestCase {
     private func formula() throws { try root("now"); try tap("fundsFormula"); try require("formulaPage") }
     private func close(_ id: String = "cancelManualSheet") throws { try tap(id) }
     private func bill(_ title: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'formulaBill_' AND label == %@", "看" + title)).firstMatch
+        let check = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'billCheck_' AND label == %@", "付了 " + title)).firstMatch
+        if !check.exists && element("billDueNotYet").exists { press(element("billDueNotYet")) }
+        return check
+    }
+    private func deckAction(_ id: String) throws {
+        for _ in 0..<16 {
+            if element(id).exists { return }
+            guard element("butlerDeckNext").exists else { break }
+            try tap("butlerDeckNext")
+        }
+        try require(id)
     }
     private func longPress(_ target: XCUIElement) throws { try reveal(target); target.press(forDuration: 0.8) }
     private func toast() throws { try require("toastMessage"); try require("undoLastChange") }
@@ -253,7 +263,74 @@ final class ScreenGalleryTests: XCTestCase {
     func testWalk08Settings() { try? launch(); settingsPages() }
     func testWalk09Imports() { try? launch(); importsAndReceipt() }
     func testWalk10States() { try? launch(); specificStates() }
-    func testWalk11Empty() { try? launch(); emptyAndWelcome() }
+    func testWalk11Empty() { try? launch(); emptyStates() }
+
+    func testWalk46Batch1() { round46Batch1(dark: false, large: false) }
+    func testWalk46Batch1Dark() { prefix = "46-dark-"; round46Batch1(dark: true, large: false) }
+    func testWalk46Batch1Large() { prefix = "46-a11y-"; round46Batch1(dark: false, large: true) }
+
+    private func round46Batch1(dark: Bool, large: Bool) {
+        func load(_ fixture: String) throws { try launch(fixture, dark: dark, large: large) }
+        stop("DS-Nav") { try load("v46-hard"); try tap("fundsFormula"); try require("formulaPage"); try audit46() }
+        stop("Quick") { try load("v46-home"); try longPress(element("addEntry")); try require("quickRepeatMenu"); try require("manageQuickRepeats"); try audit46() }
+        stop("Home-C") { try load("v46-home"); try require("renewalCard"); try require("openLetterInbox"); try audit46() }
+        stop("Home-A") { try tap("stopRenewal"); try require("butlerReceipt"); try require("undoButlerReceipt"); try audit46() }
+        stop("Home-B") { try load("v46-quiet"); try require("todayEntries"); try audit46() }
+        stop("Deck") { try load("v46-deck"); try tap("openLetterInbox"); try require("butlerDeckNext"); try require("pendingImportsCard"); try audit46() }
+        stop("Home-Payday") { try load("v46-leftover"); try require("leftoverSave"); try audit46() }
+        stop("Payday-Amount") { try load("v46-payday"); try tap("paydayArrived"); try keys("8510"); try require("paydayExtraToSavings"); try audit46() }
+        stop("First") { try load("v46-empty"); try require("firstUseCard"); try require("firstEntry"); try audit46() }
+        stop("Home-Bill") { try load("v46-bill"); try require("billDuePaid"); try audit46() }
+        stop("Home-Gap") { try load("v46-gap"); try require("openReconcile"); try audit46() }
+        stop("Recon") {
+            try tap("openReconcile"); try require("reconcileSheet")
+            let field = element("reconcileField_招行储蓄卡")
+            let old = field.value as? String ?? ""
+            guard let amount = Double(old.replacingOccurrences(of: ",", with: "")) else { throw Miss(description: "Non-numeric reconcile input") }
+            try tap(field)
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + String(format: "%.2f", amount - 412))
+            if app.keyboards.firstMatch.exists { app.toolbars.buttons["完成"].firstMatch.tap() }
+            try require("reconcileResult"); try audit46()
+        }
+        stop("Recon-Done") { try tap("reconcileApply"); try require("toastMessage"); try require("todayEntries"); try audit46() }
+        stop("Home-Over") { try load("v46-over"); try require("coverSaveLess"); try require("coverFromReserve"); try audit46() }
+        stop("Over-Cover") { try tap("coverSaveLess"); try tap("coverCushion"); try require("amountSheetAmount"); try audit46() }
+        stop("Over-Done") { try tap("amountSheetDone"); try require("dailyPace"); try require("toastMessage"); try audit46() }
+        stop("Home-Busy") { try load("v46-busy"); try require("importBusyRow"); try require("organizeProgress"); try audit46() }
+        stop("Home-Hidden") { try load("v46-home"); try tap("toggleAmountVisibility"); try require("stopRenewal"); try audit46() }
+        stop("Home-Hard") { try load("v46-hard"); try require("renewalCard"); try audit46() }
+        stop("Big-Home") { try launch("v46-big", dark: dark, large: true); try require("todayEntries"); try audit46() }
+        stop("Spend") { try load("v46-spend"); try tap("fundsFormula"); try require("formulaRow_income"); try require("formulaRow_spent"); try audit46() }
+        stop("Saved") { try load("v46-saved"); try root("saving"); try tap("openButlerSaved"); try require("butlerSavedTotal"); try audit46() }
+        // These three boards specify behavior, rather than another phone page.
+        stop("Goal") { try load("v46-home"); try require("stopRenewal"); try audit46() }
+        stop("Butler-Kinds") { try load("v46-deck"); try tap("openLetterInbox"); try require("butlerDeckNext"); try tap("butlerDeckNext"); try audit46() }
+        stop("Words") { try load("v46-home"); try settings(); try reveal(element("butlerNoticeSettings")); try require("butlerNotice_ordinary"); try audit46() }
+    }
+
+    /// Check visible controls only: scroll content below the viewport is expected.
+    /// Native keyboard keys and menus are owned by the system, not by the page.
+    private func audit46() throws {
+        let controls = ["addEntry", "stopRenewal", "keepRenewal", "openLetterInbox", "butlerDeckNext", "undoButlerReceipt", "firstEntry", "firstImport", "billDuePaid", "billDueNotYet", "coverSaveLess", "coverFromReserve", "reconcileApply", "amountSheetDone", "paydayArrived"]
+        var visible: [(String, CGRect)] = []
+        for id in controls {
+            let target = element(id)
+            guard target.exists, target.isHittable else { continue }
+            let frame = target.frame
+            guard frame.width >= 44, frame.height >= 44 else { throw Miss(description: id + " has a small hit target") }
+            guard frame.minX >= app.frame.minX - 1, frame.maxX <= app.frame.maxX + 1,
+                  frame.minY >= app.frame.minY, frame.maxY <= app.frame.maxY else { throw Miss(description: id + " is outside the screen") }
+            for (other, bounds) in visible where bounds.intersects(frame) {
+                let overlap = bounds.intersection(frame)
+                if overlap.width > 2 && overlap.height > 2 { throw Miss(description: id + " overlaps " + other) }
+            }
+            visible.append((id, frame))
+        }
+        for id in ["availableFunds", "dailyPace", "butlerSavedTotal"] {
+            let target = element(id)
+            if target.exists, onScreen(target), target.label.contains("…") { throw Miss(description: id + " truncates money") }
+        }
+    }
 
     private func rootsAndLedger() {
         stop("01-now-01-top") { try launch(); try require("fundsFormula") }
@@ -261,14 +338,11 @@ final class ScreenGalleryTests: XCTestCase {
         stop("01-now-03-bottom") { for _ in 0..<6 { try drag(element("nowScroll")) } }
         stop("01-now-04-hidden-amounts") { try root("now"); try tap("toggleAmountVisibility"); try require("fundsFormula") }
         stop("01-now-05-todo") { try launch(); try tap("openLetterInbox"); try require("letterInbox") }
-        stop("01-now-06-weekly-review") { try tap("weeklyReviewRow"); try require("letterBody") }
+        stop("01-now-06-weekly-review") { try root("ledger"); try tap("ledgerMode_where"); try tap("openWeekly"); try require("letterBody") }
         stop("01-now-07-weekly-review-bottom") { try drag(app.scrollViews.firstMatch) }
         stop("01-now-08-hidden-ledger") { try launch(); try tap("toggleAmountVisibility"); try root("ledger"); try require("entriesScroll") }
         stop("01-now-09-hidden-saving") { try root("saving"); try require("savingTabScroll") }
         stop("01-now-10-hidden-yubai") { try root("yubai"); try require("openProfile") }
-        stop("01-now-11-butler-evidence-sheet") { try launch(); try tap("openLetterInbox"); try tap("butlerEvidence_" + galleryID(652)); try require("butlerEvidencePage") }
-        stop("01-now-12-proposal-sheet") { try launch(); try tap("openLetterInbox"); try tap("butlerPrimary_" + galleryID(652)); try require("butlerProposalPage") }
-        stop("01-now-13-proposal-applied-toast") { try tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '改好这'")).firstMatch); try toast() }
         stop("02-saving-01-tab") { try launch(); try root("saving"); try require("savingTabScroll") }
         stop("03-ledger-01-detail-top") { try launch(); try root("ledger"); try require("entriesScroll") }
         stop("03-ledger-02-detail-middle") { for _ in 0..<3 { try drag(element("entriesScroll")) } }
@@ -286,8 +360,6 @@ final class ScreenGalleryTests: XCTestCase {
         stop("03-ledger-14-split-undone") { try tap("undoLastChange"); try require("ledgerEntry_" + galleryID(200)) }
         stop("03-ledger-15-where-top") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try require("whereTotal") }
         stop("03-ledger-16-where-middle") { try drag(element("insightsScroll")) }
-        stop("03-ledger-17-where-cash-chart") { try reveal(element("cashTimelineChart")); try require("cashTimelineCard") }
-        stop("03-ledger-18-where-chart-selected") { try tap("cashTimelineChart"); try require("cashTimelineReadout") }
         stop("03-ledger-19-where-bottom") { for _ in 0..<5 { try drag(element("insightsScroll")) } }
         stop("03-ledger-20-where-category") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try tap("insightCategory_0"); try require("whereCategoryPage") }
         stop("03-ledger-21-where-category-bottom") { try reveal(element("whereCategoryEntries")) }
@@ -299,17 +371,14 @@ final class ScreenGalleryTests: XCTestCase {
 
     private func formulaAndAccounts() {
         stop("04-formula-01-current") { try launch(); try formula() }
-        stop("04-formula-02-bottom") { try reveal(element("formulaAddBill")) }
-        stop("04-formula-03-cycle-menu") { try tap("formulaCycle"); try require("formulaCyclePast_0") }
-        stop("04-formula-04-past-cycle") { try tap("formulaCyclePast_0"); try require("closedFormulaCard") }
-        stop("04-formula-05-past-cycle-where") { try tap("closedFormulaWhere"); try require("whereTotal") }
+        stop("04-formula-02-bottom") { try reveal(element("formulaRow_daily")) }
         stop("04-formula-06-edit-reserve") { try launch(); try formula(); try tap("formulaRow_fixedSavings"); try require("amountSheetAmount") }
         stop("04-formula-07-edit-saving") { try launch(); try formula(); try tap("formulaRow_saving"); try require("amountSheetAmount") }
-        stop("04-formula-08-budget") { try launch(); try formula(); try tap("openSpendingParts"); try require("spendingPartsPage") }
+        stop("04-formula-08-budget") { try launch(); try settings("openSpendingParts"); try require("spendingPartsPage") }
         stop("04-formula-09-add-budget-alert") { try tap("addBudgetPart"); try wait({ self.app.alerts.firstMatch.exists }, "Add budget alert") }
         stop("04-formula-10-budget-alert-keyboard") { try tap(app.alerts.firstMatch.textFields.firstMatch); app.alerts.firstMatch.textFields.firstMatch.typeText(longName); try requireKeyboard() }
-        stop("04-formula-11-budget-amount-sheet") { try launch(); try formula(); try tap("openSpendingParts"); try tap("budgetAmount_合成超支分项" + longName); try require("amountSheetAmount") }
-        stop("04-formula-12-budget-category-sheet") { try launch(); try formula(); try tap("openSpendingParts"); try tap("budgetCategory_" + galleryID(350)); try require("categoryPickerCategory_餐饮") }
+        stop("04-formula-11-budget-amount-sheet") { try launch(); try settings("openSpendingParts"); try tap("budgetAmount_合成超支分项" + longName); try require("amountSheetAmount") }
+        stop("04-formula-12-budget-category-sheet") { try launch(); try settings("openSpendingParts"); try tap("budgetCategory_" + galleryID(350)); try require("categoryPickerCategory_餐饮") }
         stop("05-accounts-01-list-top") { try launch(); try formula(); try tap("formulaRow_hand"); try require("accountsPage") }
         stop("05-accounts-02-list-bottom") { try reveal(element("addAccount")) }
         stop("05-accounts-03-credit") { try tap("accountRow_信用卡"); try require("accountDetailPage") }
@@ -318,7 +387,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("05-accounts-06-editor-long-keyboard") { try type(longName + latinName, into: "accountName"); try requireKeyboard() }
         stop("05-accounts-07-archived-account") { try launch(); try formula(); try tap("formulaRow_hand"); try tap("accountRow_已归档的旧银行卡"); try require("accountDetailPage") }
         stop("05-accounts-08-reconcile") { try launch(); try formula(); try tap("formulaRow_hand"); try tap("reconcileAll"); try require("reconcileSheet") }
-        stop("05-accounts-09-reconcile-one-account") { try launch(); try tap("openLetterInbox"); let card = element("butlerCard_staleBalance"); try tap(card.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'butlerPrimary_' ")).firstMatch); try require("accountBalance"); try wait({ self.element("accountBalance").isEnabled }, "Single-account reconciliation") }
+        stop("05-accounts-09-reconcile-one-account") { try launch("v46-gap"); try tap("openReconcile"); try require("reconcileField_招行储蓄卡") }
     }
 
     private func bills() {
@@ -326,22 +395,19 @@ final class ScreenGalleryTests: XCTestCase {
         stop("06-bills-02-list-bottom") { for _ in 0..<12 { try drag(element("fixedFlowsScroll")) } }
         stop("06-bills-03-editor") { try launch(); try formula(); try tap("formulaRow_bills"); try tap(buttonPrefix("editFixedFlow_")); try require("fixedFlowTitle") }
         stop("06-bills-04-editor-schedule") { try tap("fixedFlowSchedule"); try wait({ self.app.datePickers.count > 0 || self.app.pickerWheels.count > 0 }, "Schedule controls") }
-        stop("06-bills-05-detail") { try launch(); try formula(); try tap("formulaBill_" + galleryID(300)); try require("billDetailPage") }
+        stop("06-bills-05-detail") { try launch("v46-bill"); try tap("billDueNotYet"); try tap(buttonPrefix("formulaBill_")); try require("billDetailPage") }
         stop("06-bills-06-detail-history") { try reveal(element("billDetailHistory")) }
-        stop("06-bills-07-long-press-menu") { try launch("v45-bill"); try formula(); try longPress(bill("话费和宽带")); try require("billMenu_move") }
+        stop("06-bills-07-long-press-menu") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try require("billMenu_move") }
         stop("06-bills-08-move-occurrence") { try tap("billMenu_move"); try require("billMoveSheet") }
         stop("06-bills-09-move-future") { try calendarDay(Calendar.current.date(byAdding: .day, value: 2, to: Date())!, id: "billMoveCalendar") }
         stop("06-bills-10-move-toast") { try tap("billMoveDone"); try toast() }
-        stop("06-bills-11-variable-pay") { try launch("v45-bill"); try formula(); let row = bill("电费"); try reveal(row); let id = String(row.identifier.dropFirst("formulaBill_".count)); try tap("billCheck_" + id); try require("amountSheetAmount") }
+        stop("06-bills-11-variable-pay") { try launch("v45-bill"); let row = bill("电费"); try reveal(row); try tap(row); try require("amountSheetAmount") }
         stop("06-bills-12-paid-toast") { try keys("163.40"); try tap("amountSheetDone"); try toast() }
-        stop("06-bills-13-link-existing") { try launch("v45-bill"); try formula(); try longPress(bill("话费和宽带")); try tap("billMenu_linked"); try require("billLinkSheet") }
-        stop("06-bills-14-match-existing") { try launch("v45-bill-match"); try formula(); let row = bill("话费和宽带"); try reveal(row); let id = String(row.identifier.dropFirst("formulaBill_".count)); try tap("billCheck_" + id); try require("billMatchConfirm") }
-        stop("06-bills-15-skip-toast") { try launch("v45-bill"); try formula(); try longPress(bill("话费和宽带")); try tap("billMenu_skip"); try toast() }
-        stop("06-bills-16-stop-confirmation") { try launch("v45-bill"); try formula(); try longPress(bill("话费和宽带")); try tap("billMenu_stop"); try require("fixedFlowStopConfirm") }
+        stop("06-bills-13-link-existing") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try tap("billMenu_linked"); try require("billLinkSheet") }
+        stop("06-bills-14-match-existing") { try launch("v45-bill-match"); let row = bill("话费和宽带"); try reveal(row); try tap(row); try require("billMatchConfirm") }
+        stop("06-bills-15-skip-toast") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try tap("billMenu_skip"); try toast() }
+        stop("06-bills-16-stop-confirmation") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try tap("billMenu_stop"); try require("fixedFlowStopConfirm") }
         stop("06-bills-17-stop-toast") { try tap("fixedFlowStopConfirm"); try toast() }
-        stop("06-bills-18-add-bill") { try launch(); try formula(); try tap("formulaAddBill"); try require("billAddName") }
-        stop("06-bills-19-add-bill-long-keyboard") { try type(longName + latinName, into: "billAddName"); try requireKeyboard() }
-        stop("06-bills-20-add-bill-day") { try tap("billAddDay"); try require("billDay_1") }
         stop("06-bills-21-add-recurring-editor") { try launch(); try formula(); try tap("formulaRow_bills"); try tap("addFixedFlow"); try require("fixedFlowTitle") }
     }
 
@@ -364,7 +430,6 @@ final class ScreenGalleryTests: XCTestCase {
         stop("02-saving-17-wish-dropped-toast") { try launch(); try root("saving"); try tap("openWishlist"); let wish = element("wish_" + galleryID(400)); try reveal(wish.buttons["不买了"]); try tap(wish.buttons["不买了"]); try toast() }
         stop("02-saving-18-monthly-history") { try launch(); try root("saving"); try tap("openSavings"); try reveal(element("savingHistory")) }
         stop("02-saving-19-payback-declined") { try launch(); try root("saving"); try tap("openReserve"); try tap("reservePaybackDecline"); try require("reservePaybackProgress") }
-        stop("02-saving-20-focused-wish-sheet") { try launch(); try tap("openLetterInbox"); let card = element("butlerCard_cooldownDue"); try tap(card.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'butlerPrimary_' ")).firstMatch); try require("wishlistPage"); try require("closeSheet") }
     }
 
     private func entrySheets() {
@@ -477,9 +542,9 @@ final class ScreenGalleryTests: XCTestCase {
         stop("11-import-10-receipt-separate") { try launch("v45-receipt"); try longPress(element("addEntry")); try tap("quickReceipt"); try require("receiptSummary", timeout: 15) }
         stop("11-import-11-receipt-merged") { try tap("receiptSelect_2"); try tap("receiptMode_merged"); try wait({ self.element("saveReceiptEntries").value as? String == "1 笔" }, "Merged receipt preparation") }
         stop("11-import-12-receipt-category") { try tap("receiptCategory_0"); try require("receiptPickCategory_0Category_餐饮") }
-        stop("11-import-13-fallback-groups") { try launch("salary", organization: "by-party"); try tap("openLetterInbox"); try tap("organizeImports"); try require("groupUnsortedByParty", timeout: 20); try tap("groupUnsortedByParty"); try require("unsortedGroupsScroll") }
+        stop("11-import-13-fallback-groups") { try launch("v46-sort", organization: "by-party"); try require("groupUnsortedByParty", timeout: 20); try tap("groupUnsortedByParty"); try require("unsortedGroupsScroll") }
         stop("11-import-14-fallback-group-detail") { try tap("unsortedGroup_out:合成对方甲"); try require("unsortedGroupScroll") }
-        stop("11-import-15-unsorted-undo-bar") { try launch("salary", organization: "by-party"); try tap("openLetterInbox"); try tap("organizeImports"); try require("groupUnsortedByParty", timeout: 20); try tap("groupUnsortedByParty"); try tap("unsortedGroup_out:合成对方甲"); try tap("unsortedCategory_餐饮"); try tap("unsortedMainOnly_餐饮"); try tap("applyUnsortedGroup"); try require("unsortedUndoMessage"); try require("quickSortUndo") }
+        stop("11-import-15-unsorted-undo-bar") { try launch("v46-sort", organization: "by-party"); try require("groupUnsortedByParty", timeout: 20); try tap("groupUnsortedByParty"); try tap("unsortedGroup_out:合成对方甲"); try tap("unsortedCategory_餐饮"); try tap("unsortedMainOnly_餐饮"); try tap("applyUnsortedGroup"); try require("unsortedUndoMessage"); try require("quickSortUndo") }
         stop("11-import-16-preview") { try launch("import", statement: galleryStatement); try tap("addEntry"); try tap("importFromEntry"); try require("commitImport", timeout: 20) }
         stop("11-import-17-preview-category-mapping") { try tap("importCategoryMapping"); try require("createImportCategory_合成导入分类" + longName) }
     }
@@ -498,16 +563,13 @@ final class ScreenGalleryTests: XCTestCase {
         stop("12-states-11-cover-toast") { try tap("amountSheetDone"); try toast() }
         stop("12-states-12-cover-reserve-cushion") { try launch("v45-over"); try tap("coverFromReserve"); try tap("coverCushion"); try require("amountSheetAmount") }
         stop("12-states-13-cover-reserve-toast") { try tap("amountSheetDone"); try toast() }
-        stop("12-states-14-fast-spending") { try launch("v45-fast"); try require("paceChart") }
         stop("12-states-15-reconcile-gap") { try launch("v45-gap"); try tap("openReconcile"); try require("reconcileSheet") }
         stop("12-states-16-reconcile-keyboard") { try tap("reconcileField_合成银行卡"); try requireKeyboard() }
-        stop("12-states-17-payday-setup") { try launch("v45-new"); try tap("setupItem_payday"); try require("paydaySetupSheet") }
-        stop("12-states-18-payday-setup-amount") { try tap("paydaySetupAmount"); try require("amountSheetAmount") }
-        stop("12-states-19-salary-candidate") { try launch("salary"); try tap("openLetterInbox"); try require("confirmSalary") }
+        stop("12-states-19-salary-candidate") { try launch("salary"); try tap("openLetterInbox"); try deckAction("confirmSalary") }
         stop("12-states-20-salary-confirmed-toast") { try tap("confirmSalary"); try toast() }
         stop("12-states-21-locked") { try launch("gallery-locked"); try require("lockedPage") }
         stop("12-states-22-bill-due-card") { try launch("v45-bill"); try require("billDuePaid") }
-        stop("12-states-23-new-ledger-setup") { try launch("v45-new"); try require("setupItem_payday") }
+        stop("12-states-23-first-entry") { try launch("v46-empty"); try tap("firstEntry"); try require("entryKeypadAmount") }
         stop("12-states-24-reconcile-difference") {
             try launch("v45-gap"); try tap("openReconcile")
             let field = element("reconcileField_合成银行卡"); try tap(field)
@@ -520,8 +582,8 @@ final class ScreenGalleryTests: XCTestCase {
         stop("12-states-25-reconcile-toast") { try tap("reconcileApply"); try toast() }
     }
 
-    private func emptyAndWelcome() {
-        stop("13-empty-01-now") { try launch("gallery-empty"); try require("addFirstAccount") }
+    private func emptyStates() {
+        stop("13-empty-01-now") { try launch("gallery-empty"); try require("firstUseCard") }
         stop("13-empty-02-saving") { try root("saving"); try require("savingTabScroll") }
         stop("13-empty-03-ledger") { try root("ledger"); try require("emptyLedgerAdd") }
         stop("13-empty-04-where") { try tap("ledgerMode_where"); try require("whereTotal") }
@@ -529,13 +591,13 @@ final class ScreenGalleryTests: XCTestCase {
         stop("13-empty-06-wishlist") { try root("saving"); try tap("openWishlist"); try require("wishlistPage") }
         stop("13-empty-07-memories") { try root("yubai"); try tap("openMemories"); try require("emptyMemories") }
         stop("13-empty-08-import-history") { try launch("gallery-empty"); try settings("openImportHistory"); try require("emptyImportHistory") }
-        stop("13-empty-09-accounts") { try launch("gallery-empty"); try tap("addFirstAccount"); try require("accountName") }
-        stop("13-empty-10-welcome") { try launch("empty"); try require("welcomeBalanceCard") }
-        stop("13-empty-11-onboarding-account-keyboard") { try tap("welcomeOtherAccount"); try type(longName, into: "accountName"); try requireKeyboard() }
-        stop("13-empty-12-onboarding-privacy") { try launch("empty"); try tap("welcomeCloudAI"); try require("intelligencePrivacyPage") }
+        stop("13-empty-09-accounts") { try launch("gallery-empty"); try settings("openAccounts"); try tap("addAccount"); try require("accountName") }
+        stop("13-empty-10-first-use") { try launch("empty"); try require("firstUseCard") }
+        stop("13-empty-11-first-entry-keyboard") { try tap("firstEntry"); try type(longName, into: "entryPurpose"); try requireKeyboard() }
+        stop("13-empty-12-privacy") { try launch("empty"); try settings("openIntelligencePrivacy"); try require("intelligencePrivacyPage") }
         stop("13-empty-13-fixed-bills") { try launch("manual"); try formula(); try tap("formulaRow_bills"); try require("fixedFlowsScroll") }
         stop("13-empty-14-frequent-entries") { try launch("gallery-empty"); try settings("openQuickCapture"); try require("frequentEntriesPage") }
-        stop("13-empty-15-budget") { try launch("manual"); try formula(); try tap("openSpendingParts"); try require("budgetTotal") }
+        stop("13-empty-15-budget") { try launch("manual"); try settings("openSpendingParts"); try require("budgetTotal") }
     }
 
     private func requireKeyboard() throws {
@@ -554,7 +616,6 @@ final class ScreenGalleryTests: XCTestCase {
         stop("02-saving") { try root("saving"); try require("savingTabScroll") }
         stop("03-ledger") { try root("ledger"); try require("entriesScroll") }
         stop("04-where") { try tap("ledgerMode_where"); try require("whereTotal") }
-        stop("05-cash-chart") { try reveal(element("cashTimelineChart")) }
         stop("06-yubai") { try root("yubai"); try require("openProfile") }
         stop("07-profile") { try tap("openProfile"); try require("profilePage") }
         stop("08-principle-keyboard") { try tap("addPrinciple"); try requireKeyboard() }

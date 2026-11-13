@@ -73,8 +73,6 @@ struct ImportView: View {
     @Environment(\.dynamicTypeSize) private var textSize
     var pasted: PastedStatement? = nil
     var initialScreenshot: Data? = nil
-    /// Welcome reviews a local draft; account creation and commit belong to Start.
-    private var welcomeReview: Binding<ImportPreview>? = nil
     @State private var accountID: UUID?
     @State private var filePicker = false
     @State private var photoPicker = false
@@ -115,14 +113,13 @@ struct ImportView: View {
     @State private var editingScreenshotRow: ImportRow?
     @State private var showScreenshot = false
     @State private var receiptCapture: ImportReceiptSelection?
-    init(pasted: PastedStatement? = nil, initialScreenshot: Data? = nil, welcomeReview: Binding<ImportPreview>? = nil) {
-        self.pasted = pasted; self.initialScreenshot = initialScreenshot; self.welcomeReview = welcomeReview
-        _preview = State(initialValue: welcomeReview?.wrappedValue)
+    init(pasted: PastedStatement? = nil, initialScreenshot: Data? = nil) {
+        self.pasted = pasted; self.initialScreenshot = initialScreenshot
     }
     private var resultTitle: String {
         guard let result else { return preview == nil ? "导入账单" : "核对 \(processed + 1)/\(max(queueTotal, 1))" }
         guard let batch = store.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) else { return "这一批已撤销" }
-        return batch.needsOrganization == true ? "账单已保存" : "整理好了"
+        return batch.needsOrganization == true ? "账单已保存" : "导入结果"
     }
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
@@ -139,9 +136,9 @@ struct ImportView: View {
         .amountPrivacy(store.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
         .manualSheetHeader(resultTitle, actionTitle: result != nil ? "整批撤销" : "导入", primary: false,
                            enabled: result.map { store.organizingBatchID != $0.id } ?? true, cancelTitle: result != nil ? "关闭" : "取消",
-                           showsAction: result == nil && preview != nil && welcomeReview == nil, actionIdentifier: "undoImportResult", action: {
+                           showsAction: result == nil && preview != nil, actionIdentifier: "undoImportResult", action: {
             if let result, let batch = store.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) { store.undoImport(batch.id) }
-            else if preview != nil && welcomeReview == nil { returnToIntake() }
+            else if preview != nil { returnToIntake() }
         })
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .image, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: true) { selection in
             switch selection {
@@ -179,7 +176,6 @@ struct ImportView: View {
         .onChange(of: categoryMappings) { _, _ in refreshPreview() }
         .onDisappear { parsingTask?.cancel(); queueTask?.cancel() }
         .onAppear {
-            guard welcomeReview == nil else { return }
             if !appeared, let initialScreenshot { enqueue([ImportQueueFile(input: .screenshot(initialScreenshot), name: "截图.png")]); reviewWhenReady = true }
             if appeared {
                 if queueTask == nil || queueTask?.isCancelled == true {
@@ -297,9 +293,9 @@ struct ImportView: View {
         VStack(spacing: YubaiSpace.none) {
             Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
                 previewHeader(p)
-                if welcomeReview == nil { decisionCard(p) }
+                decisionCard(p)
                 if !screenshot {
-                    if welcomeReview == nil {
+                    Group {
                         Card(style: .list) {
                             VStack(spacing: YubaiSpace.none) {
                                 accountPicker
@@ -331,7 +327,7 @@ struct ImportView: View {
                     Toggle("金额和原图对得上", isOn: $screenshotConfirmed).tint(YubaiColor.toggleOn).accessibilityIdentifier("confirmScreenshotAmounts")
                 }
             }
-            if welcomeReview == nil { previewActions(p) }
+            previewActions(p)
         }
     }
     private func previewHeader(_ p: ImportPreview) -> some View {
@@ -555,7 +551,6 @@ struct ImportView: View {
     private func select(_ row: ImportRow, included: Bool) {
         guard let index = preview?.rows.firstIndex(where: { $0.id == row.id }) else { return }
         rowSelections[row.line] = included; preview?.rows[index].included = included
-        if let welcomeReview, let preview { welcomeReview.wrappedValue = preview }
     }
     private func enqueue(_ files: [ImportQueueFile]) {
         localError = nil; queue.append(contentsOf: files); queueTotal += files.count

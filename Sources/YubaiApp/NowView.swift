@@ -1,7 +1,7 @@
 import SwiftUI
 import YubaiCore
 
-/// 现在：一个大数、一行日均、一张图，需要你动手的只展开最急的一张卡。
+/// 现在：还能花、管家说的一件事、接下来七天和最近记录。
 struct NowView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
@@ -25,24 +25,12 @@ struct NowView: View {
 
     // MARK: Page
 
-    @ViewBuilder private var content: some View {
-        if store.accounts.isEmpty {
-            EmptyAccountState { store.sheetSource = nil; store.sheet = .account(nil) }
-        } else {
-            populated
-        }
-    }
-
-    private var populated: some View {
+    private var content: some View {
         let items = store.inboxItems
         let pace = store.pace
         return VStack(alignment: .leading, spacing: YubaiSpace.none) {
             hero(pace)
             slot(items)
-            if let pace, pace.lateDays == nil { chart(pace) }
-            if let burst = pace?.burst, pace?.isFast == true, pace?.overBy == 0 { FastRow(burst: burst).padding(.top, YubaiSpace.gapGroup) }
-            if let options = store.overspend { OverspendRows(options: options).padding(.top, YubaiSpace.gapGroup) }
-            if showsSetup(pace) { SetupCard(done: store.setupDone).padding(.top, YubaiSpace.gapSection) }
             upcoming(items)
             recent
         }
@@ -51,7 +39,8 @@ struct NowView: View {
     // MARK: Hero
 
     private func horizonText(_ pace: CyclePace?) -> String {
-        guard let pace else { return "手上所有的钱" }
+        guard let pace else { return store.sortedEntries.isEmpty ? "还没有账" : "这个月" }
+        if store.funds.cycleIsPayday && Dates.day(pace.start) == Dates.day(store.financialNow) { return "今天发工资" }
         if let late = pace.lateDays { return late == 0 ? "今天发工资" : "工资晚了 \(late) 天" }
         let days = "还有 \(pace.daysLeft) 天"
         if textSize.isAccessibilitySize || !store.funds.cycleIsPayday { return days }
@@ -60,9 +49,9 @@ struct NowView: View {
 
     private func hero(_ pace: CyclePace?) -> some View {
         let funds = store.funds
-        let over = (pace?.overBy ?? 0) > 0
+        let over = funds.available < 0
         let headline = over ? "多花了" : "还能花"
-        let value = over ? (pace?.overBy ?? 0) : funds.available
+        let value = over ? -funds.available : funds.available
         let horizon = horizonText(pace)
         let spoken = headline + "，" + horizon + "，" + (hide ? "金额已隐藏" : amount2(value, hide: false))
         return VStack(alignment: .leading, spacing: YubaiSpace.space2) {
@@ -104,64 +93,37 @@ struct NowView: View {
 
     // MARK: Card slot
 
-    @ViewBuilder private func slot(_ items: [LetterItem]) -> some View {
-        if let first = items.first, first.takesHomeSlot {
-            card(for: first, more: items.count - 1).padding(.top, YubaiSpace.gapGroup + YubaiSpace.space2)
-        } else if !items.isEmpty {
-            todoLink(count: items.count).padding(.top, YubaiSpace.gapGroup + YubaiSpace.space2)
-        }
-    }
-
-    @ViewBuilder private func card(for item: LetterItem, more: Int) -> some View {
-        switch item {
-        case .payday(let due): PaydayCard(due: due, more: more)
-        case .bill(let bill): BillDueCard(bill: bill, more: more)
-        case .leftover(let saving): NewCycleCard(saving: saving, more: more)
-        case .gap(let gap): GapCard(gap: gap, more: more)
-        case .imports(let pending):
-            if store.organizingPendingImports || store.organizingBatchID != nil { ImportBusyRow(pending: pending) }
-            else { ImportLookCard(pending: pending, more: more) }
-        case .salary, .butler: EmptyView()
-        }
-    }
-
-    private func todoLink(count: Int) -> some View {
-        TabNavigationLink(.todo) { TodoView() } label: {
-            Card(style: .compact) {
-                HStack(spacing: YubaiSpace.gapGroup) {
-                    Text("待处理").yubaiFont(YubaiFont.rowTitle, weight: .semibold)
-                    Spacer(minLength: YubaiSpace.space8)
-                    Text("\(count) 件").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-                }.frame(minHeight: YubaiSize.rowIcon)
+    @ViewBuilder private func slot(_ items: [HomeTask]) -> some View {
+        Group {
+            if let receipt = store.homeReceipt {
+                ButlerReceiptRow(receipt: receipt)
+                    .task(id: receipt.id) {
+                        #if DEBUG && targetEnvironment(simulator)
+                        if UITestSupport.keepsUndoReceipt { return }
+                        #endif
+                        do { try await Task.sleep(for: .seconds(6)) } catch { return }
+                        if store.homeReceipt?.id == receipt.id { store.homeReceipt = nil }
+                    }
+            } else if store.sortedEntries.isEmpty && items.isEmpty {
+                QuestionCard(eyebrow: "从这里开始", title: "记下第一笔，或者把账单导进来",
+                             yesTitle: "记一笔", noTitle: "导入账单", yesIdentifier: "firstEntry", noIdentifier: "firstImport",
+                             yes: { store.beginFirstEntry() }, no: { store.beginFirstEntry(importing: true) })
+                    .accessibilityIdentifier("firstUseCard")
+            } else if (store.organizingPendingImports || store.organizingBatchID != nil) && (items.first?.id.hasPrefix("imports:") ?? true) {
+                ImportBusyRow(pending: store.pendingOrganization)
+            } else if let first = items.first {
+                HomeTaskCard(item: first, more: items.count - 1)
             }
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openLetterInbox")
-    }
-
-    // MARK: Chart
-
-    private func chart(_ pace: CyclePace) -> some View {
-        PaceChart(pace: pace, hide: hide).padding(.top, YubaiSpace.gapGroup + YubaiSpace.space2)
-    }
-
-    private func showsSetup(_ pace: CyclePace?) -> Bool {
-        let done = store.setupDone
-        if pace == nil { return true }
-        return done.count < Setup.Item.allCases.count && store.sortedEntries.count < 20
+        }.padding(.top, YubaiSpace.gapGroup + YubaiSpace.space2)
     }
 
     // MARK: 接下来 7 天
 
     private func upcomingRows(_ items: [LetterItem]) -> [Occurrence] {
-        let limit = Dates.addDays(7, to: Dates.day(Date()))
         let due = store.paydayDue
-        let carded: String? = {
-            guard let first = items.first else { return nil }
-            if case .bill(let bill) = first { return bill.id }
-            return nil
-        }()
-        return store.funds.occurrences.filter { occurrence in
-            guard Dates.day(occurrence.date) <= limit, occurrence.id != carded else { return false }
+        let carded = Set(items.compactMap { item -> String? in if case .bill(let bill) = item { return bill.id }; return nil })
+        return HomeButler.upcoming(store.current, now: store.financialNow).filter { occurrence in
+            guard !carded.contains(occurrence.id) else { return false }
             if occurrence.inflow, occurrence.planID != nil, occurrence.planID == due?.planID { return false }
             return true
         }
@@ -216,8 +178,15 @@ private struct NowUpcomingRow: View {
         layout {
             Text(NowFormat.monthDay(row.date)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                 .frame(minWidth: textSize.isAccessibilitySize ? nil : 56, alignment: .leading).fixedSize()
-            Text(row.title).yubaiFont(YubaiFont.body).lineLimit(textSize.isAccessibilitySize ? nil : 1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if let planID = row.planID, !row.inflow {
+                TabNavigationLink(.billDetail(planID)) { BillDetailView(planID: planID) } label: {
+                    Text(row.title).yubaiFont(YubaiFont.body).lineLimit(1).truncationMode(.tail)
+                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaBill_" + planID.uuidString)
+            } else {
+                Text(row.title).yubaiFont(YubaiFont.body).lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack(spacing: YubaiSpace.space8) {
                 if estimated && !hide { Text("约").yubaiFont(YubaiFont.amount) }
                 AmountLabel(cents: row.amount, hide: hide, sign: row.inflow ? .inflow : .outflow, ink: row.inflow ? YubaiColor.brandInk : YubaiColor.label)
@@ -310,7 +279,7 @@ private struct NowEntryRow: View {
                 }
                 layout {
                     VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                        Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).lineLimit(stacked ? nil : 1)
+                        Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                         Text(category).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(stacked ? nil : 1)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     AmountLabel(cents: entry.amount, hide: hide, sign: inflow ? .inflow : .outflow, ink: inflow ? YubaiColor.brandInk : YubaiColor.label)

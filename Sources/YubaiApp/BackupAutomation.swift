@@ -23,7 +23,7 @@ import YubaiCore
 
     func start(in store: AppStore) {
         let now = Date()
-        guard task == nil, !store.locked, store.loadFailure == nil, store.preferences.onboardingComplete,
+        guard task == nil, !store.locked, store.loadFailure == nil,
               !store.syncBusy, store.syncChoice == nil, !store.switchingLedgerLocation, !store.choosingSyncVersion,
               LedgerBackup.isAutoBackupDue(store.preferences, now: now),
               let bookmark = UserDefaults.standard.data(forKey: key(store.current.id)) else { return }

@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 import YubaiCore
 
 typealias CardDismissAnimation = (@escaping () -> Bool) -> Void
@@ -120,7 +119,7 @@ struct ButlerCardView: View {
         switch card.action ?? .openEvidence {
         case .openEvidence: return card.kind == .shortfall ? "问问怎么挪" : "看看这几笔"
         case .reconcileAccount: return "对一下余额"
-        case .confirmChangeSet: return "余白想这样改"
+        case .confirmChangeSet: return "余白的建议"
         case .answerQuestion: return "回答这个问题"
         case .openWish: return "看看心愿"
         }
@@ -186,11 +185,8 @@ struct ButlerEvidenceView: View {
                     CardRows(entries) { entry in EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts) }
                 }
             }
-        }.safeAreaInset(edge: .top, spacing: 0) { LedgerPageHeader(title: "明细", backTitle: "每周来信").padding(.horizontal, 20) }
+        }
             .navigationTitle("明细").yubaiNavigation()
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
     }
     private func factRow(_ fact: CardFact) -> some View {
         ViewThatFits(in: .horizontal) {
@@ -279,8 +275,8 @@ struct ButlerProposalView: View {
     var body: some View {
         Page {
             if let change = store.current.pendingChanges.first(where: { $0.id == changeID }) {
-                ProposalCard(title: store.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: Set(change.items.flatMap(\.entryIDs)).isEmpty ? "改好这 \(change.items.count) 项" : "改好这 \(Set(change.items.flatMap(\.entryIDs)).count) 笔", canConfirm: !store.preferences.hideAmounts, confirm: {
-                    if store.apply(change, label: "余白想这样改") { dismiss() }
+                ProposalCard(title: store.preferences.hideAmounts ? "余白的建议" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true), primaryTitle: Set(change.items.flatMap(\.entryIDs)).isEmpty ? "改好这 \(change.items.count) 项" : "改好这 \(Set(change.items.flatMap(\.entryIDs)).count) 笔", canConfirm: !store.preferences.hideAmounts, confirm: {
+                    if store.apply(change, label: "余白的建议") { dismiss() }
                 }, cancel: {
                     if store.update("不改了", { ledger in
                         ledger.pendingChanges.removeAll { $0.id == change.id }
@@ -290,23 +286,19 @@ struct ButlerProposalView: View {
                     }) { dismiss() }
                 })
             } else { Text("这份修改已经处理过了。") }
-        }.navigationTitle("余白想这样改").yubaiNavigation().manualSheetHeader("余白想这样改", cancelTitle: "关闭", showsAction: false).accessibilityIdentifier("butlerProposalPage")
+        }.navigationTitle("余白的建议").yubaiNavigation().manualSheetHeader("余白的建议", cancelTitle: "关闭", showsAction: false).accessibilityIdentifier("butlerProposalPage")
     }
 }
 
 struct LetterDetailView: View {
     @Environment(AppStore.self) private var store
     let cardID: UUID
-    var backTitle = "账本"
     var body: some View {
         Page(topPadding: YubaiSpace.gapGroup) {
             if let card = store.cards.first(where: { $0.id == cardID }) { WeeklyLetterCard(card: card) }
             else { Text("这封周回顾已移除。") }
-        }.safeAreaInset(edge: .top, spacing: 0) { LedgerPageHeader(title: "周回顾", backTitle: backTitle).padding(.horizontal, 20) }
+        }
             .navigationTitle("周回顾").yubaiNavigation()
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
             .onAppear {
                 if store.cards.first(where: { $0.id == cardID })?.dismissedAt == nil {
                     store.update("读过周回顾", recordUndo: false) { ledger in
@@ -427,28 +419,6 @@ struct WeeklyLetterCard: View {
     }
 }
 
-private struct LetterChart: View {
-    let points: [LetterPoint]
-    let progress: Double
-    private var domain: ClosedRange<Double> {
-        let values = points.map { Double($0.available) / 100 }
-        return min(0, values.min() ?? 0)...max(1, values.max() ?? 0)
-    }
-    var body: some View {
-        Chart(points) { point in
-            AreaMark(x: .value("日期", point.date), y: .value("还能花", Double(point.available) / 100))
-                .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand.opacity(0.12))
-            LineMark(x: .value("日期", point.date), y: .value("还能花", Double(point.available) / 100))
-                .interpolationMethod(.stepEnd).foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: YubaiSize.lineWidth))
-        }.chartYScale(domain: domain).chartYAxis(.hidden)
-            .chartPlotStyle { plot in plot.mask(alignment: .leading) { GeometryReader { geometry in Rectangle().frame(width: geometry.size.width * progress) } } }
-            .chartXAxis { AxisMarks(values: .stride(by: .day, count: 2)) { _ in
-                AxisValueLabel(format: .dateTime.month().day()).foregroundStyle(YubaiColor.labelSecondary).font(.system(size: YubaiFont.chartLabel.size))
-            } }.frame(height: 140)
-            .accessibilityElement(children: .ignore).accessibilityLabel("一周还能花变化：" + points.map { Dates.text($0.date) + " " + Money.text($0.available) }.joined(separator: "；"))
-    }
-}
-
 struct LettersView: View {
     @Environment(AppStore.self) private var store
     var body: some View {
@@ -456,7 +426,7 @@ struct LettersView: View {
             if !store.cards.contains(where: { $0.kind == .weeklyLetter }) { EmptyState("envelope", "还没有周回顾", action: "问余白", onAction: { store.sheet = .ask("") }) }
             ForEach(store.cards.filter { $0.kind == .weeklyLetter }.sorted { $0.createdAt > $1.createdAt }) { card in
                 NavigationLink {
-                    LetterDetailView(cardID: card.id, backTitle: "周回顾")
+                    LetterDetailView(cardID: card.id)
                 } label: {
                     HStack(spacing: YubaiSpace.gapGroup) { Text(card.title); Spacer(); Text(Dates.text(card.createdAt)).foregroundStyle(YubaiColor.labelSecondary) }
                         .yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())

@@ -28,7 +28,7 @@ enum UITestSupport {
             ProcessInfo.processInfo.environment["YUBAI_UI_BACKGROUND_FIXTURE"] == "1"
     }
     static var organizationScenario: String? {
-        guard script == "salary", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
+        guard script == "salary" || script == "v46-sort", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
               ["stop-second", "fail-second", "by-party", "by-party-many", "by-party-long", "questions-complete", "questions-stop", "questions-fail"].contains(value) else { return nil }
         return value
     }
@@ -66,7 +66,7 @@ enum UITestSupport {
     }
     /// Round 45 fixtures. Numbers follow the design boards; dates follow the simulator clock.
     static let v45Scripts: Set<String> = [
-        "v45-home", "v45-fast", "v45-over", "v45-bill", "v45-payday", "v45-late", "v45-newcycle", "v45-gap", "v45-new",
+        "v45-home", "v45-over", "v45-bill", "v45-payday", "v45-late", "v45-newcycle", "v45-gap", "v45-new",
         "v45-share", "v45-bill-match", "v45-entry-history", "v45-ask",
         "v45-category", "v45-payback", "v45-split"
     ]
@@ -75,19 +75,15 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (galleryScripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
+              (galleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
-        guard ["import", "welcome-import", "v45-import-merge"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
+        guard ["import", "v45-import-merge"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1] + (erasesThenReimports ? "-input" : ""))
+            .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1])
             .appendingPathComponent("合成账单.csv")
     }
-    static var erasesThenReimports: Bool {
-        script == "welcome-import" && ProcessInfo.processInfo.environment["YUBAI_UI_ERASE_REIMPORT"] == "1"
-    }
-    static var welcomeStatementURL: URL? { script == "welcome-import" ? statementURL : nil }
     @MainActor static func prepare(_ repository: LedgerRepository) throws {
         guard let script else { return }
         func save(_ fixture: Ledger, reason: String) throws {
@@ -104,9 +100,14 @@ enum UITestSupport {
             try save(Ledger(), reason: "合成截图夹具")
             return
         }
-        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty",
-              script != "welcome-import" || erasesThenReimports else { return }
+        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
         let now = Date()
+        if v46Scripts.contains(script) {
+            let value = try v46Ledger(script, now: now)
+            resetGalleryDeviceState(for: value.id)
+            try save(value, reason: "合成截图夹具")
+            return
+        }
         if galleryScripts.contains(script) {
             let ledger = try galleryLedger(script, now: now)
             resetGalleryDeviceState(for: ledger.id)
@@ -118,18 +119,8 @@ enum UITestSupport {
             try prepareSecondBatch(repository, script: script, now: now)
             return
         }
-        if erasesThenReimports {
-            var ledger = Ledger(); ledger.preferences.onboardingComplete = true
-            ledger.accounts = [Account(name: "合成卡")]; ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
-            try save(ledger, reason: "合成测试夹具")
-            return
-        }
         if script == "salary" {
             try save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
-            return
-        }
-        if script.hasPrefix("cashflow") {
-            try save(cashTimelineLedger(low: script == "cashflow-low", now: now), reason: "合成测试夹具")
             return
         }
         if screenshotScripts.contains(script) {
@@ -288,13 +279,6 @@ enum UITestSupport {
         case "v45-home":
             for offset in 1...8 { spend(10_000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
             spend(2800, "午饭", "餐饮", on: earlier(30)); spend(800, "地铁", "交通", on: earlier(20))
-        case "v45-fast":
-            hand = 1_200_000
-            for offset in 4...8 { spend(6000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
-            spend(40_000, "合成购物", "购物", on: day(-3).addingTimeInterval(12 * 3600))
-            spend(38_000, "合成娱乐", "娱乐", on: day(-2).addingTimeInterval(12 * 3600))
-            spend(36_000, "合成聚餐", "餐饮", on: day(-1).addingTimeInterval(12 * 3600))
-            spend(2800, "午饭", "餐饮", on: earlier(30)); spend(800, "地铁", "交通", on: earlier(20))
         case "v45-over":
             hand = 1_029_000; paydayOffset = 5
             bills = [("房租", 327_000, 2, false), ("话费和宽带", 16_000, 3, false), ("电费", 18_000, 4, true)]
@@ -388,39 +372,7 @@ enum UITestSupport {
                                            income: 801_000, target: 200_000, saved: 200_000,
                                            unspent: unspent, leftoverChoice: unspent == 0 ? .keep : nil)]
     }
-    static func cashTimelineLedger(low: Bool, now: Date) -> Ledger {
-        var ledger = Ledger()
-        ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = false
-        ledger.lastReflectionWeek = ButlerCards.isoWeek(now); ledger.lastSubcategoryBatchDay = Dates.text(now)
-        ledger.mutedTopics = ["letter"]
-        let bank = Account(name: "合成工资卡", balance: low ? 60_000 : 900_000, at: now)
-        ledger.accounts = [bank]
-        ledger.entries = (1...365).map {
-            Entry(date: Dates.addDays(-$0, to: Dates.day(now)), amount: 3000, accountID: bank.id, title: "合成日常", category: "餐饮")
-        }
-        let nextSalary = Dates.addDays(11, to: Dates.day(now))
-        var salary = Plan(title: "工资", amount: 1_310_000, dueDate: nextSalary, frequency: .monthly, inflow: true, nature: .income)
-        salary.accountID = bank.id
-        let salaryDay = Dates.calendar.component(.day, from: nextSalary)
-        let nextMonth = Dates.calendar.dateInterval(of: .month, for: nextSalary)!.start
-        for offset in 1...4 {
-            let month = Dates.addMonths(-offset, to: nextMonth)
-            let last = Dates.calendar.range(of: .day, in: .month, for: month)!.count
-            let day = Dates.addDays(min(salaryDay, last) - 1, to: month)
-            guard day <= now else { continue }
-            var receipt = Entry(date: day, amount: 1_310_000, nature: .income, accountID: bank.id, title: "工资", category: "工资奖金")
-            receipt.planID = salary.id; receipt.occurrence = day
-            ledger.entries.append(receipt)
-        }
-        var bill = Plan(title: "房租", amount: 50_000, dueDate: Dates.addDays(4, to: Dates.day(now)), frequency: .monthly)
-        bill.accountID = bank.id
-        var paid = Entry(date: Dates.addDays(-10, to: Dates.day(now)), amount: bill.amount, accountID: bank.id, title: "房租")
-        paid.planID = bill.id
-        ledger.entries.append(paid)
-        ledger.plans = [salary, bill]
-        if low { ledger.fixedSavings = 300_000 }
-        return ledger
-    }
+
     static func salaryLedger(now: Date) -> Ledger {
         var ledger = Ledger()
         ledger.preferences.onboardingComplete = true
@@ -430,8 +382,8 @@ enum UITestSupport {
         ledger.mutedTopics = ["letter"]
         let account = Account(name: "合成工资卡", balance: 200_000, at: now)
         ledger.accounts = [account]
-        // Keep 待处理 reachable after dismissing the salary candidate too.
-        var pendingBill = Plan(title: "合成待处理账单", amount: 99, dueDate: Dates.day(now))
+        // Keep 未结清 reachable after dismissing the salary candidate too.
+        var pendingBill = Plan(title: "合成未结清账单", amount: 99, dueDate: Dates.day(now))
         pendingBill.accountID = account.id; ledger.plans = [pendingBill]
         let month = Dates.calendar.dateInterval(of: .month, for: now)!.start
         let latestMonth = Dates.calendar.component(.day, from: now) >= 10 ? month : Dates.addMonths(-1, to: month)

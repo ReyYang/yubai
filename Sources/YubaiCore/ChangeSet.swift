@@ -219,13 +219,13 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     // confirmation must clear their pending classification marker.
                     if Classification.isPending(next.entries[i]) { touch(i) }
                     else { skip(position) }
-                    if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: source == "按对方分", in: &next) }
+                    if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: ["按商户整理", "按对方分"].contains(source), in: &next) }
                     continue
                 }
                 next.entries[i].category = category; next.entries[i].subcategory = assignment.subcategory; next.entries[i].subcategoryUserEdited = false
                 SubcategoryClassifier.classify(&next.entries[i], ledger: ledger)
                 touch(i)
-                if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: source == "按对方分", in: &next) }
+                if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: ["按商户整理", "按对方分"].contains(source), in: &next) }
                 if next.entries[i].nature == .expense { changedExpenseCategories[id] = category }
             case .setNature(let id, let nature, let other):
                 guard let i = active(id) else { skip(position); continue }
@@ -316,7 +316,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     guard next.plans[i].active, next.plans[i].stoppedAt == nil, next.plans[i].endDate.map({ date < $0 }) ?? true else { skip(position); continue }
                     var snapshot = next.plans[i]
                     snapshot.amount = FixedFlowPayments(in: next).amount(for: snapshot)
-                    if SubscriptionCheck.eligible(snapshot, ledger: next) { next.stoppedSubscriptions.append(StoppedSubscription(plan: snapshot, stoppedAt: date)) }
+                    if !snapshot.inflow && snapshot.nature == .expense && snapshot.frequency != .once {
+                        next.stoppedSubscriptions.append(StoppedSubscription(plan: snapshot, stoppedAt: date))
+                    }
                     next.plans[i].stoppedAt = date
                     if date < next.plans[i].dueDate { next.plans[i].active = false }
                     else { next.plans[i].endDate = date }

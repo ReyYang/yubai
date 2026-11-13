@@ -12,7 +12,7 @@ final class Round45PaceTests: XCTestCase {
         let change = try ManualBookkeeping.change(amount: 3200, nature: .expense, accountID: l.accounts[0].id, day: now, purpose: "Lunch", category: "餐饮", now: now)
         try change.apply(to: &l)
         XCTAssertEqual(Finance.pace(l, now: now)?.daily, 8000); XCTAssertEqual(Finance.pace(l, now: now)?.available, 153_200)
-        XCTAssertEqual(Finance.pace(l, now: now)?.points.last?.spent, 86_800)
+        XCTAssertEqual(Finance.pace(l, now: now)?.spent, 86_800)
     }
     func testWeekTableRoundsToCentsAndNeverShowsNegativeDaily() {
         let rows: [(Int64, Int, Int64)] = [(160_000, 20, 8000), (147_400, 19, 7758), (144_000, 18, 8000), (136_000, 17, 8000), (128_000, 16, 8000), (118_900, 15, 7927)]
@@ -80,7 +80,6 @@ extension PerformanceScaleTests {
         let paceTime = ProcessInfo.processInfo.systemUptime - startPace
         XCTAssertEqual(pace.spent, summary.parts[0].spent)
         XCTAssertLessThanOrEqual(paceTime, max(1, summaryTime * 1.25))
-        XCTAssertEqual(pace.points.last?.spent, pace.spent)
         let startFormula = ProcessInfo.processInfo.systemUptime
         let formula = Finance.formula(ledger, now: at)
         let formulaTime = ProcessInfo.processInfo.systemUptime - startFormula

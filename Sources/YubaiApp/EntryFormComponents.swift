@@ -4,56 +4,6 @@ import YubaiCore
 import UIKit
 #endif
 
-struct ManualSheetHeader: View {
-    @Environment(\.yubaiSheetSurface) private var inSheet
-    let title: String
-    var actionTitle = "保存"
-    var actionImage: String? = nil
-    var primary = true
-    var showsAction = true
-    var enabled = true
-    var cancelTitle = "取消"
-    var actionIdentifier: String? = nil
-    var cancelIdentifier = "cancelManualSheet"
-    let cancel: () -> Void
-    let action: () -> Void
-    private var titleView: some View {
-        Text(title).yubaiFont(["记一笔", "改一笔", "改这笔"].contains(title) ? YubaiFont.entrySheetTitle : YubaiFont.navTitle).fixedSize()
-    }
-    private var cancelButton: some View {
-        Button(action: cancel) {
-            Text(cancelTitle).yubaiFont(YubaiFont.body).fixedSize()
-                .padding(.horizontal, 16).frame(minHeight: 36).background(YubaiColor.card, in: Capsule())
-                .frame(minHeight: 44).contentShape(Capsule())
-        }.accessibilityIdentifier(cancelIdentifier == "cancelManualSheet" && cancelTitle != "取消" ? "closeSheet" : cancelIdentifier)
-    }
-    @ViewBuilder private var actionButton: some View {
-        if showsAction {
-            Button(action: action) {
-                HStack(spacing: 8) { if let actionImage { Image(systemName: actionImage) }; Text(actionTitle).fixedSize() }
-                    .yubaiFont(YubaiFont.body, weight: primary ? .medium : .regular)
-                    .padding(.horizontal, 12).frame(minHeight: 36)
-                    .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
-                    .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
-                    .contentShape(Capsule())
-            }.frame(minHeight: 44).disabled(!enabled).opacity(enabled ? 1 : 0.4)
-                .accessibilityIdentifier(actionIdentifier ?? (actionTitle == "导入" ? "importFromEntry" : "saveManualSheet"))
-        } else { Color.clear.frame(width: 64, height: 36).accessibilityHidden(true) }
-    }
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { cancelButton; Spacer(minLength: 0); titleView; Spacer(minLength: 0); actionButton }
-            VStack(spacing: 4) {
-                titleView
-                ViewThatFits(in: .horizontal) {
-                    HStack { cancelButton; Spacer(); actionButton }
-                    VStack(spacing: 8) { cancelButton; actionButton }
-                }
-            }
-        }.frame(minHeight: 48).padding(.top, inSheet ? YubaiSpace.sheetHeaderTop : 0).buttonStyle(PressButtonStyle())
-    }
-}
-
 /// Chips wrap at their intrinsic width, including at accessibility text sizes.
 struct EntryChipLayout: Layout {
     var spacing: CGFloat = YubaiSpace.space8

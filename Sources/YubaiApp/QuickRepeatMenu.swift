@@ -1,7 +1,7 @@
 import SwiftUI
 import YubaiCore
 
-/// 长按 ＋：最近常记的几笔，点一下就记下，给撤销；末尾是「拍小票」。
+/// 长按 ＋：最近常用，点一下就记下，给撤销；末尾是「拍小票」。
 /// 点完任何一行调 `dismiss()`。
 struct QuickRepeatMenu: View {
     @Environment(AppStore.self) private var store
@@ -11,11 +11,20 @@ struct QuickRepeatMenu: View {
 
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
+            Text("常用").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 14).padding(.bottom, 4)
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 row(item, index: index)
                 EntryFormDivider()
             }
-            if store.preferences.isAIEnabled(for: .receiptRecognition) && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil { receiptRow }
+            receiptRow
+            EntryFormDivider()
+            Button {
+                dismiss(); store.sheetSource = nil; store.sheet = .frequentEntries
+            } label: {
+                Text("整理常用").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk)
+                    .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("manageQuickRepeats")
         }.padding(.horizontal, YubaiSpace.insetCard).frame(maxWidth: textSize.isAccessibilitySize ? .infinity : 230)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
@@ -67,8 +76,7 @@ struct QuickRepeatMenu: View {
                 }
             })
             guard saved else { return }
-            let amount = store.preferences.hideAmounts ? "••••" : AmountLabel.text(item.amount, sign: .outflow)
-            store.setEntrySaveToast("已记下 · " + item.purpose + " " + amount + " · " + store.accountName(account.id))
+            store.setEntrySaveToast("已记下 1 笔")
             store.finishEntrySaveMotion()
         } catch { store.error = error.localizedDescription }
     }

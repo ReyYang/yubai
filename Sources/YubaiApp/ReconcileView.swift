@@ -9,7 +9,6 @@ struct ReconcileView: View {
     @State private var rows: [Reconciliation.Row] = []
     @State private var inputs: [UUID: String] = [:]
     @State private var loaded = false
-    @FocusState private var focused: UUID?
 
     private var actual: [UUID: Int64] {
         var values: [UUID: Int64] = [:]
@@ -23,10 +22,7 @@ struct ReconcileView: View {
         }
     }
     /// 正数 = 少了，负数 = 多了。
-    private var missing: Int64 {
-        let values = actual
-        return rows.reduce(Int64(0)) { $0 + $1.book - (values[$1.id] ?? $1.book) }
-    }
+    private var missing: Int64 { Reconciliation.preview(store.current, actual: actual, now: store.financialNow).missing }
     private var range: (from: Date, through: Date) {
         let today = Dates.day(Date())
         return (store.recordGap?.from ?? today, today)
@@ -69,7 +65,6 @@ struct ReconcileView: View {
         loaded = true
         rows = Reconciliation.rows(in: store.current, now: Date())
         inputs = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, Money.editableText($0.book)) })
-        focused = rows.first?.id
     }
 
     private func accountRow(_ row: Reconciliation.Row) -> some View {
@@ -77,7 +72,7 @@ struct ReconcileView: View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                Text(row.name).yubaiFont(YubaiFont.rowTitle)
+                Text(row.name).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                 Text("账上 " + amount2(row.book, hide: hide)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
@@ -87,16 +82,7 @@ struct ReconcileView: View {
 
     private func field(_ row: Reconciliation.Row) -> some View {
         let binding = Binding(get: { inputs[row.id] ?? "" }, set: { inputs[row.id] = $0 })
-        let active = focused == row.id
-        return TextField("", text: binding).multilineTextAlignment(.trailing).yubaiFont(YubaiFont.amountSummary)
-            .focused($focused, equals: row.id).numericInput()
-            .padding(.horizontal, YubaiSpace.space12).frame(minWidth: 132, maxWidth: 180, minHeight: YubaiSize.tapMin)
-            .background(YubaiColor.paperSheet, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-            .overlay {
-                RoundedRectangle(cornerRadius: YubaiRadius.control)
-                    .strokeBorder(active ? YubaiColor.brand : YubaiColor.separator, lineWidth: active ? 1.5 : 1)
-            }
-            .accessibilityLabel(row.name + "实际余额").accessibilityIdentifier("reconcileField_" + row.name)
+        return BalanceAmountField(text: binding, label: row.name + "实际余额", identifier: "reconcileField_" + row.name)
     }
 
     private var resultBar: some View {
@@ -122,14 +108,18 @@ struct ReconcileView: View {
     private func apply() {
         guard !hasInvalidInput else { return }
         let values = actual
-        let ok = store.update("对余额") { ledger in
+        let difference = missing
+        let ok = store.update("对余额", entryMotion: false, showToast: false) { ledger in
             let added = try Reconciliation.apply(&ledger, actual: values, now: Date())
             for index in ledger.cards.indices {
                 if case .reconcileAccount(let id) = ledger.cards[index].action, values[id] != nil { ledger.cards[index].dismissedAt = Date() }
             }
             _ = added
         }
-        if ok { dismiss() }
+        if ok {
+            store.toast = "已补 · 没细记 " + amount2(-difference, hide: store.preferences.hideAmounts)
+            dismiss()
+        }
     }
 
     /// 不一次补平：回到记一笔，一笔笔补。

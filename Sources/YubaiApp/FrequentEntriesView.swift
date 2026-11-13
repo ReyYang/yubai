@@ -25,7 +25,7 @@ struct FrequentEntriesView: View {
                 CardRows(hidden) { row in hiddenRow(row) }
             }
             quickCaptureLink
-        }.navigationTitle("常记的几笔").yubaiNavigation().accessibilityIdentifier("frequentEntriesPage")
+        }.navigationTitle("常用").yubaiNavigation().accessibilityIdentifier("frequentEntriesPage")
             .task(id: store.ledgerRevision) { await refresh() }
     }
     /// Apple Pay 快捷指令、卡和商户对应关系仍在原来的页面里。
@@ -46,10 +46,10 @@ struct FrequentEntriesView: View {
             HStack(spacing: YubaiSpace.space4) {
                 icon(pinned.contains(item.id) ? "pin.fill" : "pin", label: (pinned.contains(item.id) ? "取消固定" : "固定") + item.purpose,
                      identifier: "frequentPin_\(index)", selected: pinned.contains(item.id)) {
-                    store.update("常记的几笔", entryMotion: false, showToast: false) { try EntryHistory.setPinned(item, pinned: !pinned.contains(item.id), in: &$0) }
+                    store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.setPinned(item, pinned: !pinned.contains(item.id), in: &$0) }
                 }
                 icon("eye.slash", label: "隐藏" + item.purpose, identifier: "frequentHide_\(index)") {
-                    store.update("常记的几笔", entryMotion: false, showToast: false) { try EntryHistory.setHidden(item, hidden: true, in: &$0) }
+                    store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.setHidden(item, hidden: true, in: &$0) }
                 }
                 Spacer(minLength: YubaiSpace.none)
                 icon("arrow.up", label: "向前移" + item.purpose, identifier: "frequentMoveUp_\(index)") { move(index, by: -1) }.disabled(index == 0)
@@ -71,8 +71,8 @@ struct FrequentEntriesView: View {
                 Image(systemName: "eye.slash").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
                 if row.purpose == nil { Text("1 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
                 Spacer(minLength: YubaiSpace.none)
-                icon("eye", label: "重新显示" + (row.purpose ?? "常记的几笔"), identifier: "frequentUnhide_" + row.id) {
-                    store.update("常记的几笔", entryMotion: false, showToast: false) { try EntryHistory.unhide(row.id, in: &$0, now: Date()) }
+                icon("eye", label: "重新显示" + (row.purpose ?? "常用"), identifier: "frequentUnhide_" + row.id) {
+                    store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.unhide(row.id, in: &$0, now: Date()) }
                 }
             }
         }.padding(.vertical, YubaiSpace.space4)
@@ -89,7 +89,7 @@ struct FrequentEntriesView: View {
         let target = index + offset
         guard items.indices.contains(index), items.indices.contains(target) else { return }
         var ordered = items; ordered.swapAt(index, target)
-        store.update("常记的几笔", entryMotion: false, showToast: false) { try EntryHistory.reorder(ordered, in: &$0) }
+        store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.reorder(ordered, in: &$0) }
     }
     private func refresh() async {
         let ledger = store.current, now = Date(), revision = store.ledgerRevision

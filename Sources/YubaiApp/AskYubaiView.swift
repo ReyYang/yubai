@@ -83,7 +83,7 @@ struct AskYubaiView: View {
                 change.items.allSatisfy { if case .addEntry = $0 { return true }; return false }
             }
         }) { return "帮我记" }
-        if replies.contains(where: { $0.chart != nil }) { return "钱去哪了" }
+        if replies.contains(where: { $0.toolTrace.contains { $0.name == "summarize" } }) { return "钱去哪了" }
         return "问余白"
     }
     private func clearConversation() {
@@ -272,7 +272,6 @@ struct AskYubaiView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                 Text(store.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
-                if let chart = reply.chart, !store.preferences.hideAmounts { AnswerChartView(chart: chart) }
                 replyEvidence(reply, message: message)
                 unverifiedAmounts(reply)
                 if message.protectedEdit { protectedRecords(message) }
@@ -418,7 +417,7 @@ private struct AskChangeCard: View {
         if let status { Text(status).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin) }
         else {
             let count = Set(change.items.flatMap(\.entryIDs)).count
-            ProposalCard(title: store.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
+            ProposalCard(title: store.preferences.hideAmounts ? "余白的建议" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
                          primaryTitle: count > 0 ? "改好这 \(count) 笔" : "改好这 \(change.items.count) 项", canConfirm: !store.preferences.hideAmounts, confirm: {
                 if store.apply(change, label: "问余白修改") {
                     status = "已改好，可撤销上一项修改。" + (store.toast?.contains("；") == true ? (store.toast ?? "") : "")

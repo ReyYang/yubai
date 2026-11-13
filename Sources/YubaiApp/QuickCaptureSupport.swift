@@ -20,7 +20,11 @@ struct QuickEntryPrefill {
 }
 extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
-        if locked || !preferences.onboardingComplete { pendingQuickSheet = next } else { sheetSource = nil; sheet = next }
+        if locked { pendingQuickSheet = next }
+        else {
+            if accounts.isEmpty || !preferences.onboardingComplete { _ = update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Date()) } }
+            sheetSource = nil; sheet = next
+        }
     }
     func handleCaptureURL(_ url: URL) {
         guard url.scheme?.lowercased() == "yubai", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }

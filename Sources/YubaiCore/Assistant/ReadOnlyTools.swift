@@ -116,7 +116,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "truncated": .bool(offset + rows.count < all.count)]
             if offset + rows.count < all.count { page["next_offset"] = .number(Double(offset + rows.count)) }
             result = .object(page)
-        case .summarize: result = try summarizeWithChart(fields, ctx).result
+        case .summarize: result = try summarizeFacts(fields, ctx)
         case .compareToHabit: result = try habit(fields, ctx)
         case .getProfile: result = profile(ctx)
         }
@@ -204,7 +204,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         return .object(result)
     }
 
-    func summarizeWithChart(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> (result: JSONValue, chart: AnswerChart) {
+    func summarizeFacts(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {
         let allowed = Set(Self.summarize.parameters["properties"]?.objectValue?.keys.map { $0 } ?? [])
         guard Set(fields.keys).isSubset(of: allowed) else { throw YubaiError.invalid("汇总参数包含未声明的字段。") }
         let filter = try Filter(fields)
@@ -253,10 +253,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         // Keep payloads bounded; totals cover every row, evidence is a representative recent sample.
         result["entry_ids"] = .strings(rows.prefix(50).map { $0.id.uuidString })
         result["evidence_truncated"] = .bool(rows.count > 50)
-        let points = grouped.keys.sorted().map { key in
-            AnswerChart.Point(label: ctx.redactor.text(CategoryNamespace.split(key).name), cents: (grouped[key] ?? []).reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ctx.ledger) })
-        }
-        return (ctx.redactor.value(.object(result)), AnswerChart(kind: ["category", "subcategory"].contains(group) ? .bar : .line, title: "消费汇总（元）", points: points))
+        return ctx.redactor.value(.object(result))
     }
 
     private func habit(_ fields: [String: JSONValue], _ ctx: ToolContext) throws -> JSONValue {

@@ -1,7 +1,7 @@
 import SwiftUI
 import YubaiCore
 
-/// 余白：最近问过的、我的消费观、余白记得的；输入框和三句常问的贴在底栏上方。
+/// 余白：最近问过的、消费观、余白记得的；输入框和三句常问的贴在底栏上方。
 struct YubaiTabView: View {
     private struct AskTarget: Hashable { var text: String; var send: Bool }
     @Environment(AppStore.self) private var store
@@ -69,14 +69,14 @@ struct YubaiTabView: View {
         return FixedFlowPresentation.monthDay(date)
     }
 
-    // MARK: 我的消费观
+    // MARK: 消费观
     private var valuesCard: some View {
         let profile = store.profile
         return TabNavigationLink(.profile) { ProfileView() } label: {
             Card {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     HStack(spacing: YubaiSpace.gapGroup) {
-                        Text("我的消费观").yubaiFont(YubaiFont.cardTitle)
+                        Text("消费观").yubaiFont(YubaiFont.cardTitle)
                         Spacer(minLength: YubaiSpace.space8)
                         chevron
                     }

@@ -32,12 +32,12 @@ struct LedgerPreset: Equatable {
 }
 enum TabRoute: Hashable {
     case fixedFlows, profile, wishlist, accounts
-    case spendingParts(String), triage([UUID])
+    case triage([UUID])
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
     case unsortedGroups(UUID), quickSortUnsorted(UUID)
     case flowRecords(categories: [String], title: String, income: Bool, interval: DateInterval)
     case subcategoryInsights(category: String, income: Bool, interval: DateInterval, periodTitle: String)
-    case formula, budget, billDetail(UUID), todo, settings, categories, savingRule, reserve
+    case formula, budget, billDetail(UUID), todo, settings, categories, savingRule, reserve, saved
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
     case entryDetail(UUID)
 }
@@ -65,9 +65,9 @@ enum AppSheet: Identifiable {
     case editEntry(UUID), editPlan(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
     case ask(String), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letter(UUID), reconcile(UUID)
-    case reconcileAll, overspend(CycleCover.Source), paydayAmount, paydaySetup
+    case reconcileAll, overspend(CycleCover.Source), paydayAmount
     case billPay(planID: UUID, occurrence: Date), billMatch(planID: UUID, occurrence: Date, entryID: UUID), billLink(planID: UUID, occurrence: Date)
-    case addBill, formulaEdit(FormulaField)
+    case formulaEdit(FormulaField), frequentEntries
     case billMove(planID: UUID, occurrence: Date)
     var id: String { String(describing: self) }
     var motionSource: String? {
@@ -84,7 +84,7 @@ enum AppSheet: Identifiable {
     static let shared = AppStore()
     private(set) var ledger = Ledger() {
         didSet {
-            if oldValue.id != ledger.id || oldValue.preferences.onboardingComplete != ledger.preferences.onboardingComplete {
+            if oldValue.id != ledger.id {
                 askConversation = AskConversationState()
                 resetRootNavigation()
             }
@@ -123,7 +123,6 @@ enum AppSheet: Identifiable {
     @ObservationIgnored private var preparedPending: PendingImportOrganization?
     @ObservationIgnored private var preparedSalary: (day: Date, value: SalaryCandidate?)?
     private var fundsRevision = 0
-    private var cashRevision = 0
     private var entriesRevision = 0
     private var manualPurposesRevision = 0
     private var entryTimelineRevision = 0
@@ -195,7 +194,6 @@ enum AppSheet: Identifiable {
     private(set) var ledgerRevision: UInt64 = 0
     // Cache writes during rendering are unobserved; the revision notifies readers when their inputs change.
     @ObservationIgnored private var cachedFunds: (value: Funds, at: Date, expires: Date, zone: TimeZone)?
-    @ObservationIgnored private var cachedCashTimeline: (at: Date, value: CashTimeline)?
     @ObservationIgnored private var cachedEntries: [Entry]?
     @ObservationIgnored private var cachedEntriesByID: [UUID: Entry]?
     @ObservationIgnored private var cachedAccountEntries: [UUID: [Entry]] = [:]
@@ -283,17 +281,6 @@ enum AppSheet: Identifiable {
         let value = Finance.funds(ledger, now: now)
         cachedFunds = (value, now, expires, zone); return value
     }
-    var cashTimeline: CashTimeline {
-        _ = cashRevision
-        return cashTimelineValue()
-    }
-    private func cashTimelineValue() -> CashTimeline {
-        let funds = fundsValue()
-        let at = cachedFunds?.at ?? Date()
-        if let cachedCashTimeline, cachedCashTimeline.at == at { return cachedCashTimeline.value }
-        let value = Finance.cashTimeline(derivedSource, funds: funds, now: at, alignToFundsCycle: true)
-        cachedCashTimeline = (at, value); return value
-    }
     var restrainProgress: [RestrainProgress] {
         _ = progressRevision
         return progressValue()
@@ -306,6 +293,8 @@ enum AppSheet: Identifiable {
     // Every slot is keyed on the funds cache's timestamp, so a value is recomputed once per ledger
     // change or per day, never while a view body is evaluated twice. Only `pace` is prepared off-main.
     private let paceSlot = TimedSlot<CyclePace?>()
+    private let homeTasksSlot = TimedSlot<[HomeTask]>()
+    private let butlerSavedSlot = TimedSlot<Int64>()
     private let formulaSlot = TimedSlot<SpendableFormula>()
     private let reserveSlot = TimedSlot<ReserveOverview>()
     private let paybackOffersSlot = TimedSlot<[ReservePaybackOffer]>()
@@ -314,7 +303,6 @@ enum AppSheet: Identifiable {
     private let gapSlot = TimedSlot<Reconciliation.Gap?>()
     private let leftoverSlot = TimedSlot<CycleSaving?>()
     private let overspendSlot = TimedSlot<Overspend.Options?>()
-    private let setupSlot = TimedSlot<Set<Setup.Item>>()
     private var timeRevision = 0
     private func derived<Value>(_ slot: TimedSlot<Value>, _ compute: (Ledger, Date) -> Value) -> Value {
         _ = timeRevision
@@ -323,8 +311,14 @@ enum AppSheet: Identifiable {
         let source = derivedSource
         return slot.value(at: at) { compute(source, at) }
     }
-    /// 日均与节奏图；`nil` = 还不知道发薪日（Home-New）。
+    /// 日均；`nil` = 还不知道发薪日。
     var pace: CyclePace? { derived(paceSlot) { Finance.pace($0, now: $1) } }
+    var homeTasks: [HomeTask] {
+        _ = visibilityRevision
+        let batches = organizingImportBatchIDs
+        return derived(homeTasksSlot) { HomeButler.queue($0, now: $1, organizingBatchIDs: batches) }
+    }
+    var butlerSaved: Int64 { derived(butlerSavedSlot) { ButlerSavings.total($0, now: $1) } }
     /// 算式页四行（`Finance.formula`）。
     var formula: SpendableFormula { derived(formulaSlot) { Finance.formula($0, now: $1) } }
     /// 存钱页：存下的总额与最近进出。
@@ -340,8 +334,6 @@ enum AppSheet: Identifiable {
     var pendingLeftover: CycleSaving? { derived(leftoverSlot) { ledger, _ in Savings.pendingLeftover(in: ledger) } }
     /// 周期超了的两条补法；没超为 `nil`。
     var overspend: Overspend.Options? { derived(overspendSlot) { Overspend.options($0, now: $1) } }
-    /// 首启「让这个数更准」清单里已完成的项。
-    var setupDone: Set<Setup.Item> { derived(setupSlot) { Setup.done($0, now: $1) } }
 
     // MARK: 今天先不问
     private(set) var snoozeRevision = 0
@@ -469,17 +461,16 @@ enum AppSheet: Identifiable {
         preparedDerived = nil; preparedPending = nil; preparedSalary = nil
     }
     func refreshTimeDerived() {
-        let oldFunds = cachedFunds?.value, oldCash = cachedCashTimeline?.value
+        let oldFunds = cachedFunds?.value
         let oldProgress = cachedRestrainProgress, oldSalary = cachedSalary
         let oldVisibility = cachedButlerVisibility?.value
         cachedFunds = preparedDerived.map { ($0.funds, $0.at, $0.expires, $0.zone) }
-        cachedCashTimeline = preparedDerived.map { ($0.at, $0.timeline) }
         cachedBalances = [:]; cachedAssessments = [:]; cachedFixedMonth = preparedDerived?.fixedMonth
         cachedRestrainProgress = preparedDerived?.progress; cachedSalary = preparedSalary
         if let preparedDerived { paceSlot.prime(at: preparedDerived.at, preparedDerived.pace) } else { paceSlot.clear() }
         formulaSlot.clear(); reserveSlot.clear(); paydaySlot.clear(); gapSlot.clear()
         paybackOffersSlot.clear(); paybackProgressSlot.clear()
-        leftoverSlot.clear(); overspendSlot.clear(); setupSlot.clear()
+        leftoverSlot.clear(); overspendSlot.clear(); homeTasksSlot.clear(); butlerSavedSlot.clear()
         timeRevision &+= 1
         derivedRevision &+= 1
         cachedButlerVisibility = nil
@@ -487,13 +478,13 @@ enum AppSheet: Identifiable {
             cachedButlerVisibility = (derivedRevision, Dates.day(preparedDerived.at), visibilityBatches, preparedDerived.visibility)
         }
         if let oldFunds, fundsValue() != oldFunds { fundsRevision &+= 1 }
-        if let oldCash, cashTimelineValue() != oldCash { cashRevision &+= 1 }
         if let oldProgress, progressValue() != oldProgress { progressRevision &+= 1 }
         if let oldSalary, salaryValue() != oldSalary.value { salaryRevision &+= 1 }
         if let oldVisibility, visibilityValue() != oldVisibility { visibilityRevision &+= 1 }
         CaptureSnapshotBridge.publish(ledger)
     }
     private func refreshVisibility() {
+        homeTasksSlot.clear()
         visibilityBatches = organizingImportBatchIDs
         let previous = cachedButlerVisibility?.value
         cachedButlerVisibility = nil
@@ -521,6 +512,7 @@ enum AppSheet: Identifiable {
     private(set) var navigationRevision: UInt64 = 0
     func resetRootNavigation() {
         destination = .now; pickingInsightDates = false; ledgerPreset = nil
+        homeReceipt = nil
         unsortedUndo = nil; unsortedUndoRestoration = nil
         #if os(iOS)
         if pagingLocked { pagingLocked = false }
@@ -533,6 +525,9 @@ enum AppSheet: Identifiable {
     var askConversation = AskConversationState()
     var rootScrollRequest: [Destination: Int] = [:]
     var sheet: AppSheet?; var error: String?; var toast: String?
+    var homeReceipt: ButlerReceipt?
+    var butlerFocusID: String?
+    var pendingButlerTaskID: String?
     var unsortedUndo: UnsortedUndoNotice?
     var unsortedUndoRestoration: UnsortedUndoRestoration?
     var sheetSource: String?
@@ -583,6 +578,12 @@ enum AppSheet: Identifiable {
         do {
             ledger = try localRepository.load()
             locked = ledger.preferences.lockEnabled
+            #if DEBUG && targetEnvironment(simulator)
+            if UITestSupport.script == "v46-busy" {
+                organizingPendingImports = true
+                organizationProgress = ImportOrganizationProgress(completed: 120, total: 214)
+            }
+            #endif
         } catch { loadFailure = error.localizedDescription }
         CaptureSnapshotBridge.publish(ledger)
         #if os(macOS)
@@ -595,7 +596,7 @@ enum AppSheet: Identifiable {
 
     /// 升级后第一次：发薪日改成「确认到账才开新周期」，只对下一个发薪日起生效，当前周期不变。
     func enablePaydayConfirmationIfNeeded() {
-        guard !locked, loadFailure == nil, preferences.onboardingComplete, !switchingLedgerLocation, !choosingSyncVersion,
+        guard !locked, loadFailure == nil, !switchingLedgerLocation, !choosingSyncVersion,
               current.paydayConfirmSince == nil, Finance.anchorPlan(in: current, now: Date()) != nil else { return }
         _ = update("发薪确认", recordUndo: false, entryMotion: false, showToast: false) { Finance.enablePaydayConfirmation(&$0, now: Date()) }
     }
@@ -618,7 +619,7 @@ enum AppSheet: Identifiable {
         }
     }
     func closeSavingCycles() {
-        guard !locked, loadFailure == nil, preferences.onboardingComplete else { return }
+        guard !locked, loadFailure == nil else { return }
         var next = current
         Savings.closeCycles(&next)
         guard next != current else { return }
@@ -630,6 +631,7 @@ enum AppSheet: Identifiable {
         let before = current; var next = before
         do {
             try change(&next)
+            ButlerSavings.synchronize(&next, now: Date())
             if next.entries.count > before.entries.count {
                 let oldIDs = Set(before.entries.map(\.id))
                 let addedIDs = Set(next.entries.lazy.filter { !oldIDs.contains($0.id) }.map(\.id))
@@ -674,19 +676,16 @@ enum AppSheet: Identifiable {
         if update("清掉过期账目", recordUndo: false, entryMotion: false, showToast: false, { $0 = next }) { clearUndo() }
     }
     /// Prepare the full import off the main actor, then publish one atomic update.
-    func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = [],
-                      account: Account? = nil, completingOnboarding: Bool = false) async throws -> ImportBatch? {
+    func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = []) async throws -> ImportBatch? {
         let before = current
         let now = Date()
         let preparation = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             var next = before
-            if let account { next.accounts.append(account) }
             let batch: ImportBatch?
             if let preview, let data, !preview.selectedEntries.isEmpty {
                 batch = try BillImporter.commit(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &next, now: now)
             } else { batch = nil }
-            if completingOnboarding { next.preferences.onboardingComplete = true }
             try next.validate()
             try Task.checkCancellation()
             return (ledger: next, batch: batch)
@@ -698,7 +697,7 @@ enum AppSheet: Identifiable {
         guard current == before, !locked else {
             throw YubaiError.invalid("账本刚有变化，请重试这一步。")
         }
-        guard update(completingOnboarding ? "建立账本" : "导入账单", { $0 = prepared.ledger }) else { return nil }
+        guard update("导入账单", { $0 = prepared.ledger }) else { return nil }
         return prepared.batch
     }
     @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, continuingImportOrganization: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
@@ -876,7 +875,7 @@ enum AppSheet: Identifiable {
     }
     var body: some Scene {
         WindowGroup {
-            // A ledger/onboarding boundary discards ALL tab NavigationPaths and
+            // A ledger boundary discards ALL tab NavigationPaths and
             // pager state together, rather than only changing its selected tab.
             RootView().id(store.navigationRevision).environment(store).tint(YubaiColor.brandInk)
                 .preferredColorScheme(colorScheme)
@@ -888,8 +887,8 @@ enum AppSheet: Identifiable {
         .defaultSize(width: 1240, height: 850)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked || !store.preferences.onboardingComplete)
-                Button("问余白") { store.sheet = .ask("") }.keyboardShortcut("k").disabled(store.locked || !store.preferences.onboardingComplete)
+                Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked)
+                Button("问余白") { store.sheet = .ask("") }.keyboardShortcut("k").disabled(store.locked)
             }
             CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled(store.undoLabel == nil || store.locked) }
         }
@@ -913,7 +912,6 @@ struct RootView: View {
         Group {
             if store.locked { lockedView }
             else if let failure = store.loadFailure { recoveryView(failure) }
-            else if !store.preferences.onboardingComplete { NavigationStack { WelcomeView() } }
             else { mainContent }
         }
         .sheet(item: $store.sheet) { sheet in
@@ -963,11 +961,12 @@ struct RootView: View {
         }
         .task {
             store.purgeExpiredEntries()
-            if !store.locked && store.preferences.onboardingComplete, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+            if !store.locked, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
             await store.configureSync(); store.runCycleMaintenance()
         }
         .modifier(ButlerRefreshTask())
         .modifier(WeeklyPushTask())
+        .modifier(ButlerNoticeSyncTask())
         .overlay(alignment: .top) {
             if !store.locked, store.syncBusy || store.syncChoice != nil {
                 VStack(spacing: YubaiSpace.gapGroup) {
@@ -982,7 +981,7 @@ struct RootView: View {
             guard url.isFileURL else { return }; store.importedURL = url
             if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
         }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if store.preferences.onboardingComplete, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {
@@ -1013,6 +1012,13 @@ struct RootView: View {
             .onChange(of: store.sheet?.id) { _, _ in quickMenuShown = false }
             .onChange(of: store.destination) { _, _ in quickMenuShown = false }
             .onChange(of: store.navigationRevision) { _, _ in tabPaths = [:] }
+            .onChange(of: store.butlerFocusID) { _, id in
+                guard id != nil, !store.locked else { return }
+                var path = NavigationPath(); path.append(TabRoute.todo); tabPaths[.now] = path
+            }
+            .onChange(of: store.locked) { _, locked in
+                if !locked, let id = store.pendingButlerTaskID { store.pendingButlerTaskID = nil; store.openButlerNotice(id) }
+            }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboardVisible = false }
         #endif
@@ -1034,7 +1040,12 @@ struct RootView: View {
                 }
                 tabBar
             }
-            .padding(.horizontal, 20).padding(.bottom, YubaiSize.floatingTabbarBottom)
+            .padding(.horizontal, 16).padding(.bottom, YubaiSize.floatingTabbarBottom)
+            .background(alignment: .bottom) {
+                YubaiColor.canvas.frame(height: YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom)
+                    .overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -40) }
+                    .ignoresSafeArea(edges: .bottom).allowsHitTesting(false)
+            }
             .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
         }
     }
@@ -1052,7 +1063,8 @@ struct RootView: View {
     }
     private func addEntry() {
         quickMenuShown = false
-        store.sheetSource = nil; store.sheet = .addEntry
+        if store.accounts.isEmpty { store.beginFirstEntry() }
+        else { store.sheetSource = nil; store.sheet = .addEntry }
     }
     private func showQuickMenu() {
         withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { quickMenuShown.toggle() }
@@ -1074,7 +1086,6 @@ struct RootView: View {
     @ViewBuilder private func tabDestination(_ route: TabRoute) -> some View {
         switch route {
         case .fixedFlows: FixedFlowsView()
-        case .spendingParts(let source): SpendingPartsView(backTitle: source)
         case .triage(let ids): LetterTriageView(entryIDs: ids)
         case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)
         case .quickSortUnsorted(let id): UnsortedQuickSortView(questionID: id)
@@ -1088,8 +1099,9 @@ struct RootView: View {
         case .todo: TodoView()
         case .settings: SettingsView()
         case .categories: CategoriesView()
-        case .savingRule: SavingsView(backTitle: "存钱")
+        case .savingRule: SavingsView()
         case .reserve: ReserveView()
+        case .saved: SavedView()
         case .weekly(let id): weeklyDestination(id)
         case let .whereCategory(category, interval): WhereCategoryView(category: category, interval: interval)
         case .memories: MemoryView()
@@ -1110,7 +1122,7 @@ struct RootView: View {
         #if os(macOS)
         ZStack(alignment: .bottom) {
             destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if store.sheet == nil && !store.pickingInsightDates {
+            if d == .now && store.sheet == nil && !store.pickingInsightDates {
                 HStack(spacing: YubaiSpace.space8) {
                     Spacer()
                     AddEntryButton { store.present(.addEntry, from: "add") }.yubaiZoomSource("add")
@@ -1149,13 +1161,12 @@ struct RootView: View {
         case .reconcileAll: ReconcileView()
         case .overspend(let source): OverspendSheet(source: source)
         case .paydayAmount: PaydaySheet()
-        case .paydaySetup: PaydaySetupSheet()
         case .billPay(let planID, let occurrence): BillPaySheet(planID: planID, occurrence: occurrence)
         case .billMatch(let planID, let occurrence, let entryID): BillMatchSheet(planID: planID, occurrence: occurrence, entryID: entryID)
         case .billLink(let planID, let occurrence): BillLinkSheet(planID: planID, occurrence: occurrence)
         case .billMove(let planID, let occurrence): BillMoveSheet(planID: planID, occurrence: occurrence)
-        case .addBill: BillAddSheet()
         case .formulaEdit(let field): FormulaEditSheet(field: field)
+        case .frequentEntries: FrequentEntriesView().manualSheetHeader("整理常用", cancelTitle: "关闭", showsAction: false)
         case .intelligencePrivacy: IntelligencePrivacyView().manualSheetHeader("智能与隐私", cancelTitle: "关闭", showsAction: false)
         case .cardEvidence(let id): ButlerEvidenceView(cardID: id)
         case .cardQuestion(let id): ButlerQuestionView(cardID: id)
@@ -1211,7 +1222,7 @@ private struct LedgerPrivacyCover: View {
 }
 
 #if os(iOS)
-/// 两格 + 中间 ＋ + 两格。底栏不随动态字号放大（固定 `.large`），改用大字号预览（Large Content Viewer）。
+/// 四个标签和独立的 ＋。底栏不随动态字号放大（固定 `.large`），改用大字号预览（Large Content Viewer）。
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1220,17 +1231,22 @@ private struct FloatingTabBar: View {
     let select: (Destination) -> Void
     let add: () -> Void
     let quick: () -> Void
-    private static let addSize: CGFloat = 56
+    private static let addSize: CGFloat = 68
     var body: some View {
-        HStack(spacing: 0) {
-            tab(.now)
-            tab(.saving)
-            addButton
-            tab(.ledger)
-            tab(.yubai)
-        }.padding(.horizontal, 6).frame(height: YubaiSize.floatingTabbarHeight)
-            .background { barSurface }
-            .overlay { Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: 1).allowsHitTesting(false) }
+        HStack(spacing: 12) {
+            HStack(spacing: 0) {
+                tab(.now); tab(.saving); tab(.ledger); tab(.yubai)
+            }.padding(.horizontal, 6).frame(height: YubaiSize.floatingTabbarHeight)
+                .background { barSurface }
+                .overlay { Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: 1).allowsHitTesting(false) }
+                .accessibilityIdentifier("navigationCapsule")
+            Color.clear.frame(width: Self.addSize, height: Self.addSize)
+                .overlay {
+                    if store.destination == .now {
+                        addButton.transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
+                    }
+                }.accessibilityHidden(store.destination != .now)
+        }.animation(YubaiMotion.control(reduceMotion: reduceMotion), value: store.destination)
             .dynamicTypeSize(.large)
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
     }
@@ -1243,14 +1259,14 @@ private struct FloatingTabBar: View {
         Image(systemName: "plus").font(.system(size: 26, weight: .medium)).foregroundStyle(YubaiColor.onBrand)
             .frame(width: Self.addSize, height: Self.addSize)
             .background { Circle().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
-            .frame(width: Self.addSize + YubaiSpace.space16, height: YubaiSize.floatingTabbarHeight)
+            .frame(width: Self.addSize, height: YubaiSize.floatingTabbarHeight)
             .contentShape(Rectangle())
             .onTapGesture(perform: add)
             .onLongPressGesture(minimumDuration: 0.4, perform: quick)
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isButton).accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
             .accessibilityAction(.default, add)
-            .accessibilityAction(named: "常记的几笔", quick)
+            .accessibilityAction(named: "常用", quick)
             .accessibilityShowsLargeContentViewer { Label("记一笔", systemImage: "plus") }
     }
     private func tab(_ destination: Destination) -> some View {
@@ -1280,7 +1296,6 @@ struct LedgerDerivedSnapshot: Sendable {
     let at: Date, expires: Date
     let zone: TimeZone
     let funds: Funds
-    let timeline: CashTimeline
     let entries: [Entry]
     let entriesByID: [UUID: Entry]
     let fixedMonth: FixedFlowMonth
@@ -1302,7 +1317,6 @@ struct LedgerDerivedSnapshot: Sendable {
         }
         expires = expiry
         funds = Finance.funds(ledger, now: now)
-        timeline = Finance.cashTimeline(ledger, funds: funds, now: now, alignToFundsCycle: true)
         entries = ledger.entries.sorted { $0.date > $1.date }
         entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         fixedMonth = FixedFlows.month(containing: now, in: ledger, asOf: now)

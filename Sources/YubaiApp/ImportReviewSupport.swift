@@ -2,12 +2,6 @@ import Foundation
 import SwiftUI
 import YubaiCore
 
-struct WelcomeStatement: Sendable {
-    let accountID: UUID
-    let data: Data
-    var preview: ImportPreview
-}
-
 /// Shared with the import queue, including its three local reading stages.
 struct ImportReadingProgress: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

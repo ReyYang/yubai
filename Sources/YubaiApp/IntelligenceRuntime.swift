@@ -583,7 +583,7 @@ private struct FeatureCloudTransport: ChatTransport {
 
 @MainActor extension AppStore {
     func refreshButler() async {
-        guard !locked, loadFailure == nil, organizingBatchID == nil, !organizingPendingImports, current.preferences.onboardingComplete else { return }
+        guard !locked, loadFailure == nil, organizingBatchID == nil, !organizingPendingImports else { return }
         do { try await Task.sleep(for: .milliseconds(800)) } catch { return }
         guard !Task.isCancelled else { return }
         // Pending imports pause automatic cloud work, while local cards still refresh.

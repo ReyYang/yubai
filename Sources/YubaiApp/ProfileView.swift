@@ -29,7 +29,7 @@ struct ProfileView: View {
             principles
             memories
             chat
-        }.navigationTitle("我的消费观").yubaiNavigation().accessibilityIdentifier("profilePage")
+        }.navigationTitle("消费观").yubaiNavigation().accessibilityIdentifier("profilePage")
             .toolbar { Button(editing ? "完成" : "编辑") { editing.toggle() }.frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("editProfile") }
             .onAppear { configured = IntelligenceRuntime.isConfigured }
             .onChange(of: store.current.id) { _, _ in sheet = nil }
@@ -312,7 +312,7 @@ struct ProfileProposalCard: View {
     let secondaryTitle: String
     let secondary: () -> Void
     var body: some View {
-        ProposalCard(title: store.preferences.hideAmounts ? "余白想这样改" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
+        ProposalCard(title: store.preferences.hideAmounts ? "余白的建议" : change.reason, lines: store.preferences.hideAmounts ? [] : change.preview(in: store.current, showPreviousValues: true),
                      primaryTitle: "改好这 \(change.items.count) 项", secondaryTitle: secondaryTitle, canConfirm: !store.preferences.hideAmounts, confirm: confirm, cancel: secondary)
     }
 }

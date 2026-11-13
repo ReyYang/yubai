@@ -10,63 +10,6 @@ extension YubaiFont {
     static let partBalance = Style(size: 14, lineHeight: 20, weight: .semibold, family: .num, relativeTo: .footnote)
 }
 
-/// 算式页下方那块：预算一览。只给想管的几类设了数才有；「改」进预算页。
-struct SpendingPartsCard: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
-    var body: some View {
-        let hide = store.preferences.hideAmounts
-        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-            heading
-            if !store.current.spendingParts.isEmpty { card(SpendingParts.summary(store.current), hide: hide) }
-        }.accessibilityElement(children: .contain).accessibilityIdentifier("spendingPartsCard")
-    }
-    private var heading: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("预算").yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
-            Spacer(minLength: YubaiSpace.space8)
-            TabNavigationLink(.budget) { BudgetView() } label: {
-                HStack(spacing: YubaiSpace.space4) {
-                    Text("改")
-                    Image(systemName: "chevron.right").accessibilityHidden(true)
-                }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.brandInk).yubaiHitTarget(alignment: .trailing)
-            }.buttonStyle(PressButtonStyle()).accessibilityLabel("改预算").accessibilityIdentifier("openSpendingParts")
-        }.padding(.horizontal, YubaiSpace.insetCard)
-    }
-    private func card(_ summary: SpendingPartsSummary, hide: Bool) -> some View {
-        Card(style: .list) {
-            VStack(spacing: YubaiSpace.none) {
-                ForEach(summary.parts) { value in
-                    row(name: value.part.name, remaining: value.remaining, overflow: value.overflow, allowance: value.allowance, hide: hide)
-                }
-                row(name: "没分的", remaining: max(0, summary.unassigned), overflow: max(0, -summary.unassigned), allowance: nil, hide: hide)
-            }
-        }.accessibilityElement(children: .contain)
-    }
-    private func row(name: String, remaining: Int64, overflow: Int64, allowance: Int64?, hide: Bool) -> some View {
-        let over = overflow > 0
-        let progress = allowance.map { $0 > 0 ? Double(remaining) / Double($0) : 0 } ?? 1
-        let value = over ? overflow : remaining
-        let prefix: String = over ? "多 " : "剩 "
-        let limit: String = allowance.map { " / " + amount2($0, hide: hide) } ?? ""
-        let amountText: String = prefix + amount2(value, hide: hide) + limit
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-        return layout {
-            Text(name).yubaiFont(YubaiFont.row).frame(minWidth: 56, alignment: .leading)
-            ProgressLine(value: over || allowance == nil ? 1 : progress, tint: over || allowance == nil ? YubaiColor.neutralStrong : YubaiColor.brand,
-                         track: YubaiColor.neutralSoft, height: 6)
-            Text(amountText).yubaiFont(YubaiFont.partBalance).fixedSize(horizontal: true, vertical: false)
-        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle, alignment: .leading)
-            .accessibilityElement(children: .ignore).accessibilityLabel(name + (over ? "，多花" : "，剩余") + amount2(value, hide: hide))
-    }
-}
-
-/// 旧入口保留：设置里还在用。内容就是预算页。
-struct SpendingPartsView: View {
-    var backTitle = "账本"
-    var body: some View { BudgetView() }
-}
-
 /// 现在 · 预算：想管住某一类花销时只给那几类设数，其余都在「没分的」里。分类预算是个打算，不是红线。
 struct BudgetView: View {
     @Environment(AppStore.self) private var store

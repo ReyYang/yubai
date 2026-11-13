@@ -70,7 +70,7 @@ struct QuickCaptureSettingsView: View {
         let rows = EntryHistory.repeats(in: store.current, now: Date())
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                SectionHeading(title: "常记的几笔")
+                SectionHeading(title: "常用")
                 Card(style: .list) {
                     VStack(spacing: YubaiSpace.none) {
                         ForEach(rows) { row in

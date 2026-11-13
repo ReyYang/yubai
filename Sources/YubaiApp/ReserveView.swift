@@ -1,7 +1,7 @@
 import SwiftUI
 import YubaiCore
 
-/// 存着的钱的进出记录与一次性的补回选择。
+/// 存着的钱的存取记录与一次性的补回选择。
 struct ReserveView: View {
     @Environment(AppStore.self) private var store
     @State private var editing = false
@@ -14,7 +14,7 @@ struct ReserveView: View {
             if !overview.lines.isEmpty { lines }
             if let offer = store.paybackOffers.first { ReservePaybackOfferCard(offer: offer) }
             ReservePaybackProgressList(identifier: "reservePaybackProgress")
-        }.amountPrivacy(hide).navigationTitle("进出记录").yubaiNavigation().accessibilityIdentifier("reservePage")
+        }.amountPrivacy(hide).navigationTitle("存取记录").yubaiNavigation().accessibilityIdentifier("reservePage")
             .sheet(isPresented: $editing) {
                 AmountEntrySheet(title: "存着不动", keypad: $keypad, primaryTitle: "完成", primaryIdentifier: "saveReserveTotal",
                                  canSave: keypad.amount != nil, save: saveTotal)

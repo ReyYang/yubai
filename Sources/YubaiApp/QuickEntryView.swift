@@ -207,6 +207,9 @@ struct QuickEntryView: View {
 
     private func load() {
         guard !loaded else { return }; loaded = true
+        if store.accounts.isEmpty || !store.preferences.onboardingComplete {
+            _ = store.update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Date()) }
+        }
         accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
         if let prefill {
             skipNatureReset = (prefill.nature ?? .expense) != nature

@@ -2,55 +2,7 @@ import XCTest
 @testable import YubaiCore
 
 final class AskYubaiTests: XCTestCase {
-    func testNumericAnswerAndCodeChartMatchSummaryWithEvidence() async throws {
-        let ctx = AssistantFixtures.context()
-        let args: JSONValue = .object(["nature": .string("spending"), "group_by": .string("category")])
-        let expected = try ReadOnlyTool.summarize.run(args, ctx)
-        let script = ScriptedChatTransport([
-            ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "summary", name: "summarize", arguments: try args.jsonText()),
-                ChatToolCall(id: "chart", name: "show_chart", arguments: try JSONValue.object(["kind": .string("summarize"), "args": args]).jsonText())]),
-            ChatMessage(role: .assistant, content: "消费合计 ¥85.00，其中餐饮 ¥45.00。")])
-        let reply = try await AskYubai.answer("消费按分类看看", transport: script, context: ctx)
-        XCTAssertEqual(reply.unverifiedAmounts, [])
-        XCTAssertFalse(reply.evidenceEntryIDs.isEmpty)
-        let chart = try XCTUnwrap(reply.chart)
-        XCTAssertEqual(chart.kind, .bar)
-        for group in try XCTUnwrap(expected["groups"]?.arrayValue) {
-            let point = try XCTUnwrap(chart.points.first { $0.label == group["group"]?.stringValue })
-            XCTAssertEqual(JSONValue.money(point.cents), group["spending"])
-        }
-        XCTAssertEqual(chart.points.reduce(0) { $0 + $1.cents }, 8500)
-    }
-    func testChartKeepsExactCentsBeyondDoubleIntegerPrecision() throws {
-        let ctx = AssistantFixtures.context(); var ledger = ctx.ledger
-        ledger.entries = (0..<902).map { index in
-            Entry(date: ctx.now, amount: Money.limit - Int64(index), accountID: ledger.accounts[0].id, title: "合成大额记录", category: "其他支出")
-        }
-        let expected = ledger.entries.reduce(Int64(0)) { $0 + $1.amount }
-        XCTAssertGreaterThan(expected, 9_007_199_254_740_992)
-        let built = try ShowChartTool().build(.object(["kind": .string("summarize"), "args": .object(["nature": .string("spending")])]), ToolContext(ledger: ledger, now: ctx.now))
-        XCTAssertEqual(built.chart.points.first?.cents, expected)
-    }
-    func testOnlyOneChartAndModelCannotSupplyPoints() async throws {
-        let ctx = AssistantFixtures.context()
-        let args = #"{"kind":"summarize","args":{"nature":"spending"}}"#
-        let script = ScriptedChatTransport([
-            ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "first", name: "show_chart", arguments: args), ChatToolCall(id: "second", name: "show_chart", arguments: args)]),
-            ChatMessage(role: .assistant, content: "按账本汇总展示。")])
-        let reply = try await AskYubai.answer("看分类图", transport: script, context: ctx)
-        XCTAssertNotNil(reply.chart)
-        let requests = await script.recorded()
-        let results = requests[1].messages.filter { $0.role == .tool }
-        XCTAssertNotNil(try JSONValue.parse(try XCTUnwrap(results.last?.content))["error"])
-        XCTAssertThrowsError(try ShowChartTool().run(.object(["kind": .string("summarize"), "args": .object([:]), "points": .array([])]), ctx))
-    }
-    func testForecastChartEqualsEnginePath() throws {
-        let ctx = AssistantFixtures.context()
-        let built = try ShowChartTool().build(.object(["kind": .string("forecast"), "args": .object(["days": .number(5)])]), ctx)
-        let expected = Finance.funds(ctx.ledger, now: ctx.now, days: 6).points.filter { $0.date <= Dates.addDays(5, to: Dates.day(ctx.now)) }
-        XCTAssertEqual(built.chart.kind, .line)
-        XCTAssertEqual(built.chart.points.map(\.cents), expected.map(\.conservative))
-    }
+
     func testProtectedEditsRefuseBeforeAnyToolOrProposal() async throws {
         let ctx = AssistantFixtures.context()
         for question in ["把那笔 42 改成 24", "把那笔金额改为24", "把账户改成微信", "修改交易日期", "那笔 42.50 其实是 24"] {
@@ -96,7 +48,7 @@ final class AskYubaiTests: XCTestCase {
         let purchase = try JudgePurchaseTool().judge(args, ctx)
         let funds = Finance.funds(ctx.ledger, now: ctx.now)
         XCTAssertFalse(purchase.hasProfile); XCTAssertNil(purchase.facts["values"])
-        XCTAssertEqual(purchase.facts["missing"], .string("还不知道你在乎什么，可以在『我的消费观』里补上"))
+        XCTAssertEqual(purchase.facts["missing"], .string("还不知道你在乎什么，可以在『消费观』里补上"))
         XCTAssertEqual(purchase.facts["affordability"]?["available_after_purchase"], .money(funds.available - 3200))
         XCTAssertEqual(purchase.facts["affordability"]?["forecast"], try ReadOnlyTool.forecast.run(.object(["days": .number(0), "amount": .string("32")]), ctx))
         XCTAssertEqual(purchase.facts["habit"], try ReadOnlyTool.compareToHabit.run(.object(["category": .string("餐饮"), "amount": .string("32")]), ctx))

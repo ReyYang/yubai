@@ -120,7 +120,7 @@ extension UITestSupport {
                                                     income: 801_000, target: 200_000, saved: cycle == 1 ? 0 : 200_000,
                                                     unspent: 0, leftoverChoice: .keep))
         }
-        // Several large adjacent-day events in both the actual and forecast cash curve.
+        // Several large adjacent-day bills exercise actual payments and upcoming rows.
         for index in 0..<14 {
             let due = day(index - 4)
             var plan = Plan(title: index % 2 == 0 ? galleryLongTitle + "\(index)" : galleryLatinTitle + "\(index)",
@@ -211,6 +211,173 @@ extension UITestSupport {
         ledger.updatedAt = today
         try ledger.validate()
         return ledger
+    }
+}
+#endif
+
+#if DEBUG && targetEnvironment(simulator)
+extension UITestSupport {
+    static let v46Scripts: Set<String> = ["v46-sort", "v46-home", "v46-quiet", "v46-bill", "v46-gap", "v46-over", "v46-payday", "v46-leftover", "v46-empty", "v46-hard", "v46-big", "v46-busy", "v46-deck", "v46-saved", "v46-spend"]
+    static func v46Ledger(_ script: String, now: Date) throws -> Ledger {
+        let today = Dates.day(now)
+        if script == "v46-empty" {
+            var empty = Ledger(); empty.id = galleryID(4600)
+            empty.preferences.appearance = galleryAppearance ?? "light"
+            empty.preferences.profileColdStartDone = true
+            return empty
+        }
+        if script == "v46-sort" {
+            var value = organizationLedger(now: now)
+            value.preferences.cloudAIEnabled = false
+            value.preferences.profileColdStartDone = true
+            value.cards = []
+            value.entries.removeAll { $0.batchID == nil || $0.nature == .unknownIn }
+            for index in value.accounts.indices { value.accounts[index].anchorDate = now }
+            try value.validate(); return value
+        }
+        let base: String
+        switch script {
+        case "v46-bill", "v46-deck": base = "v45-bill"
+        case "v46-gap": base = "v45-gap"
+        case "v46-over": base = "v45-over"
+        case "v46-payday": base = "v45-payday"
+        case "v46-leftover": base = "v45-newcycle"
+        default: base = "v45-home"
+        }
+        var ledger = try v45Ledger(base, now: now)
+        ledger.id = galleryID(4600); ledger.preferences.profileColdStartDone = true
+        ledger.preferences.appearance = galleryAppearance ?? "light"
+        ledger.accounts[0].name = "招行储蓄卡"
+        ledger.accounts[0].id = galleryID(4610)
+        // Remap references after assigning a stable bank ID.
+        let bank = ledger.accounts[0].id
+        for index in ledger.entries.indices { ledger.entries[index].accountID = bank }
+        var planIDs: [UUID: UUID] = [:]
+        for index in ledger.plans.indices {
+            planIDs[ledger.plans[index].id] = galleryID(4620 + index)
+            ledger.plans[index].accountID = bank; ledger.plans[index].id = galleryID(4620 + index)
+        }
+        for index in ledger.entries.indices { if let id = ledger.entries[index].planID { ledger.entries[index].planID = planIDs[id] } }
+        let archived = Account(name: galleryLongTitle, kind: .bank, balance: 123_456_789, at: today)
+        var archivedAccount = archived; archivedAccount.id = galleryID(4619); archivedAccount.archived = true
+        ledger.accounts.append(archivedAccount)
+        ledger.categories.append(YubaiCore.Category(galleryLongTitle, "shippingbox"))
+        if ["v46-home", "v46-hard"].contains(script) {
+            var renewal = Plan(title: script == "v46-hard" ? "中国移动手机话费及家庭宽带融合套餐自动续费" : "视频会员",
+                               amount: script == "v46-hard" ? 128_800 : 2500, dueDate: Dates.addDays(1, to: today), frequency: .monthly, category: "订阅")
+            renewal.id = galleryID(4630); renewal.accountID = bank; ledger.plans.append(renewal)
+            ledger.memories.append(MemoryNote(text: renewal.title + (script == "v46-hard" ? "上个月没用过" : "上个月没打开过"), kind: .life, source: .user, createdAt: now))
+            ledger.accounts[0].anchorBalance += renewal.amount
+            for index in 0..<2 {
+                var wish = WishItem(title: index == 0 ? "降噪耳机" : galleryLongTitle, amount: index == 0 ? 189900 : 123456789)
+                wish.id = galleryID(4640 + index); wish.createdAt = now.addingTimeInterval(-48 * 3600); wish.coolUntil = now.addingTimeInterval(-1)
+                ledger.wishlist.append(wish)
+            }
+        }
+        if script == "v46-home" {
+            for (index, item) in [("地铁", Int64(800), "交通"), ("午饭", 2800, "餐饮"), ("咖啡", 3200, "餐饮")].enumerated() {
+                for offset in 1...(index == 0 ? 3 : 2) {
+                    let date = Dates.addDays(-offset, to: today).addingTimeInterval(Double(12 - index) * 3600)
+                    var entry = Entry(date: date, amount: item.1, accountID: bank, title: item.0, category: item.2)
+                    entry.recordedAt = date; entry.purpose = item.0; entry.userEdited = true
+                    ledger.entries.append(entry)
+                }
+            }
+        }
+        if script == "v46-quiet" || script == "v46-big" { ledger.wishlist = [] }
+        if script == "v46-bill", let index = ledger.plans.firstIndex(where: { $0.title == "话费和宽带" }) {
+            let previous = Dates.addMonths(-1, to: today)
+            ledger.plans[index].dueDate = previous
+            var paid = Entry(date: previous, amount: ledger.plans[index].amount, accountID: bank, title: "话费和宽带", category: ledger.plans[index].category)
+            paid.id = galleryID(4680); paid.planID = ledger.plans[index].id; paid.occurrence = previous
+            ledger.entries.append(paid)
+        }
+        if ["v46-big", "v46-over", "v46-busy"].contains(script) { ledger.plans.removeAll { !$0.inflow } }
+        if script == "v46-over" {
+            ledger.entries.removeAll { $0.date >= Dates.addDays(-2, to: today) && $0.nature == .expense }
+            // A recent balance check suppresses a gap reminder in this fixture.
+            for index in ledger.accounts.indices {
+                let balance = Finance.balance(ledger.accounts[index], in: ledger, at: now)
+                ledger.accounts[index].anchorDate = now; ledger.accounts[index].anchorBalance = balance
+            }
+        }
+        if script == "v46-hard" { ledger.entries.removeAll { $0.date >= Dates.addDays(-1, to: today) } }
+        if script == "v46-hard", let index = ledger.plans.firstIndex(where: { $0.title == "话费和宽带" }) {
+            ledger.plans[index].title = galleryLongTitle; ledger.plans[index].amount = 1_216_000
+        }
+        if script == "v46-gap" {
+            let latest = Dates.addDays(-3, to: today).addingTimeInterval(12 * 3600)
+            ledger.entries.append(Entry(date: latest, amount: 1, accountID: bank, title: "上次记账", category: "餐饮"))
+            ledger.accounts[0].anchorBalance += 1
+            ledger.accounts[1].name = "微信零钱"
+            ledger.accounts[1].anchorBalance = 186000
+            ledger.accounts.append(Account(name: "支付宝", kind: .cash, balance: 110000, at: Dates.addDays(-12, to: today)))
+        }
+        if script == "v46-busy" || script == "v46-deck" {
+            var batch = ImportBatch(filename: "11月账单.csv", importedCount: script == "v46-busy" ? 214 : 4, duplicateCount: 0, skippedCount: 0)
+            batch.id = galleryID(4650); batch.importedAt = today; batch.needsOrganization = true
+            ledger.imports = [batch]
+            for index in 0..<batch.importedCount {
+                let amount: Int64 = script == "v46-busy" ? 1 : [2500, 2800, 3200, 61800][index]
+                let date = script == "v46-busy" ? Dates.addMonths(-1, to: today) : Dates.addDays(-index % 3, to: today)
+                var row = Entry(date: date, amount: amount, accountID: bank,
+                                title: index == 0 ? galleryLongTitle : "商户 \(index)", category: Classification.pendingCategory)
+                row.id = galleryID(4700 + index); row.batchID = batch.id; row.source = "文件"
+                ledger.entries.append(row); ledger.accounts[0].anchorBalance += amount
+            }
+            if script == "v46-deck" {
+                var second = Plan(title: galleryLongTitle, amount: 123456789, dueDate: today, category: "居住")
+                second.id = galleryID(4660); second.accountID = bank; ledger.plans.append(second)
+            }
+        }
+        if script == "v46-saved" {
+            var wish = WishItem(title: "降噪耳机", amount: 189900)
+            wish.id = galleryID(4649); wish.createdAt = now.addingTimeInterval(-49 * 3600); wish.status = .dropped; wish.droppedAt = now.addingTimeInterval(-3600)
+            ledger.wishlist = [wish]
+            var stopped = Plan(title: "视频会员", amount: 2500, dueDate: Dates.addMonths(-1, to: Dates.addDays(-2, to: today)), frequency: .monthly, category: "订阅")
+            stopped.id = galleryID(4670); stopped.accountID = bank
+            ledger.stoppedSubscriptions = [StoppedSubscription(plan: stopped, stoppedAt: Dates.addMonths(-1, to: Dates.addDays(-3, to: today)))]
+            ledger.butlerSavings = [ButlerSaving(id: "recovered:46", item: "视频会员", amount: 2500, cadence: .once,
+                                                date: Dates.addMonths(-2, to: today), undoable: false)]
+            ButlerSavings.synchronize(&ledger, now: now)
+        }
+        if script == "v46-spend", let salaryIndex = ledger.plans.firstIndex(where: { $0.inflow }) {
+            let salaryDate = Dates.addMonths(-1, to: ledger.plans[salaryIndex].dueDate)
+            ledger.plans[salaryIndex].dueDate = salaryDate
+            ledger.accounts[0].anchorDate = salaryDate.addingTimeInterval(-1); ledger.accounts[0].anchorBalance = 0
+            ledger.fixedSavings = 0
+            var salary = Entry(date: salaryDate.addingTimeInterval(9 * 3600), amount: 801000, nature: .income, accountID: bank, title: "工资", category: "工资奖金")
+            salary.id = galleryID(4681); salary.planID = ledger.plans[salaryIndex].id; salary.occurrence = salaryDate
+            ledger.entries = [salary]
+            for index in 0..<32 {
+                let day = Dates.addDays(-1 - index % 8, to: today)
+                ledger.entries.append(Entry(date: day, amount: 2500, accountID: bank, title: index == 0 ? galleryLongTitle : "日常", category: "餐饮"))
+            }
+            ledger.entries.append(Entry(date: today, amount: 2800, accountID: bank, title: "午饭", category: "餐饮"))
+            ledger.entries.append(Entry(date: today, amount: 800, accountID: bank, title: "地铁", category: "交通"))
+            if let rent = ledger.plans.firstIndex(where: { $0.title == "房租" }) { ledger.plans[rent].amount = 300000 }
+            for (index, item) in [("水费", Int64(12000)), ("网费", 15000)].enumerated() {
+                var bill = Plan(title: item.0, amount: item.1, dueDate: Dates.addDays(3 + index, to: today), category: "居住")
+                bill.id = galleryID(4682 + index); bill.accountID = bank; ledger.plans.append(bill)
+            }
+        }
+        if script == "v46-over", let pace = Finance.pace(ledger, now: now), let index = ledger.entries.firstIndex(where: { $0.nature == .expense && $0.date >= pace.start }) {
+            ledger.entries[index].amount += Int64(pace.daysTotal) * 8000 + 32000 - pace.spent
+        }
+        // Pin the hero while retaining real formulas and stress rows. No mocked
+        // view values: reconcile, overspend and undo still run their real mutators.
+        let target: Int64
+        switch script {
+        case "v46-over": target = -32000
+        case "v46-payday", "v46-leftover": target = 21200
+        case "v46-gap": target = 170400
+        case "v46-bill": target = 118900
+        case "v46-hard": target = 12856400
+        default: target = 156400
+        }
+        ledger.accounts[0].anchorBalance += target - Finance.funds(ledger, now: now).available
+        ledger.updatedAt = now
+        try ledger.validate(); return ledger
     }
 }
 #endif

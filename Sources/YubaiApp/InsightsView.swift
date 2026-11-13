@@ -62,7 +62,6 @@ struct WhereView: View {
             totalCard
             whereCard
             fixedCard
-            CashTimelineCard(timeline: store.cashTimeline)
         }.amountPrivacy(hide).rootScrollContentMargins().rootTabScroll(.ledger).accessibilityIdentifier("insightsScroll")
             .task(id: queryKey) { await refresh() }
             .onChange(of: window) { _, value in

@@ -24,9 +24,13 @@ final class Round45ReconcileTests: XCTestCase {
         XCTAssertEqual(entry.title, "没细记"); XCTAssertEqual(entry.source, "对余额"); XCTAssertNil(entry.recordedAt)
         XCTAssertTrue(Classification.isPending(entry)); XCTAssertTrue(entry.isUnitemized); XCTAssertLessThan(entry.date, now)
         let pace = try XCTUnwrap(Finance.pace(l, now: now)); XCTAssertEqual(pace.daily, 6460)
-        let points = pace.points.filter { $0.day >= gap.from }
-        XCTAssertEqual(points.map(\.spent), [13_833, 27_566, 41_300])
-        XCTAssertEqual(points[1].spent - points[0].spent, 13_733); XCTAssertEqual(points[2].spent - points[1].spent, 13_734)
+        let dailySpending = (0..<3).map { offset in
+            let day = Dates.addDays(offset, to: gap.from)
+            return Finance.cashFlow(l, during: DateInterval(start: day, end: Dates.addDays(1, to: day))).spending
+        }
+        // Ledger totals retain the actual recording date. The deleted pace
+        // graph's interpolated points are no longer part of this contract.
+        XCTAssertEqual(dailySpending, [0, 0, 41_200])
         XCTAssertNil(Reconciliation.gap(in: l, now: now))
         let flow = Finance.cashFlow(l, during: DateInterval(start: gap.from, end: Dates.addDays(1, to: Dates.day(now))))
         XCTAssertEqual(flow.spendingByCategory, [Breakdown(category: "没细记", amount: 41_200, count: 1)])

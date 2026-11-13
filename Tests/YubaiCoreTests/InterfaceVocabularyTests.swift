@@ -9,7 +9,7 @@ final class InterfaceVocabularyTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "swift" }
         XCTAssertFalse(files.isEmpty)
-        let banned = ["始终留着", "保守可动用", "还能自在支配", "软线", "柔性提醒", "提案", "待明确", "待整理", "回访", "管家的话", "余白助手", "使用指南"]
+        let banned = ["始终留着", "保守可动用", "还能自在支配", "软线", "柔性提醒", "提案", "待明确", "待整理", "回访", "管家的话", "余白助手", "使用指南", "我的消费观", "常记的几笔", "进出记录", "藏起来的", "分一分", "一个个分", "按对方分", "余白想这样改", "整理好了", "待处理"]
         for file in files {
             var scanner = SwiftStringScanner(try String(contentsOf: file, encoding: .utf8))
             for literal in scanner.literals() {
@@ -27,14 +27,14 @@ final class InterfaceVocabularyTests: XCTestCase {
         let a = "还能花 // 事实" // "待明确"
         let b = #"每周来信 /* 原文 */"#
         let c = """
-        我的消费观
+        消费观
         """
         let d = "明细：\(title ?? "心愿单")"
         let e = "余白\"助手"
         let f = #"明细：\#(value /* "管家的话" */)"#
         """##
         var scanner = SwiftStringScanner(source)
-        XCTAssertEqual(scanner.literals(), ["还能花 // 事实", "每周来信 /* 原文 */", "\n我的消费观\n", "心愿单", "明细：", "余白\"助手", "明细："])
+        XCTAssertEqual(scanner.literals(), ["还能花 // 事实", "每周来信 /* 原文 */", "\n消费观\n", "心愿单", "明细：", "余白\"助手", "明细："])
     }
 
     func testPresentationKeepsStoredCategoryAndMemorySourceValues() throws {

@@ -56,11 +56,8 @@ struct CloudAISettingsSection: View {
                 saveButton
                 if !status.isEmpty { statusText }
             }
-        }.safeAreaInset(edge: .top, spacing: 0) { LedgerPageHeader(title: "密钥", backTitle: "智能与隐私").padding(.horizontal, 20) }
+        }
             .navigationTitle("密钥").yubaiNavigation().accessibilityIdentifier("cloudKeyPage")
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
             .onAppear { configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey }
             .onDisappear { key = "" }
     }
@@ -140,7 +137,7 @@ struct CloudModelMenu: View {
         if UITestSupport.script != nil { return }
         #endif
         // Opening settings during setup or before organizing an import is local.
-        guard store.preferences.onboardingComplete, store.preferences.cloudAIEnabled,
+        guard store.preferences.cloudAIEnabled,
               store.pendingOrganization.batchIDs.isEmpty else { return }
         guard let client = DeepSeekClient.configured() else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
         do {

@@ -15,7 +15,8 @@ mkdir -p -- "$shots"
 run_dir="$(mktemp -d /tmp/yubai-gallery.XXXXXX)"
 result="$run_dir/gallery.xcresult"
 printf 'Simulator: %s\nResults and log: %s\n' "$simulator" "$run_dir"
-# GALLERY_ONLY="testWalk01RootsAndLedger testWalk02FormulaAndAccounts" runs just those walks (CI splits the gallery this way).
+# GALLERY_ONLY="testWalk46Batch1 testWalk46Batch1Dark testWalk46Batch1Large" captures this batch.
+# Any space-separated walk names can be selected for a partial inventory.
 only=()
 for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalleryTests/$name"); done
 (( ${#only[@]} )) || only=("-only-testing:YubaiUITests/ScreenGalleryTests")
@@ -78,7 +79,7 @@ for manifest in sorted(shots.rglob("manifest.json")):
         name = item.get("suggestedHumanReadableName") or item.get("name") or ""
         name = Path(name).name
         # Xcode may append the file extension to the suggested name.
-        if source.suffix.lower() == ".png" and re.match(r"^\d{2}-", name):
+        if source.suffix.lower() == ".png" and re.match(r"^(?:\d{2}-|DS-Nav|Quick|Home-|Deck|Payday-Amount|First|Recon|Over-|Big-Home|Spend|Saved|Goal|Butler-Kinds|Words)", name):
             name = re.sub(r"\.png$", "", name, flags=re.I)
             destination = shots / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".png")
         elif name.startswith(("missing-", "planned-", "write-errors-")):
@@ -99,7 +100,12 @@ source = (repo / "Tests/YubaiUITests/ScreenGalleryTests.swift").read_text()
 full, reduced = source.split("    private func reduced(", 1)
 names = re.findall(r'\bstop\("([^"\n]+)"', full)
 small = re.findall(r'\bstop\("([^"\n]+)"', reduced)
-expected = sorted(names + [prefix + name for prefix in ("80-a11y-", "90-dark-") for name in small])
+round46 = full.split("    private func round46Batch1(", 1)[1].split("    private func audit46(", 1)[0]
+board_names = re.findall(r'\bstop\("([^"\n]+)"', round46)
+expected = sorted(names + [prefix + name for prefix in ("46-dark-", "46-a11y-") for name in board_names]
+                  + [prefix + name for prefix in ("80-a11y-", "90-dark-") for name in small])
+if len(expected) != len(set(expected)):
+    raise SystemExit("Gallery stop IDs must be unique")
 if os.environ.get("GALLERY_ONLY"):
     # A partial run is only accountable for the stops its own walks planned.
     expected = sorted({line for report in shots.glob("planned-*.txt") for line in report.read_text().splitlines() if line.strip()})
@@ -123,5 +129,5 @@ if unmapped:
     index += ["", "Attachments without a gallery name:", *unmapped]
 (shots / "index.txt").write_text("\n".join(index) + "\n")
 print(f"Gallery: {len(pngs)} PNGs in {shots} ({len(missing)} missing stops)")
-sys.exit(0 if pngs else 1)
+sys.exit(0 if pngs and not missing and status == "0" else 1)
 PY

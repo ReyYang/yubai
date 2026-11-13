@@ -2,10 +2,9 @@ import SwiftUI
 import YubaiCore
 
 func savingNumber(_ value: Int64) -> String {
-    let text = Money.text(value, currency: false)
-    return text.hasSuffix(".00") ? String(text.dropLast(3)) : text
+    AmountLabel.text(value)
 }
-func savingDaily(_ value: Int64) -> String { savingNumber((value + 50) / 100 * 100) }
+func savingDaily(_ value: Int64) -> String { savingNumber(value) }
 func savingShare(_ percent: Int) -> String {
     switch percent { case 10: "一成"; case 20: "两成"; case 30: "三成"; default: "\(percent)%" }
 }
@@ -16,7 +15,6 @@ extension Funds {
 
 struct SavingsView: View {
     @Environment(AppStore.self) private var store
-    let backTitle: String
     @State private var editing: SavingsAmountField?
     @State private var addingPayday = false
     private var hide: Bool { store.preferences.hideAmounts }
@@ -36,12 +34,9 @@ struct SavingsView: View {
             ReservePaybackProgressList(identifier: "monthlyPaybackProgress")
             if !directIncome.isEmpty { directSection }
             if !history.isEmpty { historySection }
-        }.safeAreaInset(edge: .top, spacing: 0) { LedgerPageHeader(title: "每月存", backTitle: backTitle).padding(.horizontal, 20) }
+        }
             .amountPrivacy(hide)
             .navigationTitle("每月存").yubaiNavigation().accessibilityIdentifier("savingsPage")
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
             .sheet(item: $editing) { field in
                 SavingsAmountEditor(field: field, initial: field == .fixed ? fixed : field == .target ? fixedTarget : Int64(percent) * 100) { value in
                     store.update("存钱") { ledger in

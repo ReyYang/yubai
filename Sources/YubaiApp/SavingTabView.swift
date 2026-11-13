@@ -12,6 +12,7 @@ struct SavingTabView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
                 hero
                 monthlyRow
+                savedRow
                 ReservePaybackProgressList(identifier: "savingPaybackProgress")
                 recentSection
                 wishSection
@@ -44,7 +45,7 @@ struct SavingTabView: View {
 
     // MARK: 每月存
     private var monthlyRow: some View {
-        TabNavigationLink(.savingRule) { SavingsView(backTitle: "存钱") } label: {
+        TabNavigationLink(.savingRule) { SavingsView() } label: {
             Card(style: .list) {
                 HStack(spacing: YubaiSpace.gapGroup) {
                     Text("每月存").yubaiFont(YubaiFont.rowTitle)
@@ -69,6 +70,25 @@ struct SavingTabView: View {
     }
 
     // MARK: 最近进出
+    private var savedRow: some View {
+        TabNavigationLink(.saved) { SavedView() } label: {
+            Card(style: .list) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        Text("余白帮你省下").yubaiFont(YubaiFont.rowTitle).fixedSize()
+                        Spacer(minLength: 8)
+                        AmountLabel(cents: store.butlerSaved, hide: hide).fixedSize()
+                        chevron
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("余白帮你省下").yubaiFont(YubaiFont.rowTitle)
+                        AmountLabel(cents: store.butlerSaved, hide: hide)
+                    }
+                }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+            }
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openButlerSaved")
+    }
+
     @ViewBuilder private var recentSection: some View {
         let lines = Array(overview.lines.prefix(3))
         if !lines.isEmpty {

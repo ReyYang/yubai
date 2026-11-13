@@ -517,6 +517,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Optional DeepSeek assistance; default off. Requires `DEEPSEEK_API_KEY` for now.
     public var cloudAIEnabled = false
     public var weeklyLetterPush = false
+    public var butlerNotices: ButlerNoticePreferences?
     public var quickCapture = QuickCapturePreferences()
     public var categoryOrder: [String] = Category.defaults.filter { !$0.system }.map(\.name)
     public var onboardingComplete = false
@@ -531,6 +532,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
+        case butlerNotices
         case weeklyAutoBackup, aiImportClassificationDisabled, aiAnswersDisabled, aiWeeklyReviewDisabled, aiReceiptRecognitionDisabled
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
         case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, profileColdStartDone, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
@@ -553,6 +555,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         let wasEnabled = try legacy.decodeIfPresent(Bool.self, forKey: .localAIEnabled) ?? true
         cloudAIEnabled = (try values.decodeIfPresent(Bool.self, forKey: .cloudAIEnabled) ?? false) && wasEnabled
         weeklyLetterPush = try values.decodeIfPresent(Bool.self, forKey: .weeklyLetterPush) ?? false
+        butlerNotices = try values.decodeIfPresent(ButlerNoticePreferences.self, forKey: .butlerNotices)
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder
         quickCapture = try values.decodeIfPresent(QuickCapturePreferences.self, forKey: .quickCapture) ?? QuickCapturePreferences()
         onboardingComplete = try values.decode(Bool.self, forKey: .onboardingComplete)
@@ -571,6 +574,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encode(lockEnabled, forKey: .lockEnabled); try c.encode(appearance, forKey: .appearance)
         try c.encode(purchaseValues, forKey: .purchaseValues); try c.encode(colorTheme, forKey: .colorTheme)
         try c.encode(cloudAIEnabled, forKey: .cloudAIEnabled); try c.encode(weeklyLetterPush, forKey: .weeklyLetterPush)
+        try c.encodeIfPresent(butlerNotices, forKey: .butlerNotices)
         try c.encode(quickCapture, forKey: .quickCapture); try c.encode(categoryOrder, forKey: .categoryOrder)
         try c.encode(onboardingComplete, forKey: .onboardingComplete); try c.encode(profileColdStartDone, forKey: .profileColdStartDone)
         try c.encodeIfPresent(lastBackupAt, forKey: .lastBackupAt)
@@ -836,6 +840,8 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var lastSubcategoryBatchDay: String? { didSet { calculations = LedgerCalculations() } }
     public var subscriptionChecks: [String: String] = [:] { didSet { calculations = LedgerCalculations() } }
     public var stoppedSubscriptions: [StoppedSubscription] = [] { didSet { calculations = LedgerCalculations() } }
+    public var butlerSavings: [ButlerSaving] = [] { didSet { calculations = LedgerCalculations() } }
+    public var butlerAnswers: [String: Date] = [:] { didSet { calculations = LedgerCalculations() } }
     public var dismissedSalaryKeys: Set<String> = [] { didSet { calculations = LedgerCalculations() } }
     public var memories: [MemoryNote] = [] { didSet { calculations = LedgerCalculations() } }
     public var lastReflectionWeek: String? { didSet { calculations = LedgerCalculations() } }
@@ -861,6 +867,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
+        case butlerSavings, butlerAnswers
         case reservePaybacks, repeatPreferences, paydayConfirmSince, cycleCovers, reserveAdjustments, cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
@@ -922,6 +929,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         case nil: break
         }
         savingHistory = try c.decodeIfPresent([CycleSaving].self, forKey: .savingHistory) ?? []
+        butlerSavings = try c.decodeIfPresent([ButlerSaving].self, forKey: .butlerSavings) ?? []
+        butlerAnswers = try c.decodeIfPresent([String: Date].self, forKey: .butlerAnswers) ?? [:]
         cards = try c.decodeIfPresent([ButlerCard].self, forKey: .cards) ?? cards
         pendingChanges = try c.decodeIfPresent([ChangeSet].self, forKey: .pendingChanges) ?? pendingChanges
         wishlist = try c.decodeIfPresent([WishItem].self, forKey: .wishlist) ?? wishlist
@@ -990,6 +999,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encodeIfPresent(lastSubcategoryBatchDay, forKey: .lastSubcategoryBatchDay)
         try c.encode(subscriptionChecks, forKey: .subscriptionChecks)
         try c.encode(stoppedSubscriptions, forKey: .stoppedSubscriptions)
+        if !butlerSavings.isEmpty { try c.encode(butlerSavings, forKey: .butlerSavings) }
+        if !butlerAnswers.isEmpty { try c.encode(butlerAnswers, forKey: .butlerAnswers) }
         try c.encode(dismissedSalaryKeys.sorted(), forKey: .dismissedSalaryKeys)
         try c.encode(memories, forKey: .memories)
         try c.encodeIfPresent(lastReflectionWeek, forKey: .lastReflectionWeek)
@@ -1036,6 +1047,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.lastSubcategoryBatchDay == rhs.lastSubcategoryBatchDay &&
         lhs.subscriptionChecks == rhs.subscriptionChecks &&
         lhs.stoppedSubscriptions == rhs.stoppedSubscriptions &&
+        lhs.butlerSavings == rhs.butlerSavings &&
+        lhs.butlerAnswers == rhs.butlerAnswers &&
         lhs.dismissedSalaryKeys == rhs.dismissedSalaryKeys &&
         lhs.memories == rhs.memories &&
         lhs.lastReflectionWeek == rhs.lastReflectionWeek &&
@@ -1068,6 +1081,23 @@ public struct Ledger: Codable, Equatable, Sendable {
               Set(mutedTopics).count == mutedTopics.count else { throw YubaiError.invalid("画像、卡片或修改包含重复标识。") }
         let ids = Set(accounts.map(\.id)); let categoryNames = categories.map(\.id)
         func dateValid(_ value: Date) -> Bool { (-2_208_988_800...7_258_118_400).contains(value.timeIntervalSince1970) }
+        guard butlerSavings.count <= 10_000, butlerAnswers.count <= 20_000,
+              Set(butlerSavings.map(\.id)).count == butlerSavings.count,
+              butlerSavings.allSatisfy({ !$0.id.isEmpty && $0.id.count <= 200 && !$0.item.isEmpty && $0.item.count <= 4000 &&
+                  (1...Money.limit).contains($0.amount) && dateValid($0.date) && ($0.undoneAt.map(dateValid) ?? true) && ($0.endedAt.map(dateValid) ?? true) }),
+              butlerAnswers.allSatisfy({ !$0.key.isEmpty && $0.key.count <= 2000 && dateValid($0.value) })
+        else { throw YubaiError.invalid("省下的钱或管家记录无效。") }
+        for record in butlerSavings {
+            guard record.endedAt.map({ $0 >= record.date }) ?? true,
+                  record.undoneAt.map({ $0 >= record.date }) ?? true,
+                  record.waitedHours.map({ $0 >= 0 }) ?? true else { throw YubaiError.invalid("省下的钱或管家记录无效。") }
+            if let plan = record.plan {
+                guard plan.amount == record.amount, !plan.title.isEmpty, plan.nature == .expense, !plan.inflow,
+                      plan.frequency != .once, record.cadence == .from(plan.frequency), dateValid(plan.dueDate),
+                      plan.endDate.map(dateValid) ?? true, plan.installments.map({ $0 > 0 }) ?? true
+                else { throw YubaiError.invalid("省下的钱或管家记录无效。") }
+            }
+        }
         let partCategories = spendingParts.flatMap(\.categories)
         guard spendingParts.count <= 1000, Set(spendingParts.map(\.id)).count == spendingParts.count,
               !spendingParts.contains(where: { $0.id == SpendingPart.unassignedID }),

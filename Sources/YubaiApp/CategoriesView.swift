@@ -46,7 +46,7 @@ struct CategoriesView: View {
                         NavigationLink { HiddenCategoriesView(income: income) } label: {
                             Card(style: .list) {
                                 HStack {
-                                    Text("藏起来的 · \(hidden.count)").yubaiFont(YubaiFont.callout).lineLimit(1).fixedSize()
+                                    Text("已隐藏 · \(hidden.count)").yubaiFont(YubaiFont.callout).lineLimit(1).fixedSize()
                                     Spacer(); categoryChevron
                                 }.foregroundStyle(YubaiColor.labelSecondary).frame(minHeight: YubaiSize.tapMin)
                             }
@@ -345,7 +345,7 @@ private struct HiddenCategoriesView: View {
                         .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("unhideCategory_" + category.name)
                 }
             }
-        }.navigationTitle("藏起来的").yubaiNavigation()
+        }.navigationTitle("已隐藏").yubaiNavigation()
     }
 }
 

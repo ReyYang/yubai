@@ -16,9 +16,9 @@ struct ImportQuestionCard: View {
                         .yubaiFont(YubaiFont.cardTitle).accessibilityIdentifier(question.isFallback ? "unsortedQuestionTitle" : "nowImportQuestion")
                     if question.isFallback {
                         HStack(spacing: YubaiSpace.space8) {
-                            TabNavigationLink(.triage(question.entryIDs)) { LetterTriageView(entryIDs: question.entryIDs) } label: { Text("一笔笔过") }
+                            TabNavigationLink(.triage(question.entryIDs)) { LetterTriageView(entryIDs: question.entryIDs) } label: { Text("逐笔整理") }
                                 .buttonStyle(NowCardButtonStyle(primary: true)).accessibilityIdentifier("quickSortUnsorted")
-                            TabNavigationLink(.unsortedGroups(question.id)) { UnsortedGroupsView(questionID: question.id) } label: { Text("按对方分") }
+                            TabNavigationLink(.unsortedGroups(question.id)) { UnsortedGroupsView(questionID: question.id) } label: { Text("按商户整理") }
                                 .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("groupUnsortedByParty")
                         }
                     } else {
@@ -100,7 +100,7 @@ struct UnsortedGroupsView: View {
                     proxy.scrollTo("unsortedGroupsTop", anchor: .top)
                 }
         }.paperBackground().foregroundStyle(YubaiColor.label)
-            .navigationTitle("按对方分").yubaiNavigation()
+            .navigationTitle("按商户整理").yubaiNavigation()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button(selecting ? "完成" : "选择") { selecting.toggle(); selectedIDs.removeAll() }
@@ -337,7 +337,7 @@ struct UnsortedQuickSortView: View {
                     }
             }
         }.frame(maxWidth: 1080).frame(maxWidth: .infinity).paperBackground().foregroundStyle(YubaiColor.label)
-            .navigationTitle("一个个分").yubaiNavigation()
+            .navigationTitle("逐笔整理").yubaiNavigation()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Text("\(session.done)/\(session.total)").yubaiFont(YubaiFont.caption).monospacedDigit()
@@ -658,8 +658,6 @@ struct LetterTriageView: View {
     private func party(_ entry: Entry) -> String { entry.title.components(separatedBy: " · ")[0] }
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
-            LedgerPageHeader(title: "分一分", backTitle: "账本", trailing: "\(min(index + 1, total)) / \(total)")
-                .padding(.horizontal, YubaiSpace.insetPage)
             ScrollView {
                 if let entry {
                     VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
@@ -671,10 +669,10 @@ struct LetterTriageView: View {
                 }
             }
         }.safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { bottomBar }
-            .paperBackground().navigationTitle("分一分").yubaiNavigation().accessibilityIdentifier("letterTriage")
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
+            .paperBackground().navigationTitle("整理分类").yubaiNavigation().accessibilityIdentifier("letterTriage")
+            .toolbar { ToolbarItem(placement: .primaryAction) {
+                Text("\(min(index + 1, total)) / \(total)").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            } }
             .sheet(isPresented: $showingMore) {
                 EntryMoreCategorySheet(income: entry.map { $0.nature != .refund && $0.nature.inflow } ?? false, selection: selection,
                                        suggested: suggestion?.category, choose: { picked in

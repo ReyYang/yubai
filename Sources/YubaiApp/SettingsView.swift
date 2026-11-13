@@ -17,9 +17,13 @@ struct SettingsView: View {
             }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
+                    TabNavigationLink(.accounts) { AccountsView() } label: { row("账户") }.accessibilityIdentifier("openAccounts")
+                    separator
+                    TabNavigationLink(.budget) { BudgetView() } label: { row("预算") }.accessibilityIdentifier("openSpendingParts")
+                    separator
                     TabNavigationLink(.categories) { CategoriesView() } label: { row("分类") }.accessibilityIdentifier("openCategories")
                     separator
-                    TabNavigationLink(.quickCapture) { FrequentEntriesView() } label: { row("常记的几笔", detail: "\(frequentCount) 笔") }
+                    TabNavigationLink(.quickCapture) { FrequentEntriesView() } label: { row("常用", detail: "\(frequentCount) 笔") }
                         .accessibilityIdentifier("openQuickCapture")
                     separator
                     TabNavigationLink(.importHistory) { ImportHistoryView() } label: { row("导入记录", detail: lastImport) }
@@ -27,6 +31,7 @@ struct SettingsView: View {
                 }
             }
             Card(style: .list) { intelligenceRow }
+            ButlerNoticeSettings()
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     TabNavigationLink(.backup) { BackupView() } label: { row("备份与恢复", detail: backupDetail) }.accessibilityIdentifier("openBackup")
@@ -399,7 +404,7 @@ struct ImportHistoryView: View {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     NavigationLink {
                         ImportResultPage(batchID: batch.id, hasNext: false, next: {}, restart: { store.sheet = .imports })
-                            .navigationTitle("整理好了").yubaiNavigation()
+                            .navigationTitle("导入结果").yubaiNavigation()
                     } label: { Text(batch.filename).yubaiFont(YubaiFont.rowTitle).frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading) }
                         .disabled(batch.undoneAt != nil).accessibilityIdentifier("openImportBatch_" + batch.id.uuidString)
                     Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销"))
@@ -408,7 +413,7 @@ struct ImportHistoryView: View {
                         if batch.needsOrganization == true || !(batch.organization?.questions.isEmpty ?? true) {
                             NavigationLink("继续整理") {
                                 ImportResultPage(batchID: batch.id, hasNext: false, next: {}, restart: { store.sheet = .imports })
-                                    .navigationTitle("整理好了").yubaiNavigation()
+                                    .navigationTitle("导入结果").yubaiNavigation()
                             }.frame(minHeight: YubaiSize.rowSingle).accessibilityIdentifier("continueImportBatch_" + batch.id.uuidString)
                         }
                         Button("整批撤销", role: .destructive) { undoBatch = batch }

@@ -775,6 +775,7 @@ struct BillCheck: View {
                 .accessibilityLabel((inflow ? "收到了 " : "付了 ") + title)
                 .accessibilityHint("长按有更多选项")
                 .accessibilityIdentifier("billCheck_" + planID.uuidString)
+                .accessibilityValue(FixedFlowPresentation.monthDay(occurrence))
                 .billRowMenu(planID: planID, occurrence: occurrence)
         }
     }
@@ -891,18 +892,7 @@ private struct BillSheetHeader: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
     var subtitle: String? = nil
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-            Text(title).yubaiFont(YubaiFont.entrySheetTitle)
-            if let subtitle { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-            Spacer(minLength: YubaiSpace.space8)
-            Button("取消") { dismiss() }
-                .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.label)
-                .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
-                .background(YubaiColor.card, in: Capsule()).contentShape(Capsule())
-                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("amountSheetCancel")
-        }
-    }
+    var body: some View { AmountSheetHeader(title: title, subtitle: subtitle, cancel: { dismiss() }) }
 }
 
 /// 账本里的一笔：首字、名字、日期·账户·来源、金额。
@@ -1134,112 +1124,6 @@ private struct BillDayPicker: View {
             #if os(iOS)
             .presentationDetents([.medium, .large])
             #endif
-    }
-}
-
-// MARK: 加一项固定账单
-
-struct BillAddSheet: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    @State private var inflow = false
-    @State private var name = ""
-    @State private var cents: Int64 = 0
-    @State private var day = min(28, Dates.calendar.component(.day, from: Date()))
-    @State private var autoPay = true
-    @State private var editingAmount = false
-    @State private var editingDay = false
-    @State private var keypad = EntryKeypad()
-    private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var accountID: UUID? { ManualBookkeeping.defaultAccount(in: store.current)?.id }
-    private var canSave: Bool { !cleanName.isEmpty && cents > 0 }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                BillSheetHeader(title: "加一项固定账单")
-                SegmentedWide(choices: [(false, "要付"), (true, "要收")], selection: $inflow,
-                              identifier: { $0 ? "billAddInflow" : "billAddOutflow" })
-                fieldsCard
-                autoCard
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
-        }.scrollDismissesKeyboard(.interactively).paperBackground()
-            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
-                Button("加上", action: save).buttonStyle(PrimaryButtonStyle()).disabled(!canSave)
-                    .padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space8)
-                    .accessibilityIdentifier("billAddDone")
-            }
-            .sheet(isPresented: $editingAmount) {
-                AmountEntrySheet(title: "金额", keypad: $keypad, primaryTitle: "好", canSave: keypad.canSave, save: {
-                    if let value = keypad.resolve() { cents = value }
-                    editingAmount = false
-                }).presentationDragIndicator(.visible).yubaiSheetBackground()
-                    #if os(iOS)
-                    .presentationDetents([.height(520), .large])
-                    #endif
-            }
-            .sheet(isPresented: $editingDay) {
-                BillDayPicker(current: day, pick: { day = $0 }).presentationDragIndicator(.visible).yubaiSheetBackground()
-            }
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            .presentationDetents([.large])
-            #endif
-    }
-
-    private var fieldsCard: some View {
-        Card(style: .list) {
-            VStack(spacing: YubaiSpace.none) {
-                fieldRow("名字") {
-                    TextField("", text: $name).multilineTextAlignment(.trailing).yubaiFont(YubaiFont.rowTitle)
-                        .accessibilityLabel("名字").accessibilityIdentifier("billAddName")
-                }
-                Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
-                fieldRow("金额") {
-                    Button { keypad = EntryKeypad(amount: cents); editingAmount = true } label: {
-                        Text(amount2(cents, hide: false)).yubaiFont(YubaiFont.rowTitle).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billAddAmount")
-                }
-                Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
-                fieldRow("每月几号") {
-                    Button { editingDay = true } label: {
-                        Text("\(day) 号").yubaiFont(YubaiFont.rowTitle).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billAddDay")
-                }
-            }
-        }
-    }
-    private func fieldRow<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
-            Text(title).yubaiFont(YubaiFont.row)
-            Spacer(minLength: YubaiSpace.space8)
-            value()
-        }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
-    }
-    private var autoCard: some View {
-        Card(style: .list) {
-            Toggle("到日子自动记一笔", isOn: $autoPay).tint(YubaiColor.toggleOn).yubaiFont(YubaiFont.row)
-                .disabled(accountID == nil).frame(minHeight: YubaiSize.rowDouble).accessibilityIdentifier("billAddAutoPay")
-        }
-    }
-
-    private func save() {
-        guard canSave else { return }
-        let calendar = Dates.calendar
-        let today = Dates.day(Date())
-        var parts = calendar.dateComponents([.year, .month], from: today)
-        parts.day = day
-        var due = calendar.date(from: parts) ?? today
-        if due < today { due = Dates.addMonths(1, to: due) }
-        var plan = Plan(title: cleanName, amount: cents, dueDate: due, frequency: .monthly, inflow: inflow,
-                        category: inflow ? "其他收入" : "其他支出", nature: inflow ? .income : .expense)
-        plan.monthlyDay = day
-        plan.accountID = accountID
-        plan.autoPay = autoPay && accountID != nil
-        plan.autoPaySince = plan.autoPay ? today : nil
-        plan.estimated = !plan.autoPay
-        let change = ChangeSet(source: "用户操作", reason: "添加安排「\(cleanName)」", items: [.addPlan(plan)])
-        if store.apply(change, label: "添加安排") { dismiss() }
     }
 }
 

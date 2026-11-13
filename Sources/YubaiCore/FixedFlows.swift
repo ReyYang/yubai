@@ -105,7 +105,7 @@ extension FixedFlows {
         return change
     }
     public static func resolveStopped(planID: UUID, resolution: FixedFlowStopResolution, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
-        guard let row = FixedFlowArrangement.stopped(in: ledger, now: now).first(where: { $0.id == planID }), !row.pending.isEmpty else { throw YubaiError.invalid("找不到已停掉安排的待处理期。") }
+        guard let row = FixedFlowArrangement.stopped(in: ledger, now: now).first(where: { $0.id == planID }), !row.pending.isEmpty else { throw YubaiError.invalid("找不到已停掉安排的未结清期。") }
         var items: [ChangeItem] = []
         for occurrence in row.pending {
             if resolution == .settle { items += try settle(planID: planID, occurrence: occurrence.date, in: ledger, now: now).items }
