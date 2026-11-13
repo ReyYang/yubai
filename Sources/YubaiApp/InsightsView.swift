@@ -16,7 +16,7 @@ struct WhereView: View {
     }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space4) {
-            Segmented(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "账目" : "去向") }, selection: $mode,
+            Segmented(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "明细" : "去向") }, selection: $mode,
                           identifier: { "ledgerMode_" + $0.rawValue })
             if let insights {
                 if !insights.charges.isEmpty { charges(insights) }
@@ -27,7 +27,7 @@ struct WhereView: View {
                     destinations(insights)
                 }
             } else { ProgressView() }
-        }.amountPrivacy(hide).rootScrollContentMargins().rootTabScroll(.ledger).accessibilityIdentifier("insightsScroll")
+        }.amountPrivacy(hide).rootScrollContentMargins(for: .ledger).rootTabScroll(.ledger).accessibilityIdentifier("insightsScroll")
             .task(id: "\(store.ledgerRevision)-\(store.financialNow)") {
                 let ledger = store.current; let now = store.financialNow
                 let value = await Task.detached(priority: .userInitiated) { SavingInsights.opportunities(ledger, now: now) }.value

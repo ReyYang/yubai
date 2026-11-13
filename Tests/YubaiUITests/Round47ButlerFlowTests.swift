@@ -36,9 +36,17 @@ final class Round47ButlerFlowTests: XCTestCase {
         XCTAssertTrue(element("butlerAIText").label.contains("7 次，共 214.00"))
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "butlerSuggestionCard").count, 1)
         tap("butlerAIEvidence"); XCTAssertTrue(element("butlerAIEvidencePage").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("mainNavigation").exists)
+        XCTAssertFalse(element("addEntry").exists)
         XCTAssertTrue(element("butlerEvidenceTitle").label.contains("214.00")); XCTAssertTrue(element("butlerEvidenceMemories").exists)
         XCTAssertTrue(element("butlerEvidenceMore").label.contains("3 笔"))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "butlerEvidenceMore").count, 1)
+        tap("butlerEvidenceEntry_" + String(format: "47000000-0000-0000-0000-%012d", 472101))
+        XCTAssertTrue(element("entryDetailEdit").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("mainNavigation").exists)
+        element("ledgerBack").tap()
         tap("butlerEvidenceMore")
+        XCTAssertFalse(element("mainNavigation").exists)
         XCTAssertTrue(element("butlerEvidenceEntry_" + String(format: "47000000-0000-0000-0000-%012d", 472107)).waitForExistence(timeout: 5))
     }
     func testTrialLeavesOneReviewAndWritesFeedbackMemory() {
@@ -105,15 +113,24 @@ final class Round47ButlerFlowTests: XCTestCase {
     }
     func testEmptyAssistantExamplesSendImmediatelyAndValuesAndMemoriesHaveSharedState() {
         launch("v47-c-empty", configured: true); tap("tab_yubai"); XCTAssertTrue(element("emptyState_assistant").exists)
+        for index in 0..<3 {
+            XCTAssertGreaterThanOrEqual(element("askSuggestion_\(index)").frame.height, 44)
+            XCTAssertEqual(element("askSuggestion_\(index)").frame.minX, element("askSuggestion_0").frame.minX, accuracy: 1)
+        }
         tap("askSuggestion_0"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); backToRoot()
         tap("tab_yubai"); tap("openProfile"); XCTAssertTrue(element("emptyState_profile").exists)
         tap("addPrinciple"); XCTAssertTrue(element("principleText").waitForExistence(timeout: 5)); tap("cancelManualSheet")
         backToRoot(); tap("tab_yubai"); tap("openMemories"); XCTAssertTrue(element("emptyState_memories").exists)
+        XCTAssertTrue(element("emptyMemories").exists)
     }
     func testEmptySavingWishBillsBudgetAndFrequentActionsAreConnected() {
         launch("v47-c-empty"); tap("openSaving"); XCTAssertTrue(element("emptyState_saving").exists)
         XCTAssertFalse(element("reserveTotal").exists)
         XCTAssertFalse(element("takeSavings").exists)
+        XCTAssertTrue(element("savingFirstRule").exists)
+        XCTAssertFalse(element("openWishlist").exists)
+        tap("setFirstSavingTarget"); tap("keypad_2"); tap("keypad_0"); tap("keypad_0"); tap("saveSavingsAmount")
+        XCTAssertFalse(element("emptyState_saving").exists)
         tap("openWishlist"); XCTAssertTrue(element("emptyState_wish").exists)
         XCTAssertFalse(element("wishlistSavings").exists)
         tap("emptyAction_wish")

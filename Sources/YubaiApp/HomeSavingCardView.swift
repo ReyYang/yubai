@@ -57,7 +57,7 @@ struct HomeSavingCardView: View {
                     if shortfall > 0 {
                         HStack(spacing: YubaiSpace.space4) {
                             Text("还差").yubaiFont(YubaiFont.callout).fixedSize()
-                            AmountLabel(cents: shortfall, hide: hide, role: .small, ink: YubaiColor.labelSecondary)
+                            AmountLabel(cents: shortfall, hide: hide, role: .small, ink: YubaiColor.labelSecondary).fixedSize()
                         }.layoutPriority(1).foregroundStyle(YubaiColor.labelSecondary)
                     } else { Text("够了").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).fixedSize() }
                 }
@@ -67,7 +67,7 @@ struct HomeSavingCardView: View {
             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                 Text("每月先存").yubaiFont(YubaiFont.callout).fixedSize()
                 Spacer(minLength: YubaiSpace.none)
-                AmountLabel(cents: amount, hide: hide, role: .small, ink: YubaiColor.labelSecondary)
+                AmountLabel(cents: amount, hide: hide, role: .small, ink: YubaiColor.labelSecondary).fixedSize()
             }.foregroundStyle(YubaiColor.labelSecondary)
         case .notStarted: EmptyView()
         }

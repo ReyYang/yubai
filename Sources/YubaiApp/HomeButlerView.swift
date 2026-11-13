@@ -37,13 +37,9 @@ struct HomeTaskCard: View {
     @Environment(AppStore.self) private var store
     let item: HomeTask
     var more = 0
-    @State private var sortQuestionID: UUID?
-    @State private var showGroups = false
     private var hide: Bool { store.preferences.hideAmounts }
     var body: some View {
-        content.navigationDestination(isPresented: $showGroups) {
-            if let id = sortQuestionID { UnsortedGroupsView(questionID: id) }
-        }
+        content
     }
     @ViewBuilder private var content: some View {
         switch item {
@@ -124,7 +120,7 @@ struct HomeTaskCard: View {
                     Button("按商户整理") {
                         var id: UUID?
                         if store.update("整理分类", recordUndo: false, entryMotion: false, showToast: false, { id = HomeButler.prepareMerchantSort(pending, in: &$0) }), let id {
-                            sortQuestionID = id; showGroups = true
+                            store.tabRouteRequest = .unsortedGroups(id)
                         }
                     }.buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("groupUnsortedByParty")
                 }
@@ -187,8 +183,10 @@ struct ButlerKicker: View {
     }
     @ViewBuilder private var evidenceLink: some View {
         if let evidenceTitle, let onEvidence {
-            Button(evidenceTitle, action: onEvidence).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
-                .fixedSize().yubaiHitTarget().buttonStyle(PressButtonStyle()).accessibilityIdentifier("butlerAIEvidence")
+            Button(action: onEvidence) {
+                Text(evidenceTitle).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
+                    .fixedSize().yubaiHitTarget()
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("butlerAIEvidence")
         }
     }
 }

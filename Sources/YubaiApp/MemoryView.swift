@@ -10,7 +10,7 @@ struct MemoryView: View {
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
             if notes.isEmpty {
-                EmptyState(.memories, onAction: { store.sheet = .ask("") }).accessibilityIdentifier("emptyMemories")
+                EmptyState(.memories, titleIdentifier: "emptyMemories", onAction: { store.sheet = .ask("") })
             } else {
                 NativeCardRows(notes) { note in
                     NavigationLink { MemoryEditor(note: note) } label: {

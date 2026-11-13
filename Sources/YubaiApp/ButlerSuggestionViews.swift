@@ -21,15 +21,13 @@ struct ButlerSuggestionCard: View {
     @Environment(AppStore.self) private var store
     let suggestion: ButlerSuggestion
     var more = 0
-    @State private var showingEvidence = false
     var body: some View {
         QuestionCard(eyebrow: "余白看了这 4 周", title: suggestion.text(suggestion.observation + suggestion.proposal, hidden: store.preferences.hideAmounts),
-                     more: more, evidenceTitle: "看这 \(suggestion.count) 笔", onEvidence: { showingEvidence = true }, titleIdentifier: "butlerAIText",
+                     more: more, evidenceTitle: "看这 \(suggestion.count) 笔", onEvidence: { store.tabRouteRequest = .butlerEvidence(suggestion.id) }, titleIdentifier: "butlerAIText",
                      yesTitle: suggestion.action.title, noTitle: suggestion.action == .neverMention ? "" : "不用",
                      yesIdentifier: "butlerAIAccept", noIdentifier: "butlerAINever",
                      yes: { store.answerSuggestion(suggestion, .accept) }, no: { store.answerSuggestion(suggestion, .never) })
-            .accessibilityIdentifier("butlerSuggestionCard")
-            .navigationDestination(isPresented: $showingEvidence) { ButlerSuggestionEvidence(suggestionID: suggestion.id) }
+            .accessibilityElement(children: .contain).accessibilityIdentifier("butlerSuggestionCard")
     }
 }
 
@@ -50,7 +48,7 @@ struct ButlerSuggestionActions: View {
             if showIncorrect {
                 Button("说得不对") { correcting = true }.buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("butlerAIIncorrect")
             }
-        }.sheet(isPresented: $correcting) {
+        }.accessibilityElement(children: .contain).sheet(isPresented: $correcting) {
             ButlerSuggestionCorrection(suggestion: suggestion) { correcting = false; finished() }
                 .environment(store).appErrors().yubaiSheetBackground()
         }
@@ -73,7 +71,7 @@ struct ButlerSuggestionEvidence: View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
             if let suggestion {
                 Text(suggestion.text(suggestion.observation, hidden: store.preferences.hideAmounts))
-                    .yubaiFont(YubaiFont.rowTitle, weight: .semibold).fixedSize(horizontal: false, vertical: true)
+                    .yubaiFont(YubaiFont.butlerTitle, weight: .semibold).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("butlerEvidenceTitle")
                 ButlerEvidenceEntries(suggestion: suggestion)
                 let notes = store.current.memories.filter { suggestion.memoryIDs.contains($0.id) }
@@ -87,7 +85,7 @@ struct ButlerSuggestionEvidence: View {
                                 Text(FixedFlowPresentation.monthDay(note.updatedAt) + " 你说的")
                                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                             }.padding(.vertical, YubaiSpace.space12)
-                        }.accessibilityIdentifier("butlerEvidenceMemories")
+                        }.accessibilityElement(children: .contain).accessibilityIdentifier("butlerEvidenceMemories")
                     }
                 }
             } else {
@@ -99,7 +97,7 @@ struct ButlerSuggestionEvidence: View {
                     .padding(YubaiSpace.insetPage).frame(maxWidth: .infinity, alignment: .leading).background(YubaiColor.canvas)
             }
         }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("为什么这么说").yubaiNavigation()
-            .accessibilityIdentifier("butlerAIEvidencePage")
+            .accessibilityElement(children: .contain).accessibilityIdentifier("butlerAIEvidencePage")
     }
 }
 
@@ -117,18 +115,18 @@ private struct ButlerEvidenceEntries: View {
             VStack(spacing: YubaiSpace.none) {
                 ForEach(Array((all ? rows : Array(rows.prefix(4))).enumerated()), id: \.element.id) { index, entry in
                     if index > 0 { EntryFormDivider() }
-                    NavigationLink { EntryDetailView(entryID: entry.id) } label: { row(entry) }
+                    TabNavigationLink(.entryDetail(entry.id)) { EntryDetailView(entryID: entry.id) } label: { row(entry) }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("butlerEvidenceEntry_" + entry.id.uuidString)
                 }
                 if !all && rows.count > 4 {
                     EntryFormDivider()
-                    NavigationLink {
-                        Page { ButlerEvidenceEntries(suggestion: suggestion, all: true) }.navigationTitle("这几笔").yubaiNavigation()
+                    TabNavigationLink(.butlerEvidenceEntries(suggestion.id)) {
+                        ButlerSuggestionEntriesPage(suggestionID: suggestion.id)
                     } label: { SettingsRow(title: "还有 \(rows.count - 4) 笔", chevron: true) }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("butlerEvidenceMore")
                 }
             }
-        }.accessibilityIdentifier("butlerEvidenceEntries")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("butlerEvidenceEntries")
     }
     private func row(_ entry: Entry) -> some View {
         ViewThatFits(in: .horizontal) {
@@ -149,6 +147,18 @@ private struct ButlerEvidenceEntries: View {
     }
     private func amount(_ entry: Entry) -> some View {
         AmountLabel(cents: Finance.spendingAmount(entry, ledger: store.current), hide: store.preferences.hideAmounts, sign: .outflow).fixedSize()
+    }
+}
+
+struct ButlerSuggestionEntriesPage: View {
+    @Environment(AppStore.self) private var store
+    let suggestionID: UUID
+    var body: some View {
+        Page {
+            if let suggestion = store.current.butlerAI?.suggestions.first(where: { $0.id == suggestionID }) {
+                ButlerEvidenceEntries(suggestion: suggestion, all: true)
+            }
+        }.navigationTitle("这几笔").yubaiNavigation()
     }
 }
 

@@ -5,6 +5,7 @@ struct FirstOpenView: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         GeometryReader { geometry in
+            let availableHeight = geometry.size.height - YubaiSize.rootBottomPadding(for: .now)
             ScrollView {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     HStack {
@@ -28,13 +29,15 @@ struct FirstOpenView: View {
                             Rectangle().fill(YubaiColor.label.opacity(0.85)).frame(width: YubaiSize.firstOpenRule, height: YubaiSize.lineWidth)
                         }.accessibilityElement(children: .ignore).accessibilityLabel("还能花，尚未开始记账").accessibilityIdentifier("firstOpenEmptyAmount")
                     }
-                    Button("已经有账单，导进来") { store.beginFirstEntry(importing: true) }
-                        .buttonStyle(PressButtonStyle()).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk)
-                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).accessibilityIdentifier("firstImport")
+                    Button { store.beginFirstEntry(importing: true) } label: {
+                        Text("已经有账单，导进来").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("firstImport")
                 }.padding(.horizontal, YubaiSpace.space28).padding(.top, YubaiSpace.space28)
-                    .padding(.bottom, YubaiSize.firstOpenBottom)
-                    .frame(minHeight: max(YubaiSize.firstOpenMinimum, geometry.size.height), alignment: .topLeading)
-            }.rootTabScroll(.now)
-        }.background { FirstWindowWall() }.accessibilityIdentifier("firstOpenScene")
+                    .padding(.bottom, YubaiSpace.space12)
+                    .frame(minHeight: max(YubaiSize.firstOpenMinimum, availableHeight), alignment: .topLeading)
+            }.accessibilityIdentifier("firstOpenScroll").rootScrollContentMargins(for: .now).rootTabScroll(.now)
+        }.background { FirstWindowWall() }.accessibilityElement(children: .contain).accessibilityIdentifier("firstOpenScene")
     }
 }

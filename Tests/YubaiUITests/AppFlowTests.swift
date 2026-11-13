@@ -770,8 +770,8 @@ final class AppFlowTests: XCTestCase {
     private func ask(_ question: String, in app: XCUIApplication) {
         backToRoot(app)
         tap(app.buttons["tab_yubai"], in: app)
-        let field = app.textFields["askYubai"]
-        tap(field, in: app); field.typeText(question)
+        let field = anyElement("askYubai", in: app)
+        tap(field, in: app); app.typeText(question)
         tap(app.buttons["sendAskHome"], in: app)
         XCTAssertTrue(anyElement("askInput", in: app).waitForExistence(timeout: 5))
     }
@@ -1353,7 +1353,7 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_ledger"], in: app)
         scrollToVisible(app.textFields["entriesSearch"], in: app)
         tap(app.buttons["tab_yubai"], in: app)
-        scrollToVisible(app.textFields["askYubai"], in: app)
+        scrollToVisible(anyElement("askYubai", in: app), in: app)
         snapshot("roots-accessibility-xl", app)
     }
 

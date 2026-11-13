@@ -3,11 +3,9 @@ import YubaiCore
 
 /// 余白：最近问过的、消费观、余白记得的；输入框和三句常问的贴在底栏上方。
 struct YubaiTabView: View {
-    private struct AskTarget: Hashable { var text: String; var send: Bool }
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var input = ""
-    @State private var target: AskTarget?
     @FocusState private var focused: Bool
     private let suggestions = ["这个能买吗", "这个月钱去哪了", "帮我记一笔"]
     var body: some View {
@@ -21,14 +19,11 @@ struct YubaiTabView: View {
                 memoriesRow
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
                 .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity)
-        }.rootScrollContentMargins().rootTabScroll(.yubai)
+        }.rootScrollContentMargins(for: .yubai, reservesNavigation: false).rootTabScroll(.yubai)
             .rootPageHeader { RootHeader(title: "余白") }
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { askArea }
             .amountPrivacy(store.preferences.hideAmounts)
-            .navigationDestination(item: $target) { destination in
-                AskYubaiView(initialText: destination.text, autoSend: destination.send)
-            }
             .navigationTitle("余白").yubaiNavigation()
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
@@ -125,8 +120,11 @@ struct YubaiTabView: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading) }
             field
-        }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding - YubaiSpace.gapGroup)
+        }.padding(.horizontal, YubaiSpace.insetPage)
+            .padding(.bottom, focused ? YubaiSpace.gapGroup : YubaiSize.rootBottomPadding(for: .yubai))
             .background(YubaiColor.canvas).overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -YubaiSize.iconButton) }
+            .accessibilityHidden(store.destination != .yubai)
+            .allowsHitTesting(store.destination == .yubai)
     }
     private var field: some View {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -145,11 +143,7 @@ struct YubaiTabView: View {
         openQuestion(text)
     }
     private func openQuestion(_ text: String) {
-        #if os(iOS)
         store.tabRouteRequest = .askQuestion(text)
-        #else
-        target = AskTarget(text: text, send: true)
-        #endif
     }
     private var chevron: some View {
         Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)

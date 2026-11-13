@@ -115,6 +115,16 @@ final class Round47HomeTests: XCTestCase {
         var value = ledger(); value.wishlist = [WishItem(title: "相机", amount: 860_000)]
         XCTAssertEqual(HomeSavingCard.make(value, now: now).state, .notStarted)
     }
+    func testZeroSavingCycleHistoryDoesNotStartSaving() {
+        var value = ledger()
+        value.savingHistory = [CycleSaving(cycleStart: date("2026-10-01"), cycleEnd: date("2026-10-31"),
+                                          income: 0, target: 0, saved: 0, tracked: false, unspent: 0)]
+        XCTAssertFalse(HomeSavingCard.make(value, now: now).started)
+        value.savingHistory[0].tracked = true
+        XCTAssertFalse(HomeSavingCard.make(value, now: now).started)
+        value.fixedSavings = 100
+        XCTAssertTrue(HomeSavingCard.make(value, now: now).started)
+    }
     func testSavingMonthlyIncludesActualCurrentSetAside() {
         var value = ledger(); value.fixedSavings = 300_000; value.savingRule = .fixed(200_000)
         let facts = HomeSavingCard.make(value, now: now)

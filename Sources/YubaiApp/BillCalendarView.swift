@@ -50,8 +50,9 @@ struct FixedFlowsView: View {
         }.navigationTitle("账单").yubaiNavigation().amountPrivacy(store.preferences.hideAmounts)
             .accessibilityIdentifier("fixedFlowsScroll")
             .toolbar { ToolbarItem(placement: .primaryAction) {
-                Button { store.sheetSource = nil; store.sheet = .addPlan } label: { Image(systemName: "plus") }
-                    .yubaiHitTarget().accessibilityLabel("加一个账单").accessibilityIdentifier("addFixedFlow")
+                Button { store.sheetSource = nil; store.sheet = .addPlan } label: {
+                    Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
+                }.accessibilityLabel("加一个账单").accessibilityIdentifier("addFixedFlow")
             } }
             .sheet(item: $editingRate) { currency in
                 NavigationStack { BillRateEditor(currency: currency) }.environment(store).appErrors().yubaiSheetBackground()

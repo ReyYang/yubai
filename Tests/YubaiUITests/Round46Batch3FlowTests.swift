@@ -22,7 +22,7 @@ final class Round46Batch3FlowTests: XCTestCase {
         XCTAssertTrue(target.isHittable, id); target.tap()
     }
     private func question(_ text: String) {
-        tap("tab_yubai"); tap("askYubai"); element("askYubai").typeText(text); tap("sendAskHome")
+        tap("tab_yubai"); tap("askYubai"); app.typeText(text); tap("sendAskHome")
     }
     func testOnlyNowHasGlobalAddAndEveryLedgerDayHasItsOwnAdd() {
         launch()
@@ -67,9 +67,10 @@ final class Round46Batch3FlowTests: XCTestCase {
         launch("v46-b3-save-empty"); tap("openSaving")
         XCTAssertTrue(element("emptyState_saving").waitForExistence(timeout: 5))
         XCTAssertFalse(element("reserveTotal").exists)
-        XCTAssertTrue(element("openWishlist").exists)
+        XCTAssertFalse(element("openWishlist").exists)
         tap("setFirstSavingTarget"); tap("keypad_2"); tap("keypad_0"); tap("keypad_0"); tap("saveSavingsAmount")
         XCTAssertTrue(element("openSavings").waitForExistence(timeout: 5)); XCTAssertFalse(element("savingFirstRule").exists)
+        XCTAssertTrue(element("openWishlist").exists)
         tap("openSavings"); XCTAssertTrue(element("editSavingTarget").waitForExistence(timeout: 5))
     }
     func testCoolingWishKeepOpensAnAmountAndTitlePrefilledEntry() {

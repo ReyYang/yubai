@@ -55,7 +55,7 @@ struct EntriesView: View {
             .scrollContentBackground(.hidden).contentMargins(.top, 0, for: .scrollContent)
             .environment(\.defaultMinListRowHeight, 0)
             .scrollDismissesKeyboard(.interactively).amountPrivacy(hideAmounts).accessibilityIdentifier("entriesScroll")
-            .rootScrollContentMargins().rootTabScroll(.ledger)
+            .rootScrollContentMargins(for: .ledger).rootTabScroll(.ledger)
             .onChange(of: scrollToTop) { _, value in
                 guard value else { return }
                 proxy.scrollTo("entriesTop", anchor: .top); scrollToTop = false
@@ -83,7 +83,7 @@ struct EntriesView: View {
         VStack(spacing: YubaiSpace.gapGroup) {
             Group {
                 if !searching {
-                    Segmented(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "账目" : "去向") }, selection: $mode,
+                    Segmented(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "明细" : "去向") }, selection: $mode,
                                   identifier: { "ledgerMode_" + $0.rawValue })
                 }
                 searchField
@@ -326,7 +326,8 @@ struct EntriesView: View {
                 Text(monthTitle(date)).yubaiFont(YubaiFont.callout, weight: .semibold)
                 Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta)
             }.fixedSize().yubaiHitTarget(alignment: .leading)
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entriesMonth")
+        }.buttonStyle(PressButtonStyle())
+            .accessibilityIdentifier(Dates.day(date) == Dates.day(month) ? "entriesMonth" : "entriesMonth_" + Dates.text(date))
     }
     private func monthTotal(_ group: EntryTimeline.Month, hide: Bool) -> some View {
         ViewThatFits(in: .horizontal) {
@@ -348,7 +349,7 @@ struct EntriesView: View {
             dashedLine
             Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
             dashedLine
-        }.accessibilityIdentifier("entriesPreviousCycle")
+        }.accessibilityElement(children: .combine).accessibilityIdentifier("entriesPreviousCycle")
     }
     private var dashedLine: some View {
         Line().stroke(style: StrokeStyle(lineWidth: YubaiSize.separator, dash: [3, 3])).foregroundStyle(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true)

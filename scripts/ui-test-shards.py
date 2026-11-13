@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 
-def matrix(root: Path, size: int = 8) -> dict:
+def matrix(root: Path, size: int = 8, only: str = "") -> dict:
     classes: dict[str, list[str]] = {}
     for path in sorted((root / "Tests/YubaiUITests").glob("*.swift")):
         source = path.read_text()
@@ -31,12 +31,15 @@ def matrix(root: Path, size: int = 8) -> dict:
         for start in range(0, len(methods), size):
             shards.append({"part": f"ui-{name}-{start // size + 1:02d}",
                            "tests": [f"YubaiUITests/{name}/{method}" for method in methods[start:start + size]]})
+    if only:
+        shards = [row for row in shards if row["part"] == "unit" or "Round47" in row["part"]]
     return {"include": shards}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--github-output", action="store_true")
+    parser.add_argument("--only", default="", help="When set, keep unit and Round47 UI shards")
     args = parser.parse_args()
-    result = json.dumps(matrix(Path(__file__).resolve().parent.parent), separators=(",", ":"))
+    result = json.dumps(matrix(Path(__file__).resolve().parent.parent, only=args.only), separators=(",", ":"))
     print(("matrix=" if args.github_output else "") + result)

@@ -2,6 +2,7 @@
 """Derive every expected capture from the actual XCTest walks, for all variants."""
 import argparse
 import json
+import importlib.util
 import re
 from pathlib import Path
 
@@ -47,9 +48,13 @@ def check(root=ROOT):
     captures = {stop for names in walks.values() for stop in names}
     missing = [board for board in boards if any(board.split('-', 1)[0] + '-' + mode + '-' + board.split('-', 1)[1] not in captures
                                               for mode in ('light', 'dark', 'a11y', 'hidden'))]
+    spec = importlib.util.spec_from_file_location('gallery_shards', root / 'scripts/gallery-shards.py')
+    shards = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shards)
+    scheduled = [row['walks'] for row in shards.matrix(root)['include']]
     workflow = (root / '.github/workflows/ios.yml').read_text()
-    scheduled = re.findall(r'^\s+walks:\s*(.+)$', workflow, re.M)
-    scheduled = [name for line in scheduled for name in line.split()]
+    if 'python3 scripts/gallery-shards.py' not in workflow or 'fromJSON(needs.gallery-shards.outputs.matrix)' not in workflow:
+        raise ValueError('CI gallery must use scripts/gallery-shards.py')
     if sorted(scheduled) != sorted(walks):
         raise ValueError('CI walks differ from XCTest inventory: missing=' + str(sorted(walks.keys() - set(scheduled))) +
                          ', extra/duplicate=' + str([n for n in scheduled if n not in walks or scheduled.count(n) > 1]))

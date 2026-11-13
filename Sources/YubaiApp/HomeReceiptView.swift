@@ -80,11 +80,20 @@ struct HomeReceiptView: View {
     }
     private var ghost: some View {
         Button { store.homeEntrySession = true; store.beginFirstEntry() } label: {
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                Text("--:--").yubaiFont(YubaiFont.receiptTime)
-                Text("第一笔").yubaiFont(YubaiFont.row)
-                ReceiptRule(dotted: true)
-                amount(0)
+            Group {
+                if textSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                        Text("--:--").yubaiFont(YubaiFont.receiptTime)
+                        HStack(spacing: YubaiSpace.space8) { Text("第一笔").yubaiFont(YubaiFont.row); ReceiptRule(dotted: true); amount(0) }
+                    }
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                        Text("--:--").yubaiFont(YubaiFont.receiptTime)
+                        Text("第一笔").yubaiFont(YubaiFont.row)
+                        ReceiptRule(dotted: true)
+                        amount(0)
+                    }
+                }
             }.foregroundStyle(YubaiColor.labelSecondary).opacity(0.40)
                 .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).accessibilityLabel("记下今天第一笔").accessibilityIdentifier("receiptFirstEntry")
@@ -120,7 +129,7 @@ struct HomeReceiptView: View {
         if textSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(time(entry.date)).yubaiFont(YubaiFont.receiptTime).foregroundStyle(YubaiColor.labelSecondary)
-                Text(entry.displayTitle).yubaiFont(YubaiFont.row).fixedSize(horizontal: false, vertical: true)
+                Text(entry.displayTitle).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail).accessibilityIdentifier("truncatableName")
                 HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) { ReceiptRule(dotted: true); entryAmount(entry).layoutPriority(1) }
             }
         } else {

@@ -155,10 +155,15 @@ final class ScreenGalleryTests: XCTestCase {
         let center = CGPoint(x: target.frame.midX, y: target.frame.midY)
         guard app.frame.insetBy(dx: 4, dy: 4).contains(center) else { return false }
         let navigation = element("mainNavigation")
-        if navigation.exists, !navigation.frame.isEmpty, center.y > navigation.frame.minY - 4, !navigation.frame.contains(center) { return false }
+        if navigation.exists, !navigation.frame.isEmpty {
+            if navigation.frame.contains(target.frame) { return true }
+            if target.frame.maxY > navigation.frame.minY - 4 { return false }
+            let header = element("rootHeaderTitle")
+            if header.exists, !["rootHeaderTitle", "openSettings", "toggleAmountVisibility"].contains(target.identifier), target.frame.minY < header.frame.maxY + 8 { return false }
+        }
         return true
     }
-    private func pressable(_ target: XCUIElement) -> Bool { target.exists && (target.isHittable || onScreen(target)) }
+    private func pressable(_ target: XCUIElement) -> Bool { target.exists && onScreen(target) && target.isHittable }
     private func press(_ target: XCUIElement) {
         if target.isHittable { target.tap(); return }
         app.coordinate(withNormalizedOffset: .zero)
@@ -190,7 +195,7 @@ final class ScreenGalleryTests: XCTestCase {
     private func type(_ value: String, into id: String) throws {
         let field = element(id); try tap(field)
         try wait({ self.app.keyboards.firstMatch.exists }, "Keyboard did not open for " + id)
-        field.typeText(value)
+        app.typeText(value)
     }
     private func keys(_ value: String) throws { for key in value { try tap("keypad_" + String(key)) } }
     private func back() throws {
@@ -345,13 +350,16 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Home-AI-None") { try load("v47-ai-none"); try settings("openIntelligencePrivacy"); try reveal(element("butlerLastRun")) }
         stop("Empty") { try load(); try root("ledger"); try require("emptyState_ledger") }
         stop("Empty-Saving") { try load(); try savingPage(); try require("emptyState_saving") }
-        stop("Empty-Wish") { try tap("openWishlist"); try require("emptyState_wish") }
+        stop("Empty-Wish") { try load("v47-saving-monthly"); try savingPage(); try tap("openWishlist"); try require("emptyState_wish") }
         stop("Empty-Bills") { try load(); try settings("openFixedFlows"); try require("emptyState_bills") }
         stop("Empty-Assistant") { try load(); try root("yubai"); try require("emptyState_assistant"); try reveal(element("askSuggestion_2")) }
         stop("Empty-Profile") { try tap("openProfile"); try require("emptyState_profile") }
         stop("Empty-Memories") { try load(); try root("yubai"); try tap("openMemories"); try require("emptyState_memories") }
         stop("Empty-Frequent") { try load(); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("emptyState_frequent") }
-        stop("Empty-Frequent-Add") { try tap("emptyAction_frequent"); try type(longName, into: "frequentEntryPurpose"); try require("saveFrequentEntry") }
+        stop("Empty-Frequent-Add") {
+            try load(); try longPress(element("addEntry")); try tap("manageQuickRepeats")
+            try tap("emptyAction_frequent"); try type(longName, into: "frequentEntryPurpose"); try require("saveFrequentEntry")
+        }
         stop("Empty-Budget") { try load(); try settings("openSpendingParts"); try require("emptyState_budget") }
         stop("Empty-Search") { try load("v47-home-hard"); try search("星巴克"); try drag(element("entriesScroll")); try require("emptyState_search"); try reveal(element("emptySecondary_search")) }
     }
@@ -393,6 +401,14 @@ final class ScreenGalleryTests: XCTestCase {
         func add(_ amount: String) throws {
             try tap("addEntry"); try keys(amount); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try tap("cancelManualSheet")
         }
+        func revealUndo() throws {
+            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' AND label CONTAINS '餐饮'")).firstMatch
+            try reveal(row)
+            let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+            let end = row.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: end)
+            try require("undoReceipt_" + row.identifier.replacingOccurrences(of: "ledgerEntry_", with: ""))
+        }
         stop("Home") { try load("v47-home"); try require("openSaving"); try require("addEntry"); try reveal(element("receiptTotal")) }
         stop("Book") { try root("ledger"); try require("entriesScroll") }
         stop("Save-Card") { try load("v47-saving-wish"); try reveal(element("openSaving")) }
@@ -404,11 +420,10 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Receipt") { try load("v47-receipt-normal"); try reveal(element("receiptTotal")) }
         stop("Receipt-Added") { try load("v47-receipt-normal"); try add("18"); try require("receiptTotal") }
         stop("Receipt-Undo") {
-            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' AND label CONTAINS '餐饮'")).firstMatch
-            try reveal(row); row.swipeLeft()
-            try require("undoReceipt_" + row.identifier.replacingOccurrences(of: "ledgerEntry_", with: ""))
+            try load("v47-receipt-normal"); try add("18"); try revealUndo()
         }
         stop("Receipt-Undone") {
+            try load("v47-receipt-normal"); try add("18"); try revealUndo()
             try tap(buttonPrefix("undoReceipt_")); try require("receiptNumber")
             try wait({ self.element("receiptNumber").label == "No.2" }, "Receipt count after undo")
         }

@@ -32,7 +32,7 @@ struct PaydaySetupSheet: View {
                 days
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
                 .padding(.bottom, YubaiSpace.gapSection)
-        }.paperBackground().accessibilityIdentifier("paydaySetupSheet")
+        }.paperBackground().accessibilityElement(children: .contain).accessibilityIdentifier("paydaySetupSheet")
             .onAppear { if accountID == nil { accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id } }
             .sheet(isPresented: $editingAmount) {
                 AmountEntrySheet(title: "工资", keypad: $keypad, primaryTitle: "好", primaryIdentifier: "paydaySetupAmountDone",

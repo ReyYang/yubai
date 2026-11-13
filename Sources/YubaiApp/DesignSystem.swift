@@ -330,11 +330,14 @@ enum YubaiSize {
     static let lineWidth: CGFloat = 2
     static let outline: CGFloat = 1.5
     static let marker: CGFloat = 8
-    #if os(macOS)
-    static let rootBottomPadding: CGFloat = 106
-    #else
-    static let rootBottomPadding: CGFloat = floatingTabbarHeight + floatingTabbarBottom + homeEntryPillHeight + 36
-    #endif
+    static func rootBottomPadding(for destination: Destination) -> CGFloat {
+        #if os(macOS)
+        destination == .now ? homeEntryPillHeight + YubaiSpace.gapSection : YubaiSpace.none
+        #else
+        floatingTabbarHeight + floatingTabbarBottom + YubaiSpace.space12 +
+            (destination == .now ? homeEntryPillHeight + YubaiSpace.space12 : YubaiSpace.none)
+        #endif
+    }
 }
 
 enum YubaiShadow {
@@ -994,13 +997,17 @@ extension View {
     func controlSurface<S: Shape>(in shape: S) -> some View {
         background(YubaiColor.raised, in: shape).yubaiShadow(YubaiShadow.control)
     }
-    func rootScrollContentMargins() -> some View {
+    func rootScrollContentMargins(for destination: Destination, reservesNavigation: Bool = true) -> some View {
         #if os(iOS)
-        self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
+        // Insetting content alone still lets rows rest underneath the floating
+        // controls. Keep the clipped viewport above them at every scroll offset.
+        self.contentMargins(.bottom, YubaiSpace.gapGroup, for: .scrollContent)
             .scrollEdgeEffectHidden(true, for: .bottom)
             .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollClipDisabled(false)
+            .padding(.bottom, reservesNavigation ? YubaiSize.rootBottomPadding(for: destination) : YubaiSpace.none)
         #else
-        self.safeAreaPadding(.bottom, YubaiSize.rootBottomPadding)
+        self.padding(.bottom, reservesNavigation ? YubaiSize.rootBottomPadding(for: destination) : YubaiSpace.none)
         #endif
     }
     func rootPageHeader<Header: View>(@ViewBuilder _ header: () -> Header) -> some View {
@@ -1085,6 +1092,7 @@ struct Page<Content: View>: View {
                 .padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
+            .accessibilityElement(children: .contain)
     }
 }
 
@@ -1101,6 +1109,7 @@ struct Card<Content: View>: View {
             .padding(.vertical, style == .list ? YubaiSpace.space4 : YubaiSpace.insetCard)
             .frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(YubaiColor.label)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: background)
+            .accessibilityElement(children: .contain)
     }
 }
 
@@ -1502,11 +1511,13 @@ struct EmptyState: View {
     var onExample: ((String) -> Void)?
     var actionIdentifier: String
     var secondaryIdentifier: String
-    init(_ kind: EmptyStateKind, title: String? = nil, actionIdentifier: String = "", secondaryIdentifier: String = "",
+    var titleIdentifier: String = ""
+    init(_ kind: EmptyStateKind, title: String? = nil, actionIdentifier: String = "", secondaryIdentifier: String = "", titleIdentifier: String = "",
          onAction: (() -> Void)? = nil, onSecondary: (() -> Void)? = nil, onExample: ((String) -> Void)? = nil) {
         self.kind = kind; self.title = title ?? kind.title; self.action = kind.action; self.secondary = kind.secondary
         self.onAction = onAction; self.onSecondary = onSecondary; self.onExample = onExample
         self.actionIdentifier = actionIdentifier; self.secondaryIdentifier = secondaryIdentifier
+        self.titleIdentifier = titleIdentifier
     }
     // Custom facts use the same ghost and serif line as the named page presets.
     init(_ icon: String, _ title: String, action: String? = nil, actionIdentifier: String = "", onAction: (() -> Void)? = nil) {
@@ -1523,10 +1534,11 @@ struct EmptyState: View {
                             Text(question).yubaiFont(YubaiFont.callout).fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, YubaiSpace.space12).padding(.vertical, YubaiSpace.space8)
                                 .background(YubaiColor.raised, in: Capsule()).yubaiShadow(YubaiShadow.control)
-                                .frame(minHeight: YubaiSize.tapMin)
+                                .yubaiHitTarget(alignment: .leading)
                         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("askSuggestion_\(index)")
                     }
-                }.padding(.vertical, YubaiSpace.space16)
+                }.frame(maxWidth: 280, minHeight: 156, alignment: .leading)
+                    .frame(maxWidth: .infinity)
             } else if kind == .search {
                 Image(systemName: "magnifyingglass").yubaiFont(YubaiFont.amountHero)
                     .foregroundStyle(YubaiColor.separator).frame(height: 156).accessibilityHidden(true)
@@ -1534,14 +1546,17 @@ struct EmptyState: View {
                 EmptyGhostDrawing(kind: kind).frame(maxWidth: 240).frame(height: 156).accessibilityHidden(true)
             }
             Text(title).yubaiFont(YubaiFont.cardTitle).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-            ChipFlow {
-                if let action, let onAction {
-                    Button(action, action: onAction).buttonStyle(PrimaryButtonStyle(compact: true))
-                        .accessibilityIdentifier(actionIdentifier.isEmpty ? "emptyAction_" + kind.rawValue : actionIdentifier)
-                }
-                if let secondary, let onSecondary {
-                    Button(secondary, action: onSecondary).buttonStyle(SecondaryButtonStyle(background: YubaiColor.card, compact: true))
-                        .accessibilityIdentifier(secondaryIdentifier.isEmpty ? "emptySecondary_" + kind.rawValue : secondaryIdentifier)
+                .accessibilityIdentifier(titleIdentifier)
+            if (action != nil && onAction != nil) || (secondary != nil && onSecondary != nil) {
+                ChipFlow {
+                    if let action, let onAction {
+                        Button(action, action: onAction).buttonStyle(PrimaryButtonStyle(compact: true))
+                            .accessibilityIdentifier(actionIdentifier.isEmpty ? "emptyAction_" + kind.rawValue : actionIdentifier)
+                    }
+                    if let secondary, let onSecondary {
+                        Button(secondary, action: onSecondary).buttonStyle(SecondaryButtonStyle(background: YubaiColor.card, compact: true))
+                            .accessibilityIdentifier(secondaryIdentifier.isEmpty ? "emptySecondary_" + kind.rawValue : secondaryIdentifier)
+                    }
                 }
             }
         }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
@@ -2066,7 +2081,7 @@ struct DestinationGlyph: View {
         switch destination {
         case .now: Image(systemName: "clock").font(.system(size: size, weight: selected ? .medium : .regular))
         case .ledger: NowTabGlyph(size: size, selected: selected)
-        case .yubai: Image(systemName: "leaf").font(.system(size: size, weight: selected ? .medium : .regular))
+        case .yubai: Image(systemName: "leaf.fill").font(.system(size: size, weight: selected ? .medium : .regular))
         }
     }
 }
@@ -2259,8 +2274,9 @@ struct AmountEntrySheet<Accessory: View>: View {
                     }
                     AmountKeypad(keypad: $keypad, amountSelected: $selected, canSave: canSave,
                                  primaryTitle: primaryTitle, primaryIdentifier: primaryIdentifier, save: save, showsPrimary: !primaryAboveKeypad)
-                }
+                }.accessibilityElement(children: .contain)
             }
+            .accessibilityElement(children: .contain)
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
@@ -2904,8 +2920,8 @@ struct EntryForm<Content: View>: View {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup, content: content)
                     .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, compactHeader ? 0 : YubaiSpace.gapSection)
                     .frame(maxWidth: 620).frame(maxWidth: .infinity)
-            }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier(scrollIdentifier)
-        }
+            }.scrollDismissesKeyboard(.interactively).accessibilityElement(children: .contain).accessibilityIdentifier(scrollIdentifier)
+        }.accessibilityElement(children: .contain)
     }
 }
 
@@ -2994,10 +3010,14 @@ struct ChatInputBar<Leading: View, Accessory: View>: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
             leading().frame(height: YubaiSize.iconButton)
-            TextField(placeholder, text: $text, axis: .vertical)
-                .focused(focus ?? $localFocus)
-                .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
-                .padding(.vertical, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin)
+            HStack(spacing: YubaiSpace.none) {
+                TextField(placeholder, text: $text, axis: .vertical)
+                    .focused(focus ?? $localFocus)
+                    .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
+                    .padding(.vertical, YubaiSpace.gapGroup)
+            }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                .onTapGesture { (focus ?? $localFocus).wrappedValue = true }
+                .accessibilityElement(children: .combine)
                 .accessibilityIdentifier(inputID).accessibilityLabel(accessibilityLabel)
             accessory().frame(height: YubaiSize.iconButton)
             if showSend {
@@ -3226,7 +3246,7 @@ struct SettingsRow: View {
                 if let detail { Text(detail).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true) }
             }.frame(maxWidth: .infinity, alignment: .leading)
             if chevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
-        }.frame(minHeight: YubaiSize.buttonHeight).contentShape(Rectangle())
+        }.frame(minHeight: YubaiSize.buttonHeight).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
 }
 
@@ -3480,11 +3500,11 @@ struct ReceiptSwipeRow<Content: View>: View {
     var body: some View {
         ZStack(alignment: .trailing) {
             if revealed && enabled {
-                Button("撤销", action: undo).buttonStyle(PressButtonStyle())
-                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
-                    .lineLimit(1).minimumScaleFactor(0.5)
-                    .frame(width: YubaiSize.receiptUndoWidth, height: YubaiSize.tapMin)
-                    .accessibilityIdentifier(identifier)
+                Button(action: undo) {
+                    Text("撤销").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                        .frame(width: YubaiSize.receiptUndoWidth, height: YubaiSize.tapMin).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier)
             }
             content().background(YubaiColor.receiptPaper(for: scheme))
                 .offset(x: revealed && enabled ? -YubaiSize.receiptUndoWidth : 0)

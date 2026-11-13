@@ -3,6 +3,7 @@ import YubaiCore
 
 struct SavingTabView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var transferDirection: SavingsTransfer.Direction?
     @State private var editingFloor = false
     @State private var settingTarget = false
@@ -20,11 +21,13 @@ struct SavingTabView: View {
                     transferButtons
                     floorRow
                 }
+                if store.current.savingRule == nil { firstSaving }
+                wishSection
+                settingsRows
+            } else {
+                firstSaving
             }
-            if store.current.savingRule == nil { firstSaving }
-            wishSection
-            settingsRows
-        }.accessibilityIdentifier("savingTabScroll")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("savingTabScroll")
             .amountPrivacy(hide)
             .navigationTitle("存钱").yubaiNavigation()
             .task(id: "\(store.ledgerRevision)-\(store.financialNow)") { await refreshFacts() }
@@ -51,12 +54,13 @@ struct SavingTabView: View {
                 HStack(spacing: YubaiSpace.space4) {
                     Text("这个月").yubaiFont(YubaiFont.callout)
                     AmountLabel(cents: change, hide: hide, role: .small, sign: change >= 0 ? .inflow : .outflow, ink: YubaiColor.brandInk)
-                }.foregroundStyle(YubaiColor.brandInk).accessibilityIdentifier("savingMonthlyIncrease")
+                }.foregroundStyle(YubaiColor.brandInk).accessibilityElement(children: .contain).accessibilityIdentifier("savingMonthlyIncrease")
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var transferButtons: some View {
-        HStack(spacing: YubaiSpace.space8) {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
+        return layout {
             Button("拿出来用") { transferDirection = .take }
                 .buttonStyle(SecondaryButtonStyle()).frame(maxWidth: .infinity).accessibilityIdentifier("takeSavings")
             Button("放回去") { transferDirection = .putBack }
@@ -90,13 +94,15 @@ struct SavingTabView: View {
         }
     }
     private var firstSaving: some View {
-        EmptyState(.saving, actionIdentifier: "setFirstSavingTarget", onAction: { settingTarget = true })
-            .accessibilityIdentifier("savingFirstRule")
+        EmptyState(.saving, actionIdentifier: "setFirstSavingTarget", titleIdentifier: "savingFirstRule", onAction: { settingTarget = true })
     }
     private var wishSection: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             HStack {
-                TabNavigationLink(.wishlist) { WishlistView() } label: { Text("心愿").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary) }
+                TabNavigationLink(.wishlist) { WishlistView() } label: {
+                    Text("心愿").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                        .yubaiHitTarget(alignment: .leading)
+                }
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openWishlist")
                 Spacer(minLength: YubaiSpace.space8)
                 Button { addingWish = true } label: { Label("添一个", systemImage: "chevron.right").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk) }
@@ -116,7 +122,7 @@ struct SavingTabView: View {
             }
             if let funding = fundingByWish[wish.id] {
                 if funding.shortfall > 0 && !hide { ProgressLine(value: funding.progress, tint: YubaiColor.brand) }
-                fundingFacts(funding).accessibilityIdentifier("savingWishFunding_" + wish.id.uuidString)
+                fundingFacts(funding).accessibilityElement(children: .contain).accessibilityIdentifier("savingWishFunding_" + wish.id.uuidString)
             }
         }.padding(.vertical, YubaiSpace.space12).contentShape(Rectangle())
     }

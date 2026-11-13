@@ -23,7 +23,8 @@ final class Round47HomeFlowTests: XCTestCase {
         for _ in 0..<8 {
             if target.isHittable && target.frame.maxY < element("mainNavigation").frame.minY { break }
             let scroll = app.scrollViews.matching(identifier: "nowScroll").firstMatch
-            if scroll.exists { scroll.swipeUp() } else { app.swipeUp() }
+            let first = app.scrollViews.matching(identifier: "firstOpenScroll").firstMatch
+            if scroll.exists { scroll.swipeUp() } else if first.exists { first.swipeUp() } else { app.swipeUp() }
         }
     }
     private func tap(_ id: String) {
@@ -134,5 +135,46 @@ final class Round47HomeFlowTests: XCTestCase {
         XCTAssertTrue(element("receiptTotal").isHittable)
         XCTAssertLessThan(element("receiptTotal").frame.maxY, element("addEntry").frame.minY)
         XCTAssertFalse(element("todayEntries").label.contains("1234567.89"))
+    }
+    func testInactiveRootsExposeNoInputOrDuplicateHeaders() {
+        launch("v47-first", large: true)
+        XCTAssertFalse(element("askYubai").exists)
+        XCTAssertEqual(element("addEntry").label, "记第一笔")
+        tap("tab_ledger")
+        XCTAssertFalse(element("askYubai").exists)
+        XCTAssertFalse(element("firstImport").exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "rootHeaderTitle").count, 1)
+        tap("tab_yubai")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "askYubai").count, 1)
+        XCTAssertGreaterThanOrEqual(element("askYubai").frame.height, 44)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "rootHeaderTitle").count, 1)
+    }
+    func testFirstImportClearsFloatingActionsAtLargestTextSize() {
+        launch("v47-first", large: true)
+        reveal(element("firstImport"))
+        XCTAssertTrue(element("firstImport").isHittable)
+        XCTAssertGreaterThanOrEqual(element("firstImport").frame.height, 44)
+        XCTAssertLessThan(element("firstImport").frame.maxY, element("addEntry").frame.minY)
+    }
+    func testLargestReceiptAndUpcomingHeaderClearTheWholeNavigationArea() {
+        launch("v47-home-hard", large: true)
+        for id in ["openFixedFlows", "receiptOpenLedger", "receiptMoreEntries", "receiptTotal"] {
+            let target = element(id); reveal(target)
+            XCTAssertTrue(target.isHittable, id)
+            XCTAssertLessThan(target.frame.maxY, element("mainNavigation").frame.minY, id)
+        }
+    }
+    func testCapsuleStaysInPlaceAndAssistantInputClearsOnlyTheCapsule() {
+        launch()
+        let capsule = element("navigationCapsule").frame
+        for tab in ["ledger", "yubai"] {
+            tap("tab_" + tab)
+            XCTAssertEqual(element("navigationCapsule").frame, capsule)
+            XCTAssertFalse(element("addEntry").exists)
+        }
+        let field = element("askYubai")
+        XCTAssertGreaterThanOrEqual(field.frame.height, 44)
+        XCTAssertLessThan(field.frame.maxY, capsule.minY)
+        XCTAssertLessThanOrEqual(capsule.minY - field.frame.maxY, 32)
     }
 }

@@ -60,7 +60,9 @@ public struct HomeSavingCard: Equatable, Sendable {
     public var started: Bool { state != .notStarted }
     public static func make(_ ledger: Ledger, now: Date) -> Self {
         let total = max(0, Reserve.overview(ledger, now: now).total)
-        guard ledger.savingRule != nil || total > 0 || !ledger.savingHistory.isEmpty else {
+        // Cycle maintenance also records untracked, zero-saving periods. That
+        // history alone does not mean the user has started saving.
+        guard ledger.savingRule != nil || total > 0 else {
             return Self(total: total, state: .notStarted)
         }
         // Closest to being funded first; stable ties do not shuffle on redraw.

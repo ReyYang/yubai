@@ -28,7 +28,7 @@ struct NowView: View {
                     .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity, alignment: .leading)
             }.accessibilityIdentifier("nowScroll")
                 .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
-                .rootScrollContentMargins().rootTabScroll(.now)
+                .rootScrollContentMargins(for: .now).rootTabScroll(.now)
                 .rootPageHeader { RootHeader(title: "现在") }
                 .task(id: store.receiptFeedbackTrigger) {
                     let trigger = store.receiptFeedbackTrigger

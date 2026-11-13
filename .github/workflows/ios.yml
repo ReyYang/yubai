@@ -4,6 +4,10 @@ name: iOS
 on:
   workflow_dispatch:
     inputs:
+      only:
+        description: '仅运行此前缀的截图分片；测试保留 Round47 与 unit（空白则运行全部）'
+        type: string
+        default: ''
       release_builds:
         description: '同时做 Release 构建（iOS 真机与 macOS，不签名）'
         type: boolean
@@ -28,7 +32,9 @@ jobs:
       - uses: actions/checkout@v4
       - id: shards
         name: 从源码生成测试分片
-        run: python3 scripts/ui-test-shards.py --github-output >> "$GITHUB_OUTPUT"
+        env:
+          YUBAI_TEST_ONLY: ${{ inputs.only }}
+        run: python3 scripts/ui-test-shards.py --only "$YUBAI_TEST_ONLY" --github-output >> "$GITHUB_OUTPUT"
 
   simulator:
     if: inputs.mode != 'gallery'
@@ -126,125 +132,49 @@ jobs:
             -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build | tail -20
 
   simulator-results:
-    if: always() && inputs.mode != 'gallery'
-    needs: [test-shards, simulator]
+    if: always()
+    needs: [test-shards, simulator, gallery-shards, gallery]
     runs-on: ubuntu-latest
     steps:
-      - name: 所有测试分片必须完成
+      - name: 所有选中的分片必须完成
         env:
+          MODE: ${{ inputs.mode }}
           SHARDS_RESULT: ${{ needs.test-shards.result }}
           TESTS_RESULT: ${{ needs.simulator.result }}
+          GALLERY_SHARDS_RESULT: ${{ needs.gallery-shards.result }}
+          GALLERY_RESULT: ${{ needs.gallery.result }}
         run: |
-          echo "分片生成：$SHARDS_RESULT；测试分片：$TESTS_RESULT" >> "$GITHUB_STEP_SUMMARY"
-          test "$SHARDS_RESULT" = success
-          test "$TESTS_RESULT" = success
+          echo "测试分片：$SHARDS_RESULT / $TESTS_RESULT；截图分片：$GALLERY_SHARDS_RESULT / $GALLERY_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$MODE" != gallery ]; then
+            test "$SHARDS_RESULT" = success
+            test "$TESTS_RESULT" = success
+          fi
+          if [ "$MODE" != tests ]; then
+            test "$GALLERY_SHARDS_RESULT" = success
+            test "$GALLERY_RESULT" = success
+          fi
+
+  gallery-shards:
+    if: inputs.mode != 'tests'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.shards.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: shards
+        name: 从源码生成截图分片
+        env:
+          YUBAI_TEST_ONLY: ${{ inputs.only }}
+        run: python3 scripts/gallery-shards.py --only "$YUBAI_TEST_ONLY" --github-output >> "$GITHUB_OUTPUT"
 
   gallery:
     if: inputs.mode != 'tests'
+    needs: gallery-shards
     runs-on: macos-26
     timeout-minutes: 50
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - part: r47-a-light
-            walks: testWalk47BatchA
-          - part: r47-a-dark
-            walks: testWalk47BatchADark
-          - part: r47-a-a11y
-            walks: testWalk47BatchALarge
-          - part: r47-a-hidden
-            walks: testWalk47BatchAHidden
-          - part: r47-b-light
-            walks: testWalk47BatchB
-          - part: r47-b-dark
-            walks: testWalk47BatchBDark
-          - part: r47-b-a11y
-            walks: testWalk47BatchBLarge
-          - part: r47-b-hidden
-            walks: testWalk47BatchBHidden
-          - part: r47-c-light
-            walks: testWalk47BatchC
-          - part: r47-c-dark
-            walks: testWalk47BatchCDark
-          - part: r47-c-a11y
-            walks: testWalk47BatchCLarge
-          - part: r47-c-hidden
-            walks: testWalk47BatchCHidden
-          - part: r47-d-light
-            walks: testWalk47BatchD
-          - part: r47-d-dark
-            walks: testWalk47BatchDDark
-          - part: r47-d-a11y
-            walks: testWalk47BatchDLarge
-          - part: r47-d-hidden
-            walks: testWalk47BatchDHidden
-          - part: 46-batch1
-            walks: testWalk46Batch1
-          - part: 46-batch1-dark
-            walks: testWalk46Batch1Dark
-          - part: 46-batch1-large
-            walks: testWalk46Batch1Large
-          - part: 46-batch1-hidden
-            walks: testWalk46Batch1Hidden
-          - part: 46-batch2
-            walks: testWalk46Batch2
-          - part: 46-batch2-dark
-            walks: testWalk46Batch2Dark
-          - part: 46-batch2-large
-            walks: testWalk46Batch2Large
-          - part: 46-batch2-hidden
-            walks: testWalk46Batch2Hidden
-          - part: 46-batch3
-            walks: testWalk46Batch3
-          - part: 46-batch3-dark
-            walks: testWalk46Batch3Dark
-          - part: 46-batch3-large
-            walks: testWalk46Batch3Large
-          - part: 46-batch3-hidden
-            walks: testWalk46Batch3Hidden
-          - part: 46-batch4
-            walks: testWalk46Batch4
-          - part: 46-batch4-dark
-            walks: testWalk46Batch4Dark
-          - part: 46-batch4-large
-            walks: testWalk46Batch4Large
-          - part: 46-batch4-hidden
-            walks: testWalk46Batch4Hidden
-          - part: 46-batch5
-            walks: testWalk46Batch5
-          - part: 46-batch5-dark
-            walks: testWalk46Batch5Dark
-          - part: 46-batch5-large
-            walks: testWalk46Batch5Large
-          - part: 46-batch5-hidden
-            walks: testWalk46Batch5Hidden
-          - part: 01-roots-and-ledger
-            walks: testWalk01RootsAndLedger
-          - part: 02-formula-and-accounts
-            walks: testWalk02FormulaAndAccounts
-          - part: 03-bills
-            walks: testWalk03Bills
-          - part: 04-saving
-            walks: testWalk04Saving
-          - part: 05-entry-sheets
-            walks: testWalk05EntrySheets
-          - part: 06-categories
-            walks: testWalk06Categories
-          - part: 07-yubai
-            walks: testWalk07Yubai
-          - part: 08-settings
-            walks: testWalk08Settings
-          - part: 09-imports
-            walks: testWalk09Imports
-          - part: 10-states
-            walks: testWalk10States
-          - part: 11-empty
-            walks: testWalk11Empty
-          - part: accessibility-walk
-            walks: testAccessibilityWalk
-          - part: dark-walk
-            walks: testDarkWalk
+      matrix: ${{ fromJSON(needs.gallery-shards.outputs.matrix) }}
     env:
       GALLERY_ONLY: ${{ matrix.walks }}
     steps:

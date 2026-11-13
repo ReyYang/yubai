@@ -38,6 +38,7 @@ enum TabRoute: Hashable {
     case entryDetail(UUID)
     case allCategories(DateInterval), categoryBudget(String), savingWish(UUID), askQuestion(String)
     case yearlyBills, saving, cycleBills
+    case butlerEvidence(UUID), butlerEvidenceEntries(UUID)
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -49,12 +50,10 @@ struct TabNavigationLink<Content: View, Label: View>: View {
         self.route = route; self.destination = destination; self.label = label
     }
     var body: some View {
-        #if os(iOS)
-        if inSheet { NavigationLink(destination: destination, label: label).navigationLinkIndicatorVisibility(.hidden) }
-        else { NavigationLink(value: route, label: label).navigationLinkIndicatorVisibility(.hidden) }
-        #else
-        NavigationLink(destination: destination, label: label)
-        #endif
+        Group {
+            if inSheet { NavigationLink(destination: destination, label: label) }
+            else { NavigationLink(value: route, label: label) }
+        }.hidesListDisclosure()
     }
 }
 
@@ -1054,14 +1053,15 @@ struct RootView: View {
         }
         #else
         let generation = store.navigationRevision
-        ZStack {
+        // Native tab hosting retains each stack's state and removes inactive
+        // safe-area headers/input fields from hit testing and accessibility.
+        TabView(selection: $store.destination) {
             ForEach(Destination.allCases) { destination in
                 tabNavigation(destination, generation: generation, hidden: store.destination != destination)
-                    .opacity(store.destination == destination ? 1 : 0)
-                    .allowsHitTesting(store.destination == destination)
-                    .accessibilityHidden(store.destination != destination)
+                    .tabItem { Label(destination.title, systemImage: destination.symbol) }
+                    .tag(destination)
             }
-        }.id(generation)
+        }.toolbar(.hidden, for: .tabBar).id(generation)
             .overlay { quickMenuScrim }
             .overlay(alignment: .bottom) { tabBarOverlay }
             .onChange(of: store.sheet?.id) { _, _ in quickMenuShown = false }
@@ -1101,11 +1101,6 @@ struct RootView: View {
                 tabBar
             }
             .padding(.horizontal, YubaiSpace.space16).padding(.bottom, YubaiSize.floatingTabbarBottom)
-            .background(alignment: .bottom) {
-                YubaiColor.canvas.frame(height: YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom)
-                    .overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -YubaiSize.iconButton) }
-                    .ignoresSafeArea(edges: .bottom).allowsHitTesting(false)
-            }
             .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
         }
     }
@@ -1139,6 +1134,7 @@ struct RootView: View {
                 .accessibilityHidden(hidden)
                 .navigationDestination(for: TabRoute.self) { tabDestination($0).accessibilityHidden(hidden) }
         }.toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .tabBar)
             .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
             .environment(\.isScrollEnabled, true)
             .scrollClipDisabled(false)
@@ -1156,6 +1152,8 @@ struct RootView: View {
         case .accounts: AccountsView()
         case .formula: FormulaView()
         case .entryDetail(let id): EntryDetailView(entryID: id)
+        case .butlerEvidence(let id): ButlerSuggestionEvidence(suggestionID: id)
+        case .butlerEvidenceEntries(let id): ButlerSuggestionEntriesPage(suggestionID: id)
         case .allCategories(let interval): AllCategoriesView(interval: interval)
         case .categoryBudget(let category): BudgetView(initialCategory: category)
         case .savingWish(let id): WishlistView(focusedWishID: id)

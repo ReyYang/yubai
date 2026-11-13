@@ -144,7 +144,7 @@ struct SavingsView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             Text("直接放进来的").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space16)
             CardRows(directIncome) { entry in
-                NavigationLink { EntryDetailView(entryID: entry.id) } label: {
+                TabNavigationLink(.entryDetail(entry.id)) { EntryDetailView(entryID: entry.id) } label: {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: YubaiSpace.space8) { directIncomeTitle(entry).fixedSize(); Spacer(minLength: YubaiSpace.space8); directIncomeAmount(entry).fixedSize() }
                         VStack(alignment: .leading, spacing: YubaiSpace.space8) { directIncomeTitle(entry); directIncomeAmount(entry) }
