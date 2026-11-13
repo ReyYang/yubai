@@ -368,13 +368,13 @@ final class ScreenGalleryTests: XCTestCase {
         stop("03-ledger-12-split-filled") { try keys("100"); try tap("entryCategory_餐饮"); try tap("splitUnitemizedAdd"); try keys("312"); try tap("entryCategory_交通"); try tap("splitUnitemizedAdd"); try require("splitUnitemizedParts") }
         stop("03-ledger-13-split-toast") { try tap("splitUnitemizedDone"); try toast() }
         stop("03-ledger-14-split-undone") { try tap("undoLastChange"); try require("ledgerEntry_" + galleryID(200)) }
-        stop("03-ledger-15-where-top") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try require("whereTotal") }
+        stop("03-ledger-15-where-top") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try require("whereMonthlyCharges") }
         stop("03-ledger-16-where-middle") { try drag(element("insightsScroll")) }
         stop("03-ledger-19-where-bottom") { for _ in 0..<5 { try drag(element("insightsScroll")) } }
-        stop("03-ledger-20-where-category") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try tap("insightCategory_0"); try require("whereCategoryPage") }
+        stop("03-ledger-20-where-category") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try tap("whereAllCategories"); try tap("insightCategory_0"); try require("whereCategoryPage") }
         stop("03-ledger-21-where-category-bottom") { try reveal(element("whereCategoryEntries")) }
         stop("03-ledger-22-category-records") { try tap("whereCategoryEntries"); try require("clearLedgerCategory") }
-        stop("03-ledger-23-where-custom-range") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try tap("wherePeriod_3"); try wait({ self.app.datePickers.count > 0 }, "Custom range picker") }
+        stop("03-ledger-23-all-categories") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try tap("whereAllCategories"); try require("allCategoriesPage") }
         stop("03-ledger-24-month-picker") { try launch(); try root("ledger"); try tap("entriesMonth"); try wait({ self.app.pickerWheels.count > 0 }, "Month wheel") }
         stop("03-ledger-25-search-empty") { try launch(); try search("合成绝对不存在的账目编号999"); try wait({ self.element("activeEntryCount").label.contains("0") }, "Search empty state") }
     }
@@ -430,7 +430,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("02-saving-07-reserve-adjustment-toast") { try keys("7200"); try tap("saveReserveTotal"); try toast() }
         stop("02-saving-08-monthly-fixed") { try launch(); try root("saving"); try tap("openSavings"); try require("savingsPage") }
         stop("02-saving-09-monthly-share") { try tap("savingMode_share"); try require("savingsPage") }
-        stop("02-saving-10-monthly-amount") { try tap("editSavingTarget"); try require("saveSavingsAmount") }
+        stop("02-saving-10-monthly-amount") { try tap("savingMode_fixed"); try tap("editSavingTarget"); try require("saveSavingsAmount") }
         stop("02-saving-11-wishlist-top") { try launch(); try root("saving"); try tap("openWishlist"); try require("wishlistPage") }
         stop("02-saving-12-wishlist-cooling") { try reveal(element("wish_" + galleryID(400))) }
         stop("02-saving-13-wish-detail-inline") { try reveal(element("wish_" + galleryID(402))) }
@@ -438,7 +438,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("02-saving-15-wishlist-past") { try launch(); try root("saving"); try tap("openWishlist"); try tap("pastWishes"); try wait({ self.app.navigationBars["过去的心愿"].exists }, "Past wishes page") }
         stop("02-saving-16-wishlist-past-bottom") { for _ in 0..<8 { try drag(app.scrollViews.firstMatch) } }
         stop("02-saving-17-wish-dropped-toast") { try launch(); try root("saving"); try tap("openWishlist"); let wish = element("wish_" + galleryID(400)); try reveal(wish.buttons["不买了"]); try tap(wish.buttons["不买了"]); try toast() }
-        stop("02-saving-18-monthly-history") { try launch(); try root("saving"); try tap("openSavings"); try reveal(element("savingHistory")) }
+        stop("02-saving-18-monthly-reserve") { try launch(); try root("saving"); try tap("openSavings"); try reveal(element("editFixedSavings")) }
         stop("02-saving-19-payback-declined") { try launch(); try root("saving"); try tap("openReserve"); try tap("reservePaybackDecline"); try require("reservePaybackProgress") }
     }
 
@@ -489,7 +489,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("09-yubai-01-tab") { try launch(); try root("yubai"); try require("openProfile") }
         stop("09-yubai-02-profile") { try tap("openProfile"); try require("profilePage") }
         stop("09-yubai-03-profile-bottom") { try reveal(element("addPrinciple")) }
-        stop("09-yubai-04-add-principle-keyboard") { try tap("addPrinciple"); try require("principleText"); try requireKeyboard() }
+        stop("09-yubai-04-add-principle-keyboard") { try tap("addPrinciple"); try require("principleText"); try tap("principleText"); try requireKeyboard() }
         stop("09-yubai-05-add-principle-long") { try type(latinName + longName, into: "principleText") }
         stop("09-yubai-06-principle-toast") { try tap("savePrinciple"); try toast() }
         stop("09-yubai-07-memories") { try launch(); try root("yubai"); try tap("openMemories"); try require("memoriesPage") }
@@ -502,10 +502,10 @@ final class ScreenGalleryTests: XCTestCase {
         stop("09-yubai-14-profile-conversation") { try launch("profile-revisit"); try root("yubai"); try tap("openProfile"); try tap("profileChatEntry"); try require("profileInput") }
         stop("09-yubai-15-purchase-questions") { try launch("judge-ask"); try ask("想买双徒步鞋 899，该不该买？"); try require("purchaseQuestions", timeout: 15) }
         stop("09-yubai-16-purchase-verdict") { try tap(app.buttons["直接给结论"]); try require("purchaseVerdict", timeout: 15) }
-        stop("09-yubai-17-purchase-details") { try tap("answerEvidence"); try wait({ self.app.navigationBars["明细"].exists }, "Purchase details") }
+        stop("09-yubai-17-purchase-details") { try tap("answerEvidence"); try wait({ self.app.navigationBars["依据"].exists }, "Purchase details") }
         stop("09-yubai-18-ask-record-draft") { try launch(); try settings("openIntelligencePrivacy"); try tap("cloudAIToggle"); try ask("记一笔：合成午饭 28 元，合成地铁 8 元"); try require("multiEntryDraftCard", timeout: 15) }
         stop("09-yubai-19-ask-record-edit") { try tap(buttonPrefix("editDraft_")); try require("editEntryAmount") }
-        stop("09-yubai-20-ask-record-confirm") { try close(); try tap("confirmDraftAmounts"); try require("saveDraftEntries") }
+        stop("09-yubai-20-ask-record-confirm") { try close(); try require("saveDraftEntries") }
         stop("09-yubai-21-ask-record-saved") { try tap("saveDraftEntries"); try require("draftEntriesSaved"); try toast() }
         stop("09-yubai-22-profile-area-editor") { try launch(); try root("yubai"); try tap("openProfile"); try tap("profileArea_" + galleryID(451)); try require("profileAreaTitle") }
     }
@@ -596,7 +596,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("13-empty-01-now") { try launch("gallery-empty"); try require("firstUseCard") }
         stop("13-empty-02-saving") { try root("saving"); try require("savingTabScroll") }
         stop("13-empty-03-ledger") { try root("ledger"); try require("emptyLedgerAdd") }
-        stop("13-empty-04-where") { try tap("ledgerMode_where"); try require("whereTotal") }
+        stop("13-empty-04-where") { try tap("ledgerMode_where"); try require("whereMonthlyCharges") }
         stop("13-empty-05-yubai") { try root("yubai"); try require("openProfile") }
         stop("13-empty-06-wishlist") { try root("saving"); try tap("openWishlist"); try require("wishlistPage") }
         stop("13-empty-07-memories") { try root("yubai"); try tap("openMemories"); try require("emptyMemories") }
@@ -727,11 +727,71 @@ final class ScreenGalleryTests: XCTestCase {
     }
 
     /// YubaiColor.adaptive + the appearance setting support dark mode; neither is forced light.
+    func testWalk46Batch3() { round46Batch3(dark: false, large: false, hidden: false) }
+    func testWalk46Batch3Dark() { prefix = "46-b3-dark-"; round46Batch3(dark: true, large: false, hidden: false) }
+    func testWalk46Batch3Large() { prefix = "46-b3-a11y-"; round46Batch3(dark: false, large: true, hidden: false) }
+    func testWalk46Batch3Hidden() { prefix = "46-b3-hidden-"; round46Batch3(dark: false, large: false, hidden: true) }
+
+    private func round46Batch3(dark: Bool, large: Bool, hidden: Bool) {
+        let data = large ? "v46-b3-hard" : "v46-b3-book"
+        func load(_ fixture: String? = nil) throws {
+            try launch(fixture ?? data, dark: dark, large: large)
+            if hidden { try tap("toggleAmountVisibility") }
+        }
+        func book(_ fixture: String? = nil) throws { try load(fixture); try root("ledger"); try require("entriesScroll") }
+        func saving(_ fixture: String? = nil) throws { try load(fixture); try root("saving"); try require("savingTabScroll") }
+        func question(_ text: String) throws {
+            try load(); try root("yubai"); try type(text, into: "askYubai"); try tap("sendAskHome"); try require("askPage")
+        }
+        stop("V46-Book") { try book(); try require("addEntryOnDay_" + self.todayISO); try batch3Audit() }
+        stop("V46-Book-Empty") { try book("v46-b3-empty"); try require("emptyLedgerAdd"); try require("emptyLedgerImport"); try batch3Audit() }
+        stop("V46-Book-Search") { try book("v46-b3-book"); try type("山姆", into: "entriesSearch"); try require("entriesSearchTotal"); try batch3Audit() }
+        stop("V46-Book-Filter") { try book(); try tap("entriesFilter_没分类"); try require("quickSortFromLedger"); try batch3Audit() }
+        stop("V46-Entry") { try book(); try tap("ledgerEntry_" + galleryID(460310)); try require("entryDetailSource"); try batch3Audit() }
+        stop("V46-Edit") { try book(); try tap("ledgerEntry_" + galleryID(460314)); try tap("entryDetailEdit"); try require("editEntryAmount"); try require("saveEditedEntry"); try batch3Audit() }
+        stop("V46-Book-Save") { try book(); try tap("ledgerMode_where"); try require("whereMonthlyCharges"); try reveal(element("whereAllCategories")); try batch3Audit() }
+        stop("V46-Book-Save-Empty") { try book("v46-b3-where-empty"); try tap("ledgerMode_where"); try require("whereInsufficientData"); try batch3Audit() }
+        stop("V46-Where-Cat") { try book(); try tap("ledgerMode_where"); try tap("whereAllCategories"); try tap("insightCategory_0"); try require("whereCategoryCycles"); try require("whereCategoryEntries"); try batch3Audit() }
+        stop("V46-Weekly") { try book(); try tap("ledgerMode_where"); try tap("openWeekly"); try require("weeklyNumbers"); try require("letterSubscriptions"); try batch3Audit() }
+        stop("V46-Sort") { try book(); try tap("entriesFilter_没分类"); try tap("quickSortFromLedger"); try tap("skipLetterEntry"); try require("sortGuess_会员订阅"); try require("sortRememberParty"); try require("saveLetterEntry"); try batch3Audit() }
+        stop("V46-Budget") { try load(); try settings("openSpendingParts"); try require("budgetTotal"); try batch3Audit() }
+        stop("V46-Budget-Empty") { try load("v46-b3-budget-empty"); try settings("openSpendingParts"); try require("acceptProposal"); try batch3Audit() }
+        stop("V46-Save") { try saving(); try require("reserveTotal"); try require("savingWishFunding_" + galleryID(460400)); try require("openWishlist"); try batch3Audit() }
+        stop("V46-Save-Empty") { try saving("v46-b3-save-empty"); try require("setFirstSavingTarget"); try require("openReserve"); try batch3Audit() }
+        stop("V46-Saved") { try saving(); try tap("openButlerSaved"); try require("butlerSavedTotal"); try batch3Audit() }
+        stop("V46-Saving-Rule") { try saving(); try tap("openSavings"); try require("editSavingTarget"); try require("suggestedMonthlySaving"); try batch3Audit() }
+        stop("V46-Save-Share") { try saving("v46-b3-share"); try tap("openSavings"); try require("savingMode_share"); try require("directSavingsEntry_" + galleryID(460460)); try batch3Audit() }
+        stop("V46-Reserve") { try saving("v46-b3-reserve"); try tap("openReserve"); try require("reservePaybackOffer"); try require("editReserveTotal"); try batch3Audit() }
+        stop("V46-Wishlist") { try saving(); try tap("openWishlist"); try require("cooldownKeep"); try require("wish_" + galleryID(460402)); try batch3Audit() }
+        stop("V46-Yubai") { try load(); try root("yubai"); try require("openProfile"); try require("askYubai"); try batch3Audit() }
+        stop("V46-Ask") { try question("降噪耳机 1,899，能买吗"); try require("purchaseVerdict", timeout: 15); try require("purchaseSaveWish"); try batch3Audit() }
+        stop("V46-Ask-Where") { try question("这个月钱去哪了"); try require("whereAnswerCard", timeout: 15); try require("askShowWhere"); try batch3Audit() }
+        stop("V46-Ask-Record") { try question("帮我记：昨天打车 35，中午和同事吃饭 AA 我出了 62"); try require("multiEntryDraftCard", timeout: 15); try require("draftEntryPreview"); try batch3Audit() }
+        stop("V46-Values") { try load(); try root("yubai"); try tap("openProfile"); try require("profilePage"); try reveal(element("addPrinciple")); try batch3Audit() }
+        stop("V46-Values-Add") { try load(); try root("yubai"); try tap("openProfile"); try tap("addPrinciple"); try require("principleText"); try require("savePrinciple"); try batch3Audit() }
+        stop("V46-Memory") { try load(); try root("yubai"); try tap("openMemories"); try require("memory_" + galleryID(460420)); try batch3Audit() }
+    }
+    private var todayISO: String {
+        let formatter = DateFormatter(); formatter.calendar = Calendar(identifier: .gregorian); formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+    private func batch3Audit() throws {
+        let bounds = app.frame
+        for id in ["emptyLedgerAdd", "emptyLedgerImport", "quickSortFromLedger", "saveLetterEntry", "editSavingTarget", "editFixedSavings", "setFirstSavingTarget", "purchaseSaveWish", "buyFromReserve", "askShowWhere", "askCategoryBudget", "saveDraftEntries", "cooldownKeep", "cooldownDrop"] {
+            let target = element(id)
+            guard target.exists, target.isHittable else { continue }
+            if target.frame.minX < bounds.minX - 1 || target.frame.maxX > bounds.maxX + 1 {
+                throw Miss(description: "Control extends past the page: " + id)
+            }
+            if target.label.contains("…") { throw Miss(description: "Truncated control: " + id) }
+        }
+    }
+
     private func reduced(large: Bool, dark: Bool) {
         stop("01-now") { try launch(dark: dark, large: large); try require("fundsFormula") }
         stop("02-saving") { try root("saving"); try require("savingTabScroll") }
         stop("03-ledger") { try root("ledger"); try require("entriesScroll") }
-        stop("04-where") { try tap("ledgerMode_where"); try require("whereTotal") }
+        stop("04-where") { try tap("ledgerMode_where"); try require("whereMonthlyCharges") }
         stop("06-yubai") { try root("yubai"); try require("openProfile") }
         stop("07-profile") { try tap("openProfile"); try require("profilePage") }
         stop("08-principle-keyboard") { try tap("addPrinciple"); try requireKeyboard() }

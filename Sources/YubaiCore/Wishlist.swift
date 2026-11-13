@@ -3,6 +3,13 @@ import Foundation
 public enum FollowUpChoice: String, CaseIterable, Sendable { case worth = "值得", neutral = "一般", regret = "有点后悔" }
 public enum CooldownChoice: String, Sendable { case keep, drop }
 public enum Wishlist {
+    /// A completed large-purchase conversation remains on the wish list. Asking
+    /// again or tapping the card's action must not create a second copy.
+    @discardableResult public static func keepConsidered(fromVerdict verdict: SubmittedPurchaseVerdict, title: String, amount: Int64,
+        category: String? = nil, subcategory: String? = nil, in ledger: inout Ledger, now: Date) throws -> WishItem {
+        if let existing = ledger.wishlist.first(where: { $0.status == .thinking && $0.amount == amount && CategoryMemory.key($0.title) == CategoryMemory.key(title) }) { return existing }
+        return try add(fromVerdict: verdict, title: title, amount: amount, category: category, subcategory: subcategory, in: &ledger, now: now)
+    }
     public struct PrincipleCooldown: Equatable, Sendable {
         public var threshold: Int64
         public var hours: Int

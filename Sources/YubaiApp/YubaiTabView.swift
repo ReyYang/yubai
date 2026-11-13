@@ -51,9 +51,9 @@ struct YubaiTabView: View {
         }
     }
     private func questionRow(_ question: (text: String, date: Date), index: Int) -> some View {
-        Button { target = AskTarget(text: question.text, send: true) } label: {
+        Button { openQuestion(question.text) } label: {
             HStack(spacing: YubaiSpace.gapGroup) {
-                Text(question.text).yubaiFont(YubaiFont.row).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
+                Text(store.preferences.hideAmounts ? "金额已隐藏" : question.text).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
                 Text(dayText(question.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 chevron
             }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
@@ -92,7 +92,7 @@ struct YubaiTabView: View {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .top, spacing: YubaiSpace.gapGroup))
             layout {
                 Text(title).foregroundStyle(YubaiColor.labelSecondary).frame(minWidth: textSize.isAccessibilitySize ? 0 : 64, alignment: .leading)
-                Text(value).multilineTextAlignment(.leading)
+                Text(store.preferences.hideAmounts ? "••••" : value).multilineTextAlignment(.leading)
             }.yubaiFont(YubaiFont.callout)
         }
     }
@@ -123,30 +123,30 @@ struct YubaiTabView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             field
         }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSize.rootBottomPadding - YubaiSpace.gapGroup)
+            .background(YubaiColor.canvas).overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -40) }
     }
     private var field: some View {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        return HStack(spacing: YubaiSpace.gapGroup) {
+        return ChatInputBar(text: $input, placeholder: "问一句", accessibilityLabel: "问余白", inputID: "askYubai", sendID: "sendAskHome",
+                            showSend: !trimmed.isEmpty, focus: $focused, send: { ask(trimmed) }) {
             AssistantMark(size: 16).accessibilityHidden(true)
-            TextField("问一句", text: $input).focused($focused).submitLabel(.send).onSubmit { ask(trimmed) }
-                .yubaiFont(YubaiFont.body).accessibilityLabel("问余白").accessibilityIdentifier("askYubai")
-            if !trimmed.isEmpty {
-                Button { ask(trimmed) } label: {
-                    Image(systemName: "arrow.up").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.onBrand)
-                        .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).background(YubaiColor.brand, in: Circle()).yubaiHitTarget()
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel("发送").accessibilityIdentifier("sendAskHome")
-            }
-        }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.buttonHeight)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+        } accessory: { EmptyView() }
     }
     private func choose(_ text: String, send: Bool) {
-        if send { target = AskTarget(text: text, send: true) }
+        if send { openQuestion(text) }
         else { input = text; focused = true }
     }
     private func ask(_ text: String) {
         guard !text.isEmpty else { return }
         input = ""; focused = false
+        openQuestion(text)
+    }
+    private func openQuestion(_ text: String) {
+        #if os(iOS)
+        store.tabRouteRequest = .askQuestion(text)
+        #else
         target = AskTarget(text: text, send: true)
+        #endif
     }
     private var chevron: some View {
         Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)

@@ -50,7 +50,8 @@ struct EntryCategoryChips: View {
         return rows
     }
     var body: some View {
-        EntryChipLayout {
+        EntryCategoryLayout { layout in
+            layout {
             ForEach(visible, id: \.self) { name in
                 let suggestedChip = suggestionOnly && selection.category == name
                 let selected = !suggestionOnly && selection.category == name
@@ -72,6 +73,7 @@ struct EntryCategoryChips: View {
                     .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
                     .yubaiHitTarget()
             }.accessibilityIdentifier("entryCategoryMore")
+            }
         }.buttonStyle(PressButtonStyle()).animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
             .sheet(isPresented: $picking) {
                 EntryMoreCategorySheet(income: pickerIncome, selection: selection, suggestionOnly: suggestionOnly,
@@ -1135,5 +1137,19 @@ private struct EntrySaveReceipt: View {
                 }.clipShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
         }.accessibilityElement(children: .ignore).accessibilityLabel("已记下")
             .accessibilityIdentifier("entrySavedReceipt")
+    }
+}
+
+/// Keep category choices to one horizontal row at accessibility sizes.
+private struct EntryCategoryLayout<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    @ViewBuilder let content: (AnyLayout) -> Content
+    var body: some View {
+        if textSize.isAccessibilitySize {
+            ScrollView(.horizontal, showsIndicators: false) {
+                content(AnyLayout(HStackLayout(spacing: YubaiSpace.space8)))
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            }.frame(height: 52).accessibilityIdentifier("entryCategoryStrip")
+        } else { content(AnyLayout(EntryChipLayout())) }
     }
 }

@@ -112,7 +112,7 @@ struct WhereCategoryView: View {
         }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
     }
     private func placeTitle(_ row: CategoryPlace) -> some View {
-        (Text(row.title) + Text(" · \(row.count) 次").foregroundColor(YubaiColor.labelSecondary)).yubaiFont(YubaiFont.row)
+        (Text(row.title) + Text(" · \(row.count) 次").foregroundColor(YubaiColor.labelSecondary)).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail)
     }
     private func recordsButton(_ detail: CategoryDetail) -> some View {
         Button {

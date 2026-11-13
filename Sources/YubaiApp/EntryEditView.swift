@@ -50,7 +50,7 @@ struct EntryEditForm: View {
     }
     var body: some View {
         ScrollViewReader { scroll in
-                    EntryForm(title: formTitle, actionTitle: primaryTitle, enabled: canSave,
+                    EntryForm(title: formTitle, actionTitle: primaryTitle, showsAction: !amountKeypadPresented, enabled: canSave,
                                   actionIdentifier: onSave == nil ? "saveManualSheet" : "saveDraftEdit", cancel: cancel, save: save) {
                         if draft.source == "Apple Pay" {
                             Pill(text: "来自 Apple Pay · " + (draft.quickCapture?.card ?? "") + " · " + (draft.quickCapture?.transactionDate ?? draft.date).formatted(.dateTime.hour().minute()), variant: .neutral, height: 26, showsDot: false)
@@ -78,6 +78,10 @@ struct EntryEditForm: View {
                                 draft.subcategoryUserEdited = true; choseCategory = true; categoryIsSuggestion = false; remembered = false; purposeFocused = false
                             }
                         }
+                        if onSave == nil && draft.source != "Apple Pay" {
+                            provenanceRow
+                            askRow
+                        }
                         EntryFormFields(purpose: $purpose, purposeError: purpose.count > 4000 ? "用途最多 4,000 字" : nil, nature: draft.nature, accounts: accounts, balances: balances,
                                         accountID: Binding(get: { draft.accountID }, set: { if let id = $0 { draft.accountID = id } }),
                                         otherAccountID: $draft.otherAccountID, date: $draft.date, showsTime: true, showsRecent: false,
@@ -86,10 +90,6 @@ struct EntryEditForm: View {
                             if accounts.contains(where: { $0.id == entry.accountID }) { draft.accountID = entry.accountID }
                             purposeFocused = false
                         }) {}
-                        if onSave == nil && draft.source != "Apple Pay" {
-                            provenanceRow
-                            askRow
-                        }
                         if let merchant = draft.quickCapture?.merchant {
                             HStack(spacing: YubaiSpace.gapGroup) {
                                 Text("以后「\(merchant)」都记到 \(Classification.displayCategory(draft.category))").yubaiFont(YubaiFont.caption)

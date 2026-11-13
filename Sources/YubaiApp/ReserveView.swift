@@ -16,9 +16,9 @@ struct ReserveView: View {
             ReservePaybackProgressList(identifier: "reservePaybackProgress")
         }.amountPrivacy(hide).navigationTitle("存取记录").yubaiNavigation().accessibilityIdentifier("reservePage")
             .sheet(isPresented: $editing) {
-                AmountEntrySheet(title: "存着不动", keypad: $keypad, primaryTitle: "完成", primaryIdentifier: "saveReserveTotal",
+                AmountEntrySheet(title: "存着不动", keypad: $keypad, primaryTitle: "好", primaryIdentifier: "saveReserveTotal",
                                  canSave: keypad.amount != nil, save: saveTotal)
-                    .environment(store).yubaiSheetBackground().presentationDetents([.large]).presentationDragIndicator(.visible)
+                    .environment(store).yubaiSheetBackground().presentationDetents([.height(480), .large]).presentationDragIndicator(.visible)
             }
     }
     private var hero: some View {

@@ -10,7 +10,6 @@ struct ProfileView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var sheet: ProfileSheet?
-    @State private var editing = false
     @State private var configured = IntelligenceRuntime.isConfigured
     private var profile: SpendingProfile { store.profile }
     private var canChat: Bool { configured && store.preferences.isAIEnabled(for: .answers) && IntelligenceRuntime.cloud.unavailableModel == nil }
@@ -30,7 +29,6 @@ struct ProfileView: View {
             memories
             chat
         }.navigationTitle("消费观").yubaiNavigation().accessibilityIdentifier("profilePage")
-            .toolbar { Button(editing ? "完成" : "编辑") { editing.toggle() }.frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("editProfile") }
             .onAppear { configured = IntelligenceRuntime.isConfigured }
             .onChange(of: store.current.id) { _, _ in sheet = nil }
             .sheet(item: $sheet) { item in
@@ -107,19 +105,20 @@ struct ProfileView: View {
         HStack(alignment: .center, spacing: YubaiSpace.gapGroup) {
             Button { sheet = .area(area, stance) } label: {
                 VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                    Text(area.title).yubaiFont(YubaiFont.row)
+                    Text(area.title).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail)
+                    if stance == .restrain, let limit = area.softLimit {
+                        Text(store.preferences.hideAmounts && limit.perMonthAmount != nil ? "••••" : limit.text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    }
                     if showsNote(area, stance: stance) {
                         Text(area.note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).multilineTextAlignment(.leading)
                     }
                 }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("profileArea_" + area.id.uuidString)
-            if editing { Menu {
-                Button("编辑") { sheet = .area(area, stance) }
-                Button("删掉") {
-                    edit { $0.generous.removeAll { $0.id == area.id }; $0.restrain.removeAll { $0.id == area.id } }
-                }
-            } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除" + area.title) }
-        }
+
+        }.contextMenu {
+            Button("编辑") { sheet = .area(area, stance) }
+            Button("删掉") { edit { $0.generous.removeAll { $0.id == area.id }; $0.restrain.removeAll { $0.id == area.id } } }
+        }.accessibilityAction(named: "删掉") { edit { $0.generous.removeAll { $0.id == area.id }; $0.restrain.removeAll { $0.id == area.id } } }
     }
     private func addRow(label: String, identifier: String = "", action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -158,18 +157,14 @@ struct ProfileView: View {
         }
     }
     private func principleRow(_ text: String) -> some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
-            Button { sheet = .principle(text) } label: {
-                Text(text).yubaiFont(YubaiFont.row).multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("profilePrinciple_" + text)
-            if editing {
-                Menu {
-                    Button("编辑") { sheet = .principle(text) }
-                    Button("删掉") { edit { $0.principles.removeAll { $0 == text } } }
-                } label: { Image(systemName: "ellipsis").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }.accessibilityLabel("编辑或删除原则：" + text)
-            }
-        }
+        Button { sheet = .principle(text) } label: {
+            Text(store.preferences.hideAmounts ? "••••" : text).yubaiFont(YubaiFont.row).multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("profilePrinciple_" + text)
+            .contextMenu {
+                Button("编辑") { sheet = .principle(text) }
+                Button("删掉") { edit { $0.principles.removeAll { $0 == text } } }
+            }.accessibilityAction(named: "删掉") { edit { $0.principles.removeAll { $0 == text } } }
     }
     private func edit(_ change: (inout SpendingProfile) -> Void) {
         store.update("修改消费观") { ledger in
@@ -190,15 +185,16 @@ private struct ProfileAreaEditor: View {
     @State private var note = ""
     @State private var weekly = ""
     @State private var monthly = ""
+    @State private var monthlyKeypad = EntryKeypad()
+    @State private var editingMonthly = false
     @State private var loaded = false
     var body: some View {
         Form {
             Section {
-                TextField("名称", text: $title).accessibilityIdentifier("profileAreaTitle")
+                CardTextFieldRow(title: "名字", text: $title, identifier: "profileAreaTitle")
                 if title.isEmpty { InlineFieldError(message: "填写名称") }
                 SuggestionChips(values: ["外卖", "学习", "旅行"], selected: title) { title = $0 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text("关键词").yubaiFont(YubaiFont.row)
                     ChipFlow {
                         ForEach(keywords, id: \.self) { word in
                             SuggestionChip(value: word + " ×", selected: true) { keywords.removeAll { $0 == word } }
@@ -206,12 +202,12 @@ private struct ProfileAreaEditor: View {
                         }
                     }
                     HStack(spacing: YubaiSpace.space8) {
-                        TextField("添加关键词", text: $keywordInput).onSubmit(addKeyword)
+                        CardTextFieldRow(title: "关键词", text: $keywordInput, identifier: "profileKeyword")
                         Button("添加", action: addKeyword).disabled(keywordInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     SuggestionChips(values: ["美团", "饿了么", "奶茶", "打车"].filter { !keywords.contains($0) }) { keywords.append($0) }
                 }
-                DisclosureGroup("更多") { TextField("说明", text: $note, axis: .vertical) }
+                DisclosureGroup("更多") { CardTextFieldRow(title: "说明", text: $note, multiline: true) }
             }
             Section("相关分类") {
                 ForEach(store.current.selectableCategories.filter { !$0.income }) { category in
@@ -222,20 +218,43 @@ private struct ProfileAreaEditor: View {
             }
             if stance == .restrain {
                 Section("上限") {
-                    TextField("每周次数", text: $weekly).numericInput().accessibilityHint("空着表示不限次数")
+                    CardTextFieldRow(title: "每周次数", text: $weekly).numericInput().accessibilityHint("空着表示不限次数")
                     InlineFieldError(message: !weekly.isEmpty && Int(weekly).map({ (0...10000).contains($0) }) != true ? "每周次数须为 0 至 10,000 的整数" : nil)
-                    TextField("每月金额", text: $monthly).numericInput().accessibilityHint("单位元，空着表示不限金额")
-                    InlineFieldError(message: !monthly.isEmpty && (try? Money.parse(monthly)) == nil ? "填写有效金额" : nil)
+                    monthlyLimitRow
                 }
             }
         }.editorForm().navigationTitle(stance == .restrain ? "想克制的" : "愿意多花的").yubaiNavigation()
             .manualSheetHeader(stance == .restrain ? "想克制的" : "愿意多花的", actionTitle: "保存", enabled: validationError == nil, action: save)
+            .sheet(isPresented: $editingMonthly) {
+                AmountEntrySheet(title: "每月金额", keypad: $monthlyKeypad, primaryTitle: "好", canSave: monthlyKeypad.amount != nil, save: {
+                    guard let value = monthlyKeypad.resolve() else { return }
+                    monthly = Money.input(value); editingMonthly = false
+                }).environment(store).yubaiSheetBackground().presentationDetents([.height(480), .large])
+            }
             .onAppear {
                 guard !loaded else { return }; loaded = true
                 title = area.title; categories = Set(area.match.categories.map { store.current.resolveCategory($0, income: false) })
                 keywords = area.match.keywords; note = area.note
                 weekly = area.softLimit?.perWeekCount.map { String($0) } ?? ""; monthly = area.softLimit?.perMonthAmount.map { Money.input($0) } ?? ""
             }
+    }
+    private var monthlyLimitRow: some View {
+        EntryFormRow(title: "每月金额") {
+            HStack(spacing: 8) {
+                Button {
+                    monthlyKeypad = EntryKeypad(amount: (try? Money.parse(monthly)) ?? 0); editingMonthly = true
+                } label: {
+                    Group {
+                        if monthly.isEmpty { Text("—").yubaiFont(YubaiFont.amountSmall) }
+                        else { AmountLabel(cents: (try? Money.parse(monthly)) ?? 0, hide: store.preferences.hideAmounts, role: .small) }
+                    }.yubaiHitTarget()
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("profileMonthlyLimit")
+                if !monthly.isEmpty {
+                    Button { monthly = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget() }
+                        .buttonStyle(PressButtonStyle()).accessibilityLabel("不限金额").accessibilityIdentifier("clearProfileMonthlyLimit")
+                }
+            }
+        }
     }
     private var validationError: String? {
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "填写名称" }
@@ -281,10 +300,10 @@ private struct ProfilePrincipleEditor: View {
     private var clean: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-            TextField("超过多少钱要等一等？", text: $text, axis: .vertical).focused($focused).yubaiFont(YubaiFont.body)
-                .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.buttonHeight)
-                .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card)).accessibilityIdentifier("principleText")
-            ChipFlow(rowSpacing: YubaiSpace.gapGroup) {
+            Card(style: .list) {
+                CardTextFieldRow(title: "", text: $text, placeholder: "超过多少钱要等一等？", identifier: "principleText", multiline: true)
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 ForEach(["超过 2,000 等 48 小时", "每天用得上的，愿意多花", "买之前先看看家里有没有"], id: \.self) { value in
                     SuggestionChip(value: value, identifier: "principleSuggestion_" + value) { text = value }
                 }

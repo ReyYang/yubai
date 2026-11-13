@@ -43,7 +43,7 @@ struct EntriesView: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 12, trailing: 0))
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 if groups.allSatisfy({ $0.days.isEmpty }) { emptyRow }
-                else if search.isEmpty && scope == nil { monthRows(groups, hide: hideAmounts) }
+                else if search.isEmpty && scope == nil && filter != .uncategorized { monthRows(groups, hide: hideAmounts) }
                 else { resultRows(groups, hide: hideAmounts) }
             }
             #if os(iOS)
@@ -81,14 +81,13 @@ struct EntriesView: View {
 
     @ViewBuilder private func headerBlock(timeline: EntryTimeline.Snapshot, groups: [EntryTimeline.Month], hide: Bool) -> some View {
         VStack(spacing: YubaiSpace.gapGroup) {
-            if store.accounts.isEmpty { EmptyAccountState { store.sheet = .account(nil) } }
-            else {
+            Group {
                 if !searching {
                     SegmentedWide(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "明细" : "去向") }, selection: $mode,
                                   identifier: { "ledgerMode_" + $0.rawValue })
                 }
                 searchField
-                if !searching { filters }
+                if !searching && store.sortedEntries.contains(where: { $0.deletedAt == nil }) { filters }
                 if let categoryScope {
                     Button { self.categoryScope = nil; categoryTimeline = nil; scope = nil } label: {
                         Label(Classification.displayCategory(categoryScope), systemImage: "xmark.circle")
@@ -164,8 +163,7 @@ struct EntriesView: View {
     @ViewBuilder private var emptyRow: some View {
         if store.sortedEntries.allSatisfy({ $0.deletedAt != nil }) && search.isEmpty && scope == nil {
             VStack(spacing: YubaiSpace.gapGroup) {
-                Text("还没有账").yubaiFont(YubaiFont.lead).padding(.top, YubaiSpace.emptyTop - YubaiSpace.space24)
-                Button("记一笔") { store.sheet = .addEntry }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("emptyLedgerAdd")
+                EmptyState("", "还没有账", showsPlaceholder: false, action: "记一笔", onAction: { store.requestCaptureSheet(.addEntry) })
                 Button("导入账单") { store.sheet = .imports }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised))
                     .accessibilityIdentifier("emptyLedgerImport")
             }.frame(maxWidth: .infinity).listRowBackground(Color.clear).listRowSeparator(.hidden)
@@ -194,10 +192,7 @@ struct EntriesView: View {
                 Section {
                     ForEach(day.entries) { entry in entryRow(entry, hide: hide, context: filter == .uncategorized ? .uncategorized : .day) }
                 } header: {
-                    ViewThatFits(in: .horizontal) {
-                        HStack { Text(dayLabel(day.date)).fixedSize(); Spacer(); dayTotal(day, hide: hide) }
-                        VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(dayLabel(day.date)); dayTotal(day, hide: hide) }
-                    }.yubaiFont(YubaiFont.callout, weight: .semibold).textCase(nil).padding(.top, YubaiSpace.space8)
+                    dayHeader(day, hide: hide)
                 }
             }
         }
@@ -205,8 +200,24 @@ struct EntriesView: View {
     @ViewBuilder private func resultRows(_ groups: [EntryTimeline.Month], hide: Bool) -> some View {
         let rows = groups.flatMap { $0.days.flatMap(\.entries) }
         Section {
-            ForEach(rows) { entry in entryRow(entry, hide: hide, context: .search) }
+            ForEach(rows) { entry in entryRow(entry, hide: hide, context: filter == .uncategorized && search.isEmpty ? .uncategorized : .search) }
         }
+    }
+    private func dayHeader(_ day: EntryTimeline.Day, hide: Bool) -> some View {
+        HStack(spacing: YubaiSpace.space8) {
+            ViewThatFits(in: .horizontal) {
+                HStack { Text(dayLabel(day.date)).fixedSize(); Spacer(minLength: 8); dayTotal(day, hide: hide) }
+                VStack(alignment: .leading, spacing: 4) { Text(dayLabel(day.date)).fixedSize(); dayTotal(day, hide: hide) }
+            }
+            Button {
+                store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: nil, amount: nil, purpose: nil, date: day.date)))
+            } label: {
+                Image(systemName: "plus").yubaiFont(YubaiFont.callout, weight: .semibold)
+                    .foregroundStyle(YubaiColor.brandInk).frame(width: 28, height: 28)
+                    .controlSurface(in: Circle()).yubaiHitTarget()
+            }.buttonStyle(PressButtonStyle()).accessibilityLabel("补记到" + FixedFlowPresentation.monthDay(day.date))
+                .accessibilityIdentifier("addEntryOnDay_" + Dates.text(day.date))
+        }.yubaiFont(YubaiFont.callout, weight: .semibold).dynamicTypeSize(...DynamicTypeSize.xxxLarge).textCase(nil).padding(.top, YubaiSpace.space8)
     }
     private func entryRow(_ entry: EntryTimeline.Row, hide: Bool, context: RowContext) -> some View {
         LedgerEntryRow(entry: entry, subtitle: subtitle(entry, context), hideAmounts: hide, isFresh: store.freshEntryIDs.contains(entry.id),
@@ -415,12 +426,8 @@ struct LedgerEntryRow: View {
                 withAnimation(YubaiMotion.wash(reduceMotion: reduceMotion)) { highlighted = false }
             }
     }
-    @ViewBuilder private var entryButton: some View {
-        if savedEntry?.isUnitemized == true {
-            TabNavigationLink(.entryDetail(entry.id)) { EntryDetailView(entryID: entry.id) } label: { content }
-        } else {
-            Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: { content }
-        }
+    private var entryButton: some View {
+        TabNavigationLink(.entryDetail(entry.id)) { EntryDetailView(entryID: entry.id) } label: { content }
     }
     private var savedEntry: Entry? { store.entriesByID[entry.id] }
     private var title: String { savedEntry?.displayTitle ?? entry.categoryName }
@@ -429,17 +436,16 @@ struct LedgerEntryRow: View {
         store.sheetSource = nil; store.sheet = .prefilledEntry(QuickEntryPrefill(entry: saved))
     }
     private var tile: some View {
-        Text(String(title.prefix(1))).yubaiFont(YubaiFont.callout, weight: .medium)
-            .foregroundStyle(entry.uncategorized ? YubaiColor.amberInk : entry.inflow ? YubaiColor.brandInk : YubaiColor.labelMuted)
+        LedgerCategoryIcon(category: entry.categoryName, pending: entry.uncategorized)
             .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
-            .background(entry.uncategorized ? YubaiColor.amberTint : entry.inflow ? YubaiColor.brandTint : YubaiColor.paperInset,
+            .background(entry.inflow ? YubaiColor.brandTint : YubaiColor.paperInset,
                         in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
     }
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
             HStack(spacing: YubaiSpace.space8) {
                 Text(title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(isFuture ? YubaiColor.labelSecondary : YubaiColor.label)
-                    .lineLimit(textSize.isAccessibilitySize ? 3 : 1).truncationMode(.tail)
+                    .lineLimit(1).truncationMode(.tail)
                 if isFuture {
                     Image(systemName: "calendar").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityLabel("未来")
                         .accessibilityIdentifier("futureEntry_" + entry.id.uuidString)
@@ -451,7 +457,7 @@ struct LedgerEntryRow: View {
             }
             if !subtitle.isEmpty {
                 Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    .lineLimit(textSize.isAccessibilitySize ? 3 : 1).truncationMode(.tail)
+                    .lineLimit(1).truncationMode(.tail)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
