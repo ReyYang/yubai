@@ -62,12 +62,13 @@ final class Round46ControlsFlowTests: XCTestCase {
         XCTAssertTrue(element("accountBalanceAmount").label.contains("12.34"))
         tap("accountBalanceDone"); XCTAssertEqual(element("accountBalance").value as? String, "金额已隐藏")
     }
-    func testLongToastKeepsUndoAndCloseBesideItsText() {
+    func testLongToastKeepsUndoAndExpandsItsText() {
         launch(toast: true)
         let message = element("toastMessage"), undo = element("undoLastChange")
         XCTAssertTrue(message.waitForExistence(timeout: 5)); XCTAssertTrue(undo.isHittable)
         XCTAssertGreaterThanOrEqual(undo.frame.width, 44); XCTAssertGreaterThanOrEqual(undo.frame.height, 44)
         XCTAssertLessThanOrEqual(message.frame.maxX, undo.frame.minX)
+        tap("expandToast"); XCTAssertEqual(element("expandToast").value as? String, "已展开")
         tap("undoLastChange"); XCTAssertEqual(element("toastMessage").label, "已撤销")
     }
     func testAIChildPreferenceSurvivesMasterOffAndOn() {

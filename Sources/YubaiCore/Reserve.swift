@@ -24,7 +24,8 @@ extension Ledger {
         cycleCovers.filter { $0.source == .fromReserve && $0.date <= now }.reduce(0) { $0 + $1.amount }
     }
     func effectiveSavingTarget(_ rule: Int64, cycleStart: Date, now: Date) -> Int64 {
-        max(0, rule - cycleCovers.filter { $0.source == .saveLess && $0.date <= now && abs($0.cycleStart.timeIntervalSince(cycleStart)) <= 36 * 3600 }
+        let released = savingsTransfers.filter { $0.direction == .take && $0.date <= now && abs($0.cycleStart.timeIntervalSince(cycleStart)) <= 36 * 3600 }.reduce(Int64(0)) { $0 + $1.fromSetAside }
+        return max(0, rule - released - cycleCovers.filter { $0.source == .saveLess && $0.date <= now && abs($0.cycleStart.timeIntervalSince(cycleStart)) <= 36 * 3600 }
             .reduce(0) { $0 + $1.amount })
     }
 }
@@ -80,7 +81,7 @@ extension Finance {
     }
 }
 public struct ReserveLine: Equatable, Sendable, Identifiable {
-    public enum Kind: Equatable, Sendable { case monthly(cycleStart: Date, pending: Bool), leftover, income(UUID), purchase(UUID), cover(UUID), adjust }
+    public enum Kind: Equatable, Sendable { case monthly(cycleStart: Date, pending: Bool), leftover, income(UUID), purchase(UUID), cover(UUID), adjust, transfer(UUID, SavingsTransfer.Direction) }
     // Structural rows use kind for the App's labels; title carries an original
     // entry's displayTitle. Core does not duplicate those presentation strings.
     public var id: String; public var date: Date; public var title: String; public var amount: Int64; public var kind: Kind
@@ -104,7 +105,8 @@ public enum Reserve {
         }
         for cycle in ledger.savingHistory where cycle.cycleEnd < now {
             let key = String(cycle.cycleStart.timeIntervalSince1970)
-            let monthly = cycle.saved - paidByCycle[cycle.cycleStart, default: 0]
+            let released = ledger.savingsTransfers.filter { $0.direction == .take && $0.date <= now && abs($0.cycleStart.timeIntervalSince(cycle.cycleStart)) <= 36 * 3600 }.reduce(Int64(0)) { $0 + $1.fromSetAside }
+            let monthly = cycle.saved + released - paidByCycle[cycle.cycleStart, default: 0]
             if monthly != 0 {
                 lines.append(ReserveLine(id: "monthly:" + key, date: cycle.cycleStart, title: "", amount: monthly,
                                          kind: .monthly(cycleStart: cycle.cycleStart, pending: false)))
@@ -114,8 +116,12 @@ public enum Reserve {
             }
         }
         let paybacks = paybackAmounts(ledger, cycleStart: funds.cycleStart, now: now)
-        var pendingPayback = min(setAside, paybacks.reduce(0) { $0 + $1.amount })
-        let monthly = setAside - pendingPayback
+        // The withdrawal already has its own negative line. Keep its released
+        // target portion in the original deposit line, rather than counting it twice.
+        let released = ledger.savingsTransfers.filter { $0.direction == .take && $0.date <= now && abs($0.cycleStart.timeIntervalSince(funds.cycleStart)) <= 36 * 3600 }.reduce(Int64(0)) { $0 + $1.fromSetAside }
+        let recordedSetAside = setAside + released
+        var pendingPayback = min(recordedSetAside, paybacks.reduce(0) { $0 + $1.amount })
+        let monthly = recordedSetAside - pendingPayback
         for row in paybacks {
             let amount = min(pendingPayback, row.amount); pendingPayback -= amount
             if amount > 0 {
@@ -141,6 +147,10 @@ public enum Reserve {
         }
         for cover in ledger.cycleCovers where cover.source == .fromReserve && cover.date <= now {
             lines.append(ReserveLine(id: "cover:" + cover.id.uuidString, date: cover.date, title: "", amount: -cover.amount, kind: .cover(cover.id)))
+        }
+        for transfer in ledger.savingsTransfers where transfer.date <= now {
+            lines.append(ReserveLine(id: "transfer:" + transfer.id.uuidString, date: transfer.date, title: "",
+                                     amount: transfer.direction == .take ? -transfer.amount : transfer.amount, kind: .transfer(transfer.id, transfer.direction)))
         }
         for adjustment in ledger.reserveAdjustments where adjustment.date <= now {
             lines.append(ReserveLine(id: "adjust:" + adjustment.id.uuidString, date: adjustment.date, title: "", amount: adjustment.delta, kind: .adjust))

@@ -39,7 +39,7 @@ enum TabRoute: Hashable {
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
     case entryDetail(UUID)
     case allCategories(DateInterval), categoryBudget(String), savingWish(UUID), askQuestion(String)
-    case yearlyBills, saving
+    case yearlyBills, saving, cycleBills
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -290,8 +290,6 @@ enum AppSheet: Identifiable {
     private let salaryPromptSlot = TimedSlot<Bool>()
     private let formulaSlot = TimedSlot<SpendableFormula>()
     private let reserveSlot = TimedSlot<ReserveOverview>()
-    private let paybackOffersSlot = TimedSlot<[ReservePaybackOffer]>()
-    private let paybackProgressSlot = TimedSlot<[ReservePaybackProgress]>()
     private let paydaySlot = TimedSlot<Payday.Due?>()
     private let gapSlot = TimedSlot<Reconciliation.Gap?>()
     private let leftoverSlot = TimedSlot<CycleSaving?>()
@@ -320,8 +318,6 @@ enum AppSheet: Identifiable {
     var formula: SpendableFormula { derived(formulaSlot) { Finance.formula($0, now: $1) } }
     /// 存钱页：存下的总额与最近进出。
     var reserve: ReserveOverview { derived(reserveSlot) { Reserve.overview($0, now: $1) } }
-    var paybackOffers: [ReservePaybackOffer] { derived(paybackOffersSlot) { Reserve.paybackOffers($0, now: $1) } }
-    var paybackProgress: [ReservePaybackProgress] { derived(paybackProgressSlot) { Reserve.paybackProgress($0, now: $1) } }
     var financialNow: Date { _ = timeRevision; _ = fundsValue(); return cachedFunds?.at ?? Date() }
     /// 发薪日到了或晚了、还没确认到账。
     var paydayDue: Payday.Due? { derived(paydaySlot) { Payday.due(in: $0, now: $1) } }
@@ -466,7 +462,6 @@ enum AppSheet: Identifiable {
         cachedRestrainProgress = preparedDerived?.progress; cachedSalary = preparedSalary
         if let preparedDerived { paceSlot.prime(at: preparedDerived.at, preparedDerived.pace) } else { paceSlot.clear() }
         formulaSlot.clear(); reserveSlot.clear(); paydaySlot.clear(); gapSlot.clear()
-        paybackOffersSlot.clear(); paybackProgressSlot.clear()
         leftoverSlot.clear(); overspendSlot.clear(); homeTasksSlot.clear(); butlerSavedSlot.clear()
         homeHeroSlot.clear(); homeSavingSlot.clear(); dailyReceiptSlot.clear(); salaryPromptSlot.clear()
         timeRevision &+= 1
@@ -522,7 +517,9 @@ enum AppSheet: Identifiable {
     #endif
     var askConversation = AskConversationState()
     var rootScrollRequest: [Destination: Int] = [:]
-    var sheet: AppSheet?; var error: String?; var toast: String?
+    var sheet: AppSheet?; var error: String?
+    var toastRevision = 0
+    var toast: String? { didSet { if toast != nil { toastRevision &+= 1 } } }
     var homeReceipt: ButlerReceipt?
     var butlerFocusID: String?
     var pendingButlerTaskID: String?
@@ -672,6 +669,7 @@ enum AppSheet: Identifiable {
         if after.accounts.contains(where: { a in !before.accounts.contains { $0.id == a.id } }) { return "已加好" }
         if after.plans.contains(where: { p in p.stoppedAt != nil && before.plans.first { $0.id == p.id }?.stoppedAt == nil }) { return "已停掉" }
         if after.entries.contains(where: { old[$0.id]?.deletedAt != nil && $0.deletedAt == nil }) { return "已放回" }
+        if after.savingsTransfers.count > before.savingsTransfers.count { return reason == "拿出来用" ? "已拿出" : "已放回" }
         if reason == "清掉最近删除" { return "已清掉最近删除" }
         if reason.hasPrefix("删除") { return "已删掉" }
         if reason.hasPrefix("添加") { return "已加好" }
@@ -971,7 +969,7 @@ struct RootView: View {
         .appErrors()
         .overlay(alignment: .bottom) {
             if !store.locked, let notice = store.unsortedUndo {
-                Toast(text: notice.label, onUndo: { store.undoUnsorted(notice.id) }, onDismiss: {
+                Toast(text: HomeButler.privacyText(notice.label, hidden: store.preferences.hideAmounts), onUndo: { store.undoUnsorted(notice.id) }, onDismiss: {
                     if store.unsortedUndo?.id == notice.id { store.unsortedUndo = nil }
                 }, messageIdentifier: "unsortedUndoMessage", undoIdentifier: "quickSortUndo")
                     .id(notice.id)
@@ -981,8 +979,8 @@ struct RootView: View {
                     .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
                     #endif
             } else if !store.locked, let toast = store.toast {
-                Toast(text: toast, onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
-                    .id(toast)
+                Toast(text: HomeButler.privacyText(toast, hidden: store.preferences.hideAmounts), onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
+                    .id(store.toastRevision)
                     #if os(iOS)
                     .padding(.bottom, toastBottomPadding)
                     #else
@@ -993,10 +991,10 @@ struct RootView: View {
         }
         #if DEBUG && targetEnvironment(simulator)
         .task {
-            if UITestSupport.script == "gallery", ProcessInfo.processInfo.environment["YUBAI_GALLERY_TOAST"] == "1" {
+            if UITestSupport.script?.hasPrefix("v47-toast-") == true || (UITestSupport.script == "gallery" && ProcessInfo.processInfo.environment["YUBAI_GALLERY_TOAST"] == "1") {
                 // A synthetic, nonfinancial undo exercises the real global toast.
                 if store.update("截图控件", entryMotion: false, showToast: false, { $0.preferences.profileColdStartDone.toggle() }) {
-                    store.toast = "已把 12 笔并进「日常开销」，其中 3 笔原来没有分类，现在也归进去了"
+                    store.toast = UITestSupport.script == "v47-toast-short" ? "已删掉 · 午饭 28.00" : "已删掉 · 为了搬家以后和家人朋友一起长期使用而认真挑选的生活用品 2 笔"
                 }
             }
         }
@@ -1172,6 +1170,7 @@ struct RootView: View {
         case .budget: BudgetView()
         case .billDetail(let id): BillDetailView(planID: id)
         case .yearlyBills: YearlyBillsView()
+        case .cycleBills: CycleBillsView()
         case .todo: TodoView()
         case .settings: SettingsView()
         case .categories: CategoriesView()

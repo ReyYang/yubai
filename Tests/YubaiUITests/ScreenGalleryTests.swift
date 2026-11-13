@@ -204,6 +204,8 @@ final class ScreenGalleryTests: XCTestCase {
             if element("cancelManualSheet").exists && element("cancelManualSheet").isHittable {
                 try tap("cancelManualSheet")
                 if app.buttons["放弃这笔"].waitForExistence(timeout: 0.3) { try tap(app.buttons["放弃这笔"]) }
+            } else if element("amountSheetCancel").exists && element("amountSheetCancel").isHittable {
+                try tap("amountSheetCancel")
             } else { try back() }
         }
         try tap("tab_" + tab)
@@ -310,13 +312,17 @@ final class ScreenGalleryTests: XCTestCase {
     func testWalk46Batch5Large() { walk46(.a11y, round46Batch5) }
     func testWalk46Batch5Hidden() { walk46(.hidden, round46Batch5) }
 
-    func testWalk47BatchA() { walk47(.light) }
-    func testWalk47BatchADark() { walk47(.dark) }
-    func testWalk47BatchALarge() { walk47(.a11y) }
-    func testWalk47BatchAHidden() { walk47(.hidden) }
-    private func walk47(_ mode: GalleryMode) {
+    func testWalk47BatchA() { walk47(.light, round47BatchA) }
+    func testWalk47BatchADark() { walk47(.dark, round47BatchA) }
+    func testWalk47BatchALarge() { walk47(.a11y, round47BatchA) }
+    func testWalk47BatchAHidden() { walk47(.hidden, round47BatchA) }
+    func testWalk47BatchB() { walk47(.light, round47BatchB) }
+    func testWalk47BatchBDark() { walk47(.dark, round47BatchB) }
+    func testWalk47BatchBLarge() { walk47(.a11y, round47BatchB) }
+    func testWalk47BatchBHidden() { walk47(.hidden, round47BatchB) }
+    private func walk47(_ mode: GalleryMode, _ walk: (Bool, Bool) -> Void) {
         galleryMode = mode; prefix = "V47-" + mode.rawValue + "-"
-        round47BatchA(dark: mode == .dark, large: mode == .a11y)
+        walk(mode == .dark, mode == .a11y)
     }
     private func round47BatchA(dark: Bool, large: Bool) {
         func load(_ fixture: String) throws { try launch(fixture, dark: dark, large: large) }
@@ -352,6 +358,45 @@ final class ScreenGalleryTests: XCTestCase {
         stop("First-After-Deferred") { try load("v47-after"); try tap("deferFirstSalary"); try require("openSaving") }
         stop("First-After-Income") { try load("v47-after-income"); try require("firstSalaryCard") }
         stop("First-After-Deadline") { try load("v47-after-deadline"); try require("firstSalaryCard") }
+    }
+
+    private func round47BatchB(dark: Bool, large: Bool) {
+        func load(_ fixture: String = "v47-savings") throws { try launch(fixture, dark: dark, large: large) }
+        func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
+        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
+        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
+        stop("Spend") { try load("v47-spend"); try formula(); try require("formulaResult"); try reveal(element("formulaRow_daily")) }
+        stop("Spend-Over") { try load("v47-spend-over"); try formula(); try reveal(element("formulaResult")) }
+        stop("Spend-Zero") { try load("v47-spend-zero"); try formula(); try require("formulaRow_spent") }
+        stop("Spend-Hard") { try load("v47-savings-hard"); try formula(); try reveal(element("formulaResult")) }
+        stop("Spend-Edit-Saving") { try load(); try formula(); try tap("formulaRow_saving"); try require("saveSavingsAmount") }
+        stop("Spend-Cycle-Bills") { try load(); try formula(); try tap("formulaRow_bills"); try require("cycleBillsPage") }
+        stop("Spend-Yearly") { try load(); try formula(); try tap("formulaRow_yearlySetAside"); try require("yearlyBillsPage") }
+        stop("Spend-Entries") { try load(); try formula(); try tap("formulaRow_spent"); try require("entriesScroll") }
+        stop("Save-Page-Flexible") { try saving(); try require("takeSavings"); try require("putBackSavings"); try reveal(element("editSavingsFloor")) }
+        stop("Save-Page-No-Floor") { try saving("v47-savings-no-floor"); try require("editSavingsFloor") }
+        stop("Save-Page-Hard") { try saving("v47-savings-hard"); try reveal(element("openReserve")) }
+        stop("Take") { try take("500") }
+        stop("Take-Limit") { try take("5000.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Taking limit") }
+        stop("Take-Saved") { try take("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
+        stop("Take-Undo") { try tap("undoLastChange"); try require("reserveTotal") }
+        stop("PutBack") { try putBack("500") }
+        stop("PutBack-Limit") { try putBack("1564.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Putting back limit") }
+        stop("PutBack-Saved") { try putBack("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
+        stop("Floor-Edit") { try saving(); try tap("editSavingsFloor"); try require("clearSavingsFloor") }
+        stop("Floor-Cleared") { try tap("clearSavingsFloor"); try require("editSavingsFloor") }
+        stop("Records") { try saving("v47-records"); try tap("openReserve"); try require("reserveLine_0") }
+        stop("Home-Topup") { try load("v47-topup"); try require("savingsTopupCard") }
+        stop("Home-Topup-Partial") { try tap("savingsTopupPartial"); try keys("200"); try require("savingsTransferPreview") }
+        stop("Home-Topup-Part-Saved") { try tap("confirmSavingsTransfer"); try require("openSaving"); try toast() }
+        stop("Home-Topup-All") { try load("v47-topup"); try tap("savingsTopupAll"); try require("openSaving"); try toast() }
+        stop("Home-Topup-Declined") { try load("v47-topup-queue"); try tap("savingsTopupDecline"); try require("renewalCard") }
+        stop("Toast-Short") { try load("v47-toast-short"); try require("toastMessage"); try require("undoLastChange") }
+        stop("Toast") { try load("v47-toast-long"); try require("expandToast") }
+        stop("Toast-Truncated") { try load("v47-toast-long"); try require("expandToast") }
+        stop("Toast-Expanded") { try tap("expandToast"); try require("toastMessage") }
+        stop("Toast-Undo") { try tap("undoLastChange"); try require("toastMessage") }
+        stop("Toast-Dismissed") { try load("v47-toast-long"); try tap("expandToast"); try tap("expandToast"); try require("openSaving") }
     }
 
     // One method per area: each starts from a fresh launch, so one area cannot stall the others.
@@ -450,28 +495,28 @@ final class ScreenGalleryTests: XCTestCase {
     private func formulaAndAccounts() {
         stop("04-formula-01-current") { try launch(); try formula() }
         stop("04-formula-02-bottom") { try reveal(element("formulaRow_daily")) }
-        stop("04-formula-06-edit-reserve") { try launch(); try formula(); try tap("formulaRow_fixedSavings"); try require("amountSheetAmount") }
+        stop("04-formula-06-edit-reserve") { try launch(); try savingPage(); try tap("openSavings"); try tap("editFixedSavings"); try require("amountSheetAmount") }
         stop("04-formula-07-edit-saving") { try launch(); try formula(); try tap("formulaRow_saving"); try require("amountSheetAmount") }
         stop("04-formula-08-budget") { try launch(); try settings("openSpendingParts"); try require("spendingPartsPage") }
         stop("04-formula-09-add-budget-alert") { try tap("addBudgetPart"); try require("budgetPartName") }
         stop("04-formula-10-budget-alert-keyboard") { try type(longName, into: "budgetPartName"); try requireKeyboard() }
         stop("04-formula-11-budget-amount-sheet") { try launch(); try settings("openSpendingParts"); try tap("budgetAmount_合成超支分项" + longName); try require("amountSheetAmount") }
         stop("04-formula-12-budget-category-sheet") { try launch(); try settings("openSpendingParts"); try tap("budgetCategory_" + galleryID(350)); try require("categoryPickerCategory_餐饮") }
-        stop("05-accounts-01-list-top") { try launch(); try formula(); try tap("formulaRow_hand"); try require("accountsPage") }
+        stop("05-accounts-01-list-top") { try launch(); try settings("openAccounts"); try require("accountsPage") }
         stop("05-accounts-02-list-bottom") { try reveal(element("addAccount")) }
         stop("05-accounts-03-credit") { try tap("accountRow_信用卡"); try require("accountDetailPage") }
         stop("05-accounts-04-credit-editor") { try tap("editAccount"); try require("accountName") }
-        stop("05-accounts-05-add-account") { try launch(); try formula(); try tap("formulaRow_hand"); try tap("addAccount"); try require("accountName") }
+        stop("05-accounts-05-add-account") { try launch(); try settings("openAccounts"); try tap("addAccount"); try require("accountName") }
         stop("05-accounts-06-editor-long-keyboard") { try type(longName + latinName, into: "accountName"); try requireKeyboard() }
-        stop("05-accounts-07-archived-account") { try launch(); try formula(); try tap("formulaRow_hand"); try tap("accountRow_已归档的旧银行卡"); try require("accountDetailPage") }
-        stop("05-accounts-08-reconcile") { try launch(); try formula(); try tap("formulaRow_hand"); try tap("reconcileAll"); try require("reconcileSheet") }
+        stop("05-accounts-07-archived-account") { try launch(); try settings("openAccounts"); try tap("accountRow_已归档的旧银行卡"); try require("accountDetailPage") }
+        stop("05-accounts-08-reconcile") { try launch(); try settings("openAccounts"); try tap("reconcileAll"); try require("reconcileSheet") }
         stop("05-accounts-09-reconcile-one-account") { try launch("v46-gap"); try tap("openReconcile"); try require("reconcileField_招行储蓄卡") }
     }
 
     private func bills() {
-        stop("06-bills-01-list") { try launch(); try formula(); try tap("formulaRow_bills"); try require("fixedFlowsScroll") }
+        stop("06-bills-01-list") { try launch(); try settings("openFixedFlows"); try require("fixedFlowsScroll") }
         stop("06-bills-02-list-bottom") { for _ in 0..<12 { try drag(element("fixedFlowsScroll")) } }
-        stop("06-bills-03-editor") { try launch(); try formula(); try tap("formulaRow_bills"); try tap("addFixedFlow"); try require("fixedFlowTitle") }
+        stop("06-bills-03-editor") { try launch(); try settings("openFixedFlows"); try tap("addFixedFlow"); try require("fixedFlowTitle") }
         stop("06-bills-04-editor-schedule") { try tap("fixedFlowDate"); try require("fixedFlowCalendar") }
         stop("06-bills-05-detail") { try launch("v46-bill"); try tap("billDueNotYet"); try tap(buttonPrefix("formulaBill_")); try require("billDetailPage") }
         stop("06-bills-06-detail-history") { try reveal(element("billDetailHistory")) }
@@ -486,16 +531,16 @@ final class ScreenGalleryTests: XCTestCase {
         stop("06-bills-15-skip-toast") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try tap("billMenu_skip"); try toast() }
         stop("06-bills-16-stop-confirmation") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try tap("billMenu_stop"); try require("fixedFlowStopConfirm") }
         stop("06-bills-17-stop-toast") { try tap("fixedFlowStopConfirm"); try toast() }
-        stop("06-bills-21-add-recurring-editor") { try launch(); try formula(); try tap("formulaRow_bills"); try tap("addFixedFlow"); try require("fixedFlowTitle") }
+        stop("06-bills-21-add-recurring-editor") { try launch(); try settings("openFixedFlows"); try tap("addFixedFlow"); try require("fixedFlowTitle") }
     }
 
     private func saving() {
         stop("02-saving-02-reserve") { try launch(); try savingPage(); try tap("openReserve"); try require("reservePage") }
-        stop("02-saving-03-payback-progress") { try reveal(element("reservePaybackProgress")) }
-        stop("02-saving-04-payback-offer") { try reveal(element("reservePaybackOffer")) }
-        stop("02-saving-05-payback-accepted") { try tap("reservePaybackAccept"); try require("reservePaybackProgress") }
-        stop("02-saving-06-edit-total") { try tap("editReserveTotal"); try require("amountSheetAmount") }
-        stop("02-saving-07-reserve-adjustment-toast") { try keys("7200"); try tap("saveReserveTotal"); try toast() }
+        stop("02-saving-03-take-sheet") { try launch("v47-savings"); try savingPage(); try tap("takeSavings"); try require("savingsTransferSheet") }
+        stop("02-saving-04-take-preview") { try keys("500"); try require("savingsTransferPreview") }
+        stop("02-saving-05-take-saved") { try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
+        stop("02-saving-06-edit-floor") { try launch("v47-savings"); try savingPage(); try tap("editSavingsFloor"); try require("amountSheetAmount") }
+        stop("02-saving-07-floor-saved") { try keys("2500"); try tap("saveSavingsFloor"); try toast() }
         stop("02-saving-08-monthly-fixed") { try launch(); try savingPage(); try tap("openSavings"); try require("savingsPage") }
         stop("02-saving-09-monthly-share") { try tap("savingMode_share"); try require("savingsPage") }
         stop("02-saving-10-monthly-amount") { try tap("savingMode_fixed"); try tap("editSavingTarget"); try require("saveSavingsAmount") }
@@ -507,7 +552,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("02-saving-16-wishlist-past-bottom") { for _ in 0..<8 { try drag(app.scrollViews.firstMatch) } }
         stop("02-saving-17-wish-dropped-toast") { try launch(); try savingPage(); try tap("openWishlist"); let wish = element("wish_" + galleryID(400)); try reveal(wish.buttons["不买了"]); try tap(wish.buttons["不买了"]); try toast() }
         stop("02-saving-18-monthly-reserve") { try launch(); try savingPage(); try tap("openSavings"); try reveal(element("editFixedSavings")) }
-        stop("02-saving-19-payback-declined") { try launch(); try savingPage(); try tap("openReserve"); try tap("reservePaybackDecline"); try require("reservePaybackProgress") }
+        stop("02-saving-19-topup-declined") { try launch("v47-topup"); try tap("savingsTopupDecline"); try require("openSaving") }
     }
 
     private func entrySheets() {
@@ -673,7 +718,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("13-empty-10-first-use") { try launch("empty"); try require("firstOpenScene") }
         stop("13-empty-11-first-entry-keyboard") { try tap("addEntry"); try type(longName, into: "entryPurpose"); try requireKeyboard() }
         stop("13-empty-12-privacy") { try launch("empty"); try settings("openIntelligencePrivacy"); try require("intelligencePrivacyPage") }
-        stop("13-empty-13-fixed-bills") { try launch("manual"); try formula(); try tap("formulaRow_bills"); try require("fixedFlowsScroll") }
+        stop("13-empty-13-fixed-bills") { try launch("manual"); try settings("openFixedFlows"); try require("fixedFlowsScroll") }
         stop("13-empty-14-frequent-entries") { try launch("gallery-empty"); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("frequentEntriesPage") }
         stop("13-empty-15-budget") { try launch("manual"); try settings("openSpendingParts"); try require("budgetTotal") }
     }
@@ -813,7 +858,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Saved-From-Save") { try saving(); try tap("openButlerSaved"); try require("butlerSavedTotal") }
         stop("Saving-Rule") { try saving(); try tap("openSavings"); try require("editSavingTarget"); try require("suggestedMonthlySaving") }
         stop("Save-Share") { try saving("v46-b3-share"); try tap("openSavings"); try require("savingMode_share"); try require("directSavingsEntry_" + galleryID(460460)) }
-        stop("Reserve") { try saving("v46-b3-reserve"); try tap("openReserve"); try require("reservePaybackOffer"); try require("editReserveTotal") }
+        stop("Reserve") { try saving("v46-b3-reserve"); try tap("openReserve"); try require("reserveLine_0") }
         stop("Wishlist") { try saving(); try tap("openWishlist"); try require("cooldownKeep"); try require("wish_" + galleryID(460402)) }
         stop("Yubai") { try load(); try root("yubai"); try require("openProfile"); try require("askYubai") }
         stop("Ask") { try question("降噪耳机 1,899，能买吗"); try require("purchaseVerdict", timeout: 15); try require("purchaseSaveWish") }
@@ -832,7 +877,7 @@ final class ScreenGalleryTests: XCTestCase {
 
     private func round46Batch4(dark: Bool, large: Bool, hidden: Bool) {
         func load(_ fixture: String = "v46-bills") throws { try launch(fixture, dark: dark, large: large) }
-        func calendar() throws { try formula(); try tap("formulaRow_bills"); try require("billsCalendar") }
+        func calendar() throws { try settings("openFixedFlows"); try require("billsCalendar") }
         func select(_ number: Int) throws {
             let c = Calendar.current, month = c.dateInterval(of: .month, for: Date())!.start
             let last = c.range(of: .day, in: .month, for: Date())!.count
@@ -861,7 +906,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Accounts") { try load(); try settings("openAccounts"); try require("accountsTotal") }
         stop("Bills-Rate") { try load(); try calendar(); try select(28); try tap("billsRate_USD"); try require("billRateValue") }
         stop("Bills-Yearly-Switch") { try load(); try calendar(); try tap("yearlyBillsStrip"); try require("yearlyBillsSetAside") }
-        stop("Bills-Spend") { try load(); try formula(); try reveal(element("formulaRow_yearlySetAside")) }
+        stop("Bills-Spend") { try load("v47-spend"); try formula(); try reveal(element("formulaRow_yearlySetAside")) }
         stop("Bills-Hidden") { try load("v46-bills-hidden"); try calendar(); try select(28); try require("billsSelectedDay") }
         stop("Bills-Hard") { try load("v46-bills-hard"); try calendar(); try select(21); try require("billsSelectedDay") }
     }
@@ -879,7 +924,7 @@ final class ScreenGalleryTests: XCTestCase {
         }
         stop("DS-Toast") { try load(toast: true); try require("toastMessage"); try require("undoLastChange") }
         stop("DS-Content") { try load("v46-b3-hard"); try root("ledger"); try require("entriesScroll"); try reveal(element("ledgerEntry_" + galleryID(460310))) }
-        stop("DS-Sheets") { try load("v46-b3-book"); try savingPage(); try tap("openReserve"); try tap("editReserveTotal"); try require("amountSheetAmount") }
+        stop("DS-Sheets") { try load("v46-b3-book"); try savingPage(); try tap("takeSavings"); try require("amountSheetAmount") }
         stop("DS-Big") { try launch("v46-entry-hard", dark: dark, large: true); try tap("addEntry"); try keys("1234567.89"); try require("entryKeypadAmount") }
         stop("Names") {
             try launch("v46-sort", dark: dark, large: large, organization: "by-party")
@@ -918,7 +963,7 @@ final class ScreenGalleryTests: XCTestCase {
             guard !frame.isEmpty, window.intersects(frame) else { continue }
             if systemRegions.contains(where: { $0.contains(frame) }) { continue }
             if !window.insetBy(dx: -1, dy: -1).contains(frame) {
-                if ["saveQuickEntry", "amountSheetDone", "saveLetterEntry", "mainNavigation", "reconcileApply"].contains(id) {
+                if ["saveQuickEntry", "amountSheetDone", "confirmSavingsTransfer", "saveSavingsFloor", "saveLetterEntry", "mainNavigation", "reconcileApply"].contains(id) {
                     throw Miss(description: "Off-screen control: " + id)
                 }
                 continue
@@ -962,7 +1007,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("09-principle-long") { try type(longName + latinName, into: "principleText") }
         stop("10-toast") { try tap("savePrinciple"); try toast() }
         stop("11-formula") { try formula(); try require("formulaPage") }
-        stop("12-accounts") { try tap("formulaRow_hand"); try require("accountsPage") }
+        stop("12-accounts") { try settings("openAccounts"); try require("accountsPage") }
         stop("13-account-editor") { try tap("accountRow_" + longName); try tap("editAccount"); try require("accountName") }
         stop("14-settings") { try settings(); try require("settingsScroll") }
         stop("15-categories") { try tap("openCategories"); try require("categoriesDirection") }

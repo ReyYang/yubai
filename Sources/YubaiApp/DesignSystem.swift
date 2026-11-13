@@ -226,6 +226,7 @@ enum YubaiRadius {
 }
 
 enum YubaiSize {
+    static let toastExpandedMaximumHeight: CGFloat = 320
     static let navigationCapsuleWidth: CGFloat = 244
     static let navigationTabHeight: CGFloat = 48
     static let homeEntryPillHeight: CGFloat = 52
@@ -1486,51 +1487,113 @@ struct EmptyState: View {
     }
 }
 
+private struct ToastIntrinsicWidth: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+private struct ToastAvailableWidth: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct ToastNaturalHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 struct Toast: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visible = false
+    @State private var expanded = false
+    @State private var naturalHeight: CGFloat = 0
+    @State private var intrinsicWidth: CGFloat = 0
+    @State private var availableWidth: CGFloat = 0
     var text: String
     var undoTitle = "撤销"
     var onUndo: (() -> Void)? = nil
     var onDismiss: (() -> Void)? = nil
     var messageIdentifier = "toastMessage"
     var undoIdentifier = "undoLastChange"
+    private var truncated: Bool { availableWidth > 0 && intrinsicWidth > availableWidth + 0.5 }
+    private var hasChevron: Bool { truncated || expanded }
+    private var timerKey: String { text + "-\(expanded)-\(visible)" }
     var body: some View {
-        // A concrete host must exist before visible becomes true. An empty Group has no
-        // child on which to run the task that inserts the receipt in the first place.
         ZStack { if visible { surface } }
             .task(id: text) {
+                expanded = false
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
                 #if os(iOS)
                 AccessibilityNotification.Announcement(text + (onUndo == nil ? "" : "，可撤销")).post()
                 #endif
+            }
+            .task(id: timerKey) {
+                guard visible, !expanded else { return }
                 #if DEBUG && targetEnvironment(simulator)
                 if onUndo != nil && UITestSupport.keepsUndoReceipt { return }
                 #endif
                 do { try await Task.sleep(for: .seconds(onUndo == nil ? 4 : 6)) } catch { return }
-                withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() }
+                guard !Task.isCancelled, !expanded else { return }
+                dismiss()
             }
     }
     private var surface: some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
-            Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).lineLimit(2).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier(messageIdentifier)
+        HStack(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8) {
+            Button(action: toggle) {
+                HStack(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8) {
+                    if expanded {
+                        ScrollView {
+                            message
+                        }.frame(height: min(max(YubaiFont.body.lineHeight, naturalHeight), YubaiSize.toastExpandedMaximumHeight))
+                            .scrollBounceBehavior(.basedOnSize)
+                    } else { message }
+                    if hasChevron {
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.caption)
+                            .foregroundStyle(YubaiColor.labelSecondary).padding(.top, expanded ? YubaiSpace.space4 : YubaiSpace.none)
+                            .accessibilityHidden(true)
+                    }
+                }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(PressButtonStyle()).accessibilityElement(children: .contain)
+                .accessibilityIdentifier(hasChevron ? "expandToast" : "toastBody")
+                .accessibilityHint(expanded ? "轻点或向下划关闭提示" : truncated ? "轻点展开完整提示" : "轻点关闭提示")
+                .accessibilityValue(expanded ? "已展开" : "")
             if let onUndo {
                 Button(undoTitle, action: onUndo).yubaiFont(YubaiFont.row, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
-                    .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.rowIcon).background(YubaiColor.brandTint, in: Capsule()).fixedSize().yubaiHitTarget().buttonStyle(PressButtonStyle())
+                    .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
+                    .background(YubaiColor.brandTint, in: Capsule()).fixedSize().yubaiHitTarget().buttonStyle(PressButtonStyle())
                     .accessibilityIdentifier(undoIdentifier)
-            }
-            if let onDismiss {
-                Button { withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss() } } label: {
-                    Image(systemName: "xmark").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel("关闭提示")
             }
         }.padding(.leading, YubaiSpace.insetCard).padding(.trailing, YubaiSpace.space8).padding(.vertical, YubaiSpace.space4)
             .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).yubaiShadow(YubaiShadow.card)
             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapGroup)
             .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
-            .gesture(DragGesture(minimumDistance: YubaiSpace.gapGroup).onEnded { value in
-                if value.translation.height > YubaiSpace.gapSection { withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() } }
+            .onPreferenceChange(ToastNaturalHeight.self) { naturalHeight = $0 }
+            .onPreferenceChange(ToastIntrinsicWidth.self) { intrinsicWidth = $0 }
+            .onPreferenceChange(ToastAvailableWidth.self) { availableWidth = $0 }
+            .simultaneousGesture(DragGesture(minimumDistance: YubaiSpace.gapGroup).onEnded { value in
+                if value.translation.height > YubaiSpace.gapSection { dismiss() }
             })
+    }
+    private var message: some View {
+        Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+            .lineLimit(expanded ? nil : 1).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ToastAvailableWidth.self, value: proxy.size.width)
+                        .preference(key: ToastNaturalHeight.self, value: proxy.size.height)
+                }
+            }
+            .background(alignment: .leading) {
+                Text(text).yubaiFont(YubaiFont.body).lineLimit(1).fixedSize().hidden().accessibilityHidden(true)
+                    .background { GeometryReader { proxy in Color.clear.preference(key: ToastIntrinsicWidth.self, value: proxy.size.width) } }
+            }.accessibilityLabel(text).accessibilityIdentifier(messageIdentifier)
+    }
+    private func toggle() {
+        if expanded || !truncated { dismiss() }
+        else { withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { expanded = true } }
+    }
+    private func dismiss() {
+        withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() }
     }
 }
 
@@ -1996,22 +2059,13 @@ struct AmountSheetRow: Identifiable, Equatable {
 /// 超支补法、发工资、账单付了、算式页就地改共用。金额状态由调用方的 `EntryKeypad` 持有。
 /// Numeric sheets keep the title and its monetary fact beside the keypad.
 struct AmountSheetHeader: View {
-    @Environment(\.dynamicTypeSize) private var textSize
     let title: String
     var subtitle: String? = nil
     let cancel: () -> Void
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
-            layout {
-                Text(title).yubaiFont(YubaiFont.entrySheetTitle).lineLimit(1)
-                if let subtitle { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true) }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            Button("取消", action: cancel)
-                .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.label).fixedSize()
-                .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
-                .background(YubaiColor.card, in: Capsule()).contentShape(Capsule())
-                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("amountSheetCancel")
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            ManualSheetHeader(title: title, showsAction: false, cancelIdentifier: "amountSheetCancel", cancel: cancel, action: {}, preservesCancelIdentifier: true)
+            if let subtitle { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
         }
     }
 }
@@ -2029,6 +2083,7 @@ struct AmountEntrySheet<Accessory: View>: View {
     let primaryTitle: String
     var primaryIdentifier = "amountSheetDone"
     var canSave = true
+    var primaryAboveKeypad = false
     var cancel: (() -> Void)? = nil
     let save: () -> Void
     let accessory: Accessory
@@ -2036,10 +2091,10 @@ struct AmountEntrySheet<Accessory: View>: View {
 
     init(title: String, subtitle: String? = nil, presets: [AmountPreset] = [], keypad: Binding<EntryKeypad>,
          rows: [AmountSheetRow] = [], primaryTitle: String, primaryIdentifier: String = "amountSheetDone",
-         canSave: Bool = true, startsSelected: Bool = true, cancel: (() -> Void)? = nil, save: @escaping () -> Void,
+         canSave: Bool = true, startsSelected: Bool = true, primaryAboveKeypad: Bool = false, cancel: (() -> Void)? = nil, save: @escaping () -> Void,
          @ViewBuilder accessory: () -> Accessory) {
         self.title = title; self.subtitle = subtitle; self.presets = presets; _keypad = keypad; self.rows = Array(rows.prefix(2))
-        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.canSave = canSave
+        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.canSave = canSave; self.primaryAboveKeypad = primaryAboveKeypad
         self.cancel = cancel; self.save = save; self.accessory = accessory()
         _selected = State(initialValue: startsSelected)
     }
@@ -2055,10 +2110,17 @@ struct AmountEntrySheet<Accessory: View>: View {
                 .background { GeometryReader { proxy in Color.clear.preference(key: SheetContentHeight.self, value: proxy.size.height) } }
         }.scrollBounceBehavior(.basedOnSize)
             .onPreferenceChange(SheetContentHeight.self) { measuredHeight = $0 }
-            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(measuredHeight + YubaiSize.keypadHeight), .large])
+            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(measuredHeight + YubaiSize.keypadHeight + (primaryAboveKeypad ? YubaiSize.buttonHeight + YubaiSpace.gapGroup : YubaiSpace.none)), .large])
             .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
-                AmountKeypad(keypad: $keypad, amountSelected: $selected, canSave: canSave,
-                             primaryTitle: primaryTitle, primaryIdentifier: primaryIdentifier, save: save)
+                VStack(spacing: YubaiSpace.none) {
+                    if primaryAboveKeypad {
+                        Button(primaryTitle, action: save).buttonStyle(PrimaryButtonStyle())
+                            .disabled(!canSave).accessibilityIdentifier(primaryIdentifier)
+                            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapGroup)
+                    }
+                    AmountKeypad(keypad: $keypad, amountSelected: $selected, canSave: canSave,
+                                 primaryTitle: primaryTitle, primaryIdentifier: primaryIdentifier, save: save, showsPrimary: !primaryAboveKeypad)
+                }
             }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
@@ -2109,9 +2171,9 @@ struct AmountEntrySheet<Accessory: View>: View {
 extension AmountEntrySheet where Accessory == EmptyView {
     init(title: String, subtitle: String? = nil, presets: [AmountPreset] = [], keypad: Binding<EntryKeypad>,
          rows: [AmountSheetRow] = [], primaryTitle: String, primaryIdentifier: String = "amountSheetDone",
-         canSave: Bool = true, startsSelected: Bool = true, cancel: (() -> Void)? = nil, save: @escaping () -> Void) {
+         canSave: Bool = true, startsSelected: Bool = true, primaryAboveKeypad: Bool = false, cancel: (() -> Void)? = nil, save: @escaping () -> Void) {
         self.init(title: title, subtitle: subtitle, presets: presets, keypad: keypad, rows: rows, primaryTitle: primaryTitle,
-                  primaryIdentifier: primaryIdentifier, canSave: canSave, startsSelected: startsSelected, cancel: cancel,
+                  primaryIdentifier: primaryIdentifier, canSave: canSave, startsSelected: startsSelected, primaryAboveKeypad: primaryAboveKeypad, cancel: cancel,
                   save: save) { EmptyView() }
     }
 }
@@ -2424,6 +2486,7 @@ struct AmountKeypad: View {
     let primaryTitle: String
     let primaryIdentifier: String
     let save: () -> Void
+    var showsPrimary = true
     var embedded = false
     var receiptVisible = false
     var receiptDeadline: Date? = nil
@@ -2434,10 +2497,10 @@ struct AmountKeypad: View {
     private let rows = [["1", "2", "3", "⌫"], ["4", "5", "6", "+"], ["7", "8", "9", "−"]]
 
     init(keypad: Binding<EntryKeypad>, amountSelected: Binding<Bool> = .constant(false), canSave: Bool,
-         primaryTitle: String, primaryIdentifier: String, save: @escaping () -> Void, embedded: Bool = false,
+         primaryTitle: String, primaryIdentifier: String, save: @escaping () -> Void, embedded: Bool = false, showsPrimary: Bool = true,
          receiptVisible: Bool = false, receiptDeadline: Date? = nil, interaction: @escaping () -> Void = {}) {
         _keypad = keypad; _amountSelected = amountSelected; self.canSave = canSave
-        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.save = save; self.embedded = embedded
+        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.save = save; self.embedded = embedded; self.showsPrimary = showsPrimary
         self.receiptVisible = receiptVisible; self.receiptDeadline = receiptDeadline; self.interaction = interaction
     }
     var body: some View {
@@ -2455,7 +2518,8 @@ struct AmountKeypad: View {
                         AmountKeypadKey(key: ".", keypad: $keypad, amountSelected: $amountSelected, feedback: feedback, height: keyHeight, interaction: interaction)
                             .frame(width: keyWidth)
                         AmountKeypadKey(key: "0", keypad: $keypad, amountSelected: $amountSelected, feedback: feedback, height: keyHeight, interaction: interaction)
-                            .frame(width: keyWidth)
+                            .frame(width: showsPrimary ? keyWidth : keyWidth * 3 + 12)
+                        if showsPrimary {
                         if receiptVisible {
                             EntrySaveReceipt(deadline: receiptDeadline).frame(width: keyWidth * 2 + 6, height: keyHeight)
                         } else { Button(action: save) {
@@ -2464,6 +2528,7 @@ struct AmountKeypad: View {
                         }.buttonStyle(AmountKeyButtonStyle(primary: true, pressing: { if $0 { feedback.press("记下", accepted: true) } }))
                             .frame(width: keyWidth * 2 + 6).opacity(canSave ? 1 : 0.4).disabled(!canSave)
                             .accessibilityIdentifier(primaryIdentifier)
+                        }
                         }
                     }
                 }

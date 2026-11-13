@@ -126,7 +126,7 @@ struct QuickEntryView: View {
         .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
             VStack(spacing: YubaiSpace.none) {
                 if let sessionToast {
-                    Toast(text: sessionToast, onUndo: deletedEntryID == nil ? nil : undoDeletion, onDismiss: { self.sessionToast = nil }).id(deletedEntryID)
+                    Toast(text: HomeButler.privacyText(sessionToast, hidden: store.preferences.hideAmounts), onUndo: deletedEntryID == nil ? nil : undoDeletion, onDismiss: { self.sessionToast = nil }).id(deletedEntryID)
                 }
                 bottomTray
             }

@@ -54,6 +54,7 @@ struct HomeTaskCard: View {
         case .overspend(let options): OverspendRows(options: options, more: more)
         case .renewal(let renewal): renewalCard(renewal)
         case .funding(let value): fundingCard(value)
+        case .savingsTopup(let offer): SavingsTopupCard(offer: offer, more: more)
         case .cooldown(let wish): cooldownCard(wish)
         case .restraint(let restraint): restraintCard(restraint)
         case .salary(let candidate): salaryCard(candidate)

@@ -155,6 +155,14 @@ jobs:
             walks: testWalk47BatchALarge
           - part: r47-a-hidden
             walks: testWalk47BatchAHidden
+          - part: r47-b-light
+            walks: testWalk47BatchB
+          - part: r47-b-dark
+            walks: testWalk47BatchBDark
+          - part: r47-b-a11y
+            walks: testWalk47BatchBLarge
+          - part: r47-b-hidden
+            walks: testWalk47BatchBHidden
           - part: 46-batch1
             walks: testWalk46Batch1
           - part: 46-batch1-dark

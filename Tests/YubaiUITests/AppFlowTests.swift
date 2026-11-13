@@ -469,23 +469,16 @@ final class AppFlowTests: XCTestCase {
 
     func testSavingsEditsFromFormulaAndSavingPageWithKeypad() {
         let app = application("v45-home"); app.launch()
-        tap(app.buttons["fundsFormula"], in: app)
-        tap(anyElement("formulaRow_fixedSavings", in: app), in: app)
-        XCTAssertTrue(anyElement("amountSheetAmount", in: app).waitForExistence(timeout: 5))
-        pressAmount("5020", in: app)
+        tap(app.buttons["fundsFormula"], in: app); tap(anyElement("formulaRow_saving", in: app), in: app)
+        pressAmount("1800", in: app)
         XCTAssertTrue(anyElement("formulaEditResult", in: app).exists)
-        tap(app.buttons["saveSavingsAmount"], in: app)
-        assertGone(app.buttons["saveSavingsAmount"])
-        XCTAssertTrue(anyElement("formulaRow_fixedSavings", in: app).label.contains("5,020.00"))
-        backToRoot(app)
-        openSaving(app); tap(app.buttons["openSavings"], in: app)
-        XCTAssertTrue(anyElement("savingsPage", in: app).waitForExistence(timeout: 5))
-        tap(app.buttons["editSavingTarget"], in: app)
-        pressAmount("1800", in: app); tap(app.buttons["saveSavingsAmount"], in: app)
-        assertGone(app.buttons["saveSavingsAmount"])
-        backToRoot(app); tap(app.buttons["tab_now"], in: app); tap(app.buttons["fundsFormula"], in: app)
+        tap(app.buttons["saveSavingsAmount"], in: app); assertGone(app.buttons["saveSavingsAmount"])
         XCTAssertTrue(anyElement("formulaRow_saving", in: app).label.contains("1,800.00"))
-        snapshot("savings-formula-and-tab", app)
+        openSaving(app); tap(app.buttons["openSavings"], in: app); tap(app.buttons["editFixedSavings"], in: app)
+        pressAmount("5020", in: app); tap(app.buttons["saveSavingsAmount"], in: app); assertGone(app.buttons["saveSavingsAmount"])
+        XCTAssertTrue(anyElement("editFixedSavings", in: app).label.contains("5,020.00"))
+        openSaving(app); XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 682_000)
+        snapshot("savings-formula-and-page", app)
     }
 
     func testShareSavingsUsesIncomeAndCustomPercentage() {
@@ -1185,10 +1178,10 @@ final class AppFlowTests: XCTestCase {
         let app = application("v45-home"); app.launch()
         let before = displayedAmount(anyElement("availableFunds", in: app))
         tap(app.buttons["fundsFormula"], in: app)
-        for identifier in ["formulaRow_income", "formulaRow_hand", "formulaRow_fixedSavings", "formulaRow_saving", "formulaRow_bills", "formulaResult"] {
+        for identifier in ["formulaRow_income", "formulaRow_saving", "formulaRow_bills", "formulaRow_spent", "formulaResult"] {
             scrollToVisible(anyElement(identifier, in: app), in: app)
         }
-        XCTAssertTrue(anyElement("formulaRow_hand", in: app).label.contains("手上的钱"))
+        XCTAssertFalse(anyElement("formulaRow_hand", in: app).exists)
         tap(anyElement("formulaRow_saving", in: app), in: app)
         XCTAssertTrue(anyElement("amountSheetAmount", in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(anyElement("amountSheetAmount", in: app).value as? String, "2000.00")
@@ -2360,7 +2353,9 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(anyElement("dailyPace", in: app).exists)
         XCTAssertFalse(app.buttons["coverFromReserve"].exists)
         tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), -(500_000 - covered))
+        XCTAssertEqual(displayedAmount(anyElement("formulaResult", in: app)), covered - over)
+        openSaving(app); XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 700_000 - covered)
+        backToRoot(app); tap(app.buttons["fundsFormula"], in: app)
         XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), -200_000)
         snapshot("overspend-reserve-cushion", app)
     }
@@ -2395,8 +2390,8 @@ final class AppFlowTests: XCTestCase {
             tap(app.buttons[save ? "leftoverSave" : "leftoverKeep"], in: app)
             assertGone(app.buttons["leftoverSave"]); assertGone(app.buttons["leftoverKeep"])
             XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before - (save ? 21_200 : 0))
-            tap(app.buttons["fundsFormula"], in: app)
-            XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), -(500_000 + (save ? 21_200 : 0)))
+            openSaving(app)
+            XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 700_000 + (save ? 21_200 : 0))
             app.terminate(); app.launch()
             XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
             XCTAssertFalse(app.buttons["leftoverSave"].exists); XCTAssertFalse(app.buttons["leftoverKeep"].exists)
@@ -2460,8 +2455,8 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["entryCategory_购物"], in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
         assertGone(app.buttons["saveQuickEntry"])
         XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before)
-        tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_fixedSavings", in: app)), -380_000)
+        openSaving(app)
+        XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 580_000)
         backToRoot(app); tap(app.buttons["tab_ledger"], in: app)
         let search = app.textFields["entriesSearch"]
         tap(search, in: app); search.typeText("合成大衣"); assertSearchCount(1, in: app)
@@ -2493,20 +2488,16 @@ final class AppFlowTests: XCTestCase {
         snapshot("quick-repeat-undone", app)
     }
 
-    func testV45SavingPageOpensReserveHistoryAndEditsTotal() {
-        let app = application("v45-home"); app.launch(); openSaving(app)
+    func testSavingPageTransfersAndOpensPlainReserveHistory() {
+        let app = application("v47-savings", keepingUndo: true); app.launch(); openSaving(app)
+        tap(app.buttons["takeSavings"], in: app); pressAmount("500", in: app); tap(app.buttons["confirmSavingsTransfer"], in: app)
+        assertGone(anyElement("savingsTransferSheet", in: app))
+        XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 450_000)
         tap(app.buttons["openReserve"], in: app)
-        XCTAssertTrue(anyElement("reservePage", in: app).waitForExistence(timeout: 5))
-        XCTAssertTrue(anyElement("reserveLine_0", in: app).exists)
-        tap(app.buttons["editReserveTotal"], in: app)
-        XCTAssertTrue(anyElement("amountSheetAmount", in: app).waitForExistence(timeout: 5))
-        pressAmount("7200", in: app); tap(app.buttons["saveReserveTotal"], in: app)
-        assertGone(app.buttons["saveReserveTotal"])
-        XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 720_000)
-        XCTAssertTrue(anyElement("reserveLine_0", in: app).label.contains("调整"))
-        backToRoot(app); openSaving(app)
-        XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 720_000)
-        snapshot("reserve-edited-history", app)
+        XCTAssertTrue(anyElement("reserveLine_0", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(anyElement("reserveLine_0", in: app).label.contains("拿出来用"))
+        XCTAssertFalse(anyElement("reserveTotal", in: app).exists)
+        snapshot("savings-transfer-history", app)
     }
 
     func testV45LedgerSwitchesModesAndSearchesAllMonths() {
@@ -2575,40 +2566,31 @@ final class AppFlowTests: XCTestCase {
         snapshot("category-exact-records", app)
     }
 
-    func testV45ReservePaybackRaisesMonthlySavingAndRemembersTheAnswer() {
-        let app = application("v45-payback"); app.launch()
-        openSaving(app); tap(app.buttons["openReserve"], in: app)
-        let accept = app.buttons["reservePaybackAccept"]
-        scrollToVisible(accept, in: app); XCTAssertTrue(accept.label.contains("400.00"))
-        tap(accept, in: app)
-        assertGone(anyElement("reservePaybackOffer", in: app))
-        XCTAssertTrue(anyElement("reservePaybackProgress", in: app).exists)
-        backToRoot(app); tap(app.buttons["openSavings"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("monthlyPaybackAmount", in: app)), 40_000)
-        XCTAssertEqual(displayedAmount(anyElement("monthlySavingTotal", in: app)), 240_000)
-        backToRoot(app); tap(app.buttons["tab_now"], in: app); tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), -240_000)
+    func testPaydayTopupSavesImmediatelyAndRemembersTheAnswer() {
+        let app = application("v47-topup"); app.launch()
+        let before = displayedAmount(anyElement("availableFunds", in: app))
+        tap(app.buttons["savingsTopupAll"], in: app); assertGone(anyElement("savingsTopupCard", in: app))
+        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before - 50_000)
+        openSaving(app); XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 500_000)
+        tap(app.buttons["openReserve"], in: app)
+        XCTAssertTrue(anyElement("reserveLine_0", in: app).label.contains("放回去"))
         app.terminate(); app.launch()
-        openSaving(app); tap(app.buttons["openReserve"], in: app)
-        XCTAssertTrue(anyElement("reservePaybackProgress", in: app).waitForExistence(timeout: 5))
-        XCTAssertFalse(anyElement("reservePaybackOffer", in: app).exists)
-        snapshot("reserve-payback-persisted", app)
+        XCTAssertTrue(anyElement("mainNavigation", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(anyElement("savingsTopupCard", in: app).exists)
+        snapshot("payday-topup-persisted", app)
     }
 
-    func testV45ReserveCoverCanDeclinePaybackOnce() {
-        let app = application("v45-over"); app.launch()
-        tap(app.buttons["coverFromReserve"], in: app); tap(app.buttons["coverLevel"], in: app)
-        tap(app.buttons["amountSheetDone"], in: app); assertGone(app.buttons["amountSheetDone"])
-        openSaving(app); tap(app.buttons["openReserve"], in: app)
-        let decline = app.buttons["reservePaybackDecline"]
-        scrollToVisible(decline, in: app); tap(decline, in: app)
-        assertGone(anyElement("reservePaybackOffer", in: app))
-        XCTAssertFalse(anyElement("reservePaybackProgress", in: app).exists)
+    func testPaydayTopupCanBeDeclinedPermanently() {
+        let app = application("v47-topup"); app.launch()
+        let before = displayedAmount(anyElement("availableFunds", in: app))
+        tap(app.buttons["savingsTopupDecline"], in: app); assertGone(anyElement("savingsTopupCard", in: app))
+        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before)
         app.terminate(); app.launch()
+        XCTAssertTrue(anyElement("mainNavigation", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(anyElement("savingsTopupCard", in: app).exists)
         openSaving(app); tap(app.buttons["openReserve"], in: app)
-        XCTAssertTrue(anyElement("reservePage", in: app).waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["reservePaybackDecline"].exists)
-        snapshot("reserve-cover-payback-declined", app)
+        XCTAssertTrue(anyElement("reserveLine_0", in: app).waitForExistence(timeout: 5))
+        snapshot("payday-topup-declined", app)
     }
 
     func testV45UnitemizedSplitsIntoTwoEntriesAndUndoRestoresOriginal() {

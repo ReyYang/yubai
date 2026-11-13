@@ -3,6 +3,8 @@ import YubaiCore
 
 struct SavingTabView: View {
     @Environment(AppStore.self) private var store
+    @State private var transferDirection: SavingsTransfer.Direction?
+    @State private var editingFloor = false
     @State private var settingTarget = false
     @State private var addingWish = false
     @State private var postponed = false
@@ -13,7 +15,11 @@ struct SavingTabView: View {
     private var wishes: [WishItem] { store.current.wishlist.filter { $0.status == .thinking }.sorted { $0.createdAt < $1.createdAt } }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
-            hero
+            VStack(spacing: YubaiSpace.space12) {
+                hero
+                transferButtons
+                floorRow
+            }
             if store.current.savingRule == nil && !postponed { firstSaving }
             if !store.current.wishlist.isEmpty { wishSection }
             settingsRows
@@ -21,6 +27,14 @@ struct SavingTabView: View {
             .amountPrivacy(hide)
             .navigationTitle("存钱").yubaiNavigation()
             .task(id: "\(store.ledgerRevision)-\(store.financialNow)") { await refreshFacts() }
+            .sheet(isPresented: Binding(get: { transferDirection != nil }, set: { if !$0 { transferDirection = nil } })) {
+                if let direction = transferDirection {
+                    SavingsTransferSheet(direction: direction).environment(store).appErrors().yubaiSheetBackground().presentationDragIndicator(.visible)
+                }
+            }
+            .sheet(isPresented: $editingFloor) {
+                SavingsFloorSheet(initial: store.current.profile.floorAmount).environment(store).appErrors().yubaiSheetBackground().presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $settingTarget) {
                 SavingsAmountEditor(field: .target, initial: 0) { value in
                     store.update("每月存") { $0.savingRule = .fixed(value) }
@@ -39,6 +53,40 @@ struct SavingTabView: View {
                 }.foregroundStyle(YubaiColor.brandInk).accessibilityIdentifier("savingMonthlyIncrease")
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private var transferButtons: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            Button("拿出来用") { transferDirection = .take }
+                .buttonStyle(SecondaryButtonStyle()).frame(maxWidth: .infinity).accessibilityIdentifier("takeSavings")
+            Button("放回去") { transferDirection = .putBack }
+                .buttonStyle(SecondaryButtonStyle()).frame(maxWidth: .infinity).accessibilityIdentifier("putBackSavings")
+        }
+    }
+    private var floorRow: some View {
+        Button { editingFloor = true } label: {
+            VStack(spacing: YubaiSpace.space4) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: YubaiSpace.space8) {
+                        Text("想一直留着").yubaiFont(YubaiFont.callout).fixedSize()
+                        Spacer(minLength: YubaiSpace.space8)
+                        floorValue
+                    }
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                        Text("想一直留着").yubaiFont(YubaiFont.callout)
+                        floorValue.frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+                if let floor = store.current.profile.floorAmount, floor > 0, !hide {
+                    SavingsFloorBar(total: overview.total, floor: floor).accessibilityHidden(true)
+                }
+            }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).foregroundStyle(YubaiColor.labelSecondary).accessibilityIdentifier("editSavingsFloor")
+    }
+    private var floorValue: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            if let floor = store.current.profile.floorAmount { AmountLabel(cents: floor, hide: hide, role: .small, ink: YubaiColor.labelSecondary) }
+            Image(systemName: "pencil").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+        }
     }
     private var firstSaving: some View {
         Card {
@@ -149,14 +197,15 @@ struct ReserveLineRow: View {
     let line: ReserveLine
     let hide: Bool
     private var title: String {
-        if line.paybackID != nil { return "补回来" }
+        if line.paybackID != nil { return "这个月存的" }
         if !line.title.isEmpty { return line.title }
         switch line.kind {
         case .monthly: return "这个月存的"
         case .leftover: return "剩下的"
         case .cover: return "补超支"
         case .adjust: return "调整"
-        case .income, .purchase: return "存着的钱"
+        case .income, .purchase: return "存下的钱"
+        case .transfer(_, let direction): return direction == .take ? "拿出来用" : "放回去"
         }
     }
     private var dateText: String { FixedFlowPresentation.monthDay(line.date) }
@@ -169,9 +218,25 @@ struct ReserveLineRow: View {
         layout {
             Text(dateText).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 .frame(minWidth: textSize.isAccessibilitySize ? YubaiSpace.none : YubaiSize.rowDouble, alignment: .leading)
-            Text(title).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
+            Text(title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
             amountView
         }.frame(minHeight: YubaiSize.rowDouble).accessibilityElement(children: .combine)
             .accessibilityLabel(dateText + "，" + title + "，" + (hide ? "金额已隐藏" : AmountLabel.text(line.amount, sign: .automatic)))
+    }
+}
+
+private struct SavingsFloorBar: View {
+    let total: Int64
+    let floor: Int64
+    private var maximum: Double { Double(max(1, max(total, floor))) }
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(YubaiColor.separator).frame(height: YubaiSpace.space4)
+                Capsule().fill(YubaiColor.brand.opacity(0.45)).frame(width: geometry.size.width * min(1, max(0, Double(total) / maximum)), height: YubaiSpace.space4)
+                Rectangle().fill(YubaiColor.label).frame(width: YubaiSize.separator, height: YubaiSpace.space16)
+                    .offset(x: min(geometry.size.width - YubaiSize.separator, geometry.size.width * Double(floor) / maximum))
+            }.frame(height: YubaiSpace.space16)
+        }.frame(height: YubaiSpace.space16)
     }
 }

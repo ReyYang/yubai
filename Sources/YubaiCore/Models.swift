@@ -811,6 +811,8 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var salarySetupDeferral: SalarySetupDeferral? { didSet { calculations = LedgerCalculations() } }
     public var cycleCovers: [CycleCover] = [] { didSet { calculations = LedgerCalculations() } }
     public var reserveAdjustments: [ReserveAdjustment] = [] { didSet { calculations = LedgerCalculations() } }
+    public var savingsTransfers: [SavingsTransfer] = [] { didSet { calculations = LedgerCalculations() } }
+    public var savingsTopupDecisions: [SavingsTopupDecision] = [] { didSet { calculations = LedgerCalculations() } }
     public var reservePaybacks: [ReservePayback]? { didSet { calculations = LedgerCalculations() } }
     public var repeatPreferences: [RepeatPreference]? { didSet { calculations = LedgerCalculations() } }
     /// User-set base plus closed-cycle merges. Read fixedSavingsTotal(now:) for
@@ -888,7 +890,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     public init() {}
     private enum CodingKeys: String, CodingKey {
         case butlerSavings, butlerAnswers, salarySetupDeferral
-        case reservePaybacks, repeatPreferences, paydayConfirmSince, cycleCovers, reserveAdjustments, cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
+        case savingsTransfers, savingsTopupDecisions, reservePaybacks, repeatPreferences, paydayConfirmSince, cycleCovers, reserveAdjustments, cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
     public init(from decoder: Decoder) throws {
@@ -937,6 +939,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         salarySetupDeferral = try c.decodeIfPresent(SalarySetupDeferral.self, forKey: .salarySetupDeferral)
         cycleCovers = try c.decodeIfPresent([CycleCover].self, forKey: .cycleCovers) ?? []
         reserveAdjustments = try c.decodeIfPresent([ReserveAdjustment].self, forKey: .reserveAdjustments) ?? []
+        savingsTransfers = try c.decodeIfPresent([SavingsTransfer].self, forKey: .savingsTransfers) ?? []
+        savingsTopupDecisions = try c.decodeIfPresent([SavingsTopupDecision].self, forKey: .savingsTopupDecisions) ?? []
         reservePaybacks = try c.decodeIfPresent([ReservePayback].self, forKey: .reservePaybacks)
         repeatPreferences = try c.decodeIfPresent([RepeatPreference].self, forKey: .repeatPreferences)
         fixedSavings = try c.decodeIfPresent(Int64.self, forKey: .fixedSavings) ?? profile.floorAmount
@@ -1002,6 +1006,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encodeIfPresent(salarySetupDeferral, forKey: .salarySetupDeferral)
         if !cycleCovers.isEmpty { try c.encode(cycleCovers, forKey: .cycleCovers) }
         if !reserveAdjustments.isEmpty { try c.encode(reserveAdjustments, forKey: .reserveAdjustments) }
+        if !savingsTransfers.isEmpty { try c.encode(savingsTransfers, forKey: .savingsTransfers) }
+        if !savingsTopupDecisions.isEmpty { try c.encode(savingsTopupDecisions, forKey: .savingsTopupDecisions) }
         if let reservePaybacks, !reservePaybacks.isEmpty { try c.encode(reservePaybacks, forKey: .reservePaybacks) }
         if let repeatPreferences, !repeatPreferences.isEmpty { try c.encode(repeatPreferences, forKey: .repeatPreferences) }
         try c.encodeIfPresent(fixedSavings, forKey: .fixedSavings)
@@ -1051,6 +1057,8 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.salarySetupDeferral == rhs.salarySetupDeferral &&
         lhs.cycleCovers == rhs.cycleCovers &&
         lhs.reserveAdjustments == rhs.reserveAdjustments &&
+        lhs.savingsTransfers == rhs.savingsTransfers &&
+        lhs.savingsTopupDecisions == rhs.savingsTopupDecisions &&
         lhs.reservePaybacks == rhs.reservePaybacks &&
         lhs.repeatPreferences == rhs.repeatPreferences &&
         lhs.fixedSavings == rhs.fixedSavings &&
@@ -1149,6 +1157,7 @@ public struct Ledger: Codable, Equatable, Sendable {
               reserveAdjustments.allSatisfy({ dateValid($0.date) && (-Money.limit...Money.limit).contains($0.delta) })
         else { throw YubaiError.invalid("攒钱的金额或周期无效。") }
         try Reserve.validatePaybacks(in: self)
+        try Reserve.validateFlexibleSavings(in: self)
         try EntryHistory.validateRepeatPreferences(in: self)
         guard preferences.lastBackupAt.map(dateValid) ?? true else { throw YubaiError.invalid("上次备份时间无效。") }
         guard Set(memories.map(\.id)).count == memories.count else { throw YubaiError.invalid("记忆包含重复标识。") }

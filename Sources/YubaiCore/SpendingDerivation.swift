@@ -17,6 +17,13 @@ public struct SpendingDerivation: Equatable, Sendable {
     public var entryIDs: [UUID]
     public var available: Int64
     public var daily: Int64?
+    public var cycleEnd: Date = .distantPast
+    public var daysLeft: Int = 0
+    public var billCount: Int = 0
+    /// Opening spendable funds plus posted income, after the existing protected
+    /// balances. Absorbs balance anchors and savings transfers exactly once.
+    public var exerciseIncome: Int64 = 0
+    public var exerciseResult: Int64 { exerciseIncome - saving - bills - yearlySetAside - spent }
     public var interval: DateInterval
 }
 
@@ -42,6 +49,9 @@ extension Finance {
                                   creditDebt: funds.debt, goals: funds.goals, uncertainInflow: funds.uncertainInflow,
                                   saving: funds.savingTarget, yearlySetAside: funds.yearlySetAside, bills: bills, billNames: formula.bills.map(\.title), budget: budget,
                                   spent: spent, entryIDs: flexible.map(\.id), available: funds.available, daily: pace(ledger, now: now)?.daily,
+                                  cycleEnd: funds.cycleEnd, daysLeft: pace(ledger, now: now)?.daysLeft ?? max(1, funds.horizonDays + 1),
+                                  billCount: Set(formula.bills.map(\.title)).count,
+                                  exerciseIncome: funds.cash - funds.debt - funds.fixedSavingsTotal - funds.goals - funds.uncertainInflow + paid + spent,
                                   interval: DateInterval(start: funds.cycleStart, end: min(now.addingTimeInterval(0.001), Dates.addDays(1, to: funds.cycleEnd))))
     }
 }

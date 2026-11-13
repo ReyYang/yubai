@@ -6,7 +6,7 @@ public enum HomeTask: Identifiable, Equatable, Sendable {
     case payday(Payday.Due), bill(Occurrence), leftover(CycleSaving), gap(Reconciliation.Gap)
     case salary(SalaryCandidate), imports(PendingImportOrganization), butler(ButlerCard)
     case renewal(HomeRenewal), overspend(Overspend.Options), cooldown(WishItem), restraint(HomeRestraint)
-    case funding(HomeFunding)
+    case funding(HomeFunding), savingsTopup(SavingsTopupOffer)
 
     public var id: String {
         switch self {
@@ -22,12 +22,13 @@ public enum HomeTask: Identifiable, Equatable, Sendable {
         case .cooldown(let v): "cooldown:" + v.id.uuidString
         case .restraint(let v): v.id
         case .funding(let v): v.id
+        case .savingsTopup(let v): v.id
         }
     }
     public var priority: Int {
         switch self {
         case .overspend: 0
-        case .payday, .butler, .funding: 1
+        case .payday, .butler, .funding, .savingsTopup: 1
         case .gap, .salary, .imports: 2
         case .renewal, .leftover: 3
         case .cooldown: 4
@@ -72,6 +73,7 @@ public enum HomeButler {
         if Finance.anchorPlan(in: ledger, now: now) != nil, let over = Overspend.options(ledger, now: now) { items.append(.overspend(over)) }
         let payday = Payday.due(in: ledger, now: now)
         if let payday { items.append(.payday(payday)) }
+        if let offer = Reserve.topupOffer(ledger, now: now) { items.append(.savingsTopup(offer)) }
         items += funding(ledger, now: now).map(HomeTask.funding)
         for bill in funds.occurrences where (bill.planID != nil || bill.rentID != nil) && Dates.day(bill.date) <= today {
             if bill.inflow && bill.planID == payday?.planID { continue }

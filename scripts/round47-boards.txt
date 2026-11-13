@@ -5,3 +5,8 @@ V47-Receipt
 V47-First-A
 V47-First-After
 V47-Save-Page
+V47-Spend
+V47-Take
+V47-Records
+V47-Home-Topup
+V47-Toast

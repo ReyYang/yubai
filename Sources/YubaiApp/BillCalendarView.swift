@@ -178,7 +178,7 @@ struct FixedFlowsView: View {
                 SectionHeading(title: "已停掉")
                 CardRows(rows) { row in
                     VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                        Text(row.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+                        Text(row.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                         Text(row.detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                         ChipFlow {
                             Button("恢复") {

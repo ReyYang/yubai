@@ -35,13 +35,13 @@ extension Ledger {
     }
 
     public func fixedSavingsTotal(now: Date = Date()) -> Int64 {
-        (fixedSavings ?? 0) + fixedSavingsFromIncome(now: now) - reserveSpent(now: now) - reserveCovered(now: now)
+        (fixedSavings ?? 0) + fixedSavingsFromIncome(now: now) - reserveSpent(now: now) - reserveCovered(now: now) + savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta }
     }
 
     /// Reverse all derived income and withdrawals to keep the stored base
     /// nonnegative; editing/deleting source entries reverses their contribution.
     public mutating func setFixedSavingsTotal(_ total: Int64, now: Date = Date()) {
-        fixedSavings = max(0, min(Money.limit, total) - fixedSavingsFromIncome(now: now) + reserveSpent(now: now) + reserveCovered(now: now))
+        fixedSavings = max(0, min(Money.limit, total) - fixedSavingsFromIncome(now: now) + reserveSpent(now: now) + reserveCovered(now: now) - savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta })
     }
 }
 public enum LeftoverChoice: String, Codable, Equatable, Sendable { case keep, save }

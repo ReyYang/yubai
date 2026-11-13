@@ -44,6 +44,8 @@ public struct HomeTaskCopy: Equatable, Sendable {
             return Self(kicker: (days == 1 ? "明天续费" : "\(days) 天后续费") + " · " + renewal.plan.title,
                         title: (renewal.unusedFact.map { $0 + "，" } ?? "") + (renewal.plan.frequency == .yearly ? "一年 " : renewal.plan.frequency.label + " ") +
                             (renewal.plan.currency == .cny ? money(renewal.amount) : renewal.plan.currency.amountText(renewal.plan.amount, hidden: hidden) + "，约 " + money(renewal.amount)))
+        case .savingsTopup(let offer):
+            return Self(kicker: "上个月从存的钱里拿了 " + money(offer.amount), title: "这个月补回去吗")
         case .funding(let funding):
             return Self(kicker: monthDay(funding.bill.date) + " · " + funding.bill.title,
                         title: funding.target.name + "里还差 " + money(funding.amount))

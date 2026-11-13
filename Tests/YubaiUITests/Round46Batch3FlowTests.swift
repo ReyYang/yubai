@@ -76,12 +76,15 @@ final class Round46Batch3FlowTests: XCTestCase {
         XCTAssertEqual(element("entryKeypadAmount").value as? String, "1,899.00")
         XCTAssertEqual(element("entryPurpose").value as? String, "降噪耳机")
     }
-    func testReservePaybackDeclinePersistsAcrossLaunch() {
-        launch("v46-b3-reserve"); tap("openSaving"); tap("openReserve"); tap("reservePaybackDecline")
-        XCTAssertFalse(element("reservePaybackOffer").exists)
+    func testReserveRecordsStayPlainAcrossLaunch() {
+        launch("v46-b3-reserve"); tap("openSaving"); tap("openReserve")
+        XCTAssertTrue(element("reserveLine_0").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("reserveTotal").exists)
         app.terminate(); app.launch(); tap("openSaving"); tap("openReserve")
+        XCTAssertTrue(element("reserveLine_0").waitForExistence(timeout: 5))
         XCTAssertFalse(element("reservePaybackOffer").exists)
     }
+
     func testSpendingAnswerUsesFactsAndOpensItsWhereDestination() {
         launch(); question("这个月钱去哪了")
         XCTAssertTrue(element("whereAnswerCard").waitForExistence(timeout: 15))

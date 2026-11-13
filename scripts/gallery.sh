@@ -80,7 +80,7 @@ for manifest in sorted(shots.rglob("manifest.json")):
         name = item.get("suggestedHumanReadableName") or item.get("name") or ""
         name = Path(name).name
         # Xcode may append the file extension to the suggested name.
-        if source.suffix.lower() == ".png" and re.match(r"^(?:V46-|\d{2}-)", name):
+        if source.suffix.lower() == ".png" and re.match(r"^(?:V4[67]-|\d{2}-)", name):
             name = re.sub(r"\.png$", "", name, flags=re.I)
             destination = shots / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".png")
         elif name.startswith(("missing-", "planned-", "write-errors-")):

@@ -91,20 +91,12 @@ struct SavingsView: View {
                     }
                 }), identifier: { $0 ? "savingMode_share" : "savingMode_fixed" }).accessibilityIdentifier("savingMode")
                 if sharing { EntryFormDivider(); shareChoices }
-                if paybackTarget > 0 {
-                    EntryFormDivider()
-                    EntryFormRow(title: "补回来") {
-                        AmountLabel(cents: paybackTarget, hide: hide, role: .summary, sign: .inflow, ink: YubaiColor.brandInk)
-                    }.accessibilityElement(children: .combine).accessibilityIdentifier("monthlyPaybackAmount")
-                    ResultBar(label: "每月存", value: amount2(target, hide: hide), identifier: "monthlySavingTotal")
-                }
                 EntryFormDivider()
                 Text("每月从哪天算").yubaiFont(YubaiFont.rowTitle)
                 cycleAnchorControl
             }
         }
     }
-    private var paybackTarget: Int64 { store.paybackProgress.reduce(0) { $0 + $1.thisCycle } }
     private func suggestionChip(_ value: (average: Int64, suggestion: Int64)) -> some View {
         Card(style: .compact) {
             ViewThatFits(in: .horizontal) {

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ReserveWithdrawal: Codable, Equatable, Sendable, Hashable {
-    case purchase(UUID), cover(UUID)
+    case purchase(UUID), cover(UUID), transfer(UUID)
 }
 public struct ReservePaybackPayment: Codable, Equatable, Sendable {
     public var cycleStart: Date
@@ -49,10 +49,13 @@ extension Reserve {
         result += ledger.cycleCovers.filter { $0.source == .fromReserve && $0.date <= now }.map {
             ReservePaybackOffer(withdrawal: .cover($0.id), title: "", date: $0.date, amount: $0.amount)
         }
+        result += ledger.savingsTransfers.filter { $0.direction == .take && $0.date <= now }.map {
+            ReservePaybackOffer(withdrawal: .transfer($0.id), title: "", date: $0.date, amount: $0.amount)
+        }
         return result.sorted { $0.date == $1.date ? String(describing: $0.id) < String(describing: $1.id) : $0.date > $1.date }
     }
     public static func paybackOffers(_ ledger: Ledger, now: Date) -> [ReservePaybackOffer] {
-        let answered = Set((ledger.reservePaybacks ?? []).map(\.withdrawal))
+        let answered = Set((ledger.reservePaybacks ?? []).map(\.withdrawal) + ledger.savingsTopupDecisions.flatMap(\.withdrawals))
         return withdrawals(ledger, now: now).filter { !answered.contains($0.withdrawal) }
     }
     /// Positive N accepts; nil declines. Raises this cycle's target immediately.
