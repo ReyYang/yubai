@@ -1884,6 +1884,18 @@ struct SystemSettingsButton: View {
     }
 }
 
+struct EmptyAccountState: View {
+    let add: () -> Void
+    var body: some View {
+        VStack(spacing: YubaiSpace.gapSection) {
+            PaperClothOutline().stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
+                .frame(width: 120, height: 120).accessibilityHidden(true)
+            Button("添加第一个账户", action: add).buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addFirstAccount")
+        }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
+            .accessibilityElement(children: .contain).accessibilityLabel("还没有账户")
+    }
+}
+
 extension Nature {
     var entryLabel: String { paired ? "转账" : (inflow ? "收入" : "支出") }
 }
