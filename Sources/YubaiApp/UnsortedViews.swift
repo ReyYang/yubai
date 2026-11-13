@@ -61,7 +61,7 @@ struct UnsortedGroupsView: View {
                         .foregroundStyle(YubaiColor.brandInk).accessibilityIdentifier("unsortedSelect")
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+            .fixedBottomBar() {
                 if selecting {
                     HStack(spacing: YubaiSpace.gapGroup) {
                         Text("\(selected.count) 组 · \(selected.reduce(0) { $0 + $1.entries.count }) 笔")
@@ -254,7 +254,7 @@ struct UnsortedGroupView: View {
                     proxy.scrollTo("unsortedGroupTop", anchor: .top)
                 }
         }.navigationTitle(lastGroup.party).yubaiNavigation()
-            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+            .fixedBottomBar() {
                 applyButton(group, available: liveGroup != nil)
                     .padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.gapGroup)
                     .background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
@@ -477,7 +477,7 @@ struct LetterTriageView: View {
                     }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
                 }
             }
-        }.safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { bottomBar }
+        }.fixedBottomBar() { bottomBar }
             .paperBackground().amountPrivacy(store.preferences.hideAmounts).navigationTitle("整理分类").yubaiNavigation().accessibilityIdentifier("letterTriage")
             .toolbar { ToolbarItem(placement: .primaryAction) {
                 Text("\(min(index + 1, total)) / \(total)").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)

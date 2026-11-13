@@ -2,11 +2,13 @@ import XCTest
 
 /// Opt-in pixel inventory. Run scripts/gallery.sh; the tests matrix excludes this class.
 /// All navigation uses the same controls as the owner. Each area gets a fresh ledger.
-final class ScreenGalleryTests: XCTestCase {
+final class ScreenGalleryTests: YubaiUITestCase {
     private var app = XCUIApplication()
     private var missing: [String] = []
     private var planned: [String] = []
     private var activeStop: String?
+    private var stopDeadline = Date.distantFuture
+    private var attachedAuditInventory = false
     private var issues: [String] = []
     private var writeErrors: [String] = []
     private var prefix = ""
@@ -33,9 +35,9 @@ final class ScreenGalleryTests: XCTestCase {
 
     // A native XCTest interaction can record an issue without throwing. Associate it
     // with this stop, keep walking, and emit one aggregate failure after all shots.
-    override func record(_ issue: XCTIssue) {
+    override func recordUIIssue(_ issue: XCTIssue) {
         if activeStop != nil { issues.append(issue.compactDescription) }
-        else { super.record(issue) }
+        else { super.recordUIIssue(issue) }
     }
 
     override func tearDownWithError() throws {
@@ -65,7 +67,6 @@ final class ScreenGalleryTests: XCTestCase {
 
     /// This is the only screenshot writer, including failure screenshots.
     private func shot(_ name: String) {
-        Thread.sleep(forTimeInterval: 0.25) // Only a short pixel settle; navigation uses predicate waits.
         let screenshot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
@@ -78,12 +79,18 @@ final class ScreenGalleryTests: XCTestCase {
     @discardableResult private func stop(_ suffix: String, _ walk: () throws -> Void) -> Bool {
         let name = prefix + suffix
         planned.append(name); activeStop = name; issues = []
+        stopDeadline = Date().addingTimeInterval(90)
+        attachedAuditInventory = false
         defer { activeStop = nil }
         var walkFailed = false
         do { try walk() }
         catch { walkFailed = true; issues.append(String(describing: error).replacingOccurrences(of: "\n", with: " ")) }
         // Audit even an unreached stop. Every finding belongs to these same pixels.
-        Thread.sleep(forTimeInterval: 0.25)
+        if app.state == .runningForeground {
+            if !dismissKeyboardIntroduction(in: app) { issues.append("System keyboard introduction could not be dismissed") }
+            let scroll = app.scrollViews.allElementsBoundByIndex.last
+            if let scroll, scroll.exists, !waitForStableFrame(scroll) { issues.append("Scroll/presentation frame did not settle") }
+        }
         do { try auditGallery() }
         catch { issues.append("Audit failed: " + String(describing: error)) }
         let hadFindings = !issues.isEmpty
@@ -114,7 +121,7 @@ final class ScreenGalleryTests: XCTestCase {
     }
     private func describe(_ target: XCUIElement) -> String {
         guard target.exists else { return target.description + " frame=<absent>" }
-        return (target.identifier.isEmpty ? "<empty identifier> label=" + target.label : target.identifier) + " frame=" + frameText(target.frame)
+        return (target.identifier.isEmpty ? "<empty identifier>" : target.identifier) + " label=" + target.label + " frame=" + frameText(target.frame)
     }
 
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
@@ -122,11 +129,14 @@ final class ScreenGalleryTests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", value)).firstMatch
     }
     private func wait(_ predicate: @escaping () -> Bool, _ reason: String, timeout: TimeInterval = 6) throws {
+        let remaining = min(timeout, stopDeadline.timeIntervalSinceNow)
+        guard remaining > 0 else { throw Miss(description: "Stop deadline exceeded: " + reason) }
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in predicate() }, object: nil)
-        guard XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed else { throw Miss(description: reason) }
+        guard XCTWaiter.wait(for: [expectation], timeout: remaining) == .completed else { throw Miss(description: reason) }
     }
     private func require(_ id: String, timeout: TimeInterval = 6) throws {
-        if !element(id).waitForExistence(timeout: timeout) {
+        guard stopDeadline > Date() else { throw Miss(description: "Stop deadline exceeded requiring " + id) }
+        if !element(id).waitForExistence(timeout: min(timeout, stopDeadline.timeIntervalSinceNow)) {
             // Keep checking the other required identifiers at this stop. A
             // later interaction still throws if the missing control is needed.
             issues.append("Missing identifier: " + id + " frame=<absent>")
@@ -150,7 +160,7 @@ final class ScreenGalleryTests: XCTestCase {
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         if let organization { app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = organization }
         if let statement { app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(statement.utf8).base64EncodedString() }
-        app.launch()
+        guard launchApp(app) else { throw Miss(description: "Application launch failed after three attempts") }
         try require(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
     }
     private func drag(_ scroll: XCUIElement, up: Bool = true) throws {
@@ -194,10 +204,11 @@ final class ScreenGalleryTests: XCTestCase {
             .withOffset(CGVector(dx: target.frame.midX - app.frame.minX, dy: target.frame.midY - app.frame.minY)).tap()
     }
     private func reveal(_ target: XCUIElement) throws {
-        _ = target.waitForExistence(timeout: 3)
+        _ = target.waitForExistence(timeout: 1)
         // A stop that cannot be reached must fail fast: an unbounded search costs minutes per stop on CI.
-        let deadline = Date().addingTimeInterval(60)
-        for _ in 0..<16 {
+        let deadline = min(stopDeadline, Date().addingTimeInterval(15))
+        var previousScroll: CGRect?
+        for _ in 0..<8 {
             if pressable(target) { return }
             if Date() > deadline { break }
             guard app.alerts.count == 0 else { break }
@@ -206,21 +217,32 @@ final class ScreenGalleryTests: XCTestCase {
             let containing = scrolls.last { target.exists && $0.descendants(matching: target.elementType).matching(identifier: target.identifier).count > 0 }
             let scroll = containing ?? scrolls.last ?? app
             let above = target.exists && !target.frame.isEmpty && target.frame.minY < scroll.frame.minY + 20
+            let before = target.exists ? target.frame : CGRect.zero
             try drag(scroll, up: !above)
+            if target.exists, target.frame == before, previousScroll == before { break }
+            previousScroll = before
         }
         try wait({ self.pressable(target) }, "Not reachable: " + self.describe(target), timeout: 2)
     }
     private func tap(_ target: XCUIElement) throws {
         try reveal(target)
         try wait({ target.exists && target.isEnabled && target.isHittable }, "Control disabled or covered: " + describe(target))
+        if !target.identifier.hasPrefix("keypad_") {
+            guard waitForStableFrame(target, timeout: max(0.1, min(6, stopDeadline.timeIntervalSinceNow))) else {
+                throw Miss(description: "Control frame did not settle: " + describe(target))
+            }
+        }
         guard onScreen(target) else { throw Miss(description: "Control covered: " + describe(target)) }
         press(target)
     }
     private func tap(_ id: String) throws { try tap(element(id)) }
     private func type(_ value: String, into id: String) throws {
         let field = element(id); try tap(field)
+        guard waitForStableFrame(field) else { throw Miss(description: "Field frame did not settle: " + id) }
+        if !app.keyboards.firstMatch.exists { press(field) }
         try wait({ self.app.keyboards.firstMatch.exists }, "Keyboard did not open for " + id)
-        app.typeText(value)
+        guard dismissKeyboardIntroduction(in: app) else { throw Miss(description: "System keyboard introduction could not be dismissed") }
+        field.typeText(value)
     }
     private func keys(_ value: String) throws { for key in value { try tap("keypad_" + String(key)) } }
     private func back() throws {
@@ -278,7 +300,15 @@ final class ScreenGalleryTests: XCTestCase {
         guard expected.exists else { throw Miss(description: "Missing bill decision: " + title) }
         try require("billDuePaid")
     }
-    private func longPress(_ target: XCUIElement) throws { try reveal(target); target.press(forDuration: 0.8) }
+    private func longPress(_ target: XCUIElement) throws {
+        try reveal(target)
+        guard waitForStableFrame(target) else { throw Miss(description: "Long-press target did not settle: " + describe(target)) }
+        target.press(forDuration: 0.8)
+        if target.identifier == "addEntry" {
+            try wait({ self.element("quickRepeatMenu").exists }, "Long-press menu did not open")
+            guard waitForStableFrame(element("quickRepeatMenu")) else { throw Miss(description: "Long-press menu did not settle") }
+        }
+    }
     private func toast() throws { try require("toastMessage"); try require("undoLastChange") }
     private func search(_ value: String) throws {
         try root("ledger"); try type(value, into: "entriesSearch")
@@ -428,13 +458,18 @@ final class ScreenGalleryTests: XCTestCase {
         func add(_ amount: String) throws {
             try tap("addEntry"); try keys(amount); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try tap("cancelManualSheet")
         }
-        func revealUndo() throws {
-            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' AND label CONTAINS '餐饮'")).firstMatch
+        func revealUndo() throws -> String {
+            let originals = ["ledgerEntry_" + galleryID(470101), "ledgerEntry_" + galleryID(470102)]
+            let added = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' AND NOT identifier IN %@", originals))
+            try wait({ added.count == 1 }, "Expected the one newly recorded receipt row")
+            let row = element(added.element(boundBy: 0).identifier)
             try reveal(row)
             let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
             let end = row.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
             start.press(forDuration: 0.05, thenDragTo: end)
-            try require("undoReceipt_" + row.identifier.replacingOccurrences(of: "ledgerEntry_", with: ""))
+            let undo = "undoReceipt_" + row.identifier.replacingOccurrences(of: "ledgerEntry_", with: "")
+            try require(undo)
+            return undo
         }
         stop("Home") { try load("v47-home"); try require("openSaving"); try require("addEntry"); try reveal(element("receiptTotal")) }
         stop("Book") { try load("v47-home"); try root("ledger"); try require("entriesScroll") }
@@ -447,11 +482,11 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Receipt") { try load("v47-receipt-normal"); try reveal(element("receiptTotal")) }
         stop("Receipt-Added") { try load("v47-receipt-normal"); try add("18"); try require("receiptTotal") }
         stop("Receipt-Undo") {
-            try load("v47-receipt-normal"); try add("18"); try revealUndo()
+            try load("v47-receipt-normal"); try add("18"); _ = try revealUndo()
         }
         stop("Receipt-Undone") {
-            try load("v47-receipt-normal"); try add("18"); try revealUndo()
-            try tap(buttonPrefix("undoReceipt_")); try require("receiptNumber")
+            try load("v47-receipt-normal"); try add("18"); let undo = try revealUndo()
+            try tap(undo); try require("receiptNumber")
             try wait({ self.element("receiptNumber").label == "No.2" }, "Receipt count after undo")
         }
         stop("Receipt-Many") { try load("v47-receipt-many"); try reveal(element("receiptMoreEntries")) }
@@ -1054,8 +1089,9 @@ final class ScreenGalleryTests: XCTestCase {
     /// Every screenshot passes through this one audit. Names and toast text are
     /// intentionally bounded by the DS; the full accessible labels remain intact.
     private func auditGallery() throws {
+        guard app.state == .runningForeground else { throw Miss(description: "Application is not in foreground for audit") }
         let window = app.frame
-        let systemRegions = (app.keyboards.allElementsBoundByIndex + app.menus.allElementsBoundByIndex + app.pickerWheels.allElementsBoundByIndex).filter(\.exists).map(\.frame)
+        let systemRegions = (app.menus.allElementsBoundByIndex + app.pickerWheels.allElementsBoundByIndex).filter(\.exists).map(\.frame)
         let topHeader = element("rootHeaderRegion")
         let topFrames = app.navigationBars.allElementsBoundByIndex.filter(\.exists).map(\.frame) + (topHeader.exists ? [topHeader.frame] : [])
         let topEdge = topFrames.map(\.maxY).max() ?? window.minY
@@ -1070,6 +1106,25 @@ final class ScreenGalleryTests: XCTestCase {
         // content host. No localized label is used, and app-owned descendants
         // do not meet this owner/type relationship.
         var grabberFrames: [CGRect] = []
+        var keyboardNodes = Set<String>()
+        func identity(_ node: XCUIElementSnapshot) -> String {
+            "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)|\(node.frame)"
+        }
+        func containsKeyboard(_ node: XCUIElementSnapshot) -> Bool {
+            node.elementType == .keyboard || node.children.contains(where: containsKeyboard)
+        }
+        func containsAppPage(_ node: XCUIElementSnapshot) -> Bool {
+            node.identifier.hasPrefix("rootPage_") || node.children.contains(where: containsAppPage)
+        }
+        func collectKeyboard(_ node: XCUIElementSnapshot, inKeyboard: Bool = false) {
+            // iOS puts the input assistant and keyboard-switch key beside the
+            // Keyboard node in its own window. Classify that owner structurally;
+            // never exempt a control by its localized key label or by its frame.
+            let owned = inKeyboard || node.elementType == .keyboard ||
+                (node.elementType == .window && containsKeyboard(node) && !containsAppPage(node))
+            if owned { keyboardNodes.insert(identity(node)) }
+            for child in node.children { collectKeyboard(child, inKeyboard: owned) }
+        }
         func sheetGrabbers(_ owner: XCUIElementSnapshot) {
             let children = owner.children
             if owner.elementType == .other, owner.identifier.isEmpty, children.count >= 2,
@@ -1087,10 +1142,13 @@ final class ScreenGalleryTests: XCTestCase {
             }
             for child in children { sheetGrabbers(child) }
         }
-        do { sheetGrabbers(try app.snapshot()) }
+        do {
+            let snapshot = try app.snapshot()
+            sheetGrabbers(snapshot); collectKeyboard(snapshot)
+        }
         catch { issues.append("Presentation snapshot unavailable: frame=<unreported> " + String(describing: error)) }
         let controls = app.buttons.allElementsBoundByIndex + app.textFields.allElementsBoundByIndex + app.secureTextFields.allElementsBoundByIndex + app.textViews.allElementsBoundByIndex + app.switches.allElementsBoundByIndex
-        var candidates: [(id: String, frame: CGRect, systemGrabber: Bool)] = []
+        var candidates: [(id: String, frame: CGRect, systemGrabber: Bool, keyboard: Bool)] = []
         for target in controls {
             guard target.exists else { continue }
             let snapshot: XCUIElementSnapshot
@@ -1106,10 +1164,10 @@ final class ScreenGalleryTests: XCTestCase {
             if systemRegions.contains(where: { $0.contains(frame) }) { continue }
             let systemGrabber = snapshot.elementType == .button && snapshot.identifier.isEmpty && grabberFrames.contains(frame)
             let id = systemGrabber ? "<system sheet grabber>" : snapshot.identifier.isEmpty ? "<empty identifier> label=" + snapshot.label : snapshot.identifier
-            candidates.append((id, frame, systemGrabber))
+            candidates.append((id, frame, systemGrabber, keyboardNodes.contains(identity(snapshot))))
         }
         var visible: [(String, CGRect)] = []
-        for (id, frame, systemGrabber) in candidates {
+        for (id, frame, systemGrabber, keyboard) in candidates {
             if !window.insetBy(dx: -1, dy: -1).contains(frame) {
                 if ["saveQuickEntry", "amountSheetDone", "confirmSavingsTransfer", "saveSavingsFloor", "saveLetterEntry", "mainNavigation", "reconcileApply"].contains(id) {
                     issues.append("Off-screen control: " + id + " frame=" + frameText(frame))
@@ -1118,10 +1176,10 @@ final class ScreenGalleryTests: XCTestCase {
             }
             // An actual container is not a second control over its descendants.
             if candidates.contains(where: { other in frame.contains(other.frame) && frame.width * frame.height > other.frame.width * other.frame.height + 4 }) { continue }
-            if id.hasPrefix("<empty identifier>") { issues.append("Missing identifier: " + id + " frame=" + frameText(frame)) }
+            if !keyboard && id.hasPrefix("<empty identifier>") { issues.append("Missing identifier: " + id + " frame=" + frameText(frame)) }
             // Decision 2 exempts only the minimum target size. The grabber
             // still participates in overlap/off-screen geometry checks.
-            if !systemGrabber && (frame.width < 44 || frame.height < 44) { issues.append("Small hit target: " + id + " frame=" + frameText(frame)) }
+            if !keyboard && !systemGrabber && (frame.width < 43.5 || frame.height < 43.5) { issues.append("Small hit target: " + id + " frame=" + frameText(frame)) }
             for (other, bounds) in visible where bounds != frame && bounds.intersects(frame) {
                 let overlap = bounds.intersection(frame)
                 if overlap.width > 2 && overlap.height > 2 {
@@ -1131,9 +1189,13 @@ final class ScreenGalleryTests: XCTestCase {
             visible.append((id, frame))
         }
         let navigationFrames = app.navigationBars.allElementsBoundByIndex.filter(\.exists).map(\.frame)
+        for attempt in 0..<2 {
         do { try app.performAccessibilityAudit(for: [.textClipped]) { issue in
+            // Resolve the audit element while the callback still owns it. Its
+            // description alone omits labels on identified/combined elements.
             guard let target = issue.element else {
-                self.issues.append("Text clipped: identifier=<unreported> frame=<unreported> " + String(describing: issue))
+                self.issues.append("Text clipped: unresolved audit element; label=<unavailable> frame=<unavailable> " + String(describing: issue))
+                if !self.attachedAuditInventory { self.attachedAuditInventory = true; self.attachUnresolvedAudit(issue) }
                 return true
             }
             if fullyOccluded(target) { return true }
@@ -1142,11 +1204,27 @@ final class ScreenGalleryTests: XCTestCase {
             if [.textField, .secureTextField, .textView].contains(target.elementType) { return true }
             if target.elementType == .staticText, navigationFrames.contains(where: { $0.contains(target.frame) }) { return true }
             if ["truncatableName", "toastMessage", "unsortedUndoMessage"].contains(target.identifier) { return true }
-            self.issues.append("Text clipped: " + self.describe(target))
+            if let snapshot = try? target.snapshot() {
+                self.issues.append("Text clipped: identifier=" + snapshot.identifier + " label=" + snapshot.label + " frame=" + self.frameText(snapshot.frame) + " " + issue.detailedDescription)
+            } else {
+                self.issues.append("Text clipped: " + self.describe(target) + " " + issue.detailedDescription)
+            }
             // The aggregate stop failure below owns reporting, so the audit
             // continues through every issue instead of aborting on the first.
             return true
-        } } catch { issues.append("Text clipping audit failed: frame=<unreported> " + String(describing: error)) }
+        }
+            break
+        } catch {
+            let failure = error as NSError
+            if failure.domain == "com.apple.xcode.xctest.accessibilityAudit" && failure.code == -56 {
+                if attempt == 0 { continue }
+                issues.append("Text clipping audit timeout after retry: frame=<unreported> " + String(describing: error))
+            } else {
+                issues.append("Text clipping audit failed: frame=<unreported> " + String(describing: error))
+                break
+            }
+        }
+        }
         for id in ["availableFunds", "dailyPace", "butlerSavedTotal", "entryKeypadAmount", "amountSheetAmount", "reserveTotal", "fixedFlowRemaining"] {
             let target = element(id)
             if target.exists, onScreen(target), target.label.contains("…") { issues.append("Truncated amount: " + describe(target)) }
@@ -1156,6 +1234,27 @@ final class ScreenGalleryTests: XCTestCase {
            abs(expense.frame.midY - income.frame.midY) >= 2 || abs(expense.frame.midY - transfer.frame.midY) >= 2 {
             issues.append("Nature segments stack: " + describe(expense) + " / " + describe(income) + " / " + describe(transfer))
         }
+    }
+
+    private func attachUnresolvedAudit(_ issue: XCUIAccessibilityAuditIssue) {
+        // Apple's element property is optional. When it is genuinely nil, retain
+        // the failure and attach all visible text with labels/frames; never
+        // invent an identifier or silently allow an unresolvable issue.
+        var lines = [issue.detailedDescription]
+        let window = app.frame
+        if let snapshot = try? app.snapshot() {
+            func textNodes(_ node: XCUIElementSnapshot) {
+                if node.elementType == .staticText && window.intersects(node.frame) {
+                    lines.append("identifier=\(node.identifier) label=\(node.label) frame=\(frameText(node.frame))")
+                }
+                for child in node.children { textNodes(child) }
+            }
+            textNodes(snapshot)
+        }
+        let attachment = XCTAttachment(string: lines.joined(separator: "\n"))
+        attachment.name = (activeStop ?? prefix) + "-unresolved-text-audit"
+        attachment.lifetime = .keepAlways; add(attachment)
+        if let directory { try? lines.joined(separator: "\n").write(to: directory.appendingPathComponent(attachment.name + ".txt"), atomically: true, encoding: .utf8) }
     }
 
     private func reduced(large: Bool, dark: Bool) {

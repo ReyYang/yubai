@@ -1,6 +1,6 @@
 import XCTest
 
-final class Round46ControlsFlowTests: XCTestCase {
+final class Round46ControlsFlowTests: YubaiUITestCase {
     private var app = XCUIApplication()
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app.terminate(); try super.tearDownWithError() }
@@ -14,7 +14,7 @@ final class Round46ControlsFlowTests: XCTestCase {
         app.launchEnvironment["YUBAI_GALLERY_TOAST"] = toast ? "1" : "0"
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
-        app.launch(); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
+        launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
         let target = element(id); XCTAssertTrue(target.waitForExistence(timeout: 6), id)

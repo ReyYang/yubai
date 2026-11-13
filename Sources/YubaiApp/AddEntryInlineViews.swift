@@ -94,6 +94,11 @@ struct AddEntryIncomeChips: View {
             for name in ["工资", "奖金"] where salary.subcategories.contains(name) {
                 result.append(.init(title: name, assignment: .init(category: salary.name, subcategory: name)))
             }
+        } else {
+            // Existing ledgers can still use the pre-migration main categories.
+            for name in ["工资", "奖金"] where rows.contains(where: { $0.name == name }) {
+                result.append(.init(title: name, assignment: .init(category: name)))
+            }
         }
         for name in ["报销", "礼金赠与"] where rows.contains(where: { $0.name == name }) {
             result.append(.init(title: name == "礼金赠与" ? "红包" : name, assignment: .init(category: name)))
@@ -216,7 +221,7 @@ struct AddEntryAccountForm: View {
             Segmented(choices: [(AccountKind.bank, "银行卡"), (.cash, "现金"), (.credit, "信用卡")], selection: $kind)
             EditableAmountDisplay(amount: keypad.resultText, keypad: keypad, presented: true, selected: false,
                                   identifier: "accountBalance", open: { nameFocused = false }, hide: store.preferences.hideAmounts)
-        }.safeAreaInset(edge: .bottom) {
+        }.fixedBottomBar() {
             if !nameFocused { AmountKeypad(keypad: $keypad, canSave: valid, primaryTitle: "加上", primaryIdentifier: "saveEntryAccount", save: save) }
         }
     }

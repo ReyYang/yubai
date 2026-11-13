@@ -74,6 +74,7 @@ struct HomeReceiptView: View {
         let parts = Dates.calendar.dateComponents([.year, .month, .day], from: receipt.day)
         let stamp = String(format: "%04d.%02d.%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
         return Text(stamp + " " + receipt.day.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "zh_CN"))))
+            .fixedSize().accessibilityIdentifier("receiptDate")
     }
     @ViewBuilder private var number: some View {
         if receipt.count > 0 { Text("No.\(receipt.count)").fixedSize().accessibilityIdentifier("receiptNumber") }

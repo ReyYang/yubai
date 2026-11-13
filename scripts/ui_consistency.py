@@ -42,8 +42,21 @@ def violations(name, source):
     reject(r'\.buttonStyle\((?:PressButtonStyle|TextLinkStyle)\([^)]*\)\)\s*\.yubaiHitTarget\(',
            'external link hit target: put it inside the label or use TextLinkStyle')
     if name == SHARED:
+        # Card/search/chat must all reach the same full-height native editor.
+        # A DS-only blanket exemption previously allowed a one-line AX node to
+        # bypass the shared field row and its minimum hit area.
+        input_ranges = []
+        for declaration in re.finditer(r'\bstruct\s+(?:RowTextInput|NativeRowInput)\b[^\{]*\{', code):
+            depth, end = 1, declaration.end()
+            while end < len(code) and depth:
+                depth += (code[end] == '{') - (code[end] == '}')
+                end += 1
+            input_ranges.append((declaration.start(), end))
+        for match in re.finditer(r'\b(?:TextField|SecureField|TextEditor|UITextField|UITextView)\s*\(', code):
+            if not any(start <= match.start() < end for start, end in input_ranges):
+                found.append(f'{name}:{code.count(chr(10), 0, match.start()) + 1}: input bypasses shared RowTextInput')
         return found
-    reject(r'\b(?:TextField|SecureField|TextEditor|DatePicker)\s*\(', 'raw input: use a DS control')
+    reject(r'\b(?:TextField|SecureField|TextEditor|UITextField|UITextView|DatePicker)\s*\(', 'raw input: use a DS control')
     reject(r'"(?:chevron\.left|arrow\.left)"|navigationBarBackButtonHidden|struct\s+\w*BackButton\b', 'hand-made back button', comments)
     reject(r'struct\s+\w*(?:Toast|UndoBar)\b|accessibilityIdentifier\("toastMessage"\)', 'hand-made toast: use Toast', comments)
     reject(GEOMETRY, 'raw geometry: use a design token')
@@ -69,7 +82,10 @@ def self_test():
     for sample in invalid:
         assert violations('Page.swift', sample), sample
     assert not violations('Page.swift', '// TextField("sample", text: $name)\nVStack(spacing: YubaiSpace.gapGroup) { CardTextFieldRow(title: "名字", text: $name) }')
-    assert not violations(SHARED, 'TextField("", text: $text).frame(height: 52)')
+    assert violations(SHARED, 'TextField("", text: $text).frame(height: 52)')
+    assert violations(SHARED, 'UITextView()')
+    assert not violations(SHARED, 'private struct RowTextInput: View { TextField("", text: $text) }')
+    assert not violations(SHARED, 'private struct NativeRowInput { let field = UITextField() }')
     print('UI lint self-test: raw inputs, back, toast, geometry rejected; tokens accepted')
 
 

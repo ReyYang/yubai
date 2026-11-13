@@ -50,7 +50,7 @@ struct ReconcileView: View {
                 ManualSheetHeader(title: "对一下余额", showsAction: false, cancel: { dismiss() }, action: {})
                     .padding(.horizontal, YubaiSpace.insetPage)
             }
-            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { actions }
+            .fixedBottomBar() { actions }
             .accessibilityIdentifier("reconcileSheet")
             .onAppear(perform: load)
             #if os(iOS)

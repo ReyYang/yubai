@@ -943,7 +943,9 @@ struct RootView: View {
     #endif
     var body: some View {
         @Bindable var store = store
-        Group {
+        // Keep the one AppSheet presenter on a concrete, stable host outside
+        // the tab stacks, including while their root pages are off screen.
+        ZStack {
             if store.locked { lockedView }
             else if let failure = store.loadFailure { recoveryView(failure) }
             else { mainContent }
@@ -1325,6 +1327,7 @@ private struct FloatingTabBar: View {
                 .accessibilityElement(children: .contain).accessibilityLabel("标签导航").accessibilityIdentifier("navigationCapsule")
         }.frame(width: YubaiSize.navigationCapsuleWidth,
                 height: YubaiSize.rootBottomPadding(for: store.destination) - YubaiSpace.space12, alignment: .bottom)
+            .environment(\.yubaiContentViewport, nil)
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
             .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")

@@ -105,7 +105,7 @@ struct EntryEditForm: View {
                 do { try await Task.sleep(for: .milliseconds(60)) } catch { return }
                 withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scroll.scrollTo("editAmount", anchor: .top) }
             }
-        }.safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+        }.fixedBottomBar() {
             EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
                 ChipFlow {
                     EntryDateChip(date: $draft.date, inTray: true, allowsFuture: true, identifier: "editEntryDate")

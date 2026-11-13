@@ -29,14 +29,17 @@ typealias LetterItem = HomeTask
     }
 }
 
-struct NowCardButtonStyle: ButtonStyle {
+struct NowCardButtonStyle: ViewportButtonStyle {
+    var primary = false
+    var feedback: NowCardButtonFeedback { NowCardButtonFeedback(primary: primary) }
+}
+struct NowCardButtonFeedback: ButtonStyle {
     var primary = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.row, weight: primary ? .semibold : .regular).fixedSize(horizontal: false, vertical: true).padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.iconButton)
             .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
             .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
             .yubaiHitTarget()
-            .contentViewportTarget()
             .opacity(configuration.isPressed ? 0.75 : 1)
             .animation(YubaiMotion.instant, value: configuration.isPressed)
     }

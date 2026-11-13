@@ -10,13 +10,15 @@ def matrix(root: Path, size: int = 8, only: str = "") -> dict:
     classes: dict[str, list[str]] = {}
     for path in sorted((root / "Tests/YubaiUITests").glob("*.swift")):
         source = path.read_text()
-        declarations = list(re.finditer(r"(?m)^(?:final )?class (\w+): XCTestCase\s*\{", source))
+        declarations = list(re.finditer(r"(?m)^(?:final )?class (\w+): (?:XCTestCase|YubaiUITestCase)\s*\{", source))
         assigned = 0
         for index, match in enumerate(declarations):
             name = match[1]
             end = declarations[index + 1].start() if index + 1 < len(declarations) else len(source)
             methods = re.findall(r"(?m)^    func (test\w+)\s*\(", source[match.end():end])
             assigned += len(methods)
+            if name == "YubaiUITestCase" and not methods:
+                continue  # shared launch/interaction helper, no test selectors
             if name == "ScreenGalleryTests":
                 continue
             if name in classes or len(methods) != len(set(methods)) or not methods:

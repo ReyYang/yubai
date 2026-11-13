@@ -1,6 +1,6 @@
 import XCTest
 
-final class Round46Batch3FlowTests: XCTestCase {
+final class Round46Batch3FlowTests: YubaiUITestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
@@ -12,7 +12,7 @@ final class Round46Batch3FlowTests: XCTestCase {
         app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
         app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
-        app.launch(); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
+        launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func id(_ value: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", value) }
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
@@ -26,12 +26,12 @@ final class Round46Batch3FlowTests: XCTestCase {
     }
     func testOnlyNowHasGlobalAddAndEveryLedgerDayHasItsOwnAdd() {
         launch()
-        let capsule = element("navigationCapsule").frame
+        let capsule = capsuleFrame(in: app)
         XCTAssertTrue(element("addEntry").exists)
         for tab in ["ledger", "yubai"] {
             tap("tab_" + tab)
             XCTAssertFalse(element("addEntry").exists)
-            XCTAssertEqual(element("navigationCapsule").frame, capsule)
+            XCTAssertEqual(capsuleFrame(in: app), capsule)
         }
         tap("tab_ledger")
         let add = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'addEntryOnDay_' ")).firstMatch
@@ -83,7 +83,7 @@ final class Round46Batch3FlowTests: XCTestCase {
         launch("v46-b3-reserve"); tap("openSaving"); tap("openReserve")
         XCTAssertTrue(element("reserveLine_0").waitForExistence(timeout: 5))
         XCTAssertFalse(element("reserveTotal").exists)
-        app.terminate(); app.launch(); tap("openSaving"); tap("openReserve")
+        app.terminate(); launchApp(app); tap("openSaving"); tap("openReserve")
         XCTAssertTrue(element("reserveLine_0").waitForExistence(timeout: 5))
         XCTAssertTrue(element("reservePage").exists)
     }

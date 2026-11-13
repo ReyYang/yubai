@@ -423,7 +423,7 @@ private struct BillMatchContent: View {
                 if let row = resultRow { ResultBar(label: row.label, value: row.value, amber: row.amber) }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
         }.scrollBounceBehavior(.basedOnSize)
-            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+            .fixedBottomBar() {
                 VStack(spacing: YubaiSpace.space8) {
                     Button("就是这笔", action: confirm).buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("billMatchConfirm")
                     Button("不是，另记一笔", action: separate).buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("billMatchSeparate")

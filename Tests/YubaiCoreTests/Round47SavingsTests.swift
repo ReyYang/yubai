@@ -36,6 +36,20 @@ final class Round47SavingsTests: XCTestCase {
         var value = ledger(); value.entries.append(Entry(date: now, amount: 200_000, accountID: value.accounts[0].id, title: "旅行", category: "旅行"))
         XCTAssertEqual(Finance.spendingDerivation(value, now: now).available, -43_600); assertIdentity(value)
     }
+    func testSalarySourceResolvesTheActualPostedEntry() {
+        let value = ledger(), formula = Finance.spendingDerivation(value, now: now)
+        XCTAssertEqual(formula.salary?.id, value.entries[0].id)
+        XCTAssertEqual(formula.salary?.amount, 801_000)
+    }
+    func testOtherIncomeHasNoSalaryEditTargetButKeepsItsEntryInterval() {
+        var value = ledger()
+        value.entries[0].title = "收入"; value.entries[0].category = "其他收入"
+        value.entries[0].planID = nil; value.entries[0].occurrence = nil
+        let formula = Finance.spendingDerivation(value, now: now)
+        XCTAssertNil(formula.salary)
+        XCTAssertTrue(formula.interval.contains(value.entries[0].date))
+        assertIdentity(value)
+    }
     func testWorkedExerciseAbsorbsAnchorsProtectedBalancesAndTransfers() throws {
         var value = ledger()
         value.accounts.append(Account(name: "另一张卡", balance: 80_000, at: d("2026-11-15")))

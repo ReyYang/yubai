@@ -171,8 +171,7 @@ extension View {
 
     /// Apply inside a Button/Menu label, after its visual background, so transparent space is tappable.
     func yubaiHitTarget(alignment: Alignment = .center) -> some View {
-        frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin, alignment: alignment)
-            .contentShape(Rectangle()).contentViewportTarget()
+        modifier(MinimumHitTarget(alignment: alignment))
     }
 
     func contentViewportTarget() -> some View { modifier(ContentViewportTarget()) }
@@ -427,17 +426,29 @@ extension View {
     }
 }
 
-struct PressButtonStyle: ButtonStyle {
+/// Apply clipping to the actual control. Applying allowsHitTesting to a style's
+/// label leaves the enclosing Button/NavigationLink active in UIKit's AX tree.
+protocol ViewportButtonStyle: PrimitiveButtonStyle {
+    associatedtype Feedback: ButtonStyle
+    var feedback: Feedback { get }
+}
+extension ViewportButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        // Transforming the label also transforms its accessibility/hit frame.
-        // Keep the target stationary, including during the release animation.
-        TextLinkStyle().makeBody(configuration: configuration)
+        Button(configuration).buttonStyle(feedback).contentViewportTarget()
     }
+}
+
+struct PressButtonStyle: ViewportButtonStyle {
+    var feedback: TextLinkFeedback { TextLinkFeedback() }
 }
 
 /// Small, unfilled links share a target inside the button, never outside it.
 /// Font and colour belong to the label; this changes only the transparent area.
-struct TextLinkStyle: ButtonStyle {
+struct TextLinkStyle: ViewportButtonStyle {
+    var alignment: Alignment = .center
+    var feedback: TextLinkFeedback { TextLinkFeedback(alignment: alignment) }
+}
+struct TextLinkFeedback: ButtonStyle {
     var alignment: Alignment = .center
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.fixedSize(horizontal: false, vertical: true)
@@ -466,7 +477,10 @@ struct RowToggleStyle: ToggleStyle {
     }
 }
 
-struct SmallActionStyle: ButtonStyle {
+struct SmallActionStyle: ViewportButtonStyle {
+    var feedback: SmallActionFeedback { SmallActionFeedback() }
+}
+struct SmallActionFeedback: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.label)
             .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
@@ -496,6 +510,7 @@ private struct CardContentKey: EnvironmentKey { static let defaultValue = false 
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
 private struct ToastClearanceKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
 private struct ContentViewportKey: EnvironmentKey { static let defaultValue: CGRect? = nil }
+private struct PresentationScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
 extension EnvironmentValues {
     /// SwiftUI's system value is read-only; scripted tests opt in at the readers.
     var yubaiReduceMotion: Bool {
@@ -511,19 +526,83 @@ extension EnvironmentValues {
     var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
     var yubaiToastClearance: CGFloat { get { self[ToastClearanceKey.self] } set { self[ToastClearanceKey.self] = newValue } }
     var yubaiContentViewport: CGRect? { get { self[ContentViewportKey.self] } set { self[ContentViewportKey.self] = newValue } }
+    var yubaiPresentationScale: CGFloat { get { self[PresentationScaleKey.self] } set { self[PresentationScaleKey.self] = newValue } }
+    var yubaiMinimumTarget: CGFloat { ceil(YubaiSize.tapMin / yubaiPresentationScale * 3) / 3 }
 }
+
+private struct MinimumHitTarget: ViewModifier {
+    @Environment(\.yubaiMinimumTarget) private var minimum
+    var alignment: Alignment = .center
+    func body(content: Content) -> some View {
+        content.frame(minWidth: minimum, minHeight: minimum, alignment: alignment).contentShape(Rectangle())
+    }
+}
+
+/// iOS 26 keeps a partial-height sheet inset at rest. UIKit scales its hosting
+/// view (424/440 in run 3), so 44 layout points become 42.4 screen points even
+/// after the presentation finishes. Measure that transform instead of guessing
+/// a device inset or enlarging targets only for tests.
+private struct SheetPresentationMetrics: ViewModifier {
+    @State private var scale: CGFloat = 1
+    func body(content: Content) -> some View {
+        content.environment(\.yubaiPresentationScale, scale)
+            #if os(iOS)
+            .background { PresentationScaleReader(scale: $scale).frame(width: 0, height: 0).allowsHitTesting(false) }
+            #endif
+    }
+}
+
+#if os(iOS)
+private struct PresentationScaleReader: UIViewRepresentable {
+    @Binding var scale: CGFloat
+    func makeUIView(context: Context) -> Anchor { Anchor() }
+    func updateUIView(_ view: Anchor, context: Context) { view.changed = { scale = $0 } }
+    final class Anchor: UIView {
+        var changed: ((CGFloat) -> Void)?
+        private var last: CGFloat = 1
+        private var link: CADisplayLink?
+        private final class Tick: NSObject {
+            weak var anchor: Anchor?
+            init(_ anchor: Anchor) { self.anchor = anchor }
+            @objc func read() { anchor?.readScale() }
+        }
+        init() { super.init(frame: .zero); isUserInteractionEnabled = false; accessibilityElementsHidden = true }
+        required init?(coder: NSCoder) { fatalError() }
+        deinit { link?.invalidate() }
+        override func didMoveToWindow() {
+            super.didMoveToWindow(); link?.invalidate(); link = nil
+            if window != nil {
+                let link = CADisplayLink(target: Tick(self), selector: #selector(Tick.read))
+                link.add(to: .main, forMode: .common); self.link = link
+                readScale()
+            }
+        }
+        private func readScale() {
+            guard let window else { return }
+            let unit = convert(CGRect(x: 0, y: 0, width: 100, height: 100), to: window)
+            let scale = min(1, min(unit.width, unit.height) / 100)
+            // Ignore entrance/exit zoom; measure targets after it settles.
+            // Keep tracking detent changes for the sheet's lifetime.
+            guard scale > 0.8, abs(scale - last) > 0.0001 else { return }
+            last = scale
+            DispatchQueue.main.async { [weak self] in self?.changed?(scale) }
+        }
+    }
+}
+#endif
 
 /// UIKit can retain a full AX frame for a partially clipped SwiftUI button.
 /// Expose its action only after the entire target clears the fixed chrome;
 /// scrolling continues to work on the enclosing scroll view.
 private struct ContentViewportTarget: ViewModifier {
     @Environment(\.yubaiContentViewport) private var viewport
-    @State private var inside = true
+    @State private var frame = CGRect.zero
+    private var inside: Bool {
+        guard let viewport, !frame.isEmpty else { return true }
+        return viewport.insetBy(dx: -0.5, dy: -0.5).contains(frame)
+    }
     func body(content: Content) -> some View {
-        content.onGeometryChange(for: Bool.self) { geometry in
-            guard let viewport else { return true }
-            return viewport.insetBy(dx: -0.5, dy: -0.5).contains(geometry.frame(in: .global))
-        } action: { inside = $0 }
+        content.onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
             .allowsHitTesting(inside).accessibilityRespondsToUserInteraction(inside)
     }
 }
@@ -1063,6 +1142,7 @@ extension View {
             .environment(\.yubaiFormSurface, false)
             .environment(\.yubaiContentViewport, nil)
             .presentationBackground { PaperCanvas() }
+            .modifier(SheetPresentationMetrics())
     }
     func paperCardSurface<S: InsettableShape>(in shape: S, background: Color? = nil, flat: Bool = false) -> some View {
         modifier(PaperCardSurface(shape: shape, background: background, flat: flat))
@@ -1086,7 +1166,7 @@ extension View {
     }
     func rootPageHeader<Header: View>(@ViewBuilder _ header: () -> Header) -> some View {
         VStack(spacing: 0) {
-            header().padding(.horizontal, YubaiSpace.insetPage)
+            header().environment(\.yubaiContentViewport, nil).padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.space8)
                 .frame(maxWidth: .infinity)
                 .background(YubaiColor.canvas.ignoresSafeArea(edges: .top))
@@ -1097,6 +1177,14 @@ extension View {
             self.frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped().contentShape(Rectangle())
         }.modifier(RootPaperBackground())
+    }
+    /// A real sibling slot, so the scroll view's frame and its AX viewport end
+    /// above the controls instead of merely receiving a safe-area content inset.
+    func fixedBottomBar<Bar: View>(spacing: CGFloat = YubaiSpace.none, @ViewBuilder content bar: () -> Bar) -> some View {
+        VStack(spacing: spacing) {
+            self.frame(maxWidth: .infinity, maxHeight: .infinity).modifier(ScrollContentViewport())
+            bar().environment(\.yubaiContentViewport, nil).fixedSize(horizontal: false, vertical: true)
+        }
     }
     func pageLocalHorizontalGestures() -> some View {
         #if os(iOS)
@@ -1119,7 +1207,12 @@ extension View {
     func chipSelection(_ selected: Bool) -> some View { modifier(ChipSelection(selected: selected)) }
 }
 
-struct PrimaryButtonStyle: ButtonStyle {
+struct PrimaryButtonStyle: ViewportButtonStyle {
+    var compact = false
+    var disabledBackground = Color.clear
+    var feedback: PrimaryButtonFeedback { PrimaryButtonFeedback(compact: compact, disabledBackground: disabledBackground) }
+}
+struct PrimaryButtonFeedback: ButtonStyle {
     var compact = false
     var disabledBackground = Color.clear
     @Environment(\.isEnabled) private var isEnabled
@@ -1128,12 +1221,17 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.gapSection).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .frame(maxWidth: .infinity, minHeight: compact ? YubaiSize.rowIcon : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.onBrand : YubaiColor.labelSecondary)
-            .background(isEnabled ? YubaiColor.brand : disabledBackground, in: Capsule()).frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
-            .contentViewportTarget().opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+            .background(isEnabled ? YubaiColor.brand : disabledBackground, in: Capsule()).yubaiHitTarget().contentShape(Capsule())
+            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
-struct SecondaryButtonStyle: ButtonStyle {
+struct SecondaryButtonStyle: ViewportButtonStyle {
+    var background = YubaiColor.card
+    var compact = false
+    var feedback: SecondaryButtonFeedback { SecondaryButtonFeedback(background: background, compact: compact) }
+}
+struct SecondaryButtonFeedback: ButtonStyle {
     var background = YubaiColor.card
     var compact = false
     @Environment(\.isEnabled) private var isEnabled
@@ -1142,8 +1240,8 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.gapSection).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .frame(maxWidth: .infinity, minHeight: compact ? YubaiSize.rowIcon : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.label : YubaiColor.labelSecondary)
-            .background(isEnabled ? background : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
-            .contentViewportTarget().opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+            .background(isEnabled ? background : Color.clear, in: Capsule()).yubaiHitTarget().contentShape(Capsule())
+            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
@@ -1879,6 +1977,9 @@ extension View {
     func yubaiNavigation() -> some View {
         self.modifier(ToastContentSlot()).paperBackground().tint(YubaiColor.brandInk)
             .environment(\.yubaiRootSurface, false).environment(\.yubaiFormSurface, false)
+            // A pushed page must establish its own viewport, never inherit the
+            // source link's scroll rectangle (which can disappear on push).
+            .environment(\.yubaiContentViewport, nil)
             #if os(iOS)
             .background { NavigationBackPaper().frame(width: YubaiSpace.none, height: YubaiSpace.none) }
             .toolbar(.visible, for: .navigationBar)
@@ -2035,8 +2136,10 @@ struct HomeEntryPill: View {
             .padding(.leading, YubaiSpace.space22).padding(.trailing, YubaiSpace.space28)
             .frame(height: YubaiSize.homeEntryPillHeight)
             .background { Capsule().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
-            .contentShape(Capsule()).onTapGesture(perform: action)
-            .onLongPressGesture(minimumDuration: 0.4, perform: quick)
+            .contentShape(Capsule())
+            .gesture(LongPressGesture(minimumDuration: 0.4).exclusively(before: TapGesture()).onEnded { result in
+                switch result { case .first: quick(); case .second: action() }
+            })
             .accessibilityElement(children: .ignore).accessibilityAddTraits(.isButton)
             .accessibilityLabel(title).accessibilityIdentifier("addEntry")
             .accessibilityAction(.default, action).accessibilityAction(named: "常用", quick)
@@ -2068,7 +2171,10 @@ extension YubaiFont {
     static let savingsHero = Style(size: 40, lineHeight: 48, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
 }
 
-struct RoundPressStyle: ButtonStyle {
+struct RoundPressStyle: ViewportButtonStyle {
+    var feedback: RoundPressFeedback { RoundPressFeedback() }
+}
+struct RoundPressFeedback: ButtonStyle {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiHitTarget().opacity(configuration.isPressed ? 0.75 : 1)
@@ -2297,16 +2403,25 @@ struct ResultBar: View {
         amount2(from, hide: hide) + " → " + amount2(to, hide: hide)
     }
     var body: some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup))
-        layout {
-            Text(label).yubaiFont(YubaiFont.callout).foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.labelMuted)
-            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
-            Text(value).yubaiFont(YubaiFont.amountSmall, weight: .semibold).foregroundStyle(amber ? YubaiColor.amberStrong : YubaiColor.brandInk)
-                .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
+                labelText.fixedSize(); Spacer(minLength: YubaiSpace.space8); valueText.fixedSize()
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                labelText; valueText.frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }.padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
             .frame(maxWidth: .infinity, minHeight: YubaiSize.rowIcon, alignment: .leading)
             .background(amber ? YubaiColor.amberTint : YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             .accessibilityElement(children: .combine).accessibilityIdentifier(identifier)
+    }
+    private var labelText: some View {
+        Text(label).yubaiFont(YubaiFont.callout).foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.labelMuted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+    private var valueText: some View {
+        Text(value).yubaiFont(YubaiFont.amountSmall, weight: .semibold).foregroundStyle(amber ? YubaiColor.amberStrong : YubaiColor.brandInk)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -2502,6 +2617,7 @@ struct IconGridCell: View {
 struct Segmented<Value: Hashable>: View {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.yubaiMinimumTarget) private var minimum
     @Namespace private var selectionNamespace
     let choices: [(Value, String)]
     @Binding var selection: Value
@@ -2521,7 +2637,7 @@ struct Segmented<Value: Hashable>: View {
             Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
                 .dynamicTypeSize(...(title.count <= 3 ? DynamicTypeSize.xxxLarge : .accessibility5)).fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
-                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
+                .frame(maxWidth: .infinity, minHeight: minimum)
                 .background { if on { selectedSurface } }
                 .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(on ? .isSelected : [])
@@ -2637,67 +2753,185 @@ struct ManualSheetHeader: View {
     }
 }
 
-/// The native field's AX frame must include the same transparent space that
-/// focuses the field. A SwiftUI frame alone leaves a 20pt UIKit text-field node.
-private struct MinimumInputTarget: ViewModifier {
-    let identifier: String
+/// One field implementation for card rows, search and chat. The native editor
+/// itself fills the target; no late accessibilityFrame override can be reset by
+/// SwiftUI, and tapping the row's padding focuses that same editor.
+private struct RowTextInput: View {
+    @Binding var text: String
+    var placeholder: String
+    var label: String
+    var identifier: String
+    var multiline = false
+    var numeric = false
+    var secure = false
+    var maximumLines = 6
+    var verticalInset: CGFloat = 0
+    var style: YubaiFont.Style = YubaiFont.fieldValue
     let focus: FocusState<Bool>.Binding
-    @State private var bounds = CGRect.zero
-    func body(content: Content) -> some View {
-        content.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
-            .contentShape(Rectangle()).onTapGesture { focus.wrappedValue = true }
-            .contentViewportTarget()
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { bounds = $0 }
+    var search = false
+    var submit: (() -> Void)? = nil
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.yubaiMinimumTarget) private var minimum
+    @ScaledMetric private var fontSize: CGFloat
+    init(text: Binding<String>, placeholder: String, label: String, identifier: String,
+         multiline: Bool = false, numeric: Bool = false, secure: Bool = false,
+         maximumLines: Int = 6, verticalInset: CGFloat = 0, style: YubaiFont.Style = YubaiFont.fieldValue,
+         focus: FocusState<Bool>.Binding, search: Bool = false, submit: (() -> Void)? = nil) {
+        _text = text; self.placeholder = placeholder; self.label = label; self.identifier = identifier
+        self.multiline = multiline; self.numeric = numeric; self.secure = secure
+        self.maximumLines = maximumLines; self.verticalInset = verticalInset; self.style = style; self.focus = focus
+        self.search = search; self.submit = submit
+        _fontSize = ScaledMetric(wrappedValue: style.size, relativeTo: style.relativeTo)
+    }
+    var body: some View {
+        Group {
             #if os(iOS)
-            .background { NativeInputTarget(identifier: identifier, bounds: bounds).allowsHitTesting(false) }
+            NativeRowInput(text: $text, placeholder: placeholder, label: label, identifier: identifier,
+                           multiline: multiline, numeric: numeric, secure: secure, maximumLines: maximumLines, verticalInset: verticalInset,
+                           fontSize: fontSize, minimum: minimum, enabled: enabled, focus: focus, search: search, submit: submit)
+            #else
+            nativeFallback.textFieldStyle(.plain).yubaiFont(style).focused(focus)
+                .onSubmit { submit?(); focus.wrappedValue = false }
+                .accessibilityLabel(label).accessibilityIdentifier(identifier)
+            #endif
+        }.frame(maxWidth: .infinity, minHeight: minimum)
+            .contentShape(Rectangle()).onTapGesture { if enabled { focus.wrappedValue = true } }
+            .privacySensitive(secure)
+            .contentViewportTarget()
+            #if os(iOS)
+            .background { if numeric { NumberKeyboardAccessory().frame(width: 0, height: 0) } }
             #endif
     }
-}
-
-private extension View {
-    func minimumInputTarget(identifier: String, focus: FocusState<Bool>.Binding) -> some View {
-        modifier(MinimumInputTarget(identifier: identifier, focus: focus))
+    #if os(macOS)
+    @ViewBuilder private var nativeFallback: some View {
+        if secure { SecureField(placeholder, text: $text) }
+        else { TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal).lineLimit(multiline ? 1...maximumLines : 1...1) }
     }
+    #endif
 }
 
 #if os(iOS)
-private struct NativeInputTarget: UIViewRepresentable {
+private struct NativeRowInput: UIViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let label: String
     let identifier: String
-    let bounds: CGRect
-    func makeUIView(context: Context) -> Anchor { Anchor(frame: .zero) }
-    func updateUIView(_ view: Anchor, context: Context) {
-        view.identifier = identifier
-        // Also update when a scroll changes the field's screen coordinates.
-        view.setNeedsLayout()
-        DispatchQueue.main.async { view.install() }
+    let multiline: Bool
+    let numeric: Bool
+    let secure: Bool
+    let maximumLines: Int
+    let verticalInset: CGFloat
+    let fontSize: CGFloat
+    let minimum: CGFloat
+    let enabled: Bool
+    let focus: FocusState<Bool>.Binding
+    let search: Bool
+    var submit: (() -> Void)?
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> FieldHost {
+        let host = FieldHost(multiline: multiline)
+        host.field.delegate = context.coordinator
+        host.editor.delegate = context.coordinator
+        host.field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
+        return host
     }
-    final class Anchor: UIView {
-        var identifier = ""
-        override init(frame: CGRect) {
-            super.init(frame: frame)
-            isUserInteractionEnabled = false; accessibilityElementsHidden = true
+    func updateUIView(_ host: FieldHost, context: Context) {
+        context.coordinator.parent = self
+        let font = UIFont.systemFont(ofSize: fontSize)
+        host.minimum = minimum; host.maximumLines = maximumLines
+        host.field.font = font; host.editor.font = font; host.placeholder.font = font
+        let inset = max(verticalInset, (minimum - font.lineHeight) / 2)
+        host.editor.textContainerInset = UIEdgeInsets(top: inset, left: 0, bottom: inset, right: 0)
+        host.placeholder.text = placeholder; host.field.placeholder = placeholder
+        if host.field.isSecureTextEntry != secure { host.field.isSecureTextEntry = secure }
+        host.field.keyboardType = numeric ? .decimalPad : .default
+        host.field.returnKeyType = search ? .search : .done
+        host.field.autocorrectionType = secure ? .no : .default
+        host.field.autocapitalizationType = secure ? .none : .sentences
+        host.editor.returnKeyType = submit == nil ? .default : .done
+        host.field.textColor = UIColor(YubaiColor.label); host.editor.textColor = UIColor(YubaiColor.label)
+        host.placeholder.textColor = UIColor(YubaiColor.labelSecondary).withAlphaComponent(0.5)
+        host.field.tintColor = UIColor(YubaiColor.brandInk); host.editor.tintColor = UIColor(YubaiColor.brandInk)
+        if host.field.text != text { host.field.text = text }
+        if host.editor.text != text { host.editor.text = text }
+        host.placeholder.isHidden = !text.isEmpty
+        host.field.isEnabled = enabled; host.editor.isEditable = enabled
+        let input: UIView = multiline ? host.editor : host.field
+        input.accessibilityIdentifier = identifier; input.accessibilityLabel = label
+        host.desiredFocus = enabled && focus.wrappedValue
+        host.invalidateIntrinsicContentSize()
+        DispatchQueue.main.async { [weak host] in host?.updateFocus() }
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: FieldHost, context: Context) -> CGSize? {
+        let width = proposal.width ?? YubaiSize.fieldMinimum
+        return CGSize(width: width, height: uiView.height(for: width))
+    }
+    final class FieldHost: UIView {
+        let field = UITextField()
+        let editor = UITextView()
+        let placeholder = UILabel()
+        let multiline: Bool
+        var desiredFocus = false
+        var minimum = YubaiSize.tapMin
+        var maximumLines = 6
+        init(multiline: Bool) {
+            self.multiline = multiline
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            isAccessibilityElement = false
+            field.borderStyle = .none
+            editor.backgroundColor = .clear
+            editor.textContainerInset = .zero
+            editor.textContainer.lineFragmentPadding = 0
+            placeholder.isAccessibilityElement = false; placeholder.isUserInteractionEnabled = false
+            if multiline { addSubview(editor); addSubview(placeholder) } else { addSubview(field) }
+            setContentHuggingPriority(.defaultLow, for: .horizontal)
+            setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
         required init?(coder: NSCoder) { fatalError() }
-        override func layoutSubviews() { super.layoutSubviews(); install() }
-        override func didMoveToWindow() { super.didMoveToWindow(); install() }
-        func install() {
-            guard window != nil, bounds.height >= YubaiSize.tapMin else { return }
-            func inputs(in view: UIView) -> [UIView] {
-                if view is UITextField || view is UITextView { return [view] }
-                return view.subviews.flatMap { inputs(in: $0) }
+        func height(for width: CGFloat) -> CGFloat {
+            guard multiline else { return max(minimum, ceil(field.font?.lineHeight ?? minimum)) }
+            let ideal = editor.sizeThatFits(CGSize(width: max(1, width), height: .greatestFiniteMagnitude)).height
+            let limit = (editor.font?.lineHeight ?? minimum) * CGFloat(maximumLines) + editor.textContainerInset.top + editor.textContainerInset.bottom
+            return max(minimum, ceil(min(ideal, limit)))
+        }
+        override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: height(for: bounds.width)) }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            field.frame = bounds; editor.frame = bounds
+            let line = editor.font?.lineHeight ?? minimum
+            placeholder.frame = CGRect(x: 0, y: max(0, (bounds.height - line) / 2), width: bounds.width, height: line)
+            // The editor and its AX frame are both the full row height.
+            editor.isScrollEnabled = editor.contentSize.height > bounds.height + 1
+        }
+        override func didMoveToWindow() { super.didMoveToWindow(); updateFocus() }
+        func updateFocus() {
+            let input: UIView = multiline ? editor : field
+            if desiredFocus && window != nil && !input.isFirstResponder { input.becomeFirstResponder() }
+            if !desiredFocus && input.isFirstResponder { input.resignFirstResponder() }
+        }
+    }
+    final class Coordinator: NSObject, UITextFieldDelegate, UITextViewDelegate {
+        var parent: NativeRowInput
+        init(_ parent: NativeRowInput) { self.parent = parent }
+        @objc func changed(_ field: UITextField) { parent.text = field.text ?? "" }
+        func textFieldDidBeginEditing(_ textField: UITextField) { parent.focus.wrappedValue = true }
+        func textFieldDidEndEditing(_ textField: UITextField) { parent.focus.wrappedValue = false }
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            parent.submit?(); parent.focus.wrappedValue = false; textField.resignFirstResponder(); return true
+        }
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+            (textView.superview as? FieldHost)?.placeholder.isHidden = !textView.text.isEmpty
+            textView.superview?.invalidateIntrinsicContentSize()
+        }
+        func textViewDidBeginEditing(_ textView: UITextView) { parent.focus.wrappedValue = true }
+        func textViewDidEndEditing(_ textView: UITextView) { parent.focus.wrappedValue = false }
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            if text == "\n", let submit = parent.submit {
+                submit(); parent.focus.wrappedValue = false; textView.resignFirstResponder(); return false
             }
-            var parent = superview
-            for _ in 0..<8 {
-                guard let host = parent else { return }
-                let fields = inputs(in: host)
-                if let field = fields.first(where: { $0.accessibilityIdentifier == identifier }) ?? (fields.count == 1 ? fields.first : nil) {
-                    field.accessibilityIdentifier = identifier
-                    field.accessibilityFrame = UIAccessibility.convertToScreenCoordinates(self.bounds, in: self)
-                    return
-                }
-                if fields.count > 1 { return }
-                parent = host.superview
-            }
+            return true
         }
     }
 }
@@ -2734,27 +2968,16 @@ struct CardTextFieldRow: View {
                 }
                 HStack(spacing: YubaiSpace.space8) {
                     if let leading { leading }
-                    input.textFieldStyle(.plain).yubaiFont(YubaiFont.fieldValue)
-                        .focused(fieldFocus).submitLabel(.done)
-                        .onSubmit { submit?(); fieldFocus.wrappedValue = false }
-                        .accessibilityLabel(title.isEmpty ? placeholder : title).accessibilityIdentifier(identifier)
-                        .minimumInputTarget(identifier: identifier, focus: fieldFocus)
+                    RowTextInput(text: $text, placeholder: placeholder, label: title.isEmpty ? placeholder : title,
+                                 identifier: identifier, multiline: multiline, numeric: numeric, secure: hidesValue,
+                                 focus: fieldFocus, submit: { submit?() })
                     if let trailing { trailing }
                 }
-            }.frame(minHeight: YubaiSize.buttonHeight)
+            }.frame(minHeight: YubaiSize.buttonHeight).contentShape(Rectangle())
+                .onTapGesture { fieldFocus.wrappedValue = true }
             if let error { InlineFieldError(message: error) }
         }.padding(.vertical, stacks ? YubaiSpace.space8 : YubaiSpace.none)
             .task { if autofocus { fieldFocus.wrappedValue = true } }
-    }
-    @ViewBuilder private var input: some View {
-        if hidesValue {
-            SecureField(placeholder, text: $text).autocorrectionDisabled().privacySensitive()
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
-        }
-        else if numeric { TextField(placeholder, text: $text).numericInput() }
-        else { TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal).lineLimit(multiline ? 1...6 : 1...1) }
     }
 }
 
@@ -2774,14 +2997,13 @@ struct SearchInput: View {
         HStack(spacing: YubaiSpace.gapGroup) {
             HStack(spacing: YubaiSpace.space8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-                TextField(placeholder, text: $text).textFieldStyle(.plain).yubaiFont(YubaiFont.fieldValue)
-                    .focused(fieldFocus).submitLabel(.search).accessibilityLabel(label).accessibilityIdentifier(identifier)
-                    .minimumInputTarget(identifier: identifier, focus: fieldFocus)
+                RowTextInput(text: $text, placeholder: placeholder, label: label, identifier: identifier, focus: fieldFocus, search: true)
                 if !text.isEmpty {
                     Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(YubaiColor.labelMuted).yubaiHitTarget() }
                         .accessibilityLabel("清空搜索").accessibilityIdentifier(identifier + "Clear")
                 }
             }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.buttonHeight)
+                .contentShape(Rectangle()).onTapGesture { fieldFocus.wrappedValue = true }
                 .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
                 .overlay { if fieldFocus.wrappedValue { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
             if showsCancel {
@@ -3184,12 +3406,15 @@ struct InlineFieldError: View {
     }
 }
 
-struct DestructiveButtonStyle: ButtonStyle {
+struct DestructiveButtonStyle: ViewportButtonStyle {
+    var feedback: DestructiveButtonFeedback { DestructiveButtonFeedback() }
+}
+struct DestructiveButtonFeedback: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.fixedSize(horizontal: false, vertical: true).yubaiFont(YubaiFont.destructiveAction)
             .foregroundStyle(YubaiColor.amberInk).frame(maxWidth: .infinity, minHeight: 52)
             .background(configuration.isPressed ? YubaiColor.keyPressed : YubaiColor.card, in: Capsule())
-            .contentShape(Capsule()).contentViewportTarget()
+            .contentShape(Capsule())
     }
 }
 
@@ -3213,12 +3438,9 @@ struct ChatInputBar<Leading: View, Accessory: View>: View {
         HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
             leading().frame(height: YubaiSize.iconButton)
             HStack(spacing: YubaiSpace.none) {
-                TextField(placeholder, text: $text, axis: .vertical)
-                    .focused(focus ?? $localFocus)
-                    .lineLimit(1...5).yubaiFont(YubaiFont.navTitle, weight: .regular)
-                    .padding(.vertical, YubaiSpace.gapGroup)
-                    .accessibilityIdentifier(inputID).accessibilityLabel(accessibilityLabel)
-                    .minimumInputTarget(identifier: inputID, focus: focus ?? $localFocus)
+                RowTextInput(text: $text, placeholder: placeholder, label: accessibilityLabel, identifier: inputID,
+                             multiline: true, maximumLines: 5, verticalInset: YubaiSpace.gapGroup,
+                             style: YubaiFont.navTitle, focus: focus ?? $localFocus)
             }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                 .onTapGesture { (focus ?? $localFocus).wrappedValue = true }
             accessory().frame(height: YubaiSize.iconButton)
@@ -3491,21 +3713,27 @@ struct EntryDateChip: View {
 /// month's length; actual dated occurrences use EntryCalendarView.
 struct MonthDayChoices: View {
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.yubaiMinimumTarget) private var minimum
+    @State private var width: CGFloat = 0
     @Binding var selection: Int
     var identifier: String
     var choose: (Int) -> Void = { _ in }
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: textSize.isAccessibilitySize ? 4 : 7), spacing: YubaiSpace.space8) {
+        // Both callers offer the full width inside insetPage, outside a Card.
+        // Spend the gap first; keep the week-like seven columns at every
+        // standard text size and four at accessibility sizes.
+        let metrics = MonthDayGridMetrics(availableWidth: width, minimumTarget: minimum, accessibility: textSize.isAccessibilitySize)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: minimum), spacing: metrics.spacing), count: metrics.columns), spacing: metrics.spacing) {
             ForEach(1...31, id: \.self) { value in
                 Button { selection = value; choose(value) } label: {
                     Text("\(value)").yubaiFont(YubaiFont.callout).lineLimit(1)
-                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
+                        .frame(minWidth: minimum, maxWidth: .infinity, minHeight: minimum)
                         .foregroundStyle(selection == value ? YubaiColor.onBrand : YubaiColor.label)
                         .background(selection == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel("每月 \(value) 号")
                     .accessibilityAddTraits(selection == value ? .isSelected : []).accessibilityIdentifier(identifier + "\(value)")
             }
-        }
+        }.onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 }
 

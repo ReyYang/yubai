@@ -1,6 +1,6 @@
 import XCTest
 
-final class Round46AddEntryFlowTests: XCTestCase {
+final class Round46AddEntryFlowTests: YubaiUITestCase {
     private var app = XCUIApplication()
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app.terminate(); try super.tearDownWithError() }
@@ -13,7 +13,7 @@ final class Round46AddEntryFlowTests: XCTestCase {
         app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1"
         app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = explicit ? "1" : "0"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
-        app.launch()
+        launchApp(app)
         XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
     }
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }

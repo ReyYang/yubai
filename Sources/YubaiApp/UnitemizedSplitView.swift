@@ -46,7 +46,7 @@ private struct UnitemizedSplitEditor: View {
             EntryCategoryGrid(nature: .expense, selection: category, hint: hint?.category,
                               choose: { category = $0 ?? CategoryAssignment(category: ""); purposeFocused = false },
                               more: { purposeFocused = false; pickingCategory = true })
-        }.safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { tray }
+        }.fixedBottomBar() { tray }
             .paperBackground().environment(\.yubaiFormSurface, true)
             .sheet(isPresented: $pickingDate) { dateSheet }
             .sheet(isPresented: $pickingCategory) {

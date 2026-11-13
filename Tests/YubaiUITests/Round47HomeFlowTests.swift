@@ -1,20 +1,21 @@
 import XCTest
 
-final class Round47HomeFlowTests: XCTestCase {
+final class Round47HomeFlowTests: YubaiUITestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
-    private func launch(_ fixture: String = "v47-home", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false) {
+    private func launch(_ fixture: String = "v47-home", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false, textCategory: String? = nil) {
         app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+        else if let textCategory { app.launchArguments += ["-UIPreferredContentSizeCategoryName", textCategory] }
         app.launchEnvironment["YUBAI_UI_TEST_REDUCE_MOTION"] = reduceMotion ? "1" : "0"
         app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
         app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
         app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
-        app.launch(); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
+        launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
@@ -30,6 +31,7 @@ final class Round47HomeFlowTests: XCTestCase {
     private func tap(_ id: String) {
         let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
         if !target.isHittable { reveal(target) }
+        if !id.hasPrefix("keypad_") { XCTAssertTrue(waitForStableFrame(target), id) }
         XCTAssertTrue(target.isHittable, id); target.tap()
     }
     private func keys(_ amount: String) { for key in amount { tap("keypad_" + String(key)) } }
@@ -83,7 +85,7 @@ final class Round47HomeFlowTests: XCTestCase {
     func testPostponeSurvivesRelaunchAndNextIncomeWakesPrompt() {
         launch("v47-after"); tap("deferFirstSalary")
         XCTAssertFalse(element("firstSalaryCard").exists)
-        app.terminate(); app.launch(); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
+        app.terminate(); launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
         XCTAssertFalse(element("firstSalaryCard").exists)
         tap("addEntry"); tap("entryNature_income"); keys("8010"); tap("entryCategory_工资"); tap("saveQuickEntry"); tap("cancelManualSheet")
         XCTAssertTrue(element("firstSalaryCard").waitForExistence(timeout: 5))
@@ -166,16 +168,41 @@ final class Round47HomeFlowTests: XCTestCase {
     }
     func testCapsuleStaysInPlaceAndAssistantInputClearsOnlyTheCapsule() {
         launch()
-        let capsule = element("navigationCapsule").frame
+        let capsule = capsuleFrame(in: app)
         for tab in ["ledger", "yubai"] {
             tap("tab_" + tab)
-            XCTAssertEqual(element("navigationCapsule").frame, capsule)
+            XCTAssertEqual(capsuleFrame(in: app), capsule)
             XCTAssertFalse(element("addEntry").exists)
         }
         let field = element("askYubai")
         XCTAssertGreaterThanOrEqual(field.frame.height, 44)
         XCTAssertLessThan(field.frame.maxY, capsule.minY)
         XCTAssertLessThanOrEqual(capsule.minY - field.frame.maxY, 32)
+    }
+    func testPaydayDayTargetsKeepFortyFourScreenPointsAtBothTextSizes() {
+        for (large, category) in [(false, "UICTContentSizeCategoryL"), (false, "UICTContentSizeCategoryXXXL"), (true, "UICTContentSizeCategoryAccessibilityXXXL")] {
+            launch("v47-after", large: large, textCategory: category); tap("setupFirstSalary")
+            let first = element("paydaySetupDay_1")
+            XCTAssertTrue(first.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitForStableFrame(first))
+            let days = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'paydaySetupDay_'"))
+            XCTAssertGreaterThanOrEqual(days.count, 7)
+            for day in days.allElementsBoundByIndex {
+                XCTAssertGreaterThanOrEqual(day.frame.width, 44, day.identifier)
+                XCTAssertGreaterThanOrEqual(day.frame.height, 44, day.identifier)
+                XCTAssertGreaterThanOrEqual(day.frame.minX, app.frame.minX, day.identifier)
+                XCTAssertLessThanOrEqual(day.frame.maxX, app.frame.maxX, day.identifier)
+            }
+            let firstRow = days.allElementsBoundByIndex.filter { abs($0.frame.minY - first.frame.minY) < 1 }
+            XCTAssertEqual(firstRow.count, large ? 4 : 7, category)
+            let lastColumn = large ? 4 : 7
+            tap("paydaySetupDay_\(lastColumn)")
+            XCTAssertTrue(element("paydaySetupDay_\(lastColumn)").isSelected)
+            // The amount is required by the salary plan; selecting a day alone
+            // must not enable confirmation for a zero-amount plan.
+            XCTAssertFalse(element("paydaySetupDone").isEnabled)
+            app.terminate()
+        }
     }
     func testLastTodayRowReachedFromReceiptClearsTheCapsuleAtBothTextSizes() {
         for large in [false, true] {
@@ -187,7 +214,7 @@ final class Round47HomeFlowTests: XCTestCase {
                 app.swipeUp()
             }
             XCTAssertTrue(last.exists && last.isHittable)
-            let header = element("rootHeaderRegion").frame, capsule = element("navigationCapsule").frame
+            let header = element("rootHeaderRegion").frame, capsule = capsuleFrame(in: app)
             XCTAssertGreaterThanOrEqual(last.frame.minY, header.maxY)
             XCTAssertLessThan(last.frame.maxY, capsule.minY)
             for row in app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_'")).allElementsBoundByIndex {

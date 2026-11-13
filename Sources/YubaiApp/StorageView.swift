@@ -53,7 +53,7 @@ struct StorageView: View {
                 }
             }
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("storagePage")
-            .safeAreaInset(edge: .bottom) {
+            .fixedBottomBar() {
                 Button { sheet = .erase } label: {
                     Text("抹掉全部数据").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberInk)
                         .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight)

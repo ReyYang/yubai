@@ -212,11 +212,11 @@ private struct NowUpcomingRow: View {
                 .frame(minWidth: textSize.isAccessibilitySize ? nil : YubaiSize.rowDouble, alignment: .leading).fixedSize()
             if let planID = row.planID, !row.inflow {
                 TabNavigationLink(.billDetail(planID)) { BillDetailView(planID: planID) } label: {
-                    Text(row.title).yubaiFont(YubaiFont.body).lineLimit(1).truncationMode(.tail)
+                    Text(row.title).yubaiFont(YubaiFont.body).fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaBill_" + planID.uuidString)
             } else {
-                Text(row.title).yubaiFont(YubaiFont.body).lineLimit(1).truncationMode(.tail)
+                Text(row.title).yubaiFont(YubaiFont.body).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(spacing: YubaiSpace.space8) {

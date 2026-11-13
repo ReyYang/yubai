@@ -36,7 +36,7 @@ struct ButlerSuggestionActions: View {
     let suggestion: ButlerSuggestion
     var showIncorrect = false
     var finished: () -> Void = {}
-    @State private var correcting = false
+    var correct: () -> Void = {}
     var body: some View {
         ChipFlow {
             Button(suggestion.action.title) { if store.answerSuggestion(suggestion, .accept) { finished() } }
@@ -46,12 +46,9 @@ struct ButlerSuggestionActions: View {
                     .buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("butlerAINever")
             }
             if showIncorrect {
-                Button("说得不对") { correcting = true }.buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("butlerAIIncorrect")
+                Button("说得不对", action: correct).buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("butlerAIIncorrect")
             }
-        }.accessibilityElement(children: .contain).sheet(isPresented: $correcting) {
-            ButlerSuggestionCorrection(suggestion: suggestion) { correcting = false; finished() }
-                .environment(store).appErrors().yubaiSheetBackground()
-        }
+        }.accessibilityElement(children: .contain)
     }
 }
 
@@ -59,6 +56,8 @@ struct ButlerSuggestionEvidence: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let suggestionID: UUID
+    @State private var correcting: ButlerSuggestion?
+    @State private var correctionSaved = false
     private var suggestion: ButlerSuggestion? {
         store.current.butlerAI?.suggestions.first {
             $0.id == suggestionID && $0.answeredAt == nil && ButlerSuggestionVerifier.verify($0, in: store.current, now: store.financialNow)
@@ -91,18 +90,25 @@ struct ButlerSuggestionEvidence: View {
             } else {
                 EmptyState("doc.questionmark", unavailableTitle, action: "返回", onAction: { dismiss() })
             }
-        }.safeAreaInset(edge: .bottom) {
+        }.fixedBottomBar() {
             if let suggestion {
-                ButlerSuggestionActions(suggestion: suggestion, showIncorrect: true, finished: { dismiss() })
+                ButlerSuggestionActions(suggestion: suggestion, showIncorrect: true, finished: { dismiss() }, correct: { correcting = suggestion })
                     .padding(YubaiSpace.insetPage).frame(maxWidth: .infinity, alignment: .leading).background(YubaiColor.canvas)
             }
         }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("为什么这么说").yubaiNavigation()
             .accessibilityElement(children: .contain).accessibilityIdentifier("butlerAIEvidencePage")
+            .sheet(item: $correcting, onDismiss: {
+                if correctionSaved { correctionSaved = false; dismiss() }
+            }) { suggestion in
+                ButlerSuggestionCorrection(suggestion: suggestion) { correctionSaved = true; correcting = nil }
+                    .environment(store).appErrors().yubaiSheetBackground()
+            }
     }
 }
 
 private struct ButlerEvidenceEntries: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
     let suggestion: ButlerSuggestion
     var all = false
     private var rows: [Entry] {
@@ -129,11 +135,20 @@ private struct ButlerEvidenceEntries: View {
         }.accessibilityElement(children: .contain).accessibilityIdentifier("butlerEvidenceEntries")
     }
     private func row(_ entry: Entry) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.space8) { date(entry); title(entry); amount(entry) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                date(entry)
-                HStack(spacing: YubaiSpace.space8) { title(entry); amount(entry) }
+        Group {
+            if textSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                    date(entry); title(entry)
+                    amount(entry).frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: YubaiSpace.space8) { date(entry); title(entry); amount(entry).fixedSize() }
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                        date(entry)
+                        HStack(spacing: YubaiSpace.space8) { title(entry); amount(entry).fixedSize() }
+                    }
+                }
             }
         }.padding(.vertical, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
     }

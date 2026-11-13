@@ -167,14 +167,18 @@ struct SavingsView: View {
 }
 
 enum SavingsAmountField: String, Identifiable { case fixed, target, share; var id: String { rawValue } }
-private struct SavingsChoiceStyle: ButtonStyle {
+private struct SavingsChoiceStyle: ViewportButtonStyle {
+    var selected: Bool
+    var feedback: SavingsChoiceFeedback { SavingsChoiceFeedback(selected: selected) }
+}
+private struct SavingsChoiceFeedback: ButtonStyle {
     var selected: Bool
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
             .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
             .padding(.horizontal, YubaiSpace.space20).frame(minHeight: YubaiSize.tapMin)
             .background(selected ? YubaiColor.label : YubaiColor.raised, in: Capsule())
-            .contentShape(Capsule()).opacity(configuration.isPressed ? 0.7 : 1)
+            .yubaiHitTarget().contentShape(Capsule()).opacity(configuration.isPressed ? 0.7 : 1)
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

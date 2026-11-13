@@ -322,7 +322,7 @@ private struct CloudSendLogDetailView: View {
                     InlineNote(text: hidden ? "这次没有成功" : group.failureReasons.joined(separator: "；"), style: .attention)
                 }
             }
-        }.safeAreaInset(edge: .bottom) {
+        }.fixedBottomBar() {
             if !removed {
                 HStack(spacing: YubaiSpace.gapGroup) {
                     Button("看原文") { rawFocus = nil; raw = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewCloudLogRaw")

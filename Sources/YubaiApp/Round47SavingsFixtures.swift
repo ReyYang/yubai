@@ -4,7 +4,7 @@ import YubaiCore
 
 extension UITestSupport {
     static let savings47Scripts: Set<String> = [
-        "v47-spend", "v47-spend-over", "v47-spend-zero", "v47-savings", "v47-savings-hard", "v47-savings-no-floor",
+        "v47-spend", "v47-spend-over", "v47-spend-zero", "v47-spend-no-salary", "v47-savings", "v47-savings-hard", "v47-savings-no-floor",
         "v47-records", "v47-topup", "v47-topup-queue", "v47-toast-short", "v47-toast-long"
     ]
     static func savings47Ledger(_ script: String, now: Date) throws -> Ledger {
@@ -38,6 +38,10 @@ extension UITestSupport {
         value.wishlist = [headphones, camera]
         if script == "v47-spend-zero" {
             value.plans = [salary]; value.entries = [income]; value.savingRule = nil; value.fixedSavings = 0; value.profile.floorAmount = nil
+        }
+        if script == "v47-spend-no-salary" {
+            value.entries[0].title = "收入"; value.entries[0].category = "其他收入"
+            value.entries[0].planID = nil; value.entries[0].occurrence = nil
         }
         if script == "v47-spend-over" {
             var extra = Entry(date: now, amount: 200_000, accountID: bank.id, title: "旅行", category: "旅行"); extra.id = galleryID(471150)

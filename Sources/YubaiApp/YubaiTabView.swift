@@ -20,9 +20,9 @@ struct YubaiTabView: View {
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
                 .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity)
         }.rootScrollContentMargins(for: .yubai, reservesNavigation: false).rootTabScroll(.yubai)
-            .rootPageHeader { RootHeader(title: "余白") }
             .scrollDismissesKeyboard(.interactively)
-            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { askArea }
+            .fixedBottomBar() { askArea }
+            .rootPageHeader { RootHeader(title: "余白") }
             .amountPrivacy(store.preferences.hideAmounts)
             .navigationTitle("余白").yubaiNavigation()
             #if os(iOS)
