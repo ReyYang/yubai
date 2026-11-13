@@ -42,9 +42,9 @@ struct WhereView: View {
     }
     private func charges(_ value: SavingOpportunities) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-            HStack {
+            AdaptiveValueRow {
                 heading("每月都在扣")
-                Spacer(minLength: YubaiSpace.space8)
+            } value: {
                 AmountLabel(cents: value.chargesTotal, hide: hide, role: .summary, ink: YubaiColor.labelSecondary)
             }
             CardRows(value.charges) { charge in
@@ -80,9 +80,10 @@ struct WhereView: View {
         }
     }
     private func comparisonRow(_ row: UsualSpending, more: Bool) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.space8) { comparisonTitle(row); comparisonAmount(row, more: more) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) { comparisonTitle(row); comparisonAmount(row, more: more) }
+        AdaptiveValueRow {
+            comparisonTitle(row)
+        } value: {
+            comparisonAmount(row, more: more)
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private func comparisonTitle(_ row: UsualSpending) -> some View {
@@ -92,12 +93,13 @@ struct WhereView: View {
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private func comparisonAmount(_ row: UsualSpending, more: Bool) -> some View {
-        HStack(spacing: YubaiSpace.space8) {
+        AdaptiveValueRow(spreadsValue: false) {
             Text((more ? "多 " : "少 ") + amount2(abs(row.difference), hide: hide))
-                .yubaiFont(YubaiFont.caption, weight: .semibold).lineLimit(1).minimumScaleFactor(0.5)
+                .yubaiFont(YubaiFont.caption, weight: .semibold).fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space2)
                 .foregroundStyle(more ? YubaiColor.amberInk : YubaiColor.brandInk)
                 .background(more ? YubaiColor.amberTint : YubaiColor.brandTint, in: Capsule())
+        } value: {
             AmountLabel(cents: row.amount, hide: hide)
         }
     }

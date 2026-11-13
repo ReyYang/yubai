@@ -929,6 +929,8 @@ struct RootView: View {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Namespace private var motionNamespace
     @State private var tabPaths: [Destination: NavigationPath] = [:]
+    @State private var toastHeight = CGFloat.zero
+    private var hasToast: Bool { !store.locked && (store.unsortedUndo != nil || store.toast != nil) }
     #if os(iOS)
     @State private var keyboardVisible = false
     @State private var quickMenuShown = false
@@ -946,7 +948,8 @@ struct RootView: View {
             else if let failure = store.loadFailure { recoveryView(failure) }
             else { mainContent }
         }
-        .sheet(item: $store.sheet) { sheet in
+        .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
+        .sheet(item: $store.sheet, onDismiss: { store.finishEntrySaveMotion(); store.homeEntrySession = false }) { sheet in
             NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brandInk)
                 .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
                 .yubaiZoomDestination(store.sheetSource ?? sheet.motionSource)
@@ -956,7 +959,7 @@ struct RootView: View {
                 .frame(minWidth: YubaiSize.sheetMinimumWidth, idealWidth: YubaiSize.sheetIdealWidth, minHeight: YubaiSize.sheetMinimumHeight, idealHeight: YubaiSize.sheetIdealHeight)
                 #endif
         }
-        .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).background { PaperCanvas() }
+        .yubaiFont(YubaiFont.body).buttonStyle(TextLinkStyle()).toggleStyle(RowToggleStyle()).foregroundStyle(YubaiColor.label).background { PaperCanvas() }
         .environment(\.yubaiZoomNamespace, motionNamespace)
         .appErrors()
         .overlay(alignment: .bottom) {
@@ -965,6 +968,7 @@ struct RootView: View {
                     if store.unsortedUndo?.id == notice.id { store.unsortedUndo = nil }
                 }, messageIdentifier: "unsortedUndoMessage", undoIdentifier: "quickSortUndo")
                     .id(notice.id)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toastHeight = $0 }
                     #if os(iOS)
                     .padding(.bottom, toastBottomPadding)
                     #else
@@ -973,6 +977,7 @@ struct RootView: View {
             } else if !store.locked, let toast = store.toast {
                 Toast(text: HomeButler.privacyText(toast, hidden: store.preferences.hideAmounts), onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(store.toastRevision)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toastHeight = $0 }
                     #if os(iOS)
                     .padding(.bottom, toastBottomPadding)
                     #else
@@ -984,15 +989,15 @@ struct RootView: View {
         #if DEBUG && targetEnvironment(simulator)
         .task {
             if UITestSupport.script?.hasPrefix("v47-toast-") == true || (UITestSupport.script == "gallery" && ProcessInfo.processInfo.environment["YUBAI_GALLERY_TOAST"] == "1") {
+                guard ProcessInfo.processInfo.environment["YUBAI_UI_TEST_TOAST_ON_RETURN"] != "1" else { return }
                 // A synthetic, nonfinancial undo exercises the real global toast.
-                if store.update("截图控件", entryMotion: false, showToast: false, { $0.preferences.profileColdStartDone.toggle() }) {
-                    store.toast = UITestSupport.script == "v47-toast-short" ? "已删除 · 午饭 28.00" : "已删除 · 为了搬家以后和家人朋友一起长期使用而认真挑选的生活用品 2 笔"
-                }
+                showScriptedToast()
             }
         }
         #endif
-        .onChange(of: store.pendingEntrySave) { _, pending in if pending { store.finishEntrySaveMotion() } }
-        .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil; store.finishEntrySaveMotion(); store.homeEntrySession = false } }
+        .onChange(of: store.pendingEntrySave) { _, pending in if pending && store.sheet == nil { store.finishEntrySaveMotion() } }
+        .onChange(of: hasToast) { _, showing in if !showing { toastHeight = 0 } }
+        .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil } }
         #if os(iOS)
         .sensoryFeedback(.success, trigger: store.entrySaveTrigger)
         .sensoryFeedback(.impact(weight: .medium), trigger: store.entryDeleteTrigger)
@@ -1084,6 +1089,13 @@ struct RootView: View {
         #endif
     }
     #if os(iOS)
+    #if DEBUG && targetEnvironment(simulator)
+    private func showScriptedToast() {
+        if store.update("截图控件", entryMotion: false, showToast: false, { $0.preferences.profileColdStartDone.toggle() }) {
+            store.toast = UITestSupport.script == "v47-toast-short" ? "已删除 · 午饭 28.00" : "已删除 · 为了搬家以后和家人朋友一起长期使用而认真挑选的生活用品 2 笔"
+        }
+    }
+    #endif
     @ViewBuilder private var quickMenuScrim: some View {
         if quickMenuShown && store.sheet == nil {
             Color.black.opacity(0.001).ignoresSafeArea().contentShape(Rectangle())
@@ -1093,9 +1105,11 @@ struct RootView: View {
     }
     @ViewBuilder private var tabBarOverlay: some View {
         if !tabBarHidden && store.sheet == nil && !store.pickingInsightDates {
-            VStack(alignment: .center, spacing: YubaiSpace.gapGroup) {
+            ZStack(alignment: .bottom) {
                 if quickMenuShown {
                     QuickRepeatMenu { quickMenuShown = false }
+                        .padding(.bottom, YubaiSize.rootBottomPadding(for: store.destination))
+                        .zIndex(1)
                         .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
                 }
                 tabBar
@@ -1106,7 +1120,12 @@ struct RootView: View {
     }
     private var tabBar: some View {
         FloatingTabBar(select: selectTab, add: addEntry, quick: showQuickMenu)
-            .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
+            #if DEBUG && targetEnvironment(simulator)
+            .onAppear {
+                if ProcessInfo.processInfo.environment["YUBAI_UI_TEST_TOAST_ON_RETURN"] == "1",
+                   tabPaths[store.destination]?.isEmpty == true { showScriptedToast() }
+            }
+            #endif
     }
     private func selectTab(_ selected: Destination) {
         quickMenuShown = false
@@ -1286,7 +1305,7 @@ private struct LedgerPrivacyCover: View {
 }
 
 #if os(iOS)
-/// 三个标签和主页正中的记账宽钮。底栏不随动态字号放大（固定 `.large`），改用大字号预览（Large Content Viewer）。
+/// 三个标签和主页正中的记账宽钮；文字共同放大到 xxxLarge，并提供大字号预览。
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.yubaiReduceMotion) private var reduceMotion
@@ -1303,9 +1322,12 @@ private struct FloatingTabBar: View {
             }.padding(.horizontal, YubaiSpace.space6).frame(width: YubaiSize.navigationCapsuleWidth, height: YubaiSize.floatingTabbarHeight)
                 .background { barSurface }
                 .overlay { Capsule().strokeBorder(YubaiColor.white.opacity(0.6), lineWidth: YubaiSize.separator).allowsHitTesting(false) }
-                .accessibilityElement(children: .contain).accessibilityIdentifier("navigationCapsule")
-        }.dynamicTypeSize(.large)
+                .accessibilityElement(children: .contain).accessibilityLabel("标签导航").accessibilityIdentifier("navigationCapsule")
+        }.frame(width: YubaiSize.navigationCapsuleWidth,
+                height: YubaiSize.rootBottomPadding(for: store.destination) - YubaiSpace.space12, alignment: .bottom)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
+            .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
     }
     private var barSurface: some View {
         Capsule().fill(reduceTransparency ? AnyShapeStyle(YubaiColor.raised) : AnyShapeStyle(.ultraThinMaterial))

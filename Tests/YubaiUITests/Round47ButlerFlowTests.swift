@@ -16,7 +16,7 @@ final class Round47ButlerFlowTests: XCTestCase {
         app.launch(); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
-        let target = element(id); XCTAssertTrue(target.waitForExistence(timeout: 8), id)
+        let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 8)), id)
         for _ in 0..<10 { if target.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(target.isHittable, id); target.tap()
     }
@@ -27,7 +27,7 @@ final class Round47ButlerFlowTests: XCTestCase {
     private func backToRoot() {
         for _ in 0..<8 {
             if element("mainNavigation").exists && element("mainNavigation").isHittable { return }
-            let custom = element("ledgerBack")
+            let custom = element("BackButton")
             if custom.exists { custom.tap() } else { app.navigationBars.buttons.firstMatch.tap() }
         }
     }
@@ -44,7 +44,7 @@ final class Round47ButlerFlowTests: XCTestCase {
         tap("butlerEvidenceEntry_" + String(format: "47000000-0000-0000-0000-%012d", 472101))
         XCTAssertTrue(element("entryDetailEdit").waitForExistence(timeout: 5))
         XCTAssertFalse(element("mainNavigation").exists)
-        element("ledgerBack").tap()
+        element("BackButton").tap()
         tap("butlerEvidenceMore")
         XCTAssertFalse(element("mainNavigation").exists)
         XCTAssertTrue(element("butlerEvidenceEntry_" + String(format: "47000000-0000-0000-0000-%012d", 472107)).waitForExistence(timeout: 5))
@@ -91,14 +91,16 @@ final class Round47ButlerFlowTests: XCTestCase {
     }
     func testToggleOffPersistsAndHidesSuggestions() {
         launch(); XCTAssertTrue(element("butlerSuggestionCard").waitForExistence(timeout: 10)); settings()
-        tap("aiFeature_butlerSuggestions"); backToRoot(); XCTAssertFalse(element("butlerSuggestionCard").exists)
+        tap("aiFeature_butlerSuggestions"); XCTAssertEqual(element("aiFeature_butlerSuggestions").value as? String, "0")
+        backToRoot(); XCTAssertFalse(element("butlerSuggestionCard").exists)
         app.terminate(); app.launch(); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
         settings(); XCTAssertEqual(element("aiFeature_butlerSuggestions").value as? String, "0")
     }
     func testDueTwoWeekReviewWorksOfflineWithoutNewRequest() {
         launch("v47-ai-review"); XCTAssertTrue(element("butlerAIReviewCard").waitForExistence(timeout: 10))
         tap("butlerAIReviewDone"); wait { !self.element("butlerAIReviewCard").exists }
-        settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0"))
+        settings(); XCTAssertEqual(element("cloudAIToggle").value as? String, "0")
+        XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0"))
     }
     func testLargestTextAndHiddenAmountsKeepEvidenceAndActionsReachable() {
         launch("v47-ai-hard", large: true, hidden: true); tap("butlerAIEvidence")

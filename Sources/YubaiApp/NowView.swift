@@ -35,6 +35,9 @@ struct NowView: View {
                     guard !store.receiptEntryIDs.isEmpty else { return }
                     do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
                     withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo("dailyReceipt", anchor: .bottom) }
+                    // Start the two seconds once the row has cleared both the
+                    // dismissal and the scroll animation, so it is seen in full.
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
                     do { try await Task.sleep(for: .seconds(2)) } catch { return }
                     if store.receiptFeedbackTrigger == trigger { store.receiptEntryIDs = [] }
                 }
@@ -219,7 +222,7 @@ private struct NowUpcomingRow: View {
             HStack(spacing: YubaiSpace.space8) {
                 if estimated && !hide { Text("约").yubaiFont(YubaiFont.amount) }
                 AmountLabel(cents: row.amount, hide: hide, sign: row.inflow ? .inflow : .outflow, ink: row.inflow ? YubaiColor.brandInk : YubaiColor.label)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .fixedSize(horizontal: false, vertical: true)
                 if checkable, let planID = row.planID {
                     BillCheck(planID: planID, occurrence: Dates.day(row.date)).frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin)
                 }

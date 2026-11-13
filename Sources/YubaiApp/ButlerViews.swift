@@ -81,7 +81,7 @@ struct ButlerEvidenceView: View {
     }
     private func factAmount(_ fact: CardFact) -> some View {
         Text(store.preferences.hideAmounts && fact.cents != nil ? "••••" : fact.value)
-            .yubaiFont(YubaiFont.amountSmall).lineLimit(1).minimumScaleFactor(0.7)
+            .yubaiFont(YubaiFont.amountSmall).fixedSize(horizontal: false, vertical: true)
     }
     private var genericPage: some View {
         Page {

@@ -144,7 +144,7 @@ struct AccountsView: View {
             .foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
     }
     private func accountRow(_ a: Account) -> some View {
-        let balance = AmountLabel(cents: store.balance(a), hide: store.preferences.hideAmounts, role: .amount).fixedSize(horizontal: true, vertical: false)
+        let balance = AmountLabel(cents: store.balance(a), hide: store.preferences.hideAmounts, role: .amount).fixedSize(horizontal: false, vertical: true)
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: YubaiSpace.gapGroup) { accountName(a); Spacer(minLength: YubaiSpace.space8); balance }
             VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); balance }

@@ -51,6 +51,9 @@ extension UITestSupport {
                 try ButlerSuggestions.answer(value.id, .accept, in: &ledger, now: trialStart)
             }
             ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
+            // This fixture exercises an offline due review, not a new cadence run.
+            // The saved review remains actionable with cloud AI switched off.
+            ledger.preferences.cloudAIEnabled = false
         }
         try ledger.validate(); return ledger
     }

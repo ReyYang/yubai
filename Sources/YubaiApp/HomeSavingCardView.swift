@@ -15,10 +15,10 @@ struct HomeSavingCardView: View {
                         .background(YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
                     if facts.started {
                         VStack(alignment: .leading, spacing: YubaiSpace.space6) {
-                            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                            AdaptiveValueRow {
                                 Text("存下了").yubaiFont(YubaiFont.rowTitle).fixedSize()
-                                Spacer(minLength: YubaiSpace.none)
-                                AmountLabel(cents: facts.total, hide: hide, role: .summary).layoutPriority(1)
+                            } value: {
+                                AmountLabel(cents: facts.total, hide: hide, role: .summary)
                             }
                             secondLine
                         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -51,23 +51,24 @@ struct HomeSavingCardView: View {
         switch facts.state {
         case let .wish(_, title, shortfall, progress):
             VStack(spacing: YubaiSpace.space6) {
-                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                AdaptiveValueRow {
                     Text(title).yubaiFont(YubaiFont.callout).lineLimit(1).truncationMode(.tail).accessibilityIdentifier("truncatableName")
-                    Spacer(minLength: YubaiSpace.none)
+                } value: {
                     if shortfall > 0 {
-                        HStack(spacing: YubaiSpace.space4) {
+                        AdaptiveValueRow(spreadsValue: false) {
                             Text("还差").yubaiFont(YubaiFont.callout).fixedSize()
-                            AmountLabel(cents: shortfall, hide: hide, role: .small, ink: YubaiColor.labelSecondary).fixedSize()
+                        } value: {
+                            AmountLabel(cents: shortfall, hide: hide, role: .small, ink: YubaiColor.labelSecondary)
                         }.layoutPriority(1).foregroundStyle(YubaiColor.labelSecondary)
                     } else { Text("够了").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).fixedSize() }
                 }
                 ProgressLine(value: hide ? 0 : progress, tint: YubaiColor.brand, track: YubaiColor.card, height: YubaiSpace.space4).accessibilityHidden(true)
             }
         case .monthly(let amount):
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+            AdaptiveValueRow {
                 Text("每月先存").yubaiFont(YubaiFont.callout).fixedSize()
-                Spacer(minLength: YubaiSpace.none)
-                AmountLabel(cents: amount, hide: hide, role: .small, ink: YubaiColor.labelSecondary).fixedSize()
+            } value: {
+                AmountLabel(cents: amount, hide: hide, role: .small, ink: YubaiColor.labelSecondary)
             }.foregroundStyle(YubaiColor.labelSecondary)
         case .notStarted: EmptyView()
         }

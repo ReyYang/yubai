@@ -51,8 +51,9 @@ struct SavingTabView: View {
             Text("存下了").yubaiFont(YubaiFont.cardTitle)
             AmountLabel(cents: overview.total, hide: hide, role: .hero).accessibilityIdentifier("reserveTotal")
             if let change = monthlyIncrease, store.current.savingRule != nil || overview.total != 0 {
-                HStack(spacing: YubaiSpace.space4) {
+                AdaptiveValueRow(spreadsValue: false) {
                     Text("这个月").yubaiFont(YubaiFont.callout)
+                } value: {
                     AmountLabel(cents: change, hide: hide, role: .small, sign: change >= 0 ? .inflow : .outflow, ink: YubaiColor.brandInk)
                 }.foregroundStyle(YubaiColor.brandInk).accessibilityElement(children: .contain).accessibilityIdentifier("savingMonthlyIncrease")
             }
@@ -103,10 +104,10 @@ struct SavingTabView: View {
                     Text("心愿").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
                         .yubaiHitTarget(alignment: .leading)
                 }
-                    .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openWishlist")
+                    .buttonStyle(TextLinkStyle(alignment: .leading)).accessibilityIdentifier("openWishlist")
                 Spacer(minLength: YubaiSpace.space8)
                 Button { addingWish = true } label: { Label("添一个", systemImage: "chevron.right").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk) }
-                    .buttonStyle(PressButtonStyle()).yubaiHitTarget().accessibilityIdentifier("addSavingWish")
+                    .buttonStyle(TextLinkStyle()).accessibilityIdentifier("addSavingWish")
             }.padding(.horizontal, YubaiSpace.space4)
             if !wishes.isEmpty { CardRows(wishes) { wish in
                 TabNavigationLink(.savingWish(wish.id)) { WishlistView(focusedWishID: wish.id) } label: { wishRow(wish) }
@@ -116,9 +117,10 @@ struct SavingTabView: View {
     }
     private func wishRow(_ wish: WishItem) -> some View {
         return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: YubaiSpace.space8) { Text(wish.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1); Spacer(minLength: YubaiSpace.space8); AmountLabel(cents: wish.amount, hide: hide) }
-                VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(wish.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1); AmountLabel(cents: wish.amount, hide: hide) }
+            AdaptiveValueRow {
+                Text(wish.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+            } value: {
+                AmountLabel(cents: wish.amount, hide: hide)
             }
             if let funding = fundingByWish[wish.id] {
                 if funding.shortfall > 0 && !hide { ProgressLine(value: funding.progress, tint: YubaiColor.brand) }
@@ -139,7 +141,7 @@ struct SavingTabView: View {
                 if let date = funding.enoughOn, let monthly = funding.monthly {
                     Text("· 照每月存").yubaiFont(YubaiFont.callout)
                     fundingAmount(monthly)
-                    Text("，" + FixedFlowPresentation.monthDay(date) + " 够").yubaiFont(YubaiFont.callout).dynamicTypeSize(...DynamicTypeSize.xxxLarge).fixedSize()
+                    Text("，" + FixedFlowPresentation.monthDay(date) + " 够").yubaiFont(YubaiFont.callout).fixedSize(horizontal: false, vertical: true)
                 }
             }.foregroundStyle(YubaiColor.brandInk)
         }
@@ -182,9 +184,18 @@ struct SavingTabView: View {
         return value + " · " + (store.funds.cycleIsPayday ? "发工资那天" : "每月 1 号")
     }
     private func navigationRow(_ title: String, value: String) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.space8) { Text(title).yubaiFont(YubaiFont.row).fixedSize(); Spacer(minLength: YubaiSpace.space8); Text(value).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); chevron }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(title).yubaiFont(YubaiFont.row); HStack { Text(value).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Spacer(); chevron } }
+        HStack(spacing: YubaiSpace.space8) {
+            if value.isEmpty {
+                Text(title).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                AdaptiveValueRow {
+                    Text(title).yubaiFont(YubaiFont.row)
+                } value: {
+                    Text(value).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            chevron
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
     private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }

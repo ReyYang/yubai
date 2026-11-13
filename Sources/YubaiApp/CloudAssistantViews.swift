@@ -536,7 +536,7 @@ private struct CloudLogRawGroups: View {
                     }
                 }
                 if visibleCount < groups.count {
-                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
+                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(TextLinkStyle(alignment: .leading))
                 }
             }
         }
@@ -555,7 +555,7 @@ private struct CloudLogRawTree: View {
                 CloudLogRawFieldRow(field: field).padding(.vertical, YubaiSpace.space4)
             }
             if visibleCount < fields.count {
-                Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
+                Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(TextLinkStyle(alignment: .leading))
             }
         }
     }
@@ -618,7 +618,7 @@ private struct CloudLogRawArray: View {
                     }
                 }
                 if visibleCount < values.count {
-                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
+                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(TextLinkStyle(alignment: .leading))
                 }
             }
         }

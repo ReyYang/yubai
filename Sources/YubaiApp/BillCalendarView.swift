@@ -52,7 +52,7 @@ struct FixedFlowsView: View {
             .toolbar { ToolbarItem(placement: .primaryAction) {
                 Button { store.sheetSource = nil; store.sheet = .addPlan } label: {
                     Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
-                }.accessibilityLabel("加一个账单").accessibilityIdentifier("addFixedFlow")
+                }.buttonStyle(TextLinkStyle()).accessibilityLabel("加一个账单").accessibilityIdentifier("addFixedFlow")
             } }
             .sheet(item: $editingRate) { currency in
                 NavigationStack { BillRateEditor(currency: currency) }.environment(store).appErrors().yubaiSheetBackground()
@@ -258,15 +258,15 @@ struct BillCalendarRow: View {
         if let plan, plan.currency != .cny {
             VStack(alignment: .trailing, spacing: YubaiSpace.space2) {
                 Text(plan.currency.amountText(plan.amount, hidden: store.preferences.hideAmounts)).yubaiFont(YubaiFont.amount)
-                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.5)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text((row.state == .paid ? "实付 ¥" : "约 ¥") + amount2(row.amount, hide: store.preferences.hideAmounts))
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.5)
+                    .fixedSize(horizontal: false, vertical: true)
                 if row.state != .paid, FixedFlows.lastActual(planID: plan.id, in: store.current, now: store.financialNow) != nil {
                     Text("上次实付").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }
-        } else { AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts, role: .amount).fixedSize() }
+        } else { AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts, role: .amount).fixedSize(horizontal: false, vertical: true) }
     }
 }
 
@@ -302,7 +302,7 @@ struct YearlyBillsStrip: View {
     private var monthly: some View {
         let value = YearlyBillReserves.rows(in: store.current, now: store.financialNow).reduce(Int64(0)) { $0 + $1.monthly }
         return Text("每月先留 " + amount2(value, hide: store.preferences.hideAmounts)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.5)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -322,10 +322,10 @@ struct YearlyBillsView: View {
                         Text(plan.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                         if let row = rows.first(where: { $0.id == plan.id }) {
                             Text("每月先留 " + amount2(row.monthly, hide: store.preferences.hideAmounts)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                                .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.5)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }.frame(maxWidth: .infinity, minHeight: YubaiSize.sourceRow, alignment: .leading)
-                }.buttonStyle(PressButtonStyle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("yearlyBill_" + plan.id.uuidString)
             }
         }.navigationTitle("一年付一次的").yubaiNavigation().accessibilityIdentifier("yearlyBillsPage")
     }

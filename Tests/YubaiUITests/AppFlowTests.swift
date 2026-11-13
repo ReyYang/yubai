@@ -148,7 +148,7 @@ final class AppFlowTests: XCTestCase {
             XCTAssertFalse(target.label.contains("…"))
         }
         tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertTrue(app.buttons["ledgerBack"].waitForExistence(timeout: 5) || app.navigationBars.buttons.firstMatch.exists)
+        XCTAssertTrue(app.buttons["BackButton"].waitForExistence(timeout: 5) || app.navigationBars.buttons.firstMatch.exists)
         dragBack(app, to: 0.95)
         XCTAssertTrue(app.buttons["addEntry"].waitForExistence(timeout: 5))
     }
@@ -756,7 +756,7 @@ final class AppFlowTests: XCTestCase {
     private func backToRoot(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         for _ in 0..<8 {
             if app.otherElements["mainNavigation"].exists && app.otherElements["mainNavigation"].isHittable { break }
-            let custom = app.buttons["ledgerBack"]
+            let custom = app.buttons["BackButton"]
             if custom.exists && custom.isHittable { tap(custom, in: app, file: file, line: line) }
             else { tap(app.navigationBars.buttons.firstMatch, in: app, file: file, line: line) }
         }

@@ -39,6 +39,8 @@ def violations(name, source):
     for old in OLD_NAMES:
         reject(re.escape(old), 'obsolete interface name', comments)
     reject(r'CashTimeline|PaceChart|LineMark|AreaMark|AnswerChart|ShowChartTool|show_chart|import\s+Charts', 'deleted line-chart code')
+    reject(r'\.buttonStyle\((?:PressButtonStyle|TextLinkStyle)\([^)]*\)\)\s*\.yubaiHitTarget\(',
+           'external link hit target: put it inside the label or use TextLinkStyle')
     if name == SHARED:
         return found
     reject(r'\b(?:TextField|SecureField|TextEditor|DatePicker)\s*\(', 'raw input: use a DS control')
@@ -62,7 +64,8 @@ def self_test():
                'Button { back() } label: { Image(systemName: "chevron.left") }',
                'struct HandmadeToast: View {}', 'VStack(spacing: 12) {}',
                'Text("x").frame(height: 52)', 'Text("x").padding(.horizontal, 20)',
-               'Text("x").frame(height: large ? 48 : 44)']
+               'Text("x").frame(height: large ? 48 : 44)',
+               'Button("全部") {}.buttonStyle(PressButtonStyle()).yubaiHitTarget()']
     for sample in invalid:
         assert violations('Page.swift', sample), sample
     assert not violations('Page.swift', '// TextField("sample", text: $name)\nVStack(spacing: YubaiSpace.gapGroup) { CardTextFieldRow(title: "名字", text: $name) }')
@@ -86,7 +89,7 @@ def main():
                 errors.append(str(path.relative_to(ROOT)) + ': deleted chart reference')
     ds = (ROOT / 'Sources/YubaiApp' / SHARED).read_text()
     app_source = '\n'.join(p.read_text() for p in (ROOT / 'Sources/YubaiApp').glob('*.swift'))
-    for symbol in ('CardTextFieldRow', 'MoneyInputRow', 'SearchInput', 'ChatInputBar', 'Toast', 'ManualSheetHeader', 'HeaderIconButton', 'ConfirmationSheet', 'AmountKeypad', 'EntryCalendarView', 'EntryDateChip', 'Segmented', 'CategoryChoiceChip', 'EmptyState', 'DestructiveButtonStyle'):
+    for symbol in ('CardTextFieldRow', 'MoneyInputRow', 'SearchInput', 'ChatInputBar', 'Toast', 'ManualSheetHeader', 'HeaderIconButton', 'ConfirmationSheet', 'KeypadSheet', 'AmountKeypad', 'EntryCalendarView', 'EntryDateChip', 'Segmented', 'CategoryChoiceChip', 'EmptyState', 'DestructiveButtonStyle', 'TextLinkStyle', 'RowToggleStyle', 'AdaptiveValueRow'):
         if len(re.findall(r'\bstruct ' + symbol + r'\b', ds)) != 1 or len(re.findall(r'\bstruct ' + symbol + r'\b', app_source)) != 1:
             errors.append('Expected one DS definition: ' + symbol)
     # Names also occur in accessibility fixtures and documentation; forbid stale

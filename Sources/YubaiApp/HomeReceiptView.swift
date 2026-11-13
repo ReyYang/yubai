@@ -26,7 +26,7 @@ struct HomeReceiptView: View {
                     Text("账本")
                     Image(systemName: "chevron.right").accessibilityHidden(true)
                 }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
-            }.buttonStyle(PressButtonStyle()).yubaiHitTarget(alignment: .trailing).accessibilityIdentifier("receiptOpenLedger")
+            }.buttonStyle(TextLinkStyle(alignment: .trailing)).accessibilityIdentifier("receiptOpenLedger")
         }.padding(.horizontal, YubaiSpace.space4)
     }
     private var paper: some View {
@@ -40,7 +40,7 @@ struct HomeReceiptView: View {
                         Button("还有 \(receipt.omittedCount) 笔", action: openToday)
                             .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
                             .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
-                            .buttonStyle(PressButtonStyle()).accessibilityIdentifier("receiptMoreEntries")
+                            .buttonStyle(TextLinkStyle(alignment: .leading)).accessibilityIdentifier("receiptMoreEntries")
                     }
                     VStack(spacing: YubaiSpace.none) {
                         ForEach(receipt.entries) { entry in line(entry) }
@@ -100,11 +100,20 @@ struct HomeReceiptView: View {
     }
     private var total: some View {
         VStack(spacing: YubaiSpace.space4) {
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+            ViewThatFits(in: .horizontal) {
+              HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                 Text("合计").yubaiFont(YubaiFont.row, weight: .semibold).fixedSize()
                 Spacer(minLength: YubaiSpace.none)
-                amount(receipt.total, total: true).accessibilityIdentifier("receiptTotal")
+                amount(receipt.total, total: true).fixedSize()
+              }
+              VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text("合计").yubaiFont(YubaiFont.row, weight: .semibold)
+                amount(receipt.total, total: true).frame(maxWidth: .infinity, alignment: .trailing)
+              }
             }.frame(minHeight: YubaiSize.receiptRowHeight)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(hide ? "金额已隐藏" : AmountLabel.text(receipt.total)).accessibilityIdentifier("receiptTotal")
+                .contentViewportTarget()
             Rectangle().fill(YubaiColor.label.opacity(0.4)).frame(height: YubaiSize.separator)
             Rectangle().fill(YubaiColor.label.opacity(0.4)).frame(height: YubaiSize.separator)
         }
@@ -143,7 +152,7 @@ struct HomeReceiptView: View {
     }
     private func amount(_ cents: Int64, total: Bool = false) -> some View {
         Text(hide ? "••••" : AmountLabel.text(cents)).yubaiFont(total ? YubaiFont.receiptTotal : YubaiFont.receiptAmount)
-            .monospacedDigit().dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.35)
+            .monospacedDigit().fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(hide ? "金额已隐藏" : AmountLabel.text(cents))
     }
     private func entryAmount(_ entry: Entry) -> some View { amount(entry.nature == .refund ? -entry.amount : entry.amount) }

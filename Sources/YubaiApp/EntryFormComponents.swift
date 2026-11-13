@@ -460,7 +460,7 @@ struct EntryTransferCards: View {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                 Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 Text(account?.name ?? "选择账户").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(1)
-                Text(balance).yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1).minimumScaleFactor(0.4)
+                Text(balance).yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
             }.padding(YubaiSpace.gapGroup).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
                 .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
                 .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
@@ -486,7 +486,7 @@ struct EntryRecallList: View {
                         HStack(spacing: YubaiSpace.space8) {
                             Text(Classification.displayCategory(item.entry.category)).yubaiFont(YubaiFont.caption)
                                 .foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
-                            AmountLabel(cents: item.entry.amount, hide: store.preferences.hideAmounts, role: .summary).fixedSize()
+                            AmountLabel(cents: item.entry.amount, hide: store.preferences.hideAmounts, role: .summary).fixedSize(horizontal: false, vertical: true)
                         }
                     }.padding(.horizontal, YubaiSpace.gapGroup).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
                         .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
@@ -516,7 +516,7 @@ struct EntryAddedList: View {
                                 .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         HStack(spacing: YubaiSpace.space8) {
-                            AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .outflow).fixedSize()
+                            AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .outflow).fixedSize(horizontal: false, vertical: true)
                             Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                         }
                     }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())

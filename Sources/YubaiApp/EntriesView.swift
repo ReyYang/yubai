@@ -107,6 +107,7 @@ struct EntriesView: View {
             ForEach(EntryTimeline.Filter.allCases, id: \.self) { choice in
                 Button { filter = choice } label: {
                     Text(choice.rawValue).yubaiFont(YubaiFont.callout, weight: filter == choice ? .medium : .regular)
+                        .fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(filter == choice ? YubaiColor.canvas : YubaiColor.label)
                         .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.chipHeight)
                         .background(filter == choice ? YubaiColor.label : YubaiColor.raised, in: Capsule())
@@ -140,7 +141,7 @@ struct EntriesView: View {
             Text(left).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
                 .accessibilityIdentifier("activeEntryCount")
             Spacer(minLength: YubaiSpace.space8)
-            AmountLabel(cents: net, hide: hide, role: .summary).fixedSize().accessibilityIdentifier("entriesSearchTotal")
+            AmountLabel(cents: net, hide: hide, role: .summary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("entriesSearchTotal")
         }.padding(.horizontal, YubaiSpace.space4)
     }
     @ViewBuilder private var emptyRow: some View {
@@ -336,10 +337,10 @@ struct EntriesView: View {
         }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
     }
     private func monthSpending(_ group: EntryTimeline.Month, hide: Bool) -> some View {
-        HStack(spacing: YubaiSpace.space4) { Text("支出"); AmountLabel(cents: group.spending, hide: hide, role: .day, sign: .none) }.fixedSize()
+        AdaptiveValueRow(spreadsValue: false) { Text("支出") } value: { AmountLabel(cents: group.spending, hide: hide, role: .day, sign: .none) }
     }
     private func monthIncome(_ group: EntryTimeline.Month, hide: Bool) -> some View {
-        HStack(spacing: YubaiSpace.space4) { Text("收入"); AmountLabel(cents: group.income, hide: hide, role: .day, sign: .none, ink: YubaiColor.brandInk) }.fixedSize()
+        AdaptiveValueRow(spreadsValue: false) { Text("收入") } value: { AmountLabel(cents: group.income, hide: hide, role: .day, sign: .none, ink: YubaiColor.brandInk) }
     }
     private var cycleDivider: some View {
         let start = store.funds.cycleStart
@@ -388,7 +389,7 @@ struct LedgerEntryRow: View {
     var onSortCategory: () -> Void = {}
     var body: some View {
         entryButton
-            .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+            .buttonStyle(.plain).contentViewportTarget().accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .accessibilityValue(isFuture ? "未来" : "")
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.amberInk) }
@@ -427,7 +428,7 @@ struct LedgerEntryRow: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
             HStack(spacing: YubaiSpace.space8) {
                 Text(title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(isFuture ? YubaiColor.labelSecondary : YubaiColor.label)
-                    .lineLimit(1).truncationMode(.tail)
+                    .lineLimit(1).truncationMode(.tail).accessibilityIdentifier("truncatableName")
                 if isFuture {
                     Image(systemName: "calendar").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityLabel("未来")
                         .accessibilityIdentifier("futureEntry_" + entry.id.uuidString)
@@ -439,14 +440,14 @@ struct LedgerEntryRow: View {
             }
             if !subtitle.isEmpty {
                 Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    .lineLimit(1).truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var amountView: some View {
         AmountLabel(cents: entry.amount, hide: hideAmounts, sign: entry.inflow ? .inflow : .outflow,
                     ink: isFuture ? YubaiColor.labelSecondary : entry.inflow ? YubaiColor.brandInk : YubaiColor.label)
-            .fixedSize(horizontal: true, vertical: false)
+            .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
     }
     private var isFuture: Bool { savedEntry.map { $0.date > store.financialNow } ?? false }
     private var content: some View {

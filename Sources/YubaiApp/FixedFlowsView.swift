@@ -310,7 +310,7 @@ private struct BillEntryRow: View {
                 Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
             AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small, sign: outflow ? .outflow : .inflow,
-                        ink: outflow ? YubaiColor.label : YubaiColor.brandInk).fixedSize(horizontal: true, vertical: false)
+                        ink: outflow ? YubaiColor.label : YubaiColor.brandInk).fixedSize(horizontal: false, vertical: true)
         }.contentShape(Rectangle())
     }
 }
@@ -638,7 +638,7 @@ struct BillDetailView: View {
                 if !note.isEmpty { Text("· " + note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1) }
                 Spacer(minLength: YubaiSpace.space8)
                 AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small, sign: plan.inflow ? .inflow : .outflow)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(FixedFlowPresentation.monthDay(entry.date) + (note.isEmpty ? "" : " · " + note)).yubaiFont(YubaiFont.row)

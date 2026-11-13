@@ -210,6 +210,22 @@ final class Round47ButlerAITests: XCTestCase {
         XCTAssertTrue(HomeButler.queue(ledger, now: review.dueAt).contains(.suggestionReview(review)))
         XCTAssertThrowsError(try ButlerSuggestions.answer(id, .accept, in: &ledger, now: now))
     }
+    func testTurningOffSuggestionsHidesStoredCardsAndOfflineReviewStillWorks() throws {
+        var ledger = try queued()
+        let suggestion = try XCTUnwrap(ledger.butlerAI?.suggestions.first)
+        ledger.preferences.setAIEnabled(false, for: .butlerSuggestions)
+        XCTAssertFalse(HomeButler.queue(ledger, now: now).contains(.suggestion(suggestion)))
+        ledger.preferences.setAIEnabled(true, for: .butlerSuggestions)
+        XCTAssertTrue(HomeButler.queue(ledger, now: now).contains(.suggestion(suggestion)))
+        try ButlerSuggestions.answer(suggestion.id, .accept, in: &ledger, now: now)
+        let review = try XCTUnwrap(ledger.butlerAI?.reviews.first)
+        ledger.preferences.cloudAIEnabled = false
+        ledger = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(ledger))
+        XCTAssertTrue(HomeButler.queue(ledger, now: review.dueAt).contains(.suggestionReview(review)))
+        try ButlerSuggestions.answerReview(review.id, never: false, in: &ledger, now: review.dueAt)
+        XCTAssertFalse(HomeButler.queue(ledger, now: review.dueAt).contains(.suggestionReview(review)))
+        XCTAssertNotNil(ledger.butlerAI?.reviews.first?.answeredAt)
+    }
     func testNeverMeansPersistentTopicMuteAndNextDigestIncludesAnswer() throws {
         var ledger = try queued(); let id = ledger.butlerAI!.suggestions[0].id
         try ButlerSuggestions.answer(id, .never, in: &ledger, now: now)

@@ -19,7 +19,7 @@ final class Round47HomeFlowTests: XCTestCase {
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
     private func reveal(_ target: XCUIElement) {
-        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)))
         for _ in 0..<8 {
             if target.isHittable && target.frame.maxY < element("mainNavigation").frame.minY { break }
             let scroll = app.scrollViews.matching(identifier: "nowScroll").firstMatch
@@ -28,7 +28,7 @@ final class Round47HomeFlowTests: XCTestCase {
         }
     }
     private func tap(_ id: String) {
-        let target = element(id); XCTAssertTrue(target.waitForExistence(timeout: 5), id)
+        let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
         if !target.isHittable { reveal(target) }
         XCTAssertTrue(target.isHittable, id); target.tap()
     }
@@ -37,7 +37,7 @@ final class Round47HomeFlowTests: XCTestCase {
         tap("addEntry"); keys(amount)
         if yesterday { tap("entryDate_yesterday") }
         tap("entryCategory_餐饮"); tap("saveQuickEntry"); tap("cancelManualSheet")
-        XCTAssertTrue(element("addEntry").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("addEntry").exists || element("addEntry").waitForExistence(timeout: 5))
     }
     private func wait(_ predicate: @escaping () -> Bool, timeout: TimeInterval = 5) {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in predicate() }, object: nil)
@@ -99,7 +99,7 @@ final class Round47HomeFlowTests: XCTestCase {
     func testReceiptAddsWithoutToastHighlightsThenKeepsSwipeUndo() {
         launch("v47-receipt-normal"); add("18")
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' AND value == '已记下'")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 2))
+        XCTAssertTrue(row.exists || row.waitForExistence(timeout: 2))
         let identifier = row.identifier
         XCTAssertTrue(element("receiptTotal").label.contains("54.00")); XCTAssertFalse(element("toastMessage").exists)
         wait({ self.element(identifier).value as? String != "已记下" }, timeout: 4)
@@ -176,5 +176,26 @@ final class Round47HomeFlowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(field.frame.height, 44)
         XCTAssertLessThan(field.frame.maxY, capsule.minY)
         XCTAssertLessThanOrEqual(capsule.minY - field.frame.maxY, 32)
+    }
+    func testLastTodayRowReachedFromReceiptClearsTheCapsuleAtBothTextSizes() {
+        for large in [false, true] {
+            launch("v47-receipt-many", large: large)
+            reveal(element("receiptMoreEntries")); tap("receiptMoreEntries")
+            let last = element("ledgerEntry_" + id(470110))
+            for _ in 0..<12 {
+                if last.exists && last.isHittable { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(last.exists && last.isHittable)
+            let header = element("rootHeaderRegion").frame, capsule = element("navigationCapsule").frame
+            XCTAssertGreaterThanOrEqual(last.frame.minY, header.maxY)
+            XCTAssertLessThan(last.frame.maxY, capsule.minY)
+            for row in app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_'")).allElementsBoundByIndex {
+                if row.frame.minY < header.maxY || row.frame.maxY > capsule.minY {
+                    XCTAssertFalse(row.isHittable, row.identifier)
+                }
+            }
+            app.terminate()
+        }
     }
 }

@@ -35,8 +35,9 @@ struct NowCardButtonStyle: ButtonStyle {
         configuration.label.yubaiFont(YubaiFont.row, weight: primary ? .semibold : .regular).fixedSize(horizontal: false, vertical: true).padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.iconButton)
             .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
             .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
-            .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-            .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .yubaiHitTarget()
+            .contentViewportTarget()
+            .opacity(configuration.isPressed ? 0.75 : 1)
             .animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }

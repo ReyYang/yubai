@@ -44,7 +44,7 @@ struct SavedView: View {
                 Text(result.record.item).yubaiFont(YubaiFont.rowTitle, weight: .medium).lineLimit(1)
                 Text(detail(result)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            AmountLabel(cents: result.amount, hide: hide, role: .summary, ink: YubaiColor.brandInk).fixedSize()
+            AmountLabel(cents: result.amount, hide: hide, role: .summary, ink: YubaiColor.brandInk).fixedSize(horizontal: false, vertical: true)
         }.padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.rowDouble).accessibilityElement(children: .combine)
             .accessibilityIdentifier("butlerSaving_" + result.id)
     }

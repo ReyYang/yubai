@@ -31,7 +31,7 @@ struct WhereCategoryView: View {
             Text("这个周期").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                    AmountLabel(cents: amount, hide: hide, role: .input).fixedSize()
+                    AmountLabel(cents: amount, hide: hide, role: .input).fixedSize(horizontal: false, vertical: true)
                     if let previous { comparisonText(amount - previous) }
                 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -110,7 +110,7 @@ struct WhereCategoryView: View {
             HStack(spacing: YubaiSpace.space8) {
                 placeTitle(row)
                 Spacer(minLength: YubaiSpace.space8)
-                AmountLabel(cents: row.amount, hide: hide, sign: row.amount >= 0 ? .outflow : .inflow).fixedSize()
+                AmountLabel(cents: row.amount, hide: hide, sign: row.amount >= 0 ? .outflow : .inflow).fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 placeTitle(row)

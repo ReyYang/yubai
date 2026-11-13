@@ -95,7 +95,7 @@ struct BudgetView: View {
         HStack(spacing: YubaiSpace.gapGroup) {
             Text("没分的").yubaiFont(YubaiFont.row)
             Spacer(minLength: YubaiSpace.space8)
-            Text((over ? "多 " : "剩 ") + text).yubaiFont(YubaiFont.amountSummary).lineLimit(1).minimumScaleFactor(0.4)
+            Text((over ? "多 " : "剩 ") + text).yubaiFont(YubaiFont.amountSummary).fixedSize(horizontal: false, vertical: true)
         }.foregroundStyle(YubaiColor.labelSecondary).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
     }
     private func accept(_ suggested: [SpendingPart]) {

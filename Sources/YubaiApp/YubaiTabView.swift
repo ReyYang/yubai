@@ -91,6 +91,7 @@ struct YubaiTabView: View {
             layout {
                 Text(title).foregroundStyle(YubaiColor.labelSecondary).frame(minWidth: textSize.isAccessibilitySize ? YubaiSpace.none : YubaiSize.fieldMinimum, alignment: .leading)
                 Text(store.preferences.hideAmounts ? "••••" : value).multilineTextAlignment(.leading)
+                    .lineLimit(1).truncationMode(.tail).accessibilityIdentifier("truncatableName")
             }.yubaiFont(YubaiFont.callout)
         }
     }

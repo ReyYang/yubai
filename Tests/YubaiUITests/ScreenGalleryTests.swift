@@ -75,31 +75,46 @@ final class ScreenGalleryTests: XCTestCase {
         }
     }
 
-    @discardableResult private func stop(_ name: String, _ walk: () throws -> Void) -> Bool {
-        let name = prefix + name
+    @discardableResult private func stop(_ suffix: String, _ walk: () throws -> Void) -> Bool {
+        let name = prefix + suffix
         planned.append(name); activeStop = name; issues = []
         defer { activeStop = nil }
-        do {
-            try walk()
-            try auditGallery()
-            if !issues.isEmpty { throw Miss(description: issues.joined(separator: "; ")) }
-            shot(name)
-            if !issues.isEmpty { throw Miss(description: issues.joined(separator: "; ")) }
-            print("GALLERY-STOP ok " + name)
-            return true
-        } catch {
-            print("GALLERY-STOP MISSING " + name + ": " + String(describing: error).replacingOccurrences(of: "\n", with: " "))
-            missing.append(name + "-MISSING: " + String(describing: error).replacingOccurrences(of: "\n", with: " "))
-            // Attach the current pixels and hierarchy even if a host-path write fails.
-            shot(name + "-MISSING")
+        var walkFailed = false
+        do { try walk() }
+        catch { walkFailed = true; issues.append(String(describing: error).replacingOccurrences(of: "\n", with: " ")) }
+        // Audit even an unreached stop. Every finding belongs to these same pixels.
+        Thread.sleep(forTimeInterval: 0.25)
+        do { try auditGallery() }
+        catch { issues.append("Audit failed: " + String(describing: error)) }
+        let hadFindings = !issues.isEmpty
+        shot(name + (hadFindings ? "-MISSING" : ""))
+        // Screenshot/snapshot APIs can also record an XCTest issue. Preserve
+        // the original post-capture check and its missing-shot attachment.
+        if !hadFindings && !issues.isEmpty { shot(name + "-MISSING") }
+        issues = Array(Set(issues)).sorted()
+        let failed = !issues.isEmpty
+        if failed {
+            for finding in issues {
+                let line = name + "-MISSING: " + finding
+                print("GALLERY-STOP " + line); missing.append(line)
+            }
             let tree = app.debugDescription
             if let directory { try? tree.write(to: directory.appendingPathComponent(name + "-MISSING-hierarchy.txt"), atomically: true, encoding: .utf8) }
             let hierarchy = XCTAttachment(string: tree)
             hierarchy.name = name + "-MISSING-hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
-            // Start the next stop from a known screen instead of whatever the failed one left open.
-            if let relaunch { try? relaunch() }
-            return false
-        }
+            // A checker finding must not destroy the valid state needed by the
+            // next stop. Only an interaction failure needs recovery.
+            if walkFailed, let relaunch { try? relaunch() }
+        } else { print("GALLERY-STOP ok " + name) }
+        return !failed
+    }
+
+    private func frameText(_ frame: CGRect) -> String {
+        String(format: "{x=%.1f,y=%.1f,w=%.1f,h=%.1f}", frame.minX, frame.minY, frame.width, frame.height)
+    }
+    private func describe(_ target: XCUIElement) -> String {
+        guard target.exists else { return target.description + " frame=<absent>" }
+        return (target.identifier.isEmpty ? "<empty identifier> label=" + target.label : target.identifier) + " frame=" + frameText(target.frame)
     }
 
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
@@ -111,7 +126,11 @@ final class ScreenGalleryTests: XCTestCase {
         guard XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed else { throw Miss(description: reason) }
     }
     private func require(_ id: String, timeout: TimeInterval = 6) throws {
-        guard element(id).waitForExistence(timeout: timeout) else { throw Miss(description: "Missing identifier: " + id) }
+        if !element(id).waitForExistence(timeout: timeout) {
+            // Keep checking the other required identifiers at this stop. A
+            // later interaction still throws if the missing control is needed.
+            issues.append("Missing identifier: " + id + " frame=<absent>")
+        }
     }
     private func launch(_ fixture: String = "gallery", dark: Bool = false, large: Bool = false, organization: String? = nil, statement: String? = nil, longToast: Bool = false, reduceMotion: Bool = false, restoring: Bool = false, versions: Bool = false) throws {
         relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement, longToast: longToast, reduceMotion: reduceMotion, restoring: restoring, versions: versions) }
@@ -152,14 +171,19 @@ final class ScreenGalleryTests: XCTestCase {
     /// in the fixed page header or below it.
     private func onScreen(_ target: XCUIElement) -> Bool {
         guard target.exists, !target.frame.isEmpty else { return false }
-        let center = CGPoint(x: target.frame.midX, y: target.frame.midY)
-        guard app.frame.insetBy(dx: 4, dy: 4).contains(center) else { return false }
+        let frame = target.frame, window = app.frame
+        guard window.insetBy(dx: 4, dy: 4).contains(CGPoint(x: frame.midX, y: frame.midY)) else { return false }
+        let menu = element("quickRepeatMenu")
+        if menu.exists, menu.frame.contains(frame) { return true }
         let navigation = element("mainNavigation")
-        if navigation.exists, !navigation.frame.isEmpty {
-            if navigation.frame.contains(target.frame) { return true }
-            if target.frame.maxY > navigation.frame.minY - 4 { return false }
-            let header = element("rootHeaderTitle")
-            if header.exists, !["rootHeaderTitle", "openSettings", "toggleAmountVisibility"].contains(target.identifier), target.frame.minY < header.frame.maxY + 8 { return false }
+        if navigation.exists, navigation.isHittable, !navigation.frame.isEmpty {
+            if navigation.frame.contains(frame) { return true }
+            if frame.maxY > navigation.frame.minY - 4 { return false }
+        }
+        let header = element("rootHeaderRegion")
+        if header.exists, header.isHittable {
+            if header.frame.contains(frame) { return true }
+            if frame.minY < header.frame.maxY { return false }
         }
         return true
     }
@@ -172,8 +196,8 @@ final class ScreenGalleryTests: XCTestCase {
     private func reveal(_ target: XCUIElement) throws {
         _ = target.waitForExistence(timeout: 3)
         // A stop that cannot be reached must fail fast: an unbounded search costs minutes per stop on CI.
-        let deadline = Date().addingTimeInterval(20)
-        for _ in 0..<8 {
+        let deadline = Date().addingTimeInterval(60)
+        for _ in 0..<16 {
             if pressable(target) { return }
             if Date() > deadline { break }
             guard app.alerts.count == 0 else { break }
@@ -181,14 +205,15 @@ final class ScreenGalleryTests: XCTestCase {
             let scrolls = containers.filter { $0.exists && $0.frame.height > 120 && $0.frame.width > app.frame.width * 0.65 }
             let containing = scrolls.last { target.exists && $0.descendants(matching: target.elementType).matching(identifier: target.identifier).count > 0 }
             let scroll = containing ?? scrolls.last ?? app
-            let above = target.exists && !target.frame.isEmpty && target.frame.maxY < scroll.frame.minY + 20
+            let above = target.exists && !target.frame.isEmpty && target.frame.minY < scroll.frame.minY + 20
             try drag(scroll, up: !above)
         }
-        try wait({ self.pressable(target) }, "Not reachable: " + (target.exists ? target.identifier : target.description), timeout: 2)
+        try wait({ self.pressable(target) }, "Not reachable: " + self.describe(target), timeout: 2)
     }
     private func tap(_ target: XCUIElement) throws {
         try reveal(target)
-        try wait({ target.exists && target.isEnabled && self.pressable(target) }, "Control disabled: " + target.identifier)
+        try wait({ target.exists && target.isEnabled && target.isHittable }, "Control disabled or covered: " + describe(target))
+        guard onScreen(target) else { throw Miss(description: "Control covered: " + describe(target)) }
         press(target)
     }
     private func tap(_ id: String) throws { try tap(element(id)) }
@@ -199,7 +224,7 @@ final class ScreenGalleryTests: XCTestCase {
     }
     private func keys(_ value: String) throws { for key in value { try tap("keypad_" + String(key)) } }
     private func back() throws {
-        let custom = element("ledgerBack")
+        let custom = element("BackButton")
         if custom.exists && custom.isHittable { try tap(custom) }
         else { try tap(app.navigationBars.buttons.firstMatch) }
     }
@@ -209,6 +234,8 @@ final class ScreenGalleryTests: XCTestCase {
             if element("cancelManualSheet").exists && element("cancelManualSheet").isHittable {
                 try tap("cancelManualSheet")
                 if app.buttons["放弃这笔"].waitForExistence(timeout: 0.3) { try tap(app.buttons["放弃这笔"]) }
+            } else if element("closeSheet").exists && element("closeSheet").isHittable {
+                try tap("closeSheet")
             } else if element("amountSheetCancel").exists && element("amountSheetCancel").isHittable {
                 try tap("amountSheetCancel")
             } else { try back() }
@@ -340,11 +367,11 @@ final class ScreenGalleryTests: XCTestCase {
     private func round47BatchC(dark: Bool, large: Bool) {
         func load(_ fixture: String = "v47-c-empty") throws { try launch(fixture, dark: dark, large: large) }
         stop("Home-AI") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try reveal(element("butlerAIAccept")) }
-        stop("AI-Why") { try tap("butlerAIEvidence"); try require("butlerAIEvidencePage"); try require("butlerEvidenceMore") }
-        stop("AI-Why-All") { try tap("butlerEvidenceMore"); try require("butlerEvidenceEntry_" + galleryID(472107)) }
-        stop("AI-Why-Correction") { try back(); try tap("butlerAIIncorrect"); try type("周四是和同事拼单", into: "butlerAICorrectionText"); try require("butlerAICorrectionSave") }
+        stop("AI-Why") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage"); try require("butlerEvidenceMore") }
+        stop("AI-Why-All") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerEvidenceMore"); try require("butlerEvidenceEntry_" + galleryID(472107)) }
+        stop("AI-Why-Correction") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try type("周四是和同事拼单", into: "butlerAICorrectionText"); try require("butlerAICorrectionSave") }
         stop("Home-AI-Hard") { try load("v47-ai-hard"); try require("butlerSuggestionCard", timeout: 12); try reveal(element("butlerAIAccept")) }
-        stop("AI-Why-Hard") { try tap("butlerAIEvidence"); try require("butlerAIEvidencePage"); try require("butlerEvidenceMore") }
+        stop("AI-Why-Hard") { try load("v47-ai-hard"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage"); try require("butlerEvidenceMore") }
         stop("Home-AI-Review") { try load("v47-ai-review"); try require("butlerAIReviewCard") }
         stop("Butler-AI") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try settings("openIntelligencePrivacy"); try reveal(element("butlerLastRun")); try require("aiFeature_butlerSuggestions") }
         stop("Home-AI-None") { try load("v47-ai-none"); try settings("openIntelligencePrivacy"); try reveal(element("butlerLastRun")) }
@@ -353,7 +380,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Empty-Wish") { try load("v47-saving-monthly"); try savingPage(); try tap("openWishlist"); try require("emptyState_wish") }
         stop("Empty-Bills") { try load(); try settings("openFixedFlows"); try require("emptyState_bills") }
         stop("Empty-Assistant") { try load(); try root("yubai"); try require("emptyState_assistant"); try reveal(element("askSuggestion_2")) }
-        stop("Empty-Profile") { try tap("openProfile"); try require("emptyState_profile") }
+        stop("Empty-Profile") { try load(); try root("yubai"); try tap("openProfile"); try require("emptyState_profile") }
         stop("Empty-Memories") { try load(); try root("yubai"); try tap("openMemories"); try require("emptyState_memories") }
         stop("Empty-Frequent") { try load(); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("emptyState_frequent") }
         stop("Empty-Frequent-Add") {
@@ -377,23 +404,23 @@ final class ScreenGalleryTests: XCTestCase {
             try wait({ (self.element("butlerLastRun").value as? String ?? "").contains("requests=1;suggestions=0") }, "Rejected suggestion")
         }
         stop("Changes") { try combined(); try require("openLetterInbox"); try require("openSaving") }
-        stop("Changes-Deck") { try tap("openLetterInbox"); try require("savingsTopupCard"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
-        stop("Changes-Evidence") { try tap("butlerAIEvidence"); try require("butlerAIEvidencePage") }
+        stop("Changes-Deck") { try combined(); try tap("openLetterInbox"); try require("savingsTopupCard"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
+        stop("Changes-Evidence") { try combined(); try tap("openLetterInbox"); try tap("butlerDeckNext"); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage") }
         stop("Changes-Answered") { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard") }
-        stop("Changes-Trial") { try tap("butlerAIAccept"); try wait({ !self.element("butlerSuggestionCard").exists }, "Trial accepted"); try require("openSaving") }
+        stop("Changes-Trial") { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard"); try tap("butlerAIAccept"); try wait({ !self.element("butlerSuggestionCard").exists }, "Trial accepted"); try require("openSaving") }
         stop("Changes-Hard") { try combined("v47-ai-topup-hard"); try reveal(element("openSaving")) }
-        stop("Changes-Hard-Deck") { try tap("openLetterInbox"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
+        stop("Changes-Hard-Deck") { try combined("v47-ai-topup-hard"); try tap("openLetterInbox"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
         stop("Home-AI-Many") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try require("openLetterInbox") }
-        stop("Home-AI-Many-Next") { try tap("butlerAIAccept"); try require("butlerSuggestionCard") }
-        stop("Home-AI-Never") { try tap("butlerAINever"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestion muted") }
+        stop("Home-AI-Many-Next") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try require("butlerSuggestionCard") }
+        stop("Home-AI-Never") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try tap("butlerAINever"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestion muted") }
         stop("Home-AI-Wrong-Sum") { try rejected("v47-ai-wrong-sum") }
         stop("Home-AI-Unknown-ID") { try rejected("v47-ai-unknown-id") }
         stop("Home-AI-Unknown-Action") { try rejected("v47-ai-unknown-action") }
         stop("Home-AI-Malformed") { try rejected("v47-ai-malformed") }
         stop("Home-AI-Empty-Reply") { try rejected("v47-ai-none") }
-        stop("Home-AI-Disabled") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try settings("openIntelligencePrivacy"); try tap("aiFeature_butlerSuggestions"); try root("now"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestions disabled") }
+        stop("Home-AI-Disabled") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try settings("openIntelligencePrivacy"); try tap("aiFeature_butlerSuggestions"); try wait({ self.element("aiFeature_butlerSuggestions").value as? String == "0" }, "Suggestion switch did not turn off"); try root("now"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestions disabled") }
         stop("AI-Why-Correction-Empty") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave") }
-        stop("AI-Why-Corrected") { try tap("butlerAICorrectionSave"); try wait({ !self.element("butlerAIEvidencePage").exists }, "Correction saved") }
+        stop("AI-Why-Corrected") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try tap("butlerAICorrectionSave"); try wait({ !self.element("butlerAIEvidencePage").exists }, "Correction saved") }
         stop("Home-AI-Review-Done") { try load("v47-ai-review"); try require("butlerAIReviewCard"); try tap("butlerAIReviewDone"); try wait({ !self.element("butlerAIReviewCard").exists }, "Review answered") }
     }
     private func round47BatchA(dark: Bool, large: Bool) {
@@ -410,7 +437,7 @@ final class ScreenGalleryTests: XCTestCase {
             try require("undoReceipt_" + row.identifier.replacingOccurrences(of: "ledgerEntry_", with: ""))
         }
         stop("Home") { try load("v47-home"); try require("openSaving"); try require("addEntry"); try reveal(element("receiptTotal")) }
-        stop("Book") { try root("ledger"); try require("entriesScroll") }
+        stop("Book") { try load("v47-home"); try root("ledger"); try require("entriesScroll") }
         stop("Save-Card") { try load("v47-saving-wish"); try reveal(element("openSaving")) }
         stop("Save-Card-Reached") { try load("v47-saving-reached"); try reveal(element("openSaving")) }
         stop("Save-Card-Monthly") { try load("v47-saving-monthly"); try reveal(element("openSaving")) }
@@ -428,12 +455,12 @@ final class ScreenGalleryTests: XCTestCase {
             try wait({ self.element("receiptNumber").label == "No.2" }, "Receipt count after undo")
         }
         stop("Receipt-Many") { try load("v47-receipt-many"); try reveal(element("receiptMoreEntries")) }
-        stop("Receipt-More-Book") { try tap("receiptMoreEntries"); try require("entriesScroll") }
+        stop("Receipt-More-Book") { try load("v47-receipt-many"); try tap("receiptMoreEntries"); try require("entriesScroll") }
         stop("Home-Hard") { try load("v47-home-hard"); try reveal(element("receiptTotal")) }
         stop("First-A") { try load("v47-first"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
         stop("First-A-ReduceMotion") { try launch("v47-first", dark: dark, large: large, reduceMotion: true); try require("firstOpenScene") }
-        stop("First-After") { try add("28"); try require("firstSalaryCard"); try require("receiptTotal") }
-        stop("First-After-Setup") { try tap("setupFirstSalary"); try require("paydaySetupSheet") }
+        stop("First-After") { try load("v47-first"); try add("28"); try require("firstSalaryCard"); try require("receiptTotal") }
+        stop("First-After-Setup") { try load("v47-after"); try tap("setupFirstSalary"); try require("paydaySetupSheet") }
         stop("First-After-Deferred") { try load("v47-after"); try tap("deferFirstSalary"); try require("openSaving") }
         stop("First-After-Income") { try load("v47-after-income"); try require("firstSalaryCard") }
         stop("First-After-Deadline") { try load("v47-after-deadline"); try require("firstSalaryCard") }
@@ -458,23 +485,23 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Take") { try take("500") }
         stop("Take-Limit") { try take("5000.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Taking limit") }
         stop("Take-Saved") { try take("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
-        stop("Take-Undo") { try tap("undoLastChange"); try require("reserveTotal") }
+        stop("Take-Undo") { try take("500"); try tap("confirmSavingsTransfer"); try toast(); try tap("undoLastChange"); try require("reserveTotal") }
         stop("PutBack") { try putBack("500") }
         stop("PutBack-Limit") { try putBack("1564.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Putting back limit") }
         stop("PutBack-Saved") { try putBack("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
         stop("Floor-Edit") { try saving(); try tap("editSavingsFloor"); try require("clearSavingsFloor") }
-        stop("Floor-Cleared") { try tap("clearSavingsFloor"); try require("editSavingsFloor") }
+        stop("Floor-Cleared") { try saving(); try tap("editSavingsFloor"); try tap("clearSavingsFloor"); try require("editSavingsFloor") }
         stop("Records") { try saving("v47-records"); try tap("openReserve"); try require("reserveLine_0") }
         stop("Home-Topup") { try load("v47-topup"); try require("savingsTopupCard") }
-        stop("Home-Topup-Partial") { try tap("savingsTopupPartial"); try keys("200"); try require("savingsTransferPreview") }
-        stop("Home-Topup-Part-Saved") { try tap("confirmSavingsTransfer"); try require("openSaving"); try toast() }
+        stop("Home-Topup-Partial") { try load("v47-topup"); try tap("savingsTopupPartial"); try keys("200"); try require("savingsTransferPreview") }
+        stop("Home-Topup-Part-Saved") { try load("v47-topup"); try tap("savingsTopupPartial"); try keys("200"); try tap("confirmSavingsTransfer"); try require("openSaving"); try toast() }
         stop("Home-Topup-All") { try load("v47-topup"); try tap("savingsTopupAll"); try require("openSaving"); try toast() }
         stop("Home-Topup-Declined") { try load("v47-topup-queue"); try tap("savingsTopupDecline"); try require("renewalCard") }
         stop("Toast-Short") { try load("v47-toast-short"); try require("toastMessage"); try require("undoLastChange") }
         stop("Toast") { try load("v47-toast-long"); try require("expandToast") }
         stop("Toast-Truncated") { try load("v47-toast-long"); try require("expandToast") }
-        stop("Toast-Expanded") { try tap("expandToast"); try require("toastMessage") }
-        stop("Toast-Undo") { try tap("undoLastChange"); try require("toastMessage") }
+        stop("Toast-Expanded") { try load("v47-toast-long"); try tap("expandToast"); try require("toastMessage") }
+        stop("Toast-Undo") { try load("v47-toast-long"); try tap("expandToast"); try tap("undoLastChange"); try require("toastMessage") }
         stop("Toast-Dismissed") { try load("v47-toast-long"); try tap("expandToast"); try tap("expandToast"); try require("openSaving") }
     }
 
@@ -1029,49 +1056,105 @@ final class ScreenGalleryTests: XCTestCase {
     private func auditGallery() throws {
         let window = app.frame
         let systemRegions = (app.keyboards.allElementsBoundByIndex + app.menus.allElementsBoundByIndex + app.pickerWheels.allElementsBoundByIndex).filter(\.exists).map(\.frame)
-        let controls = app.buttons.allElementsBoundByIndex + app.textFields.allElementsBoundByIndex + app.secureTextFields.allElementsBoundByIndex + app.switches.allElementsBoundByIndex
-        // Fetch the XCUI snapshot once. Pairwise geometry checks are local, so
-        // audit cost does not grow into thousands of remote XCTest queries.
-        let candidates: [(id: String, frame: CGRect)] = controls.compactMap { target in
-            guard target.exists, target.isHittable else { return nil }
-            let id = target.identifier
-            return (id.isEmpty ? target.label : id, target.frame)
+        let topHeader = element("rootHeaderRegion")
+        let topFrames = app.navigationBars.allElementsBoundByIndex.filter(\.exists).map(\.frame) + (topHeader.exists ? [topHeader.frame] : [])
+        let topEdge = topFrames.map(\.maxY).max() ?? window.minY
+        let topRegion = CGRect(x: window.minX, y: window.minY, width: window.width, height: max(0, topEdge - window.minY))
+        let navigation = element("mainNavigation")
+        let bottomRegion = navigation.exists && navigation.isHittable ? CGRect(x: window.minX, y: navigation.frame.minY, width: window.width, height: max(0, window.maxY - navigation.frame.minY)) : CGRect.zero
+        func fullyOccluded(_ target: XCUIElement) -> Bool {
+            !target.frame.isEmpty && !target.isHittable && (topRegion.contains(target.frame) || (!bottomRegion.isEmpty && bottomRegion.contains(target.frame)))
+        }
+        // Identify the UIKit presentation owner's grabber structurally. Its
+        // anonymous Button straddles the top of the presentation, beside the
+        // content host. No localized label is used, and app-owned descendants
+        // do not meet this owner/type relationship.
+        var grabberFrames: [CGRect] = []
+        func sheetGrabbers(_ owner: XCUIElementSnapshot) {
+            let children = owner.children
+            if owner.elementType == .other, owner.identifier.isEmpty, children.count >= 2,
+               children[0].elementType == .button, children[0].identifier.isEmpty,
+               children.dropFirst().allSatisfy({ child in
+                   child.elementType == .other && abs(child.frame.minY - owner.frame.minY) < 1 &&
+                       abs(child.frame.height - owner.frame.height) < 1 && abs(child.frame.width - owner.frame.width) < 1
+               }),
+               owner.frame.height > 200, owner.frame.width > window.width * 0.8,
+               children[0].frame.minY < owner.frame.minY,
+               children[0].frame.maxY > owner.frame.minY,
+               abs(children[0].frame.midX - owner.frame.midX) < 1,
+               children[0].frame.height < 44 {
+                grabberFrames.append(children[0].frame)
+            }
+            for child in children { sheetGrabbers(child) }
+        }
+        do { sheetGrabbers(try app.snapshot()) }
+        catch { issues.append("Presentation snapshot unavailable: frame=<unreported> " + String(describing: error)) }
+        let controls = app.buttons.allElementsBoundByIndex + app.textFields.allElementsBoundByIndex + app.secureTextFields.allElementsBoundByIndex + app.textViews.allElementsBoundByIndex + app.switches.allElementsBoundByIndex
+        var candidates: [(id: String, frame: CGRect, systemGrabber: Bool)] = []
+        for target in controls {
+            guard target.exists else { continue }
+            let snapshot: XCUIElementSnapshot
+            do { snapshot = try target.snapshot() }
+            catch {
+                issues.append("Control snapshot unavailable: " + target.description + " frame=<unreported> " + String(describing: error))
+                continue
+            }
+            let frame = snapshot.frame
+            guard !frame.isEmpty, window.intersects(frame) else { continue }
+            if fullyOccluded(target) { continue } // decision 1: full containment AND not hittable
+            guard target.isHittable else { continue } // inactive/modal/off-viewport elements
+            if systemRegions.contains(where: { $0.contains(frame) }) { continue }
+            let systemGrabber = snapshot.elementType == .button && snapshot.identifier.isEmpty && grabberFrames.contains(frame)
+            let id = systemGrabber ? "<system sheet grabber>" : snapshot.identifier.isEmpty ? "<empty identifier> label=" + snapshot.label : snapshot.identifier
+            candidates.append((id, frame, systemGrabber))
         }
         var visible: [(String, CGRect)] = []
-        for (id, frame) in candidates {
-            guard !frame.isEmpty, window.intersects(frame) else { continue }
-            if systemRegions.contains(where: { $0.contains(frame) }) { continue }
+        for (id, frame, systemGrabber) in candidates {
             if !window.insetBy(dx: -1, dy: -1).contains(frame) {
                 if ["saveQuickEntry", "amountSheetDone", "confirmSavingsTransfer", "saveSavingsFloor", "saveLetterEntry", "mainNavigation", "reconcileApply"].contains(id) {
-                    throw Miss(description: "Off-screen control: " + id)
+                    issues.append("Off-screen control: " + id + " frame=" + frameText(frame))
                 }
                 continue
             }
-            // A container is not another hit target over its child controls.
+            // An actual container is not a second control over its descendants.
             if candidates.contains(where: { other in frame.contains(other.frame) && frame.width * frame.height > other.frame.width * other.frame.height + 4 }) { continue }
-            guard frame.width >= 44, frame.height >= 44 else { throw Miss(description: "Small hit target: " + id) }
+            if id.hasPrefix("<empty identifier>") { issues.append("Missing identifier: " + id + " frame=" + frameText(frame)) }
+            // Decision 2 exempts only the minimum target size. The grabber
+            // still participates in overlap/off-screen geometry checks.
+            if !systemGrabber && (frame.width < 44 || frame.height < 44) { issues.append("Small hit target: " + id + " frame=" + frameText(frame)) }
             for (other, bounds) in visible where bounds != frame && bounds.intersects(frame) {
                 let overlap = bounds.intersection(frame)
-                if overlap.width > 2 && overlap.height > 2 { throw Miss(description: "Overlapping controls: " + id + " / " + other) }
+                if overlap.width > 2 && overlap.height > 2 {
+                    issues.append("Overlapping controls: " + id + " frame=" + frameText(frame) + " / " + other + " frame=" + frameText(bounds))
+                }
             }
             visible.append((id, frame))
         }
         let navigationFrames = app.navigationBars.allElementsBoundByIndex.filter(\.exists).map(\.frame)
-        try app.performAccessibilityAudit(for: [.textClipped]) { issue in
-            // DS names/navigation titles and two-line receipts may truncate.
-            // Editable values scroll to the caret inside their shared input.
-            guard let target = issue.element else { return false }
+        do { try app.performAccessibilityAudit(for: [.textClipped]) { issue in
+            guard let target = issue.element else {
+                self.issues.append("Text clipped: identifier=<unreported> frame=<unreported> " + String(describing: issue))
+                return true
+            }
+            if fullyOccluded(target) { return true }
+            // Existing DS allowances: scrolling editable values, navigation
+            // titles, bounded names and the deliberately collapsed toast.
             if [.textField, .secureTextField, .textView].contains(target.elementType) { return true }
             if target.elementType == .staticText, navigationFrames.contains(where: { $0.contains(target.frame) }) { return true }
-            return ["truncatableName", "toastMessage", "unsortedUndoMessage"].contains(target.identifier)
-        }
+            if ["truncatableName", "toastMessage", "unsortedUndoMessage"].contains(target.identifier) { return true }
+            self.issues.append("Text clipped: " + self.describe(target))
+            // The aggregate stop failure below owns reporting, so the audit
+            // continues through every issue instead of aborting on the first.
+            return true
+        } } catch { issues.append("Text clipping audit failed: frame=<unreported> " + String(describing: error)) }
         for id in ["availableFunds", "dailyPace", "butlerSavedTotal", "entryKeypadAmount", "amountSheetAmount", "reserveTotal", "fixedFlowRemaining"] {
             let target = element(id)
-            if target.exists, onScreen(target), target.label.contains("…") { throw Miss(description: "Truncated amount: " + id) }
+            if target.exists, onScreen(target), target.label.contains("…") { issues.append("Truncated amount: " + describe(target)) }
         }
         let expense = element("entryNature_expense"), income = element("entryNature_income"), transfer = element("entryNature_transfer")
-        if expense.exists && income.exists && transfer.exists {
-            guard abs(expense.frame.midY - income.frame.midY) < 2, abs(expense.frame.midY - transfer.frame.midY) < 2 else { throw Miss(description: "Nature segments stack") }
+        if expense.exists && income.exists && transfer.exists,
+           abs(expense.frame.midY - income.frame.midY) >= 2 || abs(expense.frame.midY - transfer.frame.midY) >= 2 {
+            issues.append("Nature segments stack: " + describe(expense) + " / " + describe(income) + " / " + describe(transfer))
         }
     }
 

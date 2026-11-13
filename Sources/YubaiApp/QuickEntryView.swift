@@ -145,7 +145,7 @@ struct QuickEntryView: View {
             if !purposeFocused {
                 ZStack(alignment: .top) {
                     VStack(spacing: YubaiSpace.gapGroup) {
-                        resultBar.dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        resultBar
                         categorySection
                     }
                     if showingAdded {
@@ -169,7 +169,6 @@ struct QuickEntryView: View {
         EditableAmountDisplay(amount: keypad.resultText, keypad: keypad, presented: true, selected: false,
                               identifier: "entryKeypadAmount", open: { interact(); purposeFocused = false; inlinePanel = .none },
                               hide: store.preferences.hideAmounts, ink: amountCents == 0 ? YubaiColor.labelSecondary : nature.inflow ? YubaiColor.brandInk : nil)
-            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             #if os(iOS)
             .contextMenu { Button("粘贴") { pasteAmount() }.accessibilityIdentifier("pasteEntryAmount") }
             #endif

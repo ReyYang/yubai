@@ -146,7 +146,7 @@ private struct ButlerEvidenceEntries: View {
             .accessibilityIdentifier("truncatableName")
     }
     private func amount(_ entry: Entry) -> some View {
-        AmountLabel(cents: Finance.spendingAmount(entry, ledger: store.current), hide: store.preferences.hideAmounts, sign: .outflow).fixedSize()
+        AmountLabel(cents: Finance.spendingAmount(entry, ledger: store.current), hide: store.preferences.hideAmounts, sign: .outflow).fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -172,10 +172,10 @@ private struct ButlerSuggestionCorrection: View {
             Section {
                 CardTextFieldRow(title: "说一句", text: $sentence, identifier: "butlerAICorrectionText", multiline: true)
                 InlineFieldError(message: sentence.count > 200 || sentence.contains(where: { $0.isNewline }) ? "请用一行、不超过 200 字" : nil)
-            }
-        }.editorForm().manualSheetHeader("说得不对", actionTitle: "记下", enabled: sentence.count <= 200 && !sentence.contains(where: { $0.isNewline }), actionIdentifier: "butlerAICorrectionSave") {
+            }.listRowBackground(YubaiColor.card)
+        }.editorForm().manualSheetHeader("说得不对", actionTitle: "记下", enabled: sentence.count <= 200 && !sentence.contains(where: { $0.isNewline }), actionIdentifier: "butlerAICorrectionSave", action: {
             if store.answerSuggestion(suggestion, .incorrect(sentence)) { finished() }
-        }
+        })
     }
 }
 

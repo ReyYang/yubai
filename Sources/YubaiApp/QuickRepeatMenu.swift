@@ -44,7 +44,7 @@ struct QuickRepeatMenu: View {
             layout {
                 Text(item.purpose).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1)
                 if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
-                AmountLabel(cents: item.amount, hide: hide, role: .amount, sign: .none).fixedSize()
+                AmountLabel(cents: item.amount, hide: hide, role: .amount, sign: .none).fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("quickRepeat_\(index)")
             .accessibilityLabel(item.purpose + "，" + (hide ? "金额已隐藏" : AmountLabel.text(item.amount)) + "，记下")

@@ -68,7 +68,7 @@ struct FrequentEntriesView: View {
     private func summary(_ purpose: String, amount: Int64) -> some View {
         HStack(spacing: YubaiSpace.space8) {
             Text(purpose).yubaiFont(YubaiFont.row).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-            AmountLabel(cents: amount, hide: store.preferences.hideAmounts).fixedSize()
+            AmountLabel(cents: amount, hide: store.preferences.hideAmounts).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).accessibilityElement(children: .combine)
     }
     private func hiddenRow(_ row: EntryHistory.HiddenRepeat) -> some View {

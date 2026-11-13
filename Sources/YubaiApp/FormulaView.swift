@@ -61,18 +61,17 @@ private struct FormulaAmountEditor: View {
     }
 
     var body: some View {
-        ScrollView {
+        KeypadSheet {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 header
                 modePicker
                 amountDisplay
                 if let resultText { ResultBar(label: "改完还能花", value: resultText, identifier: "formulaEditResult") }
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
-        }.scrollBounceBehavior(.basedOnSize)
-            .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+            }
+        } footer: {
                 AmountKeypad(keypad: $keypad, amountSelected: $selected, canSave: valid, primaryTitle: "好",
                              primaryIdentifier: "saveSavingsAmount", save: save)
-            }
+        }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
 
@@ -87,7 +86,7 @@ private struct FormulaAmountEditor: View {
         HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
             if !sharing { Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary) }
             Text(sharing ? "\(percent)%" : keypad.resultText).yubaiFont(YubaiFont.entryAmount)
-                .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.2).layoutPriority(1)
+                .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
                 .padding(.horizontal, YubaiSpace.space8)
                 .background(selected ? YubaiColor.brandTint : Color.clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             EntryAmountCursor()

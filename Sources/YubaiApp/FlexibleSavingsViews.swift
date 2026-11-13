@@ -44,9 +44,12 @@ private struct SavingsTransferPreview: View {
     }
     private func row(_ title: String, before: Int64, after: Int64, identifier: String) -> some View {
         EntryFormRow(title: title) {
-            HStack(spacing: YubaiSpace.space8) {
-                AmountLabel(cents: before, hide: hide, role: .amount, ink: YubaiColor.labelSecondary)
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+            AdaptiveValueRow {
+                HStack(spacing: YubaiSpace.space8) {
+                    AmountLabel(cents: before, hide: hide, role: .amount, ink: YubaiColor.labelSecondary)
+                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                }
+            } value: {
                 AmountLabel(cents: after, hide: hide, role: .summary, ink: after < 0 ? YubaiColor.amberInk : YubaiColor.brandInk)
             }
         }.accessibilityElement(children: .ignore)

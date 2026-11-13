@@ -12,24 +12,27 @@ final class Round47SavingsFlowTests: XCTestCase {
         app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
         app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
         app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = keepUndo ? "1" : "0"
+        // Start a timed fixture after a real page return, once launch/AX startup
+        // is complete. The production six-second timeout is unchanged.
+        app.launchEnvironment["YUBAI_UI_TEST_TOAST_ON_RETURN"] = keepUndo ? "0" : "1"
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         app.launch(); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
-        let target = element(id); XCTAssertTrue(target.waitForExistence(timeout: 5), id)
+        let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
         for _ in 0..<10 { if target.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(target.isHittable, id); target.tap()
     }
     private func keys(_ value: String) { for key in value { tap("keypad_" + String(key)) } }
     private func amount(_ id: String) -> Int64 {
-        let target = element(id); XCTAssertTrue(target.waitForExistence(timeout: 5), id)
+        let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
         let text = target.label.replacingOccurrences(of: "−", with: "-")
         guard let range = text.range(of: #"-?[0-9]+(?:,[0-9]{3})*\.[0-9]{2}"#, options: .regularExpression),
               let value = Double(text[range].replacingOccurrences(of: ",", with: "")) else { XCTFail(text); return 0 }
         return Int64((value * 100).rounded())
     }
-    private func back() { tap("ledgerBack") }
+    private func back() { tap("BackButton") }
     private func saved() { tap("openSaving"); XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5)) }
     private func gone(_ id: String) {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !self.element(id).exists }, object: nil)
@@ -71,6 +74,12 @@ final class Round47SavingsFlowTests: XCTestCase {
     }
     func testTakePreviewUpdatesBothTotalsAndSharedUndoRestoresThem() {
         launch(); let home = amount("availableFunds"); saved(); tap("takeSavings"); keys("500")
+        let confirm = element("confirmSavingsTransfer")
+        XCTAssertGreaterThanOrEqual(element("amountSheetCancel").frame.height, 44)
+        XCTAssertLessThan(element("amountSheetCancel").frame.maxY, element("amountSheetAmount").frame.minY)
+        XCTAssertLessThan(element("amountSheetAmount").frame.maxY, element("transferSavedPreview").frame.minY)
+        XCTAssertLessThanOrEqual(element("transferAvailablePreview").frame.maxY, confirm.frame.minY)
+        XCTAssertLessThan(confirm.frame.maxY, element("keypad_1").frame.minY)
         XCTAssertTrue(element("transferSavedPreview").label.contains("4,500.00"))
         XCTAssertTrue(element("transferAvailablePreview").label.contains("2,064.00"))
         tap("confirmSavingsTransfer"); gone("savingsTransferSheet"); XCTAssertEqual(amount("reserveTotal"), 450_000)
@@ -143,9 +152,10 @@ final class Round47SavingsFlowTests: XCTestCase {
     }
     func testExpandedToastPausesTimeoutThenSecondTapDismisses() {
         launch("v47-toast-long", keepUndo: false)
-        XCTAssertTrue(element("expandToast").waitForExistence(timeout: 5))
+        saved(); back()
+        XCTAssertTrue(element("expandToast").exists || element("expandToast").waitForExistence(timeout: 5))
         let collapsedHeight = element("toastMessage").frame.height
-        tap("expandToast"); XCTAssertEqual(element("expandToast").value as? String, "已展开")
+        element("expandToast").tap(); XCTAssertEqual(element("expandToast").value as? String, "已展开")
         XCTAssertGreaterThan(element("toastMessage").frame.height, collapsedHeight)
         let remains = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !self.element("toastMessage").exists }, object: nil)
         remains.isInverted = true
