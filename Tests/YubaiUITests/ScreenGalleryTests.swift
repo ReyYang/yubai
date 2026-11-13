@@ -1251,10 +1251,11 @@ final class ScreenGalleryTests: YubaiUITestCase {
             }
             textNodes(snapshot)
         }
+        let name = (activeStop ?? prefix) + "-unresolved-text-audit"
         let attachment = XCTAttachment(string: lines.joined(separator: "\n"))
-        attachment.name = (activeStop ?? prefix) + "-unresolved-text-audit"
+        attachment.name = name
         attachment.lifetime = .keepAlways; add(attachment)
-        if let directory { try? lines.joined(separator: "\n").write(to: directory.appendingPathComponent(attachment.name + ".txt"), atomically: true, encoding: .utf8) }
+        if let directory { try? lines.joined(separator: "\n").write(to: directory.appendingPathComponent(name + ".txt"), atomically: true, encoding: .utf8) }
     }
 
     private func reduced(large: Bool, dark: Bool) {
