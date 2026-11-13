@@ -3,6 +3,8 @@ import Foundation
 public struct FixedFlowEdit: Equatable, Sendable {
     public var title: String; public var amount: Int64; public var frequency: Frequency; public var date: Date
     public var accountID: UUID?; public var category: String; public var installments: Int?
+    public var currency: BillCurrency = .cny
+    public var monthlyDay: Int? = nil
     public var intoFixedSavings = false
     public var autoPay: Bool; public var estimated: Bool; public var inflow: Bool; public var stopped: Bool
 }
@@ -27,9 +29,9 @@ extension FixedFlows {
             let boundary = max(Dates.day(now), Dates.day(schedule.last?.date ?? now))
             date = unlimited.nextScheduledDate(after: Dates.addDays(1, to: boundary).addingTimeInterval(-0.001)) ?? plan.dueDate
         }
-        return FixedFlowEdit(title: plan.title, amount: payments.amount(for: plan), frequency: plan.frequency,
+        return FixedFlowEdit(title: plan.title, amount: plan.currency == .cny ? payments.amount(for: plan) : plan.amount, frequency: plan.frequency,
                              date: Dates.day(date), accountID: plan.accountID,
-                             category: plan.category, installments: plan.installments, intoFixedSavings: plan.intoFixedSavings, autoPay: plan.autoPay,
+                             category: plan.category, installments: plan.installments, currency: plan.currency, monthlyDay: plan.monthlyDay, intoFixedSavings: plan.intoFixedSavings, autoPay: plan.autoPay,
                              estimated: plan.estimated, inflow: plan.inflow,
                              stopped: !plan.active || ((plan.stoppedAt ?? plan.endDate).map { $0 <= now } ?? false))
     }
@@ -40,27 +42,29 @@ extension FixedFlows {
 
     public static func update(planID: UUID, title: String, amount: Int64, frequency: Frequency, date: Date,
                               accountID: UUID?, category: String, installments: Int?, autoPay: Bool, estimated: Bool,
-                              in ledger: Ledger, now: Date = Date(), intoFixedSavings: Bool? = nil) throws -> ChangeSet {
+                              in ledger: Ledger, now: Date = Date(), intoFixedSavings: Bool? = nil, currency: BillCurrency? = nil, monthlyDay: Int? = nil) throws -> ChangeSet {
         guard let old = ledger.plans.first(where: { $0.id == planID }), let edit = edit(planID: planID, in: ledger, now: now) else {
             throw YubaiError.invalid("找不到要修改的安排。")
         }
         guard validDate(date), validDate(now) else { throw YubaiError.invalid("资金安排的日期无效。") }
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard title != edit.title || amount != edit.amount || frequency != edit.frequency || Dates.day(date) != edit.date ||
+        guard (monthlyDay != nil && monthlyDay != old.monthlyDay) || (currency ?? old.currency) != old.currency || title != edit.title || amount != edit.amount || frequency != edit.frequency || Dates.day(date) != edit.date ||
                 accountID != edit.accountID || category != edit.category || installments != edit.installments ||
                 autoPay != edit.autoPay || estimated != edit.estimated || (intoFixedSavings ?? old.intoFixedSavings) != old.intoFixedSavings else { throw FixedFlowEditError.noChanges }
         var plan = old
         plan.title = title
+        plan.currency = currency ?? old.currency
+        if frequency == .yearly && old.frequency != .yearly { plan.yearlyReserveSince = Dates.day(now) }
         plan.intoFixedSavings = plan.inflow && plan.nature == .income && (intoFixedSavings ?? old.intoFixedSavings)
         // Saving another field must not overwrite an estimate's stored fallback.
-        if amount != edit.amount || estimated != edit.estimated { plan.amount = amount }
+        if amount != edit.amount || estimated != edit.estimated || plan.currency != old.currency { plan.amount = amount }
         plan.frequency = frequency; plan.accountID = accountID; plan.category = category
         plan.installments = installments; plan.autoPay = autoPay; plan.estimated = estimated
-        if frequency != edit.frequency || Dates.day(date) != edit.date {
+        if frequency != edit.frequency || Dates.day(date) != edit.date || (monthlyDay != nil && monthlyDay != old.monthlyDay) {
             plan.dueDate = Dates.day(date)
-            plan.monthlyDay = frequency == .monthly ? Dates.calendar.component(.day, from: date) : nil
+            plan.monthlyDay = frequency == .monthly ? monthlyDay ?? Dates.calendar.component(.day, from: date) : nil
         }
-        plan = try replacement(plan, replacing: old, amountChanged: amount != edit.amount, in: ledger, now: now)
+        plan = try replacement(plan, replacing: old, amountChanged: amount != edit.amount || plan.currency != old.currency, in: ledger, now: now)
         var change = ChangeSet(source: "用户操作", reason: "修改安排「\(plan.title)」", items: [.updatePlan(plan)])
         change.createdAt = now
         var preview = ledger; try change.apply(to: &preview)
@@ -73,7 +77,7 @@ extension FixedFlows {
         guard !plan.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw YubaiError.invalid("安排名字不能为空。") }
         guard plan.amount > 0, plan.amount <= Money.limit else { throw YubaiError.invalid("安排金额必须大于零且在有效范围内。") }
         guard validDate(plan.dueDate), plan.endDate.map(validDate) ?? true, plan.stoppedAt.map(validDate) ?? true,
-              plan.autoPaySince.map(validDate) ?? true, plan.estimatedAmountSince.map(validDate) ?? true,
+              plan.autoPaySince.map(validDate) ?? true, plan.yearlyReserveSince.map(validDate) ?? true, plan.estimatedAmountSince.map(validDate) ?? true,
               plan.previousOccurrences.allSatisfy(validDate), plan.settledOccurrences.allSatisfy(validDate),
               plan.skippedOccurrences.allSatisfy(validDate) else { throw YubaiError.invalid("资金安排的日期无效。") }
         guard plan.installments.map({ $0 > 0 }) ?? true else { throw YubaiError.invalid("共几期必须大于零。") }
@@ -110,7 +114,7 @@ extension FixedFlows {
         }
         guard linked.allSatisfy({ plan.occurrenceIndex(on: $0.day) != nil }) else { throw YubaiError.invalid("共几期不能移除已经记过的期。") }
         plan.autoPaySince = plan.autoPay && !old.autoPay ? Dates.day(now) : old.autoPaySince
-        plan.estimatedAmountSince = plan.estimated && amountChanged ? now : old.estimatedAmountSince
+        plan.estimatedAmountSince = (plan.estimated || plan.currency != .cny) && amountChanged ? now : old.estimatedAmountSince
         return plan
     }
 

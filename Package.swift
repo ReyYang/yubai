@@ -16,7 +16,7 @@ let package = Package(
             "CArchive",
             .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux])),
             .product(name: "_CryptoExtras", package: "swift-crypto", condition: .when(platforms: [.linux]))
-        ]),
+        ], resources: [.copy("Resources/brand-icons.json")]),
         .testTarget(
             name: "YubaiCoreTests",
             dependencies: ["YubaiCore"],

@@ -315,7 +315,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 if let i = next.plans.firstIndex(where: { $0.id == id }) {
                     guard next.plans[i].active, next.plans[i].stoppedAt == nil, next.plans[i].endDate.map({ date < $0 }) ?? true else { skip(position); continue }
                     var snapshot = next.plans[i]
-                    snapshot.amount = FixedFlowPayments(in: next).amount(for: snapshot)
+                    snapshot.amount = FixedFlowPayments(in: next, now: date).amount(for: snapshot)
+                    snapshot.currency = .cny // The savings snapshot freezes the CNY quote; the live plan retains its original currency.
                     if !snapshot.inflow && snapshot.nature == .expense && snapshot.frequency != .once {
                         next.stoppedSubscriptions.append(StoppedSubscription(plan: snapshot, stoppedAt: date))
                     }

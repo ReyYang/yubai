@@ -393,8 +393,8 @@ final class ScreenGalleryTests: XCTestCase {
     private func bills() {
         stop("06-bills-01-list") { try launch(); try formula(); try tap("formulaRow_bills"); try require("fixedFlowsScroll") }
         stop("06-bills-02-list-bottom") { for _ in 0..<12 { try drag(element("fixedFlowsScroll")) } }
-        stop("06-bills-03-editor") { try launch(); try formula(); try tap("formulaRow_bills"); try tap(buttonPrefix("editFixedFlow_")); try require("fixedFlowTitle") }
-        stop("06-bills-04-editor-schedule") { try tap("fixedFlowSchedule"); try wait({ self.app.datePickers.count > 0 || self.app.pickerWheels.count > 0 }, "Schedule controls") }
+        stop("06-bills-03-editor") { try launch(); try formula(); try tap("formulaRow_bills"); try tap("addFixedFlow"); try require("fixedFlowTitle") }
+        stop("06-bills-04-editor-schedule") { try tap("fixedFlowDate"); try require("fixedFlowCalendar") }
         stop("06-bills-05-detail") { try launch("v46-bill"); try tap("billDueNotYet"); try tap(buttonPrefix("formulaBill_")); try require("billDetailPage") }
         stop("06-bills-06-detail-history") { try reveal(element("billDetailHistory")) }
         stop("06-bills-07-long-press-menu") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try require("billMenu_move") }
@@ -611,6 +611,46 @@ final class ScreenGalleryTests: XCTestCase {
     func testDarkWalk() { prefix = "90-dark-"; reduced(large: false, dark: true) }
 
     /// YubaiColor.adaptive + the appearance setting support dark mode; neither is forced light.
+    func testWalk46Batch4() { round46Batch4(dark: false, large: false) }
+    func testWalk46Batch4Dark() { prefix = "46-dark-"; round46Batch4(dark: true, large: false) }
+    func testWalk46Batch4Large() { prefix = "46-a11y-"; round46Batch4(dark: false, large: true) }
+
+    private func round46Batch4(dark: Bool, large: Bool) {
+        func load(_ fixture: String = "v46-bills") throws { try launch(fixture, dark: dark, large: large) }
+        func calendar() throws { try formula(); try tap("formulaRow_bills"); try require("billsCalendar") }
+        func select(_ number: Int) throws {
+            let c = Calendar.current, month = c.dateInterval(of: .month, for: Date())!.start
+            let last = c.range(of: .day, in: .month, for: Date())!.count
+            let day = c.date(byAdding: .day, value: min(number, last) - 1, to: month)!
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "zh_CN")
+            try tap("billsDay_" + f.string(from: day))
+        }
+        stop("Bills-Cal") { try load(); try calendar(); try require("fixedFlowRemaining"); try audit46() }
+        stop("Bills-Day") { try select(28); try require("billsSelectedDay"); try reveal(element("billsRate_USD")); try audit46() }
+        stop("Bill-Add-FX") {
+            try load(); try calendar(); try tap("addFixedFlow")
+            try type("Claude Pro", into: "fixedFlowTitle"); try type("20.00", into: "fixedFlowAmount")
+            try tap("billCurrency_USD")
+            if app.toolbars.buttons["完成"].firstMatch.exists { app.toolbars.buttons["完成"].firstMatch.tap() }
+            try require("billEditRate"); try audit46()
+        }
+        stop("Home-Yearly") { try load("v46-bills-yearly"); try require("renewalCard"); try require("keepRenewal"); try audit46() }
+        stop("Bill-Pay") {
+            try load("v46-bills-pay"); try tap("billDuePaid"); try require("amountSheetAmount"); try keys("163.40"); try audit46()
+        }
+        stop("Bill-Detail") {
+            try load(); try calendar(); try select(27); try tap("editFixedFlow_" + galleryID(46425)); try require("billDetailHistory"); try audit46()
+        }
+        stop("Bill-Menu") { try load("v46-bills-match"); try longPress(bill("话费和宽带")); try require("billMenu_move"); try audit46() }
+        stop("Bill-Match") { try load("v46-bills-match"); try tap(bill("话费和宽带")); try require("billMatchConfirm"); try audit46() }
+        stop("Accounts") { try load(); try settings("openAccounts"); try require("accountsTotal"); try audit46() }
+        stop("46-b4-rate") { try load(); try calendar(); try select(28); try tap("billsRate_USD"); try require("billRateValue"); try audit46() }
+        stop("46-b4-yearly-switch") { try load(); try calendar(); try tap("yearlyBillsStrip"); try require("yearlyBillsSetAside"); try audit46() }
+        stop("46-b4-spend") { try load(); try formula(); try reveal(element("formulaRow_yearlySetAside")); try audit46() }
+        stop("46-b4-hidden") { try load("v46-bills-hidden"); try calendar(); try select(28); try require("billsSelectedDay"); try audit46() }
+        stop("46-b4-hard") { try load("v46-bills-hard"); try calendar(); try select(21); try require("billsSelectedDay"); try audit46() }
+    }
+
     private func reduced(large: Bool, dark: Bool) {
         stop("01-now") { try launch(dark: dark, large: large); try require("fundsFormula") }
         stop("02-saving") { try root("saving"); try require("savingTabScroll") }

@@ -51,6 +51,12 @@ struct FormulaView: View {
             if value.goals != 0 { source("在存钱", amount: value.goals, id: "formulaRow_goals") { store.destination = .saving; store.resetRootNavigation(); store.destination = .saving } }
             if value.uncertainInflow != 0 { source("没写用途的进账", amount: value.uncertainInflow, id: "formulaRow_uncertainInflow") { showEntries(value.interval) } }
             source("先存起来", detail: "每月先存", amount: value.saving, id: "formulaRow_saving") { store.sheet = .formulaEdit(.saving) }
+            if store.plans.contains(where: { $0.active && !$0.inflow && $0.frequency == .yearly }) {
+                EntryFormDivider()
+                TabNavigationLink(.yearlyBills) { YearlyBillsView() } label: {
+                    row("每月先留", amount: -value.yearlySetAside)
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_yearlySetAside")
+            }
             EntryFormDivider()
             TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: {
                 row("要付的账单", detail: billDetail(value.billNames), amount: -value.bills)

@@ -16,6 +16,7 @@ run_dir="$(mktemp -d /tmp/yubai-gallery.XXXXXX)"
 result="$run_dir/gallery.xcresult"
 printf 'Simulator: %s\nResults and log: %s\n' "$simulator" "$run_dir"
 # GALLERY_ONLY="testWalk46Batch1 testWalk46Batch1Dark testWalk46Batch1Large" captures this batch.
+# Batch 4: GALLERY_ONLY="testWalk46Batch4 testWalk46Batch4Dark testWalk46Batch4Large"
 # Any space-separated walk names can be selected for a partial inventory.
 only=()
 for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalleryTests/$name"); done
@@ -79,7 +80,7 @@ for manifest in sorted(shots.rglob("manifest.json")):
         name = item.get("suggestedHumanReadableName") or item.get("name") or ""
         name = Path(name).name
         # Xcode may append the file extension to the suggested name.
-        if source.suffix.lower() == ".png" and re.match(r"^(?:\d{2}-|DS-Nav|Quick|Home-|Deck|Payday-Amount|First|Recon|Over-|Big-Home|Spend|Saved|Goal|Butler-Kinds|Words)", name):
+        if source.suffix.lower() == ".png" and re.match(r"^(?:\d{2}-|DS-Nav|Quick|Home-|Deck|Payday-Amount|First|Recon|Over-|Big-Home|Spend|Saved|Goal|Butler-Kinds|Words|Bills-|Bill-|Accounts)", name):
             name = re.sub(r"\.png$", "", name, flags=re.I)
             destination = shots / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".png")
         elif name.startswith(("missing-", "planned-", "write-errors-")):
@@ -102,6 +103,8 @@ names = re.findall(r'\bstop\("([^"\n]+)"', full)
 small = re.findall(r'\bstop\("([^"\n]+)"', reduced)
 round46 = full.split("    private func round46Batch1(", 1)[1].split("    private func audit46(", 1)[0]
 board_names = re.findall(r'\bstop\("([^"\n]+)"', round46)
+round46_bills = full.split("    private func round46Batch4(", 1)[1]
+board_names += re.findall(r'\bstop\("([^"\n]+)"', round46_bills)
 expected = sorted(names + [prefix + name for prefix in ("46-dark-", "46-a11y-") for name in board_names]
                   + [prefix + name for prefix in ("80-a11y-", "90-dark-") for name in small])
 if len(expected) != len(set(expected)):

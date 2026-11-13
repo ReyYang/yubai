@@ -178,7 +178,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["saveManualSheet"].isEnabled)
         tap(app.buttons["cancelManualSheet"], in: app)
         assertGone(app.buttons["fixedFlowSchedule"])
-        XCTAssertTrue(app.navigationBars["会回来的账单"].exists)
+        XCTAssertTrue(app.navigationBars["账单"].exists)
         snapshot("salary-fixed-flows", app)
     }
 
@@ -782,19 +782,9 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_now"], in: app)
         tap(app.buttons["fundsFormula"], in: app)
         tap(anyElement("formulaRow_bills", in: app), in: app)
-        XCTAssertTrue(app.navigationBars["会回来的账单"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["账单"].waitForExistence(timeout: 5))
     }
 
-    private func openFixedBillStop(_ row: XCUIElement, title: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        scrollToVisible(row, in: app, scroll: app.scrollViews["fixedFlowsScroll"], file: file, line: line)
-        let identifier = row.identifier
-        XCTAssertTrue(identifier.hasPrefix("fixedFlow_"), file: file, line: line)
-        let action = app.buttons["stopFixedFlow_" + identifier.dropFirst("fixedFlow_".count)]
-        swipeRow(row, file: file, line: line)
-        assertRevealState(row, revealed: true, action: action, file: file, line: line)
-        point(action, x: 0.5, in: app, file: file, line: line).tap()
-        XCTAssertTrue(app.alerts["停掉「\(title)」？"].waitForExistence(timeout: 5), file: file, line: line)
-    }
     private func alertButton(_ identifier: String, in alert: XCUIElement) -> XCUIElement {
         // iOS 26 exports nested copies with the same identifier, label and frame.
         alert.buttons.matching(identifier: identifier).firstMatch
@@ -986,32 +976,150 @@ final class AppFlowTests: XCTestCase {
         snapshot("wish-bought", app)
     }
 
-    func testFixedBillCheckMarksPaidAndUndoRestoresIt() {
-        let app = application("bills", keepingUndo: true); app.launch()
-        XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700.00"))
-        openFixedBills(app)
-        let check = app.buttons["付了 房租"]
-        tap(check, in: app)
-        tapUndo(messagePrefix: "已记下 · 房租 300.00", exact: true, in: app)
-        assertState(check, value: "已到期", enabled: true)
-        tap(check, in: app)
-        assertGone(check); XCTAssertTrue(app.images["已付 房租"].exists)
-        snapshot("bill-paid", app)
-        backToRoot(app); tap(app.buttons["tab_now"], in: app)
-        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700.00"))
-        XCTAssertTrue(anyElement("todayEntries", in: app).exists)
+    private func billCalendarDay(_ number: Int? = nil, in app: XCUIApplication) {
+        let c = Calendar.current, now = Date(), month = c.dateInterval(of: .month, for: Date())!.start
+        let last = c.range(of: .day, in: .month, for: now)!.count
+        let day = c.date(byAdding: .day, value: min(number ?? c.component(.day, from: now), last) - 1, to: month)!
+        let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "yyyy-MM-dd"
+        tap(app.buttons["billsDay_" + f.string(from: day)], in: app)
+    }
+    private func billFixtureID(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
+
+    func testBillCalendarSelectsDayInPlaceAndShowsOriginalCurrency() {
+        let app = application("v46-bills"); app.launch(); openFixedBills(app)
+        XCTAssertTrue(anyElement("billsCalendar", in: app).exists)
+        billCalendarDay(28, in: app)
+        XCTAssertTrue(anyElement("billsSelectedDay", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["账单"].exists); XCTAssertFalse(app.sheets.firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["US$20.00"].exists); XCTAssertTrue(app.staticTexts["US$35.88"].exists)
+        XCTAssertTrue(app.staticTexts["约 ¥142.40"].exists); XCTAssertTrue(app.staticTexts["约 ¥255.47"].exists)
+        billCalendarDay(25, in: app)
+        XCTAssertTrue(app.staticTexts["话费和宽带"].exists); XCTAssertFalse(app.staticTexts["US$35.88"].exists)
+        snapshot("v46-bill-day", app)
+    }
+    func testBillCalendarMonthPagingAndYearStrip() {
+        let app = application("v46-bills"); app.launch(); openFixedBills(app)
+        let remaining = displayedAmount(anyElement("fixedFlowRemaining", in: app))
+        XCTAssertEqual(remaining, 76_287)
+        tap(app.buttons["billsNextMonth"], in: app)
+        XCTAssertFalse(anyElement("billsSelectedDay", in: app).exists)
+        tap(app.buttons["billsPreviousMonth"], in: app)
+        XCTAssertEqual(displayedAmount(anyElement("fixedFlowRemaining", in: app)), remaining)
+        scrollToVisible(app.buttons["yearlyBillsStrip"], in: app)
+        XCTAssertTrue(app.buttons["yearlyBillsStrip"].exists)
+    }
+    func testYearlyBillPreferenceSurvivesRelaunchAndLinksFromFormula() {
+        let app = application("v46-bills"); app.launch(); openFixedBills(app)
+        tap(app.buttons["yearlyBillsStrip"], in: app)
+        let toggle = app.switches["yearlyBillsSetAside"]
+        XCTAssertEqual(toggle.value as? String, "1"); toggleSwitch(toggle, in: app)
+        app.terminate(); app.launch(); openFixedBills(app); tap(app.buttons["yearlyBillsStrip"], in: app)
+        XCTAssertEqual(toggle.value as? String, "0")
+    }
+    func testForeignBillRateEditsBothBillsOfThatCurrency() {
+        let app = application("v46-bills"); app.launch(); openFixedBills(app); billCalendarDay(28, in: app)
+        tap(app.buttons["billsRate_USD"], in: app)
+        replaceText("8.00", in: app.textFields["billRateValue"], app: app)
+        tap(app.buttons["saveManualSheet"], in: app)
+        XCTAssertTrue(app.staticTexts["约 ¥160.00"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["约 ¥287.04"].exists)
+        XCTAssertTrue(app.staticTexts["US$35.88"].exists)
+    }
+    func testForeignBillAddUsesCardRowsAndYearlyCycle() {
+        let app = application("v46-bills"); app.launch(); openFixedBills(app); tap(app.buttons["addFixedFlow"], in: app)
+        XCTAssertTrue(app.staticTexts["加一个账单"].waitForExistence(timeout: 5))
+        replaceText("Claude Pro 年付测试", in: app.textFields["fixedFlowTitle"], app: app)
+        replaceText("20.00", in: app.textFields["fixedFlowAmount"], app: app)
+        tap(app.buttons["billCurrency_USD"], in: app); tap(app.buttons["billCycle_yearly"], in: app)
+        XCTAssertTrue(app.buttons["billEditRate"].exists)
+        tap(app.buttons["saveManualSheet"], in: app)
+        XCTAssertFalse(app.textFields["fixedFlowTitle"].exists)
+        billCalendarDay(in: app)
+        XCTAssertTrue(app.staticTexts["Claude Pro 年付测试"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["US$20.00"].exists)
+    }
+    func testBillEditorOtherCyclesAndDateAreInPlace() {
+        let app = application("v46-bills"); app.launch(); openFixedBills(app); tap(app.buttons["addFixedFlow"], in: app)
+        tap(app.buttons["billCycleOther"], in: app); tap(app.buttons["每半年"], in: app)
+        XCTAssertTrue(app.buttons["billCycleOther"].label.contains("每半年"))
+        tap(app.buttons["billCycleOther"], in: app); tap(app.buttons["每两周"], in: app)
+        tap(app.buttons["fixedFlowDate"], in: app)
+        XCTAssertTrue(anyElement("fixedFlowCalendar", in: app).exists)
+        XCTAssertTrue(app.scrollViews["fixedFlowEditor"].exists)
+    }
+    func testYearlyKeepDismissesOnlyThatRenewalAndPersists() {
+        let app = application("v46-bills-yearly"); app.launch()
+        XCTAssertTrue(app.buttons["keepRenewal"].waitForExistence(timeout: 5))
+        XCTAssertTrue(anyElement("renewalCard", in: app).label.contains("US$35.88"))
+        tap(app.buttons["keepRenewal"], in: app)
+        XCTAssertFalse(app.buttons["keepRenewal"].exists)
+        app.terminate(); app.launch(); XCTAssertFalse(app.buttons["keepRenewal"].exists)
+    }
+    func testForeignYearlyStopReceiptIsInCNYAndSupportsUndo() {
+        let app = application("v46-bills-yearly", keepingUndo: true); app.launch()
+        tap(app.buttons["stopRenewal"], in: app)
+        XCTAssertTrue(anyElement("butlerReceipt", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(anyElement("butlerReceipt", in: app).label.contains("255.47"))
+        tap(app.buttons["undoButlerReceipt"], in: app)
+        XCTAssertTrue(app.buttons["keepRenewal"].waitForExistence(timeout: 5))
+    }
+    func testVariableBillPaymentUsesActualAmountAndUndo() {
+        let app = application("v46-bills-pay", keepingUndo: true); app.launch()
+        tap(app.buttons["billDuePaid"], in: app)
+        XCTAssertTrue(anyElement("amountSheetAmount", in: app).waitForExistence(timeout: 5))
+        pressAmount("163.40", in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '比留出的少 16.60'")).firstMatch.exists)
+        tap(app.buttons["amountSheetDone"], in: app)
+        XCTAssertFalse(app.buttons["billDuePaid"].exists)
+        tapUndo(messagePrefix: "已记下 · 电费", in: app)
+        XCTAssertTrue(app.buttons["billDuePaid"].waitForExistence(timeout: 5))
+    }
+    func testBillCalendarOpensDetailAndSharedEditForm() {
+        let app = application("v46-bills"); app.launch(); openFixedBills(app); billCalendarDay(27, in: app)
+        tap(app.buttons["editFixedFlow_" + billFixtureID(46425)], in: app)
+        XCTAssertTrue(anyElement("billDetailHistory", in: app).waitForExistence(timeout: 5))
+        tap(app.buttons["billDetailAmount"], in: app)
+        XCTAssertEqual(app.textFields["fixedFlowTitle"].value as? String, "电费")
+        replaceFixedFlowName("电费已改", in: app); tap(app.buttons["saveManualSheet"], in: app)
+        XCTAssertTrue(app.navigationBars["电费已改"].waitForExistence(timeout: 5))
+    }
+    func testBillCalendarStopAndResumeUseSameSavedPlan() {
+        let app = application("v46-bills", keepingUndo: true); app.launch(); openFixedBills(app); billCalendarDay(25, in: app)
+        let row = app.buttons["editFixedFlow_" + billFixtureID(46424)]
+        scrollToVisible(row, in: app); row.press(forDuration: 0.8); tap(app.buttons["billMenu_stop"], in: app)
+        let confirmation = app.alerts["停掉「话费和宽带」？"]
+        tapAlertButton("fixedFlowStopCancel", label: "取消", in: confirmation)
+        XCTAssertTrue(row.exists)
+        row.press(forDuration: 0.8); tap(app.buttons["billMenu_stop"], in: app)
+        tapAlertButton("fixedFlowStopConfirm", label: "停掉", in: confirmation)
+        billCalendarDay(25, in: app) // Return to the upcoming/year strip block.
+        let restore = app.buttons["resumeFixedFlow_" + billFixtureID(46424)]
+        tap(restore, in: app); billCalendarDay(25, in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+    }
+    func testAccountsTotalExcludesCreditAndLockedMoney() {
+        let app = application("v46-bills"); app.launch(); openSettings(app); tap(app.buttons["openAccounts"], in: app)
+        XCTAssertTrue(anyElement("accountsTotal", in: app).label.contains("12,174.00"))
+        XCTAssertTrue(app.staticTexts["不算在手上的"].exists)
+        XCTAssertTrue(app.buttons["accountRow_招行信用卡"].label.contains("欠的"))
+        XCTAssertTrue(app.buttons["accountRow_公积金"].label.contains("看得见，花不了"))
+    }
+    func testBillCalendarHiddenAmountsMaskBothCurrencies() {
+        let app = application("v46-bills-hidden"); app.launch(); openFixedBills(app); billCalendarDay(28, in: app)
+        XCTAssertFalse(app.staticTexts["US$20.00"].exists)
+        XCTAssertFalse(app.staticTexts["约 ¥142.40"].exists)
+        XCTAssertTrue(anyElement("billsSelectedDay", in: app).exists)
     }
 
     func testUndoReceiptDismissesAfterProductionLifetime() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
+        let app = application("v45-bill"); app.launch()
         XCTAssertNil(app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"])
-        let check = app.buttons["付了 房租"], undo = app.buttons["undoLastChange"], message = app.staticTexts["toastMessage"]
+        let check = homeBillCheck("话费和宽带", in: app), undo = app.buttons["undoLastChange"], message = app.staticTexts["toastMessage"]
         XCTAssertTrue(check.isHittable)
         let started = ProcessInfo.processInfo.systemUptime
         check.tap()
         XCTAssertTrue(undo.waitForExistence(timeout: 2)); XCTAssertTrue(undo.isHittable)
-        XCTAssertEqual(message.label, "已记下 · 房租 300.00")
+        XCTAssertEqual(message.label, "已记下 · 话费和宽带 160.00")
         let early = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !undo.exists }, object: nil)
         early.isInverted = true
         let earlyWindow = max(0.01, 2 - (ProcessInfo.processInfo.systemUptime - started))
@@ -1020,135 +1128,7 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 4), .completed)
         let elapsed = ProcessInfo.processInfo.systemUptime - started
         XCTAssertGreaterThanOrEqual(elapsed, 3.5); XCTAssertLessThan(elapsed, 7)
-        XCTAssertTrue(app.images["已付 房租"].exists); XCTAssertFalse(check.exists)
-    }
-
-    func testFixedIncomeCheckIncreasesAvailableAndPersists() {
-        let app = application("bills"); app.launch()
-        XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥700.00"))
-        openFixedBills(app)
-        let check = app.buttons["收到了 工资"]
-        tap(check, in: app)
-        assertGone(check); XCTAssertTrue(app.images["已收到 工资"].exists)
-        backToRoot(app); tap(app.buttons["tab_now"], in: app)
-        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '¥1,200.00'"), object: app.buttons["fundsFormula"])
-        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
-        snapshot("income-received", app)
-        app.terminate(); app.launch(); openFixedBills(app)
-        XCTAssertFalse(app.buttons["收到了 工资"].exists); XCTAssertTrue(app.images["已收到 工资"].exists)
-    }
-
-    func testFixedBillLongPressChangesAmountBeforeRecording() {
-        let app = application("bills-estimated"); app.launch(); openFixedBills(app)
-        let check = app.buttons["付了 电费"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5)); check.press(forDuration: 0.8)
-        tap(app.buttons["改金额再记"], in: app)
-        enterAmount("100", identifier: "fixedFlowSettlementAmount", in: app)
-        tap(app.buttons["saveManualSheet"], in: app)
-        assertGone(check); XCTAssertTrue(app.images["已付 电费"].exists)
-        backToRoot(app); tap(app.buttons["tab_now"], in: app)
-        XCTAssertTrue(app.buttons["fundsFormula"].label.contains("¥900.00"))
-        XCTAssertTrue(anyElement("todayEntries", in: app).exists)
-    }
-
-    func testFixedBillSwipeStopsFutureOccurrencesAndKeepsPaidRow() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
-        let check = app.buttons["收到了 工资"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        tap(check, in: app)
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' AND value BEGINSWITH '已收到; '")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5)); openFixedBillStop(row, title: "工资", in: app)
-        let confirmation = app.alerts["停掉「工资」？"]
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        XCTAssertTrue(alertButton("fixedFlowStopCancel", in: confirmation).isHittable)
-        XCTAssertTrue(alertButton("fixedFlowStopConfirm", in: confirmation).isHittable)
-        XCTAssertFalse(confirmation.staticTexts["只停以后的，付过的记录保留。"].exists)
-        XCTAssertFalse(alertButton("fixedFlowStopSkip", in: confirmation).exists)
-        tapAlertButton("fixedFlowStopCancel", label: "取消", in: confirmation)
-        assertGone(confirmation)
-        XCTAssertTrue(row.exists); XCTAssertFalse(app.buttons["resumeFixedFlow_" + planID].exists)
-        openFixedBillStop(row, title: "工资", in: app)
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        tapAlertButton("fixedFlowStopConfirm", label: "停掉", in: confirmation)
-        XCTAssertFalse(check.exists); XCTAssertFalse(row.exists)
-        XCTAssertTrue(app.buttons["resumeFixedFlow_" + planID].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '那期已记'")).firstMatch.exists)
-        XCTAssertFalse(app.buttons["停掉"].exists)
-        snapshot("bill-stopped-paid-kept", app)
-        app.terminate(); app.launch(); openFixedBills(app)
-        XCTAssertFalse(app.buttons["收到了 工资"].exists)
-        XCTAssertTrue(app.buttons["resumeFixedFlow_" + planID].exists)
-    }
-
-    func testFixedBillStopAndResumeBothSupportUndo() {
-        let app = application("bills", keepingUndo: true); app.launch(); openFixedBills(app)
-        let check = app.buttons["收到了 工资"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID)).firstMatch
-        let restore = app.buttons["resumeFixedFlow_" + planID]
-        openFixedBillStop(row, title: "工资", in: app)
-        let confirmation = app.alerts["停掉「工资」？"]
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        XCTAssertTrue(confirmation.staticTexts["停掉「工资」？"].exists)
-        tapAlertButton("fixedFlowStopCancel", label: "取消", in: confirmation)
-        assertGone(confirmation)
-        XCTAssertTrue(check.isEnabled)
-        func stop() {
-            openFixedBillStop(row, title: "工资", in: app)
-            XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-            tapAlertButton("fixedFlowStopConfirm", label: "收到了，记一笔再停", in: confirmation)
-        }
-        stop()
-        tapUndo(messagePrefix: "已停掉", in: app); assertGone(restore)
-        XCTAssertTrue(check.isEnabled)
-        stop()
-        XCTAssertTrue(restore.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.matching(identifier: "已停掉").firstMatch.exists)
-        tap(restore, in: app)
-        tapUndo(messagePrefix: "已恢复", in: app)
-        XCTAssertTrue(restore.waitForExistence(timeout: 5))
-        tap(restore, in: app); assertGone(restore)
-        XCTAssertFalse(check.exists); XCTAssertTrue(app.images["已收到 工资"].exists)
-        tapUndo(messagePrefix: "已恢复", in: app)
-        XCTAssertTrue(restore.waitForExistence(timeout: 5))
-        snapshot("bill-stopped-restorable", app)
-    }
-
-    func testFixedBillGroupedSwipesKeepCardAndContentGeometry() {
-        let app = application("bills-overdue"); app.launch(); openFixedBills(app)
-        let card = app.descendants(matching: .any).matching(identifier: "fixedFlowExpenseCard").firstMatch
-        XCTAssertTrue(card.waitForExistence(timeout: 5))
-        let rows = card.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' ")).allElementsBoundByIndex
-        XCTAssertGreaterThanOrEqual(rows.count, 2)
-        for index in [0, rows.count - 1] {
-            let row = rows[index]
-            scrollToVisible(row, in: app, scroll: app.scrollViews["fixedFlowsScroll"])
-            let check = row.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'settleFixedFlow_' ")).firstMatch
-            let originalCard = card.frame, originalRow = row.frame, originalCheck = check.frame
-            let labels = row.staticTexts.allElementsBoundByIndex.map(\.label)
-            swipeRow(row)
-            let action = app.buttons[row.identifier.replacingOccurrences(of: "fixedFlow_", with: "stopFixedFlow_")]
-            assertRevealState(row, revealed: true, action: action)
-            XCTAssertEqual(card.frame.minX, originalCard.minX, accuracy: 1)
-            XCTAssertEqual(card.frame.minY, originalCard.minY, accuracy: 1)
-            XCTAssertEqual(card.frame.width, originalCard.width, accuracy: 1)
-            XCTAssertEqual(card.frame.height, originalCard.height, accuracy: 1)
-            XCTAssertEqual(row.frame.width, originalRow.width, accuracy: 1)
-            XCTAssertEqual(row.frame.height, originalRow.height, accuracy: 1)
-            XCTAssertEqual(check.frame.width, originalCheck.width, accuracy: 1)
-            XCTAssertEqual(check.frame.minX, originalCheck.minX - 96, accuracy: 1)
-            XCTAssertEqual(action.frame.width, 78, accuracy: 1)
-            XCTAssertEqual(action.frame.minX - check.frame.maxX, 12, accuracy: 1)
-            XCTAssertTrue(originalCard.contains(action.frame))
-            XCTAssertEqual(row.staticTexts.allElementsBoundByIndex.map(\.label).filter { $0 != "停掉" }, labels)
-            snapshot("fixed-bill-group-row-\(index)-revealed", app)
-            swipeRow(row, left: false)
-            assertRevealState(row, revealed: false, action: action, closedFrame: originalRow)
-            XCTAssertEqual(check.frame.minX, originalCheck.minX, accuracy: 1)
-        }
+        XCTAssertFalse(check.exists)
     }
 
     func testFundsCalculationShowsFormulaRowsAndEditSheet() {
@@ -1170,137 +1150,6 @@ final class AppFlowTests: XCTestCase {
         scrollToVisible(anyElement("formulaResult", in: app), in: app)
         XCTAssertEqual(displayedAmount(anyElement("formulaResult", in: app)), before + 20_000)
         snapshot("formula-edit-saving", app)
-    }
-
-    func testFixedBillRowOpensPrefilledEditorRenamesAndSupportsUndo() {
-        let app = application("bills", keepingUndo: true); app.launch(); openFixedBills(app)
-        let check = app.buttons["付了 房租"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        tap(app.buttons["editFixedFlow_" + planID], in: app)
-        let editor = app.scrollViews["fixedFlowEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5)); XCTAssertTrue(app.staticTexts["改账单"].exists)
-        XCTAssertFalse(editor.buttons["要付"].exists); XCTAssertFalse(editor.buttons["要收"].exists)
-        let name = app.textFields["fixedFlowTitle"], amount = app.buttons["fixedFlowAmount"]
-        XCTAssertEqual(name.value as? String, "房租"); XCTAssertEqual(amount.value as? String, "300")
-        XCTAssertTrue(app.buttons["fixedFlowCategory"].exists); XCTAssertFalse(app.buttons["saveManualSheet"].isEnabled)
-        replaceFixedFlowName("租金已改", in: app)
-        tap(app.buttons["saveManualSheet"], in: app)
-        assertGone(editor)
-        XCTAssertTrue(app.buttons["付了 租金已改"].waitForExistence(timeout: 5)); XCTAssertFalse(check.exists)
-        tapUndo(messagePrefix: "已改好 · 修改安排", in: app)
-        XCTAssertTrue(check.waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["付了 租金已改"].exists)
-    }
-
-    func testFixedBillEditorStopSkipsPendingAndStoppedRowStillEditsWithoutResuming() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
-        let check = app.buttons["付了 房租"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        tap(app.buttons["editFixedFlow_" + planID], in: app)
-        let editor = app.scrollViews["fixedFlowEditor"], stop = app.buttons["fixedFlowEditStop"]
-        tap(stop, in: app, scroll: editor)
-        let confirmation = app.alerts["停掉「房租」？"]
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
-        XCTAssertEqual(alertButton("fixedFlowStopConfirm", in: confirmation).label, "付了，记一笔再停")
-        XCTAssertEqual(alertButton("fixedFlowStopSkip", in: confirmation).label, "没付，这期也不要了")
-        tapAlertButton("fixedFlowStopCancel", label: "取消", in: confirmation)
-        XCTAssertTrue(editor.exists)
-        tap(stop, in: app, scroll: editor)
-        tapAlertButton("fixedFlowStopSkip", label: "没付，这期也不要了", in: confirmation)
-        assertGone(editor); XCTAssertFalse(check.exists)
-        let restore = app.buttons["resumeFixedFlow_" + planID]
-        XCTAssertTrue(restore.waitForExistence(timeout: 5))
-        tap(app.buttons["editFixedFlow_" + planID], in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 5)); XCTAssertFalse(stop.exists)
-        XCTAssertFalse(app.buttons["saveManualSheet"].isEnabled)
-        replaceFixedFlowName("已停租金", in: app)
-        tap(app.buttons["saveManualSheet"], in: app)
-        assertGone(editor); XCTAssertTrue(restore.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["已停租金"].exists); XCTAssertFalse(app.buttons["付了 已停租金"].exists)
-    }
-
-    func testFixedBillEditorStopSettlesAllPendingPeriodsAndSupportsUndo() {
-        let app = application("bills-multiple", keepingUndo: true); app.launch(); openFixedBills(app)
-        let check = app.buttons.matching(identifier: "付了 每周订阅").firstMatch
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        tap(app.buttons.matching(identifier: "editFixedFlow_" + planID).firstMatch, in: app)
-        let editor = app.scrollViews["fixedFlowEditor"]
-        tap(app.buttons["fixedFlowEditStop"], in: app, scroll: editor)
-        let confirmation = app.alerts["停掉「每周订阅」？"]
-        XCTAssertTrue(confirmation.staticTexts["还有 6 期没记。"].exists)
-        tapAlertButton("fixedFlowStopConfirm", label: "付了，记一笔再停", in: confirmation)
-        assertGone(editor); XCTAssertTrue(app.buttons["resumeFixedFlow_" + planID].waitForExistence(timeout: 5))
-        XCTAssertFalse(check.exists)
-        tapUndo(messagePrefix: "已停掉", in: app)
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-    }
-
-    func testFixedBillEditorStopWithoutPendingUsesSameSimpleConfirmation() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
-        let check = app.buttons["收到了 工资"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        tap(check, in: app)
-        XCTAssertFalse(app.buttons["fixedFlowSchedule"].exists)
-        tap(app.buttons["editFixedFlow_" + planID], in: app)
-        let editor = app.scrollViews["fixedFlowEditor"]
-        tap(app.buttons["fixedFlowEditStop"], in: app, scroll: editor)
-        let confirmation = app.alerts["停掉「工资」？"]
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5)); XCTAssertFalse(alertButton("fixedFlowStopSkip", in: confirmation).exists)
-        tapAlertButton("fixedFlowStopConfirm", label: "停掉", in: confirmation)
-        assertGone(editor); XCTAssertTrue(app.buttons["resumeFixedFlow_" + planID].waitForExistence(timeout: 5))
-    }
-
-    func testFixedBillRevealedRowTapClosesBeforeEditing() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
-        let check = app.buttons["付了 房租"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID)).firstMatch
-        scrollToVisible(row, in: app, scroll: app.scrollViews["fixedFlowsScroll"])
-        let action = app.buttons[row.identifier.replacingOccurrences(of: "fixedFlow_", with: "stopFixedFlow_")]
-        swipeRow(row); assertRevealState(row, revealed: true, action: action)
-        point(row, x: 0.2, in: app).tap()
-        assertRevealState(row, revealed: false, action: action)
-        XCTAssertFalse(app.buttons["fixedFlowSchedule"].exists); XCTAssertTrue(check.exists)
-        tap(app.buttons["editFixedFlow_" + planID], in: app)
-        XCTAssertTrue(app.buttons["fixedFlowSchedule"].waitForExistence(timeout: 5))
-    }
-
-    func testFixedBillAddNameAcceptsTypingWithoutOpeningSchedule() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
-        tap(app.buttons["addFixedFlow"], in: app)
-        XCTAssertTrue(app.staticTexts["添加账单"].waitForExistence(timeout: 5))
-        let name = app.textFields["fixedFlowTitle"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        XCTAssertEqual(name.label, "名字"); XCTAssertEqual(name.placeholderValue, "名字")
-        tap(name, in: app)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        name.typeText("房租")
-        XCTAssertEqual(name.value as? String, "房租")
-        XCTAssertFalse(app.datePickers.firstMatch.exists); XCTAssertFalse(app.popovers.firstMatch.exists)
-    }
-
-    func testFixedBillAddCategoryTracksDirectionAndKeepsExistingDefaults() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
-        tap(app.buttons["addFixedFlow"], in: app)
-        let category = app.buttons["fixedFlowCategory"]
-        XCTAssertTrue(category.waitForExistence(timeout: 5)); XCTAssertEqual(category.value as? String, "其他支出")
-        tap(category, in: app); tap(app.buttons["会员订阅"], in: app)
-        XCTAssertEqual(category.value as? String, "会员订阅")
-        tap(app.buttons["要收"], in: app)
-        XCTAssertEqual(category.value as? String, "其他收入")
-        tap(category, in: app)
-        // Fixed-flow categories are Menu items exposed by their titles.
-        let salary = app.buttons["工资奖金"]
-        XCTAssertTrue(salary.waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["会员订阅"].exists)
-        tap(salary, in: app)
-        XCTAssertEqual(category.value as? String, "工资奖金")
-        tap(app.buttons["要付"], in: app)
-        XCTAssertEqual(category.value as? String, "其他支出")
-        tap(app.buttons["cancelManualSheet"], in: app)
     }
 
     func testDueBillInLetterStillSettles() {
@@ -1344,50 +1193,6 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(element.value as? String, value, file: file, line: line)
     }
 
-    func testFixedBillEditorUsesInstallmentsAndAccountGatesAutomaticRecording() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
-        tap(app.buttons["addFixedFlow"], in: app)
-        XCTAssertFalse(app.staticTexts["到什么时候"].exists)
-        XCTAssertFalse(app.staticTexts["90 天里会先留出"].exists)
-        XCTAssertFalse(app.switches["fixedFlowAutoPay"].isEnabled)
-        enterAmount("10", identifier: "fixedFlowAmount", in: app)
-        tap(app.textFields["名字"], in: app); app.textFields["名字"].typeText("自动测试")
-        tap(app.buttons["fixedFlowSchedule"], in: app)
-        let schedule = app.popovers.firstMatch
-        XCTAssertTrue(schedule.datePickers.firstMatch.waitForExistence(timeout: 5))
-        // The name keyboard can also expose a button labeled 完成.
-        tap(schedule.buttons["完成"], in: app)
-        assertGone(schedule)
-        tap(app.buttons["增加期数"], in: app); tap(app.buttons["增加期数"], in: app)
-        tap(app.buttons["账户"], in: app)
-        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH '合成银行卡 · 余额'")).firstMatch, in: app)
-        XCTAssertTrue(app.switches["fixedFlowAutoPay"].isEnabled)
-        let editor = app.scrollViews["fixedFlowEditor"]
-        for _ in 0..<4 {
-            let frame = visibleFrame(editor, in: app)
-            let trayTop = min(frame.maxY, app.textFields["fixedFlowTitle"].frame.minY)
-            if ["fixedFlowAutoPay", "fixedFlowEstimated"].allSatisfy({ app.switches[$0].frame.maxY < trayTop }) { break }
-            let origin = app.coordinate(withNormalizedOffset: .zero)
-            let start = origin.withOffset(CGVector(dx: frame.midX - app.frame.minX, dy: frame.minY + (trayTop - frame.minY) * 0.85 - app.frame.minY))
-            let end = origin.withOffset(CGVector(dx: frame.midX - app.frame.minX, dy: frame.minY + (trayTop - frame.minY) * 0.15 - app.frame.minY))
-            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
-        }
-        let trayTop = min(visibleFrame(editor, in: app).maxY, app.textFields["fixedFlowTitle"].frame.minY)
-        for identifier in ["fixedFlowAutoPay", "fixedFlowEstimated"] {
-            XCTAssertLessThan(app.switches[identifier].frame.maxY, trayTop)
-        }
-        toggleSwitch(app.switches["fixedFlowAutoPay"], in: app); toggleSwitch(app.switches["fixedFlowEstimated"], in: app)
-        XCTAssertEqual(app.switches["fixedFlowAutoPay"].value as? String, "1")
-        XCTAssertEqual(app.switches["fixedFlowEstimated"].value as? String, "1")
-        tap(app.buttons["saveManualSheet"], in: app)
-        XCTAssertTrue(app.buttons["付了 自动测试"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '1/2 期' AND label CONTAINS '自动' AND label CONTAINS '大约'")).firstMatch.exists)
-        XCUIDevice.shared.press(.home); app.activate()
-        let paid = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: app.images["已付 自动测试"])
-        XCTAssertEqual(XCTWaiter.wait(for: [paid], timeout: 5), .completed)
-        XCTAssertFalse(app.staticTexts["自动记下完成"].exists)
-    }
-
     func testOverdueBillsAppearInLetter() {
         let app = application("bills-overdue"); app.launch(); openInbox(in: app, required: false)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "dueBills").firstMatch.waitForExistence(timeout: 5))
@@ -1409,7 +1214,8 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(suggestion.waitForExistence(timeout: 5)); XCTAssertFalse(suggestion.isSelected)
         tap(suggestion, in: app); tap(app.buttons["saveQuickEntry"], in: app)
         openFixedBills(app)
-        XCTAssertFalse(app.buttons["付了 房租"].exists); XCTAssertTrue(app.images["已付 房租"].exists)
+        billCalendarDay(in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '已付'")).firstMatch.exists)
     }
 
     func testAutomaticBillsRecordOnceOnLaunchWithoutToast() {
@@ -1418,7 +1224,8 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(anyElement("todayEntries", in: app).waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["自动记下完成"].exists)
         openFixedBills(app)
-        XCTAssertFalse(app.buttons["付了 房租"].exists); XCTAssertTrue(app.images["已付 房租"].exists)
+        billCalendarDay(in: app)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '已付'")).firstMatch.exists)
         backToRoot(app); tap(app.buttons["tab_ledger"], in: app)
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' "))
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, 1)
@@ -1426,105 +1233,10 @@ final class AppFlowTests: XCTestCase {
         tap(app.buttons["tab_ledger"], in: app)
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, 1)
         openFixedBills(app)
-        XCTAssertEqual(app.images.matching(identifier: "已付 房租").count, 1)
+        billCalendarDay(in: app)
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '已付'")).count, 1)
         XCTAssertFalse(app.buttons["付了 房租"].exists)
     }
-
-    func testFixedBillsStateTextAndUpcomingHasOnlyContextAction() {
-        let app = application("bills-clarity", keepingUndo: true); app.launch(); openFixedBills(app)
-        XCTAssertTrue(app.staticTexts["要付"].exists); XCTAssertTrue(app.staticTexts["要收"].exists)
-        let day = Calendar.current.component(.day, from: Date())
-        let status = day > 1 ? "1日 · 过了 \(day - 1) 天还没记" : "1日 · 今天到期"
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", status)).firstMatch.exists)
-        let overdue = app.descendants(matching: .any).matching(identifier: "fixedFlowOverdue").firstMatch
-        XCTAssertEqual(overdue.exists, day > 1)
-        if day > 1 {
-            XCTAssertTrue(overdue.label.contains("其中")); XCTAssertTrue(overdue.label.contains("已过期"))
-            XCTAssertTrue(overdue.label.contains("过期没收到")); XCTAssertTrue(overdue.label.contains("·"))
-            tap(app.buttons["付了 房租"], in: app)
-            let incomeOnly = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '过期没收到' AND NOT (label CONTAINS '其中')"), object: overdue)
-            XCTAssertEqual(XCTWaiter.wait(for: [incomeOnly], timeout: 5), .completed)
-            tap(app.buttons["收到了 工资"], in: app); assertGone(overdue)
-        }
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '已付 · 自动'")).firstMatch.exists)
-        XCTAssertFalse(app.buttons["付了 视频会员"].exists)
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fixedFlow_' AND value BEGINSWITH '还没到; '")).firstMatch
-        let month = Calendar.current.dateInterval(of: .month, for: Date())!
-        if !Calendar.current.isDate(Date(), inSameDayAs: month.end.addingTimeInterval(-1)) {
-            XCTAssertFalse(app.buttons["付了 话费"].exists); XCTAssertTrue(row.exists)
-            scrollToVisible(row, in: app, scroll: app.scrollViews["fixedFlowsScroll"])
-            row.press(forDuration: 0.8)
-            let early = app.buttons["提前标记付了"]
-            XCTAssertTrue(early.waitForExistence(timeout: 5)); early.tap()
-            // Native menu synchronization must not consume the undo business test's receipt.
-            tapUndo(messagePrefix: "已记下 · 话费 ", in: app)
-            assertGone(app.images["已付 话费"])
-            XCTAssertTrue(row.exists)
-            XCTAssertFalse(app.buttons["付了 话费"].exists)
-        }
-        snapshot("bill-states", app)
-    }
-
-    func testFixedIncomeStopSkipCancelPersistenceAndUndo() {
-        let app = application("bills", keepingUndo: true); app.launch(); openFixedBills(app)
-        let check = app.buttons["收到了 工资"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID)).firstMatch
-        let restore = app.buttons["resumeFixedFlow_" + planID]
-        openFixedBillStop(row, title: "工资", in: app)
-        let confirmation = app.alerts["停掉「工资」？"]
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5)); XCTAssertEqual(app.popovers.count, 0)
-        XCTAssertTrue(confirmation.staticTexts["停掉「工资」？"].exists)
-        XCTAssertFalse(confirmation.buttons.matching(NSPredicate(format: "label == %@", "停掉")).firstMatch.exists)
-        let confirm = alertButton("fixedFlowStopConfirm", in: confirmation), skip = alertButton("fixedFlowStopSkip", in: confirmation), cancel = alertButton("fixedFlowStopCancel", in: confirmation)
-        XCTAssertEqual(confirm.label, "收到了，记一笔再停"); XCTAssertEqual(skip.label, "没收到，这期也不要了")
-        for button in [confirm, skip, cancel] {
-            XCTAssertTrue(button.isHittable)
-            XCTAssertTrue(button.isEnabled)
-            XCTAssertTrue(confirmation.frame.contains(button.frame))
-        }
-        tapAlertButton("fixedFlowStopCancel", label: "取消", in: confirmation)
-        assertGone(confirmation); XCTAssertTrue(check.exists); XCTAssertFalse(restore.exists)
-        openFixedBillStop(row, title: "工资", in: app)
-        tapAlertButton("fixedFlowStopSkip", label: "没收到，这期也不要了", in: confirmation)
-        tapUndo(messagePrefix: "已停掉", in: app)
-        assertGone(restore); XCTAssertTrue(check.exists)
-        openFixedBillStop(row, title: "工资", in: app)
-        tapAlertButton("fixedFlowStopSkip", label: "没收到，这期也不要了", in: confirmation)
-        XCTAssertTrue(restore.waitForExistence(timeout: 5)); assertGone(row)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '那期没要'")).firstMatch.exists)
-        app.terminate(); app.launch(); openFixedBills(app)
-        XCTAssertTrue(restore.waitForExistence(timeout: 5)); XCTAssertFalse(row.exists)
-        tap(restore, in: app); XCTAssertFalse(check.exists)
-        snapshot("income-skipped-and-resumed", app)
-    }
-
-    func testFixedBillStopHandlesEveryUnsettledPeriod() {
-        let app = application("bills-multiple", keepingUndo: true); app.launch(); openFixedBills(app)
-        let check = app.buttons.matching(identifier: "付了 每周订阅").firstMatch
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "fixedFlow_" + planID))
-        let originalCount = rows.count
-        XCTAssertGreaterThan(originalCount, 0)
-        openFixedBillStop(rows.firstMatch, title: "每周订阅", in: app)
-        let confirmation = app.alerts["停掉「每周订阅」？"]
-        XCTAssertTrue(confirmation.staticTexts["还有 6 期没记。"].exists)
-        XCTAssertEqual(alertButton("fixedFlowStopSkip", in: confirmation).label, "没付，这期也不要了")
-        tapAlertButton("fixedFlowStopConfirm", label: "付了，记一笔再停", in: confirmation)
-        tapUndo(messagePrefix: "已停掉", in: app)
-        XCTAssertTrue(check.waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, originalCount)
-        openFixedBillStop(rows.firstMatch, title: "每周订阅", in: app)
-        XCTAssertTrue(confirmation.staticTexts["还有 6 期没记。"].exists)
-        tapAlertButton("fixedFlowStopConfirm", label: "付了，记一笔再停", in: confirmation)
-        XCTAssertTrue(app.buttons["resumeFixedFlow_" + planID].waitForExistence(timeout: 5))
-        XCTAssertEqual(rows.count, 0); XCTAssertFalse(check.exists)
-        tapUndo(messagePrefix: "已停掉", in: app)
-        XCTAssertTrue(check.waitForExistence(timeout: 5)); XCTAssertEqual(rows.count, originalCount)
-        snapshot("multiple-period-stop-undone", app)
-    }
-
 
     func testStorageEntryAndOverviewOpenFromMe() {
         let app = application("ask"); app.launch()
@@ -2146,19 +1858,6 @@ final class AppFlowTests: XCTestCase {
         XCTAssertTrue(match.waitForExistence(timeout: 5)); tap(match, in: app)
         XCTAssertFalse(app.buttons["entryRepeat"].exists)
         tap(match, in: app); XCTAssertTrue(app.buttons["entryRepeat"].exists)
-    }
-
-    func testFixedFlowAmountUsesSameTrayAndNameFocusClosesIt() {
-        let app = application("bills"); app.launch(); openFixedBills(app)
-        let check = app.buttons["付了 房租"]
-        XCTAssertTrue(check.waitForExistence(timeout: 5))
-        let planID = String(check.identifier.split(separator: "_")[1])
-        tap(app.buttons["editFixedFlow_" + planID], in: app)
-        enterAmount("12+3", identifier: "fixedFlowAmount", in: app)
-        XCTAssertEqual(app.buttons["fixedFlowAmount"].value as? String, "15")
-        tap(app.buttons["fixedFlowAmount"], in: app)
-        tap(app.textFields["fixedFlowTitle"], in: app)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5)); assertGone(app.buttons["amountKeypadDone"])
     }
 
     func testTransferWithOneAccountCanAddDestinationWithoutLosingDraft() {

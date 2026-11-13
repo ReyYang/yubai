@@ -5,10 +5,15 @@ struct FixedFlowPayments {
     var plans: [FixedFlowPaymentKey: Int64] = [:]
     var rentPaid: [FixedFlowPaymentKey: Int64] = [:]; var rentReceived: [FixedFlowPaymentKey: Int64] = [:]
     var latest: [UUID: Entry] = [:]
+    var actual: [UUID: Entry] = [:]
+    var rates: [ManualExchangeRate] = []
+    var asOf: Date = .distantFuture
     init(in ledger: Ledger, now: Date = .distantFuture) {
+        rates = ledger.preferences.billExchangeRates ?? []; asOf = now
         for entry in ledger.entries where entry.deletedAt == nil && entry.date <= now {
             if let id = entry.planID, let date = entry.occurrence {
                 plans[FixedFlowPaymentKey(id: id, day: Dates.day(date)), default: 0] += entry.amount
+                if entry.source != "自动扣款", actual[id] == nil || entry.date > actual[id]!.date || (entry.date == actual[id]!.date && (entry.recordedAt ?? entry.date) > (actual[id]!.recordedAt ?? actual[id]!.date)) { actual[id] = entry }
                 if latest[id] == nil || entry.date > latest[id]!.date || (entry.date == latest[id]!.date && (entry.recordedAt ?? entry.date) > (latest[id]!.recordedAt ?? latest[id]!.date)) { latest[id] = entry }
             }
             if let id = entry.rentID, let date = entry.rentPeriod {
@@ -21,15 +26,18 @@ struct FixedFlowPayments {
         }
     }
     func amount(for plan: Plan) -> Int64 {
-        guard plan.estimated, let entry = latest[plan.id],
-              plan.estimatedAmountSince.map({ (entry.recordedAt ?? entry.date) > $0 }) ?? true else { return plan.amount }
+        guard plan.estimated || plan.currency != .cny, let entry = (plan.currency == .cny ? latest[plan.id] : actual[plan.id]),
+              plan.estimatedAmountSince.map({ (entry.recordedAt ?? entry.date) > $0 }) ?? true else {
+            if plan.currency == .cny { return plan.amount }
+            return ManualBillExchangeRates(rates).rate(for: plan.currency, asOf: asOf)?.convert(plan.amount) ?? 0
+        }
         return entry.amount
     }
     func remaining(for plan: Plan, on date: Date) -> Int64 {
         guard !plan.isSkipped(on: date) else { return 0 }
         let paid = plans[FixedFlowPaymentKey(id: plan.id, day: Dates.day(date)), default: 0]
         if paid > 0 && plan.settledOccurrences.contains(where: { Dates.day($0) == Dates.day(date) }) { return 0 }
-        return plan.estimated && paid > 0 ? 0 : max(0, amount(for: plan) - paid)
+        return (plan.estimated || plan.currency != .cny) && paid > 0 ? 0 : max(0, amount(for: plan) - paid)
     }
 }
 
@@ -212,7 +220,7 @@ extension FixedFlows {
                 let paid = payments.plans[FixedFlowPaymentKey(id: plan.id, day: Dates.day(item.date)), default: 0]
                 append(id: "\(plan.id)-\(item.date.timeIntervalSince1970)", title: plan.title, date: item.date, amount: payments.amount(for: plan), paid: paid,
                        remaining: payments.remaining(for: plan, on: item.date), incoming: plan.inflow, planID: plan.id, autoPay: plan.autoPay,
-                       installment: plan.installments.map { (item.index + 1, $0) }, estimated: plan.estimated)
+                       installment: plan.installments.map { (item.index + 1, $0) }, estimated: plan.estimated || plan.currency != .cny)
             }
         }
         for rent in ledger.rents where rent.active {

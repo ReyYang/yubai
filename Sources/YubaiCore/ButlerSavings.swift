@@ -3,9 +3,9 @@ import Foundation
 /// An audit trail of explicit decisions, never an estimate of "spending less".
 public struct ButlerSaving: Codable, Equatable, Identifiable, Sendable {
     public enum Cadence: String, Codable, Sendable {
-        case monthly, yearly, once, weekly, quarterly
+        case monthly, yearly, once, weekly, quarterly, halfYearly, fortnightly
         static func from(_ frequency: Frequency) -> Self {
-            switch frequency { case .monthly: .monthly; case .yearly: .yearly; case .once: .once; case .weekly: .weekly; case .quarterly: .quarterly }
+            switch frequency { case .monthly: .monthly; case .yearly: .yearly; case .once: .once; case .weekly: .weekly; case .quarterly: .quarterly; case .halfYearly: .halfYearly; case .fortnightly: .fortnightly }
         }
     }
     public var id: String
@@ -37,13 +37,14 @@ public enum ButlerSavings {
     /// Also captures explicit decisions made before round 46. Stable source IDs
     /// prevent the same wish or stopped subscription being counted twice.
     public static func synchronize(_ ledger: inout Ledger, now: Date) {
+        let payments = FixedFlowPayments(in: ledger, now: now)
         var records = ledger.butlerSavings
         var ids = Set(records.map(\.id))
         for stop in ledger.stoppedSubscriptions {
             let id = "subscription:" + stop.id.uuidString
             if let index = records.firstIndex(where: { $0.id == id }) { records[index].endedAt = stop.resumedAt }
             guard stop.plan.frequency != .once, ids.insert(id).inserted else { continue }
-            records.append(ButlerSaving(id: id, item: stop.plan.title, amount: stop.plan.amount,
+            records.append(ButlerSaving(id: id, item: stop.plan.title, amount: payments.amount(for: stop.plan),
                                         cadence: .from(stop.plan.frequency),
                                         date: stop.stoppedAt, undoable: true, plan: stop.plan, endedAt: stop.resumedAt))
         }
@@ -53,7 +54,7 @@ public enum ButlerSavings {
             if plan.endDate == date { plan.endDate = nil }
             let id = "plan:" + plan.id.uuidString + ":" + String(date.timeIntervalSince1970)
             guard ids.insert(id).inserted else { continue }
-            records.append(ButlerSaving(id: id, item: plan.title, amount: plan.amount,
+            records.append(ButlerSaving(id: id, item: plan.title, amount: payments.amount(for: plan),
                                         cadence: .from(plan.frequency),
                                         date: date, undoable: true, plan: plan))
         }

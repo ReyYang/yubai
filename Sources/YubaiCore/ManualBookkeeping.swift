@@ -513,6 +513,8 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
             let names = ["日", "一", "二", "三", "四", "五", "六"]
             return "每周" + names[c.component(.weekday, from: date) - 1]
         case .monthly: return "每月 \(monthlyDay ?? c.component(.day, from: date)) 日"
+        case .fortnightly: return "每两周 · " + ManualBookkeeping.dayLabel(date, now: now)
+        case .halfYearly: return "每半年 \(c.component(.month, from: date)) 月 \(c.component(.day, from: date)) 日"
         case .quarterly: return "每季 \(c.component(.day, from: date)) 日"
         case .yearly: return "每年 \(c.component(.month, from: date)) 月 \(c.component(.day, from: date)) 日"
         }
