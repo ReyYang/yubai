@@ -12,7 +12,7 @@ struct NowView: View {
         ScrollView {
             content
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8).padding(.bottom, YubaiSpace.gapSection)
-                .frame(maxWidth: 1080).frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity, alignment: .leading)
         }.yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
             .rootScrollContentMargins().rootTabScroll(.now)
             .rootPageHeader { RootHeader(title: "现在") }
@@ -147,7 +147,7 @@ struct NowView: View {
                     VStack(spacing: YubaiSpace.none) {
                         ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                             NowUpcomingRow(row: row)
-                            if index < rows.count - 1 { Rectangle().fill(YubaiColor.separator).frame(height: 1) }
+                            if index < rows.count - 1 { Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator) }
                         }
                     }
                 }
@@ -177,7 +177,7 @@ private struct NowUpcomingRow: View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         layout {
             Text(NowFormat.monthDay(row.date)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                .frame(minWidth: textSize.isAccessibilitySize ? nil : 56, alignment: .leading).fixedSize()
+                .frame(minWidth: textSize.isAccessibilitySize ? nil : YubaiSize.rowDouble, alignment: .leading).fixedSize()
             if let planID = row.planID, !row.inflow {
                 TabNavigationLink(.billDetail(planID)) { BillDetailView(planID: planID) } label: {
                     Text(row.title).yubaiFont(YubaiFont.body).lineLimit(1).truncationMode(.tail)
@@ -250,7 +250,7 @@ private struct NowRecentEntries: View {
                         ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
                             NowEntryRow(entry: entry)
                             if index < group.entries.count - 1 {
-                                Rectangle().fill(YubaiColor.separator).frame(height: 1).padding(.leading, textSize.isAccessibilitySize ? 0 : YubaiSize.rowIcon + YubaiSpace.gapGroup)
+                                Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).padding(.leading, textSize.isAccessibilitySize ? YubaiSpace.none : YubaiSize.rowIcon + YubaiSpace.gapGroup)
                             }
                         }
                     }
@@ -273,13 +273,13 @@ private struct NowEntryRow: View {
         return Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: {
             HStack(alignment: .center, spacing: YubaiSpace.gapGroup) {
                 if !stacked {
-                    Text(String(entry.displayTitle.prefix(1))).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+                    LedgerCategoryIcon(category: entry.category, pending: Classification.isPending(entry), income: entry.nature.categoryIncome)
                         .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
                         .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
                 }
                 layout {
                     VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                        Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+                        Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                         Text(category).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(stacked ? nil : 1)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     AmountLabel(cents: entry.amount, hide: hide, sign: inflow ? .inflow : .outflow, ink: inflow ? YubaiColor.brandInk : YubaiColor.label)

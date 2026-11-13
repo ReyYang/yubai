@@ -18,7 +18,7 @@ struct ReserveView: View {
             .sheet(isPresented: $editing) {
                 AmountEntrySheet(title: "存着不动", keypad: $keypad, primaryTitle: "好", primaryIdentifier: "saveReserveTotal",
                                  canSave: keypad.amount != nil, save: saveTotal)
-                    .environment(store).yubaiSheetBackground().presentationDetents([.height(480), .large]).presentationDragIndicator(.visible)
+                    .environment(store).yubaiSheetBackground().presentationDragIndicator(.visible)
             }
     }
     private var hero: some View {

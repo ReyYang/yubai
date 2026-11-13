@@ -5,7 +5,6 @@ import YubaiCore
 struct ReconcileView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var textSize
     @State private var rows: [Reconciliation.Row] = []
     @State private var inputs: [UUID: String] = [:]
     @State private var loaded = false
@@ -40,7 +39,7 @@ struct ReconcileView: View {
                     VStack(spacing: YubaiSpace.none) {
                         ForEach(rows) { row in
                             accountRow(row)
-                            if row.id != rows.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
+                            if row.id != rows.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true) }
                         }
                     }
                 }
@@ -69,20 +68,13 @@ struct ReconcileView: View {
 
     private func accountRow(_ row: Reconciliation.Row) -> some View {
         let hide = store.preferences.hideAmounts
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-        return layout {
+        let binding = Binding(get: { inputs[row.id] ?? "" }, set: { inputs[row.id] = $0 })
+        return MoneyInputRow(title: row.name + "实际余额", text: binding, identifier: "reconcileField_" + row.name, allowNegative: true, leadingLabel: AnyView(
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                Text(row.name).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+                Text(row.name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                 Text("账上 " + amount2(row.book, hide: hide)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }
-            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
-            field(row)
-        }.padding(.vertical, YubaiSpace.space8).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
-    }
-
-    private func field(_ row: Reconciliation.Row) -> some View {
-        let binding = Binding(get: { inputs[row.id] ?? "" }, set: { inputs[row.id] = $0 })
-        return BalanceAmountField(text: binding, label: row.name + "实际余额", identifier: "reconcileField_" + row.name)
+        )).padding(.vertical, YubaiSpace.space8)
     }
 
     private var resultBar: some View {
@@ -117,7 +109,7 @@ struct ReconcileView: View {
             _ = added
         }
         if ok {
-            store.toast = "已补 · 没细记 " + amount2(-difference, hide: store.preferences.hideAmounts)
+            store.toast = "已补 没细记 " + amount2(-difference, hide: store.preferences.hideAmounts)
             dismiss()
         }
     }

@@ -66,7 +66,7 @@ private struct MemoryEditor: View {
     private var form: some View {
         Form {
             Section {
-                CardTextFieldRow(title: "", text: $text, placeholder: "记忆文字", identifier: "memoryText", multiline: true)
+                CardTextFieldRow(title: "", text: $text, placeholder: "记忆文字", identifier: "memoryText", multiline: true, autofocus: true)
                 InlineFieldError(message: text.count > 200 || text.contains(where: { $0.isNewline }) ? "记忆须在一行内，最多 200 字" : nil)
             }.listRowBackground(YubaiColor.card)
             Section {
@@ -102,7 +102,7 @@ struct RememberedRows: View {
     var body: some View {
         ForEach(visible) { note in
             VStack(spacing: YubaiSpace.space8) {
-                Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+                Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true)
                 HStack(spacing: YubaiSpace.space8) {
                     Image(systemName: "checkmark").accessibilityHidden(true)
                     Text("已记下：" + note.text).frame(maxWidth: .infinity, alignment: .leading)

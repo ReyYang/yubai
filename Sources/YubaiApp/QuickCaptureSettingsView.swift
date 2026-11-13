@@ -182,7 +182,7 @@ private struct CaptureRuleEditor: View {
     private var accounts: [Account] { store.accounts.filter { !$0.archived } }
     var body: some View {
         Form {
-            TextField(kind == .card ? "卡名" : "商户", text: $name).accessibilityIdentifier("captureRuleName")
+            CardTextFieldRow(title: kind == .card ? "卡名" : "商户", text: $name, identifier: "captureRuleName", autofocus: true)
             if kind == .card {
                 Picker("账户", selection: $account) { ForEach(accounts) { Text($0.name).tag(Optional($0.id)) } }
             } else {

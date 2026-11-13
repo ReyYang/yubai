@@ -19,7 +19,7 @@ struct AccountEditor: View {
         }.editorForm().manualSheetNavigation()
             .safeAreaInset(edge: .top) {
                 ManualSheetHeader(title: account == nil ? "添加账户" : "对一下余额", enabled: validationError == nil,
-                                  actionIdentifier: "saveAccount", cancel: cancel, action: save).padding(.horizontal, 20)
+                                  actionIdentifier: "saveAccount", cancel: cancel, action: save).padding(.horizontal, YubaiSpace.space20)
             }
             .entryDiscardGuard(dirty: loaded && signature != initialSignature, amount: (try? Money.parse(amount, allowNegative: true)) ?? 0, confirming: $confirmingDiscard)
             .onAppear {
@@ -63,7 +63,7 @@ struct AccountEditor: View {
 
     private var accountSection: some View {
         Section("账户") {
-            CardTextFieldRow(title: "名称", text: $name, identifier: "accountName")
+            CardTextFieldRow(title: "名称", text: $name, identifier: "accountName", autofocus: true)
             if !name.isEmpty { InlineFieldError(message: nameError) }
             SuggestionChips(values: ["微信零钱", "支付宝", "招行储蓄卡", "信用卡"], selected: name) { name = $0 }
             Picker("账户类型", selection: $kind) { ForEach(AccountKind.allCases) { Text($0.label).tag($0) } }.disabled(account != nil)
@@ -72,12 +72,12 @@ struct AccountEditor: View {
     private var balanceSection: some View {
         Section(kind == .credit ? "当前待还款" : kind == .investment ? "当前市值" : "对一下余额") {
             if account != nil { Toggle("本次重新核对真实余额", isOn: $reconcileNow).tint(YubaiColor.toggleOn) }
-            CardTextFieldRow(title: kind == .credit ? "当前待还款" : "余额", text: $amount, identifier: "accountBalance", numeric: true, hidesValue: store.preferences.hideAmounts)
+            MoneyInputRow(title: kind == .credit ? "当前待还款" : "余额", text: $amount, identifier: "accountBalance", allowNegative: kind != .credit)
                 .disabled(account != nil && !reconcileNow)
                 .accessibilityHint(kind == .credit ? "填写实际欠款，单位元，填写正数" : "填写此刻的真实余额，单位元")
             if !amount.isEmpty { InlineFieldError(message: balanceError) }
             if account == nil || reconcileNow {
-                DatePicker("上次对账", selection: $at, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                EntryFormRow(title: "上次对账") { EntryDateChip(date: $at, allowsFuture: false); EntryDateChip(date: $at, time: true, allowsFuture: false) }
                 Toggle("已与真实账户核对", isOn: $verified).tint(YubaiColor.toggleOn)
                 if let a = account, let entered = try? Money.parse(amount, allowNegative: kind != .credit) {
                     let actual = kind == .credit ? -entered : entered
@@ -90,7 +90,7 @@ struct AccountEditor: View {
         Section {
             DisclosureGroup("更多") {
                 if kind == .credit {
-                    CardTextFieldRow(title: "信用额度", text: $limit, identifier: "accountCreditLimit", numeric: true, hidesValue: store.preferences.hideAmounts)
+                    MoneyInputRow(title: "信用额度", text: $limit, identifier: "accountCreditLimit")
                     Picker("还款日", selection: $creditPaymentDay) {
                         Text("未指定").tag(0)
                         ForEach(1...31, id: \.self) { Text("每月 \($0) 号").tag($0) }
@@ -180,60 +180,36 @@ struct AccountsView: View {
     }
     func accountDetail(_ a: Account) -> some View {
         Page {
+            Text(a.name).yubaiFont(YubaiFont.cardTitle).fixedSize(horizontal: false, vertical: true)
             AmountLabel(cents: store.balance(a), hide: store.preferences.hideAmounts, role: .display)
-            Card(style: .list) { VStack(spacing: YubaiSpace.none) {
-                LabeledContent("类型", value: a.kind.label).frame(minHeight: YubaiSize.rowSingle)
-                Divider().overlay(YubaiColor.separator)
-                LabeledContent("上次对账", value: Dates.text(a.anchorDate, time: true)).frame(minHeight: YubaiSize.rowSingle)
-                if a.creditLimit > 0 { Divider().overlay(YubaiColor.separator); LabeledContent("信用额度", value: Money.text(a.creditLimit)).frame(minHeight: YubaiSize.rowSingle) }
-                if !a.note.isEmpty { Divider().overlay(YubaiColor.separator); Text(a.note).frame(minHeight: YubaiSize.rowSingle) }
-                Divider().overlay(YubaiColor.separator)
-                NavigationLink("对一下余额") { AccountEditor(account: a, startsReconciling: true) }.frame(minHeight: YubaiSize.rowSingle)
-                NavigationLink("编辑账户") { AccountEditor(account: a) }.frame(minHeight: YubaiSize.rowSingle).accessibilityIdentifier("editAccount")
-            }.yubaiFont(YubaiFont.row) }
+            Card(style: .list) {
+                VStack(spacing: YubaiSpace.none) {
+                    EntryFormRow(title: "类型") { Text(a.kind.label) }
+                    EntryFormDivider()
+                    EntryFormRow(title: "上次对账") { Text(Dates.text(a.anchorDate, time: true)).fixedSize() }
+                    if a.creditLimit > 0 {
+                        EntryFormDivider()
+                        EntryFormRow(title: "信用额度") { AmountLabel(cents: a.creditLimit, hide: store.preferences.hideAmounts) }
+                    }
+                    if !a.note.isEmpty { EntryFormDivider(); Text(a.note).frame(minHeight: YubaiSize.rowSingle) }
+                }
+            }
+            Button("对一下余额") { store.sheet = .reconcile(a.id) }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("reconcileAccount")
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 SectionHeading(title: "关联记录").padding(.horizontal, YubaiSpace.insetCard)
                 CardRows(store.accountEntries(a.id)) { e in EntryLink(entry: e, hideAmount: store.preferences.hideAmounts, editable: true) }
             }
-            Button(a.archived ? "取消归档" : "归档账户") { store.update(a.archived ? "取消归档" : "归档账户") { l in if let i = l.accounts.firstIndex(where: { $0.id == a.id }) { l.accounts[i].archived.toggle() } } }.buttonStyle(SecondaryButtonStyle())
+            Button(a.archived ? "取消归档" : "归档账户") {
+                store.update(a.archived ? "取消归档" : "归档账户") { ledger in
+                    if let i = ledger.accounts.firstIndex(where: { $0.id == a.id }) { ledger.accounts[i].archived.toggle() }
+                }
+            }.buttonStyle(SecondaryButtonStyle())
         }.navigationTitle(a.name).yubaiNavigation().accessibilityIdentifier("accountDetailPage")
-    }
-}
-
-struct GoalEditor: View {
-    @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
-    var goal: Goal?
-    var updateLabel = "保存存钱"
-    @State private var title = ""; @State private var target = ""; @State private var reserved = ""; @State private var date = Date(); @State private var hasDate = false; @State private var note = ""; @State private var loaded = false
-    var body: some View {
-        Form { goalSection; reservationSection }.editorForm().manualSheetHeader(goal == nil ? "在存钱" : "调整存钱", actionTitle: "保存", enabled: validationError == nil, action: save)
-            .onAppear { guard !loaded else { return }; loaded = true; if let g = goal { title = g.title; target = Money.input(g.target); reserved = Money.input(g.reserved); hasDate = g.dueDate != nil; date = g.dueDate ?? Date(); note = g.note } }
-    }
-    private var validationError: String? {
-        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "填写名称" }
-        guard let total = try? Money.parse(target), total > 0 else { return "想存金额须大于 0.00 元" }
-        guard let saved = try? Money.parse(reserved.isEmpty ? "0" : reserved), saved <= total else { return "已存金额不能超过想存金额" }
-        return nil
-    }
-    func save() {
-        do { let total = try Money.parse(target); let saved = reserved.isEmpty ? 0 : try Money.parse(reserved); guard saved <= total, total > 0, !title.trimmingCharacters(in: .whitespaces).isEmpty else { throw YubaiError.invalid("请填写名称；已存金额不能超过想存金额。") }; var g = goal ?? Goal(title: title, target: total); g.title = title; g.target = total; g.reserved = saved; g.dueDate = hasDate ? date : nil; g.note = note; if store.update(updateLabel, { l in if let i = l.goals.firstIndex(where: { $0.id == g.id }) { l.goals[i] = g } else { l.goals.append(g) } }) { dismiss() } } catch { store.error = error.localizedDescription }
-    }
-
-    private var goalSection: some View {
-        Section {
-            TextField("真正想做的事", text: $title)
-            TextField("想存多少（元）", text: $target).numericInput().yubaiFont(YubaiFont.amountInput)
-            if !target.isEmpty && ((try? Money.parse(target)).map { $0 <= 0 } ?? true) { InlineFieldError(message: "想存金额须大于 0.00 元") }
-            TextField("已存多少（元）", text: $reserved).numericInput().yubaiFont(YubaiFont.amountInput)
-            if !reserved.isEmpty {
-                InlineFieldError(message: (try? Money.parse(reserved)) == nil ? "填写有效金额" : ((try? Money.parse(reserved)) ?? 0) > ((try? Money.parse(target)) ?? 0) ? "已存金额不能超过想存金额" : nil)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    HeaderIconButton(action: { store.sheet = .account(a) }) { size in Image(systemName: "pencil").font(.system(size: size)) }
+                        .accessibilityLabel("编辑账户").accessibilityIdentifier("editAccount")
+                }
             }
-            Toggle("设定期待日期", isOn: $hasDate).tint(YubaiColor.toggleOn)
-            if hasDate { DatePicker("期待日期", selection: $date, displayedComponents: .date) }
-            DisclosureGroup("更多") { TextField("为什么重要", text: $note, axis: .vertical) }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var reservationSection: some View {
-        EmptyView()
     }
 }

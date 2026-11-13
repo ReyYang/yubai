@@ -12,7 +12,7 @@ struct QuickRepeatMenu: View {
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
             Text("常用").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 14).padding(.bottom, 4)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, YubaiSpace.space16).padding(.bottom, YubaiSpace.space4)
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 row(item, index: index)
                 EntryFormDivider()
@@ -24,7 +24,7 @@ struct QuickRepeatMenu: View {
                 Text("整理常用").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("manageQuickRepeats")
-        }.padding(.horizontal, YubaiSpace.insetCard).frame(maxWidth: textSize.isAccessibilitySize ? .infinity : 262)
+        }.padding(.horizontal, YubaiSpace.insetCard).frame(maxWidth: textSize.isAccessibilitySize ? .infinity : YubaiSize.quickMenuWidth)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
             .task(id: store.ledgerRevision) {
@@ -42,7 +42,7 @@ struct QuickRepeatMenu: View {
         return Button { record(item) } label: {
             let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
             layout {
-                Text(item.purpose).yubaiFont(YubaiFont.row).lineLimit(1)
+                Text(item.purpose).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1)
                 if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
                 AmountLabel(cents: item.amount, hide: hide, role: .amount, sign: .none).fixedSize()
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())

@@ -1,7 +1,7 @@
 import SwiftUI
 import YubaiCore
 
-/// 账本根页：明细 / 去向两个视图，页头固定，其他页带筛选跳进来时读 `store.ledgerPreset` 后清空。
+/// 账本根页：账目 / 去向两个视图，页头固定，其他页带筛选跳进来时读 `store.ledgerPreset` 后清空。
 struct LedgerTabView: View {
     @Environment(AppStore.self) private var store
     @State private var mode = LedgerMode.detail

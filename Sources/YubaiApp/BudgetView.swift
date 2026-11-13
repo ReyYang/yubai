@@ -6,9 +6,6 @@ private func partShare(_ value: Int) -> String {
     return (names.indices.contains(value) ? names[value] : String(value)) + "成"
 }
 
-extension YubaiFont {
-    static let partBalance = Style(size: 14, lineHeight: 20, weight: .semibold, family: .num, relativeTo: .footnote)
-}
 
 /// 现在 · 预算：想管住某一类花销时只给那几类设数，其余都在「没分的」里。分类预算是个打算，不是红线。
 struct BudgetView: View {
@@ -68,7 +65,7 @@ struct BudgetView: View {
                 VStack(spacing: YubaiSpace.none) {
                     ForEach(suggested) { part in
                         partTitleRow(part, trailing: amount2(part.amount ?? 0, hide: hide)).accessibilityIdentifier("startPart_" + part.name)
-                        Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+                        Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true)
                     }
                     unassignedRow(text: amount2(max(0, budget - used), hide: hide), over: false)
                 }
@@ -119,7 +116,7 @@ struct BudgetView: View {
                 VStack(spacing: YubaiSpace.none) {
                     ForEach(summary.parts) { value in
                         partRow(value, hide: hide)
-                        Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+                        Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true)
                     }
                     unassignedRow(text: amount2(abs(summary.unassigned), hide: hide), over: summary.unassigned < 0)
                 }
@@ -140,11 +137,11 @@ struct BudgetView: View {
             }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.gapGroup) {
-                    ProgressLine(value: over ? 1 : progress, tint: over ? YubaiColor.neutralStrong : YubaiColor.brand, track: YubaiColor.neutralSoft, height: 6)
+                    ProgressLine(value: over ? 1 : progress, tint: over ? YubaiColor.neutralStrong : YubaiColor.brand, track: YubaiColor.neutralSoft, height: YubaiSize.unknownDot)
                     leftText(value, hide: hide)
                 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    ProgressLine(value: over ? 1 : progress, tint: over ? YubaiColor.neutralStrong : YubaiColor.brand, track: YubaiColor.neutralSoft, height: 6)
+                    ProgressLine(value: over ? 1 : progress, tint: over ? YubaiColor.neutralStrong : YubaiColor.brand, track: YubaiColor.neutralSoft, height: YubaiSize.unknownDot)
                     leftText(value, hide: hide)
                 }
             }
@@ -210,9 +207,7 @@ struct BudgetView: View {
             }
             amountPart = nil
         }).presentationDragIndicator(.visible).yubaiSheetBackground()
-            #if os(iOS)
-            .presentationDetents([.height(520), .large])
-            #endif
+
     }
     private func categorySheet(_ part: SpendingPart) -> some View {
         NavigationStack {
@@ -232,7 +227,7 @@ struct BudgetView: View {
     private var newPartSheet: some View {
         NavigationStack {
             Page(topPadding: YubaiSpace.space8) {
-                Card(style: .list) { CardTextFieldRow(title: "名字", text: $newName, identifier: "budgetPartName") }
+                Card(style: .list) { CardTextFieldRow(title: "名字", text: $newName, identifier: "budgetPartName", autofocus: true) }
             }.manualSheetHeader("加一项", actionTitle: "好", enabled: !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && newName.count <= 100,
                                 actionIdentifier: "saveBudgetPart", cancel: { adding = false }, action: addPart)
         }.environment(store).yubaiSheetBackground().presentationDetents([.medium, .large])
@@ -252,55 +247,5 @@ struct BudgetView: View {
         store.update("预算", showToast: false) { ledger in
             ledger.spendingParts.removeAll { $0.id == part.id }; ledger.partCarry[part.id] = nil
         }
-    }
-}
-
-/// Both entry forms keep the choice in their draft. Category reassignment is
-/// committed with the entry, so cancelling either form leaves the ledger alone.
-struct SpendingPartPicker: View {
-    @Environment(AppStore.self) private var store
-    let ledger: Ledger
-    let category: String
-    @Binding var partID: UUID?
-    @Binding var remember: Bool
-    var allowsRemember = true
-    var body: some View {
-        let summary = SpendingParts.summary(ledger)
-        let selected = selectedPartID
-        ScrollView {
-            VStack(spacing: 12) {
-                Text("花在哪一份").yubaiFont(YubaiFont.entrySheetTitle).frame(height: 32).padding(.top, 12)
-                VStack(spacing: 0) {
-                    ForEach(summary.parts) { value in
-                        choice(value.part.name, id: value.id, remaining: value.remaining, selected: selected)
-                        Rectangle().fill(YubaiColor.separator).frame(height: 1)
-                    }
-                    choice("没分的", id: nil, remaining: summary.unassigned, selected: selected)
-                }.padding(.horizontal, 16).paperCardSurface(in: RoundedRectangle(cornerRadius: 22))
-                if allowsRemember {
-                    Toggle(Classification.displayCategory(category) + "以后都记到这份", isOn: $remember)
-                        .yubaiFont(YubaiFont.body).tint(YubaiColor.brand).frame(minHeight: 52).padding(.horizontal, 16)
-                        .paperCardSurface(in: RoundedRectangle(cornerRadius: 22))
-                        .accessibilityLabel(Classification.displayCategory(category) + "以后都记到选中的分项")
-                }
-            }.padding(.horizontal, 20).padding(.bottom, 34)
-        }.paperBackground().yubaiSheetBackground().presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
-    }
-    private var selectedPartID: UUID? {
-        var sample = Entry(amount: 0, accountID: UUID(), title: category, category: category)
-        sample.partID = partID
-        return SpendingParts.part(for: sample, in: ledger)?.id
-    }
-    private func choice(_ name: String, id: UUID?, remaining: Int64, selected: UUID?) -> some View {
-        Button { partID = id ?? SpendingPart.unassignedID } label: {
-            HStack(spacing: 12) {
-                Text(name).yubaiFont(YubaiFont.row, weight: selected == id ? .semibold : .regular)
-                Spacer()
-                Text("剩 " + (store.preferences.hideAmounts ? "••••" : Money.text(remaining, currency: false)))
-                    .yubaiFont(YubaiFont.partBalance).foregroundStyle(YubaiColor.labelSecondary)
-                Image(systemName: "checkmark").foregroundStyle(YubaiColor.brand).frame(width: 18).opacity(selected == id ? 1 : 0)
-            }.frame(minHeight: 52).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityLabel(name + "，剩余" + (store.preferences.hideAmounts ? "金额已隐藏" : Money.text(remaining)))
-            .accessibilityAddTraits(selected == id ? .isSelected : [])
     }
 }

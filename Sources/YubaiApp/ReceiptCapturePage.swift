@@ -61,7 +61,7 @@ struct ReceiptCapturePage: View {
         }.paperBackground().amountPrivacy(store.preferences.hideAmounts).navigationTitle("拍小票").yubaiNavigation()
             .accessibilityIdentifier("receiptCapturePage")
             #if os(iOS)
-            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(792), .large])
+            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(YubaiSize.sheet792), .large])
             #endif
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
@@ -127,7 +127,7 @@ struct ReceiptCapturePage: View {
             Text(shop + " · " + ImportStatementText.range(lines.map { $0.draft.date }))
                 .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             CardRows(lines) { line in lineRow(line) }
-            SegmentedWide(choices: [(ReceiptEntryMode.separate.rawValue, "分开记 \(selected.count) 笔"), (ReceiptEntryMode.merged.rawValue, "合成 1 笔")],
+            Segmented(choices: [(ReceiptEntryMode.separate.rawValue, "分开记 \(selected.count) 笔"), (ReceiptEntryMode.merged.rawValue, "合成 1 笔")],
                           selection: $mode, identifier: { "receiptMode_" + $0 })
             if mode == ReceiptEntryMode.merged.rawValue {
                 categoryButton(id: -1, title: shop, income: lines.first?.draft.nature.categoryIncome ?? false, hint: shopHint)

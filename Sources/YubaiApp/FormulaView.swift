@@ -89,20 +89,20 @@ private struct FormulaAmountEditor: View {
             }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
-            .presentationDetents([.height(660), .large])
+
             #endif
     }
     private var header: some View { AmountSheetHeader(title: title, cancel: { dismiss() }) }
     private var modePicker: some View {
-        SegmentedWide(choices: [(false, "固定金额"), (true, "每笔进账留几成")], selection: modeBinding,
+        Segmented(choices: [(false, "固定金额"), (true, "每笔进账留几成")], selection: modeBinding,
                       identifier: { $0 ? "savingMode_share" : "savingMode_fixed" })
     }
     private var amountDisplay: some View {
         HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
             if !sharing { Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary) }
             Text(sharing ? "\(percent)%" : keypad.resultText).yubaiFont(YubaiFont.entryAmount)
-                .padding(.horizontal, 6)
-                .background(selected ? YubaiColor.brandTint : Color.clear, in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, YubaiSpace.space8)
+                .background(selected ? YubaiColor.brandTint : Color.clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             EntryAmountCursor()
             Spacer(minLength: YubaiSpace.none)
         }.frame(minHeight: YubaiSize.rowDouble)

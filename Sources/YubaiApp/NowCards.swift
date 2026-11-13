@@ -106,11 +106,11 @@ struct OverspendRows: View {
     var body: some View {
         let funds = store.funds
         Card(style: .list) {
-            VStack(spacing: 0) {
+            VStack(spacing: YubaiSpace.none) {
                 if more > 0 { HStack { Spacer(); MoreLink(count: more) } }
                 row("这个月少存一点", before: funds.savingTarget, amount: min(options.overBy, options.maxSaveLess),
                     enabled: options.maxSaveLess > 0, source: .saveLess, identifier: "coverSaveLess")
-                Rectangle().fill(YubaiColor.separator).frame(height: 1)
+                Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator)
                 row("从存着的钱出", before: funds.fixedSavingsTotal, amount: min(options.overBy, options.maxFromReserve),
                     enabled: options.maxFromReserve > 0, source: .fromReserve, identifier: "coverFromReserve")
             }
@@ -145,11 +145,11 @@ struct ImportBusyRow: View {
         let progress = store.organizationProgress
         Card(style: .compact) {
             HStack(spacing: YubaiSpace.gapGroup) {
-                AssistantMark(size: 16, color: YubaiColor.brandInk).accessibilityHidden(true)
+                AssistantMark(size: YubaiFont.navTitle.size, color: YubaiColor.brandInk).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     Text(title).yubaiFont(YubaiFont.row)
                     if let progress, progress.total > 0 {
-                        ProgressLine(value: Double(progress.completed) / Double(progress.total), tint: YubaiColor.brand, track: YubaiColor.card, height: 4)
+                        ProgressLine(value: Double(progress.completed) / Double(progress.total), tint: YubaiColor.brand, track: YubaiColor.card, height: YubaiSpace.space4)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if let progress { Text(progress.countText).yubaiFont(YubaiFont.amountSmall).accessibilityIdentifier("organizeProgress") }

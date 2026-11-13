@@ -54,12 +54,12 @@ struct ReservePaybackProgressList: View {
         return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: YubaiSpace.space8) {
-                    Text(name).yubaiFont(YubaiFont.rowTitle)
+                    Text(name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle)
                     Spacer(minLength: YubaiSpace.space8)
                     progressAmount(row, hide: hide)
                 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    Text(name).yubaiFont(YubaiFont.rowTitle)
+                    Text(name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle)
                     progressAmount(row, hide: hide)
                 }
             }

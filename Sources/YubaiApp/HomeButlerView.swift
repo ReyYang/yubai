@@ -160,9 +160,6 @@ struct HomeTaskCard: View {
     }
 }
 
-extension YubaiFont {
-    static let butlerTitle = Style(size: 17, lineHeight: 24, weight: .semibold, family: .sans, relativeTo: .headline)
-}
 
 struct ButlerKicker: View {
     let title: String
@@ -171,7 +168,7 @@ struct ButlerKicker: View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                 Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 0)
+                Spacer(minLength: YubaiSpace.none)
                 if more > 0 { MoreLink(count: more).fixedSize() }
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -188,9 +185,9 @@ struct ButlerReceiptRow: View {
     var body: some View {
         Card(style: .compact) {
             HStack(spacing: YubaiSpace.space8) {
-                Image(systemName: "checkmark").font(.system(size: 13, weight: .semibold)).foregroundStyle(YubaiColor.brandInk)
-                    .frame(width: 28, height: 28).background(YubaiColor.brandTint, in: Circle()).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                Image(systemName: "checkmark").font(.system(size: YubaiFont.callout.size, weight: .semibold)).foregroundStyle(YubaiColor.brandInk)
+                    .frame(width: YubaiSize.pillHeight, height: YubaiSize.pillHeight).background(YubaiColor.brandTint, in: Circle()).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                     Text(receipt.title + (receipt.amount.map { " " + amount2($0, hide: store.preferences.hideAmounts) } ?? ""))
                         .yubaiFont(YubaiFont.rowTitle, weight: .semibold).fixedSize(horizontal: false, vertical: true)
                     if let next = receipt.nextStep { Text(next).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
@@ -221,22 +218,22 @@ struct TodoView: View {
                     .background(alignment: .bottom) {
                         ForEach(1..<min(3, deck.ids.count), id: \.self) { depth in
                             RoundedRectangle(cornerRadius: YubaiRadius.card).fill(YubaiColor.paperSheet)
-                                .frame(height: 60).padding(.horizontal, CGFloat(depth) * 12)
-                                .offset(y: CGFloat(depth) * 14).yubaiShadow(YubaiShadow.card).accessibilityHidden(true)
+                                .frame(height: YubaiSize.sourceRow).padding(.horizontal, CGFloat(depth) * YubaiSpace.space12)
+                                .offset(y: CGFloat(depth) * YubaiSpace.space16).yubaiShadow(YubaiShadow.card).accessibilityHidden(true)
                         }
                     }
-                    .padding(.bottom, CGFloat(min(2, max(0, deck.ids.count - 1))) * 14)
+                    .padding(.bottom, CGFloat(min(2, max(0, deck.ids.count - 1))) * YubaiSpace.space16)
                     .transition(reduceMotion ? .opacity : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .move(edge: .trailing).combined(with: .opacity)))
-                    .gesture(DragGesture(minimumDistance: 24).onEnded { value in
-                        guard abs(value.translation.width) > abs(value.translation.height), abs(value.translation.width) > 44 else { return }
+                    .gesture(DragGesture(minimumDistance: YubaiSpace.space24).onEnded { value in
+                        guard abs(value.translation.width) > abs(value.translation.height), abs(value.translation.width) > YubaiSize.tapMin else { return }
                         cycle(backwards: value.translation.width > 0)
                     })
                     .accessibilityAction(named: "先看下一件") { cycle() }
                     .accessibilityAction(named: "上一件") { cycle(backwards: true) }
                 VStack(spacing: YubaiSpace.gapGroup) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: YubaiSpace.space8) {
                         ForEach(Array(deck.ids.enumerated()), id: \.element) { index, _ in
-                            Circle().fill(index == deck.position ? YubaiColor.label : YubaiColor.separator).frame(width: 6, height: 6)
+                            Circle().fill(index == deck.position ? YubaiColor.label : YubaiColor.separator).frame(width: YubaiSize.unknownDot, height: YubaiSize.unknownDot)
                         }
                     }.accessibilityElement(children: .ignore).accessibilityLabel("第 \(deck.position + 1) 件，共 \(deck.ids.count) 件")
                         .accessibilityIdentifier("butlerDeckPosition")

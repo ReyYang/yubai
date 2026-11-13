@@ -38,7 +38,7 @@ private struct CaptureSnippetView: View {
             ForEach(entries) { entry in
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
-                        if !privateResult { Text(entry.displayTitle).yubaiFont(YubaiFont.cardTitle) }
+                        if !privateResult { Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.cardTitle) }
                         Spacer()
                         AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow)
                     }

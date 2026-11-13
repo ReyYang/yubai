@@ -41,8 +41,8 @@ struct ProfileConversationView: View {
                             InlineNote(text: errorText)
                             Button("重试") { ask() }.disabled(busy).frame(minHeight: YubaiSize.tapMin)
                         }
-                        Color.clear.frame(height: 1).id("latestProfileMessage")
-                    }.padding(YubaiSpace.insetPage).frame(maxWidth: 680).frame(maxWidth: .infinity)
+                        Color.clear.frame(height: YubaiSize.separator).id("latestProfileMessage")
+                    }.padding(YubaiSpace.insetPage).frame(maxWidth: YubaiSize.contentNarrow).frame(maxWidth: .infinity)
                 }.scrollDismissesKeyboard(.interactively)
                     .onChange(of: messages.count) { _, _ in proxy.scrollTo("latestProfileMessage", anchor: .bottom) }
                     .onChange(of: busy) { _, _ in proxy.scrollTo("latestProfileMessage", anchor: .bottom) }
@@ -90,8 +90,8 @@ struct ProfileConversationView: View {
     }
     private func messageBubble(_ message: ChatMessage, index: Int) -> some View {
         let user: Bool = message.role == .user
-        let shape: UnevenRoundedRectangle = UnevenRoundedRectangle(topLeadingRadius: user ? 18 : 6, bottomLeadingRadius: 22,
-            bottomTrailingRadius: user ? 6 : 22, topTrailingRadius: 22)
+        let shape: UnevenRoundedRectangle = UnevenRoundedRectangle(topLeadingRadius: user ? YubaiRadius.row : YubaiRadius.messageTail, bottomLeadingRadius: YubaiRadius.card,
+            bottomTrailingRadius: user ? YubaiRadius.messageTail : YubaiRadius.card, topTrailingRadius: YubaiRadius.card)
         return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             if message.role == .assistant { assistantHeading }
             Text(message.content ?? "").yubaiFont(user ? YubaiFont.body : YubaiFont.cardTitle)
@@ -103,7 +103,7 @@ struct ProfileConversationView: View {
     }
     private var assistantHeading: some View {
         HStack(spacing: YubaiSpace.space8) {
-            AssistantMark(size: 14).accessibilityHidden(true)
+            AssistantMark(size: YubaiFont.row.size).accessibilityHidden(true)
             Text("余白").yubaiFont(YubaiFont.meta)
         }.foregroundStyle(YubaiColor.brandInk)
     }
@@ -124,7 +124,7 @@ struct ProfileConversationView: View {
         HStack(spacing: YubaiSpace.space8) {
             AssistantMark(thinking: true).accessibilityHidden(true)
             HStack(spacing: YubaiSpace.space4) {
-                ForEach(0..<3, id: \.self) { _ in Circle().fill(YubaiColor.labelMuted).frame(width: 4, height: 4) }
+                ForEach(0..<3, id: \.self) { _ in Circle().fill(YubaiColor.labelMuted).frame(width: YubaiSpace.space4, height: YubaiSpace.space4) }
             }
         }.accessibilityElement(children: .ignore).accessibilityLabel("余白正在思考")
     }

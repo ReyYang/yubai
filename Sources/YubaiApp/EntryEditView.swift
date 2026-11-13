@@ -53,10 +53,10 @@ struct EntryEditForm: View {
                     EntryForm(title: formTitle, actionTitle: primaryTitle, showsAction: !amountKeypadPresented, enabled: canSave,
                                   actionIdentifier: onSave == nil ? "saveManualSheet" : "saveDraftEdit", cancel: cancel, save: save) {
                         if draft.source == "Apple Pay" {
-                            Pill(text: "来自 Apple Pay · " + (draft.quickCapture?.card ?? "") + " · " + (draft.quickCapture?.transactionDate ?? draft.date).formatted(.dateTime.hour().minute()), variant: .neutral, height: 26, showsDot: false)
+                            Pill(text: "来自 Apple Pay · " + (draft.quickCapture?.card ?? "") + " · " + (draft.quickCapture?.transactionDate ?? draft.date).formatted(.dateTime.hour().minute()), variant: .neutral, height: YubaiSize.smallBadge, showsDot: false)
                         }
                         if standardNature && draft.source != "Apple Pay" {
-                            SegmentedWide(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $draft.nature,
+                            Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $draft.nature,
                                           identifier: { "entryNature_" + $0.rawValue })
                         } else if !standardNature {
                             Text(draft.nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
@@ -105,7 +105,7 @@ struct EntryEditForm: View {
                 do { try await Task.sleep(for: .milliseconds(60)) } catch { return }
                 withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scroll.scrollTo("editAmount", anchor: .top) }
             }
-        }.safeAreaInset(edge: .bottom, spacing: 0) {
+        }.safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
             EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
                 ChipFlow {
                     EntryDateChip(date: $draft.date, inTray: true, allowsFuture: true, identifier: "editEntryDate")
@@ -175,7 +175,7 @@ struct EntryEditForm: View {
         } label: {
             Card(style: .list) {
                 HStack(spacing: YubaiSpace.space8) {
-                    AssistantMark(size: 16, color: YubaiColor.brandInk)
+                    AssistantMark(size: YubaiFont.navTitle.size, color: YubaiColor.brandInk)
                     Text("该不该买").yubaiFont(YubaiFont.row)
                     Spacer()
                     Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)

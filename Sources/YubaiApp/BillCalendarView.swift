@@ -13,11 +13,11 @@ struct BillBrandIcon: View {
     var body: some View {
         Group {
             if let icon = BrandIcons.match(title) {
-                Image("Brand-" + icon.slug).resizable().renderingMode(.original).scaledToFit().padding(5)
+                Image("Brand-" + icon.slug).resizable().renderingMode(.original).scaledToFit().padding(YubaiSpace.space4)
             } else {
                 Image(systemName: symbol).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.iconInk)
             }
-        }.frame(width: size, height: size).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: 10))
+        }.frame(width: size, height: size).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             .accessibilityHidden(true)
     }
 }
@@ -61,8 +61,8 @@ struct FixedFlowsView: View {
                 pageMonth(1)
             }
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) { monthSummary(month) }
-                VStack(alignment: .leading, spacing: 4) { monthSummary(month) }
+                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) { monthSummary(month) }
+                VStack(alignment: .leading, spacing: YubaiSpace.space4) { monthSummary(month) }
             }
         }
     }
@@ -76,49 +76,49 @@ struct FixedFlowsView: View {
     private func pageMonth(_ offset: Int) -> some View {
         Button { shownMonth = Dates.addMonths(offset, to: snapshot.month); selectedDay = nil } label: {
             Image(systemName: offset < 0 ? "chevron.backward" : "chevron.forward")
-                .yubaiFont(YubaiFont.caption).frame(width: 44, height: 44)
+                .yubaiFont(YubaiFont.caption).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
         }.buttonStyle(PressButtonStyle()).accessibilityLabel(offset < 0 ? "上个月" : "下个月")
             .accessibilityIdentifier(offset < 0 ? "billsPreviousMonth" : "billsNextMonth")
     }
     private func calendar(_ month: BillCalendarMonth) -> some View {
         Group {
             if textSize.isAccessibilitySize {
-                ScrollView(.horizontal) { calendarGrid(month).frame(width: 750) }
+                ScrollView(.horizontal) { calendarGrid(month).frame(width: YubaiSize.calendarWide) }
             } else { calendarGrid(month) }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("billsCalendar")
     }
     private func calendarGrid(_ month: BillCalendarMonth) -> some View {
-        VStack(spacing: 6) {
-            LazyVGrid(columns: columns, spacing: 0) {
+        VStack(spacing: YubaiSpace.space8) {
+            LazyVGrid(columns: columns, spacing: YubaiSpace.none) {
                 ForEach(Array(month.weekdaySymbols.enumerated()), id: \.offset) { _, name in
-                    Text(name).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).frame(maxWidth: .infinity)
+                    Text(name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).frame(maxWidth: .infinity)
                 }
             }
-            LazyVGrid(columns: columns, spacing: 6) {
-                ForEach(0..<month.leadingDays, id: \.self) { _ in Color.clear.frame(height: 62).accessibilityHidden(true) }
+            LazyVGrid(columns: columns, spacing: YubaiSpace.space8) {
+                ForEach(0..<month.leadingDays, id: \.self) { _ in Color.clear.frame(height: YubaiSize.calendarCell).accessibilityHidden(true) }
                 ForEach(month.days) { day in dayCell(day) }
             }
         }
     }
-    private var columns: [GridItem] { Array(repeating: GridItem(.flexible(minimum: 0), spacing: 4), count: 7) }
+    private var columns: [GridItem] { Array(repeating: GridItem(.flexible(minimum: YubaiSpace.none), spacing: YubaiSpace.space4), count: 7) }
     private func dayCell(_ day: BillCalendarDay) -> some View {
         let today = Dates.day(day.date) == Dates.day(store.financialNow)
         let selected = selectedDay.map(Dates.day) == Dates.day(day.date)
         return Button { selectedDay = selected ? nil : day.date } label: {
-            VStack(spacing: 5) {
-                HStack(spacing: 1) {
+            VStack(spacing: YubaiSpace.space4) {
+                HStack(spacing: YubaiSpace.calendarGap) {
                     Text("\(Dates.calendar.component(.day, from: day.date))").yubaiFont(YubaiFont.meta, weight: today ? .semibold : .regular)
-                    if day.yearly { Text("年").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.canvas).padding(.horizontal, 2).background(YubaiColor.label, in: Capsule()) }
+                    if day.yearly { Text("年").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.canvas).padding(.horizontal, YubaiSpace.space2).background(YubaiColor.label, in: Capsule()) }
                 }
                 if day.payday && day.bills.count == 1 {
                     Text("工资").yubaiFont(YubaiFont.meta, weight: .semibold).foregroundStyle(YubaiColor.brandInk).fixedSize()
                 } else if let first = day.bills.first {
                     cellIcon(first, more: day.bills.count - 1)
                     if day.payday { Text("工资").yubaiFont(YubaiFont.meta, weight: .semibold).foregroundStyle(YubaiColor.brandInk).fixedSize() }
-                } else { Color.clear.frame(height: 28) }
-            }.frame(maxWidth: .infinity, minHeight: textSize.isAccessibilitySize ? 144 : 62)
-                .background(day.payday ? YubaiColor.brandTint : selected ? YubaiColor.raised : .clear, in: RoundedRectangle(cornerRadius: 16))
-                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(today ? YubaiColor.label : .clear, lineWidth: 1.5) }
+                } else { Color.clear.frame(height: YubaiSize.pillHeight) }
+            }.frame(maxWidth: .infinity, minHeight: textSize.isAccessibilitySize ? YubaiSize.calendarCellLarge : YubaiSize.calendarCell)
+                .background(day.payday ? YubaiColor.brandTint : selected ? YubaiColor.raised : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(today ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline) }
         }.buttonStyle(PressButtonStyle()).accessibilityElement(children: .ignore)
             .accessibilityLabel(Dates.text(day.date) + (today ? "，今天" : "") + (day.payday ? "，工资" : "") + (day.yearly ? "，年付" : "") + "，\(day.bills.count) 笔账单")
             .accessibilityAddTraits(selected ? .isSelected : [])
@@ -126,9 +126,9 @@ struct FixedFlowsView: View {
     }
     private func cellIcon(_ row: FixedFlowOccurrence, more: Int) -> some View {
         let plan = row.planID.flatMap { id in store.plans.first { $0.id == id } }
-        let layout = textSize.isAccessibilitySize || more >= 10 ? AnyLayout(VStackLayout(spacing: 1)) : AnyLayout(HStackLayout(spacing: 1))
+        let layout = textSize.isAccessibilitySize || more >= 10 ? AnyLayout(VStackLayout(spacing: YubaiSpace.calendarGap)) : AnyLayout(HStackLayout(spacing: YubaiSpace.calendarGap))
         return layout {
-            BillBrandIcon(title: row.title, category: plan?.category ?? "居住", inflow: row.inflow, size: 28)
+            BillBrandIcon(title: row.title, category: plan?.category ?? "居住", inflow: row.inflow, size: YubaiFont.amountLarge.size)
                 .opacity(row.state == .paid ? 0.35 : 1)
             if more > 0 { Text("+\(more)").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).fixedSize() }
         }
@@ -136,7 +136,7 @@ struct FixedFlowsView: View {
     private func upcoming(_ month: BillCalendarMonth) -> some View {
         let rows = Array(month.days.flatMap(\.bills).filter { $0.state != .paid && $0.date >= Dates.day(store.financialNow) }.prefix(2))
         return VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-            SectionHeading(title: "接下来").padding(.horizontal, 4)
+            SectionHeading(title: "接下来").padding(.horizontal, YubaiSpace.space4)
             if rows.isEmpty { EmptyState("calendar", "没有要付的账单", action: "加一个账单", onAction: { store.sheet = .addPlan }) }
             else { CardRows(rows) { BillCalendarRow(row: $0, includesDate: true) } }
         }.padding(.top, YubaiSpace.space8)
@@ -145,19 +145,19 @@ struct FixedFlowsView: View {
         let currencies = Array(Set(rows.compactMap { row in store.plans.first { $0.id == row.planID }?.currency }.filter { $0 != .cny })).sorted { $0.rawValue < $1.rawValue }
         let total = rows.filter { !$0.inflow }.reduce(Int64(0)) { $0 + $1.amount }
         return Card(style: .list) {
-            VStack(spacing: 0) {
+            VStack(spacing: YubaiSpace.none) {
                 ViewThatFits(in: .horizontal) {
                     HStack { dayTitle(day); Spacer(); dayTotal(total, approximate: !currencies.isEmpty) }
-                    VStack(alignment: .leading, spacing: 4) { dayTitle(day); dayTotal(total, approximate: !currencies.isEmpty) }
-                }.padding(.vertical, 12)
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) { dayTitle(day); dayTotal(total, approximate: !currencies.isEmpty) }
+                }.padding(.vertical, YubaiSpace.space12)
                 ForEach(rows) { row in
                     EntryFormDivider()
                     BillCalendarRow(row: row)
                 }
-                if rows.isEmpty { Text("没有账单").yubaiFont(YubaiFont.caption).padding(.vertical, 12) }
+                if rows.isEmpty { Text("没有账单").yubaiFont(YubaiFont.caption).padding(.vertical, YubaiSpace.space12) }
                 ForEach(currencies) { currency in
                     Button { editingRate = currency } label: {
-                        BillRateLabel(currency: currency).padding(.vertical, 12).contentShape(Rectangle())
+                        BillRateLabel(currency: currency).padding(.vertical, YubaiSpace.space12).contentShape(Rectangle())
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billsRate_" + currency.rawValue)
                 }
             }
@@ -177,7 +177,7 @@ struct FixedFlowsView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 SectionHeading(title: "已停掉")
                 CardRows(rows) { row in
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                         Text(row.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                         Text(row.detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                         ChipFlow {
@@ -195,8 +195,8 @@ struct FixedFlowsView: View {
                                 Button(row.inflow ? "收到了" : "付了") { resolveStopped(row, .settle) }
                                 Button("不要了") { resolveStopped(row, .skip) }
                             }
-                        }.buttonStyle(NowCardButtonStyle()).padding(.vertical, 8)
-                    }.padding(.vertical, 8).accessibilityIdentifier("stoppedFixedFlow_" + row.id.uuidString)
+                        }.buttonStyle(NowCardButtonStyle()).padding(.vertical, YubaiSpace.space8)
+                    }.padding(.vertical, YubaiSpace.space8).accessibilityIdentifier("stoppedFixedFlow_" + row.id.uuidString)
                 }
             }
         }
@@ -227,20 +227,20 @@ struct BillCalendarRow: View {
             .accessibilityValue(FixedFlowPresentation.state(row.state, inflow: row.inflow))
     }
     private var summary: some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 12))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space12))
         return layout {
-            HStack(spacing: 12) {
+            HStack(spacing: YubaiSpace.space12) {
                 BillBrandIcon(title: row.title, category: plan?.category ?? "居住", inflow: row.inflow)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                     HStack {
                         Text(row.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
-                        if plan?.frequency == .yearly { Text("年付").yubaiFont(YubaiFont.meta).fixedSize().foregroundStyle(YubaiColor.canvas).padding(.horizontal, 4).background(YubaiColor.label, in: Capsule()) }
+                        if plan?.frequency == .yearly { Text("年付").yubaiFont(YubaiFont.meta).fixedSize().foregroundStyle(YubaiColor.canvas).padding(.horizontal, YubaiSpace.space4).background(YubaiColor.label, in: Capsule()) }
                     }
                     Text(schedule).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.frame(maxWidth: .infinity, alignment: .leading)
             amounts
-        }.frame(maxWidth: .infinity, minHeight: 60, alignment: .leading).padding(.vertical, 4).contentShape(Rectangle())
+        }.frame(maxWidth: .infinity, minHeight: YubaiSize.sourceRow, alignment: .leading).padding(.vertical, YubaiSpace.space4).contentShape(Rectangle())
     }
     private var schedule: String {
         var value = plan.map { FixedFlowArrangement.schedule($0.frequency, date: $0.dueDate, monthlyDay: $0.monthlyDay).replacingOccurrences(of: " 日", with: " 号") } ?? FixedFlowPresentation.monthDay(row.date)
@@ -250,7 +250,7 @@ struct BillCalendarRow: View {
     }
     @ViewBuilder private var amounts: some View {
         if let plan, plan.currency != .cny {
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: YubaiSpace.space2) {
                 Text(plan.currency.amountText(plan.amount, hidden: store.preferences.hideAmounts)).yubaiFont(YubaiFont.amount)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.5)
                 Text((row.state == .paid ? "实付 ¥" : "约 ¥") + amount2(row.amount, hide: store.preferences.hideAmounts))
@@ -271,16 +271,16 @@ struct YearlyBillsStrip: View {
     var body: some View {
         TabNavigationLink(.yearlyBills) { YearlyBillsView() } label: {
             Card(style: .compact) {
-                VStack(spacing: 8) {
+                VStack(spacing: YubaiSpace.space8) {
                     ViewThatFits(in: .horizontal) {
                         HStack { title; Spacer(); monthly }
-                        VStack(alignment: .leading, spacing: 4) { title; monthly }
+                        VStack(alignment: .leading, spacing: YubaiSpace.space4) { title; monthly }
                     }
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: textSize.isAccessibilitySize ? 4 : 12), spacing: 6) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space4), count: textSize.isAccessibilitySize ? 4 : 12), spacing: YubaiSpace.space8) {
                         ForEach(1...12, id: \.self) { value in
-                            VStack(spacing: 4) {
-                                RoundedRectangle(cornerRadius: 6).fill(month.yearlyMonths.contains(value) ? YubaiColor.label : YubaiColor.neutralSoft).frame(height: 22)
-                                    .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(Dates.calendar.component(.month, from: month.month) == value ? YubaiColor.label : .clear, lineWidth: 1.5).padding(-3) }
+                            VStack(spacing: YubaiSpace.space4) {
+                                RoundedRectangle(cornerRadius: YubaiRadius.messageTail).fill(month.yearlyMonths.contains(value) ? YubaiColor.label : YubaiColor.neutralSoft).frame(height: YubaiSize.tagHeight)
+                                    .overlay { RoundedRectangle(cornerRadius: YubaiRadius.messageTail).strokeBorder(Dates.calendar.component(.month, from: month.month) == value ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline).padding(-YubaiSpace.space4) }
                                 Text("\(value)").yubaiFont(YubaiFont.meta)
                             }.accessibilityLabel("\(value)月" + (month.yearlyMonths.contains(value) ? "，有年付账单" : ""))
                         }
@@ -308,17 +308,17 @@ struct YearlyBillsView: View {
             Card(style: .list) {
                 Toggle("每月先留", isOn: Binding(get: { store.preferences.yearlyBillsSetAside != false }, set: { value in
                     _ = store.update("每月先留", entryMotion: false) { YearlyBillReserves.setEnabled(value, in: &$0, now: store.financialNow) }
-                })).yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn).frame(minHeight: 52).accessibilityIdentifier("yearlyBillsSetAside")
+                })).yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("yearlyBillsSetAside")
             }
             CardRows(store.plans.filter { $0.active && $0.stoppedAt == nil && !$0.inflow && $0.frequency == .yearly }) { plan in
                 TabNavigationLink(.billDetail(plan.id)) { BillDetailView(planID: plan.id) } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(plan.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                        Text(plan.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                         if let row = rows.first(where: { $0.id == plan.id }) {
                             Text("每月先留 " + amount2(row.monthly, hide: store.preferences.hideAmounts)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.5)
                         }
-                    }.frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                    }.frame(maxWidth: .infinity, minHeight: YubaiSize.sourceRow, alignment: .leading)
                 }.buttonStyle(PressButtonStyle())
             }
         }.navigationTitle("一年付一次的").yubaiNavigation().accessibilityIdentifier("yearlyBillsPage")

@@ -67,10 +67,10 @@ struct QuickEntryView: View {
         return "已记 \(sessionEntries.count) 笔 · " + amount2(session.total(in: store.current), hide: store.preferences.hideAmounts)
     }
     private var sheetHeight: CGFloat {
-        if inlinePanel == .categories { return 724 }
-        if isBig { return 792 }
-        if purposeFocused || nature == .income { return 648 }
-        return nature == .transfer ? 704 : 724
+        if inlinePanel == .categories { return YubaiSize.entrySheet }
+        if isBig { return YubaiSize.entrySheetBig }
+        if purposeFocused || nature == .income { return YubaiSize.entrySheetCompact }
+        return nature == .transfer ? YubaiSize.entrySheetTransfer : YubaiSize.entrySheet
     }
 
     var body: some View {
@@ -123,11 +123,12 @@ struct QuickEntryView: View {
                   headerSubtitle: editingEntry == nil ? sessionSummary : nil, subtitleAction: toggleAdded, compactHeader: true) {
             formContent
         }
-        .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { bottomTray }
-        .overlay(alignment: .bottom) {
-            if let sessionToast {
-                Toast(text: sessionToast, onUndo: deletedEntryID == nil ? nil : undoDeletion, onDismiss: { self.sessionToast = nil })
-                    .id(deletedEntryID).padding(.bottom, purposeFocused ? 8 : 318)
+        .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
+            VStack(spacing: YubaiSpace.none) {
+                if let sessionToast {
+                    Toast(text: sessionToast, onUndo: deletedEntryID == nil ? nil : undoDeletion, onDismiss: { self.sessionToast = nil }).id(deletedEntryID)
+                }
+                bottomTray
             }
         }
     }
@@ -149,7 +150,7 @@ struct QuickEntryView: View {
                     }
                     if showingAdded {
                         EntryAddedList(entries: sessionEntries, edit: editRecorded, remove: deleteRecorded)
-                            .frame(maxHeight: 240).zIndex(1)
+                            .frame(maxHeight: YubaiSize.inlineListMaximum).zIndex(1)
                     }
                 }
             }
@@ -158,7 +159,7 @@ struct QuickEntryView: View {
     }
     @ViewBuilder private var natureControl: some View {
         if [.expense, .income, .transfer].contains(nature) {
-            SegmentedWide(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: Binding(get: { nature }, set: { interact(); nature = $0 }),
+            Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: Binding(get: { nature }, set: { interact(); nature = $0 }),
                           identifier: { "entryNature_" + $0.rawValue })
         } else {
             Text(nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
@@ -180,7 +181,7 @@ struct QuickEntryView: View {
                 Text("约 \(big.days) 天的日常").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                     .accessibilityIdentifier("bigPurchaseDays")
             }
-            SegmentedWide(choices: [(false, "算这个月的"), (true, "从存着的钱出")], selection: Binding(get: { fromReserve }, set: { interact(); fromReserve = $0 }),
+            Segmented(choices: [(false, "算这个月的"), (true, "从存着的钱出")], selection: Binding(get: { fromReserve }, set: { interact(); fromReserve = $0 }),
                           identifier: { $0 ? "bigFromReserve" : "bigFromCycle" })
         }
     }
@@ -248,7 +249,7 @@ struct QuickEntryView: View {
                 }
             } else if !recalls.isEmpty {
                 ScrollView { EntryRecallList(recalls: recalls, choose: recall) }
-                    .frame(maxHeight: textSize.isAccessibilitySize ? 156 : 120)
+                    .frame(maxHeight: textSize.isAccessibilitySize ? YubaiSize.entryInlineHistoryLarge : YubaiSize.entryInlineHistory)
             }
         } else if case .accounts(let destination) = inlinePanel {
             AddEntryAccountChips(accounts: destination ? transferAccounts : accounts, selection: destination ? otherAccountID : accountID) { id in
@@ -259,10 +260,10 @@ struct QuickEntryView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: YubaiSpace.space8) {
                     EntryDayChips(date: Binding(get: { date }, set: { interact(); date = $0 }), pick: { interact(); purposeFocused = false; inlinePanel = .calendar })
-                    Rectangle().fill(YubaiColor.grabber).frame(width: 1, height: 20).accessibilityHidden(true)
+                    Rectangle().fill(YubaiColor.grabber).frame(width: YubaiSize.separator, height: YubaiSize.headerIcon).accessibilityHidden(true)
                     Button { openAccounts(false) } label: {
                         Text(store.accountName(accountID)).lineLimit(1)
-                            .yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: 34)
+                            .yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.trayChip)
                             .background(YubaiColor.keyFn, in: Capsule()).yubaiHitTarget()
                     }.buttonStyle(PressButtonStyle()).accessibilityLabel("账户").accessibilityValue(store.accountName(accountID))
                         .accessibilityIdentifier("entryAccountChip")
@@ -356,7 +357,7 @@ struct QuickEntryView: View {
                 Text(label)
             }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberStrong)
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8).background(YubaiColor.amberTint, in: Capsule())
-                .overlay { if selected { Capsule().strokeBorder(YubaiColor.amberDot, lineWidth: 1) } }
+                .overlay { if selected { Capsule().strokeBorder(YubaiColor.amberDot, lineWidth: YubaiSize.separator) } }
                 .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fixedFlowSuggestion")
             .accessibilityAddTraits(selected ? .isSelected : []).accessibilityHint(selected ? "再点取消关联" : "关联这期账单")
@@ -416,7 +417,7 @@ struct QuickEntryView: View {
             _ = try Wishlist.add(fromVerdict: verdict, title: title, amount: amount, category: effectiveCategory.category,
                                         subcategory: effectiveCategory.subcategory, purpose: purpose, in: &ledger, now: now)
         }) {
-            store.toast = "放进心愿单了 · " + title + " " + amount2(amount, hide: store.preferences.hideAmounts)
+            store.toast = "放进心愿单了" + (title.count <= 12 ? " " + title : "") + " " + amount2(amount, hide: store.preferences.hideAmounts)
             dismiss()
         }
     }

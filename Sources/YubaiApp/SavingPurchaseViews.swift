@@ -15,7 +15,7 @@ struct PurchaseQuestionsCard: View {
         AssistantCard {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 HStack(spacing: YubaiSpace.space8) {
-                    AssistantMark(size: 14).accessibilityHidden(true)
+                    AssistantMark(size: YubaiFont.row.size).accessibilityHidden(true)
                     Text("余白 · 该不该买").yubaiFont(YubaiFont.caption)
                 }.foregroundStyle(YubaiColor.brandInk)
                 ForEach(questions.indices, id: \.self) { index in

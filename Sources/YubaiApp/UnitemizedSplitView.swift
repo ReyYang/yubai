@@ -137,7 +137,7 @@ private struct UnitemizedSplitEditor: View {
         if store.update("分开记", entryMotion: false, showToast: false, { ledger in
             try Reconciliation.split(entryID: entryID, into: drafts, in: &ledger, now: Date())
         }) {
-            store.toast = "已记下 · \(drafts.count) 笔"
+            store.toast = "已记下 \(drafts.count) 笔"
             dismiss()
         }
     }

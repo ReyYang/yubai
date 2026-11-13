@@ -11,8 +11,8 @@ struct WishEditor: View {
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
             Card(style: .list) {
-                VStack(spacing: 0) {
-                    CardTextFieldRow(title: "名字", text: $title, identifier: "wishTitle")
+                VStack(spacing: YubaiSpace.none) {
+                    CardTextFieldRow(title: "名字", text: $title, identifier: "wishTitle", autofocus: true)
                     EntryFormDivider()
                     Button { keypad = EntryKeypad(amount: amount); editingAmount = true } label: {
                         EntryFormRow(title: "金额") { AmountLabel(cents: amount, hide: store.preferences.hideAmounts) }
@@ -25,7 +25,7 @@ struct WishEditor: View {
                 AmountEntrySheet(title: "金额", keypad: $keypad, primaryTitle: "好", canSave: (keypad.amount ?? 0) > 0, save: {
                     guard let value = keypad.resolve(), value > 0 else { return }
                     amount = value; editingAmount = false
-                }).environment(store).yubaiSheetBackground().presentationDetents([.height(480), .large])
+                }).environment(store).yubaiSheetBackground()
             }
     }
     private func save() {

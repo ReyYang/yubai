@@ -37,20 +37,18 @@ private struct FixedFlowStopConfirmation: ViewModifier {
         return pending.first.map { FixedFlowPresentation.monthDay($0.date) + "这期还没记。" }
     }
     func body(content: Content) -> some View {
-        content.alert("停掉「\(title)」？", isPresented: $isPresented) {
-            if pending.isEmpty {
-                Button("停掉", role: .destructive) { performStop() }
-                    .accessibilityIdentifier("fixedFlowStopConfirm")
-                    .accessibilityHint("只停以后的，已到期账单和付过的记录保留")
-            } else {
-                Button(inflow ? "收到了，记一笔再停" : "付了，记一笔再停") { performStop(.settle) }
-                    .accessibilityIdentifier("fixedFlowStopConfirm")
-                Button(inflow ? "没收到，这期也不要了" : "没付，这期也不要了", role: .destructive) { performStop(.skip) }
-                    .accessibilityIdentifier("fixedFlowStopSkip")
-            }
-            Button("取消", role: .cancel) { isPresented = false }.accessibilityIdentifier("fixedFlowStopCancel")
-        } message: {
-            if let message { Text(message) }
+        content.sheet(isPresented: $isPresented) {
+            ConfirmationSheet(title: "停掉「\(title)」", consequence: message, cancelIdentifier: "fixedFlowStopCancel") {
+                if pending.isEmpty {
+                    Button("停掉") { performStop() }.buttonStyle(DestructiveButtonStyle())
+                        .accessibilityIdentifier("fixedFlowStopConfirm").accessibilityHint("只停以后的，已到期账单和付过的记录保留")
+                } else {
+                    Button(inflow ? "这期收到了，记一笔再停" : "这期付了，记一笔再停") { performStop(.settle) }.buttonStyle(PrimaryButtonStyle())
+                        .accessibilityIdentifier("fixedFlowStopConfirm")
+                    Button(inflow ? "这期没收到，直接停" : "这期没付，直接停") { performStop(.skip) }.buttonStyle(DestructiveButtonStyle())
+                        .accessibilityIdentifier("fixedFlowStopSkip")
+                }
+            }.environment(store)
         }
     }
     private func performStop(_ resolution: FixedFlowStopResolution? = nil) {
@@ -58,7 +56,7 @@ private struct FixedFlowStopConfirmation: ViewModifier {
         do {
             let change = try FixedFlows.stop(planID: planID, resolution: resolution, in: store.current)
             if store.apply(change, label: "停掉安排") {
-                store.cancelEntrySaveMotion(); store.toast = "已停掉 · " + title; onStopped()
+                store.cancelEntrySaveMotion(); store.toast = "已停掉"; isPresented = false; onStopped()
             }
         } catch { store.error = error.localizedDescription }
     }
@@ -80,8 +78,7 @@ enum FixedFlowCheck {
                 guard store.apply(change, label: label) else { return false }
             }
             store.cancelEntrySaveMotion(); store.fixedFlowSettleTrigger &+= 1
-            let value = store.preferences.hideAmounts ? "••••" : AmountLabel.text(amount)
-            store.toast = "已记下 · " + title + " " + value
+            store.toast = "已记下 1 笔"
             return true
         } catch { store.error = error.localizedDescription; return false }
     }
@@ -251,18 +248,16 @@ struct BillMoveSheet: View {
     }
     private func save() {
         let planID = planID, occurrence = occurrence, date = day
-        let title = store.plans.first { $0.id == planID }?.title ?? "固定账单"
         if store.update("改到别的日子", entryMotion: false, showToast: false, { ledger in
             try FixedFlows.moveOccurrence(planID: planID, occurrence: occurrence, to: date, in: &ledger, now: Date())
-        }) { store.toast = title + " · " + FixedFlowPresentation.monthDay(date); dismiss() }
+        }) { store.toast = "已改到 " + FixedFlowPresentation.monthDay(date); dismiss() }
     }
     private func clear() {
         let planID = planID, occurrence = occurrence
         let date = original ?? occurrence
-        let title = store.plans.first { $0.id == planID }?.title ?? "固定账单"
         if store.update("改到别的日子", entryMotion: false, showToast: false, { ledger in
             try FixedFlows.clearOccurrenceMove(planID: planID, occurrence: occurrence, in: &ledger, now: Date())
-        }) { store.toast = title + " · " + FixedFlowPresentation.monthDay(date); dismiss() }
+        }) { store.toast = "已改到 " + FixedFlowPresentation.monthDay(date); dismiss() }
     }
 }
 
@@ -307,11 +302,11 @@ private struct BillEntryRow: View {
         }
     }
     private func entryContent(detail: String, outflow: Bool, vertical: Bool) -> some View {
-        let layout = vertical ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+        let layout = vertical ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
             BillBrandIcon(title: entry.displayTitle, category: entry.category, inflow: entry.nature.inflow, size: YubaiSize.rowIcon + YubaiSpace.space4)
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+                Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                 Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
             AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small, sign: outflow ? .outflow : .inflow,
@@ -366,9 +361,6 @@ private struct BillPayEditor: View {
     var body: some View {
         AmountEntrySheet(title: plan.title, subtitle: "上次 " + amount2(expected, hide: store.preferences.hideAmounts),
                          keypad: $keypad, rows: rows, primaryTitle: plan.inflow ? "收到了" : "付了", canSave: valid, save: save)
-            #if os(iOS)
-            .presentationDetents([.height(640), .large])
-            #endif
     }
 
     private func save() {
@@ -439,7 +431,7 @@ private struct BillMatchContent: View {
             }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
-            .presentationDetents([.height(520), .large])
+
             #endif
     }
     private func confirm() {
@@ -512,18 +504,7 @@ private struct BillDayPicker: View {
         ScrollView {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 BillSheetHeader(title: "每月几号")
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: textSize.isAccessibilitySize ? 4 : 7), spacing: YubaiSpace.space8) {
-                    ForEach(1...31, id: \.self) { value in
-                        Button { pick(value); dismiss() } label: {
-                            Text("\(value)").yubaiFont(YubaiFont.callout).lineLimit(1)
-                                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
-                                .foregroundStyle(current == value ? YubaiColor.onBrand : YubaiColor.label)
-                                .background(current == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                        }.buttonStyle(PressButtonStyle()).accessibilityLabel("每月 \(value) 号")
-                            .accessibilityAddTraits(current == value ? .isSelected : [])
-                            .accessibilityIdentifier("billDay_\(value)")
-                    }
-                }
+                MonthDayChoices(selection: .constant(current), identifier: "billDay_") { value in pick(value); dismiss() }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapSection)
         }.paperBackground()
             #if os(iOS)
@@ -552,6 +533,7 @@ struct BillDetailView: View {
 
     private func content(_ plan: Plan) -> some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
+            if plan.title.count > 12 { Text(plan.title).yubaiFont(YubaiFont.cardTitle).fixedSize(horizontal: false, vertical: true) }
             settingsCard(plan)
             if let history, !history.entries.isEmpty { historyBlock(plan, history) }
             if plan.active && plan.endDate == nil && plan.stoppedAt == nil { stopButton }
@@ -591,7 +573,7 @@ struct BillDetailView: View {
         }
     }
     private var rowDivider: some View {
-        Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+        Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true)
     }
     private func detailRow<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
         EntryFormRow(title: title, content: value).frame(minHeight: YubaiSize.rowDouble)

@@ -33,7 +33,7 @@ struct ProfileChatEntry: View {
     var body: some View {
         Button { showing = true } label: {
             HStack(spacing: YubaiSpace.gapGroup) {
-                if prominent { AssistantMark(size: 14).accessibilityHidden(true) }
+                if prominent { AssistantMark(size: YubaiFont.row.size).accessibilityHidden(true) }
                 Text(title).yubaiFont(prominent ? YubaiFont.rowTitle : YubaiFont.row)
                 Spacer(minLength: YubaiSpace.none)
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption)
@@ -46,7 +46,7 @@ struct ProfileChatEntry: View {
             .sheet(isPresented: $showing) {
                 NavigationStack { ProfileConversationView(openingContext: context) }.environment(store).appErrors().yubaiSheetBackground()
                     #if os(macOS)
-                    .frame(minWidth: 540, minHeight: 600)
+                    .frame(minWidth: YubaiSize.sheetMinimumWidth, minHeight: YubaiSize.sheetMinimumHeight)
                     #endif
             }
     }
@@ -115,7 +115,7 @@ private struct CooldownWishCard: View {
     }
     private var heading: some View {
         HStack(spacing: YubaiSpace.space8) {
-            Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true)
+            Circle().fill(YubaiColor.amberDot).frame(width: YubaiSize.unknownDot, height: YubaiSize.unknownDot).accessibilityHidden(true)
             Text("冷静了 " + WishWaitText.duration(from: wish.createdAt, to: wish.coolUntil ?? wish.createdAt))
                 .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
         }
@@ -162,7 +162,7 @@ struct WishRegretEntry: View {
             Card {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     HStack(spacing: YubaiSpace.space8) {
-                        Text(wish.title).yubaiFont(YubaiFont.rowTitle)
+                        Text(wish.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle)
                         AmountLabel(cents: wish.amount, hide: store.preferences.hideAmounts)
                         Text("· 有点后悔").yubaiFont(YubaiFont.callout)
                     }
@@ -185,7 +185,7 @@ struct LetterSubscriptionCard: View {
             Text("这些还在用吗？").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
                 .padding(.horizontal, YubaiSpace.space4)
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     ForEach(candidates) { candidate in
                         subscriptionRow(candidate)
                         if candidate.id != candidates.last?.id { EntryFormDivider() }
@@ -209,7 +209,7 @@ struct LetterSubscriptionCard: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             AmountLabel(cents: candidate.amount, hide: store.preferences.hideAmounts)
             }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(candidate.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                 Text(schedule(candidate)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 AmountLabel(cents: candidate.amount, hide: store.preferences.hideAmounts)
@@ -258,76 +258,5 @@ struct LetterSubscriptionCard: View {
     }
     private func answer(_ candidate: SubscriptionCandidate, _ choice: SubscriptionAnswer) {
         if store.update("回答订阅", showToast: false, { try SubscriptionCheck.answer(candidate, choice: choice, in: &$0) }) { answered[candidate.id] = choice }
-    }
-}
-
-struct SavingProgressBar: View {
-    let ratio: Double
-    var amber = false
-    var showsOvershoot = false
-    var body: some View {
-        let segments = SavingBarSegments(ratio: ratio, showsOvershoot: showsOvershoot)
-        GeometryReader { geometry in
-            if segments.overflowFraction > 0 {
-                let width = max(0, geometry.size.width - (segments.filledFraction > 0 ? YubaiSpace.space2 : 0))
-                HStack(spacing: YubaiSpace.space2) {
-                    if segments.filledFraction > 0 {
-                        (amber ? YubaiColor.amberDot : YubaiColor.brand)
-                            .frame(width: width * segments.filledFraction)
-                    }
-                    YubaiColor.amberStrong.frame(width: width * segments.overflowFraction)
-                }.clipShape(Capsule())
-            } else {
-                ZStack(alignment: .leading) {
-                    Capsule().fill(YubaiColor.neutralSoft)
-                    Capsule().fill(amber ? YubaiColor.amberDot : YubaiColor.brand)
-                        .frame(width: geometry.size.width * segments.filledFraction)
-                }
-            }
-        }.frame(height: YubaiSpace.space4).accessibilityHidden(true)
-    }
-}
-
-struct RestrainNearRow: View {
-    @Environment(AppStore.self) private var store
-    private var nearestProgress: RestrainProgress? {
-        let progress: [RestrainProgress] = store.restrainProgress
-        let visible: [RestrainProgress] = progress.filter { value in
-            let key: String = "restrain:\(value.areaID):\(ButlerCards.isoWeek(Date()))"
-            guard value.status == .near, !ButlerCards.isMuted(key, in: store.current) else { return false }
-            return store.cards.first { $0.dedupeKey == key }?.dismissedAt == nil
-        }
-        return visible.sorted { $0.ratio > $1.ratio }.first
-    }
-    var body: some View {
-        if let progress = nearestProgress {
-            NavigationLink { ProfileView() } label: {
-                label(progress)
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("restrainNear")
-        }
-    }
-    private func label(_ progress: RestrainProgress) -> some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                Text(progress.title + " · " + usage(progress)).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
-                Text(limit(progress)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            SavingProgressBar(ratio: progress.ratio, amber: true, showsOvershoot: true).frame(width: YubaiSize.iconButton + YubaiSpace.gapSection)
-        }.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.rowDouble)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: YubaiColor.amberTint)
-    }
-    private func countLeads(_ p: RestrainProgress) -> Bool {
-        guard let count = p.perWeekCount else { return false }
-        let ratio: Double
-        if count == 0 { ratio = p.weekCount > 0 ? .infinity : 0 }
-        else { ratio = Double(p.weekCount) / Double(count) }
-        return ratio >= p.ratio
-    }
-    private func usage(_ p: RestrainProgress) -> String {
-        countLeads(p) ? "本周第 \(p.weekCount) 次" : "本月 " + (store.preferences.hideAmounts ? "••••" : Money.text(p.monthAmount))
-    }
-    private func limit(_ p: RestrainProgress) -> String {
-        if countLeads(p), let count = p.perWeekCount { return "你写的最多 \(count) 次" }
-        return "你写的最多 " + (store.preferences.hideAmounts ? "••••" : Money.text(p.perMonthAmount ?? 0))
     }
 }

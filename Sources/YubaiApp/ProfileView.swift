@@ -40,7 +40,7 @@ struct ProfileView: View {
                     }
                 }.environment(store).tint(YubaiColor.brandInk).appErrors().yubaiSheetBackground()
                     #if os(macOS)
-                    .frame(minWidth: 540, minHeight: 600)
+                    .frame(minWidth: YubaiSize.sheetMinimumWidth, minHeight: YubaiSize.sheetMinimumHeight)
                     #endif
             }
     }
@@ -191,13 +191,13 @@ private struct ProfileAreaEditor: View {
     var body: some View {
         Form {
             Section {
-                CardTextFieldRow(title: "名字", text: $title, identifier: "profileAreaTitle")
+                CardTextFieldRow(title: "名字", text: $title, identifier: "profileAreaTitle", autofocus: true)
                 if title.isEmpty { InlineFieldError(message: "填写名称") }
                 SuggestionChips(values: ["外卖", "学习", "旅行"], selected: title) { title = $0 }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     ChipFlow {
                         ForEach(keywords, id: \.self) { word in
-                            SuggestionChip(value: word + " ×", selected: true) { keywords.removeAll { $0 == word } }
+                            CategoryChoiceChip(title: word + " ×", selected: true) { keywords.removeAll { $0 == word } }
                                 .accessibilityLabel("移除关键词" + word)
                         }
                     }
@@ -218,7 +218,7 @@ private struct ProfileAreaEditor: View {
             }
             if stance == .restrain {
                 Section("上限") {
-                    CardTextFieldRow(title: "每周次数", text: $weekly).numericInput().accessibilityHint("空着表示不限次数")
+                    CardTextFieldRow(title: "每周次数", text: $weekly, numeric: true).accessibilityHint("空着表示不限次数")
                     InlineFieldError(message: !weekly.isEmpty && Int(weekly).map({ (0...10000).contains($0) }) != true ? "每周次数须为 0 至 10,000 的整数" : nil)
                     monthlyLimitRow
                 }
@@ -229,7 +229,7 @@ private struct ProfileAreaEditor: View {
                 AmountEntrySheet(title: "每月金额", keypad: $monthlyKeypad, primaryTitle: "好", canSave: monthlyKeypad.amount != nil, save: {
                     guard let value = monthlyKeypad.resolve() else { return }
                     monthly = Money.input(value); editingMonthly = false
-                }).environment(store).yubaiSheetBackground().presentationDetents([.height(480), .large])
+                }).environment(store).yubaiSheetBackground()
             }
             .onAppear {
                 guard !loaded else { return }; loaded = true
@@ -240,7 +240,7 @@ private struct ProfileAreaEditor: View {
     }
     private var monthlyLimitRow: some View {
         EntryFormRow(title: "每月金额") {
-            HStack(spacing: 8) {
+            HStack(spacing: YubaiSpace.space8) {
                 Button {
                     monthlyKeypad = EntryKeypad(amount: (try? Money.parse(monthly)) ?? 0); editingMonthly = true
                 } label: {
@@ -301,14 +301,14 @@ private struct ProfilePrincipleEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
             Card(style: .list) {
-                CardTextFieldRow(title: "", text: $text, placeholder: "超过多少钱要等一等？", identifier: "principleText", multiline: true)
+                CardTextFieldRow(title: "", text: $text, placeholder: "超过多少钱要等一等？", identifier: "principleText", multiline: true, focus: $focused, autofocus: true)
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 ForEach(["超过 2,000 等 48 小时", "每天用得上的，愿意多花", "买之前先看看家里有没有"], id: \.self) { value in
-                    SuggestionChip(value: value, identifier: "principleSuggestion_" + value) { text = value }
+                    CategoryChoiceChip(title: value) { text = value }.accessibilityIdentifier("principleSuggestion_" + value)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
-            Spacer(minLength: 0)
+            Spacer(minLength: YubaiSpace.none)
         }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup)
             .paperBackground().yubaiNavigation().navigationTitle(original == nil ? "加一条原则" : "原则")
             .onAppear { text = original ?? ""; focused = true }

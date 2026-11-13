@@ -17,12 +17,13 @@ struct SyncVersionsView: View {
                 if choice.switching { Button("取消切换", role: .cancel) { store.cancelSyncLocationChoice() }.disabled(store.syncBusy) }
                 if store.syncBusy { ProgressView("正在保存…") }
             } else { EmptyState("clock", "没有待选择的版本", action: "返回", onAction: { dismiss() }) }
-        }.navigationTitle("选择账本版本").yubaiNavigation().manualSheetHeader("选择账本版本", cancelTitle: "关闭", showsAction: false)
+        }.accessibilityIdentifier("syncVersionsPage").navigationTitle("选择账本版本").yubaiNavigation().manualSheetHeader("选择账本版本", cancelTitle: "关闭", showsAction: false)
     }
     private func versionCard(_ version: LedgerVersion, other: LedgerVersion?, choice: SyncChoice) -> some View {
         Card {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 Text(version.deviceName ?? (version.id == "current" ? "iCloud 当前版本" : "另一版本")).yubaiFont(YubaiFont.cardTitle)
+                    .lineLimit(2).accessibilityIdentifier("truncatableName")
                 Text(Dates.text(version.ledger.updatedAt, time: true)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     .accessibilityLabel("账本更新：" + Dates.text(version.ledger.updatedAt, time: true))
                 Text(Dates.text(version.date, time: true)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
@@ -42,7 +43,7 @@ struct SyncVersionsView: View {
                     }
                     ForEach(version.differingEntries(from: other.ledger)) { entry in
                         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                            Text(entry.displayTitle).yubaiFont(YubaiFont.row)
+                            Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row)
                             Text(Dates.text(entry.date, time: true)).yubaiFont(YubaiFont.meta)
                             AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts)
                             Text(entry.nature.entryLabel + " · " + Classification.displayCategory(entry.category)).yubaiFont(YubaiFont.caption)
@@ -55,7 +56,7 @@ struct SyncVersionsView: View {
                 }
                 Button("使用这份账本") { Task { await store.chooseSyncVersion(choice, id: version.id) } }
                     .buttonStyle(PrimaryButtonStyle(compact: true)).disabled(store.syncBusy || store.locked)
-                    .accessibilityLabel("使用" + (version.deviceName ?? "这份") + "账本")
+                    .accessibilityLabel("使用" + (version.deviceName ?? "这份") + "账本").accessibilityIdentifier("chooseSyncVersion_" + version.id)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -72,9 +73,9 @@ struct SyncVersionsView: View {
             ("愿意多花的", changed(a.profile.generous, b.profile.generous)),
             ("原则", Set(a.profile.principles).symmetricDifference(Set(b.profile.principles)).count),
             ("存着不动", a.fixedSavings == b.fixedSavings ? 0 : 1),
-            ("要攒", a.savingRule == b.savingRule ? 0 : 1),
+            ("每月存", a.savingRule == b.savingRule ? 0 : 1),
             ("消费观时间", a.profile.updatedAt == b.profile.updatedAt && a.profile.principleDates == b.profile.principleDates ? 0 : 1),
-            ("安排", changed(a.plans, b.plans)),
+            ("固定账单", changed(a.plans, b.plans)),
             ("房租", changed(a.rents, b.rents)),
             ("存钱", changed(a.goals, b.goals)),
             ("附件", changed(a.attachments, b.attachments)),

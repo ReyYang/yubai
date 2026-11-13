@@ -109,7 +109,7 @@ struct ImportResultPage: View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                Text(plan.title).yubaiFont(YubaiFont.row)
+                Text(plan.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail)
                 Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
             AmountLabel(cents: plan.amount, hide: store.preferences.hideAmounts, sign: plan.inflow ? .inflow : .outflow)
@@ -131,7 +131,7 @@ struct ImportResultPage: View {
             Button("整批撤销") { store.undoImport(batchID) }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle()).disabled(organizing || adding)
                 .accessibilityIdentifier("undoImportResult")
-        }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.insetPage)
+        }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.insetPage).background(YubaiColor.canvas)
     }
     private func refresh() async {
         let ledger = store.current, revision = store.ledgerRevision, now = Date()

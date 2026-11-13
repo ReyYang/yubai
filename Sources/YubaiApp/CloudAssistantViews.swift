@@ -13,42 +13,42 @@ struct CloudAISettingsSection: View {
     @State private var status = ""
     @State private var testing = false
     var body: some View {
-        Page(spacing: 16, topPadding: 8) {
+        Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space8) {
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     HStack {
                         Text("DeepSeek").yubaiFont(YubaiFont.row)
-                        Spacer(minLength: 8)
-                        HStack(spacing: 4) {
+                        Spacer(minLength: YubaiSpace.space8)
+                        HStack(spacing: YubaiSpace.space4) {
                             if configured { Image(systemName: "lock") }
                             Text(configured ? "已配好" : "未配好")
                         }.yubaiFont(YubaiFont.caption).foregroundStyle(configured ? YubaiColor.brandInk : YubaiColor.amberInk)
-                            .padding(.horizontal, 12).frame(minHeight: 28).background(configured ? YubaiColor.brandTint : YubaiColor.amberTint, in: Capsule()).fixedSize()
-                    }.frame(minHeight: 48).accessibilityIdentifier("cloudKeyStatus")
+                            .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.pillHeight).background(configured ? YubaiColor.brandTint : YubaiColor.amberTint, in: Capsule()).fixedSize()
+                    }.frame(minHeight: YubaiSize.headerHeight).accessibilityIdentifier("cloudKeyStatus")
                     if configured {
                         EntryFormDivider()
                         HStack {
                             Text("存在").yubaiFont(YubaiFont.row)
-                            Spacer(minLength: 8)
+                            Spacer(minLength: YubaiSpace.space8)
                             Text(hasKey ? "本机钥匙串" : "环境变量").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                        }.frame(minHeight: 48)
+                        }.frame(minHeight: YubaiSize.headerHeight)
                     }
                 }
             }
             if configured {
-                VStack(spacing: 8) {
+                VStack(spacing: YubaiSpace.space8) {
                     Button(testing ? "正在连接…" : "测试连接") { testConnection() }.buttonStyle(SecondaryButtonStyle()).disabled(testing)
                         .accessibilityIdentifier("testCloudKey")
                     if !status.isEmpty { statusText }
                 }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("换一个").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, 16)
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    Text("换一个").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space16)
                     keyInput
                     saveButton
-                }.padding(.top, 8)
+                }.padding(.top, YubaiSpace.space8)
                 if hasKey {
                     Button("删掉密钥") { deleteKey() }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
-                        .frame(maxWidth: .infinity, minHeight: 44).buttonStyle(PressButtonStyle()).padding(.top, 24)
+                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.space24)
                         .accessibilityIdentifier("deleteCloudKey")
                 }
             } else {
@@ -62,13 +62,9 @@ struct CloudAISettingsSection: View {
             .onDisappear { key = "" }
     }
     private var keyInput: some View {
-        SecureField(configured ? "新的密钥" : "sk-••••••••••••", text: $key).autocorrectionDisabled().privacySensitive()
-            .yubaiFont(YubaiFont.row).padding(.horizontal, 16).frame(minHeight: 52)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-            .accessibilityLabel("DeepSeek 密钥").accessibilityIdentifier("cloudKeyInput")
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            #endif
+        Card(style: .list) {
+            CardTextFieldRow(title: "密钥", text: $key, identifier: "cloudKeyInput", hidesValue: true, autofocus: !configured)
+        }
     }
     private var saveButton: some View {
         Button("保存密钥") { saveKey() }.buttonStyle(PrimaryButtonStyle()).disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -158,7 +154,7 @@ struct CloudModelEditor: View {
     var body: some View {
         Form {
             Section("模型") {
-                TextField("模型名字", text: $name).autocorrectionDisabled().accessibilityIdentifier("cloudModelName")
+                CardTextFieldRow(title: "模型", text: $name, identifier: "cloudModelName", autofocus: true).autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     #endif
@@ -279,7 +275,7 @@ struct CloudSendLogView: View {
 private struct CloudRedactionChips: View {
     let summary: [String: Int]
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: YubaiSize.chipMinimum), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
             ForEach(CloudLogText.redaction(summary), id: \.key) { row in Pill(text: row.title, showsDot: false) }
         }
     }
@@ -387,7 +383,7 @@ private struct CloudSendLogDetailView: View {
                 }
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.insetPage)
                 .padding(.bottom, YubaiSpace.gapSection)
-                .frame(maxWidth: 1080).frame(maxWidth: .infinity)
+                .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity)
             }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body)
                 .foregroundStyle(YubaiColor.label).paperBackground()
                 .task(id: rawFocus) {
@@ -584,7 +580,7 @@ private struct CloudLogRawFieldRow: View {
         }
     }
     private func key(_ name: String) -> some View {
-        Text(name).yubaiFont(YubaiFont.code).foregroundStyle(YubaiColor.labelSecondary).textSelection(.enabled)
+        Text(name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.code).foregroundStyle(YubaiColor.labelSecondary).textSelection(.enabled)
     }
     private func row(name: String, values: [JSONValue]) -> some View {
         HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
