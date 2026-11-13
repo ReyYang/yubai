@@ -7,6 +7,7 @@ public enum HomeTask: Identifiable, Equatable, Sendable {
     case salary(SalaryCandidate), imports(PendingImportOrganization), butler(ButlerCard)
     case renewal(HomeRenewal), overspend(Overspend.Options), cooldown(WishItem), restraint(HomeRestraint)
     case funding(HomeFunding), savingsTopup(SavingsTopupOffer)
+    case suggestion(ButlerSuggestion), suggestionReview(ButlerReview)
 
     public var id: String {
         switch self {
@@ -23,6 +24,8 @@ public enum HomeTask: Identifiable, Equatable, Sendable {
         case .restraint(let v): v.id
         case .funding(let v): v.id
         case .savingsTopup(let v): v.id
+        case .suggestion(let v): v.taskID
+        case .suggestionReview(let v): v.taskID
         }
     }
     public var priority: Int {
@@ -34,6 +37,7 @@ public enum HomeTask: Identifiable, Equatable, Sendable {
         case .cooldown: 4
         case .bill: 5
         case .restraint: 6
+        case .suggestion, .suggestionReview: 6
         }
     }
 }
@@ -99,10 +103,12 @@ public enum HomeButler {
             items.append(.butler(card))
         }
         items += restraints(ledger, now: now).map(HomeTask.restraint)
+        items += ButlerSuggestions.queued(ledger, now: now).map(HomeTask.suggestion)
+        items += (ledger.butlerAI?.reviews ?? []).filter { $0.answeredAt == nil && $0.dueAt <= now && !ledger.mutedTopics.contains("ai:" + $0.suggestion.topic) }.map(HomeTask.suggestionReview)
         return items.filter { task in
             guard !isAnswered(task.id, in: ledger, now: now) else { return false }
             if (ledger.preferences.butlerNotices ?? ButlerNoticePreferences()).home { return true }
-            switch task { case .cooldown, .restraint, .leftover: return false; default: return true }
+            switch task { case .cooldown, .restraint, .leftover, .suggestion, .suggestionReview: return false; default: return true }
         }.sorted {
             $0.priority == $1.priority ? $0.id < $1.id : $0.priority < $1.priority
         }

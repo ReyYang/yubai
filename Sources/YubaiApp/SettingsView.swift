@@ -110,6 +110,12 @@ struct IntelligencePrivacyView: View {
                         featureToggle("写周回顾", feature: .weeklyReview)
                         separator
                         featureToggle("拍小票、认截图", feature: .receiptRecognition)
+                        separator
+                        featureToggle("管家的建议", feature: .butlerSuggestions).disabled(!configured)
+                        separator
+                        SettingsRow(title: "上次想", detail: store.current.butlerAI?.lastRunAt.map { FixedFlowPresentation.monthDay($0) } ?? "还没想过", chevron: false)
+                            .uiTestAccessibilityValue(butlerScriptState)
+                            .accessibilityIdentifier("butlerLastRun")
                     }
                 }
             }
@@ -137,6 +143,13 @@ struct IntelligencePrivacyView: View {
         })).yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn)
             .frame(minHeight: YubaiSize.rowDouble).disabled(!store.preferences.cloudAIEnabled)
             .accessibilityIdentifier("aiFeature_" + feature.rawValue)
+    }
+    private var butlerScriptState: String {
+        #if DEBUG && targetEnvironment(simulator)
+        "requests=\(UITestRequestLog.shared.count);suggestions=\(store.current.butlerAI?.suggestions.count ?? 0);reviews=\(store.current.butlerAI?.reviews.count ?? 0);memories=\(store.current.memories.count)"
+        #else
+        ""
+        #endif
     }
     private func heading(_ text: String) -> some View { Text(text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard) }
     private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true) }
@@ -204,8 +217,10 @@ struct BackupView: View {
             if let message { Text(message).yubaiFont(YubaiFont.callout).textSelection(.enabled) }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    Button { exportExpanded.toggle() } label: { backupRow("备份到文件", detail: "存到「文件」或隔空投送") }.accessibilityIdentifier("backupToFile")
-                    EntryFormDivider()
+                    if store.preferences.lastBackupAt != nil {
+                        Button { exportExpanded.toggle() } label: { backupRow("备份到文件", detail: "存到「文件」或隔空投送") }.accessibilityIdentifier("backupToFile")
+                        EntryFormDivider()
+                    }
                     Button { passwordFocus = false; importing = true } label: { backupRow("从备份恢复", detail: nil) }.disabled(busy).accessibilityIdentifier("restoreFromBackup")
                     EntryFormDivider()
                     Button(action: exportCSV) { backupRow("导出成表格", detail: "CSV") }.disabled(busy).accessibilityIdentifier("exportEntriesCSV")
@@ -356,16 +371,16 @@ struct BackupView: View {
     }
     private var lastBackup: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            Text("上次备份").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             if let date = store.preferences.lastBackupAt {
+                Text("上次备份").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                 let days = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(Date())).day ?? 0)
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: YubaiSpace.space8))
                 layout {
                     Text(FixedFlowPresentation.monthDay(date)).yubaiFont(YubaiFont.amountLarge)
                     Text(days == 0 ? "今天" : "\(days) 天前").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }
-            } else { Text("还没备份过").yubaiFont(YubaiFont.amountLarge) }
-        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine).accessibilityIdentifier("lastBackup")
+            } else { EmptyState("square.and.arrow.up", "还没备份过", action: "备份到文件", actionIdentifier: "backupToFile", onAction: { exportExpanded.toggle() }) }
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain).accessibilityIdentifier("lastBackup")
             #if DEBUG && targetEnvironment(simulator)
             .uiTestAccessibilityValue("files=\(UITestSupport.secondBatchBackupFileCount);csv=\(csvExport && exportDocument.data.starts(with: [0xEF, 0xBB, 0xBF]) ? 1 : 0)")
             #endif

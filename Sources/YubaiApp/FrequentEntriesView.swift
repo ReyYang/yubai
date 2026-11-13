@@ -16,8 +16,14 @@ struct FrequentEntriesView: View {
     @State private var items: [EntryHistory.Repeat] = []
     @State private var hidden: [EntryHistory.HiddenRepeat] = []
     @State private var pinned = Set<String>()
+    @State private var adding = false
+    @State private var purpose = ""
+    @State private var keypad = EntryKeypad()
     var body: some View {
         Page(spacing: YubaiSpace.gapGroup) {
+            if items.isEmpty && hidden.isEmpty {
+                EmptyState(.frequent, onAction: { adding = true })
+            }
             if !items.isEmpty {
                 SectionHeading(title: "显示的")
                 CardRows(Array(items.enumerated()).map { IndexedFrequentEntry(index: $0.offset, entry: $0.element) }) { row in
@@ -29,10 +35,21 @@ struct FrequentEntriesView: View {
                 CardRows(hidden) { row in hiddenRow(row) }
             }
         }.accessibilityIdentifier("frequentEntriesPage")
+            .sheet(isPresented: $adding) { addForm }
             .task(id: store.ledgerRevision) { await refresh() }
             #if os(iOS)
             .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(YubaiSize.sheet560), .large])
             #endif
+    }
+    private var addForm: some View {
+        AmountEntrySheet(title: "常用", keypad: $keypad, primaryTitle: "加一个", primaryIdentifier: "saveFrequentEntry",
+                         canSave: keypad.amount.map { $0 > 0 } == true && !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && purpose.count <= 100,
+                         save: {
+            guard let amount = keypad.resolve() else { return }
+            if store.update("常用", entryMotion: false, showToast: false, { try EntryHistory.addRepeat(purpose: purpose, amount: amount, in: &$0, now: Date()) }) { adding = false }
+        }) {
+            Card(style: .list) { CardTextFieldRow(title: "用途", text: $purpose, identifier: "frequentEntryPurpose") }
+        }.environment(store).appErrors().yubaiSheetBackground()
     }
     private func entryRow(_ item: EntryHistory.Repeat, index: Int) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))

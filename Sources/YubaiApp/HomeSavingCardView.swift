@@ -13,26 +13,39 @@ struct HomeSavingCardView: View {
                         .frame(width: YubaiSize.headerIcon, height: YubaiSize.headerIcon)
                         .frame(width: YubaiSize.savingIcon, height: YubaiSize.savingIcon)
                         .background(YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: YubaiSpace.space6) {
-                        if facts.started {
+                    if facts.started {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space6) {
                             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                                 Text("存下了").yubaiFont(YubaiFont.rowTitle).fixedSize()
                                 Spacer(minLength: YubaiSpace.none)
                                 AmountLabel(cents: facts.total, hide: hide, role: .summary).layoutPriority(1)
                             }
                             secondLine
-                        } else {
-                            Text("还没开始存").yubaiFont(YubaiFont.rowTitle).lineLimit(1).minimumScaleFactor(0.75)
-                            Text("开始存钱").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.onBrand)
-                                .padding(.horizontal, YubaiSpace.space12).padding(.vertical, YubaiSpace.space4)
-                                .background(YubaiColor.brand, in: Capsule())
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                    } else { startSaving }
                 }.frame(minHeight: YubaiSize.savingCardMinimum - YubaiSpace.insetCard * 2)
             }
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openSaving")
             .accessibilityElement(children: .ignore).accessibilityLabel(spoken).accessibilityHint("打开存钱")
+    }
+    private var startSaving: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.space8) {
+                Text("还没开始存").yubaiFont(YubaiFont.rowTitle).fixedSize()
+                Spacer(minLength: YubaiSpace.none)
+                startLabel
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                Text("还没开始存").yubaiFont(YubaiFont.rowTitle)
+                startLabel
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private var startLabel: some View {
+        Text("开始存钱").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.onBrand)
+            .fixedSize().padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
+            .background(YubaiColor.brand, in: Capsule())
     }
     @ViewBuilder private var secondLine: some View {
         switch facts.state {

@@ -7,7 +7,6 @@ struct SavingTabView: View {
     @State private var editingFloor = false
     @State private var settingTarget = false
     @State private var addingWish = false
-    @State private var postponed = false
     @State private var monthlyIncrease: Int64?
     @State private var fundingByWish: [UUID: WishFunding] = [:]
     private var hide: Bool { store.preferences.hideAmounts }
@@ -15,13 +14,15 @@ struct SavingTabView: View {
     private var wishes: [WishItem] { store.current.wishlist.filter { $0.status == .thinking }.sorted { $0.createdAt < $1.createdAt } }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
-            VStack(spacing: YubaiSpace.space12) {
-                hero
-                transferButtons
-                floorRow
+            if store.homeSaving.started {
+                VStack(spacing: YubaiSpace.space12) {
+                    hero
+                    transferButtons
+                    floorRow
+                }
             }
-            if store.current.savingRule == nil && !postponed { firstSaving }
-            if !store.current.wishlist.isEmpty { wishSection }
+            if store.current.savingRule == nil { firstSaving }
+            wishSection
             settingsRows
         }.accessibilityIdentifier("savingTabScroll")
             .amountPrivacy(hide)
@@ -89,16 +90,8 @@ struct SavingTabView: View {
         }
     }
     private var firstSaving: some View {
-        Card {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                Text("每月先存").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                Text("发工资那天，先留出多少？").yubaiFont(YubaiFont.cardTitle)
-                ChipFlow {
-                    Button("定一个数") { settingTarget = true }.buttonStyle(PrimaryButtonStyle(compact: true)).accessibilityIdentifier("setFirstSavingTarget")
-                    Button("以后再说") { postponed = true }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.card, compact: true)).accessibilityIdentifier("postponeSavingTarget")
-                }
-            }
-        }.accessibilityIdentifier("savingFirstRule")
+        EmptyState(.saving, actionIdentifier: "setFirstSavingTarget", onAction: { settingTarget = true })
+            .accessibilityIdentifier("savingFirstRule")
     }
     private var wishSection: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -109,10 +102,10 @@ struct SavingTabView: View {
                 Button { addingWish = true } label: { Label("添一个", systemImage: "chevron.right").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk) }
                     .buttonStyle(PressButtonStyle()).yubaiHitTarget().accessibilityIdentifier("addSavingWish")
             }.padding(.horizontal, YubaiSpace.space4)
-            CardRows(wishes) { wish in
+            if !wishes.isEmpty { CardRows(wishes) { wish in
                 TabNavigationLink(.savingWish(wish.id)) { WishlistView(focusedWishID: wish.id) } label: { wishRow(wish) }
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("savingWish_" + wish.id.uuidString)
-            }
+            } }
         }
     }
     private func wishRow(_ wish: WishItem) -> some View {
@@ -160,7 +153,7 @@ struct SavingTabView: View {
     private var settingsRows: some View {
         Card(style: .list) {
             VStack(spacing: YubaiSpace.none) {
-                if store.current.savingRule != nil || postponed {
+                if store.current.savingRule != nil {
                     TabNavigationLink(.savingRule) { SavingsView() } label: { navigationRow("每月先存", value: monthlyValue) }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openSavings")
                     EntryFormDivider()

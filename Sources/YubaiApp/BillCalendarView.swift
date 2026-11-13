@@ -33,6 +33,10 @@ struct FixedFlowsView: View {
     var body: some View {
         let month = snapshot
         Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8) {
+            if !store.current.plans.contains(where: { $0.active && $0.stoppedAt == nil }) && store.current.rents.isEmpty {
+                EmptyState(.bills, onAction: { store.sheet = .addPlan })
+                stoppedBills
+            } else {
             monthHeader(month)
             calendar(month)
             if let day = selectedDay {
@@ -41,6 +45,7 @@ struct FixedFlowsView: View {
                 upcoming(month)
                 YearlyBillsStrip(month: month)
                 stoppedBills
+            }
             }
         }.navigationTitle("账单").yubaiNavigation().amountPrivacy(store.preferences.hideAmounts)
             .accessibilityIdentifier("fixedFlowsScroll")
@@ -137,7 +142,7 @@ struct FixedFlowsView: View {
         let rows = Array(month.days.flatMap(\.bills).filter { $0.state != .paid && $0.date >= Dates.day(store.financialNow) }.prefix(2))
         return VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             SectionHeading(title: "接下来").padding(.horizontal, YubaiSpace.space4)
-            if rows.isEmpty { EmptyState("calendar", "没有要付的账单", action: "加一个账单", onAction: { store.sheet = .addPlan }) }
+            if rows.isEmpty { EmptyState(.bills, onAction: { store.sheet = .addPlan }) }
             else { CardRows(rows) { BillCalendarRow(row: $0, includesDate: true) } }
         }.padding(.top, YubaiSpace.space8)
     }
@@ -154,7 +159,7 @@ struct FixedFlowsView: View {
                     EntryFormDivider()
                     BillCalendarRow(row: row)
                 }
-                if rows.isEmpty { Text("没有账单").yubaiFont(YubaiFont.caption).padding(.vertical, YubaiSpace.space12) }
+                if rows.isEmpty { EmptyState(.bills, onAction: { store.sheet = .addPlan }) }
                 ForEach(currencies) { currency in
                     Button { editingRate = currency } label: {
                         BillRateLabel(currency: currency).padding(.vertical, YubaiSpace.space12).contentShape(Rectangle())

@@ -26,7 +26,10 @@ struct BudgetView: View {
         let parts = store.current.spendingParts
         let suggested = proposal ?? []
         Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.gapGroup) {
-            if parts.isEmpty && !manual && !suggested.isEmpty { proposalContent(suggested) } else { regularContent }
+            if parts.isEmpty && !manual {
+                EmptyState(.budget, actionIdentifier: "addBudgetPart", onAction: { newName = ""; manual = true; if suggested.isEmpty { adding = true } })
+            } else if parts.isEmpty && !suggested.isEmpty { proposalContent(suggested) }
+            else { regularContent }
         }.amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("spendingPartsPage")
             .navigationTitle("预算").yubaiNavigation()
             .sheet(isPresented: $adding, onDismiss: { categoryPart = addedPart; addedPart = nil }) { newPartSheet }

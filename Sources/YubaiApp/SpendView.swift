@@ -54,7 +54,7 @@ struct FormulaView: View {
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_income")
             if value.saving != 0 {
                 EntryFormDivider()
-                Button { store.sheet = .formulaEdit(.saving) } label: { row("先存起来", amount: value.saving, value: value) }
+                Button { store.sheet = .formulaEdit } label: { row("先存起来", amount: value.saving, value: value) }
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_saving")
             }
             if value.bills != 0 {

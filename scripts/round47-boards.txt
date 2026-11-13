@@ -10,3 +10,8 @@ V47-Take
 V47-Records
 V47-Home-Topup
 V47-Toast
+V47-Empty
+V47-Butler-AI
+V47-Home-AI
+V47-AI-Why
+V47-Changes

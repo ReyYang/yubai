@@ -8,6 +8,8 @@ final class Round45BPreferencesTests: XCTestCase {
         var preferences = Preferences()
         XCTAssertTrue(AIFeature.allCases.allSatisfy { !preferences.isAIEnabled(for: $0) })
         preferences.cloudAIEnabled = true
+        XCTAssertFalse(preferences.isAIEnabled(for: .butlerSuggestions))
+        preferences.setAIEnabled(true, for: .butlerSuggestions)
         XCTAssertTrue(AIFeature.allCases.allSatisfy { preferences.isAIEnabled(for: $0) })
         for feature in AIFeature.allCases {
             var individual = preferences; individual.setAIEnabled(false, for: feature)

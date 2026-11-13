@@ -12,6 +12,7 @@ SHARED = 'DesignSystem.swift'
 OLD_NAMES = ('\u6211\u7684\u6d88\u8d39\u89c2', '\u5e38\u8bb0\u7684\u51e0\u7b14', '\u8fdb\u51fa\u8bb0\u5f55',
              '\u85cf\u8d77\u6765\u7684', '\u5206\u4e00\u5206', '\u4e00\u4e2a\u4e2a\u5206', '\u6309\u5bf9\u65b9\u5206',
              '\u4f59\u767d\u60f3\u8fd9\u6837\u6539', '\u6574\u7406\u597d\u4e86', '\u5f85\u5904\u7406')
+OLD_NAMES += ('\u5b58\u7740\u4e0d\u52a8', '\u5907\u7528\u91d1')
 TOKEN = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"', re.S)
 NUMBER = r'-?\d+(?:\.\d+)?(?![\w.])'
 GEOMETRY = re.compile(r'\b(?:spacing|rowSpacing|topPadding|minLength|minimumDistance|lineHeight|topLeadingRadius|topTrailingRadius|bottomLeadingRadius|bottomTrailingRadius|min|ideal|max|width|height|minWidth|maxWidth|minHeight|maxHeight|idealWidth|idealHeight|cornerRadius|radius|size|minimum|maximum|lineWidth|top|bottom|leading|trailing|x|y):\s*' + NUMBER)

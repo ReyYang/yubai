@@ -192,6 +192,9 @@ private struct PurchaseDetailsView: View {
     private var evidenceRows: [Entry] { store.evidenceEntries(Set(evidence), activeOnly: true) }
     var body: some View {
         Page {
+            if affordability == nil && habit == nil {
+                EmptyState("list.bullet", "没有记录", action: "看账本", onAction: { store.sheet = nil; store.destination = .ledger })
+            }
             Card {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     fact("付得起吗", affordability)
@@ -215,10 +218,12 @@ private struct PurchaseDetailsView: View {
             else if let title = row["title"]?.stringValue { quote(title) }
         }
     }
-    private func fact(_ title: String, _ value: String?) -> some View {
+    @ViewBuilder private func fact(_ title: String, _ value: String?) -> some View {
+        if let value {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            Text(store.preferences.hideAmounts ? "金额已隐藏" : value ?? "没有记录").yubaiFont(YubaiFont.body)
+            Text(store.preferences.hideAmounts ? "金额已隐藏" : value).yubaiFont(YubaiFont.body)
+        }
         }
     }
     private func quote(_ text: String) -> some View {

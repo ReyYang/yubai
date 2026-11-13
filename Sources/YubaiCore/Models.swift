@@ -542,10 +542,11 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var aiAnswersDisabled: Bool?
     public var aiWeeklyReviewDisabled: Bool?
     public var aiReceiptRecognitionDisabled: Bool?
+    public var butlerSuggestionsEnabled: Bool?
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case butlerNotices, billExchangeRates, lastBillCurrency, yearlyBillsSetAside
+        case butlerNotices, billExchangeRates, lastBillCurrency, yearlyBillsSetAside, butlerSuggestionsEnabled
         case weeklyAutoBackup, aiImportClassificationDisabled, aiAnswersDisabled, aiWeeklyReviewDisabled, aiReceiptRecognitionDisabled
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
         case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, profileColdStartDone, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
@@ -582,6 +583,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         aiAnswersDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiAnswersDisabled)
         aiWeeklyReviewDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiWeeklyReviewDisabled)
         aiReceiptRecognitionDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiReceiptRecognitionDisabled)
+        butlerSuggestionsEnabled = try values.decodeIfPresent(Bool.self, forKey: .butlerSuggestionsEnabled)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -602,6 +604,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         if aiAnswersDisabled == true { try c.encode(true, forKey: .aiAnswersDisabled) }
         if aiWeeklyReviewDisabled == true { try c.encode(true, forKey: .aiWeeklyReviewDisabled) }
         if aiReceiptRecognitionDisabled == true { try c.encode(true, forKey: .aiReceiptRecognitionDisabled) }
+        try c.encodeIfPresent(butlerSuggestionsEnabled, forKey: .butlerSuggestionsEnabled)
     }
 }
 public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
@@ -867,6 +870,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var dismissedSalaryKeys: Set<String> = [] { didSet { calculations = LedgerCalculations() } }
     public var memories: [MemoryNote] = [] { didSet { calculations = LedgerCalculations() } }
     public var lastReflectionWeek: String? { didSet { calculations = LedgerCalculations() } }
+    public var butlerAI: ButlerAIState? { didSet { calculations = LedgerCalculations() } }
     public var preferences = Preferences() { didSet { calculations = LedgerCalculations() } }
     public var profile = SpendingProfile() { didSet { calculations = LedgerCalculations() } }
     public var cards: [ButlerCard] = [] { didSet { calculations = LedgerCalculations() } }
@@ -889,7 +893,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case butlerSavings, butlerAnswers, salarySetupDeferral
+        case butlerSavings, butlerAnswers, salarySetupDeferral, butlerAI
         case savingsTransfers, savingsTopupDecisions, reservePaybacks, repeatPreferences, paydayConfirmSince, cycleCovers, reserveAdjustments, cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
@@ -922,6 +926,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         dismissedSalaryKeys = try c.decodeIfPresent(Set<String>.self, forKey: .dismissedSalaryKeys) ?? []
         memories = try c.decodeIfPresent([MemoryNote].self, forKey: .memories) ?? []
         lastReflectionWeek = try c.decodeIfPresent(String.self, forKey: .lastReflectionWeek)
+        butlerAI = try c.decodeIfPresent(ButlerAIState.self, forKey: .butlerAI)
         preferences = try c.decode(Preferences.self, forKey: .preferences)
         profile.updatedAt = updatedAt
         profile = try c.decodeIfPresent(SpendingProfile.self, forKey: .profile) ?? profile
@@ -1032,6 +1037,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encode(dismissedSalaryKeys.sorted(), forKey: .dismissedSalaryKeys)
         try c.encode(memories, forKey: .memories)
         try c.encodeIfPresent(lastReflectionWeek, forKey: .lastReflectionWeek)
+        try c.encodeIfPresent(butlerAI, forKey: .butlerAI)
         try c.encode(preferences, forKey: .preferences)
         try c.encode(profile, forKey: .profile)
         try c.encode(cards, forKey: .cards)
@@ -1083,6 +1089,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.dismissedSalaryKeys == rhs.dismissedSalaryKeys &&
         lhs.memories == rhs.memories &&
         lhs.lastReflectionWeek == rhs.lastReflectionWeek &&
+        lhs.butlerAI == rhs.butlerAI &&
         lhs.preferences == rhs.preferences &&
         lhs.profile == rhs.profile &&
         lhs.cards == rhs.cards &&

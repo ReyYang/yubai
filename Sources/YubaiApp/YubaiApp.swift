@@ -15,8 +15,6 @@ enum Destination: String, CaseIterable, Identifiable {
     /// SF Symbol for the large content viewer and the macOS sidebar fallback.
     var symbol: String { switch self { case .now: "clock"; case .ledger: "text.book.closed"; case .yubai: "leaf" } }
 }
-/// 算式页里可以就地改的三项。
-enum FormulaField: Hashable { case fixedSavings, saving, hand }
 /// 账本页的两个视图（`ledgerMode_detail` / `ledgerMode_where`）。
 enum LedgerMode: String, CaseIterable, Identifiable {
     case detail, whereTo = "where"
@@ -67,7 +65,7 @@ enum AppSheet: Identifiable {
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letter(UUID), reconcile(UUID)
     case reconcileAll, overspend(CycleCover.Source), paydayAmount, paydaySetup
     case billPay(planID: UUID, occurrence: Date), billMatch(planID: UUID, occurrence: Date, entryID: UUID), billLink(planID: UUID, occurrence: Date)
-    case formulaEdit(FormulaField), frequentEntries
+    case formulaEdit, frequentEntries
     case billMove(planID: UUID, occurrence: Date)
     var id: String { String(describing: self) }
     var motionSource: String? {
@@ -994,7 +992,7 @@ struct RootView: View {
             if UITestSupport.script?.hasPrefix("v47-toast-") == true || (UITestSupport.script == "gallery" && ProcessInfo.processInfo.environment["YUBAI_GALLERY_TOAST"] == "1") {
                 // A synthetic, nonfinancial undo exercises the real global toast.
                 if store.update("截图控件", entryMotion: false, showToast: false, { $0.preferences.profileColdStartDone.toggle() }) {
-                    store.toast = UITestSupport.script == "v47-toast-short" ? "已删掉 · 午饭 28.00" : "已删掉 · 为了搬家以后和家人朋友一起长期使用而认真挑选的生活用品 2 笔"
+                    store.toast = UITestSupport.script == "v47-toast-short" ? "已删除 · 午饭 28.00" : "已删除 · 为了搬家以后和家人朋友一起长期使用而认真挑选的生活用品 2 笔"
                 }
             }
         }
@@ -1238,7 +1236,7 @@ struct RootView: View {
         case .billMatch(let planID, let occurrence, let entryID): BillMatchSheet(planID: planID, occurrence: occurrence, entryID: entryID)
         case .billLink(let planID, let occurrence): BillLinkSheet(planID: planID, occurrence: occurrence)
         case .billMove(let planID, let occurrence): BillMoveSheet(planID: planID, occurrence: occurrence)
-        case .formulaEdit(let field): FormulaEditSheet(field: field)
+        case .formulaEdit: FormulaEditSheet()
         case .frequentEntries: FrequentEntriesView().manualSheetHeader("整理常用", cancelTitle: "关闭", showsAction: false)
         case .intelligencePrivacy: IntelligencePrivacyView().manualSheetHeader("智能与隐私", cancelTitle: "关闭", showsAction: false)
         case .cardEvidence(let id): ButlerEvidenceView(cardID: id)

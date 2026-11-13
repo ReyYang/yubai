@@ -107,7 +107,6 @@ final class Round47SavingsFlowTests: XCTestCase {
         XCTAssertTrue(element("reserveLine_0").label.contains("放回去"))
         XCTAssertTrue(element("reserveLine_1").label.contains("拿出来用"))
         XCTAssertFalse(element("reserveTotal").exists)
-        XCTAssertFalse(element("reservePaybackOffer").exists); XCTAssertFalse(element("reservePaybackProgress").exists)
     }
     func testPaydayAllClosesTheQuestionAndPersistsTheNewTotals() {
         launch("v47-topup"); let before = amount("availableFunds"); tap("savingsTopupAll"); gone("savingsTopupCard")

@@ -63,9 +63,11 @@ final class Round46Batch3FlowTests: XCTestCase {
         tap("insightCategory_0"); XCTAssertTrue(element("whereCategoryEntries").waitForExistence(timeout: 5))
         tap("whereCategoryEntries"); XCTAssertTrue(element("clearLedgerCategory").waitForExistence(timeout: 5))
     }
-    func testSaveEmptyStartsAtZeroAndSettingTargetRemovesPrompt() {
+    func testSaveEmptyUsesSharedStateAndSettingTargetRemovesPrompt() {
         launch("v46-b3-save-empty"); tap("openSaving")
-        XCTAssertTrue(element("reserveTotal").label.contains("0.00")); XCTAssertFalse(element("openWishlist").exists)
+        XCTAssertTrue(element("emptyState_saving").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("reserveTotal").exists)
+        XCTAssertTrue(element("openWishlist").exists)
         tap("setFirstSavingTarget"); tap("keypad_2"); tap("keypad_0"); tap("keypad_0"); tap("saveSavingsAmount")
         XCTAssertTrue(element("openSavings").waitForExistence(timeout: 5)); XCTAssertFalse(element("savingFirstRule").exists)
         tap("openSavings"); XCTAssertTrue(element("editSavingTarget").waitForExistence(timeout: 5))
@@ -82,7 +84,7 @@ final class Round46Batch3FlowTests: XCTestCase {
         XCTAssertFalse(element("reserveTotal").exists)
         app.terminate(); app.launch(); tap("openSaving"); tap("openReserve")
         XCTAssertTrue(element("reserveLine_0").waitForExistence(timeout: 5))
-        XCTAssertFalse(element("reservePaybackOffer").exists)
+        XCTAssertTrue(element("reservePage").exists)
     }
 
     func testSpendingAnswerUsesFactsAndOpensItsWhereDestination() {

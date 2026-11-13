@@ -7,16 +7,17 @@ struct WishlistView: View {
     @Environment(\.scenePhase) private var phase
     var focusedWishID: UUID? = nil
     @State private var now = Date()
+    @State private var addingWish = false
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
-            SavingsHeader()
+            if !store.current.wishlist.isEmpty { SavingsHeader() }
             WishlistCooldownCards()
             let focused = store.current.wishlist.first { $0.id == focusedWishID }
             let due = store.current.wishlist.filter { $0.id != focusedWishID && followUpVisible($0) }
             let thinking = store.current.wishlist.filter { $0.status == .thinking && $0.coolUntil.map { $0 <= now } != true && $0.id != focusedWishID }.sorted { $0.createdAt > $1.createdAt }
             let regrets = store.current.wishlist.filter { $0.followUpAnswer?.hasPrefix(FollowUpChoice.regret.rawValue) == true }
-            if focused == nil && due.isEmpty && thinking.isEmpty && regrets.isEmpty {
-                EmptyState("heart", "心愿单还是空的", showsPlaceholder: false, action: "该不该买", onAction: { store.sheet = .ask("该不该买？") })
+            if store.current.wishlist.isEmpty {
+                EmptyState(.wish, onAction: { addingWish = true })
             }
             if let focused, focused.coolUntil.map({ $0 <= now }) != true { wishRow(focused) }
             ForEach(due) { wish in
@@ -41,6 +42,7 @@ struct WishlistView: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
         }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("心愿单").yubaiNavigation().accessibilityIdentifier("wishlistPage").task(id: store.ledgerRevision) { now = Date() }
+            .sheet(isPresented: $addingWish) { NavigationStack { WishEditor() }.environment(store).appErrors().yubaiSheetBackground() }
             .onChange(of: phase) { _, value in if value == .active { now = Date() } }
     }
     private func followUpCard(_ wish: WishItem) -> some View {

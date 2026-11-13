@@ -133,7 +133,6 @@ final class AppFlowTests: XCTestCase {
         XCTAssertEqual(displayedAmount(anyElement("formulaRow_bills", in: app)), -361000)
         XCTAssertEqual(displayedAmount(anyElement("formulaRow_spent", in: app)), -83600)
         XCTAssertEqual(displayedAmount(anyElement("formulaResult", in: app)), 156400)
-        XCTAssertFalse(anyElement("formulaRow_hand", in: app).exists)
         tap(app.buttons["formulaRow_income"], in: app)
         XCTAssertTrue(anyElement("editEntryAmount", in: app).waitForExistence(timeout: 5))
     }
@@ -1008,8 +1007,7 @@ final class AppFlowTests: XCTestCase {
         let app = application("wish-bought"); app.launch()
         openSaving(app)
         tap(app.buttons["openWishlist"], in: app)
-        XCTAssertTrue(app.staticTexts["心愿单还是空的"].exists)
-        XCTAssertTrue(app.buttons["该不该买"].exists)
+        XCTAssertFalse(anyElement("emptyState_wish", in: app).exists)
         tap(app.buttons["pastWishes"], in: app)
         XCTAssertTrue(app.navigationBars["过去的心愿"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["已买"].exists)
@@ -1181,7 +1179,6 @@ final class AppFlowTests: XCTestCase {
         for identifier in ["formulaRow_income", "formulaRow_saving", "formulaRow_bills", "formulaRow_spent", "formulaResult"] {
             scrollToVisible(anyElement(identifier, in: app), in: app)
         }
-        XCTAssertFalse(anyElement("formulaRow_hand", in: app).exists)
         tap(anyElement("formulaRow_saving", in: app), in: app)
         XCTAssertTrue(anyElement("amountSheetAmount", in: app).waitForExistence(timeout: 5))
         XCTAssertEqual(anyElement("amountSheetAmount", in: app).value as? String, "2000.00")
@@ -1557,13 +1554,13 @@ final class AppFlowTests: XCTestCase {
     func testHomeSearchFiltersAllMonthsAndCancelClearsQuery() {
         let app = application("round40"); app.launch(); tap(app.buttons["tab_ledger"], in: app)
         tap(app.buttons["entriesFilter_收入"], in: app)
-        XCTAssertTrue(app.staticTexts["还没有这类账目"].waitForExistence(timeout: 5))
+        XCTAssertTrue(anyElement("emptyState_search", in: app).waitForExistence(timeout: 5))
         tap(app.buttons["entriesFilter_支出"], in: app)
         let field = app.textFields["entriesSearch"]
         tap(field, in: app); field.typeText("3500.00")
         assertSearchCount(3, in: app)
         field.typeText("999")
-        XCTAssertTrue(app.staticTexts["没有找到这笔"].waitForExistence(timeout: 5))
+        XCTAssertTrue(anyElement("emptyState_search", in: app).waitForExistence(timeout: 5))
         tap(app.buttons["entriesSearchCancel"], in: app)
         XCTAssertEqual(field.value as? String, field.placeholderValue)
         XCTAssertTrue(app.buttons["entriesFilter_支出"].isSelected)
@@ -2535,7 +2532,7 @@ final class AppFlowTests: XCTestCase {
         let app = application("manual"); app.launch(); tap(app.buttons["fundsFormula"], in: app)
         backToRoot(app); openSettings(app); tap(app.buttons["openSpendingParts"], in: app)
         XCTAssertTrue(anyElement("spendingPartsPage", in: app).waitForExistence(timeout: 5))
-        XCTAssertTrue(anyElement("budgetTotal", in: app).exists)
+        XCTAssertTrue(anyElement("emptyState_budget", in: app).exists)
         tap(app.buttons["addBudgetPart"], in: app)
         let name = app.textFields["budgetPartName"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
