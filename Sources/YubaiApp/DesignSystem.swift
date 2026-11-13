@@ -23,6 +23,12 @@ enum YubaiColor {
     static let shadowKey = adaptive(0x4a4030, 0x000000, lightAlpha: 0x38 / 255.0, darkAlpha: 0x73 / 255.0)
 
     static let paperSheet = adaptive(0xfefbea, 0x2a251c)
+    // A slightly lighter sheet, blended entirely from the existing paper/light palette.
+    static func receiptPaper(for scheme: ColorScheme) -> Color {
+        if scheme == .dark { return raised }
+        if #available(macOS 15, *) { return paperSheet.mix(with: windowLight, by: 0.65) }
+        return raised
+    }
     static let paperInset = adaptive(0xede6d3, 0x353026)
     static let glassBar = adaptive(0xfefbea, 0x353026, lightAlpha: 204.0 / 255, darkAlpha: 217.0 / 255)
     static let windowLight = adaptive(0xfffdf3, 0xe9cf9f)
@@ -116,6 +122,9 @@ enum YubaiFont {
     static let callout = Style(size: 13, lineHeight: 20, weight: .regular, family: .sans, tracking: 0, relativeTo: .callout)
     static let caption = Style(size: 12, lineHeight: 18, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption)
     static let code = Style(size: 12, lineHeight: 18, weight: .regular, family: .code, relativeTo: .caption)
+    static let receiptTime = Style(size: 11, lineHeight: 16, weight: .regular, family: .code, relativeTo: .caption2)
+    static let receiptAmount = Style(size: 14, lineHeight: 20, weight: .medium, family: .code, relativeTo: .body)
+    static let receiptTotal = Style(size: 22, lineHeight: 28, weight: .semibold, family: .code, relativeTo: .title2)
     static let meta = Style(size: 11, lineHeight: 16, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption2)
     static let chartLabel = Style(size: 10, lineHeight: 12, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption2)
     static let tabLabel = Style(size: 10, lineHeight: 12, weight: .medium, family: .sans, tracking: 0, relativeTo: .caption2)
@@ -187,6 +196,8 @@ enum YubaiSpace {
     static let space18: CGFloat = 18 // 已停用，仅兼容
     static let space20: CGFloat = 20
     static let space24: CGFloat = 24
+    static let space22: CGFloat = 22
+    static let space28: CGFloat = 28
 
     static let insetPage = space20
     static let insetCard = space16
@@ -215,12 +226,26 @@ enum YubaiRadius {
 }
 
 enum YubaiSize {
+    static let navigationCapsuleWidth: CGFloat = 244
+    static let navigationTabHeight: CGFloat = 48
+    static let homeEntryPillHeight: CGFloat = 52
+    static let savingCardMinimum: CGFloat = 88
+    static let savingIcon: CGFloat = 40
+    static let receiptInset: CGFloat = 22
+    static let receiptSlotHeight: CGFloat = 10
+    static let receiptTearHeight: CGFloat = 7
+    static let receiptRowHeight: CGFloat = 32
+    static let receiptUndoWidth: CGFloat = 76
+    static let receiptLineDash: CGFloat = 5
+    static let firstOpenMinimum: CGFloat = 480
+    static let firstOpenBrand: CGFloat = 78
+    static let firstOpenRule: CGFloat = 170
+    static let firstOpenBottom: CGFloat = 128
     static let sidebarMinimumWidth: CGFloat = 180
     static let sidebarIdealWidth: CGFloat = 210
     static let sidebarMaximumWidth: CGFloat = 250
     static let calendarCellLarge: CGFloat = 144
     static let rowEstimate: CGFloat = 76
-    static let addButton: CGFloat = 68
     static let quickMenuWidth: CGFloat = 262
     static let entryInlineHistory: CGFloat = 120
     static let entryInlineHistoryLarge: CGFloat = 156
@@ -297,8 +322,8 @@ enum YubaiSize {
     static let tagHeight: CGFloat = 22
     static let tabbarHeight: CGFloat = 62
     #if os(iOS)
-    static let floatingTabbarHeight: CGFloat = 68
-    static let floatingTabbarBottom: CGFloat = 8
+    static let floatingTabbarHeight: CGFloat = 60
+    static let floatingTabbarBottom: CGFloat = 0
     #endif
     static let barMax: CGFloat = 24
     static let lineWidth: CGFloat = 2
@@ -307,7 +332,7 @@ enum YubaiSize {
     #if os(macOS)
     static let rootBottomPadding: CGFloat = 106
     #else
-    static let rootBottomPadding: CGFloat = floatingTabbarHeight + floatingTabbarBottom + 24
+    static let rootBottomPadding: CGFloat = floatingTabbarHeight + floatingTabbarBottom + homeEntryPillHeight + 36
     #endif
 }
 
@@ -332,6 +357,9 @@ extension View {
 }
 
 @MainActor enum YubaiMotion {
+    static let durationFirstLight = 1.4
+    static let windowSwayPhase = 9.0
+    static let durationReceiptPrint = 0.32
     // Amount keypad: immediate color/edge feedback, no scale/opacity; release
     // eases out over durationQuick. Prepared system haptics fire at touch-down:
     // light for digits/delete, medium for operators/clear, rigid 0.5 if rejected.
@@ -1668,13 +1696,26 @@ extension Nature {
     var entryLabel: String { paired ? "转账" : (inflow ? "收入" : "支出") }
 }
 
-struct AddEntryButton: View {
+struct HomeEntryPill: View {
+    let title: String
     let action: () -> Void
+    let quick: () -> Void
     var body: some View {
-        Button(action: action) { Image(systemName: "plus").font(.system(size: 26, weight: .medium)).foregroundStyle(YubaiColor.onBrand).accessibilityHidden(true)
-            .frame(width: 62, height: 62).floatingSurface(in: Circle(), tint: YubaiColor.brand, shadow: YubaiShadow.ask).contentShape(Circle())
-        }.buttonStyle(RoundPressStyle())
-            .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
+        HStack(spacing: YubaiSpace.space8) {
+            Image(systemName: "plus").yubaiFont(YubaiFont.tabIcon, weight: .semibold)
+            Text(title).yubaiFont(YubaiFont.fieldValue, weight: .semibold)
+        }.foregroundStyle(YubaiColor.onBrand)
+            .padding(.leading, YubaiSpace.space22).padding(.trailing, YubaiSpace.space28)
+            .frame(height: YubaiSize.homeEntryPillHeight)
+            .background { Capsule().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
+            .contentShape(Capsule()).onTapGesture(perform: action)
+            .onLongPressGesture(minimumDuration: 0.4, perform: quick)
+            .accessibilityElement(children: .ignore).accessibilityAddTraits(.isButton)
+            .accessibilityLabel(title).accessibilityIdentifier("addEntry")
+            .accessibilityAction(.default, action).accessibilityAction(named: "常用", quick)
+            #if os(iOS)
+            .accessibilityShowsLargeContentViewer { Label(title, systemImage: "plus") }
+            #endif
     }
 }
 
@@ -1815,7 +1856,7 @@ struct SavingJarOutline: Shape {
     }
 }
 
-/// 四个标签页的图标：底栏和 macOS 侧栏共用。
+/// 三个标签页的图标：底栏和 macOS 侧栏共用。
 struct DestinationGlyph: View {
     let destination: Destination
     var selected = false
@@ -1826,15 +1867,13 @@ struct DestinationGlyph: View {
     @ViewBuilder private var glyph: some View {
         switch destination {
         case .now: Image(systemName: "clock").font(.system(size: size, weight: selected ? .medium : .regular))
-        case .saving:
-            SavingJarOutline().stroke(.foreground, style: StrokeStyle(lineWidth: size * (selected ? 1.9 : 1.6) / 24, lineCap: .round, lineJoin: .round))
         case .ledger: NowTabGlyph(size: size, selected: selected)
         case .yubai: Image(systemName: "leaf").font(.system(size: size, weight: selected ? .medium : .regular))
         }
     }
 }
 
-/// 四个根页共用的页头：左边眼睛（显示/隐藏金额），右边设置，中间标题。
+/// 三个根页共用的页头：左边眼睛（显示/隐藏金额），右边设置，中间标题。
 struct RootHeader: View {
     @Environment(AppStore.self) private var store
     let title: String
@@ -3145,4 +3184,132 @@ extension YubaiFont {
 
 extension YubaiFont {
     static let butlerTitle = Style(size: YubaiFont.entrySheetTitle.size, lineHeight: 24, weight: .semibold, family: .sans, relativeTo: .headline)
+}
+
+// MARK: - Round 47 home paper and window
+
+/// Existing bamboo silhouette, shared by the first wall and the daily receipt.
+struct BrandBambooShadow: View {
+    var opacity = 0.11
+    var body: some View {
+        Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
+            .foregroundStyle(YubaiColor.bambooShadow).blur(radius: 5).opacity(opacity)
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+struct FirstWindowWall: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            ZStack {
+                LinearGradient(colors: [YubaiColor.card, YubaiColor.keypadTray], startPoint: .topLeading, endPoint: .bottomTrailing)
+                window(size)
+                TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion)) { context in
+                    let angle = reduceMotion ? 0 : sin(context.date.timeIntervalSinceReferenceDate / YubaiMotion.windowSwayPhase) * 2
+                    BrandBambooShadow(opacity: scheme == .dark ? 0.14 : 0.20)
+                        .frame(width: size.width * 1.02, height: size.height * 0.54)
+                        .rotationEffect(.degrees(8 + angle), anchor: .bottomLeading)
+                        .position(x: size.width * 0.27, y: size.height * 0.49)
+                    BrandBambooShadow(opacity: 0.13)
+                        .frame(width: size.width * 0.60, height: size.height * 0.35)
+                        .scaleEffect(x: -1, y: 1).rotationEffect(.degrees(-18 - angle))
+                        .position(x: size.width * 0.70, y: size.height * 0.27)
+                }
+            }.frame(width: size.width, height: size.height).clipped()
+        }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private func window(_ size: CGSize) -> some View {
+        let pane = Path { p in
+            p.move(to: CGPoint(x: -30, y: size.height * 0.24))
+            p.addLine(to: CGPoint(x: size.width * 0.77, y: size.height * 0.15))
+            p.addLine(to: CGPoint(x: size.width * 0.77, y: size.height * 0.72))
+            p.addLine(to: CGPoint(x: -30, y: size.height * 0.81)); p.closeSubpath()
+        }
+        return pane.fill(YubaiColor.windowLight.opacity(scheme == .dark ? 0.10 : 0.92))
+            .overlay {
+                Path { p in
+                    for y in [0.43, 0.62] {
+                        p.move(to: CGPoint(x: -30, y: size.height * y))
+                        p.addLine(to: CGPoint(x: size.width * 0.80, y: size.height * (y - 0.09)))
+                    }
+                    p.move(to: CGPoint(x: size.width * 0.35, y: size.height * 0.16))
+                    p.addLine(to: CGPoint(x: size.width * 0.35, y: size.height * 0.79))
+                }.stroke(YubaiColor.keypadTray.opacity(0.9), lineWidth: 9).clipShape(pane)
+            }.blur(radius: 1.4)
+    }
+}
+
+struct ReceiptTornEdge: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path(); p.move(to: .zero); p.addLine(to: CGPoint(x: rect.maxX, y: 0))
+        let count = max(1, Int(rect.width / 6)), step = rect.width / CGFloat(count)
+        for index in (0..<count).reversed() {
+            p.addLine(to: CGPoint(x: CGFloat(index) * step + step / 2, y: rect.maxY))
+            p.addLine(to: CGPoint(x: CGFloat(index) * step, y: 1))
+        }
+        p.closeSubpath(); return p
+    }
+}
+
+struct ReceiptRule: View {
+    var dotted = false
+    var body: some View {
+        GeometryReader { geometry in
+            Path { p in p.move(to: .zero); p.addLine(to: CGPoint(x: geometry.size.width, y: 0)) }
+                .stroke(YubaiColor.label.opacity(dotted ? 0.30 : 0.38), style: StrokeStyle(lineWidth: 1, dash: dotted ? [YubaiSize.separator, YubaiSpace.space2] : [YubaiSize.receiptLineDash, YubaiSpace.space4]))
+        }.frame(height: 1).accessibilityHidden(true)
+    }
+}
+
+/// A swipe is local to this row, so undo never restores an unrelated ledger snapshot.
+struct ReceiptSwipeRow<Content: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
+    let enabled: Bool
+    let identifier: String
+    let undo: () -> Void
+    @ViewBuilder let content: () -> Content
+    @State private var revealed = false
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            if revealed && enabled {
+                Button("撤销", action: undo).buttonStyle(PressButtonStyle())
+                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                    .frame(width: YubaiSize.receiptUndoWidth, height: YubaiSize.tapMin)
+                    .accessibilityIdentifier(identifier)
+            }
+            content().background(YubaiColor.receiptPaper(for: scheme))
+                .offset(x: revealed && enabled ? -YubaiSize.receiptUndoWidth : 0)
+                .simultaneousGesture(DragGesture(minimumDistance: 20).onEnded { value in
+                    guard enabled, abs(value.translation.width) > abs(value.translation.height) else { return }
+                    withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { revealed = value.translation.width < -20 }
+                })
+        }.clipped().accessibilityActions { if enabled { Button("撤销这一笔", action: undo) } }
+    }
+}
+
+private struct ReceiptPrint: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let highlighted: Bool
+    let trigger: Int
+    @ViewBuilder func body(content: Content) -> some View {
+        if reduceMotion { content }
+        else {
+            content.keyframeAnimator(initialValue: CGFloat.zero, trigger: trigger) { line, offset in
+                line.offset(y: highlighted ? offset : 0).opacity(highlighted ? 1 - Double(offset) / 24 : 1)
+            } keyframes: { _ in
+                MoveKeyframe(CGFloat(12))
+                SpringKeyframe(CGFloat.zero, duration: YubaiMotion.durationReceiptPrint, spring: YubaiMotion.livelySpring)
+            }
+        }
+    }
+}
+extension View {
+    func receiptPrint(highlighted: Bool, trigger: Int) -> some View {
+        modifier(ReceiptPrint(highlighted: highlighted, trigger: trigger))
+    }
 }

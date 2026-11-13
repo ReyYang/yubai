@@ -187,7 +187,7 @@ final class FixedSavingsIncomeTests: XCTestCase {
         XCTAssertEqual(ledger.fixedSavings, 300_000)
         XCTAssertEqual(ledger.fixedSavingsTotal(now: now), 800_000)
         setting.items = [.profile(.setFloorAmount(nil))]
-        XCTAssertEqual(setting.preview(in: ledger), ["存着不动 " + Money.text(500_000)])
+        XCTAssertEqual(setting.preview(in: ledger), ["存下的钱 " + Money.text(500_000)])
         try setting.apply(to: &ledger)
         XCTAssertEqual(ledger.fixedSavingsTotal(now: now), 500_000)
     }
@@ -301,12 +301,12 @@ final class FixedSavingsIncomeTests: XCTestCase {
     func testProposalParsesSingleBatchAndPlanFlagsAndRejectsNonIncomeOrNonBoolean() throws {
         let ledger = ledger()
         let ctx = ToolContext(ledger: ledger, now: now, confirmedEntryAmount: 500_000, parsedEntryAmounts: [500_000])
-        var fields: [String: JSONValue] = ["reason": .string("住房补贴存着不动"), "title": .string("住房补贴"), "amount": .string("5000"),
+        var fields: [String: JSONValue] = ["reason": .string("住房补贴存下的钱"), "title": .string("住房补贴"), "amount": .string("5000"),
             "date": .string("2026-11-10"), "account": .string(ledger.accounts[0].id.uuidString), "nature": .string("income"), "into_fixed_savings": .bool(true)]
         let single = try ProposalTool.entry.propose(.object(fields), ctx)
         guard case .addEntry(let draft) = single.items[0] else { return XCTFail("missing entry") }
         XCTAssertTrue(draft.intoFixedSavings)
-        XCTAssertTrue(single.preview(in: ledger)[0].hasSuffix("，存着不动"))
+        XCTAssertTrue(single.preview(in: ledger)[0].hasSuffix("，存下的钱"))
         var batch = fields; batch.removeValue(forKey: "reason")
         let grouped = try ProposalTool.entry.propose(.object(["reason": .string("补贴"), "entries": .array([.object(batch)])]), ctx)
         guard case .addEntry(let batchDraft) = grouped.items[0] else { return XCTFail("missing batch draft") }
@@ -315,7 +315,7 @@ final class FixedSavingsIncomeTests: XCTestCase {
         let planned = try ProposalTool.plan.propose(.object(fields), ctx)
         guard case .addPlan(let plan) = planned.items[0] else { return XCTFail("missing plan") }
         XCTAssertTrue(plan.intoFixedSavings)
-        XCTAssertTrue(planned.preview(in: ledger)[0].hasSuffix("，存着不动"))
+        XCTAssertTrue(planned.preview(in: ledger)[0].hasSuffix("，存下的钱"))
         for flag: JSONValue in [.bool(true), .bool(false), .string("true")] {
             fields["nature"] = .string("expense"); fields["into_fixed_savings"] = flag
             XCTAssertThrowsError(try ProposalTool.plan.propose(.object(fields), ctx))

@@ -9,11 +9,11 @@ import AppKit
 #endif
 
 enum Destination: String, CaseIterable, Identifiable {
-    case now, saving, ledger, yubai
+    case now, ledger, yubai
     var id: Self { self }
-    var title: String { switch self { case .now: "现在"; case .saving: "存钱"; case .ledger: "账本"; case .yubai: "余白" } }
+    var title: String { switch self { case .now: "现在"; case .ledger: "账本"; case .yubai: "余白" } }
     /// SF Symbol for the large content viewer and the macOS sidebar fallback.
-    var symbol: String { switch self { case .now: "clock"; case .saving: "banknote"; case .ledger: "text.book.closed"; case .yubai: "leaf" } }
+    var symbol: String { switch self { case .now: "clock"; case .ledger: "text.book.closed"; case .yubai: "leaf" } }
 }
 /// 算式页里可以就地改的三项。
 enum FormulaField: Hashable { case fixedSavings, saving, hand }
@@ -39,7 +39,7 @@ enum TabRoute: Hashable {
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
     case entryDetail(UUID)
     case allCategories(DateInterval), categoryBudget(String), savingWish(UUID), askQuestion(String)
-    case yearlyBills
+    case yearlyBills, saving
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -65,7 +65,7 @@ enum AppSheet: Identifiable {
     case editEntry(UUID), editPlan(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
     case ask(String), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letter(UUID), reconcile(UUID)
-    case reconcileAll, overspend(CycleCover.Source), paydayAmount
+    case reconcileAll, overspend(CycleCover.Source), paydayAmount, paydaySetup
     case billPay(planID: UUID, occurrence: Date), billMatch(planID: UUID, occurrence: Date, entryID: UUID), billLink(planID: UUID, occurrence: Date)
     case formulaEdit(FormulaField), frequentEntries
     case billMove(planID: UUID, occurrence: Date)
@@ -87,6 +87,7 @@ enum AppSheet: Identifiable {
         didSet {
             if oldValue.id != ledger.id {
                 askConversation = AskConversationState()
+                receiptUndoEntryIDs = []
                 resetRootNavigation()
             }
             if oldValue != ledger { invalidateDerived() }
@@ -283,6 +284,10 @@ enum AppSheet: Identifiable {
     private let paceSlot = TimedSlot<CyclePace?>()
     private let homeTasksSlot = TimedSlot<[HomeTask]>()
     private let butlerSavedSlot = TimedSlot<Int64>()
+    private let homeHeroSlot = TimedSlot<HomeHero>()
+    private let homeSavingSlot = TimedSlot<HomeSavingCard>()
+    private let dailyReceiptSlot = TimedSlot<DailyReceipt>()
+    private let salaryPromptSlot = TimedSlot<Bool>()
     private let formulaSlot = TimedSlot<SpendableFormula>()
     private let reserveSlot = TimedSlot<ReserveOverview>()
     private let paybackOffersSlot = TimedSlot<[ReservePaybackOffer]>()
@@ -307,6 +312,10 @@ enum AppSheet: Identifiable {
         return derived(homeTasksSlot) { HomeButler.queue($0, now: $1, organizingBatchIDs: batches) }
     }
     var butlerSaved: Int64 { derived(butlerSavedSlot) { ButlerSavings.total($0, now: $1) } }
+    var homeHero: HomeHero { derived(homeHeroSlot) { HomeHero.make($0, now: $1) } }
+    var homeSaving: HomeSavingCard { derived(homeSavingSlot) { HomeSavingCard.make($0, now: $1) } }
+    var dailyReceipt: DailyReceipt { derived(dailyReceiptSlot) { DailyReceipt.make($0, now: $1) } }
+    var salaryPromptDue: Bool { derived(salaryPromptSlot) { FirstUse.salaryPromptDue($0, now: $1) } }
     /// 算式页四行（`Finance.formula`）。
     var formula: SpendableFormula { derived(formulaSlot) { Finance.formula($0, now: $1) } }
     /// 存钱页：存下的总额与最近进出。
@@ -459,6 +468,7 @@ enum AppSheet: Identifiable {
         formulaSlot.clear(); reserveSlot.clear(); paydaySlot.clear(); gapSlot.clear()
         paybackOffersSlot.clear(); paybackProgressSlot.clear()
         leftoverSlot.clear(); overspendSlot.clear(); homeTasksSlot.clear(); butlerSavedSlot.clear()
+        homeHeroSlot.clear(); homeSavingSlot.clear(); dailyReceiptSlot.clear(); salaryPromptSlot.clear()
         timeRevision &+= 1
         derivedRevision &+= 1
         cachedButlerVisibility = nil
@@ -523,6 +533,13 @@ enum AppSheet: Identifiable {
     var fixedFlowSettleTrigger = 0
     var freshEntryIDs: Set<UUID> = []
     var pendingEntrySave = false
+    var homeEntrySession = false
+    var receiptEntryIDs: Set<UUID> = []
+    var receiptUndoEntryIDs: Set<UUID> = []
+    var receiptFeedbackTrigger = 0
+    var pendingSavingPage = false
+    @ObservationIgnored private var pendingSavedEntryIDs: Set<UUID> = []
+    @ObservationIgnored private var entrySaveAcknowledged = false
     @ObservationIgnored private var pendingSaveToast: String?
     @ObservationIgnored private var saveToastTask: Task<Void, Never>?
     var loadFailure: String?; var locked = false; var importedURL: URL?
@@ -629,7 +646,10 @@ enum AppSheet: Identifiable {
             if !preservingUpdatedAt { next.updatedAt = Date() }
             next = try persist(next, reason: recoveryReason ?? reason, preservingRecovery: preservingRecovery)
             let motion = MotionEntryChange(previous: before.entries.map(\.id), previousActive: before.activeEntries.map(\.id), currentActive: next.activeEntries.map(\.id))
-            if entryMotion && !motion.saved.isEmpty { freshEntryIDs = motion.saved; pendingEntrySave = true }
+            if entryMotion && !motion.saved.isEmpty {
+                freshEntryIDs = motion.saved; pendingEntrySave = true
+                pendingSavedEntryIDs.formUnion(motion.saved)
+            }
             if entryMotion && !motion.deleted.isEmpty { entryDeleteTrigger &+= 1 }
             ledger = next
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
@@ -744,20 +764,45 @@ enum AppSheet: Identifiable {
     func present(_ sheet: AppSheet, from source: String) { sheetSource = source; self.sheet = sheet }
     func setEntrySaveToast(_ message: String) {
         if pendingEntrySave { pendingSaveToast = message }
+        else if homeEntrySession && !receiptEntryIDs.isEmpty && freshEntryIDs.isSubset(of: receiptEntryIDs) { return }
         else { toast = message }
     }
-    func cancelEntrySaveMotion() { saveToastTask?.cancel(); pendingEntrySave = false; pendingSaveToast = nil; freshEntryIDs = [] }
+    func cancelEntrySaveMotion() {
+        saveToastTask?.cancel(); pendingEntrySave = false; pendingSaveToast = nil; freshEntryIDs = []
+        pendingSavedEntryIDs = []; receiptEntryIDs = []; homeEntrySession = false; entrySaveAcknowledged = false
+    }
+    func acknowledgeEntryInEditor(_ ids: [UUID]) {
+        if homeEntrySession {
+            pendingSavedEntryIDs.formUnion(ids); freshEntryIDs = Set(ids); pendingEntrySave = true
+            saveToastTask?.cancel(); entrySaveAcknowledged = true
+            pendingSaveToast = "已记下 \(pendingSavedEntryIDs.count) 笔"
+        } else { cancelEntrySaveMotion() }
+        toast = nil; entrySaveTrigger &+= 1
+    }
     func finishEntrySaveMotion() {
         guard pendingEntrySave, sheet == nil, !locked else { return }
-        pendingEntrySave = false; entrySaveTrigger &+= 1
+        pendingEntrySave = false
+        if !entrySaveAcknowledged { entrySaveTrigger &+= 1 }
+        entrySaveAcknowledged = false
         let message = pendingSaveToast; pendingSaveToast = nil
         let trigger = entrySaveTrigger
         saveToastTask?.cancel()
+        let feedback = HomeEntryFeedback.make(savedIDs: pendingSavedEntryIDs, fromHome: homeEntrySession, ledger: current, now: Date())
+        pendingSavedEntryIDs = []
+        if !feedback.highlightedIDs.isEmpty {
+            receiptEntryIDs = feedback.highlightedIDs; receiptFeedbackTrigger &+= 1
+            receiptUndoEntryIDs.formUnion(receiptEntryIDs)
+        }
+        if !feedback.needsToast { return }
         saveToastTask = Task { @MainActor in
             do { try await Task.sleep(for: .seconds(YubaiMotion.saveToastDelay)) } catch { return }
             guard !Task.isCancelled, entrySaveTrigger == trigger, !locked, sheet == nil, toast == nil else { return }
             toast = message
         }
+    }
+    func openSavingPage() {
+        if locked { pendingSavingPage = true; return }
+        sheet = nil; tabRouteRequest = .saving
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
         guard canEditLedger() else { return false }
@@ -866,6 +911,11 @@ enum AppSheet: Identifiable {
             // pager state together, rather than only changing its selected tab.
             RootView().id(store.navigationRevision).environment(store).tint(YubaiColor.brandInk)
                 .preferredColorScheme(colorScheme)
+                #if DEBUG && targetEnvironment(simulator)
+                .transformEnvironment(\.accessibilityReduceMotion) { value in
+                    if UITestSupport.script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_REDUCE_MOTION"] == "1" { value = true }
+                }
+                #endif
                 #if os(macOS)
                 .frame(minWidth: YubaiSize.desktopMinimumWidth, minHeight: YubaiSize.contentNarrow)
                 #endif
@@ -888,11 +938,16 @@ struct RootView: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var motionNamespace
-    #if os(iOS)
     @State private var tabPaths: [Destination: NavigationPath] = [:]
+    #if os(iOS)
     @State private var keyboardVisible = false
     @State private var quickMenuShown = false
     private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
+    private var toastBottomPadding: CGFloat {
+        if keyboardVisible || tabBarHidden { return YubaiSpace.none }
+        return YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom +
+            (store.destination == .now ? YubaiSize.homeEntryPillHeight + YubaiSpace.space12 : YubaiSpace.none)
+    }
     #endif
     var body: some View {
         @Bindable var store = store
@@ -921,7 +976,7 @@ struct RootView: View {
                 }, messageIdentifier: "unsortedUndoMessage", undoIdentifier: "quickSortUndo")
                     .id(notice.id)
                     #if os(iOS)
-                    .padding(.bottom, keyboardVisible || tabBarHidden ? YubaiSpace.none : YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom)
+                    .padding(.bottom, toastBottomPadding)
                     #else
                     .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
                     #endif
@@ -929,7 +984,7 @@ struct RootView: View {
                 Toast(text: toast, onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(toast)
                     #if os(iOS)
-                    .padding(.bottom, keyboardVisible || tabBarHidden ? YubaiSpace.none : YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom)
+                    .padding(.bottom, toastBottomPadding)
                     #else
                     .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
                     #endif
@@ -947,7 +1002,7 @@ struct RootView: View {
         }
         #endif
         .onChange(of: store.pendingEntrySave) { _, pending in if pending { store.finishEntrySaveMotion() } }
-        .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil; store.finishEntrySaveMotion() } }
+        .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil; store.finishEntrySaveMotion(); store.homeEntrySession = false } }
         #if os(iOS)
         .sensoryFeedback(.success, trigger: store.entrySaveTrigger)
         .sensoryFeedback(.impact(weight: .medium), trigger: store.entryDeleteTrigger)
@@ -985,7 +1040,7 @@ struct RootView: View {
             guard url.isFileURL else { return }; store.importedURL = url
             if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
         }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     @ViewBuilder var mainContent: some View {
@@ -999,7 +1054,12 @@ struct RootView: View {
             }.listStyle(.sidebar).navigationTitle("余白")
                 .navigationSplitViewColumnWidth(min: YubaiSize.sidebarMinimumWidth, ideal: YubaiSize.sidebarIdealWidth, max: YubaiSize.sidebarMaximumWidth)
         } detail: {
-            NavigationStack { tabRoot(store.destination) }.id(store.destination)
+            NavigationStack(path: Binding(get: { tabPaths[store.destination] ?? NavigationPath() }, set: { tabPaths[store.destination] = $0 })) {
+                tabRoot(store.destination).navigationDestination(for: TabRoute.self) { tabDestination($0) }
+            }.id(store.destination)
+        }
+        .onChange(of: store.tabRouteRequest, initial: true) { _, route in
+            if let route { tabPaths[store.destination, default: NavigationPath()].append(route); store.tabRouteRequest = nil }
         }
         #else
         let generation = store.navigationRevision
@@ -1016,7 +1076,7 @@ struct RootView: View {
             .onChange(of: store.sheet?.id) { _, _ in quickMenuShown = false }
             .onChange(of: store.destination) { _, _ in quickMenuShown = false }
             .onChange(of: store.navigationRevision) { _, _ in tabPaths = [:] }
-            .onChange(of: store.tabRouteRequest) { _, route in
+            .onChange(of: store.tabRouteRequest, initial: true) { _, route in
                 guard let route else { return }
                 tabPaths[store.destination, default: NavigationPath()].append(route)
                 store.tabRouteRequest = nil
@@ -1072,6 +1132,7 @@ struct RootView: View {
     }
     private func addEntry() {
         quickMenuShown = false
+        store.homeEntrySession = true
         if store.accounts.isEmpty { store.beginFirstEntry() }
         else { store.sheetSource = nil; store.sheet = .addEntry }
     }
@@ -1092,8 +1153,10 @@ struct RootView: View {
             .scrollClipDisabled(false)
             .background(YubaiColor.canvas.ignoresSafeArea())
     }
+    #endif
     @ViewBuilder private func tabDestination(_ route: TabRoute) -> some View {
         switch route {
+        case .saving: SavingTabView()
         case .fixedFlows: FixedFlowsView()
         case .triage(let ids): LetterTriageView(entryIDs: ids)
         case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)
@@ -1128,16 +1191,16 @@ struct RootView: View {
     @ViewBuilder private func weeklyDestination(_ id: UUID?) -> some View {
         if let id { LetterDetailView(cardID: id) } else { WeeklyReviewView() }
     }
-    #endif
     private func tabRoot(_ d: Destination) -> some View {
         #if os(macOS)
         ZStack(alignment: .bottom) {
             destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
             if d == .now && store.sheet == nil && !store.pickingInsightDates {
-                HStack(spacing: YubaiSpace.space8) {
-                    Spacer()
-                    AddEntryButton { store.present(.addEntry, from: "add") }.yubaiZoomSource("add")
-                }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
+                HomeEntryPill(title: store.homeHero.isFirstOpen ? "记第一笔" : "记一笔", action: {
+                    store.homeEntrySession = true
+                    if store.accounts.isEmpty { store.beginFirstEntry() } else { store.sheet = .addEntry }
+                }, quick: { store.sheet = .frequentEntries })
+                    .padding(.bottom, YubaiSpace.gapSection)
             }
         }.background(YubaiColor.canvas)
         #else
@@ -1147,7 +1210,6 @@ struct RootView: View {
     @ViewBuilder func destination(_ d: Destination) -> some View {
         switch d {
         case .now: NowView()
-        case .saving: SavingTabView()
         case .ledger: LedgerTabView()
         case .yubai: YubaiTabView()
         }
@@ -1172,6 +1234,7 @@ struct RootView: View {
         case .reconcileAll: ReconcileView()
         case .overspend(let source): OverspendSheet(source: source)
         case .paydayAmount: PaydaySheet()
+        case .paydaySetup: PaydaySetupSheet()
         case .billPay(let planID, let occurrence): BillPaySheet(planID: planID, occurrence: occurrence)
         case .billMatch(let planID, let occurrence, let entryID): BillMatchSheet(planID: planID, occurrence: occurrence, entryID: entryID)
         case .billLink(let planID, let occurrence): BillLinkSheet(planID: planID, occurrence: occurrence)
@@ -1233,7 +1296,7 @@ private struct LedgerPrivacyCover: View {
 }
 
 #if os(iOS)
-/// 四个标签和独立的 ＋。底栏不随动态字号放大（固定 `.large`），改用大字号预览（Large Content Viewer）。
+/// 三个标签和主页正中的记账宽钮。底栏不随动态字号放大（固定 `.large`），改用大字号预览（Large Content Viewer）。
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1242,23 +1305,16 @@ private struct FloatingTabBar: View {
     let select: (Destination) -> Void
     let add: () -> Void
     let quick: () -> Void
-    private static let addSize: CGFloat = YubaiSize.addButton
     var body: some View {
-        HStack(spacing: YubaiSpace.space12) {
-            HStack(spacing: YubaiSpace.none) {
-                tab(.now); tab(.saving); tab(.ledger); tab(.yubai)
-            }.padding(.horizontal, YubaiSpace.space8).frame(height: YubaiSize.floatingTabbarHeight)
+        VStack(spacing: YubaiSpace.space12) {
+            if store.destination == .now { addButton }
+            HStack(spacing: YubaiSpace.space2) {
+                tab(.now); tab(.ledger); tab(.yubai)
+            }.padding(.horizontal, YubaiSpace.space6).frame(width: YubaiSize.navigationCapsuleWidth, height: YubaiSize.floatingTabbarHeight)
                 .background { barSurface }
-                .overlay { Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: YubaiSize.separator).allowsHitTesting(false) }
+                .overlay { Capsule().strokeBorder(YubaiColor.white.opacity(0.6), lineWidth: YubaiSize.separator).allowsHitTesting(false) }
                 .accessibilityElement(children: .contain).accessibilityIdentifier("navigationCapsule")
-            Color.clear.frame(width: Self.addSize, height: Self.addSize)
-                .overlay {
-                    if store.destination == .now {
-                        addButton.transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
-                    }
-                }.accessibilityHidden(store.destination != .now)
-        }.animation(YubaiMotion.control(reduceMotion: reduceMotion), value: store.destination)
-            .dynamicTypeSize(.large)
+        }.dynamicTypeSize(.large)
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
     }
     private var barSurface: some View {
@@ -1267,18 +1323,7 @@ private struct FloatingTabBar: View {
             .yubaiShadow(YubaiShadow.float)
     }
     private var addButton: some View {
-        Image(systemName: "plus").font(.system(size: YubaiFont.amountAccount.size, weight: .medium)).foregroundStyle(YubaiColor.onBrand)
-            .frame(width: Self.addSize, height: Self.addSize)
-            .background { Circle().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
-            .frame(width: Self.addSize, height: YubaiSize.floatingTabbarHeight)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: add)
-            .onLongPressGesture(minimumDuration: 0.4, perform: quick)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isButton).accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
-            .accessibilityAction(.default, add)
-            .accessibilityAction(named: "常用", quick)
-            .accessibilityShowsLargeContentViewer { Label("记一笔", systemImage: "plus") }
+        HomeEntryPill(title: store.homeHero.isFirstOpen ? "记第一笔" : "记一笔", action: add, quick: quick)
     }
     private func tab(_ destination: Destination) -> some View {
         let selected = store.destination == destination
@@ -1287,7 +1332,7 @@ private struct FloatingTabBar: View {
                 DestinationGlyph(destination: destination, selected: selected, size: YubaiFont.tabIcon.size).frame(width: YubaiSize.headerIcon, height: YubaiSize.headerIcon)
                 Text(destination.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .medium : .regular).lineLimit(1)
             }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
-                .frame(maxWidth: .infinity).frame(height: YubaiSize.tapMin + YubaiSpace.space8)
+                .frame(maxWidth: .infinity).frame(height: YubaiSize.navigationTabHeight)
                 .background {
                     if selected {
                         Capsule().fill(YubaiColor.card)

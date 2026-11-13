@@ -151,7 +151,7 @@ struct EntryEditForm: View {
     @ViewBuilder private var resultBar: some View {
         let hide = store.preferences.hideAmounts
         if let totals = fixedSavingsTotals {
-            ResultBar(label: "存着不动", value: ResultBar.change(totals.current, totals.new, hide: hide), identifier: "entrySavingHint")
+            ResultBar(label: "存下的钱", value: ResultBar.change(totals.current, totals.new, hide: hide), identifier: "entrySavingHint")
         } else {
             let value = previewAvailable ?? store.funds.available
             ResultBar(label: "改完还能花", value: amount2(value, hide: hide), amber: value < 0, identifier: "entrySavingHint")

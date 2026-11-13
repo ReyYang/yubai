@@ -106,7 +106,7 @@ public enum ButlerCards {
             let remaining = funds.liquidNow - funds.savingTarget - out
             guard remaining < 0 else { continue }
             let facts = [CardFact("付款", item.title), CardFact("付款日", Dates.text(item.date)), CardFact("待付", cents: item.amount),
-                         CardFact("付款前及当天最少还能花", cents: remaining), CardFact("存着不动", cents: funds.emergency),
+                         CardFact("付款前及当天最少还能花", cents: remaining), CardFact("存下的钱", cents: funds.emergency),
                          CardFact("要攒", cents: funds.savingTarget), CardFact("此前及当天要付", cents: out)]
             result.append(CardCandidate(kind: .shortfall, dedupeKey: "shortfall:" + item.id, evidence: [], facts: facts,
                 title: "钱不够", body: "到这笔付款时，还能花 \(Money.text(remaining))。", action: .openEvidence, priority: 0))

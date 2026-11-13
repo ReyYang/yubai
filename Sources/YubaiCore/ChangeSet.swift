@@ -128,7 +128,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .linkPlan(let id, let plan, let date): return "把 \(entry(id)) 关联为 \(Dates.text(date)) \(ledger.plans.first { $0.id == plan }?.title ?? "资金安排")"
             case .linkRent(let id, let rent, let date): return "把 \(entry(id)) 关联为 \(Dates.calendar.component(.month, from: date)) 月\(ledger.rents.first { $0.id == rent }?.title ?? "房租")\(entries[id]?.nature.inflow == true ? "分摊" : "付款")"
             case .markDuplicate(let id, let original): return "把 \(entry(id)) 作为 \(entry(original)) 的重复记录标为已删除"
-            case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "") + (p.intoFixedSavings ? "，存着不动" : "")
+            case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "") + (p.intoFixedSavings ? "，存下的钱" : "")
             case .updatePlan(let p): return FixedFlows.describeUpdate(p, in: ledger)
             case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
             case .resumePlan(let id): return "恢复「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」"
@@ -136,7 +136,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .addRent(let r): return "新增「\(r.title)」，月租 \(Money.text(r.monthlyTotal))，个人承担 \(Money.text(r.personalShare))，每 \(r.monthsPerPayment) 月支付，从 \(Dates.text(r.startDate)) 起，首付 \(Dates.text(r.nextDueDate))，每月 \(r.receiveDay) 日收分摊" + (r.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .addEntry(let d):
                 let link = d.planID.flatMap { id in d.occurrence.map { "，关联为 \(Dates.text($0)) \(ledger.plans.first { $0.id == id }?.title ?? d.title)" } } ?? ""
-                return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）" + link + (d.intoFixedSavings ? "，存着不动" : "")
+                return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）" + link + (d.intoFixedSavings ? "，存下的钱" : "")
             case .profile(let change):
                 switch change {
                 case .upsertArea(let area, let stance):
@@ -153,7 +153,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 case .removePrinciple(let text): return "移除消费原则「\(text)」"
                 case .setFloorAmount(let amount):
                     let total = max(amount ?? 0, ledger.fixedSavingsFromIncome(now: createdAt))
-                    return amount == nil && total == 0 ? "存着不动 0.00" : "存着不动 \(Money.text(total))"
+                    return amount == nil && total == 0 ? "存下的钱 0.00" : "存下的钱 \(Money.text(total))"
                 }
             }
         }
@@ -366,7 +366,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 case .removePrinciple(let text):
                     guard next.profile.principles.contains(text) else { skip(position); continue }; next.profile.principles.removeAll { $0 == text }
                 case .setFloorAmount(let amount):
-                    guard amount.map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("存着不动的金额无效。") }
+                    guard amount.map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("存下的钱的金额无效。") }
                     next.setFixedSavingsTotal(amount ?? 0, now: createdAt); next.profile.floorAmount = amount
                 }
                 next.profile.stamp(changedFrom: ledger.profile, at: createdAt)

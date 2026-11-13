@@ -69,7 +69,7 @@ public enum HomeButler {
     public static func queue(_ ledger: Ledger, now: Date, organizingBatchIDs: Set<UUID> = []) -> [HomeTask] {
         let today = Dates.day(now), funds = Finance.funds(ledger, now: now)
         var items: [HomeTask] = []
-        if let over = Overspend.options(ledger, now: now) { items.append(.overspend(over)) }
+        if Finance.anchorPlan(in: ledger, now: now) != nil, let over = Overspend.options(ledger, now: now) { items.append(.overspend(over)) }
         let payday = Payday.due(in: ledger, now: now)
         if let payday { items.append(.payday(payday)) }
         items += funding(ledger, now: now).map(HomeTask.funding)

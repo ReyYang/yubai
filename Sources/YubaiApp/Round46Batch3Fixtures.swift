@@ -22,7 +22,7 @@ extension UITestSupport {
         if script == "v46-b3-empty" { try ledger.validate(); return ledger }
         var bank = Account(name: "招行储蓄卡", kind: .bank, balance: 1_000_000, at: Dates.addMonths(-4, to: month)); bank.id = galleryID(460301)
         ledger.accounts = [bank]; ledger.fixedSavings = script == "v46-b3-save-empty" ? 0 : 300_000
-        if script == "v46-b3-save-empty" { try ledger.validate(); return ledger }
+        if script == "v46-b3-save-empty" { seedKnownHomeBudget(&ledger, now: now); try ledger.validate(); return ledger }
         ledger.savingRule = .fixed(200_000)
         func add(_ id: Int, title: String, cents: Int64, at: Date, category: String, subcategory: String? = nil, nature: Nature = .expense) {
             var entry = Entry(date: at, amount: cents, nature: nature, accountID: bank.id, title: title, category: category)

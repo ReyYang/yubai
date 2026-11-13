@@ -22,13 +22,15 @@ def inventory(root=ROOT):
     for name, body in bodies.items():
         if not name.startswith('test'):
             continue
-        variant = re.search(r'walk46\(\.(\w+),', body)
-        prefix = 'V46-' + variant[1] + '-' if variant else ''
+        variant = re.search(r'walk(46|47)\(\.(\w+)', body)
+        prefix = 'V' + variant[1] + '-' + variant[2] + '-' if variant else ''
         legacy_prefix = re.search(r'prefix = "([^"]*)"', body)
         if legacy_prefix:
             prefix = legacy_prefix[1]
         called = set(re.findall(r'\b(\w+)\(', body))
         called.update(re.findall(r'walk46\(\.\w+,\s*(\w+)\)', body))
+        if 'walk47(' in body:
+            called.add('round47BatchA')
         names = [prefix + value for owner in sorted(called & owners.keys()) for value in owners[owner]]
         if not names:
             raise ValueError('Gallery walk has no stops: ' + name)
@@ -43,8 +45,9 @@ def inventory(root=ROOT):
 def check(root=ROOT):
     walks = inventory(root)
     boards = (root / 'scripts/round46-boards.txt').read_text().splitlines()
+    boards += (root / 'scripts/round47-boards.txt').read_text().splitlines()
     captures = {stop for names in walks.values() for stop in names}
-    missing = [board for board in boards if any('V46-' + mode + '-' + board.removeprefix('V46-') not in captures
+    missing = [board for board in boards if any(board.split('-', 1)[0] + '-' + mode + '-' + board.split('-', 1)[1] not in captures
                                               for mode in ('light', 'dark', 'a11y', 'hidden'))]
     workflow = (root / '.github/workflows/ios.yml').read_text()
     scheduled = re.findall(r'^\s+walks:\s*(.+)$', workflow, re.M)
@@ -53,7 +56,7 @@ def check(root=ROOT):
         raise ValueError('CI walks differ from XCTest inventory: missing=' + str(sorted(walks.keys() - set(scheduled))) +
                          ', extra/duplicate=' + str([n for n in scheduled if n not in walks or scheduled.count(n) > 1]))
     if missing:
-        raise ValueError('Round-46 boards without every variant: ' + ', '.join(missing))
+        raise ValueError('Design boards without every variant: ' + ', '.join(missing))
     return walks, boards
 
 

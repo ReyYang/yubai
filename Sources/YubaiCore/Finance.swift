@@ -384,7 +384,7 @@ public enum Finance {
         sample.subcategory = subcategory
         let hasPart = SpendingParts.part(for: sample, in: ledger) != nil
         let reason = hasPart || !bounds.allowedVerdicts.contains(.buy) ? bounds.boundReason : verdict == .wait ? "这笔 \(Money.text(amount)) 超过当前还能花 \(Money.text(f.available)) 的三分之一。" : bounds.boundReason
-        let facts = ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱 \(Money.text(f.goals))", "存着不动 \(Money.text(f.emergency))", "要攒 \(Money.text(f.savingTarget))"]
+        let facts = ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱 \(Money.text(f.goals))", "存下的钱 \(Money.text(f.emergency))", "要攒 \(Money.text(f.savingTarget))"]
 
         return PurchaseAssessment(verdict: verdict, reason: reason, title: title, explanation: explanation, afterPurchase: after, severity: severity,
                                   facts: facts + f.warnings,

@@ -113,8 +113,8 @@ final class ScreenGalleryTests: XCTestCase {
     private func require(_ id: String, timeout: TimeInterval = 6) throws {
         guard element(id).waitForExistence(timeout: timeout) else { throw Miss(description: "Missing identifier: " + id) }
     }
-    private func launch(_ fixture: String = "gallery", dark: Bool = false, large: Bool = false, organization: String? = nil, statement: String? = nil, longToast: Bool = false, restoring: Bool = false, versions: Bool = false) throws {
-        relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement, longToast: longToast, restoring: restoring, versions: versions) }
+    private func launch(_ fixture: String = "gallery", dark: Bool = false, large: Bool = false, organization: String? = nil, statement: String? = nil, longToast: Bool = false, reduceMotion: Bool = false, restoring: Bool = false, versions: Bool = false) throws {
+        relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement, longToast: longToast, reduceMotion: reduceMotion, restoring: restoring, versions: versions) }
         app.terminate(); app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
@@ -122,6 +122,7 @@ final class ScreenGalleryTests: XCTestCase {
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = galleryMode == .hidden ? "1" : "0"
         app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
         app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1"
+        app.launchEnvironment["YUBAI_UI_TEST_REDUCE_MOTION"] = reduceMotion ? "1" : "0"
         app.launchEnvironment["YUBAI_GALLERY_TOAST"] = longToast ? "1" : "0"
         app.launchEnvironment["YUBAI_GALLERY_RESTORE"] = restoring ? "1" : "0"
         app.launchEnvironment["YUBAI_GALLERY_VERSIONS"] = versions ? "1" : "0"
@@ -207,6 +208,10 @@ final class ScreenGalleryTests: XCTestCase {
         }
         try tap("tab_" + tab)
         try wait({ self.element("tab_" + tab).isSelected }, "Tab did not select: " + tab)
+    }
+    private func savingPage() throws {
+        try root("now"); try tap("openSaving"); try require("savingTabScroll")
+        guard !element("mainNavigation").exists else { throw Miss(description: "Saving page did not push") }
     }
     private func settings(_ destination: String? = nil) throws {
         try root("now"); try tap("openSettings"); try require("settingsScroll")
@@ -305,6 +310,50 @@ final class ScreenGalleryTests: XCTestCase {
     func testWalk46Batch5Large() { walk46(.a11y, round46Batch5) }
     func testWalk46Batch5Hidden() { walk46(.hidden, round46Batch5) }
 
+    func testWalk47BatchA() { walk47(.light) }
+    func testWalk47BatchADark() { walk47(.dark) }
+    func testWalk47BatchALarge() { walk47(.a11y) }
+    func testWalk47BatchAHidden() { walk47(.hidden) }
+    private func walk47(_ mode: GalleryMode) {
+        galleryMode = mode; prefix = "V47-" + mode.rawValue + "-"
+        round47BatchA(dark: mode == .dark, large: mode == .a11y)
+    }
+    private func round47BatchA(dark: Bool, large: Bool) {
+        func load(_ fixture: String) throws { try launch(fixture, dark: dark, large: large) }
+        func add(_ amount: String) throws {
+            try tap("addEntry"); try keys(amount); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try tap("cancelManualSheet")
+        }
+        stop("Home") { try load("v47-home"); try require("openSaving"); try require("addEntry"); try reveal(element("receiptTotal")) }
+        stop("Book") { try root("ledger"); try require("entriesScroll") }
+        stop("Save-Card") { try load("v47-saving-wish"); try reveal(element("openSaving")) }
+        stop("Save-Card-Reached") { try load("v47-saving-reached"); try reveal(element("openSaving")) }
+        stop("Save-Card-Monthly") { try load("v47-saving-monthly"); try reveal(element("openSaving")) }
+        stop("Save-Card-Empty") { try load("v47-saving-empty"); try reveal(element("openSaving")) }
+        stop("Save-Page") { try load("v47-home-hard"); try savingPage(); try require("reserveTotal") }
+        stop("Receipt-Empty") { try load("v47-receipt-empty"); try reveal(element("receiptFirstEntry")) }
+        stop("Receipt") { try load("v47-receipt-normal"); try reveal(element("receiptTotal")) }
+        stop("Receipt-Added") { try load("v47-receipt-normal"); try add("18"); try require("receiptTotal") }
+        stop("Receipt-Undo") {
+            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' AND label CONTAINS '餐饮'")).firstMatch
+            try reveal(row); row.swipeLeft()
+            try require("undoReceipt_" + row.identifier.replacingOccurrences(of: "ledgerEntry_", with: ""))
+        }
+        stop("Receipt-Undone") {
+            try tap(buttonPrefix("undoReceipt_")); try require("receiptNumber")
+            try wait({ self.element("receiptNumber").label == "No.2" }, "Receipt count after undo")
+        }
+        stop("Receipt-Many") { try load("v47-receipt-many"); try reveal(element("receiptMoreEntries")) }
+        stop("Receipt-More-Book") { try tap("receiptMoreEntries"); try require("entriesScroll") }
+        stop("Home-Hard") { try load("v47-home-hard"); try reveal(element("receiptTotal")) }
+        stop("First-A") { try load("v47-first"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
+        stop("First-A-ReduceMotion") { try launch("v47-first", dark: dark, large: large, reduceMotion: true); try require("firstOpenScene") }
+        stop("First-After") { try add("28"); try require("firstSalaryCard"); try require("receiptTotal") }
+        stop("First-After-Setup") { try tap("setupFirstSalary"); try require("paydaySetupSheet") }
+        stop("First-After-Deferred") { try load("v47-after"); try tap("deferFirstSalary"); try require("openSaving") }
+        stop("First-After-Income") { try load("v47-after-income"); try require("firstSalaryCard") }
+        stop("First-After-Deadline") { try load("v47-after-deadline"); try require("firstSalaryCard") }
+    }
+
     // One method per area: each starts from a fresh launch, so one area cannot stall the others.
     func testWalk01RootsAndLedger() { rootsAndLedger() }
     func testWalk02FormulaAndAccounts() { try? launch(); formulaAndAccounts() }
@@ -329,7 +378,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Deck") { try load("v46-deck"); try tap("openLetterInbox"); try require("butlerDeckNext"); try require("pendingImportsCard") }
         stop("Home-Payday") { try load("v46-leftover"); try require("leftoverSave") }
         stop("Payday-Amount") { try load("v46-payday"); try tap("paydayArrived"); try keys("8510"); try require("paydayExtraToSavings") }
-        stop("First") { try load("v46-empty"); try require("firstUseCard"); try require("firstEntry") }
+        stop("First") { try load("v46-empty"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
         stop("Home-Bill") { try load("v46-bill"); try require("billDuePaid") }
         stop("Home-Gap") { try load("v46-gap"); try require("openReconcile") }
         stop("Recon") {
@@ -350,7 +399,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("Home-Hard") { try load("v46-hard"); try require("renewalCard") }
         stop("Big-Home") { try launch("v46-big", dark: dark, large: true); try require("todayEntries") }
         stop("Spend") { try load("v46-spend"); try tap("fundsFormula"); try require("formulaRow_income"); try require("formulaRow_spent") }
-        stop("Saved") { try load("v46-saved"); try root("saving"); try tap("openButlerSaved"); try require("butlerSavedTotal") }
+        stop("Saved") { try load("v46-saved"); try savingPage(); try tap("openButlerSaved"); try require("butlerSavedTotal") }
         // These three boards specify behavior, rather than another phone page.
         stop("Goal") { try load("v46-home"); try require("stopRenewal") }
         stop("Butler-Kinds") { try load("v46-deck"); try tap("openLetterInbox"); try require("butlerDeckNext"); try tap("butlerDeckNext") }
@@ -370,9 +419,9 @@ final class ScreenGalleryTests: XCTestCase {
         stop("01-now-06-weekly-review") { try root("ledger"); try tap("ledgerMode_where"); try tap("openWeekly"); try require("weeklyNumbers") }
         stop("01-now-07-weekly-review-bottom") { try drag(app.scrollViews.firstMatch) }
         stop("01-now-08-hidden-ledger") { try launch(); try tap("toggleAmountVisibility"); try root("ledger"); try require("entriesScroll") }
-        stop("01-now-09-hidden-saving") { try root("saving"); try require("savingTabScroll") }
+        stop("01-now-09-hidden-saving") { try savingPage(); try require("savingTabScroll") }
         stop("01-now-10-hidden-yubai") { try root("yubai"); try require("openProfile") }
-        stop("02-saving-01-tab") { try launch(); try root("saving"); try require("savingTabScroll") }
+        stop("02-saving-01-page") { try launch(); try savingPage(); try require("savingTabScroll") }
         stop("03-ledger-01-detail-top") { try launch(); try root("ledger"); try require("entriesScroll") }
         stop("03-ledger-02-detail-middle") { for _ in 0..<3 { try drag(element("entriesScroll")) } }
         stop("03-ledger-03-detail-bottom") { for _ in 0..<18 { try drag(element("entriesScroll")) } }
@@ -441,24 +490,24 @@ final class ScreenGalleryTests: XCTestCase {
     }
 
     private func saving() {
-        stop("02-saving-02-reserve") { try launch(); try root("saving"); try tap("openReserve"); try require("reservePage") }
+        stop("02-saving-02-reserve") { try launch(); try savingPage(); try tap("openReserve"); try require("reservePage") }
         stop("02-saving-03-payback-progress") { try reveal(element("reservePaybackProgress")) }
         stop("02-saving-04-payback-offer") { try reveal(element("reservePaybackOffer")) }
         stop("02-saving-05-payback-accepted") { try tap("reservePaybackAccept"); try require("reservePaybackProgress") }
         stop("02-saving-06-edit-total") { try tap("editReserveTotal"); try require("amountSheetAmount") }
         stop("02-saving-07-reserve-adjustment-toast") { try keys("7200"); try tap("saveReserveTotal"); try toast() }
-        stop("02-saving-08-monthly-fixed") { try launch(); try root("saving"); try tap("openSavings"); try require("savingsPage") }
+        stop("02-saving-08-monthly-fixed") { try launch(); try savingPage(); try tap("openSavings"); try require("savingsPage") }
         stop("02-saving-09-monthly-share") { try tap("savingMode_share"); try require("savingsPage") }
         stop("02-saving-10-monthly-amount") { try tap("savingMode_fixed"); try tap("editSavingTarget"); try require("saveSavingsAmount") }
-        stop("02-saving-11-wishlist-top") { try launch(); try root("saving"); try tap("openWishlist"); try require("wishlistPage") }
+        stop("02-saving-11-wishlist-top") { try launch(); try savingPage(); try tap("openWishlist"); try require("wishlistPage") }
         stop("02-saving-12-wishlist-cooling") { try reveal(element("wish_" + galleryID(400))) }
         stop("02-saving-13-wish-detail-inline") { try reveal(element("wish_" + galleryID(402))) }
         stop("02-saving-14-wish-purchase-picker") { try tap("wishPurchase_" + galleryID(402)); try require("wishEntryPicker") }
-        stop("02-saving-15-wishlist-past") { try launch(); try root("saving"); try tap("openWishlist"); try tap("pastWishes"); try wait({ self.app.navigationBars["过去的心愿"].exists }, "Past wishes page") }
+        stop("02-saving-15-wishlist-past") { try launch(); try savingPage(); try tap("openWishlist"); try tap("pastWishes"); try wait({ self.app.navigationBars["过去的心愿"].exists }, "Past wishes page") }
         stop("02-saving-16-wishlist-past-bottom") { for _ in 0..<8 { try drag(app.scrollViews.firstMatch) } }
-        stop("02-saving-17-wish-dropped-toast") { try launch(); try root("saving"); try tap("openWishlist"); let wish = element("wish_" + galleryID(400)); try reveal(wish.buttons["不买了"]); try tap(wish.buttons["不买了"]); try toast() }
-        stop("02-saving-18-monthly-reserve") { try launch(); try root("saving"); try tap("openSavings"); try reveal(element("editFixedSavings")) }
-        stop("02-saving-19-payback-declined") { try launch(); try root("saving"); try tap("openReserve"); try tap("reservePaybackDecline"); try require("reservePaybackProgress") }
+        stop("02-saving-17-wish-dropped-toast") { try launch(); try savingPage(); try tap("openWishlist"); let wish = element("wish_" + galleryID(400)); try reveal(wish.buttons["不买了"]); try tap(wish.buttons["不买了"]); try toast() }
+        stop("02-saving-18-monthly-reserve") { try launch(); try savingPage(); try tap("openSavings"); try reveal(element("editFixedSavings")) }
+        stop("02-saving-19-payback-declined") { try launch(); try savingPage(); try tap("openReserve"); try tap("reservePaybackDecline"); try require("reservePaybackProgress") }
     }
 
     private func entrySheets() {
@@ -478,7 +527,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("07-entry-14-saved-in-sheet") { try launch(); try tap("addEntry"); try tap("entryDate_yesterday"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try tap("entrySessionSummary"); try require("entryAddedList") }
         stop("07-entry-15-saved-receipt") { try launch(); try tap("addEntry"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try require("entrySessionSummary") }
         stop("07-entry-16-quick-repeat-menu") { try launch(); try longPress(element("addEntry")); try require("quickRepeatMenu") }
-        stop("07-entry-17-long-repeat-toast") { try tap("quickRepeat_0"); try toast(); try wait({ self.element("toastMessage").label.contains("已记下 1 笔") }, "Repeat receipt text") }
+        stop("07-entry-17-long-repeat-receipt") { try tap("quickRepeat_0"); try require("receiptTotal"); try reveal(element("receiptTotal")) }
         stop("07-entry-18-undone-receipt") { try tap("undoLastChange"); try require("toastMessage") }
         stop("07-entry-19-delete-toast") { try launch(); try detail(); try tap("deleteEntryDetail"); try toast() }
         stop("07-entry-20-short-repeat-toast") { try launch("v45-repeats"); try longPress(element("addEntry")); try tap("quickRepeat_0"); try toast() }
@@ -598,7 +647,7 @@ final class ScreenGalleryTests: XCTestCase {
         stop("12-states-20-salary-confirmed-toast") { try tap("confirmSalary"); try toast() }
         stop("12-states-21-locked") { try launch("gallery-locked"); try require("lockedPage") }
         stop("12-states-22-bill-due-card") { try launch("v45-bill"); try require("billDuePaid") }
-        stop("12-states-23-first-entry") { try launch("v46-empty"); try tap("firstEntry"); try require("entryKeypadAmount") }
+        stop("12-states-23-first-entry") { try launch("v46-empty"); try tap("addEntry"); try require("entryKeypadAmount") }
         stop("12-states-24-reconcile-difference") {
             try launch("v45-gap"); try tap("openReconcile")
             let field = element("reconcileField_合成银行卡")
@@ -612,17 +661,17 @@ final class ScreenGalleryTests: XCTestCase {
     }
 
     private func emptyStates() {
-        stop("13-empty-01-now") { try launch("gallery-empty"); try require("firstUseCard") }
-        stop("13-empty-02-saving") { try root("saving"); try require("savingTabScroll") }
+        stop("13-empty-01-now") { try launch("gallery-empty"); try require("receiptFirstEntry") }
+        stop("13-empty-02-saving") { try savingPage(); try require("savingTabScroll") }
         stop("13-empty-03-ledger") { try root("ledger"); try require("emptyLedgerAdd") }
         stop("13-empty-04-where") { try tap("ledgerMode_where"); try require("whereInsufficientData") }
         stop("13-empty-05-yubai") { try root("yubai"); try require("openProfile") }
-        stop("13-empty-06-saving-target") { try root("saving"); try tap("setFirstSavingTarget"); try require("saveSavingsAmount") }
+        stop("13-empty-06-saving-target") { try savingPage(); try tap("setFirstSavingTarget"); try require("saveSavingsAmount") }
         stop("13-empty-07-memories") { try close("amountSheetCancel"); try root("yubai"); try tap("openMemories"); try require("emptyMemories") }
         stop("13-empty-08-import-history") { try launch("gallery-empty"); try settings("openImportHistory"); try require("emptyImportHistory") }
         stop("13-empty-09-accounts") { try launch("gallery-empty"); try settings("openAccounts"); try tap("addAccount"); try require("accountName") }
-        stop("13-empty-10-first-use") { try launch("empty"); try require("firstUseCard") }
-        stop("13-empty-11-first-entry-keyboard") { try tap("firstEntry"); try type(longName, into: "entryPurpose"); try requireKeyboard() }
+        stop("13-empty-10-first-use") { try launch("empty"); try require("firstOpenScene") }
+        stop("13-empty-11-first-entry-keyboard") { try tap("addEntry"); try type(longName, into: "entryPurpose"); try requireKeyboard() }
         stop("13-empty-12-privacy") { try launch("empty"); try settings("openIntelligencePrivacy"); try require("intelligencePrivacyPage") }
         stop("13-empty-13-fixed-bills") { try launch("manual"); try formula(); try tap("formulaRow_bills"); try require("fixedFlowsScroll") }
         stop("13-empty-14-frequent-entries") { try launch("gallery-empty"); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("frequentEntriesPage") }
@@ -742,7 +791,7 @@ final class ScreenGalleryTests: XCTestCase {
             try launch(fixture ?? data, dark: dark, large: large)
         }
         func book(_ fixture: String? = nil) throws { try load(fixture); try root("ledger"); try require("entriesScroll") }
-        func saving(_ fixture: String? = nil) throws { try load(fixture); try root("saving"); try require("savingTabScroll") }
+        func saving(_ fixture: String? = nil) throws { try load(fixture); try savingPage(); try require("savingTabScroll") }
         func question(_ text: String) throws {
             try load(); try root("yubai"); try type(text, into: "askYubai"); try tap("sendAskHome"); try require("askPage")
         }
@@ -830,7 +879,7 @@ final class ScreenGalleryTests: XCTestCase {
         }
         stop("DS-Toast") { try load(toast: true); try require("toastMessage"); try require("undoLastChange") }
         stop("DS-Content") { try load("v46-b3-hard"); try root("ledger"); try require("entriesScroll"); try reveal(element("ledgerEntry_" + galleryID(460310))) }
-        stop("DS-Sheets") { try load("v46-b3-book"); try root("saving"); try tap("openReserve"); try tap("editReserveTotal"); try require("amountSheetAmount") }
+        stop("DS-Sheets") { try load("v46-b3-book"); try savingPage(); try tap("openReserve"); try tap("editReserveTotal"); try require("amountSheetAmount") }
         stop("DS-Big") { try launch("v46-entry-hard", dark: dark, large: true); try tap("addEntry"); try keys("1234567.89"); try require("entryKeypadAmount") }
         stop("Names") {
             try launch("v46-sort", dark: dark, large: large, organization: "by-party")
@@ -904,7 +953,7 @@ final class ScreenGalleryTests: XCTestCase {
 
     private func reduced(large: Bool, dark: Bool) {
         stop("01-now") { try launch(dark: dark, large: large); try require("fundsFormula") }
-        stop("02-saving") { try root("saving"); try require("savingTabScroll") }
+        stop("02-saving") { try savingPage(); try require("savingTabScroll") }
         stop("03-ledger") { try root("ledger"); try require("entriesScroll") }
         stop("04-where") { try tap("ledgerMode_where"); try require("whereMonthlyCharges") }
         stop("06-yubai") { try root("yubai"); try require("openProfile") }
@@ -923,6 +972,6 @@ final class ScreenGalleryTests: XCTestCase {
         stop("19-entry-keyboard") { try type(longName + latinName, into: "entryPurpose"); try requireKeyboard() }
         stop("20-entry-income") { try launch(dark: dark, large: large); try tap("addEntry"); try tap("entryNature_income"); try keys("1234567.89"); try require("entryIncomeCategories") }
         stop("21-entry-transfer") { try tap("entryNature_transfer"); try require("transferDestinationAccount") }
-        stop("22-long-repeat-toast") { try launch(dark: dark, large: large); try longPress(element("addEntry")); try tap("quickRepeat_0"); try toast() }
+        stop("22-long-repeat-receipt") { try launch(dark: dark, large: large); try longPress(element("addEntry")); try tap("quickRepeat_0"); try require("receiptTotal"); try reveal(element("receiptTotal")) }
     }
 }

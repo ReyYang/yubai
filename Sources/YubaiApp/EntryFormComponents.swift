@@ -314,7 +314,7 @@ struct EntryFixedSavingsChip: View {
     var action: () -> Void = {}
     var body: some View {
         Button { action(); selected.toggle() } label: {
-            Label("存着不动", systemImage: "lock").yubaiFont(YubaiFont.caption)
+            Label("存下的钱", systemImage: "lock").yubaiFont(YubaiFont.caption)
                 .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
                 .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.pillHeight)
                 .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())

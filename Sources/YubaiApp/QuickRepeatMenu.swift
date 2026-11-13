@@ -51,7 +51,7 @@ struct QuickRepeatMenu: View {
     }
     private var receiptRow: some View {
         Button {
-            dismiss(); store.sheetSource = nil; store.sheet = .screenshotCapture(nil)
+            dismiss(); store.homeEntrySession = true; store.sheetSource = nil; store.sheet = .screenshotCapture(nil)
         } label: {
             Text("拍小票").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
@@ -59,7 +59,8 @@ struct QuickRepeatMenu: View {
     }
 
     private func record(_ item: EntryHistory.Repeat) {
-        defer { dismiss() }
+        defer { dismiss(); store.homeEntrySession = false }
+        store.homeEntrySession = true
         let now = Date()
         let usable = store.accounts.first { $0.id == item.accountID && !$0.archived } ?? ManualBookkeeping.defaultAccount(in: store.current)
         guard let account = usable else { return }

@@ -46,9 +46,9 @@ struct FormulaView: View {
             } label: {
                 row(salary.map { NowFormat.monthDay($0.date) + "的工资" } ?? "这个周期收入", amount: value.income)
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_income")
-            if value.fixedSavings != 0 { source("存着不动", amount: value.fixedSavings, id: "formulaRow_fixedSavings") { store.sheet = .formulaEdit(.fixedSavings) } }
+            if value.fixedSavings != 0 { source("存下的钱", amount: value.fixedSavings, id: "formulaRow_fixedSavings") { store.sheet = .formulaEdit(.fixedSavings) } }
             if value.creditDebt != 0 { source("信用卡欠款", amount: value.creditDebt, id: "formulaRow_creditDebt") { store.sheet = .accounts } }
-            if value.goals != 0 { source("在存钱", amount: value.goals, id: "formulaRow_goals") { store.destination = .saving; store.resetRootNavigation(); store.destination = .saving } }
+            if value.goals != 0 { source("在存钱", amount: value.goals, id: "formulaRow_goals") { store.openSavingPage() } }
             if value.uncertainInflow != 0 { source("没写用途的进账", amount: value.uncertainInflow, id: "formulaRow_uncertainInflow") { showEntries(value.interval) } }
             source("先存起来", detail: "每月先存", amount: value.saving, id: "formulaRow_saving") { store.sheet = .formulaEdit(.saving) }
             if store.plans.contains(where: { $0.active && !$0.inflow && $0.frequency == .yearly }) {

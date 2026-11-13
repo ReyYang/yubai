@@ -61,6 +61,7 @@ extension UITestSupport {
         let repeats = EntryHistory.repeats(in: ledger, now: now, limit: 1000)
         if let subway = repeats.first(where: { $0.purpose == "地铁" }) { try EntryHistory.setPinned(subway, pinned: true, in: &ledger) }
         if let parking = repeats.first(where: { $0.purpose == parkingTitle }) { try EntryHistory.setHidden(parking, hidden: true, in: &ledger) }
+        seedKnownHomeBudget(&ledger, now: now)
         try ledger.validate(); return ledger
     }
 }

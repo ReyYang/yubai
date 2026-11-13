@@ -16,7 +16,7 @@ run_dir="$(mktemp -d /tmp/yubai-gallery.XXXXXX)"
 result="$run_dir/gallery.xcresult"
 printf 'Simulator: %s\nResults and log: %s\n' "$simulator" "$run_dir"
 # Select any space-separated XCTest walk names with GALLERY_ONLY.
-# Expected captures and board coverage come from gallery_inventory.py for every run.
+# Expected captures and V46/V47 board coverage come from gallery_inventory.py for every run.
 python3 "$repo_root/scripts/gallery_inventory.py" --check
 only=()
 for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalleryTests/$name"); done

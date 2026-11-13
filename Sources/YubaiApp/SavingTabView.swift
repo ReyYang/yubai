@@ -18,13 +18,8 @@ struct SavingTabView: View {
             if !store.current.wishlist.isEmpty { wishSection }
             settingsRows
         }.accessibilityIdentifier("savingTabScroll")
-            .rootScrollContentMargins().rootTabScroll(.saving)
-            .rootPageHeader { RootHeader(title: "存钱") }
             .amountPrivacy(hide)
             .navigationTitle("存钱").yubaiNavigation()
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
             .task(id: "\(store.ledgerRevision)-\(store.financialNow)") { await refreshFacts() }
             .sheet(isPresented: $settingTarget) {
                 SavingsAmountEditor(field: .target, initial: 0) { value in

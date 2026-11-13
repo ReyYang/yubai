@@ -72,7 +72,7 @@ struct SyncVersionsView: View {
             ("想克制的", changed(a.profile.restrain, b.profile.restrain)),
             ("愿意多花的", changed(a.profile.generous, b.profile.generous)),
             ("原则", Set(a.profile.principles).symmetricDifference(Set(b.profile.principles)).count),
-            ("存着不动", a.fixedSavings == b.fixedSavings ? 0 : 1),
+            ("存下的钱", a.fixedSavings == b.fixedSavings ? 0 : 1),
             ("每月存", a.savingRule == b.savingRule ? 0 : 1),
             ("消费观时间", a.profile.updatedAt == b.profile.updatedAt && a.profile.principleDates == b.profile.principleDates ? 0 : 1),
             ("固定账单", changed(a.plans, b.plans)),

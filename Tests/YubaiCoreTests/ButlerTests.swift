@@ -78,7 +78,7 @@ final class ButlerTests: XCTestCase {
             ledger.profile.floorAmount = floor
             let card = try XCTUnwrap(ButlerCards.detect(ledger, now: now).first { $0.kind == .shortfall })
             XCTAssertEqual(card.facts.first { $0.label == "付款前及当天最少还能花" }?.cents, -10_000)
-            XCTAssertEqual(card.facts.first { $0.label == "存着不动" }?.cents, 0)
+            XCTAssertEqual(card.facts.first { $0.label == "存下的钱" }?.cents, 0)
         }
     }
     func testUpkeepAgingAndActivity() {

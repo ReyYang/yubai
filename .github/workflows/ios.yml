@@ -147,6 +147,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - part: r47-a-light
+            walks: testWalk47BatchA
+          - part: r47-a-dark
+            walks: testWalk47BatchADark
+          - part: r47-a-a11y
+            walks: testWalk47BatchALarge
+          - part: r47-a-hidden
+            walks: testWalk47BatchAHidden
           - part: 46-batch1
             walks: testWalk46Batch1
           - part: 46-batch1-dark

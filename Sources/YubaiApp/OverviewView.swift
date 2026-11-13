@@ -54,13 +54,13 @@ struct SavingsView: View {
     // MARK: 每月存
     private var hero: some View {
         VStack(alignment: sharing ? .center : .leading, spacing: YubaiSpace.space4) {
-            Text(sharing ? "存着不动" : "每月存").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            Text(sharing ? "存下的钱" : "每月存").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             HStack(spacing: YubaiSpace.gapGroup) {
                 AmountLabel(cents: sharing ? fixed : fixedTarget, hide: hide, role: .hero)
                 Button { editing = sharing ? .fixed : .target } label: {
                     Image(systemName: "pencil").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
                         .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).controlSurface(in: Circle()).yubaiHitTarget()
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel(sharing ? "修改存着不动" : "修改每月存")
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel(sharing ? "修改存下的钱" : "修改每月存")
                     .accessibilityIdentifier(sharing ? "editFixedSavings" : "editSavingTarget")
             }
             Text("这个月已存进 " + amount2(store.reserve.setAside, hide: hide)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
@@ -69,7 +69,7 @@ struct SavingsView: View {
     private var fixedSavingsRow: some View {
         Button { editing = .fixed } label: {
             Card(style: .list) {
-                EntryFormRow(title: "存着不动") {
+                EntryFormRow(title: "存下的钱") {
                     HStack(spacing: YubaiSpace.space8) {
                         AmountLabel(cents: fixed, hide: hide, role: .small, ink: YubaiColor.labelSecondary)
                         Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
@@ -195,7 +195,7 @@ struct SavingsAmountEditor: View {
     init(field: SavingsAmountField, initial: Int64, save: @escaping (Int64) -> Bool) {
         self.field = field; self.save = save; _keypad = State(initialValue: EntryKeypad(amount: initial))
     }
-    private var title: String { field == .fixed ? "存着不动" : field == .target ? "每月存" : "每笔进账留" }
+    private var title: String { field == .fixed ? "存下的钱" : field == .target ? "每月存" : "每笔进账留" }
     private var valid: Bool {
         guard let value = keypad.amount else { return false }
         return field == .share ? value % 100 == 0 && (100...9000).contains(value) : value >= 0

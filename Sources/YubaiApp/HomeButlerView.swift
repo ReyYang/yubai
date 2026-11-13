@@ -16,6 +16,7 @@ struct ButlerReceipt: Identifiable, Equatable {
         }
     }
     func beginFirstEntry(importing: Bool = false) {
+        homeEntrySession = !importing && destination == .now
         guard update("开始记账", recordUndo: false, entryMotion: false, showToast: false, {
             FirstUse.prepareForEntry(&$0, now: Date())
         }) else { return }

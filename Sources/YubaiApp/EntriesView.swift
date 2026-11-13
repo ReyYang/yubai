@@ -434,7 +434,7 @@ struct LedgerEntryRow: View {
                         .accessibilityIdentifier("futureEntry_" + entry.id.uuidString)
                 }
                 if entry.intoFixedSavings {
-                    Label("存着不动", systemImage: "lock").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
+                    Label("存下的钱", systemImage: "lock").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
                         .padding(.horizontal, YubaiSpace.space8).frame(minHeight: YubaiSize.headerIcon).background(YubaiColor.brandTint, in: Capsule()).fixedSize()
                 }
             }

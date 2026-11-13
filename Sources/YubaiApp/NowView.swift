@@ -5,33 +5,54 @@ import YubaiCore
 struct NowView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var homeHero: HomeHero { store.homeHero }
 
     private var hide: Bool { store.preferences.hideAmounts }
 
     var body: some View {
-        ScrollView {
-            content
-                .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8).padding(.bottom, YubaiSpace.gapSection)
-                .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity, alignment: .leading)
-        }.accessibilityIdentifier("nowScroll")
-            .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
-            .rootScrollContentMargins().rootTabScroll(.now)
-            .rootPageHeader { RootHeader(title: "现在") }
-            .navigationTitle("现在").yubaiNavigation()
-            .amountPrivacy(hide)
+        Group {
+            if homeHero.isFirstOpen { FirstOpenView().transition(.opacity) }
+            else { regularPage.transition(.opacity) }
+        }.animation(reduceMotion ? nil : .easeInOut(duration: YubaiMotion.durationFirstLight), value: homeHero.isFirstOpen)
+            .navigationTitle("现在").yubaiNavigation().amountPrivacy(hide)
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+    }
+    private var regularPage: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                content
+                    .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8).padding(.bottom, YubaiSpace.gapSection)
+                    .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity, alignment: .leading)
+            }.accessibilityIdentifier("nowScroll")
+                .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+                .rootScrollContentMargins().rootTabScroll(.now)
+                .rootPageHeader { RootHeader(title: "现在") }
+                .task(id: store.receiptFeedbackTrigger) {
+                    let trigger = store.receiptFeedbackTrigger
+                    guard !store.receiptEntryIDs.isEmpty else { return }
+                    do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
+                    withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo("dailyReceipt", anchor: .bottom) }
+                    do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                    if store.receiptFeedbackTrigger == trigger { store.receiptEntryIDs = [] }
+                }
+        }
     }
 
     // MARK: Page
 
     private var content: some View {
         let items = store.inboxItems
+        let saving = store.homeSaving
         let pace = store.pace
         return VStack(alignment: .leading, spacing: YubaiSpace.none) {
             hero(pace)
             slot(items)
+            if homeHero.hasSalaryPlan || saving.started || !store.salaryPromptDue {
+                HomeSavingCardView(facts: saving).padding(.top, YubaiSpace.gapGroup)
+            }
             upcoming(items)
             recent
         }
@@ -49,26 +70,28 @@ struct NowView: View {
     }
 
     private func hero(_ pace: CyclePace?) -> some View {
-        let funds = store.funds
-        let over = funds.available < 0
-        let headline = over ? "多花了" : "还能花"
-        let value = over ? -funds.available : funds.available
-        let horizon = horizonText(pace)
-        let spoken = headline + "，" + horizon + "，" + (hide ? "金额已隐藏" : amount2(value, hide: false))
+        let facts = homeHero
+        let horizon = facts.hasSalaryPlan ? horizonText(pace) : ""
+        let spoken = facts.title + "，" + (hide ? "金额已隐藏" : amount2(facts.amount, hide: false))
         return VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-            TabNavigationLink(.formula) { FormulaView() } label: {
-                VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                    heroTitle(headline, horizon)
-                    HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                        AmountLabel(cents: value, hide: hide, role: .hero, ink: over ? YubaiColor.amberInk : YubaiColor.label)
-                            .accessibilityIdentifier("availableFunds")
-                        Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                    }
-                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula")
-                .accessibilityLabel(spoken).accessibilityHint("点开看怎么算")
-            if let daily = pace?.daily { dailyRow(daily) }
+            if facts.hasSalaryPlan {
+                TabNavigationLink(.formula) { FormulaView() } label: {
+                    heroContents(facts, horizon: horizon, disclosure: true)
+                }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula")
+                    .accessibilityLabel(spoken).accessibilityHint("点开看怎么算")
+                if let daily = pace?.daily { dailyRow(daily) }
+            } else { heroContents(facts, horizon: horizon, disclosure: false) }
         }
+    }
+    private func heroContents(_ facts: HomeHero, horizon: String, disclosure: Bool) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+            heroTitle(facts.title, horizon)
+            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                AmountLabel(cents: facts.amount, hide: hide, role: .hero, ink: facts.title == "多花了" ? YubaiColor.amberInk : YubaiColor.label)
+                    .accessibilityIdentifier("availableFunds")
+                if disclosure { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
 
     private func heroTitle(_ headline: String, _ horizon: String) -> some View {
@@ -96,7 +119,15 @@ struct NowView: View {
 
     @ViewBuilder private func slot(_ items: [HomeTask]) -> some View {
         Group {
-            if let receipt = store.homeReceipt {
+            if store.salaryPromptDue {
+                QuestionCard(eyebrow: "想知道还能花多少", title: "每月几号发工资，发多少", more: items.count,
+                             yesTitle: "填一下", noTitle: "以后再说", yesIdentifier: "setupFirstSalary", noIdentifier: "deferFirstSalary",
+                             yes: { store.sheetSource = nil; store.sheet = .paydaySetup }, no: {
+                    _ = store.update("以后再说", recordUndo: false, entryMotion: false, showToast: false) {
+                        FirstUse.deferSalarySetup(&$0, now: store.financialNow)
+                    }
+                }).accessibilityIdentifier("firstSalaryCard")
+            } else if let receipt = store.homeReceipt {
                 ButlerReceiptRow(receipt: receipt)
                     .task(id: receipt.id) {
                         #if DEBUG && targetEnvironment(simulator)
@@ -105,11 +136,6 @@ struct NowView: View {
                         do { try await Task.sleep(for: .seconds(6)) } catch { return }
                         if store.homeReceipt?.id == receipt.id { store.homeReceipt = nil }
                     }
-            } else if store.sortedEntries.isEmpty && items.isEmpty {
-                QuestionCard(eyebrow: "从这里开始", title: "记下第一笔，或者把账单导进来",
-                             yesTitle: "记一笔", noTitle: "导入账单", yesIdentifier: "firstEntry", noIdentifier: "firstImport",
-                             yes: { store.beginFirstEntry() }, no: { store.beginFirstEntry(importing: true) })
-                    .accessibilityIdentifier("firstUseCard")
             } else if (store.organizingPendingImports || store.organizingBatchID != nil) && (items.first?.id.hasPrefix("imports:") ?? true) {
                 ImportBusyRow(pending: store.pendingOrganization)
             } else if let first = items.first {
@@ -156,10 +182,12 @@ struct NowView: View {
         }
     }
 
-    // MARK: 今天 / 昨天
+    // MARK: 今天记的
 
     private var recent: some View {
-        NowRecentEntries().padding(.top, YubaiSpace.gapSection - YubaiSpace.space2)
+        HomeReceiptView(receipt: store.dailyReceipt)
+            .id("dailyReceipt").padding(.top, YubaiSpace.gapSection - YubaiSpace.space2)
+            .animation(YubaiMotion.layout(reduceMotion: reduceMotion), value: store.receiptFeedbackTrigger)
     }
 }
 
@@ -198,95 +226,5 @@ private struct NowUpcomingRow: View {
             }
         }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle, alignment: .leading)
             .accessibilityElement(children: .contain)
-    }
-}
-
-/// 今天（没有就昨天）记的几笔，右边是小计；不和任何数相减。
-private struct NowRecentEntries: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
-    private var hide: Bool { store.preferences.hideAmounts }
-
-    private struct DayGroup {
-        var title: String
-        var entries: [Entry]
-        var total: Int64
-    }
-
-    private func group() -> DayGroup? {
-        let now = Date(), today = Dates.day(now), yesterday = Dates.addDays(-1, to: today)
-        var day: Date?
-        var rows: [Entry] = []
-        for entry in store.sortedEntries {
-            if entry.deletedAt != nil || entry.date > now { continue }
-            let entryDay = Dates.day(entry.date)
-            if day == nil {
-                guard entryDay >= yesterday else { break }
-                day = entryDay
-            }
-            if entryDay != day { break }
-            rows.append(entry)
-        }
-        guard let day, !rows.isEmpty else { return nil }
-        let ledger = store.current
-        let spending = rows.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ledger) }
-        let income = rows.filter { $0.nature == .income }.reduce(Int64(0)) { $0 + $1.amount }
-        var title = day == today ? "今天" : "昨天"
-        if rows.count == 1, let from = rows[0].spreadFrom { title = NowFormat.range(from, rows[0].date) }
-        return DayGroup(title: title, entries: rows, total: spending != 0 ? -spending : income)
-    }
-
-    var body: some View {
-        if let group = group() {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(group.title).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
-                    Spacer(minLength: YubaiSpace.gapGroup)
-                    if group.total != 0 {
-                        AmountLabel(cents: group.total, hide: hide, role: .small, sign: group.total < 0 ? .automatic : .inflow, ink: YubaiColor.labelSecondary)
-                    }
-                }.padding(.horizontal, YubaiSpace.space4)
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
-                            NowEntryRow(entry: entry)
-                            if index < group.entries.count - 1 {
-                                Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).padding(.leading, textSize.isAccessibilitySize ? YubaiSpace.none : YubaiSize.rowIcon + YubaiSpace.gapGroup)
-                            }
-                        }
-                    }
-                }.accessibilityElement(children: .contain).accessibilityIdentifier("todayEntries")
-            }
-        }
-    }
-}
-
-private struct NowEntryRow: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
-    let entry: Entry
-    private var hide: Bool { store.preferences.hideAmounts }
-    private var category: String { Classification.isPending(entry) ? "还没分类" : Classification.displayCategory(entry.category) }
-    var body: some View {
-        let inflow = entry.nature.inflow
-        let stacked = textSize.isAccessibilitySize
-        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-        return Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: {
-            HStack(alignment: .center, spacing: YubaiSpace.gapGroup) {
-                if !stacked {
-                    LedgerCategoryIcon(category: entry.category, pending: Classification.isPending(entry), income: entry.nature.categoryIncome)
-                        .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
-                        .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
-                }
-                layout {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                        Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
-                        Text(category).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(stacked ? nil : 1)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                    AmountLabel(cents: entry.amount, hide: hide, sign: inflow ? .inflow : .outflow, ink: inflow ? YubaiColor.brandInk : YubaiColor.label)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-            }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
     }
 }

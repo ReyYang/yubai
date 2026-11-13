@@ -75,7 +75,7 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (galleryScripts.contains(name) || billGalleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
+              (home47Scripts.contains(name) || galleryScripts.contains(name) || billGalleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
@@ -103,6 +103,12 @@ enum UITestSupport {
         }
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
         let now = Date()
+        if home47Scripts.contains(script) {
+            let value = try home47Ledger(script, now: now)
+            resetGalleryDeviceState(for: value.id)
+            try save(value, reason: "合成主页夹具")
+            return
+        }
         if billGalleryScripts.contains(script) {
             let value = try billGalleryLedger(script, now: now)
             resetGalleryDeviceState(for: value.id)
@@ -227,9 +233,10 @@ enum UITestSupport {
                 plan.accountID = account.id; plan.installments = 7; ledger.plans = [plan]
             }
         }
+        if !script.hasPrefix("bills") { seedKnownHomeBudget(&ledger, now: now) }
         try save(ledger, reason: "合成测试夹具")
     }
-    /// 现在页各状态。手上的钱、每月存、固定存款和账单照画板：还能花 = 手上 − 存着不动 5,000 − 每月存 2,000 − 固定账单还要付。
+    /// 现在页各状态。手上的钱、每月存、固定存款和账单照画板：还能花 = 手上 − 存下的钱 5,000 − 每月存 2,000 − 固定账单还要付。
     static func v45Ledger(_ script: String, now: Date) throws -> Ledger {
         if ["v45-category", "v45-payback", "v45-split"].contains(script) { return try v45SecondBatchLedger(script, now: now) }
         if ["v45-share", "v45-bill-match", "v45-entry-history", "v45-ask"].contains(script) {

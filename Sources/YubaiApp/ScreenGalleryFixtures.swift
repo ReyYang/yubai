@@ -66,7 +66,12 @@ extension UITestSupport {
         ledger.lastReflectionWeek = ButlerCards.isoWeek(today)
         ledger.lastSubcategoryBatchDay = Dates.text(today)
         ledger.cycleAnchor = .calendarMonth
-        if script == "gallery-empty" { try ledger.validate(); return ledger }
+        if script == "gallery-empty" {
+            var account = Account(name: "现金", kind: .cash, balance: 0, at: today); account.id = galleryID(10); ledger.accounts = [account]
+            var old = Entry(date: today, amount: 1, accountID: account.id, title: "合成旧记录", category: "餐饮"); old.deletedAt = now; ledger.entries = [old]
+            FirstUse.deferSalarySetup(&ledger, now: now)
+            try ledger.validate(); return ledger
+        }
         ledger.preferences.lockEnabled = script == "gallery-locked"
         ledger.preferences.cloudAIEnabled = false // No background organization can alter the stress rows.
         let names = ["合成工资卡", galleryLongTitle, galleryLatinTitle, "零钱", "信用卡", "投资账户", "借出待收", "已归档的旧银行卡", "空账户"]
@@ -112,6 +117,7 @@ extension UITestSupport {
         deleted.id = galleryID(204); deleted.deletedAt = today; ledger.entries.append(deleted)
         var refund = Entry(date: today, amount: 1, nature: .refund, accountID: bank, title: "合成退款", category: "购物")
         refund.id = galleryID(205); refund.relatedEntryID = purchase.id; ledger.entries.append(refund)
+        seedKnownHomeBudget(&ledger, now: now)
         ledger.fixedSavings = 10_000_000; ledger.savingRule = .fixed(200_000)
         // Use the real mutator, which validates the withdrawal and combined saving target.
         try Reserve.answerPayback(.purchase(purchase.id), cycles: 3, in: &ledger, now: today)

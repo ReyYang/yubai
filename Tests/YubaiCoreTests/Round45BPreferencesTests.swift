@@ -259,7 +259,7 @@ final class Round45BPreferencesTests: XCTestCase {
     func testAssistantDescriptionUsesRound45WordsAndMoneyValuesAreUnchanged() throws {
         let description = ReadOnlyTool.getFunds.description
         for word in ["每月存", "存着的钱", "这个周期", "日均"] { XCTAssertTrue(description.contains(word), word) }
-        for word in ["要攒", "存着不动", "固定收付"] { XCTAssertFalse(description.contains(word)) }
+        for word in ["要攒", "\u{5b58}\u{7740}\u{4e0d}\u{52a8}", "固定收付"] { XCTAssertFalse(description.contains(word)) }
         let ledger = Round45BFixture.ledger(), funds = Finance.funds(ledger, now: now)
         let result = try ReadOnlyTool.getFunds.run(.object([:]), ToolContext(ledger: ledger, now: now))
         XCTAssertEqual(result["available"], .money(funds.available)); XCTAssertEqual(result["saving_target"], .money(funds.savingTarget))

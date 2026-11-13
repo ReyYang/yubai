@@ -222,7 +222,7 @@ struct FixedFlowEditor: View {
                     }
                     Toggle("金额会变", isOn: Binding(get: { estimated }, set: { value in estimated = value; if value { autoPay = false } })).frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("fixedFlowEstimated")
                     Toggle("到日子自动记一笔", isOn: $autoPay).frame(minHeight: YubaiSize.buttonHeight).disabled(accountID == nil || estimated).accessibilityIdentifier("fixedFlowAutoPay")
-                    if inflow { Toggle("到账放进存着不动", isOn: $intoFixedSavings).frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("fixedFlowIntoFixedSavings") }
+                    if inflow { Toggle("到账放进存下的钱", isOn: $intoFixedSavings).frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("fixedFlowIntoFixedSavings") }
                     Stepper(value: Binding(get: { installments ?? 0 }, set: { installments = $0 == 0 ? nil : $0 }), in: 0...2400) {
                         Text(installments.map { "共 \($0) 期" } ?? "一直")
                     }.frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("fixedFlowInstallments")

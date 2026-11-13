@@ -30,6 +30,7 @@ extension AppStore {
         guard url.scheme?.lowercased() == "yubai", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
         func value(_ name: String) -> String? { parts.queryItems?.first { $0.name == name }?.value }
         switch url.host?.lowercased() {
+        case "saving", "save": openSavingPage()
         case "add":
             let amount = value("amount").flatMap { try? Money.parse($0) }.flatMap { $0 > 0 ? $0 : nil }
             requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: value("category"), amount: amount, purpose: value("purpose"))))

@@ -197,7 +197,7 @@ struct QuickEntryView: View {
         } else if editingEntry != nil {
             ResultBar(label: "改完还能花", value: amount2(previewAvailable, hide: hide), identifier: "entrySavingHint")
         } else if let totals = fixedSavingsTotals {
-            ResultBar(label: "存着不动", value: compact ? amount2(totals.new, hide: hide) : ResultBar.change(totals.current, totals.new, hide: hide),
+            ResultBar(label: "存下的钱", value: compact ? amount2(totals.new, hide: hide) : ResultBar.change(totals.current, totals.new, hide: hide),
                       identifier: "entrySavingHint")
         } else if useReserve {
             let after = Dates.day(date) > Dates.day(store.financialNow) ? reserveTotal : reserveTotal - amountCents
@@ -326,6 +326,7 @@ struct QuickEntryView: View {
         interact()
         if editingEntry != nil { save(); return }
         if wishInHeader { saveWish(); return }
+        store.homeEntrySession = false
         store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports
     }
     @MainActor private func refreshHints() async {
@@ -481,9 +482,7 @@ struct QuickEntryView: View {
         let ids = change.items.compactMap { item -> UUID? in
             guard case .addEntry(let draft) = item else { return nil }; return draft.id
         }
-        store.cancelEntrySaveMotion()
-        store.toast = nil
-        store.entrySaveTrigger &+= 1
+        store.acknowledgeEntryInEditor(ids)
         session.saved(ids, at: Date(), explicitFinish: requiresExplicitFinish)
         showingAdded = false; inlinePanel = .none
         keypad.reset(); purpose = ""; selectedMatchID = nil; suggestion = nil

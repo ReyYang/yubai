@@ -3,7 +3,7 @@ import YubaiCore
 
 // MARK: - 算式里改一项
 
-/// 存着不动 / 每月存 / 手上的钱。一边输一边看到还能花和日均变成多少。
+/// 存下的钱 / 每月存 / 手上的钱。一边输一边看到还能花和日均变成多少。
 struct FormulaEditSheet: View {
     @Environment(AppStore.self) private var store
     let field: FormulaField
@@ -43,7 +43,7 @@ private struct FormulaAmountEditor: View {
         _keypad = State(initialValue: EntryKeypad(amount: sharing ? Int64(percent ?? 20) * 100 : amount))
     }
 
-    private var title: String { field == .fixedSavings ? "存着不动" : "每月存" }
+    private var title: String { field == .fixedSavings ? "存下的钱" : "每月存" }
     private var value: Int64 { keypad.amount ?? 0 }
     private var percent: Int { Int(value / 100) }
     private var valid: Bool {

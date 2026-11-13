@@ -16,14 +16,14 @@ struct ReserveView: View {
             ReservePaybackProgressList(identifier: "reservePaybackProgress")
         }.amountPrivacy(hide).navigationTitle("存取记录").yubaiNavigation().accessibilityIdentifier("reservePage")
             .sheet(isPresented: $editing) {
-                AmountEntrySheet(title: "存着不动", keypad: $keypad, primaryTitle: "好", primaryIdentifier: "saveReserveTotal",
+                AmountEntrySheet(title: "存下的钱", keypad: $keypad, primaryTitle: "好", primaryIdentifier: "saveReserveTotal",
                                  canSave: keypad.amount != nil, save: saveTotal)
                     .environment(store).yubaiSheetBackground().presentationDragIndicator(.visible)
             }
     }
     private var hero: some View {
         VStack(spacing: YubaiSpace.space4) {
-            Text("存着不动").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+            Text("存下的钱").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             HStack(spacing: YubaiSpace.gapGroup) {
                 AmountLabel(cents: overview.total, hide: hide, role: .hero).accessibilityIdentifier("reserveTotal")
                 Button {

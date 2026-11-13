@@ -171,7 +171,7 @@ public enum ManualBookkeeping {
         var projected = ledger
         if let original, let index = projected.entries.firstIndex(where: { $0.id == original.id }) { projected.entries[index] = entry }
         else { projected.entries.append(entry) }
-        guard projected.fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存着不动的总额超出范围。") }
+        guard projected.fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存下的钱的总额超出范围。") }
     }
     private static func available(removing original: Entry?, adding entry: Entry, in ledger: Ledger, now: Date) -> Int64 {
         let base = Finance.funds(ledger, now: now)

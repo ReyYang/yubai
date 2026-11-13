@@ -808,6 +808,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     /// nil preserves the automatic schedule used by existing ledgers.
     public var cycleAnchor: CycleAnchor? { didSet { calculations = LedgerCalculations() } }
     public var paydayConfirmSince: Date? { didSet { calculations = LedgerCalculations() } }
+    public var salarySetupDeferral: SalarySetupDeferral? { didSet { calculations = LedgerCalculations() } }
     public var cycleCovers: [CycleCover] = [] { didSet { calculations = LedgerCalculations() } }
     public var reserveAdjustments: [ReserveAdjustment] = [] { didSet { calculations = LedgerCalculations() } }
     public var reservePaybacks: [ReservePayback]? { didSet { calculations = LedgerCalculations() } }
@@ -886,7 +887,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case butlerSavings, butlerAnswers
+        case butlerSavings, butlerAnswers, salarySetupDeferral
         case reservePaybacks, repeatPreferences, paydayConfirmSince, cycleCovers, reserveAdjustments, cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
     private enum LegacyKeys: String, CodingKey { case advice }
@@ -933,6 +934,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         partCarryCycleStart = try c.decodeIfPresent(Date.self, forKey: .partCarryCycleStart)
         cycleAnchor = try c.decodeIfPresent(CycleAnchor.self, forKey: .cycleAnchor)
         paydayConfirmSince = try c.decodeIfPresent(Date.self, forKey: .paydayConfirmSince)
+        salarySetupDeferral = try c.decodeIfPresent(SalarySetupDeferral.self, forKey: .salarySetupDeferral)
         cycleCovers = try c.decodeIfPresent([CycleCover].self, forKey: .cycleCovers) ?? []
         reserveAdjustments = try c.decodeIfPresent([ReserveAdjustment].self, forKey: .reserveAdjustments) ?? []
         reservePaybacks = try c.decodeIfPresent([ReservePayback].self, forKey: .reservePaybacks)
@@ -997,6 +999,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encodeIfPresent(partCarryCycleStart, forKey: .partCarryCycleStart)
         try c.encodeIfPresent(cycleAnchor, forKey: .cycleAnchor)
         try c.encodeIfPresent(paydayConfirmSince, forKey: .paydayConfirmSince)
+        try c.encodeIfPresent(salarySetupDeferral, forKey: .salarySetupDeferral)
         if !cycleCovers.isEmpty { try c.encode(cycleCovers, forKey: .cycleCovers) }
         if !reserveAdjustments.isEmpty { try c.encode(reserveAdjustments, forKey: .reserveAdjustments) }
         if let reservePaybacks, !reservePaybacks.isEmpty { try c.encode(reservePaybacks, forKey: .reservePaybacks) }
@@ -1045,6 +1048,7 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.partCarryCycleStart == rhs.partCarryCycleStart &&
         lhs.cycleAnchor == rhs.cycleAnchor &&
         lhs.paydayConfirmSince == rhs.paydayConfirmSince &&
+        lhs.salarySetupDeferral == rhs.salarySetupDeferral &&
         lhs.cycleCovers == rhs.cycleCovers &&
         lhs.reserveAdjustments == rhs.reserveAdjustments &&
         lhs.reservePaybacks == rhs.reservePaybacks &&
@@ -1138,6 +1142,7 @@ public struct Ledger: Codable, Equatable, Sendable {
                   (0...Money.limit).contains($0.leftover) && ($0.unspent.map { (0...Money.limit).contains($0) } ?? true) })
         else { throw YubaiError.invalid("攒钱的金额或周期无效。") }
         guard paydayConfirmSince.map(dateValid) ?? true,
+              salarySetupDeferral.map({ dateValid($0.deferredAt) && $0.postedIncomeIDs.count <= 1_000_000 }) ?? true,
               Set(cycleCovers.map(\.id)).count == cycleCovers.count,
               cycleCovers.allSatisfy({ dateValid($0.cycleStart) && dateValid($0.date) && (1...Money.limit).contains($0.amount) }),
               Set(reserveAdjustments.map(\.id)).count == reserveAdjustments.count,
@@ -1194,7 +1199,7 @@ public struct Ledger: Codable, Equatable, Sendable {
             }
         }
         // Include future postings too, so advancing time cannot invalidate a stored total.
-        guard fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存着不动的总额超出范围。") }
+        guard fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存下的钱的总额超出范围。") }
         let refunds = Dictionary(grouping: entries.lazy.filter { $0.deletedAt == nil && $0.nature == .refund && $0.relatedEntryID != nil }, by: { $0.relatedEntryID! })
         if !refunds.isEmpty {
             let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })

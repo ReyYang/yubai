@@ -26,12 +26,12 @@ final class Round46Batch3FlowTests: XCTestCase {
     }
     func testOnlyNowHasGlobalAddAndEveryLedgerDayHasItsOwnAdd() {
         launch()
-        let capsule = element("mainNavigation").frame
+        let capsule = element("navigationCapsule").frame
         XCTAssertTrue(element("addEntry").exists)
-        for tab in ["saving", "ledger", "yubai"] {
+        for tab in ["ledger", "yubai"] {
             tap("tab_" + tab)
             XCTAssertFalse(element("addEntry").exists)
-            XCTAssertEqual(element("mainNavigation").frame.width, capsule.width, accuracy: 1)
+            XCTAssertEqual(element("navigationCapsule").frame, capsule)
         }
         tap("tab_ledger")
         let add = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'addEntryOnDay_' ")).firstMatch
@@ -64,22 +64,22 @@ final class Round46Batch3FlowTests: XCTestCase {
         tap("whereCategoryEntries"); XCTAssertTrue(element("clearLedgerCategory").waitForExistence(timeout: 5))
     }
     func testSaveEmptyStartsAtZeroAndSettingTargetRemovesPrompt() {
-        launch("v46-b3-save-empty"); tap("tab_saving")
+        launch("v46-b3-save-empty"); tap("openSaving")
         XCTAssertTrue(element("reserveTotal").label.contains("0.00")); XCTAssertFalse(element("openWishlist").exists)
         tap("setFirstSavingTarget"); tap("keypad_2"); tap("keypad_0"); tap("keypad_0"); tap("saveSavingsAmount")
         XCTAssertTrue(element("openSavings").waitForExistence(timeout: 5)); XCTAssertFalse(element("savingFirstRule").exists)
         tap("openSavings"); XCTAssertTrue(element("editSavingTarget").waitForExistence(timeout: 5))
     }
     func testCoolingWishKeepOpensAnAmountAndTitlePrefilledEntry() {
-        launch(); tap("tab_saving"); tap("openWishlist"); tap("cooldownKeep")
+        launch(); tap("openSaving"); tap("openWishlist"); tap("cooldownKeep")
         XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
         XCTAssertEqual(element("entryKeypadAmount").value as? String, "1,899.00")
         XCTAssertEqual(element("entryPurpose").value as? String, "降噪耳机")
     }
     func testReservePaybackDeclinePersistsAcrossLaunch() {
-        launch("v46-b3-reserve"); tap("tab_saving"); tap("openReserve"); tap("reservePaybackDecline")
+        launch("v46-b3-reserve"); tap("openSaving"); tap("openReserve"); tap("reservePaybackDecline")
         XCTAssertFalse(element("reservePaybackOffer").exists)
-        app.terminate(); app.launch(); tap("tab_saving"); tap("openReserve")
+        app.terminate(); app.launch(); tap("openSaving"); tap("openReserve")
         XCTAssertFalse(element("reservePaybackOffer").exists)
     }
     func testSpendingAnswerUsesFactsAndOpensItsWhereDestination() {
