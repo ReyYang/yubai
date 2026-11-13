@@ -50,7 +50,8 @@ struct EntryCategoryChips: View {
         return rows
     }
     var body: some View {
-        EntryChipLayout {
+        EntryCategoryLayout { layout in
+            layout {
             ForEach(visible, id: \.self) { name in
                 let suggestedChip = suggestionOnly && selection.category == name
                 let selected = !suggestionOnly && selection.category == name
@@ -72,6 +73,7 @@ struct EntryCategoryChips: View {
                     .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
                     .yubaiHitTarget()
             }.accessibilityIdentifier("entryCategoryMore")
+            }
         }.buttonStyle(PressButtonStyle()).animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
             .sheet(isPresented: $picking) {
                 EntryMoreCategorySheet(income: pickerIncome, selection: selection, suggestionOnly: suggestionOnly,
@@ -411,18 +413,13 @@ struct EditableAmountDisplay: View {
     let selected: Bool
     let identifier: String
     let open: () -> Void
-    @ScaledMetric(relativeTo: .largeTitle) private var amountLineHeight = YubaiFont.entryAmount.lineHeight
     var body: some View {
         Button(action: open) {
             VStack(alignment: .leading, spacing: YubaiSpace.none) {
                 Text(presented ? keypad.expressionText ?? "" : "").yubaiFont(YubaiFont.amount).foregroundStyle(YubaiColor.labelSecondary)
                     .fixedSize(horizontal: false, vertical: true).frame(minHeight: YubaiSpace.space20)
                     .accessibilityIdentifier("entryKeypadExpression").accessibilityHidden(!presented || keypad.expressionText == nil)
-                ViewThatFits(in: .horizontal) {
-                    amountLine
-                    ScrollView(.horizontal, showsIndicators: false) { amountLine }
-                        .frame(height: max(YubaiSize.rowDouble, amountLineHeight))
-                }
+                amountLine
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).foregroundStyle(YubaiColor.label)
             .accessibilityLabel("金额").accessibilityValue(presented ? keypad.resultText : EntryKeypad(amount: (try? Money.parse(amount)) ?? 0).resultText)
@@ -437,9 +434,9 @@ struct EditableAmountDisplay: View {
         HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
             Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
             Text(presented ? keypad.resultText : ((try? Money.parse(amount)).map { EntryKeypad(amount: $0).resultText } ?? "0.00"))
-                .yubaiFont(YubaiFont.entryAmount).fixedSize(horizontal: true, vertical: false)
+                .yubaiFont(YubaiFont.entryAmount).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .lineLimit(1).minimumScaleFactor(0.2).layoutPriority(1)
                 .padding(.horizontal, YubaiSpace.space4)
-                .background(selected ? YubaiColor.brandTint : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             if presented { EntryAmountCursor() }
             Spacer(minLength: YubaiSpace.none)
         }.frame(minHeight: YubaiSize.rowDouble)
@@ -1119,5 +1116,19 @@ struct EntryAddedList: View {
                 }
             }
         }.accessibilityIdentifier("entryAddedList")
+    }
+}
+
+/// Keep category choices to one horizontal row at accessibility sizes.
+private struct EntryCategoryLayout<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    @ViewBuilder let content: (AnyLayout) -> Content
+    var body: some View {
+        if textSize.isAccessibilitySize {
+            ScrollView(.horizontal, showsIndicators: false) {
+                content(AnyLayout(HStackLayout(spacing: YubaiSpace.space8)))
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            }.frame(height: 52).accessibilityIdentifier("entryCategoryStrip")
+        } else { content(AnyLayout(EntryChipLayout())) }
     }
 }

@@ -294,11 +294,7 @@ struct LetterDetailView: View {
     @Environment(AppStore.self) private var store
     let cardID: UUID
     var body: some View {
-        Page(topPadding: YubaiSpace.gapGroup) {
-            if let card = store.cards.first(where: { $0.id == cardID }) { WeeklyLetterCard(card: card) }
-            else { Text("这封周回顾已移除。") }
-        }
-            .navigationTitle("周回顾").yubaiNavigation()
+        WeeklyReviewView()
             .onAppear {
                 if store.cards.first(where: { $0.id == cardID })?.dismissedAt == nil {
                     store.update("读过周回顾", recordUndo: false) { ledger in

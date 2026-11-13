@@ -156,7 +156,7 @@ public enum Reserve {
     }
     public static func suggestedMonthly(_ ledger: Ledger, now: Date) -> (average: Int64, suggestion: Int64)? {
         let cycles = Finance.completedCycles(ledger, now: now, limit: 3)
-        guard !cycles.isEmpty else { return nil }
+        guard cycles.count == 3 else { return nil }
         let total = cycles.reduce(Int64(0)) { total, interval in
             let flow = Finance.cashFlow(ledger, during: interval)
             return total + flow.income - flow.spending

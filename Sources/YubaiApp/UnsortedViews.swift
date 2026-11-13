@@ -669,7 +669,7 @@ struct LetterTriageView: View {
                 }
             }
         }.safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) { bottomBar }
-            .paperBackground().navigationTitle("整理分类").yubaiNavigation().accessibilityIdentifier("letterTriage")
+            .paperBackground().amountPrivacy(store.preferences.hideAmounts).navigationTitle("整理分类").yubaiNavigation().accessibilityIdentifier("letterTriage")
             .toolbar { ToolbarItem(placement: .primaryAction) {
                 Text("\(min(index + 1, total)) / \(total)").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             } }
@@ -696,36 +696,40 @@ struct LetterTriageView: View {
             VStack(spacing: YubaiSpace.space8) {
                 Text(line).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                 AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .display, sign: entry.nature.inflow ? .inflow : .outflow)
-                Text(party(entry)).yubaiFont(YubaiFont.body, weight: .medium).multilineTextAlignment(.center)
+                Text(entry.displayTitle).yubaiFont(YubaiFont.body, weight: .medium).multilineTextAlignment(.center)
                 Button { showsSource.toggle() } label: {
                     Text("看原文").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).yubaiHitTarget()
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("sortSourceToggle")
                     .accessibilityValue(showsSource ? "已展开" : "已收起")
                 if showsSource {
-                    Text(original).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+                    Text(store.preferences.hideAmounts ? "金额已隐藏" : original).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.gapGroup)
                         .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                        .accessibilityLabel("原文：" + original)
+                        .accessibilityLabel(store.preferences.hideAmounts ? "金额已隐藏" : "原文：" + original)
                 }
             }.frame(maxWidth: .infinity)
         }
     }
     @ViewBuilder private func guessBlock(_ entry: Entry) -> some View {
-        if let suggestion {
+        if suggestion != nil {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 sectionLabel("余白猜是")
                 ChipFlow {
-                    CategoryChoiceChip(title: suggestion.category, selected: selection.category == suggestion.category) { choice = suggestion }
-                        .accessibilityIdentifier("sortGuess_" + suggestion.category)
+                    ForEach(guessedNames(entry), id: \.self) { name in
+                        CategoryChoiceChip(title: name, selected: selection.category == name) {
+                            choice = name == suggestion?.category ? suggestion : .init(category: name)
+                        }.accessibilityIdentifier("sortGuess_" + name)
+                    }
                 }
             }
         }
     }
     private func othersBlock(_ entry: Entry) -> some View {
         let income = entry.nature != .refund && entry.nature.inflow
-        let names = store.current.orderedCategories(income: income).map(\.name).filter { $0 != suggestion?.category }
+        let guesses = guessedNames(entry)
+        let names = store.current.orderedCategories(income: income).map(\.name).filter { !guesses.contains($0) }
         var shown = Array(names.prefix(5))
-        if let picked = choice?.category, picked != suggestion?.category, !shown.contains(picked) { shown.insert(picked, at: 0) }
+        if let picked = choice?.category, !guesses.contains(picked), !shown.contains(picked) { shown.insert(picked, at: 0) }
         return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             sectionLabel("别的")
             ChipFlow {
@@ -737,12 +741,17 @@ struct LetterTriageView: View {
             }
         }
     }
+    private func guessedNames(_ entry: Entry) -> [String] {
+        guard let suggestion else { return [] }
+        let available = Set(store.current.orderedCategories(income: entry.nature.categoryIncome).map(\.name))
+        return [suggestion.category] + ["娱乐", "购物"].filter { $0 != suggestion.category && available.contains($0) }
+    }
     private func sectionLabel(_ title: String) -> some View {
         Text(title).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space4)
     }
     private func partyToggle(_ entry: Entry) -> some View {
         Toggle(isOn: $rememberParty) {
-            Text("以后「" + party(entry) + "」都这样分").yubaiFont(YubaiFont.row)
+            Text("以后「" + party(entry) + "」都这样分").yubaiFont(YubaiFont.row).lineLimit(2)
         }.tint(YubaiColor.toggleOn).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.rowDouble)
             .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             .accessibilityIdentifier("sortRememberParty")
@@ -753,6 +762,7 @@ struct LetterTriageView: View {
             HStack(spacing: YubaiSpace.gapGroup) { skipButton.fixedSize(); nextButton(title).frame(maxWidth: .infinity) }
             VStack(spacing: YubaiSpace.space8) { nextButton(title); skipButton }
         }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.space8)
+            .background(YubaiColor.canvas).overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -40) }
     }
     private var skipButton: some View {
         Button("跳过") { advance() }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised))

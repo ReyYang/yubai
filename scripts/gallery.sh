@@ -79,7 +79,7 @@ for manifest in sorted(shots.rglob("manifest.json")):
         name = item.get("suggestedHumanReadableName") or item.get("name") or ""
         name = Path(name).name
         # Xcode may append the file extension to the suggested name.
-        if source.suffix.lower() == ".png" and re.match(r"^(?:\d{2}-|DS-Nav|Quick|Home-|Deck|Payday-Amount|First|Recon|Over-|Big-Home|Spend|Saved|Goal|Butler-Kinds|Words)", name):
+        if source.suffix.lower() == ".png" and re.match(r"^(?:V46-|\d{2}-|DS-Nav|Quick|Home-|Deck|Payday-Amount|First|Recon|Over-|Big-Home|Spend|Saved|Goal|Butler-Kinds|Words)", name):
             name = re.sub(r"\.png$", "", name, flags=re.I)
             destination = shots / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".png")
         elif name.startswith(("missing-", "planned-", "write-errors-")):
@@ -104,6 +104,9 @@ round46 = full.split("    private func round46Batch1(", 1)[1].split("    private
 board_names = re.findall(r'\bstop\("([^"\n]+)"', round46)
 expected = sorted(names + [prefix + name for prefix in ("46-dark-", "46-a11y-") for name in board_names]
                   + [prefix + name for prefix in ("80-a11y-", "90-dark-") for name in small])
+batch3 = full.split("    private func round46Batch3(", 1)[1].split("    private var todayISO:", 1)[0]
+batch3_names = re.findall(r'\bstop\("([^"\n]+)"', batch3)
+expected += [prefix + name for prefix in ("46-b3-dark-", "46-b3-a11y-", "46-b3-hidden-") for name in batch3_names]
 if len(expected) != len(set(expected)):
     raise SystemExit("Gallery stop IDs must be unique")
 if os.environ.get("GALLERY_ONLY"):
@@ -131,3 +134,5 @@ if unmapped:
 print(f"Gallery: {len(pngs)} PNGs in {shots} ({len(missing)} missing stops)")
 sys.exit(0 if pngs and not missing and status == "0" else 1)
 PY
+
+# Batch 3: GALLERY_ONLY="testWalk46Batch3 testWalk46Batch3Dark testWalk46Batch3Large testWalk46Batch3Hidden" scripts/gallery.sh

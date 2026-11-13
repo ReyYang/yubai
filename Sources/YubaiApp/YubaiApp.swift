@@ -40,6 +40,7 @@ enum TabRoute: Hashable {
     case formula, budget, billDetail(UUID), todo, settings, categories, savingRule, reserve, saved
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
     case entryDetail(UUID)
+    case allCategories(DateInterval), categoryBudget(String), savingWish(UUID), askQuestion(String)
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -82,6 +83,7 @@ enum AppSheet: Identifiable {
 
 @MainActor @Observable final class AppStore {
     static let shared = AppStore()
+    var tabRouteRequest: TabRoute?
     private(set) var ledger = Ledger() {
         didSet {
             if oldValue.id != ledger.id {
@@ -1012,6 +1014,11 @@ struct RootView: View {
             .onChange(of: store.sheet?.id) { _, _ in quickMenuShown = false }
             .onChange(of: store.destination) { _, _ in quickMenuShown = false }
             .onChange(of: store.navigationRevision) { _, _ in tabPaths = [:] }
+            .onChange(of: store.tabRouteRequest) { _, route in
+                guard let route else { return }
+                tabPaths[store.destination, default: NavigationPath()].append(route)
+                store.tabRouteRequest = nil
+            }
             .onChange(of: store.butlerFocusID) { _, id in
                 guard id != nil, !store.locked else { return }
                 var path = NavigationPath(); path.append(TabRoute.todo); tabPaths[.now] = path
@@ -1094,6 +1101,10 @@ struct RootView: View {
         case .accounts: AccountsView()
         case .formula: FormulaView()
         case .entryDetail(let id): EntryDetailView(entryID: id)
+        case .allCategories(let interval): AllCategoriesView(interval: interval)
+        case .categoryBudget(let category): BudgetView(initialCategory: category)
+        case .savingWish(let id): WishlistView(focusedWishID: id)
+        case .askQuestion(let text): AskYubaiView(initialText: text, autoSend: true)
         case .budget: BudgetView()
         case .billDetail(let id): BillDetailView(planID: id)
         case .todo: TodoView()
@@ -1115,7 +1126,7 @@ struct RootView: View {
         }
     }
     @ViewBuilder private func weeklyDestination(_ id: UUID?) -> some View {
-        if let id { LetterDetailView(cardID: id) } else { LettersView() }
+        if let id { LetterDetailView(cardID: id) } else { WeeklyReviewView() }
     }
     #endif
     private func tabRoot(_ d: Destination) -> some View {

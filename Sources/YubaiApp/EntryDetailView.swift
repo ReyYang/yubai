@@ -16,10 +16,7 @@ struct EntryDetailView: View {
                 if entry.deletedAt == nil {
                     actions(entry)
                     sourceBlock(entry)
-                    Button(action: delete) {
-                        Text("删掉这一笔").yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.amberInk)
-                            .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("deleteEntryDetail")
+                    Button("删掉这一笔", action: delete).buttonStyle(DestructiveButtonStyle()).accessibilityIdentifier("deleteEntryDetail")
                 } else {
                     Text("已删掉").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                         .accessibilityLabel("这笔记录已删掉，不计入汇总")
@@ -31,7 +28,7 @@ struct EntryDetailView: View {
                     sourceBlock(entry)
                 }
             } else { EmptyState("doc.questionmark", "记录已不存在", action: "返回", onAction: { dismiss() }) }
-        }.navigationTitle("这一笔").yubaiNavigation()
+        }.amountPrivacy(hide).navigationTitle("这一笔").yubaiNavigation().accessibilityIdentifier("entryDetailPage")
             .sheet(isPresented: $splitting, onDismiss: {
                 if store.entriesByID[entryID]?.deletedAt != nil { dismiss() }
             }) {
@@ -53,7 +50,7 @@ struct EntryDetailView: View {
         let repeatable = entry.planID == nil && entry.rentID == nil && entry.nature != .transfer && !entry.isUnitemized
         return Card(style: .list) {
             VStack(spacing: YubaiSpace.none) {
-                row("改这笔", value: nil, identifier: "entryDetailEdit") { store.sheetSource = nil; store.sheet = .editEntry(entry.id) }
+                row("改这一笔", value: nil, identifier: "entryDetailEdit") { store.sheetSource = nil; store.sheet = .editEntry(entry.id) }
                 if entry.isUnitemized && entry.nature == .expense {
                     EntryFormDivider()
                     row("拆成几笔", value: nil, identifier: "entryDetailSplit") { splitting = true }
@@ -73,7 +70,7 @@ struct EntryDetailView: View {
     private func row(_ title: String, value: String?, identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: YubaiSpace.gapGroup) {
-                Text(title).yubaiFont(YubaiFont.body)
+                Text(title).yubaiFont(YubaiFont.body).dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: YubaiSpace.space8)
                 if let value { Text(value).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary) }
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
@@ -89,13 +86,16 @@ struct EntryDetailView: View {
                 Text("银行原文").yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
                     .padding(.horizontal, YubaiSpace.space4)
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                    ForEach(fields.indices, id: \.self) { index in
-                        if !fields[index].value.isEmpty {
-                            Text(fields[index].key + "  " + fields[index].value).frame(maxWidth: .infinity, alignment: .leading)
+                    if hide { Text("金额已隐藏") }
+                    else {
+                        ForEach(fields.indices, id: \.self) { index in
+                            if !fields[index].value.isEmpty {
+                                Text(fields[index].key + "  " + fields[index].value).frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
+                        Text(entry.source + (entry.batchID == nil ? "" : " · 导入")).foregroundStyle(YubaiColor.labelSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Text(entry.source + (entry.batchID == nil ? "" : " · 导入")).foregroundStyle(YubaiColor.labelSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).textSelection(.enabled)
                     .padding(YubaiSpace.gapGroup)
                     .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))

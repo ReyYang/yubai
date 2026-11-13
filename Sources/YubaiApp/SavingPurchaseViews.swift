@@ -113,7 +113,9 @@ struct SavingPurchaseCard: View {
                 Text("余白").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 Text(headline).yubaiFont(YubaiFont.lead).accessibilityIdentifier("purchaseVerdict")
                     .accessibilityLabel(conclusion.label + "，" + headline)
-                numberRow("还能花", from: available, to: availableAfter)
+                NavigationLink { PurchaseDetailsView(purchase: purchase, evidence: evidence) } label: {
+                    numberRow("还能花", from: available, to: availableAfter)
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("answerEvidence")
                 EntryFormDivider()
                 numberRow("存着的钱", from: reserve, to: reserve - purchase.amount)
                 EntryFormDivider()
@@ -122,7 +124,6 @@ struct SavingPurchaseCard: View {
                     HStack(spacing: YubaiSpace.space8) { actions }.fixedSize(horizontal: true, vertical: false)
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) { actions }
                 }.lineLimit(1).padding(.top, YubaiSpace.space8)
-                detailsLink
                 RememberedRows(notes: notes)
             }
         }.sheet(isPresented: $recording) {
@@ -136,12 +137,7 @@ struct SavingPurchaseCard: View {
         }
     }
     private func numberRow(_ title: String, from: Int64, to: Int64) -> some View {
-        let shown = hidden ? "••••" : amount2(from, hide: false) + " → " + amount2(to, hide: false)
-        return HStack(spacing: YubaiSpace.gapGroup) {
-            Text(title).yubaiFont(YubaiFont.row)
-            Spacer(minLength: YubaiSpace.space8)
-            Text(shown).yubaiFont(YubaiFont.amount).foregroundStyle(to < 0 ? YubaiColor.amberInk : YubaiColor.label)
-        }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine).accessibilityLabel(title + "，" + shown)
+        AnswerComparisonRow(title: title, before: from, after: to, hide: hidden)
     }
     @ViewBuilder private var daysRow: some View {
         if let days = equivalentDays {
@@ -151,15 +147,6 @@ struct SavingPurchaseCard: View {
                 Text("\(days) 天").yubaiFont(YubaiFont.amount)
             }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
         }
-    }
-    private var detailsLink: some View {
-        NavigationLink { PurchaseDetailsView(purchase: purchase, evidence: evidence) } label: {
-            HStack(spacing: YubaiSpace.space8) {
-                Text("明细").multilineTextAlignment(.leading)
-                Spacer(minLength: YubaiSpace.none)
-                Image(systemName: "chevron.right")
-            }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("answerEvidence")
     }
     @ViewBuilder private var actions: some View {
         if monthEnough {
@@ -184,7 +171,7 @@ struct SavingPurchaseCard: View {
         let now = Date()
         var addedID: UUID?
         if store.update("加入心愿单", showToast: false, { ledger in
-            addedID = try Wishlist.add(fromVerdict: submitted, title: purchase.title, amount: purchase.amount, category: purchase.category,
+            addedID = try Wishlist.keepConsidered(fromVerdict: submitted, title: purchase.title, amount: purchase.amount, category: purchase.category,
                                      subcategory: purchase.subcategory, in: &ledger, now: now).id
         }) { wishID = addedID }
     }
@@ -219,7 +206,7 @@ private struct PurchaseDetailsView: View {
                 }
             }
             CardRows(evidenceRows) { entry in EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts) }
-        }.navigationTitle("明细").yubaiNavigation()
+        }.navigationTitle("依据").yubaiNavigation()
     }
     private func areaQuotes(_ key: String) -> some View {
         let rows: [JSONValue] = values?[key]?.arrayValue ?? []

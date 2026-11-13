@@ -24,16 +24,16 @@ struct SavingsView: View {
     private var target: Int64 { store.funds.savingTarget }
     private var fixedTarget: Int64 { if case .fixed(let amount) = store.current.savingRule { amount } else { 0 } }
     private var suggestion: (average: Int64, suggestion: Int64)? {
-        guard !sharing, fixedTarget == 0, let value = Reserve.suggestedMonthly(store.current, now: Date()), value.suggestion > 0 else { return nil }
+        guard !sharing, let value = Reserve.suggestedMonthly(store.current, now: Date()), value.suggestion > 0, value.suggestion != fixedTarget else { return nil }
         return value
     }
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
             hero
             howCard
-            ReservePaybackProgressList(identifier: "monthlyPaybackProgress")
+            if let suggestion { suggestionChip(suggestion) }
+            if !sharing { fixedSavingsRow }
             if !directIncome.isEmpty { directSection }
-            if !history.isEmpty { historySection }
         }
             .amountPrivacy(hide)
             .navigationTitle("每月存").yubaiNavigation().accessibilityIdentifier("savingsPage")
@@ -52,21 +52,32 @@ struct SavingsView: View {
             .sheet(isPresented: $addingPayday) { PaydaySetupSheet().environment(store).yubaiSheetBackground() }
     }
 
-    // MARK: 存着不动
+    // MARK: 每月存
     private var hero: some View {
-        VStack(spacing: YubaiSpace.space4) {
-            Text("存着不动").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+        VStack(alignment: sharing ? .center : .leading, spacing: YubaiSpace.space4) {
+            Text(sharing ? "存着不动" : "每月存").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             HStack(spacing: YubaiSpace.gapGroup) {
-                AmountLabel(cents: fixed, hide: hide, role: .hero)
-                Button { editing = .fixed } label: {
+                AmountLabel(cents: sharing ? fixed : fixedTarget, hide: hide, role: .hero)
+                Button { editing = sharing ? .fixed : .target } label: {
                     Image(systemName: "pencil").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
-                        .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).controlSurface(in: Circle()).yubaiHitTarget()
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel("修改存着不动").accessibilityIdentifier("editFixedSavings")
+                        .frame(width: 40, height: 40).controlSurface(in: Circle()).yubaiHitTarget()
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel(sharing ? "修改存着不动" : "修改每月存")
+                    .accessibilityIdentifier(sharing ? "editFixedSavings" : "editSavingTarget")
             }
-            if target > 0 || store.reserve.setAside > 0 {
-                Text("这个月已存进 " + amount2(store.reserve.setAside, hide: hide)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+            Text("这个月已存进 " + amount2(store.reserve.setAside, hide: hide)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+        }.frame(maxWidth: .infinity, alignment: sharing ? .center : .leading)
+    }
+    private var fixedSavingsRow: some View {
+        Button { editing = .fixed } label: {
+            Card(style: .list) {
+                EntryFormRow(title: "存着不动") {
+                    HStack(spacing: 8) {
+                        AmountLabel(cents: fixed, hide: hide, role: .small, ink: YubaiColor.labelSecondary)
+                        Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                    }
+                }
             }
-        }.frame(maxWidth: .infinity)
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("editFixedSavings")
     }
 
     // MARK: 怎么存
@@ -75,10 +86,12 @@ struct SavingsView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 Text("怎么存").yubaiFont(YubaiFont.rowTitle)
                 SegmentedWide(choices: [(false, "固定金额"), (true, "每笔进账留几成")], selection: Binding(get: { sharing }, set: { value in
-                    store.update("存钱") { $0.switchSavingMode(sharing: value) }
+                    store.update("存钱") { ledger in
+                        ledger.switchSavingMode(sharing: value)
+                        if value { ledger.cycleAnchor = .calendarMonth }
+                    }
                 }), identifier: { $0 ? "savingMode_share" : "savingMode_fixed" }).accessibilityIdentifier("savingMode")
-                EntryFormDivider()
-                if sharing { shareChoices } else { fixedTargetRow }
+                if sharing { EntryFormDivider(); shareChoices }
                 if paybackTarget > 0 {
                     EntryFormDivider()
                     EntryFormRow(title: "补回来") {
@@ -93,38 +106,23 @@ struct SavingsView: View {
         }
     }
     private var paybackTarget: Int64 { store.paybackProgress.reduce(0) { $0 + $1.thisCycle } }
-    private var fixedTargetRow: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { targetTitle.fixedSize(); Spacer(minLength: 8); amountButton(fixedTarget).fixedSize() }
-                VStack(alignment: .leading, spacing: 8) { targetTitle; amountButton(fixedTarget) }
-            }
-            if let suggestion { suggestionChip(suggestion) }
-        }
-    }
-    private var targetTitle: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-            Text("每月存").yubaiFont(YubaiFont.row)
-            if fixedTarget > 0 && store.funds.cycleIsPayday { Text("发工资那天先留出").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-        }
-    }
-    private func amountButton(_ value: Int64) -> some View {
-        Button { editing = .target } label: {
-            AmountLabel(cents: value, hide: hide, role: .summary)
-                .padding(.horizontal, 12).frame(minHeight: YubaiSize.tapMin - 8).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: 12))
-                .frame(minHeight: YubaiSize.tapMin)
-        }.buttonStyle(PressButtonStyle()).accessibilityLabel("修改每月存").accessibilityIdentifier("editSavingTarget")
-    }
     private func suggestionChip(_ value: (average: Int64, suggestion: Int64)) -> some View {
-        let text = "前三个月平均结余 " + amount2(value.average, hide: hide) + " · 每月存 " + amount2(value.suggestion, hide: hide)
-        return Button {
-            store.update("存钱") { $0.savingRule = .fixed(value.suggestion) }
-        } label: {
-            Text(text).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).multilineTextAlignment(.leading)
-                .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
-                .frame(minHeight: YubaiSize.tapMin, alignment: .leading)
-                .background(YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("suggestedMonthlySaving")
+        Card(style: .compact) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { suggestionTitle(value); Spacer(minLength: 8); suggestionButton(value.suggestion) }
+                VStack(alignment: .leading, spacing: 8) { suggestionTitle(value); suggestionButton(value.suggestion) }
+            }
+        }.accessibilityIdentifier("suggestedMonthlySaving")
+    }
+    private func suggestionTitle(_ value: (average: Int64, suggestion: Int64)) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("改成每月存 " + amount2(value.suggestion, hide: hide)).yubaiFont(YubaiFont.row)
+            Text("前三个月平均每月剩 " + amount2(value.average, hide: hide)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+        }
+    }
+    private func suggestionButton(_ amount: Int64) -> some View {
+        Button("用这个") { store.update("每月存") { $0.savingRule = .fixed(amount) } }
+            .buttonStyle(PressButtonStyle()).foregroundStyle(YubaiColor.brandInk).yubaiHitTarget().accessibilityIdentifier("useSuggestedMonthlySaving")
     }
     private var shareChoices: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
@@ -166,7 +164,7 @@ struct SavingsView: View {
     }
     private func directIncomeTitle(_ entry: Entry) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(entry.displayTitle).yubaiFont(YubaiFont.row)
+            Text(entry.displayTitle).yubaiFont(YubaiFont.row).lineLimit(1)
             Text(FixedFlowPresentation.monthDay(entry.date) + " · " + store.accountName(entry.accountID))
                 .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -207,7 +205,7 @@ struct SavingsView: View {
     }
 }
 
-private enum SavingsAmountField: String, Identifiable { case fixed, target, share, salary; var id: String { rawValue } }
+enum SavingsAmountField: String, Identifiable { case fixed, target, share, salary; var id: String { rawValue } }
 private struct SavingsChoiceStyle: ButtonStyle {
     var selected: Bool
     func makeBody(configuration: Configuration) -> some View {
@@ -219,7 +217,7 @@ private struct SavingsChoiceStyle: ButtonStyle {
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
-private struct SavingsAmountEditor: View {
+struct SavingsAmountEditor: View {
     @Environment(\.dismiss) private var dismiss
     let field: SavingsAmountField
     let save: (Int64) -> Bool
@@ -234,14 +232,10 @@ private struct SavingsAmountEditor: View {
         return field == .share ? value % 100 == 0 && (100...9000).contains(value) : field == .salary ? value > 0 : value >= 0
     }
     var body: some View {
-        VStack(spacing: 16) {
-            LedgerSheetHeader(title: title, done: { dismiss() }).padding(.horizontal, 20)
-            Text(keypad.resultText + (field == .share ? "%" : "")).yubaiFont(YubaiFont.amountInput).padding(.horizontal, 20)
-            AmountKeypad(keypad: $keypad, amountSelected: $selected, canSave: valid, primaryTitle: "完成", primaryIdentifier: "saveSavingsAmount", save: {
-                guard valid, let value = keypad.resolve() else { return }
-                if save(value) { dismiss() }
-            })
-        }.presentationDetents([.height(440 + YubaiSpace.sheetHeaderTop)])
+        AmountEntrySheet(title: title, keypad: $keypad, primaryTitle: "好", primaryIdentifier: "saveSavingsAmount", canSave: valid, save: {
+            guard valid, let value = keypad.resolve() else { return }
+            if save(value) { dismiss() }
+        }).presentationDetents([.height(440 + YubaiSpace.sheetHeaderTop), .large])
     }
 }
 

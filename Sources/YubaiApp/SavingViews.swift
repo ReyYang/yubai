@@ -55,7 +55,7 @@ struct ProfileChatEntry: View {
 struct SavingsHeader: View {
     @Environment(AppStore.self) private var store
     var body: some View {
-        let increase = store.savingsTotals.month
+        let increase = SavingInsights.wishSavings(store.current, now: store.financialNow).month
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text("没买，省下的").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             ViewThatFits(in: .horizontal) {
@@ -66,7 +66,7 @@ struct SavingsHeader: View {
     }
     private func numbers(_ increase: Int64) -> some View {
         Group {
-            AmountLabel(cents: store.savingsTotals.total, hide: store.preferences.hideAmounts, role: .input)
+            AmountLabel(cents: SavingInsights.wishSavings(store.current, now: store.financialNow).total, hide: store.preferences.hideAmounts, role: .input)
             if !store.preferences.hideAmounts {
                 Text("这个月 +" + AmountLabel.text(increase)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
             }
@@ -82,15 +82,20 @@ struct WishlistCooldownCards: View {
             return store.current.wishlist.first { $0.id == id }
         }
     }
+    @State private var recording: WishItem?
     var body: some View {
-        ForEach(wishes) { wish in CooldownWishCard(wish: wish) }
+        ForEach(wishes) { wish in CooldownWishCard(wish: wish, record: { recording = $0 }) }
+            .sheet(item: $recording) { wish in
+                NavigationStack { QuickEntryView(prefill: QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title)) }
+                    .environment(store).appErrors().yubaiSheetBackground()
+            }
     }
 }
 
 private struct CooldownWishCard: View {
     @Environment(AppStore.self) private var store
     let wish: WishItem
-    @State private var recording = false
+    let record: (WishItem) -> Void
     private var question: String {
         let amount: String = store.preferences.hideAmounts ? "" : " " + Money.text(wish.amount, currency: false)
         return wish.title + amount + "，还想要吗？"
@@ -107,10 +112,6 @@ private struct CooldownWishCard: View {
                 actions
             }
         }.accessibilityIdentifier("cooldownWish_" + wish.id.uuidString)
-            .sheet(isPresented: $recording) {
-                NavigationStack { QuickEntryView(prefill: QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title)) }
-                    .environment(store).appErrors().yubaiSheetBackground()
-            }
     }
     private var heading: some View {
         HStack(spacing: YubaiSpace.space8) {
@@ -120,8 +121,14 @@ private struct CooldownWishCard: View {
         }
     }
     private var actions: some View {
-        HStack(spacing: YubaiSpace.space8) {
-            Button("还想要") { if answer(.keep) { recording = true } }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.space8) { cooldownButtons }
+            VStack(spacing: YubaiSpace.space8) { cooldownButtons }
+        }
+    }
+    private var cooldownButtons: some View {
+        Group {
+            Button("还想要") { if answer(.keep) { record(wish) } }
                 .buttonStyle(PrimaryButtonStyle(compact: true)).frame(maxWidth: .infinity).accessibilityIdentifier("cooldownKeep")
             Button("不要了") { answer(.drop) }
                 .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).frame(maxWidth: .infinity).accessibilityIdentifier("cooldownDrop")
@@ -174,12 +181,15 @@ struct LetterSubscriptionCard: View {
     @State private var answered: [String: SubscriptionAnswer] = [:]
     private var currentCandidates: [SubscriptionCandidate] { store.subscriptionCandidates }
     var body: some View {
-        Card(style: .list) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text("这些还在用吗？").yubaiFont(YubaiFont.heroLabel).padding(.vertical, YubaiSpace.gapGroup)
-                ForEach(candidates) { candidate in
-                    EntryFormDivider()
-                    subscriptionRow(candidate)
+        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+            Text("这些还在用吗？").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                .padding(.horizontal, YubaiSpace.space4)
+            Card(style: .list) {
+                VStack(spacing: 0) {
+                    ForEach(candidates) { candidate in
+                        subscriptionRow(candidate)
+                        if candidate.id != candidates.last?.id { EntryFormDivider() }
+                    }
                 }
             }
         }.accessibilityIdentifier("letterSubscriptions")
@@ -191,21 +201,30 @@ struct LetterSubscriptionCard: View {
         }.padding(.vertical, YubaiSpace.gapGroup)
     }
     private func subscriptionHeading(_ candidate: SubscriptionCandidate) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text(candidate.title).yubaiFont(YubaiFont.rowTitle)
+                Text(candidate.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
                 Text(schedule(candidate)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
             AmountLabel(cents: candidate.amount, hide: store.preferences.hideAmounts)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(candidate.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+                Text(schedule(candidate)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                AmountLabel(cents: candidate.amount, hide: store.preferences.hideAmounts)
+            }
         }
     }
     @ViewBuilder private func subscriptionActions(_ candidate: SubscriptionCandidate) -> some View {
         if let status = status(candidate) {
             Text(status).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
         } else {
-            HStack(spacing: YubaiSpace.space8) {
+            ChipFlow {
                 Button("还在用") { answer(candidate, .stillUsing) }
+                    .accessibilityIdentifier("keepWeeklySubscription_" + candidate.id)
                 Button("停掉") { answer(candidate, .stop) }
+                    .accessibilityIdentifier("stopWeeklySubscription_" + candidate.id)
             }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
         }
     }

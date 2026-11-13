@@ -165,7 +165,7 @@ public enum SpendingParts {
 extension SpendingParts {
     public static func proposal(ledger: Ledger, now: Date) -> [SpendingPart] {
         let cycles = Finance.completedCycles(ledger, now: now, limit: 3)
-        guard !cycles.isEmpty else { return [] }
+        guard cycles.count == 3 else { return [] }
         let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         let from = cycles.last!.start, to = cycles.first!.end
         var totals: [String: Int64] = [:]

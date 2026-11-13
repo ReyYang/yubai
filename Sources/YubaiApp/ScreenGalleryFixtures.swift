@@ -23,10 +23,12 @@ extension UITestSupport {
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("yubai.snooze." + ledgerID.uuidString + ".") {
             defaults.removeObject(forKey: key)
         }
+        seedBatch3Questions(for: ledgerID)
     }
     /// Exercise the real get_profile -> propose_entry -> user confirmation flow offline.
     /// Accounts and amounts come from the real tool response, never invented aliases.
     static func galleryReply(_ request: ChatRequest, script: String) throws -> ChatMessage? {
+        if let reply = try batch3Reply(request, script: script) { return reply }
         guard script == "gallery", let lastUser = request.messages.lastIndex(where: { $0.role == .user }),
               request.messages[lastUser].content?.contains("合成午饭 28 元") == true else { return nil }
         let turn = request.messages.suffix(from: lastUser)
@@ -217,8 +219,9 @@ extension UITestSupport {
 
 #if DEBUG && targetEnvironment(simulator)
 extension UITestSupport {
-    static let v46Scripts: Set<String> = ["v46-sort", "v46-home", "v46-quiet", "v46-bill", "v46-gap", "v46-over", "v46-payday", "v46-leftover", "v46-empty", "v46-hard", "v46-big", "v46-busy", "v46-deck", "v46-saved", "v46-spend"]
+    static let v46Scripts: Set<String> = Set(["v46-sort", "v46-home", "v46-quiet", "v46-bill", "v46-gap", "v46-over", "v46-payday", "v46-leftover", "v46-empty", "v46-hard", "v46-big", "v46-busy", "v46-deck", "v46-saved", "v46-spend"]).union(batch3Scripts)
     static func v46Ledger(_ script: String, now: Date) throws -> Ledger {
+        if batch3Scripts.contains(script) { return try batch3Ledger(script, now: now) }
         let today = Dates.day(now)
         if script == "v46-empty" {
             var empty = Ledger(); empty.id = galleryID(4600)

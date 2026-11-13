@@ -1639,6 +1639,14 @@ struct EmptyState: View {
         self.icon = icon; self.title = title; self.message = message; self.showsPlaceholder = showsPlaceholder; self.action = action; self.onAction = onAction
     }
     var body: some View {
+        if icon.isEmpty {
+            VStack(spacing: YubaiSpace.gapSection) {
+                Text(title).yubaiFont(YubaiFont.lead).multilineTextAlignment(.center)
+                if let action, let onAction {
+                    Button(action, action: onAction).buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("emptyLedgerAdd")
+                }
+            }.frame(maxWidth: .infinity).padding(.top, YubaiSpace.emptyTop)
+        } else {
         Card(style: .compact) {
             VStack(spacing: YubaiSpace.gapGroup) {
                 Image(systemName: icon).font(.system(size: 22)).foregroundStyle(YubaiColor.labelMuted)
@@ -1652,6 +1660,7 @@ struct EmptyState: View {
                     }.buttonStyle(PressButtonStyle())
                 }
             }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
+        }
         }
     }
 }
@@ -2342,8 +2351,8 @@ struct AmountEntrySheet<Accessory: View>: View {
             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                 Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
                 Text(keypad.resultText).yubaiFont(YubaiFont.entryAmount)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.2).layoutPriority(1)
                     .padding(.horizontal, 6)
-                    .background(selected ? YubaiColor.brandTint : Color.clear, in: RoundedRectangle(cornerRadius: 10))
                 EntryAmountCursor()
                 Spacer(minLength: YubaiSpace.none)
             }.frame(minHeight: YubaiSize.rowDouble)
@@ -2400,7 +2409,8 @@ struct SegmentedWide<Value: Hashable>: View {
     @Binding var selection: Value
     var identifier: ((Value) -> String)? = nil
     var body: some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
+        let stacks = textSize.isAccessibilitySize && choices.contains { $0.1.count > 3 }
+        let layout = stacks ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
         layout {
             ForEach(choices.indices, id: \.self) { index in segment(choices[index].0, title: choices[index].1) }
         }.padding(YubaiSpace.space4)
@@ -2411,6 +2421,7 @@ struct SegmentedWide<Value: Hashable>: View {
         let on = selection == value
         return Button { selection = value } label: {
             Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge).lineLimit(1).minimumScaleFactor(0.7)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin - YubaiSpace.space4)
                 .background { if on { selectedSurface } }
@@ -2506,5 +2517,50 @@ struct ManualSheetHeader: View {
                 VStack(spacing: 8) { cancelButton; actionButton }
             }
         }
+    }
+}
+
+// MARK: - Round 46 ledger and values controls
+
+/// Form text follows the same row layout as amounts and account controls.
+struct CardTextFieldRow: View {
+    let title: String
+    @Binding var text: String
+    var placeholder = ""
+    var identifier = ""
+    var multiline = false
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.gapGroup) {
+                if !title.isEmpty { Text(title).yubaiFont(YubaiFont.row).fixedSize() }
+                field.multilineTextAlignment(title.isEmpty ? .leading : .trailing)
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                if !title.isEmpty { Text(title).yubaiFont(YubaiFont.row) }
+                field
+            }
+        }.padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.rowSingle)
+    }
+    private var field: some View {
+        TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal)
+            .yubaiFont(YubaiFont.row).lineLimit(multiline ? 1...6 : 1...1)
+            .accessibilityLabel(title.isEmpty ? placeholder : title).accessibilityIdentifier(identifier)
+    }
+}
+
+/// A row icon describes its category; an unknown category is a neutral dot.
+struct LedgerCategoryIcon: View {
+    @Environment(AppStore.self) private var store
+    let category: String
+    var pending = false
+    var body: some View {
+        Group {
+            if pending { Circle().fill(YubaiColor.labelSecondary).frame(width: 6, height: 6) }
+            else {
+                let name = category.components(separatedBy: " · ").first ?? category
+                Image(systemName: store.current.categories.first { $0.name == name }?.symbol ?? "square.grid.2x2")
+                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+            }
+        }.accessibilityHidden(true)
     }
 }

@@ -12,6 +12,7 @@ extension YubaiFont {
 
 /// 现在 · 预算：想管住某一类花销时只给那几类设数，其余都在「没分的」里。分类预算是个打算，不是红线。
 struct BudgetView: View {
+    var initialCategory: String? = nil
     @Environment(AppStore.self) private var store
     @State private var adding = false
     @State private var newName = ""
@@ -20,6 +21,8 @@ struct BudgetView: View {
     @State private var keypad = EntryKeypad()
     @State private var proposal: [SpendingPart]?
     @State private var manual = false
+    @State private var openedCategory = false
+    @State private var addedPart: SpendingPart?
     private var budget: Int64 { store.pace?.budget ?? store.funds.available }
 
     var body: some View {
@@ -29,13 +32,16 @@ struct BudgetView: View {
             if parts.isEmpty && !manual && !suggested.isEmpty { proposalContent(suggested) } else { regularContent }
         }.amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("spendingPartsPage")
             .navigationTitle("预算").yubaiNavigation()
-            .alert("加一项", isPresented: $adding) {
-                TextField("", text: $newName).accessibilityLabel("名字")
-                Button("取消", role: .cancel) {}
-                Button("好", action: addPart).disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newName.count > 100)
-            }
+            .sheet(isPresented: $adding, onDismiss: { categoryPart = addedPart; addedPart = nil }) { newPartSheet }
             .sheet(item: $categoryPart) { part in categorySheet(part) }
             .sheet(item: $amountPart) { part in amountSheet(part) }
+            .onAppear {
+                guard !openedCategory, let category = initialCategory else { return }
+                openedCategory = true; manual = true
+                let part = store.current.spendingParts.first { $0.categories.contains(category) }
+                    ?? SpendingPart(name: Classification.displayCategory(category), amount: 0, categories: [category])
+                keypad = EntryKeypad(amount: part.amount ?? 0); amountPart = part
+            }
             .task(id: store.ledgerRevision) {
                 guard store.current.spendingParts.isEmpty else { proposal = nil; return }
                 let ledger = store.current
@@ -80,7 +86,7 @@ struct BudgetView: View {
     }
     private func partTitle(_ part: SpendingPart) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-            Text(part.name).yubaiFont(YubaiFont.rowTitle)
+            Text(part.name).yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail)
             Text(part.categories.map { Classification.displayCategory($0) }.joined(separator: "、")).yubaiFont(YubaiFont.meta)
                 .foregroundStyle(YubaiColor.labelSecondary)
         }
@@ -89,7 +95,7 @@ struct BudgetView: View {
         HStack(spacing: YubaiSpace.gapGroup) {
             Text("没分的").yubaiFont(YubaiFont.row)
             Spacer(minLength: YubaiSpace.space8)
-            Text((over ? "多 " : "剩 ") + text).yubaiFont(YubaiFont.amountSummary).fixedSize(horizontal: true, vertical: false)
+            Text((over ? "多 " : "剩 ") + text).yubaiFont(YubaiFont.amountSummary).lineLimit(1).minimumScaleFactor(0.4)
         }.foregroundStyle(YubaiColor.labelSecondary).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
     }
     private func accept(_ suggested: [SpendingPart]) {
@@ -197,7 +203,11 @@ struct BudgetView: View {
     private func amountSheet(_ part: SpendingPart) -> some View {
         AmountEntrySheet(title: part.name, keypad: $keypad, primaryTitle: "好", canSave: keypad.amount != nil, save: {
             guard let cents = keypad.resolve() else { return }
-            update(part) { $0.amount = cents }
+            store.update("预算") { ledger in
+                if let index = ledger.spendingParts.firstIndex(where: { $0.id == part.id }) { ledger.spendingParts[index].amount = cents }
+                else { var added = part; added.amount = cents; ledger.spendingParts.append(added) }
+                ledger.partsMode = .amount
+            }
             amountPart = nil
         }).presentationDragIndicator(.visible).yubaiSheetBackground()
             #if os(iOS)
@@ -219,11 +229,19 @@ struct BudgetView: View {
     }
 
     // MARK: 改动
+    private var newPartSheet: some View {
+        NavigationStack {
+            Page(topPadding: YubaiSpace.space8) {
+                Card(style: .list) { CardTextFieldRow(title: "名字", text: $newName, identifier: "budgetPartName") }
+            }.manualSheetHeader("加一项", actionTitle: "好", enabled: !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && newName.count <= 100,
+                                actionIdentifier: "saveBudgetPart", cancel: { adding = false }, action: addPart)
+        }.environment(store).yubaiSheetBackground().presentationDetents([.medium, .large])
+    }
     private func addPart() {
         let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         let part = SpendingPart(name: name, amount: 0)
-        if store.update("预算", showToast: false, { $0.spendingParts.append(part) }) { categoryPart = part }
+        if store.update("预算", showToast: false, { $0.spendingParts.append(part) }) { addedPart = part; adding = false }
     }
     private func update(_ part: SpendingPart, _ edit: (inout SpendingPart) -> Void) {
         store.update("预算", showToast: false) { ledger in

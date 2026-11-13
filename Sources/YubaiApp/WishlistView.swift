@@ -13,21 +13,12 @@ struct WishlistView: View {
             WishlistCooldownCards()
             let focused = store.current.wishlist.first { $0.id == focusedWishID }
             let due = store.current.wishlist.filter { $0.id != focusedWishID && followUpVisible($0) }
-            let thinking = store.current.wishlist.filter { $0.status == .thinking && $0.id != focusedWishID }.sorted { $0.createdAt > $1.createdAt }
+            let thinking = store.current.wishlist.filter { $0.status == .thinking && $0.coolUntil.map { $0 <= now } != true && $0.id != focusedWishID }.sorted { $0.createdAt > $1.createdAt }
             let regrets = store.current.wishlist.filter { $0.followUpAnswer?.hasPrefix(FollowUpChoice.regret.rawValue) == true }
             if focused == nil && due.isEmpty && thinking.isEmpty && regrets.isEmpty {
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        ForEach(0..<2) { index in
-                            if index > 0 { EntryFormDivider() }
-                            HStack(spacing: YubaiSpace.gapSection) { DashedPlaceholder(); Spacer(); DashedPlaceholder().frame(width: YubaiSize.rowSingle) }
-                                .frame(minHeight: YubaiSize.rowDouble)
-                        }
-                    }
-                }.accessibilityHidden(true)
                 EmptyState("heart", "心愿单还是空的", showsPlaceholder: false, action: "该不该买", onAction: { store.sheet = .ask("该不该买？") })
             }
-            if let focused { wishRow(focused) }
+            if let focused, focused.coolUntil.map({ $0 <= now }) != true { wishRow(focused) }
             ForEach(due) { wish in
                 followUpCard(wish)
             }
@@ -49,7 +40,7 @@ struct WishlistView: View {
                         .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
-        }.navigationTitle("心愿单").yubaiNavigation().accessibilityIdentifier("wishlistPage").task(id: store.ledgerRevision) { now = Date() }
+        }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("心愿单").yubaiNavigation().accessibilityIdentifier("wishlistPage").task(id: store.ledgerRevision) { now = Date() }
             .onChange(of: phase) { _, value in if value == .active { now = Date() } }
     }
     private func followUpCard(_ wish: WishItem) -> some View {
@@ -87,7 +78,6 @@ struct WishlistView: View {
                     .accessibilityIdentifier("wishWait_" + wish.id.uuidString)
                     .accessibilityValue(wish.coolUntil.map { "等待 \(Int(($0.timeIntervalSince(wish.createdAt) / 3600).rounded())) 小时" } ?? "")
             }
-            if !wish.judgment.isEmpty { Text(store.preferences.hideAmounts ? "金额已隐藏。" : wish.judgment).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted) }
             if wish.status != .bought {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: YubaiSpace.space8) { wishActions(wish) }
@@ -112,7 +102,7 @@ struct WishlistView: View {
     private func wishHeading(_ wish: WishItem) -> some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
-            Text(wish.title).yubaiFont(YubaiFont.rowTitle).frame(maxWidth: .infinity, alignment: .leading)
+            Text(wish.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
             if wish.status == .bought { Pill(text: "已买", variant: .brand, showsDot: false) }
             AmountLabel(cents: wish.amount, hide: store.preferences.hideAmounts)
         }
