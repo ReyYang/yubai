@@ -12,6 +12,7 @@ struct CategoryPicker: View {
     var applyingCount = 0
     var identifier = "categoryPicker"
     var style = Style.grid
+    var addInline: ((String?) -> Void)? = nil
     let choose: (CategoryAssignment, CategoryAddition?) -> Bool
     @State private var expanded: String?
     @State private var adding = false
@@ -87,7 +88,7 @@ struct CategoryPicker: View {
             if let main = categories.first(where: { $0.name == selected?.category }), !main.subcategories.isEmpty {
                 entrySubcategories(main)
             }
-            Button { adding = true } label: {
+            Button { if let addInline { addInline(nil) } else { adding = true } } label: {
                 Label("新分类", systemImage: "plus").yubaiFont(YubaiFont.callout, weight: .medium)
                     .foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
@@ -121,7 +122,7 @@ struct CategoryPicker: View {
         }
     }
     private var addButton: some View {
-        Button { adding = true } label: {
+        Button { if let addInline { addInline(expanded) } else { adding = true } } label: {
             Label("加一个", systemImage: "plus").yubaiFont(YubaiFont.button)
                 .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
@@ -235,9 +236,11 @@ struct CategoryAdditionSheet: View {
     private let initialParent: String?
     @State private var name = ""
     @State private var allParents = false
-    init(income: Bool, parent: String?, applyingCount: Int = 0, add: @escaping (CategoryAddition) -> Bool) {
+    private let inlineCancel: (() -> Void)?
+    init(income: Bool, parent: String?, applyingCount: Int = 0, cancel: (() -> Void)? = nil, add: @escaping (CategoryAddition) -> Bool) {
         self.income = income; _parent = State(initialValue: parent); initialParent = parent
         self.applyingCount = applyingCount; self.add = add
+        inlineCancel = cancel
     }
     private var addition: CategoryAddition { .init(name: name, parent: parent, income: income) }
     private var validationError: String? {
@@ -252,12 +255,9 @@ struct CategoryAdditionSheet: View {
     var body: some View {
         Page(spacing: YubaiSpace.space24, topPadding: YubaiSpace.space8) {
             Card(style: .list) {
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text("名字").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    TextField("", text: $name).yubaiFont(YubaiFont.row).accessibilityLabel("名字").accessibilityIdentifier("categoryAdditionName")
-                    if !name.isEmpty { InlineFieldError(message: validationError) }
-                }.padding(.vertical, YubaiSpace.space8)
+                FormTextRow(title: "名字", text: $name, identifier: "categoryAdditionName")
             }
+            if !name.isEmpty { InlineFieldError(message: validationError) }
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 Text("放在").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 ChipFlow {
@@ -272,8 +272,10 @@ struct CategoryAdditionSheet: View {
                     }
                 }
             }
-        }.manualSheetHeader("加一个", actionTitle: "加上", enabled: valid, actionIdentifier: "categoryAdditionSave", action: {
-            if add(addition) { dismiss() }
+        }.manualSheetHeader("加一个", actionTitle: "加上", enabled: valid, actionIdentifier: "categoryAdditionSave", cancel: {
+            if let inlineCancel { inlineCancel() } else { dismiss() }
+        }, action: {
+            if add(addition) { if let inlineCancel { inlineCancel() } else { dismiss() } }
         })
     }
 }

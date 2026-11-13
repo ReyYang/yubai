@@ -96,10 +96,12 @@ extension EntryHistory {
         guard !clean.isEmpty, nature != .transfer else { return nil }
         let rows = Array(ledger.entries.filter { $0.deletedAt == nil && $0.nature == nature && $0.date <= now && purpose($0) == clean }
             .sorted { older($1, $0) }.prefix(3))
-        guard !rows.isEmpty else { return CategoryGuesser.guess(clean, nature: nature, in: ledger) }
+        guard rows.count >= 2 else { return nil }
         let assignments = rows.map { ledger.normalizedCategory(for: $0) }
-        let winner = assignments.first { choice in assignments.filter { $0 == choice }.count >= (rows.count == 1 ? 1 : 2) }
-        guard let winner, ledger.selectableCategories.contains(where: { $0.name == winner.category && $0.income == nature.categoryIncome }) else { return nil }
+        guard let main = assignments.first(where: { choice in assignments.filter { $0.category == choice.category }.count >= 2 }) else { return nil }
+        let sub = assignments.first { choice in choice.category == main.category && assignments.filter { $0 == choice }.count >= 2 }?.subcategory
+        let winner = CategoryAssignment(category: main.category, subcategory: sub)
+        guard ledger.selectableCategories.contains(where: { $0.name == winner.category && $0.income == nature.categoryIncome }) else { return nil }
         return winner
     }
     public static func recalls(matching text: String, nature: Nature, in ledger: Ledger, now: Date, limit: Int = 4) -> [Recall] {

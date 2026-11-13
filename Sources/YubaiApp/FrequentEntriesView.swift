@@ -18,78 +18,57 @@ struct FrequentEntriesView: View {
     @State private var pinned = Set<String>()
     var body: some View {
         Page(spacing: YubaiSpace.gapGroup) {
-            CardRows(Array(items.enumerated()).map { IndexedFrequentEntry(index: $0.offset, entry: $0.element) }) { row in
-                entryRow(row.entry, index: row.index)
+            if !items.isEmpty {
+                SectionHeading(title: "显示的")
+                CardRows(Array(items.enumerated()).map { IndexedFrequentEntry(index: $0.offset, entry: $0.element) }) { row in
+                    entryRow(row.entry, index: row.index)
+                }
             }
             if !hidden.isEmpty {
+                SectionHeading(title: "不显示的")
                 CardRows(hidden) { row in hiddenRow(row) }
             }
-            quickCaptureLink
-        }.navigationTitle("常用").yubaiNavigation().accessibilityIdentifier("frequentEntriesPage")
+        }.accessibilityIdentifier("frequentEntriesPage")
             .task(id: store.ledgerRevision) { await refresh() }
-    }
-    /// Apple Pay 快捷指令、卡和商户对应关系仍在原来的页面里。
-    private var quickCaptureLink: some View {
-        Card(style: .list) {
-            NavigationLink { QuickCaptureSettingsView() } label: {
-                HStack(spacing: YubaiSpace.gapGroup) {
-                    Text("快速记账").yubaiFont(YubaiFont.row)
-                    Spacer(minLength: YubaiSpace.space8)
-                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-                }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openQuickCaptureSettings")
-        }
+            #if os(iOS)
+            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(560), .large])
+            #endif
     }
     private func entryRow(_ item: EntryHistory.Repeat, index: Int) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
             summary(item.purpose, amount: item.amount)
-            HStack(spacing: YubaiSpace.space4) {
-                icon(pinned.contains(item.id) ? "pin.fill" : "pin", label: (pinned.contains(item.id) ? "取消固定" : "固定") + item.purpose,
-                     identifier: "frequentPin_\(index)", selected: pinned.contains(item.id)) {
+            HStack(spacing: YubaiSpace.space8) {
+                action(pinned.contains(item.id) ? "已置顶" : "置顶", identifier: "frequentPin_\(index)") {
                     store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.setPinned(item, pinned: !pinned.contains(item.id), in: &$0) }
-                }
-                icon("eye.slash", label: "隐藏" + item.purpose, identifier: "frequentHide_\(index)") {
+                }.accessibilityLabel((pinned.contains(item.id) ? "取消置顶" : "置顶") + item.purpose)
+                action("不显示", identifier: "frequentHide_\(index)", secondary: true) {
                     store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.setHidden(item, hidden: true, in: &$0) }
-                }
-                Spacer(minLength: YubaiSpace.none)
-                icon("arrow.up", label: "向前移" + item.purpose, identifier: "frequentMoveUp_\(index)") { move(index, by: -1) }.disabled(index == 0)
-                icon("arrow.down", label: "向后移" + item.purpose, identifier: "frequentMoveDown_\(index)") { move(index, by: 1) }.disabled(index == items.count - 1)
+                }.accessibilityLabel("不显示" + item.purpose)
             }
-        }.padding(.vertical, YubaiSpace.space4).accessibilityElement(children: .contain).accessibilityIdentifier("frequentEntry_\(index)")
+        }.frame(minHeight: YubaiSize.rowDouble).accessibilityElement(children: .contain).accessibilityIdentifier("frequentEntry_\(index)")
     }
     private func summary(_ purpose: String, amount: Int64) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-        return layout {
-            Text(purpose).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
-            AmountLabel(cents: amount, hide: store.preferences.hideAmounts)
-        }.frame(minHeight: YubaiSize.tapMin).accessibilityElement(children: .combine)
+        HStack(spacing: YubaiSpace.space8) {
+            Text(purpose).yubaiFont(YubaiFont.row).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            AmountLabel(cents: amount, hide: store.preferences.hideAmounts).fixedSize()
+        }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).accessibilityElement(children: .combine)
     }
     private func hiddenRow(_ row: EntryHistory.HiddenRepeat) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
             if let purpose = row.purpose, let amount = row.amount { summary(purpose, amount: amount).foregroundStyle(YubaiColor.labelSecondary) }
-            HStack(spacing: YubaiSpace.space8) {
-                Image(systemName: "eye.slash").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-                if row.purpose == nil { Text("1 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-                Spacer(minLength: YubaiSpace.none)
-                icon("eye", label: "重新显示" + (row.purpose ?? "常用"), identifier: "frequentUnhide_" + row.id) {
-                    store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.unhide(row.id, in: &$0, now: Date()) }
-                }
-            }
-        }.padding(.vertical, YubaiSpace.space4)
+            action("放回去", identifier: "frequentUnhide_" + row.id) {
+                store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.unhide(row.id, in: &$0, now: Date()) }
+            }.accessibilityLabel("放回去" + (row.purpose ?? "常用"))
+        }.frame(minHeight: YubaiSize.rowDouble)
     }
-    private func icon(_ symbol: String, label: String, identifier: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).yubaiFont(YubaiFont.row)
-                .foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
-                .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityLabel(label).accessibilityAddTraits(selected ? .isSelected : [])
-            .accessibilityIdentifier(identifier)
-    }
-    private func move(_ index: Int, by offset: Int) {
-        let target = index + offset
-        guard items.indices.contains(index), items.indices.contains(target) else { return }
-        var ordered = items; ordered.swapAt(index, target)
-        store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.reorder(ordered, in: &$0) }
+    private func action(_ title: String, identifier: String, secondary: Bool = false, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) {
+            Text(title).yubaiFont(YubaiFont.callout).fixedSize()
+                .foregroundStyle(secondary ? YubaiColor.labelSecondary : YubaiColor.brandInk)
+                .frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin)
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier)
     }
     private func refresh() async {
         let ledger = store.current, now = Date(), revision = store.ledgerRevision

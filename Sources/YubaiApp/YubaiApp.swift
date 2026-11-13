@@ -1105,7 +1105,7 @@ struct RootView: View {
         case .weekly(let id): weeklyDestination(id)
         case let .whereCategory(category, interval): WhereCategoryView(category: category, interval: interval)
         case .memories: MemoryView()
-        case .quickCapture: FrequentEntriesView()
+        case .quickCapture: QuickCaptureSettingsView()
         case .importHistory: ImportHistoryView()
         case .intelligencePrivacy: IntelligencePrivacyView()
         case .backup: BackupView()

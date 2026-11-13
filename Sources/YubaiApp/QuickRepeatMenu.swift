@@ -1,7 +1,7 @@
 import SwiftUI
 import YubaiCore
 
-/// 长按 ＋：最近常用，点一下就记下，给撤销；末尾是「拍小票」。
+/// 长按 ＋：最近常用，点一下就记下，给撤销；末尾就地整理。
 /// 点完任何一行调 `dismiss()`。
 struct QuickRepeatMenu: View {
     @Environment(AppStore.self) private var store
@@ -17,15 +17,14 @@ struct QuickRepeatMenu: View {
                 row(item, index: index)
                 EntryFormDivider()
             }
-            receiptRow
-            EntryFormDivider()
+            if receiptAllowed { receiptRow; EntryFormDivider() }
             Button {
                 dismiss(); store.sheetSource = nil; store.sheet = .frequentEntries
             } label: {
                 Text("整理常用").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("manageQuickRepeats")
-        }.padding(.horizontal, YubaiSpace.insetCard).frame(maxWidth: textSize.isAccessibilitySize ? .infinity : 230)
+        }.padding(.horizontal, YubaiSpace.insetCard).frame(maxWidth: textSize.isAccessibilitySize ? .infinity : 262)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
             .task(id: store.ledgerRevision) {
@@ -33,6 +32,9 @@ struct QuickRepeatMenu: View {
                 let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now) }.value
                 guard !Task.isCancelled else { return }; items = value
             }
+    }
+    private var receiptAllowed: Bool {
+        store.preferences.isAIEnabled(for: .receiptRecognition) && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil
     }
 
     private func row(_ item: EntryHistory.Repeat, index: Int) -> some View {

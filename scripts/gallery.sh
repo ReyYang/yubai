@@ -17,6 +17,7 @@ result="$run_dir/gallery.xcresult"
 printf 'Simulator: %s\nResults and log: %s\n' "$simulator" "$run_dir"
 # GALLERY_ONLY="testWalk46Batch1 testWalk46Batch1Dark testWalk46Batch1Large" captures this batch.
 # Any space-separated walk names can be selected for a partial inventory.
+# Batch 2: GALLERY_ONLY="testWalk46Batch2 testWalk46Batch2Dark testWalk46Batch2Large"
 only=()
 for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalleryTests/$name"); done
 (( ${#only[@]} )) || only=("-only-testing:YubaiUITests/ScreenGalleryTests")
@@ -79,7 +80,7 @@ for manifest in sorted(shots.rglob("manifest.json")):
         name = item.get("suggestedHumanReadableName") or item.get("name") or ""
         name = Path(name).name
         # Xcode may append the file extension to the suggested name.
-        if source.suffix.lower() == ".png" and re.match(r"^(?:\d{2}-|DS-Nav|Quick|Home-|Deck|Payday-Amount|First|Recon|Over-|Big-Home|Spend|Saved|Goal|Butler-Kinds|Words)", name):
+        if source.suffix.lower() == ".png" and re.match(r"^(?:\d{2}-|46b2-|DS-Nav|Quick|Home-|Deck|Payday-Amount|First|Recon|Over-|Big-Home|Spend|Saved|Goal|Butler-Kinds|Words)", name):
             name = re.sub(r"\.png$", "", name, flags=re.I)
             destination = shots / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".png")
         elif name.startswith(("missing-", "planned-", "write-errors-")):
@@ -104,6 +105,9 @@ round46 = full.split("    private func round46Batch1(", 1)[1].split("    private
 board_names = re.findall(r'\bstop\("([^"\n]+)"', round46)
 expected = sorted(names + [prefix + name for prefix in ("46-dark-", "46-a11y-") for name in board_names]
                   + [prefix + name for prefix in ("80-a11y-", "90-dark-") for name in small])
+batch2 = full.split("    private func round46Batch2(", 1)[1].split("    private func round46EntryAudit(", 1)[0]
+batch2_names = re.findall(r'\bstop\("([^"\n]+)"', batch2)
+expected += [prefix + name for prefix in ("46-dark-", "46-a11y-") for name in batch2_names]
 if len(expected) != len(set(expected)):
     raise SystemExit("Gallery stop IDs must be unique")
 if os.environ.get("GALLERY_ONLY"):

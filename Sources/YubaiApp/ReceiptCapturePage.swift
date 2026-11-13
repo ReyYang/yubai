@@ -55,20 +55,14 @@ struct ReceiptCapturePage: View {
     }
 
     var body: some View {
-        VStack(spacing: YubaiSpace.none) {
-            Page(spacing: YubaiSpace.gapGroup) {
-                if !allowed { unavailable }
-                else if reading { ProgressView("正在读截图…") }
-                else if !lines.isEmpty { review }
-                if let failure { InlineNote(text: failure, style: .attention) }
-            }
-            Button("都记下", action: save).buttonStyle(PrimaryButtonStyle())
-                .disabled(!allowed || reading || preparing || preparedKey != selectionKey || prepared.isEmpty || failure != nil || store.preferences.hideAmounts)
-                .accessibilityIdentifier("saveReceiptEntries").accessibilityValue("\(prepared.count) 笔").padding(YubaiSpace.insetPage)
+        Group {
+            if let target = editingCategory { categoryPicker(target) }
+            else { captureOrReview }
         }.paperBackground().amountPrivacy(store.preferences.hideAmounts).navigationTitle("拍小票").yubaiNavigation()
-            .manualSheetHeader("拍小票", actionTitle: "重拍", primary: false, enabled: allowed && !reading,
-                               actionIdentifier: "retakeReceipt", action: chooseImage)
             .accessibilityIdentifier("receiptCapturePage")
+            #if os(iOS)
+            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(792), .large])
+            #endif
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
                 do {
@@ -92,7 +86,7 @@ struct ReceiptCapturePage: View {
                 guard !loaded else { return }; loaded = true
                 accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
                 #if DEBUG && targetEnvironment(simulator)
-                if let fixture = UITestSupport.secondBatchReceipt { await recognize(nil, fixture: fixture); return }
+                if let fixture = UITestSupport.addEntryReceipt ?? UITestSupport.secondBatchReceipt { await recognize(nil, fixture: fixture); return }
                 #endif
                 if let imageData { start(imageData) } else { chooseImage() }
             }
@@ -100,12 +94,30 @@ struct ReceiptCapturePage: View {
             .onChange(of: allowed) { _, value in if !value { request?.cancel(); reading = false; prepared = [] } }
             .onChange(of: store.current.id) { _, _ in request?.cancel(); dismiss() }
             .onDisappear { request?.cancel() }
-            .sheet(item: $editingCategory) { target in categoryPicker(target) }
-            #if os(iOS)
-            .sheet(isPresented: $camera) {
-                ReceiptCamera { data in camera = false; if let data { start(data) } }
+    }
+
+    @ViewBuilder private var captureOrReview: some View {
+        #if os(iOS)
+        if camera { ReceiptCamera { data in camera = false; if let data { start(data) } } }
+        else { reviewPage }
+        #else
+        reviewPage
+        #endif
+    }
+    private var reviewPage: some View {
+        VStack(spacing: YubaiSpace.none) {
+            Page(spacing: YubaiSpace.gapGroup) {
+                if !allowed { unavailable }
+                else if reading { ProgressView("正在读截图…") }
+                else if !lines.isEmpty { review }
+                if let failure { InlineNote(text: failure, style: .attention) }
             }
-            #endif
+            Button("都记下", action: save).buttonStyle(PrimaryButtonStyle())
+                .disabled(!allowed || reading || preparing || preparedKey != selectionKey || prepared.isEmpty || failure != nil)
+                .accessibilityIdentifier("saveReceiptEntries").accessibilityValue("\(prepared.count) 笔").padding(YubaiSpace.insetPage)
+        }
+            .manualSheetHeader("拍小票", actionTitle: "重拍", primary: false, enabled: allowed && !reading,
+                               actionIdentifier: "retakeReceipt", action: chooseImage)
     }
 
     private var review: some View {
@@ -120,13 +132,6 @@ struct ReceiptCapturePage: View {
             if mode == ReceiptEntryMode.merged.rawValue {
                 categoryButton(id: -1, title: shop, income: lines.first?.draft.nature.categoryIncome ?? false, hint: shopHint)
             }
-            Menu {
-                ForEach(store.accounts.filter { !$0.archived }) { account in
-                    Button(account.name) { accountID = account.id }.accessibilityIdentifier("receiptAccount_" + account.id.uuidString)
-                }
-            } label: {
-                Label(store.accountName(accountID), systemImage: "creditcard").yubaiFont(YubaiFont.caption).frame(minHeight: YubaiSize.tapMin)
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("receiptAccount")
             if let availableAfter {
                 ResultBar(label: "记下后还能花", value: ResultBar.change(store.funds.available, availableAfter, hide: store.preferences.hideAmounts),
                           amber: availableAfter < 0, identifier: "receiptAvailableAfter")
@@ -146,7 +151,7 @@ struct ReceiptCapturePage: View {
             VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
                 layout {
-                    Text(line.draft.title).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(line.draft.title).yubaiFont(YubaiFont.row).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                     AmountLabel(cents: line.draft.amount, hide: store.preferences.hideAmounts, sign: line.draft.nature.inflow ? .inflow : .outflow)
                 }
                 categoryButton(id: line.id, title: line.draft.title, income: line.draft.nature.categoryIncome, hint: line.hint)
@@ -159,20 +164,15 @@ struct ReceiptCapturePage: View {
         return Button { editingCategory = ReceiptCategorySelection(id: id, income: income, suggested: hint?.category) } label: {
             Text(Classification.displayCategory(label)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 .padding(.horizontal, YubaiSpace.space8).frame(minHeight: YubaiSize.tapMin)
-                .overlay { if choice == nil && hint != nil { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand) } }
         }.buttonStyle(PressButtonStyle()).accessibilityLabel(title + "，分类")
-            .accessibilityValue(choice == nil && hint != nil ? "建议" + label : label).accessibilityIdentifier("receiptCategory_\(id)")
+            .accessibilityValue(label).accessibilityIdentifier("receiptCategory_\(id)")
     }
     private func categoryPicker(_ target: ReceiptCategorySelection) -> some View {
-        NavigationStack {
-            Page {
-                CategoryPicker(income: target.income, selected: choices[target.id], suggested: target.suggested,
-                               identifier: "receiptPickCategory_\(target.id)", style: .entry) { assignment, addition in
-                    if let addition, !store.update("新分类", { try addition.apply(to: &$0) }) { return false }
-                    choices[target.id] = assignment; editingCategory = nil; return true
-                }
-            }.navigationTitle("分类").yubaiNavigation().manualSheetHeader("分类", showsAction: false)
-        }.environment(store).appErrors().yubaiSheetBackground()
+        AddEntryCategories(income: target.income, selection: choices[target.id] ?? .init(category: target.suggested ?? ""),
+                           suggested: nil, cancel: { editingCategory = nil }) { assignment in
+            if let assignment { choices[target.id] = assignment }
+            editingCategory = nil
+        }
     }
     private var unavailable: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
@@ -211,13 +211,15 @@ struct ReceiptCapturePage: View {
             }
             try Task.checkCancellation()
             guard let transport = store.assistantTransport(for: ledger, feature: .receiptRecognition) else { return }
-            let recognized = try await ReceiptRecognition.read(receipt, transport: transport, redactor: Redactor(ledger: ledger), now: Date())
+            let recognized = try await ReceiptRecognition.read(receipt, transport: transport, redactor: Redactor(ledger: ledger), categories: ledger.categories, now: Date())
             try Task.checkCancellation()
             guard store.current.id == ledger.id, !store.locked, allowed else { return }
             recognitionID = UUID(); shop = recognized.shop; choices = [:]
             shopHint = CategoryGuesser.guess(recognized.shop, nature: recognized.lines.first?.nature ?? .expense, in: ledger)
             lines = recognized.lines.enumerated().map { index, draft in
-                ReceiptCaptureLine(id: index, draft: draft, hint: CategoryGuesser.guess(draft.title, nature: draft.nature, date: draft.date, in: ledger))
+                let assignment = recognized.assignments[index]
+                let choice = assignment.flatMap { SubcategoryClassifier.valid($0, in: ledger, nature: draft.nature) ? $0 : nil }
+                return ReceiptCaptureLine(id: index, draft: draft, hint: choice ?? CategoryGuesser.guess(draft.title, nature: draft.nature, date: draft.date, in: ledger))
             }
             selected = Set(lines.map(\.id))
             total = try recognized.lines.reduce(Int64(0)) { value, draft in
@@ -241,8 +243,9 @@ struct ReceiptCapturePage: View {
                                                          mode: ReceiptEntryMode(rawValue: mode) ?? .separate, in: store.current, accountID: accountID)
             for index in drafts.indices {
                 let choice = choices[mode == ReceiptEntryMode.merged.rawValue ? -1 : checked[index].id]
-                drafts[index].category = choice?.category ?? Classification.pendingCategory
-                drafts[index].subcategory = choice?.subcategory
+                let hint = mode == ReceiptEntryMode.merged.rawValue ? shopHint : checked[index].hint
+                drafts[index].category = choice?.category ?? hint?.category ?? drafts[index].category
+                drafts[index].subcategory = choice?.subcategory ?? hint?.subcategory ?? drafts[index].subcategory
                 drafts[index].categoryUserEdited = choice != nil
             }
             let ledger = store.current, revision = store.ledgerRevision, key = selectionKey, now = Date()
@@ -257,7 +260,7 @@ struct ReceiptCapturePage: View {
         }
     }
     private func save() {
-        guard allowed, !preparing, preparedKey == selectionKey, !prepared.isEmpty, failure == nil, !store.preferences.hideAmounts else { return }
+        guard allowed, !preparing, preparedKey == selectionKey, !prepared.isEmpty, failure == nil else { return }
         let drafts = prepared
         if store.update("拍小票", { ledger in
             let ids = try QuickCapture.record(drafts, in: &ledger, source: "截图记", withoutOpeningApp: false)

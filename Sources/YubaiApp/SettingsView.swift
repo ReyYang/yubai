@@ -7,7 +7,6 @@ struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var storageSize: String?
-    @State private var frequentCount = 0
     @State private var paydayDetail: String?
     var body: some View {
         Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8) {
@@ -23,7 +22,7 @@ struct SettingsView: View {
                     separator
                     TabNavigationLink(.categories) { CategoriesView() } label: { row("分类") }.accessibilityIdentifier("openCategories")
                     separator
-                    TabNavigationLink(.quickCapture) { FrequentEntriesView() } label: { row("常用", detail: "\(frequentCount) 笔") }
+                    TabNavigationLink(.quickCapture) { QuickCaptureSettingsView() } label: { row("快速记账") }
                         .accessibilityIdentifier("openQuickCapture")
                     separator
                     TabNavigationLink(.importHistory) { ImportHistoryView() } label: { row("导入记录", detail: lastImport) }
@@ -44,12 +43,11 @@ struct SettingsView: View {
             .task(id: store.ledgerRevision) {
                 let ledger = store.current, now = Date()
                 let result = await Task.detached(priority: .utility) {
-                    let count = EntryHistory.repeats(in: ledger, now: now, limit: 1000).count
                     let plan = ledger.cycleAnchor == .calendarMonth ? nil : Finance.anchorPlan(in: ledger, now: now)
                     let day = plan.map { $0.monthlyDay ?? Dates.calendar.component(.day, from: $0.dueDate) }
-                    return (count, day.map { "发工资那天 · \($0) 号" })
+                    return day.map { "发工资那天 · \($0) 号" }
                 }.value
-                guard !Task.isCancelled else { return }; frequentCount = result.0; paydayDetail = result.1
+                guard !Task.isCancelled else { return }; paydayDetail = result
             }
             .navigationTitle("设置").yubaiNavigation()
     }
