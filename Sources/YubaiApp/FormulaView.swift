@@ -49,15 +49,15 @@ private struct FormulaAmountEditor: View {
         })
     }
     /// 改完以后的还能花和日均；输入无效时不给结果。
-    private var resultText: String? {
+    private var resultText: (available: String, daily: String?)? {
         guard valid else { return nil }
         let now = Dates.now
         var projected = store.current
         projected.savingRule = sharing ? .share(percent) : .fixed(value)
         let hide = store.preferences.hideAmounts
-        var text = amount2(Finance.funds(projected, now: now).available, hide: hide)
-        if let daily = Finance.pace(projected, now: now)?.daily { text += " · 日均 " + amount2(daily, hide: hide) }
-        return text
+        let available = amount2(Finance.funds(projected, now: now).available, hide: hide)
+        let daily = Finance.pace(projected, now: now)?.daily.map { "日均 " + amount2($0, hide: hide) }
+        return (available, daily)
     }
 
     var body: some View {
@@ -66,7 +66,9 @@ private struct FormulaAmountEditor: View {
                 header
                 modePicker
                 amountDisplay
-                if let resultText { ResultBar(label: "改完还能花", value: resultText, identifier: "formulaEditResult") }
+                if let resultText {
+                    ResultBar(label: "改完还能花", value: resultText.available, identifier: "formulaEditResult", secondaryValue: resultText.daily)
+                }
             }
         } footer: {
                 AmountKeypad(keypad: $keypad, amountSelected: $selected, canSave: valid, primaryTitle: "好",

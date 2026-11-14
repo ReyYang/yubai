@@ -201,7 +201,12 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             field.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95)).tap()
             XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
             XCTAssertTrue(dismissKeyboardIntroduction(in: app))
-            wait { !self.element("keypad_1").exists }
+            // KeypadSheet keeps its footer mounted while the text editor owns
+            // focus. The numeric key must stop being a visible tap target.
+            wait {
+                let key = self.element("keypad_1")
+                return !key.exists || !key.isHittable
+            }
             XCTAssertTrue(waitForStableFrame(field))
             XCTAssertEqual(windowMetrics(in: app)?.focused, "frequentEntryPurpose")
             field.typeText("午")

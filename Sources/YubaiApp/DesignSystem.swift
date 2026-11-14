@@ -2428,6 +2428,7 @@ struct ResultBar: View {
     let value: String
     var amber = false
     var identifier = ""
+    var secondaryValue: String? = nil
     /// 「a → b」两位小数。
     static func change(_ from: Int64, _ to: Int64, hide: Bool) -> String {
         amount2(from, hide: hide) + " → " + amount2(to, hide: hide)
@@ -2450,7 +2451,11 @@ struct ResultBar: View {
     }
     private var stacked: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            labelText; valueText.frame(maxWidth: .infinity, alignment: .trailing)
+            labelText
+            if textSize.isAccessibilitySize, let secondaryValue {
+                numberText(value).fixedSize().frame(maxWidth: .infinity, alignment: .trailing)
+                numberText(secondaryValue).fixedSize().frame(maxWidth: .infinity, alignment: .trailing)
+            } else { valueText.frame(maxWidth: .infinity, alignment: .trailing) }
         }
     }
     private var labelText: some View {
@@ -2458,6 +2463,9 @@ struct ResultBar: View {
             .fixedSize(horizontal: false, vertical: true)
     }
     private var valueText: some View {
+        numberText(value + (secondaryValue.map { " · " + $0 } ?? ""))
+    }
+    private func numberText(_ value: String) -> some View {
         Text(value).yubaiFont(YubaiFont.amountSmall, weight: .semibold).foregroundStyle(amber ? YubaiColor.amberStrong : YubaiColor.brandInk)
             .fixedSize(horizontal: false, vertical: true)
             .yubaiTextLineBox(YubaiFont.amountSmall).layoutPriority(1)
@@ -3239,7 +3247,8 @@ struct AmountKeypad: View {
     var receiptDeadline: Date? = nil
     var interaction: () -> Void = {}
     @StateObject private var feedback = AmountKeypadFeedback()
-    // The keys never grow with Dynamic Type; the amount above them is what scales.
+    @ScaledMetric(relativeTo: .headline) private var primaryFontSize = YubaiFont.keypadAction.size
+    // Key geometry and digits stay fixed; the primary action scales to fit its key.
     private let keyHeight: CGFloat = 48
     private let rows = [["1", "2", "3", "⌫"], ["4", "5", "6", "+"], ["7", "8", "9", "−"]]
 
@@ -3270,8 +3279,8 @@ struct AmountKeypad: View {
                         if receiptVisible {
                             EntrySaveReceipt(deadline: receiptDeadline).frame(width: keyWidth * 2 + 6, height: keyHeight)
                         } else { Button(action: save) {
-                            Text(primaryTitle).yubaiFont(YubaiFont.keypadAction)
-                                .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.center).frame(maxWidth: .infinity).frame(minHeight: keyHeight)
+                            Text(primaryTitle).font(.system(size: min(primaryFontSize, keyHeight - YubaiSpace.space16), weight: YubaiFont.keypadAction.weight))
+                                .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.center).frame(maxWidth: .infinity).frame(height: keyHeight)
                         }.buttonStyle(AmountKeyButtonStyle(primary: true, pressing: { if $0 { feedback.press("记下", accepted: true) } }))
                             .frame(width: keyWidth * 2 + 6).opacity(canSave ? 1 : 0.4).disabled(!canSave)
                             .accessibilityIdentifier(primaryIdentifier)
