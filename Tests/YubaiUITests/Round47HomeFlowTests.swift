@@ -18,21 +18,14 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
-    private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+    private func element(_ id: String) -> XCUIElement { control(id, in: app) }
     private func reveal(_ target: XCUIElement) {
-        XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)))
-        for _ in 0..<8 {
-            if target.isHittable && target.frame.maxY < element("mainNavigation").frame.minY { break }
-            let scroll = app.scrollViews.matching(identifier: "nowScroll").firstMatch
-            let first = app.scrollViews.matching(identifier: "firstOpenScroll").firstMatch
-            if scroll.exists { scroll.swipeUp() } else if first.exists { first.swipeUp() } else { app.swipeUp() }
-        }
+        XCTAssertTrue(revealControl(target, in: app, deadline: Date().addingTimeInterval(60)), target.description)
     }
     private func tap(_ id: String) {
-        let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
-        if !target.isHittable { reveal(target) }
-        if !id.hasPrefix("keypad_") { XCTAssertTrue(waitForStableFrame(target), id) }
-        XCTAssertTrue(target.isHittable, id); target.tap()
+        let target = element(id)
+        if !target.exists || !target.isHittable { reveal(target) }
+        tapControl(target, in: app, settles: !id.hasPrefix("keypad_"))
     }
     private func keys(_ amount: String) { for key in amount { tap("keypad_" + String(key)) } }
     private func add(_ amount: String, yesterday: Bool = false) {
@@ -160,11 +153,45 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     func testLargestReceiptAndUpcomingHeaderClearTheWholeNavigationArea() {
         launch("v47-home-hard", large: true)
+        XCTAssertEqual(app.scrollViews["nowScroll"].frame.width, app.frame.width, accuracy: 0.5)
         for id in ["openFixedFlows", "receiptOpenLedger", "receiptMoreEntries", "receiptTotal"] {
             let target = element(id); reveal(target)
             XCTAssertTrue(target.isHittable, id)
+            XCTAssertGreaterThanOrEqual(target.frame.minY, element("rootHeaderRegion").frame.maxY, id)
             XCTAssertLessThan(target.frame.maxY, element("mainNavigation").frame.minY, id)
         }
+        XCTAssertTrue(element("receiptTotal").label.contains("1,234,610.04"))
+        XCTAssertLessThan(element("receiptTotal").frame.height, 160)
+        XCTAssertGreaterThanOrEqual(element("receiptDate").frame.minX, app.frame.minX)
+        XCTAssertLessThanOrEqual(element("receiptDate").frame.maxX, app.frame.maxX)
+    }
+    func testCrossingSavingCardLosesItsActionAndRecoversAfterScrollingBack() {
+        launch(); let card = element("openSaving"); reveal(card)
+        let viewport = app.scrollViews["nowScroll"].frame, frame = card.frame
+        let marker = app.staticTexts["接下来 7 天"]
+        XCTAssertTrue(marker.exists)
+        let markerY = marker.frame.minY
+        let distance = frame.minY - viewport.minY + 12
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let start = origin.withOffset(CGVector(dx: viewport.midX, dy: viewport.maxY - 16))
+        let end = origin.withOffset(CGVector(dx: viewport.midX, dy: viewport.maxY - 16 - distance))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+        let crossed = frame.offsetBy(dx: 0, dy: marker.frame.minY - markerY)
+        XCTAssertLessThan(crossed.minY, viewport.minY)
+        XCTAssertGreaterThan(crossed.maxY, viewport.minY)
+        XCTAssertFalse(card.exists && card.isHittable)
+        end.press(forDuration: 0.05, thenDragTo: start, withVelocity: .slow, thenHoldForDuration: 0.1)
+        reveal(card); tap("openSaving")
+        XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5))
+    }
+    func testUpcomingBillNameUsesTwoLinesAndDetailKeepsItsFullName() {
+        launch("v47-home-hard", textCategory: "UICTContentSizeCategoryL")
+        let name = element("formulaBill_" + id(4630)); reveal(name)
+        let fullName = name.label
+        XCTAssertGreaterThan(fullName.count, 20)
+        XCTAssertLessThanOrEqual(name.frame.height, 44.5)
+        tap("formulaBill_" + id(4630))
+        XCTAssertTrue(app.scrollViews.staticTexts.matching(NSPredicate(format: "label == %@", fullName)).firstMatch.waitForExistence(timeout: 5))
     }
     func testCapsuleStaysInPlaceAndAssistantInputClearsOnlyTheCapsule() {
         launch()
@@ -209,10 +236,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             launch("v47-receipt-many", large: large)
             reveal(element("receiptMoreEntries")); tap("receiptMoreEntries")
             let last = element("ledgerEntry_" + id(470110))
-            for _ in 0..<12 {
-                if last.exists && last.isHittable { break }
-                app.swipeUp()
-            }
+            reveal(last)
             XCTAssertTrue(last.exists && last.isHittable)
             let header = element("rootHeaderRegion").frame, capsule = capsuleFrame(in: app)
             XCTAssertGreaterThanOrEqual(last.frame.minY, header.maxY)

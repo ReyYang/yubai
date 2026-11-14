@@ -128,8 +128,7 @@ struct OverspendRows: View {
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.5)
-            .accessibilityElement(children: .ignore).accessibilityLabel(title + "，" + change).accessibilityAddTraits(.isButton)
-            .accessibilityIdentifier(identifier)
+            .accessibilityIdentifier(identifier).accessibilityLabel(title + "，" + change)
     }
 }
 

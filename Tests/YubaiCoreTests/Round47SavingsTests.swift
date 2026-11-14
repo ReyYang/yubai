@@ -41,6 +41,40 @@ final class Round47SavingsTests: XCTestCase {
         XCTAssertEqual(formula.salary?.id, value.entries[0].id)
         XCTAssertEqual(formula.salary?.amount, 801_000)
     }
+    private func preparedExercise(_ ledger: Ledger, at now: Date) -> SpendingDerivation {
+        Finance.spendingDerivation(ledger, now: now, funds: Finance.funds(ledger, now: now),
+                                  formula: Finance.formula(ledger, now: now), pace: Finance.pace(ledger, now: now))
+    }
+    func testPreparedExerciseRefreshesAfterSalaryEditAndSavingsTransfer() throws {
+        var value = ledger()
+        let before = preparedExercise(value, at: now)
+        value.entries[0].amount += 50_000
+        let edited = preparedExercise(value, at: now)
+        XCTAssertEqual(edited.salary?.id, value.entries[0].id)
+        XCTAssertEqual(edited.salary?.amount, 851_000)
+        XCTAssertEqual(edited.available, before.available + 50_000)
+        try Reserve.transfer(.take, amount: 25_000, in: &value, now: now)
+        let taken = preparedExercise(value, at: now)
+        XCTAssertEqual(taken.available, edited.available + 25_000)
+        XCTAssertEqual(taken.exerciseResult, taken.available)
+        XCTAssertEqual(taken, Finance.spendingDerivation(value, now: now))
+    }
+    func testPreparedExerciseRefreshesAtPostingBoundaryAndHandlesAbsentPace() {
+        var value = ledger()
+        let posting = now.addingTimeInterval(3600)
+        let future = Entry(date: posting, amount: 1234, accountID: value.accounts[0].id, title: "晚饭", category: "餐饮")
+        value.entries.append(future)
+        let before = preparedExercise(value, at: now), after = preparedExercise(value, at: posting)
+        XCTAssertFalse(before.entryIDs.contains(future.id))
+        XCTAssertTrue(after.entryIDs.contains(future.id))
+        XCTAssertEqual(after.available, before.available - 1234)
+        XCTAssertEqual(after.exerciseResult, after.available)
+        let empty = Ledger(), funds = Finance.funds(empty, now: now)
+        XCTAssertNil(Finance.pace(empty, now: now))
+        let unknown = Finance.spendingDerivation(empty, now: now, funds: funds, formula: Finance.formula(empty, now: now), pace: nil)
+        XCTAssertNil(unknown.salary); XCTAssertNil(unknown.daily)
+        XCTAssertEqual(unknown.daysLeft, max(1, funds.horizonDays + 1))
+    }
     func testOtherIncomeHasNoSalaryEditTargetButKeepsItsEntryInterval() {
         var value = ledger()
         value.entries[0].title = "收入"; value.entries[0].category = "其他收入"

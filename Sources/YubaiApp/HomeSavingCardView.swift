@@ -27,7 +27,7 @@ struct HomeSavingCardView: View {
                 }.frame(minHeight: YubaiSize.savingCardMinimum - YubaiSpace.insetCard * 2)
             }
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openSaving")
-            .accessibilityElement(children: .ignore).accessibilityLabel(spoken).accessibilityHint("打开存钱")
+            .accessibilityLabel(spoken).accessibilityHint("打开存钱")
     }
     private var startSaving: some View {
         ViewThatFits(in: .horizontal) {

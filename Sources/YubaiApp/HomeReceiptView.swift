@@ -65,7 +65,7 @@ struct HomeReceiptView: View {
                 Text("余白").yubaiFont(YubaiFont.heroLabel).tracking(YubaiSpace.space4)
             }.frame(maxWidth: .infinity)
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: YubaiSpace.space8) { date; number }
+                HStack(spacing: YubaiSpace.space8) { date.fixedSize(); number }
                 VStack(spacing: YubaiSpace.space2) { date; number }
             }.yubaiFont(YubaiFont.receiptTime).monospacedDigit().foregroundStyle(YubaiColor.labelSecondary)
         }
@@ -74,7 +74,8 @@ struct HomeReceiptView: View {
         let parts = Dates.calendar.dateComponents([.year, .month, .day], from: receipt.day)
         let stamp = String(format: "%04d.%02d.%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
         return Text(stamp + " " + receipt.day.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "zh_CN"))))
-            .fixedSize().accessibilityIdentifier("receiptDate")
+            .lineLimit(1).minimumScaleFactor(0.5).fixedSize(horizontal: false, vertical: true)
+            .yubaiTextLineBox(YubaiFont.receiptTime).accessibilityIdentifier("receiptDate")
     }
     @ViewBuilder private var number: some View {
         if receipt.count > 0 { Text("No.\(receipt.count)").fixedSize().accessibilityIdentifier("receiptNumber") }
@@ -153,7 +154,8 @@ struct HomeReceiptView: View {
     }
     private func amount(_ cents: Int64, total: Bool = false) -> some View {
         Text(hide ? "••••" : AmountLabel.text(cents)).yubaiFont(total ? YubaiFont.receiptTotal : YubaiFont.receiptAmount)
-            .monospacedDigit().fixedSize(horizontal: false, vertical: true)
+            .monospacedDigit().lineLimit(1).minimumScaleFactor(0.35)
+            .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
             .accessibilityLabel(hide ? "金额已隐藏" : AmountLabel.text(cents))
     }
     private func entryAmount(_ entry: Entry) -> some View { amount(entry.nature == .refund ? -entry.amount : entry.amount) }

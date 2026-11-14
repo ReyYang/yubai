@@ -4,27 +4,21 @@ import YubaiCore
 /// One worked exercise. The numeric column uses the same width on every row.
 struct FormulaView: View {
     @Environment(AppStore.self) private var store
-    @State private var derivation: SpendingDerivation?
+    private var derivation: SpendingDerivation { store.spendingDerivation }
     private var hide: Bool { store.preferences.hideAmounts }
     var body: some View {
-        Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8) {
-            if let value = derivation {
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        question(value)
-                        EntryFormDivider()
-                        sources(value)
-                        answer(value)
-                        if let daily = value.daily { dailyRow(daily, days: value.daysLeft) }
-                    }
-                }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaCard")
-            }
-        }.navigationTitle("还能花").yubaiNavigation().amountPrivacy(hide).accessibilityIdentifier("formulaPage")
-            .task(id: "\(store.ledgerRevision)-\(store.financialNow)") {
-                let ledger = store.current, now = store.financialNow
-                let value = await Task.detached(priority: .userInitiated) { Finance.spendingDerivation(ledger, now: now) }.value
-                guard !Task.isCancelled else { return }; derivation = value
-            }
+        let value = derivation
+        return Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8, identifier: "formulaPage") {
+            Card(style: .list) {
+                VStack(spacing: YubaiSpace.none) {
+                    question(value)
+                    EntryFormDivider()
+                    sources(value)
+                    answer(value)
+                    if let daily = value.daily { dailyRow(daily, days: value.daysLeft) }
+                }
+            }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaCard")
+        }.navigationTitle("还能花").yubaiNavigation().amountPrivacy(hide)
     }
     private func question(_ value: SpendingDerivation) -> some View {
         ViewThatFits(in: .horizontal) {
@@ -46,7 +40,7 @@ struct FormulaView: View {
     private func sources(_ value: SpendingDerivation) -> some View {
         VStack(spacing: YubaiSpace.none) {
             Button {
-                if let salary = value.salary { store.sheet = .editEntry(salary.id) }
+                if let salary = value.salary { store.present(.editEntry(salary.id)) }
                 else { showEntries(value.interval) }
             } label: {
                 row("工资", detail: value.salary.map { NowFormat.monthDay($0.date) } ?? NowFormat.monthDay(value.interval.start),
@@ -54,7 +48,7 @@ struct FormulaView: View {
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_income")
             if value.saving != 0 {
                 EntryFormDivider()
-                Button { store.sheet = .formulaEdit } label: { row("先存起来", amount: value.saving, value: value) }
+                Button { store.present(.formulaEdit) } label: { row("先存起来", amount: value.saving, value: value) }
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_saving")
             }
             if value.bills != 0 {
@@ -129,7 +123,7 @@ struct FormulaView: View {
                 .background(valueIsNegative ? YubaiColor.amberTint : YubaiColor.brandTint, in: Circle()).accessibilityHidden(true)
         }
     }
-    private var valueIsNegative: Bool { (derivation?.available ?? 0) < 0 }
+    private var valueIsNegative: Bool { derivation.available < 0 }
     private func answerAmount(_ amount: Int64, ink: Color) -> some View {
         AmountLabel(cents: amount, hide: hide, role: .display, ink: ink)
             .padding(.bottom, YubaiSpace.space8)

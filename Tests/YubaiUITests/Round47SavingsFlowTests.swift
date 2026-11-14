@@ -4,7 +4,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     private var app = XCUIApplication()
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app.terminate(); try super.tearDownWithError() }
-    private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+    private func element(_ id: String) -> XCUIElement { control(id, in: app) }
     private func launch(_ fixture: String = "v47-savings", large: Bool = false, hidden: Bool = false, keepUndo: Bool = true) {
         app.terminate()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
@@ -20,11 +20,13 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
-        let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
-        for _ in 0..<10 { if target.isHittable { break }; app.swipeUp() }
-        if !id.hasPrefix("keypad_") { XCTAssertTrue(waitForStableFrame(target), id) }
-        XCTAssertTrue(target.isHittable, id); target.tap()
+        let target = element(id)
+        if !target.exists || !target.isHittable {
+            XCTAssertTrue(revealControl(target, in: app, deadline: Date().addingTimeInterval(60)), id)
+        }
+        tapControl(target, in: app, settles: !id.hasPrefix("keypad_"))
     }
+
     private func keys(_ value: String) { for key in value { tap("keypad_" + String(key)) } }
     private func amount(_ id: String) -> Int64 {
         let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
@@ -36,8 +38,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     private func back() { tap("BackButton") }
     private func saved() { tap("openSaving"); XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5)) }
     private func gone(_ id: String) {
-        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !self.element(id).exists }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 5), .completed)
+        XCTAssertTrue(waitForDisappearance(element(id)), id)
     }
     func testWorkedExerciseIsOneCardAndEqualsHomeIncludingYearlyReserves() {
         launch("v47-spend"); let home = amount("availableFunds"); tap("fundsFormula")
@@ -48,6 +49,8 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertEqual(amount("formulaRow_spent"), -83_600)
         XCTAssertEqual(amount("formulaResult"), home)
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "formulaCard").count, 1)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "formulaPage").count, 1)
+        XCTAssertTrue(app.scrollViews["formulaPage"].frame.contains(element("formulaRow_income").frame))
         XCTAssertTrue(element("formulaRow_daily").label.contains("÷"))
     }
     func testZeroRowsAreOmittedButSalaryAndSpentStay() {
@@ -96,6 +99,30 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("entriesScroll").waitForExistence(timeout: 5))
         XCTAssertTrue(element("ledgerEntry_47000000-0000-0000-0000-000000471100").waitForExistence(timeout: 5))
         XCTAssertFalse(element("formulaRow_income").exists)
+    }
+    func testIncomeRowRemainsLiveAfterScrollingAtLargestTextSize() {
+        launch("v47-spend", large: true); tap("fundsFormula")
+        let scroll = app.scrollViews["formulaPage"], income = element("formulaRow_income")
+        XCTAssertTrue(income.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "formulaPage").count, 1)
+        // Direct tap: a broken first-row gate must not be rescued by scrolling.
+        tapControl(income, in: app)
+        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
+        tap("cancelManualSheet"); gone("editEntryAmount")
+        let navigationBottom = app.navigationBars.firstMatch.frame.maxY
+        for _ in 0..<4 {
+            if income.frame.minY < navigationBottom { break }
+            scroll.swipeUp()
+        }
+        XCTAssertLessThan(income.frame.minY, navigationBottom)
+        XCTAssertFalse(income.isHittable, "A row cut by the navigation bar must not take a tap")
+        for _ in 0..<6 {
+            if income.frame.minY >= navigationBottom && income.isHittable { break }
+            scroll.swipeDown()
+        }
+        tapControl(income, in: app)
+        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
+        XCTAssertEqual(element("editEntryAmount").value as? String, "8,010.00")
     }
     func testSavingsHasEqualActionsAndEditableFloorBelowHero() {
         launch(); saved()

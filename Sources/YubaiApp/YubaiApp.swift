@@ -277,7 +277,8 @@ enum AppSheet: Identifiable {
     }
     // MARK: Round 45 derived values
     // Every slot is keyed on the funds cache's timestamp, so a value is recomputed once per ledger
-    // change or per day, never while a view body is evaluated twice. Only `pace` is prepared off-main.
+    // change or per day, never while a view body is evaluated twice. Checkpoint
+    // preparation also primes the pace and worked exercise off-main.
     private let paceSlot = TimedSlot<CyclePace?>()
     private let homeTasksSlot = TimedSlot<[HomeTask]>()
     private let butlerSavedSlot = TimedSlot<Int64>()
@@ -286,6 +287,7 @@ enum AppSheet: Identifiable {
     private let dailyReceiptSlot = TimedSlot<DailyReceipt>()
     private let salaryPromptSlot = TimedSlot<Bool>()
     private let formulaSlot = TimedSlot<SpendableFormula>()
+    private let spendingDerivationSlot = TimedSlot<SpendingDerivation>()
     private let reserveSlot = TimedSlot<ReserveOverview>()
     private let paydaySlot = TimedSlot<Payday.Due?>()
     private let gapSlot = TimedSlot<Reconciliation.Gap?>()
@@ -313,6 +315,16 @@ enum AppSheet: Identifiable {
     var salaryPromptDue: Bool { derived(salaryPromptSlot) { FirstUse.salaryPromptDue($0, now: $1) } }
     /// 算式页四行（`Finance.formula`）。
     var formula: SpendableFormula { derived(formulaSlot) { Finance.formula($0, now: $1) } }
+    var spendingDerivation: SpendingDerivation {
+        derived(spendingDerivationSlot) { ledger, now in
+            // `derived` has selected this funds timestamp. Read the other slots
+            // at that exact instant, including across a posting/day boundary.
+            let funds = cachedFunds!.value
+            let formula = formulaSlot.value(at: now) { Finance.formula(ledger, now: now) }
+            let pace = paceSlot.value(at: now) { Finance.pace(ledger, now: now) }
+            return Finance.spendingDerivation(ledger, now: now, funds: funds, formula: formula, pace: pace)
+        }
+    }
     /// 存钱页：存下的总额与最近进出。
     var reserve: ReserveOverview { derived(reserveSlot) { Reserve.overview($0, now: $1) } }
     var financialNow: Date { _ = timeRevision; _ = fundsValue(); return cachedFunds?.at ?? Date() }
@@ -458,7 +470,11 @@ enum AppSheet: Identifiable {
         cachedBalances = [:]; cachedAssessments = [:]; cachedFixedMonth = preparedDerived?.fixedMonth
         cachedRestrainProgress = preparedDerived?.progress; cachedSalary = preparedSalary
         if let preparedDerived { paceSlot.prime(at: preparedDerived.at, preparedDerived.pace) } else { paceSlot.clear() }
-        formulaSlot.clear(); reserveSlot.clear(); paydaySlot.clear(); gapSlot.clear()
+        if let preparedDerived {
+            formulaSlot.prime(at: preparedDerived.at, preparedDerived.formula)
+            spendingDerivationSlot.prime(at: preparedDerived.at, preparedDerived.spendingDerivation)
+        } else { formulaSlot.clear(); spendingDerivationSlot.clear() }
+        reserveSlot.clear(); paydaySlot.clear(); gapSlot.clear()
         leftoverSlot.clear(); overspendSlot.clear(); homeTasksSlot.clear(); butlerSavedSlot.clear()
         homeHeroSlot.clear(); homeSavingSlot.clear(); dailyReceiptSlot.clear(); salaryPromptSlot.clear()
         timeRevision &+= 1
@@ -756,7 +772,7 @@ enum AppSheet: Identifiable {
             undoTrigger &+= 1; undoLedger = nil; undoLabel = nil; toast = "已撤销"
         } catch { self.error = error.localizedDescription }
     }
-    func present(_ sheet: AppSheet, from source: String) { sheetSource = source; self.sheet = sheet }
+    func present(_ sheet: AppSheet, from source: String? = nil) { sheetSource = source; self.sheet = sheet }
     func setEntrySaveToast(_ message: String) {
         if pendingEntrySave { pendingSaveToast = message }
         else if homeEntrySession && !receiptEntryIDs.isEmpty && freshEntryIDs.isSubset(of: receiptEntryIDs) { return }
@@ -1373,6 +1389,8 @@ struct LedgerDerivedSnapshot: Sendable {
     let progress: [RestrainProgress]
     let visibility: SavingCardVisibility.Snapshot
     let pace: CyclePace?
+    let formula: SpendableFormula
+    let spendingDerivation: SpendingDerivation
     let organizingBatchIDs: Set<UUID>
     init(_ ledger: Ledger, now: Date = Date(), organizingBatchIDs: Set<UUID> = []) {
         self.organizingBatchIDs = organizingBatchIDs
@@ -1392,6 +1410,8 @@ struct LedgerDerivedSnapshot: Sendable {
         entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         fixedMonth = FixedFlows.month(containing: now, in: ledger, asOf: now)
         pace = Finance.pace(ledger, now: now)
+        formula = Finance.formula(ledger, now: now)
+        spendingDerivation = Finance.spendingDerivation(ledger, now: now, funds: funds, formula: formula, pace: pace)
         progress = RestrainProgress.current(ledger: ledger, now: now)
         visibility = SavingCardVisibility.snapshot(in: ledger, organizingBatchIDs: organizingBatchIDs, progress: progress,
                                                   fallbackEntryCount: { UnsortedGroups.entries(for: $0, in: ledger).count })

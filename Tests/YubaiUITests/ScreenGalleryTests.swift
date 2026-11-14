@@ -5,6 +5,7 @@ import XCTest
 final class ScreenGalleryTests: YubaiUITestCase {
     private var app = XCUIApplication()
     private var missing: [String] = []
+    private var warnings: [String] = []
     private var planned: [String] = []
     private var activeStop: String?
     private var stopDeadline = Date.distantFuture
@@ -56,6 +57,16 @@ final class ScreenGalleryTests: YubaiUITestCase {
             attachment.name = "missing-\(label).txt"; attachment.lifetime = .keepAlways; add(attachment)
             let combined = XCTAttachment(string: all.isEmpty ? report : all)
             combined.name = "missing.txt"; combined.lifetime = .keepAlways; add(combined)
+            let warningReport = warnings.joined(separator: "\n") + (warnings.isEmpty ? "" : "\n")
+            try? warningReport.write(to: directory.appendingPathComponent("warnings-\(label).txt"), atomically: true, encoding: .utf8)
+            let warningFiles = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+            let allWarnings = warningFiles.filter { $0.lastPathComponent.hasPrefix("warnings-") && $0.pathExtension == "txt" }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }.compactMap { try? String(contentsOf: $0, encoding: .utf8) }.joined()
+            try? allWarnings.write(to: directory.appendingPathComponent("warnings.txt"), atomically: true, encoding: .utf8)
+            let warningAttachment = XCTAttachment(string: warningReport)
+            warningAttachment.name = "warnings-\(label).txt"; warningAttachment.lifetime = .keepAlways; add(warningAttachment)
+            let combinedWarnings = XCTAttachment(string: allWarnings.isEmpty ? warningReport : allWarnings)
+            combinedWarnings.name = "warnings.txt"; combinedWarnings.lifetime = .keepAlways; add(combinedWarnings)
             if !writeErrors.isEmpty {
                 let errors = XCTAttachment(string: writeErrors.joined(separator: "\n"))
                 errors.name = "write-errors-\(label).txt"; errors.lifetime = .keepAlways; add(errors)
@@ -124,19 +135,23 @@ final class ScreenGalleryTests: YubaiUITestCase {
         return (target.identifier.isEmpty ? "<empty identifier>" : target.identifier) + " label=" + target.label + " frame=" + frameText(target.frame)
     }
 
-    private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+    private func element(_ id: String) -> XCUIElement { control(id, in: app) }
     private func buttonPrefix(_ value: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", value)).firstMatch
     }
     private func wait(_ predicate: @escaping () -> Bool, _ reason: String, timeout: TimeInterval = 6) throws {
         let remaining = min(timeout, stopDeadline.timeIntervalSinceNow)
         guard remaining > 0 else { throw Miss(description: "Stop deadline exceeded: " + reason) }
-        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in predicate() }, object: nil)
-        guard XCTWaiter.wait(for: [expectation], timeout: remaining) == .completed else { throw Miss(description: reason) }
+        let end = ProcessInfo.processInfo.systemUptime + stopDeadline.timeIntervalSinceNow
+        guard UIConditionWait.run(timeout: timeout, deadline: end, read: predicate) else {
+            attachTapFailureDiagnostics(reason: reason)
+            throw Miss(description: reason)
+        }
     }
     private func require(_ id: String, timeout: TimeInterval = 6) throws {
         guard stopDeadline > Date() else { throw Miss(description: "Stop deadline exceeded requiring " + id) }
         if !element(id).waitForExistence(timeout: min(timeout, stopDeadline.timeIntervalSinceNow)) {
+            attachTapFailureDiagnostics(reason: "Missing destination: " + id)
             // Keep checking the other required identifiers at this stop. A
             // later interaction still throws if the missing control is needed.
             issues.append("Missing identifier: " + id + " frame=<absent>")
@@ -204,41 +219,33 @@ final class ScreenGalleryTests: YubaiUITestCase {
             .withOffset(CGVector(dx: target.frame.midX - app.frame.minX, dy: target.frame.midY - app.frame.minY)).tap()
     }
     private func reveal(_ target: XCUIElement) throws {
-        _ = target.waitForExistence(timeout: 1)
-        // A stop that cannot be reached must fail fast: an unbounded search costs minutes per stop on CI.
-        let deadline = min(stopDeadline, Date().addingTimeInterval(15))
-        var previousScroll: CGRect?
-        for _ in 0..<8 {
-            if pressable(target) { return }
-            if Date() > deadline { break }
-            guard app.alerts.count == 0 else { break }
-            let containers = app.scrollViews.allElementsBoundByIndex + app.collectionViews.allElementsBoundByIndex + app.tables.allElementsBoundByIndex
-            let scrolls = containers.filter { $0.exists && $0.frame.height > 120 && $0.frame.width > app.frame.width * 0.65 }
-            let containing = scrolls.last { target.exists && $0.descendants(matching: target.elementType).matching(identifier: target.identifier).count > 0 }
-            let scroll = containing ?? scrolls.last ?? app
-            let above = target.exists && !target.frame.isEmpty && target.frame.minY < scroll.frame.minY + 20
-            let before = target.exists ? target.frame : CGRect.zero
-            try drag(scroll, up: !above)
-            if target.exists, target.frame == before, previousScroll == before { break }
-            previousScroll = before
+        guard revealControl(target, in: app, deadline: stopDeadline) else {
+            throw Miss(description: "Not reachable: " + describe(target))
         }
-        try wait({ self.pressable(target) }, "Not reachable: " + self.describe(target), timeout: 2)
     }
     private func tap(_ target: XCUIElement) throws {
+        rememberTap(target, in: app)
         try reveal(target)
-        try wait({ target.exists && target.isEnabled && target.isHittable }, "Control disabled or covered: " + describe(target))
         if !target.identifier.hasPrefix("keypad_") {
-            guard waitForStableFrame(target, timeout: max(0.1, min(6, stopDeadline.timeIntervalSinceNow))) else {
+            guard waitForStableFrame(target, deadline: stopDeadline) else {
                 throw Miss(description: "Control frame did not settle: " + describe(target))
             }
         }
-        guard onScreen(target) else { throw Miss(description: "Control covered: " + describe(target)) }
-        press(target)
+        guard Date() < stopDeadline else { throw Miss(description: "Stop deadline exceeded: " + describe(target)) }
+        guard target.exists && target.isEnabled && target.isHittable else { throw Miss(description: "Control disabled or covered: " + describe(target)) }
+        if !settledControlClearsViewport(target) {
+            // A sheet's native viewport may have changed while its target was
+            // settling. Re-read that boundary, retaining whole-frame checks.
+            try reveal(target)
+            guard settledControlClearsViewport(target) else { throw Miss(description: "Control covered: " + describe(target)) }
+        }
+        rememberTap(target, in: app)
+        target.tap()
     }
     private func tap(_ id: String) throws { try tap(element(id)) }
     private func type(_ value: String, into id: String) throws {
         let field = element(id); try tap(field)
-        guard waitForStableFrame(field) else { throw Miss(description: "Field frame did not settle: " + id) }
+        guard waitForStableFrame(field, deadline: stopDeadline) else { throw Miss(description: "Field frame did not settle: " + id) }
         if !app.keyboards.firstMatch.exists { press(field) }
         try wait({ self.app.keyboards.firstMatch.exists }, "Keyboard did not open for " + id)
         guard dismissKeyboardIntroduction(in: app) else { throw Miss(description: "System keyboard introduction could not be dismissed") }
@@ -450,7 +457,15 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Home-AI-Empty-Reply") { try rejected("v47-ai-none") }
         stop("Home-AI-Disabled") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try settings("openIntelligencePrivacy"); try tap("aiFeature_butlerSuggestions"); try wait({ self.element("aiFeature_butlerSuggestions").value as? String == "0" }, "Suggestion switch did not turn off"); try root("now"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestions disabled") }
         stop("AI-Why-Correction-Empty") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave") }
-        stop("AI-Why-Corrected") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try tap("butlerAICorrectionSave"); try wait({ !self.element("butlerAIEvidencePage").exists }, "Correction saved") }
+        stop("AI-Why-Corrected") {
+            try load("v47-ai-valid")
+            // A real due-bill question can outrank this suggestion (the run-4
+            // tree shows dueBills + "还有 1 件"). Follow the owner's deck route.
+            try wait({ self.element("butlerSuggestionCard").exists || self.element("openLetterInbox").exists }, "Suggestion or task deck", timeout: 12)
+            if !element("butlerSuggestionCard").exists { try tap("openLetterInbox"); try deckAction("butlerAIEvidence") }
+            try require("butlerSuggestionCard"); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try tap("butlerAICorrectionSave")
+            try wait({ !self.element("butlerAIEvidencePage").exists }, "Correction saved")
+        }
         stop("Home-AI-Review-Done") { try load("v47-ai-review"); try require("butlerAIReviewCard"); try tap("butlerAIReviewDone"); try wait({ !self.element("butlerAIReviewCard").exists }, "Review answered") }
     }
     private func round47BatchA(dark: Bool, large: Bool) {
@@ -1194,7 +1209,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
             // Resolve the audit element while the callback still owns it. Its
             // description alone omits labels on identified/combined elements.
             guard let target = issue.element else {
-                self.issues.append("Text clipped: unresolved audit element; label=<unavailable> frame=<unavailable> " + String(describing: issue))
+                let warning = (self.activeStop ?? self.prefix) + ": Text clipped: unresolved audit element; label=<unavailable> frame=<unavailable> " + String(describing: issue)
+                self.warnings.append(warning); print("GALLERY-WARNING " + warning)
                 if !self.attachedAuditInventory { self.attachedAuditInventory = true; self.attachUnresolvedAudit(issue) }
                 return true
             }
@@ -1238,7 +1254,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     private func attachUnresolvedAudit(_ issue: XCUIAccessibilityAuditIssue) {
         // Apple's element property is optional. When it is genuinely nil, retain
-        // the failure and attach all visible text with labels/frames; never
+        // the warning and attach all visible text with labels/frames; never
         // invent an identifier or silently allow an unresolvable issue.
         var lines = [issue.detailedDescription]
         let window = app.frame

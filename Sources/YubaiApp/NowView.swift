@@ -47,6 +47,9 @@ struct NowView: View {
     // MARK: Page
 
     private var content: some View {
+        // Prepare the worked exercise with the home facts, before a push can
+        // begin. FormulaView reads this same revision/time-keyed value.
+        _ = store.spendingDerivation
         let items = store.inboxItems
         let saving = store.homeSaving
         let pace = store.pace
@@ -80,7 +83,7 @@ struct NowView: View {
             if facts.hasSalaryPlan {
                 TabNavigationLink(.formula) { FormulaView() } label: {
                     heroContents(facts, horizon: horizon, disclosure: true)
-                }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula")
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fundsFormula")
                     .accessibilityLabel(spoken).accessibilityHint("点开看怎么算")
                 if let daily = pace?.daily { dailyRow(daily) }
             } else { heroContents(facts, horizon: horizon, disclosure: false) }
@@ -212,11 +215,11 @@ private struct NowUpcomingRow: View {
                 .frame(minWidth: textSize.isAccessibilitySize ? nil : YubaiSize.rowDouble, alignment: .leading).fixedSize()
             if let planID = row.planID, !row.inflow {
                 TabNavigationLink(.billDetail(planID)) { BillDetailView(planID: planID) } label: {
-                    Text(row.title).yubaiFont(YubaiFont.body).fixedSize(horizontal: false, vertical: true)
+                    upcomingName
                         .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaBill_" + planID.uuidString)
             } else {
-                Text(row.title).yubaiFont(YubaiFont.body).fixedSize(horizontal: false, vertical: true)
+                upcomingName
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(spacing: YubaiSpace.space8) {
@@ -226,8 +229,12 @@ private struct NowUpcomingRow: View {
                 if checkable, let planID = row.planID {
                     BillCheck(planID: planID, occurrence: Dates.day(row.date)).frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin)
                 }
-            }
+            }.fixedSize(horizontal: !textSize.isAccessibilitySize, vertical: true).layoutPriority(1)
         }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle, alignment: .leading)
             .accessibilityElement(children: .contain)
+    }
+    private var upcomingName: some View {
+        Text(row.title).yubaiFont(YubaiFont.body).lineLimit(2).truncationMode(.tail)
+            .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("truncatableName")
     }
 }

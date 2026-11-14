@@ -4,7 +4,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
-    private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+    private func element(_ id: String) -> XCUIElement { control(id, in: app) }
     private func launch(_ fixture: String = "v47-ai-valid", large: Bool = false, hidden: Bool = false, configured: Bool? = nil) {
         app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
@@ -16,11 +16,13 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
-        let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 8)), id)
-        for _ in 0..<10 { if target.isHittable { break }; app.swipeUp() }
-        if !id.hasPrefix("keypad_") { XCTAssertTrue(waitForStableFrame(target), id) }
-        XCTAssertTrue(target.isHittable, id); target.tap()
+        let target = element(id)
+        if !target.exists || !target.isHittable {
+            XCTAssertTrue(revealControl(target, in: app, deadline: Date().addingTimeInterval(60)), id)
+        }
+        tapControl(target, in: app, settles: !id.hasPrefix("keypad_"))
     }
+
     private func wait(_ condition: @escaping () -> Bool) {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)], timeout: 10), .completed)
     }
@@ -165,6 +167,24 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("frequentEntry_0").waitForExistence(timeout: 5)); tap("cancelManualSheet")
         tap("tab_ledger"); XCTAssertTrue(element("emptyState_ledger").exists)
     }
+    func testNestedFrequentFieldPaddingTakesFocusAfterReopening() {
+        launch("v47-c-empty", large: true)
+        element("addEntry").press(forDuration: 0.8); tap("manageQuickRepeats")
+        for _ in 0..<2 {
+            tap("emptyAction_frequent")
+            let field = element("frequentEntryPurpose")
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitForStableFrame(field))
+            XCTAssertGreaterThanOrEqual(field.frame.height, 44)
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95)).tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+            field.typeText("午饭\n")
+            XCTAssertTrue((field.value as? String ?? "").contains("午饭"))
+            tap("amountSheetCancel")
+        }
+        XCTAssertTrue(element("emptyState_frequent").exists)
+    }
     func testPaydayTopupAndAISuggestionBothSurviveAnswersAndRelaunch() {
         launch("v47-ai-topup")
         XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 10))
@@ -205,6 +225,8 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("butlerAIEvidencePage").waitForExistence(timeout: 5))
         let edge = element("butlerAIAccept").frame.minY
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'butlerEvidenceEntry_' OR identifier == 'butlerEvidenceMore'"))
+        XCTAssertGreaterThan(rows.count, 0)
+        XCTAssertTrue(rows.firstMatch.isHittable)
         for row in rows.allElementsBoundByIndex where row.isHittable {
             XCTAssertLessThanOrEqual(row.frame.maxY, edge, row.identifier)
         }

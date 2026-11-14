@@ -83,8 +83,10 @@ for manifest in sorted(shots.rglob("manifest.json")):
         if source.suffix.lower() == ".png" and re.match(r"^(?:V4[67]-|\d{2}-)", name):
             name = re.sub(r"\.png$", "", name, flags=re.I)
             destination = shots / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".png")
-        elif name.startswith(("missing-", "planned-", "write-errors-")):
+        elif name.startswith(("missing-", "planned-", "write-errors-", "warnings-")) or name == "warnings.txt":
             destination = shots / name
+        elif re.match(r"^(?:V4[67]-|\d{2}-).*-unresolved-text-audit(?:\.txt)?$", name):
+            destination = shots / (re.sub(r"\.txt$", "", name) + ".txt")
         else:
             if source.suffix.lower() == ".png":
                 unmapped.append(str(source.relative_to(shots)))
@@ -116,6 +118,11 @@ for name in expected:
     if not (shots / (name + ".png")).exists() and not any(line.startswith(name + "-MISSING:") for line in missing):
         missing.add(name + "-MISSING: no PNG produced; inspect the xcresult / build log")
 (shots / "missing.txt").write_text("\n".join(sorted(missing)) + ("\n" if missing else ""))
+warnings = set()
+for report in [*shots.glob("warnings-*.txt"), shots / "warnings.txt"]:
+    if report.is_file():
+        warnings.update(line for line in report.read_text().splitlines() if line.strip())
+(shots / "warnings.txt").write_text("\n".join(sorted(warnings)) + ("\n" if warnings else ""))
 pngs = sorted(str(path.relative_to(shots)) for path in shots.rglob("*.png"))
 sha = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"], text=True).strip()
 index = [f"PNG count: {len(pngs)}", f"Planned states: {len(expected)}", f"Git: {sha}",

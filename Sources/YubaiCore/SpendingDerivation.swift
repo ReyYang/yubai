@@ -32,6 +32,12 @@ extension Finance {
     /// movements. The displayed derivation remains an identity for every ledger.
     public static func spendingDerivation(_ ledger: Ledger, now: Date) -> SpendingDerivation {
         let funds = funds(ledger, now: now), formula = formula(ledger, now: now)
+        return spendingDerivation(ledger, now: now, funds: funds, formula: formula, pace: pace(ledger, now: now))
+    }
+
+    /// Reuse facts from the same ledger and instant when preparing the home
+    /// screen and its exercise together. An absent pace is already a result.
+    public static func spendingDerivation(_ ledger: Ledger, now: Date, funds: Funds, formula: SpendableFormula, pace: CyclePace?) -> SpendingDerivation {
         let entries = ledger.activeEntries.filter { $0.date >= funds.cycleStart && $0.date <= now }
         let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         let flexible = entries.filter { SpendingParts.flexibleAmount($0, in: ledger, entriesByID: lookup) != 0 }
@@ -48,8 +54,8 @@ extension Finance {
         return SpendingDerivation(salary: salary, income: income, otherFunds: residual, fixedSavings: funds.fixedSavingsTotal,
                                   creditDebt: funds.debt, goals: funds.goals, uncertainInflow: funds.uncertainInflow,
                                   saving: funds.savingTarget, yearlySetAside: funds.yearlySetAside, bills: bills, billNames: formula.bills.map(\.title), budget: budget,
-                                  spent: spent, entryIDs: flexible.map(\.id), available: funds.available, daily: pace(ledger, now: now)?.daily,
-                                  cycleEnd: funds.cycleEnd, daysLeft: pace(ledger, now: now)?.daysLeft ?? max(1, funds.horizonDays + 1),
+                                  spent: spent, entryIDs: flexible.map(\.id), available: funds.available, daily: pace?.daily,
+                                  cycleEnd: funds.cycleEnd, daysLeft: pace?.daysLeft ?? max(1, funds.horizonDays + 1),
                                   billCount: Set(formula.bills.map(\.title)).count,
                                   exerciseIncome: funds.cash - funds.debt - funds.fixedSavingsTotal - funds.goals - funds.uncertainInflow + paid + spent,
                                   interval: DateInterval(start: funds.cycleStart, end: min(now.addingTimeInterval(0.001), Dates.addDays(1, to: funds.cycleEnd))))

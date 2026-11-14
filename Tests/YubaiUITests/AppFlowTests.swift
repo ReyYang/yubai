@@ -559,12 +559,16 @@ final class AppFlowTests: YubaiUITestCase {
         start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
     }
     private func tap(_ element: XCUIElement, in app: XCUIApplication, scroll: XCUIElement? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        rememberTap(element, in: app)
         scrollToVisible(element, in: app, scroll: scroll, file: file, line: line)
         if !(element.exists && element.isEnabled && element.isHittable) {
             let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in element.exists && element.isEnabled && element.isHittable }, object: nil)
             XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, file: file, line: line)
         }
         let identifier = element.identifier
+        // Legacy helpers do not wait on frames; capture just this attribute,
+        // leaving the full target/tree snapshots for the failure path.
+        rememberTap(element, in: app, frame: element.frame)
         element.tap()
         if ["tab_now", "tab_ledger", "tab_yubai"].contains(identifier) { assertSelectedTab(identifier, in: app, file: file, line: line) }
     }
