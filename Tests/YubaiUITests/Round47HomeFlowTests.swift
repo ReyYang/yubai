@@ -4,13 +4,21 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
-    private func launch(_ fixture: String = "v47-home", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false, textCategory: String? = nil) {
+    private func launch(_ fixture: String = "v47-home", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false, textCategory: String? = nil, crossingRows: Bool = false) {
         app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         else if let textCategory { app.launchArguments += ["-UIPreferredContentSizeCategoryName", textCategory] }
         app.launchEnvironment["YUBAI_UI_TEST_REDUCE_MOTION"] = reduceMotion ? "1" : "0"
         app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
+        if crossingRows {
+            app.launchEnvironment["YUBAI_UI_TEST_RECEIPT_CROSSING"] = "1"
+            // Distinct fixture times keep 470110 the oldest row even when CI
+            // starts before the fixture's first 10:00 transaction.
+            let calendar = Calendar(identifier: .gregorian)
+            let evening = calendar.date(from: DateComponents(year: 2026, month: 11, day: 14, hour: 20))!
+            app.launchEnvironment["YUBAI_UI_TEST_NOW"] = String(evening.timeIntervalSince1970)
+        }
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
         app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
         app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
@@ -244,7 +252,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     func testLastTodayRowClearsViewportAndTabsWorkWhileItCrossesTheCapsuleAtBothTextSizes() {
         for large in [false, true] {
-            launch("v47-receipt-many", large: large)
+            launch("v47-receipt-many", large: large, crossingRows: true)
             reveal(element("receiptMoreEntries")); tap("receiptMoreEntries")
             let last = element("ledgerEntry_" + id(470110)), scroll = element("entriesScroll")
             reveal(last)

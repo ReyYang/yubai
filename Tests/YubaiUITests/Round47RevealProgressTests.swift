@@ -70,4 +70,20 @@ final class Round47RevealProgressTests: XCTestCase {
         guard case .drag(up: true, distance: _) = progress.next(.init(target: CGRect(x: 20, y: 448, width: 58.7, height: 44), viewport: outer)) else { return XCTFail() }
         XCTAssertEqual(progress.next(.init(target: CGRect(x: 20, y: 400, width: 58.7, height: 44), viewport: CGRect(x: 20, y: 400, width: 400, height: 44))), .reached)
     }
+    func testLongReceiptReflowDoesNotDiscardRealNativeScrollProgress() {
+        var progress = UIRevealProgress()
+        var first = sample(1994.7, height: 62.3); first.scrollOffset = 0
+        guard case .drag(up: true, distance: _) = progress.next(first) else { return XCTFail() }
+        var reflow = sample(2027.3, height: 62.3); reflow.scrollOffset = 120
+        guard case .drag(up: true, distance: _) = progress.next(reflow) else { return XCTFail() }
+        XCTAssertEqual(progress.next(reflow), .stalled)
+    }
+    func testVirtualizedLandmarkTurnoverStillRequiresActualNativeMotion() {
+        var progress = UIRevealProgress()
+        let first = UIRevealProgress.Sample(target: nil, viewport: viewport, landmarks: ["first": 500], scrollOffset: 0)
+        _ = progress.next(first)
+        let second = UIRevealProgress.Sample(target: nil, viewport: viewport, landmarks: ["later": 500], scrollOffset: 325)
+        guard case .drag(up: true, distance: _) = progress.next(second) else { return XCTFail() }
+        XCTAssertEqual(progress.next(second), .stalled)
+    }
 }

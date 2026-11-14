@@ -40,6 +40,12 @@ extension UITestSupport {
         if script == "v47-receipt-many" || script == "v47-home-hard" {
             for index in 0..<7 { add(470110 + index, index == 6 ? galleryLongTitle + galleryLatinTitle : "日常\(index + 1)", index == 6 ? 123_456_789 : Int64(100 + index), 600 + index) }
         }
+        // The crossing regression needs a page taller than the ordinary-size
+        // viewport. Its original nine rows fit at the top, so dragging down
+        // only bounced and could never place the oldest row across the tabs.
+        if script == "v47-receipt-many", ProcessInfo.processInfo.environment["YUBAI_UI_TEST_RECEIPT_CROSSING"] == "1" {
+            for index in 0..<20 { add(470300 + index, "日常\(index + 8)", 100, 620 + index) }
+        }
         if script == "v47-home-hard" {
             value.wishlist[0].title = galleryLongTitle + galleryLatinTitle; value.wishlist[0].amount = 987_654_321
         }

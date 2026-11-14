@@ -3,6 +3,26 @@ import Foundation
 /// Accessibility keeps a row's full frame when a native scroll view clips it.
 /// Use the visible portion for overlaps, and the native viewport for structure.
 enum UIViewportGeometry {
+    static func isExternalRegion(_ path: String, target: String, ancestors: [String], surface: String?) -> Bool {
+        guard path != target, !ancestors.contains(path) else { return false }
+        return surface.map { path.hasPrefix($0 + ".") } ?? true
+    }
+    /// The caller supplies only external chrome in the target's presentation.
+    /// A bar which owns the target cannot occlude its own descendants.
+    static func usable(_ frame: CGRect, safeArea: CGRect, top: [CGRect], bottom: [CGRect], gap: CGFloat = 12) -> CGRect {
+        var viewport = frame.intersection(safeArea)
+        guard !viewport.isNull, !viewport.isEmpty else { return .zero }
+        for region in top where overlaps(viewport, region) && region.minY <= viewport.minY + 0.5 {
+            let end = viewport.maxY
+            viewport.origin.y = max(viewport.minY, region.maxY)
+            viewport.size.height = max(0, end - viewport.minY)
+        }
+        for region in bottom where overlaps(viewport, region) {
+            viewport.size.height = max(0, min(viewport.maxY, region.minY - gap) - viewport.minY)
+        }
+        return viewport
+    }
+
     static func clipped(_ frame: CGRect, to ancestors: [CGRect]) -> CGRect {
         ancestors.reduce(frame) { $0.intersection($1) }
     }

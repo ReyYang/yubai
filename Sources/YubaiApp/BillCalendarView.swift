@@ -7,6 +7,7 @@ struct BillBrandIcon: View {
     var inflow = false
     var size: CGFloat = 32
     @Environment(AppStore.self) private var store
+    @Environment(\.colorScheme) private var scheme
     private var symbol: String {
         store.current.categories.first { $0.name == category && $0.income == inflow }?.symbol ?? "square.grid.2x2"
     }
@@ -15,7 +16,7 @@ struct BillBrandIcon: View {
             if let icon = BrandIcons.match(title) {
                 Image("Brand-" + icon.slug).resizable().renderingMode(.original).scaledToFit().padding(YubaiSpace.space4)
             } else {
-                Image(systemName: symbol).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.iconInk)
+                Image(systemName: symbol).yubaiFont(YubaiFont.row).foregroundStyle(scheme == .dark ? YubaiColor.label : YubaiColor.iconInk)
             }
         }.frame(width: size, height: size).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             .accessibilityHidden(true)
@@ -250,7 +251,10 @@ struct BillCalendarRow: View {
     }
     private var schedule: String {
         var value = plan.map { FixedFlowArrangement.schedule($0.frequency, date: $0.dueDate, monthlyDay: $0.monthlyDay).replacingOccurrences(of: " 日", with: " 号") } ?? FixedFlowPresentation.monthDay(row.date)
-        if includesDate { value = ManualBookkeeping.dayLabel(row.date, now: store.financialNow) + " · " + value }
+        if includesDate {
+            let date = ManualBookkeeping.dayLabel(row.date, now: store.financialNow)
+            if date != value { value = date + " · " + value }
+        }
         if row.state == .paid { value += row.inflow ? " · 已收到" : " · 已付" }
         return value
     }

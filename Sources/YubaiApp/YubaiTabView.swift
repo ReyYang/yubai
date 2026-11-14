@@ -21,6 +21,9 @@ struct YubaiTabView: View {
                 .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity)
         }.rootScrollContentMargins(for: .yubai, reservesNavigation: false).rootTabScroll(.yubai)
             .scrollDismissesKeyboard(.interactively)
+            // Fade belongs to the scroll slot. Keeping it inside askArea
+            // expanded the bar's AX/hit region 40pt above its visible surface.
+            .overlay(alignment: .bottom) { PageFade(edge: .bottom) }
             .fixedBottomBar() { askArea }
             .rootPageHeader { RootHeader(title: "余白") }
             .amountPrivacy(store.preferences.hideAmounts)
@@ -123,7 +126,7 @@ struct YubaiTabView: View {
             field
         }.padding(.horizontal, YubaiSpace.insetPage)
             .padding(.bottom, focused ? YubaiSpace.gapGroup : YubaiSize.rootBottomPadding(for: .yubai))
-            .background(YubaiColor.canvas).overlay(alignment: .top) { PageFade(edge: .bottom).offset(y: -YubaiSize.iconButton) }
+            .contentShape(Rectangle()).background(YubaiColor.canvas)
             .accessibilityHidden(store.destination != .yubai)
             .allowsHitTesting(store.destination == .yubai)
     }

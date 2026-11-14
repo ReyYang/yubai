@@ -7,6 +7,7 @@ struct UIRevealProgress {
         let target: CGRect?
         let viewport: CGRect
         var landmarks: [String: CGFloat] = [:]
+        var scrollOffset: CGFloat? = nil
     }
     enum Step: Equatable {
         case reached, stalled
@@ -21,15 +22,21 @@ struct UIRevealProgress {
         if let frame = sample.target, !frame.isEmpty, sample.viewport.insetBy(dx: -0.5, dy: -0.5).contains(frame) { return .reached }
         guard !sample.viewport.isEmpty else { return .stalled }
         if let previous {
+            // Font/layout settling can move the target away even as a long
+            // page actually scrolls toward it. Native offset is independent
+            // of that reflow and also survives virtualized landmark turnover.
+            let advanced = previous.scrollOffset.flatMap { before in
+                sample.scrollOffset.map { ($0 - before) * (movingUp ? 1 : -1) > 0.5 }
+            } ?? false
             if let before = previous.target, let after = sample.target {
-                if distance(after, to: sample.viewport) >= distance(before, to: previous.viewport) - 0.5 { return .stalled }
+                if !advanced && distance(after, to: sample.viewport) >= distance(before, to: previous.viewport) - 0.5 { return .stalled }
             } else {
                 // A virtualized row may be absent from an AX sample. Other
                 // content in that same scroll view must still move toward it.
                 let motion = previous.landmarks.compactMap { key, y -> CGFloat? in
                     sample.landmarks[key].map { ($0 - y) * (movingUp ? -1 : 1) }
                 }
-                guard motion.contains(where: { $0 > 0.5 }) else { return .stalled }
+                guard advanced || motion.contains(where: { $0 > 0.5 }) else { return .stalled }
             }
         }
         if let frame = sample.target, !frame.isEmpty {

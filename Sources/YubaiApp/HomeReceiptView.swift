@@ -114,6 +114,7 @@ struct HomeReceiptView: View {
               }
             }.frame(minHeight: YubaiSize.receiptRowHeight)
                 .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isStaticText)
                 .accessibilityLabel(hide ? "金额已隐藏" : AmountLabel.text(receipt.total)).accessibilityIdentifier("receiptTotal")
             Rectangle().fill(YubaiColor.label.opacity(0.4)).frame(height: YubaiSize.separator)
             Rectangle().fill(YubaiColor.label.opacity(0.4)).frame(height: YubaiSize.separator)

@@ -500,11 +500,15 @@ private struct CardContentKey: EnvironmentKey { static let defaultValue = false 
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
 private struct ToastClearanceKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
 private struct PresentationScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
-private struct KeypadTextFocusKey: EnvironmentKey { static let defaultValue = false }
-private struct RowInputEditing: PreferenceKey {
-    static let defaultValue: Set<UUID> = []
-    static func reduce(value: inout Set<UUID>, nextValue: () -> Set<UUID>) { value.formUnion(nextValue()) }
+@Observable private final class RowInputSession {
+    private(set) var editors: Set<UUID> = []
+    var isEditing: Bool { !editors.isEmpty }
+    func setEditing(_ editing: Bool, id: UUID) {
+        guard editors.contains(id) != editing else { return }
+        if editing { editors.insert(id) } else { editors.remove(id) }
+    }
 }
+private struct RowInputSessionKey: EnvironmentKey { static let defaultValue: RowInputSession? = nil }
 extension EnvironmentValues {
     /// SwiftUI's system value is read-only; scripted tests opt in at the readers.
     var yubaiReduceMotion: Bool {
@@ -520,7 +524,7 @@ extension EnvironmentValues {
     var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
     var yubaiToastClearance: CGFloat { get { self[ToastClearanceKey.self] } set { self[ToastClearanceKey.self] = newValue } }
     var yubaiPresentationScale: CGFloat { get { self[PresentationScaleKey.self] } set { self[PresentationScaleKey.self] = newValue } }
-    fileprivate var yubaiKeypadTextFocus: Bool { get { self[KeypadTextFocusKey.self] } set { self[KeypadTextFocusKey.self] = newValue } }
+    fileprivate var yubaiRowInputSession: RowInputSession? { get { self[RowInputSessionKey.self] } set { self[RowInputSessionKey.self] = newValue } }
     var yubaiMinimumTarget: CGFloat { ceil(YubaiSize.tapMin / yubaiPresentationScale * 3) / 3 }
 }
 
@@ -1171,6 +1175,7 @@ extension View {
         VStack(spacing: spacing) {
             self.frame(maxWidth: .infinity, maxHeight: .infinity).modifier(ScrollContentViewport())
             bar().fixedSize(horizontal: false, vertical: true)
+                .contentShape(Rectangle())
                 .accessibilityElement(children: .contain).accessibilityIdentifier("fixedBottomBar")
         }
     }
@@ -1733,6 +1738,9 @@ struct EmptyState: View {
             }
             Text(title).yubaiFont(YubaiFont.cardTitle).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .yubaiTextLineBox(YubaiFont.cardTitle)
+                // Export the complete token line box, rather than the tight
+                // glyph rectangle which omits leading at accessibility sizes.
+                .accessibilityElement(children: .ignore).accessibilityLabel(title).accessibilityAddTraits(.isStaticText)
                 .accessibilityIdentifier(titleIdentifier)
             if (action != nil && onAction != nil) || (secondary != nil && onSecondary != nil) {
                 ChipFlow {
@@ -2491,7 +2499,7 @@ struct KeypadSheet<Content: View, Footer: View>: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var contentHeight: CGFloat = YubaiSize.sheet440
     @State private var footerHeight: CGFloat = YubaiSize.keypadHeight
-    @State private var textEditing = false
+    @State private var inputSession = RowInputSession()
     @State private var editingHeight: CGFloat?
     @ViewBuilder let content: () -> Content
     @ViewBuilder let footer: () -> Footer
@@ -2502,22 +2510,19 @@ struct KeypadSheet<Content: View, Footer: View>: View {
                     .padding(.horizontal, YubaiSpace.insetPage)
                     .padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapGroup)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { contentHeight = $0 } }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if TextInputMetrics.changed(from: contentHeight, to: $0) { contentHeight = $0 } }
             }.scrollBounceBehavior(.basedOnSize).modifier(ScrollContentViewport())
             // Keep both subtrees mounted. A focus change must not recreate an
             // editor or change the sheet's selected height beneath UIKit.
             footer().fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { footerHeight = $0 } }
-                .frame(height: textEditing ? 0 : nil).clipped()
-                .allowsHitTesting(!textEditing).accessibilityHidden(textEditing)
-        }.environment(\.yubaiKeypadTextFocus, true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if TextInputMetrics.changed(from: footerHeight, to: $0) { footerHeight = $0 } }
+                .frame(height: inputSession.isEditing ? 0 : nil).clipped()
+                .allowsHitTesting(!inputSession.isEditing).accessibilityHidden(inputSession.isEditing)
+        }.environment(\.yubaiRowInputSession, inputSession)
             .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(editingHeight ?? contentHeight + footerHeight), .large])
             .accessibilityElement(children: .contain)
-            .onPreferenceChange(RowInputEditing.self) { editors in
-                let editing = !editors.isEmpty
-                if editing && !textEditing { editingHeight = contentHeight + footerHeight }
-                textEditing = editing
-                if !editing { editingHeight = nil }
+            .onChange(of: inputSession.isEditing) { _, editing in
+                editingHeight = editing ? contentHeight + footerHeight : nil
             }
     }
 }
@@ -2678,7 +2683,9 @@ struct Segmented<Value: Hashable>: View {
         let on = selection == value
         return Button { selection = value } label: {
             Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
-                .dynamicTypeSize(...(title.count <= 3 ? DynamicTypeSize.xxxLarge : .accessibility5)).fixedSize(horizontal: false, vertical: true)
+                .fixedSize(horizontal: false, vertical: true)
+                .yubaiTextLineBox(YubaiFont.row)
+                .dynamicTypeSize(...(title.count <= 3 ? DynamicTypeSize.xxxLarge : .accessibility5))
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity, minHeight: minimum)
                 .background { if on { selectedSurface } }
@@ -2817,8 +2824,7 @@ private struct RowTextInput: View {
     var submit: (() -> Void)? = nil
     @Environment(\.isEnabled) private var enabled
     @Environment(\.yubaiMinimumTarget) private var minimum
-    @Environment(\.yubaiKeypadTextFocus) private var preservesTextFocus
-    @State private var nativeEditing = false
+    @Environment(\.yubaiRowInputSession) private var inputSession
     @State private var editingID = UUID()
     @ScaledMetric private var fontSize: CGFloat
     init(text: Binding<String>, placeholder: String, label: String, identifier: String,
@@ -2837,7 +2843,7 @@ private struct RowTextInput: View {
             NativeRowInput(text: $text, placeholder: placeholder, label: label, identifier: identifier,
                            multiline: multiline, numeric: numeric, secure: secure, maximumLines: maximumLines, verticalInset: verticalInset,
                            fontSize: fontSize, minimum: minimum, enabled: enabled, focus: focus,
-                           preservesTextFocus: preservesTextFocus, editingChanged: { nativeEditing = $0 }, search: search, submit: submit)
+                           preservesTextFocus: inputSession != nil, editingChanged: { inputSession?.setEditing($0, id: editingID) }, search: search, submit: submit)
                 // Register the same FocusState with SwiftUI as well as UIKit.
                 // Otherwise a keyboard/detent relayout can clear an unowned
                 // focus binding and updateUIView immediately resigns the field.
@@ -2848,7 +2854,7 @@ private struct RowTextInput: View {
                 .accessibilityLabel(label).accessibilityIdentifier(identifier)
             #endif
         }.frame(maxWidth: .infinity, minHeight: minimum)
-            .preference(key: RowInputEditing.self, value: nativeEditing ? [editingID] : [])
+            .onDisappear { inputSession?.setEditing(false, id: editingID) }
             .contentShape(Rectangle())
             #if os(macOS)
             .onTapGesture { if enabled { focus.wrappedValue = true } }
@@ -2901,9 +2907,12 @@ private struct NativeRowInput: UIViewRepresentable {
         let previousHeight = host.height(for: host.bounds.width)
         let font = UIFont.systemFont(ofSize: fontSize)
         host.minimum = minimum; host.maximumLines = maximumLines
-        host.field.font = font; host.editor.font = font; host.placeholder.font = font
+        if host.field.font != font { host.field.font = font }
+        if host.editor.font != font { host.editor.font = font }
+        if host.placeholder.font != font { host.placeholder.font = font }
         let inset = max(verticalInset, (minimum - font.lineHeight) / 2)
-        host.editor.textContainerInset = UIEdgeInsets(top: inset, left: 0, bottom: inset, right: 0)
+        let textInsets = UIEdgeInsets(top: inset, left: 0, bottom: inset, right: 0)
+        if host.editor.textContainerInset != textInsets { host.editor.textContainerInset = textInsets }
         host.placeholder.text = placeholder; host.field.placeholder = placeholder
         if host.field.isSecureTextEntry != secure { host.field.isSecureTextEntry = secure }
         host.field.keyboardType = numeric ? .decimalPad : .default
@@ -2932,8 +2941,8 @@ private struct NativeRowInput: UIViewRepresentable {
                 }
             }
         } else { host.desiredFocus = enabled && focus.wrappedValue }
-        if abs(host.height(for: host.bounds.width) - previousHeight) > 0.5 { host.invalidateIntrinsicContentSize() }
-        host.scheduleFocusUpdate()
+        if TextInputMetrics.changed(from: previousHeight, to: host.height(for: host.bounds.width)) { host.scheduleSizeUpdate() }
+        if host.desiredFocus != input.isFirstResponder { host.scheduleFocusUpdate() }
     }
     static func dismantleUIView(_ host: FieldHost, coordinator: Coordinator) {
         host.desiredFocus = false; host.focusChanged = nil; host.editingChanged = nil
@@ -2954,17 +2963,24 @@ private struct NativeRowInput: UIViewRepresentable {
         var editingChanged: ((Bool) -> Void)?
         private var awaitingPresentation = false
         private var focusUpdateScheduled = false
+        private var sizeUpdateScheduled = false
+        private var lastHeight: CGFloat = 0
         var minimum = YubaiSize.tapMin
         var maximumLines = 6
         init(multiline: Bool) {
             self.multiline = multiline
             super.init(frame: .zero)
             backgroundColor = .clear
+            clipsToBounds = true
             isAccessibilityElement = false
             field.borderStyle = .none
             editor.backgroundColor = .clear
             editor.textContainerInset = .zero
             editor.textContainer.lineFragmentPadding = 0
+            // Never toggle this from layoutSubviews. Changing scrolling changes
+            // UITextView's intrinsic measurement and can alternate indefinitely
+            // with SwiftUI Form row sizing when the keyboard appears.
+            editor.isScrollEnabled = true
             placeholder.isAccessibilityElement = false; placeholder.isUserInteractionEnabled = false
             if multiline { addSubview(editor); addSubview(placeholder) } else { addSubview(field) }
             let tap = UITapGestureRecognizer(target: self, action: #selector(requestFocus))
@@ -2975,22 +2991,40 @@ private struct NativeRowInput: UIViewRepresentable {
         required init?(coder: NSCoder) { fatalError() }
         func height(for width: CGFloat) -> CGFloat {
             guard multiline else { return max(minimum, ceil(field.font?.lineHeight ?? minimum)) }
-            let ideal = editor.sizeThatFits(CGSize(width: max(1, width), height: .greatestFiniteMagnitude)).height
-            let limit = (editor.font?.lineHeight ?? minimum) * CGFloat(maximumLines) + editor.textContainerInset.top + editor.textContainerInset.bottom
-            return max(minimum, ceil(min(ideal, limit)))
+            // Measuring the live editor mutates its text container/contentSize.
+            // Use an independent string measurement with the same font/insets.
+            let font = editor.font ?? .systemFont(ofSize: YubaiFont.fieldValue.size)
+            var text = editor.text ?? ""
+            if text.isEmpty || text.hasSuffix("\n") { text += " " }
+            let measured = (text as NSString).boundingRect(
+                with: CGSize(width: max(1, width), height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font], context: nil).height
+            return TextInputMetrics.height(textHeight: measured, lineHeight: font.lineHeight,
+                verticalInset: editor.textContainerInset.top, minimum: minimum, maximumLines: maximumLines)
         }
         override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: height(for: bounds.width)) }
         override func layoutSubviews() {
             super.layoutSubviews()
-            field.frame = bounds; editor.frame = bounds
+            if field.frame != bounds { field.frame = bounds }
+            if editor.frame != bounds { editor.frame = bounds }
             let line = editor.font?.lineHeight ?? minimum
             placeholder.frame = CGRect(x: 0, y: max(0, (bounds.height - line) / 2), width: bounds.width, height: line)
             // The editor and its AX frame are both the full row height.
-            let scrolls = editor.contentSize.height > bounds.height + 1
-            if editor.isScrollEnabled != scrolls { editor.isScrollEnabled = scrolls }
-            if desiredFocus { scheduleFocusUpdate() }
+            // Layout only assigns native frames. It never writes focus,
+            // SwiftUI state, accessibility values or intrinsic size.
         }
         override func didMoveToWindow() { super.didMoveToWindow(); scheduleFocusUpdate() }
+        func scheduleSizeUpdate() {
+            guard !sizeUpdateScheduled else { return }
+            sizeUpdateScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                sizeUpdateScheduled = false
+                let next = height(for: bounds.width)
+                guard TextInputMetrics.changed(from: lastHeight, to: next) else { return }
+                lastHeight = next; invalidateIntrinsicContentSize()
+            }
+        }
         func scheduleFocusUpdate() {
             guard !focusUpdateScheduled else { return }
             focusUpdateScheduled = true
@@ -3053,7 +3087,7 @@ private struct NativeRowInput: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
             (textView.superview as? FieldHost)?.placeholder.isHidden = !textView.text.isEmpty
-            textView.superview?.invalidateIntrinsicContentSize()
+            (textView.superview as? FieldHost)?.scheduleSizeUpdate()
         }
         func textViewDidBeginEditing(_ textView: UITextView) {
             (textView.superview as? FieldHost)?.desiredFocus = true

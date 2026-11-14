@@ -66,4 +66,68 @@ final class Round47ViewportGeometryTests: XCTestCase {
         XCTAssertFalse(UIViewportGeometry.overlaps(CGRect(x: 0, y: 760, width: 44, height: 40.5), fixed))
         XCTAssertTrue(UIViewportGeometry.overlaps(CGRect(x: 0, y: 760, width: 44, height: 40.6), fixed))
     }
+    func testRunSixYesterdayChipFitsItsOwnScaledFooterScroll() {
+        let chip = CGRect(x: 73.52727272727272, y: 651.521212121212, width: 48.18181818181817, height: 44.0060606060606)
+        let strip = CGRect(x: 15.709090909090909, y: 651.5212121212121, width: 408.5818181818182, height: 44.0060606060606)
+        let viewport = UIViewportGeometry.usable(strip, safeArea: CGRect(x: 0, y: 62, width: 440, height: 860), top: [], bottom: [])
+        var progress = UIRevealProgress()
+        XCTAssertEqual(progress.next(.init(target: chip, viewport: viewport)), .reached)
+        XCTAssertEqual(progress.next(.init(target: chip.offsetBy(dx: 0, dy: 2), viewport: viewport)), .stalled)
+    }
+    func testRunSixSalaryChipFitsBothScaledScrollAncestors() {
+        let chip = CGRect(x: 27.27272727272727, y: 544.2363636363636, width: 48.18181818181817, height: 44.0060606060606)
+        let strip = CGRect(x: 27.272727272727273, y: 544.2363636363636, width: 385.4545454545455, height: 44.0060606060606)
+        let outer = CGRect(x: 8, y: 356.32727272727277, width: 424, height: 233.5212121212121)
+        let viewport = UIViewportGeometry.usable(UIViewportGeometry.clipped(strip, to: [outer]),
+            safeArea: CGRect(x: 0, y: 62, width: 440, height: 860), top: [], bottom: [])
+        var progress = UIRevealProgress()
+        XCTAssertEqual(progress.next(.init(target: chip, viewport: viewport)), .reached)
+        XCTAssertEqual(progress.next(.init(target: chip.offsetBy(dx: -2, dy: 0), viewport: viewport)), .stalled)
+    }
+    func testRunSixFrequentManagerUsesItsRealCloseControl() {
+        // cancelManualSheet is absent in the Butler-01 log. The matching
+        // manager hierarchy exports closeSheet with this actual frame.
+        let close = CGRect(x: 20, y: 148, width: 112.3, height: 50.7)
+        let viewport = UIViewportGeometry.usable(CGRect(x: 0, y: 62, width: 440, height: 860),
+            safeArea: CGRect(x: 0, y: 62, width: 440, height: 860), top: [], bottom: [])
+        var progress = UIRevealProgress()
+        XCTAssertEqual(progress.next(.init(target: close, viewport: viewport)), .reached)
+        XCTAssertNotEqual(progress.next(.init(target: nil, viewport: viewport)), .reached)
+    }
+    func testRunSixCorrectionActionIsInsideItsOwnFixedBar() {
+        let action = CGRect(x: 170, y: 858, width: 87.7, height: 44)
+        var progress = UIRevealProgress()
+        let viewport = UIViewportGeometry.usable(CGRect(x: 0, y: 62, width: 440, height: 860),
+            safeArea: CGRect(x: 0, y: 62, width: 440, height: 860), top: [], bottom: [])
+        XCTAssertEqual(progress.next(.init(target: action, viewport: viewport)), .reached)
+    }
+    func testRunSixTopupPartialMustDragBeforeItIsReachable() {
+        let action = CGRect(x: 36, y: 742.7, width: 181, height: 47)
+        let viewport = UIViewportGeometry.usable(CGRect(x: 0, y: 136, width: 440, height: 650),
+            safeArea: CGRect(x: 0, y: 62, width: 440, height: 860), top: [], bottom: [CGRect(x: 98, y: 798, width: 244, height: 124)])
+        var progress = UIRevealProgress()
+        XCTAssertEqual(progress.next(.init(target: action, viewport: viewport)), .drag(up: true, distance: 24))
+        XCTAssertEqual(progress.next(.init(target: action.offsetBy(dx: 0, dy: -24), viewport: viewport)), .reached)
+    }
+    func testRunSixMemoriesClearTheVisibleAskBarWithoutExcludingItsFade() {
+        let row = CGRect(x: 20, y: 680, width: 400, height: 64)
+        let viewport = UIViewportGeometry.usable(CGRect(x: 0, y: 136, width: 440, height: 620),
+            safeArea: CGRect(x: 0, y: 62, width: 440, height: 860), top: [], bottom: [CGRect(x: 0, y: 756, width: 440, height: 200)])
+        var progress = UIRevealProgress()
+        XCTAssertEqual(progress.next(.init(target: row, viewport: viewport)), .reached)
+    }
+    func testExternalBarAndKeyboardStillExcludeCoveredControls() {
+        let viewport = UIViewportGeometry.usable(CGRect(x: 8, y: 400, width: 424, height: 400),
+            safeArea: CGRect(x: 0, y: 62, width: 440, height: 860), top: [], bottom: [CGRect(x: 0, y: 610, width: 440, height: 346)])
+        XCTAssertEqual(viewport.maxY, 598)
+        var progress = UIRevealProgress()
+        XCTAssertNotEqual(progress.next(.init(target: CGRect(x: 20, y: 600, width: 100, height: 44), viewport: viewport)), .reached)
+    }
+    func testOnlyExternalChromeInTheSamePresentationOccludesATarget() {
+        let target = "0.1.2.3.4", ancestors = ["0", "0.1", "0.1.2", "0.1.2.3"]
+        XCTAssertFalse(UIViewportGeometry.isExternalRegion("0.1.2", target: target, ancestors: ancestors, surface: "0.1"))
+        XCTAssertFalse(UIViewportGeometry.isExternalRegion("0.0.9", target: target, ancestors: ancestors, surface: "0.1"))
+        XCTAssertTrue(UIViewportGeometry.isExternalRegion("0.1.5", target: target, ancestors: ancestors, surface: "0.1"))
+        XCTAssertTrue(UIViewportGeometry.isExternalRegion("0.0.9", target: target, ancestors: ancestors, surface: nil))
+    }
 }

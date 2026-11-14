@@ -81,6 +81,21 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         wait { !self.element("butlerAIEvidencePage").exists }
         settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("memories=2"))
     }
+    func testCorrectionTypingKeepsAppResponsiveAtDefaultAndLargestText() {
+        for large in [false, true] {
+            launch(large: large); tap("butlerAIEvidence"); tap("butlerAIIncorrect")
+            typeIntoField("周四是和同事拼单", identifier: "butlerAICorrectionText", in: app)
+            let cancel = element("cancelManualSheet")
+            XCTAssertTrue(cancel.exists && cancel.isHittable)
+            let deadline = ProcessInfo.processInfo.systemUptime + 5
+            cancel.tap()
+            XCTAssertTrue(UIConditionWait.run(timeout: 3, deadline: deadline, read: {
+                !self.element("butlerAICorrectionText").exists && self.element("butlerAIEvidencePage").exists
+            }), "Correction must respond to a second control within five seconds (large=\(large))")
+            XCTAssertLessThan(ProcessInfo.processInfo.systemUptime, deadline)
+            app.terminate()
+        }
+    }
     func testScriptedWrongSumUnknownIDUnknownActionMalformedAndEmptyNeverEnterQueue() {
         for fixture in ["v47-ai-wrong-sum", "v47-ai-unknown-id", "v47-ai-unknown-action", "v47-ai-malformed", "v47-ai-none"] {
             launch(fixture); settings()
@@ -171,7 +186,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         launch("v47-c-empty"); frequentMenu(); tap("emptyAction_frequent")
         typeIntoField("午饭\n", identifier: "frequentEntryPurpose", in: app)
         tap("keypad_2"); tap("keypad_8"); tap("saveFrequentEntry")
-        XCTAssertTrue(element("frequentEntry_0").waitForExistence(timeout: 5)); tap("cancelManualSheet")
+        XCTAssertTrue(element("frequentEntry_0").waitForExistence(timeout: 5)); tap("closeSheet")
         tap("tab_ledger"); XCTAssertTrue(element("emptyState_ledger").exists)
     }
     func testNestedFrequentFieldPaddingTakesFocusAfterReopening() {

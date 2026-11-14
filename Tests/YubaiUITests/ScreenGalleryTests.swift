@@ -255,10 +255,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private func tap(_ id: String) throws { try tap(element(id)) }
     private func type(_ value: String, into id: String) throws {
         let field = element(id); try tap(field)
-        guard waitForStableFrame(field, deadline: stopDeadline) else { throw Miss(description: "Field frame did not settle: " + id) }
         if !app.keyboards.firstMatch.exists { press(field) }
         try wait({ self.app.keyboards.firstMatch.exists }, "Keyboard did not open for " + id)
         guard dismissKeyboardIntroduction(in: app) else { throw Miss(description: "System keyboard introduction could not be dismissed") }
+        guard waitForKeyboardEditing(id, in: app, deadline: stopDeadline) else { throw Miss(description: "Keyboard/focus/frame did not settle: " + id) }
         field.typeText(value)
         if ["frequentEntryPurpose", "butlerAICorrectionText"].contains(id) {
             let expected = value.trimmingCharacters(in: .newlines)
@@ -1347,9 +1347,13 @@ final class ScreenGalleryTests: YubaiUITestCase {
             let reviewedFormula = ["V47-dark-Spend-Edit-Saving", "V47-hidden-Spend-Edit-Saving"].contains(stopName) &&
                 ((target.identifier == "savingMode_fixed" && target.label == "固定金额") ||
                  (target.identifier.isEmpty && ["1,564.00 · 日均 83.00", "•••• · 日均 ••••"].contains(target.label)))
+            // fix8 open checker decision: the supplied light PNG also shows
+            // this complete label inside the same 424/440 scaled presentation.
+            let reviewedLightFixed = stopName == "V47-light-Spend-Edit-Saving" &&
+                target.identifier == "savingMode_fixed" && target.label == "固定金额"
             let reviewedFrequent = ["V47-light-Empty-Frequent", "V47-dark-Empty-Frequent", "V47-hidden-Empty-Frequent"].contains(stopName) &&
                 target.identifier.isEmpty && target.label == "常记的会自己出现"
-            if (reviewedFormula || reviewedFrequent), let snapshot = try? target.snapshot(),
+            if (reviewedFormula || reviewedFrequent || reviewedLightFixed), let snapshot = try? target.snapshot(),
                let context = scrollAncestors[ancestryIdentity(snapshot)]?.first(where: { $0.frame == snapshot.frame }),
                let presentation = context.presentations.first, presentation.width / window.width < 1 {
                 let warning = stopName + ": Text clipped: PNG-reviewed complete text in scaled sheet (scale=" +

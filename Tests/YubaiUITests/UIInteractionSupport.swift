@@ -140,14 +140,26 @@ class YubaiUITestCase: XCTestCase {
         var progress = UIRevealProgress()
         var trace: [String] = []
         var waitedForDiscovery = false
+        var staticText = false
         func ready() -> Bool {
+            // Noninteractive facts can be fully revealed without being a hit
+            // target. Actual controls still require enabled native hit testing.
+            if staticText { return target.exists && Date() < deadline }
             if target.isHittable { return Date() < deadline }
             let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
             return UIConditionWait.run(timeout: 6, deadline: end, read: { target.exists && target.isHittable })
         }
         while Date() < deadline {
             guard let tree = try? app.snapshot(), Date() < deadline else { break }
-            guard let metrics = windowMetrics(in: tree) else {
+            var observedMetrics = windowMetrics(in: tree) ?? windowMetrics(in: app)
+            if observedMetrics == nil {
+                let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
+                _ = UIConditionWait.run(timeout: 6, deadline: end, read: {
+                    observedMetrics = self.windowMetrics(in: app)
+                    return observedMetrics != nil
+                })
+            }
+            guard let metrics = observedMetrics else {
                 print("Reveal has no native window metrics: \(identifier)")
                 return false
             }
@@ -155,49 +167,66 @@ class YubaiUITestCase: XCTestCase {
                 guard waitForNativeTransition(in: app, deadline: deadline) else { return false }
                 continue
             }
-            var match: (XCUIElementSnapshot, [XCUIElementSnapshot])?
+            var match: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot], path: String, ancestorPaths: [String])?
             var scrolls: [XCUIElementSnapshot] = []
-            var topRegions: [CGRect] = [], bottomRegions: [CGRect] = [], toastRegions: [CGRect] = []
-            func collect(_ node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot]) {
+            var topRegions: [(String, CGRect)] = [], bottomRegions: [(String, CGRect)] = [], toastRegions: [(String, CGRect)] = []
+            func collect(_ node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot], path: String, ancestorPaths: [String]) {
                 if [.scrollView, .collectionView, .table].contains(node.elementType),
                    node.frame.height > 120, node.frame.width > tree.frame.width * 0.65 { scrolls.append(node) }
-                if node.identifier == identifier, !node.frame.isEmpty { match = (node, ancestors) }
-                if node.elementType == .navigationBar || node.identifier == "rootHeaderRegion" { topRegions.append(node.frame) }
-                if node.elementType == .keyboard || ["mainNavigation", "fixedBottomBar"].contains(node.identifier) { bottomRegions.append(node.frame) }
-                if ["toastMessage", "undoLastChange", "expandToast"].contains(node.identifier) { toastRegions.append(node.frame) }
-                for child in node.children { collect(child, ancestors: ancestors + [node]) }
+                if node.identifier == identifier, !node.frame.isEmpty { match = (node, ancestors, path, ancestorPaths) }
+                if node.elementType == .navigationBar || node.identifier == "rootHeaderRegion" { topRegions.append((path, node.frame)) }
+                if node.elementType == .keyboard || ["mainNavigation", "fixedBottomBar"].contains(node.identifier) { bottomRegions.append((path, node.frame)) }
+                if ["toastMessage", "undoLastChange", "expandToast"].contains(node.identifier) { toastRegions.append((path, node.frame)) }
+                for (index, child) in node.children.enumerated() { collect(child, ancestors: ancestors + [node], path: path + ".\(index)", ancestorPaths: ancestorPaths + [path]) }
             }
-            collect(tree, ancestors: [])
+            collect(tree, ancestors: [], path: "0", ancestorPaths: [])
+            staticText = match?.node.elementType == .staticText
             if match == nil && !waitedForDiscovery {
                 waitedForDiscovery = true
                 _ = target.waitForExistence(timeout: min(5, max(0, deadline.timeIntervalSinceNow)))
                 continue
             }
-            let ancestors = match?.1.filter { [.scrollView, .collectionView, .table].contains($0.elementType) } ?? []
+            let ancestors = match?.ancestors.filter { [.scrollView, .collectionView, .table].contains($0.elementType) } ?? []
+            // A modal is a different surface from the obscured root page. Its
+            // controls must not be clipped to root chrome behind the sheet.
+            let surface: String? = match.flatMap { found in
+                guard !found.ancestors.contains(where: { $0.identifier.hasPrefix("rootPage_") }) else { return nil }
+                let index = found.ancestors.firstIndex {
+                    $0.elementType == .other && $0.identifier != "fixedBottomBar" &&
+                    $0.frame.minY > tree.frame.minY + 0.5 && $0.frame.height > 200 && $0.frame.width > tree.frame.width * 0.8
+                }
+                return index.map { found.ancestorPaths[$0] }
+            }
+            let surfaceFrame: CGRect? = match.flatMap { found in
+                guard let surface, let index = found.ancestorPaths.firstIndex(of: surface) else { return nil }
+                return found.ancestors[index].frame
+            }
+            func external(_ region: (String, CGRect)) -> Bool {
+                guard let match else { return true }
+                return UIViewportGeometry.isExternalRegion(region.0, target: match.path, ancestors: match.ancestorPaths, surface: surface)
+            }
+            // Keyboard is external to every presentation, including a sheet
+            // whose controls are exposed beside the system's keyboard window.
+            func keyboardFrames(_ node: XCUIElementSnapshot) -> [CGRect] {
+                if node.elementType == .keyboard { return [node.frame] }
+                return node.children.flatMap(keyboardFrames)
+            }
+            let keyboard = keyboardFrames(tree)
             func usable(_ frame: CGRect) -> CGRect {
-                var viewport = frame.intersection(metrics.safeRectangle)
-                guard !viewport.isNull, !viewport.isEmpty else { return .zero }
-                for region in topRegions where UIViewportGeometry.overlaps(viewport, region) {
-                    if region.minY <= viewport.minY + 0.5 {
-                        let bottom = viewport.maxY; viewport.origin.y = max(viewport.minY, region.maxY)
-                        viewport.size.height = max(0, bottom - viewport.minY)
-                    }
-                }
                 let toasts = ["toastMessage", "undoLastChange", "expandToast"].contains(identifier) ? [] : toastRegions
-                for region in bottomRegions + toasts where UIViewportGeometry.overlaps(viewport, region) {
-                    viewport.size.height = max(0, min(viewport.maxY, region.minY - 12) - viewport.minY)
-                }
-                return viewport
+                return UIViewportGeometry.usable(frame.intersection(surfaceFrame ?? tree.frame), safeArea: metrics.safeRectangle,
+                    top: topRegions.filter(external).map(\.1), bottom: (bottomRegions + toasts).filter(external).map(\.1) + keyboard)
             }
             let container = ancestors.last { node in
-                match.map { !usable(node.frame).insetBy(dx: -0.5, dy: -0.5).contains($0.0.frame) } ?? false
+                match.map { !usable(node.frame).insetBy(dx: -0.5, dy: -0.5).contains($0.node.frame) } ?? false
             } ?? ancestors.last ?? (match == nil ? scrolls.last : nil)
             // Fixed headers and bars have no scroll ancestor. A covered fixed
             // control cannot be repaired by dragging an unrelated page.
             if let match, container == nil {
-                rememberTap(target, in: app, frame: match.0.frame)
-                revealedViewport = metrics.safeRectangle
-                return metrics.safeRectangle.contains(match.0.frame) && ready()
+                let viewport = usable(metrics.safeRectangle)
+                rememberTap(target, in: app, frame: match.node.frame)
+                revealedViewport = viewport
+                return viewport.insetBy(dx: -0.5, dy: -0.5).contains(match.node.frame) && ready()
             }
             guard let container else { break }
             let containerIndex = ancestors.lastIndex { $0.elementType == container.elementType && $0.identifier == container.identifier && $0.frame == container.frame }
@@ -214,12 +243,13 @@ class YubaiUITestCase: XCTestCase {
                 for child in node.children { mark(child) }
             }
             mark(container)
-            let sample = UIRevealProgress.Sample(target: match?.0.frame, viewport: viewport, landmarks: landmarks)
+            let sample = UIRevealProgress.Sample(target: match?.node.frame, viewport: viewport, landmarks: landmarks,
+                scrollOffset: metrics.scroll(matching: container.frame)?.remainingUp)
             let step = progress.next(sample)
-            trace.append("target=\(String(describing: sample.target)) viewport=\(viewport) \(step)")
+            trace.append("target=\(String(describing: sample.target)) viewport=\(viewport) offset=\(String(describing: sample.scrollOffset)) \(step)")
             switch step {
             case .reached:
-                rememberTap(target, in: app, frame: match?.0.frame)
+                rememberTap(target, in: app, frame: match?.node.frame)
                 revealedViewport = viewport
                 if ready() { return true }
                 print("Reveal reached a covered control: \(identifier)\n" + trace.joined(separator: "\n"))
@@ -351,10 +381,27 @@ class YubaiUITestCase: XCTestCase {
         tapControl(field, in: app)
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), identifier)
         XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app), "Keyboard/focus did not settle: " + identifier)
         field.typeText(text)
         let expected = text.trimmingCharacters(in: .newlines)
         XCTAssertTrue(UIConditionWait.run(timeout: 6, read: { (field.value as? String ?? "").contains(expected) }),
                       "Field did not retain the full text: " + identifier)
+    }
+
+    func waitForKeyboardEditing(_ identifier: String, in app: XCUIApplication, deadline: Date? = nil) -> Bool {
+        let limit = deadline ?? Date().addingTimeInterval(20)
+        let end = ProcessInfo.processInfo.systemUptime + max(0, limit.timeIntervalSinceNow)
+        guard UIConditionWait.run(timeout: 10, deadline: end, read: {
+            guard self.appHasKeyboardFocus(identifier, in: app) else { return false }
+            return app.keyboards.firstMatch.exists
+        }) else { return false }
+        return waitForStableFrame(app.keyboards.firstMatch, deadline: limit) &&
+            waitForStableFrame(control(identifier, in: app), deadline: limit) && appHasKeyboardFocus(identifier, in: app)
+    }
+
+    private func appHasKeyboardFocus(_ identifier: String, in app: XCUIApplication) -> Bool {
+        guard let metrics = windowMetrics(in: app) else { return false }
+        return !metrics.transitioning && metrics.focused == identifier
     }
 
     /// The native tree flattens navigationCapsule into mainNavigation. Its three

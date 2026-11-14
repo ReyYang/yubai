@@ -13,14 +13,8 @@ import SwiftUI
 /// travel must be observed rather than guessed from a full-screen AX frame.
 struct UITestWindowMetrics: UIViewRepresentable {
     func makeUIView(context: Context) -> Probe { Probe() }
-    func updateUIView(_ view: Probe, context: Context) { view.read() }
+    func updateUIView(_ view: Probe, context: Context) {}
     final class Probe: UIView {
-        private var link: CADisplayLink?
-        private final class Tick: NSObject {
-            weak var probe: Probe?
-            init(_ probe: Probe) { self.probe = probe }
-            @objc func read() { probe?.read() }
-        }
         init() {
             super.init(frame: .zero)
             backgroundColor = .clear; isUserInteractionEnabled = false
@@ -30,21 +24,18 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
         }
         required init?(coder: NSCoder) { fatalError() }
-        deinit { link?.invalidate() }
         @objc private func updateAccessibility() {
             // Script metadata is queryable by XCTest, never a VoiceOver stop.
             isAccessibilityElement = !UIAccessibility.isVoiceOverRunning
         }
-        override func didMoveToWindow() {
-            super.didMoveToWindow(); link?.invalidate(); link = nil
-            if window != nil {
-                let timer = CADisplayLink(target: Tick(self), selector: #selector(Tick.read))
-                timer.preferredFramesPerSecond = 10
-                timer.add(to: .main, forMode: .common); link = timer; read()
-            }
+        // Query on demand. Publishing AX values on a display link (or during
+        // layout/updateUIView) can invalidate the very layout being observed.
+        override var accessibilityValue: String? {
+            get { metricsValue() }
+            set {}
         }
-        func read() {
-            guard let window else { return }
+        private func metricsValue() -> String? {
+            guard let window else { return nil }
             func rect(_ value: CGRect) -> [CGFloat] { [value.minX, value.minY, value.width, value.height] }
             func transitioning(_ controller: UIViewController) -> Bool {
                 controller.transitionCoordinator != nil || controller.isBeingPresented || controller.isBeingDismissed ||
@@ -54,7 +45,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
             var focused = ""
             func collect(_ view: UIView) {
                 guard !view.isHidden, view.alpha > 0 else { return }
-                if view.isFirstResponder { focused = view.accessibilityIdentifier ?? "" }
+                if view.isFirstResponder, let identifier = view.accessibilityIdentifier, !identifier.isEmpty { focused = identifier }
                 if let scroll = view as? UIScrollView, scroll.bounds.width > 0, scroll.isScrollEnabled {
                     let frame = scroll.convert(scroll.bounds, to: nil)
                     let scale = frame.height / max(1, scroll.bounds.height)
@@ -66,12 +57,17 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 }
                 for child in view.subviews { collect(child) }
             }
-            collect(window)
+            // Nested presentations and the keyboard can use separate windows.
+            // Every probe must report the same live first responder, including
+            // a sheet probe queried while its root is hidden from accessibility.
+            let windows = (window.windowScene?.windows ?? [window]).filter { !$0.isHidden && $0.alpha > 0 }
+            for candidate in windows { collect(candidate) }
             let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
-            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": window.rootViewController.map(transitioning) ?? false,
+            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": windows.contains { $0.rootViewController.map(transitioning) == true },
                                       "focused": focused, "scrolls": scrolls]
             if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
-               let json = String(data: data, encoding: .utf8), accessibilityValue != json { accessibilityValue = json }
+               let json = String(data: data, encoding: .utf8) { return json }
+            return nil
         }
     }
 }
