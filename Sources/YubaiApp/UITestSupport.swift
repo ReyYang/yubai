@@ -8,6 +8,15 @@ import SwiftUI
 #endif
 
 #if os(iOS)
+import CoreFoundation
+
+fileprivate final class UITestFirstResponderQuery: NSObject {
+    weak var responder: UIResponder?
+}
+extension UIResponder {
+    @objc fileprivate func yubaiIdentifyFirstResponder(_ query: UITestFirstResponderQuery) { query.responder = self }
+}
+
 /// Read-only native geometry for scripted walks. No device/Release code or
 /// visible controls: safe areas, transition completion and remaining scroll
 /// travel must be observed rather than guessed from a full-screen AX frame.
@@ -15,6 +24,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
     func makeUIView(context: Context) -> Probe { Probe() }
     func updateUIView(_ view: Probe, context: Context) {}
     final class Probe: UIView {
+        private static let cache = MetricsCache()
         init() {
             super.init(frame: .zero)
             backgroundColor = .clear; isUserInteractionEnabled = false
@@ -31,22 +41,53 @@ struct UITestWindowMetrics: UIViewRepresentable {
         // Query on demand. Publishing AX values on a display link (or during
         // layout/updateUIView) can invalidate the very layout being observed.
         override var accessibilityValue: String? {
-            get { metricsValue() }
+            get { window.flatMap { Self.cache.value(in: $0) } }
             set {}
         }
-        private func metricsValue() -> String? {
-            guard let window else { return nil }
-            func rect(_ value: CGRect) -> [CGFloat] { [value.minX, value.minY, value.width, value.height] }
-            func transitioning(_ controller: UIViewController) -> Bool {
-                controller.transitionCoordinator != nil || controller.isBeingPresented || controller.isBeingDismissed ||
-                    controller.children.contains(where: transitioning) || controller.presentedViewController.map(transitioning) == true
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // Invalidate private memoization only. Never publish AX/SwiftUI
+            // values, schedule layout, or write application state here.
+            Self.cache.invalidate()
+        }
+    }
+
+    @MainActor private final class MetricsCache: NSObject {
+        private var values: [ObjectIdentifier: String] = [:]
+        private var turnObserver: CFRunLoopObserver?
+        override init() {
+            super.init()
+            let activities = CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.exit.rawValue
+            turnObserver = CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault, activities, true, 0) { [weak self] _, _ in
+                MainActor.assumeIsolated { self?.invalidate() }
             }
+            if let turnObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), turnObserver, .commonModes) }
+            for name in [UITextField.textDidBeginEditingNotification, UITextField.textDidEndEditingNotification,
+                         UITextView.textDidBeginEditingNotification, UITextView.textDidEndEditingNotification,
+                         UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardDidChangeFrameNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(invalidate), name: name, object: nil)
+            }
+        }
+        @objc func invalidate() { values.removeAll(keepingCapacity: true) }
+
+        func value(in window: UIWindow) -> String? {
+            let key = ObjectIdentifier(window)
+            if let cached = values[key] { return cached }
+            // One responder-chain action, independent of the number of views.
+            let query = UITestFirstResponderQuery()
+            UIApplication.shared.sendAction(#selector(UIResponder.yubaiIdentifyFirstResponder(_:)), to: nil, from: query, for: nil)
+            let focused = (query.responder as? UIView)?.accessibilityIdentifier ?? ""
+            func rect(_ value: CGRect) -> [CGFloat] { [value.minX, value.minY, value.width, value.height] }
             var scrolls: [[String: Any]] = []
-            var focused = ""
-            func collect(_ view: UIView) {
-                guard !view.isHidden, view.alpha > 0 else { return }
-                if view.isFirstResponder, let identifier = view.accessibilityIdentifier, !identifier.isEmpty { focused = identifier }
-                if let scroll = view as? UIScrollView, scroll.bounds.width > 0, scroll.isScrollEnabled {
+            let windows = (window.windowScene?.windows ?? [window]).filter { !$0.isHidden && $0.alpha > 0 }
+            // This metadata is advisory for reveal progress, never a reachability
+            // gate. Bound even a pathological native/keyboard view hierarchy.
+            var pending: [UIView] = Array(windows.prefix(2048))
+            var remaining = 2048
+            while remaining > 0, let view = pending.popLast() {
+                remaining -= 1
+                guard !view.isHidden, view.alpha > 0, view is UIWindow || view.window != nil else { continue }
+                if let scroll = view as? UIScrollView, !scroll.bounds.isEmpty, scroll.isScrollEnabled {
                     let frame = scroll.convert(scroll.bounds, to: nil)
                     let scale = frame.height / max(1, scroll.bounds.height)
                     let minimum = -scroll.adjustedContentInset.top
@@ -55,18 +96,25 @@ struct UITestWindowMetrics: UIViewRepresentable {
                                     "remainingDown": max(0, maximum - scroll.contentOffset.y) * scale,
                                     "remainingUp": max(0, scroll.contentOffset.y - minimum) * scale])
                 }
-                for child in view.subviews { collect(child) }
+                pending.append(contentsOf: view.subviews.prefix(max(0, remaining - pending.count)))
             }
-            // Nested presentations and the keyboard can use separate windows.
-            // Every probe must report the same live first responder, including
-            // a sheet probe queried while its root is hidden from accessibility.
-            let windows = (window.windowScene?.windows ?? [window]).filter { !$0.isHidden && $0.alpha > 0 }
-            for candidate in windows { collect(candidate) }
+            var controllers = windows.compactMap(\.rootViewController)
+            var transitioning = false
+            remaining = 128
+            while remaining > 0, let controller = controllers.popLast() {
+                remaining -= 1
+                if controller.transitionCoordinator != nil || controller.isBeingPresented || controller.isBeingDismissed {
+                    transitioning = true; break
+                }
+                var children = controller.children
+                if let presented = controller.presentedViewController { children.append(presented) }
+                controllers.append(contentsOf: children.prefix(max(0, remaining - controllers.count)))
+            }
             let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
-            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": windows.contains { $0.rootViewController.map(transitioning) == true },
+            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": transitioning,
                                       "focused": focused, "scrolls": scrolls]
             if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
-               let json = String(data: data, encoding: .utf8) { return json }
+               let json = String(data: data, encoding: .utf8) { values[key] = json; return json }
             return nil
         }
     }

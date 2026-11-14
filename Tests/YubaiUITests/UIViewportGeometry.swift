@@ -3,24 +3,18 @@ import Foundation
 /// Accessibility keeps a row's full frame when a native scroll view clips it.
 /// Use the visible portion for overlaps, and the native viewport for structure.
 enum UIViewportGeometry {
-    static func isExternalRegion(_ path: String, target: String, ancestors: [String], surface: String?) -> Bool {
-        guard path != target, !ancestors.contains(path) else { return false }
-        return surface.map { path.hasPrefix($0 + ".") } ?? true
-    }
-    /// The caller supplies only external chrome in the target's presentation.
-    /// A bar which owns the target cannot occlude its own descendants.
-    static func usable(_ frame: CGRect, safeArea: CGRect, top: [CGRect], bottom: [CGRect], gap: CGFloat = 12) -> CGRect {
-        var viewport = frame.intersection(safeArea)
-        guard !viewport.isNull, !viewport.isEmpty else { return .zero }
-        for region in top where overlaps(viewport, region) && region.minY <= viewport.minY + 0.5 {
-            let end = viewport.maxY
-            viewport.origin.y = max(viewport.minY, region.maxY)
-            viewport.size.height = max(0, end - viewport.minY)
+    /// Ancestors are the target's actual snapshot scroll ancestors, outermost
+    /// first. Native hittability owns occlusion; the structural gallery audit
+    /// separately rejects page chrome overlapping a scroll viewport.
+    static func revealed(exists: Bool, enabled: Bool, hittable: Bool, staticText: Bool = false,
+                         frame: CGRect, scrollAncestors: [CGRect], keyboards: [CGRect] = []) -> Bool {
+        guard exists, !frame.isEmpty, !frame.isNull, !frame.isInfinite,
+              staticText || (enabled && hittable),
+              scrollAncestors.allSatisfy({ $0.insetBy(dx: -0.5, dy: -0.5).contains(frame) }) else { return false }
+        guard let inner = scrollAncestors.last else { return true }
+        return visibleParts(inner, ancestors: [], excluding: keyboards).contains {
+            $0.insetBy(dx: -0.5, dy: -0.5).contains(frame)
         }
-        for region in bottom where overlaps(viewport, region) {
-            viewport.size.height = max(0, min(viewport.maxY, region.minY - gap) - viewport.minY)
-        }
-        return viewport
     }
 
     static func clipped(_ frame: CGRect, to ancestors: [CGRect]) -> CGRect {

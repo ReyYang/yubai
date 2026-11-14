@@ -2683,9 +2683,10 @@ struct Segmented<Value: Hashable>: View {
         let on = selection == value
         return Button { selection = value } label: {
             Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
+                .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
-                .yubaiTextLineBox(YubaiFont.row)
                 .dynamicTypeSize(...(title.count <= 3 ? DynamicTypeSize.xxxLarge : .accessibility5))
+                .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity, minHeight: minimum)
                 .background { if on { selectedSurface } }

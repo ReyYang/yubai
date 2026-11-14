@@ -17,7 +17,8 @@ class YubaiUITestCase: XCTestCase {
     private var lastFrameWait: (target: XCUIElement, result: UIFrameWait.Result)?
     private var attachedTapDiagnostics = false
     private var controlQueries: [ObjectIdentifier: (XCUIElement, String)] = [:]
-    private var revealedViewport: CGRect?
+    private var revealedScrollFrames: [CGRect]?
+    private var revealedKeyboards: [CGRect] = []
     private let scriptedNow = Date().timeIntervalSince1970
 
     func control(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
@@ -132,108 +133,81 @@ class YubaiUITestCase: XCTestCase {
     }
 
     /// Reveal the full target through all of its native scroll ancestors.
-    func revealControl(_ target: XCUIElement, in app: XCUIApplication, deadline: Date) -> Bool {
-        revealedViewport = nil
+    func revealControl(_ target: XCUIElement, in app: XCUIApplication, deadline: Date,
+                       searching scroll: XCUIElement? = nil) -> Bool {
+        revealedScrollFrames = nil; revealedKeyboards = []
         let identifier = controlQueries[ObjectIdentifier(target)]?.1 ?? (target.exists ? target.identifier : "")
         guard !identifier.isEmpty else { return false }
         rememberTap(target, in: app)
         var progress = UIRevealProgress()
         var trace: [String] = []
         var waitedForDiscovery = false
-        var staticText = false
-        func ready() -> Bool {
-            // Noninteractive facts can be fully revealed without being a hit
-            // target. Actual controls still require enabled native hit testing.
-            if staticText { return target.exists && Date() < deadline }
-            if target.isHittable { return Date() < deadline }
+        var searchIdentifier = scroll?.identifier
+        func ready(staticText: Bool) -> Bool {
             let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
-            return UIConditionWait.run(timeout: 6, deadline: end, read: { target.exists && target.isHittable })
+            return UIConditionWait.run(timeout: 6, deadline: end, read: {
+                target.exists && (staticText || (target.isEnabled && target.isHittable))
+            })
         }
         while Date() < deadline {
             guard let tree = try? app.snapshot(), Date() < deadline else { break }
-            var observedMetrics = windowMetrics(in: tree) ?? windowMetrics(in: app)
-            if observedMetrics == nil {
-                let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
-                _ = UIConditionWait.run(timeout: 6, deadline: end, read: {
-                    observedMetrics = self.windowMetrics(in: app)
-                    return observedMetrics != nil
-                })
+            var match: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot])?
+            var searchContainer: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot])?
+            var keyboards: [CGRect] = []
+            func collect(_ node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot]) {
+                if node.identifier == identifier { match = (node, ancestors) }
+                if node.elementType == .keyboard { keyboards.append(node.frame) }
+                let isScroll = [.scrollView, .collectionView, .table].contains(node.elementType)
+                if isScroll, let searchIdentifier, node.identifier == searchIdentifier { searchContainer = (node, ancestors) }
+                let next = isScroll ? ancestors + [node] : ancestors
+                for child in node.children { collect(child, ancestors: next) }
             }
-            guard let metrics = observedMetrics else {
-                print("Reveal has no native window metrics: \(identifier)")
-                return false
-            }
-            if metrics.transitioning {
-                guard waitForNativeTransition(in: app, deadline: deadline) else { return false }
-                continue
-            }
-            var match: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot], path: String, ancestorPaths: [String])?
-            var scrolls: [XCUIElementSnapshot] = []
-            var topRegions: [(String, CGRect)] = [], bottomRegions: [(String, CGRect)] = [], toastRegions: [(String, CGRect)] = []
-            func collect(_ node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot], path: String, ancestorPaths: [String]) {
-                if [.scrollView, .collectionView, .table].contains(node.elementType),
-                   node.frame.height > 120, node.frame.width > tree.frame.width * 0.65 { scrolls.append(node) }
-                if node.identifier == identifier, !node.frame.isEmpty { match = (node, ancestors, path, ancestorPaths) }
-                if node.elementType == .navigationBar || node.identifier == "rootHeaderRegion" { topRegions.append((path, node.frame)) }
-                if node.elementType == .keyboard || ["mainNavigation", "fixedBottomBar"].contains(node.identifier) { bottomRegions.append((path, node.frame)) }
-                if ["toastMessage", "undoLastChange", "expandToast"].contains(node.identifier) { toastRegions.append((path, node.frame)) }
-                for (index, child) in node.children.enumerated() { collect(child, ancestors: ancestors + [node], path: path + ".\(index)", ancestorPaths: ancestorPaths + [path]) }
-            }
-            collect(tree, ancestors: [], path: "0", ancestorPaths: [])
-            staticText = match?.node.elementType == .staticText
+            collect(tree, ancestors: [])
             if match == nil && !waitedForDiscovery {
                 waitedForDiscovery = true
                 _ = target.waitForExistence(timeout: min(5, max(0, deadline.timeIntervalSinceNow)))
                 continue
             }
-            let ancestors = match?.ancestors.filter { [.scrollView, .collectionView, .table].contains($0.elementType) } ?? []
-            // A modal is a different surface from the obscured root page. Its
-            // controls must not be clipped to root chrome behind the sheet.
-            let surface: String? = match.flatMap { found in
-                guard !found.ancestors.contains(where: { $0.identifier.hasPrefix("rootPage_") }) else { return nil }
-                let index = found.ancestors.firstIndex {
-                    $0.elementType == .other && $0.identifier != "fixedBottomBar" &&
-                    $0.frame.minY > tree.frame.minY + 0.5 && $0.frame.height > 200 && $0.frame.width > tree.frame.width * 0.8
+            let ancestors = match?.ancestors ?? []
+            if let match {
+                let staticText = match.node.elementType == .staticText
+                let fits = UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true, staticText: staticText,
+                    frame: match.node.frame, scrollAncestors: ancestors.map(\.frame), keyboards: keyboards)
+                if fits {
+                    guard ready(staticText: staticText) else {
+                        print("Reveal reached a disabled or covered control: \(identifier)")
+                        return false
+                    }
+                    // Recheck the live target after the bounded native wait.
+                    guard let current = try? target.snapshot(), Date() < deadline,
+                          UIViewportGeometry.revealed(exists: true, enabled: current.isEnabled,
+                            hittable: staticText || target.isHittable, staticText: staticText, frame: current.frame,
+                            scrollAncestors: ancestors.map(\.frame), keyboards: keyboards) else { continue }
+                    rememberTap(target, in: app, frame: current.frame)
+                    revealedScrollFrames = ancestors.map(\.frame); revealedKeyboards = keyboards
+                    return true
                 }
-                return index.map { found.ancestorPaths[$0] }
             }
-            let surfaceFrame: CGRect? = match.flatMap { found in
-                guard let surface, let index = found.ancestorPaths.firstIndex(of: surface) else { return nil }
-                return found.ancestors[index].frame
-            }
-            func external(_ region: (String, CGRect)) -> Bool {
-                guard let match else { return true }
-                return UIViewportGeometry.isExternalRegion(region.0, target: match.path, ancestors: match.ancestorPaths, surface: surface)
-            }
-            // Keyboard is external to every presentation, including a sheet
-            // whose controls are exposed beside the system's keyboard window.
-            func keyboardFrames(_ node: XCUIElementSnapshot) -> [CGRect] {
-                if node.elementType == .keyboard { return [node.frame] }
-                return node.children.flatMap(keyboardFrames)
-            }
-            let keyboard = keyboardFrames(tree)
-            func usable(_ frame: CGRect) -> CGRect {
-                let toasts = ["toastMessage", "undoLastChange", "expandToast"].contains(identifier) ? [] : toastRegions
-                return UIViewportGeometry.usable(frame.intersection(surfaceFrame ?? tree.frame), safeArea: metrics.safeRectangle,
-                    top: topRegions.filter(external).map(\.1), bottom: (bottomRegions + toasts).filter(external).map(\.1) + keyboard)
-            }
+            // Missing virtualized rows may be searched only in a scroll view
+            // supplied by their caller or observed as their actual ancestor,
+            // never an unrelated page.
+            // A present menu/tab/header has no scroll ancestor to drag.
             let container = ancestors.last { node in
-                match.map { !usable(node.frame).insetBy(dx: -0.5, dy: -0.5).contains($0.node.frame) } ?? false
-            } ?? ancestors.last ?? (match == nil ? scrolls.last : nil)
-            // Fixed headers and bars have no scroll ancestor. A covered fixed
-            // control cannot be repaired by dragging an unrelated page.
-            if let match, container == nil {
-                let viewport = usable(metrics.safeRectangle)
-                rememberTap(target, in: app, frame: match.node.frame)
-                revealedViewport = viewport
-                return viewport.insetBy(dx: -0.5, dy: -0.5).contains(match.node.frame) && ready()
+                match.map { !node.frame.insetBy(dx: -0.5, dy: -0.5).contains($0.node.frame) } ?? false
+            } ?? ancestors.last ?? (match == nil ? searchContainer?.node : nil)
+            guard let container else {
+                if let match { rememberTap(target, in: app, frame: match.node.frame) }
+                print("Reveal has no scroll ancestor: \(identifier)")
+                return false
             }
-            guard let container else { break }
+            if !container.identifier.isEmpty { searchIdentifier = container.identifier }
             let containerIndex = ancestors.lastIndex { $0.elementType == container.elementType && $0.identifier == container.identifier && $0.frame == container.frame }
-            let enclosingFrames = containerIndex.map { Array(ancestors.prefix($0 + 1)).map(\.frame) } ?? []
-            // When an outer vertical scroll clips a horizontal chip strip,
-            // drag in the outer viewport, not the 22pt remnant of that strip.
-            let viewport = usable(UIViewportGeometry.clipped(container.frame.intersection(tree.frame), to: enclosingFrames))
+            let enclosingFrames = containerIndex.map { Array(ancestors.prefix($0)).map(\.frame) } ?? searchContainer?.ancestors.map(\.frame) ?? []
+            let clipped = UIViewportGeometry.clipped(container.frame, to: enclosingFrames)
+            // Avoid starting a drag in the system keyboard. No safe-area,
+            // presentation, chrome, toast or probe-metadata gate is involved.
+            let viewport = UIViewportGeometry.visibleParts(clipped, ancestors: [], excluding: keyboards)
+                .max(by: { $0.width * $0.height < $1.width * $1.height }) ?? .zero
             var landmarks: [String: CGFloat] = [:]
             func mark(_ node: XCUIElementSnapshot) {
                 if !node.frame.isEmpty, ![.other, .scrollView, .collectionView, .table].contains(node.elementType) {
@@ -244,15 +218,14 @@ class YubaiUITestCase: XCTestCase {
             }
             mark(container)
             let sample = UIRevealProgress.Sample(target: match?.node.frame, viewport: viewport, landmarks: landmarks,
-                scrollOffset: metrics.scroll(matching: container.frame)?.remainingUp)
+                scrollOffset: windowMetrics(in: tree)?.scroll(matching: container.frame)?.remainingUp)
             let step = progress.next(sample)
             trace.append("target=\(String(describing: sample.target)) viewport=\(viewport) offset=\(String(describing: sample.scrollOffset)) \(step)")
             switch step {
             case .reached:
-                rememberTap(target, in: app, frame: match?.node.frame)
-                revealedViewport = viewport
-                if ready() { return true }
-                print("Reveal reached a covered control: \(identifier)\n" + trace.joined(separator: "\n"))
+                // The pure rule above also checks every outer ancestor and
+                // native hittability; a drag planner cannot grant reachability.
+                print("Reveal cannot fit the control through its ancestors: \(identifier)\n" + trace.joined(separator: "\n"))
                 return false
             case .stalled:
                 print("Reveal made no progress: \(identifier)\n" + trace.joined(separator: "\n"))
@@ -280,9 +253,10 @@ class YubaiUITestCase: XCTestCase {
     }
 
     func settledControlClearsViewport(_ target: XCUIElement) -> Bool {
-        guard let viewport = revealedViewport else { return false }
+        guard let ancestors = revealedScrollFrames else { return false }
         let frame = lastFrameWait?.target === target ? lastFrameWait?.result.frame : (try? target.snapshot())?.frame
-        return frame.map { viewport.insetBy(dx: -0.5, dy: -0.5).contains($0) } ?? false
+        return frame.map { UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: $0, scrollAncestors: ancestors, keyboards: revealedKeyboards) } ?? false
     }
 
     /// Deliberately place a row across fixed chrome while some of it is still

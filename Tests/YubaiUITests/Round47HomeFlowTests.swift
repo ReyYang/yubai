@@ -27,8 +27,8 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
     private func element(_ id: String) -> XCUIElement { control(id, in: app) }
-    private func reveal(_ target: XCUIElement) {
-        XCTAssertTrue(revealControl(target, in: app, deadline: Date().addingTimeInterval(60)), target.description)
+    private func reveal(_ target: XCUIElement, searching scroll: XCUIElement? = nil) {
+        XCTAssertTrue(revealControl(target, in: app, deadline: Date().addingTimeInterval(60), searching: scroll), target.description)
     }
     private func tap(_ id: String) {
         let target = element(id)
@@ -254,8 +254,11 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         for large in [false, true] {
             launch("v47-receipt-many", large: large, crossingRows: true)
             reveal(element("receiptMoreEntries")); tap("receiptMoreEntries")
+            wait { self.element("tab_ledger").isSelected && self.element("entriesScroll").exists }
             let last = element("ledgerEntry_" + id(470110)), scroll = element("entriesScroll")
-            reveal(last)
+            // This is a virtualized List. Its oldest row need not be present in
+            // the first snapshot; search only the actual ledger collection.
+            reveal(last, searching: scroll)
             XCTAssertTrue(last.exists && last.isHittable)
             assertViewport(scroll, clears: element("rootHeaderRegion"))
             for tab in ["tab_now", "tab_ledger", "tab_yubai"] { assertViewport(scroll, clears: element(tab)) }
@@ -266,9 +269,15 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             tap("tab_now")
             XCTAssertTrue(element("tab_now").isSelected)
             XCTAssertFalse(element("entryDetailEdit").exists)
-            tap("tab_ledger"); reveal(last)
-            XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(last.frame))
-            XCTAssertLessThan(last.frame.maxY, capsuleFrame(in: app).minY)
+            tap("tab_ledger")
+            wait { self.element("tab_ledger").isSelected && self.element("entriesScroll").exists }
+            // Re-resolve after native tab hosting detaches/recycles the prior
+            // collection's AX nodes. Never drag nowScroll while waiting for it.
+            let returnedScroll = element("entriesScroll"), returnedLast = element("ledgerEntry_" + id(470110))
+            reveal(returnedLast, searching: returnedScroll)
+            XCTAssertTrue(returnedLast.exists && returnedLast.isHittable)
+            XCTAssertTrue(returnedScroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(returnedLast.frame))
+            XCTAssertLessThan(returnedLast.frame.maxY, capsuleFrame(in: app).minY)
             app.terminate()
         }
     }
