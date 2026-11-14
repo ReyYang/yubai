@@ -1,5 +1,5 @@
 import SwiftUI
-import Charts
+import Observation
 import UniformTypeIdentifiers
 import YubaiCore
 #if os(macOS)
@@ -23,6 +23,12 @@ enum YubaiColor {
     static let shadowKey = adaptive(0x4a4030, 0x000000, lightAlpha: 0x38 / 255.0, darkAlpha: 0x73 / 255.0)
 
     static let paperSheet = adaptive(0xfefbea, 0x2a251c)
+    // A slightly lighter sheet, blended entirely from the existing paper/light palette.
+    static func receiptPaper(for scheme: ColorScheme) -> Color {
+        if scheme == .dark { return raised }
+        if #available(macOS 15, *) { return paperSheet.mix(with: windowLight, by: 0.65) }
+        return raised
+    }
     static let paperInset = adaptive(0xede6d3, 0x353026)
     static let glassBar = adaptive(0xfefbea, 0x353026, lightAlpha: 204.0 / 255, darkAlpha: 217.0 / 255)
     static let windowLight = adaptive(0xfffdf3, 0xe9cf9f)
@@ -103,19 +109,22 @@ enum YubaiFont {
     static let amountDonut = Style(size: 22, lineHeight: 28, weight: .semibold, family: .num, relativeTo: .title2)
     static let amountAccount = Style(size: 24, lineHeight: 30, weight: .semibold, family: .num, relativeTo: .title2)
     static let chartValue = Style(size: 11, lineHeight: 14, weight: .medium, family: .num, tracking: 0, relativeTo: .caption2)
-    static let welcome = Style(size: 40, lineHeight: 48, weight: .semibold, family: .serif, tracking: 0, relativeTo: .largeTitle)
     static let lead = Style(size: 22, lineHeight: 32, weight: .semibold, family: .serif, tracking: 0, relativeTo: .title2)
     static let quote = Style(size: 20, lineHeight: 30, weight: .semibold, family: .serif, tracking: 0, relativeTo: .title3)
     static let heroLabel = Style(size: 17, lineHeight: 24, weight: .semibold, family: .serif, tracking: 0, relativeTo: .headline)
     static let cardTitle = Style(size: 16, lineHeight: 22, weight: .semibold, family: .serif, tracking: 0, relativeTo: .headline)
     static let month = Style(size: 17, lineHeight: 24, weight: .semibold, family: .serif, tracking: 0, relativeTo: .headline)
-    static let navTitle = Style(size: 15, lineHeight: 20, weight: .medium, family: .sans, tracking: 0, relativeTo: .headline)
+    static let navTitle = Style(size: 16, lineHeight: 22, weight: .bold, family: .sans, tracking: 0, relativeTo: .headline)
     static let body = Style(size: 15, lineHeight: 22, weight: .regular, family: .sans, tracking: 0, relativeTo: .body)
     static let rowTitle = Style(size: 15, lineHeight: 20, weight: .medium, family: .sans, tracking: 0, relativeTo: .body)
+    static let fieldValue = Style(size: 16, lineHeight: 24, weight: .regular, family: .sans, relativeTo: .body)
     static let row = Style(size: 14, lineHeight: 20, weight: .regular, family: .sans, tracking: 0, relativeTo: .body)
     static let callout = Style(size: 13, lineHeight: 20, weight: .regular, family: .sans, tracking: 0, relativeTo: .callout)
     static let caption = Style(size: 12, lineHeight: 18, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption)
     static let code = Style(size: 12, lineHeight: 18, weight: .regular, family: .code, relativeTo: .caption)
+    static let receiptTime = Style(size: 11, lineHeight: 16, weight: .regular, family: .code, relativeTo: .caption2)
+    static let receiptAmount = Style(size: 14, lineHeight: 20, weight: .medium, family: .code, relativeTo: .body)
+    static let receiptTotal = Style(size: 22, lineHeight: 28, weight: .semibold, family: .code, relativeTo: .title2)
     static let meta = Style(size: 11, lineHeight: 16, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption2)
     static let chartLabel = Style(size: 10, lineHeight: 12, weight: .regular, family: .sans, tracking: 0, relativeTo: .caption2)
     static let tabLabel = Style(size: 10, lineHeight: 12, weight: .medium, family: .sans, tracking: 0, relativeTo: .caption2)
@@ -142,6 +151,16 @@ private struct YubaiTextStyle: ViewModifier {
     }
 }
 
+/// A single line still needs the token's full line box (lineSpacing only
+/// affects additional lines). Sheet scaling must not shave off its glyphs.
+private struct TextLineBox: ViewModifier {
+    @ScaledMetric private var height: CGFloat
+    init(_ style: YubaiFont.Style) {
+        _height = ScaledMetric(wrappedValue: style.lineHeight, relativeTo: style.relativeTo)
+    }
+    func body(content: Content) -> some View { content.frame(minHeight: height) }
+}
+
 extension View {
     @ViewBuilder func uiTestAccessibilityValue(_ value: @autoclosure () -> String) -> some View {
         #if DEBUG && targetEnvironment(simulator)
@@ -159,11 +178,11 @@ extension View {
         #endif
     }
     func yubaiFont(_ style: YubaiFont.Style, weight: Font.Weight? = nil) -> some View { modifier(YubaiTextStyle(style, weight: weight)) }
+    func yubaiTextLineBox(_ style: YubaiFont.Style) -> some View { modifier(TextLineBox(style)) }
 
     /// Apply inside a Button/Menu label, after its visual background, so transparent space is tappable.
     func yubaiHitTarget(alignment: Alignment = .center) -> some View {
-        frame(minWidth: YubaiSize.tapMin, minHeight: YubaiSize.tapMin, alignment: alignment)
-            .contentShape(Rectangle())
+        modifier(MinimumHitTarget(alignment: alignment))
     }
 
     /// Keeps the glyph on the page edge; the transparent target extends into the page margin.
@@ -175,6 +194,7 @@ extension View {
 }
 
 enum YubaiSpace {
+    static let calendarGap: CGFloat = 1
     static let none: CGFloat = 0
     static let space2: CGFloat = 2
     static let space4: CGFloat = 4
@@ -186,6 +206,8 @@ enum YubaiSpace {
     static let space18: CGFloat = 18 // 已停用，仅兼容
     static let space20: CGFloat = 20
     static let space24: CGFloat = 24
+    static let space22: CGFloat = 22
+    static let space28: CGFloat = 28
 
     static let insetPage = space20
     static let insetCard = space16
@@ -214,6 +236,74 @@ enum YubaiRadius {
 }
 
 enum YubaiSize {
+    static let toastExpandedMaximumHeight: CGFloat = 320
+    static let navigationCapsuleWidth: CGFloat = 244
+    static let navigationTabHeight: CGFloat = 48
+    static let homeEntryPillHeight: CGFloat = 52
+    static let savingCardMinimum: CGFloat = 88
+    static let savingIcon: CGFloat = 40
+    static let receiptInset: CGFloat = 22
+    static let receiptSlotHeight: CGFloat = 10
+    static let receiptTearHeight: CGFloat = 7
+    static let receiptRowHeight: CGFloat = 32
+    static let receiptUndoWidth: CGFloat = 76
+    static let receiptLineDash: CGFloat = 5
+    static let firstOpenMinimum: CGFloat = 480
+    static let firstOpenBrand: CGFloat = 78
+    static let firstOpenRule: CGFloat = 170
+    static let firstOpenBottom: CGFloat = 128
+    static let sidebarMinimumWidth: CGFloat = 180
+    static let sidebarIdealWidth: CGFloat = 210
+    static let sidebarMaximumWidth: CGFloat = 250
+    static let calendarCellLarge: CGFloat = 144
+    static let rowEstimate: CGFloat = 76
+    static let quickMenuWidth: CGFloat = 262
+    static let entryInlineHistory: CGFloat = 120
+    static let entryInlineHistoryLarge: CGFloat = 156
+    static let entrySheet: CGFloat = 724
+    static let entrySheetBig: CGFloat = 792
+    static let entrySheetCompact: CGFloat = 648
+    static let entrySheetTransfer: CGFloat = 704
+    static let sheetCorner: CGFloat = 28
+    static let keypadHeight: CGFloat = 236
+    // Shared page, calendar and desktop geometry.
+    static let separator: CGFloat = 1
+    static let unknownDot: CGFloat = 6
+    static let smallGlyph: CGFloat = 18
+    static let smallBadge: CGFloat = 26
+    static let trayChip: CGFloat = 34
+    static let sourceRow: CGFloat = 60
+    static let calendarCell: CGFloat = 62
+    static let fieldMinimum: CGFloat = 64
+    static let chipMinimum: CGFloat = 100
+    static let inlineListMaximum: CGFloat = 240
+    static let dateRowMaximum: CGFloat = 300
+    static let compactWindowMinimum: CGFloat = 340
+    static let calendarMinimumHeight: CGFloat = 350
+    static let editorMinimumHeight: CGFloat = 400
+    static let editorMinimumWidth: CGFloat = 460
+    static let editorIdealHeight: CGFloat = 520
+    static let sheetMinimumWidth: CGFloat = 540
+    static let sheetMinimumHeight: CGFloat = 600
+    static let sheetIdealWidth: CGFloat = 620
+    static let contentNarrow: CGFloat = 680
+    static let sheetIdealHeight: CGFloat = 720
+    static let calendarWide: CGFloat = 750
+    static let contentMedium: CGFloat = 760
+    static let desktopMinimumWidth: CGFloat = 920
+    static let contentMaximum: CGFloat = 1080
+    static let desktopIdealWidth: CGFloat = 1240
+    static let desktopIdealHeight: CGFloat = 850
+    static let sheet300: CGFloat = 300
+    static let sheet440: CGFloat = 440
+    static let sheet480: CGFloat = 480
+    static let sheet520: CGFloat = 520
+    static let sheet560: CGFloat = 560
+    static let sheet640: CGFloat = 640
+    static let sheet660: CGFloat = 660
+    static let sheet700: CGFloat = 700
+    static let sheet792: CGFloat = 792
+
     static let tapMin: CGFloat = 44
     static let headerHeight: CGFloat = 48
     static let headerIcon: CGFloat = 20
@@ -221,7 +311,8 @@ enum YubaiSize {
     static let iconButton: CGFloat = 40
     static let buttonHeight: CGFloat = 52
     static let chipHeight: CGFloat = 32
-    static let rowSingle: CGFloat = 48
+    static let fieldLabel: CGFloat = 76
+    static let rowSingle: CGFloat = 52
     static let rowDouble: CGFloat = 56
     static let rowIcon: CGFloat = 36
     static let segmentedHeight: CGFloat = 40
@@ -242,17 +333,21 @@ enum YubaiSize {
     static let tagHeight: CGFloat = 22
     static let tabbarHeight: CGFloat = 62
     #if os(iOS)
-    static let floatingTabbarHeight = tabBarHeight
-    static let floatingTabbarBottom: CGFloat = 8
+    static let floatingTabbarHeight: CGFloat = 60
+    static let floatingTabbarBottom: CGFloat = 0
     #endif
     static let barMax: CGFloat = 24
     static let lineWidth: CGFloat = 2
+    static let outline: CGFloat = 1.5
     static let marker: CGFloat = 8
-    #if os(macOS)
-    static let rootBottomPadding: CGFloat = 106
-    #else
-    static let rootBottomPadding: CGFloat = floatingTabbarHeight + floatingTabbarBottom + YubaiSpace.gapGroup
-    #endif
+    static func rootBottomPadding(for destination: Destination) -> CGFloat {
+        #if os(macOS)
+        destination == .now ? homeEntryPillHeight + YubaiSpace.gapSection : YubaiSpace.none
+        #else
+        floatingTabbarHeight + floatingTabbarBottom + YubaiSpace.space12 +
+            (destination == .now ? homeEntryPillHeight + YubaiSpace.space12 : YubaiSpace.none)
+        #endif
+    }
 }
 
 enum YubaiShadow {
@@ -276,6 +371,9 @@ extension View {
 }
 
 @MainActor enum YubaiMotion {
+    static let durationFirstLight = 1.4
+    static let windowSwayPhase = 9.0
+    static let durationReceiptPrint = 0.32
     // Amount keypad: immediate color/edge feedback, no scale/opacity; release
     // eases out over durationQuick. Prepared system haptics fire at touch-down:
     // light for digits/delete, medium for operators/clear, rigid 0.5 if rejected.
@@ -338,8 +436,37 @@ extension View {
 }
 
 struct PressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { TextLinkStyle().makeBody(configuration: configuration) }
+}
+
+/// Small, unfilled links share a target inside the button, never outside it.
+/// Font and colour belong to the label; this changes only the transparent area.
+struct TextLinkStyle: ButtonStyle {
+    var alignment: Alignment = .center
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+        configuration.label.fixedSize(horizontal: false, vertical: true)
+            .yubaiHitTarget(alignment: alignment)
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .animation(YubaiMotion.instant, value: configuration.isPressed)
+    }
+}
+
+/// A toggle is one full row, including the space between its label and switch.
+/// The native representation preserves Switch semantics and the 0/1 value.
+struct RowToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            HStack(spacing: YubaiSpace.gapGroup) {
+                configuration.label.fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Toggle("", isOn: configuration.$isOn).labelsHidden().toggleStyle(.switch)
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+            .accessibilityRepresentation {
+                Toggle(isOn: configuration.$isOn) { configuration.label.frame(minHeight: YubaiSize.rowDouble) }
+                    .toggleStyle(.switch).accessibilityElement(children: .combine)
+            }
     }
 }
 
@@ -348,12 +475,12 @@ struct SmallActionStyle: ButtonStyle {
         configuration.label.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.label)
             .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
             .background(YubaiColor.raised, in: Capsule()).yubaiHitTarget()
-            .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
 private struct NumberChange: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let value: Double
     var enabled: Bool
     func body(content: Content) -> some View {
@@ -366,69 +493,111 @@ extension View {
     func numberTransition(value: Double, enabled: Bool = true) -> some View { modifier(NumberChange(value: value, enabled: enabled)) }
 }
 
-struct ChartGrow<Content: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var progress: Double = 0
-    let key: String
-    let content: (Double) -> Content
-    init(key: String, @ViewBuilder content: @escaping (Double) -> Content) {
-        self.key = key; self.content = content
-        _progress = State(initialValue: YubaiMotion.hasAppeared(key) ? 1 : 0)
-    }
-    var body: some View {
-        content(reduceMotion ? 1 : progress)
-            .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
-            .onAppear {
-                guard YubaiMotion.claim(key) else { finish(); return }
-                withAnimation(YubaiMotion.chart(reduceMotion: reduceMotion)) { progress = 1 }
-            }
-            .onDisappear { finish() }
-            .onChange(of: reduceMotion) { _, reduced in if reduced { finish() } }
-    }
-    private func finish() {
-        var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-        withTransaction(transaction) { progress = 1 }
-    }
-}
-
-struct ChartSegments<Content: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var progress: [Double]
-    let key: String
-    let count: Int
-    let content: ([Double]) -> Content
-    init(key: String, count: Int, @ViewBuilder content: @escaping ([Double]) -> Content) {
-        self.key = key; self.count = min(6, max(1, count)); self.content = content
-        _progress = State(initialValue: Array(repeating: YubaiMotion.hasAppeared(key) ? 1 : 0, count: 6))
-    }
-    var body: some View {
-        content(reduceMotion ? Array(repeating: 1, count: 6) : progress)
-            .onAppear {
-                guard YubaiMotion.claim(key), !reduceMotion else { finish(); return }
-                for index in 0..<6 {
-                    withAnimation(YubaiMotion.chart(reduceMotion: false)?.delay(Double(min(index, count - 1)) * YubaiMotion.durationStagger)) { progress[index] = 1 }
-                }
-            }
-            .onDisappear { finish() }
-            .onChange(of: reduceMotion) { _, reduced in if reduced { finish() } }
-    }
-    private func finish() {
-        var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-        withTransaction(transaction) { progress = Array(repeating: 1, count: 6) }
-    }
-}
-
 private struct SheetSurfaceKey: EnvironmentKey { static let defaultValue = false }
 private struct RootSurfaceKey: EnvironmentKey { static let defaultValue = false }
 private struct FormSurfaceKey: EnvironmentKey { static let defaultValue = false }
 private struct CardContentKey: EnvironmentKey { static let defaultValue = false }
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
+private struct ToastClearanceKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
+private struct PresentationScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
+@Observable private final class RowInputSession {
+    private(set) var editors: Set<UUID> = []
+    var isEditing: Bool { !editors.isEmpty }
+    func setEditing(_ editing: Bool, id: UUID) {
+        guard editors.contains(id) != editing else { return }
+        if editing { editors.insert(id) } else { editors.remove(id) }
+    }
+}
+private struct RowInputSessionKey: EnvironmentKey { static let defaultValue: RowInputSession? = nil }
 extension EnvironmentValues {
+    /// SwiftUI's system value is read-only; scripted tests opt in at the readers.
+    var yubaiReduceMotion: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_REDUCE_MOTION"] == "1" { return true }
+        #endif
+        return accessibilityReduceMotion
+    }
     var yubaiSheetSurface: Bool { get { self[SheetSurfaceKey.self] } set { self[SheetSurfaceKey.self] = newValue } }
     var yubaiRootSurface: Bool { get { self[RootSurfaceKey.self] } set { self[RootSurfaceKey.self] = newValue } }
     var yubaiFormSurface: Bool { get { self[FormSurfaceKey.self] } set { self[FormSurfaceKey.self] = newValue } }
     var yubaiCardContent: Bool { get { self[CardContentKey.self] } set { self[CardContentKey.self] = newValue } }
     var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
+    var yubaiToastClearance: CGFloat { get { self[ToastClearanceKey.self] } set { self[ToastClearanceKey.self] = newValue } }
+    var yubaiPresentationScale: CGFloat { get { self[PresentationScaleKey.self] } set { self[PresentationScaleKey.self] = newValue } }
+    fileprivate var yubaiRowInputSession: RowInputSession? { get { self[RowInputSessionKey.self] } set { self[RowInputSessionKey.self] = newValue } }
+    var yubaiMinimumTarget: CGFloat { ceil(YubaiSize.tapMin / yubaiPresentationScale * 3) / 3 }
+}
+
+private struct MinimumHitTarget: ViewModifier {
+    @Environment(\.yubaiMinimumTarget) private var minimum
+    var alignment: Alignment = .center
+    func body(content: Content) -> some View {
+        content.frame(minWidth: minimum, minHeight: minimum, alignment: alignment).contentShape(Rectangle())
+    }
+}
+
+/// iOS 26 keeps a partial-height sheet inset at rest. UIKit scales its hosting
+/// view (424/440 in run 3), so 44 layout points become 42.4 screen points even
+/// after the presentation finishes. Measure that transform instead of guessing
+/// a device inset or enlarging targets only for tests.
+private struct SheetPresentationMetrics: ViewModifier {
+    @State private var scale: CGFloat = 1
+    func body(content: Content) -> some View {
+        content.environment(\.yubaiPresentationScale, scale)
+            #if os(iOS)
+            .background { PresentationScaleReader(scale: $scale).frame(width: 0, height: 0).allowsHitTesting(false) }
+            #endif
+    }
+}
+
+#if os(iOS)
+private struct PresentationScaleReader: UIViewRepresentable {
+    @Binding var scale: CGFloat
+    func makeUIView(context: Context) -> Anchor { Anchor() }
+    func updateUIView(_ view: Anchor, context: Context) { view.changed = { scale = $0 } }
+    final class Anchor: UIView {
+        var changed: ((CGFloat) -> Void)?
+        private var last: CGFloat = 1
+        private var link: CADisplayLink?
+        private final class Tick: NSObject {
+            weak var anchor: Anchor?
+            init(_ anchor: Anchor) { self.anchor = anchor }
+            @objc func read() { anchor?.readScale() }
+        }
+        init() { super.init(frame: .zero); isUserInteractionEnabled = false; accessibilityElementsHidden = true }
+        required init?(coder: NSCoder) { fatalError() }
+        deinit { link?.invalidate() }
+        override func didMoveToWindow() {
+            super.didMoveToWindow(); link?.invalidate(); link = nil
+            if window != nil {
+                let link = CADisplayLink(target: Tick(self), selector: #selector(Tick.read))
+                link.add(to: .main, forMode: .common); self.link = link
+                readScale()
+            }
+        }
+        private func readScale() {
+            guard let window else { return }
+            let unit = convert(CGRect(x: 0, y: 0, width: 100, height: 100), to: window)
+            let scale = min(1, min(unit.width, unit.height) / 100)
+            // Ignore entrance/exit zoom; measure targets after it settles.
+            // Keep tracking detent changes for the sheet's lifetime.
+            guard scale > 0.8, abs(scale - last) > 0.0001 else { return }
+            last = scale
+            DispatchQueue.main.async { [weak self] in self?.changed?(scale) }
+        }
+    }
+}
+#endif
+
+private struct ScrollContentViewport: ViewModifier {
+    func body(content: Content) -> some View {
+        // The parent owns this slot. GeometryReader has already respected its
+        // safe area; native navigation retains its under-bar scroll edge.
+        GeometryReader { slot in
+            content.frame(width: slot.size.width, height: slot.size.height)
+                .clipped().contentShape(Rectangle())
+        }
+    }
 }
 
 #if os(iOS)
@@ -509,6 +678,7 @@ struct PaperCanvas: View {
                     ], center: .topLeading, startRadius: 0, endRadius: radius)
                         .frame(width: radius, height: radius)
                         .scaleEffect(x: 1, y: size.height * 0.55 / radius, anchor: .topLeading)
+                        .frame(width: size.width, height: size.height, alignment: .topLeading).clipped()
                     if showsBamboo {
                         BambooShadow(trigger: bambooTrigger)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -521,7 +691,7 @@ struct PaperCanvas: View {
 
 private struct BambooShadow: View {
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
     let trigger: Int
     @ViewBuilder private var branch: some View {
@@ -618,6 +788,23 @@ private struct PaperBackground: ViewModifier {
     }
 }
 
+/// The toast floats over the viewport. Extra scroll content lets the last row
+/// move wholly above it without moving the header or shrinking the page.
+private struct ToastContentSlot: ViewModifier {
+    @Environment(\.yubaiToastClearance) private var clearance
+    @Environment(\.yubaiSheetSurface) private var inSheet
+    func body(content: Content) -> some View {
+        content.contentMargins(.bottom, !inSheet && clearance > 0 ? clearance + YubaiSpace.gapGroup : nil, for: .scrollContent)
+    }
+}
+
+private struct RootScrollMargins: ViewModifier {
+    @Environment(\.yubaiToastClearance) private var clearance
+    func body(content: Content) -> some View {
+        content.contentMargins(.bottom, YubaiSpace.gapGroup + clearance, for: .scrollContent)
+    }
+}
+
 private struct RootPaperBackground: ViewModifier {
     @Environment(AppStore.self) private var store
     func body(content: Content) -> some View {
@@ -644,19 +831,41 @@ private struct NavigationBackPaper: UIViewControllerRepresentable {
         override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); applySurface() }
         override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); applySurface() }
         func applySurface() {
-            guard let previous = navigationController?.navigationBar.items?.dropLast().last else { return }
-            let back = previous.backBarButtonItem ?? UIBarButtonItem(title: previous.title, style: .plain, target: nil, action: nil)
+            guard let bar = navigationController?.navigationBar else { return }
+            bar.layer.sublayers?.filter { $0.name == "yubai.headerFade" }.forEach { $0.removeFromSuperlayer() }
+            guard let previous = bar.items?.dropLast().last else { return }
+            let fade = CAGradientLayer()
+            fade.name = "yubai.headerFade"
+            fade.frame = CGRect(x: 0, y: bar.bounds.height, width: bar.bounds.width, height: 24)
+            fade.colors = [UIColor(YubaiColor.canvas).cgColor, UIColor(YubaiColor.canvas).withAlphaComponent(0).cgColor]
+            bar.layer.addSublayer(fade)
+            bar.clipsToBounds = false
+            previous.backButtonDisplayMode = .minimal
+            let back = previous.backBarButtonItem ?? UIBarButtonItem(title: "", style: .plain, target: nil, action: nil)
+            back.title = ""
+            back.accessibilityLabel = "返回"
+            // UIKit exposes the native item as BackButton on iOS 26.
+            // All UI tests use this same native identifier.
+            back.accessibilityIdentifier = "BackButton"
+            if let bar = navigationController?.navigationBar {
+                let appearance = UINavigationBarAppearance()
+                appearance.configureWithOpaqueBackground()
+                appearance.backgroundColor = UIColor(YubaiColor.canvas)
+                appearance.shadowColor = .clear
+                appearance.titleTextAttributes = [.font: UIFontMetrics(forTextStyle: .headline).scaledFont(for: .systemFont(ofSize: 16, weight: .bold)), .foregroundColor: UIColor(YubaiColor.label)]
+                bar.standardAppearance = appearance; bar.scrollEdgeAppearance = appearance; bar.compactAppearance = appearance
+            }
             // This customization only affects the back button, including on pushed sheet pages.
             if #available(iOS 26, *) { back.hidesSharedBackground = true }
             let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
             let token = YubaiShadow.control
-            let image = UIGraphicsImageRenderer(size: CGSize(width: 60, height: 48)).image { renderer in
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 52, height: 48)).image { renderer in
                 let context = renderer.cgContext
                 context.setShadow(offset: CGSize(width: token.x, height: token.y), blur: token.radius,
                                   color: UIColor(token.color).resolvedColor(with: traits).cgColor)
                 UIColor(YubaiColor.raised).resolvedColor(with: traits).setFill()
-                UIBezierPath(roundedRect: CGRect(x: 6, y: 4, width: 48, height: 36), cornerRadius: 18).fill()
-            }.resizableImage(withCapInsets: UIEdgeInsets(top: 22, left: 24, bottom: 22, right: 24), resizingMode: .stretch)
+                UIBezierPath(roundedRect: CGRect(x: 6, y: 4, width: 40, height: 40), cornerRadius: 20).fill()
+            }.resizableImage(withCapInsets: UIEdgeInsets(top: 24, left: 26, bottom: 24, right: 26), resizingMode: .stretch)
                 .withAlignmentRectInsets(UIEdgeInsets(top: 4, left: 6, bottom: 8, right: 6)).withRenderingMode(.alwaysOriginal)
             back.setBackButtonBackgroundImage(image, for: .normal, barMetrics: .default)
             back.setBackButtonBackgroundImage(image, for: .normal, barMetrics: .compact)
@@ -874,18 +1083,9 @@ private struct FloatingSurface<S: Shape>: ViewModifier {
     }
 }
 
-struct GlassGroup<Content: View>: View {
-    let content: Content
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
-    var body: some View {
-        if #available(iOS 26, macOS 26, *) { GlassEffectContainer(spacing: YubaiSpace.gapGroup) { content } }
-        else { content }
-    }
-}
-
 private struct ContentZoom: ViewModifier {
     @Environment(\.yubaiZoomNamespace) private var namespace
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let id: String?
     var source = false
     @ViewBuilder func body(content: Content) -> some View {
@@ -901,7 +1101,7 @@ private struct ContentZoom: ViewModifier {
 }
 
 private struct MessageEntrance: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var visible = false
     let user: Bool
     func body(content: Content) -> some View {
@@ -914,18 +1114,10 @@ private struct MessageEntrance: ViewModifier {
 }
 
 private struct ChipSelection: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var scale: CGFloat = 1
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let selected: Bool
     func body(content: Content) -> some View {
-        content.scaleEffect(reduceMotion ? 1 : scale).onChange(of: selected) { _, selected in
-            guard selected, !reduceMotion else { return }
-            scale = 0.94
-            Task { @MainActor in
-                await Task.yield()
-                withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { scale = 1 }
-            }
-        }
+        content.animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selected)
     }
 }
 
@@ -936,6 +1128,12 @@ extension View {
         environment(\.yubaiSheetSurface, true).environment(\.yubaiRootSurface, false)
             .environment(\.yubaiFormSurface, false)
             .presentationBackground { PaperCanvas() }
+            .modifier(SheetPresentationMetrics())
+            #if DEBUG && targetEnvironment(simulator) && os(iOS)
+            // Modal accessibility may hide the root probe. Each sheet uses
+            // this same read-only window probe on its own background surface.
+            .background { if UITestSupport.script != nil { UITestWindowMetrics().frame(width: YubaiSize.separator, height: YubaiSize.separator) } }
+            #endif
     }
     func paperCardSurface<S: InsettableShape>(in shape: S, background: Color? = nil, flat: Bool = false) -> some View {
         modifier(PaperCardSurface(shape: shape, background: background, flat: flat))
@@ -943,41 +1141,43 @@ extension View {
     func controlSurface<S: Shape>(in shape: S) -> some View {
         background(YubaiColor.raised, in: shape).yubaiShadow(YubaiShadow.control)
     }
-    func rootScrollContentMargins() -> some View {
+    func rootScrollContentMargins(for destination: Destination, reservesNavigation: Bool = true) -> some View {
         #if os(iOS)
-        self.contentMargins(.bottom, YubaiSize.rootBottomPadding, for: .scrollContent)
+        // Insetting content alone still lets rows rest underneath the floating
+        // controls. Keep the clipped viewport above them at every scroll offset.
+        self.modifier(RootScrollMargins())
             .scrollEdgeEffectHidden(true, for: .bottom)
             .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollClipDisabled(false)
+            .modifier(ScrollContentViewport())
+            .padding(.bottom, reservesNavigation ? YubaiSize.rootBottomPadding(for: destination) : YubaiSpace.none)
         #else
-        self.safeAreaPadding(.bottom, YubaiSize.rootBottomPadding)
+        self.padding(.bottom, reservesNavigation ? YubaiSize.rootBottomPadding(for: destination) : YubaiSpace.none)
         #endif
     }
     func rootPageHeader<Header: View>(@ViewBuilder _ header: () -> Header) -> some View {
-        #if os(iOS)
-        self.safeAreaBar(edge: .top, spacing: 0) {
-            header()
-                .padding(.horizontal, YubaiSpace.insetPage)
+        VStack(spacing: 0) {
+            header().padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.space8)
+                .frame(maxWidth: .infinity)
+                .background(YubaiColor.canvas.ignoresSafeArea(edges: .top))
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .contain).accessibilityIdentifier("rootHeaderRegion")
+                .zIndex(1)
+                .overlay(alignment: .bottom) { PageFade(edge: .top).offset(y: 24) }
+            self.frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped().contentShape(Rectangle())
         }.modifier(RootPaperBackground())
-        #else
-        VStack(spacing: YubaiSpace.none) {
-            header()
-                .padding(.horizontal, YubaiSpace.insetPage)
-                .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.space8)
-            self
-                .mask(alignment: .top) {
-                    GeometryReader { geometry in
-                        VStack(spacing: YubaiSpace.none) {
-                            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                                .frame(height: YubaiSpace.space8)
-                            Color.black
-                        }
-                        // Preserve horizontal and bottom overflow from unclipped scroll views.
-                        .padding(.horizontal, -geometry.size.width).padding(.bottom, -geometry.size.height)
-                    }.allowsHitTesting(false).accessibilityHidden(true)
-                }
-        }.modifier(RootPaperBackground())
-        #endif
+    }
+    /// A real sibling slot, so the scroll view's frame and its AX viewport end
+    /// above the controls instead of merely receiving a safe-area content inset.
+    func fixedBottomBar<Bar: View>(spacing: CGFloat = YubaiSpace.none, @ViewBuilder content bar: () -> Bar) -> some View {
+        VStack(spacing: spacing) {
+            self.frame(maxWidth: .infinity, maxHeight: .infinity).modifier(ScrollContentViewport())
+            bar().fixedSize(horizontal: false, vertical: true)
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .contain).accessibilityIdentifier("fixedBottomBar")
+        }
     }
     func pageLocalHorizontalGestures() -> some View {
         #if os(iOS)
@@ -1005,12 +1205,12 @@ struct PrimaryButtonStyle: ButtonStyle {
     var disabledBackground = Color.clear
     @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.yubaiFont(compact ? YubaiFont.callout : YubaiFont.button)
+        configuration.label.fixedSize(horizontal: false, vertical: true).yubaiFont(compact ? YubaiFont.callout : YubaiFont.button)
             .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.gapSection).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .frame(maxWidth: .infinity, minHeight: compact ? YubaiSize.rowIcon : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.onBrand : YubaiColor.labelSecondary)
-            .background(isEnabled ? YubaiColor.brand : disabledBackground, in: Capsule()).frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
-            .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+            .background(isEnabled ? YubaiColor.brand : disabledBackground, in: Capsule()).yubaiHitTarget().contentShape(Capsule())
+            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
 
@@ -1023,8 +1223,19 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.gapSection).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .frame(maxWidth: .infinity, minHeight: compact ? YubaiSize.rowIcon : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.label : YubaiColor.labelSecondary)
-            .background(isEnabled ? background : Color.clear, in: Capsule()).frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
-            .opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+            .background(isEnabled ? background : Color.clear, in: Capsule()).yubaiHitTarget().contentShape(Capsule())
+            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
+    }
+}
+
+/// Opaque at the header/bar edge, transparent toward the scroll content.
+struct PageFade: View {
+    enum Edge: Equatable { case top, bottom }
+    let edge: Edge
+    var body: some View {
+        LinearGradient(colors: edge == .top ? [YubaiColor.canvas, YubaiColor.canvas.opacity(0)] : [YubaiColor.canvas.opacity(0), YubaiColor.canvas],
+                       startPoint: .top, endPoint: .bottom)
+            .frame(height: edge == .top ? 24 : 40).allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 
@@ -1032,8 +1243,9 @@ struct Page<Content: View>: View {
     let content: Content
     var spacing: CGFloat
     var topPadding: CGFloat
-    init(spacing: CGFloat = YubaiSpace.gapSection, topPadding: CGFloat = YubaiSpace.insetPage, @ViewBuilder content: () -> Content) {
-        self.content = content(); self.spacing = spacing; self.topPadding = topPadding
+    var identifier: String
+    init(spacing: CGFloat = YubaiSpace.gapSection, topPadding: CGFloat = YubaiSpace.insetPage, identifier: String = "", @ViewBuilder content: () -> Content) {
+        self.content = content(); self.spacing = spacing; self.topPadding = topPadding; self.identifier = identifier
     }
     var body: some View {
         ScrollView {
@@ -1041,7 +1253,8 @@ struct Page<Content: View>: View {
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, topPadding)
                 .padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
-        }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
+        }.accessibilityElement(children: .contain).accessibilityIdentifier(identifier)
+            .modifier(ScrollContentViewport()).scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
     }
 }
 
@@ -1058,12 +1271,13 @@ struct Card<Content: View>: View {
             .padding(.vertical, style == .list ? YubaiSpace.space4 : YubaiSpace.insetCard)
             .frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(YubaiColor.label)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: background)
+            .accessibilityElement(children: .contain)
     }
 }
 
 /// A single list surface with lazy rows, including large ledgers and matching candidates.
 struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Element: Identifiable {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let rows: Data
     private let rowSequence: Int
     var hasLeadingIcon: Bool
@@ -1095,51 +1309,6 @@ struct CardRows<Data: RandomAccessCollection, Row: View>: View where Data.Elemen
     }
 }
 
-/// The card and dividers stay in CardRows. Only the full-width row content moves.
-/// An offset preserves its layout proposal; revealing an action never narrows text.
-struct SwipeActionRow<Content: View>: View {
-    let offset: CGFloat
-    let revealed: Bool
-    let title: String
-    let tint: Color
-    let ink: Color
-    let weight: Font.Weight
-    let actionIdentifier: String
-    let action: () -> Void
-    let content: Content
-    init(offset: CGFloat, revealed: Bool, title: String, tint: Color, ink: Color, weight: Font.Weight = .semibold,
-         actionIdentifier: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
-        self.offset = offset; self.revealed = revealed; self.title = title; self.tint = tint; self.ink = ink; self.weight = weight
-        self.actionIdentifier = actionIdentifier; self.action = action; self.content = content()
-    }
-    var body: some View {
-        content.frame(maxWidth: .infinity, alignment: .leading)
-            .offset(x: offset)
-            .background(alignment: .trailing) {
-                // The background never sizes the row. Omit fully hidden Buttons from AX.
-                if offset != 0 || revealed {
-                    Button(action: action) {
-                        Text(title)
-                            #if os(iOS)
-                            .frame(width: YubaiSize.swipeActionWidth).frame(maxHeight: .infinity)
-                            .background(tint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                            #else
-                            .frame(width: YubaiSize.swipeRevealDistance - YubaiSpace.gapAction).frame(maxHeight: .infinity)
-                            .background(tint).contentShape(Rectangle())
-                            #endif
-                    }.buttonStyle(.plain).yubaiFont(YubaiFont.callout, weight: weight).foregroundStyle(ink)
-                        #if os(iOS)
-                        .padding(.vertical, YubaiSpace.swipeActionInset).padding(.trailing, YubaiSpace.swipeActionInset)
-                        #endif
-                        .opacity(offset < 0 ? 1 : 0).allowsHitTesting(offset < 0)
-                        .accessibilityIdentifier(actionIdentifier).accessibilityHidden(!revealed)
-                        .transition(.identity)
-                }
-            }.clipped().contentShape(Rectangle())
-    }
-}
-
 struct SectionHeading: View {
     @Environment(\.dynamicTypeSize) private var textSize
     var title: String
@@ -1159,6 +1328,34 @@ struct SectionHeading: View {
                 if let meta { Text(meta).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
             }
         }
+    }
+}
+
+/// Labels and money retain their fonts; the value gets its own line before
+/// either side is squeezed. The stacked value can wrap even at accessibility5.
+struct AdaptiveValueRow<Label: View, Value: View>: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    var spreadsValue = true
+    @ViewBuilder let label: () -> Label
+    @ViewBuilder let value: () -> Value
+    var body: some View {
+        if textSize.isAccessibilitySize { stacked }
+        else {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                    label().fixedSize()
+                    if spreadsValue { Spacer(minLength: YubaiSpace.space8) }
+                    value().fixedSize()
+                }
+                stacked
+            }
+        }
+    }
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            label().frame(maxWidth: .infinity, alignment: .leading)
+            value().fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -1184,7 +1381,7 @@ struct AmountLabel: View {
     }
     enum Sign { case automatic, inflow, outflow, none }
     @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     let cents: Int64
     var large = false
     var hide = false
@@ -1198,12 +1395,12 @@ struct AmountLabel: View {
         switch sign { case .automatic: Double(cents) / 100; case .inflow, .none: abs(Double(cents)) / 100; case .outflow: -abs(Double(cents)) / 100 }
     }
     var body: some View {
-        let font = textSize.isAccessibilitySize && (resolvedRole == .hero || resolvedRole == .display) ? YubaiFont.amountLarge : resolvedRole.font
+        let font = resolvedRole.font
         Group {
             if hide { Text("••••").transition(.opacity) }
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
         }.yubaiFont(font).foregroundStyle(ink)
-            .minimumScaleFactor(resolvedRole == .summary || resolvedRole == .donut ? 0.25 : 0.55).lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(hide ? "金额已隐藏" : text)
             .animation(YubaiMotion.quick, value: hide)
     }
@@ -1243,7 +1440,7 @@ struct Pill: View {
 struct EntryRow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var highlighted = true
     var entry: Entry
     var hideAmount = false
@@ -1257,7 +1454,7 @@ struct EntryRow: View {
         layout {
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 HStack(spacing: YubaiSpace.space8) {
-                    Text(entry.displayTitle).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(textSize.isAccessibilitySize ? nil : 1)
+                    Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(1).truncationMode(.tail)
                     if entry.hasNoCaptureCategory { Pill(text: "没分类", variant: .amber, height: 20, showsDot: false) }
                     if metadata != nil && entry.nature.uncertain { Pill(text: "没写用途", variant: .amber, height: 20, showsDot: false) }
                 }
@@ -1277,8 +1474,8 @@ struct EntryRow: View {
     }
     private var dateText: String {
         let calendar = Calendar.current
-        if calendar.isDateInToday(entry.date) { return "今天 " + entry.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))) }
-        if calendar.isDateInYesterday(entry.date) { return "昨天" }
+        if calendar.isDate(entry.date, inSameDayAs: Dates.now) { return "今天 " + entry.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))) }
+        if calendar.isDate(entry.date, inSameDayAs: Dates.addDays(-1, to: Dates.now)) { return "昨天" }
         return Self.dateFormatter.string(from: entry.date)
     }
 }
@@ -1304,14 +1501,9 @@ struct EntryLink: View {
     }
 }
 
-struct CloseButton: View {
-    @Environment(\.dismiss) private var dismiss
-    var body: some View { Button("完成") { dismiss() }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("closeSheet") }
-}
-
 /// Monochrome paper and cloth; the small tag is separated with its host surface color.
 struct BrandMark: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     var size: CGFloat = 43
     var background = YubaiColor.canvas
     var jumpTrigger = 0
@@ -1365,7 +1557,7 @@ struct NowTabGlyph: View {
 }
 
 struct AssistantMark: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     var size: CGFloat = 26
     var color = YubaiColor.brandGlyph
     var thinking = false
@@ -1387,7 +1579,8 @@ struct AssistantMark: View {
             } else { leaf.transaction { $0.animation = nil; $0.disablesAnimations = true } }
         }.frame(width: size, height: size)
             .transaction { if !thinking || reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
-            .accessibilityElement(children: .ignore).accessibilityLabel(thinking ? "余白正在思考" : "余白")
+            .accessibilityElement(children: .ignore).accessibilityAddTraits(.isImage)
+            .accessibilityLabel(thinking ? "余白正在思考" : "余白")
     }
 }
 
@@ -1404,141 +1597,6 @@ private struct BambooLeaf: Shape {
         return path.applying(CGAffineTransform(rotationAngle: -38 * .pi / 180))
             .applying(CGAffineTransform(translationX: 3.2, y: 15.5))
             .applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: rect.midX - 12 * scale, ty: rect.midY - 12 * scale))
-    }
-}
-
-private struct HeroShortfallStripes: View {
-    var body: some View {
-        Canvas { context, size in
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(YubaiColor.amberMark))
-            // A 135° CSS gradient has diagonal bands with 3pt perpendicular widths.
-            let band: CGFloat = 3 * sqrt(2)
-            var stripes = Path()
-            for x in stride(from: CGFloat.zero, to: size.width + size.height + band * 2, by: band * 2) {
-                stripes.move(to: CGPoint(x: x, y: 0))
-                stripes.addLine(to: CGPoint(x: x + band, y: 0))
-                stripes.addLine(to: CGPoint(x: x + band - size.height, y: size.height))
-                stripes.addLine(to: CGPoint(x: x - size.height, y: size.height))
-                stripes.closeSubpath()
-            }
-            context.fill(stripes, with: .color(YubaiColor.amberDot))
-        }.clipped()
-    }
-}
-
-struct HeroCard: View {
-    @Environment(AppStore.self) private var store
-    @State private var displayedAvailable: Int64?
-    var available: Int64
-    var payable: Int64
-    var reserved: Int64
-    var attentionCount = 0
-    var hideAmount = false
-    var title = "还能花"
-    var horizon: String? = nil
-    var onDetails: (() -> Void)? = nil
-    var onAttention: (() -> Void)? = nil
-    var body: some View {
-        ChartGrow(key: "hero-composition") { progress in VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            if let onDetails { Button(action: onDetails) { amounts(progress) }.buttonStyle(PressButtonStyle()).yubaiZoomSource("funds").accessibilityIdentifier("fundsFormula").accessibilityHint("还能花是怎么算的") }
-            else { amounts(progress) }
-            if attentionCount > 0 {
-                if let onAttention {
-                    Button(action: onAttention) { attention }.buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
-                } else { attention }
-            }
-        }.foregroundStyle(YubaiColor.label) }
-            .onAppear { displayedAvailable = available }
-            .onChange(of: available) { _, value in if !store.pendingEntrySave || store.sheet == nil { displayedAvailable = value } }
-            .onChange(of: store.entrySaveTrigger) { _, _ in displayedAvailable = available }
-    }
-    private func amounts(_ progress: Double) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            summary
-            if !hideAmount {
-                composition(progress)
-            }
-        }.contentShape(Rectangle())
-    }
-    private var summary: some View {
-        HStack(alignment: .bottom, spacing: YubaiSpace.gapGroup) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                    Text(title).yubaiFont(YubaiFont.heroLabel).fixedSize()
-                    if let horizon { Text(horizon).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-                }
-                AmountLabel(cents: displayedAvailable ?? available, hide: hideAmount, role: .hero)
-            }
-            Spacer(minLength: YubaiSpace.none)
-        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-    }
-    private var attention: some View { Pill(text: "\(attentionCount) 件小事需要留意", variant: .amber, showsChevron: onAttention != nil) }
-    private func compositionAccessibilityLabel(_ segments: HeroBarSegments) -> String {
-        let cash = Money.text(segments.cash, currency: false)
-        let needs = Money.text(segments.needs, currency: false)
-        if segments.isOverspent {
-            return "要付和日常 \(needs)：现金 \(cash)，还差 \(Money.text(segments.trailingAmount, currency: false))"
-        }
-        return "现金 \(cash)：还能花 \(Money.text(available, currency: false))，要付和日常 \(needs)"
-    }
-    private func composition(_ progress: Double) -> some View {
-        let segments = HeroBarSegments(available: available, payable: payable, reserved: reserved)
-        let hasGap = segments.leadingAmount > 0 && segments.trailingAmount > 0
-        let isEmpty = segments.leadingAmount == 0 && segments.trailingAmount == 0
-        return VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            GeometryReader { geometry in
-                let width = max(0, geometry.size.width - (hasGap ? YubaiSpace.space2 : 0))
-                HStack(spacing: YubaiSpace.space2) {
-                    if segments.leadingAmount > 0 {
-                        (segments.isOverspent ? YubaiColor.neutralSoft : YubaiColor.brand)
-                            .frame(width: width * CGFloat(segments.leadingFraction * progress))
-                    }
-                    if segments.trailingAmount > 0 {
-                        Group {
-                            if segments.isOverspent { HeroShortfallStripes() }
-                            else { YubaiColor.neutralSoft }
-                        }.frame(width: width * CGFloat(segments.trailingFraction * progress))
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .background(isEmpty ? YubaiColor.neutralSoft : Color.clear).clipShape(Capsule())
-            }.frame(height: YubaiSpace.gapGroup)
-            if !isEmpty {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: YubaiSpace.none) { compositionLegend(segments, horizontal: true) }
-                    VStack(alignment: .leading, spacing: YubaiSpace.space8) { compositionLegend(segments, horizontal: false) }
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }.accessibilityElement(children: .ignore).accessibilityLabel(compositionAccessibilityLabel(segments))
-    }
-    @ViewBuilder private func compositionLegend(_ segments: HeroBarSegments, horizontal: Bool) -> some View {
-        if segments.isOverspent {
-            if segments.cash > 0 {
-                legendItem("现金", amount: segments.cash, color: YubaiColor.neutralSoft)
-            }
-            if segments.trailingAmount > 0 {
-                if horizontal && segments.cash > 0 { Spacer(minLength: YubaiSpace.space12) }
-                legendItem("还差", amount: segments.trailingAmount, color: YubaiColor.amberDot, striped: true)
-            }
-        } else {
-            legendItem("还能花", amount: available, color: YubaiColor.brand)
-            if segments.needs > 0 {
-                if horizontal { Spacer(minLength: YubaiSpace.space12) }
-                legendItem("要付和日常", amount: segments.needs, color: YubaiColor.neutralSoft)
-            }
-        }
-    }
-    private func legendItem(_ name: String, amount: Int64, color: Color, striped: Bool = false) -> some View {
-        HStack(spacing: YubaiSpace.space6) {
-            Group {
-                if striped { HeroShortfallStripes() }
-                else { color }
-            }.frame(width: 8, height: 8).clipShape(RoundedRectangle(cornerRadius: 2))
-            Text(name).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            Text(Money.text(abs(amount), currency: false))
-                .yubaiFont(YubaiFont.amountCaption)
-                .foregroundStyle(striped ? YubaiColor.amberInk : YubaiColor.label)
-        }.fixedSize(horizontal: true, vertical: true)
     }
 }
 
@@ -1599,79 +1657,292 @@ struct InlineNote: View {
     }
 }
 
+enum EmptyStateKind: String, CaseIterable {
+    case ledger, saving, wish, bills, assistant, profile, memories, frequent, budget, search
+    var title: String {
+        switch self {
+        case .ledger: "还没有账"
+        case .saving: "先定每月存多少"
+        case .wish: "想要的东西写在这里"
+        case .bills: "房租、话费、会员"
+        case .assistant: "问一句试试"
+        case .profile: "钱该怎么花，你说了算"
+        case .memories: "聊过的会记在这里"
+        case .frequent: "常记的会自己出现"
+        case .budget: "给一类定个数"
+        case .search: "没有找到"
+        }
+    }
+    var action: String? {
+        switch self {
+        case .ledger: "记一笔"
+        case .saving: "开始存钱"
+        case .wish: "写一个心愿"
+        case .bills: "加一张账单"
+        case .assistant: nil
+        case .profile: "写一句"
+        case .memories: "去聊一句"
+        case .frequent: "自己加一个"
+        case .budget: "定一个"
+        case .search: "清掉筛选"
+        }
+    }
+    var secondary: String? { switch self { case .ledger: "导入"; case .search: "看全部时间"; default: nil } }
+    static let questions = ["这个月哪里花多了", "我买得起这台相机吗", "帮我记一笔 午饭 28"]
+}
+
+/// One empty-state layout for every page, including missing/deleted records.
 struct EmptyState: View {
-    var icon: String
+    var kind: EmptyStateKind
     var title: String
-    var message: String?
-    var action: String? = nil
+    var action: String?
     var onAction: (() -> Void)?
-    var showsPlaceholder: Bool
-    init(_ icon: String, _ title: String, _ message: String? = nil, showsPlaceholder: Bool = true, action: String? = nil, onAction: (() -> Void)? = nil) {
-        self.icon = icon; self.title = title; self.message = message; self.showsPlaceholder = showsPlaceholder; self.action = action; self.onAction = onAction
+    var secondary: String?
+    var onSecondary: (() -> Void)?
+    var onExample: ((String) -> Void)?
+    var actionIdentifier: String
+    var secondaryIdentifier: String
+    var titleIdentifier: String = ""
+    init(_ kind: EmptyStateKind, title: String? = nil, actionIdentifier: String = "", secondaryIdentifier: String = "", titleIdentifier: String = "",
+         onAction: (() -> Void)? = nil, onSecondary: (() -> Void)? = nil, onExample: ((String) -> Void)? = nil) {
+        self.kind = kind; self.title = title ?? kind.title; self.action = kind.action; self.secondary = kind.secondary
+        self.onAction = onAction; self.onSecondary = onSecondary; self.onExample = onExample
+        self.actionIdentifier = actionIdentifier; self.secondaryIdentifier = secondaryIdentifier
+        self.titleIdentifier = titleIdentifier
+    }
+    // Custom facts use the same ghost and serif line as the named page presets.
+    init(_ icon: String, _ title: String, action: String? = nil, actionIdentifier: String = "", onAction: (() -> Void)? = nil) {
+        self.kind = icon == "calendar" ? .bills : icon == "heart" ? .wish : icon == "text.book.closed" ? .memories : .ledger
+        self.title = title; self.action = action; self.onAction = onAction
+        self.actionIdentifier = actionIdentifier; self.secondaryIdentifier = ""
     }
     var body: some View {
-        Card(style: .compact) {
-            VStack(spacing: YubaiSpace.gapGroup) {
-                Image(systemName: icon).font(.system(size: 22)).foregroundStyle(YubaiColor.labelMuted)
-                    .frame(width: 44, height: 44).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
-                Text(title).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).multilineTextAlignment(.center)
-                if let action, let onAction {
-                    Button(action: onAction) {
-                        Text(action).yubaiFont(YubaiFont.body, weight: .medium)
-                            .padding(.horizontal, 18).frame(minHeight: 40).foregroundStyle(YubaiColor.onBrand)
-                            .background(YubaiColor.brand, in: Capsule()).contentShape(Capsule())
-                    }.buttonStyle(PressButtonStyle())
+        VStack(spacing: YubaiSpace.gapSection) {
+            if kind == .assistant {
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    ForEach(Array(EmptyStateKind.questions.enumerated()), id: \.offset) { index, question in
+                        Button { onExample?(question) } label: {
+                            Text(question).yubaiFont(YubaiFont.callout).fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, YubaiSpace.space12).padding(.vertical, YubaiSpace.space8)
+                                .background(YubaiColor.raised, in: Capsule()).yubaiShadow(YubaiShadow.control)
+                                .yubaiHitTarget(alignment: .leading)
+                        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("askSuggestion_\(index)")
+                    }
+                }.frame(maxWidth: 280, minHeight: 156, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+            } else if kind == .search {
+                Image(systemName: "magnifyingglass").yubaiFont(YubaiFont.amountHero)
+                    .foregroundStyle(YubaiColor.separator).frame(height: 156).accessibilityHidden(true)
+            } else {
+                EmptyGhostDrawing(kind: kind).frame(maxWidth: 240).frame(height: 156).accessibilityHidden(true)
+            }
+            Text(title).yubaiFont(YubaiFont.cardTitle).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                .yubaiTextLineBox(YubaiFont.cardTitle)
+                // Export the complete token line box, rather than the tight
+                // glyph rectangle which omits leading at accessibility sizes.
+                .accessibilityElement(children: .ignore).accessibilityLabel(title).accessibilityAddTraits(.isStaticText)
+                .accessibilityIdentifier(titleIdentifier)
+            if (action != nil && onAction != nil) || (secondary != nil && onSecondary != nil) {
+                ChipFlow {
+                    if let action, let onAction {
+                        Button(action, action: onAction).buttonStyle(PrimaryButtonStyle(compact: true))
+                            .accessibilityIdentifier(actionIdentifier.isEmpty ? "emptyAction_" + kind.rawValue : actionIdentifier)
+                    }
+                    if let secondary, let onSecondary {
+                        Button(secondary, action: onSecondary).buttonStyle(SecondaryButtonStyle(background: YubaiColor.card, compact: true))
+                            .accessibilityIdentifier(secondaryIdentifier.isEmpty ? "emptySecondary_" + kind.rawValue : secondaryIdentifier)
+                    }
                 }
-            }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
+            }
+        }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("emptyState_" + kind.rawValue)
+    }
+}
+
+/// Native, token-colored drawings of the future content, on the same warm paper.
+private struct EmptyGhostDrawing: View {
+    let kind: EmptyStateKind
+    var body: some View {
+        Canvas { context, size in
+            let scale = min(size.width / 240, size.height / 156)
+            context.translateBy(x: (size.width - 240 * scale) / 2, y: (size.height - 156 * scale) / 2)
+            context.scaleBy(x: scale, y: scale)
+            let dash = StrokeStyle(lineWidth: 1, lineCap: .round, dash: [4, 4])
+            func box(_ rect: CGRect, radius: CGFloat = 14, paper: Bool = false) {
+                let path = Path(roundedRect: rect, cornerRadius: radius)
+                if paper { context.fill(path, with: .color(YubaiColor.raised)) }
+                context.stroke(path, with: .color(YubaiColor.separator), style: dash)
+            }
+            func line(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, brand: Bool = false) {
+                let path = Path(roundedRect: CGRect(x: x, y: y, width: width, height: 7), cornerRadius: 4)
+                context.fill(path, with: .color(brand ? YubaiColor.brand : YubaiColor.paperInset))
+            }
+            switch kind {
+            case .ledger:
+                box(CGRect(x: 12, y: 12, width: 216, height: 132), paper: true)
+                for i in 0..<3 {
+                    let y = CGFloat(28 + i * 38)
+                    box(CGRect(x: 25, y: y, width: 26, height: 26), radius: 8)
+                    line(62, y + 9, CGFloat(70 - i * 10)); line(171, y + 9, 42)
+                }
+            case .saving:
+                var jar = Path(); jar.move(to: CGPoint(x: 101, y: 20)); jar.addLine(to: CGPoint(x: 139, y: 20))
+                jar.move(to: CGPoint(x: 106, y: 20)); jar.addLine(to: CGPoint(x: 106, y: 36))
+                jar.addCurve(to: CGPoint(x: 88, y: 60), control1: CGPoint(x: 89, y: 40), control2: CGPoint(x: 88, y: 50))
+                jar.addLine(to: CGPoint(x: 88, y: 116)); jar.addQuadCurve(to: CGPoint(x: 102, y: 130), control: CGPoint(x: 88, y: 130))
+                jar.addLine(to: CGPoint(x: 138, y: 130)); jar.addQuadCurve(to: CGPoint(x: 152, y: 116), control: CGPoint(x: 152, y: 130))
+                jar.addLine(to: CGPoint(x: 152, y: 60)); jar.addQuadCurve(to: CGPoint(x: 134, y: 36), control: CGPoint(x: 152, y: 41))
+                jar.addLine(to: CGPoint(x: 134, y: 20))
+                context.stroke(jar, with: .color(YubaiColor.separator), style: StrokeStyle(lineWidth: 2, dash: [5, 6]))
+                line(88, 108, 64, brand: true)
+            case .wish:
+                box(CGRect(x: 25, y: 47, width: 190, height: 60), paper: true)
+                line(40, 63, 86); line(40, 86, 160); line(40, 86, 12, brand: true)
+            case .bills:
+                box(CGRect(x: 12, y: 30, width: 216, height: 96), paper: true)
+                for i in 0..<21 {
+                    let day = i + 8, x = CGFloat(34 + (i % 7) * 29), y = CGFloat(51 + (i / 7) * 27)
+                    let text = Text(String(day)).font(.system(size: YubaiFont.chartLabel.size, design: YubaiFont.chartLabel.design)).foregroundColor(YubaiColor.labelMuted)
+                    context.draw(text, at: CGPoint(x: x, y: y))
+                    if day == 20 { context.stroke(Path(roundedRect: CGRect(x: x - 12, y: y - 12, width: 24, height: 24), cornerRadius: 8), with: .color(YubaiColor.brand), style: dash) }
+                }
+            case .profile:
+                context.draw(Text("“ ”").font(.system(size: 48, design: .serif)).foregroundColor(YubaiColor.separator), at: CGPoint(x: 120, y: 68))
+                var rule = Path(); rule.move(to: CGPoint(x: 42, y: 105)); rule.addLine(to: CGPoint(x: 198, y: 105))
+                context.stroke(rule, with: .color(YubaiColor.separator), style: dash)
+            case .memories:
+                for i in 0..<3 {
+                    let x: CGFloat = i == 1 ? 20 : 34, y = CGFloat(21 + i * 43), width: CGFloat = i == 1 ? 200 : 180
+                    box(CGRect(x: x, y: y, width: width, height: 34), paper: true)
+                    line(x + 14, y + 14, CGFloat(110 - i * 15))
+                }
+            case .frequent:
+                for i in 0..<5 {
+                    let x: CGFloat = i == 4 ? 86 : (i % 2 == 0 ? 35 : 118), y = CGFloat(33 + (i / 2) * 38)
+                    box(CGRect(x: x, y: y, width: i == 3 ? 84 : 70, height: 29), radius: 15)
+                }
+            case .budget:
+                box(CGRect(x: 12, y: 43, width: 216, height: 70), paper: true)
+                line(27, 61, 186); line(27, 86, 186)
+                var marker = Path(); marker.move(to: CGPoint(x: 161, y: 53)); marker.addLine(to: CGPoint(x: 161, y: 81))
+                context.stroke(marker, with: .color(YubaiColor.brand), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
+            case .assistant, .search: break
+            }
         }
     }
 }
 
+private struct ToastIntrinsicWidth: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+private struct ToastAvailableWidth: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct ToastNaturalHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 struct Toast: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var phase
     @State private var visible = false
+    @State private var expanded = false
+    @State private var naturalHeight: CGFloat = 0
+    @State private var intrinsicWidth: CGFloat = 0
+    @State private var availableWidth: CGFloat = 0
     var text: String
     var undoTitle = "撤销"
     var onUndo: (() -> Void)? = nil
     var onDismiss: (() -> Void)? = nil
+    var messageIdentifier = "toastMessage"
+    var undoIdentifier = "undoLastChange"
+    private var truncated: Bool { availableWidth > 0 && intrinsicWidth > availableWidth + 0.5 }
+    private var hasChevron: Bool { truncated || expanded }
+    private var timerKey: String { text + "-\(expanded)-\(visible)-\(phase)" }
     var body: some View {
-        // A concrete host must exist before visible becomes true. An empty Group has no
-        // child on which to run the task that inserts the receipt in the first place.
         ZStack { if visible { surface } }
             .task(id: text) {
+                expanded = false
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
                 #if os(iOS)
                 AccessibilityNotification.Announcement(text + (onUndo == nil ? "" : "，可撤销")).post()
                 #endif
+            }
+            .task(id: timerKey) {
+                guard visible, !expanded, phase == .active else { return }
                 #if DEBUG && targetEnvironment(simulator)
                 if onUndo != nil && UITestSupport.keepsUndoReceipt { return }
                 #endif
-                do { try await Task.sleep(for: .seconds(YubaiMotion.toastLifetime)) } catch { return }
-                withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() }
+                do { try await Task.sleep(for: .seconds(onUndo == nil ? 4 : 6)) } catch { return }
+                guard !Task.isCancelled, !expanded else { return }
+                dismiss()
             }
     }
     private var surface: some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
-            Text(text).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("toastMessage")
+        HStack(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8) {
+            HStack(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8) {
+                    if expanded {
+                        ScrollView {
+                            message
+                        }.frame(height: min(max(YubaiFont.body.lineHeight, naturalHeight), YubaiSize.toastExpandedMaximumHeight))
+                            .scrollBounceBehavior(.basedOnSize)
+                    } else { message }
+                    if hasChevron {
+                        Button(action: toggle) {
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.caption)
+                                .foregroundStyle(YubaiColor.labelSecondary)
+                        }.buttonStyle(TextLinkStyle()).accessibilityIdentifier("expandToast")
+                            .accessibilityLabel(expanded ? "关闭提示" : "展开完整提示")
+                            .accessibilityValue(expanded ? "已展开" : "")
+                            .accessibilityHint("也可以点提示文字或向下划关闭")
+                    }
+            }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("toastBody")
             if let onUndo {
-                Text("·").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).accessibilityHidden(true)
                 Button(undoTitle, action: onUndo).yubaiFont(YubaiFont.row, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
-                    .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
-                    .accessibilityIdentifier("undoLastChange")
-            }
-            if let onDismiss {
-                Button { withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss() } } label: {
-                    Image(systemName: "xmark").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel("关闭提示")
+                    .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
+                    .background(YubaiColor.brandTint, in: Capsule()).fixedSize().yubaiHitTarget().buttonStyle(PressButtonStyle())
+                    .accessibilityIdentifier(undoIdentifier)
             }
         }.padding(.leading, YubaiSpace.insetCard).padding(.trailing, YubaiSpace.space8).padding(.vertical, YubaiSpace.space4)
-            .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: Capsule())
-            .overlay { Capsule().strokeBorder(YubaiColor.separator, lineWidth: 1) }.yubaiShadow(YubaiShadow.float)
+            .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).yubaiShadow(YubaiShadow.card)
             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapGroup)
             .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
-            .gesture(DragGesture(minimumDistance: YubaiSpace.gapGroup).onEnded { value in
-                if value.translation.height > YubaiSpace.gapSection { withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() } }
+            .onPreferenceChange(ToastNaturalHeight.self) { naturalHeight = $0 }
+            .onPreferenceChange(ToastIntrinsicWidth.self) { intrinsicWidth = $0 }
+            .onPreferenceChange(ToastAvailableWidth.self) { availableWidth = $0 }
+            .simultaneousGesture(DragGesture(minimumDistance: YubaiSpace.gapGroup).onEnded { value in
+                if value.translation.height > YubaiSpace.gapSection { dismiss() }
             })
+    }
+    private var message: some View {
+        Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+            .lineLimit(expanded ? nil : 1).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ToastAvailableWidth.self, value: proxy.size.width)
+                        .preference(key: ToastNaturalHeight.self, value: proxy.size.height)
+                }
+            }
+            .background(alignment: .leading) {
+                Text(text).yubaiFont(YubaiFont.body).lineLimit(1).fixedSize().hidden().accessibilityHidden(true)
+                    .background { GeometryReader { proxy in Color.clear.preference(key: ToastIntrinsicWidth.self, value: proxy.size.width) } }
+            }.onTapGesture(perform: toggle).accessibilityAction { toggle() }
+            .accessibilityLabel(text).accessibilityIdentifier(messageIdentifier)
+    }
+    private func toggle() {
+        if expanded || !truncated { dismiss() }
+        else { withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { expanded = true } }
+    }
+    private func dismiss() {
+        withAnimation(YubaiMotion.toastOut(reduceMotion: reduceMotion)) { visible = false; onDismiss?() }
     }
 }
 
@@ -1686,17 +1957,19 @@ extension View {
     }
     func editorForm() -> some View {
         self.formStyle(.grouped).scrollContentBackground(.hidden).paperBackground()
+            .modifier(ScrollContentViewport())
             .environment(\.yubaiFormSurface, true)
             .environment(\.defaultMinListRowHeight, YubaiSize.rowSingle).scrollDismissesKeyboard(.interactively)
-            .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).tint(YubaiColor.brand).buttonStyle(.automatic)
+            .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).tint(YubaiColor.brand).buttonStyle(TextLinkStyle())
     }
     func yubaiNavigation() -> some View {
-        self.paperBackground().tint(YubaiColor.brandInk)
+        self.modifier(ToastContentSlot()).paperBackground().tint(YubaiColor.brandInk)
             .environment(\.yubaiRootSurface, false).environment(\.yubaiFormSurface, false)
             #if os(iOS)
             .background { NavigationBackPaper().frame(width: YubaiSpace.none, height: YubaiSpace.none) }
             .toolbar(.visible, for: .navigationBar)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(YubaiColor.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             #elseif os(macOS)
@@ -1724,370 +1997,43 @@ private struct AppErrorPresenter: ViewModifier {
     }
 }
 
-struct WelcomeView: View {
-    private enum Field: Hashable { case balance, name }
-    @Environment(AppStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var name = "微信零钱"
-    @State private var amount = ""
-    @State private var customName = false
-    @State private var statement: WelcomeStatement?
-    @State private var recentStatement = true
-    @State private var balanceIsFromStatement = false
-    @State private var filePicker = false
-    @State private var reviewStatement = false
-    @State private var importProgress = 0.0
-    @State private var importRequest = UUID()
-    @State private var importTask: Task<Void, Never>?
-    @FocusState private var focusedField: Field?
-    private var isBank: Bool { customName || !["微信零钱", "支付宝"].contains(name) }
-    private var amountInput: Binding<String> {
-        Binding(get: { amount }, set: { value in
-            if value != amount { balanceIsFromStatement = false }
-            amount = value
-        })
-    }
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: YubaiSpace.insetCard) {
-                    BrandMark(size: YubaiSize.iconButton + YubaiSpace.gapSection)
-                        .padding(.top, YubaiSpace.gapSection + YubaiSpace.space8)
-                    Text("余白").yubaiFont(YubaiFont.welcome)
-                    Card {
-                        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                            Text("现在手里有").yubaiFont(YubaiFont.heroLabel)
-                            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                                Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-                                TextField("0.00", text: amountInput).numericInput().yubaiFont(YubaiFont.amountDisplay)
-                                    .focused($focusedField, equals: .balance)
-                                    .accessibilityLabel("现在手里的余额，元").accessibilityIdentifier("accountBalance")
-                            }
-                            if !amount.isEmpty && (try? Money.parse(amount, allowNegative: true)) == nil { InlineFieldError(message: "填写有效金额") }
-                            if let statement {
-                                if let balance = statement.preview.latestBalance {
-                                    Text("流水 \(ImportStatementText.balanceDate(balance.date)) 的余额")
-                                        .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                                        .accessibilityIdentifier("welcomeStatementBalance")
-                                } else {
-                                    HStack(spacing: YubaiSpace.space8) {
-                                        Circle().fill(YubaiColor.amberDot).frame(width: YubaiSpace.space4, height: YubaiSpace.space4).accessibilityHidden(true)
-                                        Text("这份流水没有余额").yubaiFont(YubaiFont.caption)
-                                    }.foregroundStyle(YubaiColor.amberInk).accessibilityIdentifier("welcomeStatementNoBalance")
-                                }
-                            }
-                            ChipFlow {
-                                ForEach(["微信零钱", "支付宝", "招行储蓄卡"], id: \.self) { value in
-                                    SuggestionChip(value: value, selected: !customName && name == value) { chooseAccount(value, custom: false) }
-                                }
-                                SuggestionChip(value: "＋ 别的", selected: customName) { chooseAccount("", custom: true); focusedField = .name }
-                                    .accessibilityIdentifier("welcomeOtherAccount")
-                            }.padding(.top, YubaiSpace.space8)
-                            if customName {
-                                TextField("名称", text: $name).accessibilityIdentifier("accountName")
-                                    .focused($focusedField, equals: .name)
-                                    .accessibilityLabel("账户名称")
-                            }
-                            if isBank {
-                                Rectangle().fill(YubaiColor.separator).frame(height: 1)
-                                if let preview = statement?.preview, let start = preview.recentThreeMonthsStart {
-                                    WelcomeImportRange(recent: $recentStatement,
-                                                       recentCount: preview.selectingEntries(onOrAfter: start).selectedEntries.count,
-                                                       allCount: preview.selectedEntries.count)
-                                }
-                                statementRow
-                            }
-                        }
-                    }.padding(.top, YubaiSpace.gapSection).id("welcomeBalanceCard")
-                        .accessibilityElement(children: .contain).accessibilityIdentifier("welcomeBalanceCard")
-                }.frame(maxWidth: 610, alignment: .leading).frame(maxWidth: .infinity)
-                    .padding(YubaiSpace.insetPage)
-            }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("welcomeScroll")
-                .onGeometryChange(for: CGSize.self) { geometry in
-                    // The inset can change the safe viewport without changing the scroll frame.
-                    CGSize(width: geometry.size.width,
-                           height: geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom)
-                } action: { _ in revealBalanceCard(using: proxy) }
-                .task(id: focusedField) {
-                    await Task.yield()
-                    revealBalanceCard(using: proxy)
-                }
-                .safeAreaInset(edge: .bottom, spacing: YubaiSpace.none) {
-                    Button("开始", action: start).buttonStyle(PrimaryButtonStyle(disabledBackground: YubaiColor.brandTint))
-                        .disabled(importTask != nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? Money.parse(amount, allowNegative: true)) == nil)
-                        .accessibilityIdentifier("startLedger")
-                        .padding(YubaiSpace.insetPage).background(YubaiColor.canvas.ignoresSafeArea(edges: .bottom))
-                }
-        }.yubaiNavigation().toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button { store.sheet = .intelligencePrivacy } label: {
-                    HStack(spacing: YubaiSpace.space4) {
-                        Image(systemName: "cloud").accessibilityHidden(true)
-                        Text("云端智能")
-                        if store.cloudAIReady {
-                            Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk).accessibilityLabel("已开")
-                        }
-                    }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
-                }.accessibilityIdentifier("welcomeCloudAI")
-                    .accessibilityLabel(store.cloudAIReady ? "云端智能，已开" : "云端智能")
-            }
-            ToolbarItem(placement: .confirmationAction) { Button("恢复备份") { store.sheet = .backup } }
-        }
-            .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: false) { selection in
-                switch selection {
-                case .success(let urls): if let url = urls.first { readStatement(url) }
-                case .failure(let error): store.error = error.localizedDescription
-                }
-            }
-            .sheet(isPresented: $reviewStatement) {
-                if let statement {
-                    NavigationStack {
-                        ImportView(welcomeReview: Binding(get: { reviewPreview(self.statement?.preview ?? statement.preview) },
-                                                          set: updateReviewedStatement))
-                    }.environment(store).appErrors().yubaiSheetBackground()
-                }
-            }
-            .onDisappear { importTask?.cancel() }
-    }
-    private var statementRow: some View {
-        Button {
-            focusedField = nil
-            if statement != nil { reviewStatement = true }
-            else { chooseStatement() }
-        } label: {
-            HStack(spacing: YubaiSpace.gapGroup) {
-                Image(systemName: statement == nil ? "doc.badge.plus" : "checkmark").foregroundStyle(YubaiColor.brandInk)
-                    .accessibilityHidden(true)
-                if let statement {
-                    let entries = selectedPreview(statement.preview).selectedEntries
-                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                        Text("已导入 \(entries.count) 笔").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label)
-                        if !entries.isEmpty { Text(ImportStatementText.range(entries.map(\.date))).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-                    }
-                } else if importTask != nil {
-                    Text("读取中").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                } else {
-                    Text("导入这张卡的流水").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.brandInk)
-                }
-                Spacer(minLength: YubaiSpace.space8)
-                if importTask != nil { ImportReadingProgress(value: importProgress) }
-                else { Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
-            }.frame(minHeight: YubaiSize.rowSingle + YubaiSpace.space4).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).disabled(importTask != nil)
-            .accessibilityHint(statement == nil ? "选择账单文件，在本机读取这张银行卡的流水和余额" : "核对已读取的流水，可取消选择不导入的记录")
-            .accessibilityIdentifier("welcomeImportStatement")
-    }
-    private func selectedPreview(_ preview: ImportPreview) -> ImportPreview {
-        guard recentStatement, let start = preview.recentThreeMonthsStart else { return preview }
-        return preview.selectingEntries(onOrAfter: start)
-    }
-    private func reviewPreview(_ preview: ImportPreview) -> ImportPreview {
-        var result = selectedPreview(preview)
-        if recentStatement, let start = preview.recentThreeMonthsStart {
-            result.rows.removeAll { ($0.entry?.date).map { $0 < start } ?? false }
-        }
-        return result
-    }
-    private func updateReviewedStatement(_ preview: ImportPreview) {
-        guard var statement else { return }
-        let reviewed = Dictionary(uniqueKeysWithValues: preview.rows.map { ($0.id, $0) })
-        for i in statement.preview.rows.indices {
-            if let row = reviewed[statement.preview.rows[i].id] { statement.preview.rows[i] = row }
-        }
-        self.statement = statement
-    }
-    private func chooseAccount(_ value: String, custom: Bool) {
-        guard name != value || customName != custom else { return }
-        invalidateStatement()
-        name = value; customName = custom
-    }
-    private func invalidateStatement() {
-        if statement != nil { amount = "" }
-        statement = nil; recentStatement = true; balanceIsFromStatement = false; reviewStatement = false
-        importRequest = UUID(); importTask?.cancel(); importTask = nil
-        filePicker = false
-    }
-    private func chooseStatement() {
-        #if DEBUG && targetEnvironment(simulator)
-        if let url = UITestSupport.welcomeStatementURL { readStatement(url); return }
-        #endif
-        filePicker = true
-    }
-    private func readStatement(_ url: URL) {
-        guard isBank else { return }
-        importTask?.cancel()
-        let request = UUID(); importRequest = request; importProgress = 0
-        let account = Account(name: name, kind: .bank)
-        var temporary = store.current; temporary.accounts.append(account)
-        let ledger = temporary
-        importTask = Task { @MainActor in
-            defer { if importRequest == request { importTask = nil } }
-            do {
-                importProgress = 1
-                let bytes = try await Task.detached(priority: .userInitiated) {
-                    let access = url.startAccessingSecurityScopedResource()
-                    defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 50 * 1024 * 1024 else { throw YubaiError.invalid("单个文件请小于 50 MB。") }
-                    return try Data(contentsOf: url)
-                }.value
-                guard !Task.isCancelled, importRequest == request else { return }
-                importProgress = 2
-                // Deliberately use only the local parser; no column-mapping AI.
-                let parsed = try await Task.detached(priority: .userInitiated) {
-                    try BillImporter.preview(data: bytes, filename: url.lastPathComponent, accountID: account.id, ledger: ledger)
-                }.value
-                guard !Task.isCancelled, importRequest == request else { return }
-                statement = WelcomeStatement(accountID: account.id, data: bytes, preview: parsed)
-                recentStatement = true
-                amount = parsed.latestBalance.map { Money.editableText($0.amount) } ?? ""
-                balanceIsFromStatement = parsed.latestBalance != nil
-                importProgress = 3
-                focusedField = parsed.latestBalance == nil ? .balance : nil
-            } catch {
-                guard !Task.isCancelled, importRequest == request else { return }
-                store.error = error.localizedDescription
-            }
-        }
-    }
-    private func revealBalanceCard(using proxy: ScrollViewProxy) {
-        guard focusedField != nil else { return }
-        withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) {
-            proxy.scrollTo("welcomeBalanceCard", anchor: .bottom)
-        }
-    }
-    private func start() {
-        guard importTask == nil else { return }
-        do {
-            let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !clean.isEmpty else { throw YubaiError.invalid("请给账户起一个名称。") }
-            guard !store.accounts.contains(where: { $0.name == clean }) else { throw YubaiError.invalid("已有同名账户，请使用容易区分的名称。") }
-            let cents = try Money.parse(amount, allowNegative: true)
-            let kind: AccountKind = isBank ? .bank : .cash
-            let balance = statement?.preview.latestBalance
-            let anchorDate = balanceIsFromStatement && balance?.amount == cents ? (balance?.date ?? Date()) : Date()
-            var account = Account(name: clean, kind: kind, balance: cents, at: anchorDate, reconciled: true)
-            if let statement { account.id = statement.accountID }
-            let statement = statement
-            let preview = statement.map { selectedPreview($0.preview) }
-            let preparedAccount = account
-            importTask = Task { @MainActor in
-                defer { importTask = nil }
-                do {
-                    _ = try await store.commitImport(preview, data: statement?.data,
-                                                     account: preparedAccount, completingOnboarding: true)
-                } catch is CancellationError { }
-                catch { store.error = error.localizedDescription }
-            }
-        } catch { store.error = error.localizedDescription }
-    }
-}
-
-/// The welcome-only range control uses the shared segmented surface and motion.
-private struct WelcomeImportRange: View {
-    @Binding var recent: Bool
-    let recentCount: Int
-    let allCount: Int
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var textSize
-    @Namespace private var selectionNamespace
-    var body: some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
-        layout {
-            segment("最近 3 个月", count: recentCount, value: true, identifier: "welcomeImportRecent")
-            segment("全部", count: allCount, value: false, identifier: "welcomeImportAll")
-        }.padding(YubaiSpace.space4)
-            .background(YubaiColor.neutralSoft, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
-            .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: recent)
-            .accessibilityElement(children: .contain).accessibilityIdentifier("welcomeImportRange")
-    }
-    private func segment(_ title: String, count: Int, value: Bool, identifier: String) -> some View {
-        Button { recent = value } label: {
-            VStack(spacing: YubaiSpace.space4) {
-                Text(title).yubaiFont(YubaiFont.row, weight: recent == value ? .medium : .regular)
-                Text(count.formatted(.number.locale(Locale(identifier: "en_US"))) + " 笔")
-                    .yubaiFont(YubaiFont.amountSmall, weight: .regular).foregroundStyle(YubaiColor.labelSecondary)
-            }.foregroundStyle(recent == value ? YubaiColor.label : YubaiColor.labelSecondary)
-                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin)
-                .padding(.vertical, YubaiSpace.space8)
-                .background {
-                    if recent == value {
-                        if reduceMotion { selectedSurface.transition(.opacity) }
-                        else { selectedSurface.matchedGeometryEffect(id: "selection", in: selectionNamespace) }
-                    }
-                }
-                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
-        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(recent == value ? .isSelected : [])
-            .accessibilityIdentifier(identifier)
-    }
-    private var selectedSurface: some View {
-        RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised)
-    }
-}
-
-/// Suggestions are controls; their content becomes the user's editable value.
 struct SuggestionChips: View {
     let values: [String]
     var selected: String? = nil
     var identifierPrefix = "suggestion_"
-    var singleLine = false
     let choose: (String) -> Void
     var body: some View {
-        let layout = singleLine ? AnyLayout(ChipRow()) : AnyLayout(ChipFlow(rowSpacing: YubaiSpace.gapGroup))
-        layout { chips }.frame(maxWidth: .infinity, alignment: .leading)
+        ChipFlow(rowSpacing: YubaiSpace.gapGroup) { chips }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var chips: some View {
         ForEach(values, id: \.self) { value in
-            SuggestionChip(value: value, selected: selected == value, identifier: identifierPrefix + value) { choose(value) }
+            CategoryChoiceChip(title: value, selected: selected == value) { choose(value) }
+                .accessibilityIdentifier(identifierPrefix + value)
         }
     }
 }
 
-struct SuggestionChip: View {
-    let value: String
+struct CategoryChoiceChip: View {
+    let title: String
     var selected = false
-    var identifier = ""
-    let choose: () -> Void
+    var outlined = false
+    var prominent = false
+    let action: () -> Void
     var body: some View {
-        Button(action: choose) {
-            Text(value).yubaiFont(YubaiFont.caption).lineLimit(1).truncationMode(.tail)
+        Button(action: action) {
+            Text(title).yubaiFont(prominent ? YubaiFont.button : YubaiFont.callout, weight: prominent ? .semibold : nil)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
-                .foregroundStyle(selected ? YubaiColor.onBrand : YubaiColor.label)
-                .background(selected ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
+                .foregroundStyle(selected ? YubaiColor.onBrand : (outlined ? YubaiColor.brandInk : YubaiColor.label))
+                .background(selected ? YubaiColor.brand : (outlined ? Color.clear : YubaiColor.raised), in: Capsule())
+                .overlay { if outlined { Capsule().strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.separator) } }
                 .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
-        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier(identifier)
-    }
-}
-
-struct ChipRow: Layout {
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        arrangement(width: proposal.width ?? .infinity, subviews: subviews).size
-    }
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrangement(width: bounds.width, subviews: subviews)
-        for (index, subview) in subviews.enumerated() {
-            let frame = result.frames[index]
-            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
-                          proposal: ProposedViewSize(width: frame.width, height: frame.height))
-        }
-    }
-    private func arrangement(width: CGFloat, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
-        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
-        let spacing = CGFloat(max(0, subviews.count - 1)) * YubaiSpace.space8
-        let widths = ChipWidthAllocation.widths(naturalWidths: sizes.map(\.width), availableWidth: width,
-                                               spacing: YubaiSpace.space8)
-        var x: CGFloat = 0, height: CGFloat = 0
-        var frames: [CGRect] = []
-        for (index, subview) in subviews.enumerated() {
-            let itemWidth = widths[index]
-            let size = subview.sizeThatFits(ProposedViewSize(width: itemWidth, height: nil))
-            frames.append(CGRect(x: x, y: 0, width: itemWidth, height: size.height))
-            x += itemWidth + YubaiSpace.space8; height = max(height, size.height)
-        }
-        return (CGSize(width: widths.reduce(0, +) + spacing, height: height), frames)
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
 struct ChipFlow: Layout {
+    var spacing: CGFloat = YubaiSpace.space8
     var rowSpacing: CGFloat = YubaiSpace.space8
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         arrangement(width: proposal.width ?? .infinity, subviews: subviews).size
@@ -2109,7 +2055,7 @@ struct ChipFlow: Layout {
             if x > 0 && x + size.width > width { x = 0; y += rowHeight + rowSpacing; rowHeight = 0 }
             frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
             usedWidth = max(usedWidth, x + size.width); rowHeight = max(rowHeight, size.height)
-            x += size.width + YubaiSpace.space8
+            x += size.width + spacing
         }
         return (CGSize(width: usedWidth, height: y + rowHeight), frames)
     }
@@ -2127,14 +2073,6 @@ struct LocalSourcePill: View {
                     LabeledContent("云端发送", value: "0 行")
                 }.yubaiFont(YubaiFont.callout).padding(YubaiSpace.insetPage).presentationCompactAdaptation(.popover)
             }
-    }
-}
-
-struct DashedPlaceholder: View {
-    var body: some View {
-        RoundedRectangle(cornerRadius: YubaiRadius.bar)
-            .stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-            .frame(height: YubaiSpace.gapGroup).accessibilityHidden(true)
     }
 }
 
@@ -2171,61 +2109,89 @@ extension Nature {
     var entryLabel: String { paired ? "转账" : (inflow ? "收入" : "支出") }
 }
 
-/// Answer data is built from a read tool in YubaiCore; animation never changes labels.
-struct AnswerChartView: View {
-    let chart: AnswerChart
-    private var domain: ClosedRange<Double> {
-        let values = chart.points.map { Double($0.cents) / 100 }
-        return min(0, values.min() ?? 0)...max(1, values.max() ?? 0)
-    }
-    var body: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            Text(chart.title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            ChartSegments(key: "answer-chart-\(chart.kind)-\(chart.title)", count: chart.kind == .bar ? chart.points.count : 1) { progress in
-                Chart {
-                    ForEach(Array(chart.points.enumerated()), id: \.offset) { index, point in
-                        if chart.kind == .bar {
-                            BarMark(x: .value("分类", point.label), y: .value("金额", Double(point.cents) / 100 * progress[min(index, 5)]))
-                                .foregroundStyle(YubaiColor.brand)
-                        } else {
-                            LineMark(x: .value("日期", point.label), y: .value("金额", Double(point.cents) / 100))
-                                .foregroundStyle(YubaiColor.brand).lineStyle(StrokeStyle(lineWidth: YubaiSize.lineWidth))
-                        }
-                    }
-                }.chartYScale(domain: domain).chartYAxis(.hidden).chartLegend(.hidden)
-                    .chartPlotStyle { plot in plot.mask(alignment: .leading) { GeometryReader { geometry in
-                        Rectangle().frame(width: geometry.size.width * (chart.kind == .bar ? 1 : progress[0]))
-                    } } }
-                    .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                        AxisValueLabel().foregroundStyle(YubaiColor.labelSecondary).font(.system(size: YubaiFont.chartLabel.size))
-                    } }.frame(height: 180)
-                    .accessibilityLabel(chart.title + "。" + chart.points.map { $0.label + "，" + Money.text($0.cents) }.joined(separator: "；"))
-            }
-        }
-    }
-}
-
-struct AddEntryButton: View {
+struct HomeEntryPill: View {
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    @State private var pressed = false
+    let title: String
     let action: () -> Void
+    let quick: () -> Void
     var body: some View {
-        Button(action: action) { Image(systemName: "plus").font(.system(size: 26, weight: .medium)).foregroundStyle(YubaiColor.onBrand).accessibilityHidden(true)
-            .frame(width: 62, height: 62).floatingSurface(in: Circle(), tint: YubaiColor.brand, shadow: YubaiShadow.ask).contentShape(Circle())
-        }.buttonStyle(RoundPressStyle())
-            .accessibilityLabel("记一笔").accessibilityIdentifier("addEntry")
+        HStack(spacing: YubaiSpace.space8) {
+            Image(systemName: "plus").yubaiFont(YubaiFont.tabIcon, weight: .semibold)
+            Text(title).yubaiFont(YubaiFont.fieldValue, weight: .semibold)
+        }.foregroundStyle(YubaiColor.onBrand)
+            .padding(.leading, YubaiSpace.space22).padding(.trailing, YubaiSpace.space28)
+            .frame(height: YubaiSize.homeEntryPillHeight)
+            .background { Capsule().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
+            .contentShape(Capsule())
+            #if os(iOS)
+            .opacity(pressed ? 0.75 : 1)
+            .animation(pressed ? YubaiMotion.instant : (reduceMotion ? YubaiMotion.quick : YubaiMotion.lively), value: pressed)
+            .accessibilityHidden(true)
+            .overlay { HomeEntryPillControl(title: title, pressed: $pressed, action: action, quick: quick) }
+            #else
+            .gesture(LongPressGesture(minimumDuration: 0.4).exclusively(before: TapGesture()).onEnded { result in
+                switch result { case .first: quick(); case .second: action() }
+            })
+            .accessibilityElement(children: .ignore).accessibilityAddTraits(.isButton)
+            .accessibilityLabel(title).accessibilityIdentifier("addEntry")
+            .accessibilityAction(.default, action).accessibilityAction(named: "常用", quick)
+            #endif
     }
 }
 
-/// Shared scaling keeps the eye and assistant glyphs inside matching circles.
+#if os(iOS)
+/// One native control owns tap and hold. The hold cancels the button's touch
+/// before release, so neither the entry action nor a scroll behind it can win.
+private struct HomeEntryPillControl: UIViewRepresentable {
+    let title: String
+    @Binding var pressed: Bool
+    let action: () -> Void
+    let quick: () -> Void
+    func makeUIView(context: Context) -> Control { Control() }
+    func updateUIView(_ view: Control, context: Context) {
+        view.action = action; view.quick = quick; view.pressed = $pressed
+        view.accessibilityLabel = title; view.accessibilityIdentifier = "addEntry"
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: Control, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: .zero)
+    }
+    final class Control: UIButton {
+        var action: (() -> Void)?
+        var quick: (() -> Void)?
+        var pressed: Binding<Bool>?
+        override var isHighlighted: Bool {
+            didSet { if oldValue != isHighlighted { pressed?.wrappedValue = isHighlighted } }
+        }
+        init() {
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            addTarget(self, action: #selector(tap), for: .touchUpInside)
+            let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+            hold.minimumPressDuration = 0.4; hold.cancelsTouchesInView = true
+            addGestureRecognizer(hold)
+            accessibilityCustomActions = [UIAccessibilityCustomAction(name: "常用", target: self, selector: #selector(accessibleQuick))]
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        @objc private func tap() { isHighlighted = false; action?() }
+        @objc private func held(_ gesture: UILongPressGestureRecognizer) {
+            if gesture.state == .began { isHighlighted = false; quick?() }
+        }
+        @objc private func accessibleQuick() -> Bool { quick?(); return true }
+    }
+}
+#endif
+
+/// Header glyphs keep a 40pt circle and a 44pt hit target at every text size.
 struct HeaderIconButton<Icon: View>: View {
-    @ScaledMetric(relativeTo: .body) private var scaledSize = YubaiSize.headerIcon
     let action: () -> Void
     let icon: (CGFloat) -> Icon
     init(action: @escaping () -> Void, @ViewBuilder icon: @escaping (CGFloat) -> Icon) {
         self.action = action; self.icon = icon
     }
     var body: some View {
-        let iconSize = min(max(scaledSize, YubaiSize.headerIcon), YubaiSize.headerIconMax)
-        let side = max(YubaiSize.iconButton, iconSize + YubaiSpace.space8 * 2)
+        let iconSize = YubaiSize.headerIcon
+        let side = YubaiSize.iconButton
         Button(action: action) {
             icon(iconSize).accessibilityHidden(true)
                 .frame(width: side, height: side).controlSurface(in: Circle())
@@ -2234,133 +2200,15 @@ struct HeaderIconButton<Icon: View>: View {
     }
 }
 
-struct AskToolbarButton: View {
-    @Environment(AppStore.self) private var store
-    var body: some View {
-        HeaderIconButton(action: { store.present(.ask(""), from: "ask") }) { size in
-            AssistantMark(size: size, color: YubaiColor.brandInk)
-        }.yubaiZoomSource("ask")
-            .accessibilityLabel("问余白").accessibilityIdentifier("askYubai")
-    }
-}
-
-struct TabRootHeader: View {
-    @Environment(AppStore.self) private var store
-    let title: String
-    var showsAmountVisibility = false
-    var onSearch: (() -> Void)? = nil
-    var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 8) {
-                if showsAmountVisibility {
-                    HeaderIconButton(action: { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } }) { size in
-                        Image(systemName: store.preferences.hideAmounts ? "eye.slash" : "eye").font(.system(size: size))
-                    }.accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额").accessibilityIdentifier("toggleAmountVisibility")
-                }
-                Spacer(minLength: 0)
-            }.frame(width: 88)
-            Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity).accessibilityIdentifier("rootHeaderTitle")
-            HStack(spacing: 8) {
-                Spacer(minLength: 0)
-                if showsAmountVisibility {
-                    Button { onSearch?() } label: {
-                        Image(systemName: "magnifyingglass").font(.system(size: 18))
-                            .frame(width: 40, height: 40).controlSurface(in: Circle())
-                    }.buttonStyle(RoundPressStyle()).accessibilityLabel("搜索账目").accessibilityIdentifier("entriesSearchButton")
-                }
-                AskToolbarButton().frame(width: 40, height: 44)
-            }.frame(width: 88)
-        }.frame(height: 48)
-    }
-}
-
-/// Pushed pages reserve identical side columns so their title never drifts.
-struct LedgerPageHeader: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var textSize
-    let title: String
-    let backTitle: String
-    var trailing: String = ""
-    var body: some View {
-        if textSize.isAccessibilitySize {
-            VStack(spacing: 0) {
-                Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity, minHeight: 48)
-                HStack(spacing: 8) { backButton; Spacer(minLength: 0); trailingLabel }
-            }
-        } else {
-            HStack(spacing: 0) {
-                backButton.frame(width: 88, height: 48, alignment: .leading)
-                Text(title).yubaiFont(YubaiFont.navTitle).frame(maxWidth: .infinity)
-                trailingLabel.frame(width: 88, height: 48, alignment: .trailing)
-            }
-        }
-    }
-    private var backButton: some View {
-        Button { dismiss() } label: {
-            HStack(spacing: 4) { Image(systemName: "chevron.left"); Text(backTitle) }
-                .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.brandInk)
-                .frame(minHeight: 48, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("ledgerBack")
-    }
-    private var trailingLabel: some View { Text(trailing).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-}
-
-struct LedgerSheetHeader: View {
-    let title: String
-    let done: () -> Void
-    var body: some View {
-        HStack {
-            Color.clear.frame(width: 60, height: 44).accessibilityHidden(true)
-            Spacer(minLength: 0)
-            Text(title).yubaiFont(YubaiFont.navTitle).fixedSize()
-            Spacer(minLength: 0)
-            Button("完成", action: done).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.brandInk)
-                .frame(width: 60, height: 44, alignment: .trailing).accessibilityIdentifier("closeSheet")
-        }.padding(.top, YubaiSpace.sheetHeaderTop).buttonStyle(PressButtonStyle())
-    }
-}
-
 extension YubaiFont {
     static let savingsHero = Style(size: 40, lineHeight: 48, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
 }
 
 struct RoundPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.opacity(configuration.isPressed ? 0.75 : 1).scaleEffect(configuration.isPressed ? 0.92 : 1)
+        configuration.label.yubaiHitTarget().opacity(configuration.isPressed ? 0.75 : 1)
             .animation(configuration.isPressed ? YubaiMotion.instant : (reduceMotion ? YubaiMotion.quick : YubaiMotion.lively), value: configuration.isPressed)
-    }
-}
-
-struct Segmented<Value: Hashable>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var selectionNamespace
-    let choices: [(Value, String)]
-    @Binding var selection: Value
-    var background = YubaiColor.card
-    @Environment(\.dynamicTypeSize) private var textSize
-    var body: some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.none)) : AnyLayout(HStackLayout(spacing: YubaiSpace.none))
-        layout {
-            ForEach(choices.indices, id: \.self) { i in
-                let value = choices[i].0
-                Button { selection = value } label: {
-                    Text(choices[i].1).yubaiFont(YubaiFont.callout, weight: selection == value ? .medium : .regular)
-                        .foregroundStyle(selection == value ? YubaiColor.label : YubaiColor.labelSecondary).transaction { $0.animation = nil }
-                        .frame(maxWidth: .infinity, minHeight: YubaiSize.segmentedPill).fixedSize(horizontal: false, vertical: true).background {
-                            if selection == value {
-                                if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).transition(.opacity) }
-                                else { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
-                            }
-                        }.yubaiHitTarget()
-                }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selection == value ? .isSelected : [])
-            }
-        }.padding(.horizontal, YubaiSpace.space4)
-            .background {
-                RoundedRectangle(cornerRadius: YubaiRadius.row).fill(background)
-                    .padding(.vertical, YubaiSize.segmentedHitOutset).allowsHitTesting(false)
-            }.fixedSize(horizontal: false, vertical: true)
-            .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
     }
 }
 
@@ -2377,7 +2225,7 @@ struct ProposalCard: View {
     var body: some View {
         Card(style: .compact, background: YubaiColor.brandTint) {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白想这样改").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
+                HStack(spacing: YubaiSpace.space8) { AssistantMark(size: 14).accessibilityHidden(true); Text("余白的建议").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
                 Text(title).yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.brandTintStrong)
                 ForEach(Array((expanded ? lines : Array(lines.prefix(3))).enumerated()), id: \.offset) { _, line in
                     Text(line).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
@@ -2454,23 +2302,1833 @@ private struct NumberKeyboardAccessory: UIViewRepresentable {
 }
 #endif
 
-struct EntryPurposeWell: View {
-    @Binding var purpose: String
-    var title: String = "用途"
-    let identifier: String
-    var focus: FocusState<Bool>.Binding
+// MARK: - Round 45 shell
+
+/// 金额文字，永远两位小数；隐藏金额时只留圆点。拼接文案用，单独显示金额用 `AmountLabel`。
+func amount2(_ cents: Int64, hide: Bool) -> String { hide ? "••••" : AmountLabel.text(cents) }
+
+/// 钱罐：24 格坐标系里的描边，粗细随选中态变化（和 `PaperClothOutline` 同一套写法）。
+struct SavingJarOutline: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addRoundedRect(in: CGRect(x: 8.5, y: 2.8, width: 7, height: 3), cornerSize: CGSize(width: 1, height: 1))
+        path.addRoundedRect(in: CGRect(x: 5.5, y: 6.4, width: 13, height: 14.8), cornerSize: CGSize(width: 4.4, height: 4.4))
+        path.move(to: CGPoint(x: 9.5, y: 13.2)); path.addLine(to: CGPoint(x: 14.5, y: 13.2))
+        let scale = min(rect.width, rect.height) / 24
+        return path.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: rect.midX - 12 * scale, ty: rect.midY - 12 * scale))
+    }
+}
+
+/// 三个标签页的图标：底栏和 macOS 侧栏共用。
+struct DestinationGlyph: View {
+    let destination: Destination
+    var selected = false
+    var size: CGFloat = YubaiSize.tabIcon
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "pencil").font(.system(size: 16)).foregroundStyle(YubaiColor.labelMuted)
-            TextField(title, text: $purpose).yubaiFont(YubaiFont.row).focused(focus)
-                .submitLabel(.done).onSubmit { focus.wrappedValue = false }
-                .accessibilityLabel(title).accessibilityIdentifier(identifier)
-        }.padding(.horizontal, 12).frame(height: 44)
-            .background(YubaiColor.key, in: RoundedRectangle(cornerRadius: 12))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12).strokeBorder(YubaiColor.keyFn.opacity(0.45), lineWidth: 1)
-                    .shadow(color: .black.opacity(0.10), radius: 2, x: 0, y: 1)
-                    .clipShape(RoundedRectangle(cornerRadius: 12)).allowsHitTesting(false)
+        glyph.frame(width: size, height: size).accessibilityHidden(true)
+    }
+    @ViewBuilder private var glyph: some View {
+        switch destination {
+        case .now: Image(systemName: "clock").font(.system(size: size, weight: selected ? .medium : .regular))
+        case .ledger: NowTabGlyph(size: size, selected: selected)
+        case .yubai: Image(systemName: "leaf.fill").font(.system(size: size, weight: selected ? .medium : .regular))
+        }
+    }
+}
+
+/// 三个根页共用的页头：左边眼睛（显示/隐藏金额），右边设置，中间标题。
+struct RootHeader: View {
+    @Environment(AppStore.self) private var store
+    let title: String
+    private var iconSize: CGFloat { YubaiSize.headerIcon }
+    private var side: CGFloat { YubaiSize.iconButton }
+    var body: some View {
+        HStack(spacing: YubaiSpace.none) {
+            amountToggle
+            Text(title).yubaiFont(YubaiFont.navTitle).lineLimit(1).frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isHeader).accessibilityIdentifier("rootHeaderTitle")
+            settingsLink
+        }.frame(minHeight: YubaiSize.headerHeight)
+            .accessibilityElement(children: .contain)
+            // Safe-area headers can escape a hidden NavigationStack's AX
+            // boundary. Hide the header at its own boundary as well.
+            .accessibilityHidden(store.destination.title != title)
+    }
+    private var amountToggle: some View {
+        Button { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } } label: {
+            icon(store.preferences.hideAmounts ? "eye.slash" : "eye")
+        }.buttonStyle(PressButtonStyle())
+            .accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额").accessibilityIdentifier("toggleAmountVisibility")
+    }
+    private var settingsLink: some View {
+        TabNavigationLink(.settings) { SettingsView() } label: {
+            icon("slider.horizontal.3")
+        }.buttonStyle(PressButtonStyle()).accessibilityLabel("设置").accessibilityIdentifier("openSettings")
+    }
+    private func icon(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: iconSize)).accessibilityHidden(true)
+            .frame(width: side, height: side).controlSurface(in: Circle()).yubaiHitTarget()
+    }
+}
+
+// MARK: - Round 45 shared components
+
+/// 现在页的一问两答卡：眉标、标题（名字 + 金额 + 问句）、两个答案；同时有几件事时右上角写「还有 N 件」。
+struct QuestionCard: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var textSize
+    let eyebrow: String
+    let title: String
+    var amount: Int64? = nil
+    var question = ""
+    var amber = false
+    var more = 0
+    var onMore: (() -> Void)? = nil
+    var evidenceTitle: String? = nil
+    var onEvidence: (() -> Void)? = nil
+    var titleIdentifier = ""
+    let yesTitle: String
+    let noTitle: String
+    var yesIdentifier = ""
+    var noIdentifier = ""
+    let yes: () -> Void
+    let no: () -> Void
+    private var headline: String {
+        var parts = [title]
+        if let amount { parts.append(amount2(amount, hide: store.preferences.hideAmounts)) }
+        if !question.isEmpty { parts.append(question) }
+        return parts.joined(separator: " ")
+    }
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                topLine
+                Text(headline).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(titleIdentifier)
+                answers.padding(.top, YubaiSpace.space4)
             }
+        }.accessibilityElement(children: .contain)
+    }
+    private var topLine: some View { ButlerKicker(title: eyebrow, more: more, evidenceTitle: evidenceTitle, onEvidence: onEvidence) }
+    private var answers: some View {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+        return layout {
+            Button(yesTitle, action: yes).buttonStyle(NowCardButtonStyle(primary: true)).accessibilityIdentifier(yesIdentifier)
+            if !noTitle.isEmpty { Button(noTitle, action: no).buttonStyle(NowCardButtonStyle(primary: false)).accessibilityIdentifier(noIdentifier) }
+            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+        }
+    }
+}
+
+/// 一行结果：左边标签，右边「a → b」之类的数；不够宽时上下排。可琥珀。
+struct ResultBar: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    let label: String
+    let value: String
+    var amber = false
+    var identifier = ""
+    /// 「a → b」两位小数。
+    static func change(_ from: Int64, _ to: Int64, hide: Bool) -> String {
+        amount2(from, hide: hide) + " → " + amount2(to, hide: hide)
+    }
+    var body: some View {
+        Group {
+            if textSize.isAccessibilitySize { stacked }
+            else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
+                        labelText.fixedSize(); Spacer(minLength: YubaiSpace.space8); valueText.fixedSize()
+                    }
+                    stacked
+                }
+            }
+        }.padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
+            .frame(maxWidth: .infinity, minHeight: YubaiSize.rowIcon, alignment: .leading)
+            .background(amber ? YubaiColor.amberTint : YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .accessibilityElement(children: .combine).accessibilityIdentifier(identifier)
+    }
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            labelText; valueText.frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+    private var labelText: some View {
+        Text(label).yubaiFont(YubaiFont.callout).foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.labelMuted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+    private var valueText: some View {
+        Text(value).yubaiFont(YubaiFont.amountSmall, weight: .semibold).foregroundStyle(amber ? YubaiColor.amberStrong : YubaiColor.brandInk)
+            .fixedSize(horizontal: false, vertical: true)
+            .yubaiTextLineBox(YubaiFont.amountSmall).layoutPriority(1)
+    }
+}
+
+struct AmountPreset: Identifiable, Equatable {
+    var id: String
+    var title: String
+    var amount: Int64
+    var identifier = ""
+}
+struct AmountSheetRow: Identifiable, Equatable {
+    var label: String
+    var value: String
+    var amber = false
+    var id: String { label }
+}
+
+/// 半屏记金额：标题、取消、两颗现成数、大金额、最多两行结果、数字键盘。
+/// 超支补法、发工资、账单付了、算式页就地改共用。金额状态由调用方的 `EntryKeypad` 持有。
+/// Numeric sheets keep the title and its monetary fact beside the keypad.
+struct AmountSheetHeader: View {
+    let title: String
+    var subtitle: String? = nil
+    let cancel: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            ManualSheetHeader(title: title, showsAction: false, cancelIdentifier: "amountSheetCancel", cancel: cancel, action: {}, preservesCancelIdentifier: true)
+            if let subtitle { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+        }
+    }
+}
+
+/// Measure uncompressed content independently of the presented height. Keeping
+/// the keypad in the same VStack avoids the safe-area-inset/detent feedback
+/// loop that reduced a sheet to just its keypad on the simulator.
+struct KeypadSheet<Content: View, Footer: View>: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    @State private var contentHeight: CGFloat = YubaiSize.sheet440
+    @State private var footerHeight: CGFloat = YubaiSize.keypadHeight
+    @State private var inputSession = RowInputSession()
+    @State private var editingHeight: CGFloat?
+    @ViewBuilder let content: () -> Content
+    @ViewBuilder let footer: () -> Footer
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                content().fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, YubaiSpace.insetPage)
+                    .padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapGroup)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if TextInputMetrics.changed(from: contentHeight, to: $0) { contentHeight = $0 } }
+            }.scrollBounceBehavior(.basedOnSize).modifier(ScrollContentViewport())
+            // Keep both subtrees mounted. A focus change must not recreate an
+            // editor or change the sheet's selected height beneath UIKit.
+            footer().fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if TextInputMetrics.changed(from: footerHeight, to: $0) { footerHeight = $0 } }
+                .frame(height: inputSession.isEditing ? 0 : nil).clipped()
+                .allowsHitTesting(!inputSession.isEditing).accessibilityHidden(inputSession.isEditing)
+        }.environment(\.yubaiRowInputSession, inputSession)
+            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(editingHeight ?? contentHeight + footerHeight), .large])
+            .accessibilityElement(children: .contain)
+            .onChange(of: inputSession.isEditing) { _, editing in
+                editingHeight = editing ? contentHeight + footerHeight : nil
+            }
+    }
+}
+
+struct AmountEntrySheet<Accessory: View>: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
+    let title: String
+    var subtitle: String? = nil
+    var presets: [AmountPreset] = []
+    @Binding var keypad: EntryKeypad
+    var rows: [AmountSheetRow] = []
+    let primaryTitle: String
+    var primaryIdentifier = "amountSheetDone"
+    var canSave = true
+    var primaryAboveKeypad = false
+    var cancel: (() -> Void)? = nil
+    let save: () -> Void
+    let accessory: Accessory
+    @State private var selected: Bool
+
+    init(title: String, subtitle: String? = nil, presets: [AmountPreset] = [], keypad: Binding<EntryKeypad>,
+         rows: [AmountSheetRow] = [], primaryTitle: String, primaryIdentifier: String = "amountSheetDone",
+         canSave: Bool = true, startsSelected: Bool = true, primaryAboveKeypad: Bool = false, cancel: (() -> Void)? = nil, save: @escaping () -> Void,
+         @ViewBuilder accessory: () -> Accessory) {
+        self.title = title; self.subtitle = subtitle; self.presets = presets; _keypad = keypad; self.rows = Array(rows.prefix(2))
+        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.canSave = canSave; self.primaryAboveKeypad = primaryAboveKeypad
+        self.cancel = cancel; self.save = save; self.accessory = accessory()
+        _selected = State(initialValue: startsSelected)
+    }
+    var body: some View {
+        KeypadSheet {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                header
+                if !presets.isEmpty { presetRow }
+                amountDisplay
+                ForEach(rows) { row in ResultBar(label: row.label, value: row.value, amber: row.amber) }
+                accessory
+            }
+        } footer: {
+                VStack(spacing: YubaiSpace.none) {
+                    if primaryAboveKeypad {
+                        Button(primaryTitle, action: save).buttonStyle(PrimaryButtonStyle())
+                            .disabled(!canSave).accessibilityIdentifier(primaryIdentifier)
+                            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapGroup)
+                    }
+                    AmountKeypad(keypad: $keypad, amountSelected: $selected, canSave: canSave,
+                                 primaryTitle: primaryTitle, primaryIdentifier: primaryIdentifier, save: save, showsPrimary: !primaryAboveKeypad)
+                }.accessibilityElement(children: .contain)
+        }
+            .accessibilityElement(children: .contain)
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+    }
+    private var header: some View {
+        AmountSheetHeader(title: title, subtitle: subtitle, cancel: { if let cancel { cancel() } else { dismiss() } })
+    }
+    private var presetRow: some View {
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
+        return layout { ForEach(presets) { preset in presetButton(preset) } }
+    }
+    private func presetButton(_ preset: AmountPreset) -> some View {
+        let on = keypad.amount == preset.amount
+        return Button {
+            keypad = EntryKeypad(amount: preset.amount); selected = true
+        } label: {
+            VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+                Text(preset.title).yubaiFont(YubaiFont.caption)
+                Text(amount2(preset.amount, hide: store.preferences.hideAmounts)).yubaiFont(YubaiFont.amountSummary)
+            }.foregroundStyle(on ? YubaiColor.raised : YubaiColor.label)
+                .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
+                .background(on ? YubaiColor.label : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(on ? .isSelected : [])
+            .accessibilityIdentifier(preset.identifier)
+    }
+    private var amountDisplay: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.none) {
+            if let expression = keypad.expressionText {
+                Text(expression).yubaiFont(YubaiFont.amount).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("entryKeypadExpression")
+            }
+            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                if primaryAboveKeypad { Spacer(minLength: 0) }
+                Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
+                Text(keypad.groupedResultText).yubaiFont(YubaiFont.entryAmount)
+                    .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                    .padding(.horizontal, 6)
+                if !primaryAboveKeypad { EntryAmountCursor() }
+                Spacer(minLength: 0)
+            }.frame(minHeight: YubaiSize.rowDouble)
+        }.accessibilityElement(children: .ignore).accessibilityLabel("金额").accessibilityValue(keypad.resultText)
+            .accessibilityIdentifier("amountSheetAmount")
+    }
+}
+extension AmountEntrySheet where Accessory == EmptyView {
+    init(title: String, subtitle: String? = nil, presets: [AmountPreset] = [], keypad: Binding<EntryKeypad>,
+         rows: [AmountSheetRow] = [], primaryTitle: String, primaryIdentifier: String = "amountSheetDone",
+         canSave: Bool = true, startsSelected: Bool = true, primaryAboveKeypad: Bool = false, cancel: (() -> Void)? = nil, save: @escaping () -> Void) {
+        self.init(title: title, subtitle: subtitle, presets: presets, keypad: keypad, rows: rows, primaryTitle: primaryTitle,
+                  primaryIdentifier: primaryIdentifier, canSave: canSave, startsSelected: startsSelected, primaryAboveKeypad: primaryAboveKeypad, cancel: cancel,
+                  save: save) { EmptyView() }
+    }
+}
+
+/// 分类格：图标在上、字在下。三态：普通 / 描边（建议，只提示不选中）/ 选中。
+struct IconGridCell: View {
+    enum Mode: Equatable { case normal, outlined, selected }
+    let title: String
+    let symbol: String
+    var mode: Mode = .normal
+    var identifier = ""
+    var hintValue = "建议"
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: YubaiSpace.space2) {
+                Image(systemName: symbol).font(.system(size: 17)).frame(height: YubaiSize.headerIcon).accessibilityHidden(true)
+                Text(title).yubaiFont(YubaiFont.caption).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            }.foregroundStyle(mode == .selected ? YubaiColor.onBrand : YubaiColor.label)
+                .padding(.vertical, YubaiSpace.space8).padding(.horizontal, YubaiSpace.space4)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin + YubaiSpace.space8)
+                .background(mode == .selected ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .overlay {
+                    if mode == .outlined {
+                        RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: 1.5)
+                    }
+                }.contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+        }.buttonStyle(PressButtonStyle()).accessibilityLabel(title)
+            .accessibilityValue(mode == .outlined ? hintValue : "")
+            .accessibilityAddTraits(mode == .selected ? .isSelected : [])
+            .accessibilityIdentifier(identifier)
+    }
+}
+
+/// 整行等宽的分段；短选项保持横排，每项可点区域至少 44pt。
+struct Segmented<Value: Hashable>: View {
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.yubaiMinimumTarget) private var minimum
+    @Namespace private var selectionNamespace
+    let choices: [(Value, String)]
+    @Binding var selection: Value
+    var identifier: ((Value) -> String)? = nil
+    var background = YubaiColor.card
+    var body: some View {
+        let layout = textSize.isAccessibilitySize && choices.contains(where: { $0.1.count > 3 }) ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
+        layout {
+            ForEach(choices.indices, id: \.self) { index in segment(choices[index].0, title: choices[index].1) }
+        }.padding(YubaiSpace.space4)
+            .background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
+    }
+    private func segment(_ value: Value, title: String) -> some View {
+        let on = selection == value
+        return Button { selection = value } label: {
+            Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .dynamicTypeSize(...(title.count <= 3 ? DynamicTypeSize.xxxLarge : .accessibility5))
+                .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space8)
+                .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
+                .frame(maxWidth: .infinity, minHeight: minimum)
+                .background { if on { selectedSurface } }
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(on ? .isSelected : [])
+            .accessibilityIdentifier(identifier?(value) ?? "")
+    }
+    @ViewBuilder private var selectedSurface: some View {
+        if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised) }
+        else { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
+    }
+}
+
+/// 细进度线（0…1）。首启清单、心愿单等待。
+struct ProgressLine: View {
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    let value: Double
+    var tint = YubaiColor.brand
+    var track = YubaiColor.neutralSoft
+    var height: CGFloat = YubaiSpace.space4
+    private var clamped: Double { min(1, max(0, value)) }
+    var body: some View {
+        Capsule().fill(track).frame(height: height)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Capsule().fill(tint).frame(width: proxy.size.width * clamped)
+                }
+            }
+            .animation(YubaiMotion.progress(reduceMotion: reduceMotion), value: clamped)
+            .accessibilityElement(children: .ignore).accessibilityValue("\(Int((clamped * 100).rounded()))%")
+    }
+}
+
+struct ManualSheetHeader: View {
+    @Environment(\.yubaiSheetSurface) private var inSheet
+    @Environment(\.dynamicTypeSize) private var textSize
+    let title: String
+    var actionTitle = "保存"
+    var actionImage: String? = nil
+    var primary = true
+    var showsAction = true
+    var enabled = true
+    var cancelTitle = "取消"
+    var actionIdentifier: String? = nil
+    var cancelIdentifier = "cancelManualSheet"
+    let cancel: () -> Void
+    let action: () -> Void
+    var subtitle: String? = nil
+    var subtitleIdentifier = ""
+    var subtitleAction: (() -> Void)? = nil
+    var preservesCancelIdentifier = false
+    private var titleView: some View {
+        Group {
+            if let subtitle, let subtitleAction {
+                Button(action: subtitleAction) {
+                    VStack(spacing: 2) {
+                        titleText
+                        HStack(spacing: 2) {
+                            Text(subtitle).fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.meta)
+                            Image(systemName: "chevron.down").font(.system(size: 9))
+                        }.yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
+                    }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                }.accessibilityIdentifier(subtitleIdentifier)
+            } else { titleText }
+        }
+    }
+    private var titleText: some View {
+        let font = ["记一笔", "改一笔", "改这笔"].contains(title) ? YubaiFont.entrySheetTitle : YubaiFont.navTitle
+        return Text(title).yubaiFont(font).lineLimit(2).minimumScaleFactor(0.75)
+            .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(font)
+    }
+    private var cancelButton: some View {
+        Button(action: cancel) {
+            Text(cancelTitle).yubaiFont(YubaiFont.body).fixedSize()
+                .padding(.horizontal, 16).frame(minHeight: 36).background(YubaiColor.card, in: Capsule())
+                .frame(minHeight: 44).contentShape(Capsule())
+        }.accessibilityIdentifier(!preservesCancelIdentifier && cancelIdentifier == "cancelManualSheet" && cancelTitle != "取消" ? "closeSheet" : cancelIdentifier)
+    }
+    @ViewBuilder private var actionButton: some View {
+        if showsAction {
+            Button(action: action) {
+                HStack(spacing: 8) { if let actionImage { Image(systemName: actionImage) }; Text(actionTitle).fixedSize() }
+                    .yubaiFont(YubaiFont.body, weight: primary ? .medium : .regular)
+                    .padding(.horizontal, 12).frame(minHeight: 36)
+                    .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
+                    .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
+                    .yubaiHitTarget()
+            }.disabled(!enabled).opacity(enabled ? 1 : 0.4)
+                .accessibilityIdentifier(actionIdentifier ?? (actionTitle == "导入" ? "importFromEntry" : "saveManualSheet"))
+        } else { Color.clear.frame(width: 64, height: 36).accessibilityHidden(true) }
+    }
+    var body: some View {
+        Group {
+            if textSize.isAccessibilitySize { stackedHeader }
+            else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 0) {
+                        cancelButton.frame(width: 96, alignment: .leading)
+                        titleView.frame(maxWidth: .infinity)
+                        actionButton.frame(width: 96, alignment: .trailing)
+                    }
+                    stackedHeader
+                }
+            }
+        }.frame(minHeight: 48).padding(.top, inSheet ? YubaiSpace.sheetHeaderTop : 0).buttonStyle(PressButtonStyle())
+            .background(YubaiColor.canvas)
+            .overlay(alignment: .bottom) { PageFade(edge: .top).offset(y: 24) }
+    }
+    private var stackedHeader: some View {
+        VStack(spacing: 4) {
+            titleView
+            ViewThatFits(in: .horizontal) {
+                HStack { cancelButton; Spacer(); actionButton }
+                VStack(spacing: 8) { cancelButton; actionButton }
+            }
+        }
+    }
+}
+
+/// One field implementation for card rows, search and chat. The native editor
+/// itself fills the target; no late accessibilityFrame override can be reset by
+/// SwiftUI, and tapping the row's padding focuses that same editor.
+private struct RowTextInput: View {
+    @Binding var text: String
+    var placeholder: String
+    var label: String
+    var identifier: String
+    var multiline = false
+    var numeric = false
+    var secure = false
+    var maximumLines = 6
+    var verticalInset: CGFloat = 0
+    var style: YubaiFont.Style = YubaiFont.fieldValue
+    let focus: FocusState<Bool>.Binding
+    var search = false
+    var submit: (() -> Void)? = nil
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.yubaiMinimumTarget) private var minimum
+    @Environment(\.yubaiRowInputSession) private var inputSession
+    @State private var editingID = UUID()
+    @ScaledMetric private var fontSize: CGFloat
+    init(text: Binding<String>, placeholder: String, label: String, identifier: String,
+         multiline: Bool = false, numeric: Bool = false, secure: Bool = false,
+         maximumLines: Int = 6, verticalInset: CGFloat = 0, style: YubaiFont.Style = YubaiFont.fieldValue,
+         focus: FocusState<Bool>.Binding, search: Bool = false, submit: (() -> Void)? = nil) {
+        _text = text; self.placeholder = placeholder; self.label = label; self.identifier = identifier
+        self.multiline = multiline; self.numeric = numeric; self.secure = secure
+        self.maximumLines = maximumLines; self.verticalInset = verticalInset; self.style = style; self.focus = focus
+        self.search = search; self.submit = submit
+        _fontSize = ScaledMetric(wrappedValue: style.size, relativeTo: style.relativeTo)
+    }
+    var body: some View {
+        Group {
+            #if os(iOS)
+            NativeRowInput(text: $text, placeholder: placeholder, label: label, identifier: identifier,
+                           multiline: multiline, numeric: numeric, secure: secure, maximumLines: maximumLines, verticalInset: verticalInset,
+                           fontSize: fontSize, minimum: minimum, enabled: enabled, focus: focus,
+                           preservesTextFocus: inputSession != nil, editingChanged: { inputSession?.setEditing($0, id: editingID) }, search: search, submit: submit)
+                // Register the same FocusState with SwiftUI as well as UIKit.
+                // Otherwise a keyboard/detent relayout can clear an unowned
+                // focus binding and updateUIView immediately resigns the field.
+                .focused(focus)
+            #else
+            nativeFallback.textFieldStyle(.plain).yubaiFont(style).focused(focus)
+                .onSubmit { submit?(); focus.wrappedValue = false }
+                .accessibilityLabel(label).accessibilityIdentifier(identifier)
+            #endif
+        }.frame(maxWidth: .infinity, minHeight: minimum)
+            .onDisappear { inputSession?.setEditing(false, id: editingID) }
+            .contentShape(Rectangle())
+            #if os(macOS)
+            .onTapGesture { if enabled { focus.wrappedValue = true } }
+            #endif
+            .privacySensitive(secure)
+            #if os(iOS)
+            .background { if numeric { NumberKeyboardAccessory().frame(width: 0, height: 0) } }
+            #endif
+    }
+    #if os(macOS)
+    @ViewBuilder private var nativeFallback: some View {
+        if secure { SecureField(placeholder, text: $text) }
+        else { TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal).lineLimit(multiline ? 1...maximumLines : 1...1) }
+    }
+    #endif
+}
+
+#if os(iOS)
+private struct NativeRowInput: UIViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let label: String
+    let identifier: String
+    let multiline: Bool
+    let numeric: Bool
+    let secure: Bool
+    let maximumLines: Int
+    let verticalInset: CGFloat
+    let fontSize: CGFloat
+    let minimum: CGFloat
+    let enabled: Bool
+    let focus: FocusState<Bool>.Binding
+    let preservesTextFocus: Bool
+    let editingChanged: (Bool) -> Void
+    let search: Bool
+    var submit: (() -> Void)?
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> FieldHost {
+        let host = FieldHost(multiline: multiline)
+        host.field.delegate = context.coordinator
+        host.editor.delegate = context.coordinator
+        host.field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
+        return host
+    }
+    func updateUIView(_ host: FieldHost, context: Context) {
+        context.coordinator.parent = self
+        let coordinator = context.coordinator
+        host.focusChanged = { [weak coordinator] in coordinator?.parent.focus.wrappedValue = $0 }
+        host.editingChanged = { [weak coordinator] in coordinator?.parent.editingChanged($0) }
+        let previousHeight = host.height(for: host.bounds.width)
+        let font = UIFont.systemFont(ofSize: fontSize)
+        host.minimum = minimum; host.maximumLines = maximumLines
+        if host.field.font != font { host.field.font = font }
+        if host.editor.font != font { host.editor.font = font }
+        if host.placeholder.font != font { host.placeholder.font = font }
+        let inset = max(verticalInset, (minimum - font.lineHeight) / 2)
+        let textInsets = UIEdgeInsets(top: inset, left: 0, bottom: inset, right: 0)
+        if host.editor.textContainerInset != textInsets { host.editor.textContainerInset = textInsets }
+        host.placeholder.text = placeholder; host.field.placeholder = placeholder
+        if host.field.isSecureTextEntry != secure { host.field.isSecureTextEntry = secure }
+        host.field.keyboardType = numeric ? .decimalPad : .default
+        host.field.returnKeyType = search ? .search : .done
+        host.field.autocorrectionType = secure ? .no : .default
+        host.field.autocapitalizationType = secure ? .none : .sentences
+        host.editor.returnKeyType = submit == nil ? .default : .done
+        host.field.textColor = UIColor(YubaiColor.label); host.editor.textColor = UIColor(YubaiColor.label)
+        host.placeholder.textColor = UIColor(YubaiColor.labelSecondary).withAlphaComponent(0.5)
+        host.field.tintColor = UIColor(YubaiColor.brandInk); host.editor.tintColor = UIColor(YubaiColor.brandInk)
+        if host.field.markedTextRange == nil, host.field.text != text { host.field.text = text }
+        if host.editor.markedTextRange == nil, host.editor.text != text { host.editor.text = text }
+        host.placeholder.isHidden = !text.isEmpty
+        host.field.isEnabled = enabled; host.editor.isEditable = enabled
+        let input: UIView = multiline ? host.editor : host.field
+        input.accessibilityIdentifier = identifier; input.accessibilityLabel = label
+        // In a keypad sheet UIKit owns an active text-editing session. A
+        // SwiftUI focus write-back during footer/detent layout is not a user
+        // request to leave that field. Return, another responder and teardown
+        // still end editing through the native delegate.
+        if preservesTextFocus && enabled && host.desiredFocus && input.isFirstResponder {
+            if !focus.wrappedValue {
+                DispatchQueue.main.async { [weak host] in
+                    guard let host, host.desiredFocus, input.isFirstResponder else { return }
+                    host.focusChanged?(true)
+                }
+            }
+        } else { host.desiredFocus = enabled && focus.wrappedValue }
+        if TextInputMetrics.changed(from: previousHeight, to: host.height(for: host.bounds.width)) { host.scheduleSizeUpdate() }
+        if host.desiredFocus != input.isFirstResponder { host.scheduleFocusUpdate() }
+    }
+    static func dismantleUIView(_ host: FieldHost, coordinator: Coordinator) {
+        host.desiredFocus = false; host.focusChanged = nil; host.editingChanged = nil
+        host.field.delegate = nil; host.editor.delegate = nil
+        host.updateFocus()
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: FieldHost, context: Context) -> CGSize? {
+        let width = proposal.width ?? YubaiSize.fieldMinimum
+        return CGSize(width: width, height: uiView.height(for: width))
+    }
+    final class FieldHost: UIView {
+        let field = UITextField()
+        let editor = UITextView()
+        let placeholder = UILabel()
+        let multiline: Bool
+        var desiredFocus = false
+        var focusChanged: ((Bool) -> Void)?
+        var editingChanged: ((Bool) -> Void)?
+        private var awaitingPresentation = false
+        private var focusUpdateScheduled = false
+        private var sizeUpdateScheduled = false
+        private var lastHeight: CGFloat = 0
+        var minimum = YubaiSize.tapMin
+        var maximumLines = 6
+        init(multiline: Bool) {
+            self.multiline = multiline
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            clipsToBounds = true
+            isAccessibilityElement = false
+            field.borderStyle = .none
+            editor.backgroundColor = .clear
+            editor.textContainerInset = .zero
+            editor.textContainer.lineFragmentPadding = 0
+            // Never toggle this from layoutSubviews. Changing scrolling changes
+            // UITextView's intrinsic measurement and can alternate indefinitely
+            // with SwiftUI Form row sizing when the keyboard appears.
+            editor.isScrollEnabled = true
+            placeholder.isAccessibilityElement = false; placeholder.isUserInteractionEnabled = false
+            if multiline { addSubview(editor); addSubview(placeholder) } else { addSubview(field) }
+            let tap = UITapGestureRecognizer(target: self, action: #selector(requestFocus))
+            tap.cancelsTouchesInView = false; addGestureRecognizer(tap)
+            setContentHuggingPriority(.defaultLow, for: .horizontal)
+            setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        func height(for width: CGFloat) -> CGFloat {
+            guard multiline else { return max(minimum, ceil(field.font?.lineHeight ?? minimum)) }
+            // Measuring the live editor mutates its text container/contentSize.
+            // Use an independent string measurement with the same font/insets.
+            let font = editor.font ?? .systemFont(ofSize: YubaiFont.fieldValue.size)
+            var text = editor.text ?? ""
+            if text.isEmpty || text.hasSuffix("\n") { text += " " }
+            let measured = (text as NSString).boundingRect(
+                with: CGSize(width: max(1, width), height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font], context: nil).height
+            return TextInputMetrics.height(textHeight: measured, lineHeight: font.lineHeight,
+                verticalInset: editor.textContainerInset.top, minimum: minimum, maximumLines: maximumLines)
+        }
+        override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: height(for: bounds.width)) }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            if field.frame != bounds { field.frame = bounds }
+            if editor.frame != bounds { editor.frame = bounds }
+            let line = editor.font?.lineHeight ?? minimum
+            placeholder.frame = CGRect(x: 0, y: max(0, (bounds.height - line) / 2), width: bounds.width, height: line)
+            // The editor and its AX frame are both the full row height.
+            // Layout only assigns native frames. It never writes focus,
+            // SwiftUI state, accessibility values or intrinsic size.
+        }
+        override func didMoveToWindow() { super.didMoveToWindow(); scheduleFocusUpdate() }
+        func scheduleSizeUpdate() {
+            guard !sizeUpdateScheduled else { return }
+            sizeUpdateScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                sizeUpdateScheduled = false
+                let next = height(for: bounds.width)
+                guard TextInputMetrics.changed(from: lastHeight, to: next) else { return }
+                lastHeight = next; invalidateIntrinsicContentSize()
+            }
+        }
+        func scheduleFocusUpdate() {
+            guard !focusUpdateScheduled else { return }
+            focusUpdateScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                focusUpdateScheduled = false; updateFocus()
+            }
+        }
+        @objc private func requestFocus() {
+            guard field.isEnabled, editor.isEditable else { return }
+            desiredFocus = true; focusChanged?(true); updateFocus()
+        }
+        private var presentationTransition: UIViewControllerTransitionCoordinator? {
+            var responder: UIResponder? = self
+            while let next = responder?.next {
+                if let controller = next as? UIViewController, let transition = controller.transitionCoordinator { return transition }
+                responder = next
+            }
+            return nil
+        }
+        func updateFocus(afterPresentation: Bool = false) {
+            let input: UIView = multiline ? editor : field
+            guard !awaitingPresentation else { return }
+            if desiredFocus, window != nil, !afterPresentation, let transition = presentationTransition {
+                // Nested sheets can attach their fields before UIKit allows a
+                // new first responder. Retry at actual transition completion.
+                awaitingPresentation = true
+                let registered = transition.animate(alongsideTransition: nil) { [weak self] _ in
+                    guard let self else { return }
+                    awaitingPresentation = false; updateFocus(afterPresentation: true)
+                }
+                if registered { return }
+                awaitingPresentation = false
+            }
+            if desiredFocus && window != nil && !bounds.isEmpty && !input.isFirstResponder { input.becomeFirstResponder() }
+            if !desiredFocus && input.isFirstResponder { input.resignFirstResponder() }
+        }
+        func editingEnded() {
+            // UIKit may end editing while a sheet is still entering. Preserve
+            // the user's request until that transition has really finished.
+            if desiredFocus, presentationTransition != nil || awaitingPresentation {
+                updateFocus(); return
+            }
+            desiredFocus = false; focusChanged?(false); editingChanged?(false)
+        }
+    }
+    final class Coordinator: NSObject, UITextFieldDelegate, UITextViewDelegate {
+        var parent: NativeRowInput
+        init(_ parent: NativeRowInput) { self.parent = parent }
+        @objc func changed(_ field: UITextField) { parent.text = field.text ?? "" }
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            (textField.superview as? FieldHost)?.desiredFocus = true
+            parent.focus.wrappedValue = true; parent.editingChanged(true)
+        }
+        func textFieldDidEndEditing(_ textField: UITextField) { (textField.superview as? FieldHost)?.editingEnded() }
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            (textField.superview as? FieldHost)?.desiredFocus = false
+            parent.submit?(); parent.focus.wrappedValue = false; textField.resignFirstResponder(); return true
+        }
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+            (textView.superview as? FieldHost)?.placeholder.isHidden = !textView.text.isEmpty
+            (textView.superview as? FieldHost)?.scheduleSizeUpdate()
+        }
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            (textView.superview as? FieldHost)?.desiredFocus = true
+            parent.focus.wrappedValue = true; parent.editingChanged(true)
+        }
+        func textViewDidEndEditing(_ textView: UITextView) { (textView.superview as? FieldHost)?.editingEnded() }
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            if text == "\n", let submit = parent.submit {
+                (textView.superview as? FieldHost)?.desiredFocus = false
+                submit(); parent.focus.wrappedValue = false; textView.resignFirstResponder(); return false
+            }
+            return true
+        }
+    }
+}
+#endif
+
+/// The single form input: card row, fixed label column, focus and inline errors.
+struct CardTextFieldRow: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    let title: String
+    @Binding var text: String
+    var placeholder = ""
+    var identifier = ""
+    var multiline = false
+    var numeric = false
+    var hidesValue = false
+    var leading: AnyView? = nil
+    var trailing: AnyView? = nil
+    var focus: FocusState<Bool>.Binding? = nil
+    var autofocus = false
+    var error: String? = nil
+    var submit: (() -> Void)? = nil
+    @FocusState private var localFocus: Bool
+    private var fieldFocus: FocusState<Bool>.Binding { focus ?? $localFocus }
+    private var stacks: Bool { multiline || textSize.isAccessibilitySize }
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            let layout = stacks ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space2))
+            layout {
+                if !title.isEmpty {
+                    Text(title).yubaiFont(YubaiFont.body)
+                        .foregroundStyle(error != nil ? YubaiColor.amberInk : fieldFocus.wrappedValue ? YubaiColor.brandInk : YubaiColor.label)
+                        .frame(width: stacks ? nil : YubaiSize.fieldLabel, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: YubaiSpace.space8) {
+                    if let leading { leading }
+                    RowTextInput(text: $text, placeholder: placeholder, label: title.isEmpty ? placeholder : title,
+                                 identifier: identifier, multiline: multiline, numeric: numeric, secure: hidesValue,
+                                 focus: fieldFocus, submit: { submit?() })
+                    if let trailing { trailing }
+                }
+            }.frame(minHeight: YubaiSize.buttonHeight).contentShape(Rectangle())
+                .onTapGesture { fieldFocus.wrappedValue = true }
+            if let error { InlineFieldError(message: error) }
+        }.padding(.vertical, stacks ? YubaiSpace.space8 : YubaiSpace.none)
+            .task { if autofocus { fieldFocus.wrappedValue = true } }
+    }
+}
+
+/// Search has its own rounded surface; it is not a labeled form row.
+struct SearchInput: View {
+    @Binding var text: String
+    var placeholder = "搜索"
+    var identifier = ""
+    var label = "搜索"
+    var focus: FocusState<Bool>.Binding? = nil
+    var showsCancel = false
+    var cancelIdentifier = ""
+    var cancel: () -> Void = {}
+    @FocusState private var localFocus: Bool
+    private var fieldFocus: FocusState<Bool>.Binding { focus ?? $localFocus }
+    var body: some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            HStack(spacing: YubaiSpace.space8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                RowTextInput(text: $text, placeholder: placeholder, label: label, identifier: identifier, focus: fieldFocus, search: true)
+                if !text.isEmpty {
+                    Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(YubaiColor.labelMuted).yubaiHitTarget() }
+                        .accessibilityLabel("清空搜索").accessibilityIdentifier(identifier + "Clear")
+                }
+            }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.buttonHeight)
+                .contentShape(Rectangle()).onTapGesture { fieldFocus.wrappedValue = true }
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .overlay { if fieldFocus.wrappedValue { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
+            if showsCancel {
+                Button("取消") { fieldFocus.wrappedValue = false; cancel() }.yubaiFont(YubaiFont.body).fixedSize().yubaiHitTarget()
+                    .accessibilityIdentifier(cancelIdentifier)
+            }
+        }.buttonStyle(PressButtonStyle())
+    }
+}
+
+/// A row icon describes its category; an unknown category is a neutral dot.
+struct LedgerCategoryIcon: View {
+    @Environment(AppStore.self) private var store
+    let category: String
+    var pending = false
+    var income: Bool? = nil
+    var body: some View {
+        Group {
+            if pending { Circle().fill(YubaiColor.labelSecondary).frame(width: 6, height: 6) }
+            else {
+                let name = category.components(separatedBy: " · ").first ?? category
+                Image(systemName: store.current.categories.first { $0.name == name && (income == nil || $0.income == income) }?.symbol ?? "square.grid.2x2")
+                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+            }
+        }.accessibilityHidden(true)
+    }
+}
+
+struct EntryFormRow<Content: View>: View {
+    let title: String
+    let content: Content
+    init(title: String, @ViewBuilder content: () -> Content) { self.title = title; self.content = content() }
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.gapGroup) {
+                Text(title).yubaiFont(YubaiFont.body).fixedSize()
+                Spacer(minLength: YubaiSpace.none)
+                content.fixedSize(horizontal: true, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                Text(title).yubaiFont(YubaiFont.body).fixedSize()
+                content.frame(maxWidth: .infinity, alignment: .trailing)
+            }.padding(.vertical, 8)
+        }.frame(minHeight: YubaiSize.rowSingle).yubaiFont(YubaiFont.body)
+    }
+}
+
+struct EntryFormDivider: View {
+    var body: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
+}
+
+
+/// Shared by quick entry, entry editing and fixed-flow amounts.
+struct AmountKeypad: View {
+    @Binding var keypad: EntryKeypad
+    @Binding var amountSelected: Bool
+    let canSave: Bool
+    let primaryTitle: String
+    let primaryIdentifier: String
+    let save: () -> Void
+    var showsPrimary = true
+    var embedded = false
+    var receiptVisible = false
+    var receiptDeadline: Date? = nil
+    var interaction: () -> Void = {}
+    @StateObject private var feedback = AmountKeypadFeedback()
+    // The keys never grow with Dynamic Type; the amount above them is what scales.
+    private let keyHeight: CGFloat = 48
+    private let rows = [["1", "2", "3", "⌫"], ["4", "5", "6", "+"], ["7", "8", "9", "−"]]
+
+    init(keypad: Binding<EntryKeypad>, amountSelected: Binding<Bool> = .constant(false), canSave: Bool,
+         primaryTitle: String, primaryIdentifier: String, save: @escaping () -> Void, embedded: Bool = false, showsPrimary: Bool = true,
+         receiptVisible: Bool = false, receiptDeadline: Date? = nil, interaction: @escaping () -> Void = {}) {
+        _keypad = keypad; _amountSelected = amountSelected; self.canSave = canSave
+        self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.save = save; self.embedded = embedded; self.showsPrimary = showsPrimary
+        self.receiptVisible = receiptVisible; self.receiptDeadline = receiptDeadline; self.interaction = interaction
+    }
+    var body: some View {
+        VStack(spacing: 0) {
+            GeometryReader { geometry in
+                let keyWidth = max(0, (geometry.size.width - 18) / 4)
+                VStack(spacing: 6) {
+                    ForEach(rows.indices, id: \.self) { row in
+                        HStack(spacing: 6) { ForEach(rows[row], id: \.self) { key in
+                            AmountKeypadKey(key: key, keypad: $keypad, amountSelected: $amountSelected, feedback: feedback, height: keyHeight, interaction: interaction)
+                                .frame(width: keyWidth)
+                        } }
+                    }
+                    HStack(spacing: 6) {
+                        AmountKeypadKey(key: ".", keypad: $keypad, amountSelected: $amountSelected, feedback: feedback, height: keyHeight, interaction: interaction)
+                            .frame(width: keyWidth)
+                        AmountKeypadKey(key: "0", keypad: $keypad, amountSelected: $amountSelected, feedback: feedback, height: keyHeight, interaction: interaction)
+                            .frame(width: showsPrimary ? keyWidth : keyWidth * 3 + 12)
+                        if showsPrimary {
+                        if receiptVisible {
+                            EntrySaveReceipt(deadline: receiptDeadline).frame(width: keyWidth * 2 + 6, height: keyHeight)
+                        } else { Button(action: save) {
+                            Text(primaryTitle).yubaiFont(YubaiFont.keypadAction)
+                                .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.center).frame(maxWidth: .infinity).frame(minHeight: keyHeight)
+                        }.buttonStyle(AmountKeyButtonStyle(primary: true, pressing: { if $0 { feedback.press("记下", accepted: true) } }))
+                            .frame(width: keyWidth * 2 + 6).opacity(canSave ? 1 : 0.4).disabled(!canSave)
+                            .accessibilityIdentifier(primaryIdentifier)
+                        }
+                        }
+                    }
+                }
+            }.frame(height: keyHeight * 4 + 6 * 3)
+        }.padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 8)
+            .dynamicTypeSize(...DynamicTypeSize.large)
+            .frame(maxWidth: 620).frame(maxWidth: .infinity)
+            .background {
+                if !embedded {
+                    UnevenRoundedRectangle(topLeadingRadius: YubaiRadius.card, topTrailingRadius: YubaiRadius.card)
+                        .fill(YubaiColor.keypadTray).ignoresSafeArea(edges: .bottom)
+                }
+            }
+            .accessibilityElement(children: .contain).accessibilityLabel("数字键盘")
+            .onAppear { feedback.prepare() }
+    }
+}
+
+private struct AmountKeypadKey: View {
+    let key: String
+    @Binding var keypad: EntryKeypad
+    @Binding var amountSelected: Bool
+    let feedback: AmountKeypadFeedback
+    var height: CGFloat = 52
+    var interaction: () -> Void = {}
+    @State private var holdTask: Task<Void, Never>?
+    @State private var deletedOnTouch = false
+    private var selected: Bool { keypad.pendingOperator == key }
+    var body: some View {
+        Button {
+            interaction()
+            if deletedOnTouch { deletedOnTouch = false; return }
+            keypad.press(key, replacingAmount: amountSelected); amountSelected = false
+        } label: {
+            Group {
+                if key == "⌫" { Image(systemName: "delete.left") }
+                else { Text(key) }
+            }.yubaiFont(YubaiFont.amountAccount, weight: .regular)
+                .frame(maxWidth: .infinity).frame(height: height)
+        }.buttonStyle(AmountKeyButtonStyle(function: ["⌫", "+", "−"].contains(key), selected: selected, pressing: pressChanged))
+            .accessibilityLabel(key == "⌫" ? "删除一位" : key == "+" ? "加" : key == "−" ? "减" : key == "." ? "小数点" : key)
+            .accessibilityIdentifier("keypad_" + key).accessibilityAddTraits(selected ? .isSelected : [])
+            .onDisappear { holdTask?.cancel() }
+    }
+    private func pressChanged(_ pressed: Bool) {
+        holdTask?.cancel()
+        guard pressed else { DispatchQueue.main.async { deletedOnTouch = false }; return }
+        interaction()
+        deletedOnTouch = false
+        var next = keypad; next.press(key, replacingAmount: amountSelected)
+        feedback.press(key, accepted: next != keypad)
+        guard key == "⌫" else { return }
+        deletedOnTouch = true; keypad = next; amountSelected = false
+        guard keypad.expression != "0" else { return }
+        holdTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+            var count = 0
+            while !Task.isCancelled {
+                keypad.press("⌫"); feedback.deletion(); count += 1
+                if keypad.expression == "0" { break }
+                do { try await Task.sleep(for: .milliseconds(max(45, 150 - count * 15))) } catch { return }
+            }
+        }
+    }
+}
+
+private struct AmountKeyButtonStyle: ButtonStyle {
+    var primary = false
+    var secondary = false
+    var function = false
+    var selected = false
+    var pressing: (Bool) -> Void = { _ in }
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        let fill = primary ? (pressed ? YubaiColor.brandInk : YubaiColor.brand)
+            : pressed ? (function ? YubaiColor.keyFnPressed : YubaiColor.keyPressed)
+            : selected ? YubaiColor.brandTint : (function ? YubaiColor.keyFn : YubaiColor.key)
+        return configuration.label
+            .foregroundStyle(primary ? YubaiColor.onBrand : (selected || secondary) ? YubaiColor.brandInk : YubaiColor.label)
+            .background(fill, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .overlay {
+                if selected { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: 1.5) }
+            }
+            .shadow(color: primary || selected || pressed ? .clear : YubaiColor.shadowKey, radius: 0, x: 0, y: 1)
+            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .animation(pressed ? nil : .easeOut(duration: YubaiMotion.durationQuick), value: pressed)
+            .onChange(of: pressed) { _, value in pressing(value) }
+    }
+}
+
+@MainActor private final class AmountKeypadFeedback: ObservableObject {
+    #if os(iOS)
+    private let light = UIImpactFeedbackGenerator(style: .light)
+    private let medium = UIImpactFeedbackGenerator(style: .medium)
+    private let rigid = UIImpactFeedbackGenerator(style: .rigid)
+    private let completion = UINotificationFeedbackGenerator()
+    #endif
+    func prepare() {
+        #if os(iOS)
+        light.prepare(); medium.prepare(); rigid.prepare(); completion.prepare()
+        #endif
+    }
+    func press(_ key: String, accepted: Bool) {
+        #if os(iOS)
+        if !accepted { rigid.impactOccurred(intensity: 0.5); rigid.prepare() }
+        else if key == "+" || key == "−" { medium.impactOccurred(); medium.prepare() }
+        else { light.impactOccurred(); light.prepare() }
+        #endif
+    }
+    func success() {
+        #if os(iOS)
+        completion.notificationOccurred(.success); completion.prepare()
+        #endif
+    }
+    func deletion() {
+        #if os(iOS)
+        light.impactOccurred(); light.prepare()
+        #endif
+    }
+}
+
+/// A single button keeps the entire amount accessible and avoids decimalPad.
+struct EditableAmountDisplay: View {
+    let amount: String
+    let keypad: EntryKeypad
+    let presented: Bool
+    let selected: Bool
+    let identifier: String
+    let open: () -> Void
+    var hide = false
+    var ink: Color? = nil
+    var body: some View {
+        Button(action: open) {
+            VStack(alignment: .leading, spacing: YubaiSpace.none) {
+                if presented && !hide, let expression = keypad.expressionText {
+                    Text(expression).yubaiFont(YubaiFont.amount).foregroundStyle(YubaiColor.labelSecondary)
+                        .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("entryKeypadExpression")
+                }
+                amountLine
+            }.contentShape(Rectangle())
+        }.buttonStyle(.plain).foregroundStyle(YubaiColor.label)
+            .accessibilityLabel("金额").accessibilityValue(hide ? "金额已隐藏" : presented ? keypad.groupedResultText : EntryKeypad(amount: (try? Money.parse(amount)) ?? 0).groupedResultText)
+            .accessibilityIdentifier(identifier)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: AmountEditorFrame.self, value: proxy.frame(in: .named("amountEditor")))
+                }
+            }
+    }
+    private var amountLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+            Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
+            Text(hide ? "••••" : presented ? keypad.groupedResultText : ((try? Money.parse(amount)).map { EntryKeypad(amount: $0).groupedResultText } ?? "0.00"))
+                .yubaiFont(YubaiFont.entryAmount).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                .foregroundStyle(ink ?? YubaiColor.label)
+                .padding(.horizontal, YubaiSpace.space4)
+
+            if presented && !hide { EntryAmountCursor() }
+            Spacer(minLength: YubaiSpace.none)
+        }.frame(minHeight: YubaiSize.rowDouble)
+    }
+}
+
+private struct AmountEditorFrame: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+private struct AmountEditorOutsideTap: ViewModifier {
+    let presented: Bool
+    let finish: () -> Void
+    @State private var amountFrame = CGRect.zero
+    func body(content: Content) -> some View {
+        content.contentShape(Rectangle()).coordinateSpace(name: "amountEditor")
+            .onPreferenceChange(AmountEditorFrame.self) { amountFrame = $0 }
+            .simultaneousGesture(SpatialTapGesture().onEnded { event in
+                if presented && !amountFrame.contains(event.location) { finish() }
+            })
+    }
+}
+
+extension View {
+    func finishAmountOnOutsideTap(presented: Bool, finish: @escaping () -> Void) -> some View {
+        modifier(AmountEditorOutsideTap(presented: presented, finish: finish))
+    }
+}
+
+struct EntryRepeatChip: View {
+    var selected: Bool
+    var value: String
+    var opensPlan = false
+    var inTray = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(value + (opensPlan ? " ›" : "")).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight)
+                .background(inTray ? YubaiColor.keyFn : selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
+                .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
+                .yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryRepeat")
+            .accessibilityLabel("重复").accessibilityValue(value).accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The four entry surfaces use this form; their state and commit operations stay with their owners.
+struct EntryForm<Content: View>: View {
+    let title: String
+    var actionTitle = "好"
+    var actionImage: String? = nil
+    var primary = true
+    var showsAction = true
+    var enabled = true
+    var actionIdentifier: String? = nil
+    var scrollIdentifier = "entryFormScroll"
+    var cancelTitle = "取消"
+    var cancelIdentifier = "cancelManualSheet"
+    let cancel: () -> Void
+    let save: () -> Void
+    var headerSubtitle: String? = nil
+    var subtitleAction: (() -> Void)? = nil
+    var compactHeader = false
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        VStack(spacing: YubaiSpace.none) {
+            ManualSheetHeader(title: title, actionTitle: actionTitle, actionImage: actionImage, primary: primary,
+                              showsAction: showsAction, enabled: enabled, cancelTitle: cancelTitle, actionIdentifier: actionIdentifier,
+                              cancelIdentifier: cancelIdentifier, cancel: cancel, action: save,
+                              subtitle: headerSubtitle, subtitleIdentifier: "entrySessionSummary", subtitleAction: subtitleAction,
+                              preservesCancelIdentifier: headerSubtitle != nil)
+                .dynamicTypeSize(...(compactHeader ? DynamicTypeSize.xxxLarge : .accessibility5))
+                .padding(.horizontal, YubaiSpace.insetPage)
+            ScrollView {
+                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup, content: content)
+                    .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, compactHeader ? 0 : YubaiSpace.gapSection)
+                    .frame(maxWidth: 620).frame(maxWidth: .infinity)
+            }.modifier(ScrollContentViewport()).scrollDismissesKeyboard(.interactively).accessibilityElement(children: .contain).accessibilityIdentifier(scrollIdentifier)
+        }.accessibilityElement(children: .contain)
+    }
+}
+
+struct EntryDateRow: View {
+    @Binding var date: Date
+    var showsTime = false
+    private var today: Date { Dates.now }
+    private func choose(_ day: Date) {
+        let c = Dates.calendar
+        date = c.date(bySettingHour: c.component(.hour, from: date), minute: c.component(.minute, from: date), second: c.component(.second, from: date), of: day)!
+    }
+    var body: some View {
+        EntryFormRow(title: showsTime ? "时间" : "日期") {
+            EntryChipLayout(spacing: 6, rowSpacing: 6) {
+                dayChip("今天", day: today)
+                dayChip("昨天", day: Dates.addDays(-1, to: today))
+                EntryDateChip(date: $date, iconOnly: true)
+                if showsTime { EntryDateChip(date: $date, time: true) }
+            }.fixedSize(horizontal: false, vertical: true).frame(maxWidth: 300, alignment: .trailing)
+        }
+    }
+    private func dayChip(_ title: String, day: Date) -> some View {
+        let selected = Dates.calendar.isDate(date, inSameDayAs: day)
+        return Button { choose(day) } label: {
+            Text(title).fixedSize().yubaiFont(YubaiFont.callout)
+                .padding(.horizontal, 12).frame(height: 32)
+                .background(selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
+                .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }.yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+struct EntryAmountCursor: View {
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    @State private var visible = true
+    var body: some View {
+        Rectangle().fill(YubaiColor.brand).frame(width: 2, height: 34)
+            .opacity(visible || reduceMotion ? 1 : 0).accessibilityHidden(true)
+            .task(id: reduceMotion) {
+                visible = true; guard !reduceMotion else { return }
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                    visible.toggle()
+                }
+            }
+    }
+}
+
+
+struct InlineFieldError: View {
+    let message: String?
+    var body: some View {
+        if let message {
+            Text(message).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
+                .padding(.leading, 16).frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("inlineFieldError")
+        }
+    }
+}
+
+struct DestructiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.fixedSize(horizontal: false, vertical: true).yubaiFont(YubaiFont.destructiveAction)
+            .foregroundStyle(YubaiColor.amberInk).frame(maxWidth: .infinity, minHeight: 52)
+            .background(configuration.isPressed ? YubaiColor.keyPressed : YubaiColor.card, in: Capsule())
+            .contentShape(Capsule())
+    }
+}
+
+
+/// Shared text field and send styling; callers supply screenshot and voice controls.
+struct ChatInputBar<Leading: View, Accessory: View>: View {
+    @Binding var text: String
+    var placeholder: String
+    var accessibilityLabel: String
+    var inputID: String
+    var sendID: String
+    var enabled = true
+    var busy = false
+    var showSend = true
+    var focus: FocusState<Bool>.Binding? = nil
+    var send: () -> Void
+    @ViewBuilder var leading: () -> Leading
+    @ViewBuilder var accessory: () -> Accessory
+    @FocusState private var localFocus: Bool
+    var body: some View {
+        HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
+            leading().frame(height: YubaiSize.iconButton)
+            HStack(spacing: YubaiSpace.none) {
+                RowTextInput(text: $text, placeholder: placeholder, label: accessibilityLabel, identifier: inputID,
+                             multiline: true, maximumLines: 5, verticalInset: YubaiSpace.gapGroup,
+                             style: YubaiFont.navTitle, focus: focus ?? $localFocus)
+            }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                .onTapGesture { (focus ?? $localFocus).wrappedValue = true }
+            accessory().frame(height: YubaiSize.iconButton)
+            if showSend {
+                Button(action: send) {
+                    Image(systemName: "arrow.up").fontWeight(.semibold)
+                        .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
+                        .foregroundStyle(Color.white).background(YubaiColor.brand, in: Circle())
+                        .yubaiHitTarget()
+                }.accessibilityLabel("发送").accessibilityIdentifier(sendID)
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }.disabled(!enabled || busy).padding(YubaiSpace.space8).frame(minHeight: YubaiSize.buttonHeight)
+            .fixedSize(horizontal: false, vertical: true)
+            .buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
+            .opacity(enabled ? 1 : 0.6)
+    }
+}
+
+
+private struct EntrySaveReceipt: View {
+    let deadline: Date?
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: deadline == nil)) { context in
+            Label("已记下", systemImage: "checkmark").yubaiFont(YubaiFont.keypadAction)
+                .frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(YubaiColor.brandInk)
+                .background {
+                    GeometryReader { proxy in
+                        YubaiColor.brandTint
+                            .overlay(alignment: .leading) {
+                                YubaiColor.brand.opacity(0.22)
+                                    .frame(width: proxy.size.width * ContinuousEntrySession.receiptFraction(deadline: deadline, at: context.date))
+                            }
+                    }
+                }.clipShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+        }.accessibilityElement(children: .ignore).accessibilityLabel("已记下")
+            .accessibilityIdentifier("entrySavedReceipt")
+    }
+}
+
+
+/// 月历：今天描边，未来日期变灰但仍可选；拆分可传入原差额的日期范围。
+struct EntryCalendarView: View {
+    @Binding var selection: Date
+    let today: Date
+    var bounds: ClosedRange<Date>? = nil
+    var identifier = "entryCalendar"
+    var customHeader: ((Binding<Date>) -> AnyView)? = nil
+    @State private var month: Date
+    @ScaledMetric(relativeTo: .callout) private var dayWidth = YubaiSize.tapMin
+
+    init(selection: Binding<Date>, today: Date, bounds: ClosedRange<Date>? = nil, identifier: String = "entryCalendar",
+         customHeader: ((Binding<Date>) -> AnyView)? = nil) {
+        _selection = selection; self.today = today; self.bounds = bounds; self.identifier = identifier
+        self.customHeader = customHeader
+        _month = State(initialValue: Dates.calendar.dateInterval(of: .month, for: selection.wrappedValue)!.start)
+    }
+    private var monthTitle: String {
+        "\(Dates.calendar.component(.year, from: month))年\(Dates.calendar.component(.month, from: month))月"
+    }
+    private var leading: Int { (Dates.calendar.component(.weekday, from: month) + 5) % 7 }
+    private var count: Int { Dates.calendar.range(of: .day, in: .month, for: month)?.count ?? 0 }
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            if let customHeader { customHeader($month) } else { monthHeader }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(dayWidth), spacing: YubaiSpace.space4), count: 7), spacing: YubaiSpace.space4) {
+                    ForEach(Array(["一", "二", "三", "四", "五", "六", "日"].enumerated()), id: \.offset) { _, day in
+                        Text(day).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).frame(width: dayWidth).frame(minHeight: YubaiSize.tapMin)
+                    }
+                    ForEach(0..<(leading + count), id: \.self) { index in
+                        if index < leading { Color.clear.frame(width: dayWidth, height: dayWidth).accessibilityHidden(true) }
+                        else { dayButton(Dates.addDays(index - leading, to: month)) }
+                    }
+                }.frame(minWidth: dayWidth * 7 + YubaiSpace.space4 * 6)
+            }
+        }.accessibilityElement(children: .contain).accessibilityIdentifier(identifier)
+    }
+    private var monthHeader: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            Text(monthTitle).yubaiFont(YubaiFont.rowTitle, weight: .semibold).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: YubaiSpace.space8)
+            monthButton(-1, symbol: "chevron.left", label: "上个月")
+            monthButton(1, symbol: "chevron.right", label: "下个月")
+        }
+    }
+    private func monthButton(_ offset: Int, symbol: String, label: String) -> some View {
+        Button { month = Dates.addMonths(offset, to: month) } label: {
+            Image(systemName: symbol).yubaiFont(YubaiFont.callout)
+                .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).accessibilityLabel(label)
+            .accessibilityIdentifier(identifier + (offset < 0 ? "Previous" : "Next"))
+    }
+    private func dayButton(_ day: Date) -> some View {
+        let selected = Dates.calendar.isDate(day, inSameDayAs: selection)
+        let current = Dates.calendar.isDate(day, inSameDayAs: today)
+        let future = day > Dates.day(today)
+        let allowed = bounds.map { day >= Dates.day($0.lowerBound) && day <= Dates.day($0.upperBound) } ?? true
+        return Button { choose(day) } label: {
+            Text("\(Dates.calendar.component(.day, from: day))").yubaiFont(YubaiFont.row)
+                .foregroundStyle(selected ? YubaiColor.canvas : future || !allowed ? YubaiColor.labelSecondary : YubaiColor.label)
+                .frame(width: dayWidth, height: dayWidth)
+                .background { if selected { Circle().fill(YubaiColor.label) } }
+                .overlay { if current { Circle().strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
+                .contentShape(Circle())
+        }.buttonStyle(PressButtonStyle()).disabled(!allowed).opacity(allowed ? 1 : 0.4)
+            .accessibilityLabel(FixedFlowPresentation.monthDay(day)).accessibilityValue(future ? "未来" : "")
+            .accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier(identifier + "Day_" + Dates.text(day))
+    }
+    private func choose(_ day: Date) {
+        let calendar = Dates.calendar
+        selection = calendar.date(bySettingHour: calendar.component(.hour, from: selection), minute: calendar.component(.minute, from: selection),
+                                  second: calendar.component(.second, from: selection), of: day) ?? day
+    }
+}
+
+/// Monetary form values use the shared large readout and keypad, in the current
+/// card. Expanding a row never presents a second sheet above an editor.
+private struct MoneyInputFocusKey: EnvironmentKey {
+    static let defaultValue = MoneyInputFocus()
+}
+@Observable private final class MoneyInputFocus { var active: UUID? }
+private extension EnvironmentValues {
+    var moneyInputFocus: MoneyInputFocus {
+        get { self[MoneyInputFocusKey.self] }
+        set { self[MoneyInputFocusKey.self] = newValue }
+    }
+}
+
+struct MoneyInputRow: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.moneyInputFocus) private var inputFocus
+    @Environment(\.dynamicTypeSize) private var textSize
+    let title: String
+    @Binding var text: String
+    var identifier = ""
+    var currencySymbol = "¥"
+    var allowNegative = false
+    var trailing: AnyView? = nil
+    var leadingLabel: AnyView? = nil
+    @State private var identity = UUID()
+    @State private var keypad = EntryKeypad()
+    @State private var selected = true
+    private var value: Int64 { (try? Money.parse(text, allowNegative: allowNegative)) ?? 0 }
+    private var editing: Bool { inputFocus.active == identity }
+    private var hidden: Bool { store.preferences.hideAmounts && !editing }
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            valueRow
+            if editing {
+                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
+                    Text(currencySymbol).yubaiFont(YubaiFont.amountAccount)
+                    Text(keypad.groupedResultText).yubaiFont(YubaiFont.entryAmount).fixedSize(horizontal: false, vertical: true)
+                    EntryAmountCursor()
+                }.accessibilityIdentifier(identifier + "Amount")
+                AmountKeypad(keypad: $keypad, amountSelected: $selected,
+                             canSave: keypad.amount != nil && (allowNegative || (keypad.amount ?? -1) >= 0),
+                             primaryTitle: "好", primaryIdentifier: identifier + "Done", save: { inputFocus.active = nil }, embedded: true)
+            }
+        }.onChange(of: keypad) { _, value in
+            if editing, let amount = value.amount, allowNegative || amount >= 0 { text = Money.input(amount) }
+        }.onDisappear { if editing { inputFocus.active = nil } }
+    }
+    @ViewBuilder private var valueRow: some View {
+        if let leadingLabel {
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+            layout {
+                leadingLabel.frame(maxWidth: .infinity, alignment: .leading)
+                valueButton
+            }.frame(minHeight: YubaiSize.rowDouble)
+        } else { EntryFormRow(title: title) { valueButton } }
+    }
+    private var valueButton: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            Button(action: activate) {
+                Text(hidden ? "••••" : currencySymbol + " " + AmountLabel.text(value)).yubaiFont(YubaiFont.amount)
+                    .fixedSize(horizontal: false, vertical: true).layoutPriority(1).frame(minHeight: YubaiSize.tapMin)
+                    .contentShape(Rectangle())
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier)
+                .accessibilityLabel(title.isEmpty ? "金额" : title).accessibilityValue(hidden ? "金额已隐藏" : AmountLabel.text(value))
+            if let trailing { trailing }
+        }
+    }
+    private func activate() {
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+        keypad = EntryKeypad(amount: value); selected = true
+        inputFocus.active = editing ? nil : identity
+    }
+}
+
+/// All confirmation sheets use the same content-sized surface and amber action.
+struct ConfirmationSheet<Actions: View>: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var measuredHeight: CGFloat = 300
+    let title: String
+    var consequence: String? = nil
+    var cancelIdentifier = "cancelConfirmation"
+    @ViewBuilder let actions: Actions
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                Text(title).yubaiFont(YubaiFont.navTitle).fixedSize(horizontal: false, vertical: true)
+                if let consequence { Text(consequence).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelSecondary) }
+                actions
+                Button("取消") { dismiss() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier(cancelIdentifier)
+            }.fixedSize(horizontal: false, vertical: true).padding(YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { measuredHeight = $0 } }
+        }.scrollBounceBehavior(.basedOnSize).modifier(ScrollContentViewport())
+            .yubaiSheetBackground().presentationDetents([.height(measuredHeight), .large]).presentationDragIndicator(.visible)
+    }
+}
+
+struct SettingsRow: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    let title: String
+    var detail: String? = nil
+    var chevron = true
+    var body: some View {
+        HStack(spacing: YubaiSpace.gapGroup) {
+            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
+            layout {
+                Text(title).yubaiFont(YubaiFont.body).fixedSize(horizontal: false, vertical: true)
+                if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
+                if let detail { Text(detail).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true) }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            if chevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
+        }.frame(minHeight: YubaiSize.buttonHeight).contentShape(Rectangle()).accessibilityElement(children: .combine)
+    }
+}
+
+struct EntryDateChip: View {
+    @Binding var date: Date
+    var time = false
+    var iconOnly = false
+    var inTray = false
+    var allowsFuture = true
+    var identifier = ""
+    @State private var picking = false
+    @State private var latestDate = Dates.now
+    var body: some View {
+        Button { latestDate = Dates.now; picking = true } label: {
+            Group {
+                if iconOnly { Image(systemName: "calendar").frame(width: YubaiSize.headerIcon) }
+                else if inTray && !time { Label(ManualBookkeeping.dayLabel(date), systemImage: "calendar").fixedSize() }
+                else { Text(time ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date)).fixedSize() }
+            }
+                .yubaiFont(time ? YubaiFont.amountSmall : YubaiFont.callout)
+                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? YubaiSize.trayChip : YubaiSize.chipHeight).background(inTray ? YubaiColor.keyFn : YubaiColor.raised, in: Capsule())
+                .yubaiHitTarget()
+        }.accessibilityLabel(iconOnly ? "选别的日子" : time ? "时间" : "日期").accessibilityValue(time ? date.formatted(.dateTime.hour().minute()) : ManualBookkeeping.dayLabel(date))
+            .accessibilityIdentifier(identifier.isEmpty ? (time ? "entryTimeChip" : "entryDatePicker") : identifier).buttonStyle(PressButtonStyle()).sheet(isPresented: $picking) {
+                ScrollView {
+                    if time {
+                        DatePicker("时间", selection: $date, in: Date.distantPast...(allowsFuture ? Date.distantFuture : latestDate), displayedComponents: .hourAndMinute)
+                            .labelsHidden().accessibilityIdentifier("entryTimePicker")
+                    } else {
+                        EntryCalendarView(selection: $date, today: latestDate, bounds: allowsFuture ? nil : Date.distantPast...latestDate)
+                    }
+                }.padding(YubaiSpace.insetCard).transaction { $0.animation = nil }
+                    .manualSheetHeader(time ? "时间" : "日期", actionTitle: "好", actionIdentifier: "entryDateDone", cancel: { picking = false }, action: { picking = false })
+                    .yubaiSheetBackground().presentationDetents([.medium, .large])
+            }
+    }
+}
+
+
+/// A recurring day-of-month is a number from 1–31, independent of the current
+/// month's length; actual dated occurrences use EntryCalendarView.
+struct MonthDayChoices: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.yubaiMinimumTarget) private var minimum
+    @State private var width: CGFloat = 0
+    @Binding var selection: Int
+    var identifier: String
+    var choose: (Int) -> Void = { _ in }
+    var body: some View {
+        // Both callers offer the full width inside insetPage, outside a Card.
+        // Spend the gap first; keep the week-like seven columns at every
+        // standard text size and four at accessibility sizes.
+        let metrics = MonthDayGridMetrics(availableWidth: width, minimumTarget: minimum, accessibility: textSize.isAccessibilitySize)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: minimum), spacing: metrics.spacing), count: metrics.columns), spacing: metrics.spacing) {
+            ForEach(1...31, id: \.self) { value in
+                Button { selection = value; choose(value) } label: {
+                    Text("\(value)").yubaiFont(YubaiFont.callout).lineLimit(1)
+                        .frame(minWidth: minimum, maxWidth: .infinity, minHeight: minimum)
+                        .foregroundStyle(selection == value ? YubaiColor.onBrand : YubaiColor.label)
+                        .background(selection == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel("每月 \(value) 号")
+                    .accessibilityAddTraits(selection == value ? .isSelected : []).accessibilityIdentifier(identifier + "\(value)")
+            }
+        }.onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+}
+
+/// Chips wrap at their intrinsic width, including at accessibility text sizes.
+struct EntryChipLayout: Layout {
+    var spacing: CGFloat = YubaiSpace.space8
+    var rowSpacing: CGFloat = YubaiSpace.gapGroup
+    private func arrangement(_ subviews: Subviews, width: CGFloat) -> (CGSize, [CGRect]) {
+        var x: CGFloat = .zero; var y: CGFloat = .zero; var rowHeight: CGFloat = .zero; var frames: [CGRect] = []
+        for view in subviews {
+            let ideal = view.sizeThatFits(.unspecified)
+            let size = view.sizeThatFits(ProposedViewSize(width: min(width, ideal.width), height: nil))
+            // 32pt chips in 44pt targets already contribute 12pt of visible space.
+            let targetOutset = YubaiSize.tapMin - YubaiSize.chipHeight
+            if x > 0 && x + size.width > width { x = 0; y += rowHeight + max(YubaiSpace.none, rowSpacing - targetOutset); rowHeight = 0 }
+            frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
+            x += size.width + spacing; rowHeight = max(rowHeight, size.height)
+        }
+        return (CGSize(width: width, height: y + rowHeight), frames)
+    }
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrangement(subviews, width: proposal.width ?? 354).0
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let frames = arrangement(subviews, width: bounds.width).1
+        for (index, view) in subviews.enumerated() {
+            let frame = frames[index]
+            view.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
+                       proposal: ProposedViewSize(width: frame.width, height: frame.height))
+        }
+    }
+}
+
+
+private struct NativeRowsHeight: PreferenceKey {
+    static let defaultValue: [AnyHashable: CGFloat] = [:]
+    static func reduce(value: inout [AnyHashable: CGFloat], nextValue: () -> [AnyHashable: CGFloat]) { value.merge(nextValue(), uniquingKeysWith: { _, new in new }) }
+}
+/// A self-sizing native List provides swipe actions inside an existing paper card.
+struct NativeCardRows<Item: Identifiable, Row: View>: View where Item.ID: Hashable {
+    let items: [Item]
+    @ViewBuilder var row: (Item) -> Row
+    @State private var heights: [AnyHashable: CGFloat] = [:]
+    @ScaledMetric private var estimatedHeight: CGFloat = YubaiSize.rowEstimate
+    init(_ items: [Item], @ViewBuilder row: @escaping (Item) -> Row) { self.items = items; self.row = row }
+    var body: some View {
+        List(items) { item in
+            row(item).fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, YubaiSpace.space4)
+                .background { GeometryReader { geometry in Color.clear.preference(key: NativeRowsHeight.self, value: [AnyHashable(item.id): geometry.size.height]) } }
+                .listRowInsets(EdgeInsets(top: YubaiSpace.none, leading: YubaiSpace.space16, bottom: YubaiSpace.none, trailing: YubaiSpace.space16))
+                .listRowBackground(YubaiColor.paperSheet).listRowSeparatorTint(YubaiColor.separator)
+        }.listStyle(.plain).scrollContentBackground(.hidden).scrollDisabled(true)
+            .frame(height: items.reduce(CGFloat(0)) { $0 + max(44, heights[AnyHashable($1.id)] ?? estimatedHeight) })
+            .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .onPreferenceChange(NativeRowsHeight.self) { value in if value != heights { heights = value } }
+    }
+}
+
+private struct ManualSheetTop: ViewModifier {
+    @Environment(\.yubaiSheetSurface) private var inSheet
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let actionTitle: String
+    let enabled: Bool
+    let primary: Bool
+    let cancelTitle: String
+    let showsAction: Bool
+    let actionIdentifier: String?
+    let cancelAction: (() -> Void)?
+    let action: () -> Void
+    @ViewBuilder func body(content: Content) -> some View {
+        if !inSheet && !showsAction { content }
+        else { content.manualSheetNavigation().safeAreaInset(edge: .top, spacing: YubaiSpace.none) {
+            ManualSheetHeader(title: title, actionTitle: actionTitle, primary: primary, showsAction: showsAction, enabled: enabled,
+                              cancelTitle: cancelTitle, actionIdentifier: actionIdentifier,
+                              cancel: { if let cancelAction { cancelAction() } else { dismiss() } }, action: action)
+                .padding(.horizontal, YubaiSpace.insetPage)
+        } }
+    }
+}
+extension View {
+    func manualSheetHeader(_ title: String, actionTitle: String = "好", primary: Bool = true, enabled: Bool = true, cancelTitle: String = "取消",
+                           showsAction: Bool = true, actionIdentifier: String? = nil, cancel: (() -> Void)? = nil,
+                           action: @escaping () -> Void = {}) -> some View {
+        modifier(ManualSheetTop(title: title, actionTitle: actionTitle, enabled: enabled, primary: primary, cancelTitle: cancelTitle,
+                                showsAction: showsAction, actionIdentifier: actionIdentifier, cancelAction: cancel, action: action))
+    }
+}
+
+
+extension YubaiFont {
+    static let partBalance = Style(size: YubaiFont.row.size, lineHeight: 20, weight: .semibold, family: .num, relativeTo: .footnote)
+}
+
+extension YubaiFont {
+    static let butlerTitle = Style(size: YubaiFont.entrySheetTitle.size, lineHeight: 24, weight: .semibold, family: .sans, relativeTo: .headline)
+}
+
+// MARK: - Round 47 home paper and window
+
+/// Existing bamboo silhouette, shared by the first wall and the daily receipt.
+struct BrandBambooShadow: View {
+    var opacity = 0.11
+    var body: some View {
+        Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
+            .foregroundStyle(YubaiColor.bambooShadow).blur(radius: 5).opacity(opacity)
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+struct FirstWindowWall: View {
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            ZStack {
+                LinearGradient(colors: [YubaiColor.card, YubaiColor.keypadTray], startPoint: .topLeading, endPoint: .bottomTrailing)
+                window(size)
+                TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion)) { context in
+                    let angle = reduceMotion ? 0 : sin(context.date.timeIntervalSinceReferenceDate / YubaiMotion.windowSwayPhase) * 2
+                    BrandBambooShadow(opacity: scheme == .dark ? 0.14 : 0.20)
+                        .frame(width: size.width * 1.02, height: size.height * 0.54)
+                        .rotationEffect(.degrees(8 + angle), anchor: .bottomLeading)
+                        .position(x: size.width * 0.27, y: size.height * 0.49)
+                    BrandBambooShadow(opacity: 0.13)
+                        .frame(width: size.width * 0.60, height: size.height * 0.35)
+                        .scaleEffect(x: -1, y: 1).rotationEffect(.degrees(-18 - angle))
+                        .position(x: size.width * 0.70, y: size.height * 0.27)
+                }
+            }.frame(width: size.width, height: size.height).clipped()
+        }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private func window(_ size: CGSize) -> some View {
+        let pane = Path { p in
+            p.move(to: CGPoint(x: -30, y: size.height * 0.24))
+            p.addLine(to: CGPoint(x: size.width * 0.77, y: size.height * 0.15))
+            p.addLine(to: CGPoint(x: size.width * 0.77, y: size.height * 0.72))
+            p.addLine(to: CGPoint(x: -30, y: size.height * 0.81)); p.closeSubpath()
+        }
+        return pane.fill(YubaiColor.windowLight.opacity(scheme == .dark ? 0.10 : 0.92))
+            .overlay {
+                Path { p in
+                    for y in [0.43, 0.62] {
+                        p.move(to: CGPoint(x: -30, y: size.height * y))
+                        p.addLine(to: CGPoint(x: size.width * 0.80, y: size.height * (y - 0.09)))
+                    }
+                    p.move(to: CGPoint(x: size.width * 0.35, y: size.height * 0.16))
+                    p.addLine(to: CGPoint(x: size.width * 0.35, y: size.height * 0.79))
+                }.stroke(YubaiColor.keypadTray.opacity(0.9), lineWidth: 9).clipShape(pane)
+            }.blur(radius: 1.4)
+    }
+}
+
+struct ReceiptTornEdge: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path(); p.move(to: .zero); p.addLine(to: CGPoint(x: rect.maxX, y: 0))
+        let count = max(1, Int(rect.width / 6)), step = rect.width / CGFloat(count)
+        for index in (0..<count).reversed() {
+            p.addLine(to: CGPoint(x: CGFloat(index) * step + step / 2, y: rect.maxY))
+            p.addLine(to: CGPoint(x: CGFloat(index) * step, y: 1))
+        }
+        p.closeSubpath(); return p
+    }
+}
+
+struct ReceiptRule: View {
+    var dotted = false
+    var body: some View {
+        GeometryReader { geometry in
+            Path { p in p.move(to: .zero); p.addLine(to: CGPoint(x: geometry.size.width, y: 0)) }
+                .stroke(YubaiColor.label.opacity(dotted ? 0.30 : 0.38), style: StrokeStyle(lineWidth: 1, dash: dotted ? [YubaiSize.separator, YubaiSpace.space2] : [YubaiSize.receiptLineDash, YubaiSpace.space4]))
+        }.frame(height: 1).accessibilityHidden(true)
+    }
+}
+
+/// A swipe is local to this row, so undo never restores an unrelated ledger snapshot.
+struct ReceiptSwipeRow<Content: View>: View {
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
+    let enabled: Bool
+    let identifier: String
+    let undo: () -> Void
+    @ViewBuilder let content: () -> Content
+    @State private var revealed = false
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            if revealed && enabled {
+                Button(action: undo) {
+                    Text("撤销").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                        .frame(width: YubaiSize.receiptUndoWidth, height: YubaiSize.tapMin).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier)
+            }
+            content().background(YubaiColor.receiptPaper(for: scheme))
+                .offset(x: revealed && enabled ? -YubaiSize.receiptUndoWidth : 0)
+                #if os(iOS)
+                .gesture(HorizontalPan(shouldBegin: { _ in enabled }, ended: { distance, _ in
+                    withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { revealed = distance < -20 }
+                }))
+                #else
+                .simultaneousGesture(DragGesture(minimumDistance: 20).onEnded { value in
+                    guard enabled, abs(value.translation.width) > abs(value.translation.height) else { return }
+                    withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { revealed = value.translation.width < -20 }
+                })
+                #endif
+        }.clipped().contentShape(Rectangle()).accessibilityActions { if enabled { Button("撤销这一笔", action: undo) } }
+    }
+}
+
+private struct ReceiptPrint: ViewModifier {
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    let highlighted: Bool
+    let trigger: Int
+    @ViewBuilder func body(content: Content) -> some View {
+        if reduceMotion { content }
+        else {
+            content.keyframeAnimator(initialValue: CGFloat.zero, trigger: trigger) { line, offset in
+                line.offset(y: highlighted ? offset : 0).opacity(highlighted ? 1 - Double(offset) / 24 : 1)
+            } keyframes: { _ in
+                MoveKeyframe(CGFloat(12))
+                SpringKeyframe(CGFloat.zero, duration: YubaiMotion.durationReceiptPrint, spring: YubaiMotion.livelySpring)
+            }
+        }
+    }
+}
+extension View {
+    func receiptPrint(highlighted: Bool, trigger: Int) -> some View {
+        modifier(ReceiptPrint(highlighted: highlighted, trigger: trigger))
     }
 }

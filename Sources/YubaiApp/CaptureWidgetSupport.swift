@@ -32,7 +32,7 @@ enum CaptureSnapshotBridge {
         }
         #endif
     }
-    static func read(now: Date = Date()) -> QuickCaptureSnapshot? {
+    static func read(now: Date = Dates.now) -> QuickCaptureSnapshot? {
         guard let file, let bytes = try? Data(contentsOf: file), let value = try? JSONDecoder().decode(QuickCaptureSnapshot.self, from: bytes),
               value.generatedAt <= now, Dates.calendar.isDate(value.generatedAt, inSameDayAs: now) else { return nil }
         return value

@@ -1,203 +1,164 @@
 import SwiftUI
-import Charts
 import YubaiCore
 
-struct InsightsView: View {
-    private enum Window: String, CaseIterable { case week = "本周", month = "这个月", quarter = "近 3 个月", custom = "自定" }
+/// 去向先给能动手省下的几项；完整分类收在末行。
+struct WhereView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var window = Window.month
-    @State private var anchor = Date()
-    @State private var income = false
-    @State private var selectedSlice: [String]?
-    @State private var selectionTrigger = 0
-    @State private var customStart = Dates.calendar.dateInterval(of: .month, for: Date())!.start
-    @State private var customEnd = Date()
-    private var fullInterval: DateInterval {
-        switch window {
-        case .week: return ButlerCards.calendar.dateInterval(of: .weekOfYear, for: anchor)!
-        case .month: return DateInterval(start: store.funds.cycleStart, end: Dates.addDays(1, to: store.funds.cycleEnd))
-        case .quarter:
-            let month = Dates.calendar.dateInterval(of: .month, for: anchor)!
-            return DateInterval(start: Dates.addMonths(-2, to: month.start), end: month.end)
-        case .custom: return DateInterval(start: Dates.day(customStart), end: Dates.addDays(1, to: Dates.day(max(customStart, customEnd))))
-        }
+    @Binding var mode: LedgerMode
+    @Binding var request: LedgerPreset?
+    @State private var insights: SavingOpportunities?
+    init(mode: Binding<LedgerMode> = .constant(.whereTo), request: Binding<LedgerPreset?> = .constant(nil)) {
+        _mode = mode; _request = request
     }
-    private var interval: DateInterval {
-        let full = fullInterval
-        return DateInterval(start: full.start, end: max(full.start, min(full.end, Date())))
-    }
-    private var canAdvance: Bool {
-        window == .custom ? fullInterval.end <= Dates.day(Date()) : fullInterval.end <= Date()
+    private var hide: Bool { store.preferences.hideAmounts }
+    private var range: DateInterval {
+        DateInterval(start: store.funds.cycleStart, end: store.financialNow.addingTimeInterval(0.001))
     }
     var body: some View {
-        let range = interval
-        let summary = store.cashFlow(during: range)
-        let slices = store.cashFlowSlices(during: range, income: income)
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.none) {
-            Segmented(choices: Window.allCases.map { ($0, $0.rawValue) }, selection: $window)
-            if window == .custom { Button("选择日期范围") { store.pickingInsightDates = true }.frame(minHeight: YubaiSize.tapMin) }
-            Card(style: .compact) {
-                let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
-                layout {
-                    flowNumber("收入", cents: summary.income, ink: YubaiColor.brandInk)
-                    flowNumber("支出", cents: summary.spending)
-                    flowNumber("结余", cents: summary.balance)
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space4) {
+            Segmented(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "明细" : "去向") }, selection: $mode,
+                          identifier: { "ledgerMode_" + $0.rawValue })
+            if let insights {
+                if !insights.charges.isEmpty { charges(insights) }
+                if insights.previousCycleCount == 0 { insufficient(insights) }
+                else {
+                    comparisons(insights.comparisons.filter { $0.difference > 0 }, title: "比平时多", more: true)
+                    comparisons(insights.comparisons.filter { $0.difference < 0 }, title: "比平时少", more: false)
+                    destinations(insights)
                 }
-            }.accessibilityIdentifier("insightsCashFlowSummary")
-            CashTimelineCard(timeline: store.cashTimeline)
-            Card(style: .compact) {
-                VStack(spacing: YubaiSpace.gapGroup) {
-                    HStack {
-                        Text("花在哪").yubaiFont(YubaiFont.heroLabel)
-                        Spacer()
-                        AmountLabel(cents: summary.spending, hide: store.preferences.hideAmounts, role: .summary)
-                    }
-
-                    VStack(spacing: YubaiSpace.none) {
-                        ForEach(Array(slices.enumerated()), id: \.offset) { rank, slice in
-                            categoryLink(slice, rank: rank, slices: slices, range: range)
-                            if slice.id != slices.last?.id { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
-                        }
-                    }
-                }
+            } else { ProgressView() }
+        }.amountPrivacy(hide).rootScrollContentMargins(for: .ledger).rootTabScroll(.ledger).accessibilityIdentifier("insightsScroll")
+            .task(id: "\(store.ledgerRevision)-\(store.financialNow)") {
+                let ledger = store.current; let now = store.financialNow
+                let value = await Task.detached(priority: .userInitiated) { SavingInsights.opportunities(ledger, now: now) }.value
+                guard !Task.isCancelled else { return }; insights = value
             }
-        }.amountPrivacy(store.preferences.hideAmounts).rootScrollContentMargins().rootTabScroll(.insights).accessibilityIdentifier("insightsScroll")
-            .rootPageHeader { TabRootHeader(title: "洞察") }.navigationTitle("洞察")
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
-            .onChange(of: window) { _, value in anchor = Date(); if value == .custom { store.pickingInsightDates = true } }
-            .onChange(of: income) { _, _ in selectedSlice = nil }
-            .onChange(of: fullInterval) { _, _ in selectedSlice = nil }
-            .onChange(of: slices.map(\.id)) { _, _ in selectedSlice = nil }
-            #if os(iOS)
-            .sensoryFeedback(.selection, trigger: selectionTrigger)
-            #endif
-            .sheet(isPresented: Binding(get: { store.pickingInsightDates }, set: { store.pickingInsightDates = $0 })) {
-                NavigationStack {
-                    Form {
-                        DatePicker("从", selection: $customStart, in: ...Date(), displayedComponents: .date)
-                        DatePicker("至", selection: $customEnd, in: customStart...max(customStart, Date()), displayedComponents: .date)
-                    }.editorForm().manualSheetNavigation()
-                        .onChange(of: customStart) { _, value in if customEnd < value { customEnd = value } }
-                        .safeAreaInset(edge: .top) {
-                            ManualSheetHeader(title: "自定时间", actionTitle: "看这段时间", cancel: { store.pickingInsightDates = false }, action: { store.pickingInsightDates = false }).padding(.horizontal, 20)
-                        }
-                }.presentationDragIndicator(.visible).yubaiSheetBackground()
+            .onChange(of: request, initial: true) { _, value in
+                if value?.mode == .whereTo { request = nil }
             }
     }
-    private func categoryLink(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice], range: DateInterval) -> some View {
-        TabNavigationLink(categoryRoute(slice, range: range)) { categoryDestination(slice, range: range) } label: {
-            legend(slice, rank: rank, slices: slices)
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(rank)")
+    private func heading(_ title: String) -> some View {
+        Text(title).yubaiFont(YubaiFont.cardTitle).padding(.horizontal, YubaiSpace.space4)
     }
-    private func flowNumber(_ title: String, cents: Int64, ink: Color = YubaiColor.label) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: cents, hide: store.preferences.hideAmounts, role: .summary, ink: ink)
+    private func charges(_ value: SavingOpportunities) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+            AdaptiveValueRow {
+                heading("每月都在扣")
+            } value: {
+                AmountLabel(cents: value.chargesTotal, hide: hide, role: .summary, ink: YubaiColor.labelSecondary)
+            }
+            CardRows(value.charges) { charge in
+                TabNavigationLink(.billDetail(charge.id)) { BillDetailView(planID: charge.id) } label: {
+                    chargeRow(charge)
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("monthlyCharge_" + charge.id.uuidString)
+            }
+        }.accessibilityIdentifier("whereMonthlyCharges")
+    }
+    private func chargeRow(_ charge: MonthlyCharge) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.space8) { chargeTitle(charge); Spacer(minLength: YubaiSpace.space8); AmountLabel(cents: charge.amount, hide: hide); chevron }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { chargeTitle(charge); HStack { AmountLabel(cents: charge.amount, hide: hide); chevron } }
+        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+    }
+    private func chargeTitle(_ charge: MonthlyCharge) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+            Text(charge.plan.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail)
+            Text(charge.lastUsed.map { "上次去是 " + FixedFlowPresentation.monthDay($0) } ?? "在用")
+                .yubaiFont(YubaiFont.caption).foregroundStyle(charge.lastUsed == nil ? YubaiColor.labelSecondary : YubaiColor.amberInk)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
-    private func categoryRoute(_ slice: CashFlowSlice, range: DateInterval) -> TabRoute {
-        if slice.categories.count == 1, let category = slice.categories.first {
-            return .subcategoryInsights(category: category, income: income, interval: range, periodTitle: categoryPeriodTitle)
-        }
-        return .flowRecords(categories: slice.categories, title: slice.title, income: income, interval: range)
-    }
-    @ViewBuilder private func categoryDestination(_ slice: CashFlowSlice, range: DateInterval) -> some View {
-        if slice.categories.count == 1, let category = slice.categories.first {
-            SubcategoryInsightsView(category: category, income: income, interval: range, periodTitle: categoryPeriodTitle)
-        } else {
-            FlowRecordsView(categories: slice.categories, title: slice.title, income: income, interval: range)
-        }
-    }
-    private var categoryPeriodTitle: String {
-        if window == .month {
-            return Dates.calendar.isDate(anchor, equalTo: Date(), toGranularity: .month) ? "本月" : "\(Dates.calendar.component(.month, from: anchor))月"
-        }
-        return dateLabel
-    }
-    private var dateLabel: String {
-        let last = min(Date(), fullInterval.end.addingTimeInterval(-1))
-        let format = Date.FormatStyle.dateTime.month().day().locale(Locale(identifier: "zh_CN"))
-        return fullInterval.start.formatted(format) + " – " + last.formatted(format)
-    }
-    private func tile(_ title: String, _ amount: Int64, balance: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(balance ? YubaiColor.brandInk : YubaiColor.labelSecondary)
-            AmountLabel(cents: amount, hide: store.preferences.hideAmounts, role: .summary)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row), background: balance ? YubaiColor.brandTint : nil)
-    }
-    private func restrained(_ slice: CashFlowSlice) -> Bool {
-        !income && store.profile.restrain.contains { area in
-            slice.categories.contains { category in
-                area.match.categories.contains { store.resolveCategory($0, income: false) == store.resolveCategory(category, income: false) } || area.title == category
-            }
-        }
-    }
-    private func color(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice]) -> Color {
-        if restrained(slice) { return YubaiColor.amberDot }
-        let colors = [YubaiColor.brand, YubaiColor.series2, YubaiColor.series3, YubaiColor.neutralStrong, YubaiColor.neutralSoft]
-        let normalRank = slices.prefix(rank).filter { !restrained($0) }.count
-        return colors[min(normalRank, colors.count - 1)]
-    }
-    private func percentage(_ slice: CashFlowSlice) -> String { String(format: "%.0f%%", slice.share * 100) }
-    private func legend(_ slice: CashFlowSlice, rank: Int, slices: [CashFlowSlice]) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-        return layout {
-            HStack(spacing: YubaiSpace.gapGroup) {
-                RoundedRectangle(cornerRadius: 3).fill(color(slice, rank: rank, slices: slices)).frame(width: 10, height: 10).accessibilityHidden(true)
-                Text(slice.title).yubaiFont(YubaiFont.row)
-                if restrained(slice) { Text(slice.categories.count > 1 ? "含想克制" : "想克制").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.amberInk) }
-            }
-            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
-            HStack(spacing: YubaiSpace.gapGroup) {
-                AmountLabel(cents: slice.amount, hide: store.preferences.hideAmounts, role: .small)
-                Text(legendPercentage(slice))
-                    .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).numberTransition(value: slice.share * 100, enabled: !store.preferences.hideAmounts)
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
-            }
-        }.frame(minHeight: YubaiSize.rowSingle).padding(.vertical, textSize.isAccessibilitySize ? YubaiSpace.space8 : YubaiSpace.none)
-            .background {
-                if selectedSlice == slice.id {
-                    RoundedRectangle(cornerRadius: YubaiRadius.row).fill(YubaiColor.brandTint)
-                        .padding(.horizontal, -YubaiSpace.space8)
+    @ViewBuilder private func comparisons(_ rows: [UsualSpending], title: String, more: Bool) -> some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                heading(title)
+                CardRows(Array(rows.prefix(3))) { row in
+                    TabNavigationLink(.whereCategory(category: row.category, interval: range)) { WhereCategoryView(category: row.category, interval: range) } label: {
+                        comparisonRow(row, more: more)
+                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("usualSpending_" + row.id)
                 }
             }
-            .opacity(selectedSlice == nil || selectedSlice == slice.id ? 1 : 0.55).contentShape(Rectangle())
-    }
-    private func legendPercentage(_ slice: CashFlowSlice) -> String {
-        if store.preferences.hideAmounts { return "" }
-        return slice.amount < 0 ? "—" : percentage(slice)
-    }
-    private func move(_ direction: Int) {
-        switch window {
-        case .week: anchor = Dates.addDays(direction * 7, to: anchor)
-        case .month: anchor = Dates.addMonths(direction, to: anchor)
-        case .quarter: anchor = Dates.addMonths(direction * 3, to: anchor)
-        case .custom:
-            let days = Dates.calendar.dateComponents([.day], from: fullInterval.start, to: fullInterval.end).day ?? 1
-            customStart = Dates.addDays(direction * days, to: customStart)
-            customEnd = min(Date(), Dates.addDays(direction * days, to: customEnd))
         }
     }
+    private func comparisonRow(_ row: UsualSpending, more: Bool) -> some View {
+        AdaptiveValueRow {
+            comparisonTitle(row)
+        } value: {
+            comparisonAmount(row, more: more)
+        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+    }
+    private func comparisonTitle(_ row: UsualSpending) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+            Text(row.title).yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+            Text("平时到这天 " + amount2(row.usual, hide: hide)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func comparisonAmount(_ row: UsualSpending, more: Bool) -> some View {
+        AdaptiveValueRow(spreadsValue: false) {
+            Text((more ? "多 " : "少 ") + amount2(abs(row.difference), hide: hide))
+                .yubaiFont(YubaiFont.caption, weight: .semibold).fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space2)
+                .foregroundStyle(more ? YubaiColor.amberInk : YubaiColor.brandInk)
+                .background(more ? YubaiColor.amberTint : YubaiColor.brandTint, in: Capsule())
+        } value: {
+            AmountLabel(cents: row.amount, hide: hide)
+        }
+    }
+    private func insufficient(_ value: SavingOpportunities) -> some View {
+        EmptyState("square.grid.2x2", "现在是第 1 个周期 · 已记 \(value.entryCount) 笔", action: "看全部分类", actionIdentifier: "whereAllCategories", onAction: { store.tabRouteRequest = .allCategories(range) })
+            .accessibilityIdentifier("whereInsufficientData")
+    }
+    private func destinations(_ value: SavingOpportunities) -> some View {
+        Card(style: .list) {
+            VStack(spacing: YubaiSpace.none) {
+                TabNavigationLink(.allCategories(range)) { AllCategoriesView(interval: range) } label: { destinationRow("全部分类", amount: value.spent) }
+                    .buttonStyle(PressButtonStyle()).accessibilityIdentifier("whereAllCategories")
+                EntryFormDivider()
+                TabNavigationLink(.weekly(nil)) { WeeklyReviewView() } label: {
+                    destinationRow("上周回顾", amount: SavingInsights.weekly(store.current, now: store.financialNow).spending)
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openWeekly")
+            }
+        }
+    }
+    private func destinationRow(_ title: String, amount: Int64) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.space8) { Text(title).yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8); Text("花了 " + amount2(amount, hide: hide)).yubaiFont(YubaiFont.caption); chevron }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(title).yubaiFont(YubaiFont.row); HStack { Text("花了 " + amount2(amount, hide: hide)).yubaiFont(YubaiFont.caption); chevron } }
+        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+    }
+    private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
 }
 
-
-struct FlowRecordsView: View {
+struct AllCategoriesView: View {
     @Environment(AppStore.self) private var store
-    let categories: [String]
-    let title: String
-    let income: Bool
     let interval: DateInterval
+    @State private var rows: [CashFlowSlice] = []
     var body: some View {
-        let rows = store.flowRecords(categories: categories, income: income, interval: interval)
-        Page {
-            CardRows(rows) { entry in
-                EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts, editable: true)
+        Page(topPadding: YubaiSpace.space8) {
+            if rows.isEmpty { EmptyState("square.grid.2x2", "还没有支出", action: "记一笔", onAction: { store.requestCaptureSheet(.addEntry) }) }
+            else {
+                CardRows(Array(rows.enumerated()).map { CategorySpendingRow(index: $0.offset, value: $0.element) }) { row in
+                    TabNavigationLink(.whereCategory(category: row.value.title, interval: interval)) {
+                        WhereCategoryView(category: row.value.title, interval: interval)
+                    } label: {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: YubaiSpace.space8) { categoryTitle(row.value); Spacer(minLength: YubaiSpace.space8); AmountLabel(cents: row.value.amount, hide: store.preferences.hideAmounts); Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta) }
+                            VStack(alignment: .leading, spacing: YubaiSpace.space4) { categoryTitle(row.value); AmountLabel(cents: row.value.amount, hide: store.preferences.hideAmounts) }
+                        }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("insightCategory_\(row.index)")
+                }
             }
-        }.navigationTitle(title).yubaiNavigation()
+        }.navigationTitle("全部分类").yubaiNavigation().accessibilityIdentifier("allCategoriesPage")
+            .task(id: store.ledgerRevision) {
+                let ledger = store.current; let interval = interval
+                let value = await Task.detached { SavingInsights.categoryShares(ledger, during: interval) }.value
+                guard !Task.isCancelled else { return }; rows = value
+            }
     }
+    private func categoryTitle(_ row: CashFlowSlice) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space2) {
+            Text(Classification.displayCategory(row.title)).yubaiFont(YubaiFont.row).lineLimit(1)
+            if !store.preferences.hideAmounts { Text(String(format: "%.0f%%", row.share * 100)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+        }
+    }
+    private struct CategorySpendingRow: Identifiable { var index: Int; var value: CashFlowSlice; var id: String { value.title } }
 }

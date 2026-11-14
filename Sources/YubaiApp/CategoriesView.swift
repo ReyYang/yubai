@@ -1,7 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-enum CategorySettingsRoute: Hashable { case categories }
 private struct CategoryDetailRoute: Identifiable, Hashable { let name: String; let income: Bool; var id: String { CategoryNamespace.key(name, income: income) } }
 private struct CategorySmallItem: Identifiable { let name: String; var id: String { name } }
 
@@ -13,41 +12,40 @@ struct CategoriesView: View {
     @State private var detail: CategoryDetailRoute?
     private var categories: [YubaiCore.Category] { store.current.orderedCategories(income: income) }
     private var hidden: [YubaiCore.Category] { store.current.orderedCategories(income: income, hidden: true) }
+    private var cycleCounts: [String: Int] {
+        let ledger = store.current
+        let start = store.funds.cycleStart
+        var counts: [String: Int] = [:]
+        for entry in store.sortedEntries {
+            if entry.date < start { break }
+            guard entry.deletedAt == nil, entry.date <= store.financialNow, entry.nature.categoryIncome == income else { continue }
+            counts[ledger.normalizedCategory(for: entry).category, default: 0] += 1
+        }
+        return counts
+    }
     var body: some View {
         VStack(spacing: YubaiSpace.space12) {
-            Picker("收支", selection: $income) { Text("支出").tag(false); Text("收入").tag(true) }
-                .pickerStyle(.segmented).padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
-                .accessibilityIdentifier("categoriesDirection")
+            Segmented(choices: [(false, "支出"), (true, "收入")], selection: $income,
+                          identifier: { $0 ? "categoriesDirection_income" : "categoriesDirection_expense" })
+                .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
+                .accessibilityElement(children: .contain).accessibilityIdentifier("categoriesDirection")
             if sorting { ordering }
             else {
+                let counts = cycleCounts
+                let used = categories.filter { (counts[$0.name] ?? 0) > 0 }.sorted { (counts[$0.name] ?? 0) > (counts[$1.name] ?? 0) }
+                let unused = categories.filter { (counts[$0.name] ?? 0) == 0 }
                 Page(spacing: YubaiSpace.space12, topPadding: YubaiSpace.none) {
-                    CardRows(categories) { category in
-                        if category.isCatchAll {
-                            Text(category.name).yubaiFont(YubaiFont.row).lineLimit(1).fixedSize()
-                                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
-                        } else {
-                            Button { detail = .init(name: category.name, income: income) } label: {
-                                ViewThatFits(in: .horizontal) {
-                                    HStack { categoryName(category.name); Spacer(); smallCount(category); categoryChevron }
-                                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                                        categoryName(category.name)
-                                        HStack { smallCount(category); Spacer(); categoryChevron }
-                                    }
-                                }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("manageCategory_" + category.name)
-                        }
+                    if !used.isEmpty { categoryRows(used, counts: counts) }
+                    if !unused.isEmpty {
+                        Text("这个周期没用到的").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                            .padding(.horizontal, YubaiSpace.space4).padding(.top, YubaiSpace.space8)
+                        categoryRows(unused, counts: counts)
                     }
-                    Button { adding = true } label: {
-                        Card(style: .list) {
-                            Label("加一个大类", systemImage: "plus").yubaiFont(YubaiFont.row).lineLimit(1).fixedSize()
-                                .foregroundStyle(YubaiColor.brandInk).frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
-                        }
-                    }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("addMainCategory")
                     if !hidden.isEmpty {
                         NavigationLink { HiddenCategoriesView(income: income) } label: {
                             Card(style: .list) {
                                 HStack {
-                                    Text("藏起来的 · \(hidden.count)").yubaiFont(YubaiFont.callout).lineLimit(1).fixedSize()
+                                    Text("已隐藏 · \(hidden.count)").yubaiFont(YubaiFont.callout).lineLimit(1).fixedSize()
                                     Spacer(); categoryChevron
                                 }.foregroundStyle(YubaiColor.labelSecondary).frame(minHeight: YubaiSize.tapMin)
                             }
@@ -61,16 +59,45 @@ struct CategoriesView: View {
                     Button(sorting ? "完成" : "排序") { sorting.toggle() }
                         .accessibilityIdentifier("sortCategories")
                 }
+                if !sorting {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("新分类") { adding = true }.accessibilityIdentifier("addMainCategory")
+                    }
+                }
             }
             .navigationDestination(item: $detail) { route in CategoryDetailView(originalName: route.name, income: route.income) }
             .sheet(isPresented: $adding) {
                 NavigationStack {
                     CategoryNameSheet(title: "加一个大类", income: income) { name in
-                        guard store.update("添加分类", { try CategoryModel.add(Category(name, income: income), in: &$0) }) else { return false }
+                        guard store.update("添加分类", { try CategoryModel.add(YubaiCore.Category(name, income: income), in: &$0) }) else { return false }
                         detail = .init(name: name, income: income); return true
                     }
                 }.environment(store).appErrors().yubaiSheetBackground()
             }
+    }
+    private func categoryRows(_ rows: [YubaiCore.Category], counts: [String: Int]) -> some View {
+        CardRows(rows, hasLeadingIcon: true) { category in
+            if category.isCatchAll {
+                HStack(spacing: YubaiSpace.gapGroup) { iconTile(category.name); categoryName(category.name); Spacer(minLength: YubaiSpace.none) }
+                    .frame(minHeight: YubaiSize.rowDouble)
+            } else {
+                Button { detail = .init(name: category.name, income: income) } label: {
+                    HStack(spacing: YubaiSpace.gapGroup) {
+                        iconTile(category.name)
+                        categoryName(category.name)
+                        Spacer(minLength: YubaiSpace.space8)
+                        if let count = counts[category.name], count > 0 {
+                            Text("\(count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        }
+                    }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("manageCategory_" + category.name)
+            }
+        }
+    }
+    private func iconTile(_ name: String) -> some View {
+        LedgerCategoryIcon(category: name, income: income)
+            .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
+            .background(YubaiColor.iconTile, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
     }
     private var ordering: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
@@ -96,7 +123,7 @@ struct CategoriesView: View {
                 Text("记一笔先显示").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 ChipFlow {
                     ForEach(Array(categories.prefix(5))) { category in
-                        Text(category.name).yubaiFont(YubaiFont.callout).lineLimit(1).fixedSize()
+                        Text(category.name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.callout).lineLimit(1).fixedSize()
                             .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
                             .background(YubaiColor.card, in: Capsule())
                     }
@@ -114,9 +141,7 @@ struct CategoriesView: View {
             .filter { allowed.contains($0) && seen.insert($0).inserted }
         store.update("分类排序", recordUndo: false) { try CategoryModel.setOrder(names + remaining, income: income, in: &$0) }
     }
-    private func smallCount(_ category: YubaiCore.Category) -> some View {
-        Text("\(category.subcategories.count) 个小项").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1).fixedSize()
-    }
+
 }
 
 private struct CategoryDetailView: View {
@@ -130,6 +155,7 @@ private struct CategoryDetailView: View {
     @State private var smallItem: CategorySmallItem?
     @State private var adding = false
     @State private var merging = false
+    @State private var removing = false
     private var categoryName: String { store.current.categoryAssignment(category: originalName, income: income).category }
     private var category: YubaiCore.Category? { store.current.categories.first { $0.name == categoryName && $0.income == income } }
     private var nameError: String? {
@@ -143,12 +169,7 @@ private struct CategoryDetailView: View {
             if let category {
                 Card(style: .list) {
                     VStack(spacing: YubaiSpace.none) {
-                        HStack(spacing: YubaiSpace.gapGroup) {
-                            Text("名字").fixedSize()
-                            TextField("", text: $name).multilineTextAlignment(.trailing).focused($nameFocused)
-                                .accessibilityLabel("名字").accessibilityIdentifier("categoryName").onSubmit(rename)
-                        }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.buttonHeight)
-                        InlineFieldError(message: nameError)
+                        CardTextFieldRow(title: "名字", text: $name, identifier: "categoryName", focus: $nameFocused, error: nameError, submit: rename)
                         categorySeparator
                         recordedCount(categoryName, income: income, ledger: store.current)
                     }
@@ -178,6 +199,9 @@ private struct CategoryDetailView: View {
                             .accessibilityIdentifier("hideCategory")
                     }
                 }
+                Button("删掉") { nameFocused = false; removing = true }.buttonStyle(DestructiveButtonStyle())
+                    .accessibilityIdentifier("deleteMainCategory")
+
             }
         }.navigationTitle(categoryName).yubaiNavigation()
             .onAppear { name = categoryName; savedName = categoryName }
@@ -196,6 +220,10 @@ private struct CategoryDetailView: View {
             }
             .sheet(isPresented: $merging) {
                 NavigationStack { CategoryMergeView(source: categoryName, income: income) { dismiss() } }
+                    .environment(store).appErrors().yubaiSheetBackground()
+            }
+            .sheet(isPresented: $removing) {
+                NavigationStack { CategoryMergeView(source: categoryName, income: income, removing: true) { dismiss() } }
                     .environment(store).appErrors().yubaiSheetBackground()
             }
     }
@@ -222,18 +250,15 @@ private struct CategoryNameSheet: View {
         var ledger = store.current
         do {
             if let parent { try CategoryModel.addSubcategory(clean, to: parent, income: income, in: &ledger) }
-            else { try CategoryModel.add(Category(clean, income: income), in: &ledger) }
+            else { try CategoryModel.add(YubaiCore.Category(clean, income: income), in: &ledger) }
             return nil
         } catch { return error.localizedDescription }
     }
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
             Card(style: .list) {
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text("名字").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    TextField("", text: $name).yubaiFont(YubaiFont.row).accessibilityLabel("名字").accessibilityIdentifier("newCategoryName")
-                    if !name.isEmpty { InlineFieldError(message: validationError) }
-                }.padding(.vertical, YubaiSpace.space8)
+                CardTextFieldRow(title: "名字", text: $name, identifier: "newCategoryName", autofocus: true,
+                                 error: name.isEmpty ? nil : validationError)
             }
         }.manualSheetHeader(title, actionTitle: "加上", enabled: validationError == nil,
                              actionIdentifier: "saveNewCategory", action: { if save(name.trimmingCharacters(in: .whitespacesAndNewlines)) { dismiss() } })
@@ -258,11 +283,7 @@ private struct CategorySubcategoryEditor: View {
         Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space8) {
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    HStack {
-                        Text("名字").fixedSize()
-                        TextField("", text: $name).multilineTextAlignment(.trailing).accessibilityLabel("名字").accessibilityIdentifier("subcategoryName")
-                    }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.buttonHeight)
-                    InlineFieldError(message: validationError)
+                    CardTextFieldRow(title: "名字", text: $name, identifier: "subcategoryName", autofocus: true, error: validationError)
                     categorySeparator
                     recordedCount(category, subcategory: original, income: income, ledger: store.current)
                 }
@@ -284,6 +305,7 @@ private struct CategoryMergeView: View {
     @Environment(\.dismiss) private var dismiss
     let source: String
     let income: Bool
+    var removing = false
     let merged: () -> Void
     @State private var target: String?
     var body: some View {
@@ -297,9 +319,9 @@ private struct CategoryMergeView: View {
                 }.buttonStyle(.plain).accessibilityAddTraits(target == category.name ? .isSelected : [])
                     .accessibilityIdentifier("mergeInto_" + category.name)
             }
-        }.manualSheetHeader(source + "合并到", actionTitle: "合并", enabled: target != nil, actionIdentifier: "confirmCategoryMerge", action: {
+        }.manualSheetHeader(removing ? source + "挪到" : source + "合并到", actionTitle: removing ? "删掉" : "合并", enabled: target != nil, actionIdentifier: "confirmCategoryMerge", action: {
             guard let target else { return }
-            if store.update("合并分类", { try CategoryModel.merge(source, into: target, income: income, in: &$0) }) { dismiss(); merged() }
+            if store.update(removing ? "删除分类" : "合并分类", { try CategoryModel.merge(source, into: target, income: income, in: &$0) }) { dismiss(); merged() }
         })
     }
 }
@@ -317,13 +339,13 @@ private struct HiddenCategoriesView: View {
                         .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("unhideCategory_" + category.name)
                 }
             }
-        }.navigationTitle("藏起来的").yubaiNavigation()
+        }.navigationTitle("已隐藏").yubaiNavigation()
     }
 }
 
-private func categoryName(_ name: String) -> some View { Text(name).yubaiFont(YubaiFont.row).lineLimit(1).fixedSize() }
+private func categoryName(_ name: String) -> some View { Text(name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail) }
 private var categoryChevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
-private var categorySeparator: some View { Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true) }
+private var categorySeparator: some View { Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true) }
 private func categoryEntryCount(_ category: String, subcategory: String? = nil, income: Bool, ledger: Ledger) -> Int {
     ledger.activeEntries.filter {
         let choice = ledger.normalizedCategory(for: $0)

@@ -38,12 +38,14 @@ private struct CaptureSnippetView: View {
             ForEach(entries) { entry in
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
-                        if !privateResult { Text(entry.displayTitle).yubaiFont(YubaiFont.cardTitle) }
+                        if !privateResult { Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.cardTitle) }
                         Spacer()
                         AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow)
                     }
                     if !privateResult {
-                        Text(Classification.displayCategory(entry.category) + " · " + ledger.accountName(entry.accountID) + " · " + ManualBookkeeping.dayLabel(entry.date) + " " + entry.date.formatted(.dateTime.hour().minute()))
+                        let time: String = entry.date.formatted(.dateTime.hour().minute())
+                        let parts: [String] = [Classification.displayCategory(entry.category), ledger.accountName(entry.accountID), ManualBookkeeping.dayLabel(entry.date) + " " + time]
+                        Text(parts.joined(separator: " · "))
                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }
                 }
@@ -99,7 +101,7 @@ struct ApplePayCaptureIntent: AppIntent {
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = AppStore.shared; await store.configureSync()
         let result = try store.captureUpdate("Apple Pay 记一笔") {
-            try QuickCapture.applePay(merchant: merchant, amount: amount, card: card, date: transactionDate ?? Date(), in: &$0)
+            try QuickCapture.applePay(merchant: merchant, amount: amount, card: card, date: transactionDate ?? Dates.now, in: &$0)
         }
         if result.inserted { await CaptureNotifications.post(entry: result.entry, ledger: store.current) }
         return .result(dialog: "已记下")

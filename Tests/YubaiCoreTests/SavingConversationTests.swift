@@ -49,7 +49,7 @@ final class SavingConversationTests: XCTestCase {
     func testRevisitCanContinuePastThreeTurnsAndProposeOnlyAfterUserSpeaks() async throws {
         let ctx = AssistantFixtures.context(); var ledger = ctx.ledger; ledger.profile.principles = ["先借再买"]
         let messages = (0..<4).flatMap { _ in [ChatMessage(role: .assistant, content: "想改哪里？"), ChatMessage(role: .user, content: "咖啡每周最多一次")] }
-        let transport = ScriptedChatTransport([ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "change", name: "propose_profile_change", arguments: #"{"reason":"用户调整","operation":"upsert_area","stance":"restrain","title":"咖啡","subcategories":["餐饮/咖啡饮品"],"per_week_count":1}"#)]), ChatMessage(role: .assistant, content: "整理好了，请确认。")])
+        let transport = ScriptedChatTransport([ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "change", name: "propose_profile_change", arguments: #"{"reason":"用户调整","operation":"upsert_area","stance":"restrain","title":"咖啡","subcategories":["餐饮/咖啡饮品"],"per_week_count":1}"#)]), ChatMessage(role: .assistant, content: "导入结果，请确认。")])
         let reply = try await ProfileColdStart(transport: transport).next(ledger: ledger, messages: messages, now: ctx.now)
         XCTAssertEqual(reply.proposedChangeSets.count, 1); XCTAssertTrue(reply.proposedChangeSets[0].isProfileOnly)
         XCTAssertEqual(ledger.profile.principles, ["先借再买"])

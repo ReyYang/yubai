@@ -9,8 +9,9 @@ public enum ProfileChange: Codable, Equatable, Sendable {
 }
 public struct EntryDraft: Codable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64; public var amountConfirmed: Bool
-    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false }; if nature != .expense { fromReserve = false } } }
     public var intoFixedSavings = false { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var fromReserve = false { didSet { if nature != .expense { fromReserve = false } } }
     public var accountID: UUID; public var title: String; public var category: String
     public var partID: UUID?
     public var purpose: String?
@@ -20,14 +21,15 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var otherAccountID: UUID?
     public var planID: UUID?; public var occurrence: Date?
     public init(date: Date, amount: Int64, amountConfirmed: Bool = false, nature: Nature = .expense,
-                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil, intoFixedSavings: Bool = false) {
+                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil, intoFixedSavings: Bool = false, fromReserve: Bool = false) {
         self.date = date; self.amount = amount; self.amountConfirmed = amountConfirmed; self.nature = nature
         self.accountID = accountID; self.title = title; self.category = category; self.subcategory = subcategory; self.purpose = purpose
         self.planID = planID; self.occurrence = occurrence
         self.intoFixedSavings = nature == .income && intoFixedSavings
+        self.fromReserve = nature == .expense && fromReserve
     }
     private enum CodingKeys: String, CodingKey {
-        case id, date, amount, amountConfirmed, nature, intoFixedSavings, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
+        case id, date, amount, amountConfirmed, nature, fromReserve, intoFixedSavings, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -36,6 +38,8 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         nature = try c.decode(Nature.self, forKey: .nature)
         let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
         intoFixedSavings = nature == .income && intoFixed
+        let reserve = try c.decodeIfPresent(Bool.self, forKey: .fromReserve) ?? false
+        fromReserve = nature == .expense && reserve
         accountID = try c.decode(UUID.self, forKey: .accountID); title = try c.decode(String.self, forKey: .title)
         category = try c.decode(String.self, forKey: .category); partID = try c.decodeIfPresent(UUID.self, forKey: .partID)
         purpose = try c.decodeIfPresent(String.self, forKey: .purpose); subcategory = try c.decodeIfPresent(String.self, forKey: .subcategory)
@@ -43,6 +47,20 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
         planID = try c.decodeIfPresent(UUID.self, forKey: .planID); occurrence = try c.decodeIfPresent(Date.self, forKey: .occurrence)
     }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(date, forKey: .date)
+        try c.encode(amount, forKey: .amount); try c.encode(amountConfirmed, forKey: .amountConfirmed)
+        try c.encode(nature, forKey: .nature)
+        if intoFixedSavings { try c.encode(true, forKey: .intoFixedSavings) }
+        if fromReserve { try c.encode(true, forKey: .fromReserve) }
+        try c.encode(accountID, forKey: .accountID); try c.encode(title, forKey: .title); try c.encode(category, forKey: .category)
+        try c.encodeIfPresent(partID, forKey: .partID); try c.encodeIfPresent(purpose, forKey: .purpose)
+        try c.encodeIfPresent(subcategory, forKey: .subcategory); try c.encodeIfPresent(categoryUserEdited, forKey: .categoryUserEdited)
+        try c.encodeIfPresent(otherAccountID, forKey: .otherAccountID); try c.encodeIfPresent(planID, forKey: .planID)
+        try c.encodeIfPresent(occurrence, forKey: .occurrence)
+    }
+
 }
 public enum ChangeItem: Codable, Equatable, Sendable {
     case setCategory(entry: UUID, category: String)
@@ -67,7 +85,7 @@ public enum ChangeItem: Codable, Equatable, Sendable {
     }
 }
 public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
-    public var id = UUID(); public var createdAt = Date(); public var source: String; public var reason: String
+    public var id = UUID(); public var createdAt = Dates.now; public var source: String; public var reason: String
     public var items: [ChangeItem]
     public init(source: String, reason: String, items: [ChangeItem]) { self.source = source; self.reason = reason; self.items = items }
     public var isProfileOnly: Bool {
@@ -110,7 +128,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .linkPlan(let id, let plan, let date): return "把 \(entry(id)) 关联为 \(Dates.text(date)) \(ledger.plans.first { $0.id == plan }?.title ?? "资金安排")"
             case .linkRent(let id, let rent, let date): return "把 \(entry(id)) 关联为 \(Dates.calendar.component(.month, from: date)) 月\(ledger.rents.first { $0.id == rent }?.title ?? "房租")\(entries[id]?.nature.inflow == true ? "分摊" : "付款")"
             case .markDuplicate(let id, let original): return "把 \(entry(id)) 作为 \(entry(original)) 的重复记录标为已删除"
-            case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "") + (p.intoFixedSavings ? "，存着不动" : "")
+            case .addPlan(let p): return "新增\(p.frequency.label)\(p.nature.label)安排「\(p.title)」\(Money.text(p.amount))，从 \(Dates.text(p.dueDate)) 开始" + (p.accountID.map { "，使用\(ledger.accountName($0))" } ?? "") + (p.intoFixedSavings ? "，存下的钱" : "")
             case .updatePlan(let p): return FixedFlows.describeUpdate(p, in: ledger)
             case .endPlan(let id, let date): return "将「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」在 \(Dates.text(date)) 之后的安排结束，已到期付款保留"
             case .resumePlan(let id): return "恢复「\(ledger.plans.first { $0.id == id }?.title ?? ledger.rents.first { $0.id == id }?.title ?? "资金安排")」"
@@ -118,7 +136,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .addRent(let r): return "新增「\(r.title)」，月租 \(Money.text(r.monthlyTotal))，个人承担 \(Money.text(r.personalShare))，每 \(r.monthsPerPayment) 月支付，从 \(Dates.text(r.startDate)) 起，首付 \(Dates.text(r.nextDueDate))，每月 \(r.receiveDay) 日收分摊" + (r.accountID.map { "，使用\(ledger.accountName($0))" } ?? "")
             case .addEntry(let d):
                 let link = d.planID.flatMap { id in d.occurrence.map { "，关联为 \(Dates.text($0)) \(ledger.plans.first { $0.id == id }?.title ?? d.title)" } } ?? ""
-                return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）" + link + (d.intoFixedSavings ? "，存着不动" : "")
+                return "新增 \(Dates.text(d.date)) \(d.purpose ?? d.title) \(Money.text(d.amount))（\(d.nature.label)，\(ledger.accountName(d.accountID))，\(d.amountConfirmed ? "金额已确认" : "金额待确认")）" + link + (d.intoFixedSavings ? "，存下的钱" : "")
             case .profile(let change):
                 switch change {
                 case .upsertArea(let area, let stance):
@@ -135,7 +153,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 case .removePrinciple(let text): return "移除消费原则「\(text)」"
                 case .setFloorAmount(let amount):
                     let total = max(amount ?? 0, ledger.fixedSavingsFromIncome(now: createdAt))
-                    return amount == nil && total == 0 ? "存着不动 0.00" : "存着不动 \(Money.text(total))"
+                    return amount == nil && total == 0 ? "存下的钱 0.00" : "存下的钱 \(Money.text(total))"
                 }
             }
         }
@@ -201,13 +219,13 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     // confirmation must clear their pending classification marker.
                     if Classification.isPending(next.entries[i]) { touch(i) }
                     else { skip(position) }
-                    if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: source == "按对方分", in: &next) }
+                    if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: ["按商户整理", "\u{6309}\u{5bf9}\u{65b9}\u{5206}"].contains(source), in: &next) }
                     continue
                 }
                 next.entries[i].category = category; next.entries[i].subcategory = assignment.subcategory; next.entries[i].subcategoryUserEdited = false
                 SubcategoryClassifier.classify(&next.entries[i], ledger: ledger)
                 touch(i)
-                if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: source == "按对方分", in: &next) }
+                if source != "导入整理" { CategoryMemory.remember(next.entries[i], includingParty: ["按商户整理", "\u{6309}\u{5bf9}\u{65b9}\u{5206}"].contains(source), in: &next) }
                 if next.entries[i].nature == .expense { changedExpenseCategories[id] = category }
             case .setNature(let id, let nature, let other):
                 guard let i = active(id) else { skip(position); continue }
@@ -297,8 +315,11 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 if let i = next.plans.firstIndex(where: { $0.id == id }) {
                     guard next.plans[i].active, next.plans[i].stoppedAt == nil, next.plans[i].endDate.map({ date < $0 }) ?? true else { skip(position); continue }
                     var snapshot = next.plans[i]
-                    snapshot.amount = FixedFlowPayments(in: next).amount(for: snapshot)
-                    if SubscriptionCheck.eligible(snapshot, ledger: next) { next.stoppedSubscriptions.append(StoppedSubscription(plan: snapshot, stoppedAt: date)) }
+                    snapshot.amount = FixedFlowPayments(in: next, now: date).amount(for: snapshot)
+                    snapshot.currency = .cny // The savings snapshot freezes the CNY quote; the live plan retains its original currency.
+                    if !snapshot.inflow && snapshot.nature == .expense && snapshot.frequency != .once {
+                        next.stoppedSubscriptions.append(StoppedSubscription(plan: snapshot, stoppedAt: date))
+                    }
                     next.plans[i].stoppedAt = date
                     if date < next.plans[i].dueDate { next.plans[i].active = false }
                     else { next.plans[i].endDate = date }
@@ -345,7 +366,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 case .removePrinciple(let text):
                     guard next.profile.principles.contains(text) else { skip(position); continue }; next.profile.principles.removeAll { $0 == text }
                 case .setFloorAmount(let amount):
-                    guard amount.map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("存着不动的金额无效。") }
+                    guard amount.map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("存下的钱的金额无效。") }
                     next.setFixedSavingsTotal(amount ?? 0, now: createdAt); next.profile.floorAmount = amount
                 }
                 next.profile.stamp(changedFrom: ledger.profile, at: createdAt)
@@ -384,6 +405,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard draft.amountConfirmed else { throw YubaiError.invalid("请先由用户确认补记金额。") }
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
                 e.intoFixedSavings = draft.intoFixedSavings
+                e.fromReserve = draft.fromReserve
+                if e.fromReserve, e.amount > next.fixedSavingsTotal(now: createdAt) { throw YubaiError.invalid("存着的钱不够。") }
                 e.partID = draft.partID; e.id = draft.id; e.subcategoryUserEdited = draft.categoryUserEdited == true; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
                 if let id = draft.planID, let occurrence = draft.occurrence {
                     guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,

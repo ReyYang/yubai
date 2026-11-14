@@ -115,7 +115,7 @@ final class CategoryUIContractsTests: XCTestCase {
         var ledger = ledger()
         var entry = row(ledger, purpose: "剪头发"); entry.title = "合成理发店"
         ledger.entries = [entry]
-        let change = ChangeSet(source: "按对方分", reason: "合成确认", items: [.setCategory(entry: entry.id, category: "美容个护")])
+        let change = ChangeSet(source: "按商户整理", reason: "合成确认", items: [.setCategory(entry: entry.id, category: "美容个护")])
         _ = try change.apply(to: &ledger)
         XCTAssertEqual(ledger.entries[0].subcategory, "理发")
         try CategoryModel.confirm(.init(category: "美容个护"), entryIDs: [entry.id], includingParty: true, in: &ledger)
@@ -130,7 +130,7 @@ final class CategoryUIContractsTests: XCTestCase {
         let before = ledger
         let addition = CategoryAddition(name: "头皮护理", parent: "美容个护", income: false)
         try addition.apply(to: &ledger)
-        _ = try ChangeSet(source: "按对方分", reason: "合成确认", items: [.setCategory(entry: entry.id, category: addition.assignment.category)]).apply(to: &ledger)
+        _ = try ChangeSet(source: "按商户整理", reason: "合成确认", items: [.setCategory(entry: entry.id, category: addition.assignment.category)]).apply(to: &ledger)
         try CategoryModel.confirm(addition.assignment, entryIDs: [entry.id], includingParty: true, in: &ledger)
         XCTAssertEqual(ledger.entries[0].subcategory, "头皮护理")
         XCTAssertEqual(ledger.classificationMemory[CategoryMemory.key(entry.title)], addition.assignment.path)

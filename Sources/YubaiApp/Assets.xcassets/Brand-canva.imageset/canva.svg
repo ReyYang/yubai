@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="canva_g" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C4CC"/>
+      <stop offset="100%" stop-color="#7D2AE8"/>
+    </linearGradient>
+  </defs>
+  <circle cx="12" cy="12" r="10" fill="url(#canva_g)"/>
+  <path d="M15.6 9.2C14.8 8.0 13.5 7.4 12.0 7.4C9.4 7.4 7.5 9.5 7.5 12.1C7.5 14.7 9.4 16.6 12.0 16.6C13.7 16.6 15.1 15.8 15.8 14.4" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

@@ -4,6 +4,121 @@ import Observation
 import YubaiCore
 #if os(iOS)
 import UIKit
+import SwiftUI
+#endif
+
+#if os(iOS)
+import CoreFoundation
+
+fileprivate final class UITestFirstResponderQuery: NSObject {
+    weak var responder: UIResponder?
+}
+extension UIResponder {
+    @objc fileprivate func yubaiIdentifyFirstResponder(_ query: UITestFirstResponderQuery) { query.responder = self }
+}
+
+/// Read-only native geometry for scripted walks. No device/Release code or
+/// visible controls: safe areas, transition completion and remaining scroll
+/// travel must be observed rather than guessed from a full-screen AX frame.
+struct UITestWindowMetrics: UIViewRepresentable {
+    func makeUIView(context: Context) -> Probe { Probe() }
+    func updateUIView(_ view: Probe, context: Context) {}
+    final class Probe: UIView {
+        private static let cache = MetricsCache()
+        init() {
+            super.init(frame: .zero)
+            backgroundColor = .clear; isUserInteractionEnabled = false
+            accessibilityIdentifier = "uiTestWindowMetrics"
+            updateAccessibility()
+            NotificationCenter.default.addObserver(self, selector: #selector(updateAccessibility),
+                name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        @objc private func updateAccessibility() {
+            // Script metadata is queryable by XCTest, never a VoiceOver stop.
+            isAccessibilityElement = !UIAccessibility.isVoiceOverRunning
+        }
+        // Query on demand. Publishing AX values on a display link (or during
+        // layout/updateUIView) can invalidate the very layout being observed.
+        override var accessibilityValue: String? {
+            get { window.flatMap { Self.cache.value(in: $0) } }
+            set {}
+        }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // Invalidate private memoization only. Never publish AX/SwiftUI
+            // values, schedule layout, or write application state here.
+            Self.cache.invalidate()
+        }
+    }
+
+    @MainActor private final class MetricsCache: NSObject {
+        private var values: [ObjectIdentifier: String] = [:]
+        private var turnObserver: CFRunLoopObserver?
+        override init() {
+            super.init()
+            let activities = CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.exit.rawValue
+            turnObserver = CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault, activities, true, 0) { [weak self] _, _ in
+                MainActor.assumeIsolated { self?.invalidate() }
+            }
+            if let turnObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), turnObserver, .commonModes) }
+            for name in [UITextField.textDidBeginEditingNotification, UITextField.textDidEndEditingNotification,
+                         UITextView.textDidBeginEditingNotification, UITextView.textDidEndEditingNotification,
+                         UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardDidChangeFrameNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(invalidate), name: name, object: nil)
+            }
+        }
+        @objc func invalidate() { values.removeAll(keepingCapacity: true) }
+
+        func value(in window: UIWindow) -> String? {
+            let key = ObjectIdentifier(window)
+            if let cached = values[key] { return cached }
+            // One responder-chain action, independent of the number of views.
+            let query = UITestFirstResponderQuery()
+            UIApplication.shared.sendAction(#selector(UIResponder.yubaiIdentifyFirstResponder(_:)), to: nil, from: query, for: nil)
+            let focused = (query.responder as? UIView)?.accessibilityIdentifier ?? ""
+            func rect(_ value: CGRect) -> [CGFloat] { [value.minX, value.minY, value.width, value.height] }
+            var scrolls: [[String: Any]] = []
+            let windows = (window.windowScene?.windows ?? [window]).filter { !$0.isHidden && $0.alpha > 0 }
+            // This metadata is advisory for reveal progress, never a reachability
+            // gate. Bound even a pathological native/keyboard view hierarchy.
+            var pending: [UIView] = Array(windows.prefix(2048))
+            var remaining = 2048
+            while remaining > 0, let view = pending.popLast() {
+                remaining -= 1
+                guard !view.isHidden, view.alpha > 0, view is UIWindow || view.window != nil else { continue }
+                if let scroll = view as? UIScrollView, !scroll.bounds.isEmpty, scroll.isScrollEnabled {
+                    let frame = scroll.convert(scroll.bounds, to: nil)
+                    let scale = frame.height / max(1, scroll.bounds.height)
+                    let minimum = -scroll.adjustedContentInset.top
+                    let maximum = max(minimum, scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.bounds.height)
+                    scrolls.append(["identifier": scroll.accessibilityIdentifier ?? "", "frame": rect(frame),
+                                    "remainingDown": max(0, maximum - scroll.contentOffset.y) * scale,
+                                    "remainingUp": max(0, scroll.contentOffset.y - minimum) * scale])
+                }
+                pending.append(contentsOf: view.subviews.prefix(max(0, remaining - pending.count)))
+            }
+            var controllers = windows.compactMap(\.rootViewController)
+            var transitioning = false
+            remaining = 128
+            while remaining > 0, let controller = controllers.popLast() {
+                remaining -= 1
+                if controller.transitionCoordinator != nil || controller.isBeingPresented || controller.isBeingDismissed {
+                    transitioning = true; break
+                }
+                var children = controller.children
+                if let presented = controller.presentedViewController { children.append(presented) }
+                controllers.append(contentsOf: children.prefix(max(0, remaining - controllers.count)))
+            }
+            let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
+            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": transitioning,
+                                      "focused": focused, "scrolls": scrolls]
+            if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+               let json = String(data: data, encoding: .utf8) { values[key] = json; return json }
+            return nil
+        }
+    }
+}
 #endif
 
 @MainActor @Observable final class UITestRequestLog {
@@ -28,7 +143,7 @@ enum UITestSupport {
             ProcessInfo.processInfo.environment["YUBAI_UI_BACKGROUND_FIXTURE"] == "1"
     }
     static var organizationScenario: String? {
-        guard script == "salary", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
+        guard script == "salary" || script == "v46-sort", let value = ProcessInfo.processInfo.environment["YUBAI_UI_ORGANIZATION_SCENARIO"],
               ["stop-second", "fail-second", "by-party", "by-party-many", "by-party-long", "questions-complete", "questions-stop", "questions-fail"].contains(value) else { return nil }
         return value
     }
@@ -64,50 +179,96 @@ enum UITestSupport {
         default: return usesBackgroundFixture ? true : nil
         }
     }
+    /// Round 45 fixtures. Numbers follow the design boards; dates follow the simulator clock.
+    static let v45Scripts: Set<String> = [
+        "v45-home", "v45-over", "v45-bill", "v45-payday", "v45-late", "v45-newcycle", "v45-gap", "v45-new",
+        "v45-share", "v45-bill-match", "v45-entry-history", "v45-ask",
+        "v45-category", "v45-payback", "v45-split"
+    ]
     static var script: String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
-              (screenshotScripts.contains(name) || ["round40", "empty", "welcome-import", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "cashflow", "cashflow-low", "butler-deck"].contains(name)) else { return nil }
+              (butler47Scripts.contains(name) || savings47Scripts.contains(name) || home47Scripts.contains(name) || galleryScripts.contains(name) || billGalleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
         return name
     }
     static var statementURL: URL? {
-        guard ["import", "welcome-import"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
+        guard ["import", "v45-import-merge"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1] + (erasesThenReimports ? "-input" : ""))
+            .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1])
             .appendingPathComponent("合成账单.csv")
     }
-    static var erasesThenReimports: Bool {
-        script == "welcome-import" && ProcessInfo.processInfo.environment["YUBAI_UI_ERASE_REIMPORT"] == "1"
-    }
-    static var welcomeStatementURL: URL? { script == "welcome-import" ? statementURL : nil }
-    static func prepare(_ repository: LedgerRepository) throws {
+    @MainActor static func prepare(_ repository: LedgerRepository) throws {
         guard let script else { return }
+        func save(_ fixture: Ledger, reason: String) throws {
+            var fixture = fixture
+            if ProcessInfo.processInfo.environment["YUBAI_GALLERY_HIDE_AMOUNTS"] == "1" { fixture.preferences.hideAmounts = true }
+            if let appearance = galleryAppearance { fixture.preferences.appearance = appearance }
+            try repository.save(fixture, reason: reason)
+        }
         if let url = statementURL, let encoded = ProcessInfo.processInfo.environment["YUBAI_UI_STATEMENT"],
            let data = Data(base64Encoded: encoded), data.count < 1_000_000 {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
         }
-        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty",
-              script != "welcome-import" || erasesThenReimports else { return }
-        let now = Date()
-        if erasesThenReimports {
-            var ledger = Ledger(); ledger.preferences.onboardingComplete = true
-            ledger.accounts = [Account(name: "合成卡")]; ledger.lastReflectionWeek = ButlerCards.isoWeek(now)
-            try repository.save(ledger, reason: "合成测试夹具")
+        if script == "empty", galleryAppearance != nil, !FileManager.default.fileExists(atPath: repository.file.path) {
+            try save(Ledger(), reason: "合成截图夹具")
+            return
+        }
+        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
+        let now = Dates.now
+        if savings47Scripts.contains(script) {
+            let value = try savings47Ledger(script, now: now)
+            resetGalleryDeviceState(for: value.id)
+            try save(value, reason: "合成存取夹具")
+            return
+        }
+        if butler47Scripts.contains(script) {
+            let value = try butler47Ledger(script, now: now)
+            resetGalleryDeviceState(for: value.id)
+            try save(value, reason: "合成管家夹具")
+            return
+        }
+        if home47Scripts.contains(script) {
+            let value = try home47Ledger(script, now: now)
+            resetGalleryDeviceState(for: value.id)
+            try save(value, reason: "合成主页夹具")
+            return
+        }
+        if billGalleryScripts.contains(script) {
+            let value = try billGalleryLedger(script, now: now)
+            resetGalleryDeviceState(for: value.id)
+            try save(value, reason: "合成账单夹具")
+            return
+        }
+        if v46Scripts.contains(script) {
+            let value = try v46Ledger(script, now: now)
+            resetGalleryDeviceState(for: value.id)
+            try save(value, reason: "合成截图夹具")
+            return
+        }
+        if galleryScripts.contains(script) {
+            let ledger = try galleryLedger(script, now: now)
+            resetGalleryDeviceState(for: ledger.id)
+            try save(ledger, reason: "合成截图夹具")
+            if script == "gallery" { try repository.preserveRecovery(ledger, reason: "合成截图历史") }
+            return
+        }
+        if secondBatchScripts.contains(script) {
+            try prepareSecondBatch(repository, script: script, now: now)
             return
         }
         if script == "salary" {
-            try repository.save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
-            return
-        }
-        if script.hasPrefix("cashflow") {
-            try repository.save(cashTimelineLedger(low: script == "cashflow-low", now: now), reason: "合成测试夹具")
+            try save(organizationScenario == nil && !usesBackgroundFixture ? salaryLedger(now: now) : organizationLedger(now: now), reason: "合成工资夹具")
             return
         }
         if screenshotScripts.contains(script) {
-            try repository.save(screenshotLedger(script, now: now), reason: "合成截图夹具")
+            try save(screenshotLedger(script, now: now), reason: "合成截图夹具")
+            return
+        }
+        if v45Scripts.contains(script) {
+            try save(v45Ledger(script, now: now), reason: "合成测试夹具")
             return
         }
         var ledger = Ledger()
@@ -199,41 +360,160 @@ enum UITestSupport {
                 plan.accountID = account.id; plan.installments = 7; ledger.plans = [plan]
             }
         }
-        try repository.save(ledger, reason: "合成测试夹具")
+        if !script.hasPrefix("bills") { seedKnownHomeBudget(&ledger, now: now) }
+        try save(ledger, reason: "合成测试夹具")
     }
-    static func cashTimelineLedger(low: Bool, now: Date) -> Ledger {
+    /// 现在页各状态。手上的钱、每月存、固定存款和账单照画板：还能花 = 手上 − 存下的钱 5,000 − 每月存 2,000 − 固定账单还要付。
+    static func v45Ledger(_ script: String, now: Date) throws -> Ledger {
+        if ["v45-category", "v45-payback", "v45-split"].contains(script) { return try v45SecondBatchLedger(script, now: now) }
+        if ["v45-share", "v45-bill-match", "v45-entry-history", "v45-ask"].contains(script) {
+            var ledger = try v45Ledger(script == "v45-bill-match" ? "v45-bill" : "v45-home", now: now)
+            let accountID = ledger.accounts[0].id
+            switch script {
+            case "v45-share":
+                ledger.cycleAnchor = .calendarMonth; ledger.savingRule = .share(20)
+                ledger.entries.append(Entry(date: now, amount: 840_000, nature: .income, accountID: accountID,
+                                            title: "合成兼职", category: "兼职"))
+                seedClosedV45Cycle(&ledger, now: now)
+            case "v45-bill-match":
+                // Loaded data predates autoLink: paying the bill must offer this
+                // existing record instead of recording the same expense twice.
+                ledger.entries.append(Entry(date: now, amount: 15_800, accountID: accountID,
+                                            title: "话费和宽带", category: "居住"))
+            case "v45-entry-history":
+                // The latest choice is the exception; two of the last three
+                // still suggest 餐饮. The two manual expenses also form a repeat.
+                for offset in 1...3 {
+                    let date = Dates.addDays(-offset, to: now)
+                    var entry = Entry(date: date, amount: 1800, accountID: accountID,
+                                      title: "合成咖啡", category: offset == 1 ? "购物" : "餐饮")
+                    entry.purpose = "合成咖啡"; entry.recordedAt = date; entry.userEdited = true
+                    ledger.entries.append(entry)
+                }
+            default:
+                ledger.preferences.cloudAIEnabled = true
+                ledger.entries.append(Entry(date: now, amount: 3200, accountID: accountID,
+                                            title: "合成咖啡", category: "餐饮"))
+            }
+            try ledger.validate()
+            return ledger
+        }
         var ledger = Ledger()
         ledger.preferences.onboardingComplete = true; ledger.preferences.cloudAIEnabled = false
         ledger.lastReflectionWeek = ButlerCards.isoWeek(now); ledger.lastSubcategoryBatchDay = Dates.text(now)
         ledger.mutedTopics = ["letter"]
-        let bank = Account(name: "合成工资卡", balance: low ? 60_000 : 900_000, at: now)
-        ledger.accounts = [bank]
-        ledger.entries = (1...365).map {
-            Entry(date: Dates.addDays(-$0, to: Dates.day(now)), amount: 3000, accountID: bank.id, title: "合成日常", category: "餐饮")
+        let today = Dates.day(now)
+        func day(_ offset: Int) -> Date { Dates.addDays(offset, to: today) }
+        var account = Account(name: script == "v45-new" ? "微信零钱" : "合成银行卡", kind: .bank, balance: 0, at: day(-12))
+        let accountID = account.id
+        var spending: [Entry] = []
+        func spend(_ cents: Int64, _ title: String, _ category: String, on date: Date) {
+            spending.append(Entry(date: date, amount: cents, accountID: accountID, title: title, category: category))
         }
-        let nextSalary = Dates.addDays(11, to: Dates.day(now))
-        var salary = Plan(title: "工资", amount: 1_310_000, dueDate: nextSalary, frequency: .monthly, inflow: true, nature: .income)
-        salary.accountID = bank.id
-        let salaryDay = Dates.calendar.component(.day, from: nextSalary)
-        let nextMonth = Dates.calendar.dateInterval(of: .month, for: nextSalary)!.start
-        for offset in 1...4 {
-            let month = Dates.addMonths(-offset, to: nextMonth)
-            let last = Dates.calendar.range(of: .day, in: .month, for: month)!.count
-            let day = Dates.addDays(min(salaryDay, last) - 1, to: month)
-            guard day <= now else { continue }
-            var receipt = Entry(date: day, amount: 1_310_000, nature: .income, accountID: bank.id, title: "工资", category: "工资奖金")
-            receipt.planID = salary.id; receipt.occurrence = day
+        func earlier(_ minutes: Double) -> Date { max(today, now.addingTimeInterval(-60 * minutes)) }
+        var hand: Int64 = 1_217_400
+        var paydayOffset = 20
+        var bills: [(title: String, amount: Int64, due: Int, estimated: Bool)] = [
+            ("房租", 327_000, 12, false), ("话费和宽带", 16_000, 5, false), ("电费", 18_000, 7, true)
+        ]
+        switch script {
+        case "v45-home":
+            for offset in 1...8 { spend(10_000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+            spend(2800, "午饭", "餐饮", on: earlier(30)); spend(800, "地铁", "交通", on: earlier(20))
+        case "v45-over":
+            hand = 1_029_000; paydayOffset = 5
+            bills = [("房租", 327_000, 2, false), ("话费和宽带", 16_000, 3, false), ("电费", 18_000, 4, true)]
+            for offset in 1...10 { spend(27_200, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+        case "v45-bill":
+            hand = 1_200_000; paydayOffset = 15
+            bills = [("房租", 327_000, 10, false), ("话费和宽带", 16_000, 0, false), ("电费", 18_000, 1, true)]
+            for offset in 1...8 { spend(14_000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+            spend(3200, "午饭", "餐饮", on: day(-1).addingTimeInterval(13 * 3600)); spend(800, "地铁", "交通", on: day(-1).addingTimeInterval(14 * 3600))
+        case "v45-payday", "v45-late":
+            hand = 721_200; paydayOffset = script == "v45-late" ? -3 : 0; bills = []
+            spend(4600, "晚饭", "餐饮", on: day(-1).addingTimeInterval(19 * 3600)); spend(800, "地铁", "交通", on: day(-1).addingTimeInterval(20 * 3600))
+        case "v45-newcycle":
+            hand = 1_522_200; paydayOffset = 0; bills = []
+            for offset in 5...12 { spend(22_350, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+        case "v45-gap":
+            hand = 1_201_400
+            for offset in 4...11 { spend(10_000, "日常", "餐饮", on: day(-offset).addingTimeInterval(12 * 3600)) }
+        default: // v45-new
+            hand = 800_000; bills = []
+        }
+        account.anchorBalance = hand + spending.reduce(0) { $0 + $1.amount }
+        ledger.accounts = [account]
+        ledger.entries = spending
+        if script == "v45-gap" {
+            var wallet = Account(name: "微信零钱", kind: .cash, balance: 30_000, at: day(-12)); wallet.reconciled = true
+            ledger.accounts.append(wallet)
+        }
+        if script == "v45-new" { return ledger }
+        ledger.fixedSavings = 500_000; ledger.savingRule = .fixed(200_000)
+        var salary = Plan(title: "工资", amount: 801_000, dueDate: day(paydayOffset), frequency: .monthly, inflow: true, category: "工资奖金", nature: .income)
+        salary.accountID = accountID
+        ledger.plans = [salary]
+        for bill in bills {
+            var plan = Plan(title: bill.title, amount: bill.amount, dueDate: day(bill.due), frequency: .monthly, category: "居住")
+            plan.accountID = accountID; plan.estimated = bill.estimated
+            ledger.plans.append(plan)
+        }
+        if script == "v45-bill", let power = ledger.plans.first(where: { $0.title == "电费" }) {
+            var paid = Entry(date: Dates.addMonths(-1, to: day(1)).addingTimeInterval(12 * 3600), amount: 18_000, accountID: accountID, title: "电费", category: "居住")
+            paid.planID = power.id; paid.occurrence = Dates.addMonths(-1, to: day(1))
+            ledger.entries.append(paid)
+        }
+        if ["v45-payday", "v45-late", "v45-newcycle"].contains(script) {
+            // 发薪日改成「确认到账才开新周期」：从这一期起要点「到了」。
+            ledger.paydayConfirmSince = day(paydayOffset)
+        }
+        if script == "v45-newcycle", let planID = ledger.plans.first?.id {
+            var receipt = Entry(date: max(today, earlier(10)), amount: 801_000, nature: .income, accountID: accountID, title: "工资", category: "工资奖金")
+            receipt.planID = planID; receipt.occurrence = today
             ledger.entries.append(receipt)
+            ledger.accounts[0].anchorBalance -= receipt.amount
         }
-        var bill = Plan(title: "房租", amount: 50_000, dueDate: Dates.addDays(4, to: Dates.day(now)), frequency: .monthly)
-        bill.accountID = bank.id
-        var paid = Entry(date: Dates.addDays(-10, to: Dates.day(now)), amount: bill.amount, accountID: bank.id, title: "房租")
-        paid.planID = bill.id
-        ledger.entries.append(paid)
-        ledger.plans = [salary, bill]
-        if low { ledger.fixedSavings = 300_000 }
+        // The board's 5,000 already includes older savings. Startup maintenance
+        // must not merge a synthetic previous cycle into it a second time.
+        seedClosedV45Cycle(&ledger, now: now, unspent: script == "v45-newcycle" ? 21_200 : 0)
+        try ledger.validate()
         return ledger
     }
+    private static func v45SecondBatchLedger(_ script: String, now: Date) throws -> Ledger {
+        var ledger = try v45Ledger(script == "v45-split" ? "v45-gap" : "v45-home", now: now)
+        let account = ledger.accounts[0]
+        switch script {
+        case "v45-category":
+            ledger.cycleAnchor = .calendarMonth; ledger.entries = []
+            let start = Finance.cycle(in: ledger, now: now).start
+            let lunch = Entry(date: start, amount: 2800, accountID: account.id, title: "合成午饭", category: "餐饮")
+            var refund = Entry(date: now, amount: 500, nature: .refund, accountID: account.id, title: "合成退款", category: "餐饮")
+            refund.relatedEntryID = lunch.id
+            ledger.entries = [lunch, Entry(date: now, amount: 3200, accountID: account.id, title: "合成午饭", category: "餐饮"), refund,
+                              Entry(date: now, amount: 100, accountID: account.id, title: "合成餐饮备注", category: "购物")]
+            for (offset, amount) in [62_400, 70_200, 58_800].enumerated() {
+                ledger.entries.append(Entry(date: Dates.addMonths(-offset - 1, to: start), amount: Int64(amount), accountID: account.id, title: "合成午饭", category: "餐饮"))
+            }
+            seedClosedV45Cycle(&ledger, now: now)
+        case "v45-payback":
+            var purchase = Entry(date: now, amount: 120_000, accountID: account.id, title: "大衣", category: "购物", fromReserve: true)
+            purchase.recordedAt = now
+            ledger.entries.append(purchase)
+        default:
+            let actual = Finance.balance(account, in: ledger, at: now) - 41_200
+            try Reconciliation.apply(&ledger, actual: [account.id: actual], now: now)
+        }
+        try ledger.validate()
+        return ledger
+    }
+    private static func seedClosedV45Cycle(_ ledger: inout Ledger, now: Date, unspent: Int64 = 0) {
+        let cycle = Finance.cycle(in: ledger, now: now)
+        let previous = Finance.cycle(in: ledger, now: cycle.start.addingTimeInterval(-1))
+        ledger.savingHistory = [CycleSaving(cycleStart: previous.start, cycleEnd: min(previous.end, Dates.addDays(-1, to: cycle.start)),
+                                           income: 801_000, target: 200_000, saved: 200_000,
+                                           unspent: unspent, leftoverChoice: unspent == 0 ? .keep : nil)]
+    }
+
     static func salaryLedger(now: Date) -> Ledger {
         var ledger = Ledger()
         ledger.preferences.onboardingComplete = true
@@ -243,6 +523,9 @@ enum UITestSupport {
         ledger.mutedTopics = ["letter"]
         let account = Account(name: "合成工资卡", balance: 200_000, at: now)
         ledger.accounts = [account]
+        // Keep 未结清 reachable after dismissing the salary candidate too.
+        var pendingBill = Plan(title: "合成未结清账单", amount: 99, dueDate: Dates.day(now))
+        pendingBill.accountID = account.id; ledger.plans = [pendingBill]
         let month = Dates.calendar.dateInterval(of: .month, for: now)!.start
         let latestMonth = Dates.calendar.component(.day, from: now) >= 10 ? month : Dates.addMonths(-1, to: month)
         var batch = ImportBatch(filename: "合成工资流水.csv", importedCount: 6, duplicateCount: 0, skippedCount: 0)
@@ -287,7 +570,7 @@ enum UITestSupport {
             }
             if !many {
                 // Force the quick card's controls to extend below an iPhone viewport.
-                ledger.categories += (0..<24).map { Category(String(format: "合成分类%02d", $0)) }
+                ledger.categories += (0..<24).map { YubaiCore.Category(String(format: "合成分类%02d", $0)) }
             }
             ButlerCards.refresh(&ledger, now: now)
             return ledger
@@ -346,7 +629,7 @@ enum UITestSupport {
         case "judge-skip":
             // ¥3,029 less ¥1,750 rent leaves ¥1,279 against a ¥1,899 purchase.
             let month = Dates.calendar.dateInterval(of: .month, for: now)!
-            var rent = Plan(title: "房租", amount: 175_000, dueDate: month.end, category: "居住")
+            var rent = Plan(title: "房租", amount: 175_000, dueDate: month.end.addingTimeInterval(-1), category: "居住")
             rent.accountID = account.id; ledger.plans = [rent]
         case "wishlist-cool":
             ledger.wishlist = cooldownWishes(now: now)
@@ -431,6 +714,10 @@ struct UITestTransport: ChatTransport {
     let script: String
     func send(_ request: ChatRequest) async throws -> ChatMessage {
         await MainActor.run { UITestRequestLog.shared.count += 1 }
+        if let reply = try UITestSupport.butler47Reply(request, script: script) { return reply }
+        if let reply = try UITestSupport.addEntryReceiptReply(request, script: script) { return reply }
+        if let reply = try UITestSupport.secondBatchReceiptReply(request, script: script) { return reply }
+        if let reply = try UITestSupport.galleryReply(request, script: script) { return reply }
         if ["导入整理", "导入整理·按对方"].contains(request.purpose), UITestSupport.usesBackgroundFixture {
             try await Task.sleep(for: .seconds(8))
         }
@@ -539,7 +826,7 @@ struct UITestTransport: ChatTransport {
             return ChatMessage(role: .assistant, content: try JSONValue.object(["rows": .array(rows), "items": .array([]),
                 "series": .array([]), "questions": .array(questions)]).jsonText())
         }
-        if script.hasPrefix("judge-") { return try purchaseReply(request) }
+        if script.hasPrefix("judge-") || script == "v45-principles" { return try purchaseReply(request) }
         if script == "profile-revisit", request.purpose == "消费观对话" {
             let reply = profileReply(request)
             if reply.toolCalls == nil, request.messages.contains(where: { $0.role == .assistant && $0.toolCalls == nil }),
@@ -577,7 +864,7 @@ struct UITestTransport: ChatTransport {
             let result = JSONValue.object(["rows": .array(rows), "items": .array([]), "series": .array([]), "questions": .array(questions)])
             return ChatMessage(role: .assistant, content: try result.jsonText())
         }
-        if script == "ask" {
+        if script == "ask" || script == "v45-ask" {
             if request.messages.last?.role != .tool {
                 return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "coffee-total", name: "summarize",
                     arguments: #"{"nature":"spending","keyword":"咖啡","group_by":"category"}"#)])
@@ -604,10 +891,10 @@ struct UITestTransport: ChatTransport {
         if !judged {
             let skip: Bool = script == "judge-skip"
             var fields: [String: JSONValue] = ["title": .string(skip ? "降噪耳机" : "徒步鞋"),
-                "amount": .string(skip ? "1899" : "899"), "category": .string("购物"),
+                "amount": .string(script == "v45-principles" ? "2480" : (skip ? "1899" : "899")), "category": .string("购物"),
                 "subcategory": .string(skip ? "数码电器" : "运动户外")]
             if skip {
-                let rentDate = Dates.calendar.dateInterval(of: .month, for: Date())!.end
+                let rentDate = Dates.calendar.dateInterval(of: .month, for: Dates.now)!.end
                 fields["date"] = .string(Dates.text(rentDate))
             }
             return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "judge-purchase", name: "judge_purchase", arguments: try JSONValue.object(fields).jsonText())])

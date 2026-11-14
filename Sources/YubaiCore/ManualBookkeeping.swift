@@ -104,23 +104,24 @@ public enum ManualBookkeeping {
         Dates.calendar.isDate(day, inSameDayAs: now) ? now : Dates.calendar.date(bySettingHour: 12, minute: 0, second: 0, of: day)!
     }
     public static func saveDate(for day: Date, now: Date) -> Date {
-        Dates.calendar.date(bySettingHour: Dates.calendar.component(.hour, from: now), minute: Dates.calendar.component(.minute, from: now), second: Dates.calendar.component(.second, from: now), of: day)!
+        if Dates.day(day) > Dates.day(now) { return Dates.day(day) }
+        return Dates.calendar.date(bySettingHour: Dates.calendar.component(.hour, from: now), minute: Dates.calendar.component(.minute, from: now), second: Dates.calendar.component(.second, from: now), of: day)!
     }
     public static func change(amount: Int64, nature: Nature, accountID: UUID, otherAccountID: UUID? = nil,
-                              day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Date(), intoFixedSavings: Bool = false) throws -> ChangeSet {
-        guard amount > 0, amount <= Money.limit, Dates.day(day) <= Dates.day(now) else { throw YubaiError.invalid("请核对金额和日期。") }
+                              day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Dates.now, intoFixedSavings: Bool = false, fromReserve: Bool = false) throws -> ChangeSet {
+        guard amount > 0, amount <= Money.limit, (-2_208_988_800...7_258_118_400).contains(day.timeIntervalSince1970) else { throw YubaiError.invalid("请核对金额和日期。") }
         if nature == .transfer { guard let otherAccountID, otherAccountID != accountID else { throw YubaiError.invalid("转账的两个账户必须不同。") } }
         let purpose = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         var draft = EntryDraft(date: saveDate(for: day, now: now), amount: amount, amountConfirmed: true,
                                nature: nature, accountID: accountID, title: purpose.isEmpty ? category : purpose,
-                               category: category, purpose: purpose.isEmpty ? nil : purpose, intoFixedSavings: intoFixedSavings)
+                               category: category, purpose: purpose.isEmpty ? nil : purpose, intoFixedSavings: intoFixedSavings, fromReserve: fromReserve)
         draft.categoryUserEdited = nature != .transfer
         draft.otherAccountID = nature == .transfer ? otherAccountID : nil
         draft.planID = link?.planID; draft.occurrence = link?.occurrence
         var change = ChangeSet(source: "手动", reason: "记一笔", items: [.addEntry(draft)])
         change.createdAt = now; return change
     }
-    public static func available(after change: ChangeSet, in ledger: Ledger, now: Date = Date()) throws -> Int64 {
+    public static func available(after change: ChangeSet, in ledger: Ledger, now: Date = Dates.now) throws -> Int64 {
         guard change.items.count == 1, case .addEntry(let draft) = change.items[0],
               !ledger.entries.contains(where: { $0.id == draft.id }) else {
             var preview = ledger; try change.apply(to: &preview)
@@ -134,12 +135,12 @@ public enum ManualBookkeeping {
         if ledger.entries.count >= 200_000 { var full = ledger; full.entries.append(entry); try full.validate() }
         if change.source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(entry, in: &isolated) }
         try isolated.validate()
-        try validateFixedSavings(removing: nil, adding: entry, in: ledger)
+        try validateFixedSavings(removing: nil, adding: entry, in: ledger, now: now)
         return available(removing: nil, adding: entry, in: ledger, now: now)
     }
     /// Editing callers can share the keypad calculation without changing a form's
     /// ledger. Validation/refund propagation stays identical to the save action.
-    public static func available(after edited: Entry, in ledger: Ledger, now: Date = Date()) throws -> Int64 {
+    public static func available(after edited: Entry, in ledger: Ledger, now: Date = Dates.now) throws -> Int64 {
         try ledger.validate()
         guard let original = ledger.entries.first(where: { $0.id == edited.id && $0.deletedAt == nil }) else { throw YubaiError.invalid("记录已移除。") }
         var isolated = ledger
@@ -154,20 +155,33 @@ public enum ManualBookkeeping {
         entry = isolated.entries.first { $0.id == edited.id }!
         CategoryMemory.remember(entry, in: &isolated)
         try isolated.validate()
-        try validateFixedSavings(removing: original, adding: entry, in: ledger)
+        try validateFixedSavings(removing: original, adding: entry, in: ledger, now: now)
         return available(removing: original, adding: entry, in: ledger, now: now)
     }
-    private static func validateFixedSavings(removing original: Entry?, adding entry: Entry, in ledger: Ledger) throws {
+    private static func validateFixedSavings(removing original: Entry?, adding entry: Entry, in ledger: Ledger, now: Date) throws {
+        if entry.fromReserve || original?.fromReserve == true {
+            var projected = ledger
+            projected.entries.removeAll { $0.id == original?.id }
+            projected.entries.append(entry)
+            guard projected.fixedSavingsTotal(now: now) >= 0 else { throw YubaiError.invalid("存着的钱不够。") }
+        }
         guard entry.intoFixedSavings || original?.intoFixedSavings == true else { return }
         // Isolated row validation cannot see the other earmarked income. Check
         // the combined total too, just as the full save does, including future rows.
         var projected = ledger
         if let original, let index = projected.entries.firstIndex(where: { $0.id == original.id }) { projected.entries[index] = entry }
         else { projected.entries.append(entry) }
-        guard projected.fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存着不动的总额超出范围。") }
+        guard projected.fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存下的钱的总额超出范围。") }
     }
     private static func available(removing original: Entry?, adding entry: Entry, in ledger: Ledger, now: Date) -> Int64 {
         let base = Finance.funds(ledger, now: now)
+        let reserveRefund = [entry, original].compactMap { $0 }.contains { row in row.nature == .refund && ledger.entries.contains { $0.id == row.relatedEntryID && $0.fromReserve } }
+        if entry.fromReserve || original?.fromReserve == true || reserveRefund || !ledger.cycleCovers.isEmpty || !(ledger.reservePaybacks?.isEmpty ?? true) || ledger.paydayConfirmSince != nil {
+            var projected = ledger
+            if let original, let index = projected.entries.firstIndex(where: { $0.id == original.id }) { projected.entries[index] = entry }
+            else { projected.entries.append(entry) }
+            return Finance.funds(projected, now: now).available
+        }
         let changes: [(Entry, Int64)] = (original.map { [($0, Int64(-1))] } ?? []) + [(entry, Int64(1))]
         var deltas: [UUID: Int64] = [:], difference: Int64 = 0
         for (row, sign) in changes where row.deletedAt == nil {
@@ -209,10 +223,17 @@ public enum ManualBookkeeping {
         return base.available + difference
     }
     public static func edit(_ edited: Entry, in ledger: inout Ledger) throws {
+        // Preserve the original API without reading the clock. New callers can
+        // supply their evaluation instant explicitly through the overload below.
+        let now = max(ledger.updatedAt, max(edited.date, edited.recordedAt ?? edited.date))
+        try edit(edited, in: &ledger, now: now)
+    }
+    public static func edit(_ edited: Entry, in ledger: inout Ledger, now: Date) throws {
         guard let index = ledger.entries.firstIndex(where: { $0.id == edited.id && $0.deletedAt == nil }) else { throw YubaiError.invalid("记录已移除。") }
         let original = ledger.entries[index]
         var next = ledger
         let entry = try prepareEdit(edited, original: original, in: &next)
+        try validateFixedSavings(removing: original, adding: entry, in: ledger, now: now)
         next.entries[index] = entry
         LedgerOperations.syncLinkedRefundCategories(in: &next)
         CategoryMemory.remember(entry, in: &next)
@@ -239,7 +260,7 @@ public enum ManualBookkeeping {
         }
         return entry
     }
-    public static func dayLabel(_ day: Date, now: Date = Date(), includeTodayDate: Bool = false) -> String {
+    public static func dayLabel(_ day: Date, now: Date = Dates.now, includeTodayDate: Bool = false) -> String {
         let c = Dates.calendar
         let date = "\(c.component(.month, from: day))月\(c.component(.day, from: day))日"
         if c.isDate(day, inSameDayAs: now) { return includeTodayDate ? "今天 · " + date : "今天" }
@@ -258,9 +279,9 @@ public struct EntryMonth: Identifiable, Sendable {
 }
 public struct TodayEntries: Equatable, Sendable {
     public var count = 0; public var net: Int64 = 0; public var latest: Entry?
-    public init(in ledger: Ledger, now: Date = Date()) {
+    public init(in ledger: Ledger, now: Date = Dates.now) {
         let start = Dates.day(now); let end = Dates.addDays(1, to: start)
-        for entry in ledger.entries where entry.deletedAt == nil && entry.date >= start && entry.date < end {
+        for entry in ledger.entries where entry.deletedAt == nil && entry.date >= start && entry.date < end && entry.date <= now {
             count += 1; net += entry.nature.inflow ? entry.amount : -entry.amount
             if latest == nil || (entry.recordedAt ?? entry.date) > (latest!.recordedAt ?? latest!.date) { latest = entry }
         }
@@ -410,7 +431,7 @@ public enum EntryTimeline {
 }
 
 public enum FixedFlows {
-    public static func occurrences(in ledger: Ledger, adding plan: Plan? = nil, now: Date = Date()) -> [Occurrence] {
+    public static func occurrences(in ledger: Ledger, adding plan: Plan? = nil, now: Date = Dates.now) -> [Occurrence] {
         var preview = ledger
         if let plan { preview.plans.append(plan) }
         let repayments = Set(preview.plans.filter { $0.nature == .repayment }.map(\.id))
@@ -424,8 +445,8 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
     public var stoppedAt: Date? = nil
     public var pending: [Occurrence] = []
     public var pendingAmount: Int64 { pending.reduce(0) { $0 + $1.amount } }
-    public static func stopped(in ledger: Ledger, now: Date = Date()) -> [Self] {
-        let payments = FixedFlowPayments(in: ledger)
+    public static func stopped(in ledger: Ledger, now: Date = Dates.now) -> [Self] {
+        let payments = FixedFlowPayments(in: ledger, now: now)
         let pendingByPlan = Dictionary(grouping: Finance.occurrences(in: ledger, now: now, days: 1).filter { $0.planID != nil && Dates.day($0.date) <= Dates.day(now) }, by: { $0.planID! })
         var rows = ledger.plans.compactMap { plan -> Self? in
             let date = plan.stoppedAt ?? plan.endDate
@@ -456,7 +477,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
         }
         return rows.sorted { $0.stoppedAt == $1.stoppedAt ? $0.id.uuidString < $1.id.uuidString : ($0.stoppedAt ?? .distantPast) > ($1.stoppedAt ?? .distantPast) }
     }
-    public static func rows(in ledger: Ledger, now: Date = Date()) -> [Self] {
+    public static func rows(in ledger: Ledger, now: Date = Dates.now) -> [Self] {
         let occurrences = Finance.occurrences(in: ledger, now: now, days: 90)
         var next: [UUID: Occurrence] = [:]
         for occurrence in occurrences {
@@ -464,7 +485,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
             else if !occurrence.inflow, let id = occurrence.rentID, next[id] == nil { next[id] = occurrence }
         }
         let horizon = Dates.addDays(90, to: Dates.day(now))
-        let payments = FixedFlowPayments(in: ledger)
+        let payments = FixedFlowPayments(in: ledger, now: now)
         var rows = ledger.plans.filter {
             $0.active && ($0.endDate == nil || $0.endDate! > now)
                 && !($0.frequency == .once && $0.dueDate <= horizon && next[$0.id] == nil)
@@ -484,7 +505,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
         guard plan.installments != nil else { return 0 }
         return payments.plans.keys.filter { $0.id == plan.id && plan.occurrenceIndex(on: $0.day) != nil && !plan.isSkipped(on: $0.day) && payments.remaining(for: plan, on: $0.day) == 0 }.count
     }
-    public static func schedule(_ frequency: Frequency, date: Date, now: Date = Date(), monthlyDay: Int? = nil) -> String {
+    public static func schedule(_ frequency: Frequency, date: Date, now: Date = Dates.now, monthlyDay: Int? = nil) -> String {
         let c = Dates.calendar
         switch frequency {
         case .once: return ManualBookkeeping.dayLabel(date, now: now)
@@ -492,6 +513,8 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
             let names = ["日", "一", "二", "三", "四", "五", "六"]
             return "每周" + names[c.component(.weekday, from: date) - 1]
         case .monthly: return "每月 \(monthlyDay ?? c.component(.day, from: date)) 日"
+        case .fortnightly: return "每两周 · " + ManualBookkeeping.dayLabel(date, now: now)
+        case .halfYearly: return "每半年 \(c.component(.month, from: date)) 月 \(c.component(.day, from: date)) 日"
         case .quarterly: return "每季 \(c.component(.day, from: date)) 日"
         case .yearly: return "每年 \(c.component(.month, from: date)) 月 \(c.component(.day, from: date)) 日"
         }

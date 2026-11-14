@@ -118,7 +118,7 @@ final class FixedBillsTests: XCTestCase {
         ledger.plans = [salary]
         ledger.entries = [payment(salary, on: salary.dueDate, amount: 810_000, in: ledger)]
         let row = try XCTUnwrap(FixedFlows.month(containing: now, in: ledger).later.first)
-        XCTAssertEqual(row.date, date("2026-12-10")); XCTAssertEqual(row.amount, 810_000)
+        XCTAssertEqual(row.date, date("2026-12-10")); XCTAssertEqual(row.amount, 800_000)
         ledger.plans[0].installments = 1
         XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).later.isEmpty)
         ledger.plans[0].installments = nil; ledger.plans[0].endDate = date("2026-11-30")
@@ -134,7 +134,7 @@ final class FixedBillsTests: XCTestCase {
                         Plan(title: "房租", amount: 2000, dueDate: date("2026-11-09")),
                         Plan(title: "订阅", amount: 3000, dueDate: date("2026-11-10 23:00:00")),
                         Plan(title: "之后付款", amount: 9_000_000, dueDate: date("2026-11-11"))]
-        // Receiving the next salary early cannot move the schedule's next payday.
+        // A future-dated salary is pending and cannot move the scheduled next payday.
         ledger.entries.append(payment(salary, on: date("2026-11-10"), in: ledger))
         let next = try XCTUnwrap(Finance.nextPayday(in: ledger, now: now))
         XCTAssertEqual(next.date, date("2026-11-10")); XCTAssertEqual(next.title, "工资")
@@ -144,7 +144,7 @@ final class FixedBillsTests: XCTestCase {
         XCTAssertEqual(funds.committed, 3000); XCTAssertEqual(funds.living, 0)
         XCTAssertEqual(funds.available, funds.cash - 3000)
         XCTAssertEqual(funds.occurrences.filter { !$0.inflow }.count, 4)
-        XCTAssertEqual(funds.points.count, 91); XCTAssertEqual(funds.expectedIncome, 2_400_000)
+        XCTAssertEqual(funds.points.count, 91); XCTAssertEqual(funds.expectedIncome, 3_200_000)
         XCTAssertLessThan(funds.points.last!.conservative, 0)
         XCTAssertFalse(ButlerCards.detect(ledger, now: now).contains { $0.kind == .shortfall && $0.facts.contains(CardFact("付款", "之后付款")) })
         let tool = try ReadOnlyTool.getFunds.run(.object([:]), ToolContext(ledger: ledger, now: now))

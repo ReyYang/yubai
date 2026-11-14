@@ -28,7 +28,7 @@ final class FinanceTests: XCTestCase {
         ledger.fixedSavings = 100_000; ledger.savingRule = .fixed(20_000)
         let facts = Finance.assessPurchase(ledger, amount: 1000, now: now).facts
         XCTAssertTrue(facts.contains("在存钱 \(Money.text(30_000))"))
-        XCTAssertTrue(facts.contains("存着不动 \(Money.text(100_000))"))
+        XCTAssertTrue(facts.contains("存下的钱 \(Money.text(100_000))"))
         XCTAssertTrue(facts.contains("要攒 \(Money.text(20_000))"))
     }
     private func record(_ ledger: inout Ledger, date: Date, at recordedAt: Date, nature: Nature = .expense) throws {

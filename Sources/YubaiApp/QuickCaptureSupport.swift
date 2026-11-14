@@ -13,15 +13,24 @@ struct QuickEntryPrefill {
     var accountID: UUID? = nil
     var otherAccountID: UUID? = nil
     var intoFixedSavings = false
+    /// 「从存着的钱出」：存钱页和问余白的「从存着的钱买」带过来，记一笔里直接选中。
+    var fromReserve = false
+    /// 补记某一天；`nil` 为今天。
+    var date: Date? = nil
 }
 extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
-        if locked || !preferences.onboardingComplete { pendingQuickSheet = next } else { sheetSource = nil; sheet = next }
+        if locked { pendingQuickSheet = next }
+        else {
+            if accounts.isEmpty || !preferences.onboardingComplete { _ = update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Dates.now) } }
+            sheetSource = nil; sheet = next
+        }
     }
     func handleCaptureURL(_ url: URL) {
         guard url.scheme?.lowercased() == "yubai", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
         func value(_ name: String) -> String? { parts.queryItems?.first { $0.name == name }?.value }
         switch url.host?.lowercased() {
+        case "saving", "save": openSavingPage()
         case "add":
             let amount = value("amount").flatMap { try? Money.parse($0) }.flatMap { $0 > 0 ? $0 : nil }
             requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: value("category"), amount: amount, purpose: value("purpose"))))
@@ -62,80 +71,9 @@ enum CaptureImageSource {
 #endif
 
 struct ScreenshotCaptureView: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
     var imageData: Data?
-    @State private var bytes: Data?
-    @State private var drafts: [EntryDraft] = []
-    @State private var selected = Set<UUID>()
-    @State private var reading = true
-    @State private var failure: String?
     var body: some View {
-        Page {
-            if reading { ProgressView("正在读取截图") }
-            else if drafts.isEmpty {
-                Text("没认出金额").yubaiFont(YubaiFont.cardTitle)
-                Button("打开记一笔") { store.sheet = .prefilledEntry(QuickEntryPrefill(category: nil, amount: nil, purpose: nil, screenshot: bytes)) }.buttonStyle(PrimaryButtonStyle())
-            } else {
-                Text("余白 · 从截图认出 \(drafts.count) 笔").yubaiFont(YubaiFont.cardTitle)
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        ForEach(drafts, id: \.id) { draft in
-                            Button {
-                                if selected.contains(draft.id) { selected.remove(draft.id) } else { selected.insert(draft.id) }
-                            } label: {
-                                HStack(spacing: YubaiSpace.gapGroup) {
-                                    Image(systemName: selected.contains(draft.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(YubaiColor.brandInk)
-                                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                                        Text(draft.title).yubaiFont(YubaiFont.rowTitle)
-                                        Text(Classification.displayCategory(draft.category) + " · " + store.accountName(draft.accountID) + " · " + ManualBookkeeping.dayLabel(draft.date))
-                                            .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                                    }
-                                    Spacer()
-                                    AmountLabel(cents: draft.amount, hide: store.preferences.hideAmounts, sign: draft.nature.inflow ? .inflow : .outflow)
-                                }.padding(.vertical, YubaiSpace.space4).frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-                            }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected.contains(draft.id) ? .isSelected : [])
-                        }
-                    }
-                }
-                HStack(spacing: YubaiSpace.gapGroup) {
-                    Button("打开核对") { if let bytes { store.sheet = .screenshotReview(bytes) } }.buttonStyle(SecondaryButtonStyle())
-                    Button("记下 \(selected.count) 笔", action: save).buttonStyle(PrimaryButtonStyle()).disabled(selected.isEmpty)
-                }
-            }
-            if let failure { InlineNote(text: failure, style: .attention) }
-        }.navigationTitle("截图记").yubaiNavigation().manualSheetHeader("截图记", cancelTitle: "关闭", showsAction: false)
-            .task { await recognize() }
-    }
-    @MainActor private func recognize() async {
-        defer { reading = false }
-        bytes = imageData
-        #if os(iOS)
-        if bytes == nil { bytes = await CaptureImageSource.recentOrClipboard() }
-        #endif
-        guard let bytes else { store.sheet = .imports; return }
-        let ledgerID = store.current.id
-        do {
-            guard bytes.count <= 50 * 1024 * 1024 else { throw YubaiError.invalid("图片请小于 50 MB。") }
-            let receipt = try await Task.detached(priority: .userInitiated) { try ReceiptReader.recognize(bytes) }.value
-            try Task.checkCancellation()
-            guard !store.locked, store.current.id == ledgerID else { return }
-            guard let account = ManualBookkeeping.defaultAccount(in: store.current) else { failure = "请先添加账户。"; return }
-            drafts = ReceiptTextParser.drafts(lines: receipt.text.components(separatedBy: .newlines)).map { $0.entryDraft(in: store.current, accountID: account.id) }
-            selected = Set(drafts.map(\.id))
-        } catch is CancellationError {} catch { failure = "没认出金额" }
-    }
-    private func save() {
-        let entries = drafts.filter { selected.contains($0.id) }
-        if store.update("截图记", { ledger in
-            let ids = try QuickCapture.record(entries, in: &ledger, source: "截图记", withoutOpeningApp: false)
-            if let bytes {
-                let compressed = ImageCompression.compress(bytes, name: "截图.png")
-                let attachment = Attachment(name: compressed.name, data: compressed.data); ledger.attachments.append(attachment)
-                let saved = Set(ids)
-                for i in ledger.entries.indices where saved.contains(ledger.entries[i].id) { ledger.entries[i].attachmentID = attachment.id }
-            }
-        }) { dismiss() }
+        ReceiptCapturePage(imageData: imageData)
     }
 }
 

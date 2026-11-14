@@ -15,7 +15,7 @@ struct PurchaseQuestionsCard: View {
         AssistantCard {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 HStack(spacing: YubaiSpace.space8) {
-                    AssistantMark(size: 14).accessibilityHidden(true)
+                    AssistantMark(size: YubaiFont.row.size).accessibilityHidden(true)
                     Text("余白 · 该不该买").yubaiFont(YubaiFont.caption)
                 }.foregroundStyle(YubaiColor.brandInk)
                 ForEach(questions.indices, id: \.self) { index in
@@ -84,88 +84,95 @@ struct SavingPurchaseCard: View {
     let notes: [MemoryNote]
     @State private var wishID: UUID?
     @State private var recording = false
+    @State private var recordingFromReserve = false
+    @State private var waitHours = 0
     private var hidden: Bool { store.preferences.hideAmounts }
-    private var assessment: PurchaseAssessment {
-        store.purchaseAssessment(purchase)
-    }
+    private var assessment: PurchaseAssessment { store.purchaseAssessment(purchase) }
     private var conclusion: PurchaseVerdict { verdict?.verdict ?? assessment.verdict }
     private var reason: String { verdict?.reason ?? assessment.reason }
-    private var ink: Color {
-        switch conclusion { case .buy: YubaiColor.brandInk; case .wait: YubaiColor.amberInk; case .skip: YubaiColor.label }
+    private var available: Int64 { store.funds.available }
+    private var availableAfter: Int64 { available - purchase.amount }
+    private var reserve: Int64 { max(0, store.current.fixedSavingsTotal()) }
+    private var monthEnough: Bool { availableAfter >= 0 }
+    private var reserveEnough: Bool { purchase.amount <= reserve }
+    private var headline: String {
+        if hidden { return "金额已隐藏" }
+        if monthEnough { return "这个月的钱够。" }
+        return reserveEnough ? "这个月的钱不够，存着的钱够。" : "这个月的钱不够，存着的钱也不够。"
     }
-    private var moneyBound: Bool {
-        purchase.facts["allowed_verdicts"]?.arrayValue?.compactMap(\.stringValue) == ["skip"]
+    private var equivalentDays: Int? {
+        let base = store.pace?.baseDaily ?? 0
+        let ref = base > 0 ? base : Finance.estimatedDailyLiving(store.current, now: Dates.now)
+        guard ref > 0 else { return nil }
+        return max(1, Int((Double(purchase.amount) / Double(ref)).rounded()))
     }
-    private var boundReason: String { verdict?.boundReason ?? purchase.facts["bound_reason"]?.stringValue ?? assessment.reason }
-    private var showsMoneyBound: Bool { moneyBound && !hidden }
-    private var wishTitle: String {
-        if wishID != nil { return "已放进心愿单" }
-        if conclusion == .buy { return "先放进心愿单" }
-        let days = Wishlist.defaultCooldownDays(amount: purchase.amount)
-        return days == 0 ? "放进心愿单" : "放进心愿单 · \(days) 天后再问我"
-    }
+    private var wishTitle: String { wishID != nil ? "已放进心愿单" : "放进心愿单" }
     var body: some View {
         AssistantCard {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                heading
-                Text(conclusion.label).yubaiFont(YubaiFont.lead).foregroundStyle(ink).accessibilityIdentifier("purchaseVerdict")
-                Text(hidden ? "金额已隐藏" : reason).yubaiFont(YubaiFont.body)
-                if showsMoneyBound { moneyBoundTag }
+                Text("余白").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                Text(headline).yubaiFont(YubaiFont.lead).accessibilityIdentifier("purchaseVerdict")
+                    .accessibilityLabel(conclusion.label + "，" + headline)
+                NavigationLink { PurchaseDetailsView(purchase: purchase, evidence: evidence) } label: {
+                    numberRow("还能花", from: available, to: availableAfter)
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("answerEvidence")
+                EntryFormDivider()
+                numberRow("存着的钱", from: reserve, to: reserve - purchase.amount)
+                EntryFormDivider()
+                daysRow
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: YubaiSpace.space8) { actions }.fixedSize(horizontal: true, vertical: false)
                     VStack(alignment: .leading, spacing: YubaiSpace.space8) { actions }
                 }.lineLimit(1).padding(.top, YubaiSpace.space8)
-                EntryFormDivider()
-                detailsLink
                 RememberedRows(notes: notes)
             }
         }.sheet(isPresented: $recording) {
-            NavigationStack { QuickEntryView(prefill: QuickEntryPrefill(category: purchase.category, amount: purchase.amount, purpose: purchase.title)) }
-                .environment(store).appErrors().yubaiSheetBackground()
+            NavigationStack {
+                QuickEntryView(prefill: QuickEntryPrefill(category: purchase.category, amount: purchase.amount, purpose: purchase.title,
+                                                          fromReserve: recordingFromReserve))
+            }.environment(store).appErrors().yubaiSheetBackground()
+        }
+        .task(id: "\(purchase.amount):" + store.profile.principles.joined(separator: "\n")) {
+            waitHours = Wishlist.cooldownHours(amount: purchase.amount, fromPrinciples: store.profile.principles)
         }
     }
-    private var heading: some View {
-        HStack(spacing: YubaiSpace.space8) {
-            AssistantMark(size: 14).accessibilityHidden(true)
-            Text("余白 · " + purchase.title).yubaiFont(YubaiFont.caption)
-            AmountLabel(cents: purchase.amount, hide: hidden, role: .small)
-        }.foregroundStyle(YubaiColor.brandInk)
+    private func numberRow(_ title: String, from: Int64, to: Int64) -> some View {
+        AnswerComparisonRow(title: title, before: from, after: to, hide: hidden)
     }
-    private var moneyBoundTag: some View {
-        Text(boundReason).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk)
-            .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space4)
-            .background(YubaiColor.amberTint, in: Capsule())
-    }
-    private var detailsLink: some View {
-        NavigationLink { PurchaseDetailsView(purchase: purchase, evidence: evidence) } label: {
-            HStack(spacing: YubaiSpace.space8) {
-                Text(detailsTitle).multilineTextAlignment(.leading)
-                Spacer(minLength: YubaiSpace.none)
-                Image(systemName: "chevron.right")
-            }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("answerEvidence")
-    }
-    private var detailsTitle: String {
-        guard !hidden else { return "明细" }
-        let after = purchase.facts["affordability"]?["available_after_purchase"]?["text"]?.stringValue
-        return "明细" + (after.map { " · 买了以后还能花 " + $0 } ?? " · \(evidence.count) 笔")
+    @ViewBuilder private var daysRow: some View {
+        if let days = equivalentDays {
+            HStack(spacing: YubaiSpace.gapGroup) {
+                Text("约等于日常").yubaiFont(YubaiFont.row)
+                Spacer(minLength: YubaiSpace.space8)
+                Text("\(days) 天").yubaiFont(YubaiFont.amount)
+            }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
+        }
     }
     @ViewBuilder private var actions: some View {
-        if conclusion == .buy {
-            Button("买了，记一笔") { recording = true }.buttonStyle(PrimaryButtonStyle(compact: true))
+        if monthEnough {
+            Button("买了，记一笔") { recordingFromReserve = false; recording = true }.buttonStyle(PrimaryButtonStyle(compact: true))
             Button(wishTitle, action: saveWish).buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).disabled(wishID != nil)
+                .accessibilityIdentifier("purchaseSaveWish").accessibilityHint(waitHours > 0 ? "加入后等待 \(waitHours) 小时" : "加入心愿单")
         } else {
             Button(wishTitle, action: saveWish).buttonStyle(PrimaryButtonStyle(compact: true)).disabled(wishID != nil)
-            Button("我还是要买") { recording = true }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+                .accessibilityIdentifier("purchaseSaveWish").accessibilityHint(waitHours > 0 ? "加入后等待 \(waitHours) 小时" : "加入心愿单")
+            if reserveEnough {
+                Button("从存着的钱买") { recordingFromReserve = true; recording = true }
+                    .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("buyFromReserve")
+            } else {
+                Button("我还是要买") { recordingFromReserve = false; recording = true }
+                    .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
+            }
         }
     }
     private func saveWish() {
         guard wishID == nil else { return }
         let submitted = verdict ?? SubmittedPurchaseVerdict(verdict: conclusion, reason: reason, need: .unclear, boundReason: assessment.reason)
+        let now = Dates.now
         var addedID: UUID?
         if store.update("加入心愿单", showToast: false, { ledger in
-            addedID = try Wishlist.add(fromVerdict: submitted, title: purchase.title, amount: purchase.amount, category: purchase.category,
-                                     subcategory: purchase.subcategory, in: &ledger).id
+            addedID = try Wishlist.keepConsidered(fromVerdict: submitted, title: purchase.title, amount: purchase.amount, category: purchase.category,
+                                     subcategory: purchase.subcategory, in: &ledger, now: now).id
         }) { wishID = addedID }
     }
 }
@@ -185,6 +192,9 @@ private struct PurchaseDetailsView: View {
     private var evidenceRows: [Entry] { store.evidenceEntries(Set(evidence), activeOnly: true) }
     var body: some View {
         Page {
+            if affordability == nil && habit == nil {
+                EmptyState("list.bullet", "没有记录", action: "看账本", onAction: { store.sheet = nil; store.destination = .ledger })
+            }
             Card {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                     fact("付得起吗", affordability)
@@ -199,7 +209,7 @@ private struct PurchaseDetailsView: View {
                 }
             }
             CardRows(evidenceRows) { entry in EntryLink(entry: entry, hideAmount: store.preferences.hideAmounts) }
-        }.navigationTitle("明细").yubaiNavigation()
+        }.navigationTitle("依据").yubaiNavigation()
     }
     private func areaQuotes(_ key: String) -> some View {
         let rows: [JSONValue] = values?[key]?.arrayValue ?? []
@@ -208,10 +218,12 @@ private struct PurchaseDetailsView: View {
             else if let title = row["title"]?.stringValue { quote(title) }
         }
     }
-    private func fact(_ title: String, _ value: String?) -> some View {
+    @ViewBuilder private func fact(_ title: String, _ value: String?) -> some View {
+        if let value {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            Text(store.preferences.hideAmounts ? "金额已隐藏" : value ?? "没有记录").yubaiFont(YubaiFont.body)
+            Text(store.preferences.hideAmounts ? "金额已隐藏" : value).yubaiFont(YubaiFont.body)
+        }
         }
     }
     private func quote(_ text: String) -> some View {

@@ -67,14 +67,19 @@ target = add("target", f'isa = PBXNativeTarget; buildConfigurationList = {config
 project_configs = [add("project-config:" + name, f'isa = XCBuildConfiguration; buildSettings = {{CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; ENABLE_USER_SCRIPT_SANDBOXING = YES; ENABLE_TESTABILITY = {"YES" if name == "Debug" else "NO"};}}; name = {name};') for name in ['Debug', 'Release']]
 project_config_list = add("project-configs", f'isa = XCConfigurationList; buildConfigurations = ({",".join(project_configs)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
 project_id = add("project", f'isa = PBXProject; attributes = {{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 2640; }}; buildConfigurationList = {project_config_list}; compatibilityVersion = "Xcode 16.0"; developmentRegion = "zh-Hans"; hasScannedForEncodings = 0; knownRegions = (en, "zh-Hans", Base,); mainGroup = {group}; packageReferences = ({package},); productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; targets = ({target},);')
-ui_ref = add("ui-test-file", 'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/YubaiUITests/AppFlowTests.swift; sourceTree = "<group>";')
-ui_file_build = add("ui-test-file-build", f'isa = PBXBuildFile; fileRef = {ui_ref};')
+ui_refs, ui_builds = [], []
+for file in sorted((root / "Tests/YubaiUITests").glob("*.swift")):
+    # Preserve the established AppFlow object IDs when adding more UI test files.
+    suffix = "" if file.name == "AppFlowTests.swift" else ":" + file.name
+    ref = add("ui-test-file" + suffix, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {quote(file.relative_to(root))}; sourceTree = "<group>";')
+    ui_refs.append(ref)
+    ui_builds.append(add("ui-test-file-build" + suffix, f'isa = PBXBuildFile; fileRef = {ref};'))
 motion_ref = ident("Sources/YubaiApp/MotionState.swift")
 motion_ui_build = add("motion-ui-test-build", f'isa = PBXBuildFile; fileRef = {motion_ref};')
-objects[group] = objects[group].replace(f'{source_group},{config_ref},{signing_ref},{products},', f'{source_group},{config_ref},{signing_ref},{ui_ref},{products},')
+objects[group] = objects[group].replace(f'{source_group},{config_ref},{signing_ref},{products},', f'{source_group},{config_ref},{signing_ref},{",".join(ui_refs)},{products},')
 ui_product = add("ui-test-product", 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YubaiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
 objects[products] = objects[products].replace(f'{product},', f'{product},{ui_product},')
-ui_sources = add("ui-test-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({ui_file_build},{motion_ui_build},); runOnlyForDeploymentPostprocessing = 0;')
+ui_sources = add("ui-test-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(ui_builds + [motion_ui_build])},); runOnlyForDeploymentPostprocessing = 0;')
 ui_frameworks = add("ui-test-frameworks", 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
 ui_proxy = add("ui-test-proxy", f'isa = PBXContainerItemProxy; containerPortal = {project_id}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Yubai;')
 ui_dependency = add("ui-test-dependency", f'isa = PBXTargetDependency; target = {target}; targetProxy = {ui_proxy};')

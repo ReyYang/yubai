@@ -4,7 +4,7 @@ import YubaiCore
 /// The shared two-step picker. The caller commits additions and assignments in
 /// its own transaction, so quick sorting retains one save and one undo.
 struct CategoryPicker: View {
-    enum Style { case grid, sections }
+    enum Style { case grid, sections, entry }
     @Environment(AppStore.self) private var store
     let income: Bool
     var selected: CategoryAssignment? = nil
@@ -12,19 +12,23 @@ struct CategoryPicker: View {
     var applyingCount = 0
     var identifier = "categoryPicker"
     var style = Style.grid
+    var addInline: ((String?) -> Void)? = nil
     let choose: (CategoryAssignment, CategoryAddition?) -> Bool
     @State private var expanded: String?
     @State private var adding = false
 
     private var categories: [YubaiCore.Category] {
         let ordered = store.current.orderedCategories(income: income)
-        if style == .sections { return ordered }
+        if style != .grid { return ordered }
         return ordered.filter { $0.name == suggested } + ordered.filter { $0.name != suggested }
     }
     var body: some View {
         Group {
-            if style == .sections { sections }
-            else { grid }
+            switch style {
+            case .sections: sections
+            case .entry: entrySections
+            case .grid: grid
+            }
         }
         .sheet(isPresented: $adding) {
             NavigationStack {
@@ -74,13 +78,56 @@ struct CategoryPicker: View {
             addButton
         }
     }
+    /// 记一笔的「选分类」：常用在上，全部在下；选中的大类若有小项，小项列在下面。
+    private var entrySections: some View {
+        let frequent = Array(categories.prefix(4))
+        let rest = Array(categories.dropFirst(4))
+        return VStack(alignment: .leading, spacing: YubaiSpace.space20) {
+            entryGroup("常用", frequent)
+            if !rest.isEmpty { entryGroup("全部", rest) }
+            if let main = categories.first(where: { $0.name == selected?.category }), !main.subcategories.isEmpty {
+                entrySubcategories(main)
+            }
+            Button { if let addInline { addInline(nil) } else { adding = true } } label: {
+                Label("新分类", systemImage: "plus").yubaiFont(YubaiFont.callout, weight: .medium)
+                    .foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func entryGroup(_ title: String, _ list: [YubaiCore.Category]) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text(title).yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                .padding(.horizontal, YubaiSpace.space4)
+            ChipFlow {
+                ForEach(list) { category in
+                    CategoryChoiceChip(title: category.name, selected: selected?.category == category.name,
+                                       outlined: suggested == category.name && selected?.category != category.name) {
+                        _ = choose(.init(category: category.name), nil)
+                    }.accessibilityIdentifier(identifier + "Category_" + category.name)
+                }
+            }
+        }
+    }
+    private func entrySubcategories(_ main: YubaiCore.Category) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            Text(main.name).yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                .padding(.horizontal, YubaiSpace.space4)
+            ChipFlow {
+                ForEach(main.subcategories, id: \.self) { sub in
+                    CategoryChoiceChip(title: sub, selected: selected == .init(category: main.name, subcategory: sub)) {
+                        _ = choose(.init(category: main.name, subcategory: sub), nil)
+                    }.accessibilityIdentifier(identifier + "Subcategory_" + main.name + "/" + sub)
+                }
+            }
+        }
+    }
     private var addButton: some View {
-        Button { adding = true } label: {
+        Button { if let addInline { addInline(expanded) } else { adding = true } } label: {
             Label("加一个", systemImage: "plus").yubaiFont(YubaiFont.button)
                 .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
                 .foregroundStyle(YubaiColor.brandInk)
-                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: 1) }
+                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: YubaiSize.separator) }
                 .contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
     }
@@ -91,11 +138,11 @@ struct CategoryPicker: View {
             else { withAnimation(YubaiMotion.quick) { expanded = expanded == category.name ? nil : category.name } }
         } label: {
             Text(category.name).yubaiFont(YubaiFont.button, weight: active || suggested == category.name ? .semibold : .regular)
-                .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
+                .fixedSize(horizontal: false, vertical: true).padding(.horizontal, YubaiSpace.gapGroup)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
                 .foregroundStyle(active ? YubaiColor.onBrand : (suggested == category.name ? YubaiColor.brandInk : YubaiColor.label))
                 .background(active ? YubaiColor.brand : YubaiColor.raised, in: Capsule())
-                .overlay { if !active && suggested == category.name { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 2) } }
+                .overlay { if !active && suggested == category.name { Capsule().strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
                 .contentShape(Capsule())
         }.buttonStyle(PressButtonStyle()).opacity(expanded != nil && expanded != category.name ? 0.45 : 1)
             .accessibilityAddTraits(active ? .isSelected : [])
@@ -115,25 +162,6 @@ struct CategoryPicker: View {
             }.accessibilityIdentifier(identifier + "MainOnly_" + category.name)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.gapGroup)
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
-    }
-}
-
-struct CategoryChoiceChip: View {
-    let title: String
-    var selected = false
-    var outlined = false
-    var prominent = false
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Text(title).yubaiFont(prominent ? YubaiFont.button : YubaiFont.callout, weight: prominent ? .semibold : nil)
-                .lineLimit(1).fixedSize()
-                .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
-                .foregroundStyle(selected ? YubaiColor.onBrand : (outlined ? YubaiColor.brandInk : YubaiColor.label))
-                .background(selected ? YubaiColor.brand : (outlined ? Color.clear : YubaiColor.raised), in: Capsule())
-                .overlay { if outlined { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1) } }
-                .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
-        }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -189,9 +217,11 @@ struct CategoryAdditionSheet: View {
     private let initialParent: String?
     @State private var name = ""
     @State private var allParents = false
-    init(income: Bool, parent: String?, applyingCount: Int = 0, add: @escaping (CategoryAddition) -> Bool) {
+    private let inlineCancel: (() -> Void)?
+    init(income: Bool, parent: String?, applyingCount: Int = 0, cancel: (() -> Void)? = nil, add: @escaping (CategoryAddition) -> Bool) {
         self.income = income; _parent = State(initialValue: parent); initialParent = parent
         self.applyingCount = applyingCount; self.add = add
+        inlineCancel = cancel
     }
     private var addition: CategoryAddition { .init(name: name, parent: parent, income: income) }
     private var validationError: String? {
@@ -206,11 +236,7 @@ struct CategoryAdditionSheet: View {
     var body: some View {
         Page(spacing: YubaiSpace.space24, topPadding: YubaiSpace.space8) {
             Card(style: .list) {
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text("名字").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                    TextField("", text: $name).yubaiFont(YubaiFont.row).accessibilityLabel("名字").accessibilityIdentifier("categoryAdditionName")
-                    if !name.isEmpty { InlineFieldError(message: validationError) }
-                }.padding(.vertical, YubaiSpace.space8)
+                CardTextFieldRow(title: "名字", text: $name, identifier: "categoryAdditionName", autofocus: true, error: name.isEmpty ? nil : validationError)
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 Text("放在").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -226,8 +252,10 @@ struct CategoryAdditionSheet: View {
                     }
                 }
             }
-        }.manualSheetHeader("加一个", actionTitle: "加上", enabled: valid, actionIdentifier: "categoryAdditionSave", action: {
-            if add(addition) { dismiss() }
+        }.manualSheetHeader("加一个", actionTitle: "加上", enabled: valid, actionIdentifier: "categoryAdditionSave", cancel: {
+            if let inlineCancel { inlineCancel() } else { dismiss() }
+        }, action: {
+            if add(addition) { if let inlineCancel { inlineCancel() } else { dismiss() } }
         })
     }
 }
@@ -254,23 +282,24 @@ private struct CategoryGridLayout: Layout {
         let base = max(0, (width - gap * 2) / 3)
         let panel = subviews.indices.first { subviews[$0][CategoryPanelKey.self] }
         var frames = Array(repeating: CGRect.zero, count: subviews.count)
-        var row: [Int] = []; var rowWidth: CGFloat = 0; var rowHeight: CGFloat = 0; var y: CGFloat = 0
+        var row: [Int] = []; var rowWidth: CGFloat = .zero; var rowHeight: CGFloat = .zero; var y: CGFloat = .zero
         func flush() {
             guard !row.isEmpty else { return }
             y += rowHeight + gap
             if row.contains(where: { subviews[$0][CategoryExpandedKey.self] }), let panel {
                 let size = subviews[panel].sizeThatFits(ProposedViewSize(width: width, height: nil))
-                frames[panel] = CGRect(x: 0, y: y, width: width, height: size.height); y += size.height + gap
+                frames[panel] = CGRect(x: YubaiSpace.none, y: y, width: width, height: size.height); y += size.height + gap
             }
             row = []; rowWidth = 0; rowHeight = 0
         }
         for i in subviews.indices where i != panel {
             let ideal = subviews[i].sizeThatFits(.unspecified)
-            let tileWidth = max(base, ideal.width)
+            let tileWidth = min(width, max(base, ideal.width))
+            let size = subviews[i].sizeThatFits(ProposedViewSize(width: tileWidth, height: nil))
             if !row.isEmpty && (row.count == 3 || rowWidth + gap + tileWidth > width + 0.5) { flush() }
             let x = row.isEmpty ? 0 : rowWidth + gap
-            frames[i] = CGRect(x: x, y: y, width: tileWidth, height: ideal.height)
-            row.append(i); rowWidth = x + tileWidth; rowHeight = max(rowHeight, ideal.height)
+            frames[i] = CGRect(x: x, y: y, width: tileWidth, height: size.height)
+            row.append(i); rowWidth = x + tileWidth; rowHeight = max(rowHeight, size.height)
         }
         flush()
         return (CGSize(width: width, height: max(0, y - gap)), frames)

@@ -1,0 +1,289 @@
+import XCTest
+
+final class Round47ButlerFlowTests: YubaiUITestCase {
+    private var app: XCUIApplication!
+    override func setUpWithError() throws { continueAfterFailure = false }
+    override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
+    private func element(_ id: String) -> XCUIElement { control(id, in: app) }
+    private func launch(_ fixture: String = "v47-ai-valid", large: Bool = false, hidden: Bool = false, configured: Bool? = nil) {
+        app = XCUIApplication()
+        app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+        app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
+        app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = (configured ?? (fixture != "v47-c-empty")) ? "1" : "0"
+        app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
+        app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
+        launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
+    }
+    private func tap(_ id: String) {
+        let target = element(id)
+        tapControl(target, in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
+    }
+
+    private func wait(_ condition: @escaping () -> Bool) {
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)], timeout: 10), .completed)
+    }
+    private func frequentMenu() {
+        let pill = element("addEntry")
+        XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(30)))
+        XCTAssertTrue(waitForStableFrame(pill))
+        pill.press(forDuration: 0.8)
+        XCTAssertTrue(element("quickRepeatMenu").waitForExistence(timeout: 5))
+        tap("manageQuickRepeats")
+    }
+    private func settings() { tap("openSettings"); tap("openIntelligencePrivacy"); XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5)) }
+    private func backToRoot() {
+        for _ in 0..<8 {
+            if element("mainNavigation").exists && element("mainNavigation").isHittable { return }
+            let custom = element("BackButton")
+            if custom.exists { custom.tap() } else { app.navigationBars.buttons.firstMatch.tap() }
+        }
+    }
+    func testVerifiedCardShowsCodeNumbersAndPushesEvidence() {
+        launch(); XCTAssertTrue(element("butlerSuggestionCard").waitForExistence(timeout: 10))
+        XCTAssertTrue(element("butlerAIText").label.contains("7 次，共 214.00"))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "butlerSuggestionCard").count, 1)
+        tap("butlerAIEvidence"); XCTAssertTrue(element("butlerAIEvidencePage").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("mainNavigation").exists)
+        XCTAssertFalse(element("addEntry").exists)
+        XCTAssertTrue(element("butlerEvidenceTitle").label.contains("214.00")); XCTAssertTrue(element("butlerEvidenceMemories").exists)
+        XCTAssertTrue(element("butlerEvidenceMore").label.contains("3 笔"))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "butlerEvidenceMore").count, 1)
+        tap("butlerEvidenceEntry_" + String(format: "47000000-0000-0000-0000-%012d", 472101))
+        XCTAssertTrue(element("entryDetailEdit").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("mainNavigation").exists)
+        element("BackButton").tap()
+        tap("butlerEvidenceMore")
+        XCTAssertFalse(element("mainNavigation").exists)
+        XCTAssertTrue(element("butlerEvidenceEntry_" + String(format: "47000000-0000-0000-0000-%012d", 472107)).waitForExistence(timeout: 5))
+    }
+    func testTrialLeavesOneReviewAndWritesFeedbackMemory() {
+        launch(); tap("butlerAIAccept"); wait { !self.element("butlerSuggestionCard").exists }
+        settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("reviews=1;memories=2"))
+    }
+    func testNeverAnswerPersistsAcrossRelaunch() {
+        launch(); tap("butlerAINever"); app.terminate(); launchApp(app)
+        XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
+        XCTAssertFalse(element("butlerSuggestionCard").exists)
+        settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0"))
+    }
+    func testCorrectionWithSentenceWritesMemoryAndClosesEvidence() {
+        launch(); tap("butlerAIEvidence"); tap("butlerAIIncorrect")
+        typeIntoField("周四是和同事拼单", identifier: "butlerAICorrectionText", in: app)
+        tap("butlerAICorrectionSave")
+        XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
+        XCTAssertTrue(waitForDisappearance(element("butlerAIEvidencePage")))
+        tap("tab_yubai"); tap("openMemories")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "周四是和同事拼单")).firstMatch.waitForExistence(timeout: 5))
+    }
+    func testCorrectionCanBeSubmittedWithoutSentence() {
+        launch(); tap("butlerAIEvidence"); tap("butlerAIIncorrect"); tap("butlerAICorrectionSave")
+        wait { !self.element("butlerAIEvidencePage").exists }
+        settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("memories=2"))
+    }
+    func testCorrectionTypingKeepsAppResponsiveAtDefaultAndLargestText() {
+        for large in [false, true] {
+            launch(large: large); tap("butlerAIEvidence"); tap("butlerAIIncorrect")
+            typeIntoField("周四是和同事拼单", identifier: "butlerAICorrectionText", in: app)
+            let cancel = element("cancelManualSheet")
+            XCTAssertTrue(cancel.exists && cancel.isHittable)
+            let deadline = ProcessInfo.processInfo.systemUptime + 5
+            cancel.tap()
+            XCTAssertTrue(UIConditionWait.run(timeout: 3, deadline: deadline, read: {
+                !self.element("butlerAICorrectionText").exists && self.element("butlerAIEvidencePage").exists
+            }), "Correction must respond to a second control within five seconds (large=\(large))")
+            XCTAssertLessThan(ProcessInfo.processInfo.systemUptime, deadline)
+            app.terminate()
+        }
+    }
+    func testScriptedWrongSumUnknownIDUnknownActionMalformedAndEmptyNeverEnterQueue() {
+        for fixture in ["v47-ai-wrong-sum", "v47-ai-unknown-id", "v47-ai-unknown-action", "v47-ai-malformed", "v47-ai-none"] {
+            launch(fixture); settings()
+            wait { (self.element("butlerLastRun").value as? String ?? "").contains("requests=1;suggestions=0") }
+            backToRoot(); XCTAssertFalse(element("butlerSuggestionCard").exists); app.terminate()
+        }
+    }
+    func testSeveralSuggestionsStillShowOneCardAtATime() {
+        launch("v47-ai-many"); tap("butlerAIAccept")
+        XCTAssertTrue(element("butlerSuggestionCard").waitForExistence(timeout: 5))
+        tap("butlerAINever"); wait { !self.element("butlerSuggestionCard").exists }
+        settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("suggestions=2;reviews=1;memories=3"))
+    }
+    func testOrdinaryRelaunchDoesNotRequestAgain() {
+        launch(); XCTAssertTrue(element("butlerSuggestionCard").waitForExistence(timeout: 10))
+        app.terminate(); launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
+        settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0;suggestions=1"))
+    }
+    func testToggleOffPersistsAndHidesSuggestions() {
+        launch(); XCTAssertTrue(element("butlerSuggestionCard").waitForExistence(timeout: 10)); settings()
+        tap("aiFeature_butlerSuggestions"); XCTAssertEqual(element("aiFeature_butlerSuggestions").value as? String, "0")
+        backToRoot(); XCTAssertFalse(element("butlerSuggestionCard").exists)
+        app.terminate(); launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
+        settings(); XCTAssertEqual(element("aiFeature_butlerSuggestions").value as? String, "0")
+    }
+    func testDueTwoWeekReviewWorksOfflineWithoutNewRequest() {
+        launch("v47-ai-review"); XCTAssertTrue(element("butlerAIReviewCard").waitForExistence(timeout: 10))
+        tap("butlerAIReviewDone"); wait { !self.element("butlerAIReviewCard").exists }
+        settings(); XCTAssertEqual(element("cloudAIToggle").value as? String, "0")
+        XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0"))
+    }
+    func testLargestTextAndHiddenAmountsKeepEvidenceAndActionsReachable() {
+        launch("v47-ai-hard", large: true, hidden: true); tap("butlerAIEvidence")
+        XCTAssertTrue(element("butlerEvidenceTitle").label.contains("••••"))
+        XCTAssertFalse(element("butlerEvidenceTitle").label.contains("1,234,567.89"))
+        tap("butlerAIIncorrect"); tap("butlerAICorrectionSave")
+    }
+    func testEmptyLedgerActionsOpenCaptureAndImport() {
+        launch("v47-c-empty"); tap("tab_ledger"); XCTAssertTrue(element("emptyState_ledger").exists)
+        tap("emptyLedgerAdd"); XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5)); tap("cancelManualSheet")
+        tap("emptyLedgerImport"); XCTAssertTrue(element("chooseBillFile").waitForExistence(timeout: 5))
+    }
+    func testEmptyAssistantExamplesSendImmediatelyAndValuesAndMemoriesHaveSharedState() {
+        launch("v47-c-empty", configured: true); tap("tab_yubai"); XCTAssertTrue(element("emptyState_assistant").exists)
+        for index in 0..<3 {
+            XCTAssertGreaterThanOrEqual(element("askSuggestion_\(index)").frame.height, 44)
+            XCTAssertEqual(element("askSuggestion_\(index)").frame.minX, element("askSuggestion_0").frame.minX, accuracy: 1)
+        }
+        tap("askSuggestion_0"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); backToRoot()
+        tap("tab_yubai"); tap("openProfile"); XCTAssertTrue(element("emptyState_profile").exists)
+        tap("addPrinciple"); XCTAssertTrue(element("principleText").waitForExistence(timeout: 5)); tap("cancelManualSheet")
+        backToRoot(); tap("tab_yubai"); tap("openMemories"); XCTAssertTrue(element("emptyState_memories").exists)
+        XCTAssertTrue(element("emptyMemories").exists)
+    }
+    func testEmptySavingWishBillsBudgetAndFrequentActionsAreConnected() {
+        launch("v47-c-empty"); tap("openSaving"); XCTAssertTrue(element("emptyState_saving").exists)
+        XCTAssertFalse(element("reserveTotal").exists)
+        XCTAssertFalse(element("takeSavings").exists)
+        XCTAssertTrue(element("savingFirstRule").exists)
+        XCTAssertFalse(element("openWishlist").exists)
+        tap("setFirstSavingTarget"); tap("keypad_2"); tap("keypad_0"); tap("keypad_0"); tap("saveSavingsAmount")
+        XCTAssertFalse(element("emptyState_saving").exists)
+        tap("openWishlist"); XCTAssertTrue(element("emptyState_wish").exists)
+        XCTAssertFalse(element("wishlistSavings").exists)
+        tap("emptyAction_wish")
+        XCTAssertTrue(element("wishTitle").waitForExistence(timeout: 5)); tap("cancelManualSheet"); backToRoot()
+        tap("openSettings"); tap("openFixedFlows"); XCTAssertTrue(element("emptyState_bills").waitForExistence(timeout: 5))
+        tap("emptyAction_bills"); XCTAssertTrue(element("fixedFlowTitle").waitForExistence(timeout: 5)); tap("cancelManualSheet"); backToRoot()
+        tap("openSettings"); tap("openSpendingParts"); XCTAssertTrue(element("emptyState_budget").exists)
+        tap("addBudgetPart"); XCTAssertTrue(element("budgetPartName").waitForExistence(timeout: 5)); tap("cancelManualSheet"); backToRoot()
+        frequentMenu(); XCTAssertTrue(element("emptyState_frequent").exists)
+        tap("emptyAction_frequent"); XCTAssertTrue(element("frequentEntryPurpose").waitForExistence(timeout: 5))
+    }
+    func testSearchNoResultsHasTwoDistinctExits() {
+        launch(); tap("tab_ledger")
+        let field = element("entriesSearch"); field.tap(); field.typeText("星巴克")
+        XCTAssertTrue(element("emptyState_search").waitForExistence(timeout: 5))
+        tap("emptySecondary_search"); XCTAssertTrue(element("emptyState_search").exists)
+        tap("emptyAction_search"); XCTAssertFalse(element("emptyState_search").exists)
+    }
+    func testNoKeyDefaultsSuggestionToggleOffAndNeverRequests() {
+        launch("v47-c-empty"); settings()
+        XCTAssertEqual(element("aiFeature_butlerSuggestions").value as? String, "0")
+        XCTAssertFalse(element("aiFeature_butlerSuggestions").isEnabled)
+        XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0"))
+    }
+    func testAddingFrequentTemplateSavesWithoutRecordingAnEntry() {
+        launch("v47-c-empty"); frequentMenu(); tap("emptyAction_frequent")
+        typeIntoField("午饭\n", identifier: "frequentEntryPurpose", in: app)
+        tap("keypad_2"); tap("keypad_8"); tap("saveFrequentEntry")
+        XCTAssertTrue(element("frequentEntry_0").waitForExistence(timeout: 5)); tap("closeSheet")
+        tap("tab_ledger"); XCTAssertTrue(element("emptyState_ledger").exists)
+    }
+    func testNestedFrequentFieldPaddingTakesFocusAfterReopening() {
+        launch("v47-c-empty", large: true)
+        frequentMenu()
+        for _ in 0..<2 {
+            tap("emptyAction_frequent")
+            let field = element("frequentEntryPurpose")
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitForStableFrame(field))
+            XCTAssertGreaterThanOrEqual(field.frame.height, 44)
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95)).tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+            wait { !self.element("keypad_1").exists }
+            XCTAssertTrue(waitForStableFrame(field))
+            XCTAssertEqual(windowMetrics(in: app)?.focused, "frequentEntryPurpose")
+            field.typeText("午")
+            XCTAssertTrue(waitForStableFrame(field))
+            XCTAssertTrue(app.keyboards.firstMatch.exists)
+            XCTAssertEqual(windowMetrics(in: app)?.focused, "frequentEntryPurpose")
+            field.typeText("饭\n")
+            XCTAssertTrue((field.value as? String ?? "").contains("午饭"))
+            tap("amountSheetCancel")
+        }
+        XCTAssertTrue(element("emptyState_frequent").exists)
+    }
+    func testPaydayTopupAndAISuggestionBothSurviveAnswersAndRelaunch() {
+        launch("v47-ai-topup")
+        XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 10))
+        settings()
+        wait { (self.element("butlerLastRun").value as? String ?? "").contains("requests=1;suggestions=1") }
+        backToRoot()
+        tap("savingsTopupAll")
+        tap("butlerAIAccept")
+        wait { !self.element("butlerSuggestionCard").exists && !self.element("savingsTopupCard").exists }
+        app.terminate(); launchApp(app)
+        XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
+        XCTAssertFalse(element("savingsTopupCard").exists)
+        XCTAssertFalse(element("butlerSuggestionCard").exists)
+        settings()
+        XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0;suggestions=1;reviews=1;memories=2"))
+        backToRoot(); tap("openSaving")
+        XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("reserveTotal").label.contains("5,000.00"))
+    }
+    func testCombinedDeckKeepsBothTasksReachableWithLargestTextAndHiddenAmounts() {
+        launch("v47-ai-topup-hard", large: true, hidden: true)
+        XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 10))
+        settings()
+        wait { (self.element("butlerLastRun").value as? String ?? "").contains("suggestions=1") }
+        backToRoot(); tap("openLetterInbox")
+        XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 5))
+        tap("butlerDeckNext"); tap("butlerAIEvidence")
+        XCTAssertTrue(element("butlerEvidenceTitle").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("butlerEvidenceTitle").label.contains("••••"))
+        tap("butlerAIIncorrect"); tap("butlerAICorrectionSave")
+        backToRoot()
+        XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 5))
+        tap("savingsTopupDecline")
+        wait { !self.element("savingsTopupCard").exists }
+    }
+    func testEvidenceLastRowClearsViewportAndFixedActionsAndCorrectionPaddingWorkAtLargestText() {
+        launch(large: true); tap("butlerAIEvidence")
+        XCTAssertTrue(element("butlerAIEvidencePage").waitForExistence(timeout: 5))
+        let scroll = app.scrollViews["butlerAIEvidencePage"]
+        XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(30)))
+        XCTAssertTrue(waitForStableFrame(scroll))
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'butlerEvidenceEntry_' OR identifier == 'butlerEvidenceMore'"))
+        XCTAssertGreaterThan(rows.count, 0)
+        XCTAssertTrue(rows.firstMatch.isHittable)
+        for id in ["butlerAIAccept", "butlerAINever", "butlerAIIncorrect"] {
+            assertViewport(scroll, clears: element(id))
+        }
+        let last = element("butlerEvidenceEntry_47000000-0000-0000-0000-000000472104"), more = element("butlerEvidenceMore")
+        XCTAssertTrue(revealControl(more, in: app, deadline: Date().addingTimeInterval(60)))
+        scroll.swipeUp()
+        XCTAssertTrue(waitForStableFrame(last))
+        for row in [last, more] {
+            XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(row.frame), row.identifier)
+            XCTAssertLessThanOrEqual(row.frame.maxY, element("butlerAIAccept").frame.minY, row.identifier)
+            XCTAssertTrue(row.isHittable)
+        }
+        let crossing = element("butlerEvidenceEntry_47000000-0000-0000-0000-000000472103")
+        XCTAssertTrue(placeControl(crossing, across: element("butlerAIAccept"), in: scroll, atTop: false))
+        tap("butlerAIIncorrect")
+        XCTAssertFalse(element("entryDetailEdit").exists)
+        let field = element("butlerAICorrectionText")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForStableFrame(field))
+        XCTAssertGreaterThanOrEqual(field.frame.height, 44)
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+        field.typeText("周四是和同事拼单")
+        XCTAssertTrue((field.value as? String ?? "").contains("周四是和同事拼单"))
+        tap("butlerAICorrectionSave")
+        wait { !self.element("butlerAICorrectionText").exists && !self.element("butlerAIEvidencePage").exists }
+    }
+}

@@ -236,31 +236,52 @@ struct ActiveLedgerTransport: ChatTransport {
     }
 }
 
+/// Rebuild the backend with current feature preferences immediately before every request.
+private struct FeatureCloudTransport: ChatTransport {
+    let backend: @MainActor @Sendable () -> (any ChatTransport)?
+    func send(_ request: ChatRequest) async throws -> ChatMessage {
+        try Task.checkCancellation()
+        guard let transport = await backend() else { throw CancellationError() }
+        return try await transport.send(request)
+    }
+}
+
 @MainActor extension AppStore {
-    func assistantTransport(for snapshot: Ledger, reportingLedgerChanges: Bool = false, preparedRedactor: Redactor? = nil) -> (any ChatTransport)? {
+    func assistantTransport(for snapshot: Ledger, feature: AIFeature = .answers, reportingLedgerChanges: Bool = false, preparedRedactor: Redactor? = nil) -> (any ChatTransport)? {
         let revision = ledgerRevision
         let continuingOrganization = reportingLedgerChanges && organizationContinuesInBackground
-        guard snapshot.preferences.cloudAIEnabled, !locked || continuingOrganization, reportingLedgerChanges || IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
+        guard preferences.isAIEnabled(for: feature), !locked || continuingOrganization, reportingLedgerChanges || IntelligenceRuntime.cloud.unavailableModel == nil else { return nil }
         #if DEBUG && targetEnvironment(simulator)
         if let script = UITestSupport.script {
             guard IntelligenceRuntime.isConfigured else { return nil }
             return ActiveLedgerTransport(base: UITestTransport(script: script), staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
-                (reportingLedgerChanges || self.ledgerRevision == revision) && self.current.preferences.cloudAIEnabled && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground))
+                (reportingLedgerChanges || self.ledgerRevision == revision) && self.preferences.isAIEnabled(for: feature) && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground))
             }
         }
         #endif
         let configuration = continuingOrganization ? organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
         guard let configuration else { return nil }
-        let client = DeepSeekClient(configuration: configuration, redactor: preparedRedactor ?? Redactor(ledger: snapshot))
-        return ActiveLedgerTransport(base: client, model: reportingLedgerChanges ? nil : client.configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
+        let snapshotConfiguration = configuration
+        let redactor = preparedRedactor ?? Redactor(ledger: snapshot)
+        let live = FeatureCloudTransport { [weak self] in
+            guard let self, self.preferences.isAIEnabled(for: feature), !self.locked || (continuingOrganization && self.organizationContinuesInBackground) else { return nil }
+            #if os(iOS)
+            if continuingOrganization && UIApplication.shared.applicationState != .active {
+                guard let authorized = self.organizationExecution?.configurationForTransport() else { return nil }
+                return CloudBackend(client: DeepSeekClient(configuration: authorized, redactor: redactor))
+            }
+            #endif
+            return CloudBackend.configured(preferences: self.preferences, feature: feature, redactor: redactor)
+        }
+        return ActiveLedgerTransport(base: live, model: reportingLedgerChanges ? nil : configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
             let configuration = continuingOrganization ? self.organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
-            return (reportingLedgerChanges || self.ledgerRevision == revision) && self.current.preferences.cloudAIEnabled && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground)) && (reportingLedgerChanges ? configuration?.baseURL == client.configuration.baseURL && configuration?.apiKey == client.configuration.apiKey : configuration == client.configuration)
+            return (reportingLedgerChanges || self.ledgerRevision == revision) && self.preferences.isAIEnabled(for: feature) && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground)) && (reportingLedgerChanges ? configuration?.baseURL == snapshotConfiguration.baseURL && configuration?.apiKey == snapshotConfiguration.apiKey : configuration == snapshotConfiguration)
         }
     }
     // Called only by the now-page's explicit organization button.
     func startOrganizingPendingImports() {
         guard pendingOrganizationTask == nil, organizationExecution == nil, !preparingImportOrganization, !organizingPendingImports, organizingBatchID == nil,
-              !locked, loadFailure == nil, current.preferences.cloudAIEnabled else { return }
+              !locked, loadFailure == nil, preferences.isAIEnabled(for: .importClassification) else { return }
         let ids = pendingOrganization.batchIDs
         guard !ids.isEmpty else { return }
         pendingOrganizationTask = Task { @MainActor in
@@ -323,7 +344,7 @@ struct ActiveLedgerTransport: ChatTransport {
         guard !organizingPendingImports, organizingBatchID == nil else { return }
         defer { organizingPendingImports = false; finishImportOrganization() }
         guard !Task.isCancelled, !locked || organizationContinuesInBackground,
-              loadFailure == nil, current.preferences.cloudAIEnabled else { return }
+              loadFailure == nil, preferences.isAIEnabled(for: .importClassification) else { return }
         let ids = current.imports.filter {
             $0.needsOrganization == true && $0.undoneAt == nil && (organizationExecution == nil || organizingImportBatchIDs.contains($0.id))
         }.map(\.id)
@@ -339,7 +360,7 @@ struct ActiveLedgerTransport: ChatTransport {
         guard !Task.isCancelled, importOrganizationTask == nil else { return }
         let ownsExecution = organizationExecution == nil
         if ownsExecution {
-            guard !locked, loadFailure == nil, current.preferences.cloudAIEnabled,
+            guard !locked, loadFailure == nil, preferences.isAIEnabled(for: .importClassification),
                   current.imports.contains(where: { $0.id == batchID && $0.needsOrganization == true && $0.undoneAt == nil }) else { return }
             guard await beginImportOrganization(batchIDs: [batchID]) else { return }
         }
@@ -356,7 +377,7 @@ struct ActiveLedgerTransport: ChatTransport {
     private func performImportOrganization(_ batchID: UUID) async {
         guard !Task.isCancelled, organizingBatchID == nil, !locked || organizationContinuesInBackground,
               let batch = current.imports.first(where: { $0.id == batchID }), batch.needsOrganization == true,
-              batch.undoneAt == nil, current.preferences.cloudAIEnabled,
+              batch.undoneAt == nil, preferences.isAIEnabled(for: .importClassification),
               IntelligenceRuntime.isConfigured else { return }
         let before = current
         let ids = ImportOrganizer.pendingEntryIDs(in: before, batchID: batchID)
@@ -369,7 +390,7 @@ struct ActiveLedgerTransport: ChatTransport {
                 let redactor = Redactor(ledger: snapshot)
                 return try await MainActor.run {
                     guard !self.locked || self.organizationContinuesInBackground,
-                          let transport = self.assistantTransport(for: snapshot, reportingLedgerChanges: true, preparedRedactor: redactor) else {
+                          let transport = self.assistantTransport(for: snapshot, feature: .importClassification, reportingLedgerChanges: true, preparedRedactor: redactor) else {
                         throw YubaiError.invalid(ImportOrganizer.ledgerChangedMessage)
                     }
                     return transport
@@ -404,7 +425,7 @@ struct ActiveLedgerTransport: ChatTransport {
             try Task.checkCancellation()
             guard organizationExecution != nil, !locked || organizationContinuesInBackground,
                   loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
-                  current.preferences.cloudAIEnabled else { throw ImportOrganizer.Failure.ledgerChanged }
+                  preferences.isAIEnabled(for: .importClassification) else { throw ImportOrganizer.Failure.ledgerChanged }
             await flushPersistence()
             try Task.checkCancellation()
             let before = current, revision = ledgerRevision, repository = localRepository
@@ -452,7 +473,7 @@ struct ActiveLedgerTransport: ChatTransport {
             if let i = ledger.imports.firstIndex(where: { $0.id == batchID }) {
                 ledger.imports[i].organization?.questions.removeAll { $0.id == question.id }
             }
-            for i in ledger.cards.indices where ledger.cards[i].importQuestion?.id == question.id { ledger.cards[i].dismissedAt = Date() }
+            for i in ledger.cards.indices where ledger.cards[i].importQuestion?.id == question.id { ledger.cards[i].dismissedAt = Dates.now }
             ImportOrganization.recordUndo(batchID: batchID, before: before, in: &ledger)
         }
     }
@@ -485,9 +506,8 @@ struct ActiveLedgerTransport: ChatTransport {
         }
         if saved, quickSort, let group = snapshot.groupsByID[groupID] {
             let count = Set(change.items.flatMap(\.entryIDs)).count
-            let title = choice.map { $0.category + ($0.subcategory.map { " · " + $0 } ?? "") } ?? use.title
             showUnsortedUndo(questionID: questionID, groups: [group], change: change, before: before,
-                             label: "\(group.party) · \(count) 笔记为\(title)")
+                             label: "已整理 \(count) 笔")
         }
         return saved
     }
@@ -516,9 +536,8 @@ struct ActiveLedgerTransport: ChatTransport {
         }
         if saved {
             let count = Set(change.items.flatMap(\.entryIDs)).count
-            let title = choice.map { $0.category + ($0.subcategory.map { " · " + $0 } ?? "") } ?? use.title
             showUnsortedUndo(questionID: questionID, groups: groups, change: change, before: before,
-                             label: "\(groups.count) 组 · \(count) 笔记为\(title)")
+                             label: "已整理 \(count) 笔")
         }
         return saved
     }
@@ -562,85 +581,111 @@ struct ActiveLedgerTransport: ChatTransport {
 
 @MainActor extension AppStore {
     func refreshButler() async {
-        guard !locked, loadFailure == nil, organizingBatchID == nil, !organizingPendingImports, current.preferences.onboardingComplete else { return }
+        guard !locked, loadFailure == nil, organizingBatchID == nil, !organizingPendingImports else { return }
         do { try await Task.sleep(for: .milliseconds(800)) } catch { return }
         guard !Task.isCancelled else { return }
         // Pending imports pause automatic cloud work, while local cards still refresh.
         await classifySubcategoriesIfDue()
         await reflectMemoriesIfDue()
         guard !Task.isCancelled, !locked, organizingBatchID == nil else { return }
-        let before = current; let now = Date()
+        let before = current; let now = Dates.now
         let detection = Task.detached(priority: .utility) {
             var candidates = ButlerCards.detect(before, now: now)
             if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
             return (candidates, PendingImportOrganization(in: before))
         }
-        let (candidates, pending) = await withTaskCancellationHandler {
+        let (candidates, _) = await withTaskCancellationHandler {
             await detection.value
         } onCancel: { detection.cancel() }
         guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil, !candidates.isEmpty else { return }
-        let transport = pending.batchIDs.isEmpty ? assistantTransport(for: before) : nil
-        let worded = await ButlerWording.word(candidates, ledger: before, transport: transport)
-        guard !Task.isCancelled, current == before, !locked, organizingBatchID == nil else { return }
         var next = before
-        guard ButlerCards.refresh(&next, candidates: worded, now: now) else { return }
+        guard ButlerCards.refresh(&next, candidates: candidates, now: now) else { return }
         update("更新管家卡片", recordUndo: false) { $0.cards = next.cards }
     }
     private func classifySubcategoriesIfDue() async {
         guard !reflectingMemories, pendingOrganization.batchIDs.isEmpty,
-              current.preferences.cloudAIEnabled, SubcategoryBatch.isDue(current),
+              preferences.isAIEnabled(for: .importClassification), SubcategoryBatch.isDue(current),
               !SubcategoryBatch.pending(current).isEmpty, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
-              let transport = assistantTransport(for: current) else { return }
-        let before = current; let now = Date()
+              let transport = assistantTransport(for: current, feature: .importClassification) else { return }
+        let before = current; let now = Dates.now
         reflectingMemories = true
         defer { reflectingMemories = false }
         do {
             let result = try await SubcategoryBatch.run(transport: transport, ledger: before, now: now)
             try Task.checkCancellation()
-            guard current == before, !locked, current.preferences.cloudAIEnabled else { return }
+            guard current == before, !locked, preferences.isAIEnabled(for: .importClassification) else { return }
             update("归小项", recordUndo: false) { try result.apply(to: &$0, now: now) }
         } catch { /* Keep the local classification and retry the unpersisted round later. */ }
     }
     private func reflectMemoriesIfDue() async {
         guard !reflectingMemories, pendingOrganization.batchIDs.isEmpty,
-              MemoryReflection.isDue(ledger: current),
               syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
-              let transport = assistantTransport(for: current) else { return }
-        let before = current
+              IntelligenceRuntime.isConfigured else { return }
+        let now = Dates.now, suggestions = preferences.isAIEnabled(for: .butlerSuggestions)
+        let weekly = preferences.isAIEnabled(for: .weeklyReview)
+        if suggestions {
+            let ended = ButlerCadence.endedSpikes(current, now: now)
+            if !ended.isEmpty {
+                guard update("管家回看", preservingUpdatedAt: true, recordUndo: false, entryMotion: false, showToast: false, {
+                    ButlerCadence.endSpikes(ended, in: &$0)
+                }) else { return }
+            }
+        }
+        let triggers = ButlerCadence.due(current, now: now, suggestions: suggestions).filter { $0 != .weekly || weekly || suggestions }
+        guard !triggers.isEmpty, assistantTransport(for: current, feature: suggestions ? .butlerSuggestions : .weeklyReview) != nil else { return }
         reflectingMemories = true
         defer { reflectingMemories = false }
+        // The attempt is saved even on failure; repeated opens cannot re-send it.
+        // Keeping the content timestamp prevents this bookkeeping save from
+        // cancelling ButlerRefreshTask, whose identity includes updatedAt.
+        guard update("管家回看", preservingUpdatedAt: true, recordUndo: false, entryMotion: false, showToast: false, {
+            ButlerCadence.recordAttempt(triggers, in: &$0, now: now)
+        }) else { return }
+        let before = current
+        guard let transport = assistantTransport(for: before, feature: suggestions ? .butlerSuggestions : .weeklyReview) else { return }
         do {
-            let result = try await MemoryReflection.run(ledger: before, transport: transport)
+            let result: MemoryReflectionResult?
+            let proposed: [ButlerSuggestion]
+            if triggers.contains(.weekly) && weekly {
+                result = try await MemoryReflection.run(ledger: before, transport: transport, now: now, includeButler: suggestions)
+                proposed = []
+            } else {
+                result = nil
+                proposed = try await ButlerIntelligence.run(ledger: before, transport: transport, now: now)
+            }
             try Task.checkCancellation()
             guard current == before, !locked, organizingBatchID == nil, loadFailure == nil,
                   syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { return }
-            update("每周来信", recordUndo: false, reportError: false) { try result.apply(to: &$0) }
-        } catch { /* Leave the week pending so a later refresh can retry. */ }
+            update("每周来信", recordUndo: false, reportError: false, entryMotion: false, showToast: false) {
+                if let result { try result.apply(to: &$0, now: now) }
+                ButlerIntelligence.enqueue(proposed, in: &$0, now: now)
+            }
+        } catch { /* Keep code-only cards and the persisted cadence after a failed reply. */ }
     }
     @discardableResult func dismissCard(_ id: UUID) -> Bool {
         guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return false }
         let saved = update("收起管家卡片", showToast: false) { ledger in
-            if let i = ledger.cards.firstIndex(where: { $0.id == id }) { ledger.cards[i].dismissedAt = Date() }
+            if let i = ledger.cards.firstIndex(where: { $0.id == id }) { ledger.cards[i].dismissedAt = Dates.now }
         }
         if saved { toast = "收起了" }
         return saved
     }
     @discardableResult func muteCard(_ id: UUID) -> Bool {
         guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return false }
-        let saved = update("以后不再提这个话题", showToast: false) { ButlerCards.mute(id, in: &$0, now: Date()) }
+        let saved = update("以后不再提这个话题", showToast: false) { ButlerCards.mute(id, in: &$0, now: Dates.now) }
         if saved { toast = "以后不提这类了" }
         return saved
     }
     @discardableResult func cardFeedback(_ value: CardFeedback, id: UUID) -> Bool {
         guard let card = current.cards.first(where: { $0.id == id && $0.dismissedAt == nil && $0.feedback == nil }) else { return false }
         let answer = value == .worth ? (card.evidence.count > 1 ? "都值得" : "值得") : "有点后悔"
-        let saved = update("记下你点过的提醒", showToast: false) { ButlerCards.feedback(value, cardID: id, in: &$0, now: Date()) }
+        let saved = update("记下你点过的提醒", showToast: false) { ButlerCards.feedback(value, cardID: id, in: &$0, now: Dates.now) }
         if saved { toast = "记下了：" + answer }
         return saved
     }
     @discardableResult func answerWishFollowUp(_ wishID: UUID, choice: FollowUpChoice, text: String) -> Bool {
         let saved = update("记下一个月的感受", showToast: false) {
-            try Wishlist.answerFollowUp(wishID, choice: choice, text: text, in: &$0, now: Date())
+            try Wishlist.answerFollowUp(wishID, choice: choice, text: text, in: &$0, now: Dates.now)
         }
         if saved { toast = "记下了：" + choice.rawValue }
         return saved
@@ -653,10 +698,10 @@ struct ActiveLedgerTransport: ChatTransport {
         // A due wish may be opened before the normal reminder refresh finishes.
         // Materialize and close its reminder in one undoable save in that case.
         let saved = update(mute ? "以后不再提这个话题" : "收起管家卡片", showToast: false) { ledger in
-            _ = ButlerCards.refresh(&ledger, now: Date())
+            _ = ButlerCards.refresh(&ledger, now: Dates.now)
             guard let i = ledger.cards.firstIndex(where: { $0.dedupeKey == key }) else { return }
-            if mute { ButlerCards.mute(ledger.cards[i].id, in: &ledger, now: Date()) }
-            else { ledger.cards[i].dismissedAt = Date() }
+            if mute { ButlerCards.mute(ledger.cards[i].id, in: &ledger, now: Dates.now) }
+            else { ledger.cards[i].dismissedAt = Dates.now }
         }
         if saved { toast = mute ? "以后不提这类了" : "收起了" }
         return saved

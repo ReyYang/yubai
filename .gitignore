@@ -12,6 +12,7 @@ DerivedData/
 
 # Local verification output and logs
 /.verification/
+/.shots/
 *.log
 test-results/
 playwright-report/

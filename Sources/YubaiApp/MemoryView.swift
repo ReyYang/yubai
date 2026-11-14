@@ -3,63 +3,48 @@ import YubaiCore
 
 struct MemoryView: View {
     @Environment(AppStore.self) private var store
-    var body: some View {
-        List {
-            if store.current.memories.isEmpty {
-                EmptyState("text.book.closed", "还没有记下的事", action: "问余白", onAction: { store.sheet = .ask("") }).accessibilityIdentifier("emptyMemories")
-            }
-            ForEach(MemoryKind.allCases, id: \.self) { kind in
-                let notes = store.current.memories.filter { $0.kind == kind }.sorted {
-                    $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt > $1.updatedAt
-                }
-                if !notes.isEmpty {
-                    Section {
-                        ForEach(notes) { note in
-                            NavigationLink { MemoryEditor(note: note) } label: {
-                                VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                                    Text(note.text).yubaiFont(YubaiFont.row)
-                                    Text(metadata(note)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-                                }.padding(.vertical, YubaiSpace.space8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                            }.accessibilityIdentifier("memory_" + note.id.uuidString)
-                                .listRowBackground(YubaiColor.paperSheet).listRowSeparatorTint(YubaiColor.separator)
-                        }.onDelete { offsets in
-                            let ids = offsets.map { notes[$0].id }
-                            store.update("删除记忆") { ledger in
-                                for id in ids { Memory.reject(lineMemoryID: id, in: &ledger) }
-                            }
-                        }
-                    } header: { Text(title(kind)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-                }
-            }
-        }.editorForm()
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.inset)
-            #endif
-            .navigationTitle("余白记得的").yubaiNavigation()
+    @State private var editing: MemoryNote?
+    private var notes: [MemoryNote] {
+        store.current.memories.sorted { $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt > $1.updatedAt }
     }
-    private func title(_ kind: MemoryKind) -> String {
-        switch kind { case .plan: "计划"; case .value: "在乎的事"; case .life: "生活情况" }
+    var body: some View {
+        Page(topPadding: YubaiSpace.space8, identifier: "memoriesPage") {
+            if notes.isEmpty {
+                EmptyState(.memories, titleIdentifier: "emptyMemories", onAction: { store.sheet = .ask("") })
+            } else {
+                NativeCardRows(notes) { note in
+                    NavigationLink { MemoryEditor(note: note) } label: {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                            Text(store.preferences.hideAmounts ? "金额已隐藏" : note.text).yubaiFont(YubaiFont.row)
+                            Text(metadata(note)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                        }.padding(.vertical, YubaiSpace.space8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.hidesListDisclosure().accessibilityIdentifier("memory_" + note.id.uuidString)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button("删掉") { remove(note) }.tint(YubaiColor.amberTint).accessibilityIdentifier("swipeDeleteMemory_" + note.id.uuidString)
+                            Button("改一下") { editing = note }.tint(YubaiColor.card).accessibilityIdentifier("swipeEditMemory_" + note.id.uuidString)
+                        }
+                }
+            }
+        }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("余白记得的").yubaiNavigation()
+            .sheet(item: $editing) { note in
+                NavigationStack { MemoryEditor(note: note) }.environment(store).appErrors().yubaiSheetBackground()
+            }
+            .toolbar { ToolbarItem(placement: .primaryAction) { Text("\(notes.count) 条").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) } }
+    }
+    private func remove(_ note: MemoryNote) {
+        store.update("删除记忆") { ledger in Memory.reject(lineMemoryID: note.id, in: &ledger) }
     }
     private func metadata(_ note: MemoryNote) -> String {
-        if let previous = note.previousText {
-            let date = ButlerCards.isoWeek(note.updatedAt) == ButlerCards.isoWeek(Date()) ? "这周更新" : day(note.updatedAt)
-            return date + " · 原来记的是「" + previous + "」"
-        }
-        return day(note.createdAt) + " · " + source(note)
+        day(note.updatedAt) + " · " + source(note)
     }
+
     private func day(_ date: Date) -> String { date.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))) }
     private func source(_ note: MemoryNote) -> String {
         switch note.source {
-        case .chat: return note.source.label
-        case .followUp:
-            for choice in ["值得", "一般", "有点后悔"] where note.text.contains("一个月后觉得" + choice) { return "买了一个月 · 用得怎么样？「" + choice + "」" }
-            return "买了一个月 · 用得怎么样？"
-        case .importAnswer: return note.source.label
-        case .feedback: return note.source.label
-        case .reflection: return note.source.label
-        case .user: return note.source.label
+        case .chat, .user: return "你说的"
+        case .reflection: return "从账目里看出来的"
+        case .importAnswer, .feedback: return "你改过一次"
+        case .followUp: return "买了一个月"
         }
     }
 }
@@ -67,13 +52,21 @@ struct MemoryView: View {
 private struct MemoryEditor: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.yubaiSheetSurface) private var inSheet
     @State private var note: MemoryNote
     @State private var text: String
     init(note: MemoryNote) { _note = State(initialValue: note); _text = State(initialValue: note.text) }
     var body: some View {
+        Group {
+            if inSheet { form.manualSheetHeader("编辑记忆", actionTitle: "保存", enabled: valid, actionIdentifier: "saveMemory", action: save) }
+            else { form.toolbar { Button("保存", action: save).disabled(!valid).accessibilityIdentifier("saveMemory") } }
+        }
+    }
+    private var valid: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.count <= 200 && !text.contains(where: { $0.isNewline }) }
+    private var form: some View {
         Form {
             Section {
-                TextField("记忆文字", text: $text, axis: .vertical).lineLimit(2...8).accessibilityIdentifier("memoryText")
+                CardTextFieldRow(title: "", text: $text, placeholder: "记忆文字", identifier: "memoryText", multiline: true, autofocus: true)
                 InlineFieldError(message: text.count > 200 || text.contains(where: { $0.isNewline }) ? "记忆须在一行内，最多 200 字" : nil)
             }.listRowBackground(YubaiColor.card)
             Section {
@@ -84,12 +77,9 @@ private struct MemoryEditor: View {
                 }.buttonStyle(DestructiveButtonStyle()).accessibilityIdentifier("deleteMemory")
             }.listRowBackground(YubaiColor.card)
         }.editorForm().navigationTitle("编辑记忆").yubaiNavigation()
-            .toolbar {
-                Button("保存") {
-                    if store.update("修改记忆", { ledger in try check(ledger); try Memory.edit(noteID: note.id, text: text, in: &ledger) }) { dismiss() }
-                }.disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 200 || text.contains(where: { $0.isNewline }))
-                    .accessibilityIdentifier("saveMemory")
-            }
+    }
+    private func save() {
+        if store.update("修改记忆", { ledger in try check(ledger); try Memory.edit(noteID: note.id, text: text, in: &ledger) }) { dismiss() }
     }
     private func check(_ ledger: Ledger) throws {
         guard var current = ledger.memories.first(where: { $0.id == note.id }) else { throw YubaiError.invalid("这条记忆已删掉。") }
@@ -112,7 +102,7 @@ struct RememberedRows: View {
     var body: some View {
         ForEach(visible) { note in
             VStack(spacing: YubaiSpace.space8) {
-                Rectangle().fill(YubaiColor.separator).frame(height: 1).accessibilityHidden(true)
+                Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true)
                 HStack(spacing: YubaiSpace.space8) {
                     Image(systemName: "checkmark").accessibilityHidden(true)
                     Text("已记下：" + note.text).frame(maxWidth: .infinity, alignment: .leading)

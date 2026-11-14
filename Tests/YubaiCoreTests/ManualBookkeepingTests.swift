@@ -127,7 +127,8 @@ final class ManualBookkeepingTests: XCTestCase {
         let yesterday = Dates.addDays(-1, to: now)
         XCTAssertEqual(Dates.calendar.component(.hour, from: ManualBookkeeping.entryDate(for: yesterday, now: now)), 12)
         XCTAssertThrowsError(try ManualBookkeeping.change(amount: 0, nature: .expense, accountID: entry.accountID, day: now, purpose: "", category: "餐饮", now: now))
-        XCTAssertThrowsError(try ManualBookkeeping.change(amount: 100, nature: .expense, accountID: entry.accountID, day: Dates.addDays(1, to: now), purpose: "", category: "餐饮", now: now))
+        let future = try ManualBookkeeping.change(amount: 100, nature: .expense, accountID: entry.accountID, day: Dates.addDays(1, to: now), purpose: "", category: "餐饮", now: now)
+        XCTAssertEqual(try ManualBookkeeping.available(after: future, in: ledger, now: now), Finance.funds(ledger, now: now).available)
     }
     func testTransferPreviewAndBlankPurposeFallback() throws {
         var ledger = fixture(); let before = Finance.funds(ledger, now: now).available

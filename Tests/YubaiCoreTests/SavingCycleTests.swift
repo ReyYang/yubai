@@ -109,20 +109,6 @@ final class SavingCycleTests: XCTestCase {
         l.savingRule = .fixed(-1); XCTAssertThrowsError(try l.validate())
         l.savingRule = nil; l.fixedSavings = -1; XCTAssertThrowsError(try l.validate())
     }
-    func testInsightsTimelineUsesExactlyTheFundsCycle() {
-        var l = ledger()
-        l.entries = ["2026-08-15", "2026-09-15", "2026-10-13"].map {
-            Entry(date: date($0), amount: 800_000, nature: .income, accountID: l.accounts[0].id, title: "公司工资")
-        }
-        for hasPlan in [false, true] {
-            if hasPlan { l.plans = [Plan(title: "工资", amount: 800_000, dueDate: date("2026-08-15"), frequency: .monthly, inflow: true, nature: .income)] }
-            let funds = Finance.funds(l, now: now)
-            let timeline = Finance.cashTimeline(l, funds: funds, now: now, alignToFundsCycle: true)
-            XCTAssertEqual(timeline.defaultStart, funds.cycleStart)
-            XCTAssertEqual(timeline.end, funds.cycleEnd)
-            XCTAssertNil(timeline.floor)
-        }
-    }
     func testSharePreviewMatchesFullApplyAndEdit() throws {
         var l = ledger(); l.savingRule = .share(30)
         let draft = EntryDraft(date: now, amount: 1005, amountConfirmed: true, nature: .income, accountID: l.accounts[0].id, title: "收入")

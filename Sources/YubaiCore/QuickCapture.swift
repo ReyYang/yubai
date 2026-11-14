@@ -32,7 +32,7 @@ public struct QuickCaptureSnapshot: Codable, Equatable, Sendable {
     }
     public var generatedAt: Date; public var available: Int64; public var todayCount: Int; public var todayTotal: Int64
     public var frequent: [Frequent]
-    public init(ledger: Ledger, now: Date = Date()) {
+    public init(ledger: Ledger, now: Date = Dates.now) {
         generatedAt = now; available = QuickCapture.available(in: ledger, now: now)
         let entries = ledger.activeEntries.filter { $0.date <= now }
         let today = entries.filter { Dates.calendar.isDate($0.date, inSameDayAs: now) }
@@ -54,7 +54,7 @@ public struct QuickCaptureSnapshot: Codable, Equatable, Sendable {
 }
 
 public enum QuickCapture {
-    public static func parse(_ text: String, in ledger: Ledger, now: Date = Date()) throws -> QuickCaptureResult {
+    public static func parse(_ text: String, in ledger: Ledger, now: Date = Dates.now) throws -> QuickCaptureResult {
         let amounts = EntryAmountParser.entries(in: text)
         guard !amounts.isEmpty else { return .needsFollowUp }
         guard let account = ManualBookkeeping.defaultAccount(in: ledger) else { throw YubaiError.invalid("请先添加账户。") }
@@ -68,8 +68,8 @@ public enum QuickCapture {
                               title: purpose.isEmpty ? Classification.displayCategory(category) : purpose, category: category, subcategory: choice?.subcategory, purpose: purpose.isEmpty ? nil : purpose)
         })
     }
-    public static func available(in ledger: Ledger, now: Date = Date()) -> Int64 { Finance.funds(ledger, now: now).available }
-    @discardableResult public static func record(_ drafts: [EntryDraft], in ledger: inout Ledger, source: String = "快捷指令", withoutOpeningApp: Bool = true, now: Date = Date()) throws -> [UUID] {
+    public static func available(in ledger: Ledger, now: Date = Dates.now) -> Int64 { Finance.funds(ledger, now: now).available }
+    @discardableResult public static func record(_ drafts: [EntryDraft], in ledger: inout Ledger, source: String = "快捷指令", withoutOpeningApp: Bool = true, now: Date = Dates.now) throws -> [UUID] {
         guard !drafts.isEmpty else { return [] }
         var next = ledger
         var change = ChangeSet(source: source, reason: "记一笔", items: drafts.map(ChangeItem.addEntry)); change.createdAt = now
@@ -88,7 +88,7 @@ public enum QuickCapture {
         return amount
     }
     @discardableResult public static func applePay(merchant: String, amount: String, card: String, date: Date,
-                                                  in ledger: inout Ledger, now: Date = Date()) throws -> (entry: Entry, inserted: Bool) {
+                                                  in ledger: inout Ledger, now: Date = Dates.now) throws -> (entry: Entry, inserted: Bool) {
         let cents = try applePayAmount(amount)
         let merchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines), card = card.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !merchant.isEmpty, !card.isEmpty else { throw YubaiError.invalid("请填写商户和卡名。") }
@@ -109,7 +109,7 @@ public enum QuickCapture {
         entry.quickCapture = QuickCaptureOrigin(merchant: merchant, card: card, transactionDate: date, withoutOpeningApp: true)
         var next = ledger; next.entries.append(entry); try next.validate(); ledger = next; return (entry, true)
     }
-    public static func undo(entryID: UUID, in ledger: inout Ledger, now: Date = Date()) {
+    public static func undo(entryID: UUID, in ledger: inout Ledger, now: Date = Dates.now) {
         guard let index = ledger.entries.firstIndex(where: { $0.id == entryID && $0.deletedAt == nil }) else { return }
         ledger.entries[index].deletedAt = now
     }
@@ -131,13 +131,17 @@ public enum ReceiptTextParser {
     public struct Draft: Equatable, Sendable {
         public var date: Date; public var amount: Int64; public var title: String; public var nature: Nature
         public var dateNeedsReview: Bool; public var directionNeedsReview: Bool
+        public init(date: Date, amount: Int64, title: String, nature: Nature = .expense, dateNeedsReview: Bool = false, directionNeedsReview: Bool = false) {
+            self.date = date; self.amount = amount; self.title = title; self.nature = nature
+            self.dateNeedsReview = dateNeedsReview; self.directionNeedsReview = directionNeedsReview
+        }
         public func entryDraft(in ledger: Ledger, accountID: UUID) -> EntryDraft {
             let choice = CategoryGuesser.guess(title, nature: nature, date: date, in: ledger)
             return EntryDraft(date: date, amount: amount, amountConfirmed: true, nature: nature, accountID: accountID,
                        title: title, category: choice?.category ?? Classification.pendingCategory, subcategory: choice?.subcategory, purpose: title)
         }
     }
-    public static func drafts(lines: [String], now: Date = Date()) -> [Draft] {
+    public static func drafts(lines: [String], now: Date = Dates.now) -> [Draft] {
         let lines = lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let payment = lines.contains { ["支付成功", "付款成功", "交易成功"].contains($0) }
         let ignored = ["余额", "合计", "总计", "优惠", "原价", "手续费", "单号", "订单", "卡号", "实付前"]
@@ -186,7 +190,7 @@ public enum ReceiptTextParser {
         }
         return result
     }
-    public static func table(lines: [String], now: Date = Date()) throws -> Data {
+    public static func table(lines: [String], now: Date = Dates.now) throws -> Data {
         let drafts = drafts(lines: lines, now: now)
         guard !drafts.isEmpty else { throw YubaiError.invalid("没认出金额") }
         var rows = ["日期,金额,收支,用途,备注"]

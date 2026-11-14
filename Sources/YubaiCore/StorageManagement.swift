@@ -24,11 +24,11 @@ public enum StorageAttachments {
         return Classification(screenshots: ledger.attachments.filter { entries.contains($0.id) && !originals.contains($0.id) },
                               originals: ledger.attachments.filter { originals.contains($0.id) })
     }
-    public static func oldScreenshots(in ledger: Ledger, months: Int, now: Date = Date(), calendar: Calendar = .current) -> [Attachment] {
+    public static func oldScreenshots(in ledger: Ledger, months: Int, now: Date = Dates.now, calendar: Calendar = .current) -> [Attachment] {
         guard [3, 6, 12].contains(months), let cutoff = calendar.date(byAdding: .month, value: -months, to: now) else { return [] }
         return classify(in: ledger).screenshots.filter { $0.createdAt < cutoff }
     }
-    @discardableResult public static func removeOldScreenshots(from ledger: inout Ledger, months: Int, now: Date = Date(), calendar: Calendar = .current) -> [Attachment] {
+    @discardableResult public static func removeOldScreenshots(from ledger: inout Ledger, months: Int, now: Date = Dates.now, calendar: Calendar = .current) -> [Attachment] {
         let removed = oldScreenshots(in: ledger, months: months, now: now, calendar: calendar)
         let ids = Set(removed.map(\.id))
         ledger.attachments.removeAll { ids.contains($0.id) }
