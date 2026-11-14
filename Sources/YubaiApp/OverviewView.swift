@@ -24,7 +24,7 @@ struct SavingsView: View {
     private var target: Int64 { store.funds.savingTarget }
     private var fixedTarget: Int64 { if case .fixed(let amount) = store.current.savingRule { amount } else { 0 } }
     private var suggestion: (average: Int64, suggestion: Int64)? {
-        guard !sharing, let value = Reserve.suggestedMonthly(store.current, now: Date()), value.suggestion > 0, value.suggestion != fixedTarget else { return nil }
+        guard !sharing, let value = Reserve.suggestedMonthly(store.current, now: Dates.now), value.suggestion > 0, value.suggestion != fixedTarget else { return nil }
         return value
     }
     var body: some View {
@@ -132,7 +132,7 @@ struct SavingsView: View {
             if payday {
                 var monthly = store.current
                 monthly.plans.removeAll { $0.frequency != .monthly }
-                if Finance.nextPayday(in: monthly, now: Date()) == nil { addingPayday = true; return }
+                if Finance.nextPayday(in: monthly, now: Dates.now) == nil { addingPayday = true; return }
             }
             store.update("存钱") { $0.cycleAnchor = payday ? .payday : .calendarMonth }
         }), identifier: { $0 ? "savingCycleAnchor_payday" : "savingCycleAnchor_month" }).accessibilityIdentifier("savingCycleAnchor")
@@ -167,11 +167,7 @@ struct SavingsView: View {
 }
 
 enum SavingsAmountField: String, Identifiable { case fixed, target, share; var id: String { rawValue } }
-private struct SavingsChoiceStyle: ViewportButtonStyle {
-    var selected: Bool
-    var feedback: SavingsChoiceFeedback { SavingsChoiceFeedback(selected: selected) }
-}
-private struct SavingsChoiceFeedback: ButtonStyle {
+private struct SavingsChoiceStyle: ButtonStyle {
     var selected: Bool
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)

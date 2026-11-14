@@ -11,7 +11,7 @@ public struct ToolContext: Sendable {
     public let entryAccountHint: UUID?
     public let memoryCharacterBudget: Int
     let entriesByID: [UUID: Entry]
-    public init(ledger: Ledger, now: Date = Date(), confirmedEntryAmount: Int64? = nil, parsedEntryAmounts: [Int64] = [], parsedEntries: [(text: String, amount: Int64)] = [], entryAccountHint: UUID? = nil, memoryCharacterBudget: Int = Memory.defaultCharacterBudget) {
+    public init(ledger: Ledger, now: Date = Dates.now, confirmedEntryAmount: Int64? = nil, parsedEntryAmounts: [Int64] = [], parsedEntries: [(text: String, amount: Int64)] = [], entryAccountHint: UUID? = nil, memoryCharacterBudget: Int = Memory.defaultCharacterBudget) {
         self.memoryCharacterBudget = memoryCharacterBudget
         self.entryAccountHint = entryAccountHint
         self.parsedEntries = parsedEntries.filter { $0.amount > 0 && $0.amount <= Money.limit }

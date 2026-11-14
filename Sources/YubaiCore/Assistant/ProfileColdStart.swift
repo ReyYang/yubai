@@ -22,7 +22,7 @@ public struct ProfileColdStart: Sendable {
         self.transport = transport; self.characterBudget = characterBudget
     }
 
-    public func next(ledger: Ledger, messages: [ChatMessage], mode: Mode = .automatic, openingContext: OpeningContext? = nil, now: Date = Date()) async throws -> AssistantReply {
+    public func next(ledger: Ledger, messages: [ChatMessage], mode: Mode = .automatic, openingContext: OpeningContext? = nil, now: Date = Dates.now) async throws -> AssistantReply {
         guard messages.allSatisfy({ ($0.role == .user || $0.role == .assistant) && $0.toolCalls == nil && $0.toolCallID == nil }) else {
             throw YubaiError.invalid("消费观对话只需要问题和回答。")
         }

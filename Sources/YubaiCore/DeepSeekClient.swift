@@ -13,7 +13,7 @@ public enum DeepSeekRetryPolicy {
         return [.timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost,
                 .dnsLookupFailed, .notConnectedToInternet].contains(error.code)
     }
-    public static func retryAfter(_ header: String?, now: Date = Date()) -> TimeInterval? {
+    public static func retryAfter(_ header: String?, now: Date = Dates.now) -> TimeInterval? {
         guard let header = header?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
         if let seconds = Double(header), seconds.isFinite, seconds >= 0 { return min(maximumWait, seconds) }
         let formatter = DateFormatter()
@@ -23,7 +23,7 @@ public enum DeepSeekRetryPolicy {
         return min(maximumWait, max(0, date.timeIntervalSince(now)))
     }
     /// retry starts at 1; jitter in 0...1 gives ±20% without exceeding the cap.
-    public static func delay(retry: Int, header: String? = nil, now: Date = Date(), jitter: Double) -> TimeInterval {
+    public static func delay(retry: Int, header: String? = nil, now: Date = Dates.now, jitter: Double) -> TimeInterval {
         if let seconds = retryAfter(header, now: now) { return seconds }
         let base = delays[min(max(0, retry - 1), delays.count - 1)]
         return min(maximumWait, base * (0.8 + 0.4 * min(1, max(0, jitter))))

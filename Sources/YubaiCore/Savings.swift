@@ -34,13 +34,13 @@ extension Ledger {
         }
     }
 
-    public func fixedSavingsTotal(now: Date = Date()) -> Int64 {
+    public func fixedSavingsTotal(now: Date = Dates.now) -> Int64 {
         (fixedSavings ?? 0) + fixedSavingsFromIncome(now: now) - reserveSpent(now: now) - reserveCovered(now: now) + savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta }
     }
 
     /// Reverse all derived income and withdrawals to keep the stored base
     /// nonnegative; editing/deleting source entries reverses their contribution.
-    public mutating func setFixedSavingsTotal(_ total: Int64, now: Date = Date()) {
+    public mutating func setFixedSavingsTotal(_ total: Int64, now: Date = Dates.now) {
         fixedSavings = max(0, min(Money.limit, total) - fixedSavingsFromIncome(now: now) + reserveSpent(now: now) + reserveCovered(now: now) - savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta })
     }
 }
@@ -83,7 +83,7 @@ public enum EntryHint: Equatable, Sendable {
         case fixedSavings(newTotal: Int64)
         case receipt(EntryHint)
     }
-    public static func make(ledger: Ledger, draft: EntryDraft, isFixedBill: Bool, now: Date = Date()) -> DraftResult {
+    public static func make(ledger: Ledger, draft: EntryDraft, isFixedBill: Bool, now: Date = Dates.now) -> DraftResult {
         if draft.nature == .income && draft.intoFixedSavings {
             var projected = ledger
             var entry = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID,
@@ -99,7 +99,7 @@ public enum EntryHint: Equatable, Sendable {
     case restrain(areaTitle: String, countThisWeek: Int, limit: Int?, weekSpent: Int64)
     case big(after: Int64, daily: Int64, over: Bool)
     /// Non-expenses use a normal receipt; restraint takes precedence over size.
-    public static func make(ledger: Ledger, amount: Int64, category: String, isFixedBill: Bool, now: Date = Date(), nature: Nature = .expense, subcategory: String? = nil, partID: UUID? = nil) -> EntryHint {
+    public static func make(ledger: Ledger, amount: Int64, category: String, isFixedBill: Bool, now: Date = Dates.now, nature: Nature = .expense, subcategory: String? = nil, partID: UUID? = nil) -> EntryHint {
         let funds = Finance.funds(ledger, now: now)
         let expense = nature == .expense
         let after = funds.available + (expense ? -amount : nature.inflow ? amount : 0)
@@ -152,7 +152,7 @@ public struct SavingsSummary: Equatable, Sendable {
 public enum Savings {
     /// Close only the latest completed cycle; history makes repeated foreground
     /// callbacks idempotent. Rewind anchors and payments to the closing instant.
-    public static func closeCycles(_ ledger: inout Ledger, now: Date = Date()) {
+    public static func closeCycles(_ ledger: inout Ledger, now: Date = Dates.now) {
         let current = Finance.cycleInfo(in: ledger, now: now)
         guard current.lateSince == nil else { return }
         let close = current.start.addingTimeInterval(-0.001)
@@ -205,7 +205,7 @@ public enum Savings {
 
     /// Half-open [from, to). A stopped subscription accrues on each elapsed due
     /// date, never as an annualized estimate or as a future saving.
-    public static func summary(ledger: Ledger, from: Date, to: Date, now: Date = Date()) -> SavingsSummary {
+    public static func summary(ledger: Ledger, from: Date, to: Date, now: Date = Dates.now) -> SavingsSummary {
         let to = min(to, now.addingTimeInterval(0.001))
         guard from < to else { return SavingsSummary(lines: []) }
         var lines = ledger.wishlist.compactMap { wish -> SavingsLine? in
@@ -240,7 +240,7 @@ public enum Savings {
         }
         return SavingsSummary(lines: lines.sorted { $0.date == $1.date ? $0.id < $1.id : $0.date > $1.date })
     }
-    public static func total(ledger: Ledger, now: Date = Date()) -> Int64 {
+    public static func total(ledger: Ledger, now: Date = Dates.now) -> Int64 {
         summary(ledger: ledger, from: Date(timeIntervalSince1970: -2_208_988_800), to: now.addingTimeInterval(0.001), now: now).total
     }
 }
@@ -270,7 +270,7 @@ public enum SubscriptionCheck {
     static func eligible(_ plan: Plan, ledger: Ledger) -> Bool {
         !plan.inflow && plan.nature == .expense && plan.frequency != .once && plan.amount > 0 && plan.amount <= 20_000
     }
-    public static func candidates(ledger: Ledger, now: Date = Date()) -> [SubscriptionCandidate] {
+    public static func candidates(ledger: Ledger, now: Date = Dates.now) -> [SubscriptionCandidate] {
         let month = String(Dates.text(now).prefix(7)); let payments = FixedFlowPayments(in: ledger, now: now)
         var result = ledger.plans.compactMap { plan -> SubscriptionCandidate? in
             let id = "plan:" + plan.id.uuidString
@@ -294,7 +294,7 @@ public enum SubscriptionCheck {
         }
         return result.sorted { $0.id < $1.id }
     }
-    public static func answer(_ candidate: SubscriptionCandidate, choice: SubscriptionAnswer, in ledger: inout Ledger, now: Date = Date()) throws {
+    public static func answer(_ candidate: SubscriptionCandidate, choice: SubscriptionAnswer, in ledger: inout Ledger, now: Date = Dates.now) throws {
         guard candidates(ledger: ledger, now: now).contains(candidate) else { throw YubaiError.invalid("这项固定收付已经变了，请刷新每周来信。") }
         var next = ledger
         if choice == .stop {

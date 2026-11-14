@@ -31,7 +31,7 @@ struct WishEditor: View {
     private func save() {
         if store.update("加入心愿单", { ledger in
             var wish = WishItem(title: title.trimmingCharacters(in: .whitespacesAndNewlines), amount: amount)
-            wish.createdAt = Date()
+            wish.createdAt = Dates.now
             wish.coolUntil = Wishlist.cooldownUntil(amount: amount, fromPrinciples: ledger.profile.principles, now: wish.createdAt)
             ledger.wishlist.append(wish)
         }) { dismiss() }

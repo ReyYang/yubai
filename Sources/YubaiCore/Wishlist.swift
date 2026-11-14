@@ -44,7 +44,7 @@ public enum Wishlist {
     }
     public static func defaultCooldownDays(amount: Int64) -> Int { amount < 20_000 ? 0 : amount <= 100_000 ? 3 : 7 }
     @discardableResult public static func add(fromVerdict verdict: SubmittedPurchaseVerdict, title: String, amount: Int64,
-        category: String? = nil, subcategory: String? = nil, purpose: String = "", in ledger: inout Ledger, now: Date = Date()) throws -> WishItem {
+        category: String? = nil, subcategory: String? = nil, purpose: String = "", in ledger: inout Ledger, now: Date = Dates.now) throws -> WishItem {
         guard amount > 0, amount <= Money.limit, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw YubaiError.invalid("请核对心愿单的名称和金额。") }
         var wish = WishItem(title: title, amount: amount, purpose: purpose, judgment: verdict.verdict.label + "：" + verdict.reason)
         wish.createdAt = now; wish.source = "fromVerdict"; wish.category = category; wish.subcategory = subcategory

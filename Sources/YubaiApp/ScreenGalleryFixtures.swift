@@ -47,7 +47,7 @@ extension UITestSupport {
             guard let amount = row["amount"]?["text"]?.stringValue, let title = row["text"]?.stringValue else {
                 throw YubaiError.invalid("合成补记缺少本机金额。")
             }
-            return .object(["title": .string(title), "amount": .string(amount), "date": .string(Dates.text(Date())),
+            return .object(["title": .string(title), "amount": .string(amount), "date": .string(Dates.text(Dates.now)),
                             "account": .string(account), "nature": .string("expense"), "category": .string("餐饮")])
         }
         let args = try JSONValue.object(["reason": .string("合成补记"), "entries": .array(rows)]).jsonText()

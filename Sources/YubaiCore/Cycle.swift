@@ -74,7 +74,7 @@ extension Finance {
                          payday: true, lateSince: late, nextPayday: late == nil ? next : nil, known: true)
     }
 
-    public static func cycle(in ledger: Ledger, now: Date = Date()) -> (start: Date, end: Date, payday: Bool) {
+    public static func cycle(in ledger: Ledger, now: Date = Dates.now) -> (start: Date, end: Date, payday: Bool) {
         let info = cycleInfo(in: ledger, now: now)
         return (info.start, info.end, info.payday)
     }

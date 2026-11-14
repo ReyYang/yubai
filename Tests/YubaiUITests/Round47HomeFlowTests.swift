@@ -24,8 +24,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     private func tap(_ id: String) {
         let target = element(id)
-        if !target.exists || !target.isHittable { reveal(target) }
-        tapControl(target, in: app, settles: !id.hasPrefix("keypad_"))
+        tapControl(target, in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
     }
     private func keys(_ amount: String) { for key in amount { tap("keypad_" + String(key)) } }
     private func add(_ amount: String, yesterday: Bool = false) {
@@ -112,10 +111,24 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         tap("receiptMoreEntries"); XCTAssertTrue(element("tab_ledger").isSelected)
         XCTAssertTrue(element("entriesScroll").exists)
     }
-    func testReceiptTapEditsThatOriginalEntry() {
-        launch("v47-receipt-normal"); reveal(element("ledgerEntry_" + id(470101))); tap("ledgerEntry_" + id(470101))
-        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
-        XCTAssertEqual(element("editEntryAmount").value as? String, "28.00")
+    func testReceiptRowEditsTheOriginalAndEntryPillWorksWhileTheRowCrossesIt() {
+        for large in [false, true] {
+            launch("v47-receipt-normal", large: large)
+            let row = element("ledgerEntry_" + id(470101)), scroll = app.scrollViews["nowScroll"], pill = element("addEntry")
+            XCTAssertTrue(placeControl(row, across: pill, in: scroll, atTop: false))
+            assertViewport(scroll, clears: pill)
+            tap("addEntry")
+            XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
+            XCTAssertFalse(element("editEntryAmount").exists)
+            tap("cancelManualSheet")
+            XCTAssertTrue(waitForDisappearance(element("entryKeypadAmount")))
+            reveal(row)
+            XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(row.frame))
+            tap("ledgerEntry_" + id(470101))
+            XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
+            XCTAssertEqual(element("editEntryAmount").value as? String, "28.00")
+            app.terminate()
+        }
     }
     func testBackdatedEntryKeepsExistingToastFeedback() {
         launch("v47-receipt-normal"); add("18", yesterday: true)
@@ -165,23 +178,21 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertGreaterThanOrEqual(element("receiptDate").frame.minX, app.frame.minX)
         XCTAssertLessThanOrEqual(element("receiptDate").frame.maxX, app.frame.maxX)
     }
-    func testCrossingSavingCardLosesItsActionAndRecoversAfterScrollingBack() {
-        launch(); let card = element("openSaving"); reveal(card)
-        let viewport = app.scrollViews["nowScroll"].frame, frame = card.frame
-        let marker = app.staticTexts["接下来 7 天"]
-        XCTAssertTrue(marker.exists)
-        let markerY = marker.frame.minY
-        let distance = frame.minY - viewport.minY + 12
-        let origin = app.coordinate(withNormalizedOffset: .zero)
-        let start = origin.withOffset(CGVector(dx: viewport.midX, dy: viewport.maxY - 16))
-        let end = origin.withOffset(CGVector(dx: viewport.midX, dy: viewport.maxY - 16 - distance))
-        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
-        let crossed = frame.offsetBy(dx: 0, dy: marker.frame.minY - markerY)
-        XCTAssertLessThan(crossed.minY, viewport.minY)
-        XCTAssertGreaterThan(crossed.maxY, viewport.minY)
-        XCTAssertFalse(card.exists && card.isHittable)
-        end.press(forDuration: 0.05, thenDragTo: start, withVelocity: .slow, thenHoldForDuration: 0.1)
-        reveal(card); tap("openSaving")
+    func testHeaderOpensSettingsWhileSavingCardCrossesItAndCardStillOpensAfterReturn() {
+        launch()
+        let card = element("openSaving"), scroll = app.scrollViews["nowScroll"], settings = element("openSettings")
+        reveal(card)
+        XCTAssertTrue(placeControl(card, across: settings, in: scroll, atTop: true))
+        assertViewport(scroll, clears: element("rootHeaderRegion"))
+        assertViewport(scroll, clears: settings)
+        assertViewport(scroll, clears: element("addEntry"))
+        tap("openSettings")
+        XCTAssertTrue(app.scrollViews["settingsScroll"].waitForExistence(timeout: 5))
+        XCTAssertFalse(element("reserveTotal").exists)
+        tap("BackButton")
+        reveal(card)
+        XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(card.frame))
+        tap("openSaving")
         XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5))
     }
     func testUpcomingBillNameUsesTwoLinesAndDetailKeepsItsFullName() {
@@ -231,21 +242,25 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             app.terminate()
         }
     }
-    func testLastTodayRowReachedFromReceiptClearsTheCapsuleAtBothTextSizes() {
+    func testLastTodayRowClearsViewportAndTabsWorkWhileItCrossesTheCapsuleAtBothTextSizes() {
         for large in [false, true] {
             launch("v47-receipt-many", large: large)
             reveal(element("receiptMoreEntries")); tap("receiptMoreEntries")
-            let last = element("ledgerEntry_" + id(470110))
+            let last = element("ledgerEntry_" + id(470110)), scroll = element("entriesScroll")
             reveal(last)
             XCTAssertTrue(last.exists && last.isHittable)
-            let header = element("rootHeaderRegion").frame, capsule = capsuleFrame(in: app)
-            XCTAssertGreaterThanOrEqual(last.frame.minY, header.maxY)
-            XCTAssertLessThan(last.frame.maxY, capsule.minY)
-            for row in app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_'")).allElementsBoundByIndex {
-                if row.frame.minY < header.maxY || row.frame.maxY > capsule.minY {
-                    XCTAssertFalse(row.isHittable, row.identifier)
-                }
-            }
+            assertViewport(scroll, clears: element("rootHeaderRegion"))
+            for tab in ["tab_now", "tab_ledger", "tab_yubai"] { assertViewport(scroll, clears: element(tab)) }
+            XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(last.frame))
+            XCTAssertGreaterThanOrEqual(last.frame.minY, element("rootHeaderRegion").frame.maxY)
+            XCTAssertLessThan(last.frame.maxY, capsuleFrame(in: app).minY)
+            XCTAssertTrue(placeControl(last, across: element("tab_ledger"), in: scroll, atTop: false))
+            tap("tab_now")
+            XCTAssertTrue(element("tab_now").isSelected)
+            XCTAssertFalse(element("entryDetailEdit").exists)
+            tap("tab_ledger"); reveal(last)
+            XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(last.frame))
+            XCTAssertLessThan(last.frame.maxY, capsuleFrame(in: app).minY)
             app.terminate()
         }
     }

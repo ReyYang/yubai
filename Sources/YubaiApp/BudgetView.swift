@@ -45,7 +45,7 @@ struct BudgetView: View {
             .task(id: store.ledgerRevision) {
                 guard store.current.spendingParts.isEmpty else { proposal = nil; return }
                 let ledger = store.current
-                let value = await Task.detached { SpendingParts.proposal(ledger: ledger, now: Date()) }.value
+                let value = await Task.detached { SpendingParts.proposal(ledger: ledger, now: Dates.now) }.value
                 guard !Task.isCancelled else { return }
                 proposal = value
             }

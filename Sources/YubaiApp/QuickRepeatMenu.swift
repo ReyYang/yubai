@@ -28,7 +28,7 @@ struct QuickRepeatMenu: View {
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
             .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
             .task(id: store.ledgerRevision) {
-                let ledger = store.current, now = Date()
+                let ledger = store.current, now = Dates.now
                 let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now) }.value
                 guard !Task.isCancelled else { return }; items = value
             }
@@ -61,7 +61,7 @@ struct QuickRepeatMenu: View {
     private func record(_ item: EntryHistory.Repeat) {
         defer { dismiss(); store.homeEntrySession = false }
         store.homeEntrySession = true
-        let now = Date()
+        let now = Dates.now
         let usable = store.accounts.first { $0.id == item.accountID && !$0.archived } ?? ManualBookkeeping.defaultAccount(in: store.current)
         guard let account = usable else { return }
         do {

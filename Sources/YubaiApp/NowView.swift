@@ -234,7 +234,7 @@ private struct NowUpcomingRow: View {
             .accessibilityElement(children: .contain)
     }
     private var upcomingName: some View {
-        Text(row.title).yubaiFont(YubaiFont.body).lineLimit(2).truncationMode(.tail)
+        Text(row.title).yubaiFont(YubaiFont.body).lineLimit(textSize.isAccessibilitySize ? 4 : 2).truncationMode(.tail)
             .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("truncatableName")
     }
 }

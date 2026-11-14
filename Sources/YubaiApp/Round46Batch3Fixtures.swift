@@ -5,7 +5,7 @@ import YubaiCore
 extension UITestSupport {
     static func seedBatch3Questions(for id: UUID) {
         guard id == galleryID(460300) else { return }
-        let now = Date()
+        let now = Dates.now
         let rows: [[String: Any]] = [["t": "降噪耳机 1,899，能买吗", "d": Dates.addDays(-1, to: now).timeIntervalSince1970],
                                    ["t": "这个月钱去哪了", "d": Dates.addDays(-3, to: now).timeIntervalSince1970]]
         UserDefaults.standard.set(rows, forKey: "yubai.recentQuestions." + id.uuidString)
@@ -139,7 +139,7 @@ extension UITestSupport {
                   let parsed = facts["parsed_entries"]?.arrayValue, parsed.count >= 2 else { throw YubaiError.invalid("合成补记缺少本机金额。") }
             let rows: [JSONValue] = try parsed.prefix(2).enumerated().map { index, row in
                 guard let amount = row["amount"]?["text"]?.stringValue else { throw YubaiError.invalid("合成补记缺少本机金额。") }
-                return .object(["title": .string(index == 0 ? "打车" : "和同事吃饭"), "amount": .string(amount), "date": .string(Dates.text(Dates.addDays(-1, to: Date()))), "account": .string(account), "nature": .string("expense"), "category": .string(index == 0 ? "交通" : "餐饮")])
+                return .object(["title": .string(index == 0 ? "打车" : "和同事吃饭"), "amount": .string(amount), "date": .string(Dates.text(Dates.addDays(-1, to: Dates.now))), "account": .string(account), "nature": .string("expense"), "category": .string(index == 0 ? "交通" : "餐饮")])
             }
             return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "b3-entries", name: "propose_entry", arguments: try JSONValue.object(["reason": .string("记这两笔？"), "entries": .array(rows)]).jsonText())])
         }

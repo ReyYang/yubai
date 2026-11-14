@@ -135,14 +135,14 @@ private struct UnitemizedSplitEditor: View {
         let drafts = parts + (nextPart().map { [$0] } ?? [])
         let entryID = original.id
         if store.update("分开记", entryMotion: false, showToast: false, { ledger in
-            try Reconciliation.split(entryID: entryID, into: drafts, in: &ledger, now: Date())
+            try Reconciliation.split(entryID: entryID, into: drafts, in: &ledger, now: Dates.now)
         }) {
             store.toast = "已记下 \(drafts.count) 笔"
             dismiss()
         }
     }
     @MainActor private func refreshHint() async {
-        let ledger = store.current; let purpose = purpose; let now = Date()
+        let ledger = store.current; let purpose = purpose; let now = Dates.now
         let value = await Task.detached { EntryHistory.categoryHint(purpose: purpose, nature: .expense, in: ledger, now: now) }.value
         guard !Task.isCancelled else { return }
         hint = value

@@ -67,7 +67,7 @@ struct QuickCaptureSettingsView: View {
         }.buttonStyle(PressButtonStyle()).navigationTitle("快速记账").yubaiNavigation()
     }
     @ViewBuilder private var repeatsSection: some View {
-        let rows = EntryHistory.repeats(in: store.current, now: Date())
+        let rows = EntryHistory.repeats(in: store.current, now: Dates.now)
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 SectionHeading(title: "常用")

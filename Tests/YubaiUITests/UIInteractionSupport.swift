@@ -18,6 +18,7 @@ class YubaiUITestCase: XCTestCase {
     private var attachedTapDiagnostics = false
     private var controlQueries: [ObjectIdentifier: (XCUIElement, String)] = [:]
     private var revealedViewport: CGRect?
+    private let scriptedNow = Date().timeIntervalSince1970
 
     func control(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         let target = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
@@ -38,6 +39,9 @@ class YubaiUITestCase: XCTestCase {
 
     @discardableResult func launchApp(_ app: XCUIApplication, timeout: TimeInterval = 15) -> Bool {
         lastTap = nil; lastFrameWait = nil; controlQueries = [:]
+        if app.launchEnvironment["YUBAI_UI_TEST_NOW"] == nil {
+            app.launchEnvironment["YUBAI_UI_TEST_NOW"] = String(scriptedNow)
+        }
         var lastTimeout: XCTIssue?
         for attempt in 0..<3 {
             launchTimeouts = []; otherLaunchFailure = false
@@ -79,8 +83,13 @@ class YubaiUITestCase: XCTestCase {
         attachedTapDiagnostics = false
     }
 
-    func tapControl(_ target: XCUIElement, in app: XCUIApplication, settles: Bool = true,
+    func tapControl(_ target: XCUIElement, in app: XCUIApplication, settles: Bool = true, reveals: Bool = true,
                     file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(180)
+        if reveals && !revealControl(target, in: app, deadline: deadline) {
+            XCTFail("Control not reachable: " + target.description, file: file, line: line)
+            return
+        }
         rememberTap(target, in: app)
         if settles && !waitForStableFrame(target) {
             XCTFail("Control frame did not settle: " + target.description, file: file, line: line)
@@ -92,11 +101,37 @@ class YubaiUITestCase: XCTestCase {
             XCTFail("Control disabled or covered: " + target.description, file: file, line: line)
             return
         }
+        if reveals && !settledControlClearsViewport(target) && !revealControl(target, in: app, deadline: deadline) {
+            XCTFail("Control left its usable viewport: " + target.description, file: file, line: line)
+            return
+        }
         target.tap()
     }
 
-    /// Reveal through the real scroll viewport, including a temporary absence
-    /// when the shared AX clipping policy removes a crossing action.
+    func windowMetrics(in tree: XCUIElementSnapshot) -> UIWindowMetrics? {
+        if tree.identifier == UIWindowMetrics.probeIdentifier, let metrics = UIWindowMetrics.decode(tree.value) { return metrics }
+        for child in tree.children.reversed() { if let metrics = windowMetrics(in: child) { return metrics } }
+        return nil
+    }
+
+    func windowMetrics(in app: XCUIApplication) -> UIWindowMetrics? {
+        // A modal may hide the root background from AX. Read whichever root
+        // or shared-sheet probe exists; its frame/hittability are irrelevant.
+        for probe in app.descendants(matching: .any).matching(identifier: UIWindowMetrics.probeIdentifier).allElementsBoundByIndex.reversed() {
+            if let metrics = UIWindowMetrics.decode(probe.value) { return metrics }
+        }
+        return nil
+    }
+
+    func waitForNativeTransition(in app: XCUIApplication, deadline: Date) -> Bool {
+        let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
+        return UIConditionWait.run(timeout: 15, deadline: end, read: {
+            guard let value = self.windowMetrics(in: app) else { return false }
+            return !value.transitioning
+        })
+    }
+
+    /// Reveal the full target through all of its native scroll ancestors.
     func revealControl(_ target: XCUIElement, in app: XCUIApplication, deadline: Date) -> Bool {
         revealedViewport = nil
         let identifier = controlQueries[ObjectIdentifier(target)]?.1 ?? (target.exists ? target.identifier : "")
@@ -112,12 +147,24 @@ class YubaiUITestCase: XCTestCase {
         }
         while Date() < deadline {
             guard let tree = try? app.snapshot(), Date() < deadline else { break }
+            guard let metrics = windowMetrics(in: tree) else {
+                print("Reveal has no native window metrics: \(identifier)")
+                return false
+            }
+            if metrics.transitioning {
+                guard waitForNativeTransition(in: app, deadline: deadline) else { return false }
+                continue
+            }
             var match: (XCUIElementSnapshot, [XCUIElementSnapshot])?
             var scrolls: [XCUIElementSnapshot] = []
+            var topRegions: [CGRect] = [], bottomRegions: [CGRect] = [], toastRegions: [CGRect] = []
             func collect(_ node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot]) {
                 if [.scrollView, .collectionView, .table].contains(node.elementType),
                    node.frame.height > 120, node.frame.width > tree.frame.width * 0.65 { scrolls.append(node) }
                 if node.identifier == identifier, !node.frame.isEmpty { match = (node, ancestors) }
+                if node.elementType == .navigationBar || node.identifier == "rootHeaderRegion" { topRegions.append(node.frame) }
+                if node.elementType == .keyboard || ["mainNavigation", "fixedBottomBar"].contains(node.identifier) { bottomRegions.append(node.frame) }
+                if ["toastMessage", "undoLastChange", "expandToast"].contains(node.identifier) { toastRegions.append(node.frame) }
                 for child in node.children { collect(child, ancestors: ancestors + [node]) }
             }
             collect(tree, ancestors: [])
@@ -126,17 +173,38 @@ class YubaiUITestCase: XCTestCase {
                 _ = target.waitForExistence(timeout: min(5, max(0, deadline.timeIntervalSinceNow)))
                 continue
             }
-            let container = match?.1.last { [.scrollView, .collectionView, .table].contains($0.elementType) }
-                ?? (match == nil ? scrolls.last : nil)
+            let ancestors = match?.1.filter { [.scrollView, .collectionView, .table].contains($0.elementType) } ?? []
+            func usable(_ frame: CGRect) -> CGRect {
+                var viewport = frame.intersection(metrics.safeRectangle)
+                guard !viewport.isNull, !viewport.isEmpty else { return .zero }
+                for region in topRegions where UIViewportGeometry.overlaps(viewport, region) {
+                    if region.minY <= viewport.minY + 0.5 {
+                        let bottom = viewport.maxY; viewport.origin.y = max(viewport.minY, region.maxY)
+                        viewport.size.height = max(0, bottom - viewport.minY)
+                    }
+                }
+                let toasts = ["toastMessage", "undoLastChange", "expandToast"].contains(identifier) ? [] : toastRegions
+                for region in bottomRegions + toasts where UIViewportGeometry.overlaps(viewport, region) {
+                    viewport.size.height = max(0, min(viewport.maxY, region.minY - 12) - viewport.minY)
+                }
+                return viewport
+            }
+            let container = ancestors.last { node in
+                match.map { !usable(node.frame).insetBy(dx: -0.5, dy: -0.5).contains($0.0.frame) } ?? false
+            } ?? ancestors.last ?? (match == nil ? scrolls.last : nil)
             // Fixed headers and bars have no scroll ancestor. A covered fixed
             // control cannot be repaired by dragging an unrelated page.
             if let match, container == nil {
                 rememberTap(target, in: app, frame: match.0.frame)
-                revealedViewport = tree.frame
-                return tree.frame.contains(match.0.frame) && ready()
+                revealedViewport = metrics.safeRectangle
+                return metrics.safeRectangle.contains(match.0.frame) && ready()
             }
             guard let container else { break }
-            let viewport = container.frame.intersection(tree.frame)
+            let containerIndex = ancestors.lastIndex { $0.elementType == container.elementType && $0.identifier == container.identifier && $0.frame == container.frame }
+            let enclosingFrames = containerIndex.map { Array(ancestors.prefix($0 + 1)).map(\.frame) } ?? []
+            // When an outer vertical scroll clips a horizontal chip strip,
+            // drag in the outer viewport, not the 22pt remnant of that strip.
+            let viewport = usable(UIViewportGeometry.clipped(container.frame.intersection(tree.frame), to: enclosingFrames))
             var landmarks: [String: CGFloat] = [:]
             func mark(_ node: XCUIElementSnapshot) {
                 if !node.frame.isEmpty, ![.other, .scrollView, .collectionView, .table].contains(node.elementType) {
@@ -160,8 +228,17 @@ class YubaiUITestCase: XCTestCase {
                 print("Reveal made no progress: \(identifier)\n" + trace.joined(separator: "\n"))
                 return false
             case let .drag(up, distance):
-                let start = CGPoint(x: viewport.midX, y: up ? viewport.maxY - 16 : viewport.minY + 16)
-                let end = CGPoint(x: start.x, y: start.y + (up ? -distance : distance))
+                // Start well inside the viewport, away from edge effects and
+                // fixed chrome. A drag from the last 16pt can hit a clipped row.
+                let start = CGPoint(x: viewport.midX, y: viewport.minY + viewport.height * (up ? 0.78 : 0.22))
+                let end = CGPoint(x: start.x, y: min(viewport.maxY - 12, max(viewport.minY + 12, start.y + (up ? -distance : distance))))
+                let origin = app.coordinate(withNormalizedOffset: .zero)
+                origin.withOffset(CGVector(dx: start.x - tree.frame.minX, dy: start.y - tree.frame.minY))
+                    .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x - tree.frame.minX, dy: end.y - tree.frame.minY)),
+                           withVelocity: .slow, thenHoldForDuration: 0.1)
+            case let .dragHorizontally(left, distance):
+                let start = CGPoint(x: viewport.minX + viewport.width * (left ? 0.78 : 0.22), y: viewport.midY)
+                let end = CGPoint(x: min(viewport.maxX - 12, max(viewport.minX + 12, start.x + (left ? -distance : distance))), y: start.y)
                 let origin = app.coordinate(withNormalizedOffset: .zero)
                 origin.withOffset(CGVector(dx: start.x - tree.frame.minX, dy: start.y - tree.frame.minY))
                     .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x - tree.frame.minX, dy: end.y - tree.frame.minY)),
@@ -176,6 +253,40 @@ class YubaiUITestCase: XCTestCase {
         guard let viewport = revealedViewport else { return false }
         let frame = lastFrameWait?.target === target ? lastFrameWait?.result.frame : (try? target.snapshot())?.frame
         return frame.map { viewport.insetBy(dx: -0.5, dy: -0.5).contains($0) } ?? false
+    }
+
+    /// Deliberately place a row across fixed chrome while some of it is still
+    /// visible. Tests then tap the fixed control and verify its destination.
+    func placeControl(_ target: XCUIElement, across fixed: XCUIElement, in scroll: XCUIElement, atTop: Bool) -> Bool {
+        guard target.exists, fixed.exists, scroll.exists else { return false }
+        for _ in 0..<6 {
+            let row = target.frame, control = fixed.frame, viewport = scroll.frame
+            if UIViewportGeometry.overlaps(row, control), !row.intersection(viewport).isEmpty { return true }
+            let movement = atTop ? control.midY - row.minY : control.midY - row.maxY
+            let distance = min(viewport.height * 0.45, max(12, abs(movement))) * (movement < 0 ? -1 : 1)
+            let start = CGPoint(x: viewport.midX, y: viewport.minY + viewport.height * (movement < 0 ? 0.78 : 0.22))
+            let end = CGPoint(x: start.x, y: min(viewport.maxY - 12, max(viewport.minY + 12, start.y + distance)))
+            let origin = appCoordinate(scroll)
+            origin.withOffset(CGVector(dx: start.x, dy: start.y))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x, dy: end.y)),
+                       withVelocity: .slow, thenHoldForDuration: 0.1)
+        }
+        return false
+    }
+
+    private func appCoordinate(_ element: XCUIElement) -> XCUICoordinate {
+        // A scroll-relative coordinate must subtract the scroll's screen origin.
+        element.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: -element.frame.minX, dy: -element.frame.minY))
+    }
+
+    func assertViewport(_ scroll: XCUIElement, clears fixed: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        guard scroll.exists, fixed.exists else {
+            XCTFail("Missing scroll viewport or fixed control", file: file, line: line)
+            return
+        }
+        XCTAssertFalse(scroll.frame.isEmpty, file: file, line: line)
+        XCTAssertFalse(UIViewportGeometry.overlaps(scroll.frame, fixed.frame),
+                       "Scroll viewport under fixed control: \(scroll.identifier) \(scroll.frame) / \(fixed.identifier) \(fixed.frame)", file: file, line: line)
     }
 
     /// AX sibling order is only a candidate for front-to-back ordering; XCTest
@@ -241,6 +352,9 @@ class YubaiUITestCase: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), identifier)
         XCTAssertTrue(dismissKeyboardIntroduction(in: app))
         field.typeText(text)
+        let expected = text.trimmingCharacters(in: .newlines)
+        XCTAssertTrue(UIConditionWait.run(timeout: 6, read: { (field.value as? String ?? "").contains(expected) }),
+                      "Field did not retain the full text: " + identifier)
     }
 
     /// The native tree flattens navigationCapsule into mainNavigation. Its three

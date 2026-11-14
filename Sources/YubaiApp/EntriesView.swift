@@ -8,15 +8,15 @@ struct EntriesView: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @Binding var mode: LedgerMode
     @Binding var request: LedgerPreset?
-    @State private var month = Dates.calendar.dateInterval(of: .month, for: Date())!.start
+    @State private var month = Dates.calendar.dateInterval(of: .month, for: Dates.now)!.start
     @State private var filter = EntryTimeline.Filter.all
     @State private var search = ""
     @State private var scope: DateInterval?
     @State private var categoryScope: String?
     @State private var categoryTimeline: EntryTimeline.Snapshot?
     @State private var pickingMonth = false
-    @State private var pickerYear = Dates.calendar.component(.year, from: Date())
-    @State private var pickerMonth = Dates.calendar.component(.month, from: Date())
+    @State private var pickerYear = Dates.calendar.component(.year, from: Dates.now)
+    @State private var pickerMonth = Dates.calendar.component(.month, from: Dates.now)
     @State private var scrollMonth: Date?
     @State private var scrollToTop = false
     @State private var categoryTarget: CategoryTarget?
@@ -68,7 +68,7 @@ struct EntriesView: View {
             .onChange(of: store.entryFilterRequest, initial: true) { _, pending in
                 guard pending != nil else { return }
                 filter = .uncategorized; endSearch()
-                jump(to: store.entryFilterDate ?? Date())
+                jump(to: store.entryFilterDate ?? Dates.now)
             }
             .onChange(of: request, initial: true) { _, value in applyRequest(value) }
             .task(id: categoryQuery) { await refreshCategoryTimeline() }
@@ -304,11 +304,11 @@ struct EntriesView: View {
     }
     private var monthYears: ClosedRange<Int> {
         let years = store.sortedEntries.map { Dates.calendar.component(.year, from: $0.date) }
-        let year = Dates.calendar.component(.year, from: Date())
+        let year = Dates.calendar.component(.year, from: Dates.now)
         return min(years.min() ?? year, year - 2)...max(years.max() ?? year, year + 1)
     }
     private func monthTitle(_ date: Date) -> String {
-        if !Dates.calendar.isDate(date, equalTo: Date(), toGranularity: .year) {
+        if !Dates.calendar.isDate(date, equalTo: Dates.now, toGranularity: .year) {
             return "\(Dates.calendar.component(.year, from: date)) 年 \(Dates.calendar.component(.month, from: date)) 月"
         }
         return "\(Dates.calendar.component(.month, from: date))月"
@@ -389,7 +389,7 @@ struct LedgerEntryRow: View {
     var onSortCategory: () -> Void = {}
     var body: some View {
         entryButton
-            .buttonStyle(.plain).contentViewportTarget().accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+            .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .accessibilityValue(isFuture ? "未来" : "")
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.amberInk) }
@@ -462,7 +462,7 @@ struct LedgerEntryRow: View {
         // Native swipe actions provide their own haptic.
         store.update("删掉", entryMotion: !systemFeedback) { ledger in
             guard let index = ledger.entries.firstIndex(where: { $0.id == entry.id && $0.deletedAt == nil }) else { return }
-            ledger.entries[index].deletedAt = Date()
+            ledger.entries[index].deletedAt = Dates.now
         }
     }
 }

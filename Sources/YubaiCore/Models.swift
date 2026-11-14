@@ -77,7 +77,7 @@ public struct Account: Codable, Identifiable, Equatable, Sendable {
     public var reconciled: Bool; public var archived = false
     public var note = ""; public var creditLimit: Int64 = 0
     public var creditPaymentDay: Int?
-    public init(name: String, kind: AccountKind = .bank, balance: Int64 = 0, at: Date = Date(), reconciled: Bool = true) {
+    public init(name: String, kind: AccountKind = .bank, balance: Int64 = 0, at: Date = Dates.now, reconciled: Bool = true) {
         self.name = name; self.kind = kind; self.anchorBalance = balance; self.anchorDate = at; self.reconciled = reconciled
     }
     /// Date-only in-app entries recorded after reconciliation still move that day's balance.
@@ -131,7 +131,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var rentID: UUID?; public var rentPeriod: Date?
     public var attachmentID: UUID?; public var classificationReason: String = "手动选择"
     public var otherDate: Date?; public var mergedIntoID: UUID?; public var personalExpense: Int64?
-    public init(date: Date = Date(), amount: Int64, nature: Nature = .expense, accountID: UUID, title: String, category: String = Classification.pendingCategory, intoFixedSavings: Bool = false, fromReserve: Bool = false) {
+    public init(date: Date = Dates.now, amount: Int64, nature: Nature = .expense, accountID: UUID, title: String, category: String = Classification.pendingCategory, intoFixedSavings: Bool = false, fromReserve: Bool = false) {
         self.date = date; self.amount = amount; self.nature = nature; self.accountID = accountID; self.title = title; self.category = category
         self.intoFixedSavings = nature == .income && intoFixedSavings
         self.fromReserve = nature == .expense && fromReserve
@@ -254,7 +254,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = Classification.pendingCategory, nature: Nature = .expense, intoFixedSavings: Bool = false) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
         self.intoFixedSavings = nature == .income && inflow && intoFixedSavings
-        if frequency == .yearly { yearlyReserveSince = Dates.day(Date()) }
+        if frequency == .yearly { yearlyReserveSince = Dates.day(Dates.now) }
     }
     private enum CodingKeys: String, CodingKey { case currency, yearlyReserveSince, occurrenceDateOverrides, intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
     public init(from decoder: Decoder) throws {
@@ -263,7 +263,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         amount = try c.decode(Int64.self, forKey: .amount); dueDate = try c.decode(Date.self, forKey: .dueDate)
         frequency = try c.decodeIfPresent(Frequency.self, forKey: .frequency) ?? .once; inflow = try c.decode(Bool.self, forKey: .inflow)
         currency = try c.decodeIfPresent(BillCurrency.self, forKey: .currency) ?? .cny
-        yearlyReserveSince = try c.decodeIfPresent(Date.self, forKey: .yearlyReserveSince) ?? (frequency == .yearly ? Dates.day(Date()) : nil)
+        yearlyReserveSince = try c.decodeIfPresent(Date.self, forKey: .yearlyReserveSince) ?? (frequency == .yearly ? Dates.day(Dates.now) : nil)
         accountID = try c.decodeIfPresent(UUID.self, forKey: .accountID)
         category = try c.decode(String.self, forKey: .category); nature = try c.decode(Nature.self, forKey: .nature)
         let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
@@ -458,7 +458,7 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
     ]
 }
 public struct Attachment: Codable, Identifiable, Equatable, Sendable {
-    public var id = UUID(); public var name: String; public var createdAt = Date()
+    public var id = UUID(); public var name: String; public var createdAt = Dates.now
     private var bytes: Data
     public var data: Data {
         get { bytes }
@@ -506,7 +506,7 @@ public struct Attachment: Codable, Identifiable, Equatable, Sendable {
     }
 }
 public struct ImportBatch: Codable, Identifiable, Equatable, Sendable {
-    public var id = UUID(); public var filename: String; public var importedAt = Date()
+    public var id = UUID(); public var filename: String; public var importedAt = Dates.now
     public var importedCount: Int; public var duplicateCount: Int; public var skippedCount: Int
     public var attachmentID: UUID?; public var undoneAt: Date?
     public var needsOrganization: Bool?
@@ -608,7 +608,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     }
 }
 public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
-    public var id = UUID(); public var createdAt = Date(); public var title: String; public var amount: Int64
+    public var id = UUID(); public var createdAt = Dates.now; public var title: String; public var amount: Int64
     public var result: String; public var note: String
     public init(title: String, amount: Int64, result: String, note: String) { self.title = title; self.amount = amount; self.result = result; self.note = note }
 }
@@ -646,7 +646,7 @@ public struct ProfileArea: Codable, Identifiable, Equatable, Sendable {
 }
 public struct SpendingProfile: Codable, Equatable, Sendable {
     public var generous: [ProfileArea] = []; public var restrain: [ProfileArea] = []
-    public var principles: [String] = []; public var floorAmount: Int64?; public var updatedAt = Date()
+    public var principles: [String] = []; public var floorAmount: Int64?; public var updatedAt = Dates.now
     public var principleDates: [String: Date] = [:]
     public init() {}
     private enum CodingKeys: String, CodingKey { case generous, restrain, principles, floorAmount, updatedAt, principleDates }
@@ -697,7 +697,7 @@ public struct MemoryNote: Codable, Identifiable, Equatable, Sendable {
     public var createdAt: Date; public var updatedAt: Date; public var previousText: String?
     public var lastUsedAt: Date?; public var evidence: [UUID]
     public init(id: UUID = UUID(), text: String, kind: MemoryKind, source: MemorySource,
-                createdAt: Date = Date(), updatedAt: Date? = nil, previousText: String? = nil,
+                createdAt: Date = Dates.now, updatedAt: Date? = nil, previousText: String? = nil,
                 lastUsedAt: Date? = nil, evidence: [UUID] = []) {
         self.id = id; self.text = text; self.kind = kind; self.source = source
         self.createdAt = createdAt; self.updatedAt = updatedAt ?? createdAt; self.previousText = previousText
@@ -758,7 +758,7 @@ public enum CardFeedback: String, Codable, Sendable { case worth, regret }
 public struct ButlerCard: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var kind: CardKind; public var title: String; public var body: String
     public var evidence: [UUID]; public var action: CardAction?; public var dedupeKey: String
-    public var createdAt = Date(); public var dismissedAt: Date?; public var feedback: CardFeedback?
+    public var createdAt = Dates.now; public var dismissedAt: Date?; public var feedback: CardFeedback?
     public var importQuestion: ImportQuestion?
     public var facts: [CardFact]?
     public var areaID: UUID?
@@ -774,7 +774,7 @@ public struct ButlerCard: Codable, Identifiable, Equatable, Sendable {
 public enum WishStatus: String, Codable, CaseIterable, Sendable { case thinking, bought, dropped }
 public struct WishItem: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var amount: Int64; public var purpose: String
-    public var createdAt = Date(); public var status: WishStatus = .thinking; public var judgment: String
+    public var createdAt = Dates.now; public var status: WishStatus = .thinking; public var judgment: String
     public var boughtEntryID: UUID?; public var followUpAt: Date?; public var followUpAnswer: String?
     public var followUpAnsweredAt: Date?
     public var coolUntil: Date?

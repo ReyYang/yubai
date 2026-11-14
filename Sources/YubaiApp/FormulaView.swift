@@ -51,7 +51,7 @@ private struct FormulaAmountEditor: View {
     /// 改完以后的还能花和日均；输入无效时不给结果。
     private var resultText: String? {
         guard valid else { return nil }
-        let now = Date()
+        let now = Dates.now
         var projected = store.current
         projected.savingRule = sharing ? .share(percent) : .fixed(value)
         let hide = store.preferences.hideAmounts

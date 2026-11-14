@@ -4,6 +4,77 @@ import Observation
 import YubaiCore
 #if os(iOS)
 import UIKit
+import SwiftUI
+#endif
+
+#if os(iOS)
+/// Read-only native geometry for scripted walks. No device/Release code or
+/// visible controls: safe areas, transition completion and remaining scroll
+/// travel must be observed rather than guessed from a full-screen AX frame.
+struct UITestWindowMetrics: UIViewRepresentable {
+    func makeUIView(context: Context) -> Probe { Probe() }
+    func updateUIView(_ view: Probe, context: Context) { view.read() }
+    final class Probe: UIView {
+        private var link: CADisplayLink?
+        private final class Tick: NSObject {
+            weak var probe: Probe?
+            init(_ probe: Probe) { self.probe = probe }
+            @objc func read() { probe?.read() }
+        }
+        init() {
+            super.init(frame: .zero)
+            backgroundColor = .clear; isUserInteractionEnabled = false
+            accessibilityIdentifier = "uiTestWindowMetrics"
+            updateAccessibility()
+            NotificationCenter.default.addObserver(self, selector: #selector(updateAccessibility),
+                name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        deinit { link?.invalidate() }
+        @objc private func updateAccessibility() {
+            // Script metadata is queryable by XCTest, never a VoiceOver stop.
+            isAccessibilityElement = !UIAccessibility.isVoiceOverRunning
+        }
+        override func didMoveToWindow() {
+            super.didMoveToWindow(); link?.invalidate(); link = nil
+            if window != nil {
+                let timer = CADisplayLink(target: Tick(self), selector: #selector(Tick.read))
+                timer.preferredFramesPerSecond = 10
+                timer.add(to: .main, forMode: .common); link = timer; read()
+            }
+        }
+        func read() {
+            guard let window else { return }
+            func rect(_ value: CGRect) -> [CGFloat] { [value.minX, value.minY, value.width, value.height] }
+            func transitioning(_ controller: UIViewController) -> Bool {
+                controller.transitionCoordinator != nil || controller.isBeingPresented || controller.isBeingDismissed ||
+                    controller.children.contains(where: transitioning) || controller.presentedViewController.map(transitioning) == true
+            }
+            var scrolls: [[String: Any]] = []
+            var focused = ""
+            func collect(_ view: UIView) {
+                guard !view.isHidden, view.alpha > 0 else { return }
+                if view.isFirstResponder { focused = view.accessibilityIdentifier ?? "" }
+                if let scroll = view as? UIScrollView, scroll.bounds.width > 0, scroll.isScrollEnabled {
+                    let frame = scroll.convert(scroll.bounds, to: nil)
+                    let scale = frame.height / max(1, scroll.bounds.height)
+                    let minimum = -scroll.adjustedContentInset.top
+                    let maximum = max(minimum, scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.bounds.height)
+                    scrolls.append(["identifier": scroll.accessibilityIdentifier ?? "", "frame": rect(frame),
+                                    "remainingDown": max(0, maximum - scroll.contentOffset.y) * scale,
+                                    "remainingUp": max(0, scroll.contentOffset.y - minimum) * scale])
+                }
+                for child in view.subviews { collect(child) }
+            }
+            collect(window)
+            let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
+            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": window.rootViewController.map(transitioning) ?? false,
+                                      "focused": focused, "scrolls": scrolls]
+            if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+               let json = String(data: data, encoding: .utf8), accessibilityValue != json { accessibilityValue = json }
+        }
+    }
+}
 #endif
 
 @MainActor @Observable final class UITestRequestLog {
@@ -102,7 +173,7 @@ enum UITestSupport {
             return
         }
         guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
-        let now = Date()
+        let now = Dates.now
         if savings47Scripts.contains(script) {
             let value = try savings47Ledger(script, now: now)
             resetGalleryDeviceState(for: value.id)
@@ -779,7 +850,7 @@ struct UITestTransport: ChatTransport {
                 "amount": .string(script == "v45-principles" ? "2480" : (skip ? "1899" : "899")), "category": .string("购物"),
                 "subcategory": .string(skip ? "数码电器" : "运动户外")]
             if skip {
-                let rentDate = Dates.calendar.dateInterval(of: .month, for: Date())!.end
+                let rentDate = Dates.calendar.dateInterval(of: .month, for: Dates.now)!.end
                 fields["date"] = .string(Dates.text(rentDate))
             }
             return ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "judge-purchase", name: "judge_purchase", arguments: try JSONValue.object(fields).jsonText())])

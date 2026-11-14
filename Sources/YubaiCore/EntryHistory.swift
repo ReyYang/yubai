@@ -8,7 +8,7 @@ public enum EntryHistory {
         public let entry: Entry
         public let count: Int
     }
-    public static func recentPurposes(in ledger: Ledger, nature: Nature, now: Date = Date(), limit: Int = 6) -> [Recall] {
+    public static func recentPurposes(in ledger: Ledger, nature: Nature, now: Date = Dates.now, limit: Int = 6) -> [Recall] {
         let rows = ledger.entries.filter { $0.deletedAt == nil && $0.nature == nature && $0.date <= now }
         let names = Set(ledger.categories.flatMap { [$0.name] + $0.subcategories } + [Classification.pendingCategory, "没分类"])
         let groups = Dictionary(grouping: rows.filter { !purpose($0).isEmpty && !names.contains(purpose($0)) }, by: purpose)
@@ -22,7 +22,7 @@ public enum EntryHistory {
             return $0.purpose < $1.purpose
         }.prefix(max(0, limit)).map { $0 }
     }
-    public static func suggestion(purpose text: String, nature: Nature, in ledger: Ledger, at now: Date = Date(),
+    public static func suggestion(purpose text: String, nature: Nature, in ledger: Ledger, at now: Date = Dates.now,
                                   calendar: Calendar = Dates.calendar) -> CategoryAssignment? {
         guard nature != .transfer else { return nil }
         let rows = ledger.entries.filter { $0.deletedAt == nil && $0.nature == nature && $0.date <= now }
@@ -61,28 +61,28 @@ public enum EntryHistory {
 }
 
 public enum RecentlyDeleted {
-    public static func cutoff(now: Date = Date(), calendar: Calendar = Dates.calendar) -> Date {
+    public static func cutoff(now: Date = Dates.now, calendar: Calendar = Dates.calendar) -> Date {
         calendar.date(byAdding: .day, value: -30, to: now)!
     }
-    public static func entries(in ledger: Ledger, now: Date = Date(), calendar: Calendar = Dates.calendar) -> [Entry] {
+    public static func entries(in ledger: Ledger, now: Date = Dates.now, calendar: Calendar = Dates.calendar) -> [Entry] {
         let cutoff = cutoff(now: now, calendar: calendar)
         return ledger.entries.filter { $0.deletedAt.map { $0 > cutoff } ?? false }.sorted {
             if $0.deletedAt != $1.deletedAt { return $0.deletedAt! > $1.deletedAt! }
             return $0.id.uuidString < $1.id.uuidString
         }
     }
-    public static func daysRemaining(_ entry: Entry, now: Date = Date(), calendar: Calendar = Dates.calendar) -> Int {
+    public static func daysRemaining(_ entry: Entry, now: Date = Dates.now, calendar: Calendar = Dates.calendar) -> Int {
         guard let deleted = entry.deletedAt, let end = calendar.date(byAdding: .day, value: 30, to: deleted) else { return 0 }
         return max(0, Int(ceil(end.timeIntervalSince(now) / 86_400)))
     }
-    public static func restore(_ id: UUID, in ledger: inout Ledger, now: Date = Date(), calendar: Calendar = Dates.calendar) throws {
+    public static func restore(_ id: UUID, in ledger: inout Ledger, now: Date = Dates.now, calendar: Calendar = Dates.calendar) throws {
         guard let index = ledger.entries.firstIndex(where: { $0.id == id }),
               let deleted = ledger.entries[index].deletedAt, deleted > cutoff(now: now, calendar: calendar) else {
             throw YubaiError.invalid("这笔已清掉")
         }
         ledger.entries[index].deletedAt = nil
     }
-    @discardableResult public static func purge(in ledger: inout Ledger, now: Date = Date(), calendar: Calendar = Dates.calendar) -> Int {
+    @discardableResult public static func purge(in ledger: inout Ledger, now: Date = Dates.now, calendar: Calendar = Dates.calendar) -> Int {
         let cutoff = cutoff(now: now, calendar: calendar); let count = ledger.entries.count
         ledger.entries.removeAll { $0.deletedAt.map { $0 <= cutoff } ?? false }
         return count - ledger.entries.count

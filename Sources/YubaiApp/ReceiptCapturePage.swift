@@ -211,7 +211,7 @@ struct ReceiptCapturePage: View {
             }
             try Task.checkCancellation()
             guard let transport = store.assistantTransport(for: ledger, feature: .receiptRecognition) else { return }
-            let recognized = try await ReceiptRecognition.read(receipt, transport: transport, redactor: Redactor(ledger: ledger), categories: ledger.categories, now: Date())
+            let recognized = try await ReceiptRecognition.read(receipt, transport: transport, redactor: Redactor(ledger: ledger), categories: ledger.categories, now: Dates.now)
             try Task.checkCancellation()
             guard store.current.id == ledger.id, !store.locked, allowed else { return }
             recognitionID = UUID(); shop = recognized.shop; choices = [:]
@@ -248,7 +248,7 @@ struct ReceiptCapturePage: View {
                 drafts[index].subcategory = choice?.subcategory ?? hint?.subcategory ?? drafts[index].subcategory
                 drafts[index].categoryUserEdited = choice != nil
             }
-            let ledger = store.current, revision = store.ledgerRevision, key = selectionKey, now = Date()
+            let ledger = store.current, revision = store.ledgerRevision, key = selectionKey, now = Dates.now
             let change = ChangeSet(source: "截图记", reason: "都记下", items: drafts.map { .addEntry($0) })
             let after: Int64?
             if drafts.isEmpty { after = nil }

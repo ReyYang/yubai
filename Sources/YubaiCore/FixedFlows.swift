@@ -52,10 +52,10 @@ public struct FixedFlowOccurrence: Identifiable, Equatable, Sendable {
         lhs.planID == rhs.planID && lhs.rentID == rhs.rentID && lhs.inflow == rhs.inflow && lhs.autoPay == rhs.autoPay &&
         lhs.installment?.index == rhs.installment?.index && lhs.installment?.total == rhs.installment?.total && lhs.estimated == rhs.estimated
     }
-    public func overdueDays(now: Date = Date(), calendar: Calendar = Dates.calendar) -> Int {
+    public func overdueDays(now: Date = Dates.now, calendar: Calendar = Dates.calendar) -> Int {
         max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0)
     }
-    public func statusText(now: Date = Date(), calendar: Calendar = Dates.calendar) -> String {
+    public func statusText(now: Date = Dates.now, calendar: Calendar = Dates.calendar) -> String {
         let dateLabel = "\(calendar.component(.day, from: date))日"
         let days = overdueDays(now: now, calendar: calendar)
         let status: String
@@ -71,7 +71,7 @@ public struct FixedFlowUpcoming: Identifiable, Sendable {
     public var id: UUID { planID }
     public var planID: UUID; public var title: String; public var amount: Int64; public var inflow: Bool
     public var date: Date; public var frequency: Frequency; public var dueDate: Date; public var monthlyDay: Int?
-    public func detail(now: Date = Date()) -> String {
+    public func detail(now: Date = Dates.now) -> String {
         let calendar = Dates.calendar
         let schedule = FixedFlowArrangement.schedule(frequency, date: dueDate, now: now, monthlyDay: monthlyDay).replacingOccurrences(of: " ", with: "")
         let year = calendar.component(.year, from: date) == calendar.component(.year, from: now) + 1 ? "明年" : ""
@@ -88,10 +88,10 @@ public struct FixedFlowMonth: Sendable {
 }
 
 extension FixedFlows {
-    public static func unsettled(planID: UUID, in ledger: Ledger, now: Date = Date()) -> [Occurrence] {
+    public static func unsettled(planID: UUID, in ledger: Ledger, now: Date = Dates.now) -> [Occurrence] {
         Finance.occurrences(in: ledger, now: now, days: 1).filter { $0.planID == planID && Dates.day($0.date) <= Dates.day(now) }
     }
-    public static func stop(planID: UUID, resolution: FixedFlowStopResolution? = nil, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+    public static func stop(planID: UUID, resolution: FixedFlowStopResolution? = nil, in ledger: Ledger, now: Date = Dates.now) throws -> ChangeSet {
         guard let plan = ledger.plans.first(where: { $0.id == planID && $0.active && $0.endDate == nil }) else { throw YubaiError.invalid("找不到可停掉的安排。") }
         let pending = unsettled(planID: planID, in: ledger, now: now)
         guard pending.isEmpty || resolution != nil else { throw YubaiError.invalid("先处理已到期还没记的账单。") }
@@ -105,14 +105,14 @@ extension FixedFlows {
         var preview = ledger; try change.apply(to: &preview)
         return change
     }
-    public static func resume(id: UUID, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+    public static func resume(id: UUID, in ledger: Ledger, now: Date = Dates.now) throws -> ChangeSet {
         guard let row = FixedFlowArrangement.stopped(in: ledger, now: now).first(where: { $0.id == id }) else { throw YubaiError.invalid("找不到已停掉的安排。") }
         var change = ChangeSet(source: "用户操作", reason: "恢复「\(row.title)」", items: [.resumePlan(id)])
         change.createdAt = now
         var preview = ledger; try change.apply(to: &preview)
         return change
     }
-    public static func resolveStopped(planID: UUID, resolution: FixedFlowStopResolution, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+    public static func resolveStopped(planID: UUID, resolution: FixedFlowStopResolution, in ledger: Ledger, now: Date = Dates.now) throws -> ChangeSet {
         guard let row = FixedFlowArrangement.stopped(in: ledger, now: now).first(where: { $0.id == planID }), !row.pending.isEmpty else { throw YubaiError.invalid("找不到已停掉安排的未结清期。") }
         var items: [ChangeItem] = []
         for occurrence in row.pending {
@@ -123,7 +123,7 @@ extension FixedFlows {
         var preview = ledger; try change.apply(to: &preview)
         return change
     }
-    public static func settle(planID: UUID, occurrence: Date, amount: Int64? = nil, accountID: UUID? = nil, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+    public static func settle(planID: UUID, occurrence: Date, amount: Int64? = nil, accountID: UUID? = nil, in ledger: Ledger, now: Date = Dates.now) throws -> ChangeSet {
         guard let plan = ledger.plans.first(where: { $0.id == planID && $0.active }), plan.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("找不到这期固定收付。") }
         let payments = FixedFlowPayments(in: ledger, now: now); let remaining = payments.remaining(for: plan, on: occurrence)
         guard remaining > 0 else { throw YubaiError.invalid(plan.inflow ? "这期已经收到了。" : "这期已经付了。") }
@@ -138,7 +138,7 @@ extension FixedFlows {
         var preview = ledger; try change.apply(to: &preview)
         return change
     }
-    public static func suggestions(amount: Int64, nature: Nature, purpose: String, day: Date, accountID: UUID?, in ledger: Ledger, now: Date = Date()) -> [Occurrence] {
+    public static func suggestions(amount: Int64, nature: Nature, purpose: String, day: Date, accountID: UUID?, in ledger: Ledger, now: Date = Dates.now) -> [Occurrence] {
         guard nature != .transfer, amount > 0, amount <= Money.limit else { return [] }
         func normalized(_ text: String) -> String { String(text.filter { !$0.isWhitespace }).lowercased() }
         let name = normalized(purpose); let day = Dates.day(day)
@@ -161,7 +161,7 @@ extension FixedFlows {
             return $0.occurrence.id < $1.occurrence.id
         }.prefix(3).map(\.occurrence))
     }
-    public static func autoSettle(in ledger: Ledger, now: Date = Date()) -> ChangeSet? {
+    public static func autoSettle(in ledger: Ledger, now: Date = Dates.now) -> ChangeSet? {
         let anchor = ledger.paydayConfirmSince != nil ? Finance.anchorPlan(in: ledger, now: now)?.id : nil
         let plans = Dictionary(uniqueKeysWithValues: ledger.plans.filter { $0.autoPay && $0.accountID != nil && $0.id != anchor }.map { ($0.id, $0) })
         let today = Dates.day(now)

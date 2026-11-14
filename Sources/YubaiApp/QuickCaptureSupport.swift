@@ -22,7 +22,7 @@ extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
         if locked { pendingQuickSheet = next }
         else {
-            if accounts.isEmpty || !preferences.onboardingComplete { _ = update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Date()) } }
+            if accounts.isEmpty || !preferences.onboardingComplete { _ = update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Dates.now) } }
             sheetSource = nil; sheet = next
         }
     }

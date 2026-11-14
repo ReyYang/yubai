@@ -67,7 +67,7 @@ struct ButlerSuggestionEvidence: View {
         store.current.butlerAI?.suggestions.contains { $0.id == suggestionID && $0.answeredAt == nil } == true ? "这条建议的依据已变" : "这条建议已处理"
     }
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "butlerAIEvidencePage") {
             if let suggestion {
                 Text(suggestion.text(suggestion.observation, hidden: store.preferences.hideAmounts))
                     .yubaiFont(YubaiFont.butlerTitle, weight: .semibold).fixedSize(horizontal: false, vertical: true)
@@ -96,7 +96,6 @@ struct ButlerSuggestionEvidence: View {
                     .padding(YubaiSpace.insetPage).frame(maxWidth: .infinity, alignment: .leading).background(YubaiColor.canvas)
             }
         }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("为什么这么说").yubaiNavigation()
-            .accessibilityElement(children: .contain).accessibilityIdentifier("butlerAIEvidencePage")
             .sheet(item: $correcting, onDismiss: {
                 if correctionSaved { correctionSaved = false; dismiss() }
             }) { suggestion in

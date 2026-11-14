@@ -7,7 +7,7 @@ struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @State private var storageSize: String?
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "settingsScroll") {
             group("账本") {
                 TabNavigationLink(.accounts) { AccountsView() } label: { SettingsRow(title: "账户", detail: "\(store.accounts.filter { !$0.archived }.count) 个") }.accessibilityIdentifier("openAccounts")
                 EntryFormDivider()
@@ -38,7 +38,7 @@ struct SettingsView: View {
                 EntryFormDivider()
                 NavigationLink { DeviceSettingsView() } label: { SettingsRow(title: "设备与界面") }.accessibilityIdentifier("openDeviceSettings")
             }
-        }.buttonStyle(PressButtonStyle()).amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("settingsScroll")
+        }.buttonStyle(PressButtonStyle()).amountPrivacy(store.preferences.hideAmounts)
             .modifier(SettingsStorageSizeTask(storageSize: $storageSize)).navigationTitle("设置").yubaiNavigation()
     }
     private func group<Rows: View>(_ title: String, @ViewBuilder rows: () -> Rows) -> some View {
@@ -78,9 +78,9 @@ struct IntelligencePrivacyView: View {
     @Environment(AppStore.self) private var store
     @State private var hasKey = APIKeyStore.shared.hasKeychainKey
     @State private var configured = IntelligenceRuntime.isConfigured
-    @State private var sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDateInToday($0.time) }.count
+    @State private var sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup, identifier: "intelligencePrivacyPage") {
             if let model = IntelligenceRuntime.cloud.unavailableModel { ModelUnavailableNote(model: model) }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
@@ -129,11 +129,11 @@ struct IntelligencePrivacyView: View {
                 NavigationLink { CloudSendLogView() } label: { settingsRow("看最近发出去了什么", detail: "今天 \(sendCount) 次", chevron: true) }.hidesListDisclosure()
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openCloudSendLog")
             }
-        }.navigationTitle("智能与隐私").yubaiNavigation().accessibilityIdentifier("intelligencePrivacyPage").onAppear {
+        }.navigationTitle("智能与隐私").yubaiNavigation().onAppear {
             IntelligenceRuntime.cloud.refresh(); hasKey = APIKeyStore.shared.hasKeychainKey
-            configured = IntelligenceRuntime.isConfigured; sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDateInToday($0.time) }.count
+            configured = IntelligenceRuntime.isConfigured; sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
         }
-        .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDateInToday($0.time) }.count }
+        .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count }
     }
     private func featureToggle(_ title: String, feature: AIFeature) -> some View {
         Toggle(title, isOn: Binding(get: { store.preferences.isAIEnabled(for: feature) }, set: { enabled in
@@ -290,8 +290,8 @@ struct BackupView: View {
     func exportBackup() {
         passwordFocus = false
         let ledger = store.current; let password = password; busy = true; message = nil
-        csvExport = false; exportedLedgerID = ledger.id; exportedAt = Date()
-        Task { do { let data = try await Task.detached { try Backup.export(ledger, password: password) }.value; exportDocument = ExportDocument(data: data); exportName = "余白备份-" + Dates.text(Date()) + ".yubaibackup"; exporting = true; busy = false } catch { message = error.localizedDescription; busy = false } }
+        csvExport = false; exportedLedgerID = ledger.id; exportedAt = Dates.now
+        Task { do { let data = try await Task.detached { try Backup.export(ledger, password: password) }.value; exportDocument = ExportDocument(data: data); exportName = "余白备份-" + Dates.text(Dates.now) + ".yubaibackup"; exporting = true; busy = false } catch { message = error.localizedDescription; busy = false } }
     }
     private func exportCSV() {
         passwordFocus = false
@@ -300,7 +300,7 @@ struct BackupView: View {
         Task { @MainActor in
             let data = await Task.detached(priority: .userInitiated) { LedgerBackup.entriesCSV(ledger) }.value
             exportDocument = ExportDocument(data: data)
-            exportName = "余白账目-" + Dates.text(Date()) + ".csv"
+            exportName = "余白账目-" + Dates.text(Dates.now) + ".csv"
             busy = false; exporting = true
         }
     }
@@ -373,7 +373,7 @@ struct BackupView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             if let date = store.preferences.lastBackupAt {
                 Text("上次备份").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                let days = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(Date())).day ?? 0)
+                let days = max(0, Dates.calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(Dates.now)).day ?? 0)
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: YubaiSpace.space8))
                 layout {
                     Text(FixedFlowPresentation.monthDay(date)).yubaiFont(YubaiFont.amountLarge)
@@ -472,8 +472,8 @@ struct RecentlyDeletedView: View {
         let rows = RecentlyDeleted.entries(in: store.current)
         Page(spacing: YubaiSpace.gapSection) {
             if rows.isEmpty { EmptyState("trash", "最近删除里没有账目", action: "记一笔", onAction: { store.sheet = .addEntry }) }
-            group("今天", rows: rows.filter { Dates.calendar.isDateInToday($0.deletedAt!) })
-            group("更早", rows: rows.filter { !Dates.calendar.isDateInToday($0.deletedAt!) })
+            group("今天", rows: rows.filter { Dates.calendar.isDate($0.deletedAt!, inSameDayAs: Dates.now) })
+            group("更早", rows: rows.filter { !Dates.calendar.isDate($0.deletedAt!, inSameDayAs: Dates.now) })
             if !rows.isEmpty {
                 Button("全部清掉") { confirmingClear = true }.buttonStyle(DestructiveButtonStyle()).accessibilityIdentifier("clearRecentlyDeleted")
             }
@@ -503,7 +503,7 @@ struct RecentlyDeletedView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
             Text(Classification.displayCategory(entry.category) + " · " + entry.displayTitle).yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.labelMuted)
             Text("删于 " + deletedTime(entry.deletedAt!) + " · 原记 " + ManualBookkeeping.dayLabel(entry.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            if !Dates.calendar.isDateInToday(entry.deletedAt!) { Text("\(RecentlyDeleted.daysRemaining(entry)) 天后清掉").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
+            if !Dates.calendar.isDate(entry.deletedAt!, inSameDayAs: Dates.now) { Text("\(RecentlyDeleted.daysRemaining(entry)) 天后清掉").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             Text(store.preferences.hideAmounts ? "••••" : AmountLabel.text(entry.amount, sign: entry.nature.inflow ? .inflow : .outflow))
                 .yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary).strikethrough()
         }
@@ -517,6 +517,6 @@ struct RecentlyDeletedView: View {
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("restoreDeleted_" + entry.id.uuidString)
     }
     private func deletedTime(_ date: Date) -> String {
-        Dates.calendar.isDateInToday(date) ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date)
+        Dates.calendar.isDate(date, inSameDayAs: Dates.now) ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date)
     }
 }

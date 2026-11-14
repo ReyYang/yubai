@@ -310,7 +310,7 @@ struct YearlyBillsView: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         let rows = YearlyBillReserves.rows(in: store.current, now: store.financialNow)
-        Page {
+        Page(identifier: "yearlyBillsPage") {
             Card(style: .list) {
                 Toggle("每月先留", isOn: Binding(get: { store.preferences.yearlyBillsSetAside != false }, set: { value in
                     _ = store.update("每月先留", entryMotion: false) { YearlyBillReserves.setEnabled(value, in: &$0, now: store.financialNow) }
@@ -327,6 +327,6 @@ struct YearlyBillsView: View {
                     }.frame(maxWidth: .infinity, minHeight: YubaiSize.sourceRow, alignment: .leading)
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("yearlyBill_" + plan.id.uuidString)
             }
-        }.navigationTitle("一年付一次的").yubaiNavigation().accessibilityIdentifier("yearlyBillsPage")
+        }.navigationTitle("一年付一次的").yubaiNavigation()
     }
 }

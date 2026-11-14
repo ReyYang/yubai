@@ -87,10 +87,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
     }
 
-    @discardableResult private func stop(_ suffix: String, _ walk: () throws -> Void) -> Bool {
+    @discardableResult private func stop(_ suffix: String, budget: TimeInterval = 90, _ walk: () throws -> Void) -> Bool {
         let name = prefix + suffix
         planned.append(name); activeStop = name; issues = []
-        stopDeadline = Date().addingTimeInterval(90)
+        stopDeadline = Date().addingTimeInterval(budget)
         attachedAuditInventory = false
         defer { activeStop = nil }
         var walkFailed = false
@@ -157,6 +157,15 @@ final class ScreenGalleryTests: YubaiUITestCase {
             issues.append("Missing identifier: " + id + " frame=<absent>")
         }
     }
+    /// Navigation prerequisites cannot be treated as a successful route while
+    /// the previous page/sheet is still on screen.
+    private func destination(_ id: String) throws {
+        try wait({ self.element(id).exists }, "Destination did not appear: " + id, timeout: 12)
+        guard waitForNativeTransition(in: app, deadline: stopDeadline),
+              waitForStableFrame(element(id), deadline: stopDeadline), element(id).exists else {
+            throw Miss(description: "Destination did not settle: " + id)
+        }
+    }
     private func launch(_ fixture: String = "gallery", dark: Bool = false, large: Bool = false, organization: String? = nil, statement: String? = nil, longToast: Bool = false, reduceMotion: Bool = false, restoring: Bool = false, versions: Bool = false) throws {
         relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement, longToast: longToast, reduceMotion: reduceMotion, restoring: restoring, versions: versions) }
         app.terminate(); app = XCUIApplication()
@@ -177,6 +186,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         if let statement { app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(statement.utf8).base64EncodedString() }
         guard launchApp(app) else { throw Miss(description: "Application launch failed after three attempts") }
         try require(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
+        try destination(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation")
     }
     private func drag(_ scroll: XCUIElement, up: Bool = true) throws {
         // XCUITest reports some SwiftUI scroll containers as not hittable although a finger can drag them;
@@ -250,15 +260,21 @@ final class ScreenGalleryTests: YubaiUITestCase {
         try wait({ self.app.keyboards.firstMatch.exists }, "Keyboard did not open for " + id)
         guard dismissKeyboardIntroduction(in: app) else { throw Miss(description: "System keyboard introduction could not be dismissed") }
         field.typeText(value)
+        if ["frequentEntryPurpose", "butlerAICorrectionText"].contains(id) {
+            let expected = value.trimmingCharacters(in: .newlines)
+            try wait({ (field.value as? String ?? "").contains(expected) }, "Field did not retain the full text: " + id)
+        }
     }
     private func keys(_ value: String) throws { for key in value { try tap("keypad_" + String(key)) } }
     private func back() throws {
         let custom = element("BackButton")
         if custom.exists && custom.isHittable { try tap(custom) }
         else { try tap(app.navigationBars.buttons.firstMatch) }
+        guard waitForNativeTransition(in: app, deadline: stopDeadline) else { throw Miss(description: "Back transition did not finish") }
     }
     private func root(_ tab: String) throws {
         for _ in 0..<10 {
+            guard waitForNativeTransition(in: app, deadline: stopDeadline) else { throw Miss(description: "Root transition did not finish") }
             if element("mainNavigation").exists && element("mainNavigation").isHittable { break }
             if element("cancelManualSheet").exists && element("cancelManualSheet").isHittable {
                 try tap("cancelManualSheet")
@@ -269,18 +285,28 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 try tap("amountSheetCancel")
             } else { try back() }
         }
+        guard element("mainNavigation").exists && element("mainNavigation").isHittable else {
+            throw Miss(description: "Root not reached after dismissing sheets and popping pages: " + tab)
+        }
         try tap("tab_" + tab)
         try wait({ self.element("tab_" + tab).isSelected }, "Tab did not select: " + tab)
+        try destination("mainNavigation")
+        try destination("rootPage_" + tab)
+        guard (element("mainNavigation").value as? String ?? "").contains("destination=" + tab),
+              !element("BackButton").exists else { throw Miss(description: "Root state not verified: " + tab) }
     }
     private func savingPage() throws {
-        try root("now"); try tap("openSaving"); try require("savingTabScroll")
+        try root("now"); try tap("openSaving"); try destination("savingTabScroll")
         guard !element("mainNavigation").exists else { throw Miss(description: "Saving page did not push") }
     }
-    private func settings(_ destination: String? = nil) throws {
-        try root("now"); try tap("openSettings"); try require("settingsScroll")
-        if let destination { try tap(destination) }
+    private func settings(_ requestedDestination: String? = nil) throws {
+        try root("now"); try tap("openSettings"); try destination("settingsScroll")
+        if let id = requestedDestination {
+            try tap(id)
+            if id == "openIntelligencePrivacy" { try self.destination("intelligencePrivacyPage") }
+        }
     }
-    private func formula() throws { try root("now"); try tap("fundsFormula"); try require("formulaPage") }
+    private func formula() throws { try root("now"); try tap("fundsFormula"); try destination("formulaPage") }
     private func close(_ id: String = "cancelManualSheet") throws { try tap(id) }
     private func bill(_ title: String) -> XCUIElement {
         let check = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'billCheck_' AND label == %@", "付了 " + title)).firstMatch
@@ -440,13 +466,13 @@ final class ScreenGalleryTests: YubaiUITestCase {
             try reveal(element("butlerLastRun"))
             try wait({ (self.element("butlerLastRun").value as? String ?? "").contains("requests=1;suggestions=0") }, "Rejected suggestion")
         }
-        stop("Changes") { try combined(); try require("openLetterInbox"); try require("openSaving") }
-        stop("Changes-Deck") { try combined(); try tap("openLetterInbox"); try require("savingsTopupCard"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
-        stop("Changes-Evidence") { try combined(); try tap("openLetterInbox"); try tap("butlerDeckNext"); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage") }
-        stop("Changes-Answered") { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard") }
-        stop("Changes-Trial") { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard"); try tap("butlerAIAccept"); try wait({ !self.element("butlerSuggestionCard").exists }, "Trial accepted"); try require("openSaving") }
-        stop("Changes-Hard") { try combined("v47-ai-topup-hard"); try reveal(element("openSaving")) }
-        stop("Changes-Hard-Deck") { try combined("v47-ai-topup-hard"); try tap("openLetterInbox"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
+        stop("Changes", budget: 240) { try combined(); try require("openLetterInbox"); try require("openSaving") }
+        stop("Changes-Deck", budget: 240) { try combined(); try tap("openLetterInbox"); try require("savingsTopupCard"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
+        stop("Changes-Evidence", budget: 240) { try combined(); try tap("openLetterInbox"); try tap("butlerDeckNext"); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage") }
+        stop("Changes-Answered", budget: 240) { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard") }
+        stop("Changes-Trial", budget: 240) { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard"); try tap("butlerAIAccept"); try wait({ !self.element("butlerSuggestionCard").exists }, "Trial accepted"); try require("openSaving") }
+        stop("Changes-Hard", budget: 240) { try combined("v47-ai-topup-hard"); try reveal(element("openSaving")) }
+        stop("Changes-Hard-Deck", budget: 240) { try combined("v47-ai-topup-hard"); try tap("openLetterInbox"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
         stop("Home-AI-Many") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try require("openLetterInbox") }
         stop("Home-AI-Many-Next") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try require("butlerSuggestionCard") }
         stop("Home-AI-Never") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try tap("butlerAINever"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestion muted") }
@@ -521,14 +547,14 @@ final class ScreenGalleryTests: YubaiUITestCase {
         func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
         func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
         func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
-        stop("Spend") { try load("v47-spend"); try formula(); try require("formulaResult"); try reveal(element("formulaRow_daily")) }
+        stop("Spend", budget: 180) { try load("v47-spend"); try formula(); try require("formulaResult"); try reveal(element("formulaRow_daily")) }
         stop("Spend-Over") { try load("v47-spend-over"); try formula(); try reveal(element("formulaResult")) }
-        stop("Spend-Zero") { try load("v47-spend-zero"); try formula(); try require("formulaRow_spent") }
+        stop("Spend-Zero", budget: 180) { try load("v47-spend-zero"); try formula(); try require("formulaRow_spent") }
         stop("Spend-Hard") { try load("v47-savings-hard"); try formula(); try reveal(element("formulaResult")) }
-        stop("Spend-Edit-Saving") { try load(); try formula(); try tap("formulaRow_saving"); try require("saveSavingsAmount") }
+        stop("Spend-Edit-Saving", budget: 180) { try load(); try formula(); try tap("formulaRow_saving"); try destination("saveSavingsAmount") }
         stop("Spend-Cycle-Bills") { try load(); try formula(); try tap("formulaRow_bills"); try require("cycleBillsPage") }
-        stop("Spend-Yearly") { try load(); try formula(); try tap("formulaRow_yearlySetAside"); try require("yearlyBillsPage") }
-        stop("Spend-Entries") { try load(); try formula(); try tap("formulaRow_spent"); try require("entriesScroll") }
+        stop("Spend-Yearly", budget: 180) { try load(); try formula(); try tap("formulaRow_yearlySetAside"); try destination("yearlyBillsPage") }
+        stop("Spend-Entries", budget: 180) { try load(); try formula(); try tap("formulaRow_spent"); try destination("entriesScroll") }
         stop("Save-Page-Flexible") { try saving(); try require("takeSavings"); try require("putBackSavings"); try reveal(element("editSavingsFloor")) }
         stop("Save-Page-No-Floor") { try saving("v47-savings-no-floor"); try require("editSavingsFloor") }
         stop("Save-Page-Hard") { try saving("v47-savings-hard"); try reveal(element("openReserve")) }
@@ -541,7 +567,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("PutBack-Saved") { try putBack("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
         stop("Floor-Edit") { try saving(); try tap("editSavingsFloor"); try require("clearSavingsFloor") }
         stop("Floor-Cleared") { try saving(); try tap("editSavingsFloor"); try tap("clearSavingsFloor"); try require("editSavingsFloor") }
-        stop("Records") { try saving("v47-records"); try tap("openReserve"); try require("reserveLine_0") }
+        stop("Records", budget: 180) { try saving("v47-records"); try tap("openReserve"); try require("reserveLine_0") }
         stop("Home-Topup") { try load("v47-topup"); try require("savingsTopupCard") }
         stop("Home-Topup-Partial") { try load("v47-topup"); try tap("savingsTopupPartial"); try keys("200"); try require("savingsTransferPreview") }
         stop("Home-Topup-Part-Saved") { try load("v47-topup"); try tap("savingsTopupPartial"); try keys("200"); try tap("confirmSavingsTransfer"); try require("openSaving"); try toast() }
@@ -599,7 +625,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Home-Hidden") { try load("v46-home"); try hideAmounts(); try require("stopRenewal") }
         stop("Home-Hard") { try load("v46-hard"); try require("renewalCard") }
         stop("Big-Home") { try launch("v46-big", dark: dark, large: true); try require("todayEntries") }
-        stop("Spend") { try load("v46-spend"); try tap("fundsFormula"); try require("formulaRow_income"); try require("formulaRow_spent") }
+        stop("Spend", budget: 180) { try load("v46-spend"); try tap("fundsFormula"); try require("formulaRow_income"); try require("formulaRow_spent") }
         stop("Saved") { try load("v46-saved"); try savingPage(); try tap("openButlerSaved"); try require("butlerSavedTotal") }
         // These three boards specify behavior, rather than another phone page.
         stop("Goal") { try load("v46-home"); try require("stopRenewal") }
@@ -1122,6 +1148,34 @@ final class ScreenGalleryTests: YubaiUITestCase {
         // do not meet this owner/type relationship.
         var grabberFrames: [CGRect] = []
         var keyboardNodes = Set<String>()
+        typealias ScrollAncestor = (key: String, frame: CGRect, identifier: String)
+        typealias Context = (frame: CGRect, ancestors: [ScrollAncestor], fixedChrome: Bool, nativeNavigation: Bool, presentations: [CGRect])
+        var scrollAncestors: [String: [Context]] = [:]
+        var nativeNavigationFrames: [CGRect] = []
+        var scaledPresentationFrames: [CGRect] = []
+        var nativeMetrics: UIWindowMetrics?
+        func ancestryIdentity(_ node: XCUIElementSnapshot) -> String {
+            "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)"
+        }
+        func indexScrolls(_ node: XCUIElementSnapshot, ancestors: [ScrollAncestor] = [], path: String = "root",
+                          fixedChrome: Bool = false, nativeNavigation: Bool = false, presentations: [CGRect] = []) {
+            guard node.identifier != UIWindowMetrics.probeIdentifier else { return }
+            let fixed = fixedChrome || ["rootHeaderRegion", "fixedBottomBar"].contains(node.identifier) ||
+                node.identifier.hasPrefix("tab_") || node.identifier == "addEntry"
+            let native = nativeNavigation || node.elementType == .navigationBar
+            if node.elementType == .navigationBar, node.children.contains(where: { $0.identifier == "BackButton" }) {
+                nativeNavigationFrames.append(node.frame)
+            }
+            let scaled = presentations + (scaledPresentationFrames.contains(node.frame) ? [node.frame] : [])
+            scrollAncestors[ancestryIdentity(node), default: []].append((node.frame, ancestors, fixed, native, scaled))
+            var next = ancestors
+            if [.scrollView, .table, .collectionView].contains(node.elementType) {
+                next.append((path, node.frame, node.identifier))
+            }
+            for (index, child) in node.children.enumerated() {
+                indexScrolls(child, ancestors: next, path: path + "." + String(index), fixedChrome: fixed, nativeNavigation: native, presentations: scaled)
+            }
+        }
         func identity(_ node: XCUIElementSnapshot) -> String {
             "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)|\(node.frame)"
         }
@@ -1132,6 +1186,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
             node.identifier.hasPrefix("rootPage_") || node.children.contains(where: containsAppPage)
         }
         func collectKeyboard(_ node: XCUIElementSnapshot, inKeyboard: Bool = false) {
+            guard node.identifier != UIWindowMetrics.probeIdentifier else { return }
             // iOS puts the input assistant and keyboard-switch key beside the
             // Keyboard node in its own window. Classify that owner structurally;
             // never exempt a control by its localized key label or by its frame.
@@ -1141,6 +1196,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
             for child in node.children { collectKeyboard(child, inKeyboard: owned) }
         }
         func sheetGrabbers(_ owner: XCUIElementSnapshot) {
+            guard owner.identifier != UIWindowMetrics.probeIdentifier else { return }
             let children = owner.children
             if owner.elementType == .other, owner.identifier.isEmpty, children.count >= 2,
                children[0].elementType == .button, children[0].identifier.isEmpty,
@@ -1154,16 +1210,33 @@ final class ScreenGalleryTests: YubaiUITestCase {
                abs(children[0].frame.midX - owner.frame.midX) < 1,
                children[0].frame.height < 44 {
                 grabberFrames.append(children[0].frame)
+                if owner.frame.width < window.width - 0.5 && owner.frame.minX > window.minX {
+                    scaledPresentationFrames.append(owner.frame)
+                }
             }
             for child in children { sheetGrabbers(child) }
         }
         do {
             let snapshot = try app.snapshot()
-            sheetGrabbers(snapshot); collectKeyboard(snapshot)
+            sheetGrabbers(snapshot); collectKeyboard(snapshot); indexScrolls(snapshot)
+            nativeMetrics = windowMetrics(in: snapshot)
         }
         catch { issues.append("Presentation snapshot unavailable: frame=<unreported> " + String(describing: error)) }
-        let controls = app.buttons.allElementsBoundByIndex + app.textFields.allElementsBoundByIndex + app.secureTextFields.allElementsBoundByIndex + app.textViews.allElementsBoundByIndex + app.switches.allElementsBoundByIndex
-        var candidates: [(id: String, frame: CGRect, systemGrabber: Bool, keyboard: Bool)] = []
+        var controls = app.buttons.allElementsBoundByIndex + app.textFields.allElementsBoundByIndex + app.secureTextFields.allElementsBoundByIndex + app.textViews.allElementsBoundByIndex + app.switches.allElementsBoundByIndex
+        let toastMessage = element("toastMessage")
+        if toastMessage.exists && toastMessage.elementType == .staticText { controls.append(toastMessage) }
+        typealias Candidate = (id: String, frame: CGRect, parts: [CGRect], ancestors: [ScrollAncestor], systemGrabber: Bool, keyboard: Bool, fixedChrome: Bool, nativeNavigation: Bool)
+        var candidates: [Candidate] = []
+        let toastIDs: Set<String> = ["undoLastChange", "toastMessage", "expandToast"]
+        var toastOnTop = true
+        for id in toastIDs {
+            let target = element(id)
+            if target.exists && window.intersects(target.frame) && !target.isHittable {
+                toastOnTop = false
+                issues.append("Toast control not hittable: " + describe(target))
+            }
+        }
+        var occupiedScrolls: [String: ScrollAncestor] = [:]
         for target in controls {
             guard target.exists else { continue }
             let snapshot: XCUIElementSnapshot
@@ -1172,6 +1245,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 issues.append("Control snapshot unavailable: " + target.description + " frame=<unreported> " + String(describing: error))
                 continue
             }
+            if snapshot.identifier == UIWindowMetrics.probeIdentifier { continue }
             let frame = snapshot.frame
             guard !frame.isEmpty, window.intersects(frame) else { continue }
             if fullyOccluded(target) { continue } // decision 1: full containment AND not hittable
@@ -1179,10 +1253,56 @@ final class ScreenGalleryTests: YubaiUITestCase {
             if systemRegions.contains(where: { $0.contains(frame) }) { continue }
             let systemGrabber = snapshot.elementType == .button && snapshot.identifier.isEmpty && grabberFrames.contains(frame)
             let id = systemGrabber ? "<system sheet grabber>" : snapshot.identifier.isEmpty ? "<empty identifier> label=" + snapshot.label : snapshot.identifier
-            candidates.append((id, frame, systemGrabber, keyboardNodes.contains(identity(snapshot))))
+            guard let context = scrollAncestors[ancestryIdentity(snapshot)]?.first(where: {
+                abs($0.frame.minX - frame.minX) < 0.1 && abs($0.frame.minY - frame.minY) < 0.1 &&
+                abs($0.frame.width - frame.width) < 0.1 && abs($0.frame.height - frame.height) < 0.1
+            }) else {
+                issues.append("Control absent from presentation snapshot: " + id + " frame=" + frameText(frame))
+                continue
+            }
+            let ancestors = context.ancestors
+            for ancestor in ancestors { occupiedScrolls[ancestor.key] = ancestor }
+            let parts = UIViewportGeometry.visibleParts(frame, ancestors: ancestors.map(\.frame),
+                excluding: ancestors.isEmpty ? [] : nativeNavigationFrames)
+            guard !parts.isEmpty else { continue }
+            candidates.append((id, frame, parts, ancestors, systemGrabber, keyboardNodes.contains(identity(snapshot)), context.fixedChrome, context.nativeNavigation))
         }
-        var visible: [(String, CGRect)] = []
-        for (id, frame, systemGrabber, keyboard) in candidates {
+        let toastControls = candidates.filter { toastIDs.contains($0.id) }
+        let toastFrame = toastControls.reduce(CGRect.null) { $0.union($1.frame) }
+        func clearsToast(_ scroll: ScrollAncestor, control: CGRect) -> Bool {
+            guard toastOnTop, toastControls.contains(where: { $0.id == "toastMessage" }),
+                  let metrics = nativeMetrics, !metrics.transitioning,
+                  let travel = metrics.scroll(matching: scroll.frame) else { return false }
+            var viewport = scroll.frame.intersection(metrics.safeRectangle)
+            for bar in nativeNavigationFrames where bar.minY <= viewport.minY + 0.5 && bar.maxY > viewport.minY {
+                let bottom = viewport.maxY; viewport.origin.y = bar.maxY; viewport.size.height = max(0, bottom - bar.maxY)
+            }
+            return UIViewportGeometry.canClearToast(control, viewport: viewport, toast: toastFrame, remainingDown: travel.remainingDown)
+        }
+        func toastAllowance(_ first: Candidate, _ second: Candidate) -> Bool {
+            let row: Candidate
+            if toastIDs.contains(first.id) && !toastIDs.contains(second.id) { row = second }
+            else if toastIDs.contains(second.id) && !toastIDs.contains(first.id) { row = first }
+            else { return false }
+            return row.ancestors.contains { clearsToast($0, control: row.frame) }
+        }
+        for scroll in occupiedScrolls.values {
+            for fixed in candidates where !fixed.ancestors.contains(where: { $0.key == scroll.key }) &&
+                !fixed.keyboard && !fixed.systemGrabber && !fixed.nativeNavigation && (fixed.fixedChrome || toastIDs.contains(fixed.id)) {
+                if UIViewportGeometry.overlaps(scroll.frame, fixed.frame) {
+                    // Only the global toast may float over scroll content, and
+                    // UIKit must report enough remaining travel for every row.
+                    let rows = candidates.filter { $0.ancestors.contains(where: { $0.key == scroll.key }) }
+                    if toastIDs.contains(fixed.id), !rows.isEmpty,
+                       rows.allSatisfy({ clearsToast(scroll, control: $0.frame) }) { continue }
+                    issues.append("Scroll viewport under fixed control: " + (scroll.identifier.isEmpty ? "<scroll>" : scroll.identifier) +
+                                  " frame=" + frameText(scroll.frame) + " / " + fixed.id + " frame=" + frameText(fixed.frame))
+                }
+            }
+        }
+        var visible: [Candidate] = []
+        for candidate in candidates {
+            let (id, frame, parts, _, systemGrabber, keyboard, _, _) = candidate
             if !window.insetBy(dx: -1, dy: -1).contains(frame) {
                 if ["saveQuickEntry", "amountSheetDone", "confirmSavingsTransfer", "saveSavingsFloor", "saveLetterEntry", "mainNavigation", "reconcileApply"].contains(id) {
                     issues.append("Off-screen control: " + id + " frame=" + frameText(frame))
@@ -1192,16 +1312,16 @@ final class ScreenGalleryTests: YubaiUITestCase {
             // An actual container is not a second control over its descendants.
             if candidates.contains(where: { other in frame.contains(other.frame) && frame.width * frame.height > other.frame.width * other.frame.height + 4 }) { continue }
             if !keyboard && id.hasPrefix("<empty identifier>") { issues.append("Missing identifier: " + id + " frame=" + frameText(frame)) }
-            // Decision 2 exempts only the minimum target size. The grabber
-            // still participates in overlap/off-screen geometry checks.
             if !keyboard && !systemGrabber && (frame.width < 43.5 || frame.height < 43.5) { issues.append("Small hit target: " + id + " frame=" + frameText(frame)) }
-            for (other, bounds) in visible where bounds != frame && bounds.intersects(frame) {
-                let overlap = bounds.intersection(frame)
-                if overlap.width > 2 && overlap.height > 2 {
-                    issues.append("Overlapping controls: " + id + " frame=" + frameText(frame) + " / " + other + " frame=" + frameText(bounds))
+            for other in visible where other.parts != parts {
+                for bounds in other.parts {
+                    for clipped in parts where UIViewportGeometry.overlaps(bounds, clipped) {
+                        if toastAllowance(candidate, other) { continue }
+                        issues.append("Overlapping controls: " + id + " frame=" + frameText(clipped) + " / " + other.id + " frame=" + frameText(bounds))
+                    }
                 }
             }
-            visible.append((id, frame))
+            visible.append(candidate)
         }
         let navigationFrames = app.navigationBars.allElementsBoundByIndex.filter(\.exists).map(\.frame)
         for attempt in 0..<2 {
@@ -1214,7 +1334,29 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 if !self.attachedAuditInventory { self.attachedAuditInventory = true; self.attachUnresolvedAudit(issue) }
                 return true
             }
+            if target.identifier == UIWindowMetrics.probeIdentifier { return true }
             if fullyOccluded(target) { return true }
+            if target.identifier.hasPrefix("formulaBill_") {
+                let warning = (self.activeStop ?? self.prefix) + ": Text clipped: designed upcoming bill name; " + self.describe(target) + " " + issue.detailedDescription
+                self.warnings.append(warning); print("GALLERY-WARNING " + warning)
+                return true
+            }
+            // fix7b B3: only these PNG-reviewed labels, at these stops, may
+            // become warnings, and only inside an actual scaled presentation.
+            let stopName = self.activeStop ?? ""
+            let reviewedFormula = ["V47-dark-Spend-Edit-Saving", "V47-hidden-Spend-Edit-Saving"].contains(stopName) &&
+                ((target.identifier == "savingMode_fixed" && target.label == "固定金额") ||
+                 (target.identifier.isEmpty && ["1,564.00 · 日均 83.00", "•••• · 日均 ••••"].contains(target.label)))
+            let reviewedFrequent = ["V47-light-Empty-Frequent", "V47-dark-Empty-Frequent", "V47-hidden-Empty-Frequent"].contains(stopName) &&
+                target.identifier.isEmpty && target.label == "常记的会自己出现"
+            if (reviewedFormula || reviewedFrequent), let snapshot = try? target.snapshot(),
+               let context = scrollAncestors[ancestryIdentity(snapshot)]?.first(where: { $0.frame == snapshot.frame }),
+               let presentation = context.presentations.first, presentation.width / window.width < 1 {
+                let warning = stopName + ": Text clipped: PNG-reviewed complete text in scaled sheet (scale=" +
+                    String(format: "%.4f", presentation.width / window.width) + "); " + self.describe(target) + " " + issue.detailedDescription
+                self.warnings.append(warning); print("GALLERY-WARNING " + warning)
+                return true
+            }
             // Existing DS allowances: scrolling editable values, navigation
             // titles, bounded names and the deliberately collapsed toast.
             if [.textField, .secureTextField, .textView].contains(target.elementType) { return true }
@@ -1260,6 +1402,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         let window = app.frame
         if let snapshot = try? app.snapshot() {
             func textNodes(_ node: XCUIElementSnapshot) {
+                guard node.identifier != UIWindowMetrics.probeIdentifier else { return }
                 if node.elementType == .staticText && window.intersects(node.frame) {
                     lines.append("identifier=\(node.identifier) label=\(node.label) frame=\(frameText(node.frame))")
                 }

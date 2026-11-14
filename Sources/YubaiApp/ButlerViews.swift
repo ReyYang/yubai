@@ -166,7 +166,7 @@ struct ButlerProposalView: View {
                     if store.update("不改了", { ledger in
                         ledger.pendingChanges.removeAll { $0.id == change.id }
                         for i in ledger.cards.indices where ledger.cards[i].action == .confirmChangeSet(change.id) {
-                            ledger.cards[i].dismissedAt = Date()
+                            ledger.cards[i].dismissedAt = Dates.now
                         }
                     }) { dismiss() }
                 })
@@ -183,7 +183,7 @@ struct LetterDetailView: View {
             .onAppear {
                 if store.cards.first(where: { $0.id == cardID })?.dismissedAt == nil {
                     store.update("读过周回顾", recordUndo: false) { ledger in
-                        if let i = ledger.cards.firstIndex(where: { $0.id == cardID }) { ledger.cards[i].dismissedAt = Date() }
+                        if let i = ledger.cards.firstIndex(where: { $0.id == cardID }) { ledger.cards[i].dismissedAt = Dates.now }
                     }
                 }
             }

@@ -172,7 +172,7 @@ enum AppSheet: Identifiable {
     var freshLetter: ButlerCard? {
         _ = mutedTopics
         return cards.first { card in
-            WeeklyLetter.isFresh(card, now: Date()) && !ButlerCards.isMuted(card.dedupeKey, in: derivedSource)
+            WeeklyLetter.isFresh(card, now: Dates.now) && !ButlerCards.isMuted(card.dedupeKey, in: derivedSource)
         }
     }
     @ObservationIgnored var preparingImportOrganization = false
@@ -210,7 +210,7 @@ enum AppSheet: Identifiable {
         return salaryValue()
     }
     private func salaryValue() -> SalaryCandidate? {
-        let day = Dates.day(Date())
+        let day = Dates.day(Dates.now)
         if let cachedSalary, cachedSalary.day == day { return cachedSalary.value }
         let value = SalaryDetection.candidate(in: derivedSource); cachedSalary = (day, value); return value
     }
@@ -220,7 +220,7 @@ enum AppSheet: Identifiable {
         return visibilityValue()
     }
     private func visibilityValue() -> SavingCardVisibility.Snapshot {
-        let day = Dates.day(Date()), batches = visibilityBatches
+        let day = Dates.day(Dates.now), batches = visibilityBatches
         if let cached = cachedButlerVisibility, cached.revision == derivedRevision, cached.day == day, cached.batches == batches { return cached.value }
         let value = SavingCardVisibility.snapshot(in: derivedSource, organizingBatchIDs: batches, progress: progressValue(),
                                                  fallbackEntryCount: { question in
@@ -253,7 +253,7 @@ enum AppSheet: Identifiable {
         return fundsValue()
     }
     private func fundsValue() -> Funds {
-        let now = Date(); let zone = TimeZone.current
+        let now = Dates.now; let zone = TimeZone.current
         if let cached = cachedFunds, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
         let ledger = derivedSource; var expires = Dates.addDays(1, to: Dates.day(now))
         for entry in ledger.entries where entry.deletedAt == nil {
@@ -297,7 +297,7 @@ enum AppSheet: Identifiable {
     private func derived<Value>(_ slot: TimedSlot<Value>, _ compute: (Ledger, Date) -> Value) -> Value {
         _ = timeRevision
         _ = fundsValue()
-        let at = cachedFunds?.at ?? Date()
+        let at = cachedFunds?.at ?? Dates.now
         let source = derivedSource
         return slot.value(at: at) { compute(source, at) }
     }
@@ -327,7 +327,7 @@ enum AppSheet: Identifiable {
     }
     /// 存钱页：存下的总额与最近进出。
     var reserve: ReserveOverview { derived(reserveSlot) { Reserve.overview($0, now: $1) } }
-    var financialNow: Date { _ = timeRevision; _ = fundsValue(); return cachedFunds?.at ?? Date() }
+    var financialNow: Date { _ = timeRevision; _ = fundsValue(); return cachedFunds?.at ?? Dates.now }
     /// 发薪日到了或晚了、还没确认到账。
     var paydayDue: Payday.Due? { derived(paydaySlot) { Payday.due(in: $0, now: $1) } }
     /// 几天没记。
@@ -340,7 +340,7 @@ enum AppSheet: Identifiable {
     // MARK: 今天先不问
     private(set) var snoozeRevision = 0
     private func snoozeStorageKey(_ key: String, forever: Bool) -> String {
-        "yubai.snooze." + derivedSource.id.uuidString + "." + (forever ? "-" : Dates.text(Date())) + "." + key
+        "yubai.snooze." + derivedSource.id.uuidString + "." + (forever ? "-" : Dates.text(Dates.now)) + "." + key
     }
     /// 记在本机，不进账本。默认只到今天结束；`forever` 用于「这段空档不再提」这类按内容记住的。
     func snooze(_ key: String, forever: Bool = false) {
@@ -363,7 +363,7 @@ enum AppSheet: Identifiable {
             return (text: text, date: Date(timeIntervalSince1970: stamp))
         }
     }
-    func recordQuestion(_ text: String, at date: Date = Date()) {
+    func recordQuestion(_ text: String, at date: Date = Dates.now) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
         var rows = recentQuestions.filter { $0.text != clean }
@@ -612,8 +612,8 @@ enum AppSheet: Identifiable {
     /// 升级后第一次：发薪日改成「确认到账才开新周期」，只对下一个发薪日起生效，当前周期不变。
     func enablePaydayConfirmationIfNeeded() {
         guard !locked, loadFailure == nil, !switchingLedgerLocation, !choosingSyncVersion,
-              current.paydayConfirmSince == nil, Finance.anchorPlan(in: current, now: Date()) != nil else { return }
-        _ = update("发薪确认", recordUndo: false, entryMotion: false, showToast: false) { Finance.enablePaydayConfirmation(&$0, now: Date()) }
+              current.paydayConfirmSince == nil, Finance.anchorPlan(in: current, now: Dates.now) != nil else { return }
+        _ = update("发薪确认", recordUndo: false, entryMotion: false, showToast: false) { Finance.enablePaydayConfirmation(&$0, now: Dates.now) }
     }
     /// 启动、解锁、回到前台后各一次。顺序固定：先开启发薪确认，再自动记账单，最后结算周期。
     func runCycleMaintenance() {
@@ -626,8 +626,8 @@ enum AppSheet: Identifiable {
     func refreshAtPostingDates() async {
         while !Task.isCancelled && !locked {
             _ = fundsValue()
-            let next = cachedFunds?.expires ?? Dates.addDays(1, to: Dates.day(Date()))
-            do { try await Task.sleep(for: .seconds(max(1, next.timeIntervalSinceNow))) } catch { return }
+            let next = cachedFunds?.expires ?? Dates.addDays(1, to: Dates.day(Dates.now))
+            do { try await Task.sleep(for: .seconds(max(1, next.timeIntervalSince(Dates.now)))) } catch { return }
             guard !Task.isCancelled, !locked else { return }
             refreshTimeDerived()
             runCycleMaintenance()
@@ -646,12 +646,12 @@ enum AppSheet: Identifiable {
         let before = current; var next = before
         do {
             try change(&next)
-            ButlerSavings.synchronize(&next, now: Date())
+            ButlerSavings.synchronize(&next, now: Dates.now)
             if next.entries.count > before.entries.count {
                 let oldIDs = Set(before.entries.map(\.id))
                 let addedIDs = Set(next.entries.lazy.filter { !oldIDs.contains($0.id) }.map(\.id))
-                if next.wishlist.contains(where: { $0.status == .thinking }) { Wishlist.autoLink(&next, addedEntryIDs: addedIDs, now: Date()) }
-                FixedFlows.autoLink(&next, addedEntryIDs: addedIDs, now: Date())
+                if next.wishlist.contains(where: { $0.status == .thinking }) { Wishlist.autoLink(&next, addedEntryIDs: addedIDs, now: Dates.now) }
+                FixedFlows.autoLink(&next, addedEntryIDs: addedIDs, now: Dates.now)
             }
             if !preservingUpdatedAt { next.updatedAt = Date() }
             next = try persist(next, reason: recoveryReason ?? reason, preservingRecovery: preservingRecovery)
@@ -696,7 +696,7 @@ enum AppSheet: Identifiable {
     /// Prepare the full import off the main actor, then publish one atomic update.
     func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = []) async throws -> ImportBatch? {
         let before = current
-        let now = Date()
+        let now = Dates.now
         let preparation = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             var next = before
@@ -731,7 +731,7 @@ enum AppSheet: Identifiable {
             try finishing(&ledger)
             ledger.pendingChanges.removeAll { $0.id == changeSet.id }
             for i in ledger.cards.indices where ledger.cards[i].action == .confirmChangeSet(changeSet.id) {
-                ledger.cards[i].dismissedAt = Date()
+                ledger.cards[i].dismissedAt = Dates.now
             }
         }
         if saved, !silently, !skipped.isEmpty { toast = "已改好 · " + label + "；" + skipped.joined(separator: "；") }
@@ -746,7 +746,7 @@ enum AppSheet: Identifiable {
     }
     func autoSettleFixedFlows() {
         guard !locked, loadFailure == nil, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion else { return }
-        let now = Date()
+        let now = Dates.now
         let posted = Set(current.entries.filter { entry in
             entry.deletedAt == nil && entry.date <= now && entry.recordedAt.map { $0 < entry.date } == true
         }.map(\.id))
@@ -798,7 +798,7 @@ enum AppSheet: Identifiable {
         let message = pendingSaveToast; pendingSaveToast = nil
         let trigger = entrySaveTrigger
         saveToastTask?.cancel()
-        let feedback = HomeEntryFeedback.make(savedIDs: pendingSavedEntryIDs, fromHome: homeEntrySession, ledger: current, now: Date())
+        let feedback = HomeEntryFeedback.make(savedIDs: pendingSavedEntryIDs, fromHome: homeEntrySession, ledger: current, now: Dates.now)
         pendingSavedEntryIDs = []
         if !feedback.highlightedIDs.isEmpty {
             receiptEntryIDs = feedback.highlightedIDs; receiptFeedbackTrigger &+= 1
@@ -967,6 +967,9 @@ struct RootView: View {
             else { mainContent }
         }
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
+        #if DEBUG && targetEnvironment(simulator) && os(iOS)
+        .background { if UITestSupport.script != nil { UITestWindowMetrics().frame(width: YubaiSize.separator, height: YubaiSize.separator) } }
+        #endif
         .sheet(item: $store.sheet, onDismiss: { store.finishEntrySaveMotion(); store.homeEntrySession = false }) { sheet in
             NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brandInk)
                 .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
@@ -1343,7 +1346,6 @@ private struct FloatingTabBar: View {
                 .accessibilityElement(children: .contain).accessibilityLabel("标签导航").accessibilityIdentifier("navigationCapsule")
         }.frame(width: YubaiSize.navigationCapsuleWidth,
                 height: YubaiSize.rootBottomPadding(for: store.destination) - YubaiSpace.space12, alignment: .bottom)
-            .environment(\.yubaiContentViewport, nil)
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
             .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
@@ -1392,7 +1394,7 @@ struct LedgerDerivedSnapshot: Sendable {
     let formula: SpendableFormula
     let spendingDerivation: SpendingDerivation
     let organizingBatchIDs: Set<UUID>
-    init(_ ledger: Ledger, now: Date = Date(), organizingBatchIDs: Set<UUID> = []) {
+    init(_ ledger: Ledger, now: Date = Dates.now, organizingBatchIDs: Set<UUID> = []) {
         self.organizingBatchIDs = organizingBatchIDs
         at = now; zone = .current
         var expiry = Dates.addDays(1, to: Dates.day(now))

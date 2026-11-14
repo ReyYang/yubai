@@ -20,7 +20,7 @@ struct FrequentEntriesView: View {
     @State private var purpose = ""
     @State private var keypad = EntryKeypad()
     var body: some View {
-        Page(spacing: YubaiSpace.gapGroup) {
+        Page(spacing: YubaiSpace.gapGroup, identifier: "frequentEntriesPage") {
             if items.isEmpty && hidden.isEmpty {
                 EmptyState(.frequent, onAction: { adding = true })
             }
@@ -34,7 +34,7 @@ struct FrequentEntriesView: View {
                 SectionHeading(title: "不显示的")
                 CardRows(hidden) { row in hiddenRow(row) }
             }
-        }.accessibilityIdentifier("frequentEntriesPage")
+        }
             .sheet(isPresented: $adding) { addForm }
             .task(id: store.ledgerRevision) { await refresh() }
             #if os(iOS)
@@ -46,7 +46,7 @@ struct FrequentEntriesView: View {
                          canSave: keypad.amount.map { $0 > 0 } == true && !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && purpose.count <= 100,
                          save: {
             guard let amount = keypad.resolve() else { return }
-            if store.update("常用", entryMotion: false, showToast: false, { try EntryHistory.addRepeat(purpose: purpose, amount: amount, in: &$0, now: Date()) }) { adding = false }
+            if store.update("常用", entryMotion: false, showToast: false, { try EntryHistory.addRepeat(purpose: purpose, amount: amount, in: &$0, now: Dates.now) }) { adding = false }
         }) {
             Card(style: .list) { CardTextFieldRow(title: "用途", text: $purpose, identifier: "frequentEntryPurpose") }
         }.environment(store).appErrors().yubaiSheetBackground()
@@ -76,7 +76,7 @@ struct FrequentEntriesView: View {
         return layout {
             if let purpose = row.purpose, let amount = row.amount { summary(purpose, amount: amount).foregroundStyle(YubaiColor.labelSecondary) }
             action("放回去", identifier: "frequentUnhide_" + row.id) {
-                store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.unhide(row.id, in: &$0, now: Date()) }
+                store.update("常用", entryMotion: false, showToast: false) { try EntryHistory.unhide(row.id, in: &$0, now: Dates.now) }
             }.accessibilityLabel("放回去" + (row.purpose ?? "常用"))
         }.frame(minHeight: YubaiSize.rowDouble)
     }
@@ -88,7 +88,7 @@ struct FrequentEntriesView: View {
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier)
     }
     private func refresh() async {
-        let ledger = store.current, now = Date(), revision = store.ledgerRevision
+        let ledger = store.current, now = Dates.now, revision = store.ledgerRevision
         let result = await Task.detached(priority: .userInitiated) { FrequentEntriesSnapshot(ledger: ledger, now: now) }.value
         guard !Task.isCancelled, store.ledgerRevision == revision else { return }
         items = result.visible

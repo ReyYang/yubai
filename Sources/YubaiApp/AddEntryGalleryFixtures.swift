@@ -9,13 +9,13 @@ extension UITestSupport {
     }
     static var addEntryReceipt: ReceiptCandidate? {
         guard script == "v46-entry-receipt" else { return nil }
-        let text = ["山姆会员商店", Dates.text(Date()), "牛奶、鸡蛋、蔬菜 -96.50 支出", "洗衣液 -59.90 支出", "坚果 -30.00 支出", "合计 186.40"].joined(separator: "\n")
-        return ReceiptCandidate(text: text, amounts: ["96.50", "59.90", "30.00"], title: "山姆会员商店", date: Date())
+        let text = ["山姆会员商店", Dates.text(Dates.now), "牛奶、鸡蛋、蔬菜 -96.50 支出", "洗衣液 -59.90 支出", "坚果 -30.00 支出", "合计 186.40"].joined(separator: "\n")
+        return ReceiptCandidate(text: text, amounts: ["96.50", "59.90", "30.00"], title: "山姆会员商店", date: Dates.now)
     }
     static func addEntryReceiptReply(_ request: ChatRequest, script: String) throws -> ChatMessage? {
         guard script == "v46-entry-receipt", request.purpose == "拍小票、认截图" else { return nil }
         let rows: [JSONValue] = [("牛奶、鸡蛋、蔬菜", "96.50", "买菜"), ("洗衣液", "59.90", "日用"), ("坚果", "30.00", "买菜")].map {
-            .object(["title": .string($0.0), "amount": .string($0.1), "date": .string(Dates.text(Date())), "income": .bool(false), "category": .string($0.2)])
+            .object(["title": .string($0.0), "amount": .string($0.1), "date": .string(Dates.text(Dates.now)), "income": .bool(false), "category": .string($0.2)])
         }
         return .init(role: .assistant, content: try JSONValue.object(["shop": .string("山姆会员商店"), "rows": .array(rows)]).jsonText())
     }

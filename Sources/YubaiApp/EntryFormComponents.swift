@@ -397,7 +397,7 @@ struct EntryCategoryGrid: View {
 struct EntryDayChips: View {
     @Binding var date: Date
     let pick: () -> Void
-    private func day(_ offset: Int) -> Date { Dates.addDays(offset, to: Date()) }
+    private func day(_ offset: Int) -> Date { Dates.addDays(offset, to: Dates.now) }
     private var isStandard: Bool { [0, -1, -2].contains { Dates.calendar.isDate(date, inSameDayAs: day($0)) } }
     var body: some View {
         HStack(spacing: YubaiSpace.space8) {

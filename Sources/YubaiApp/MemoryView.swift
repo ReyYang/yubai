@@ -8,7 +8,7 @@ struct MemoryView: View {
         store.current.memories.sorted { $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt > $1.updatedAt }
     }
     var body: some View {
-        Page(topPadding: YubaiSpace.space8) {
+        Page(topPadding: YubaiSpace.space8, identifier: "memoriesPage") {
             if notes.isEmpty {
                 EmptyState(.memories, titleIdentifier: "emptyMemories", onAction: { store.sheet = .ask("") })
             } else {
@@ -25,7 +25,7 @@ struct MemoryView: View {
                         }
                 }
             }
-        }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("余白记得的").yubaiNavigation().accessibilityIdentifier("memoriesPage")
+        }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("余白记得的").yubaiNavigation()
             .sheet(item: $editing) { note in
                 NavigationStack { MemoryEditor(note: note) }.environment(store).appErrors().yubaiSheetBackground()
             }

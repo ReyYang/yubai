@@ -108,7 +108,7 @@ public enum ManualBookkeeping {
         return Dates.calendar.date(bySettingHour: Dates.calendar.component(.hour, from: now), minute: Dates.calendar.component(.minute, from: now), second: Dates.calendar.component(.second, from: now), of: day)!
     }
     public static func change(amount: Int64, nature: Nature, accountID: UUID, otherAccountID: UUID? = nil,
-                              day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Date(), intoFixedSavings: Bool = false, fromReserve: Bool = false) throws -> ChangeSet {
+                              day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Dates.now, intoFixedSavings: Bool = false, fromReserve: Bool = false) throws -> ChangeSet {
         guard amount > 0, amount <= Money.limit, (-2_208_988_800...7_258_118_400).contains(day.timeIntervalSince1970) else { throw YubaiError.invalid("请核对金额和日期。") }
         if nature == .transfer { guard let otherAccountID, otherAccountID != accountID else { throw YubaiError.invalid("转账的两个账户必须不同。") } }
         let purpose = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -121,7 +121,7 @@ public enum ManualBookkeeping {
         var change = ChangeSet(source: "手动", reason: "记一笔", items: [.addEntry(draft)])
         change.createdAt = now; return change
     }
-    public static func available(after change: ChangeSet, in ledger: Ledger, now: Date = Date()) throws -> Int64 {
+    public static func available(after change: ChangeSet, in ledger: Ledger, now: Date = Dates.now) throws -> Int64 {
         guard change.items.count == 1, case .addEntry(let draft) = change.items[0],
               !ledger.entries.contains(where: { $0.id == draft.id }) else {
             var preview = ledger; try change.apply(to: &preview)
@@ -140,7 +140,7 @@ public enum ManualBookkeeping {
     }
     /// Editing callers can share the keypad calculation without changing a form's
     /// ledger. Validation/refund propagation stays identical to the save action.
-    public static func available(after edited: Entry, in ledger: Ledger, now: Date = Date()) throws -> Int64 {
+    public static func available(after edited: Entry, in ledger: Ledger, now: Date = Dates.now) throws -> Int64 {
         try ledger.validate()
         guard let original = ledger.entries.first(where: { $0.id == edited.id && $0.deletedAt == nil }) else { throw YubaiError.invalid("记录已移除。") }
         var isolated = ledger
@@ -260,7 +260,7 @@ public enum ManualBookkeeping {
         }
         return entry
     }
-    public static func dayLabel(_ day: Date, now: Date = Date(), includeTodayDate: Bool = false) -> String {
+    public static func dayLabel(_ day: Date, now: Date = Dates.now, includeTodayDate: Bool = false) -> String {
         let c = Dates.calendar
         let date = "\(c.component(.month, from: day))月\(c.component(.day, from: day))日"
         if c.isDate(day, inSameDayAs: now) { return includeTodayDate ? "今天 · " + date : "今天" }
@@ -279,7 +279,7 @@ public struct EntryMonth: Identifiable, Sendable {
 }
 public struct TodayEntries: Equatable, Sendable {
     public var count = 0; public var net: Int64 = 0; public var latest: Entry?
-    public init(in ledger: Ledger, now: Date = Date()) {
+    public init(in ledger: Ledger, now: Date = Dates.now) {
         let start = Dates.day(now); let end = Dates.addDays(1, to: start)
         for entry in ledger.entries where entry.deletedAt == nil && entry.date >= start && entry.date < end && entry.date <= now {
             count += 1; net += entry.nature.inflow ? entry.amount : -entry.amount
@@ -431,7 +431,7 @@ public enum EntryTimeline {
 }
 
 public enum FixedFlows {
-    public static func occurrences(in ledger: Ledger, adding plan: Plan? = nil, now: Date = Date()) -> [Occurrence] {
+    public static func occurrences(in ledger: Ledger, adding plan: Plan? = nil, now: Date = Dates.now) -> [Occurrence] {
         var preview = ledger
         if let plan { preview.plans.append(plan) }
         let repayments = Set(preview.plans.filter { $0.nature == .repayment }.map(\.id))
@@ -445,7 +445,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
     public var stoppedAt: Date? = nil
     public var pending: [Occurrence] = []
     public var pendingAmount: Int64 { pending.reduce(0) { $0 + $1.amount } }
-    public static func stopped(in ledger: Ledger, now: Date = Date()) -> [Self] {
+    public static func stopped(in ledger: Ledger, now: Date = Dates.now) -> [Self] {
         let payments = FixedFlowPayments(in: ledger, now: now)
         let pendingByPlan = Dictionary(grouping: Finance.occurrences(in: ledger, now: now, days: 1).filter { $0.planID != nil && Dates.day($0.date) <= Dates.day(now) }, by: { $0.planID! })
         var rows = ledger.plans.compactMap { plan -> Self? in
@@ -477,7 +477,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
         }
         return rows.sorted { $0.stoppedAt == $1.stoppedAt ? $0.id.uuidString < $1.id.uuidString : ($0.stoppedAt ?? .distantPast) > ($1.stoppedAt ?? .distantPast) }
     }
-    public static func rows(in ledger: Ledger, now: Date = Date()) -> [Self] {
+    public static func rows(in ledger: Ledger, now: Date = Dates.now) -> [Self] {
         let occurrences = Finance.occurrences(in: ledger, now: now, days: 90)
         var next: [UUID: Occurrence] = [:]
         for occurrence in occurrences {
@@ -505,7 +505,7 @@ public struct FixedFlowArrangement: Identifiable, Sendable {
         guard plan.installments != nil else { return 0 }
         return payments.plans.keys.filter { $0.id == plan.id && plan.occurrenceIndex(on: $0.day) != nil && !plan.isSkipped(on: $0.day) && payments.remaining(for: plan, on: $0.day) == 0 }.count
     }
-    public static func schedule(_ frequency: Frequency, date: Date, now: Date = Date(), monthlyDay: Int? = nil) -> String {
+    public static func schedule(_ frequency: Frequency, date: Date, now: Date = Dates.now, monthlyDay: Int? = nil) -> String {
         let c = Dates.calendar
         switch frequency {
         case .once: return ManualBookkeeping.dayLabel(date, now: now)

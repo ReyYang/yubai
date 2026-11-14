@@ -134,7 +134,7 @@ struct ImportResultPage: View {
         }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.insetPage).background(YubaiColor.canvas)
     }
     private func refresh() async {
-        let ledger = store.current, revision = store.ledgerRevision, now = Date()
+        let ledger = store.current, revision = store.ledgerRevision, now = Dates.now
         let value = await Task.detached(priority: .userInitiated) { ImportResultSnapshot(batchID: batchID, ledger: ledger, now: now) }.value
         guard !Task.isCancelled, store.ledgerRevision == revision else { return }
         snapshot = value
@@ -142,7 +142,7 @@ struct ImportResultPage: View {
     private func addAll() {
         guard !adding, !organizing else { return }
         adding = true
-        let now = Date()
+        let now = Dates.now
         let saved = store.update("都加上", entryMotion: false, showToast: false) { ledger in
             _ = try ImportRecognition.addAll(batchID: batchID, in: &ledger, now: now)
             Finance.enablePaydayConfirmation(&ledger, now: now)

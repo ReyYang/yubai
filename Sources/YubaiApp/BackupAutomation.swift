@@ -22,7 +22,7 @@ import YubaiCore
     }
 
     func start(in store: AppStore) {
-        let now = Date()
+        let now = Dates.now
         guard task == nil, !store.locked, store.loadFailure == nil,
               !store.syncBusy, store.syncChoice == nil, !store.switchingLedgerLocation, !store.choosingSyncVersion,
               LedgerBackup.isAutoBackupDue(store.preferences, now: now),

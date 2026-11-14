@@ -31,7 +31,7 @@ public struct Funds: Equatable, Sendable {
     public var liquidNow: Int64 { liquidStart + cycleIncome - cycleSpent }
     /// Retained for source compatibility; fixed savings are deducted directly.
     public var floorRoom: Int64? = nil
-    public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Date()))
+    public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Dates.now))
     public var horizonDays: Int = Finance.observationDays; public var payday: Date? = nil; public var paydayTitle: String? = nil
 }
 public struct Breakdown: Equatable, Identifiable, Sendable {
@@ -118,10 +118,10 @@ public enum Finance {
         ledger.calculations.storeDailyLiving(value, day: end)
         return value
     }
-    public static func balance(_ account: Account, in ledger: Ledger, at: Date = Date()) -> Int64 {
+    public static func balance(_ account: Account, in ledger: Ledger, at: Date = Dates.now) -> Int64 {
         account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && account.includes($0, posting: $0.postingDate(for: account.id)) && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
     }
-    public static func occurrences(in ledger: Ledger, now: Date = Date(), days: Int? = nil) -> [Occurrence] {
+    public static func occurrences(in ledger: Ledger, now: Date = Dates.now, days: Int? = nil) -> [Occurrence] {
         let start = Dates.day(now); let end = Dates.addDays(days ?? observationDays, to: start)
         let calendar = Dates.calendar
         func month(_ date: Date) -> Date { calendar.date(from: calendar.dateComponents([.year, .month], from: date))! }
@@ -207,7 +207,7 @@ public enum Finance {
         }
         return natural
     }
-    public static func funds(_ ledger: Ledger, now: Date = Date(), days: Int = Finance.observationDays) -> Funds {
+    public static func funds(_ ledger: Ledger, now: Date = Dates.now, days: Int = Finance.observationDays) -> Funds {
         let horizon = max(0, min(366, days))
         if let cached = ledger.calculations.cachedFunds(now: now, days: horizon) { return cached }
         let accounts = ledger.accounts // Archived accounts still own money and obligations.
@@ -371,7 +371,7 @@ public enum Finance {
         return grouped.map { sub, rows in Breakdown(category: sub, amount: rows.reduce(0) { $0 + (income ? $1.amount : spendingAmount($1, ledger: ledger)) }, count: rows.filter { $0.nature == .expense || $0.nature == .income }.count) }
             .sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
     }
-    public static func assessPurchase(_ ledger: Ledger, amount: Int64, title purchaseTitle: String = "", category: String? = nil, subcategory: String? = nil, now: Date = Date()) -> PurchaseAssessment {
+    public static func assessPurchase(_ ledger: Ledger, amount: Int64, title purchaseTitle: String = "", category: String? = nil, subcategory: String? = nil, now: Date = Dates.now) -> PurchaseAssessment {
         let f = funds(ledger, now: now); let after = f.available - amount
         let incomplete = ledger.accounts.isEmpty || ledger.accounts.contains { !$0.reconciled } || !f.warnings.isEmpty
         let severity = f.liquidNow - f.dueRest - amount < 0 ? 2 : (incomplete || amount > max(0, f.available) / 3 ? 1 : 0)
@@ -423,7 +423,7 @@ public struct LedgerPresentationCache {
         sortedEntries = nil; byID = nil; flows = [:]; slices = [:]; records = [:]; subcategories = [:]; evidence = [:]; candidates = nil; settingsValue = nil; savingsValue = nil; capturesValue = nil
     }
     // Two half-open intervals in the same gaps between posting dates select exactly
-    // the same rows. This also caches a live interval whose end is Date() each render,
+    // the same rows. This also caches a live interval whose end is Dates.now each render,
     // without rounding dates or missing a future entry as it becomes eligible.
     private func boundary(_ date: Date) -> Int {
         var low = 0, high = entryDates.count
@@ -490,7 +490,7 @@ public struct LedgerPresentationCache {
         let value = SubscriptionCheck.candidates(ledger: ledger)
         candidates = value; return value
     }
-    public mutating func savings(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> LedgerSavingsTotals {
+    public mutating func savings(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> LedgerSavingsTotals {
         prepare(ledger, revision: revision)
         let zone = TimeZone.current
         if let cached = savingsValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
@@ -515,7 +515,7 @@ public struct LedgerPresentationCache {
         }
         savingsValue = (value, now, expires, zone); return value
     }
-    public mutating func recentCaptures(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> [Entry] {
+    public mutating func recentCaptures(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> [Entry] {
         prepare(ledger, revision: revision)
         let zone = TimeZone.current
         if let cached = capturesValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
@@ -529,7 +529,7 @@ public struct LedgerPresentationCache {
         }
         capturesValue = (rows, now, expires, zone); return rows
     }
-    public mutating func settings(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> LedgerSettingsSummary {
+    public mutating func settings(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> LedgerSettingsSummary {
         prepare(ledger, revision: revision)
         let zone = TimeZone.current
         if let cached = settingsValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }

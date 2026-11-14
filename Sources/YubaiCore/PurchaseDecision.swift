@@ -8,7 +8,7 @@ public enum PurchaseNeed: String, Codable, Sendable { case need, want, unclear }
 public struct PurchaseBounds: Equatable, Sendable {
     public let allowedVerdicts: Set<PurchaseVerdict>
     public let boundReason: String
-    public static func compute(ledger: Ledger, amount: Int64, title: String, category: String? = nil, subcategory: String? = nil, now: Date = Date()) -> PurchaseBounds {
+    public static func compute(ledger: Ledger, amount: Int64, title: String, category: String? = nil, subcategory: String? = nil, now: Date = Dates.now) -> PurchaseBounds {
         let funds = Finance.funds(ledger, now: now)
         let after = funds.available - amount
         var sample = Entry(date: now, amount: amount, accountID: UUID(), title: title, category: category ?? Classification.pendingCategory)
@@ -165,7 +165,7 @@ public struct RestrainProgress: Equatable, Identifiable, Sendable {
     public let perMonthAmount: Int64?
     public let ratio: Double
     public let status: Status
-    public static func current(ledger: Ledger, now: Date = Date()) -> [RestrainProgress] {
+    public static func current(ledger: Ledger, now: Date = Dates.now) -> [RestrainProgress] {
         ledger.profile.restrain.compactMap { area in
             guard let line = area.softLimit, line.perWeekCount != nil || line.perMonthAmount != nil else { return nil }
             let usage = area.usage(in: ledger, now: now)

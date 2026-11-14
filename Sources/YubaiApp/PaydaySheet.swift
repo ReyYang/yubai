@@ -53,7 +53,7 @@ struct PaydaySetupSheet: View {
     private var days: some View { MonthDayChoices(selection: $day, identifier: "paydaySetupDay_") }
     private func save() {
         guard valid, let accountID else { return }
-        let now = Date(), calendar = Dates.calendar
+        let now = Dates.now, calendar = Dates.calendar
         let today = Dates.day(now)
         let month = calendar.dateInterval(of: .month, for: today)!.start
         func scheduled(in start: Date) -> Date {
@@ -103,7 +103,7 @@ private struct PaydayEditor: View {
     private var rows: [AmountSheetRow] {
         guard valid else { return [] }
         let hide = store.preferences.hideAmounts
-        let preview = Payday.preview(due, amount: amount, extraToSavings: extraToSavings && delta > 0, in: store.current, now: Date())
+        let preview = Payday.preview(due, amount: amount, extraToSavings: extraToSavings && delta > 0, in: store.current, now: Dates.now)
         let budget = amount2(preview.cycleBudget, hide: hide)
         if delta == 0 { return [AmountSheetRow(label: "这个周期能花", value: budget)] }
         let label = (delta > 0 ? "比平时多 " : "比平时少 ") + amount2(abs(delta), hide: hide)
@@ -134,7 +134,7 @@ private struct PaydayEditor: View {
     private func save() {
         guard valid else { return }
         let value = amount, extra = extraToSavings && delta > 0, due = self.due
-        if store.update("工资到了", { ledger in try Payday.confirm(due, amount: value, extraToSavings: extra, accountID: nil, in: &ledger, now: Date()) }) {
+        if store.update("工资到了", { ledger in try Payday.confirm(due, amount: value, extraToSavings: extra, accountID: nil, in: &ledger, now: Dates.now) }) {
             dismiss()
         }
     }

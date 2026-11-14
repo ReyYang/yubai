@@ -445,7 +445,7 @@ public enum BillImporter {
         ImportOrganization.recordUndo(batchID: batch.id, before: before, in: &ledger)
         try ledger.validate(); return ledger.imports.first { $0.id == batch.id }!
     }
-    public static func undo(batchID: UUID, in ledger: inout Ledger, now: Date = Date()) {
+    public static func undo(batchID: UUID, in ledger: inout Ledger, now: Date = Dates.now) {
         guard let batch = ledger.imports.first(where: { $0.id == batchID }) else { return }
         if let undo = batch.undo {
             let originals = Set(undo.entries.map(\.id))

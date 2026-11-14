@@ -77,7 +77,7 @@ struct SavingsHeader: View {
 struct WishlistCooldownCards: View {
     @Environment(AppStore.self) private var store
     private var wishes: [WishItem] {
-        Wishlist.cooldownDue(store.current, now: Date()).compactMap { candidate in
+        Wishlist.cooldownDue(store.current, now: Dates.now).compactMap { candidate in
             guard case .openWish(let id) = candidate.action else { return nil }
             return store.current.wishlist.first { $0.id == id }
         }
@@ -135,7 +135,7 @@ private struct CooldownWishCard: View {
         }
     }
     @discardableResult private func answer(_ choice: CooldownChoice) -> Bool {
-        store.update("回答心愿", showToast: false) { try Wishlist.answerCooldown(wish.id, choice: choice, in: &$0, now: Date()) }
+        store.update("回答心愿", showToast: false) { try Wishlist.answerCooldown(wish.id, choice: choice, in: &$0, now: Dates.now) }
     }
 }
 

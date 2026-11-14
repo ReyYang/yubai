@@ -31,7 +31,7 @@ struct MoreLink: View {
 @MainActor enum BillActions {
     static func pay(_ bill: Occurrence, store: AppStore) {
         if let planID = bill.planID { BillPayFlow.pay(planID: planID, occurrence: Dates.day(bill.date), store: store) }
-        else if bill.rentID != nil { _ = store.update("已记下 1 笔") { try HomeButler.confirmRent(bill, in: &$0, now: Date()) } }
+        else if bill.rentID != nil { _ = store.update("已记下 1 笔") { try HomeButler.confirmRent(bill, in: &$0, now: Dates.now) } }
     }
 }
 

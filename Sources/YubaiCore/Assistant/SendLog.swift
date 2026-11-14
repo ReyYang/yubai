@@ -142,7 +142,7 @@ public final class SendLog: @unchecked Sendable {
         }
     }
 
-    @discardableResult func record(time: Date = Date(), purpose: String, model: String, body: Data, apiKey: String,
+    @discardableResult func record(time: Date = Dates.now, purpose: String, model: String, body: Data, apiKey: String,
                                    groupID: UUID? = nil, groupTitle: String? = nil) -> UUID {
         // Parse before replacing: a key can contain JSON-escaped characters.
         let original = String(decoding: body, as: UTF8.self)

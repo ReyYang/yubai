@@ -26,7 +26,7 @@ struct AddEntryCalendar: View {
     let done: () -> Void
     var body: some View {
         ScrollView {
-            EntryCalendarView(selection: Binding(get: { date }, set: { date = $0; done() }), today: Date(), customHeader: { month in
+            EntryCalendarView(selection: Binding(get: { date }, set: { date = $0; done() }), today: Dates.now, customHeader: { month in
                 AnyView(AddEntryCalendarHeader(month: month, done: done))
             }).padding(.horizontal, YubaiSpace.space12)
         }.frame(height: YubaiSize.calendarMinimumHeight).accessibilityIdentifier("entryInlineCalendar")
@@ -228,7 +228,7 @@ struct AddEntryAccountForm: View {
     private func save() {
         guard valid, let amount = keypad.amount else { return }
         let account = Account(name: name.trimmingCharacters(in: .whitespacesAndNewlines), kind: kind,
-                              balance: kind == .credit ? -amount : amount, at: Date())
+                              balance: kind == .credit ? -amount : amount, at: Dates.now)
         if store.update("添加账户", entryMotion: false, showToast: false, { $0.accounts.append(account) }) { added(account) }
     }
 }

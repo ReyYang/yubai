@@ -22,7 +22,7 @@ public struct MemoryReflectionResult: Equatable, Sendable {
 
     /// Direct persistence, not a confirmation proposal. Call inside one
     /// store.update after checking cancellation and the active ledger snapshot.
-    public func apply(to ledger: inout Ledger, now: Date = Date()) throws {
+    public func apply(to ledger: inout Ledger, now: Date = Dates.now) throws {
         try Task.checkCancellation()
         guard ledger.id == ledgerID, ledger.updatedAt == ledgerUpdatedAt,
               ledger.lastReflectionWeek == previousWeek, ButlerCards.isoWeek(now) == week else {
@@ -58,7 +58,7 @@ public struct MemoryReflectionResult: Equatable, Sendable {
     }
     /// Removed entries are kept in the result for the caller's undo affordance.
     /// Do not overwrite an entry the user has since recreated or edited.
-    public func restoreRemoved(in ledger: inout Ledger, now: Date = Date()) throws {
+    public func restoreRemoved(in ledger: inout Ledger, now: Date = Dates.now) throws {
         guard ledger.id == ledgerID else { throw YubaiError.invalid("请回到原账本撤销。") }
         var next = ledger
         for removed in removedNotes {
@@ -72,7 +72,7 @@ public struct MemoryReflectionResult: Equatable, Sendable {
 }
 
 public enum MemoryReflection {
-    public static func isDue(ledger: Ledger, now: Date = Date()) -> Bool { ledger.lastReflectionWeek != ButlerCards.isoWeek(now) }
+    public static func isDue(ledger: Ledger, now: Date = Dates.now) -> Bool { ledger.lastReflectionWeek != ButlerCards.isoWeek(now) }
     static func validWeek(_ week: String) -> Bool {
         guard week.range(of: #"^\d{4}-W\d{2}$"#, options: .regularExpression) != nil,
               let year = Int(week.prefix(4)), let number = Int(week.suffix(2)), (1900...2200).contains(year), (1...53).contains(number) else { return false }
@@ -82,7 +82,7 @@ public enum MemoryReflection {
     }
     /// The immutable input guarantees network/format failures cannot alter a ledger.
     /// The caller persists the validated result using apply in a single update.
-    public static func run(ledger: Ledger, transport: any ChatTransport, now: Date = Date(), includeButler: Bool = false) async throws -> MemoryReflectionResult {
+    public static func run(ledger: Ledger, transport: any ChatTransport, now: Date = Dates.now, includeButler: Bool = false) async throws -> MemoryReflectionResult {
         guard isDue(ledger: ledger, now: now) else { throw YubaiError.invalid("本周已经回看过了。") }
         try ledger.validate(); try Task.checkCancellation()
         let redactor = Redactor(ledger: ledger)

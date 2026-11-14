@@ -6,7 +6,7 @@ struct WishlistView: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var phase
     var focusedWishID: UUID? = nil
-    @State private var now = Date()
+    @State private var now = Dates.now
     @State private var addingWish = false
     var body: some View {
         Page(topPadding: YubaiSpace.space8) {
@@ -41,9 +41,9 @@ struct WishlistView: View {
                         .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
-        }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("心愿单").yubaiNavigation().accessibilityIdentifier("wishlistPage").task(id: store.ledgerRevision) { now = Date() }
+        }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("心愿单").yubaiNavigation().accessibilityIdentifier("wishlistPage").task(id: store.ledgerRevision) { now = Dates.now }
             .sheet(isPresented: $addingWish) { NavigationStack { WishEditor() }.environment(store).appErrors().yubaiSheetBackground() }
-            .onChange(of: phase) { _, value in if value == .active { now = Date() } }
+            .onChange(of: phase) { _, value in if value == .active { now = Dates.now } }
     }
     private func followUpCard(_ wish: WishItem) -> some View {
         LetterDismissCard(onDismiss: { store.dismissWishFollowUp(wish.id) }, onMute: { store.dismissWishFollowUp(wish.id, mute: true) }) { animateDismiss in
@@ -65,7 +65,7 @@ struct WishlistView: View {
         return "冷静中 · 还有 " + WishWaitText.remaining(until: until, now: now)
     }
     private func followUpVisible(_ wish: WishItem) -> Bool {
-        guard wish.status == .bought, wish.followUpAnswer == nil, wish.followUpAt.map({ $0 <= Date() }) == true else { return false }
+        guard wish.status == .bought, wish.followUpAnswer == nil, wish.followUpAt.map({ $0 <= Dates.now }) == true else { return false }
         let key = "follow:\(wish.id)"
         return !ButlerCards.isMuted(key, in: store.current) && store.cards.first(where: { $0.dedupeKey == key })?.dismissedAt == nil
     }
@@ -97,7 +97,7 @@ struct WishlistView: View {
                     NavigationLink("购买记录") { EntryDetailView(entryID: id) }.accessibilityIdentifier("wishBoughtEntry_" + wish.id.uuidString)
                 }
                 if let answer = wish.followUpAnswer { Text("一个月后的感受：" + answer).yubaiFont(YubaiFont.callout) }
-                else if let due = wish.followUpAt, due <= Date() { WishFollowUpView(wishID: wish.id) }
+                else if let due = wish.followUpAt, due <= Dates.now { WishFollowUpView(wishID: wish.id) }
             }
         }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("wish_" + wish.id.uuidString)
     }
@@ -115,8 +115,8 @@ struct WishlistView: View {
             Button("不买了") { store.update("放下心愿") { ledger in
                 if let i = ledger.wishlist.firstIndex(where: { $0.id == wish.id && $0.status == .thinking }) {
                     ledger.wishlist[i].status = .dropped
-                    ledger.wishlist[i].droppedAt = Date(); ledger.wishlist[i].coolUntil = nil
-                    for j in ledger.cards.indices where ledger.cards[j].dedupeKey == "cooldown:\(wish.id)" { ledger.cards[j].dismissedAt = Date() }
+                    ledger.wishlist[i].droppedAt = Dates.now; ledger.wishlist[i].coolUntil = nil
+                    for j in ledger.cards.indices where ledger.cards[j].dedupeKey == "cooldown:\(wish.id)" { ledger.cards[j].dismissedAt = Dates.now }
                 }
             } }.frame(maxWidth: .infinity)
         }
@@ -133,9 +133,9 @@ struct WishEntryPicker: View {
     var body: some View {
         Page {
             if let wish = store.current.wishlist.first(where: { $0.id == wishID && $0.status == .thinking }) {
-                let matches = Wishlist.candidates(for: wish, in: store.current, now: Date())
+                let matches = Wishlist.candidates(for: wish, in: store.current, now: Dates.now)
                 let used = Set(store.current.wishlist.compactMap(\.boughtEntryID))
-                let rows = all ? store.sortedEntries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.date <= Date() && !used.contains($0.id) } : matches
+                let rows = all ? store.sortedEntries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.date <= Dates.now && !used.contains($0.id) } : matches
                 if rows.isEmpty { EmptyState("list.bullet", "没有匹配的支出", action: "查看全部支出", onAction: { all = true }) }
                 CardRows(rows) { entry in
                     Button {

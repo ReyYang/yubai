@@ -8,8 +8,8 @@ extension UITestSupport {
 
     static var secondBatchReceipt: ReceiptCandidate? {
         guard script == "v45-receipt" else { return nil }
-        let text = ["合成超市", Dates.text(Date()), "牛奶、鸡蛋、蔬菜 -96.50 支出", "洗衣液 -59.90 支出", "坚果 -30.00 支出", "合计 186.40"].joined(separator: "\n")
-        return ReceiptCandidate(text: text, amounts: ["96.50", "59.90", "30.00"], title: "合成超市", date: Date())
+        let text = ["合成超市", Dates.text(Dates.now), "牛奶、鸡蛋、蔬菜 -96.50 支出", "洗衣液 -59.90 支出", "坚果 -30.00 支出", "合计 186.40"].joined(separator: "\n")
+        return ReceiptCandidate(text: text, amounts: ["96.50", "59.90", "30.00"], title: "合成超市", date: Dates.now)
     }
     static var secondBatchBackupFolder: URL? {
         let arguments = ProcessInfo.processInfo.arguments
@@ -77,7 +77,7 @@ extension UITestSupport {
     static func secondBatchReceiptReply(_ request: ChatRequest, script: String) throws -> ChatMessage? {
         guard script == "v45-receipt", request.purpose == "拍小票、认截图" else { return nil }
         let rows: [JSONValue] = [("牛奶、鸡蛋、蔬菜", "96.50"), ("洗衣液", "59.90"), ("坚果", "30.00")].map {
-            .object(["title": .string($0.0), "amount": .string($0.1), "date": .string(Dates.text(Date())), "income": .bool(false)])
+            .object(["title": .string($0.0), "amount": .string($0.1), "date": .string(Dates.text(Dates.now)), "income": .bool(false)])
         }
         return ChatMessage(role: .assistant, content: try JSONValue.object(["shop": .string("合成超市"), "rows": .array(rows)]).jsonText())
     }

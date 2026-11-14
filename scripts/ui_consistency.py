@@ -39,6 +39,8 @@ def violations(name, source):
     for old in OLD_NAMES:
         reject(re.escape(old), 'obsolete interface name', comments)
     reject(r'CashTimeline|PaceChart|LineMark|AreaMark|AnswerChart|ShowChartTool|show_chart|import\s+Charts', 'deleted line-chart code')
+    reject(r'\b(?:ContentViewportTarget|ViewportButtonStyle|yubaiContentViewport)\b|\.contentViewportTarget\s*\(',
+           'removed per-control viewport gate: bound the scroll view in layout')
     reject(r'\.buttonStyle\((?:PressButtonStyle|TextLinkStyle)\([^)]*\)\)\s*\.yubaiHitTarget\(',
            'external link hit target: put it inside the label or use TextLinkStyle')
     if name == SHARED:
@@ -72,7 +74,8 @@ def violations(name, source):
 
 
 def self_test():
-    invalid = ['TextField("名字", text: $name)', 'SecureField("密钥", text: $key)',
+    invalid = ['struct ContentViewportTarget: ViewModifier {}',
+               'TextField("名字", text: $name)', 'SecureField("密钥", text: $key)',
                'DatePicker("日期", selection: $date)',
                'Button { back() } label: { Image(systemName: "chevron.left") }',
                'struct HandmadeToast: View {}', 'VStack(spacing: 12) {}',

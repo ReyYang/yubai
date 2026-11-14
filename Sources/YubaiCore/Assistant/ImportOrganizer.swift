@@ -33,7 +33,7 @@ public struct ImportQuestion: Codable, Identifiable, Equatable, Sendable {
         return ChangeSet(source: "回答整理问题", reason: text, items: items)
     }
     /// Save the free answer and its memory atomically, including the batch undo delta.
-    public func describe(_ text: String, batchID: UUID, in ledger: inout Ledger, now: Date = Date()) throws {
+    public func describe(_ text: String, batchID: UUID, in ledger: inout Ledger, now: Date = Dates.now) throws {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isFallback, !clean.isEmpty, clean.count <= 80, !clean.contains(where: { $0.isNewline }),
               let batch = ledger.imports.first(where: { $0.id == batchID && $0.undoneAt == nil }),
@@ -549,7 +549,7 @@ public struct ImportOrganizer: Sendable {
     }
     /// Children only construct proposals. The parent consumes completion order
     /// and awaits each checkpoint before consuming the next, including on MainActor.
-    public func organize(ledger: Ledger, entryIDs: [UUID], now: Date = Date(), checkpoint: Checkpoint? = nil,
+    public func organize(ledger: Ledger, entryIDs: [UUID], now: Date = Dates.now, checkpoint: Checkpoint? = nil,
                          activity: Activity? = nil, controller: ImportRequestController = ImportRequestController()) async throws -> ImportOrganization {
         try Task.checkCancellation()
         let targets = Set(entryIDs)

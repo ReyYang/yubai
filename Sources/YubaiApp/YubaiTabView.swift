@@ -60,7 +60,7 @@ struct YubaiTabView: View {
     }
     private func dayText(_ date: Date) -> String {
         let calendar = Dates.calendar
-        let days = calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(Date())).day ?? 0
+        let days = calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(Dates.now)).day ?? 0
         if days <= 0 { return "今天" }
         if days == 1 { return "昨天" }
         if days < 7 { return date.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "zh_CN"))) }

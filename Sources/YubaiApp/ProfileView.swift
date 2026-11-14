@@ -19,7 +19,7 @@ struct ProfileView: View {
                 ProfileProposalCard(change: change, confirm: { store.apply(change, label: "修改消费观") }, secondaryTitle: "不改了") {
                     store.update("修改消费观") { ledger in
                         ledger.pendingChanges.removeAll { $0.id == change.id }
-                        for i in ledger.cards.indices where ledger.cards[i].action == .confirmChangeSet(change.id) { ledger.cards[i].dismissedAt = Date() }
+                        for i in ledger.cards.indices where ledger.cards[i].action == .confirmChangeSet(change.id) { ledger.cards[i].dismissedAt = Dates.now }
                     }
                 }
             }
@@ -172,7 +172,7 @@ struct ProfileView: View {
     }
     private func edit(_ change: (inout SpendingProfile) -> Void) {
         store.update("修改消费观") { ledger in
-            let old = ledger.profile; change(&ledger.profile); ledger.profile.stamp(changedFrom: old, at: Date())
+            let old = ledger.profile; change(&ledger.profile); ledger.profile.stamp(changedFrom: old, at: Dates.now)
         }
     }
 }
@@ -289,7 +289,7 @@ private struct ProfileAreaEditor: View {
                 let old = ledger.profile
                 ledger.profile.generous.removeAll { $0.id == updated.id }; ledger.profile.restrain.removeAll { $0.id == updated.id }
                 if stance == .generous { ledger.profile.generous.append(updated) } else { ledger.profile.restrain.append(updated) }
-                ledger.profile.stamp(changedFrom: old, at: Date())
+                ledger.profile.stamp(changedFrom: old, at: Dates.now)
             }) { dismiss() }
         } catch { store.error = error.localizedDescription }
     }
@@ -322,7 +322,7 @@ private struct ProfilePrincipleEditor: View {
                     let old = ledger.profile
                     if let original, let i = ledger.profile.principles.firstIndex(of: original) { ledger.profile.principles[i] = clean }
                     else { ledger.profile.principles.append(clean) }
-                    ledger.profile.stamp(changedFrom: old, at: Date())
+                    ledger.profile.stamp(changedFrom: old, at: Dates.now)
                 }) { dismiss() }
             })
     }

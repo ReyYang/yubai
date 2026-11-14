@@ -3,7 +3,7 @@ import Foundation
 /// This pass cannot add a topic, evidence, action or financial value. Failure keeps
 /// each code template. Only the post-import mode may select a subset (up to three).
 public enum ButlerWording {
-    public static func word(_ candidates: [CardCandidate], ledger: Ledger, transport: (any ChatTransport)?, select: Bool = false, now: Date = Date()) async -> [CardCandidate] {
+    public static func word(_ candidates: [CardCandidate], ledger: Ledger, transport: (any ChatTransport)?, select: Bool = false, now: Date = Dates.now) async -> [CardCandidate] {
         let fallback = select ? Array(candidates.prefix(3)) : candidates
         guard let transport, !candidates.isEmpty, select || candidates.contains(where: { $0.kind != .offCharacter && $0.kind != .cooldownDue }) else { return fallback }
         let redactor = Redactor(ledger: ledger)

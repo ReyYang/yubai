@@ -185,8 +185,6 @@ extension View {
         modifier(MinimumHitTarget(alignment: alignment))
     }
 
-    func contentViewportTarget() -> some View { modifier(ContentViewportTarget()) }
-
     /// Keeps the glyph on the page edge; the transparent target extends into the page margin.
     func yubaiPageArrowTarget(edge: HorizontalEdge) -> some View {
         frame(width: YubaiSize.pageArrowGlyph, height: YubaiSize.iconButton, alignment: edge == .leading ? .leading : .trailing)
@@ -437,29 +435,13 @@ extension View {
     }
 }
 
-/// Apply clipping to the actual control. Applying allowsHitTesting to a style's
-/// label leaves the enclosing Button/NavigationLink active in UIKit's AX tree.
-protocol ViewportButtonStyle: PrimitiveButtonStyle {
-    associatedtype Feedback: ButtonStyle
-    var feedback: Feedback { get }
-}
-extension ViewportButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button(configuration).buttonStyle(feedback).contentViewportTarget()
-    }
-}
-
-struct PressButtonStyle: ViewportButtonStyle {
-    var feedback: TextLinkFeedback { TextLinkFeedback() }
+struct PressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { TextLinkStyle().makeBody(configuration: configuration) }
 }
 
 /// Small, unfilled links share a target inside the button, never outside it.
 /// Font and colour belong to the label; this changes only the transparent area.
-struct TextLinkStyle: ViewportButtonStyle {
-    var alignment: Alignment = .center
-    var feedback: TextLinkFeedback { TextLinkFeedback(alignment: alignment) }
-}
-struct TextLinkFeedback: ButtonStyle {
+struct TextLinkStyle: ButtonStyle {
     var alignment: Alignment = .center
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.fixedSize(horizontal: false, vertical: true)
@@ -484,14 +466,11 @@ struct RowToggleStyle: ToggleStyle {
             .accessibilityRepresentation {
                 Toggle(isOn: configuration.$isOn) { configuration.label.frame(minHeight: YubaiSize.rowDouble) }
                     .toggleStyle(.switch).accessibilityElement(children: .combine)
-            }.contentViewportTarget()
+            }
     }
 }
 
-struct SmallActionStyle: ViewportButtonStyle {
-    var feedback: SmallActionFeedback { SmallActionFeedback() }
-}
-struct SmallActionFeedback: ButtonStyle {
+struct SmallActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.label)
             .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
@@ -520,12 +499,12 @@ private struct FormSurfaceKey: EnvironmentKey { static let defaultValue = false 
 private struct CardContentKey: EnvironmentKey { static let defaultValue = false }
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
 private struct ToastClearanceKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
-struct ContentViewport {
-    let space: Namespace.ID
-    let bounds: CGRect
-}
-private struct ContentViewportKey: EnvironmentKey { static let defaultValue: ContentViewport? = nil }
 private struct PresentationScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
+private struct KeypadTextFocusKey: EnvironmentKey { static let defaultValue = false }
+private struct RowInputEditing: PreferenceKey {
+    static let defaultValue: Set<UUID> = []
+    static func reduce(value: inout Set<UUID>, nextValue: () -> Set<UUID>) { value.formUnion(nextValue()) }
+}
 extension EnvironmentValues {
     /// SwiftUI's system value is read-only; scripted tests opt in at the readers.
     var yubaiReduceMotion: Bool {
@@ -540,8 +519,8 @@ extension EnvironmentValues {
     var yubaiCardContent: Bool { get { self[CardContentKey.self] } set { self[CardContentKey.self] = newValue } }
     var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
     var yubaiToastClearance: CGFloat { get { self[ToastClearanceKey.self] } set { self[ToastClearanceKey.self] = newValue } }
-    var yubaiContentViewport: ContentViewport? { get { self[ContentViewportKey.self] } set { self[ContentViewportKey.self] = newValue } }
     var yubaiPresentationScale: CGFloat { get { self[PresentationScaleKey.self] } set { self[PresentationScaleKey.self] = newValue } }
+    fileprivate var yubaiKeypadTextFocus: Bool { get { self[KeypadTextFocusKey.self] } set { self[KeypadTextFocusKey.self] = newValue } }
     var yubaiMinimumTarget: CGFloat { ceil(YubaiSize.tapMin / yubaiPresentationScale * 3) / 3 }
 }
 
@@ -606,45 +585,12 @@ private struct PresentationScaleReader: UIViewRepresentable {
 }
 #endif
 
-/// UIKit can retain a full AX frame for a partially clipped SwiftUI button.
-/// Expose its action only after the entire target clears the fixed chrome;
-/// scrolling continues to work on the enclosing scroll view.
-private struct ContentViewportTarget: ViewModifier {
-    @Environment(\.yubaiContentViewport) private var viewport
-    private struct Exposure: Equatable {
-        var inside = true
-        var crossesEdge = false
-    }
-    @State private var exposure = Exposure()
-    func body(content: Content) -> some View {
-        // The target and viewport must move together during a UIKit push/pop
-        // or sheet transform. A cached global frame can retain an intermediate
-        // presentation offset after SwiftUI has stopped reporting geometry.
-        content.onGeometryChange(for: Exposure.self) { geometry in
-            guard let viewport, !viewport.bounds.isEmpty else { return Exposure() }
-            let frame = geometry.frame(in: .named(viewport.space))
-            let inside = frame.isEmpty || viewport.bounds.insetBy(dx: -0.5, dy: -0.5).contains(frame)
-            return Exposure(inside: inside, crossesEdge: !inside && viewport.bounds.intersects(frame))
-        } action: { exposure = $0 }
-            .allowsHitTesting(exposure.inside).accessibilityRespondsToUserInteraction(exposure.inside)
-            // A clipped SwiftUI Button can still expose its whole AX frame and
-            // a hittable centre. Remove a crossing action from AX as well.
-            // Fully off-viewport rows remain discoverable for native scrolling;
-            // their centres lie outside the bounded native scroll view.
-            .accessibilityHidden(exposure.crossesEdge)
-    }
-}
-
 private struct ScrollContentViewport: ViewModifier {
-    @Namespace private var space
     func body(content: Content) -> some View {
-        // The non-scrolling parent owns the available slot. A ScrollView used
-        // directly as a page root otherwise extends its native frame through
-        // the navigation/safe-area regions, even with content insets/clipped().
+        // The parent owns this slot. GeometryReader has already respected its
+        // safe area; native navigation retains its under-bar scroll edge.
         GeometryReader { slot in
             content.frame(width: slot.size.width, height: slot.size.height)
-                .environment(\.yubaiContentViewport, ContentViewport(space: space, bounds: CGRect(origin: .zero, size: slot.size)))
-                .coordinateSpace(name: space)
                 .clipped().contentShape(Rectangle())
         }
     }
@@ -838,13 +784,20 @@ private struct PaperBackground: ViewModifier {
     }
 }
 
-/// Leave a real slot for a toast, including on older pushed List/Form pages.
-/// The floating navigation is outside this modifier and keeps its position.
+/// The toast floats over the viewport. Extra scroll content lets the last row
+/// move wholly above it without moving the header or shrinking the page.
 private struct ToastContentSlot: ViewModifier {
     @Environment(\.yubaiToastClearance) private var clearance
     @Environment(\.yubaiSheetSurface) private var inSheet
     func body(content: Content) -> some View {
-        content.padding(.bottom, inSheet ? 0 : clearance)
+        content.contentMargins(.bottom, !inSheet && clearance > 0 ? clearance + YubaiSpace.gapGroup : nil, for: .scrollContent)
+    }
+}
+
+private struct RootScrollMargins: ViewModifier {
+    @Environment(\.yubaiToastClearance) private var clearance
+    func body(content: Content) -> some View {
+        content.contentMargins(.bottom, YubaiSpace.gapGroup + clearance, for: .scrollContent)
     }
 }
 
@@ -1170,9 +1123,13 @@ extension View {
     func yubaiSheetBackground() -> some View {
         environment(\.yubaiSheetSurface, true).environment(\.yubaiRootSurface, false)
             .environment(\.yubaiFormSurface, false)
-            .environment(\.yubaiContentViewport, nil)
             .presentationBackground { PaperCanvas() }
             .modifier(SheetPresentationMetrics())
+            #if DEBUG && targetEnvironment(simulator) && os(iOS)
+            // Modal accessibility may hide the root probe. Each sheet uses
+            // this same read-only window probe on its own background surface.
+            .background { if UITestSupport.script != nil { UITestWindowMetrics().frame(width: YubaiSize.separator, height: YubaiSize.separator) } }
+            #endif
     }
     func paperCardSurface<S: InsettableShape>(in shape: S, background: Color? = nil, flat: Bool = false) -> some View {
         modifier(PaperCardSurface(shape: shape, background: background, flat: flat))
@@ -1184,7 +1141,7 @@ extension View {
         #if os(iOS)
         // Insetting content alone still lets rows rest underneath the floating
         // controls. Keep the clipped viewport above them at every scroll offset.
-        self.contentMargins(.bottom, YubaiSpace.gapGroup, for: .scrollContent)
+        self.modifier(RootScrollMargins())
             .scrollEdgeEffectHidden(true, for: .bottom)
             .scrollEdgeEffectStyle(.soft, for: .top)
             .scrollClipDisabled(false)
@@ -1196,7 +1153,7 @@ extension View {
     }
     func rootPageHeader<Header: View>(@ViewBuilder _ header: () -> Header) -> some View {
         VStack(spacing: 0) {
-            header().environment(\.yubaiContentViewport, nil).padding(.horizontal, YubaiSpace.insetPage)
+            header().padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.space8)
                 .frame(maxWidth: .infinity)
                 .background(YubaiColor.canvas.ignoresSafeArea(edges: .top))
@@ -1213,7 +1170,8 @@ extension View {
     func fixedBottomBar<Bar: View>(spacing: CGFloat = YubaiSpace.none, @ViewBuilder content bar: () -> Bar) -> some View {
         VStack(spacing: spacing) {
             self.frame(maxWidth: .infinity, maxHeight: .infinity).modifier(ScrollContentViewport())
-            bar().environment(\.yubaiContentViewport, nil).fixedSize(horizontal: false, vertical: true)
+            bar().fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .contain).accessibilityIdentifier("fixedBottomBar")
         }
     }
     func pageLocalHorizontalGestures() -> some View {
@@ -1237,12 +1195,7 @@ extension View {
     func chipSelection(_ selected: Bool) -> some View { modifier(ChipSelection(selected: selected)) }
 }
 
-struct PrimaryButtonStyle: ViewportButtonStyle {
-    var compact = false
-    var disabledBackground = Color.clear
-    var feedback: PrimaryButtonFeedback { PrimaryButtonFeedback(compact: compact, disabledBackground: disabledBackground) }
-}
-struct PrimaryButtonFeedback: ButtonStyle {
+struct PrimaryButtonStyle: ButtonStyle {
     var compact = false
     var disabledBackground = Color.clear
     @Environment(\.isEnabled) private var isEnabled
@@ -1256,12 +1209,7 @@ struct PrimaryButtonFeedback: ButtonStyle {
     }
 }
 
-struct SecondaryButtonStyle: ViewportButtonStyle {
-    var background = YubaiColor.card
-    var compact = false
-    var feedback: SecondaryButtonFeedback { SecondaryButtonFeedback(background: background, compact: compact) }
-}
-struct SecondaryButtonFeedback: ButtonStyle {
+struct SecondaryButtonStyle: ButtonStyle {
     var background = YubaiColor.card
     var compact = false
     @Environment(\.isEnabled) private var isEnabled
@@ -1521,8 +1469,8 @@ struct EntryRow: View {
     }
     private var dateText: String {
         let calendar = Calendar.current
-        if calendar.isDateInToday(entry.date) { return "今天 " + entry.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))) }
-        if calendar.isDateInYesterday(entry.date) { return "昨天" }
+        if calendar.isDate(entry.date, inSameDayAs: Dates.now) { return "今天 " + entry.date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))) }
+        if calendar.isDate(entry.date, inSameDayAs: Dates.addDays(-1, to: Dates.now)) { return "昨天" }
         return Self.dateFormatter.string(from: entry.date)
     }
 }
@@ -2009,9 +1957,6 @@ extension View {
     func yubaiNavigation() -> some View {
         self.modifier(ToastContentSlot()).paperBackground().tint(YubaiColor.brandInk)
             .environment(\.yubaiRootSurface, false).environment(\.yubaiFormSurface, false)
-            // A pushed page must establish its own viewport, never inherit the
-            // source link's scroll rectangle (which can disappear on push).
-            .environment(\.yubaiContentViewport, nil)
             #if os(iOS)
             .background { NavigationBackPaper().frame(width: YubaiSpace.none, height: YubaiSpace.none) }
             .toolbar(.visible, for: .navigationBar)
@@ -2157,6 +2102,8 @@ extension Nature {
 }
 
 struct HomeEntryPill: View {
+    @Environment(\.yubaiReduceMotion) private var reduceMotion
+    @State private var pressed = false
     let title: String
     let action: () -> Void
     let quick: () -> Void
@@ -2169,17 +2116,63 @@ struct HomeEntryPill: View {
             .frame(height: YubaiSize.homeEntryPillHeight)
             .background { Capsule().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
             .contentShape(Capsule())
+            #if os(iOS)
+            .opacity(pressed ? 0.75 : 1)
+            .animation(pressed ? YubaiMotion.instant : (reduceMotion ? YubaiMotion.quick : YubaiMotion.lively), value: pressed)
+            .accessibilityHidden(true)
+            .overlay { HomeEntryPillControl(title: title, pressed: $pressed, action: action, quick: quick) }
+            #else
             .gesture(LongPressGesture(minimumDuration: 0.4).exclusively(before: TapGesture()).onEnded { result in
                 switch result { case .first: quick(); case .second: action() }
             })
             .accessibilityElement(children: .ignore).accessibilityAddTraits(.isButton)
             .accessibilityLabel(title).accessibilityIdentifier("addEntry")
             .accessibilityAction(.default, action).accessibilityAction(named: "常用", quick)
-            #if os(iOS)
-            .accessibilityShowsLargeContentViewer { Label(title, systemImage: "plus") }
             #endif
     }
 }
+
+#if os(iOS)
+/// One native control owns tap and hold. The hold cancels the button's touch
+/// before release, so neither the entry action nor a scroll behind it can win.
+private struct HomeEntryPillControl: UIViewRepresentable {
+    let title: String
+    @Binding var pressed: Bool
+    let action: () -> Void
+    let quick: () -> Void
+    func makeUIView(context: Context) -> Control { Control() }
+    func updateUIView(_ view: Control, context: Context) {
+        view.action = action; view.quick = quick; view.pressed = $pressed
+        view.accessibilityLabel = title; view.accessibilityIdentifier = "addEntry"
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: Control, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: .zero)
+    }
+    final class Control: UIButton {
+        var action: (() -> Void)?
+        var quick: (() -> Void)?
+        var pressed: Binding<Bool>?
+        override var isHighlighted: Bool {
+            didSet { if oldValue != isHighlighted { pressed?.wrappedValue = isHighlighted } }
+        }
+        init() {
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            addTarget(self, action: #selector(tap), for: .touchUpInside)
+            let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+            hold.minimumPressDuration = 0.4; hold.cancelsTouchesInView = true
+            addGestureRecognizer(hold)
+            accessibilityCustomActions = [UIAccessibilityCustomAction(name: "常用", target: self, selector: #selector(accessibleQuick))]
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        @objc private func tap() { isHighlighted = false; action?() }
+        @objc private func held(_ gesture: UILongPressGestureRecognizer) {
+            if gesture.state == .began { isHighlighted = false; quick?() }
+        }
+        @objc private func accessibleQuick() -> Bool { quick?(); return true }
+    }
+}
+#endif
 
 /// Header glyphs keep a 40pt circle and a 44pt hit target at every text size.
 struct HeaderIconButton<Icon: View>: View {
@@ -2203,10 +2196,7 @@ extension YubaiFont {
     static let savingsHero = Style(size: 40, lineHeight: 48, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
 }
 
-struct RoundPressStyle: ViewportButtonStyle {
-    var feedback: RoundPressFeedback { RoundPressFeedback() }
-}
-struct RoundPressFeedback: ButtonStyle {
+struct RoundPressStyle: ButtonStyle {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiHitTarget().opacity(configuration.isPressed ? 0.75 : 1)
@@ -2435,17 +2425,25 @@ struct ResultBar: View {
         amount2(from, hide: hide) + " → " + amount2(to, hide: hide)
     }
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
-                labelText.fixedSize(); Spacer(minLength: YubaiSpace.space8); valueText.fixedSize()
-            }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                labelText; valueText.frame(maxWidth: .infinity, alignment: .trailing)
+        Group {
+            if textSize.isAccessibilitySize { stacked }
+            else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
+                        labelText.fixedSize(); Spacer(minLength: YubaiSpace.space8); valueText.fixedSize()
+                    }
+                    stacked
+                }
             }
         }.padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
             .frame(maxWidth: .infinity, minHeight: YubaiSize.rowIcon, alignment: .leading)
             .background(amber ? YubaiColor.amberTint : YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             .accessibilityElement(children: .combine).accessibilityIdentifier(identifier)
+    }
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+            labelText; valueText.frame(maxWidth: .infinity, alignment: .trailing)
+        }
     }
     private var labelText: some View {
         Text(label).yubaiFont(YubaiFont.callout).foregroundStyle(amber ? YubaiColor.amberInk : YubaiColor.labelMuted)
@@ -2493,6 +2491,8 @@ struct KeypadSheet<Content: View, Footer: View>: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var contentHeight: CGFloat = YubaiSize.sheet440
     @State private var footerHeight: CGFloat = YubaiSize.keypadHeight
+    @State private var textEditing = false
+    @State private var editingHeight: CGFloat?
     @ViewBuilder let content: () -> Content
     @ViewBuilder let footer: () -> Footer
     var body: some View {
@@ -2504,10 +2504,21 @@ struct KeypadSheet<Content: View, Footer: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { contentHeight = $0 } }
             }.scrollBounceBehavior(.basedOnSize).modifier(ScrollContentViewport())
+            // Keep both subtrees mounted. A focus change must not recreate an
+            // editor or change the sheet's selected height beneath UIKit.
             footer().fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { footerHeight = $0 } }
-        }.presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(contentHeight + footerHeight), .large])
+                .frame(height: textEditing ? 0 : nil).clipped()
+                .allowsHitTesting(!textEditing).accessibilityHidden(textEditing)
+        }.environment(\.yubaiKeypadTextFocus, true)
+            .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(editingHeight ?? contentHeight + footerHeight), .large])
             .accessibilityElement(children: .contain)
+            .onPreferenceChange(RowInputEditing.self) { editors in
+                let editing = !editors.isEmpty
+                if editing && !textEditing { editingHeight = contentHeight + footerHeight }
+                textEditing = editing
+                if !editing { editingHeight = nil }
+            }
     }
 }
 
@@ -2561,7 +2572,6 @@ struct AmountEntrySheet<Accessory: View>: View {
             .accessibilityElement(children: .contain)
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
-            .onAppear { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
             #endif
     }
     private var header: some View {
@@ -2807,6 +2817,9 @@ private struct RowTextInput: View {
     var submit: (() -> Void)? = nil
     @Environment(\.isEnabled) private var enabled
     @Environment(\.yubaiMinimumTarget) private var minimum
+    @Environment(\.yubaiKeypadTextFocus) private var preservesTextFocus
+    @State private var nativeEditing = false
+    @State private var editingID = UUID()
     @ScaledMetric private var fontSize: CGFloat
     init(text: Binding<String>, placeholder: String, label: String, identifier: String,
          multiline: Bool = false, numeric: Bool = false, secure: Bool = false,
@@ -2823,19 +2836,24 @@ private struct RowTextInput: View {
             #if os(iOS)
             NativeRowInput(text: $text, placeholder: placeholder, label: label, identifier: identifier,
                            multiline: multiline, numeric: numeric, secure: secure, maximumLines: maximumLines, verticalInset: verticalInset,
-                           fontSize: fontSize, minimum: minimum, enabled: enabled, focus: focus, search: search, submit: submit)
+                           fontSize: fontSize, minimum: minimum, enabled: enabled, focus: focus,
+                           preservesTextFocus: preservesTextFocus, editingChanged: { nativeEditing = $0 }, search: search, submit: submit)
+                // Register the same FocusState with SwiftUI as well as UIKit.
+                // Otherwise a keyboard/detent relayout can clear an unowned
+                // focus binding and updateUIView immediately resigns the field.
+                .focused(focus)
             #else
             nativeFallback.textFieldStyle(.plain).yubaiFont(style).focused(focus)
                 .onSubmit { submit?(); focus.wrappedValue = false }
                 .accessibilityLabel(label).accessibilityIdentifier(identifier)
             #endif
         }.frame(maxWidth: .infinity, minHeight: minimum)
+            .preference(key: RowInputEditing.self, value: nativeEditing ? [editingID] : [])
             .contentShape(Rectangle())
             #if os(macOS)
             .onTapGesture { if enabled { focus.wrappedValue = true } }
             #endif
             .privacySensitive(secure)
-            .contentViewportTarget()
             #if os(iOS)
             .background { if numeric { NumberKeyboardAccessory().frame(width: 0, height: 0) } }
             #endif
@@ -2863,6 +2881,8 @@ private struct NativeRowInput: UIViewRepresentable {
     let minimum: CGFloat
     let enabled: Bool
     let focus: FocusState<Bool>.Binding
+    let preservesTextFocus: Bool
+    let editingChanged: (Bool) -> Void
     let search: Bool
     var submit: (() -> Void)?
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -2877,6 +2897,7 @@ private struct NativeRowInput: UIViewRepresentable {
         context.coordinator.parent = self
         let coordinator = context.coordinator
         host.focusChanged = { [weak coordinator] in coordinator?.parent.focus.wrappedValue = $0 }
+        host.editingChanged = { [weak coordinator] in coordinator?.parent.editingChanged($0) }
         let previousHeight = host.height(for: host.bounds.width)
         let font = UIFont.systemFont(ofSize: fontSize)
         host.minimum = minimum; host.maximumLines = maximumLines
@@ -2893,18 +2914,29 @@ private struct NativeRowInput: UIViewRepresentable {
         host.field.textColor = UIColor(YubaiColor.label); host.editor.textColor = UIColor(YubaiColor.label)
         host.placeholder.textColor = UIColor(YubaiColor.labelSecondary).withAlphaComponent(0.5)
         host.field.tintColor = UIColor(YubaiColor.brandInk); host.editor.tintColor = UIColor(YubaiColor.brandInk)
-        if host.field.text != text { host.field.text = text }
-        if host.editor.text != text { host.editor.text = text }
+        if host.field.markedTextRange == nil, host.field.text != text { host.field.text = text }
+        if host.editor.markedTextRange == nil, host.editor.text != text { host.editor.text = text }
         host.placeholder.isHidden = !text.isEmpty
         host.field.isEnabled = enabled; host.editor.isEditable = enabled
         let input: UIView = multiline ? host.editor : host.field
         input.accessibilityIdentifier = identifier; input.accessibilityLabel = label
-        host.desiredFocus = enabled && focus.wrappedValue
+        // In a keypad sheet UIKit owns an active text-editing session. A
+        // SwiftUI focus write-back during footer/detent layout is not a user
+        // request to leave that field. Return, another responder and teardown
+        // still end editing through the native delegate.
+        if preservesTextFocus && enabled && host.desiredFocus && input.isFirstResponder {
+            if !focus.wrappedValue {
+                DispatchQueue.main.async { [weak host] in
+                    guard let host, host.desiredFocus, input.isFirstResponder else { return }
+                    host.focusChanged?(true)
+                }
+            }
+        } else { host.desiredFocus = enabled && focus.wrappedValue }
         if abs(host.height(for: host.bounds.width) - previousHeight) > 0.5 { host.invalidateIntrinsicContentSize() }
         host.scheduleFocusUpdate()
     }
     static func dismantleUIView(_ host: FieldHost, coordinator: Coordinator) {
-        host.desiredFocus = false; host.focusChanged = nil
+        host.desiredFocus = false; host.focusChanged = nil; host.editingChanged = nil
         host.field.delegate = nil; host.editor.delegate = nil
         host.updateFocus()
     }
@@ -2919,6 +2951,7 @@ private struct NativeRowInput: UIViewRepresentable {
         let multiline: Bool
         var desiredFocus = false
         var focusChanged: ((Bool) -> Void)?
+        var editingChanged: ((Bool) -> Void)?
         private var awaitingPresentation = false
         private var focusUpdateScheduled = false
         var minimum = YubaiSize.tapMin
@@ -3001,16 +3034,20 @@ private struct NativeRowInput: UIViewRepresentable {
             if desiredFocus, presentationTransition != nil || awaitingPresentation {
                 updateFocus(); return
             }
-            desiredFocus = false; focusChanged?(false)
+            desiredFocus = false; focusChanged?(false); editingChanged?(false)
         }
     }
     final class Coordinator: NSObject, UITextFieldDelegate, UITextViewDelegate {
         var parent: NativeRowInput
         init(_ parent: NativeRowInput) { self.parent = parent }
         @objc func changed(_ field: UITextField) { parent.text = field.text ?? "" }
-        func textFieldDidBeginEditing(_ textField: UITextField) { parent.focus.wrappedValue = true }
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            (textField.superview as? FieldHost)?.desiredFocus = true
+            parent.focus.wrappedValue = true; parent.editingChanged(true)
+        }
         func textFieldDidEndEditing(_ textField: UITextField) { (textField.superview as? FieldHost)?.editingEnded() }
         func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            (textField.superview as? FieldHost)?.desiredFocus = false
             parent.submit?(); parent.focus.wrappedValue = false; textField.resignFirstResponder(); return true
         }
         func textViewDidChange(_ textView: UITextView) {
@@ -3018,10 +3055,14 @@ private struct NativeRowInput: UIViewRepresentable {
             (textView.superview as? FieldHost)?.placeholder.isHidden = !textView.text.isEmpty
             textView.superview?.invalidateIntrinsicContentSize()
         }
-        func textViewDidBeginEditing(_ textView: UITextView) { parent.focus.wrappedValue = true }
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            (textView.superview as? FieldHost)?.desiredFocus = true
+            parent.focus.wrappedValue = true; parent.editingChanged(true)
+        }
         func textViewDidEndEditing(_ textView: UITextView) { (textView.superview as? FieldHost)?.editingEnded() }
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
             if text == "\n", let submit = parent.submit {
+                (textView.superview as? FieldHost)?.desiredFocus = false
                 submit(); parent.focus.wrappedValue = false; textView.resignFirstResponder(); return false
             }
             return true
@@ -3285,7 +3326,6 @@ private struct AmountKeyButtonStyle: ButtonStyle {
             }
             .shadow(color: primary || selected || pressed ? .clear : YubaiColor.shadowKey, radius: 0, x: 0, y: 1)
             .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
-            .contentViewportTarget()
             .animation(pressed ? nil : .easeOut(duration: YubaiMotion.durationQuick), value: pressed)
             .onChange(of: pressed) { _, value in pressing(value) }
     }
@@ -3341,7 +3381,7 @@ struct EditableAmountDisplay: View {
                 }
                 amountLine
             }.contentShape(Rectangle())
-        }.buttonStyle(.plain).contentViewportTarget().foregroundStyle(YubaiColor.label)
+        }.buttonStyle(.plain).foregroundStyle(YubaiColor.label)
             .accessibilityLabel("金额").accessibilityValue(hide ? "金额已隐藏" : presented ? keypad.groupedResultText : EntryKeypad(amount: (try? Money.parse(amount)) ?? 0).groupedResultText)
             .accessibilityIdentifier(identifier)
             .background {
@@ -3445,7 +3485,7 @@ struct EntryForm<Content: View>: View {
 struct EntryDateRow: View {
     @Binding var date: Date
     var showsTime = false
-    private var today: Date { Date() }
+    private var today: Date { Dates.now }
     private func choose(_ day: Date) {
         let c = Dates.calendar
         date = c.date(bySettingHour: c.component(.hour, from: date), minute: c.component(.minute, from: date), second: c.component(.second, from: date), of: day)!
@@ -3499,10 +3539,7 @@ struct InlineFieldError: View {
     }
 }
 
-struct DestructiveButtonStyle: ViewportButtonStyle {
-    var feedback: DestructiveButtonFeedback { DestructiveButtonFeedback() }
-}
-struct DestructiveButtonFeedback: ButtonStyle {
+struct DestructiveButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.fixedSize(horizontal: false, vertical: true).yubaiFont(YubaiFont.destructiveAction)
             .foregroundStyle(YubaiColor.amberInk).frame(maxWidth: .infinity, minHeight: 52)
@@ -3774,9 +3811,9 @@ struct EntryDateChip: View {
     var allowsFuture = true
     var identifier = ""
     @State private var picking = false
-    @State private var latestDate = Date()
+    @State private var latestDate = Dates.now
     var body: some View {
-        Button { latestDate = Date(); picking = true } label: {
+        Button { latestDate = Dates.now; picking = true } label: {
             Group {
                 if iconOnly { Image(systemName: "calendar").frame(width: YubaiSize.headerIcon) }
                 else if inTray && !time { Label(ManualBookkeeping.dayLabel(date), systemImage: "calendar").fixedSize() }

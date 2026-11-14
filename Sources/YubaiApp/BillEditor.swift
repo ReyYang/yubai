@@ -58,7 +58,7 @@ struct FixedFlowEditor: View {
     @State private var amount = ""
     @State private var currency = BillCurrency.cny
     @State private var frequency = Frequency.monthly
-    @State private var date = Date()
+    @State private var date = Dates.now
     @State private var accountID: UUID?
     @State private var category = "其他支出"
     @State private var inflow = false

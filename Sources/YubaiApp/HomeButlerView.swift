@@ -12,19 +12,19 @@ struct ButlerReceipt: Identifiable, Equatable {
 @MainActor extension AppStore {
     func answerHome(_ item: HomeTask) {
         _ = update("已回答", recordUndo: false, entryMotion: false, showToast: false) {
-            HomeButler.answer(item.id, in: &$0, now: Date())
+            HomeButler.answer(item.id, in: &$0, now: Dates.now)
         }
     }
     func beginFirstEntry(importing: Bool = false) {
         homeEntrySession = !importing && destination == .now
         guard update("开始记账", recordUndo: false, entryMotion: false, showToast: false, {
-            FirstUse.prepareForEntry(&$0, now: Date())
+            FirstUse.prepareForEntry(&$0, now: Dates.now)
         }) else { return }
         sheetSource = nil; sheet = importing ? .imports : .addEntry
     }
     func stopRenewal(_ renewal: HomeRenewal) {
         guard update("停掉", entryMotion: false, showToast: false, {
-            try HomeButler.stop(renewal, in: &$0, now: Date())
+            try HomeButler.stop(renewal, in: &$0, now: Dates.now)
         }) else { return }
         let provider = renewal.plan.title.replacingOccurrences(of: "会员", with: "").replacingOccurrences(of: "年付", with: "")
         homeReceipt = ButlerReceipt(title: "以后" + renewal.plan.frequency.label + "省下", amount: renewal.amount,
@@ -72,7 +72,7 @@ struct HomeTaskCard: View {
         if let copy = HomeTaskCopy.make(.funding(value), now: store.financialNow, hidden: hide) {
             QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more,
                          yesTitle: "从" + value.source.name + "转过去", noTitle: "我自己处理", yesIdentifier: "butlerTransferFunds", noIdentifier: "butlerHandleFunding",
-                         yes: { _ = store.update("已记下 1 笔") { try HomeButler.transferFunding(value, in: &$0, now: Date()) } },
+                         yes: { _ = store.update("已记下 1 笔") { try HomeButler.transferFunding(value, in: &$0, now: Dates.now) } },
                          no: { store.answerHome(item) }).accessibilityIdentifier("fundingButlerCard")
         }
     }
@@ -82,7 +82,7 @@ struct HomeTaskCard: View {
                             yesTitle: "不买了", noTitle: "买，从存着的钱出", yesIdentifier: "butlerDropWish", noIdentifier: "butlerBuyWish",
                             yes: {
             if store.update("不买了", entryMotion: false, showToast: false, {
-                try Wishlist.answerCooldown(wish.id, choice: .drop, in: &$0, now: Date())
+                try Wishlist.answerCooldown(wish.id, choice: .drop, in: &$0, now: Dates.now)
             }) { store.homeReceipt = ButlerReceipt(title: "省下", amount: wish.amount, undoLabel: store.undoLabel) }
         }, no: {
             // Recording the purchase links the wish through the existing unique

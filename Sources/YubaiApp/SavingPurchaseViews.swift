@@ -102,7 +102,7 @@ struct SavingPurchaseCard: View {
     }
     private var equivalentDays: Int? {
         let base = store.pace?.baseDaily ?? 0
-        let ref = base > 0 ? base : Finance.estimatedDailyLiving(store.current, now: Date())
+        let ref = base > 0 ? base : Finance.estimatedDailyLiving(store.current, now: Dates.now)
         guard ref > 0 else { return nil }
         return max(1, Int((Double(purchase.amount) / Double(ref)).rounded()))
     }
@@ -168,7 +168,7 @@ struct SavingPurchaseCard: View {
     private func saveWish() {
         guard wishID == nil else { return }
         let submitted = verdict ?? SubmittedPurchaseVerdict(verdict: conclusion, reason: reason, need: .unclear, boundReason: assessment.reason)
-        let now = Date()
+        let now = Dates.now
         var addedID: UUID?
         if store.update("加入心愿单", showToast: false, { ledger in
             addedID = try Wishlist.keepConsidered(fromVerdict: submitted, title: purchase.title, amount: purchase.amount, category: purchase.category,

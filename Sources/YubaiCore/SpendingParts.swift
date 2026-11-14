@@ -64,7 +64,7 @@ public enum SpendingParts {
         return Finance.spendingAmount(entry, ledger: ledger)
     }
 
-    public static func summary(_ ledger: Ledger, now: Date = Date()) -> SpendingPartsSummary {
+    public static func summary(_ ledger: Ledger, now: Date = Dates.now) -> SpendingPartsSummary {
         let funds = Finance.funds(ledger, now: now)
         let rows = ledger.entries.filter { $0.deletedAt == nil && $0.date >= funds.cycleStart && $0.date <= now }
         let entriesByID = rows.contains(where: { $0.nature == .refund }) ? Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) }) : nil
@@ -102,7 +102,7 @@ public enum SpendingParts {
 
     /// Ranked net spending in the three completed calendar months. Refunds use
     /// the original expense category and personal shares follow Finance.
-    public static func topCategories(ledger: Ledger, now: Date = Date()) -> [String] {
+    public static func topCategories(ledger: Ledger, now: Date = Dates.now) -> [String] {
         let end = Dates.calendar.dateInterval(of: .month, for: now)!.start
         let start = Dates.addMonths(-3, to: end)
         let rows = Finance.cashFlow(ledger, during: DateInterval(start: start, end: end)).spendingByCategory
@@ -113,7 +113,7 @@ public enum SpendingParts {
 
     /// Pure suggestion over up to three completed Finance cycles. A cycle before
     /// the earliest recorded row is unavailable; zero-spend categories still count.
-    public static func suggestions(ledger: Ledger, now: Date = Date()) -> [SpendingPartSuggestion] {
+    public static func suggestions(ledger: Ledger, now: Date = Dates.now) -> [SpendingPartSuggestion] {
         let start = Finance.cycle(in: ledger, now: now).start
         let entries = ledger.activeEntries.filter { $0.date < start }
         let entriesByID = entries.contains(where: { $0.nature == .refund }) ? Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) }) : nil

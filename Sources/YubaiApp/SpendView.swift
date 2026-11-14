@@ -132,7 +132,9 @@ struct FormulaView: View {
                     Rectangle().fill(YubaiColor.label).frame(height: YubaiSize.separator)
                     Rectangle().fill(YubaiColor.label).frame(height: YubaiSize.separator)
                 }.accessibilityHidden(true)
-            }.accessibilityIdentifier("formulaResult")
+            }.accessibilityElement(children: .ignore)
+            .accessibilityLabel(hide ? "金额已隐藏" : AmountLabel.text(amount))
+            .accessibilityIdentifier("formulaResult")
     }
     private func dailyRow(_ daily: Int64, days: Int) -> some View {
         ViewThatFits(in: .horizontal) {

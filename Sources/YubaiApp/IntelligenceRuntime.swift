@@ -473,7 +473,7 @@ private struct FeatureCloudTransport: ChatTransport {
             if let i = ledger.imports.firstIndex(where: { $0.id == batchID }) {
                 ledger.imports[i].organization?.questions.removeAll { $0.id == question.id }
             }
-            for i in ledger.cards.indices where ledger.cards[i].importQuestion?.id == question.id { ledger.cards[i].dismissedAt = Date() }
+            for i in ledger.cards.indices where ledger.cards[i].importQuestion?.id == question.id { ledger.cards[i].dismissedAt = Dates.now }
             ImportOrganization.recordUndo(batchID: batchID, before: before, in: &ledger)
         }
     }
@@ -588,7 +588,7 @@ private struct FeatureCloudTransport: ChatTransport {
         await classifySubcategoriesIfDue()
         await reflectMemoriesIfDue()
         guard !Task.isCancelled, !locked, organizingBatchID == nil else { return }
-        let before = current; let now = Date()
+        let before = current; let now = Dates.now
         let detection = Task.detached(priority: .utility) {
             var candidates = ButlerCards.detect(before, now: now)
             if let letter = WeeklyLetter.candidate(before, now: now) { candidates.append(letter) }
@@ -607,7 +607,7 @@ private struct FeatureCloudTransport: ChatTransport {
               preferences.isAIEnabled(for: .importClassification), SubcategoryBatch.isDue(current),
               !SubcategoryBatch.pending(current).isEmpty, syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
               let transport = assistantTransport(for: current, feature: .importClassification) else { return }
-        let before = current; let now = Date()
+        let before = current; let now = Dates.now
         reflectingMemories = true
         defer { reflectingMemories = false }
         do {
@@ -621,7 +621,7 @@ private struct FeatureCloudTransport: ChatTransport {
         guard !reflectingMemories, pendingOrganization.batchIDs.isEmpty,
               syncChoice == nil, !switchingLedgerLocation, !choosingSyncVersion,
               IntelligenceRuntime.isConfigured else { return }
-        let now = Date(), suggestions = preferences.isAIEnabled(for: .butlerSuggestions)
+        let now = Dates.now, suggestions = preferences.isAIEnabled(for: .butlerSuggestions)
         let weekly = preferences.isAIEnabled(for: .weeklyReview)
         if suggestions {
             let ended = ButlerCadence.endedSpikes(current, now: now)
@@ -665,27 +665,27 @@ private struct FeatureCloudTransport: ChatTransport {
     @discardableResult func dismissCard(_ id: UUID) -> Bool {
         guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return false }
         let saved = update("收起管家卡片", showToast: false) { ledger in
-            if let i = ledger.cards.firstIndex(where: { $0.id == id }) { ledger.cards[i].dismissedAt = Date() }
+            if let i = ledger.cards.firstIndex(where: { $0.id == id }) { ledger.cards[i].dismissedAt = Dates.now }
         }
         if saved { toast = "收起了" }
         return saved
     }
     @discardableResult func muteCard(_ id: UUID) -> Bool {
         guard current.cards.contains(where: { $0.id == id && $0.dismissedAt == nil }) else { return false }
-        let saved = update("以后不再提这个话题", showToast: false) { ButlerCards.mute(id, in: &$0, now: Date()) }
+        let saved = update("以后不再提这个话题", showToast: false) { ButlerCards.mute(id, in: &$0, now: Dates.now) }
         if saved { toast = "以后不提这类了" }
         return saved
     }
     @discardableResult func cardFeedback(_ value: CardFeedback, id: UUID) -> Bool {
         guard let card = current.cards.first(where: { $0.id == id && $0.dismissedAt == nil && $0.feedback == nil }) else { return false }
         let answer = value == .worth ? (card.evidence.count > 1 ? "都值得" : "值得") : "有点后悔"
-        let saved = update("记下你点过的提醒", showToast: false) { ButlerCards.feedback(value, cardID: id, in: &$0, now: Date()) }
+        let saved = update("记下你点过的提醒", showToast: false) { ButlerCards.feedback(value, cardID: id, in: &$0, now: Dates.now) }
         if saved { toast = "记下了：" + answer }
         return saved
     }
     @discardableResult func answerWishFollowUp(_ wishID: UUID, choice: FollowUpChoice, text: String) -> Bool {
         let saved = update("记下一个月的感受", showToast: false) {
-            try Wishlist.answerFollowUp(wishID, choice: choice, text: text, in: &$0, now: Date())
+            try Wishlist.answerFollowUp(wishID, choice: choice, text: text, in: &$0, now: Dates.now)
         }
         if saved { toast = "记下了：" + choice.rawValue }
         return saved
@@ -698,10 +698,10 @@ private struct FeatureCloudTransport: ChatTransport {
         // A due wish may be opened before the normal reminder refresh finishes.
         // Materialize and close its reminder in one undoable save in that case.
         let saved = update(mute ? "以后不再提这个话题" : "收起管家卡片", showToast: false) { ledger in
-            _ = ButlerCards.refresh(&ledger, now: Date())
+            _ = ButlerCards.refresh(&ledger, now: Dates.now)
             guard let i = ledger.cards.firstIndex(where: { $0.dedupeKey == key }) else { return }
-            if mute { ButlerCards.mute(ledger.cards[i].id, in: &ledger, now: Date()) }
-            else { ledger.cards[i].dismissedAt = Date() }
+            if mute { ButlerCards.mute(ledger.cards[i].id, in: &ledger, now: Dates.now) }
+            else { ledger.cards[i].dismissedAt = Dates.now }
         }
         if saved { toast = mute ? "以后不提这类了" : "收起了" }
         return saved

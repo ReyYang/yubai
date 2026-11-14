@@ -39,7 +39,7 @@ private struct OverspendEditor: View {
     private var rows: [AmountSheetRow] {
         guard valid else { return [] }
         let hide = store.preferences.hideAmounts
-        let preview = Overspend.preview(store.current, source: source, amount: amount, now: Date())
+        let preview = Overspend.preview(store.current, source: source, amount: amount, now: Dates.now)
         var available = amount2(preview.availableAfter, hide: hide)
         if let daily = preview.dailyAfter { available += " · 日均 " + amount2(daily, hide: hide) }
         return [AmountSheetRow(label: source == .saveLess ? "每月存" : "存着的钱", value: ResultBar.change(preview.before, preview.after, hide: hide)),
@@ -58,7 +58,7 @@ private struct OverspendEditor: View {
         let source = self.source
         let before = source == .saveLess ? store.funds.savingTarget : store.funds.fixedSavingsTotal
         let hide = store.preferences.hideAmounts
-        guard store.update("补平", { ledger in try Overspend.cover(&ledger, source: source, amount: value, now: Date()) }) else { return }
+        guard store.update("补平", { ledger in try Overspend.cover(&ledger, source: source, amount: value, now: Dates.now) }) else { return }
         store.toast = (source == .saveLess ? "这个月存 " : "存着的钱 ") + amount2(before - value, hide: hide)
         dismiss()
     }

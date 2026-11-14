@@ -199,7 +199,7 @@ struct EntryEditForm: View {
     }
     @MainActor private func refreshPreview() async {
         do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
-        let ledger = store.current; let now = Date()
+        let ledger = store.current; let now = Dates.now
         var entry = draft; entry.amount = currentAmount
         if Dates.day(entry.date) > Dates.day(now) { entry.date = Dates.day(entry.date) }
         let edited = entry
@@ -236,7 +236,7 @@ struct EntryEditForm: View {
     private func deleteEntry() {
         if store.update("删掉", { ledger in
             guard let index = ledger.entries.firstIndex(where: { $0.id == draft.id }) else { return }
-            ledger.entries[index].deletedAt = Date()
+            ledger.entries[index].deletedAt = Dates.now
         }) { dismiss() }
     }
     private var provenance: String {
@@ -250,7 +250,7 @@ struct EntryEditForm: View {
         guard canSave else { return }
         do {
             var edited = draft
-            let now = Date()
+            let now = Dates.now
             if Dates.day(edited.date) > Dates.day(now) { edited.date = Dates.day(edited.date) }
             if categoryIsSuggestion && !choseCategory { edited.category = Classification.pendingCategory; edited.subcategory = nil }
             if edited.hasNoCaptureCategory && choseCategory { edited.classificationReason = "手动选择" }

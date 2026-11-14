@@ -16,7 +16,7 @@ public enum FixedFlowEditError: LocalizedError, Equatable, Sendable {
 
 extension FixedFlows {
     /// Installments always means the total, including retained linked periods.
-    public static func edit(planID: UUID, in ledger: Ledger, now: Date = Date()) -> FixedFlowEdit? {
+    public static func edit(planID: UUID, in ledger: Ledger, now: Date = Dates.now) -> FixedFlowEdit? {
         guard let plan = ledger.plans.first(where: { $0.id == planID }) else { return nil }
         let payments = FixedFlowPayments(in: ledger, now: now)
         let end = Date(timeIntervalSince1970: 7_258_118_400)
@@ -42,7 +42,7 @@ extension FixedFlows {
 
     public static func update(planID: UUID, title: String, amount: Int64, frequency: Frequency, date: Date,
                               accountID: UUID?, category: String, installments: Int?, autoPay: Bool, estimated: Bool,
-                              in ledger: Ledger, now: Date = Date(), intoFixedSavings: Bool? = nil, currency: BillCurrency? = nil, monthlyDay: Int? = nil) throws -> ChangeSet {
+                              in ledger: Ledger, now: Date = Dates.now, intoFixedSavings: Bool? = nil, currency: BillCurrency? = nil, monthlyDay: Int? = nil) throws -> ChangeSet {
         guard let old = ledger.plans.first(where: { $0.id == planID }), let edit = edit(planID: planID, in: ledger, now: now) else {
             throw YubaiError.invalid("找不到要修改的安排。")
         }

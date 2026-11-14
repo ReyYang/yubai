@@ -6,7 +6,7 @@ struct AccountEditor: View {
     var account: Account?
     var startsReconciling = false
     @State private var name = ""; @State private var kind = AccountKind.bank; @State private var amount = ""
-    @State private var at = Date(); @State private var verified = true; @State private var note = ""; @State private var limit = ""
+    @State private var at = Dates.now; @State private var verified = true; @State private var note = ""; @State private var limit = ""
     @State private var loaded = false; @State private var reconcileNow = false
     @State private var creditPaymentDay = 0
     @State private var confirmingDiscard = false
@@ -54,7 +54,7 @@ struct AccountEditor: View {
                 else { ledger.accounts.append(a) }
                 if account != nil && reconcileNow && verified {
                     for i in ledger.cards.indices where ledger.cards[i].action == .reconcileAccount(a.id) {
-                        ledger.cards[i].dismissedAt = Date()
+                        ledger.cards[i].dismissedAt = Dates.now
                     }
                 }
             }) { dismiss() }

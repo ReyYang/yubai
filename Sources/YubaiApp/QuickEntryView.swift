@@ -30,7 +30,7 @@ struct QuickEntryView: View {
     @State private var accountID: UUID?
     @State private var otherAccountID: UUID?
     @State private var inlinePanel = AddEntryInlinePanel.none
-    @State private var date = Date()
+    @State private var date = Dates.now
     @State private var loaded = false
     @State private var skipNatureReset = false
     @State private var balances: [UUID: Int64] = [:]
@@ -284,7 +284,7 @@ struct QuickEntryView: View {
         voiceOver = UIAccessibility.isVoiceOverRunning
         #endif
         if store.accounts.isEmpty || !store.preferences.onboardingComplete {
-            _ = store.update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Date()) }
+            _ = store.update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Dates.now) }
         }
         accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
         if let prefill {
@@ -329,7 +329,7 @@ struct QuickEntryView: View {
         store.sheetSource = nil; store.sheet = prefill?.screenshot.map(AppSheet.screenshotReview) ?? .imports
     }
     @MainActor private func refreshHints() async {
-        let ledger = store.current; let text = purpose; let kind = nature; let at = Date(); let chosen = category.isEmpty ? nil : category
+        let ledger = store.current; let text = purpose; let kind = nature; let at = Dates.now; let chosen = category.isEmpty ? nil : category
         let found = await Task.detached { (EntryHistory.categoryHint(purpose: text, nature: kind, in: ledger, now: at),
                                           EntryHistory.recalls(matching: text, nature: kind, in: ledger, now: at),
                                           EntryHistory.purposeSuggestions(nature: kind, category: chosen, in: ledger, now: at)) }.value
@@ -382,7 +382,7 @@ struct QuickEntryView: View {
         // quick input; the expensive unchanged Core calculations run off-main.
         do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
         guard !Task.isCancelled else { return }
-        let ledger = store.current; let now = Date(); let fallback = store.funds.available
+        let ledger = store.current; let now = Dates.now; let fallback = store.funds.available
         let amount = amountCents; let nature = self.nature; let purpose = self.purpose; let day = date; let account = accountID
         let change = canSave && editingEntry == nil ? (try? draftChange(now: now)) : nil
         let edited = editingEntry.map { makeRecordedEdit($0, now: now) }
@@ -411,7 +411,7 @@ struct QuickEntryView: View {
         guard canWish, let amount = keypad.amount else { return }
         let clean = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = clean.isEmpty ? Classification.displayCategory(effectiveCategory.category) : clean
-        let now = Date()
+        let now = Dates.now
         if store.update("心愿单", entryMotion: false, showToast: false, { ledger in
             let verdict = SubmittedPurchaseVerdict(verdict: .wait, reason: "放心愿单", need: .want, boundReason: "")
             _ = try Wishlist.add(fromVerdict: verdict, title: title, amount: amount, category: effectiveCategory.category,
@@ -467,7 +467,7 @@ struct QuickEntryView: View {
         if match?.id != suggestion?.id { selectedMatchID = nil }
         suggestion = match
         do {
-            let change = try draftChange(now: Date())
+            let change = try draftChange(now: Dates.now)
             guard store.apply(change, label: "记一笔", silently: true, finishing: { ledger in
                 for case .addEntry(let draft) in change.items where draft.categoryUserEdited == true && !Classification.isPending(draft.category) {
                     let choice = CategoryAssignment(category: draft.category, subcategory: draft.subcategory)
@@ -548,7 +548,7 @@ struct QuickEntryView: View {
     }
     private func saveRecordedEdit() {
         guard let original = editingEntry, canSave else { return }
-        let edited = makeRecordedEdit(original, now: Date())
+        let edited = makeRecordedEdit(original, now: Dates.now)
         if store.update("改一笔", entryMotion: false, showToast: false, { ledger in
             try ManualBookkeeping.edit(edited, in: &ledger)
         }) { restoreDraft() }
@@ -567,7 +567,7 @@ struct QuickEntryView: View {
         session.interact()
         if store.update("删掉", recordUndo: false, entryMotion: false, showToast: false, { ledger in
             guard let index = ledger.entries.firstIndex(where: { $0.id == entry.id && $0.deletedAt == nil }) else { return }
-            ledger.entries[index].deletedAt = Date()
+            ledger.entries[index].deletedAt = Dates.now
         }) { deletedEntryID = entry.id; sessionToast = "已删掉" }
     }
     private func undoDeletion() {

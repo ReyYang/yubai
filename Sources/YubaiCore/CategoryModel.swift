@@ -152,7 +152,7 @@ public enum CategoryGuesser {
         }
         return result ?? hint
     }
-    public static func guess(_ text: String, nature: Nature, date: Date = Date(), in ledger: Ledger) -> CategoryAssignment? {
+    public static func guess(_ text: String, nature: Nature, date: Date = Dates.now, in ledger: Ledger) -> CategoryAssignment? {
         guess(Entry(date: date, amount: 1, nature: nature, accountID: UUID(), title: text, category: Classification.pendingCategory), in: ledger)
     }
 }

@@ -121,7 +121,7 @@ struct EntryDetailView: View {
     }
     private func delete() {
         if store.update("删掉", { ledger in
-            if let i = ledger.entries.firstIndex(where: { $0.id == entryID }) { ledger.entries[i].deletedAt = Date() }
+            if let i = ledger.entries.firstIndex(where: { $0.id == entryID }) { ledger.entries[i].deletedAt = Dates.now }
         }) { dismiss() }
     }
 }

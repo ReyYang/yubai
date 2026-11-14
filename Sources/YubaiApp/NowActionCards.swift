@@ -29,11 +29,7 @@ typealias LetterItem = HomeTask
     }
 }
 
-struct NowCardButtonStyle: ViewportButtonStyle {
-    var primary = false
-    var feedback: NowCardButtonFeedback { NowCardButtonFeedback(primary: primary) }
-}
-struct NowCardButtonFeedback: ButtonStyle {
+struct NowCardButtonStyle: ButtonStyle {
     var primary = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.row, weight: primary ? .semibold : .regular).fixedSize(horizontal: false, vertical: true).padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.iconButton)

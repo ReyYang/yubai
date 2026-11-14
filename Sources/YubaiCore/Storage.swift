@@ -701,7 +701,7 @@ public struct LedgerRepository: Sendable {
         return try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil).reduce(0) { try $0 + bytesIn($1) }
     }
 
-    @discardableResult public func deleteOldScreenshots(from ledger: Ledger, months: Int, now: Date = Date(), calendar: Calendar = .current) throws -> Ledger {
+    @discardableResult public func deleteOldScreenshots(from ledger: Ledger, months: Int, now: Date = Dates.now, calendar: Calendar = .current) throws -> Ledger {
         do {
             return try access(writing: true) { root in
                 historyLock.lock(); defer { historyLock.unlock() }
@@ -873,7 +873,7 @@ public struct LedgerRepository: Sendable {
 
 public enum Backup {
     private struct Envelope: Codable {
-        var format = "yubai-backup"; var version = 1; var createdAt = Date()
+        var format = "yubai-backup"; var version = 1; var createdAt = Dates.now
         var encrypted: Bool; var salt: Data?; var rounds: Int?; var payload: Data; var checksum: String
     }
     private static func key(password: String, salt: Data, rounds: Int) throws -> SymmetricKey {

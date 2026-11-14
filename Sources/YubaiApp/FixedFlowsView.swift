@@ -65,7 +65,7 @@ private struct FixedFlowStopConfirmation: ViewModifier {
 enum FixedFlowCheck {
     @MainActor @discardableResult static func record(planID: UUID, occurrence: Date, title: String, amount: Int64, inflow: Bool, store: AppStore, override: Int64? = nil) -> Bool {
         do {
-            let now = Date()
+            let now = Dates.now
             let label = (inflow ? "收到了 " : "付了 ") + title
             if var pending = store.current.activeEntries.first(where: { $0.planID == planID && $0.occurrence.map(Dates.day) == Dates.day(occurrence) && $0.date > now }) {
                 pending.date = now; pending.amount = override ?? pending.amount
@@ -106,7 +106,7 @@ enum FixedFlowCheck {
             store.sheet = .billPay(planID: planID, occurrence: occurrence)
             return
         }
-        if let match = FixedFlows.matchingEntries(planID: planID, occurrence: occurrence, in: store.current, now: Date()).first {
+        if let match = FixedFlows.matchingEntries(planID: planID, occurrence: occurrence, in: store.current, now: Dates.now).first {
             store.sheet = .billMatch(planID: planID, occurrence: occurrence, entryID: match.id)
             return
         }
@@ -218,7 +218,7 @@ struct BillMoveSheet: View {
     let planID: UUID
     let occurrence: Date
     @State private var day: Date
-    @State private var today = Date()
+    @State private var today = Dates.now
     init(planID: UUID, occurrence: Date) {
         self.planID = planID; self.occurrence = occurrence
         _day = State(initialValue: Dates.day(occurrence))
@@ -249,14 +249,14 @@ struct BillMoveSheet: View {
     private func save() {
         let planID = planID, occurrence = occurrence, date = day
         if store.update("改到别的日子", entryMotion: false, showToast: false, { ledger in
-            try FixedFlows.moveOccurrence(planID: planID, occurrence: occurrence, to: date, in: &ledger, now: Date())
+            try FixedFlows.moveOccurrence(planID: planID, occurrence: occurrence, to: date, in: &ledger, now: Dates.now)
         }) { store.toast = "已改到 " + FixedFlowPresentation.monthDay(date); dismiss() }
     }
     private func clear() {
         let planID = planID, occurrence = occurrence
         let date = original ?? occurrence
         if store.update("改到别的日子", entryMotion: false, showToast: false, { ledger in
-            try FixedFlows.clearOccurrenceMove(planID: planID, occurrence: occurrence, in: &ledger, now: Date())
+            try FixedFlows.clearOccurrenceMove(planID: planID, occurrence: occurrence, in: &ledger, now: Dates.now)
         }) { store.toast = "已改到 " + FixedFlowPresentation.monthDay(date); dismiss() }
     }
 }
@@ -368,7 +368,7 @@ private struct BillPayEditor: View {
         let value = amount
         let key = BillSession.key(plan.id, occurrence)
         if !BillSession.declined.contains(key),
-           let match = FixedFlows.matchingEntries(planID: plan.id, occurrence: occurrence, in: store.current, now: Date()).first {
+           let match = FixedFlows.matchingEntries(planID: plan.id, occurrence: occurrence, in: store.current, now: Dates.now).first {
             BillSession.amounts[key] = value
             store.sheet = .billMatch(planID: plan.id, occurrence: occurrence, entryID: match.id)
             return
@@ -478,7 +478,7 @@ struct BillLinkSheet: View {
                 }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapSection)
         }.paperBackground().accessibilityIdentifier("billLinkSheet")
-            .task { candidates = Array(FixedFlows.linkCandidates(planID: planID, in: store.current, now: Date()).prefix(40)) }
+            .task { candidates = Array(FixedFlows.linkCandidates(planID: planID, in: store.current, now: Dates.now).prefix(40)) }
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             .presentationDetents([.large])

@@ -101,7 +101,7 @@ struct ApplePayCaptureIntent: AppIntent {
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = AppStore.shared; await store.configureSync()
         let result = try store.captureUpdate("Apple Pay 记一笔") {
-            try QuickCapture.applePay(merchant: merchant, amount: amount, card: card, date: transactionDate ?? Date(), in: &$0)
+            try QuickCapture.applePay(merchant: merchant, amount: amount, card: card, date: transactionDate ?? Dates.now, in: &$0)
         }
         if result.inserted { await CaptureNotifications.post(entry: result.entry, ledger: store.current) }
         return .result(dialog: "已记下")

@@ -151,7 +151,7 @@ public actor AskYubaiSession {
     private var parsedEntries: [(text: String, amount: Int64)] = []
     private let characterBudget: Int
     public init(characterBudget: Int = AssistantContextBudget.defaultLimit) { self.characterBudget = characterBudget }
-    public func ask(_ text: String, ledger: Ledger, transport: any ChatTransport, now: Date = Date()) async throws -> AssistantReply {
+    public func ask(_ text: String, ledger: Ledger, transport: any ChatTransport, now: Date = Dates.now) async throws -> AssistantReply {
         try Task.checkCancellation()
         if let statement = PastedStatement.detect(text)?.locallyPreviewed(ledger: ledger) {
             try Task.checkCancellation()

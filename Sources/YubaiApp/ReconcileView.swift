@@ -23,7 +23,7 @@ struct ReconcileView: View {
     /// 正数 = 少了，负数 = 多了。
     private var missing: Int64 { Reconciliation.preview(store.current, actual: actual, now: store.financialNow).missing }
     private var range: (from: Date, through: Date) {
-        let today = Dates.day(Date())
+        let today = Dates.day(Dates.now)
         return (store.recordGap?.from ?? today, today)
     }
     private var rangeText: String {
@@ -62,7 +62,7 @@ struct ReconcileView: View {
     private func load() {
         guard !loaded else { return }
         loaded = true
-        rows = Reconciliation.rows(in: store.current, now: Date())
+        rows = Reconciliation.rows(in: store.current, now: Dates.now)
         inputs = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, Money.editableText($0.book)) })
     }
 
@@ -102,9 +102,9 @@ struct ReconcileView: View {
         let values = actual
         let difference = missing
         let ok = store.update("对余额", entryMotion: false, showToast: false) { ledger in
-            let added = try Reconciliation.apply(&ledger, actual: values, now: Date())
+            let added = try Reconciliation.apply(&ledger, actual: values, now: Dates.now)
             for index in ledger.cards.indices {
-                if case .reconcileAccount(let id) = ledger.cards[index].action, values[id] != nil { ledger.cards[index].dismissedAt = Date() }
+                if case .reconcileAccount(let id) = ledger.cards[index].action, values[id] != nil { ledger.cards[index].dismissedAt = Dates.now }
             }
             _ = added
         }

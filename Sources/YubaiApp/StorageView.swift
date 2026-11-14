@@ -154,7 +154,7 @@ private struct StoragePhotosSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var months = 6
-    @State private var now = Date()
+    @State private var now = Dates.now
     private var selected: [Attachment] { StorageAttachments.oldScreenshots(in: store.current, months: months, now: now) }
     var body: some View {
         StorageSheet(title: "旧截图") {
@@ -199,7 +199,7 @@ private struct StorageEraseSheet: View {
     @State private var currentRecoveryCount: Int?
     let recoveryCount: Int?
     private var backupDays: Int? {
-        store.preferences.lastBackupAt.map { max(0, Calendar.current.dateComponents([.day], from: Dates.day($0), to: Dates.day(Date())).day ?? 0) }
+        store.preferences.lastBackupAt.map { max(0, Calendar.current.dateComponents([.day], from: Dates.day($0), to: Dates.day(Dates.now)).day ?? 0) }
     }
     private var entriesSinceBackup: Int? {
         guard let date = store.preferences.lastBackupAt else { return nil }

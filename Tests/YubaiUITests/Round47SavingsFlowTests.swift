@@ -21,10 +21,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     }
     private func tap(_ id: String) {
         let target = element(id)
-        if !target.exists || !target.isHittable {
-            XCTAssertTrue(revealControl(target, in: app, deadline: Date().addingTimeInterval(60)), id)
-        }
-        tapControl(target, in: app, settles: !id.hasPrefix("keypad_"))
+        tapControl(target, in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
     }
 
     private func keys(_ value: String) { for key in value { tap("keypad_" + String(key)) } }
@@ -100,27 +97,23 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("ledgerEntry_47000000-0000-0000-0000-000000471100").waitForExistence(timeout: 5))
         XCTAssertFalse(element("formulaRow_income").exists)
     }
-    func testIncomeRowRemainsLiveAfterScrollingAtLargestTextSize() {
+    func testFormulaBackWorksWhileIncomeCrossesNavigationAndIncomeStillEditsAtLargestText() {
         launch("v47-spend", large: true); tap("fundsFormula")
         let scroll = app.scrollViews["formulaPage"], income = element("formulaRow_income")
         XCTAssertTrue(income.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(30)))
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "formulaPage").count, 1)
-        // Direct tap: a broken first-row gate must not be rescued by scrolling.
-        tapControl(income, in: app)
+        tapControl(income, in: app, reveals: false)
         XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
         tap("cancelManualSheet"); gone("editEntryAmount")
-        let navigationBottom = app.navigationBars.firstMatch.frame.maxY
-        for _ in 0..<4 {
-            if income.frame.minY < navigationBottom { break }
-            scroll.swipeUp()
-        }
-        XCTAssertLessThan(income.frame.minY, navigationBottom)
-        XCTAssertFalse(income.isHittable, "A row cut by the navigation bar must not take a tap")
-        for _ in 0..<6 {
-            if income.frame.minY >= navigationBottom && income.isHittable { break }
-            scroll.swipeDown()
-        }
-        tapControl(income, in: app)
+        XCTAssertTrue(placeControl(income, across: element("BackButton"), in: scroll, atTop: true))
+        tap("BackButton")
+        XCTAssertTrue(element("fundsFormula").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("editEntryAmount").exists)
+        tap("fundsFormula")
+        XCTAssertTrue(revealControl(income, in: app, deadline: Date().addingTimeInterval(60)))
+        XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(income.frame))
+        tapControl(income, in: app, reveals: false)
         XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
         XCTAssertEqual(element("editEntryAmount").value as? String, "8,010.00")
     }
@@ -226,5 +219,52 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         launch("v47-toast-long"); tap("expandToast"); tap("undoLastChange")
         XCTAssertEqual(element("toastMessage").label, "已撤销")
         launch("v47-toast-long"); tap("expandToast"); element("expandToast").swipeDown(); gone("toastMessage")
+    }
+    func testToastUndoWinsOverReceiptLedgerAndScrollingRevealsTheLedgerAction() {
+        launch("v47-toast-short")
+        let receipt = element("receiptOpenLedger"), undo = element("undoLastChange")
+        let scroll = app.scrollViews["nowScroll"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        XCTAssertTrue(placeControl(receipt, across: undo, in: scroll, atTop: false))
+        XCTAssertTrue(undo.isHittable)
+        tap("undoLastChange")
+        XCTAssertEqual(element("toastMessage").label, "已撤销")
+        XCTAssertTrue(element("tab_now").isSelected)
+        XCTAssertFalse(element("entriesScroll").exists)
+
+        // Repeat the same covered state with its original undo toast retained.
+        // This keeps the scroll/tap proof independent of the four-second
+        // non-undo receipt, even when the runner takes slow AX snapshots.
+        launch("v47-toast-short")
+        let coveredReceipt = element("receiptOpenLedger"), toast = element("toastMessage")
+        XCTAssertTrue(toast.waitForExistence(timeout: 5))
+        XCTAssertTrue(placeControl(coveredReceipt, across: element("undoLastChange"), in: app.scrollViews["nowScroll"], atTop: false))
+        XCTAssertTrue(revealControl(coveredReceipt, in: app, deadline: Date().addingTimeInterval(180)))
+        XCTAssertTrue(toast.exists)
+        XCTAssertLessThanOrEqual(coveredReceipt.frame.maxY, toast.frame.minY - 12 + 0.5)
+        tapControl(coveredReceipt, in: app, reveals: false)
+        XCTAssertTrue(element("entriesScroll").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tab_ledger").isSelected)
+
+        // Last ledger row and the last action on a pushed Page must also be
+        // reachable above the same global toast, including at scroll's end.
+        // The receipt opens today's interval. Leaving search clears that
+        // interval through the existing UI before looking for the old salary.
+        tap("entriesSearch")
+        XCTAssertTrue(element("entriesSearchCancel").waitForExistence(timeout: 5))
+        tap("entriesSearchCancel")
+        XCTAssertTrue(waitForDisappearance(app.keyboards.firstMatch))
+        let lastEntry = element("ledgerEntry_47000000-0000-0000-0000-000000471030")
+        XCTAssertTrue(revealControl(lastEntry, in: app, deadline: Date().addingTimeInterval(180)))
+        XCTAssertTrue(toast.exists)
+        XCTAssertLessThanOrEqual(lastEntry.frame.maxY, toast.frame.minY - 12 + 0.5)
+        tap("tab_now"); tap("openSaving")
+        XCTAssertTrue(element("savingTabScroll").waitForExistence(timeout: 5))
+        let records = element("openReserve")
+        XCTAssertTrue(revealControl(records, in: app, deadline: Date().addingTimeInterval(180)))
+        XCTAssertTrue(toast.exists)
+        XCTAssertLessThanOrEqual(records.frame.maxY, toast.frame.minY - 12 + 0.5)
+        tapControl(records, in: app, reveals: false)
+        XCTAssertTrue(element("reserveLine_0").waitForExistence(timeout: 5))
     }
 }

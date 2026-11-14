@@ -136,7 +136,7 @@ struct WhereCategoryView: View {
     }
     @MainActor private func refresh() async {
         let ledger = store.current; let category = category
-        let at = min(Date(), interval.end.addingTimeInterval(-0.001))
+        let at = min(Dates.now, interval.end.addingTimeInterval(-0.001))
         let value = await Task.detached(priority: .userInitiated) { Finance.categoryDetail(ledger, category: category, now: at) }.value
         guard !Task.isCancelled else { return }
         detail = value

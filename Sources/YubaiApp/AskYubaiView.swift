@@ -35,13 +35,13 @@ struct AskMessage: Identifiable {
 }
 
 @MainActor @Observable final class AskConversationState {
-    var day = Dates.day(Date())
+    var day = Dates.day(Dates.now)
     var messages: [AskMessage] = []
     var session = AskYubaiSession()
     func expire() {
-        if day != Dates.day(Date()) { clear() }
+        if day != Dates.day(Dates.now) { clear() }
     }
-    func clear() { day = Dates.day(Date()); messages = []; session = AskYubaiSession() }
+    func clear() { day = Dates.day(Dates.now); messages = []; session = AskYubaiSession() }
 }
 
 struct AskYubaiView: View {
@@ -69,7 +69,7 @@ struct AskYubaiView: View {
     @State private var captureTask: Task<Void, Never>?
     @State private var voiceTask: Task<Void, Never>?
     @State private var appeared = false
-    @State private var conversationDay = Dates.day(Date())
+    @State private var conversationDay = Dates.day(Dates.now)
     @State private var conversationLedgerID: UUID?
     @State private var configured = IntelligenceRuntime.isConfigured
     @FocusState private var inputFocused: Bool
@@ -131,8 +131,8 @@ struct AskYubaiView: View {
             .onChange(of: voice.transcript) { _, text in input = voicePrefix + text }
             .onAppear { connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; store.askConversation.expire(); messages = store.askConversation.messages; session = store.askConversation.session; conversationDay = store.askConversation.day; conversationLedgerID = store.current.id; input = initialText; pendingAutoSend = autoSend && !initialText.isEmpty; if let initialImage { recognize(initialImage) } } }
             .onChange(of: IntelligenceRuntime.cloud.unavailableModel) { _, model in if model == nil { errorText = "" } }
-            .onDisappear { cancel(); connectivity.stop(); if conversationDay == Dates.day(Date()) && conversationLedgerID == store.current.id { store.askConversation.messages = messages; store.askConversation.session = session } }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { if conversationDay != Dates.day(Date()) { cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear(); conversationDay = store.askConversation.day }; voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
+            .onDisappear { cancel(); connectivity.stop(); if conversationDay == Dates.day(Dates.now) && conversationLedgerID == store.current.id { store.askConversation.messages = messages; store.askConversation.session = session } }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { if conversationDay != Dates.day(Dates.now) { cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear(); conversationDay = store.askConversation.day }; voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
             .onChange(of: store.current.id) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
             .onChange(of: store.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
             .onChange(of: store.preferences.isAIEnabled(for: .answers)) { _, value in if !value { cancel() } }
@@ -168,7 +168,7 @@ struct AskYubaiView: View {
         return VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             if messages.isEmpty && !busy && !reading {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                    ForEach(AskYubai.exampleQuestions(ledger: store.current, occurrences: store.funds.occurrences, now: Date()), id: \.self) { question in
+                    ForEach(AskYubai.exampleQuestions(ledger: store.current, occurrences: store.funds.occurrences, now: Dates.now), id: \.self) { question in
                         Button { input = question; send() } label: {
                             Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.gapGroup)
                                 .frame(minHeight: YubaiSize.tapMin)
@@ -346,7 +346,7 @@ struct AskYubaiView: View {
                 let matching = related.filter { amounts.contains($0.amount) }
                 let recordIDs = (matching.isEmpty ? related : matching).map(\.id)
                 let considered = reply.purchaseJudgment.flatMap { purchase in
-                    reply.purchaseVerdict != nil && Finance.bigPurchase(ledger, amount: purchase.amount, now: Date()) != nil ? purchase : nil
+                    reply.purchaseVerdict != nil && Finance.bigPurchase(ledger, amount: purchase.amount, now: Dates.now) != nil ? purchase : nil
                 }
                 if !reply.rememberedNotes.isEmpty || !reply.updatedNotes.isEmpty || !reply.usedMemoryIDs.isEmpty || !reply.proposedChangeSets.isEmpty || considered != nil {
                     guard store.update("记下问答", recordUndo: false, { ledger in
@@ -354,7 +354,7 @@ struct AskYubaiView: View {
                         ledger.pendingChanges.append(contentsOf: reply.proposedChangeSets)
                         if let purchase = considered, let verdict = reply.purchaseVerdict {
                             try Wishlist.keepConsidered(fromVerdict: verdict, title: purchase.title, amount: purchase.amount,
-                                                        category: purchase.category, subcategory: purchase.subcategory, in: &ledger, now: Date())
+                                                        category: purchase.category, subcategory: purchase.subcategory, in: &ledger, now: Dates.now)
                         }
                     }) else { input = text; session = AskYubaiSession(); return }
                 }
@@ -383,7 +383,7 @@ struct AskYubaiView: View {
             let source = CGImageSourceCreateWithData(bytes as CFData, nil)
             let type = source.flatMap { CGImageSourceGetType($0) }.map { $0 as String }
             let ext = type.flatMap { UTType($0)?.preferredFilenameExtension } ?? "image"
-            originalImage = AskImage(data: bytes, name: "截图-" + Dates.text(Date()) + "." + ext)
+            originalImage = AskImage(data: bytes, name: "截图-" + Dates.text(Dates.now) + "." + ext)
             // OCR runs on device. Only the redacted text enters the conversation.
             input = "这是截图里的文字，帮我记一笔：\n" + Redactor(ledger: store.current).text(receipt.text)
         } catch { if !Task.isCancelled { errorText = error.localizedDescription } }
