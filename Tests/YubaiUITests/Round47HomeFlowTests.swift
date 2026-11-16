@@ -4,7 +4,8 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
-    private func launch(_ fixture: String = "v47r-ledger", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false) {
+    private func launch(_ fixture: String = "v47r-ledger", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false,
+                        root: String = "mainNavigation") {
         app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
@@ -17,7 +18,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         launchApp(app)
-        XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15),
+        XCTAssertTrue(element(root).waitForExistence(timeout: 15),
                       "Root navigation missing; bamboo={\(windowMetrics(in: app)?.bamboo?.description ?? "diagnostics unreadable")}")
     }
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
@@ -386,6 +387,83 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         launch("v47-first"); XCTAssertTrue(element("firstOpenScene").exists)
         XCTAssertTrue(element("firstOpenEmptyAmount").exists); XCTAssertEqual(element("addEntry").label, "记第一笔")
         XCTAssertFalse(element("availableFunds").exists); XCTAssertTrue(element("tab_insights").exists)
+    }
+    private func assertCaptureSurface(requiresBamboo: Bool, cold: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
+        let result = waitForBambooCapture(in: app)
+        XCTAssertTrue(result.ready, result.description, file: file, line: line)
+        XCTAssertEqual(result.surface?.required, requiresBamboo, result.description, file: file, line: line)
+        if requiresBamboo {
+            XCTAssertTrue(result.observed?.isReady == true, result.description, file: file, line: line)
+            XCTAssertNotNil(result.surface?.key, result.description, file: file, line: line)
+        }
+        if cold {
+            XCTAssertEqual(result.observed?.renders, 0, result.description, file: file, line: line)
+            XCTAssertEqual(result.observed?.pending, 0, result.description, file: file, line: line)
+        }
+        XCTAssertEqual(app.state, .runningForeground, result.description, file: file, line: line)
+    }
+    func testCaptureGateFollowsTheActualPaperAcrossFirstWindowEntryPaydayAndPush() {
+        for (dark, reduceMotion) in [(false, false), (true, false), (false, true), (true, true)] {
+            launch("v47-first", dark: dark, reduceMotion: reduceMotion)
+            assertCaptureSurface(requiresBamboo: false, cold: true)
+            tap("addEntry"); XCTAssertTrue(element("entryPurpose").waitForExistence(timeout: 5))
+            assertCaptureSurface(requiresBamboo: false, cold: true)
+            tap("cancelManualSheet")
+            XCTAssertTrue(waitForDisappearance(element("entryPurpose")))
+            assertCaptureSurface(requiresBamboo: false, cold: true)
+            add("28")
+            assertCaptureSurface(requiresBamboo: true)
+            tap("setupFirstSalary"); XCTAssertTrue(element("paydaySetupSheet").waitForExistence(timeout: 5))
+            assertCaptureSurface(requiresBamboo: false)
+            tap("paydaySetupAmount"); XCTAssertTrue(element("amountSheetAmount").waitForExistence(timeout: 5))
+            assertCaptureSurface(requiresBamboo: false)
+            tap("amountSheetCancel"); tap("paydaySetupCancel")
+            XCTAssertTrue(waitForDisappearance(element("paydaySetupSheet")))
+            assertCaptureSurface(requiresBamboo: true)
+            tap("tab_yubai"); assertCaptureSurface(requiresBamboo: true)
+            tap("openSettings"); XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
+            assertCaptureSurface(requiresBamboo: false)
+            tap("BackButton"); assertCaptureSurface(requiresBamboo: true)
+            app.terminate()
+        }
+    }
+    func testLockedPaperNeedsNoBambooRenderForCapture() {
+        launch("gallery-locked", root: "lockedPage")
+        assertCaptureSurface(requiresBamboo: false, cold: true)
+    }
+    func testSharedPaydaySheetTitlesGrowAndPassNativeAuditsAcrossGalleryModes() {
+        for large in [false, true] {
+            for (dark, hidden) in [(false, false), (true, false), (false, true), (true, true)] {
+                launch("v47-after", large: large, hidden: hidden, dark: dark)
+                tap("setupFirstSalary")
+                XCTAssertTrue(element("paydaySetupSheet").waitForExistence(timeout: 5))
+                for (title, cancelID) in [("哪天发工资", "paydaySetupCancel"), ("工资", "amountSheetCancel")] {
+                    if cancelID == "amountSheetCancel" { tap("paydaySetupAmount") }
+                    let text = app.staticTexts[title], cancel = element(cancelID)
+                    XCTAssertTrue(waitForStableFrame(text))
+                    XCTAssertEqual(text.label, title)
+                    XCTAssertGreaterThan(text.frame.width, 0)
+                    XCTAssertGreaterThanOrEqual(text.frame.minX, app.windows.firstMatch.frame.minX)
+                    XCTAssertLessThanOrEqual(text.frame.maxX, app.windows.firstMatch.frame.maxX)
+                    if large {
+                        XCTAssertGreaterThan(text.frame.height, 22)
+                        XCTAssertLessThanOrEqual(text.frame.maxY, cancel.frame.minY)
+                    } else { XCTAssertEqual(text.frame.midY, cancel.frame.midY, accuracy: 0.5) }
+                    XCTAssertNoThrow(try auditAppText(in: app, dynamicType: true) { issue in
+                        XCTFail("Shared sheet titles must grow without clipping: " + issue.detailedDescription)
+                        return true
+                    })
+                    XCTAssertEqual(app.state, .runningForeground)
+                    XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
+                    XCTAssertTrue(waitForStableFrame(text))
+                    XCTAssertEqual(text.label, title)
+                    XCTAssertTrue(cancel.isHittable)
+                }
+                tap("amountSheetCancel"); tap("paydaySetupCancel")
+                XCTAssertTrue(waitForDisappearance(element("paydaySetupSheet")))
+                app.terminate()
+            }
+        }
     }
     func testFirstImportOpensExistingImportFlow() {
         launch("v47-first"); tap("firstImport"); XCTAssertTrue(element("chooseBillFile").waitForExistence(timeout: 5))

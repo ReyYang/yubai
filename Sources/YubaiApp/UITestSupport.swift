@@ -8,14 +8,47 @@ import SwiftUI
 #endif
 
 #if os(iOS)
+/// Metadata on the actual paper background, independent of fixtures/routes.
+/// Native front-to-back traversal selects the captured surface, so a sheet or
+/// pushed page does not inherit the covered ledger's raster prerequisite.
+struct UITestPaperSurface: UIViewRepresentable {
+    let bambooKey: String?
+    func makeUIView(context: Context) -> Probe { Probe(bambooKey: bambooKey) }
+    func updateUIView(_ view: Probe, context: Context) {
+        guard view.bambooKey != bambooKey else { return }
+        view.bambooKey = bambooKey
+        UITestWindowMetrics.invalidate(in: view.window)
+    }
+    final class Probe: UIView {
+        var bambooKey: String?
+        private weak var previousWindow: UIWindow?
+        init(bambooKey: String?) {
+            self.bambooKey = bambooKey
+            super.init(frame: .zero)
+            backgroundColor = .clear; isUserInteractionEnabled = false
+            isAccessibilityElement = false; accessibilityElementsHidden = true
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            UITestWindowMetrics.invalidate(in: previousWindow)
+            UITestWindowMetrics.invalidate(in: window)
+            previousWindow = window
+        }
+    }
+}
+
 /// Read-only native geometry for scripted walks. No device/Release code or
 /// visible controls: safe areas, transition completion and remaining scroll
 /// travel must be observed rather than guessed from a full-screen AX frame.
 struct UITestWindowMetrics: UIViewRepresentable {
+    @MainActor static func invalidate(in window: UIWindow?) {
+        if let window { Probe.cache.invalidate(in: window) }
+    }
     func makeUIView(context: Context) -> Probe { Probe() }
     func updateUIView(_ view: Probe, context: Context) {}
     final class Probe: UIView {
-        private static let cache = MetricsCache()
+        fileprivate static let cache = MetricsCache()
         init() {
             super.init(frame: .zero)
             backgroundColor = .clear; isUserInteractionEnabled = false
@@ -41,7 +74,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
         }
     }
 
-    @MainActor private final class MetricsCache: NSObject {
+    @MainActor fileprivate final class MetricsCache: NSObject {
         private var values: [ObjectIdentifier: (at: TimeInterval, json: String)] = [:]
         private var pending: Set<ObjectIdentifier> = []
         private weak var focusedResponder: UIResponder?
@@ -85,6 +118,10 @@ struct UITestWindowMetrics: UIViewRepresentable {
         func value(in window: UIWindow) -> String? {
             request(in: window)
             return values[ObjectIdentifier(window)]?.json
+        }
+        func invalidate(in window: UIWindow) {
+            values[ObjectIdentifier(window)] = nil
+            request(in: window)
         }
         func request(in window: UIWindow) {
             let key = ObjectIdentifier(window)
@@ -144,12 +181,33 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 controllers.append(contentsOf: children.prefix(max(0, remaining - controllers.count)))
             }
             let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
-            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": !activeTransitions.isEmpty,
+            var value: [String: Any] = ["safeArea": rect(safe), "transitioning": !activeTransitions.isEmpty,
                                       "activeTransitions": activeTransitions,
                                       "focused": focused, "scrolls": scrolls,
                                       "bamboo": BambooRasterCache.shared.diagnostics]
+            if let surface = paperSurface(in: window) { value["bambooSurface"] = surface }
             if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
                let json = String(data: data, encoding: .utf8) { return json }
+            return nil
+        }
+        private func paperSurface(in window: UIWindow) -> [String: Any]? {
+            // UIKit subviews are ordered back to front. Descend the frontmost
+            // visible branch first, respecting native clipping and hidden tabs.
+            // The modal's own PaperCanvas wins over the presenter's background.
+            var pending: [(UIView, CGRect)] = [(window, window.bounds)]
+            var remaining = 2048
+            while remaining > 0, let (view, viewport) = pending.popLast() {
+                remaining -= 1
+                guard !view.isHidden, view.alpha > 0, view.window === window else { continue }
+                let frame = view.convert(view.bounds, to: window)
+                guard !frame.isEmpty, frame.intersects(viewport) else { continue }
+                if let surface = view as? UITestPaperSurface.Probe {
+                    return ["required": surface.bambooKey != nil, "key": surface.bambooKey.map { $0 as Any } ?? NSNull()]
+                }
+                let clip = view.clipsToBounds ? viewport.intersection(frame) : viewport
+                pending.append(contentsOf: view.subviews.suffix(max(0, remaining - pending.count)).map { ($0, clip) })
+            }
+            // Missing metadata is unknown, never permission to bypass the gate.
             return nil
         }
     }

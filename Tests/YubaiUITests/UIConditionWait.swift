@@ -35,8 +35,10 @@ enum UIBambooWait {
         let lastReadable: UIWindowMetrics.Bamboo?
         let unreadableReads: Int
         let elapsed: TimeInterval
+        let surface: UIWindowMetrics.BambooSurface?
         var description: String {
             "bamboo {\(observed?.description ?? "diagnostics unreadable")} " +
+                "surface={\(surface?.description ?? "unknown")} " +
                 "unreadableReads=\(unreadableReads) elapsed=\(elapsed) " +
                 (observed == nil ? "lastReadable={\(lastReadable?.description ?? "none")}" : "")
         }
@@ -46,18 +48,44 @@ enum UIBambooWait {
                     read: () -> UIWindowMetrics.Bamboo?,
                     clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                     poll: (TimeInterval) -> Void = { RunLoop.current.run(until: Date().addingTimeInterval($0)) }) -> Result {
+        observe(timeout: timeout, deadline: deadline, read: {
+            read().map { (UIWindowMetrics.BambooSurface(required: true, key: nil), $0) }
+        }, clock: clock, poll: poll)
+    }
+
+    /// Captures only require rasters when the foreground paper actually draws
+    /// one. Unknown/unreadable surface metadata is retried, never a bypass.
+    static func forCapture(timeout: TimeInterval = UIBambooWait.timeout, deadline: TimeInterval? = nil,
+                           read: () -> UIWindowMetrics?,
+                           clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+                           poll: (TimeInterval) -> Void = { RunLoop.current.run(until: Date().addingTimeInterval($0)) }) -> Result {
+        observe(timeout: timeout, deadline: deadline, read: {
+            guard let metrics = read() else { return nil }
+            return (metrics.bambooSurface, metrics.bamboo)
+        }, clock: clock, poll: poll)
+    }
+
+    private static func observe(timeout: TimeInterval, deadline: TimeInterval?,
+                                read: () -> (UIWindowMetrics.BambooSurface?, UIWindowMetrics.Bamboo?)?,
+                                clock: () -> TimeInterval, poll: (TimeInterval) -> Void) -> Result {
         let start = clock(), end = min(start + timeout, deadline ?? .infinity)
         var observed: UIWindowMetrics.Bamboo?, lastReadable: UIWindowMetrics.Bamboo?
+        var surface: UIWindowMetrics.BambooSurface?
+        var accepted = false
         var unreadableReads = 0
         let finished = UIConditionWait.run(timeout: timeout, deadline: end, read: {
-            observed = read()
+            let sample = read()
+            surface = sample?.0; observed = sample?.1
+            if let observed { lastReadable = observed }
+            guard let surface else { unreadableReads += 1; return false }
+            if !surface.required { accepted = true; return true }
             guard let value = observed else { unreadableReads += 1; return false }
-            lastReadable = value
             // A failed render (even if a retry recovers), or any main-thread
             // render, fails immediately instead of spending the timeout.
-            return value.hasFailure || value.isReady
+            accepted = value.isReady && (surface.key.map { value.ready.contains($0) } ?? true)
+            return value.hasFailure || accepted
         }, clock: clock, poll: poll)
-        return Result(ready: finished && observed?.isReady == true, observed: observed, lastReadable: lastReadable,
-                      unreadableReads: unreadableReads, elapsed: clock() - start)
+        return Result(ready: finished && accepted, observed: observed, lastReadable: lastReadable,
+                      unreadableReads: unreadableReads, elapsed: clock() - start, surface: surface)
     }
 }

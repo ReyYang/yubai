@@ -247,8 +247,13 @@ class YubaiUITestCase: XCTestCase {
         return UIBambooWait.run(deadline: end, read: { self.windowMetrics(in: app)?.bamboo })
     }
 
+    func waitForBambooCapture(in app: XCUIApplication, deadline: Date? = nil) -> UIBambooWait.Result {
+        let end = deadline.map { ProcessInfo.processInfo.systemUptime + max(0, $0.timeIntervalSinceNow) }
+        return UIBambooWait.forCapture(deadline: end, read: { self.windowMetrics(in: app) })
+    }
+
     func assertBambooReadyForCapture(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let result = waitForBambooRasters(in: app)
+        let result = waitForBambooCapture(in: app)
         XCTAssertTrue(result.ready, "Bamboo must finish before capture: \(result)", file: file, line: line)
     }
 

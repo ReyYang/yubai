@@ -76,6 +76,11 @@ enum UIViewportGeometry {
 /// Values come from the app's scripted-only UIKit probe, in screen points.
 struct UIWindowMetrics: Decodable {
     static let probeIdentifier = "uiTestWindowMetrics"
+    struct BambooSurface: Decodable, CustomStringConvertible {
+        let required: Bool
+        let key: String?
+        var description: String { "required=\(required) key=\(key ?? "none")" }
+    }
     struct Scroll: Decodable {
         let identifier: String
         let frame: [CGFloat]
@@ -120,6 +125,7 @@ struct UIWindowMetrics: Decodable {
     let focused: String
     let scrolls: [Scroll]
     var bamboo: Bamboo? = nil
+    var bambooSurface: BambooSurface? = nil
     var activeTransitions: [String]? = nil
     var safeRectangle: CGRect { Self.rectangle(safeArea) }
     static func decode(_ value: Any?) -> Self? {

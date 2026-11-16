@@ -123,6 +123,124 @@ final class Round47FrameWaitTests: XCTestCase {
         XCTAssertEqual(value.lastFailure?.stage, "blurOutput", value.description)
         XCTAssertFalse(value.isReady, value.description)
     }
+    private func surface(_ required: Bool, key: String? = nil, bamboo: UIWindowMetrics.Bamboo? = nil) -> UIWindowMetrics {
+        UIWindowMetrics(safeArea: [0, 0, 440, 956], transitioning: false, focused: "", scrolls: [],
+                        bamboo: bamboo, bambooSurface: .init(required: required, key: key))
+    }
+    func testCaptureWithoutBambooReturnsOnItsFirstObservationWithNoRenderWait() {
+        // A cold first window, a plain pushed page, a sheet or a locked root
+        // need no cache work. Even unrelated pending renders cannot delay them.
+        for state in [bamboo(renders: 0, maxConcurrentRenders: 0),
+                      bamboo(pending: ["light@3.0", "dark@3.0"], renders: 0), nil] {
+            var now: TimeInterval = 0, reads = 0
+            let result = UIBambooWait.forCapture(read: {
+                reads += 1; return self.surface(false, bamboo: state)
+            }, clock: { now }, poll: { now += $0 })
+            XCTAssertTrue(result.ready, result.description)
+            XCTAssertEqual(result.surface?.required, false, result.description)
+            XCTAssertEqual(reads, 1, result.description)
+            XCTAssertEqual(now, 0, result.description)
+        }
+    }
+    func testCaptureRetriesAnInitiallyUnreadableProbeBeforeAcceptingANonBambooSurface() {
+        var now: TimeInterval = 0, reads = 0
+        let result = UIBambooWait.forCapture(read: {
+            reads += 1; return reads == 1 ? nil : self.surface(false)
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertTrue(result.ready, result.description)
+        XCTAssertEqual(reads, 2, result.description)
+        XCTAssertEqual(result.unreadableReads, 1, result.description)
+        XCTAssertLessThan(now, 1, result.description)
+    }
+    func testCaptureRetriesUnreadableStateAndStillRequiresBothRastersOnABambooSurface() {
+        var now: TimeInterval = 0, reads = 0
+        let result = UIBambooWait.forCapture(read: {
+            reads += 1
+            if reads == 1 { return nil }
+            let state = reads < 4 ? self.bamboo(ready: ["light@3.0"], pending: ["dark@3.0"])
+                : self.bamboo(ready: ["light@3.0", "dark@3.0"])
+            return self.surface(true, key: "light@3.0", bamboo: state)
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertTrue(result.ready, result.description)
+        XCTAssertEqual(reads, 4, result.description)
+        XCTAssertEqual(result.unreadableReads, 1, result.description)
+    }
+    func testCaptureCannotUseAnOlderScaleForTheCurrentSurface() {
+        var now: TimeInterval = 0, reads = 0
+        let result = UIBambooWait.forCapture(read: {
+            reads += 1
+            let scale = reads == 1 ? "2.0" : "3.0"
+            return self.surface(true, key: "light@3.0", bamboo: self.bamboo(ready: ["light@" + scale, "dark@" + scale]))
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertTrue(result.ready, result.description)
+        XCTAssertEqual(reads, 2, result.description)
+        XCTAssertTrue(result.observed?.ready.contains("light@3.0") == true, result.description)
+    }
+    func testCaptureWithoutSurfaceMetadataCannotBypassTheGateEvenWithReadyRasters() {
+        var now: TimeInterval = 0
+        let result = UIBambooWait.forCapture(timeout: 1, read: {
+            var metrics = self.surface(false, bamboo: self.bamboo(ready: ["light@3.0", "dark@3.0"]))
+            metrics.bambooSurface = nil
+            return metrics
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertGreaterThan(result.unreadableReads, 0, result.description)
+        XCTAssertLessThanOrEqual(now, 1, result.description)
+    }
+    func testCaptureOfABambooSurfaceCannotPassWhenNoWarmWasRequested() {
+        var now: TimeInterval = 0
+        let result = UIBambooWait.forCapture(timeout: 1, read: {
+            self.surface(true, key: "light@3.0", bamboo: self.bamboo(renders: 0, maxConcurrentRenders: 0))
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertEqual(result.observed?.renders, 0, result.description)
+        XCTAssertLessThanOrEqual(now, 1, result.description)
+    }
+    func testCaptureStillFailsImmediatelyForEveryRasterFailureOnABambooSurface() {
+        let failure = UIWindowMetrics.Bamboo.Failure(key: "light@3.0", stage: "blurOutput", attempt: 1)
+        for state in [bamboo(failed: ["light@3.0"], lastFailure: failure),
+                      bamboo(ready: ["light@3.0", "dark@3.0"], mainRenders: 1),
+                      bamboo(ready: ["light@3.0", "dark@3.0"], maxConcurrentRenders: 2)] {
+            var now: TimeInterval = 0
+            let result = UIBambooWait.forCapture(read: {
+                self.surface(true, key: "light@3.0", bamboo: state)
+            }, clock: { now }, poll: { now += $0 })
+            XCTAssertFalse(result.ready, result.description)
+            XCTAssertEqual(now, 0, result.description)
+        }
+    }
+    func testCaptureRechecksTheSurfaceWhileWaitingForPendingRasters() {
+        var now: TimeInterval = 0, reads = 0
+        let result = UIBambooWait.forCapture(read: {
+            reads += 1
+            return self.surface(reads == 1, key: reads == 1 ? "light@3.0" : nil,
+                                bamboo: self.bamboo(pending: ["light@3.0", "dark@3.0"], renders: 0))
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertTrue(result.ready, result.description)
+        XCTAssertEqual(reads, 2, result.description)
+        XCTAssertEqual(result.surface?.required, false, result.description)
+        XCTAssertLessThan(now, 1, result.description)
+    }
+    func testCaptureCannotAcceptAnObservationPastItsHardDeadline() {
+        for required in [false, true] {
+            var now: TimeInterval = 0
+            let result = UIBambooWait.forCapture(timeout: 2, deadline: 1, read: {
+                now += 3
+                return self.surface(required, key: required ? "light@3.0" : nil,
+                                    bamboo: self.bamboo(ready: ["light@3.0", "dark@3.0"]))
+            }, clock: { now }, poll: { now += $0 })
+            XCTAssertFalse(result.ready, result.description)
+            XCTAssertEqual(now, 3, result.description)
+        }
+    }
+    func testProbeDecodesTheActualBambooSurfaceAndAnExplicitPlainSurface() throws {
+        for (required, key) in [(true, "\"dark@3.0\""), (false, "null")] {
+            let json = "{\"safeArea\":[0,0,440,956],\"transitioning\":false,\"focused\":\"\",\"scrolls\":[],\"bambooSurface\":{\"required\":\(required),\"key\":\(key)}}"
+            let value = try XCTUnwrap(UIWindowMetrics.decode(json)?.bambooSurface)
+            XCTAssertEqual(value.required, required, value.description)
+            XCTAssertEqual(value.key, required ? "dark@3.0" : nil, value.description)
+        }
+    }
     func testDisappearanceWaitAcceptsASlowFirstObservation() {
         var now: TimeInterval = 0
         XCTAssertTrue(UIConditionWait.run(read: { now += 14; return true }, clock: { now }, poll: { now += $0 }))

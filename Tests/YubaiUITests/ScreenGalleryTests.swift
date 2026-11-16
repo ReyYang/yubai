@@ -100,15 +100,22 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     /// This is the only screenshot writer, including failure screenshots.
     private func shot(_ name: String) {
-        if captureProcessIsRunning(phase: "before screenshot"), app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] != "gallery-locked" {
-            let preparation = waitForBambooRasters(in: app, deadline: stopDeadline)
+        if captureProcessIsRunning(phase: "before screenshot") {
+            let preparation = waitForBambooCapture(in: app, deadline: stopDeadline)
             if !preparation.ready { issues.append("Bamboo is not ready for capture: \(preparation)") }
         }
         let screenshot = XCUIScreen.main.screenshot()
         _ = captureProcessIsRunning(phase: "after screenshot")
-        let name = name.hasSuffix("-MISSING") || issues.isEmpty ? name : name + "-MISSING"
+        var name = name.hasSuffix("-MISSING") || issues.isEmpty ? name : name + "-MISSING"
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        if !issues.isEmpty, !name.hasSuffix("-MISSING") {
+            // Attachment APIs may also report an issue. Preserve these same
+            // failed pixels without another screenshot or an expired wait.
+            name += "-MISSING"
+            let failed = XCTAttachment(screenshot: screenshot)
+            failed.name = name; failed.lifetime = .keepAlways; add(failed)
+        }
         if let path = ProcessInfo.processInfo.environment["YUBAI_GALLERY_DIR"], !path.isEmpty {
             do { try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: path, isDirectory: true).appendingPathComponent(name + ".png"), options: .atomic) }
             catch { writeErrors.append(name + ": " + error.localizedDescription) }
@@ -140,11 +147,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
         do { if captureProcessIsRunning(phase: "before audit") { try auditGallery() } }
         catch { issues.append("Audit failed: " + String(describing: error)) }
         _ = captureProcessIsRunning(phase: "after audit")
-        let hadFindings = !issues.isEmpty
-        shot(name + (hadFindings ? "-MISSING" : ""))
-        // Screenshot/snapshot APIs can also record an XCTest issue. Preserve
-        // the original post-capture check and its missing-shot attachment.
-        if !hadFindings && !issues.isEmpty { shot(name + "-MISSING") }
+        // The writer checks process state after capture and chooses -MISSING
+        // using all resulting issues. Do not run a second readiness wait after
+        // the first one has consumed this stop's hard deadline.
+        shot(name)
         issues = Array(Set(issues)).sorted()
         let failed = !issues.isEmpty
         stopHasReportedResult = true

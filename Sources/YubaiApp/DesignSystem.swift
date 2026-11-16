@@ -711,6 +711,14 @@ struct PaperCanvas: View {
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
         }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+            #if DEBUG && targetEnvironment(simulator) && os(iOS)
+            .background {
+                if UITestSupport.script != nil {
+                    UITestPaperSurface(bambooKey: showsBamboo && !reduceTransparency
+                        ? BambooRasterCache.Key(scheme: scheme, scale: displayScale).identifier : nil)
+                }
+            }
+            #endif
             // The surface always exists. A cache miss leaves BambooShadow's
             // conditional image empty, so it must not own its startup task.
             .task(id: showsBamboo ? BambooRasterCache.Key(scheme: scheme, scale: displayScale) : nil) {
@@ -2919,8 +2927,12 @@ struct ManualSheetHeader: View {
     }
     private var titleText: some View {
         let font = ["记一笔", "改一笔", "改这笔"].contains(title) ? YubaiFont.entrySheetTitle : YubaiFont.navTitle
-        return Text(title).yubaiFont(font).lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(font)
+        // The line box belongs to the container, not the audited Text leaf.
+        // Its wrapping height follows the width proposed by SheetHeaderLayout.
+        return VStack(spacing: YubaiSpace.none) {
+            Text(title).yubaiFont(font).lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+        }.yubaiTextLineBox(font)
     }
     private var cancelButton: some View {
         Button(action: cancel) {

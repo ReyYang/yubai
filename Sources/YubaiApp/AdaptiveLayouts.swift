@@ -73,7 +73,7 @@ struct SheetHeaderLayout: Layout {
         for (index, subview) in subviews.enumerated() {
             let frame = result.frames[index]
             subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
-                          proposal: ProposedViewSize(frame.size))
+                          proposal: ProposedViewSize(width: frame.width, height: nil))
         }
     }
     private func arrangement(width proposed: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
@@ -82,10 +82,14 @@ struct SheetHeaderLayout: Layout {
         let side = YubaiSize.sheetHeaderActionWidth
         let width = max(0, proposed.flatMap { $0.isFinite ? $0 : nil } ?? side * 2 + ideal[1].width)
         if !stacked, ideal[0].width <= side, ideal[2].width <= side, ideal[1].width <= width - side * 2 {
-            let height = ideal.map(\.height).max() ?? 0
+            // Measure at the same width used for placement. An unspecified
+            // title measurement is only useful for choosing the arrangement;
+            // it must never become a height constraint on the wrapping title.
+            let title = subviews[1].sizeThatFits(ProposedViewSize(width: width - side * 2, height: nil))
+            let height = max(ideal[0].height, title.height, ideal[2].height)
             return (CGSize(width: width, height: height), [
                 CGRect(x: YubaiSpace.none, y: (height - ideal[0].height) / 2, width: ideal[0].width, height: ideal[0].height),
-                CGRect(x: side, y: (height - ideal[1].height) / 2, width: width - side * 2, height: ideal[1].height),
+                CGRect(x: side, y: (height - title.height) / 2, width: width - side * 2, height: title.height),
                 CGRect(x: width - ideal[2].width, y: (height - ideal[2].height) / 2, width: ideal[2].width, height: ideal[2].height)
             ])
         }
