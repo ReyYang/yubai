@@ -262,7 +262,10 @@ enum AppSheet: Identifiable {
         }
         for account in ledger.accounts {
             let stale = account.anchorDate.addingTimeInterval(14 * 86400)
-            if stale >= now { expires = min(expires, stale) }
+            // Finance warns strictly AFTER 14 days. Expiring at equality
+            // invalidates every read forever when a scripted clock is fixed.
+            let boundary = Date(timeIntervalSinceReferenceDate: stale.timeIntervalSinceReferenceDate.nextUp)
+            if boundary > now { expires = min(expires, boundary) }
         }
         let value = Finance.funds(ledger, now: now)
         cachedFunds = (value, now, expires, zone); return value
@@ -576,6 +579,9 @@ enum AppSheet: Identifiable {
     var organizationErrors: [UUID: String] = [:]
     private var undoLedger: Ledger?; var undoLabel: String?
     init() {
+        #if DEBUG && os(iOS) && targetEnvironment(simulator)
+        UITestStallWatchdog.startIfRequested()
+        #endif
         CloudNetworking.clearLegacyCache()
         let args = ProcessInfo.processInfo.arguments
         let directory: URL
@@ -968,7 +974,7 @@ struct RootView: View {
         }
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
         #if DEBUG && targetEnvironment(simulator) && os(iOS)
-        .background { if UITestSupport.script != nil { UITestWindowMetrics().frame(width: YubaiSize.separator, height: YubaiSize.separator) } }
+        .background { if UITestSupport.script != nil { UITestDiagnostics() } }
         #endif
         .sheet(item: $store.sheet, onDismiss: { store.finishEntrySaveMotion(); store.homeEntrySession = false }) { sheet in
             NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brandInk)
@@ -1404,7 +1410,8 @@ struct LedgerDerivedSnapshot: Sendable {
         }
         for account in ledger.accounts {
             let stale = account.anchorDate.addingTimeInterval(14 * 86400)
-            if stale >= now { expiry = min(expiry, stale) }
+            let boundary = Date(timeIntervalSinceReferenceDate: stale.timeIntervalSinceReferenceDate.nextUp)
+            if boundary > now { expiry = min(expiry, boundary) }
         }
         expires = expiry
         funds = Finance.funds(ledger, now: now)

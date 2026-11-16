@@ -10,7 +10,7 @@ struct ProfileView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var sheet: ProfileSheet?
-    @State private var configured = IntelligenceRuntime.isConfigured
+    private var configured: Bool { IntelligenceRuntime.isConfigured }
     private var profile: SpendingProfile { store.profile }
     private var canChat: Bool { configured && store.preferences.isAIEnabled(for: .answers) && IntelligenceRuntime.cloud.unavailableModel == nil }
     var body: some View {
@@ -33,7 +33,6 @@ struct ProfileView: View {
             memories
             chat
         }.navigationTitle("消费观").yubaiNavigation().accessibilityIdentifier("profilePage")
-            .onAppear { configured = IntelligenceRuntime.isConfigured }
             .onChange(of: store.current.id) { _, _ in sheet = nil }
             .sheet(item: $sheet) { item in
                 NavigationStack {

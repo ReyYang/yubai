@@ -25,6 +25,14 @@ enum UIFrameWait {
         var firstRead = true
         var previous: CGRect?
         var samples: [Sample] = []
+        func equal(_ a: CGRect, _ b: CGRect) -> Bool {
+            abs(a.minX - b.minX) < 0.1 && abs(a.minY - b.minY) < 0.1 &&
+            abs(a.width - b.width) < 0.1 && abs(a.height - b.height) < 0.1
+        }
+        func allReadsAgree() -> Bool {
+            guard samples.count >= 2, let first = samples.first?.frame else { return false }
+            return samples.allSatisfy { $0.frame.map { equal(first, $0) } ?? false }
+        }
         while clock() < end {
             let raw = read(), now = clock()
             let frame = raw.flatMap { rect -> CGRect? in
@@ -38,12 +46,14 @@ enum UIFrameWait {
                 end = min(now + timeout, deadline ?? .infinity)
                 previous = frame
             } else {
-                // Never extend the deadline for a missing/moving control, and
-                // never accept a read returned after the observation deadline.
-                if now >= end { break }
-                if let frame, let previous,
-                   abs(frame.minX - previous.minX) < 0.1, abs(frame.minY - previous.minY) < 0.1,
-                   abs(frame.width - previous.width) < 0.1, abs(frame.height - previous.height) < 0.1 {
+                // A slow snapshot can finish after sampling has ended. All
+                // observations must agree in that case; two matching tail
+                // reads cannot erase an earlier missing or moving frame.
+                if now >= end {
+                    let withinCallerDeadline = deadline.map { now < $0 } ?? true
+                    return Result(stable: withinCallerDeadline && allReadsAgree(), samples: samples)
+                }
+                if let frame, let previous, equal(frame, previous) {
                     return Result(stable: true, samples: samples)
                 }
                 previous = frame

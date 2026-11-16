@@ -77,7 +77,7 @@ private struct SettingsStorageSizeTask: ViewModifier {
 struct IntelligencePrivacyView: View {
     @Environment(AppStore.self) private var store
     @State private var hasKey = APIKeyStore.shared.hasKeychainKey
-    @State private var configured = IntelligenceRuntime.isConfigured
+    private var configured: Bool { IntelligenceRuntime.isConfigured }
     @State private var sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup, identifier: "intelligencePrivacyPage") {
@@ -131,7 +131,7 @@ struct IntelligencePrivacyView: View {
             }
         }.navigationTitle("智能与隐私").yubaiNavigation().onAppear {
             IntelligenceRuntime.cloud.refresh(); hasKey = APIKeyStore.shared.hasKeychainKey
-            configured = IntelligenceRuntime.isConfigured; sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
+            sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
         }
         .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count }
     }

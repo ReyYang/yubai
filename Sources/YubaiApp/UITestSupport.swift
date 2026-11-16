@@ -8,15 +8,6 @@ import SwiftUI
 #endif
 
 #if os(iOS)
-import CoreFoundation
-
-fileprivate final class UITestFirstResponderQuery: NSObject {
-    weak var responder: UIResponder?
-}
-extension UIResponder {
-    @objc fileprivate func yubaiIdentifyFirstResponder(_ query: UITestFirstResponderQuery) { query.responder = self }
-}
-
 /// Read-only native geometry for scripted walks. No device/Release code or
 /// visible controls: safe areas, transition completion and remaining scroll
 /// travel must be observed rather than guessed from a full-screen AX frame.
@@ -38,45 +29,59 @@ struct UITestWindowMetrics: UIViewRepresentable {
             // Script metadata is queryable by XCTest, never a VoiceOver stop.
             isAccessibilityElement = !UIAccessibility.isVoiceOverRunning
         }
-        // Query on demand. Publishing AX values on a display link (or during
-        // layout/updateUIView) can invalidate the very layout being observed.
+        // AX getters only return metadata. Native traversal runs after the
+        // snapshot, coalesced across probes and run-loop turns.
         override var accessibilityValue: String? {
             get { window.flatMap { Self.cache.value(in: $0) } }
             set {}
         }
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            // Invalidate private memoization only. Never publish AX/SwiftUI
-            // values, schedule layout, or write application state here.
-            Self.cache.invalidate()
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if let window { Self.cache.request(in: window) }
         }
     }
 
     @MainActor private final class MetricsCache: NSObject {
-        private var values: [ObjectIdentifier: String] = [:]
-        private var turnObserver: CFRunLoopObserver?
+        private var values: [ObjectIdentifier: (at: TimeInterval, json: String)] = [:]
+        private var pending: Set<ObjectIdentifier> = []
+        private weak var focusedResponder: UIResponder?
         override init() {
             super.init()
-            let activities = CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.exit.rawValue
-            turnObserver = CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault, activities, true, 0) { [weak self] _, _ in
-                MainActor.assumeIsolated { self?.invalidate() }
-            }
-            if let turnObserver { CFRunLoopAddObserver(CFRunLoopGetMain(), turnObserver, .commonModes) }
             for name in [UITextField.textDidBeginEditingNotification, UITextField.textDidEndEditingNotification,
-                         UITextView.textDidBeginEditingNotification, UITextView.textDidEndEditingNotification,
-                         UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardDidChangeFrameNotification] {
-                NotificationCenter.default.addObserver(self, selector: #selector(invalidate), name: name, object: nil)
+                         UITextView.textDidBeginEditingNotification, UITextView.textDidEndEditingNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(editingChanged(_:)), name: name, object: nil)
             }
         }
-        @objc func invalidate() { values.removeAll(keepingCapacity: true) }
+        @objc private func editingChanged(_ note: Notification) {
+            guard let responder = note.object as? UIResponder else { return }
+            if note.name == UITextField.textDidBeginEditingNotification || note.name == UITextView.textDidBeginEditingNotification {
+                focusedResponder = responder
+            } else if focusedResponder === responder { focusedResponder = nil }
+        }
 
         func value(in window: UIWindow) -> String? {
+            request(in: window)
+            return values[ObjectIdentifier(window)]?.json
+        }
+        func request(in window: UIWindow) {
             let key = ObjectIdentifier(window)
-            if let cached = values[key] { return cached }
-            // One responder-chain action, independent of the number of views.
-            let query = UITestFirstResponderQuery()
-            UIApplication.shared.sendAction(#selector(UIResponder.yubaiIdentifyFirstResponder(_:)), to: nil, from: query, for: nil)
-            let focused = (query.responder as? UIView)?.accessibilityIdentifier ?? ""
+            // XCTest can pump the run loop between individual element reads.
+            // Keep this cache across those turns: at most four samples/second.
+            if let cached = values[key], ProcessInfo.processInfo.systemUptime - cached.at < 0.25 { return }
+            guard pending.insert(key).inserted else { return }
+            DispatchQueue.main.async { [weak self, weak window] in
+                guard let self else { return }
+                defer { self.pending.remove(key) }
+                guard let window else { self.values[key] = nil; return }
+                if let json = self.sample(in: window) {
+                    self.values[key] = (ProcessInfo.processInfo.systemUptime, json)
+                }
+            }
+        }
+        private func sample(in window: UIWindow) -> String? {
+            // Never send a responder-chain action from an AX getter: SwiftUI
+            // can reenter its own accessibility/layout work while resolving it.
+            let focused = focusedResponder?.isFirstResponder == true ? (focusedResponder as? UIView)?.accessibilityIdentifier ?? "" : ""
             func rect(_ value: CGRect) -> [CGFloat] { [value.minX, value.minY, value.width, value.height] }
             var scrolls: [[String: Any]] = []
             let windows = (window.windowScene?.windows ?? [window]).filter { !$0.isHidden && $0.alpha > 0 }
@@ -114,7 +119,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
             let value: [String: Any] = ["safeArea": rect(safe), "transitioning": transitioning,
                                       "focused": focused, "scrolls": scrolls]
             if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
-               let json = String(data: data, encoding: .utf8) { values[key] = json; return json }
+               let json = String(data: data, encoding: .utf8) { return json }
             return nil
         }
     }

@@ -71,7 +71,7 @@ struct AskYubaiView: View {
     @State private var appeared = false
     @State private var conversationDay = Dates.day(Dates.now)
     @State private var conversationLedgerID: UUID?
-    @State private var configured = IntelligenceRuntime.isConfigured
+    private var configured: Bool { IntelligenceRuntime.isConfigured }
     @FocusState private var inputFocused: Bool
     private var enabled: Bool { store.preferences.isAIEnabled(for: .answers) && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
     private var canRecognizeReceipt: Bool { enabled && store.preferences.isAIEnabled(for: .receiptRecognition) }
@@ -129,10 +129,10 @@ struct AskYubaiView: View {
                 }
             }
             .onChange(of: voice.transcript) { _, text in input = voicePrefix + text }
-            .onAppear { connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh(); configured = IntelligenceRuntime.isConfigured; if !appeared { appeared = true; store.askConversation.expire(); messages = store.askConversation.messages; session = store.askConversation.session; conversationDay = store.askConversation.day; conversationLedgerID = store.current.id; input = initialText; pendingAutoSend = autoSend && !initialText.isEmpty; if let initialImage { recognize(initialImage) } } }
+            .onAppear { connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh(); if !appeared { appeared = true; store.askConversation.expire(); messages = store.askConversation.messages; session = store.askConversation.session; conversationDay = store.askConversation.day; conversationLedgerID = store.current.id; input = initialText; pendingAutoSend = autoSend && !initialText.isEmpty; if let initialImage { recognize(initialImage) } } }
             .onChange(of: IntelligenceRuntime.cloud.unavailableModel) { _, model in if model == nil { errorText = "" } }
             .onDisappear { cancel(); connectivity.stop(); if conversationDay == Dates.day(Dates.now) && conversationLedgerID == store.current.id { store.askConversation.messages = messages; store.askConversation.session = session } }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { if conversationDay != Dates.day(Dates.now) { cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear(); conversationDay = store.askConversation.day }; voice.refreshPermissions(); configured = IntelligenceRuntime.isConfigured } }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { if conversationDay != Dates.day(Dates.now) { cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear(); conversationDay = store.askConversation.day }; voice.refreshPermissions() } }
             .onChange(of: store.current.id) { _, _ in cancel(); messages = []; input = ""; originalImage = nil; session = AskYubaiSession() }
             .onChange(of: store.preferences.cloudAIEnabled) { _, value in if !value { cancel() } }
             .onChange(of: store.preferences.isAIEnabled(for: .answers)) { _, value in if !value { cancel() } }

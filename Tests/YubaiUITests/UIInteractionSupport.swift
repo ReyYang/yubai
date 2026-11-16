@@ -20,6 +20,9 @@ class YubaiUITestCase: XCTestCase {
     private var revealedScrollFrames: [CGRect]?
     private var revealedKeyboards: [CGRect] = []
     private let scriptedNow = Date().timeIntervalSince1970
+    private var diagnosticApp: XCUIApplication?
+    private var collectingStalls = false
+    private var stallHistory: [String: String] = [:]
 
     func control(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         let target = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
@@ -33,12 +36,17 @@ class YubaiUITestCase: XCTestCase {
             return
         }
         if launching { otherLaunchFailure = true }
-        else { attachTapFailureDiagnostics(reason: issue.compactDescription) }
+        else {
+            if let diagnosticApp { collectMainThreadStalls(in: diagnosticApp, context: name, attach: true) }
+            attachTapFailureDiagnostics(reason: issue.compactDescription)
+        }
         recordUIIssue(issue)
     }
     func recordUIIssue(_ issue: XCTIssue) { super.record(issue) }
 
     @discardableResult func launchApp(_ app: XCUIApplication, timeout: TimeInterval = 15) -> Bool {
+        diagnosticApp = app
+        if !app.launchArguments.contains("--ui-test-stall-watchdog") { app.launchArguments.append("--ui-test-stall-watchdog") }
         lastTap = nil; lastFrameWait = nil; controlQueries = [:]
         if app.launchEnvironment["YUBAI_UI_TEST_NOW"] == nil {
             app.launchEnvironment["YUBAI_UI_TEST_NOW"] = String(scriptedNow)
@@ -50,15 +58,59 @@ class YubaiUITestCase: XCTestCase {
             continueAfterFailure = true; launching = true
             app.launch()
             launching = false; continueAfterFailure = previous
-            if otherLaunchFailure { return false }
+            if otherLaunchFailure { collectMainThreadStalls(in: app, context: name, attach: true); return false }
             if let issue = launchTimeouts.last { lastTimeout = issue }
             if launchTimeouts.isEmpty && app.wait(for: .runningForeground, timeout: timeout) { return true }
+            collectMainThreadStalls(in: app, context: name + "-launch-\(attempt + 1)", attach: true)
             app.terminate()
             if attempt < 2 { print("Retrying Xcode launch (attempt \(attempt + 2)/3)") }
         }
         if let lastTimeout { recordUIIssue(lastTimeout) }
         else { XCTFail("Application did not reach the foreground after three launch attempts") }
         return false
+    }
+
+    /// Preserve every fixture process before a gallery relaunch. These reads
+    /// never ask the app to capture/symbolicate a stack; the C watchdog did it.
+    func collectMainThreadStalls(in app: XCUIApplication, context: String, attach: Bool = false) {
+        guard !collectingStalls else { return }
+        collectingStalls = true
+        defer { collectingStalls = false }
+        var record = "<app diagnostic unavailable; see YUBAI-STALL stderr/Documents/tmp>"
+        if app.state == .runningForeground, let tree = try? app.snapshot() {
+            // Read both lazy values from one snapshot, including a modal's
+            // probe when its accessibility container hides the root probe.
+            var latest: String?, history: String?
+            func collect(_ node: XCUIElementSnapshot) {
+                if node.identifier == "uiTestMainThreadStall" { latest = node.value as? String }
+                if node.identifier == "uiTestMainThreadStallRecords" { history = node.value as? String }
+                for child in node.children { collect(child) }
+            }
+            collect(tree)
+            if let latest {
+                record = latest.isEmpty ? "<no main-thread stalls>" : latest
+            }
+            if let history, !history.isEmpty {
+                let args = app.launchArguments
+                let run = args.firstIndex(of: "--test-ledger").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil } ?? context
+                let firstRecord = history.split(separator: "\n").first.map(String.init) ?? ""
+                stallHistory[run + " " + firstRecord] = history
+                // A recovery is the latest record, but the preceding stack
+                // still names the blocked call. Keep both on every failure.
+                if attach { record += "\nHistory:\n" + history }
+            }
+        }
+        if attach {
+            print("GALLERY-STALL \(context) " + record)
+            let attachment = XCTAttachment(string: record)
+            attachment.name = context + "-STALL"; attachment.lifetime = .keepAlways; add(attachment)
+        }
+    }
+    func printAllMainThreadStalls(context: String) {
+        let report = stallHistory.keys.sorted().map { "run=\($0)\n" + stallHistory[$0]! }.joined(separator: "\n")
+        print("GALLERY-STALL \(context) ALL\n" + (report.isEmpty ? "<no main-thread stalls collected>" : report))
+        let attachment = XCTAttachment(string: report.isEmpty ? "<no main-thread stalls collected>" : report)
+        attachment.name = context + "-STALL"; attachment.lifetime = .keepAlways; add(attachment)
     }
 
     /// Keep both real snapshots, without a separate existence query per poll.

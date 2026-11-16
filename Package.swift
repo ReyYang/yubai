@@ -5,12 +5,14 @@ let package = Package(
     name: "Yubai",
     platforms: [.macOS(.v14), .iOS(.v26)],
     products: [
-        .library(name: "YubaiCore", targets: ["YubaiCore"])
+        .library(name: "YubaiCore", targets: ["YubaiCore"]),
+        .library(name: "CUITestWatchdog", targets: ["CUITestWatchdog"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.15.1")
     ],
     targets: [
+        .target(name: "CUITestWatchdog", cSettings: [.define("DEBUG", .when(configuration: .debug))]),
         .target(name: "CArchive", linkerSettings: [.linkedLibrary("z")]),
         .target(name: "YubaiCore", dependencies: [
             "CArchive",
@@ -31,7 +33,7 @@ let package = Package(
 package.products.append(.executable(name: "YubaiDesktop", targets: ["YubaiApp"]))
 package.targets.append(.executableTarget(
     name: "YubaiApp",
-    dependencies: ["YubaiCore"],
+    dependencies: ["YubaiCore", "CUITestWatchdog"],
     exclude: ["Info.plist", "Assets.xcassets", "PrivacyInfo.xcprivacy", "Yubai-iCloud.entitlements",
               "Yubai-macOS.entitlements", "Yubai-macOS-iCloud.entitlements", "Yubai-AppGroup.entitlements", "Yubai-iCloud-AppGroup.entitlements"]
 ))

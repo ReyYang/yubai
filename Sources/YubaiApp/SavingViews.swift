@@ -28,7 +28,7 @@ struct ProfileChatEntry: View {
     var context: ProfileColdStart.OpeningContext? = nil
     var prominent = false
     @State private var showing = false
-    @State private var configured = IntelligenceRuntime.isConfigured
+    private var configured: Bool { IntelligenceRuntime.isConfigured }
     private var enabled: Bool { configured && store.preferences.isAIEnabled(for: .answers) && IntelligenceRuntime.cloud.unavailableModel == nil }
     var body: some View {
         Button { showing = true } label: {
@@ -42,7 +42,6 @@ struct ProfileChatEntry: View {
                 .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: prominent ? YubaiColor.brandTint : nil)
         }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.5)
             .accessibilityIdentifier("profileChatEntry")
-            .onAppear { configured = IntelligenceRuntime.isConfigured }
             .sheet(isPresented: $showing) {
                 NavigationStack { ProfileConversationView(openingContext: context) }.environment(store).appErrors().yubaiSheetBackground()
                     #if os(macOS)

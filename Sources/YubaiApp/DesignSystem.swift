@@ -1132,7 +1132,7 @@ extension View {
             #if DEBUG && targetEnvironment(simulator) && os(iOS)
             // Modal accessibility may hide the root probe. Each sheet uses
             // this same read-only window probe on its own background surface.
-            .background { if UITestSupport.script != nil { UITestWindowMetrics().frame(width: YubaiSize.separator, height: YubaiSize.separator) } }
+            .background { if UITestSupport.script != nil { UITestDiagnostics() } }
             #endif
     }
     func paperCardSurface<S: InsettableShape>(in shape: S, background: Color? = nil, flat: Bool = false) -> some View {

@@ -255,7 +255,9 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         tap("entriesSearchCancel")
         XCTAssertTrue(waitForDisappearance(app.keyboards.firstMatch))
         let lastEntry = element("ledgerEntry_47000000-0000-0000-0000-000000471030")
-        XCTAssertTrue(revealControl(lastEntry, in: app, deadline: Date().addingTimeInterval(180)))
+        // List has not materialized this offscreen salary row in AX yet.
+        // Search its known container before checking full toast clearance.
+        XCTAssertTrue(revealControl(lastEntry, in: app, deadline: Date().addingTimeInterval(180), searching: element("entriesScroll")))
         XCTAssertTrue(toast.exists)
         XCTAssertLessThanOrEqual(lastEntry.frame.maxY, toast.frame.minY - 12 + 0.5)
         tap("tab_now"); tap("openSaving")

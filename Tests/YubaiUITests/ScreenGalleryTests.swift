@@ -43,6 +43,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     override func tearDownWithError() throws {
         if directory != nil {
+            collectMainThreadStalls(in: app, context: prefix + "end")
+            printAllMainThreadStalls(context: prefix + "walk")
             app.terminate()
             let label = prefix.isEmpty ? String(name.filter { $0.isLetter || $0.isNumber }.suffix(40)) : String(prefix.dropLast())
             let report = missing.joined(separator: "\n") + (missing.isEmpty ? "" : "\n")
@@ -112,6 +114,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         issues = Array(Set(issues)).sorted()
         let failed = !issues.isEmpty
         if failed {
+            collectMainThreadStalls(in: app, context: name, attach: true)
             for finding in issues {
                 let line = name + "-MISSING: " + finding
                 print("GALLERY-STOP " + line); missing.append(line)
@@ -168,6 +171,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
     }
     private func launch(_ fixture: String = "gallery", dark: Bool = false, large: Bool = false, organization: String? = nil, statement: String? = nil, longToast: Bool = false, reduceMotion: Bool = false, restoring: Bool = false, versions: Bool = false) throws {
         relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement, longToast: longToast, reduceMotion: reduceMotion, restoring: restoring, versions: versions) }
+        collectMainThreadStalls(in: app, context: activeStop ?? prefix + "relaunch")
         app.terminate(); app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]

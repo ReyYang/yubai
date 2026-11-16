@@ -78,9 +78,33 @@ final class Round47FrameWaitTests: XCTestCase {
     }
     func testInFlightReadPastObservationDeadlineCannotPass() {
         var time: TimeInterval = 0
-        let result = UIFrameWait.run(timeout: 1, read: { time += 2; return self.frame }, clock: { time }, poll: { time += $0 })
+        var reads = 0
+        let result = UIFrameWait.run(timeout: 1, read: {
+            reads += 1; time += 2
+            return self.frame.offsetBy(dx: CGFloat(reads), dy: 0)
+        }, clock: { time }, poll: { time += $0 })
         XCTAssertFalse(result.stable)
         XCTAssertEqual(result.samples.count, 2)
+    }
+    func testIdenticalReadsRemainStableWhenSecondSnapshotExceedsDeadline() {
+        var time: TimeInterval = 0, reads = 0
+        let result = UIFrameWait.run(read: {
+            reads += 1; time += reads == 1 ? 0.353 : 14.314
+            return self.frame
+        }, clock: { time }, poll: { time += $0 })
+        XCTAssertTrue(result.stable)
+        XCTAssertEqual(result.samples.count, 2)
+    }
+    func testLateMatchingTailCannotEraseEarlierMovementOrMissingRead() {
+        for first in [CGRect?.none, .some(frame.offsetBy(dx: 2, dy: 0))] {
+            var time: TimeInterval = 0, reads = 0
+            let result = UIFrameWait.run(timeout: 1, read: {
+                reads += 1; time += reads == 3 ? 2 : 0.1
+                return reads == 1 ? first : self.frame
+            }, clock: { time }, poll: { time += $0 })
+            XCTAssertFalse(result.stable)
+            XCTAssertEqual(reads, 3)
+        }
     }
     func testCallerDeadlineCapsTheFirstReadAndStabilization() {
         var time: TimeInterval = 0
@@ -88,5 +112,12 @@ final class Round47FrameWaitTests: XCTestCase {
         XCTAssertFalse(result.stable)
         XCTAssertEqual(result.samples.count, 1)
         XCTAssertEqual(time, 2)
+    }
+    func testCallerDeadlineStillCapsALateSecondMatchingRead() {
+        var time: TimeInterval = 0
+        let result = UIFrameWait.run(timeout: 12, deadline: 3, read: { time += 2; return self.frame },
+                                     clock: { time }, poll: { time += $0 })
+        XCTAssertFalse(result.stable)
+        XCTAssertEqual(result.samples.count, 2)
     }
 }

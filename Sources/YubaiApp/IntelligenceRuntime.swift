@@ -180,14 +180,29 @@ import UIKit
 @MainActor @Observable final class CloudAIStatus {
     private static let unavailableKey = "DeepSeek.unavailableModel"
     var model = DeepSeekConfiguration.modelName()
-    private(set) var configured = APIKeyStore.shared.isConfigured
+    private(set) var configured = false
     private(set) var unavailableModel: String? = UserDefaults.standard.string(forKey: CloudAIStatus.unavailableKey)
+    @ObservationIgnored private var configurationRevision = 0
     init() { refresh() }
     func refresh() {
         model = DeepSeekConfiguration.modelName()
-        configured = APIKeyStore.shared.isConfigured
+        configurationRevision &+= 1
+        let revision = configurationRevision
         #if DEBUG && targetEnvironment(simulator)
-        if UITestSupport.script != nil { unavailableModel = nil; return }
+        if UITestSupport.script != nil { unavailableModel = nil }
+        if let override = UITestSupport.configuredKeyOverride {
+            configured = override; return
+        }
+        #endif
+        // Security's synchronous IPC must not run while Home builds its task
+        // identity (including on the first access to IntelligenceRuntime.cloud).
+        Task { [weak self] in
+            let value = await Task.detached(priority: .utility) { APIKeyStore.shared.isConfigured }.value
+            guard let self, self.configurationRevision == revision else { return }
+            self.configured = value
+        }
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { return }
         #endif
         if unavailableModel != model { clear() }
     }
