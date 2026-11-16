@@ -236,6 +236,16 @@ class YubaiUITestCase: XCTestCase {
         return windowMetrics(in: tree)
     }
 
+    func waitForBambooRasters(in app: XCUIApplication, deadline: Date? = nil) -> UIBambooWait.Result {
+        let end = deadline.map { ProcessInfo.processInfo.systemUptime + max(0, $0.timeIntervalSinceNow) }
+        return UIBambooWait.run(deadline: end, read: { self.windowMetrics(in: app)?.bamboo })
+    }
+
+    func assertBambooReadyForCapture(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let result = waitForBambooRasters(in: app)
+        XCTAssertTrue(result.ready, "Bamboo must finish before capture: \(result)", file: file, line: line)
+    }
+
     func auditAppText(in app: XCUIApplication, dynamicType: Bool = false, handler: @escaping (XCUIAccessibilityAuditIssue) -> Bool) throws {
         let scope = UIAppContentAuditScope(try app.snapshot())
         try app.performAccessibilityAudit(for: dynamicType ? [.dynamicType, .textClipped] : [.textClipped]) { issue in

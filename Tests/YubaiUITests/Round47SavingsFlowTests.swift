@@ -336,6 +336,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
             }
             return true
         })
+        assertBambooReadyForCapture(in: app)
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "largest-single-line-" + target.identifier
         attachment.lifetime = .keepAlways; add(attachment)

@@ -672,6 +672,7 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
 /// A stationary page surface. Data and card contents never receive this light.
 struct PaperCanvas: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var showsBamboo = false
     var bambooTrigger = 0
@@ -707,6 +708,12 @@ struct PaperCanvas: View {
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
         }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+            // The surface always exists. A cache miss leaves BambooShadow's
+            // conditional image empty, so it must not own its startup task.
+            .task(id: showsBamboo ? BambooRasterCache.Key(scheme: scheme, scale: displayScale) : nil) {
+                guard showsBamboo else { return }
+                await BambooRasterCache.shared.warm(scheme: scheme, scale: displayScale)
+            }
     }
 }
 
@@ -737,9 +744,6 @@ private struct BambooShadow: View {
         }.rotationEffect(.degrees(-12)).scaleEffect(x: 1, y: -1)
             .opacity(scheme == .dark ? 0.12 : 0.11)
             .offset(x: 74, y: -58).allowsHitTesting(false).accessibilityHidden(true)
-            .task(id: BambooRasterCache.Key(scheme: scheme, scale: displayScale)) {
-                await cache.warm(scheme: scheme, scale: displayScale)
-            }
     }
 }
 

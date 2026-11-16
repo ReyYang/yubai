@@ -4,7 +4,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
-    private func launch(_ fixture: String = "v47r-ledger", large: Bool = false, hidden: Bool = false, dark: Bool = false) {
+    private func launch(_ fixture: String = "v47r-ledger", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false) {
         app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
@@ -13,9 +13,12 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         app.launchEnvironment["YUBAI_UI_TEST_NOW"] = String(instant.timeIntervalSince1970)
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
         app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
+        app.launchEnvironment["YUBAI_UI_TEST_REDUCE_MOTION"] = reduceMotion ? "1" : "0"
         app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
-        launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
+        launchApp(app)
+        XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15),
+                      "Root navigation missing; bamboo={\(windowMetrics(in: app)?.bamboo?.description ?? "diagnostics unreadable")}")
     }
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
     private func element(_ id: String) -> XCUIElement { control(id, in: app) }
@@ -57,26 +60,31 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("openSaving").label.contains("¥"))
     }
     func testBambooRendersOffMainAndBodyUpdatesReuseBothCachedAppearances() {
-        for dark in [false, true] {
-            launch(dark: dark)
-            XCTAssertTrue(UIConditionWait.run(timeout: 30, read: {
-                guard let bamboo = self.windowMetrics(in: self.app)?.bamboo else { return false }
-                return bamboo.ready.contains(where: { $0.hasPrefix("light@") }) &&
-                    bamboo.ready.contains(where: { $0.hasPrefix("dark@") }) && bamboo.pending == 0
-            }), "Both bamboo appearances must finish on the worker")
-            guard let before = windowMetrics(in: app)?.bamboo else { XCTFail("Missing raster diagnostics"); return }
-            XCTAssertEqual(before.mainRenders, 0)
-            XCTAssertEqual(before.renders, before.ready.count)
+        for (dark, reduceMotion) in [(false, false), (true, false), (false, true), (true, true)] {
+            launch(dark: dark, reduceMotion: reduceMotion)
+            let preparation = waitForBambooRasters(in: app)
+            let context = "dark=\(dark) reduceMotion=\(reduceMotion)"
+            let initialDiagnostics = "\(context) \(preparation)"
+            XCTAssertTrue(preparation.ready, "Both bamboo appearances must finish on the worker: \(initialDiagnostics)")
+            guard let before = preparation.observed else { XCTFail("Missing raster diagnostics: \(initialDiagnostics)"); return }
+            XCTAssertEqual(before.mainRenders, 0, initialDiagnostics)
+            XCTAssertEqual(before.renders, before.ready.count, initialDiagnostics)
+            XCTAssertTrue(before.failed.isEmpty, initialDiagnostics)
+            XCTAssertNil(before.lastFailure, initialDiagnostics)
             // Each action evaluates the root background/body again; none may
             // render, even when the other tab's task requests the same key.
             tap("toggleAmountVisibility")
             for tab in ["insights", "yubai", "ledger"] { tap("tab_" + tab) }
             tap("toggleAmountVisibility")
-            guard let after = windowMetrics(in: app)?.bamboo else { XCTFail("Missing raster diagnostics after layout"); return }
-            XCTAssertEqual(after.mainRenders, 0)
-            XCTAssertEqual(after.renders, before.renders)
-            XCTAssertEqual(after.ready, before.ready)
-            XCTAssertEqual(app.state, .runningForeground)
+            guard let after = windowMetrics(in: app)?.bamboo else {
+                XCTFail("Raster diagnostics unreadable after layout; \(initialDiagnostics)"); return
+            }
+            let diagnostics = "\(context) before={\(before)} after={\(after)}"
+            XCTAssertTrue(after.isReady, diagnostics)
+            XCTAssertEqual(after.mainRenders, 0, diagnostics)
+            XCTAssertEqual(after.renders, before.renders, diagnostics)
+            XCTAssertEqual(after.ready, before.ready, diagnostics)
+            XCTAssertEqual(app.state, .runningForeground, diagnostics)
             app.terminate()
         }
     }

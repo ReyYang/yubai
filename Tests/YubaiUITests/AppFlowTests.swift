@@ -504,6 +504,9 @@ final class AppFlowTests: YubaiUITestCase {
     private func snapshot(_ name: String, _ app: XCUIApplication) {
         snapshotNumber += 1
         let test = app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] ?? "app-flow"
+        // Failure attachments retain the failed moment, including a stopped
+        // process or unfinished raster. Successful pixel proofs must be ready.
+        if name != "failure" { assertBambooReadyForCapture(in: app) }
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "\(test)-\(String(format: "%02d", snapshotNumber))-\(name)"
         attachment.lifetime = .keepAlways

@@ -3,6 +3,106 @@ import XCTest
 /// These use a virtual clock: even the slow-query and timeout cases take no
 /// wall-clock sleeps and make no automation session or application requests.
 final class Round47FrameWaitTests: XCTestCase {
+    private func bamboo(ready: [String] = [], pending: [String] = [], failed: [String] = [],
+                        renders: Int = 2, mainRenders: Int = 0,
+                        lastFailure: UIWindowMetrics.Bamboo.Failure? = nil) -> UIWindowMetrics.Bamboo {
+        UIWindowMetrics.Bamboo(ready: ready, renders: renders, mainRenders: mainRenders, pending: pending.count,
+            pendingKeys: pending, failed: failed, failedStages: failed.isEmpty ? [:] : [failed[0]: "blurOutput"],
+            lastFailure: lastFailure)
+    }
+    func testColdBambooWaitRequiresBothActualCompletionsBeyondTheOldThirtySeconds() {
+        var now: TimeInterval = 0
+        let result = UIBambooWait.run(read: {
+            now += 1
+            if now < 35 { return self.bamboo(pending: ["light@3.0", "dark@3.0"]) }
+            if now < 46 { return self.bamboo(ready: ["light@3.0"], pending: ["dark@3.0"]) }
+            return self.bamboo(ready: ["light@3.0", "dark@3.0"])
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertTrue(result.ready, result.description)
+        XCTAssertGreaterThanOrEqual(now, 46)
+        XCTAssertLessThan(now, UIBambooWait.timeout)
+    }
+    func testBambooRenderFailureStopsImmediatelyWithAllObservedDiagnostics() {
+        var now: TimeInterval = 0
+        let failure = UIWindowMetrics.Bamboo.Failure(key: "light@3.0", stage: "blurOutput", attempt: 1)
+        let result = UIBambooWait.run(read: {
+            self.bamboo(pending: ["dark@3.0"], failed: ["light@3.0"], renders: 1, lastFailure: failure)
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertEqual(now, 0)
+        for field in ["ready=", "pending=", "failed=", "renders=", "mainRenders=", "stage=blurOutput", "attempt=1"] {
+            XCTAssertTrue(result.description.contains(field), result.description)
+        }
+    }
+    func testBambooRecoveredFailureStillFailsTheRenderProofAndCaptureGate() {
+        var now: TimeInterval = 0
+        let failure = UIWindowMetrics.Bamboo.Failure(key: "dark@3.0", stage: "inputEmpty", attempt: 1)
+        let result = UIBambooWait.run(read: {
+            self.bamboo(ready: ["light@3.0", "dark@3.0"], renders: 3, lastFailure: failure)
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertEqual(now, 0)
+        XCTAssertTrue(result.description.contains("stage=inputEmpty"), result.description)
+    }
+    func testBambooMainThreadRenderFailsEvenWhenBothImagesAreReady() {
+        var now: TimeInterval = 0
+        let result = UIBambooWait.run(read: {
+            self.bamboo(ready: ["light@3.0", "dark@3.0"], mainRenders: 1)
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertEqual(now, 0)
+        XCTAssertTrue(result.description.contains("mainRenders=1"), result.description)
+    }
+    func testBambooOneAppearanceOrMismatchedScalesCannotPassAndCannotExtendTheBound() {
+        for ready in [["light@3.0"], ["light@3.0", "dark@2.0"]] {
+            var now: TimeInterval = 0
+            let result = UIBambooWait.run(timeout: 3, read: {
+                now += 1; return self.bamboo(ready: ready, renders: ready.count)
+            }, clock: { now }, poll: { now += $0 })
+            XCTAssertFalse(result.ready, result.description)
+            XCTAssertLessThan(now, 4.2)
+        }
+    }
+    func testBambooPendingWorkPreventsCaptureEvenWithAnOlderReadyPair() {
+        var now: TimeInterval = 0
+        let result = UIBambooWait.run(timeout: 1, read: {
+            self.bamboo(ready: ["light@2.0", "dark@2.0"], pending: ["light@3.0", "dark@3.0"], renders: 4)
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertTrue(result.description.contains("pending=2"), result.description)
+    }
+    func testBambooUnreadableProbeReportsTheProblemAndLastReadableState() {
+        var now: TimeInterval = 0, reads = 0
+        let result = UIBambooWait.run(timeout: 1, read: {
+            reads += 1
+            return reads == 1 ? self.bamboo(ready: ["light@3.0"], pending: ["dark@3.0"]) : nil
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertGreaterThan(result.unreadableReads, 0)
+        XCTAssertTrue(result.description.contains("diagnostics unreadable"), result.description)
+        XCTAssertTrue(result.description.contains("lastReadable={ready="), result.description)
+        XCTAssertTrue(result.description.contains("dark@3.0"), result.description)
+    }
+    func testBambooWaitCannotAcceptASlowFirstReadPastItsOwnOrGalleryDeadline() {
+        for deadline in [TimeInterval?.none, .some(1)] {
+            var now: TimeInterval = 0
+            let result = UIBambooWait.run(timeout: 2, deadline: deadline, read: {
+                now += 3; return self.bamboo(ready: ["light@3.0", "dark@3.0"])
+            }, clock: { now }, poll: { now += $0 })
+            XCTAssertFalse(result.ready, result.description)
+            XCTAssertEqual(now, 3)
+        }
+    }
+    func testBambooProbeDecodesFailureStageAndEveryCompletionField() throws {
+        let json = #"{"safeArea":[0,0,440,956],"transitioning":false,"focused":"","scrolls":[],"bamboo":{"ready":["light@3.0"],"pending":1,"pendingKeys":["dark@3.0"],"failed":["dark@3.0"],"failedStages":{"dark@3.0":"blurOutput"},"renders":2,"mainRenders":0,"lastFailure":{"key":"dark@3.0","stage":"blurOutput","attempt":1}}}"#
+        let value = try XCTUnwrap(UIWindowMetrics.decode(json)?.bamboo)
+        XCTAssertEqual(value.ready, ["light@3.0"], value.description)
+        XCTAssertEqual(value.pendingKeys, ["dark@3.0"], value.description)
+        XCTAssertEqual(value.pending, 1, value.description)
+        XCTAssertEqual(value.failedStages["dark@3.0"], "blurOutput", value.description)
+        XCTAssertEqual(value.lastFailure?.stage, "blurOutput", value.description)
+        XCTAssertFalse(value.isReady, value.description)
+    }
     func testDisappearanceWaitAcceptsASlowFirstObservation() {
         var now: TimeInterval = 0
         XCTAssertTrue(UIConditionWait.run(read: { now += 14; return true }, clock: { now }, poll: { now += $0 }))

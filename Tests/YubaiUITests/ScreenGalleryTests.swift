@@ -100,7 +100,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     /// This is the only screenshot writer, including failure screenshots.
     private func shot(_ name: String) {
-        _ = captureProcessIsRunning(phase: "before screenshot")
+        if captureProcessIsRunning(phase: "before screenshot"), app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] != "gallery-locked" {
+            let preparation = waitForBambooRasters(in: app, deadline: stopDeadline)
+            if !preparation.ready { issues.append("Bamboo is not ready for capture: \(preparation)") }
+        }
         let screenshot = XCUIScreen.main.screenshot()
         _ = captureProcessIsRunning(phase: "after screenshot")
         let name = name.hasSuffix("-MISSING") || issues.isEmpty ? name : name + "-MISSING"

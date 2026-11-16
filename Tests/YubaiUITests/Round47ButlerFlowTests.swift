@@ -130,6 +130,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
                     XCTFail("Correction text clipped: " + issue.detailedDescription)
                     return true
                 })
+                assertBambooReadyForCapture(in: app)
                 XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)
                 XCTAssertEqual(app.state, .runningForeground)
                 tap("cancelManualSheet")
@@ -170,6 +171,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertEqual(app.state, .runningForeground)
         XCTAssertTrue(waitForKeyboardEditing(identifier, in: app))
         XCTAssertEqual(app.textViews.matching(identifier: identifier).count, 1)
+        assertBambooReadyForCapture(in: app)
         XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)
     }
     func testCorrectionKeyboardSurvivesDynamicTypeAndClippingAudit() throws {

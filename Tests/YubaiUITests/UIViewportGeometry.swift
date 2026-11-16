@@ -79,11 +79,33 @@ struct UIWindowMetrics: Decodable {
         let remainingUp: CGFloat
         var rectangle: CGRect { UIWindowMetrics.rectangle(frame) }
     }
-    struct Bamboo: Decodable {
+    struct Bamboo: Decodable, CustomStringConvertible {
+        struct Failure: Decodable {
+            let key: String
+            let stage: String
+            let attempt: Int
+        }
         let ready: [String]
         let renders: Int
         let mainRenders: Int
         let pending: Int
+        let pendingKeys: [String]
+        let failed: [String]
+        let failedStages: [String: String]
+        let lastFailure: Failure?
+
+        var hasFailure: Bool { mainRenders != 0 || !failed.isEmpty || lastFailure != nil }
+        var isReady: Bool {
+            let light = Set(ready.filter { $0.hasPrefix("light@") }.map { String($0.dropFirst(6)) })
+            let dark = Set(ready.filter { $0.hasPrefix("dark@") }.map { String($0.dropFirst(5)) })
+            return !hasFailure && pending == 0 && pendingKeys.isEmpty && !light.isEmpty && light == dark &&
+                ready.count == light.count * 2 && renders == ready.count
+        }
+        var description: String {
+            let failure = lastFailure.map { "key=\($0.key),stage=\($0.stage),attempt=\($0.attempt)" } ?? "none"
+            return "ready=\(ready) pending=\(pending) pendingKeys=\(pendingKeys) failed=\(failed) " +
+                "failedStages=\(failedStages) renders=\(renders) mainRenders=\(mainRenders) lastFailure={\(failure)}"
+        }
     }
     let safeArea: [CGFloat]
     let transitioning: Bool
