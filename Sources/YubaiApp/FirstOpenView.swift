@@ -4,7 +4,6 @@ import YubaiCore
 struct FirstOpenView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
-    @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
     var body: some View {
         GeometryReader { geometry in
             let availableHeight = geometry.size.height - navigationHeight
