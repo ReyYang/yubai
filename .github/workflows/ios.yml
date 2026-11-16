@@ -89,6 +89,7 @@ jobs:
           stall_since=0
           if [ -f build/test-started-at ]; then stall_since=$(cat build/test-started-at); fi
           python3 scripts/export-stall-records.py --simulator "$SIM_UDID" --output build/stalls --derived-data build/DerivedData --log build/xcodebuild-test.log --since "$stall_since" || stall_status=$?
+          python3 scripts/export-crash-reports.py --output build/crashes --since "$stall_since" || true
           if [ -d build/Yubai.xcresult ]; then
             xcrun xcresulttool export attachments --path build/Yubai.xcresult --output-path build/screenshots || true
             xcrun xcresulttool get test-results summary --path build/Yubai.xcresult > build/test-summary.json || true
@@ -130,6 +131,7 @@ jobs:
             build/test-summary.json
             build/test-exit-status
             build/stalls
+            build/crashes
       - name: Release 构建（iOS 与 macOS，不签名）
         if: inputs.release_builds && matrix.part == 'unit'
         run: |
@@ -225,6 +227,12 @@ jobs:
           grep -E "error:|Gallery:|\*\* TEST" gallery-run.log | tail -40 || true
           head -5 .shots/index.txt >> "$GITHUB_STEP_SUMMARY" || true
           echo "Missing: $(wc -l < .shots/missing.txt 2>/dev/null || echo '?')" >> "$GITHUB_STEP_SUMMARY"
+      - name: 导出崩溃报告
+        if: always()
+        run: |
+          crash_since=0
+          if [ -f .shots/run-started-at ]; then crash_since=$(cat .shots/run-started-at); fi
+          python3 scripts/export-crash-reports.py --output .shots/crashes --since "$crash_since" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

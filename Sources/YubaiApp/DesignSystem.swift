@@ -6,7 +6,6 @@ import YubaiCore
 import AppKit
 #elseif os(iOS)
 import UIKit
-import CoreImage
 #endif
 
 enum YubaiColor {
@@ -236,6 +235,8 @@ enum YubaiRadius {
 }
 
 enum YubaiSize {
+    static let bambooShadow = CGSize(width: 230, height: 299)
+    static let bambooVisibilitySample = CGSize(width: 32, height: 40)
     static let toastExpandedMaximumHeight: CGFloat = 320
     static let navigationCapsuleWidth: CGFloat = 244
     static let navigationTabHeight: CGFloat = 48
@@ -700,13 +701,11 @@ private struct BambooShadow: View {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
     let trigger: Int
+    private let cache = BambooRasterCache.shared
     @ViewBuilder private var branch: some View {
-        if let image = BambooRasterCache.image(scheme: scheme, scale: displayScale) {
-            image.resizable().frame(width: 230 + BambooRasterCache.padding * 2, height: 299 + BambooRasterCache.padding * 2)
-                .padding(-BambooRasterCache.padding)
-        } else {
-            BambooRasterCache.source.blur(radius: 6)
-                .padding(BambooRasterCache.padding).drawingGroup()
+        if let image = cache.image(scheme: scheme, scale: displayScale) {
+            image.resizable().frame(width: YubaiSize.bambooShadow.width + BambooRasterCache.padding * 2,
+                                    height: YubaiSize.bambooShadow.height + BambooRasterCache.padding * 2)
                 .padding(-BambooRasterCache.padding)
         }
     }
@@ -724,65 +723,10 @@ private struct BambooShadow: View {
         }.rotationEffect(.degrees(-12)).scaleEffect(x: 1, y: -1)
             .opacity(scheme == .dark ? 0.12 : 0.11)
             .offset(x: 74, y: -58).allowsHitTesting(false).accessibilityHidden(true)
+            .task(id: BambooRasterCache.Key(scheme: scheme, scale: displayScale)) {
+                await cache.warm(scheme: scheme, scale: displayScale)
+            }
     }
-}
-
-/// The padding retains the blur outside the original 230 × 299 alignment rect.
-/// Rotation, reflection, opacity and sway remain on that original alignment rect.
-@MainActor private enum BambooRasterCache {
-    static let padding: CGFloat = 32
-    private struct Key: Hashable { let dark: Bool; let scale: CGFloat }
-    private static var images: [Key: Image] = [:]
-    static var source: some View {
-        Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
-            .foregroundStyle(YubaiColor.bambooShadow).frame(width: 230, height: 299)
-    }
-    #if os(iOS)
-    private static let context = CIContext()
-    #endif
-    static func image(scheme: ColorScheme, scale: CGFloat) -> Image? {
-        let key = Key(dark: scheme == .dark, scale: scale)
-        if let cached = images[key] { return cached }
-        #if os(iOS)
-        guard scale > 0, let asset = UIImage(named: "BambooShadow"), asset.size.width > 0, asset.size.height > 0 else { return nil }
-        // Resolve the dynamic token explicitly; neither template tint nor SwiftUI
-        // environment resolution is left to an offscreen ImageRenderer.
-        let traits = UITraitCollection(userInterfaceStyle: key.dark ? .dark : .light)
-        let tint = UIColor(YubaiColor.bambooShadow).resolvedColor(with: traits)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = scale; format.opaque = false; format.preferredRange = .standard
-        let size = CGSize(width: 230 + padding * 2, height: 299 + padding * 2)
-        let fit = min(230 / asset.size.width, 299 / asset.size.height)
-        let fitted = CGSize(width: asset.size.width * fit, height: asset.size.height * fit)
-        let rect = CGRect(x: (size.width - fitted.width) / 2, y: (size.height - fitted.height) / 2, width: fitted.width, height: fitted.height)
-        let bitmap = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            asset.withTintColor(tint, renderingMode: .alwaysOriginal).draw(in: rect)
-        }
-        guard let pixels = bitmap.cgImage, hasVisiblePixels(pixels) else { return nil }
-        let input = CIImage(cgImage: pixels)
-        let blurred = input.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 6 * scale])
-        guard let output = context.createCGImage(blurred, from: input.extent), hasVisiblePixels(output) else { return nil }
-        let image = Image(uiImage: UIImage(cgImage: output, scale: scale, orientation: .up)).renderingMode(.original)
-        #else
-        let renderer = ImageRenderer(content: source.blur(radius: 6).padding(padding).environment(\.colorScheme, scheme))
-        renderer.scale = scale
-        guard let bitmap = renderer.nsImage else { return nil }
-        let image = Image(nsImage: bitmap)
-        #endif
-        images[key] = image; return image
-    }
-    #if os(iOS)
-    /// A non-nil renderer result can still be transparent. Never retain one.
-    private static func hasVisiblePixels(_ image: CGImage) -> Bool {
-        var pixels = [UInt8](repeating: 0, count: 32 * 40 * 4)
-        return pixels.withUnsafeMutableBytes { buffer in
-            guard let context = CGContext(data: buffer.baseAddress, width: 32, height: 40, bitsPerComponent: 8, bytesPerRow: 32 * 4,
-                                          space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            context.draw(image, in: CGRect(x: 0, y: 0, width: 32, height: 40))
-            return stride(from: 3, to: buffer.count, by: 4).contains { buffer[$0] > 0 }
-        }
-    }
-    #endif
 }
 
 private struct PaperBackground: ViewModifier {
@@ -1844,6 +1788,7 @@ private struct ToastNaturalHeight: PreferenceKey {
 struct Toast: View {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var phase
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var visible = false
     @State private var expanded = false
     @State private var naturalHeight: CGFloat = 0
@@ -1855,7 +1800,7 @@ struct Toast: View {
     var onDismiss: (() -> Void)? = nil
     var messageIdentifier = "toastMessage"
     var undoIdentifier = "undoLastChange"
-    private var truncated: Bool { availableWidth > 0 && intrinsicWidth > availableWidth + 0.5 }
+    private var truncated: Bool { !textSize.isAccessibilitySize && availableWidth > 0 && intrinsicWidth > availableWidth + 0.5 }
     private var hasChevron: Bool { truncated || expanded }
     private var timerKey: String { text + "-\(expanded)-\(visible)-\(phase)" }
     var body: some View {
@@ -1878,9 +1823,12 @@ struct Toast: View {
             }
     }
     private var surface: some View {
-        HStack(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8) {
+        let layout = textSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .trailing, spacing: YubaiSpace.space8))
+            : AnyLayout(HStackLayout(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8))
+        return layout {
             HStack(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8) {
-                    if expanded {
+                    if expanded || textSize.isAccessibilitySize {
                         ScrollView {
                             message
                         }.frame(height: min(max(YubaiFont.body.lineHeight, naturalHeight), YubaiSize.toastExpandedMaximumHeight))
@@ -1896,16 +1844,20 @@ struct Toast: View {
                             .accessibilityHint("也可以点提示文字或向下划关闭")
                     }
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
+                .layoutPriority(1)
                 .contentShape(Rectangle())
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("toastBody")
             if let onUndo {
-                Button(undoTitle, action: onUndo).yubaiFont(YubaiFont.row, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
-                    .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
-                    .background(YubaiColor.brandTint, in: Capsule()).fixedSize().yubaiHitTarget().buttonStyle(PressButtonStyle())
+                Button(action: onUndo) {
+                    Text(undoTitle).yubaiFont(YubaiFont.row, weight: .semibold).foregroundStyle(YubaiColor.brandInk)
+                        .fixedSize().padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.tapMin)
+                        .background(YubaiColor.brandTint, in: Capsule()).yubaiHitTarget()
+                }.fixedSize().buttonStyle(PressButtonStyle())
                     .accessibilityIdentifier(undoIdentifier)
             }
         }.padding(.leading, YubaiSpace.insetCard).padding(.trailing, YubaiSpace.space8).padding(.vertical, YubaiSpace.space4)
+            .frame(maxWidth: .infinity)
             .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).yubaiShadow(YubaiShadow.card)
             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapGroup)
             .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
@@ -1918,7 +1870,10 @@ struct Toast: View {
     }
     private var message: some View {
         Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
-            .lineLimit(expanded ? nil : 1).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
+            // Only a measured long message may collapse. Short receipts must
+            // retain every glyph, including during the first layout pass.
+            .lineLimit(expanded || textSize.isAccessibilitySize || !truncated ? nil : 1).truncationMode(.tail)
+            .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.body)
             .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
             .accessibilityElement(children: .ignore).accessibilityLabel(text).accessibilityIdentifier(messageIdentifier)
             .background {
@@ -2720,7 +2675,8 @@ struct IconGridCell: View {
     }
 }
 
-/// 整行等宽的分段；短选项保持横排，每项可点区域至少 44pt。
+/// Short choices share a row only when their intrinsic labels fit. Longer
+/// choices stack and wrap, preserving both the font and the full hit target.
 struct Segmented<Value: Hashable>: View {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
@@ -2731,20 +2687,33 @@ struct Segmented<Value: Hashable>: View {
     var identifier: ((Value) -> String)? = nil
     var background = YubaiColor.card
     var body: some View {
-        let layout = textSize.isAccessibilitySize && choices.contains(where: { $0.1.count > 3 }) ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
-        layout {
-            ForEach(choices.indices, id: \.self) { index in segment(choices[index].0, title: choices[index].1) }
+        Group {
+            if textSize.isAccessibilitySize && choices.contains(where: { $0.1.count > 3 }) { segments(stacked: true) }
+            else {
+                ViewThatFits(in: .horizontal) {
+                    segments(stacked: false)
+                    segments(stacked: true)
+                }
+            }
         }.padding(YubaiSpace.space4)
             .background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
     }
-    private func segment(_ value: Value, title: String) -> some View {
+    private func segments(stacked: Bool) -> some View {
+        let layout = stacked ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
+        return layout {
+            ForEach(choices.indices, id: \.self) { index in
+                segment(choices[index].0, title: choices[index].1, stacked: stacked)
+            }
+        }
+    }
+    private func segment(_ value: Value, title: String, stacked: Bool) -> some View {
         let on = selection == value
         return Button { selection = value } label: {
             Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
                 .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.row)
-                .dynamicTypeSize(...(title.count <= 3 ? DynamicTypeSize.xxxLarge : .accessibility5))
+                .yubaiTextLineBox(YubaiFont.row).fixedSize(horizontal: !stacked, vertical: true)
+                .multilineTextAlignment(.center)
                 .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity, minHeight: minimum)
@@ -3005,9 +2974,8 @@ private struct NativeRowInput: UIViewRepresentable {
         if host.desiredFocus != input.isFirstResponder { host.scheduleFocusUpdate() }
     }
     static func dismantleUIView(_ host: FieldHost, coordinator: Coordinator) {
-        host.desiredFocus = false; host.focusChanged = nil; host.editingChanged = nil
+        host.dismantle()
         host.field.delegate = nil; host.editor.delegate = nil
-        host.updateFocus()
     }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: FieldHost, context: Context) -> CGSize? {
         let width = proposal.width ?? YubaiSize.fieldMinimum
@@ -3018,10 +2986,14 @@ private struct NativeRowInput: UIViewRepresentable {
         let editor = UITextView()
         let placeholder = UILabel()
         let multiline: Bool
-        var desiredFocus = false
+        var desiredFocus = false {
+            didSet { if oldValue != desiredFocus { focusRevision &+= 1 } }
+        }
         var focusChanged: ((Bool) -> Void)?
         var editingChanged: ((Bool) -> Void)?
         private var awaitingPresentation = false
+        private var dismantled = false
+        private var focusRevision = 0
         private var focusUpdateScheduled = false
         private var sizeUpdateScheduled = false
         private var lastHeight: CGFloat = 0
@@ -3094,8 +3066,8 @@ private struct NativeRowInput: UIViewRepresentable {
             }
         }
         @objc private func requestFocus() {
-            guard field.isEnabled, editor.isEditable else { return }
-            desiredFocus = true; focusChanged?(true); updateFocus()
+            guard !dismantled, field.isEnabled, editor.isEditable else { return }
+            desiredFocus = true; publishFocus(true); scheduleFocusUpdate()
         }
         private var presentationTransition: UIViewControllerTransitionCoordinator? {
             var responder: UIResponder? = self
@@ -3106,29 +3078,61 @@ private struct NativeRowInput: UIViewRepresentable {
             return nil
         }
         func updateFocus(afterPresentation: Bool = false) {
+            guard !dismantled else { return }
             let input: UIView = multiline ? editor : field
-            guard !awaitingPresentation else { return }
-            if desiredFocus, window != nil, !afterPresentation, let transition = presentationTransition {
+            // Ending editing must never acquire focus again, including during
+            // dismissal. A pending transition is only an initial focus request.
+            if !desiredFocus {
+                if input.isFirstResponder { input.resignFirstResponder() }
+                return
+            }
+            guard let attachedWindow = window, !bounds.isEmpty,
+                  !input.isFirstResponder, !awaitingPresentation else { return }
+            if !afterPresentation, let transition = presentationTransition {
                 // Nested sheets can attach their fields before UIKit allows a
                 // new first responder. Retry at actual transition completion.
                 awaitingPresentation = true
-                let registered = transition.animate(alongsideTransition: nil) { [weak self] _ in
+                let revision = focusRevision
+                let registered = transition.animate(alongsideTransition: nil) { [weak self, weak attachedWindow] context in
                     guard let self else { return }
-                    awaitingPresentation = false; updateFocus(afterPresentation: true)
+                    awaitingPresentation = false
+                    // UIKit is still unwinding the presentation's completion
+                    // and keyboard transaction here. Acquire on the next turn,
+                    // only for the same live request and attached window.
+                    let cancelled = context.isCancelled
+                    DispatchQueue.main.async { [weak self, weak attachedWindow] in
+                        guard let self, let attachedWindow, !cancelled,
+                              !dismantled, desiredFocus, focusRevision == revision,
+                              window === attachedWindow else { return }
+                        updateFocus(afterPresentation: true)
+                    }
                 }
                 if registered { return }
                 awaitingPresentation = false
             }
-            if desiredFocus && window != nil && !bounds.isEmpty && !input.isFirstResponder { input.becomeFirstResponder() }
-            if !desiredFocus && input.isFirstResponder { input.resignFirstResponder() }
+            input.becomeFirstResponder()
         }
         func editingEnded() {
-            // UIKit may end editing while a sheet is still entering. Preserve
-            // the user's request until that transition has really finished.
-            if desiredFocus, presentationTransition != nil || awaitingPresentation {
-                updateFocus(); return
+            desiredFocus = false; publishFocus(false); editingChanged?(false)
+        }
+        func editingBegan() {
+            guard !dismantled else { return }
+            desiredFocus = true; publishFocus(true); editingChanged?(true)
+        }
+        private func publishFocus(_ value: Bool) {
+            let revision = focusRevision
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !dismantled, focusRevision == revision, desiredFocus == value else { return }
+                focusChanged?(value)
             }
-            desiredFocus = false; focusChanged?(false); editingChanged?(false)
+        }
+        func dismantle() {
+            dismantled = true; desiredFocus = false
+            focusChanged = nil; editingChanged = nil
+            // Resign even if a presentation callback is pending. The callback
+            // cannot revive this editor after SwiftUI has removed its sheet.
+            let input: UIView = multiline ? editor : field
+            if input.isFirstResponder { input.resignFirstResponder() }
         }
     }
     final class Coordinator: NSObject, UITextFieldDelegate, UITextViewDelegate {
@@ -3136,8 +3140,7 @@ private struct NativeRowInput: UIViewRepresentable {
         init(_ parent: NativeRowInput) { self.parent = parent }
         @objc func changed(_ field: UITextField) { parent.text = field.text ?? "" }
         func textFieldDidBeginEditing(_ textField: UITextField) {
-            (textField.superview as? FieldHost)?.desiredFocus = true
-            parent.focus.wrappedValue = true; parent.editingChanged(true)
+            (textField.superview as? FieldHost)?.editingBegan()
         }
         func textFieldDidEndEditing(_ textField: UITextField) { (textField.superview as? FieldHost)?.editingEnded() }
         func textFieldShouldReturn(_ textField: UITextField) -> Bool {
@@ -3150,8 +3153,7 @@ private struct NativeRowInput: UIViewRepresentable {
             (textView.superview as? FieldHost)?.scheduleSizeUpdate()
         }
         func textViewDidBeginEditing(_ textView: UITextView) {
-            (textView.superview as? FieldHost)?.desiredFocus = true
-            parent.focus.wrappedValue = true; parent.editingChanged(true)
+            (textView.superview as? FieldHost)?.editingBegan()
         }
         func textViewDidEndEditing(_ textView: UITextView) { (textView.superview as? FieldHost)?.editingEnded() }
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {

@@ -49,10 +49,36 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     func testSavedPillPushesAndBackReturnsToLedger() {
         launch(); tap("openSaving")
         XCTAssertTrue(app.navigationBars["存钱"].waitForExistence(timeout: 5)); XCTAssertFalse(element("mainNavigation").exists)
+        XCTAssertEqual(app.scrollViews.matching(identifier: "savingTabScroll").count, 1)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "savingTabScroll").count, 1)
         tap("BackButton"); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 5)); XCTAssertTrue(element("tab_ledger").isSelected)
         XCTAssertEqual(app.buttons.matching(identifier: "openSaving").count, 1)
         XCTAssertTrue(element("openSaving").label.contains("已存"))
         XCTAssertTrue(element("openSaving").label.contains("¥"))
+    }
+    func testBambooRendersOffMainAndBodyUpdatesReuseBothCachedAppearances() {
+        for dark in [false, true] {
+            launch(dark: dark)
+            XCTAssertTrue(UIConditionWait.run(timeout: 30, read: {
+                guard let bamboo = self.windowMetrics(in: self.app)?.bamboo else { return false }
+                return bamboo.ready.contains(where: { $0.hasPrefix("light@") }) &&
+                    bamboo.ready.contains(where: { $0.hasPrefix("dark@") }) && bamboo.pending == 0
+            }), "Both bamboo appearances must finish on the worker")
+            guard let before = windowMetrics(in: app)?.bamboo else { XCTFail("Missing raster diagnostics"); return }
+            XCTAssertEqual(before.mainRenders, 0)
+            XCTAssertEqual(before.renders, before.ready.count)
+            // Each action evaluates the root background/body again; none may
+            // render, even when the other tab's task requests the same key.
+            tap("toggleAmountVisibility")
+            for tab in ["insights", "yubai", "ledger"] { tap("tab_" + tab) }
+            tap("toggleAmountVisibility")
+            guard let after = windowMetrics(in: app)?.bamboo else { XCTFail("Missing raster diagnostics after layout"); return }
+            XCTAssertEqual(after.mainRenders, 0)
+            XCTAssertEqual(after.renders, before.renders)
+            XCTAssertEqual(after.ready, before.ready)
+            XCTAssertEqual(app.state, .runningForeground)
+            app.terminate()
+        }
     }
     func testHeaderControlsNavigateIndependentlyInBothOrders() {
         for large in [false, true] {

@@ -102,6 +102,107 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         tap("BackButton"); tap("tab_yubai"); tap("openProfile")
         expect("profileArea_" + String(format: "47000000-0000-0000-0000-%012d", 478201), contains: "900.00")
     }
+    func testLargestSoftLineEditorsRevealTheirVirtualizedRowsInTheOwningPage() {
+        launch("v47r-soft-lines", large: true); formula()
+        let watchRow = element("softLine_" + watch(478201))
+        XCTAssertTrue(revealControl(watchRow, in: app, deadline: Date().addingTimeInterval(60), searching: element("formulaPage")))
+        tapControl(watchRow, in: app); keys("900"); tap("saveSoftLine")
+        expect("softLine_" + watch(478201), contains: "420.00")
+        tap("BackButton"); tap("tab_insights"); tap("insightCategory_0")
+        let countMode = element("modeSoftLine_" + watch(478201))
+        XCTAssertTrue(revealControl(countMode, in: app, deadline: Date().addingTimeInterval(60), searching: element("whereCategoryPage")))
+        tapControl(countMode, in: app); keys("5"); tap("saveSoftLine")
+        let countRow = element("softLine_" + watch(478201, "count"))
+        XCTAssertTrue(revealControl(countRow, in: app, deadline: Date().addingTimeInterval(60), searching: element("whereCategoryPage")))
+        expect("softLine_" + watch(478201, "count"), contains: "还剩 4 次")
+    }
+    func testReconcileReceiptShowsFullAdjustmentAndUndoAcrossAllGalleryModes() {
+        for mode in galleryModes {
+            launch("v47r-reconcile-floor", large: mode.large, dark: mode.dark, hidden: mode.hidden)
+            tap("tab_yubai"); tap("openAccounts"); tap("reconcileAll")
+            reconcile("9774"); tap("reconcileApply")
+            let message = element("toastMessage"), undo = element("undoLastChange")
+            XCTAssertTrue(message.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitForStableFrame(message))
+            XCTAssertEqual(message.label, mode.hidden ? "已记调整 −••••" : "已记调整 −2,400.00")
+            if mode.large { XCTAssertGreaterThanOrEqual(undo.frame.minY, message.frame.maxY) }
+            else {
+                XCTAssertGreaterThanOrEqual(undo.frame.minX, message.frame.maxX)
+                XCTAssertFalse(element("expandToast").exists, "A short receipt must fit beside undo")
+            }
+            XCTAssertTrue(undo.isHittable)
+            XCTAssertNoThrow(try auditAppText(in: app) { issue in
+                if let target = issue.element, target.label.contains("已记调整") {
+                    XCTFail("Adjustment receipt must wrap without clipping: " + issue.detailedDescription)
+                }
+                return true
+            })
+            tap("undoLastChange"); expect("toastMessage", contains: "已撤销")
+        }
+    }
+    private var galleryModes: [(large: Bool, dark: Bool, hidden: Bool)] {
+        [(false, false, false), (false, true, false), (false, false, true), (true, false, false)]
+    }
+    func testSavingSegmentsKeepBothCompleteLabelsAcrossAllGalleryModes() {
+        for mode in galleryModes {
+            launch("v47r-deficit", large: mode.large, dark: mode.dark, hidden: mode.hidden)
+            formula(); tap("formulaRow_saving")
+            for id in ["savingMode_fixed", "savingMode_share"] {
+                let segment = element(id)
+                XCTAssertTrue(segment.waitForExistence(timeout: 5))
+                XCTAssertEqual(app.buttons.matching(identifier: id).count, 1)
+                XCTAssertGreaterThanOrEqual(segment.frame.height, 43.5)
+                tap(id)
+                XCTAssertTrue(segment.isSelected)
+                XCTAssertNoThrow(try auditAppText(in: app) { issue in
+                    if let target = issue.element, ["固定金额", "每笔进账留几成"].contains(target.label) {
+                        XCTFail("Saving segment clipped: " + issue.detailedDescription)
+                    }
+                    return true
+                })
+            }
+            tap("amountSheetCancel")
+        }
+    }
+    func testLargestDeficitRescueRevealsAboveTheEntryPillAndRemainsUndoable() {
+        launch("v47r-deficit", large: true)
+        let rescue = element("coverFromReserve")
+        XCTAssertTrue(revealControl(rescue, in: app, deadline: Date().addingTimeInterval(60), searching: element("entriesScroll")))
+        XCTAssertLessThanOrEqual(rescue.frame.maxY, element("addEntry").frame.minY)
+        XCTAssertTrue(rescue.isHittable)
+        tapControl(rescue, in: app); expect("availableFunds", contains: "¥0.00"); gone("deficitRescueCard")
+        tap("undoLastChange"); expect("availableFunds", contains: "¥350.00")
+    }
+    func testSoftLineKeypadClearsTheSubmittedSystemKeyboardAcrossAllGalleryModes() {
+        for mode in galleryModes {
+            launch("v47r-soft-lines", large: mode.large, dark: mode.dark, hidden: mode.hidden)
+            tap("addEntry"); typeIntoField("外卖\n", identifier: "entryPurpose", in: app)
+            XCTAssertFalse(app.keyboards.firstMatch.exists)
+            for key in ["3", "8"] {
+                let target = element("keypad_" + key)
+                XCTAssertTrue(revealControl(target, in: app, deadline: Date().addingTimeInterval(20)))
+                XCTAssertTrue(target.isHittable)
+                XCTAssertTrue(app.frame.contains(target.frame))
+                tapControl(target, in: app, settles: false)
+            }
+            expect("entrySavingHint", contains: mode.hidden ? "••••" : "282.00")
+            tap("saveQuickEntry"); expect("entrySessionSummary", contains: "1 笔")
+        }
+    }
+    func testCategoryPlaceFactsWrapWithoutClippingAcrossAllGalleryModes() {
+        for mode in galleryModes {
+            launch("v47r-soft-lines", large: mode.large, dark: mode.dark, hidden: mode.hidden)
+            tap("tab_insights"); tap("insightCategory_0")
+            let places = element("whereCategoryPlaces")
+            XCTAssertTrue(revealControl(places, in: app, deadline: Date().addingTimeInterval(60), searching: element("whereCategoryPage")))
+            XCTAssertNoThrow(try auditAppText(in: app) { issue in
+                if let target = issue.element, target.label.contains("外卖") && target.label.contains("次") {
+                    XCTFail("Place and count must wrap or stack: " + issue.detailedDescription)
+                }
+                return true
+            })
+        }
+    }
     func testUnwatchedFormulaHasOnlyTheAddWatchRow() {
         launch(); formula(); XCTAssertFalse(element("softLineWatches").exists)
         tap("addSoftLine"); tap("entryMoreCategory_购物"); keys("800"); tap("saveSoftLine")
@@ -189,7 +290,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertGreaterThan(headline.frame.height, before)
         XCTAssertEqual(headline.label, fullLabel)
         XCTAssertEqual(headline.value as? String, "已展开")
-        XCTAssertNoThrow(try app.performAccessibilityAudit(for: [.textClipped]) { issue in
+        XCTAssertNoThrow(try auditAppText(in: app) { issue in
             if let target = issue.element, ["butlerAIText", "butlerAIAccept"].contains(target.identifier) {
                 XCTFail("Expanded text/action must be fully legible: " + target.identifier + " " + issue.detailedDescription)
             }

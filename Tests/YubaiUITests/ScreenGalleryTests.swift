@@ -8,6 +8,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private var warnings: [String] = []
     private var planned: [String] = []
     private var activeStop: String?
+    private var processes = GalleryProcessHistory()
+    private var stopHasReportedResult = false
     private var stopDeadline = Date.distantFuture
     private var attachedAuditInventory = false
     private var verifiedHeadlines: Set<String> = []
@@ -37,13 +39,30 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     // A native XCTest interaction can record an issue without throwing. Associate it
     // with this stop, keep walking, and emit one aggregate failure after all shots.
+    override func handleDeferredUIIssue(_ issue: XCTIssue) -> Bool {
+        // Handle the known earlier death before launchApp mistakes this late
+        // issue for a failure of the healthy replacement process's launch.
+        guard issue.compactDescription.contains("app.yubai.personal crashed"),
+              processes.hasUnreportedDeath,
+              let owner = processes.crashOwner(fallback: nil) else { return false }
+        recordProcessFailure(issue.compactDescription, owner: owner)
+        return true
+    }
     override func recordUIIssue(_ issue: XCTIssue) {
+        if issue.compactDescription.contains("app.yubai.personal crashed") {
+            if app.state == .notRunning { _ = processes.observeStopped() }
+            if let owner = processes.crashOwner(fallback: activeStop) {
+                recordProcessFailure(issue.compactDescription, owner: owner)
+            } else { super.recordUIIssue(issue) }
+            return
+        }
         if activeStop != nil { issues.append(issue.compactDescription) }
         else { super.recordUIIssue(issue) }
     }
 
     override func tearDownWithError() throws {
         if directory != nil {
+            observeStoppedProcess(phase: "walk teardown")
             collectMainThreadStalls(in: app, context: prefix + "end")
             printAllMainThreadStalls(context: prefix + "walk")
             app.terminate()
@@ -81,7 +100,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     /// This is the only screenshot writer, including failure screenshots.
     private func shot(_ name: String) {
+        _ = captureProcessIsRunning(phase: "before screenshot")
         let screenshot = XCUIScreen.main.screenshot()
+        _ = captureProcessIsRunning(phase: "after screenshot")
+        let name = name.hasSuffix("-MISSING") || issues.isEmpty ? name : name + "-MISSING"
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         if let path = ProcessInfo.processInfo.environment["YUBAI_GALLERY_DIR"], !path.isEmpty {
@@ -92,7 +114,12 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     @discardableResult private func stop(_ suffix: String, budget: TimeInterval = 90, _ walk: () throws -> Void) -> Bool {
         let name = prefix + suffix
+        // Observe a death between stops before changing that process's owner.
+        observeStoppedProcess(phase: "before next stop")
         planned.append(name); activeStop = name; issues = []
+        stopHasReportedResult = false
+        processes.enterStop(name)
+        print("GALLERY-PROCESS stop=\(name) run=\(processes.run) begin")
         stopDeadline = Date().addingTimeInterval(budget)
         attachedAuditInventory = false
         defer { activeStop = nil }
@@ -100,13 +127,15 @@ final class ScreenGalleryTests: YubaiUITestCase {
         do { try walk() }
         catch { walkFailed = true; issues.append(String(describing: error).replacingOccurrences(of: "\n", with: " ")) }
         // Audit even an unreached stop. Every finding belongs to these same pixels.
-        if app.state == .runningForeground {
+        if captureProcessIsRunning(phase: "after walk") {
             if !dismissKeyboardIntroduction(in: app) { issues.append("System keyboard introduction could not be dismissed") }
-            let scroll = app.scrollViews.allElementsBoundByIndex.last
-            if let scroll, scroll.exists, !waitForStableFrame(scroll) { issues.append("Scroll/presentation frame did not settle") }
+            if !waitForNativeTransition(in: app, deadline: stopDeadline) { issues.append("Presentation transition did not settle") }
+            let scroll = app.scrollViews.firstMatch
+            if scroll.exists, !waitForStableFrame(scroll, deadline: stopDeadline) { issues.append("Scroll/presentation frame did not settle") }
         }
-        do { try auditGallery() }
+        do { if captureProcessIsRunning(phase: "before audit") { try auditGallery() } }
         catch { issues.append("Audit failed: " + String(describing: error)) }
+        _ = captureProcessIsRunning(phase: "after audit")
         let hadFindings = !issues.isEmpty
         shot(name + (hadFindings ? "-MISSING" : ""))
         // Screenshot/snapshot APIs can also record an XCTest issue. Preserve
@@ -114,6 +143,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         if !hadFindings && !issues.isEmpty { shot(name + "-MISSING") }
         issues = Array(Set(issues)).sorted()
         let failed = !issues.isEmpty
+        stopHasReportedResult = true
         if failed {
             collectMainThreadStalls(in: app, context: name, attach: true)
             for finding in issues {
@@ -124,11 +154,40 @@ final class ScreenGalleryTests: YubaiUITestCase {
             if let directory { try? tree.write(to: directory.appendingPathComponent(name + "-MISSING-hierarchy.txt"), atomically: true, encoding: .utf8) }
             let hierarchy = XCTAttachment(string: tree)
             hierarchy.name = name + "-MISSING-hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
-            // A checker finding must not destroy the valid state needed by the
-            // next stop. Only an interaction failure needs recovery.
-            if walkFailed, let relaunch { try? relaunch() }
+            // Preserve valid state after checker findings. An interaction
+            // failure or dead process needs recovery before the next stop.
+            if walkFailed || app.state != .runningForeground, let relaunch { try? relaunch() }
         } else { print("GALLERY-STOP ok " + name) }
         return !failed
+    }
+
+    private func recordProcessFailure(_ finding: String, owner: String) {
+        if owner == activeStop && !stopHasReportedResult { issues.append(finding); return }
+        let line = owner + "-MISSING: " + finding
+        if !missing.contains(line) { missing.append(line); print("GALLERY-STOP " + line) }
+        // A death observed just after a prior capture invalidates that stop's
+        // success file as well. Retain the pixels under the failure name.
+        if let directory {
+            let clean = directory.appendingPathComponent(owner + ".png")
+            let failed = directory.appendingPathComponent(owner + "-MISSING.png")
+            if FileManager.default.fileExists(atPath: clean.path) {
+                try? FileManager.default.moveItem(at: clean, to: failed)
+            }
+        }
+    }
+    private func observeStoppedProcess(phase: String) {
+        guard app.state == .notRunning, let owner = processes.observeStopped() else { return }
+        recordProcessFailure("App process stopped during " + owner + " (" + phase + ")", owner: owner)
+        print("GALLERY-PROCESS stop=\(owner) run=\(processes.run) died phase=\(phase)")
+    }
+    private func captureProcessIsRunning(phase: String) -> Bool {
+        let state = app.state
+        if state == .notRunning { observeStoppedProcess(phase: phase) }
+        guard state == .runningForeground else {
+            issues.append("App process is not running in foreground at " + phase + ": state=\(state.rawValue)")
+            return false
+        }
+        return true
     }
 
     private func frameText(_ frame: CGRect) -> String {
@@ -154,7 +213,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
     }
     private func require(_ id: String, timeout: TimeInterval = 6) throws {
         guard stopDeadline > Date() else { throw Miss(description: "Stop deadline exceeded requiring " + id) }
-        if !element(id).waitForExistence(timeout: min(timeout, stopDeadline.timeIntervalSinceNow)) {
+        let target = element(id)
+        let end = ProcessInfo.processInfo.systemUptime + stopDeadline.timeIntervalSinceNow
+        if !UIConditionWait.run(timeout: timeout, deadline: end, read: { target.exists }) {
             attachTapFailureDiagnostics(reason: "Missing destination: " + id)
             // Keep checking the other required identifiers at this stop. A
             // later interaction still throws if the missing control is needed.
@@ -163,16 +224,18 @@ final class ScreenGalleryTests: YubaiUITestCase {
     }
     /// Navigation prerequisites cannot be treated as a successful route while
     /// the previous page/sheet is still on screen.
-    private func destination(_ id: String) throws {
-        try wait({ self.element(id).exists }, "Destination did not appear: " + id, timeout: 12)
+    private func destination(_ id: String, timeout: TimeInterval = 12) throws {
+        let target = element(id)
+        try wait({ target.exists }, "Destination did not appear: " + id, timeout: timeout)
         guard waitForNativeTransition(in: app, deadline: stopDeadline),
-              waitForStableFrame(element(id), deadline: stopDeadline), element(id).exists else {
+              waitForStableFrame(target, deadline: stopDeadline), target.exists, Date() < stopDeadline else {
             throw Miss(description: "Destination did not settle: " + id)
         }
     }
     private func launch(_ fixture: String = "gallery", dark: Bool = false, large: Bool = false, organization: String? = nil, statement: String? = nil, longToast: Bool = false, reduceMotion: Bool = false, restoring: Bool = false, versions: Bool = false) throws {
         relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement, longToast: longToast, reduceMotion: reduceMotion, restoring: restoring, versions: versions) }
         collectMainThreadStalls(in: app, context: activeStop ?? prefix + "relaunch")
+        observeStoppedProcess(phase: "before intentional relaunch")
         app.terminate(); app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
@@ -194,8 +257,12 @@ final class ScreenGalleryTests: YubaiUITestCase {
         if let organization { app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = organization }
         if let statement { app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(statement.utf8).base64EncodedString() }
         guard launchApp(app) else { throw Miss(description: "Application launch failed after three attempts") }
-        try require(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
-        try destination(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation")
+        processes.launched(in: activeStop)
+        print("GALLERY-PROCESS stop=\(activeStop ?? prefix) run=\(processes.run) launched")
+        // One strict route check includes existence, native transition and
+        // two stable frames. A preceding XCTest existence poll duplicated it
+        // and consumed the final second after the measured cold launch.
+        try destination(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
     }
     private func drag(_ scroll: XCUIElement, up: Bool = true) throws {
         // XCUITest reports some SwiftUI scroll containers as not hittable although a finger can drag them;
@@ -242,9 +309,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
             throw Miss(description: "Not reachable: " + describe(target))
         }
     }
-    private func tap(_ target: XCUIElement) throws {
+    private func tap(_ target: XCUIElement, searching scroll: XCUIElement? = nil) throws {
         rememberTap(target, in: app)
-        try reveal(target)
+        try reveal(target, searching: scroll)
         if !target.identifier.hasPrefix("keypad_") {
             guard waitForStableFrame(target, deadline: stopDeadline) else {
                 throw Miss(description: "Control frame did not settle: " + describe(target))
@@ -255,20 +322,20 @@ final class ScreenGalleryTests: YubaiUITestCase {
         if !settledControlClearsViewport(target) {
             // A sheet's native viewport may have changed while its target was
             // settling. Re-read that boundary, retaining whole-frame checks.
-            try reveal(target)
+            try reveal(target, searching: scroll)
             guard settledControlClearsViewport(target) else { throw Miss(description: "Control covered: " + describe(target)) }
         }
         rememberTap(target, in: app)
         target.tap()
     }
-    private func tap(_ id: String) throws {
+    private func tap(_ id: String, searching scroll: XCUIElement? = nil) throws {
         if id.hasPrefix("tab_"), app.keyboards.firstMatch.exists {
             // The capsule is hidden while editing, as in the real app. Submit
             // the search before reselection, matching the Home flow test.
             if element("entriesSearch").exists { element("entriesSearch").typeText("\n") }
             try wait({ !self.app.keyboards.firstMatch.exists }, "Keyboard did not dismiss before switching tabs")
         }
-        try tap(element(id))
+        try tap(element(id), searching: scroll)
     }
     private func type(_ value: String, into id: String) throws {
         if id == "entriesSearch" && !element(id).exists { try tap("openLedgerSearch") }
@@ -278,6 +345,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
         guard dismissKeyboardIntroduction(in: app) else { throw Miss(description: "System keyboard introduction could not be dismissed") }
         guard waitForKeyboardEditing(id, in: app, deadline: stopDeadline) else { throw Miss(description: "Keyboard/focus/frame did not settle: " + id) }
         field.typeText(value)
+        if value.hasSuffix("\n"), !waitForKeyboardDismissal(in: app, deadline: stopDeadline) {
+            throw Miss(description: "Keyboard did not dismiss after submitting " + id)
+        }
         if ["frequentEntryPurpose", "butlerAICorrectionText"].contains(id) {
             let expected = value.trimmingCharacters(in: .newlines)
             try wait({ (field.value as? String ?? "").contains(expected) }, "Field did not retain the full text: " + id)
@@ -478,7 +548,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Home-AI") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try reveal(element("butlerAIAccept")) }
         stop("AI-Why") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage"); try require("butlerEvidenceMore") }
         stop("AI-Why-All") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerEvidenceMore"); try require("butlerEvidenceEntry_" + galleryID(472107)) }
-        stop("AI-Why-Correction") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try type("周四是和同事拼单", into: "butlerAICorrectionText"); try require("butlerAICorrectionSave") }
+        stop("AI-Why-Correction") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try type("周四是和同事拼单", into: "butlerAICorrectionText"); try require("butlerAICorrectionSave"); try requireCorrectionKeyboard() }
         stop("Home-AI-Hard") { try load("v47-ai-hard"); try require("butlerSuggestionCard", timeout: 12); try reveal(element("butlerAIAccept")) }
         stop("AI-Why-Hard") { try load("v47-ai-hard"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage"); try require("butlerEvidenceMore") }
         stop("Home-AI-Review") { try load("v47-ai-review"); try require("butlerAIReviewCard") }
@@ -528,7 +598,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Home-AI-Malformed") { try rejected("v47-ai-malformed") }
         stop("Home-AI-Empty-Reply") { try rejected("v47-ai-none") }
         stop("Home-AI-Disabled") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try settings("openIntelligencePrivacy"); try tap("aiFeature_butlerSuggestions"); try wait({ self.element("aiFeature_butlerSuggestions").value as? String == "0" }, "Suggestion switch did not turn off"); try root("ledger"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestions disabled") }
-        stop("AI-Why-Correction-Empty") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave") }
+        stop("AI-Why-Correction-Empty") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave"); try requireCorrectionKeyboard() }
         stop("AI-Why-Corrected") {
             try load("v47-ai-valid")
             try deckAction("butlerAIEvidence")
@@ -617,7 +687,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Butler-Cards-Long") { try load("v47r-weekly-ai"); if element("expandButlerHeadline").exists { try tap("expandButlerHeadline") }; try require("butlerAIAccept") }
         stop("Butler-Cards-Soft-Suggestion") { try load("v47r-suggestion"); try require("butlerAIAccept"); try require("butlerAIIncorrect") }
         stop("Butler-Cards-Suggestion-Accepted") { try load("v47r-suggestion"); try tap("butlerAIAccept"); try formula(); try reveal(element("softLineWatches")) }
-        stop("Butler-Cards-Correction") { try load("v47r-weekly-ai"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave") }
+        stop("Butler-Cards-Correction") { try load("v47r-weekly-ai"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave"); try requireCorrectionKeyboard() }
         stop("Butler-Cards-Mismatch") { try load("v47r-mismatch"); try require("balanceMismatchCard"); try require("openReconcile") }
         stop("Butler-Cards-Yearly") { try load("v47r-next-bill"); try require("billHeadsUpText"); try require("openBillHeadsUp") }
         stop("Butler-Cards-Quarterly") { try load("v47r-next-quarterly"); try require("billHeadsUpText") }
@@ -633,7 +703,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
         func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
         stop("Spend-Soft-Empty") { try load("v47-spend"); try formula(); try reveal(element("addSoftLine")) }
-        stop("Spend-Soft-Edit") { try load("v47r-soft-lines"); try formula(); try tap("softLine_" + galleryID(478201) + ":amount"); try require("saveSoftLine") }
+        stop("Spend-Soft-Edit") { try load("v47r-soft-lines"); try formula(); try tap("softLine_" + galleryID(478201) + ":amount", searching: element("formulaPage")); try require("saveSoftLine") }
         stop("Entry-Recon-Soft-Live") { try load("v47r-soft-lines"); try tap("addEntry"); try type("外卖\n", into: "entryPurpose"); try keys("38"); try require("entrySavingHint") }
         stop("Entry-Recon-Soft-Exceeded") { try load("v47r-soft-lines"); try tap("addEntry"); try type("外卖\n", into: "entryPurpose"); try keys("338"); try require("entrySavingHint") }
         stop("Entry-Recon-Soft-Count") { try load("v47r-soft-count"); try tap("addEntry"); try type("咖啡\n", into: "entryPurpose"); try keys("18"); try require("entrySavingHint") }
@@ -652,7 +722,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
         stop("Insights-Soft-Lines") { try load("v47r-soft-lines"); try root("insights"); try require("insightSoftLine_" + galleryID(478201) + ":amount") }
         stop("Insights-Soft-Detail") { try load("v47r-soft-lines"); try root("insights"); try tap("insightCategory_0"); try reveal(element("addSoftLine")) }
-        stop("Insights-Soft-Count-Edit") { try load("v47r-soft-lines"); try root("insights"); try tap("insightCategory_0"); try tap("modeSoftLine_" + galleryID(478201) + ":amount"); try require("saveSoftLine") }
+        stop("Insights-Soft-Count-Edit") { try load("v47r-soft-lines"); try root("insights"); try tap("insightCategory_0"); try tap("modeSoftLine_" + galleryID(478201) + ":amount", searching: element("whereCategoryPage")); try require("saveSoftLine") }
         stop("Insights-Soft-Whole-Category") { try load("v47-spend"); try root("insights"); try tap("insightCategory_0"); try tap("addSoftLine"); try require("saveSoftLine") }
         stop("Spend-Entries", budget: 180) { try load(); try formula(); try tap("formulaRow_spent"); try destination("entriesScroll") }
         stop("Save-Page-Flexible") { try saving(); try require("takeSavings"); try require("putBackSavings"); try reveal(element("editSavingsFloor")) }
@@ -1018,6 +1088,13 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private func requireKeyboard() throws {
         try wait({ self.app.keyboards.firstMatch.exists }, "Expected keyboard is absent")
     }
+    private func requireCorrectionKeyboard() throws {
+        try requireKeyboard()
+        guard dismissKeyboardIntroduction(in: app),
+              waitForKeyboardEditing("butlerAICorrectionText", in: app, deadline: stopDeadline) else {
+            throw Miss(description: "Autofocused correction keyboard/focus/frame did not settle")
+        }
+    }
     private func ask(_ text: String) throws {
         try root("yubai"); try type(text, into: "askYubai"); try tap("sendAskHome"); try require("askInput")
     }
@@ -1249,7 +1326,6 @@ final class ScreenGalleryTests: YubaiUITestCase {
         // content host. No localized label is used, and app-owned descendants
         // do not meet this owner/type relationship.
         var grabberFrames: [CGRect] = []
-        var keyboardNodes = Set<String>()
         typealias ScrollAncestor = (key: String, frame: CGRect, identifier: String)
         typealias Context = (frame: CGRect, ancestors: [ScrollAncestor], fixedChrome: Bool, nativeNavigation: Bool, presentations: [CGRect])
         var scrollAncestors: [String: [Context]] = [:]
@@ -1257,6 +1333,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         var scaledPresentationFrames: [CGRect] = []
         var nativeMetrics: UIWindowMetrics?
         var presentationSnapshot: XCUIElementSnapshot?
+        var auditScope: UIAppContentAuditScope?
         func ancestryIdentity(_ node: XCUIElementSnapshot) -> String {
             "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)"
         }
@@ -1278,25 +1355,6 @@ final class ScreenGalleryTests: YubaiUITestCase {
             for (index, child) in node.children.enumerated() {
                 indexScrolls(child, ancestors: next, path: path + "." + String(index), fixedChrome: fixed, nativeNavigation: native, presentations: scaled)
             }
-        }
-        func identity(_ node: XCUIElementSnapshot) -> String {
-            "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)|\(node.frame)"
-        }
-        func containsKeyboard(_ node: XCUIElementSnapshot) -> Bool {
-            node.elementType == .keyboard || node.children.contains(where: containsKeyboard)
-        }
-        func containsAppPage(_ node: XCUIElementSnapshot) -> Bool {
-            node.identifier.hasPrefix("rootPage_") || node.children.contains(where: containsAppPage)
-        }
-        func collectKeyboard(_ node: XCUIElementSnapshot, inKeyboard: Bool = false) {
-            guard node.identifier != UIWindowMetrics.probeIdentifier else { return }
-            // iOS puts the input assistant and keyboard-switch key beside the
-            // Keyboard node in its own window. Classify that owner structurally;
-            // never exempt a control by its localized key label or by its frame.
-            let owned = inKeyboard || node.elementType == .keyboard ||
-                (node.elementType == .window && containsKeyboard(node) && !containsAppPage(node))
-            if owned { keyboardNodes.insert(identity(node)) }
-            for child in node.children { collectKeyboard(child, inKeyboard: owned) }
         }
         func sheetGrabbers(_ owner: XCUIElementSnapshot) {
             guard owner.identifier != UIWindowMetrics.probeIdentifier else { return }
@@ -1322,30 +1380,27 @@ final class ScreenGalleryTests: YubaiUITestCase {
         do {
             let snapshot = try app.snapshot()
             presentationSnapshot = snapshot
-            sheetGrabbers(snapshot); collectKeyboard(snapshot); indexScrolls(snapshot)
+            sheetGrabbers(snapshot); indexScrolls(snapshot)
+            auditScope = UIAppContentAuditScope(snapshot)
             nativeMetrics = windowMetrics(in: snapshot)
         }
         catch { issues.append("Presentation snapshot unavailable: frame=<unreported> " + String(describing: error)) }
         // One coherent inventory, then a type-scoped hittability query only for
         // controls intersecting the window. No per-control snapshot/exists read.
-        var controls: [(target: XCUIElement, snapshot: XCUIElementSnapshot)] = []
-        var ordinals: [String: Int] = [:]
-        func inventoryControls(_ node: XCUIElementSnapshot) {
-            let type = node.elementType
-            let key = "\(type.rawValue)|\(node.identifier)|" + (node.identifier.isEmpty ? node.label : "")
-            let ordinal = ordinals[key, default: 0]
-            ordinals[key] = ordinal + 1
-            let interactive = [.button, .textField, .secureTextField, .textView, .switch].contains(type)
-            if (interactive || node.identifier == "toastMessage" && type == .staticText),
-               !node.frame.isEmpty, window.intersects(node.frame) {
-                let typed = app.descendants(matching: type)
-                let scoped = node.identifier.isEmpty ? typed.matching(NSPredicate(format: "identifier == '' AND label == %@", node.label)) : typed.matching(identifier: node.identifier)
-                controls.append((scoped.element(boundBy: ordinal), node))
+        let controls = presentationSnapshot.flatMap { tree in auditScope?.controls(in: tree, app: app) } ?? []
+        if let snapshot = presentationSnapshot, let focus = nativeMetrics?.focused, !focus.isEmpty {
+            var keyboards: [CGRect] = []
+            func collectKeyboardFrames(_ node: XCUIElementSnapshot) {
+                if node.elementType == .keyboard { keyboards.append(node.frame); return }
+                for child in node.children { collectKeyboardFrames(child) }
             }
-            for child in node.children { inventoryControls(child) }
+            collectKeyboardFrames(snapshot)
+            for (_, field) in controls where field.identifier == focus &&
+                !UIViewportGeometry.keyboardClears(field.frame, keyboards: keyboards) {
+                issues.append("Keyboard covers focused field: " + focus + " frame=" + frameText(field.frame))
+            }
         }
-        if let presentationSnapshot { inventoryControls(presentationSnapshot) }
-        typealias Candidate = (id: String, frame: CGRect, parts: [CGRect], ancestors: [ScrollAncestor], systemGrabber: Bool, keyboard: Bool, fixedChrome: Bool, nativeNavigation: Bool)
+        typealias Candidate = (id: String, frame: CGRect, parts: [CGRect], ancestors: [ScrollAncestor], systemGrabber: Bool, fixedChrome: Bool, nativeNavigation: Bool)
         var candidates: [Candidate] = []
         let toastIDs: Set<String> = ["undoLastChange", "toastMessage", "expandToast"]
         var toastOnTop = true
@@ -1358,6 +1413,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
         var occupiedScrolls: [String: ScrollAncestor] = [:]
         for (target, snapshot) in controls {
+            guard captureProcessIsRunning(phase: "control audit") else { throw Miss(description: "App process died during control audit") }
             if snapshot.identifier == UIWindowMetrics.probeIdentifier { continue }
             let frame = snapshot.frame
             guard !frame.isEmpty, window.intersects(frame) else { continue }
@@ -1377,7 +1433,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
             let parts = UIViewportGeometry.visibleParts(frame, ancestors: ancestors.map(\.frame),
                 excluding: ancestors.isEmpty ? [] : nativeNavigationFrames)
             guard !parts.isEmpty else { continue }
-            candidates.append((id, frame, parts, ancestors, systemGrabber, keyboardNodes.contains(identity(snapshot)), context.fixedChrome, context.nativeNavigation))
+            candidates.append((id, frame, parts, ancestors, systemGrabber, context.fixedChrome, context.nativeNavigation))
         }
         let toastControls = candidates.filter { toastIDs.contains($0.id) }
         let toastFrame = toastControls.reduce(CGRect.null) { $0.union($1.frame) }
@@ -1400,7 +1456,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
         for scroll in occupiedScrolls.values {
             for fixed in candidates where !fixed.ancestors.contains(where: { $0.key == scroll.key }) &&
-                !fixed.keyboard && !fixed.systemGrabber && !fixed.nativeNavigation && (fixed.fixedChrome || toastIDs.contains(fixed.id)) {
+                !fixed.systemGrabber && !fixed.nativeNavigation && (fixed.fixedChrome || toastIDs.contains(fixed.id)) {
                 if UIViewportGeometry.overlaps(scroll.frame, fixed.frame) {
                     // Only the global toast may float over scroll content, and
                     // UIKit must report enough remaining travel for every row.
@@ -1414,7 +1470,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
         var visible: [Candidate] = []
         for candidate in candidates {
-            let (id, frame, parts, _, systemGrabber, keyboard, _, _) = candidate
+            let (id, frame, parts, _, systemGrabber, _, _) = candidate
             if !window.insetBy(dx: -1, dy: -1).contains(frame) {
                 if ["saveQuickEntry", "amountSheetDone", "confirmSavingsTransfer", "saveSavingsFloor", "saveLetterEntry", "mainNavigation", "reconcileApply"].contains(id) {
                     issues.append("Off-screen control: " + id + " frame=" + frameText(frame))
@@ -1423,8 +1479,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
             }
             // An actual container is not a second control over its descendants.
             if candidates.contains(where: { other in frame.contains(other.frame) && frame.width * frame.height > other.frame.width * other.frame.height + 4 }) { continue }
-            if !keyboard && id.hasPrefix("<empty identifier>") { issues.append("Missing identifier: " + id + " frame=" + frameText(frame)) }
-            if !keyboard && !systemGrabber && (frame.width < 43.5 || frame.height < 43.5) { issues.append("Small hit target: " + id + " frame=" + frameText(frame)) }
+            if id.hasPrefix("<empty identifier>") { issues.append("Missing identifier: " + id + " frame=" + frameText(frame)) }
+            if !systemGrabber && (frame.width < 43.5 || frame.height < 43.5) { issues.append("Small hit target: " + id + " frame=" + frameText(frame)) }
             for other in visible where other.parts != parts {
                 for bounds in other.parts {
                     for clipped in parts where UIViewportGeometry.overlaps(bounds, clipped) {
@@ -1480,23 +1536,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 self.warnings.append(warning); print("GALLERY-WARNING " + warning)
                 return true
             }
-            // Run-4 light Saving/Deficit PNGs both show every glyph of this
-            // label. Keep the prior reviewed Saving variants and add only that
-            // reviewed Deficit size, within the same scaled native sheet.
             let stopName = self.activeStop ?? ""
-            let reviewedFixed = ["V47-light-Spend-Edit-Saving", "V47-dark-Spend-Edit-Saving",
-                                 "V47-hidden-Spend-Edit-Saving", "V47-a11y-Spend-Edit-Saving",
-                                 "V47-light-Spend-Edit-Deficit"].contains(stopName)
-            if reviewedFixed, target.identifier == "savingMode_fixed", target.label == "固定金额",
-               target.elementType == .button, target.isHittable, let snapshot = try? target.snapshot(),
-               snapshot.frame.height >= 43.5,
-               let context = scrollAncestors[ancestryIdentity(snapshot)]?.first(where: { $0.frame == snapshot.frame }),
-               let presentation = context.presentations.first, presentation.width / window.width < 1,
-               presentation.contains(snapshot.frame) {
-                let warning = stopName + ": Text clipped: PNG-reviewed complete fixed-amount label in scaled sheet; " + self.describe(target) + " " + issue.detailedDescription
-                self.warnings.append(warning); print("GALLERY-WARNING " + warning)
-                return true
-            }
             let reviewedFrequent = ["V47-light-Empty-Frequent", "V47-dark-Empty-Frequent", "V47-hidden-Empty-Frequent"].contains(stopName) &&
                 target.identifier.isEmpty && target.label == "常记的会自己出现"
             if stopName == "V47-a11y-Empty-Frequent", target.identifier.isEmpty, target.label == "常记的会自己出现" {
@@ -1528,7 +1568,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
         for attempt in 0..<2 {
         do {
-            try app.performAccessibilityAudit(for: [.textClipped]) { handleTextIssue($0) }
+            try auditAppText(in: app) { handleTextIssue($0) }
             break
         } catch {
             let failure = error as NSError
@@ -1586,7 +1626,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
             }
             verifyingExpanded = true
             let beforeIssues = issues.count
-            try app.performAccessibilityAudit(for: [.textClipped]) { handleTextIssue($0) }
+            try auditAppText(in: app) { handleTextIssue($0) }
             if unresolvedExpanded { issues.append("Expanded AI text audit was unresolved") }
             if issues.count == beforeIssues { verifiedHeadlines.insert(prefix + label) }
         }

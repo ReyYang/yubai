@@ -7,14 +7,21 @@ enum UIViewportGeometry {
     /// first. Native hittability owns occlusion; the structural gallery audit
     /// separately rejects page chrome overlapping a scroll viewport.
     static func revealed(exists: Bool, enabled: Bool, hittable: Bool, staticText: Bool = false,
-                         frame: CGRect, scrollAncestors: [CGRect], keyboards: [CGRect] = []) -> Bool {
+                         frame: CGRect, scrollAncestors: [CGRect], keyboards: [CGRect] = [], occlusions: [CGRect] = []) -> Bool {
         guard exists, !frame.isEmpty, !frame.isNull, !frame.isInfinite,
               staticText || (enabled && hittable),
               scrollAncestors.allSatisfy({ $0.insetBy(dx: -0.5, dy: -0.5).contains(frame) }) else { return false }
+        guard !occlusions.contains(where: { overlaps(frame, $0) }) else { return false }
         guard let inner = scrollAncestors.last else { return true }
-        return visibleParts(inner, ancestors: [], excluding: keyboards).contains {
+        return visibleParts(inner, ancestors: [], excluding: keyboards + occlusions).contains {
             $0.insetBy(dx: -0.5, dy: -0.5).contains(frame)
         }
+    }
+
+    /// Editing fields and the app keypad require this separately. Other fixed
+    /// controls (for example a menu above a keyboard) use native hittability.
+    static func keyboardClears(_ frame: CGRect, keyboards: [CGRect]) -> Bool {
+        !keyboards.contains { overlaps(frame, $0) }
     }
 
     static func clipped(_ frame: CGRect, to ancestors: [CGRect]) -> CGRect {
@@ -60,10 +67,17 @@ struct UIWindowMetrics: Decodable {
         let remainingUp: CGFloat
         var rectangle: CGRect { UIWindowMetrics.rectangle(frame) }
     }
+    struct Bamboo: Decodable {
+        let ready: [String]
+        let renders: Int
+        let mainRenders: Int
+        let pending: Int
+    }
     let safeArea: [CGFloat]
     let transitioning: Bool
     let focused: String
     let scrolls: [Scroll]
+    var bamboo: Bamboo? = nil
     var safeRectangle: CGRect { Self.rectangle(safeArea) }
     static func decode(_ value: Any?) -> Self? {
         guard let value = value as? String, let data = value.data(using: .utf8) else { return nil }

@@ -107,20 +107,16 @@ struct WhereCategoryView: View {
         }
     }
     private func placeRow(_ row: CategoryPlace) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.space8) {
-                placeTitle(row)
-                Spacer(minLength: YubaiSpace.space8)
-                AmountLabel(cents: row.amount, hide: hide, sign: row.amount >= 0 ? .outflow : .inflow).fixedSize(horizontal: false, vertical: true)
-            }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                placeTitle(row)
-                AmountLabel(cents: row.amount, hide: hide, sign: row.amount >= 0 ? .outflow : .inflow)
-            }
+        AdaptiveValueRow {
+            placeTitle(row)
+        } value: {
+            AmountLabel(cents: row.amount, hide: hide, sign: row.amount >= 0 ? .outflow : .inflow)
         }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
     }
     private func placeTitle(_ row: CategoryPlace) -> some View {
-        (Text(row.title) + Text(" · \(row.count) 次").foregroundColor(YubaiColor.labelSecondary)).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail)
+        (Text(row.title) + Text(" · \(row.count) 次").foregroundColor(YubaiColor.labelSecondary))
+            .yubaiFont(YubaiFont.row).lineLimit(nil).fixedSize(horizontal: false, vertical: true)
+            .yubaiTextLineBox(YubaiFont.row)
     }
     private func recordsButton(_ detail: CategoryDetail) -> some View {
         Button {

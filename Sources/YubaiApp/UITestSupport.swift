@@ -117,7 +117,8 @@ struct UITestWindowMetrics: UIViewRepresentable {
             }
             let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
             let value: [String: Any] = ["safeArea": rect(safe), "transitioning": transitioning,
-                                      "focused": focused, "scrolls": scrolls]
+                                      "focused": focused, "scrolls": scrolls,
+                                      "bamboo": BambooRasterCache.shared.diagnostics]
             if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
                let json = String(data: data, encoding: .utf8) { return json }
             return nil

@@ -1,6 +1,29 @@
 import XCTest
 
 final class Round47ViewportGeometryTests: XCTestCase {
+    func testLargestRescueMustScrollAboveTheMeasuredEntryPillEvenWithALargeAXViewport() {
+        let button = CGRect(x: 36, y: 820.7, width: 348, height: 44)
+        let collection = CGRect(x: 0, y: 130, width: 440, height: 792)
+        let navigation = CGRect(x: 0, y: 811, width: 440, height: 133)
+        XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: button, scrollAncestors: [collection], occlusions: [navigation]))
+        let viewport = UIViewportGeometry.visibleParts(collection, ancestors: [], excluding: [navigation]).first!
+        var progress = UIRevealProgress()
+        guard case .drag(up: true, distance: _) = progress.next(.init(target: button, viewport: viewport)) else {
+            XCTFail("A covered rescue needs a real scroll, not an early hittability failure"); return
+        }
+        let revealed = button.offsetBy(dx: 0, dy: -70)
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: revealed, scrollAncestors: [collection], occlusions: [navigation]))
+        XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: false,
+            frame: revealed, scrollAncestors: [collection], occlusions: [navigation]))
+    }
+    func testFixedKeypadCannotPassWhileTheSystemKeyboardStillCoversIt() {
+        let key = CGRect(x: 119.5, y: 809.2, width: 97.6, height: 46.3)
+        let keyboard = CGRect(x: 0, y: 620, width: 440, height: 336)
+        XCTAssertFalse(UIViewportGeometry.keyboardClears(key, keyboards: [keyboard]))
+        XCTAssertTrue(UIViewportGeometry.keyboardClears(key, keyboards: []))
+    }
     func testHomeCardCrossingHeaderUsesOnlyItsVisiblePart() {
         let row = CGRect(x: 20, y: 84.7, width: 400, height: 88)
         let header = CGRect(x: 376, y: 76, width: 44, height: 44)

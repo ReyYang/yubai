@@ -1,5 +1,52 @@
 import XCTest
 
+/// One coherent inventory for both gallery and flow audits. System keyboard
+/// controls never get a live per-control query (which itself can trigger AX).
+struct UIAppContentAuditScope {
+    private var systemNodes: Set<String> = []
+    init(_ tree: XCUIElementSnapshot) {
+        let roots = UIKeyboardOwnership.roots(in: tree, children: { $0.children }, isKeyboard: { $0.elementType == .keyboard },
+            isWindow: { $0.elementType == .window }, isAppPage: {
+                $0.identifier.hasPrefix("rootPage_") || $0.identifier == UIWindowMetrics.probeIdentifier
+            },
+            isIntroduction: { $0.identifier == "UIContinuousPathIntroductionView" })
+        func collect(_ node: XCUIElementSnapshot) {
+            systemNodes.insert(Self.identity(node))
+            for child in node.children { collect(child) }
+        }
+        for root in roots { collect(root) }
+    }
+    func isSystemKeyboard(_ node: XCUIElementSnapshot) -> Bool { systemNodes.contains(Self.identity(node)) }
+    func isSystemKeyboard(_ element: XCUIElement) -> Bool {
+        (try? element.snapshot()).map(isSystemKeyboard) ?? false
+    }
+    private static func identity(_ node: XCUIElementSnapshot) -> String {
+        "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)|\(node.frame)"
+    }
+    func controls(in tree: XCUIElementSnapshot, app: XCUIApplication) -> [(target: XCUIElement, snapshot: XCUIElementSnapshot)] {
+        var result: [(XCUIElement, XCUIElementSnapshot)] = []
+        var ordinals: [String: Int] = [:]
+        func inventory(_ node: XCUIElementSnapshot) {
+            let type = node.elementType
+            let key = "\(type.rawValue)|\(node.identifier)|" + (node.identifier.isEmpty ? node.label : "")
+            let ordinal = ordinals[key, default: 0]
+            ordinals[key] = ordinal + 1
+            let interactive = [.button, .textField, .secureTextField, .textView, .switch].contains(type)
+            if !isSystemKeyboard(node), (interactive || node.identifier == "toastMessage" && type == .staticText),
+               !node.frame.isEmpty, tree.frame.intersects(node.frame) {
+                let typed = app.descendants(matching: type)
+                let scoped = node.identifier.isEmpty ? typed.matching(NSPredicate(format: "identifier == '' AND label == %@", node.label)) : typed.matching(identifier: node.identifier)
+                result.append((scoped.element(boundBy: ordinal), node))
+            }
+            // Snapshot traversal keeps global query ordinals accurate even if
+            // an app label happens to match a key. No system control is queried.
+            for child in node.children { inventory(child) }
+        }
+        inventory(tree)
+        return result
+    }
+}
+
 /// All walks and UI tests share the same bounded launch recovery. Only Xcode's
 /// launch timeout is held for a retry; unrelated XCTest failures are recorded.
 class YubaiUITestCase: XCTestCase {
@@ -19,6 +66,7 @@ class YubaiUITestCase: XCTestCase {
     private var controlQueries: [ObjectIdentifier: (XCUIElement, String)] = [:]
     private var revealedScrollFrames: [CGRect]?
     private var revealedKeyboards: [CGRect] = []
+    private var revealedOcclusions: [CGRect] = []
     private let scriptedNow = Date().timeIntervalSince1970
     private var diagnosticApp: XCUIApplication?
     private var collectingStalls = false
@@ -29,15 +77,16 @@ class YubaiUITestCase: XCTestCase {
         // Any-descendant firstMatch asks XCTest to walk every AX node, including
         // offscreen cells and diagnostics, just to find a button identifier.
         let query: XCUIElementQuery
-        if ["tab_", "keypad_", "ledgerEntry_", "entriesFilter_", "ledgerJumpMonth_", "savingMode_"].contains(where: identifier.hasPrefix) ||
+        if ["tab_", "keypad_", "ledgerEntry_", "entriesFilter_", "ledgerJumpMonth_", "savingMode_", "softLine_", "modeSoftLine_"].contains(where: identifier.hasPrefix) ||
             ["fundsFormula", "openSaving", "openSettings", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
              "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear"].contains(identifier) {
             query = app.buttons
-        } else if identifier == "butlerAIText" { query = app.staticTexts }
+        } else if ["butlerAIText", "ledgerStatus"].contains(identifier) { query = app.staticTexts }
+        else if ["mainNavigation", "rootHeaderRegion"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
         else if identifier == "entriesSearch" { query = app.textFields }
         else if identifier == "butlerAICorrectionText" { query = app.textViews }
         else if identifier == "entriesScroll" { query = app.collectionViews }
-        else if ["formulaPage", "savingTabScroll", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
+        else if ["formulaPage", "savingTabScroll", "whereCategoryPage", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
             query = app.scrollViews
         } else { query = app.descendants(matching: .any) }
         let target = query.matching(identifier: identifier).firstMatch
@@ -46,6 +95,7 @@ class YubaiUITestCase: XCTestCase {
     }
 
     override func record(_ issue: XCTIssue) {
+        if handleDeferredUIIssue(issue) { return }
         if launching && issue.compactDescription.contains("Timed out while launching application via Xcode") {
             launchTimeouts.append(issue)
             return
@@ -57,6 +107,7 @@ class YubaiUITestCase: XCTestCase {
         }
         recordUIIssue(issue)
     }
+    func handleDeferredUIIssue(_ issue: XCTIssue) -> Bool { false }
     func recordUIIssue(_ issue: XCTIssue) { super.record(issue) }
 
     @discardableResult func launchApp(_ app: XCUIApplication, timeout: TimeInterval = 15) -> Bool {
@@ -170,12 +221,19 @@ class YubaiUITestCase: XCTestCase {
     }
 
     func windowMetrics(in app: XCUIApplication) -> UIWindowMetrics? {
-        // A modal may hide the root background from AX. Read whichever root
-        // or shared-sheet probe exists; its frame/hittability are irrelevant.
-        for probe in app.otherElements.matching(identifier: UIWindowMetrics.probeIdentifier).allElementsBoundByIndex.reversed() {
-            if let metrics = UIWindowMetrics.decode(probe.value) { return metrics }
+        // A sheet and its root can both publish a probe. An index obtained
+        // before dismissal no longer identifies that probe after dismissal.
+        // Decode one coherent tree instead of re-querying disappearing indices.
+        guard let tree = try? app.snapshot() else { return nil }
+        return windowMetrics(in: tree)
+    }
+
+    func auditAppText(in app: XCUIApplication, handler: @escaping (XCUIAccessibilityAuditIssue) -> Bool) throws {
+        let scope = UIAppContentAuditScope(try app.snapshot())
+        try app.performAccessibilityAudit(for: [.textClipped]) { issue in
+            if let element = issue.element, scope.isSystemKeyboard(element) { return true }
+            return handler(issue)
         }
-        return nil
     }
 
     func waitForNativeTransition(in app: XCUIApplication, deadline: Date) -> Bool {
@@ -189,7 +247,7 @@ class YubaiUITestCase: XCTestCase {
     /// Reveal the full target through all of its native scroll ancestors.
     func revealControl(_ target: XCUIElement, in app: XCUIApplication, deadline: Date,
                        searching scroll: XCUIElement? = nil) -> Bool {
-        revealedScrollFrames = nil; revealedKeyboards = []
+        revealedScrollFrames = nil; revealedKeyboards = []; revealedOcclusions = []
         let identifier = controlQueries[ObjectIdentifier(target)]?.1 ?? (target.exists ? target.identifier : "")
         guard !identifier.isEmpty else { return false }
         rememberTap(target, in: app)
@@ -205,28 +263,50 @@ class YubaiUITestCase: XCTestCase {
         }
         while Date() < deadline {
             guard let tree = try? app.snapshot(), Date() < deadline else { break }
-            var match: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot])?
+            var match: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot], owners: [String])?
             var searchContainer: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot])?
             var keyboards: [CGRect] = []
-            func collect(_ node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot]) {
-                if node.identifier == identifier { match = (node, ancestors) }
+            var fixed: [(id: String, frame: CGRect)] = []
+            let fixedIDs: Set<String> = ["rootHeaderRegion", "mainNavigation", "fixedBottomBar"]
+            func collect(_ node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot], owners: [String] = []) {
+                let isFixed = fixedIDs.contains(node.identifier)
+                let owners = isFixed ? owners + [node.identifier] : owners
+                if node.identifier == identifier { match = (node, ancestors, owners) }
                 if node.elementType == .keyboard { keyboards.append(node.frame) }
+                if isFixed, !node.frame.isEmpty { fixed.append((node.identifier, node.frame)) }
                 let isScroll = [.scrollView, .collectionView, .table].contains(node.elementType)
                 if isScroll, let searchIdentifier, node.identifier == searchIdentifier { searchContainer = (node, ancestors) }
                 let next = isScroll ? ancestors + [node] : ancestors
-                for child in node.children { collect(child, ancestors: next) }
+                for child in node.children { collect(child, ancestors: next, owners: owners) }
             }
             collect(tree, ancestors: [])
+            if identifier.hasPrefix("keypad_"), let match,
+               !UIViewportGeometry.keyboardClears(match.node.frame, keyboards: keyboards) {
+                // The purpose field's Return publishes focus before UIKit has
+                // removed its keyboard. Never mistake that transition for an
+                // unreachable fixed keypad, and never drag the system keyboard.
+                guard waitForKeyboardDismissal(in: app, deadline: deadline) else { return false }
+                guard waitForStableFrame(target, deadline: deadline) else { return false }
+                continue
+            }
             if match == nil && !waitedForDiscovery {
                 waitedForDiscovery = true
                 _ = target.waitForExistence(timeout: min(5, max(0, deadline.timeIntervalSinceNow)))
                 continue
             }
             let ancestors = match?.ancestors ?? []
+            // The app already reserves the measured root controls. AX can
+            // retain a larger collection frame; reveal through its unobscured
+            // region instead of accepting a covered row and failing early.
+            let occlusions = ancestors.isEmpty && match != nil ? [] : fixed.filter {
+                !(match?.owners.contains($0.id) ?? false)
+            }.map { region in
+                CGRect(x: tree.frame.minX, y: region.frame.minY, width: tree.frame.width, height: region.frame.height)
+            }
             if let match {
                 let staticText = match.node.elementType == .staticText
                 let fits = UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true, staticText: staticText,
-                    frame: match.node.frame, scrollAncestors: ancestors.map(\.frame), keyboards: keyboards)
+                    frame: match.node.frame, scrollAncestors: ancestors.map(\.frame), keyboards: keyboards, occlusions: occlusions)
                 if fits {
                     guard ready(staticText: staticText) else {
                         print("Reveal reached a disabled or covered control: \(identifier)")
@@ -236,9 +316,9 @@ class YubaiUITestCase: XCTestCase {
                     guard let current = try? target.snapshot(), Date() < deadline,
                           UIViewportGeometry.revealed(exists: true, enabled: current.isEnabled,
                             hittable: staticText || target.isHittable, staticText: staticText, frame: current.frame,
-                            scrollAncestors: ancestors.map(\.frame), keyboards: keyboards) else { continue }
+                            scrollAncestors: ancestors.map(\.frame), keyboards: keyboards, occlusions: occlusions) else { continue }
                     rememberTap(target, in: app, frame: current.frame)
-                    revealedScrollFrames = ancestors.map(\.frame); revealedKeyboards = keyboards
+                    revealedScrollFrames = ancestors.map(\.frame); revealedKeyboards = keyboards; revealedOcclusions = occlusions
                     return true
                 }
             }
@@ -258,9 +338,8 @@ class YubaiUITestCase: XCTestCase {
             let containerIndex = ancestors.lastIndex { $0.elementType == container.elementType && $0.identifier == container.identifier && $0.frame == container.frame }
             let enclosingFrames = containerIndex.map { Array(ancestors.prefix($0)).map(\.frame) } ?? searchContainer?.ancestors.map(\.frame) ?? []
             let clipped = UIViewportGeometry.clipped(container.frame, to: enclosingFrames)
-            // Avoid starting a drag in the system keyboard. No safe-area,
-            // presentation, chrome, toast or probe-metadata gate is involved.
-            let viewport = UIViewportGeometry.visibleParts(clipped, ancestors: [], excluding: keyboards)
+            // Drag only in the observed unobscured region of this scroll.
+            let viewport = UIViewportGeometry.visibleParts(clipped, ancestors: [], excluding: keyboards + occlusions)
                 .max(by: { $0.width * $0.height < $1.width * $1.height }) ?? .zero
             var landmarks: [String: CGFloat] = [:]
             func mark(_ node: XCUIElementSnapshot) {
@@ -310,7 +389,7 @@ class YubaiUITestCase: XCTestCase {
         guard let ancestors = revealedScrollFrames else { return false }
         let frame = lastFrameWait?.target === target ? lastFrameWait?.result.frame : (try? target.snapshot())?.frame
         return frame.map { UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
-            frame: $0, scrollAncestors: ancestors, keyboards: revealedKeyboards) } ?? false
+            frame: $0, scrollAncestors: ancestors, keyboards: revealedKeyboards, occlusions: revealedOcclusions) } ?? false
     }
 
     /// Deliberately place a row across fixed chrome while some of it is still
@@ -414,6 +493,14 @@ class YubaiUITestCase: XCTestCase {
         let expected = text.trimmingCharacters(in: .newlines)
         XCTAssertTrue(UIConditionWait.run(timeout: 6, read: { (field.value as? String ?? "").contains(expected) }),
                       "Field did not retain the full text: " + identifier)
+        if text.hasSuffix("\n") { XCTAssertTrue(waitForKeyboardDismissal(in: app), "Keyboard did not dismiss after submitting " + identifier) }
+    }
+
+    func waitForKeyboardDismissal(in app: XCUIApplication, deadline: Date? = nil) -> Bool {
+        let limit = deadline ?? Date().addingTimeInterval(12)
+        let end = ProcessInfo.processInfo.systemUptime + max(0, limit.timeIntervalSinceNow)
+        return UIConditionWait.run(timeout: 10, deadline: end, read: { !app.keyboards.firstMatch.exists }) &&
+            waitForNativeTransition(in: app, deadline: limit)
     }
 
     func waitForKeyboardEditing(_ identifier: String, in app: XCUIApplication, deadline: Date? = nil) -> Bool {
@@ -423,8 +510,9 @@ class YubaiUITestCase: XCTestCase {
             guard self.appHasKeyboardFocus(identifier, in: app) else { return false }
             return app.keyboards.firstMatch.exists
         }) else { return false }
-        return waitForStableFrame(app.keyboards.firstMatch, deadline: limit) &&
-            waitForStableFrame(control(identifier, in: app), deadline: limit) && appHasKeyboardFocus(identifier, in: app)
+        let field = control(identifier, in: app), keyboard = app.keyboards.firstMatch
+        return waitForStableFrame(keyboard, deadline: limit) && waitForStableFrame(field, deadline: limit) &&
+            appHasKeyboardFocus(identifier, in: app) && UIViewportGeometry.keyboardClears(field.frame, keyboards: [keyboard.frame])
     }
 
     private func appHasKeyboardFocus(_ identifier: String, in app: XCUIApplication) -> Bool {

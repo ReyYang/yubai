@@ -54,6 +54,7 @@ bash scripts/check-ui-consistency.sh --self-test
 
 所有新旧停点在截屏前经过唯一的 `auditGallery()`：
 
+- 截图前后确认应用仍在前台运行；进程停止只能产生失败图。每次启动保留所属停点，迟到的 XCTest 崩溃通知归回死亡进程的停点，不归给后来启动的夹具。
 - 检查当前可触达控件的 44pt 点击区、互相覆盖及固定主动作越界；排除系统键盘、菜单、滚轮与包裹子控件的容器。
 - 调用 XCTest 的 `textClipped` 辅助功能审计。设计允许单行省略的名称标为 `truncatableName`，页头名称和回执正文允许省略，输入内容可随光标滚动；金额与按钮不豁免。
 - 检查关键金额没有省略号；记账的支出／收入／转账保持同一行。
@@ -67,6 +68,8 @@ bash scripts/check-ui-consistency.sh --self-test
 `expected.txt` 是所选巡游的完整计划；`missing.txt` 合并运行报告和未产生正常 PNG 的停点；`index.txt` 记录数量、git SHA、xcodebuild 状态、结果包路径和文件列表。构建失败、缺图或任何审计失败均返回非零，即使已有部分 PNG。诊断图片不算完成对应停点。
 
 DerivedData、xcresult 和构建日志在脚本打印的 `/tmp/yubai-gallery.*` 下。XCTest runner 使用 `TEST_RUNNER_YUBAI_GALLERY_DIR` 转发输出目录；宿主写图受限时从 xcresult 附件清单恢复名称。没有非空 `YUBAI_GALLERY_DIR` 的普通 UI 测试会跳过图库类；没有新增禁用的流程测试。
+
+`crashes/` 与 `stalls/` 一起上传。`scripts/export-crash-reports.py` 按本次开始时间收集宿主 DiagnosticReports 和模拟器自身 CrashReporter / DiagnosticReports 中的余白报告，包含 XCTest 的已关闭克隆设备；保留原始 `.ips`、来源清单和采集状态。脚本退出时与 CI 的 `always()` 步骤都采集，采集失败不改变测试结论。没有报告不代表没有崩溃。`GALLERY-PROCESS` 日志记录启动、停点和死亡的对应关系。
 
 ## 数据隔离与补充状态
 
@@ -94,3 +97,5 @@ Linux 可运行清单、脚本合约、UI lint、条件语法解析与 Core 单�
 2026-11-16 rB 整合：B 批四种模式补齐六种 hero 状态、少攒／缺口补救与撤销、上期自动存好与留这月花、发薪补回、每周 AI、设线建议与纠正、余额偏差、下一期年季付账单、竖式的结转／取用／余额差额、金额和次数提醒、记账实时剩余与超出、对账覆盖和底线两态、洞察设线／改数／按次数。深色账本带 carry 卡；账本底部实测留白、末笔可点可左滑及回顶验收保持。上述停点仍需 Apple SDK 构建和模拟器执行。
 
 看门狗的 `source=app` 标记实际应用工作；`source=xctest-audit` 和 `source=xctest-snapshot` 标记 XCTest 审计与查询，系统工作和未完整捕获的堆栈分别为 `system` / `unknown`。全部保留。每个界面只暴露一个定长诊断摘要，完整堆栈由 stderr 与 Documents/tmp 文件导出到 `stalls/`；模拟器已关闭时使用 xcodebuild 日志和本次构建的符号文件。
+
+图库与流程审计共用应用控件清单，排除系统键盘及其首次使用提示；仍验证键盘存在、焦点字段完整露出、Return 后键盘收起。图库和普通 UI 分片在 xcodebuild 启动前写入所选模拟器的滑行输入介绍已读偏好，并核对回读；不支持该偏好时保留按系统容器关闭提示的回退。纠正弹窗打开及重开均自动聚焦。控件 reveal 按实际页头、底部固定操作区和导航栏的无遮挡区域滚动，避免只在最后检查可点时才发现被挡住。

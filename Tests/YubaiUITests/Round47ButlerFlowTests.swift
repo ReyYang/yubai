@@ -5,7 +5,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
     private func element(_ id: String) -> XCUIElement { control(id, in: app) }
-    private func launch(_ fixture: String = "v47-ai-valid", large: Bool = false, hidden: Bool = false, configured: Bool? = nil) {
+    private func launch(_ fixture: String = "v47-ai-valid", large: Bool = false, hidden: Bool = false, configured: Bool? = nil, dark: Bool = false) {
         app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
@@ -13,6 +13,11 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = (configured ?? (fixture != "v47-c-empty")) ? "1" : "0"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
+        app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
+        if fixture.hasPrefix("v47r-") {
+            let instant = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 20))!
+            app.launchEnvironment["YUBAI_UI_TEST_NOW"] = String(instant.timeIntervalSince1970)
+        }
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
@@ -95,6 +100,53 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             }), "Correction must respond to a second control within five seconds (large=\(large))")
             XCTAssertLessThan(ProcessInfo.processInfo.systemUptime, deadline)
             app.terminate()
+        }
+    }
+    func testDirectCorrectionAutofocusSurvivesTypingCaptureCancellationReopeningAndSave() throws {
+        for large in [false, true] {
+            for dark in [false, true] {
+                launch("v47r-weekly-ai", large: large, dark: dark)
+                tap("butlerAIIncorrect")
+                XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
+                XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+                XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+                XCTAssertTrue(waitForKeyboardEditing("butlerAICorrectionText", in: app))
+                let field = element("butlerAICorrectionText")
+                field.typeText("周四是和同事拼单")
+                XCTAssertEqual(field.value as? String, "周四是和同事拼单")
+                // Gallery and flow controls share the app-only inventory.
+                let tree = try app.snapshot()
+                let scope = UIAppContentAuditScope(tree)
+                for (button, snapshot) in scope.controls(in: tree, app: app) {
+                    XCTAssertFalse(scope.isSystemKeyboard(snapshot))
+                    _ = button.isHittable
+                }
+                XCTAssertNoThrow(try auditAppText(in: app) { issue in
+                    XCTFail("Correction text clipped: " + issue.detailedDescription)
+                    return true
+                })
+                XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)
+                XCTAssertEqual(app.state, .runningForeground)
+                tap("cancelManualSheet")
+                XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
+                XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
+                XCTAssertTrue(element("butlerSuggestionCard").exists)
+                XCTAssertTrue(element("butlerAIIncorrect").isHittable)
+                tap("butlerAIIncorrect")
+                XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
+                XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+                XCTAssertTrue(waitForKeyboardEditing("butlerAICorrectionText", in: app))
+                XCTAssertEqual(element("butlerAICorrectionText").value as? String, "")
+                element("butlerAICorrectionText").typeText("周五也是")
+                XCTAssertEqual(element("butlerAICorrectionText").value as? String, "周五也是")
+                tap("butlerAICorrectionSave")
+                XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
+                XCTAssertEqual(app.state, .runningForeground)
+                tap("tab_yubai"); tap("openMemories")
+                XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "周五也是")).firstMatch.waitForExistence(timeout: 5))
+                XCTAssertEqual(app.state, .runningForeground)
+                app.terminate()
+            }
         }
     }
     func testScriptedWrongSumUnknownIDUnknownActionMalformedAndEmptyNeverEnterQueue() {

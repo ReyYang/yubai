@@ -14,7 +14,7 @@ struct SavingTabView: View {
     private var overview: ReserveOverview { store.reserve }
     private var wishes: [WishItem] { store.current.wishlist.filter { $0.status == .thinking }.sorted { $0.createdAt < $1.createdAt } }
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "savingTabScroll") {
             if store.homeSaving.started {
                 VStack(spacing: YubaiSpace.space12) {
                     hero
@@ -27,7 +27,7 @@ struct SavingTabView: View {
             } else {
                 firstSaving
             }
-        }.accessibilityElement(children: .contain).accessibilityIdentifier("savingTabScroll")
+        }
             .amountPrivacy(hide)
             .navigationTitle("存钱").yubaiNavigation()
             .task(id: "\(store.ledgerRevision)-\(store.financialNow)") { await refreshFacts() }

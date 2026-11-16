@@ -15,6 +15,9 @@ def main() -> int:
     build = Path("build")
     build.mkdir(exist_ok=True)
     (build / "test-exit-status").unlink(missing_ok=True)
+    prepared = subprocess.run(["bash", "scripts/prepare-simulator-keyboard.sh", os.environ["SIM_UDID"]], check=False)
+    if prepared.returncode:
+        print("Keyboard first-use preference unavailable; scoped introduction dismissal remains enabled.", file=sys.stderr)
     command = ["xcodebuild", "-project", "Yubai.xcodeproj", "-scheme", "Yubai", "-configuration", "Debug",
                "-destination", "id=" + os.environ["SIM_UDID"], "-parallel-testing-enabled", "NO",
                "-resultBundlePath", "build/Yubai.xcresult", "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO",

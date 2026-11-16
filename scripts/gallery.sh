@@ -24,6 +24,14 @@ for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalle
 (( ${#only[@]} )) || only=("-only-testing:YubaiUITests/ScreenGalleryTests")
 set +e
 run_started=$(date +%s)
+printf '%s\n' "$run_started" > "$shots/run-started-at"
+collect_crashes() {
+    python3 "$repo_root/scripts/export-crash-reports.py" --output "$shots/crashes" --since "$run_started" \
+        || echo "warning: crash report collection unavailable (does not change the gallery result)" >&2
+}
+trap collect_crashes EXIT
+bash "$repo_root/scripts/prepare-simulator-keyboard.sh" "$simulator" \
+    || echo "warning: keyboard first-use preference unavailable; scoped introduction dismissal remains enabled" >&2
 env TEST_RUNNER_YUBAI_GALLERY_DIR="$shots" xcodebuild test \
     -project "$repo_root/Yubai.xcodeproj" -scheme Yubai -configuration Debug \
     -destination "platform=iOS Simulator,id=$simulator" \
