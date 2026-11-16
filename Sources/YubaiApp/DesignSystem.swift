@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import CoreGraphics
 import UniformTypeIdentifiers
 import YubaiCore
 #if os(macOS)
@@ -31,7 +32,9 @@ enum YubaiColor {
     static let paperInset = adaptive(0xede6d3, 0x353026)
     static let glassBar = adaptive(0xfefbea, 0x353026, lightAlpha: 204.0 / 255, darkAlpha: 217.0 / 255)
     static let windowLight = adaptive(0xfffdf3, 0xe9cf9f)
-    static let bambooShadow = adaptive(0x2f4a2e, 0x86a884)
+    static let bambooShadowLightRGB: UInt32 = 0x2f4a2e
+    static let bambooShadowDarkRGB: UInt32 = 0x86a884
+    static let bambooShadow = adaptive(bambooShadowLightRGB, bambooShadowDarkRGB)
     static let selected = adaptive(0xffffff, 0x4a4436)
     static let label = adaptive(0x382f1f, 0xe6decb)
     static let labelMuted = adaptive(0x5a5040, 0xc2b8a3)
@@ -714,6 +717,48 @@ struct PaperCanvas: View {
                 guard showsBamboo else { return }
                 await BambooRasterCache.shared.warm(scheme: scheme, scale: displayScale)
             }
+    }
+}
+
+/// CoreGraphics-only artwork. Every path/context is owned by its caller.
+enum BambooSilhouette {
+    /// Exact contours of Assets.xcassets/BambooShadow.imageset/BambooShadow.svg.
+    /// Keep its viewBox clipping, aspect fit and SVG's downward y direction.
+    /// Drawing paths avoids lazy platform asset rasterization shared by named
+    /// images, the other appearance and SwiftUI's separate brand artwork.
+    static func draw(in bitmap: CGContext, size: CGSize, alignment: CGSize) {
+        let viewBox = CGRect(x: 430, y: 250, width: 480, height: 640)
+        let fit = min(alignment.width / viewBox.width, alignment.height / viewBox.height)
+        bitmap.saveGState()
+        defer { bitmap.restoreGState() }
+        bitmap.translateBy(x: (size.width - viewBox.width * fit) / 2, y: (size.height + viewBox.height * fit) / 2)
+        bitmap.scaleBy(x: fit, y: -fit)
+        bitmap.translateBy(x: -viewBox.minX, y: -viewBox.minY)
+        bitmap.clip(to: viewBox)
+        let contours: [[CGFloat]] = [
+            [407, 864, 462, 796, 524, 702, 586, 602, 628, 534, 670, 468, 710, 404,
+             676, 472, 636, 540, 596, 608, 534, 708, 472, 802, 418, 872],
+            [624, 554, 602, 454, 612, 362, 648, 284, 668, 366, 668, 460, 634, 558],
+            [594, 592, 552, 510, 514, 438, 476, 376, 534, 430, 578, 502, 606, 586],
+            [582, 608, 530, 552, 492, 496, 466, 438, 522, 480, 564, 538, 594, 600],
+            [626, 552, 704, 500, 788, 462, 872, 438, 804, 494, 722, 538, 634, 566],
+            [606, 580, 680, 554, 756, 544, 828, 544, 758, 574, 684, 590, 614, 594],
+            [580, 616, 646, 610, 708, 634, 758, 680, 692, 660, 632, 644, 576, 630]
+        ]
+        for contour in contours {
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: contour[0], y: contour[1]))
+            for i in stride(from: 2, to: contour.count, by: 6) {
+                path.addCurve(to: CGPoint(x: contour[i + 4], y: contour[i + 5]),
+                              control1: CGPoint(x: contour[i], y: contour[i + 1]),
+                              control2: CGPoint(x: contour[i + 2], y: contour[i + 3]))
+            }
+            path.closeSubpath()
+            bitmap.addPath(path); bitmap.fillPath()
+        }
+        bitmap.translateBy(x: 506, y: 735)
+        bitmap.rotate(by: -53 * .pi / 180)
+        bitmap.fillEllipse(in: CGRect(x: -8.5, y: -5, width: 17, height: 10))
     }
 }
 
@@ -1956,17 +2001,19 @@ struct Toast: View {
             })
     }
     private var message: some View {
-        Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
-            // Only a measured long message may collapse. Short receipts must
-            // retain every glyph, including during the first layout pass.
-            .lineLimit(expanded || textSize.isAccessibilitySize || !truncated ? nil : 1).truncationMode(.tail)
-            .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.body)
-            .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
-            .accessibilityElement(children: .ignore).accessibilityLabel(text).accessibilityIdentifier(messageIdentifier)
-            .deferredGeometryChange(for: CGSize.self, of: { $0.size }) { size in
-                availableWidth = size.width; naturalHeight = size.height
-            }
-            .onTapGesture(perform: toggle).accessibilityAction { toggle() }
+        Button(action: toggle) {
+            Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
+                // Only a measured long message may collapse. Short receipts must
+                // retain every glyph, including during the first layout pass.
+                .lineLimit(expanded || textSize.isAccessibilitySize || !truncated ? nil : 1).truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.body)
+                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
+                .yubaiHitTarget(alignment: .leading)
+                .deferredGeometryChange(for: CGSize.self, of: { $0.size }) { size in
+                    availableWidth = size.width; naturalHeight = size.height
+                }
+        }.buttonStyle(.plain)
+            .accessibilityLabel(text).accessibilityIdentifier(messageIdentifier)
     }
     private func toggle() {
         if expanded || !truncated { dismiss() }

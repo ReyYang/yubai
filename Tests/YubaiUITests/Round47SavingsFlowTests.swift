@@ -254,9 +254,51 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     func testShortToastHasNoChevronAndLongToastReadsFullTextWhileCollapsed() {
         launch("v47-toast-short"); XCTAssertTrue(element("toastMessage").waitForExistence(timeout: 5)); XCTAssertFalse(element("expandToast").exists)
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "toastMessage").count, 1)
-        XCTAssertGreaterThan(element("toastMessage").frame.height, 0)
+        XCTAssertGreaterThanOrEqual(element("toastMessage").frame.height, 44)
+        XCTAssertGreaterThanOrEqual(element("toastMessage").frame.width, 44)
         launch("v47-toast-long"); XCTAssertTrue(element("expandToast").waitForExistence(timeout: 5))
         XCTAssertTrue(element("toastMessage").label.hasSuffix("生活用品 2 笔"))
+    }
+    func testToastMessagesExposeAndRespondAcrossTheirWholeAreaAtEverySize() {
+        for large in [false, true] {
+            for dark in [false, true] {
+                for fixture in ["v47-toast-short", "v47-toast-long", "v47r-deficit"] {
+                    launch(fixture, large: large, dark: dark)
+                    if fixture == "v47r-deficit" { tap("coverFromReserve") }
+                    let message = element("toastMessage"), viewport = element("toastBody"), undo = element("undoLastChange")
+                    XCTAssertTrue(message.waitForExistence(timeout: 5))
+                    XCTAssertTrue(waitForStableFrame(message))
+                    let context = "\(fixture) large=\(large) dark=\(dark) frame=\(message.frame)"
+                    XCTAssertEqual(message.elementType, .button, context)
+                    XCTAssertGreaterThanOrEqual(message.frame.width, 44, context)
+                    XCTAssertGreaterThanOrEqual(message.frame.height, 44, context)
+                    XCTAssertTrue(viewport.frame.insetBy(dx: -0.5, dy: -0.5).contains(message.frame), context)
+                    XCTAssertEqual(message.frame.minX, viewport.frame.minX, accuracy: 0.5, context)
+                    XCTAssertTrue(message.isHittable, context)
+                    XCTAssertTrue(undo.isHittable, context)
+                    if large { XCTAssertGreaterThanOrEqual(undo.frame.minY, message.frame.maxY, context) }
+                    else { XCTAssertGreaterThanOrEqual(undo.frame.minX, message.frame.maxX, context) }
+                    if fixture != "v47-toast-long" || large {
+                        XCTAssertEqual(message.frame.maxX, viewport.frame.maxX, accuracy: 0.5, context)
+                        XCTAssertFalse(element("expandToast").exists, context)
+                    } else {
+                        XCTAssertLessThanOrEqual(message.frame.maxX, element("expandToast").frame.minX, context)
+                    }
+                    // For a short receipt this point is blank row space, well
+                    // beyond the glyphs that used to be the whole AX target.
+                    if fixture == "v47r-deficit" { XCTAssertEqual(message.label, "已拿出", context) }
+                    message.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+                    if fixture == "v47-toast-long" && !large {
+                        XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { self.element("expandToast").value as? String == "已展开" }))
+                        XCTAssertTrue(waitForStableFrame(message))
+                        XCTAssertGreaterThanOrEqual(message.frame.height, 44, context)
+                        message.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+                    }
+                    gone("toastMessage")
+                    XCTAssertEqual(app.state, .runningForeground, context)
+                }
+            }
+        }
     }
     func testExpandedToastPausesTimeoutThenSecondTapDismisses() {
         launch("v47-toast-long", keepUndo: false)

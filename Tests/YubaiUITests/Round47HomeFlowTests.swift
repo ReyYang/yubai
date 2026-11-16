@@ -68,6 +68,8 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             XCTAssertTrue(preparation.ready, "Both bamboo appearances must finish on the worker: \(initialDiagnostics)")
             guard let before = preparation.observed else { XCTFail("Missing raster diagnostics: \(initialDiagnostics)"); return }
             XCTAssertEqual(before.mainRenders, 0, initialDiagnostics)
+            XCTAssertEqual(before.activeRenders, 0, initialDiagnostics)
+            XCTAssertEqual(before.maxConcurrentRenders, 1, initialDiagnostics)
             XCTAssertEqual(before.renders, before.ready.count, initialDiagnostics)
             XCTAssertTrue(before.failed.isEmpty, initialDiagnostics)
             XCTAssertNil(before.lastFailure, initialDiagnostics)
@@ -82,8 +84,32 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             let diagnostics = "\(context) before={\(before)} after={\(after)}"
             XCTAssertTrue(after.isReady, diagnostics)
             XCTAssertEqual(after.mainRenders, 0, diagnostics)
+            XCTAssertEqual(after.activeRenders, 0, diagnostics)
+            XCTAssertEqual(after.maxConcurrentRenders, 1, diagnostics)
             XCTAssertEqual(after.renders, before.renders, diagnostics)
             XCTAssertEqual(after.ready, before.ready, diagnostics)
+            XCTAssertEqual(app.state, .runningForeground, diagnostics)
+            app.terminate()
+        }
+    }
+    func testRepeatedColdBambooWarmupsDrainBothAppearancesAndKeepTheProcessAlive() {
+        // Each launch has a fresh cache and performs two real renders. Repeated
+        // warm(cache-hit) calls would never exercise the crashing pool teardown.
+        for iteration in 0..<12 {
+            launch(dark: iteration.isMultiple(of: 2), reduceMotion: iteration.isMultiple(of: 3))
+            let preparation = waitForBambooRasters(in: app)
+            let diagnostics = "cold launch=\(iteration) \(preparation)"
+            XCTAssertTrue(preparation.ready, diagnostics)
+            guard let observed = preparation.observed else { XCTFail(diagnostics); return }
+            XCTAssertEqual(observed.ready.count, 2, diagnostics)
+            XCTAssertEqual(observed.renders, 2, diagnostics)
+            XCTAssertEqual(observed.mainRenders, 0, diagnostics)
+            XCTAssertEqual(observed.activeRenders, 0, diagnostics)
+            XCTAssertEqual(observed.maxConcurrentRenders, 1, diagnostics)
+            XCTAssertTrue(observed.failed.isEmpty, diagnostics)
+            XCTAssertNil(observed.lastFailure, diagnostics)
+            tap("toggleAmountVisibility")
+            XCTAssertTrue(element("entriesMonth").isHittable, diagnostics)
             XCTAssertEqual(app.state, .runningForeground, diagnostics)
             app.terminate()
         }

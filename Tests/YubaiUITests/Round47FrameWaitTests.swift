@@ -4,9 +4,10 @@ import XCTest
 /// wall-clock sleeps and make no automation session or application requests.
 final class Round47FrameWaitTests: XCTestCase {
     private func bamboo(ready: [String] = [], pending: [String] = [], failed: [String] = [],
-                        renders: Int = 2, mainRenders: Int = 0,
+                        renders: Int = 2, mainRenders: Int = 0, activeRenders: Int = 0, maxConcurrentRenders: Int = 1,
                         lastFailure: UIWindowMetrics.Bamboo.Failure? = nil) -> UIWindowMetrics.Bamboo {
-        UIWindowMetrics.Bamboo(ready: ready, renders: renders, mainRenders: mainRenders, pending: pending.count,
+        UIWindowMetrics.Bamboo(ready: ready, renders: renders, mainRenders: mainRenders,
+            activeRenders: activeRenders, maxConcurrentRenders: maxConcurrentRenders, pending: pending.count,
             pendingKeys: pending, failed: failed, failedStages: failed.isEmpty ? [:] : [failed[0]: "blurOutput"],
             lastFailure: lastFailure)
     }
@@ -53,6 +54,23 @@ final class Round47FrameWaitTests: XCTestCase {
         XCTAssertEqual(now, 0)
         XCTAssertTrue(result.description.contains("mainRenders=1"), result.description)
     }
+    func testOverlappingBambooRendersFailEvenAfterBothImagesFinish() {
+        var now: TimeInterval = 0
+        let result = UIBambooWait.run(read: {
+            self.bamboo(ready: ["light@3.0", "dark@3.0"], maxConcurrentRenders: 2)
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertEqual(now, 0, result.description)
+        XCTAssertTrue(result.description.contains("maxConcurrentRenders=2"), result.description)
+    }
+    func testBambooCaptureWaitsUntilTheWorkerHasDrainedItsPool() {
+        var now: TimeInterval = 0
+        let result = UIBambooWait.run(timeout: 1, read: {
+            self.bamboo(ready: ["light@3.0", "dark@3.0"], activeRenders: 1)
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.ready, result.description)
+        XCTAssertTrue(result.description.contains("activeRenders=1"), result.description)
+    }
     func testBambooOneAppearanceOrMismatchedScalesCannotPassAndCannotExtendTheBound() {
         for ready in [["light@3.0"], ["light@3.0", "dark@2.0"]] {
             var now: TimeInterval = 0
@@ -94,11 +112,13 @@ final class Round47FrameWaitTests: XCTestCase {
         }
     }
     func testBambooProbeDecodesFailureStageAndEveryCompletionField() throws {
-        let json = #"{"safeArea":[0,0,440,956],"transitioning":false,"focused":"","scrolls":[],"bamboo":{"ready":["light@3.0"],"pending":1,"pendingKeys":["dark@3.0"],"failed":["dark@3.0"],"failedStages":{"dark@3.0":"blurOutput"},"renders":2,"mainRenders":0,"lastFailure":{"key":"dark@3.0","stage":"blurOutput","attempt":1}}}"#
+        let json = #"{"safeArea":[0,0,440,956],"transitioning":false,"focused":"","scrolls":[],"bamboo":{"ready":["light@3.0"],"pending":1,"pendingKeys":["dark@3.0"],"failed":["dark@3.0"],"failedStages":{"dark@3.0":"blurOutput"},"renders":2,"mainRenders":0,"activeRenders":1,"maxConcurrentRenders":1,"lastFailure":{"key":"dark@3.0","stage":"blurOutput","attempt":1}}}"#
         let value = try XCTUnwrap(UIWindowMetrics.decode(json)?.bamboo)
         XCTAssertEqual(value.ready, ["light@3.0"], value.description)
         XCTAssertEqual(value.pendingKeys, ["dark@3.0"], value.description)
         XCTAssertEqual(value.pending, 1, value.description)
+        XCTAssertEqual(value.activeRenders, 1, value.description)
+        XCTAssertEqual(value.maxConcurrentRenders, 1, value.description)
         XCTAssertEqual(value.failedStages["dark@3.0"], "blurOutput", value.description)
         XCTAssertEqual(value.lastFailure?.stage, "blurOutput", value.description)
         XCTAssertFalse(value.isReady, value.description)

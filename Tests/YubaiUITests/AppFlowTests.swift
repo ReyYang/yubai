@@ -285,8 +285,9 @@ final class AppFlowTests: YubaiUITestCase {
         XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
         XCTAssertFalse(count.exists); XCTAssertFalse(apply.exists)
         XCTAssertFalse(app.staticTexts["unsortedQuestionTitle"].exists)
-        XCTAssertEqual(app.staticTexts["unsortedUndoMessage"].label, "已整理 9 笔")
-        XCTAssertFalse(app.staticTexts["toastMessage"].exists)
+        XCTAssertEqual(app.buttons["unsortedUndoMessage"].label, "已整理 9 笔")
+        XCTAssertGreaterThanOrEqual(app.buttons["unsortedUndoMessage"].frame.height, 44)
+        XCTAssertFalse(app.buttons["toastMessage"].exists)
         tap(app.buttons["quickSortUndo"], in: app)
         XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["unsortedQuestionTitle"].label.hasPrefix("9 笔还没分类"))
@@ -320,7 +321,8 @@ final class AppFlowTests: YubaiUITestCase {
         assertVisibleWithoutScrolling(count, label: "3", in: app, scroll: scroll)
         assertVisibleWithoutScrolling(app.textFields["unsortedPartySearch"], in: app, scroll: scroll)
         XCTAssertEqual(app.buttons["unsortedSelect"].label, "选择")
-        XCTAssertEqual(app.staticTexts["unsortedUndoMessage"].label, "已整理 72 笔")
+        XCTAssertEqual(app.buttons["unsortedUndoMessage"].label, "已整理 72 笔")
+        XCTAssertGreaterThanOrEqual(app.buttons["unsortedUndoMessage"].frame.height, 44)
         tap(app.buttons["quickSortUndo"], in: app)
         assertVisibleWithoutScrolling(count, label: "75", in: app, scroll: scroll)
         assertVisibleWithoutScrolling(app.textFields["unsortedPartySearch"], in: app, scroll: scroll)
@@ -839,7 +841,7 @@ final class AppFlowTests: YubaiUITestCase {
         tap(app.buttons[identifier + "Done"], in: app)
     }
     private func tapUndo(messagePrefix: String, exact: Bool = false, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let undo = app.buttons["undoLastChange"], message = app.staticTexts["toastMessage"]
+        let undo = app.buttons["undoLastChange"], message = app.buttons["toastMessage"]
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             undo.exists && undo.isEnabled && undo.isHittable && message.exists && (exact ? message.label == messagePrefix : message.label.hasPrefix(messagePrefix))
         }, object: nil)
@@ -1151,7 +1153,7 @@ final class AppFlowTests: YubaiUITestCase {
     func testUndoReceiptDismissesAfterProductionLifetime() {
         let app = application("v45-bill"); launchApp(app)
         XCTAssertNil(app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"])
-        let check = homeBillCheck("话费和宽带", in: app), undo = app.buttons["undoLastChange"], message = app.staticTexts["toastMessage"]
+        let check = homeBillCheck("话费和宽带", in: app), undo = app.buttons["undoLastChange"], message = app.buttons["toastMessage"]
         XCTAssertTrue(check.isHittable)
         let started = ProcessInfo.processInfo.systemUptime
         check.press(forDuration: 0.8); tap(app.buttons["billMenu_pay"], in: app)
