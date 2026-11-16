@@ -6,6 +6,7 @@ import YubaiCore
 struct CategoryPicker: View {
     enum Style { case grid, sections, entry }
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     let income: Bool
     var selected: CategoryAssignment? = nil
     var suggested: String? = nil
@@ -15,7 +16,6 @@ struct CategoryPicker: View {
     var addInline: ((String?) -> Void)? = nil
     let choose: (CategoryAssignment, CategoryAddition?) -> Bool
     @State private var expanded: String?
-    @State private var adding = false
 
     private var categories: [YubaiCore.Category] {
         let ordered = store.current.orderedCategories(income: income)
@@ -30,16 +30,19 @@ struct CategoryPicker: View {
             case .grid: grid
             }
         }
-        .sheet(isPresented: $adding) {
+        .onChange(of: income) { _, _ in expanded = nil }
+        .onChange(of: store.current.id) { _, _ in expanded = nil }
+    }
+    private func add(parent: String?) {
+        if let addInline { addInline(parent); return }
+        presentations.presentSheet {
             NavigationStack {
-                CategoryAdditionSheet(income: income, parent: expanded, applyingCount: applyingCount) { addition in
+                CategoryAdditionSheet(income: income, parent: parent, applyingCount: applyingCount) { addition in
                     choose(addition.assignment, addition)
                 }
             }.environment(store).appErrors().yubaiSheetBackground()
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
-        .onChange(of: income) { _, _ in expanded = nil }
-        .onChange(of: store.current.id) { _, _ in expanded = nil; adding = false }
     }
     private var grid: some View {
         CategoryGridLayout {
@@ -88,7 +91,7 @@ struct CategoryPicker: View {
             if let main = categories.first(where: { $0.name == selected?.category }), !main.subcategories.isEmpty {
                 entrySubcategories(main)
             }
-            Button { if let addInline { addInline(nil) } else { adding = true } } label: {
+            Button { add(parent: nil) } label: {
                 Label("新分类", systemImage: "plus").yubaiFont(YubaiFont.callout, weight: .medium)
                     .foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
@@ -122,7 +125,7 @@ struct CategoryPicker: View {
         }
     }
     private var addButton: some View {
-        Button { if let addInline { addInline(expanded) } else { adding = true } } label: {
+        Button { add(parent: expanded) } label: {
             Label("加一个", systemImage: "plus").yubaiFont(YubaiFont.button)
                 .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
@@ -168,6 +171,7 @@ struct CategoryPicker: View {
 /// Value-based form control; uses the same picker without auto-applying a draft.
 struct CategoryPickerField: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     let income: Bool
     let selection: CategoryAssignment
     var suggested: String? = nil
@@ -175,35 +179,61 @@ struct CategoryPickerField: View {
     var identifier = "categoryField"
     var directionChanged: (Bool) -> Void = { _ in }
     let choose: (CategoryAssignment) -> Void
-    @State private var showing = false
-    @State private var direction = false
     var body: some View {
-        Button { direction = income; showing = true } label: {
+        Button {
+            presentations.presentSheet {
+                CategoryFieldSheet(income: income, selection: selection, suggested: suggested,
+                                   allowsDirectionChange: allowsDirectionChange, identifier: identifier,
+                                   directionChanged: directionChanged, choose: choose)
+                    .environment(store).appErrors().yubaiSheetBackground()
+            }
+        } label: {
             ViewThatFits(in: .horizontal) {
                 HStack { Text("分类").fixedSize(); Spacer(); value }
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) { Text("分类").fixedSize(); value }
             }.yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
                 .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier(identifier)
-            .sheet(isPresented: $showing) {
-                NavigationStack {
-                    Page(topPadding: YubaiSpace.space8) {
-                        if allowsDirectionChange {
-                            Picker("收支", selection: $direction) { Text("支出").tag(false); Text("收入").tag(true) }.pickerStyle(.segmented)
-                        }
-                        CategoryPicker(income: direction, selected: direction == income ? selection : nil, suggested: direction == income ? suggested : nil, identifier: identifier) { choice, addition in
-                            if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
-                            directionChanged(direction); choose(choice); showing = false; return true
-                        }
-                    }.manualSheetHeader("分类", showsAction: false, cancel: { showing = false })
-                }.environment(store).appErrors().yubaiSheetBackground()
-            }
     }
     private var value: some View {
         HStack(spacing: YubaiSpace.space8) {
             Text(Classification.displayCategory(selection.category) + (selection.subcategory.map { " · " + $0 } ?? "")).lineLimit(1).fixedSize()
             Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).accessibilityHidden(true)
         }.foregroundStyle(YubaiColor.brandInk)
+    }
+}
+
+private struct CategoryFieldSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let income: Bool
+    let selection: CategoryAssignment
+    let suggested: String?
+    let allowsDirectionChange: Bool
+    let identifier: String
+    let directionChanged: (Bool) -> Void
+    let choose: (CategoryAssignment) -> Void
+    @State private var direction: Bool
+    init(income: Bool, selection: CategoryAssignment, suggested: String?, allowsDirectionChange: Bool,
+         identifier: String, directionChanged: @escaping (Bool) -> Void, choose: @escaping (CategoryAssignment) -> Void) {
+        self.income = income; self.selection = selection; self.suggested = suggested
+        self.allowsDirectionChange = allowsDirectionChange; self.identifier = identifier
+        self.directionChanged = directionChanged; self.choose = choose
+        _direction = State(initialValue: income)
+    }
+    var body: some View {
+        NavigationStack {
+            Page(topPadding: YubaiSpace.space8) {
+                if allowsDirectionChange {
+                    Picker("收支", selection: $direction) { Text("支出").tag(false); Text("收入").tag(true) }.pickerStyle(.segmented)
+                }
+                CategoryPicker(income: direction, selected: direction == income ? selection : nil,
+                               suggested: direction == income ? suggested : nil, identifier: identifier) { choice, addition in
+                    if let addition, !store.update("添加分类", { try addition.apply(to: &$0) }) { return false }
+                    directionChanged(direction); choose(choice); dismiss(); return true
+                }
+            }.manualSheetHeader("分类", showsAction: false, cancel: { dismiss() })
+        }
     }
 }
 

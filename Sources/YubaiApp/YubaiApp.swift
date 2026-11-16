@@ -45,7 +45,7 @@ enum TabRoute: Hashable {
 struct TabNavigationLink<Content: View, Label: View>: View {
     @Environment(AppStore.self) private var store
     @Environment(\.yubaiSheetSurface) private var inSheet
-    @State private var sheetDestinationShown = false
+    @Environment(\.surfaceNavigation) private var navigation
     let route: TabRoute
     let destination: () -> Content
     let label: () -> Label
@@ -56,10 +56,9 @@ struct TabNavigationLink<Content: View, Label: View>: View {
         // A NavigationLink inside a List row makes the entire row navigable,
         // including sibling links and card buttons. A Button owns only its tap.
         Button {
-            if inSheet { sheetDestinationShown = true }
+            if inSheet { navigation.push(content: destination) }
             else { store.tabRouteRequest = route }
         } label: { label() }
-            .navigationDestination(isPresented: $sheetDestinationShown, destination: destination)
             .hidesListDisclosure()
     }
 }
@@ -1028,11 +1027,12 @@ struct RootView: View {
             else { mainContent }
         }
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
+        .surfacePresentations()
         #if DEBUG && targetEnvironment(simulator) && os(iOS)
         .background { if UITestSupport.script != nil { UITestDiagnostics() } }
         #endif
         .sheet(item: $store.sheet, onDismiss: { store.finishEntrySaveMotion(); store.homeEntrySession = false }) { sheet in
-            NavigationStack { sheetView(sheet) }.environment(store).tint(YubaiColor.brandInk)
+            NavigationStack { sheetView(sheet).surfaceNavigation() }.environment(store).tint(YubaiColor.brandInk)
                 .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
                 .yubaiZoomDestination(store.sheetSource ?? sheet.motionSource)
                 .appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()

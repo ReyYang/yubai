@@ -24,11 +24,24 @@ enum FixedFlowPresentation {
 
 /// The calendar menu and detail page share the stop confirmation.
 private struct FixedFlowStopConfirmation: ViewModifier {
-    @Environment(AppStore.self) private var store
     let planID: UUID?
     let title: String
     let inflow: Bool
     @Binding var isPresented: Bool
+    var onStopped: () -> Void = {}
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $isPresented) {
+            FixedFlowStopSheet(planID: planID, title: title, inflow: inflow, onStopped: onStopped)
+        }
+    }
+}
+
+private struct FixedFlowStopSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let planID: UUID?
+    let title: String
+    let inflow: Bool
     var onStopped: () -> Void = {}
     private var pending: [Occurrence] { planID.map { FixedFlows.unsettled(planID: $0, in: store.current) } ?? [] }
     private var message: String? {
@@ -36,27 +49,25 @@ private struct FixedFlowStopConfirmation: ViewModifier {
         if pending.count > 1 { return "还有 \(pending.count) 期没记。" }
         return pending.first.map { FixedFlowPresentation.monthDay($0.date) + "这期还没记。" }
     }
-    func body(content: Content) -> some View {
-        content.sheet(isPresented: $isPresented) {
-            ConfirmationSheet(title: "停掉「\(title)」", consequence: message, cancelIdentifier: "fixedFlowStopCancel") {
-                if pending.isEmpty {
-                    Button("停掉") { performStop() }.buttonStyle(DestructiveButtonStyle())
-                        .accessibilityIdentifier("fixedFlowStopConfirm").accessibilityHint("只停以后的，已到期账单和付过的记录保留")
-                } else {
-                    Button(inflow ? "这期收到了，记一笔再停" : "这期付了，记一笔再停") { performStop(.settle) }.buttonStyle(PrimaryButtonStyle())
-                        .accessibilityIdentifier("fixedFlowStopConfirm")
-                    Button(inflow ? "这期没收到，直接停" : "这期没付，直接停") { performStop(.skip) }.buttonStyle(DestructiveButtonStyle())
-                        .accessibilityIdentifier("fixedFlowStopSkip")
-                }
-            }.environment(store)
-        }
+    var body: some View {
+        ConfirmationSheet(title: "停掉「\(title)」", consequence: message, cancelIdentifier: "fixedFlowStopCancel") {
+            if pending.isEmpty {
+                Button("停掉") { performStop() }.buttonStyle(DestructiveButtonStyle())
+                    .accessibilityIdentifier("fixedFlowStopConfirm").accessibilityHint("只停以后的，已到期账单和付过的记录保留")
+            } else {
+                Button(inflow ? "这期收到了，记一笔再停" : "这期付了，记一笔再停") { performStop(.settle) }.buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("fixedFlowStopConfirm")
+                Button(inflow ? "这期没收到，直接停" : "这期没付，直接停") { performStop(.skip) }.buttonStyle(DestructiveButtonStyle())
+                    .accessibilityIdentifier("fixedFlowStopSkip")
+            }
+        }.environment(store)
     }
     private func performStop(_ resolution: FixedFlowStopResolution? = nil) {
         guard let planID else { return }
         do {
             let change = try FixedFlows.stop(planID: planID, resolution: resolution, in: store.current)
             if store.apply(change, label: "停掉安排") {
-                store.cancelEntrySaveMotion(); store.toast = "已停掉"; isPresented = false; onStopped()
+                store.cancelEntrySaveMotion(); store.toast = "已停掉"; dismiss(); onStopped()
             }
         } catch { store.error = error.localizedDescription }
     }
@@ -263,14 +274,22 @@ struct BillMoveSheet: View {
 
 private struct BillRowMenuModifier: ViewModifier {
     @Environment(AppStore.self) private var store
-    @State private var confirmingStop = false
+    @Environment(\.surfacePresentations) private var presentations
     let planID: UUID
     let occurrence: Date
     var enabled = true
     func body(content: Content) -> some View {
         let plan = store.plans.first { $0.id == planID }
-        content.contextMenu { if enabled { BillRowMenu(planID: planID, occurrence: occurrence, stop: { confirmingStop = true }) } }
-            .modifier(FixedFlowStopConfirmation(planID: planID, title: plan?.title ?? "", inflow: plan?.inflow ?? false, isPresented: $confirmingStop))
+        content.contextMenu {
+            if enabled {
+                BillRowMenu(planID: planID, occurrence: occurrence, stop: {
+                    presentations.presentSheet {
+                        FixedFlowStopSheet(planID: planID, title: plan?.title ?? "", inflow: plan?.inflow ?? false)
+                            .environment(store)
+                    }
+                })
+            }
+        }
     }
 }
 

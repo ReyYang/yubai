@@ -18,6 +18,43 @@ NUMBER = r'-?\d+(?:\.\d+)?(?![\w.])'
 GEOMETRY = re.compile(r'\b(?:spacing|rowSpacing|topPadding|minLength|minimumDistance|lineHeight|topLeadingRadius|topTrailingRadius|bottomLeadingRadius|bottomTrailingRadius|min|ideal|max|width|height|minWidth|maxWidth|minHeight|maxHeight|idealWidth|idealHeight|cornerRadius|radius|size|minimum|maximum|lineWidth|top|bottom|leading|trailing|x|y):\s*' + NUMBER)
 PADDING = re.compile(r'\.padding\(\s*(?:\.[A-Za-z]+,\s*)?' + NUMBER)
 DETENT = re.compile(r'\.(?:height|presentationCornerRadius)\(\s*' + NUMBER)
+PRESENTATION = re.compile(r'\.(?:sheet|fullScreenCover|popover|confirmationDialog|alert|navigationDestination|surfacePresentations|surfaceNavigation|entryDiscardGuard)\s*\(|\.modifier\(\s*(?:FixedFlowStopConfirmation|EntryDiscardGuard|AppErrorPresenter)\s*\(')
+# Reusable row controls must route requests to a stable page host. Explicit
+# entries cover composite row types whose names do not end in a row noun.
+PRESENTATION_FREE_TYPES = {'BillRowMenuModifier', 'CategoryPicker', 'WishlistCooldownCards', 'ProfileChatEntry'}
+ROW_TYPE = re.compile(r'(?:Row|Rows|Card|Cards|Chip|Chips|Pill|Field|Menu|Link|Button)$')
+
+
+def brace_end(code, opening):
+    depth = 1
+    end = opening + 1
+    while end < len(code) and depth:
+        depth += (code[end] == '{') - (code[end] == '}')
+        end += 1
+    return end
+
+
+def row_presentations(name, code):
+    """Check masked Swift: row types plus directly nested lazy row builders.
+
+    This deliberately does not infer a cross-file view call graph. The naming
+    rule and the audited composite list cover extracted row implementations;
+    the closure rule covers anonymous rows. Native Menu/contextMenu anchors
+    have no app-owned presentation binding and remain attached to their row.
+    """
+    ranges = []
+    for declaration in re.finditer(r'\b(?:struct|class)\s+(\w+)[^{]*\{', code):
+        owner = declaration[1]
+        if ROW_TYPE.search(owner) or owner in PRESENTATION_FREE_TYPES:
+            ranges.append((declaration.end(), brace_end(code, declaration.end() - 1), owner))
+    for builder in re.finditer(r'\b(?:List|ForEach|LazyVStack|LazyHStack|LazyVGrid|LazyHGrid|CardRows|NativeCardRows)\s*(?:\([^{}]*\))?\s*\{', code):
+        ranges.append((builder.end(), brace_end(code, builder.end() - 1), 'dynamic row builder'))
+    found = []
+    for match in PRESENTATION.finditer(code):
+        owner = next((owner for start, end, owner in ranges if start <= match.start() < end), None)
+        if owner:
+            found.append(f'{name}:{code.count(chr(10), 0, match.start()) + 1}: presentation in {owner}: move state and presenter to a stable surface')
+    return found
 
 
 def masks(source):
@@ -31,7 +68,7 @@ def masks(source):
 
 def violations(name, source):
     code, comments = masks(source)
-    found = []
+    found = row_presentations(name, code)
     def reject(pattern, reason, text=code):
         for match in re.finditer(pattern, text):
             line = text.count('\n', 0, match.start()) + 1
@@ -94,7 +131,18 @@ def self_test():
     assert violations(SHARED, 'UITextView()')
     assert not violations(SHARED, 'private struct RowTextInput: View { TextField("", text: $text) }')
     assert not violations(SHARED, 'private struct NativeRowInput { let field = UITextField() }')
+    for modifier in ('sheet', 'fullScreenCover', 'popover', 'confirmationDialog', 'alert', 'navigationDestination'):
+        assert violations('Row.swift', f'struct ExampleRow: View {{ var body: some View {{ Button("x") {{}}.{modifier}(isPresented: $show) {{ Editor() }} }} }}')
+        assert violations(SHARED, f'struct ExampleChip: View {{ var body: some View {{ Button("x") {{}}.{modifier}(isPresented: $show) {{ Editor() }} }} }}')
+        assert violations('Page.swift', f'List {{ ForEach(items) {{ item in Button("x") {{}}.{modifier}(isPresented: $show) {{ Editor() }} }} }}')
+    assert violations('Page.swift', 'struct BillRowMenuModifier: ViewModifier { content.sheet(isPresented: $show) { Editor() } }')
+    assert violations('Page.swift', 'struct BillRowMenuModifier: ViewModifier { content.modifier(FixedFlowStopConfirmation(isPresented: $show)) }')
+    assert violations('Page.swift', 'struct ProfileChatEntry: View { content.sheet(isPresented: $show) { Editor() } }')
+    assert not violations('Page.swift', 'List { ForEach(items) { ItemRow(item: $0) } }.sheet(item: $editing) { Editor() }')
+    assert not violations('Page.swift', 'struct ItemRow: View { Button("x") { presentations.presentSheet { Editor() } }.contextMenu { Button("x") { edit() } } }')
+    assert not violations('Page.swift', '// struct ItemRow { .sheet(isPresented: $show) {} }\nText(".popover(isPresented:)")')
     print('UI lint self-test: raw inputs, back, toast, geometry rejected; tokens accepted')
+    print('UI lint self-test: presentations rejected in reusable and anonymous dynamic rows; surface routing accepted')
 
 
 def main():

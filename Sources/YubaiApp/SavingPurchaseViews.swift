@@ -78,13 +78,12 @@ private struct PurchaseOptionChip: View {
 
 struct SavingPurchaseCard: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     let purchase: PurchaseJudgment
     let verdict: SubmittedPurchaseVerdict?
     let evidence: [UUID]
     let notes: [MemoryNote]
     @State private var wishID: UUID?
-    @State private var recording = false
-    @State private var recordingFromReserve = false
     @State private var waitHours = 0
     private var hidden: Bool { store.preferences.hideAmounts }
     private var assessment: PurchaseAssessment { store.purchaseAssessment(purchase) }
@@ -125,11 +124,6 @@ struct SavingPurchaseCard: View {
                 }.lineLimit(1).padding(.top, YubaiSpace.space8)
                 RememberedRows(notes: notes)
             }
-        }.sheet(isPresented: $recording) {
-            NavigationStack {
-                QuickEntryView(prefill: QuickEntryPrefill(category: purchase.category, amount: purchase.amount, purpose: purchase.title,
-                                                          fromReserve: recordingFromReserve))
-            }.environment(store).appErrors().yubaiSheetBackground()
         }
         .task(id: "\(purchase.amount):" + store.profile.principles.joined(separator: "\n")) {
             waitHours = Wishlist.cooldownHours(amount: purchase.amount, fromPrinciples: store.profile.principles)
@@ -149,19 +143,27 @@ struct SavingPurchaseCard: View {
     }
     @ViewBuilder private var actions: some View {
         if monthEnough {
-            Button("买了，记一笔") { recordingFromReserve = false; recording = true }.buttonStyle(PrimaryButtonStyle(compact: true))
+            Button("买了，记一笔") { record(fromReserve: false) }.buttonStyle(PrimaryButtonStyle(compact: true))
             Button(wishTitle, action: saveWish).buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).disabled(wishID != nil)
                 .accessibilityIdentifier("purchaseSaveWish").accessibilityHint(waitHours > 0 ? "加入后等待 \(waitHours) 小时" : "加入心愿单")
         } else {
             Button(wishTitle, action: saveWish).buttonStyle(PrimaryButtonStyle(compact: true)).disabled(wishID != nil)
                 .accessibilityIdentifier("purchaseSaveWish").accessibilityHint(waitHours > 0 ? "加入后等待 \(waitHours) 小时" : "加入心愿单")
             if reserveEnough {
-                Button("从存着的钱买") { recordingFromReserve = true; recording = true }
+                Button("从存着的钱买") { record(fromReserve: true) }
                     .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("buyFromReserve")
             } else {
-                Button("我还是要买") { recordingFromReserve = false; recording = true }
+                Button("我还是要买") { record(fromReserve: false) }
                     .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
             }
+        }
+    }
+    private func record(fromReserve: Bool) {
+        presentations.presentSheet {
+            NavigationStack {
+                QuickEntryView(prefill: QuickEntryPrefill(category: purchase.category, amount: purchase.amount, purpose: purchase.title,
+                                                          fromReserve: fromReserve))
+            }.environment(store).appErrors().yubaiSheetBackground()
         }
     }
     private func saveWish() {

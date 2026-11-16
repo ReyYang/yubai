@@ -134,13 +134,16 @@ struct StorageView: View {
 /// 备份页最底下的「清空所有数据」，走和存储空间一样的二次确认。
 struct EraseAllDataButton: View {
     @Environment(AppStore.self) private var store
-    @State private var showing = false
+    @Environment(\.surfacePresentations) private var presentations
     var body: some View {
-        Button { showing = true } label: {
+        Button {
+            presentations.presentSheet {
+                StorageEraseSheet(recoveryCount: nil).environment(store).environment(\.yubaiSheetSurface, true).appErrors()
+            }
+        } label: {
             Text("清空所有数据").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberInk)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openBackupErase")
-            .sheet(isPresented: $showing) { StorageEraseSheet(recoveryCount: nil).environment(store).environment(\.yubaiSheetSurface, true).appErrors() }
     }
 }
 

@@ -254,6 +254,23 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertEqual(element("toastMessage").label, "已撤销")
         launch("v47-toast-long"); tap("expandToast"); element("expandToast").swipeDown(); gone("toastMessage")
     }
+    func testTopupPartialPresentationSurvivesDynamicTypeAndClippingAudit() throws {
+        for large in [false, true] {
+            launch("v47-topup", large: large)
+            tap("savingsTopupPartial")
+            XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
+            try auditAppText(in: app, dynamicType: true) { issue in
+                XCTFail("Topup sheet accessibility audit: " + issue.detailedDescription)
+                return true
+            }
+            XCTAssertEqual(app.state, .runningForeground)
+            XCTAssertTrue(element("savingsTransferPreview").exists)
+            keys("200")
+            XCTAssertTrue(element("confirmSavingsTransfer").isEnabled)
+            tap("amountSheetCancel"); gone("savingsTransferSheet")
+            XCTAssertTrue(element("savingsTopupCard").exists)
+        }
+    }
     func testLargestToastWrapsInsideItsVisibleViewportAndKeepsUndoAndDismiss() {
         for dark in [false, true] {
             launch("v47-toast-long", large: true, dark: dark)
@@ -340,6 +357,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         launch("v47-toast-short")
         let toast = element("toastMessage")
         let last = element("ledgerEntry_47000000-0000-0000-0000-000000471030")
+        XCTAssertTrue(waitForStableFrame(element("toastBody")))
         XCTAssertTrue(revealControl(last, in: app, deadline: Date().addingTimeInterval(180), searching: element("entriesScroll")))
         XCTAssertTrue(toast.exists); XCTAssertTrue(last.isHittable)
         XCTAssertLessThanOrEqual(last.frame.maxY, toast.frame.minY - 12 + 0.5)

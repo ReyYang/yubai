@@ -6,6 +6,7 @@ import UIKit
 
 struct EntryCategoryChips: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     let frequent: [String]
     let income: Bool
@@ -15,9 +16,6 @@ struct EntryCategoryChips: View {
     var directionChanged: (Bool) -> Void = { _ in }
     var suggest: () -> String? = { nil }
     let choose: (CategoryAssignment) -> Void
-    @State private var picking = false
-    @State private var pickerIncome = false
-    @State private var suggested: String?
     private var visible: [String] {
         var rows = Array(frequent.prefix(5))
         if !rows.contains(selection.category), !selection.category.isEmpty, !Classification.isPending(selection.category) {
@@ -43,7 +41,15 @@ struct EntryCategoryChips: View {
                     .accessibilityLabel(name + ((selected || suggestedChip) ? selection.subcategory.map { " · " + $0 } ?? "" : "") + (suggestedChip ? "（按你以前的记法）" : ""))
                     .accessibilityIdentifier("entryCategory_" + name)
             }
-            Button { pickerIncome = income; suggested = suggest(); picking = true } label: {
+            Button {
+                let suggested = suggest()
+                presentations.presentSheet {
+                    EntryMoreCategorySheet(income: income, selection: selection, suggestionOnly: suggestionOnly,
+                                           suggested: suggested, choose: { choice in
+                        directionChanged(income); choose(choice); presentations.dismissSheet()
+                    }, dismiss: { presentations.dismissSheet() })
+                }
+            } label: {
                 Text("更多").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).fixedSize()
                     .padding(.horizontal, YubaiSpace.gapGroup).frame(height: YubaiSize.chipHeight)
                     .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: YubaiSize.separator) }
@@ -51,12 +57,6 @@ struct EntryCategoryChips: View {
             }.accessibilityIdentifier("entryCategoryMore")
             }
         }.buttonStyle(PressButtonStyle()).animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
-            .sheet(isPresented: $picking) {
-                EntryMoreCategorySheet(income: pickerIncome, selection: selection, suggestionOnly: suggestionOnly,
-                                       suggested: suggested, choose: { choice in
-                    directionChanged(pickerIncome); choose(choice); picking = false
-                }, dismiss: { picking = false })
-            }
     }
 }
 

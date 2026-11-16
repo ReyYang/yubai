@@ -29,9 +29,9 @@ private extension ButlerSuggestionAction {
 
 struct ButlerSuggestionCard: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     let suggestion: ButlerSuggestion
     var more = 0
-    @State private var correcting = false
     private var headline: String {
         if let fact = store.butlerWatchFact(suggestion) {
             return HomeButler.privacyText(fact.category, hidden: store.preferences.hideAmounts) + " "
@@ -44,12 +44,13 @@ struct ButlerSuggestionCard: View {
                      more: more, evidenceTitle: "看这 \(suggestion.count) 笔", onEvidence: { store.tabRouteRequest = .butlerEvidence(suggestion.id) }, titleIdentifier: "butlerAIText",
                      yesTitle: suggestion.action.buttonTitle(hidden: store.preferences.hideAmounts), noTitle: "说得不对",
                      yesIdentifier: "butlerAIAccept", noIdentifier: "butlerAIIncorrect",
-                     yes: { store.answerSuggestion(suggestion, .accept) }, no: { correcting = true })
-            .accessibilityElement(children: .contain).accessibilityIdentifier("butlerSuggestionCard")
-            .sheet(isPresented: $correcting) {
-                ButlerSuggestionCorrection(suggestion: suggestion) { correcting = false }
+                     yes: { store.answerSuggestion(suggestion, .accept) }, no: {
+            presentations.presentSheet {
+                ButlerSuggestionCorrection(suggestion: suggestion) { presentations.dismissSheet() }
                     .environment(store).appErrors().yubaiSheetBackground()
             }
+        })
+            .accessibilityElement(children: .contain).accessibilityIdentifier("butlerSuggestionCard")
     }
 }
 

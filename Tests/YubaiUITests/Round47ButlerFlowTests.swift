@@ -199,10 +199,21 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         for mode in [(false, false), (false, true), (true, false), (true, true)] {
             launch(large: mode.0, dark: mode.1)
             tap("tab_yubai"); tap("openMemories")
-            let row = element("memory_" + noteID)
+            let row = app.buttons["memory_" + noteID]
             XCTAssertTrue(revealControl(row, in: app, deadline: Date().addingTimeInterval(60)))
-            row.swipeLeft()
-            tap("swipeEditMemory_" + noteID)
+            XCTAssertTrue(waitForStableFrame(row))
+            let cell = app.cells.containing(.button, identifier: "memory_" + noteID).firstMatch
+            XCTAssertTrue(cell.exists)
+            // Swipe the native cell across its visible width. Swiping the
+            // NavigationLink's AX button activated its default navigation in
+            // run 7, so the following swipe-action query could never succeed.
+            let start = cell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+            let end = cell.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+            let edit = app.buttons["swipeEditMemory_" + noteID]
+            XCTAssertTrue(edit.waitForExistence(timeout: 5))
+            tapControl(edit, in: app, reveals: false)
+            XCTAssertTrue(element("cancelManualSheet").waitForExistence(timeout: 5))
             try auditFocusedSheet("memoryText")
             element("memoryText").typeText("周四和同事拼单")
             try auditFocusedSheet("memoryText")
@@ -366,34 +377,40 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         }
     }
     func testNestedFrequentFieldPaddingTakesFocusAfterReopening() {
-        launch("v47-c-empty", large: true)
-        frequentMenu()
-        for _ in 0..<2 {
-            tap("emptyAction_frequent")
-            let field = element("frequentEntryPurpose")
-            XCTAssertTrue(field.waitForExistence(timeout: 5))
-            XCTAssertTrue(waitForStableFrame(field))
-            XCTAssertGreaterThanOrEqual(field.frame.height, 44)
-            field.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95)).tap()
-            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-            XCTAssertTrue(dismissKeyboardIntroduction(in: app))
-            // KeypadSheet keeps its footer mounted while the text editor owns
-            // focus. The numeric key must stop being a visible tap target.
-            wait {
-                let key = self.element("keypad_1")
-                return !key.exists || !key.isHittable
+        for large in [false, true] {
+            launch("v47-c-empty", large: large)
+            frequentMenu()
+            for _ in 0..<2 {
+                tap("emptyAction_frequent")
+                let field = element("frequentEntryPurpose")
+                XCTAssertTrue(field.waitForExistence(timeout: 5))
+                XCTAssertTrue(waitForStableFrame(field))
+                XCTAssertGreaterThanOrEqual(field.frame.height, 44)
+                field.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.95)).tap()
+                XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+                XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+                XCTAssertTrue(waitForKeyboardEditing("frequentEntryPurpose", in: app))
+                // KeypadSheet keeps its footer mounted while the text editor owns
+                // focus. The numeric key must stop being a visible tap target.
+                wait {
+                    let key = self.element("keypad_1")
+                    return !key.exists || !key.isHittable
+                }
+                XCTAssertTrue(waitForStableFrame(field))
+                XCTAssertEqual(windowMetrics(in: app)?.focused, "frequentEntryPurpose")
+                field.typeText("午")
+                XCTAssertTrue(waitForStableFrame(field))
+                XCTAssertTrue(app.keyboards.firstMatch.exists)
+                XCTAssertEqual(windowMetrics(in: app)?.focused, "frequentEntryPurpose")
+                field.typeText("饭\n")
+                XCTAssertTrue((field.value as? String ?? "").contains("午饭"))
+                XCTAssertTrue(waitForKeyboardDismissal(in: app))
+                XCTAssertTrue(element("keypad_1").isHittable)
+                tap("amountSheetCancel")
             }
-            XCTAssertTrue(waitForStableFrame(field))
-            XCTAssertEqual(windowMetrics(in: app)?.focused, "frequentEntryPurpose")
-            field.typeText("午")
-            XCTAssertTrue(waitForStableFrame(field))
-            XCTAssertTrue(app.keyboards.firstMatch.exists)
-            XCTAssertEqual(windowMetrics(in: app)?.focused, "frequentEntryPurpose")
-            field.typeText("饭\n")
-            XCTAssertTrue((field.value as? String ?? "").contains("午饭"))
-            tap("amountSheetCancel")
+            XCTAssertTrue(element("emptyState_frequent").exists)
+            app.terminate()
         }
-        XCTAssertTrue(element("emptyState_frequent").exists)
     }
     func testPaydayTopupAndAISuggestionBothSurviveAnswersAndRelaunch() {
         launch("v47-ai-topup")

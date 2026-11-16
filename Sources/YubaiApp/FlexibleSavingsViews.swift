@@ -79,9 +79,9 @@ struct SavingsFloorSheet: View {
 
 struct SavingsTopupCard: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     let offer: SavingsTopupOffer
     var more = 0
-    @State private var partial = false
     var body: some View {
         QuestionCard(eyebrow: "今天发工资",
                      title: "上个月拿出来用了 " + amount2(offer.amount, hide: store.preferences.hideAmounts) + "，补回去吗？", more: more,
@@ -91,11 +91,13 @@ struct SavingsTopupCard: View {
                      yes: { answer(offer.amount) }, no: { answer(0) })
             .accessibilityElement(children: .contain).accessibilityIdentifier("savingsTopupCard")
             .contextMenu {
-                Button("补一部分") { partial = true }.accessibilityIdentifier("savingsTopupPartial")
-            }.accessibilityAction(named: "补一部分") { partial = true }
-            .sheet(isPresented: $partial) {
-                SavingsTransferSheet(direction: .putBack, offer: offer).environment(store).appErrors().yubaiSheetBackground().presentationDragIndicator(.visible)
-            }
+                Button("补一部分", action: partial).accessibilityIdentifier("savingsTopupPartial")
+            }.accessibilityAction(named: "补一部分", partial)
+    }
+    private func partial() {
+        presentations.presentSheet {
+            SavingsTransferSheet(direction: .putBack, offer: offer).environment(store).appErrors().yubaiSheetBackground().presentationDragIndicator(.visible)
+        }
     }
     private func answer(_ amount: Int64) {
         _ = store.update(amount == 0 ? "不补了" : "放回去", recordUndo: amount > 0, entryMotion: false, showToast: amount > 0) {

@@ -115,9 +115,9 @@ struct CloudAISettingsSection: View {
 
 struct CloudModelMenu: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfaceNavigation) private var navigation
     @State private var models = DeepSeekClient.fallbackModels
     @State private var fetchedAt: Date?
-    @State private var editing = false
     var body: some View {
         Menu {
             ForEach(models, id: \.self) { model in
@@ -134,7 +134,7 @@ struct CloudModelMenu: View {
             if let fetchedAt {
                 Text("刚从 DeepSeek 取到 · " + fetchedAt.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(Locale(identifier: "zh_CN"))))
             } else { Text("内置模型") }
-            Button("自己填…") { editing = true }.accessibilityIdentifier("customCloudModel")
+            Button("自己填…") { navigation.push { CloudModelEditor() } }.accessibilityIdentifier("customCloudModel")
         } label: {
             HStack(spacing: YubaiSpace.space8) {
                 Text("模型").yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
@@ -142,7 +142,6 @@ struct CloudModelMenu: View {
                 Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
         }.accessibilityIdentifier("editCloudModel")
-            .navigationDestination(isPresented: $editing) { CloudModelEditor() }
             .task { await fetchModels() }
     }
     private func fetchModels() async {

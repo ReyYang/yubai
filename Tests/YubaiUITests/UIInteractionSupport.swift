@@ -78,7 +78,7 @@ class YubaiUITestCase: XCTestCase {
         // Any-descendant firstMatch asks XCTest to walk every AX node, including
         // offscreen cells and diagnostics, just to find a button identifier.
         let query: XCUIElementQuery
-        if ["tab_", "keypad_", "ledgerEntry_", "entriesFilter_", "ledgerJumpMonth_", "savingMode_", "softLine_", "modeSoftLine_"].contains(where: identifier.hasPrefix) ||
+        if ["tab_", "keypad_", "ledgerEntry_", "entriesFilter_", "ledgerJumpMonth_", "savingMode_", "softLine_", "modeSoftLine_", "memory_", "swipeEditMemory_"].contains(where: identifier.hasPrefix) ||
             ["fundsFormula", "openSaving", "openSettings", "toggleAmountVisibility", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
              "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear",
              "coverFromReserve", "deficitKeep", "saveMemory", "addEntry", "manageQuickRepeats", "takeSavings", "putBackSavings",
@@ -87,7 +87,7 @@ class YubaiUITestCase: XCTestCase {
         } else if ["butlerAIText", "ledgerStatus", "reserveTotal"].contains(identifier) { query = app.staticTexts }
         else if ["mainNavigation", "rootHeaderRegion", "quickRepeatMenu", "savingsTransferSheet", "savingsTransferPreview",
                  "transferSavedPreview", "transferAvailablePreview", "amountSheetAmount", "fixedBottomBar"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
-        else if identifier == "entriesSearch" { query = app.textFields }
+        else if ["entriesSearch", "frequentEntryPurpose"].contains(identifier) { query = app.textFields }
         else if ["butlerAICorrectionText", "memoryText"].contains(identifier) { query = app.textViews }
         else if identifier == "entriesScroll" { query = app.collectionViews }
         else if ["formulaPage", "savingTabScroll", "whereCategoryPage", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
@@ -365,7 +365,7 @@ class YubaiUITestCase: XCTestCase {
             var searchContainer: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot])?
             var keyboards: [CGRect] = []
             var fixed: [(id: String, frame: CGRect)] = []
-            let fixedIDs: Set<String> = ["rootHeaderRegion", "mainNavigation", "fixedBottomBar"]
+            let fixedIDs: Set<String> = ["rootHeaderRegion", "mainNavigation", "fixedBottomBar", "toastBody"]
             func collect(_ node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot], owners: [String] = []) {
                 let isFixed = fixedIDs.contains(node.identifier)
                 let owners = isFixed ? owners + [node.identifier] : owners

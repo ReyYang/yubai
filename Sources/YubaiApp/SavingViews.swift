@@ -24,14 +24,21 @@ enum SavingCardVisibility {
 /// The same destination carries context from every invitation to revisit.
 struct ProfileChatEntry: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     var title = "和余白聊聊"
     var context: ProfileColdStart.OpeningContext? = nil
     var prominent = false
-    @State private var showing = false
     private var configured: Bool { IntelligenceRuntime.isConfigured }
     private var enabled: Bool { configured && store.preferences.isAIEnabled(for: .answers) && IntelligenceRuntime.cloud.unavailableModel == nil }
     var body: some View {
-        Button { showing = true } label: {
+        Button {
+            presentations.presentSheet {
+                NavigationStack { ProfileConversationView(openingContext: context) }.environment(store).appErrors().yubaiSheetBackground()
+                    #if os(macOS)
+                    .frame(minWidth: YubaiSize.sheetMinimumWidth, minHeight: YubaiSize.sheetMinimumHeight)
+                    #endif
+            }
+        } label: {
             HStack(spacing: YubaiSpace.gapGroup) {
                 if prominent { AssistantMark(size: YubaiFont.row.size).accessibilityHidden(true) }
                 Text(title).yubaiFont(prominent ? YubaiFont.rowTitle : YubaiFont.row)
@@ -42,12 +49,6 @@ struct ProfileChatEntry: View {
                 .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: prominent ? YubaiColor.brandTint : nil)
         }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.5)
             .accessibilityIdentifier("profileChatEntry")
-            .sheet(isPresented: $showing) {
-                NavigationStack { ProfileConversationView(openingContext: context) }.environment(store).appErrors().yubaiSheetBackground()
-                    #if os(macOS)
-                    .frame(minWidth: YubaiSize.sheetMinimumWidth, minHeight: YubaiSize.sheetMinimumHeight)
-                    #endif
-            }
     }
 }
 
@@ -75,19 +76,21 @@ struct SavingsHeader: View {
 
 struct WishlistCooldownCards: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     private var wishes: [WishItem] {
         Wishlist.cooldownDue(store.current, now: Dates.now).compactMap { candidate in
             guard case .openWish(let id) = candidate.action else { return nil }
             return store.current.wishlist.first { $0.id == id }
         }
     }
-    @State private var recording: WishItem?
     var body: some View {
-        ForEach(wishes) { wish in CooldownWishCard(wish: wish, record: { recording = $0 }) }
-            .sheet(item: $recording) { wish in
-                NavigationStack { QuickEntryView(prefill: QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title)) }
-                    .environment(store).appErrors().yubaiSheetBackground()
-            }
+        ForEach(wishes) { wish in CooldownWishCard(wish: wish, record: record) }
+    }
+    private func record(_ wish: WishItem) {
+        presentations.presentSheet {
+            NavigationStack { QuickEntryView(prefill: QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title)) }
+                .environment(store).appErrors().yubaiSheetBackground()
+        }
     }
 }
 

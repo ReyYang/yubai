@@ -1,6 +1,42 @@
 import XCTest
 
 final class Round47ViewportGeometryTests: XCTestCase {
+    func testRunSevenHittableLedgerRowMustScrollPastTheToastAndItsGap() {
+        let window = CGRect(x: 0, y: 0, width: 440, height: 956)
+        let scroll = CGRect(x: 0, y: 130, width: 440, height: 668)
+        let row = CGRect(x: 20, y: 722, width: 400, height: 64)
+        let body = CGRect(x: 36, y: 738, width: 308, height: 44)
+        let occlusions = UIViewportGeometry.fixedOcclusions([
+            ("mainNavigation", CGRect(x: 98, y: 798, width: 244, height: 124)), ("toastBody", body)],
+            owners: [], hasScrollAncestors: true, window: window)
+        XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: row, scrollAncestors: [scroll], occlusions: occlusions))
+        let viewport = UIViewportGeometry.visibleParts(scroll, ancestors: [], excluding: occlusions)
+            .max { $0.height < $1.height }!
+        XCTAssertEqual(viewport.maxY, 726)
+        var progress = UIRevealProgress()
+        guard case .drag(up: true, distance: let distance) = progress.next(.init(target: row, viewport: viewport)) else {
+            return XCTFail("Run 7's early success must require further native scrolling")
+        }
+        XCTAssertGreaterThanOrEqual(distance, 60)
+        let moved = row.offsetBy(dx: 0, dy: -distance)
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: moved, scrollAncestors: [scroll], occlusions: occlusions))
+        XCTAssertLessThanOrEqual(moved.maxY, body.minY - 12)
+    }
+    func testToastMessageOwnsItsScrollAndFixedUndoStillUsesNativeHittability() {
+        let window = CGRect(x: 0, y: 0, width: 440, height: 956)
+        let body = CGRect(x: 36, y: 465, width: 368, height: 262)
+        XCTAssertTrue(UIViewportGeometry.fixedOcclusions([("toastBody", body)], owners: ["toastBody"],
+            hasScrollAncestors: true, window: window).isEmpty)
+        let undo = CGRect(x: 280, y: 735, width: 124, height: 44)
+        let occlusions = UIViewportGeometry.fixedOcclusions([("toastBody", body)], owners: [],
+            hasScrollAncestors: false, window: window)
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: undo, scrollAncestors: [], occlusions: occlusions))
+        XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: false,
+            frame: undo, scrollAncestors: [], occlusions: occlusions))
+    }
     func testRunFiveMonthAndFocusedSearchBelongToTheHeaderRatherThanItsOcclusions() {
         let window = CGRect(x: 0, y: 0, width: 440, height: 956)
         let header = (id: "rootHeaderRegion", frame: CGRect(x: 0, y: 62, width: 440, height: 72))

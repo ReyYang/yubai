@@ -9,7 +9,10 @@ enum UIViewportGeometry {
                                 hasScrollAncestors: Bool, window: CGRect) -> [CGRect] {
         guard hasScrollAncestors else { return [] }
         return regions.filter { !owners.contains($0.id) }.map {
-            CGRect(x: window.minX, y: $0.frame.minY, width: window.width, height: $0.frame.height)
+            // A toast owns its internal message scroll, but ledger/page rows
+            // must clear the whole overlay with the existing 12pt gap.
+            let gap: CGFloat = $0.id == "toastBody" ? 12 : 0
+            return CGRect(x: window.minX, y: $0.frame.minY - gap, width: window.width, height: $0.frame.height + gap)
         }
     }
     /// Ancestors are the target's actual snapshot scroll ancestors, outermost

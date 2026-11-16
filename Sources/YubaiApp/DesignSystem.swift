@@ -1086,6 +1086,7 @@ extension View {
             .environment(\.yubaiFormSurface, false)
             .presentationBackground { PaperCanvas() }
             .modifier(SheetPresentationMetrics())
+            .surfacePresentations()
             #if DEBUG && targetEnvironment(simulator) && os(iOS)
             // Modal accessibility may hide the root probe. Each sheet uses
             // this same read-only window probe on its own background surface.
@@ -1207,7 +1208,93 @@ struct Page<Content: View>: View {
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.rootTabScroll(rootTab).accessibilityElement(children: .contain).accessibilityIdentifier(identifier)
             .modifier(ScrollContentViewport()).scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
+            .surfacePresentations().surfaceNavigation()
     }
+}
+
+/// Rows send a value to their surface. The live presentation attribute and its
+/// state belong to this non-lazy host, never to a recycled List/ForEach child.
+private struct SurfacePresentation: Identifiable, Hashable {
+    let id = UUID()
+    let content: AnyView
+    var source: CGRect = .zero
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+@MainActor @Observable fileprivate final class SurfacePresentationState {
+    var sheet: SurfacePresentation?
+    var popover: SurfacePresentation?
+    var destination: SurfacePresentation?
+}
+
+/// Row callbacks hold only a weak handle to the host. A presented editor may
+/// retain a row's save closure without forming a cycle back to its own state.
+struct SurfacePresentations {
+    fileprivate weak var host: SurfacePresentationState? = nil
+    @MainActor func presentSheet<Content: View>(@ViewBuilder content: () -> Content) {
+        guard let host else { assertionFailure("Missing stable presentation host"); return }
+        host.sheet = SurfacePresentation(content: AnyView(content()))
+    }
+    @MainActor func dismissSheet() { host?.sheet = nil }
+    @MainActor func presentPopover<Content: View>(from source: CGRect, @ViewBuilder content: () -> Content) {
+        guard let host else { assertionFailure("Missing stable presentation host"); return }
+        host.popover = SurfacePresentation(content: AnyView(content()), source: source)
+    }
+}
+
+struct SurfaceNavigation {
+    fileprivate weak var host: SurfacePresentationState? = nil
+    @MainActor func push<Content: View>(@ViewBuilder content: () -> Content) {
+        guard let host else { assertionFailure("Missing stable navigation host"); return }
+        host.destination = SurfacePresentation(content: AnyView(content()))
+    }
+}
+
+private struct SurfacePresentationsKey: EnvironmentKey { static let defaultValue = SurfacePresentations() }
+private struct SurfaceNavigationKey: EnvironmentKey { static let defaultValue = SurfaceNavigation() }
+extension EnvironmentValues {
+    var surfacePresentations: SurfacePresentations {
+        get { self[SurfacePresentationsKey.self] }
+        set { self[SurfacePresentationsKey.self] = newValue }
+    }
+    var surfaceNavigation: SurfaceNavigation {
+        get { self[SurfaceNavigationKey.self] }
+        set { self[SurfaceNavigationKey.self] = newValue }
+    }
+}
+
+private struct SurfacePresentationHost: ViewModifier {
+    @Environment(AppStore.self) private var store
+    @State private var presentations = SurfacePresentationState()
+    @State private var frame = CGRect.zero
+    func body(content: Content) -> some View {
+        @Bindable var presentations = presentations
+        content.environment(\.surfacePresentations, SurfacePresentations(host: presentations))
+            .deferredGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { frame = $0 }
+            .sheet(item: $presentations.sheet) { $0.content }
+            .popover(item: $presentations.popover, attachmentAnchor: .rect(.rect(
+                (presentations.popover?.source ?? .zero).offsetBy(dx: -frame.minX, dy: -frame.minY)))) { $0.content }
+            .onChange(of: store.current.id) { _, _ in presentations.sheet = nil; presentations.popover = nil }
+            .onChange(of: store.locked) { _, locked in
+                if locked { presentations.sheet = nil; presentations.popover = nil }
+            }
+    }
+}
+
+private struct SurfaceNavigationHost: ViewModifier {
+    @State private var navigation = SurfacePresentationState()
+    func body(content: Content) -> some View {
+        @Bindable var navigation = navigation
+        content.environment(\.surfaceNavigation, SurfaceNavigation(host: navigation))
+            .navigationDestination(item: $navigation.destination) { $0.content }
+    }
+}
+
+extension View {
+    // Apply only to page/form/sheet roots, outside their dynamic row builders.
+    func surfacePresentations() -> some View { modifier(SurfacePresentationHost()) }
+    func surfaceNavigation() -> some View { modifier(SurfaceNavigationHost()) }
 }
 
 struct Card<Content: View>: View {
@@ -1792,7 +1879,7 @@ struct Toast: View {
     var messageIdentifier = "toastMessage"
     var undoIdentifier = "undoLastChange"
     private var truncated: Bool { !textSize.isAccessibilitySize && availableWidth > 0 && intrinsicWidth > availableWidth + 0.5 }
-    private var hasChevron: Bool { truncated || expanded }
+    private var hasChevron: Bool { !textSize.isAccessibilitySize && (truncated || expanded) }
     private var scrollsMessage: Bool { expanded || textSize.isAccessibilitySize }
     private var timerKey: String { text + "-\(expanded)-\(visible)-\(phase)" }
     var body: some View {
@@ -1824,15 +1911,15 @@ struct Toast: View {
                         .frame(height: min(max(YubaiSize.tapMin, naturalHeight), scrollsMessage ? YubaiSize.toastExpandedMaximumHeight : .greatestFiniteMagnitude))
                         .scrollBounceBehavior(.basedOnSize).scrollDisabled(!scrollsMessage)
                         .padding(.trailing, hasChevron ? YubaiSpace.space8 : YubaiSpace.none)
-                    Button(action: toggle) {
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.caption)
-                            .foregroundStyle(YubaiColor.labelSecondary)
-                    }.buttonStyle(TextLinkStyle()).accessibilityIdentifier("expandToast")
-                        .accessibilityLabel(expanded ? "关闭提示" : "展开完整提示")
-                        .accessibilityValue(expanded ? "已展开" : "")
-                        .accessibilityHint("也可以点提示文字或向下划关闭")
-                        .frame(width: hasChevron ? nil : 0, height: hasChevron ? nil : 0).clipped().opacity(hasChevron ? 1 : 0)
-                        .allowsHitTesting(hasChevron).accessibilityHidden(!hasChevron)
+                    if hasChevron {
+                        Button(action: toggle) {
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.caption)
+                                .foregroundStyle(YubaiColor.labelSecondary)
+                        }.buttonStyle(TextLinkStyle()).accessibilityIdentifier("expandToast")
+                            .accessibilityLabel(expanded ? "关闭提示" : "展开完整提示")
+                            .accessibilityValue(expanded ? "已展开" : "")
+                            .accessibilityHint("也可以点提示文字或向下划关闭")
+                    }
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
                 .layoutPriority(1)
                 .contentShape(Rectangle())
@@ -1901,6 +1988,7 @@ extension View {
             .environment(\.yubaiFormSurface, true)
             .environment(\.defaultMinListRowHeight, YubaiSize.rowSingle).scrollDismissesKeyboard(.interactively)
             .yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label).tint(YubaiColor.brand).buttonStyle(TextLinkStyle())
+            .surfacePresentations().surfaceNavigation()
     }
     func yubaiNavigation() -> some View {
         self.modifier(ToastContentSlot()).paperBackground().tint(YubaiColor.brandInk)
@@ -2003,17 +2091,20 @@ struct ChipFlow: Layout {
 }
 
 struct LocalSourcePill: View {
-    @State private var details = false
+    @Environment(\.surfacePresentations) private var presentations
+    @State private var sourceFrame = CGRect.zero
     var body: some View {
-        Button { details = true } label: { Pill(text: "本机", variant: .neutral, showsDot: false) }
-            .buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
-            .accessibilityLabel("在本机读取，没有发给云端").accessibilityHint("查看来源详情")
-            .popover(isPresented: $details) {
+        Button {
+            presentations.presentPopover(from: sourceFrame) {
                 VStack(spacing: YubaiSpace.gapGroup) {
                     LabeledContent("读取", value: "本机")
                     LabeledContent("云端发送", value: "0 行")
                 }.yubaiFont(YubaiFont.callout).padding(YubaiSpace.insetPage).presentationCompactAdaptation(.popover)
             }
+        } label: { Pill(text: "本机", variant: .neutral, showsDot: false) }
+            .buttonStyle(PressButtonStyle()).frame(minHeight: YubaiSize.tapMin)
+            .accessibilityLabel("在本机读取，没有发给云端").accessibilityHint("查看来源详情")
+            .deferredGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { sourceFrame = $0 }
     }
 }
 
@@ -2521,12 +2612,12 @@ struct KeypadSheet<Content: View, Footer: View>: View {
                     .padding(.horizontal, YubaiSpace.insetPage)
                     .padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapGroup)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if TextInputMetrics.changed(from: contentHeight, to: $0) { contentHeight = $0 } }
+                    .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { if TextInputMetrics.changed(from: contentHeight, to: $0) { contentHeight = $0 } }
             }.scrollBounceBehavior(.basedOnSize).modifier(ScrollContentViewport())
             // Keep both subtrees mounted. A focus change must not recreate an
             // editor or change the sheet's selected height beneath UIKit.
             footer().fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if TextInputMetrics.changed(from: footerHeight, to: $0) { footerHeight = $0 } }
+                .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { if TextInputMetrics.changed(from: footerHeight, to: $0) { footerHeight = $0 } }
                 .frame(height: inputSession.isEditing ? 0 : nil).clipped()
                 .allowsHitTesting(!inputSession.isEditing).accessibilityHidden(inputSession.isEditing)
                 .accessibilityElement(children: .contain).accessibilityIdentifier("fixedBottomBar")
@@ -2536,6 +2627,7 @@ struct KeypadSheet<Content: View, Footer: View>: View {
             .onChange(of: inputSession.isEditing) { _, editing in
                 editingHeight = editing ? contentHeight + footerHeight : nil
             }
+            .surfacePresentations()
     }
 }
 
@@ -2992,8 +3084,10 @@ private struct NativeRowInput: UIViewRepresentable {
             editor.isScrollEnabled = true
             placeholder.isAccessibilityElement = false; placeholder.isUserInteractionEnabled = false
             if multiline { addSubview(editor); addSubview(placeholder) } else { addSubview(field) }
-            let tap = UITapGestureRecognizer(target: self, action: #selector(requestFocus))
-            tap.cancelsTouchesInView = false; addGestureRecognizer(tap)
+            // The native editor fills the entire host, including its padding.
+            // Let its own tap/selection recognizers acquire first responder.
+            // Publishing focus from an additional parent tap recognizer starts
+            // a SwiftUI focus/detent update before UIKit finishes that gesture.
             setContentHuggingPriority(.defaultLow, for: .horizontal)
             setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
@@ -3048,10 +3142,6 @@ private struct NativeRowInput: UIViewRepresentable {
                 guard let self else { return }
                 focusUpdateScheduled = false; updateFocus()
             }
-        }
-        @objc private func requestFocus() {
-            guard !dismantled, field.isEnabled, editor.isEditable else { return }
-            desiredFocus = true; publishFocus(true); scheduleFocusUpdate()
         }
         private func presentationTransition(excluding completed: UIViewControllerTransitionCoordinator?) -> UIViewControllerTransitionCoordinator? {
             var responder: UIResponder? = self
@@ -3917,16 +4007,17 @@ struct SettingsRow: View {
 }
 
 struct EntryDateChip: View {
+    @Environment(\.surfacePresentations) private var presentations
     @Binding var date: Date
     var time = false
     var iconOnly = false
     var inTray = false
     var allowsFuture = true
     var identifier = ""
-    @State private var picking = false
-    @State private var latestDate = Dates.now
     var body: some View {
-        Button { latestDate = Dates.now; picking = true } label: {
+        Button {
+            presentations.presentSheet { EntryDateSheet(date: $date, time: time, allowsFuture: allowsFuture, latestDate: Dates.now) }
+        } label: {
             Group {
                 if iconOnly { Image(systemName: "calendar").frame(width: YubaiSize.headerIcon) }
                 else if inTray && !time { Label(ManualBookkeeping.dayLabel(date), systemImage: "calendar").fixedSize() }
@@ -3936,18 +4027,27 @@ struct EntryDateChip: View {
                 .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? YubaiSize.trayChip : YubaiSize.chipHeight).background(inTray ? YubaiColor.keyFn : YubaiColor.raised, in: Capsule())
                 .yubaiHitTarget()
         }.accessibilityLabel(iconOnly ? "选别的日子" : time ? "时间" : "日期").accessibilityValue(time ? date.formatted(.dateTime.hour().minute()) : ManualBookkeeping.dayLabel(date))
-            .accessibilityIdentifier(identifier.isEmpty ? (time ? "entryTimeChip" : "entryDatePicker") : identifier).buttonStyle(PressButtonStyle()).sheet(isPresented: $picking) {
-                ScrollView {
-                    if time {
-                        DatePicker("时间", selection: $date, in: Date.distantPast...(allowsFuture ? Date.distantFuture : latestDate), displayedComponents: .hourAndMinute)
-                            .labelsHidden().accessibilityIdentifier("entryTimePicker")
-                    } else {
-                        EntryCalendarView(selection: $date, today: latestDate, bounds: allowsFuture ? nil : Date.distantPast...latestDate)
-                    }
-                }.padding(YubaiSpace.insetCard).transaction { $0.animation = nil }
-                    .manualSheetHeader(time ? "时间" : "日期", actionTitle: "好", actionIdentifier: "entryDateDone", cancel: { picking = false }, action: { picking = false })
-                    .yubaiSheetBackground().presentationDetents([.medium, .large])
+            .accessibilityIdentifier(identifier.isEmpty ? (time ? "entryTimeChip" : "entryDatePicker") : identifier).buttonStyle(PressButtonStyle())
+    }
+}
+
+private struct EntryDateSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var date: Date
+    let time: Bool
+    let allowsFuture: Bool
+    let latestDate: Date
+    var body: some View {
+        ScrollView {
+            if time {
+                DatePicker("时间", selection: $date, in: Date.distantPast...(allowsFuture ? Date.distantFuture : latestDate), displayedComponents: .hourAndMinute)
+                    .labelsHidden().accessibilityIdentifier("entryTimePicker")
+            } else {
+                EntryCalendarView(selection: $date, today: latestDate, bounds: allowsFuture ? nil : Date.distantPast...latestDate)
             }
+        }.padding(YubaiSpace.insetCard).transaction { $0.animation = nil }
+            .manualSheetHeader(time ? "时间" : "日期", actionTitle: "好", actionIdentifier: "entryDateDone", cancel: { dismiss() }, action: { dismiss() })
+            .yubaiSheetBackground().presentationDetents([.medium, .large])
     }
 }
 

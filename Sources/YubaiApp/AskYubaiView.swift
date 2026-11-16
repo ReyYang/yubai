@@ -99,6 +99,7 @@ struct AskYubaiView: View {
             conversation
             inputBar
         }.amountPrivacy(store.preferences.hideAmounts).paperBackground().navigationTitle(headerTitle).yubaiNavigation().accessibilityIdentifier("askPage")
+            .surfacePresentations()
             #if DEBUG && targetEnvironment(simulator)
             .uiTestAccessibilityValue(UITestSupport.secondBatchState(in: store.current))
             #endif
@@ -450,9 +451,9 @@ private struct AskChangeCard: View {
 
 private struct AskPastedStatementCard: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     let statement: PastedStatement
     @State private var cancelled = false
-    @State private var reviewing = false
     private var count: Int { statement.summary?.entryCount ?? statement.rowCount }
     var body: some View {
         if cancelled { Text("这次不导入了。").yubaiFont(YubaiFont.callout) }
@@ -476,11 +477,14 @@ private struct AskPastedStatementCard: View {
                     LocalSourcePill()
                     HStack(spacing: YubaiSpace.space8) {
                         Button("不导入") { cancelled = true }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("cancelPastedImport")
-                        Button("核对 \(count) 笔") { reviewing = true }.buttonStyle(PrimaryButtonStyle(compact: true)).accessibilityIdentifier("reviewPastedStatement")
+                        Button("核对 \(count) 笔") {
+                            presentations.presentSheet {
+                                NavigationStack { ImportView(pasted: statement) }.environment(store).appErrors().yubaiSheetBackground()
+                            }
+                        }.buttonStyle(PrimaryButtonStyle(compact: true)).accessibilityIdentifier("reviewPastedStatement")
                     }
                 }
             }.accessibilityIdentifier("pastedStatementCard")
-                .sheet(isPresented: $reviewing) { NavigationStack { ImportView(pasted: statement) }.environment(store).appErrors().yubaiSheetBackground() }
         }
     }
     private func total(_ title: String, count: Int, amount: Int64) -> some View {
@@ -491,14 +495,13 @@ private struct AskPastedStatementCard: View {
     }
 }
 
-private struct AskDraftEdit: Identifiable { let draft: EntryDraft; var id: UUID { draft.id } }
 private struct AskEntryDraftCard: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfacePresentations) private var presentations
     let change: ChangeSet
     @State private var drafts: [EntryDraft]
     let image: AskImage?
     @State private var selected: Set<UUID>
-    @State private var editing: AskDraftEdit?
     @State private var savedCount = 0
     init(change: ChangeSet, drafts: [EntryDraft], image: AskImage?) {
         self.change = change; self.image = image
@@ -529,17 +532,12 @@ private struct AskEntryDraftCard: View {
                         Button("都记下", action: save).buttonStyle(PrimaryButtonStyle(compact: true))
                             .disabled(chosen.isEmpty || sum == nil || chosen.contains { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
                             .accessibilityIdentifier("saveDraftEntries")
-                        Button("改一下") { if let first = chosen.first ?? drafts.first { editing = AskDraftEdit(draft: first) } }
+                        Button("改一下") { if let first = chosen.first ?? drafts.first { edit(first) } }
                             .buttonStyle(SecondaryButtonStyle(background: YubaiColor.card, compact: true)).accessibilityIdentifier("editDraftEntries")
                     }
                 }
             }.accessibilityIdentifier("multiEntryDraftCard")
                 .task(id: previewKey) { await refreshPreview() }
-                .sheet(item: $editing) { selection in
-                    NavigationStack { AskDraftEditor(draft: selection.draft) { edited in
-                        if let index = drafts.firstIndex(where: { $0.id == edited.id }) { drafts[index] = edited }
-                    } }.environment(store).yubaiSheetBackground()
-                }
         }
     }
     private var previewKey: String { "\(store.ledgerRevision)-" + chosen.map { "\($0.id):\($0.amount):\($0.nature):\($0.date)" }.joined(separator: ",") }
@@ -558,7 +556,7 @@ private struct AskEntryDraftCard: View {
                 if selected.contains(draft.id) { selected.remove(draft.id) } else { selected.insert(draft.id) }
             } label: { Image(systemName: selected.contains(draft.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(selected.contains(draft.id) ? YubaiColor.brand : YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                 .buttonStyle(PressButtonStyle()).accessibilityLabel((selected.contains(draft.id) ? "不记" : "记下") + draft.title).accessibilityIdentifier("selectDraft_" + draft.id.uuidString)
-            Button { editing = AskDraftEdit(draft: draft) } label: {
+            Button { edit(draft) } label: {
                 HStack(spacing: YubaiSpace.gapGroup) {
                     VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                         Text(draft.purpose ?? draft.title).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail)
@@ -568,6 +566,13 @@ private struct AskEntryDraftCard: View {
                     Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("editDraft_" + draft.id.uuidString)
+        }
+    }
+    private func edit(_ draft: EntryDraft) {
+        presentations.presentSheet {
+            NavigationStack { AskDraftEditor(draft: draft) { edited in
+                if let index = drafts.firstIndex(where: { $0.id == edited.id }) { drafts[index] = edited }
+            } }.environment(store).yubaiSheetBackground()
         }
     }
     private func save() {
