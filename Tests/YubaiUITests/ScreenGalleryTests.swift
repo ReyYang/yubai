@@ -306,7 +306,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
     }
     private func reveal(_ target: XCUIElement, searching scroll: XCUIElement? = nil) throws {
         guard revealControl(target, in: app, deadline: stopDeadline, searching: scroll) else {
-            throw Miss(description: "Not reachable: " + describe(target))
+            throw Miss(description: "Not reachable: " + describe(target) + "; " + revealFailure)
         }
     }
     private func tap(_ target: XCUIElement, searching scroll: XCUIElement? = nil) throws {
@@ -590,7 +590,14 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Changes-Hard", budget: 240) { try combined("v47-ai-topup-hard"); try reveal(element("openSaving")) }
         stop("Changes-Hard-Next-Card", budget: 240) { try combined("v47-ai-topup-hard"); try tap("savingsTopupDecline"); try require("butlerSuggestionCard") }
         stop("Home-AI-Many") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12) }
-        stop("Home-AI-Many-Next") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try require("butlerSuggestionCard") }
+        stop("Home-AI-Many-Next") {
+            try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12)
+            try tap("butlerAIAccept"); try require("butlerSuggestionCard")
+            guard revealControlsTogether([element("butlerAIAccept"), element("butlerAIIncorrect")], in: app,
+                deadline: stopDeadline, searching: element("entriesScroll"), bottomClearance: 40) else {
+                throw Miss(description: "Next suggestion answers did not clear the page fade and floating controls")
+            }
+        }
         stop("Home-AI-Never") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try tap("butlerAIEvidence"); try tap("butlerAINever"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestion muted") }
         stop("Home-AI-Wrong-Sum") { try rejected("v47-ai-wrong-sum") }
         stop("Home-AI-Unknown-ID") { try rejected("v47-ai-unknown-id") }
@@ -684,7 +691,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Ledger-Over-Undo") { try load("v47r-deficit"); try tap("coverFromReserve"); try tap("undoLastChange"); try require("deficitRescueCard") }
         stop("Butler-Cards-Topup") { try load("v47-topup"); try require("savingsTopupAll"); try require("savingsTopupDecline") }
         stop("Butler-Cards-Weekly-AI") { try load("v47r-weekly-ai"); try require("butlerAIAccept"); try require("butlerAIIncorrect") }
-        stop("Butler-Cards-Long") { try load("v47r-weekly-ai"); if element("expandButlerHeadline").exists { try tap("expandButlerHeadline") }; try require("butlerAIAccept") }
+        stop("Butler-Cards-Long") { try load("v47r-weekly-ai-long"); if element("expandButlerHeadline").exists { try tap("expandButlerHeadline") }; try require("butlerAIAccept") }
         stop("Butler-Cards-Soft-Suggestion") { try load("v47r-suggestion"); try require("butlerAIAccept"); try require("butlerAIIncorrect") }
         stop("Butler-Cards-Suggestion-Accepted") { try load("v47r-suggestion"); try tap("butlerAIAccept"); try formula(); try reveal(element("softLineWatches")) }
         stop("Butler-Cards-Correction") { try load("v47r-weekly-ai"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave"); try requireCorrectionKeyboard() }

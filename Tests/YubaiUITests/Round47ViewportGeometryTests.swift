@@ -1,6 +1,36 @@
 import XCTest
 
 final class Round47ViewportGeometryTests: XCTestCase {
+    func testRunFiveMonthAndFocusedSearchBelongToTheHeaderRatherThanItsOcclusions() {
+        let window = CGRect(x: 0, y: 0, width: 440, height: 956)
+        let header = (id: "rootHeaderRegion", frame: CGRect(x: 0, y: 62, width: 440, height: 72))
+        let navigation = (id: "mainNavigation", frame: CGRect(x: 98, y: 486, width: 244, height: 124))
+        for frame in [CGRect(x: 172, y: 76, width: 44, height: 44), CGRect(x: 61.7, y: 78, width: 286.3, height: 44)] {
+            let occlusions = UIViewportGeometry.fixedOcclusions([header, navigation], owners: [header.id],
+                hasScrollAncestors: false, window: window)
+            XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+                frame: frame, scrollAncestors: [], occlusions: occlusions))
+            XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: false,
+                frame: frame, scrollAncestors: [], occlusions: occlusions))
+        }
+        // A scroll nested in a fixed region also excludes its own owner only.
+        let nested = UIViewportGeometry.fixedOcclusions([header, navigation], owners: [header.id], hasScrollAncestors: true, window: window)
+        XCTAssertEqual(nested, [CGRect(x: 0, y: 486, width: 440, height: 124)])
+    }
+    func testRunFiveCardAnswersCannotPassUnderTheHeaderOrFloatingChrome() {
+        let window = CGRect(x: 0, y: 0, width: 440, height: 956)
+        let occlusions = UIViewportGeometry.fixedOcclusions([
+            ("rootHeaderRegion", CGRect(x: 0, y: 62, width: 440, height: 68)),
+            ("mainNavigation", CGRect(x: 98, y: 703.3, width: 244, height: 218.7))],
+            owners: [], hasScrollAncestors: true, window: window)
+        let collection = CGRect(x: 0, y: 0, width: 440, height: 922)
+        for frame in [CGRect(x: 36, y: 100, width: 144, height: 72.3), CGRect(x: 36, y: 705, width: 181, height: 72.3)] {
+            XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+                frame: frame, scrollAncestors: [collection], occlusions: occlusions))
+        }
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: CGRect(x: 36, y: 580, width: 181, height: 72.3), scrollAncestors: [collection], occlusions: occlusions))
+    }
     func testLargestRescueMustScrollAboveTheMeasuredEntryPillEvenWithALargeAXViewport() {
         let button = CGRect(x: 36, y: 820.7, width: 348, height: 44)
         let collection = CGRect(x: 0, y: 130, width: 440, height: 792)

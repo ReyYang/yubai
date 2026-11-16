@@ -6,7 +6,7 @@ extension UITestSupport {
     static let model47Scripts: Set<String> = [
         "v47r-fast", "v47r-no-income", "v47r-carry-fast", "v47r-soft-lines", "v47r-soft-exceeded", "v47r-soft-count",
         "v47r-next-bill", "v47r-next-quarterly", "v47r-mismatch", "v47r-reconcile-covered", "v47r-reconcile-floor",
-        "v47r-overdue", "v47r-suggestion", "v47r-weekly-ai", "v47r-weekly-letter"
+        "v47r-overdue", "v47r-suggestion", "v47r-weekly-ai", "v47r-weekly-ai-long", "v47r-weekly-letter"
     ]
     static func model47Ledger(_ script: String, now: Date) throws -> Ledger {
         var value = try savings47Ledger("v47-spend", now: now)
@@ -66,7 +66,7 @@ extension UITestSupport {
             bill.id = galleryID(478302); bill.accountID = account
             value.plans.append(bill)
         }
-        if script == "v47r-suggestion" || script == "v47r-weekly-ai" {
+        if script == "v47r-suggestion" || script.hasPrefix("v47r-weekly-ai") {
             value.preferences.cloudAIEnabled = true; value.preferences.butlerSuggestionsEnabled = true
             value.lastReflectionWeek = ButlerCards.isoWeek(now)
             value.entries.removeAll { $0.nature == .expense }
@@ -84,9 +84,12 @@ extension UITestSupport {
                 }
             }
             let action: JSONValue = script == "v47r-suggestion" ? .object(["kind": .string("set_budget"), "category": .string("外卖"), "amount_cents": .number(80_000)]) : .object(["kind": .string("try_two_weeks"), "review": .string("带饭怎么样？")])
+            // Reuse existing synthetic long-name data so the default-size Long
+            // board actually exceeds two lines, independently of device width.
+            let longTail = script == "v47r-weekly-ai-long" ? galleryLatinTitle + galleryLatinTitle : ""
             let row: JSONValue = .object(["topic": .string("外卖"),
                 "observation": .array([.object(["text": .string(script == "v47r-suggestion" ? "外卖 " : "加班后的外卖 ")]), .object(["count": .bool(true)]), .object(["text": .string(" 次，共 ")]), .object(["sum": .bool(true)])]),
-                "proposal": .array([.object(["text": .string(script == "v47r-suggestion" ? "盯住外卖" : "。周三周四试试带饭？")])]),
+                "proposal": .array([.object(["text": .string((script == "v47r-suggestion" ? "盯住外卖" : "。周三周四试试带饭？") + longTail)])]),
                 "entry_ids": .array(ids.map { .string($0.uuidString) }), "claimed_count": .number(Double(count)), "claimed_sum_cents": .number(Double(total)), "action": action, "memory_ids": .array([])])
             let suggestions = ButlerSuggestionVerifier.parse(.array([row]), digest: ButlerDigest.build(value, now: now), ledger: value, now: now)
             ButlerIntelligence.enqueue(suggestions, in: &value, now: now)
@@ -104,7 +107,7 @@ extension UITestSupport {
             case .leftover: keep = script == "v47r-carry-fast"
             case .balanceMismatch: keep = script == "v47r-mismatch"
             case .billHeadsUp: keep = script == "v47r-next-bill" || script == "v47r-next-quarterly"
-            case .suggestion: keep = script == "v47r-suggestion" || script == "v47r-weekly-ai"
+            case .suggestion: keep = script == "v47r-suggestion" || script.hasPrefix("v47r-weekly-ai")
             case .butler(let card): keep = script == "v47r-weekly-letter" && card.kind == .weeklyLetter
             case .overspend: keep = script == "v47r-overdue"
             default: keep = false

@@ -67,6 +67,7 @@ class YubaiUITestCase: XCTestCase {
     private var revealedScrollFrames: [CGRect]?
     private var revealedKeyboards: [CGRect] = []
     private var revealedOcclusions: [CGRect] = []
+    private(set) var revealFailure = ""
     private let scriptedNow = Date().timeIntervalSince1970
     private var diagnosticApp: XCUIApplication?
     private var collectingStalls = false
@@ -78,7 +79,7 @@ class YubaiUITestCase: XCTestCase {
         // offscreen cells and diagnostics, just to find a button identifier.
         let query: XCUIElementQuery
         if ["tab_", "keypad_", "ledgerEntry_", "entriesFilter_", "ledgerJumpMonth_", "savingMode_", "softLine_", "modeSoftLine_"].contains(where: identifier.hasPrefix) ||
-            ["fundsFormula", "openSaving", "openSettings", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
+            ["fundsFormula", "openSaving", "openSettings", "toggleAmountVisibility", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
              "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear"].contains(identifier) {
             query = app.buttons
         } else if ["butlerAIText", "ledgerStatus"].contains(identifier) { query = app.staticTexts }
@@ -248,8 +249,9 @@ class YubaiUITestCase: XCTestCase {
     func revealControl(_ target: XCUIElement, in app: XCUIApplication, deadline: Date,
                        searching scroll: XCUIElement? = nil) -> Bool {
         revealedScrollFrames = nil; revealedKeyboards = []; revealedOcclusions = []
+        revealFailure = ""
         let identifier = controlQueries[ObjectIdentifier(target)]?.1 ?? (target.exists ? target.identifier : "")
-        guard !identifier.isEmpty else { return false }
+        guard !identifier.isEmpty else { revealFailure = "Missing control identifier"; return false }
         rememberTap(target, in: app)
         var progress = UIRevealProgress()
         var trace: [String] = []
@@ -261,8 +263,29 @@ class YubaiUITestCase: XCTestCase {
                 target.exists && (staticText || (target.isEnabled && target.isHittable))
             })
         }
+        // These controls belong to the fixed header. Its small subtree proves
+        // actual ownership without repeatedly enumerating every List cell and
+        // (during search) the system keyboard before asking native hittability.
+        let headerControls: Set<String> = ["toggleAmountVisibility", "entriesMonth", "openLedgerSearch",
+            "openLedgerFilters", "entriesSearch", "entriesSearchCancel"]
+        func snapshot() -> XCUIElementSnapshot? {
+            if headerControls.contains(identifier) {
+                let header = app.otherElements["rootHeaderRegion"].firstMatch
+                if header.exists, let tree = try? header.snapshot() {
+                    func containsTarget(_ node: XCUIElementSnapshot) -> Bool {
+                        node.identifier == identifier || node.children.contains(where: containsTarget)
+                    }
+                    if containsTarget(tree) { return tree }
+                }
+            }
+            return try? app.snapshot()
+        }
         while Date() < deadline {
-            guard let tree = try? app.snapshot(), Date() < deadline else { break }
+            guard let tree = snapshot() else { revealFailure = "Snapshot unavailable: " + identifier; break }
+            guard Date() < deadline else {
+                revealFailure = "Stop deadline expired during snapshot: " + identifier
+                break
+            }
             var match: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot], owners: [String])?
             var searchContainer: (node: XCUIElementSnapshot, ancestors: [XCUIElementSnapshot])?
             var keyboards: [CGRect] = []
@@ -298,17 +321,16 @@ class YubaiUITestCase: XCTestCase {
             // The app already reserves the measured root controls. AX can
             // retain a larger collection frame; reveal through its unobscured
             // region instead of accepting a covered row and failing early.
-            let occlusions = ancestors.isEmpty && match != nil ? [] : fixed.filter {
-                !(match?.owners.contains($0.id) ?? false)
-            }.map { region in
-                CGRect(x: tree.frame.minX, y: region.frame.minY, width: tree.frame.width, height: region.frame.height)
-            }
+            let occlusions = UIViewportGeometry.fixedOcclusions(fixed, owners: match?.owners ?? [],
+                hasScrollAncestors: !ancestors.isEmpty || match == nil, window: tree.frame)
             if let match {
                 let staticText = match.node.elementType == .staticText
                 let fits = UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true, staticText: staticText,
                     frame: match.node.frame, scrollAncestors: ancestors.map(\.frame), keyboards: keyboards, occlusions: occlusions)
                 if fits {
                     guard ready(staticText: staticText) else {
+                        revealFailure = Date() >= deadline ? "Stop deadline expired during native readiness: " + identifier
+                            : "Native control stayed disabled or covered: " + identifier
                         print("Reveal reached a disabled or covered control: \(identifier)")
                         return false
                     }
@@ -331,6 +353,7 @@ class YubaiUITestCase: XCTestCase {
             } ?? ancestors.last ?? (match == nil ? searchContainer?.node : nil)
             guard let container else {
                 if let match { rememberTap(target, in: app, frame: match.node.frame) }
+                revealFailure = "No scroll ancestor: " + identifier
                 print("Reveal has no scroll ancestor: \(identifier)")
                 return false
             }
@@ -358,9 +381,11 @@ class YubaiUITestCase: XCTestCase {
             case .reached:
                 // The pure rule above also checks every outer ancestor and
                 // native hittability; a drag planner cannot grant reachability.
+                revealFailure = "Control does not fit through all scroll ancestors: " + identifier
                 print("Reveal cannot fit the control through its ancestors: \(identifier)\n" + trace.joined(separator: "\n"))
                 return false
             case .stalled:
+                revealFailure = "Scroll made no progress: " + identifier
                 print("Reveal made no progress: \(identifier)\n" + trace.joined(separator: "\n"))
                 return false
             case let .drag(up, distance):
@@ -381,6 +406,7 @@ class YubaiUITestCase: XCTestCase {
                            withVelocity: .slow, thenHoldForDuration: 0.1)
             }
         }
+        if revealFailure.isEmpty { revealFailure = "Reveal deadline: " + identifier }
         print("Reveal deadline: \(identifier)\n" + trace.joined(separator: "\n"))
         return false
     }
@@ -390,6 +416,42 @@ class YubaiUITestCase: XCTestCase {
         let frame = lastFrameWait?.target === target ? lastFrameWait?.result.frame : (try? target.snapshot())?.frame
         return frame.map { UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
             frame: $0, scrollAncestors: ancestors, keyboards: revealedKeyboards, occlusions: revealedOcclusions) } ?? false
+    }
+
+    /// Frame a group for capture using its real scroll viewport. The optional
+    /// visual clearance is the known page-fade height, not a hittability waiver;
+    /// every control still passes the ordinary reveal/native hit checks.
+    func revealControlsTogether(_ targets: [XCUIElement], in app: XCUIApplication, deadline: Date,
+                                searching scroll: XCUIElement, bottomClearance: CGFloat = 0) -> Bool {
+        guard let last = targets.last, revealControl(last, in: app, deadline: deadline, searching: scroll),
+              waitForStableFrame(last, deadline: deadline),
+              let frames = revealedScrollFrames, let inner = frames.last else { return false }
+        let viewport = UIViewportGeometry.visibleParts(inner, ancestors: frames,
+            excluding: revealedKeyboards + revealedOcclusions).max { $0.width * $0.height < $1.width * $1.height } ?? .zero
+        guard !viewport.isEmpty, targets.allSatisfy(\.exists) else { return false }
+        let group = targets.map(\.frame).reduce(CGRect.null) { $0.union($1) }
+        if group.maxY > viewport.maxY - bottomClearance {
+            // Center the answers so neither label rests in the bottom fade.
+            // A single bounded drag is enough after revealing the last answer.
+            let distance = min(viewport.height * 0.5, max(bottomClearance, group.midY - viewport.midY))
+            let start = CGPoint(x: viewport.midX, y: viewport.minY + viewport.height * 0.78)
+            let end = CGPoint(x: start.x, y: max(viewport.minY + 12, start.y - distance))
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            origin.withOffset(CGVector(dx: start.x - app.frame.minX, dy: start.y - app.frame.minY))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x - app.frame.minX, dy: end.y - app.frame.minY)),
+                       withVelocity: .slow, thenHoldForDuration: 0.1)
+            guard waitForStableFrame(last, deadline: deadline) else { return false }
+        }
+        for target in targets {
+            guard revealControl(target, in: app, deadline: deadline, searching: scroll) else { return false }
+        }
+        // Recheck the group after all reveals, since revealing a later control
+        // could have moved an earlier one. All labels must fit simultaneously.
+        return targets.allSatisfy { target in
+            UIViewportGeometry.revealed(exists: target.exists, enabled: target.isEnabled, hittable: target.isHittable,
+                frame: target.frame, scrollAncestors: frames, keyboards: revealedKeyboards, occlusions: revealedOcclusions) &&
+                target.frame.maxY <= viewport.maxY - bottomClearance + 0.5
+        }
     }
 
     /// Deliberately place a row across fixed chrome while some of it is still

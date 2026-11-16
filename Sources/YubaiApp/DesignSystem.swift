@@ -81,6 +81,8 @@ enum YubaiColor {
 }
 
 enum YubaiFont {
+    /// Floating navigation stays compact; the system viewer supplies large labels.
+    static let floatingChromeCeiling = DynamicTypeSize.large
     enum Family: Equatable { case num, sans, code }
     struct Style {
         let size: CGFloat
@@ -160,6 +162,21 @@ private struct TextLineBox: ViewModifier {
     func body(content: Content) -> some View { content.frame(minHeight: height) }
 }
 
+/// Custom outlines use the same Dynamic Type curve as their adjacent text,
+/// including the stroke, rather than leaving a fixed-size drawing in a chip.
+private struct TextIconSize: ViewModifier {
+    let base: CGFloat
+    @ScaledMetric private var side: CGFloat
+    init(_ size: CGFloat, relativeTo style: YubaiFont.Style) {
+        base = size
+        _side = ScaledMetric(wrappedValue: size, relativeTo: style.relativeTo)
+    }
+    func body(content: Content) -> some View {
+        content.frame(width: base, height: base).scaleEffect(side / base)
+            .frame(width: side, height: side)
+    }
+}
+
 extension View {
     @ViewBuilder func uiTestAccessibilityValue(_ value: @autoclosure () -> String) -> some View {
         #if DEBUG && targetEnvironment(simulator)
@@ -178,6 +195,7 @@ extension View {
     }
     func yubaiFont(_ style: YubaiFont.Style, weight: Font.Weight? = nil) -> some View { modifier(YubaiTextStyle(style, weight: weight)) }
     func yubaiTextLineBox(_ style: YubaiFont.Style) -> some View { modifier(TextLineBox(style)) }
+    func yubaiTextIcon(_ size: CGFloat, relativeTo style: YubaiFont.Style) -> some View { modifier(TextIconSize(size, relativeTo: style)) }
 
     /// Apply inside a Button/Menu label, after its visual background, so transparent space is tappable.
     func yubaiHitTarget(alignment: Alignment = .center) -> some View {
@@ -2065,21 +2083,23 @@ struct HomeEntryPill: View {
     let title: String
     let action: () -> Void
     let quick: () -> Void
-    @ScaledMetric(relativeTo: .body) private var pillHeight = YubaiSize.homeEntryPillHeight
     var body: some View {
         HStack(spacing: YubaiSpace.space8) {
             Image(systemName: "plus").yubaiFont(YubaiFont.tabIcon, weight: .semibold)
             Text(title).yubaiFont(YubaiFont.fieldValue, weight: .semibold)
         }.foregroundStyle(YubaiColor.onBrand)
             .padding(.leading, YubaiSpace.space22).padding(.trailing, YubaiSpace.space28)
-            .padding(.vertical, YubaiSpace.space8).frame(minHeight: pillHeight)
+            .padding(.vertical, YubaiSpace.space8).frame(minHeight: YubaiSize.homeEntryPillHeight)
             .background { Capsule().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
             .contentShape(Capsule())
             #if os(iOS)
             .opacity(pressed ? 0.75 : 1)
             .animation(pressed ? YubaiMotion.instant : (reduceMotion ? YubaiMotion.quick : YubaiMotion.lively), value: pressed)
             .accessibilityHidden(true)
-            .overlay { HomeEntryPillControl(title: title, pressed: $pressed, action: action, quick: quick) }
+            .overlay {
+                HomeEntryPillControl(title: title, pressed: $pressed, action: action, quick: quick)
+                    .accessibilityShowsLargeContentViewer { Label(title, systemImage: "plus") }
+            }
             #else
             .gesture(LongPressGesture(minimumDuration: 0.4).exclusively(before: TapGesture()).onEnded { result in
                 switch result { case .first: quick(); case .second: action() }
@@ -2088,6 +2108,7 @@ struct HomeEntryPill: View {
             .accessibilityLabel(title).accessibilityIdentifier("addEntry")
             .accessibilityAction(.default, action).accessibilityAction(named: "常用", quick)
             #endif
+            .dynamicTypeSize(...YubaiFont.floatingChromeCeiling)
     }
 }
 
@@ -2111,6 +2132,7 @@ private struct HomeEntryPillControl: UIViewRepresentable {
         var action: (() -> Void)?
         var quick: (() -> Void)?
         var pressed: Binding<Bool>?
+        private let hold = UILongPressGestureRecognizer()
         override var isHighlighted: Bool {
             didSet { if oldValue != isHighlighted { pressed?.wrappedValue = isHighlighted } }
         }
@@ -2118,7 +2140,7 @@ private struct HomeEntryPillControl: UIViewRepresentable {
             super.init(frame: .zero)
             backgroundColor = .clear
             addTarget(self, action: #selector(tap), for: .touchUpInside)
-            let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+            hold.addTarget(self, action: #selector(held(_:)))
             hold.minimumPressDuration = 0.4; hold.cancelsTouchesInView = true
             // Let short taps reach UIButton on release. Deferring touch-up to
             // the recognizer lets a SwiftUI layout update cancel that tap.
@@ -2127,6 +2149,16 @@ private struct HomeEntryPillControl: UIViewRepresentable {
             accessibilityCustomActions = [UIAccessibilityCustomAction(name: "常用", target: self, selector: #selector(accessibleQuick))]
         }
         required init?(coder: NSCoder) { fatalError() }
+        override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            // UIKit calls this UIView hook for attached recognizers; a separate
+            // delegate conformance/assignment is unnecessary.
+            guard gestureRecognizer === hold else {
+                return super.gestureRecognizerShouldBegin(gestureRecognizer)
+            }
+            // At large text sizes the system viewer owns hold. The custom
+            // accessibility action continues to offer the frequent-entry menu.
+            return !UILargeContentViewerInteraction.isEnabled
+        }
         @objc private func tap() { isHighlighted = false; action?() }
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {
             if gesture.state == .began { isHighlighted = false; quick?() }
@@ -2376,13 +2408,18 @@ struct QuestionCard: View {
             }
         }
     }
-    private var answers: some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-        return layout {
-            Button(yesTitle, action: yes).buttonStyle(NowCardButtonStyle(primary: true)).disabled(!yesEnabled).accessibilityIdentifier(yesIdentifier)
-            if !noTitle.isEmpty { Button(noTitle, action: no).buttonStyle(NowCardButtonStyle(primary: false)).accessibilityIdentifier(noIdentifier) }
-            if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+    @ViewBuilder private var answers: some View {
+        if textSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) { answerButtons }
+        } else {
+            // Match the board's wrapping chips: move a complete answer to the
+            // next row before either label accepts a compressed proposal.
+            ChipFlow(spacing: YubaiSpace.gapGroup) { answerButtons }
         }
+    }
+    @ViewBuilder private var answerButtons: some View {
+        Button(yesTitle, action: yes).buttonStyle(NowCardButtonStyle(primary: true)).disabled(!yesEnabled).accessibilityIdentifier(yesIdentifier)
+        if !noTitle.isEmpty { Button(noTitle, action: no).buttonStyle(NowCardButtonStyle(primary: false)).accessibilityIdentifier(noIdentifier) }
     }
 }
 
@@ -2397,24 +2434,28 @@ struct CardDismissButton: View {
 }
 
 private struct ButlerHeadline: View {
+    @Environment(\.dynamicTypeSize) private var textSize
     let text: String
     let identifier: String
     @State private var expanded = false
     @State private var fullHeight: CGFloat = 0
     @State private var visibleHeight: CGFloat = 0
+    private var showsFullText: Bool { textSize.isAccessibilitySize || expanded }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.none) {
             Text(text).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
-                .lineLimit(expanded ? nil : 2).fixedSize(horizontal: false, vertical: true)
+                .lineLimit(showsFullText ? nil : 2).fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel(text).accessibilityIdentifier(identifier)
-                .accessibilityValue(expanded ? "已展开" : "已收起")
+                .accessibilityValue(showsFullText ? "已展开" : "已收起")
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
                 .background(alignment: .topLeading) {
-                    Text(text).yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
-                        .hidden().accessibilityHidden(true)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+                    if !textSize.isAccessibilitySize {
+                        Text(text).yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
+                            .hidden().accessibilityHidden(true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+                    }
                 }
-            if expanded || fullHeight > visibleHeight + 0.5 {
+            if !textSize.isAccessibilitySize && (expanded || fullHeight > visibleHeight + 0.5) {
                 Button { expanded.toggle() } label: {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.meta)
                         .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
@@ -4292,7 +4333,7 @@ struct SavedPill: View {
     var hide = false
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.space6) { title; amount; chevron }
+            HStack(spacing: YubaiSpace.space6) { title; amount; chevron }.fixedSize()
             VStack(alignment: .leading, spacing: YubaiSpace.space4) { HStack { title; chevron }; amount }
         }.padding(.horizontal, YubaiSpace.space10).padding(.vertical, YubaiSpace.space6)
             .frame(minHeight: YubaiSize.savedPillHeight)
@@ -4301,7 +4342,7 @@ struct SavedPill: View {
     private var title: some View {
         HStack(spacing: YubaiSpace.space6) {
             SavingJarOutline().stroke(YubaiColor.brandInk, style: StrokeStyle(lineWidth: YubaiSize.outline, lineCap: .round, lineJoin: .round))
-                .frame(width: YubaiSize.smallGlyph, height: YubaiSize.smallGlyph).accessibilityHidden(true)
+                .yubaiTextIcon(YubaiSize.smallGlyph, relativeTo: YubaiFont.callout).accessibilityHidden(true)
             Text("已存").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
         }
     }

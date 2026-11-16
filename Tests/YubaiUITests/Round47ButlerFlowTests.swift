@@ -162,6 +162,40 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         tap("butlerAIEvidence"); tap("butlerAINever"); wait { !self.element("butlerSuggestionCard").exists }
         settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("suggestions=2;reviews=1;memories=3"))
     }
+    func testNextSuggestionAtLargestTextKeepsBothAnswersLegibleAboveThePillInEveryAppearance() {
+        for mode in [(false, false), (true, false), (false, true), (true, true)] {
+            launch("v47-ai-many", large: true, hidden: mode.1, dark: mode.0)
+            tap("butlerAIAccept")
+            let headline = element("butlerAIText")
+            XCTAssertTrue(headline.waitForExistence(timeout: 5))
+            XCTAssertEqual(headline.value as? String, "已展开")
+            XCTAssertFalse(element("expandButlerHeadline").exists)
+            let accept = element("butlerAIAccept"), incorrect = element("butlerAIIncorrect")
+            XCTAssertTrue(revealControlsTogether([accept, incorrect], in: app, deadline: Date().addingTimeInterval(60),
+                searching: element("entriesScroll"), bottomClearance: 40))
+            for target in [accept, incorrect] {
+                XCTAssertTrue(target.isHittable)
+                XCTAssertLessThanOrEqual(target.frame.maxY, element("entriesScroll").frame.maxY - 40 + 0.5)
+                XCTAssertLessThan(target.frame.maxY, element("addEntry").frame.minY)
+                XCTAssertLessThan(target.frame.maxY, capsuleFrame(in: app).minY)
+            }
+            XCTAssertNoThrow(try auditAppText(in: app) { issue in
+                if let target = issue.element, ["butlerAIAccept", "butlerAIIncorrect", "butlerAIText"].contains(target.identifier) ||
+                    ["试两周", "说得不对"].contains(target.label) {
+                    XCTFail("Next suggestion text clipped: " + issue.detailedDescription)
+                }
+                return true
+            })
+            tap("butlerAIIncorrect")
+            XCTAssertTrue(waitForKeyboardEditing("butlerAICorrectionText", in: app))
+            tap("cancelManualSheet")
+            XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
+            tap("butlerAIAccept")
+            wait { !self.element("butlerSuggestionCard").exists }
+            XCTAssertEqual(app.state, .runningForeground)
+            app.terminate()
+        }
+    }
     func testOrdinaryRelaunchDoesNotRequestAgain() {
         launch(); XCTAssertTrue(element("butlerSuggestionCard").waitForExistence(timeout: 10))
         app.terminate(); launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))

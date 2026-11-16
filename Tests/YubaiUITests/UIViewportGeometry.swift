@@ -3,6 +3,15 @@ import Foundation
 /// Accessibility keeps a row's full frame when a native scroll view clips it.
 /// Use the visible portion for overlaps, and the native viewport for structure.
 enum UIViewportGeometry {
+    /// A fixed owner does not cover its own children. Scroll content still
+    /// clears every other fixed region, across the full width of the page.
+    static func fixedOcclusions(_ regions: [(id: String, frame: CGRect)], owners: [String],
+                                hasScrollAncestors: Bool, window: CGRect) -> [CGRect] {
+        guard hasScrollAncestors else { return [] }
+        return regions.filter { !owners.contains($0.id) }.map {
+            CGRect(x: window.minX, y: $0.frame.minY, width: window.width, height: $0.frame.height)
+        }
+    }
     /// Ancestors are the target's actual snapshot scroll ancestors, outermost
     /// first. Native hittability owns occlusion; the structural gallery audit
     /// separately rejects page chrome overlapping a scroll viewport.

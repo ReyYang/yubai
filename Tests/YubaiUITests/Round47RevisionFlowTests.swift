@@ -272,8 +272,8 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             app.terminate(); launchApp(app); gone(card)
         }
     }
-    func testLongCardExpandsInPlaceWithLargestText() {
-        launch("v47r-weekly-ai", large: true)
+    func testLongCardExpandsInPlaceAtDefaultText() {
+        launch("v47r-weekly-ai-long")
         XCTAssertTrue(element("expandButlerHeadline").waitForExistence(timeout: 5))
         let headline = element("butlerAIText")
         XCTAssertTrue(headline.waitForExistence(timeout: 5))
@@ -297,6 +297,58 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             return true
         })
         XCTAssertTrue(element("butlerAIAccept").exists)
+    }
+    private func checkLargestButlerCards(dark: Bool = false, hidden: Bool = false) {
+        let fixtures: [(String, String, String, [String])] = [
+            ("v47r-weekly-ai", "butlerSuggestionCard", "butlerAIText", ["butlerAIAccept", "butlerAIIncorrect"]),
+            ("v47r-weekly-ai-long", "butlerSuggestionCard", "butlerAIText", ["butlerAIAccept", "butlerAIIncorrect"]),
+            ("v47r-suggestion", "butlerSuggestionCard", "butlerAIText", ["butlerAIAccept", "butlerAIIncorrect"]),
+            ("v47r-carry", "newCycleCard", "carryNoticeText", ["leftoverKeep"]),
+            ("v47r-mismatch", "balanceMismatchCard", "mismatchText", ["openReconcile"]),
+            ("v47r-next-bill", "billHeadsUpCard", "billHeadsUpText", ["openBillHeadsUp"]),
+            ("v47r-deficit", "deficitRescueCard", "deficitRescueText", ["coverFromReserve", "deficitKeep"]),
+            ("v47-topup", "savingsTopupCard", "", ["savingsTopupAll", "savingsTopupDecline"]),
+            ("v47-ai-review", "butlerAIReviewCard", "", ["butlerAIReviewDone", "butlerAIReviewNever"])
+        ]
+        for (fixture, card, title, answers) in fixtures {
+            launch(fixture, large: true, dark: dark, hidden: hidden)
+            let headline = title.isEmpty ? element(card).staticTexts.matching(NSPredicate(format: "value == %@", "已展开")).firstMatch : element(title)
+            XCTAssertTrue(headline.waitForExistence(timeout: 8), fixture)
+            XCTAssertEqual(headline.value as? String, "已展开", fixture)
+            XCTAssertFalse(element("expandButlerHeadline").exists, "Accessibility text must never collapse: " + fixture)
+            let targets = answers.map(element)
+            XCTAssertTrue(revealControlsTogether(targets, in: app, deadline: Date().addingTimeInterval(60),
+                searching: element("entriesScroll"), bottomClearance: 40), fixture)
+            let scroll = element("entriesScroll"), pill = element("addEntry"), capsule = capsuleFrame(in: app)
+            for target in targets {
+                XCTAssertTrue(target.isHittable, fixture)
+                XCTAssertGreaterThanOrEqual(target.frame.height, 44, fixture)
+                XCTAssertGreaterThanOrEqual(target.frame.minY, scroll.frame.minY - 0.5, fixture)
+                XCTAssertLessThanOrEqual(target.frame.maxY, scroll.frame.maxY - 40 + 0.5, fixture)
+                XCTAssertLessThan(target.frame.maxY, pill.frame.minY, fixture)
+                XCTAssertLessThan(target.frame.maxY, capsule.minY, fixture)
+            }
+            let labels = Set(targets.map(\.label) + [headline.label])
+            XCTAssertNoThrow(try auditAppText(in: app) { issue in
+                if let target = issue.element, answers.contains(target.identifier) || (!title.isEmpty && target.identifier == title) || labels.contains(target.label) {
+                    XCTFail("Full headline and answer text must not clip: " + fixture + " " + issue.detailedDescription)
+                }
+                return true
+            })
+            app.terminate()
+        }
+    }
+    func testLargestButlerHeadlinesAndAnswersClearFloatingChromeInLight() {
+        checkLargestButlerCards()
+    }
+    func testLargestButlerHeadlinesAndAnswersClearFloatingChromeInDark() {
+        checkLargestButlerCards(dark: true)
+    }
+    func testLargestButlerHeadlinesAndAnswersClearFloatingChromeWithHiddenAmounts() {
+        checkLargestButlerCards(hidden: true)
+    }
+    func testLargestButlerHeadlinesAndAnswersClearFloatingChromeInDarkWithHiddenAmounts() {
+        checkLargestButlerCards(dark: true, hidden: true)
     }
     func testSoftLineSuggestionWritesExistingProfileAndCorrectionWritesMemory() {
         launch("v47r-suggestion"); expect("butlerAIAccept", contains: "盯住外卖 ¥800.00")

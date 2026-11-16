@@ -100,6 +100,91 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             }
         }
     }
+    private func checkTopBarImmediatelyAndAfterScrolling(large: Bool = false, hidden: Bool = false, dark: Bool = false) {
+        launch(large: large, hidden: hidden, dark: dark)
+        let scroll = element("entriesScroll")
+        for scrolled in [false, true] {
+            for id in ["toggleAmountVisibility", "entriesMonth", "openLedgerSearch", "openLedgerFilters"] {
+                if scrolled {
+                    scroll.swipeUp()
+                    XCTAssertTrue(UIConditionWait.run(timeout: 6, read: {
+                        (self.windowMetrics(in: self.app)?.scroll(matching: scroll.frame)?.remainingUp ?? 0) > 0.5
+                    }), "The control must be tested after actual list motion: " + id)
+                }
+                let target = element(id), header = element("rootHeaderRegion")
+                XCTAssertTrue(target.waitForExistence(timeout: 5))
+                XCTAssertTrue(header.frame.insetBy(dx: -0.5, dy: -0.5).contains(target.frame))
+                XCTAssertTrue(target.isHittable, "Visible top-bar control must accept native hits: " + id)
+                switch id {
+                case "toggleAmountVisibility":
+                    let before = target.label
+                    tap(id)
+                    wait { target.label != before }
+                    tap(id); wait { target.label == before }
+                case "entriesMonth":
+                    tap(id)
+                    XCTAssertTrue(element("ledgerJumpMonth_1").waitForExistence(timeout: 5))
+                    tap("cancelManualSheet")
+                    XCTAssertTrue(waitForDisappearance(element("ledgerJumpMonth_1")))
+                case "openLedgerSearch":
+                    tap(id)
+                    XCTAssertTrue(waitForKeyboardEditing("entriesSearch", in: app))
+                    let field = element("entriesSearch")
+                    tapControl(field, in: app)
+                    field.typeText("咖啡")
+                    XCTAssertTrue(element("entriesSearchTotal").waitForExistence(timeout: 5))
+                    XCTAssertTrue(element("entriesSearchCancel").isHittable)
+                    tap("entriesSearchCancel")
+                    XCTAssertTrue(waitForDisappearance(field))
+                    XCTAssertTrue(waitForKeyboardDismissal(in: app))
+                default:
+                    tap(id)
+                    XCTAssertTrue(element("entriesFilter_收入").waitForExistence(timeout: 5))
+                    tap(id)
+                    XCTAssertTrue(waitForDisappearance(element("entriesFilter_收入")))
+                }
+                XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
+            }
+        }
+    }
+    func testEveryTopBarControlWorksImmediatelyAndAfterScrollingInLight() {
+        checkTopBarImmediatelyAndAfterScrolling()
+    }
+    func testEveryTopBarControlWorksImmediatelyAndAfterScrollingInDark() {
+        checkTopBarImmediatelyAndAfterScrolling(dark: true)
+    }
+    func testEveryTopBarControlWorksImmediatelyAndAfterScrollingWithHiddenAmounts() {
+        checkTopBarImmediatelyAndAfterScrolling(hidden: true)
+    }
+    func testEveryTopBarControlWorksImmediatelyAndAfterScrollingAtLargestText() {
+        checkTopBarImmediatelyAndAfterScrolling(large: true)
+    }
+    func testEveryTopBarControlWorksImmediatelyAndAfterScrollingAtLargestDarkHiddenText() {
+        checkTopBarImmediatelyAndAfterScrolling(large: true, hidden: true, dark: true)
+    }
+    func testFloatingPillAndCapsuleKeepTheSameCompactGeometryAcrossTextSizesAndModes() {
+        var baselinePill: CGSize?, baselineCapsule: CGSize?
+        for mode in [(false, false, false), (true, false, false), (true, true, false), (true, false, true), (true, true, true)] {
+            launch(large: mode.0, hidden: mode.2, dark: mode.1)
+            let pill = element("addEntry"), scroll = element("entriesScroll")
+            XCTAssertTrue(waitForStableFrame(pill))
+            let capsule = capsuleFrame(in: app)
+            XCTAssertGreaterThanOrEqual(pill.frame.height, 44)
+            XCTAssertGreaterThanOrEqual(pill.frame.width, 44)
+            XCTAssertEqual(pill.frame.height, 52, accuracy: 0.5)
+            if let baselinePill, let baselineCapsule {
+                XCTAssertEqual(pill.frame.width, baselinePill.width, accuracy: 0.5)
+                XCTAssertEqual(pill.frame.height, baselinePill.height, accuracy: 0.5)
+                XCTAssertEqual(capsule.width, baselineCapsule.width, accuracy: 0.5)
+                XCTAssertEqual(capsule.height, baselineCapsule.height, accuracy: 0.5)
+            } else { baselinePill = pill.frame.size; baselineCapsule = capsule.size }
+            // Reservation follows the actual measured navigation, including its
+            // real pill, inter-control gap and capsule, after the font cap.
+            XCTAssertEqual(scroll.frame.maxY, element("mainNavigation").frame.minY, accuracy: 0.5)
+            XCTAssertEqual(capsule.minY - pill.frame.maxY, 12, accuracy: 0.5)
+            app.terminate()
+        }
+    }
     func testSearchExpandsInPlaceAndFindsPreviousMonths() {
         launch(); XCTAssertFalse(element("entriesSearch").exists)
         tap("openLedgerSearch"); tap("entriesSearch"); app.typeText("咖啡")

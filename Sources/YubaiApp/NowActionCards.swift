@@ -33,6 +33,7 @@ struct NowCardButtonStyle: ButtonStyle {
     var primary = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.yubaiFont(YubaiFont.row, weight: primary ? .semibold : .regular)
+            .lineLimit(nil).multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.row)
             .padding(.horizontal, YubaiSpace.space16).padding(.vertical, YubaiSpace.space8)
             .frame(minHeight: YubaiSize.iconButton)

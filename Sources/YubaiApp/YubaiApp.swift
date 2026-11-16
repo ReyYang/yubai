@@ -1416,7 +1416,7 @@ private struct LedgerPrivacyCover: View {
 }
 
 #if os(iOS)
-/// 三个标签和主页正中的记账宽钮；文字共同放大到 xxxLarge，并提供大字号预览。
+/// 三个标签和记账宽钮共用紧凑字号上限，并提供系统大字号预览。
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.yubaiReduceMotion) private var reduceMotion
@@ -1434,7 +1434,7 @@ private struct FloatingTabBar: View {
             }.padding(.horizontal, YubaiSpace.space6).frame(width: YubaiSize.navigationCapsuleWidth, height: YubaiSize.floatingTabbarHeight)
                 .background { barSurface }
                 .overlay { Capsule().strokeBorder(YubaiColor.white.opacity(0.6), lineWidth: YubaiSize.separator).allowsHitTesting(false) }
-                .dynamicTypeSize(.large)
+                .dynamicTypeSize(YubaiFont.floatingChromeCeiling)
                 .accessibilityElement(children: .contain).accessibilityLabel("标签导航").accessibilityIdentifier("navigationCapsule")
         }.fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured(store.destination, $0) }
