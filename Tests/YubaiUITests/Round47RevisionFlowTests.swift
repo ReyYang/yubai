@@ -198,22 +198,53 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         [(false, false, false), (false, true, false), (false, false, true), (true, false, false)]
     }
     func testSavingSegmentsKeepBothCompleteLabelsAcrossAllGalleryModes() {
-        for mode in galleryModes {
-            launch("v47r-deficit", large: mode.large, dark: mode.dark, hidden: mode.hidden)
+        savingSegments("v47r-deficit")
+    }
+    func testNormalSavingSegmentsKeepBothCompleteLabelsAcrossAllGalleryModes() {
+        savingSegments("v47-spend")
+    }
+    private func savingSegments(_ fixture: String) {
+        // Native Dynamic Type audits also change size while this sheet is up.
+        // Cover both appearances with and without hidden amounts at each end.
+        for mode in [false, true].flatMap({ large in
+            [false, true].flatMap { dark in
+                [false, true].map { hidden in (large: large, dark: dark, hidden: hidden) }
+            }
+        }) {
+            launch(fixture, large: mode.large, dark: mode.dark, hidden: mode.hidden)
             formula(); tap("formulaRow_saving")
-            for id in ["savingMode_fixed", "savingMode_share"] {
+            let fixed = element("savingMode_fixed"), share = element("savingMode_share")
+            XCTAssertTrue(waitForStableFrame(fixed))
+            XCTAssertTrue(waitForStableFrame(share))
+            if mode.large {
+                XCTAssertGreaterThanOrEqual(share.frame.minY, fixed.frame.maxY)
+                XCTAssertGreaterThan(fixed.frame.height, 44.5)
+                XCTAssertGreaterThan(share.frame.height, 44.5)
+            } else {
+                XCTAssertEqual(fixed.frame.midY, share.frame.midY, accuracy: 0.5)
+                XCTAssertEqual(fixed.frame.width, share.frame.width, accuracy: 0.5)
+                XCTAssertEqual(fixed.frame.height, 44, accuracy: 0.5)
+                XCTAssertEqual(share.frame.height, 44, accuracy: 0.5)
+            }
+            for (id, title) in [("savingMode_fixed", "固定金额"), ("savingMode_share", "每笔进账留几成")] {
                 let segment = element(id)
                 XCTAssertTrue(segment.waitForExistence(timeout: 5))
                 XCTAssertEqual(app.buttons.matching(identifier: id).count, 1)
+                XCTAssertEqual(segment.label, title)
+                XCTAssertGreaterThanOrEqual(segment.frame.width, 43.5)
                 XCTAssertGreaterThanOrEqual(segment.frame.height, 43.5)
                 tap(id)
                 XCTAssertTrue(segment.isSelected)
-                XCTAssertNoThrow(try auditAppText(in: app) { issue in
-                    if let target = issue.element, ["固定金额", "每笔进账留几成"].contains(target.label) {
-                        XCTFail("Saving segment clipped: " + issue.detailedDescription)
-                    }
+                XCTAssertNoThrow(try auditAppText(in: app, dynamicType: true) { issue in
+                    XCTFail("Saving sheet text must grow without clipping: " + issue.detailedDescription)
                     return true
                 })
+                XCTAssertEqual(app.state, .runningForeground)
+                XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
+                XCTAssertTrue(waitForStableFrame(segment))
+                XCTAssertEqual(segment.label, title)
+                XCTAssertTrue(segment.isSelected)
+                XCTAssertEqual(app.buttons.matching(identifier: id).count, 1)
             }
             tap("amountSheetCancel")
         }

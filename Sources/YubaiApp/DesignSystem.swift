@@ -2843,10 +2843,13 @@ struct Segmented<Value: Hashable>: View {
     private func segment(_ value: Value, title: String) -> some View {
         let on = selection == value
         return Button { selection = value } label: {
-            Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
-                .lineLimit(nil)
-                .yubaiTextLineBox(YubaiFont.row).fixedSize(horizontal: false, vertical: true)
-                .multilineTextAlignment(.center)
+            // Keep row geometry off the Text leaf: it wraps at the proposed
+            // width and grows independently of the button's minimum target.
+            VStack(spacing: YubaiSpace.none) {
+                Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
+                    .lineLimit(nil).fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.center)
+            }.yubaiTextLineBox(YubaiFont.row)
                 .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity, minHeight: minimum)
