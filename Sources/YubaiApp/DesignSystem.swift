@@ -2064,8 +2064,9 @@ struct HomeEntryPill: View {
             .animation(pressed ? YubaiMotion.instant : (reduceMotion ? YubaiMotion.quick : YubaiMotion.lively), value: pressed)
             .accessibilityHidden(true)
             .overlay {
+                // The pill's core hold shortcut wins at every text size. Only
+                // tabs use the system viewer, whose gesture owns a long press.
                 HomeEntryPillControl(title: title, pressed: $pressed, action: action, quick: quick)
-                    .accessibilityShowsLargeContentViewer { Label(title, systemImage: "plus") }
             }
             #else
             .gesture(LongPressGesture(minimumDuration: 0.4).exclusively(before: TapGesture()).onEnded { result in
@@ -2116,16 +2117,6 @@ private struct HomeEntryPillControl: UIViewRepresentable {
             accessibilityCustomActions = [UIAccessibilityCustomAction(name: "常用", target: self, selector: #selector(accessibleQuick))]
         }
         required init?(coder: NSCoder) { fatalError() }
-        override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            // UIKit calls this UIView hook for attached recognizers; a separate
-            // delegate conformance/assignment is unnecessary.
-            guard gestureRecognizer === hold else {
-                return super.gestureRecognizerShouldBegin(gestureRecognizer)
-            }
-            // At large text sizes the system viewer owns hold. The custom
-            // accessibility action continues to offer the frequent-entry menu.
-            return !UILargeContentViewerInteraction.isEnabled
-        }
         @objc private func tap() { isHighlighted = false; action?() }
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {
             if gesture.state == .began { isHighlighted = false; quick?() }
@@ -2532,6 +2523,7 @@ struct KeypadSheet<Content: View, Footer: View>: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if TextInputMetrics.changed(from: footerHeight, to: $0) { footerHeight = $0 } }
                 .frame(height: inputSession.isEditing ? 0 : nil).clipped()
                 .allowsHitTesting(!inputSession.isEditing).accessibilityHidden(inputSession.isEditing)
+                .accessibilityElement(children: .contain).accessibilityIdentifier("fixedBottomBar")
         }.environment(\.yubaiRowInputSession, inputSession)
             .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(editingHeight ?? contentHeight + footerHeight), .large])
             .accessibilityElement(children: .contain)
@@ -2827,6 +2819,7 @@ private struct RowTextInput: View {
     var style: YubaiFont.Style = YubaiFont.fieldValue
     let focus: FocusState<Bool>.Binding
     var search = false
+    var autofocus = false
     var submit: (() -> Void)? = nil
     @Environment(\.isEnabled) private var enabled
     @Environment(\.yubaiMinimumTarget) private var minimum
@@ -2836,11 +2829,11 @@ private struct RowTextInput: View {
     init(text: Binding<String>, placeholder: String, label: String, identifier: String,
          multiline: Bool = false, numeric: Bool = false, secure: Bool = false,
          maximumLines: Int = 6, verticalInset: CGFloat = 0, style: YubaiFont.Style = YubaiFont.fieldValue,
-         focus: FocusState<Bool>.Binding, search: Bool = false, submit: (() -> Void)? = nil) {
+         focus: FocusState<Bool>.Binding, search: Bool = false, autofocus: Bool = false, submit: (() -> Void)? = nil) {
         _text = text; self.placeholder = placeholder; self.label = label; self.identifier = identifier
         self.multiline = multiline; self.numeric = numeric; self.secure = secure
         self.maximumLines = maximumLines; self.verticalInset = verticalInset; self.style = style; self.focus = focus
-        self.search = search; self.submit = submit
+        self.search = search; self.autofocus = autofocus; self.submit = submit
         _fontSize = ScaledMetric(wrappedValue: style.size, relativeTo: style.relativeTo)
     }
     var body: some View {
@@ -2849,7 +2842,7 @@ private struct RowTextInput: View {
             NativeRowInput(text: $text, placeholder: placeholder, label: label, identifier: identifier,
                            multiline: multiline, numeric: numeric, secure: secure, maximumLines: maximumLines, verticalInset: verticalInset,
                            fontSize: fontSize, minimum: minimum, enabled: enabled, focus: focus,
-                           preservesTextFocus: inputSession != nil, editingChanged: { inputSession?.setEditing($0, id: editingID) }, search: search, submit: submit)
+                           preservesTextFocus: inputSession != nil, editingChanged: { inputSession?.setEditing($0, id: editingID) }, search: search, autofocus: autofocus, submit: submit)
                 // Register the same FocusState with SwiftUI as well as UIKit.
                 // Otherwise a keyboard/detent relayout can clear an unowned
                 // focus binding and updateUIView immediately resigns the field.
@@ -2896,6 +2889,7 @@ private struct NativeRowInput: UIViewRepresentable {
     let preservesTextFocus: Bool
     let editingChanged: (Bool) -> Void
     let search: Bool
+    let autofocus: Bool
     var submit: (() -> Void)?
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> FieldHost {
@@ -2934,6 +2928,7 @@ private struct NativeRowInput: UIViewRepresentable {
         host.field.isEnabled = enabled; host.editor.isEditable = enabled
         let input: UIView = multiline ? host.editor : host.field
         input.accessibilityIdentifier = identifier; input.accessibilityLabel = label
+        host.configureAutofocus(autofocus, enabled: enabled, acknowledged: focus.wrappedValue && input.isFirstResponder)
         // In a keypad sheet UIKit owns an active text-editing session. A
         // SwiftUI focus write-back during footer/detent layout is not a user
         // request to leave that field. Return, another responder and teardown
@@ -2945,7 +2940,7 @@ private struct NativeRowInput: UIViewRepresentable {
                     host.focusChanged?(true)
                 }
             }
-        } else { host.desiredFocus = enabled && focus.wrappedValue }
+        } else { host.desiredFocus = enabled && (host.reconcileFocus(focus.wrappedValue) || host.pendingAutofocus) }
         if host.desiredFocus != input.isFirstResponder { host.scheduleFocusUpdate() }
     }
     static func dismantleUIView(_ host: FieldHost, coordinator: Coordinator) {
@@ -2970,6 +2965,9 @@ private struct NativeRowInput: UIViewRepresentable {
         private var dismantled = false
         private var focusRevision = 0
         private var focusUpdateScheduled = false
+        private var requestedAutofocus = false
+        private(set) var pendingAutofocus = false
+        private var pendingFocusPublication: Bool?
         var minimum = YubaiSize.tapMin
         var maximumLines = 6
         init(multiline: Bool) {
@@ -2994,6 +2992,23 @@ private struct NativeRowInput: UIViewRepresentable {
             setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
         required init?(coder: NSCoder) { fatalError() }
+        func configureAutofocus(_ autofocus: Bool, enabled: Bool, acknowledged: Bool) {
+            // A Form can attach this host before laying it out. Keep the initial
+            // request until UIKit starts editing and SwiftUI acknowledges it;
+            // an initial false focus binding is not a cancellation of autofocus.
+            if autofocus && enabled && !requestedAutofocus {
+                requestedAutofocus = true; pendingAutofocus = true
+            }
+            if !autofocus || acknowledged { pendingAutofocus = false }
+        }
+        func reconcileFocus(_ bound: Bool) -> Bool {
+            // updateUIView can see the old binding before a deferred delegate
+            // publication arrives. Do not turn that stale value into a new
+            // request revision that drops the publication (or reopens a keyboard
+            // whose native end-editing callback just closed it).
+            if pendingFocusPublication == bound { pendingFocusPublication = nil }
+            return pendingFocusPublication ?? bound
+        }
         func height(for width: CGFloat) -> CGFloat {
             guard multiline else { return max(minimum, ceil(field.font?.lineHeight ?? minimum)) }
             // Measuring the live editor mutates its text container/contentSize.
@@ -3014,8 +3029,10 @@ private struct NativeRowInput: UIViewRepresentable {
             let line = editor.font?.lineHeight ?? minimum
             placeholder.frame = CGRect(x: 0, y: max(0, (bounds.height - line) / 2), width: bounds.width, height: line)
             // The editor and its AX frame are both the full row height.
-            // Layout only assigns native frames. It never writes focus,
-            // SwiftUI state, accessibility values or intrinsic size.
+            // Layout never acquires focus or writes SwiftUI state. A host that
+            // was empty at attachment needs a new asynchronous readiness event.
+            let input: UIView = multiline ? editor : field
+            if desiredFocus && !input.isFirstResponder && !bounds.isEmpty && !awaitingPresentation { scheduleFocusUpdate() }
         }
         override func didMoveToWindow() { super.didMoveToWindow(); scheduleFocusUpdate() }
         func scheduleFocusUpdate() {
@@ -3030,15 +3047,16 @@ private struct NativeRowInput: UIViewRepresentable {
             guard !dismantled, field.isEnabled, editor.isEditable else { return }
             desiredFocus = true; publishFocus(true); scheduleFocusUpdate()
         }
-        private var presentationTransition: UIViewControllerTransitionCoordinator? {
+        private func presentationTransition(excluding completed: UIViewControllerTransitionCoordinator?) -> UIViewControllerTransitionCoordinator? {
             var responder: UIResponder? = self
             while let next = responder?.next {
-                if let controller = next as? UIViewController, let transition = controller.transitionCoordinator { return transition }
+                if let controller = next as? UIViewController, let transition = controller.transitionCoordinator,
+                   completed.map({ (transition as AnyObject) !== ($0 as AnyObject) }) ?? true { return transition }
                 responder = next
             }
             return nil
         }
-        func updateFocus(afterPresentation: Bool = false) {
+        func updateFocus(completedTransition: UIViewControllerTransitionCoordinator? = nil) {
             guard !dismantled else { return }
             let input: UIView = multiline ? editor : field
             // Ending editing must never acquire focus again, including during
@@ -3049,23 +3067,27 @@ private struct NativeRowInput: UIViewRepresentable {
             }
             guard let attachedWindow = window, !bounds.isEmpty,
                   !input.isFirstResponder, !awaitingPresentation else { return }
-            if !afterPresentation, let transition = presentationTransition {
+            if let transition = presentationTransition(excluding: completedTransition) {
                 // Nested sheets can attach their fields before UIKit allows a
                 // new first responder. Retry at actual transition completion.
                 awaitingPresentation = true
-                let revision = focusRevision
                 let registered = transition.animate(alongsideTransition: nil) { [weak self, weak attachedWindow] context in
-                    guard let self else { return }
+                    guard let self, !dismantled else { return }
                     awaitingPresentation = false
+                    if context.isCancelled {
+                        pendingAutofocus = false; desiredFocus = false; publishFocus(false)
+                        return
+                    }
                     // UIKit is still unwinding the presentation's completion
                     // and keyboard transaction here. Acquire on the next turn,
-                    // only for the same live request and attached window.
-                    let cancelled = context.isCancelled
+                    // reconcile the current request in the same attached window.
+                    // Dropping an old revision here stranded newer requests
+                    // that had already waited behind awaitingPresentation.
                     DispatchQueue.main.async { [weak self, weak attachedWindow] in
-                        guard let self, let attachedWindow, !cancelled,
-                              !dismantled, desiredFocus, focusRevision == revision,
+                        guard let self, let attachedWindow,
+                              !dismantled, desiredFocus,
                               window === attachedWindow else { return }
-                        updateFocus(afterPresentation: true)
+                        updateFocus(completedTransition: transition)
                     }
                 }
                 if registered { return }
@@ -3075,13 +3097,14 @@ private struct NativeRowInput: UIViewRepresentable {
         }
         func editingEnded() {
             guard !dismantled else { return }
-            desiredFocus = false; publishFocus(false)
+            pendingAutofocus = false; desiredFocus = false; publishFocus(false)
         }
         func editingBegan() {
             guard !dismantled else { return }
             desiredFocus = true; publishFocus(true)
         }
         private func publishFocus(_ value: Bool) {
+            pendingFocusPublication = value
             let revision = focusRevision
             DispatchQueue.main.async { [weak self] in
                 guard let self, !dismantled, focusRevision == revision, desiredFocus == value else { return }
@@ -3090,7 +3113,7 @@ private struct NativeRowInput: UIViewRepresentable {
             }
         }
         func dismantle() {
-            dismantled = true; desiredFocus = false
+            dismantled = true; pendingAutofocus = false; pendingFocusPublication = nil; desiredFocus = false
             focusChanged = nil; editingChanged = nil
             // Resign even if a presentation callback is pending. The callback
             // cannot revive this editor after SwiftUI has removed its sheet.
@@ -3169,14 +3192,16 @@ struct CardTextFieldRow: View {
                     if let leading { leading }
                     RowTextInput(text: $text, placeholder: placeholder, label: title.isEmpty ? placeholder : title,
                                  identifier: identifier, multiline: multiline, numeric: numeric, secure: hidesValue,
-                                 focus: fieldFocus, submit: { submit?() })
+                                 focus: fieldFocus, autofocus: autofocus, submit: { submit?() })
                     if let trailing { trailing }
                 }
             }.frame(minHeight: YubaiSize.buttonHeight).contentShape(Rectangle())
                 .onTapGesture { fieldFocus.wrappedValue = true }
             if let error { InlineFieldError(message: error) }
         }.padding(.vertical, stacks ? YubaiSpace.space8 : YubaiSpace.none)
+            #if os(macOS)
             .task { if autofocus { fieldFocus.wrappedValue = true } }
+            #endif
     }
 }
 

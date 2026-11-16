@@ -31,10 +31,8 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
     }
     private func frequentMenu() {
         let pill = element("addEntry")
-        XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(30)))
-        XCTAssertTrue(waitForStableFrame(pill))
-        pill.press(forDuration: 0.8)
-        XCTAssertTrue(element("quickRepeatMenu").waitForExistence(timeout: 5))
+        XCTAssertTrue(longPressControl(pill, in: app, deadline: Date().addingTimeInterval(30)))
+        XCTAssertFalse(element("entryKeypadAmount").exists)
         tap("manageQuickRepeats")
     }
     private func settings() { tap("openSettings"); tap("openIntelligencePrivacy"); XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5)) }
@@ -103,9 +101,16 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         }
     }
     func testDirectCorrectionAutofocusSurvivesTypingCaptureCancellationReopeningAndSave() throws {
+        try correctionAutofocusLifecycle(nested: false)
+    }
+    func testNestedCorrectionAutofocusSurvivesTypingCaptureCancellationReopeningAndSave() throws {
+        try correctionAutofocusLifecycle(nested: true)
+    }
+    private func correctionAutofocusLifecycle(nested: Bool) throws {
         for large in [false, true] {
             for dark in [false, true] {
-                launch("v47r-weekly-ai", large: large, dark: dark)
+                launch(nested ? "v47-ai-valid" : "v47r-weekly-ai", large: large, dark: dark)
+                if nested { tap("butlerAIEvidence") }
                 tap("butlerAIIncorrect")
                 XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
                 XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
@@ -130,7 +135,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
                 tap("cancelManualSheet")
                 XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
                 XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
-                XCTAssertTrue(element("butlerSuggestionCard").exists)
+                XCTAssertTrue(element(nested ? "butlerAIEvidencePage" : "butlerSuggestionCard").exists)
                 XCTAssertTrue(element("butlerAIIncorrect").isHittable)
                 tap("butlerAIIncorrect")
                 XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
@@ -141,6 +146,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
                 XCTAssertEqual(element("butlerAICorrectionText").value as? String, "周五也是")
                 tap("butlerAICorrectionSave")
                 XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
+                if nested { XCTAssertTrue(waitForDisappearance(element("butlerAIEvidencePage"))) }
                 XCTAssertEqual(app.state, .runningForeground)
                 tap("tab_yubai"); tap("openMemories")
                 XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "周五也是")).firstMatch.waitForExistence(timeout: 5))
@@ -167,8 +173,15 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)
     }
     func testCorrectionKeyboardSurvivesDynamicTypeAndClippingAudit() throws {
+        try correctionAudit(nested: false)
+    }
+    func testNestedCorrectionKeyboardSurvivesDynamicTypeAndClippingAudit() throws {
+        try correctionAudit(nested: true)
+    }
+    private func correctionAudit(nested: Bool) throws {
         for mode in [(false, false, false), (false, true, false), (true, false, false), (true, true, true)] {
-            launch("v47r-weekly-ai", large: mode.0, hidden: mode.2, dark: mode.1)
+            launch(nested ? "v47-ai-valid" : "v47r-weekly-ai", large: mode.0, hidden: mode.2, dark: mode.1)
+            if nested { tap("butlerAIEvidence") }
             tap("butlerAIIncorrect")
             try auditFocusedSheet("butlerAICorrectionText")
             element("butlerAICorrectionText").typeText("周四是和同事拼单")
@@ -176,6 +189,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             XCTAssertEqual(element("butlerAICorrectionText").value as? String, "周四是和同事拼单")
             tap("butlerAICorrectionSave")
             XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
+            if nested { XCTAssertTrue(waitForDisappearance(element("butlerAIEvidencePage"))) }
             XCTAssertEqual(app.state, .runningForeground)
             app.terminate()
         }
@@ -331,6 +345,25 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         tap("keypad_2"); tap("keypad_8"); tap("saveFrequentEntry")
         XCTAssertTrue(element("frequentEntry_0").waitForExistence(timeout: 5)); tap("closeSheet")
         tap("tab_ledger"); XCTAssertTrue(element("emptyState_ledger").exists)
+    }
+    func testEntryTapAndHoldRemainDistinctThroughLargestTextAndFrequentAdd() {
+        for mode in [(false, false, false), (false, true, false), (true, false, false), (true, true, true)] {
+            launch("v47-c-empty", large: mode.0, hidden: mode.2, dark: mode.1)
+            XCTAssertEqual(app.buttons.matching(identifier: "addEntry").count, 1)
+            tap("addEntry")
+            XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
+            XCTAssertFalse(element("quickRepeatMenu").exists)
+            tap("cancelManualSheet")
+            XCTAssertTrue(waitForDisappearance(element("entryKeypadAmount")))
+            frequentMenu()
+            XCTAssertTrue(element("emptyState_frequent").waitForExistence(timeout: 5))
+            tap("emptyAction_frequent")
+            XCTAssertTrue(element("saveFrequentEntry").waitForExistence(timeout: 5))
+            typeIntoField("午饭\n", identifier: "frequentEntryPurpose", in: app)
+            tap("keypad_2"); tap("keypad_8"); tap("saveFrequentEntry")
+            XCTAssertTrue(element("frequentEntry_0").waitForExistence(timeout: 5))
+            app.terminate()
+        }
     }
     func testNestedFrequentFieldPaddingTakesFocusAfterReopening() {
         launch("v47-c-empty", large: true)

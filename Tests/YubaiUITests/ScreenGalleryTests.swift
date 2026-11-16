@@ -126,6 +126,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         var walkFailed = false
         do { try walk() }
         catch { walkFailed = true; issues.append(String(describing: error).replacingOccurrences(of: "\n", with: " ")) }
+        print("GALLERY-PHASE stop=\(name) phase=after-walk remaining=\(stopDeadline.timeIntervalSinceNow) failed=\(walkFailed)")
         // Audit even an unreached stop. Every finding belongs to these same pixels.
         if captureProcessIsRunning(phase: "after walk") {
             if !dismissKeyboardIntroduction(in: app) { issues.append("System keyboard introduction could not be dismissed") }
@@ -263,6 +264,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         // two stable frames. A preceding XCTest existence poll duplicated it
         // and consumed the final second after the measured cold launch.
         try destination(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
+        print("GALLERY-PHASE stop=\(activeStop ?? prefix) phase=launched remaining=\(stopDeadline.timeIntervalSinceNow)")
     }
     private func drag(_ scroll: XCUIElement, up: Bool = true) throws {
         // XCUITest reports some SwiftUI scroll containers as not hittable although a finger can drag them;
@@ -310,9 +312,17 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
     }
     private func tap(_ target: XCUIElement, searching scroll: XCUIElement? = nil) throws {
+        let isKeypad = controlIdentifier(target).hasPrefix("keypad_")
         rememberTap(target, in: app)
         try reveal(target, searching: scroll)
-        if !target.identifier.hasPrefix("keypad_") {
+        if isKeypad {
+            // revealControl just checked the current frame, whole viewport,
+            // enabled state and native hit. Keys have no separate frame wait;
+            // repeating those queries on every digit spent the stop budget.
+            guard Date() < stopDeadline else { throw Miss(description: "Stop deadline exceeded at keypad") }
+            target.tap()
+            return
+        } else {
             guard waitForStableFrame(target, deadline: stopDeadline) else {
                 throw Miss(description: "Control frame did not settle: " + describe(target))
             }
@@ -353,7 +363,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
             try wait({ (field.value as? String ?? "").contains(expected) }, "Field did not retain the full text: " + id)
         }
     }
-    private func keys(_ value: String) throws { for key in value { try tap("keypad_" + String(key)) } }
+    private func keys(_ value: String) throws {
+        for key in value { try tap("keypad_" + String(key)) }
+        print("GALLERY-PHASE stop=\(activeStop ?? prefix) phase=keypad-entered remaining=\(stopDeadline.timeIntervalSinceNow)")
+    }
     private func recordEntry(_ amount: String, purpose: String? = nil, category: String = "餐饮") throws {
         try keys(amount)
         if let purpose { try type(purpose + "\n", into: "entryPurpose") }
@@ -438,12 +451,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
         try require("billDuePaid")
     }
     private func longPress(_ target: XCUIElement) throws {
-        try reveal(target)
-        guard waitForStableFrame(target) else { throw Miss(description: "Long-press target did not settle: " + describe(target)) }
-        target.press(forDuration: 0.8)
-        if target.identifier == "addEntry" {
-            try wait({ self.element("quickRepeatMenu").exists }, "Long-press menu did not open")
-            guard waitForStableFrame(element("quickRepeatMenu")) else { throw Miss(description: "Long-press menu did not settle") }
+        guard longPressControl(target, in: app, deadline: stopDeadline) else {
+            throw Miss(description: "Long-press target or destination did not settle; " + revealFailure)
         }
     }
     private func toast() throws { try require("toastMessage"); try require("undoLastChange") }
@@ -653,8 +662,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private func round47BatchB(dark: Bool, large: Bool) {
         func load(_ fixture: String = "v47-savings") throws { try launch(fixture, dark: dark, large: large) }
         func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
-        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
-        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
+        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try destination("savingsTransferPreview"); try keys(amount); try require("savingsTransferPreview") }
+        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try destination("savingsTransferPreview"); try keys(amount); try require("savingsTransferPreview") }
         stop("Save-Page") { try saving(); try require("reserveTotal") }
         stop("Spend", budget: 180) { try load("v47-spend"); try formula(); try require("formulaResult"); try reveal(element("formulaResult")) }
         stop("Spend-Over") { try load("v47-spend-over"); try formula(); try reveal(element("formulaResult")) }
@@ -680,8 +689,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private func round47BatchB2(dark: Bool, large: Bool) {
         func load(_ fixture: String = "v47-savings") throws { try launch(fixture, dark: dark, large: large) }
         func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
-        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
-        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
+        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try destination("savingsTransferPreview"); try keys(amount); try require("savingsTransferPreview") }
+        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try destination("savingsTransferPreview"); try keys(amount); try require("savingsTransferPreview") }
         stop("Hero-States-Deficit") { try load("v47r-deficit"); try require("ledgerGapBill"); try require("coverFromReserve") }
         stop("Hero-States-No-Income") { try load("v47r-no-income"); try require("availableFunds") }
         stop("Hero-States-Fallback") { try load("v47-after"); try require("firstSalaryCard") }
@@ -707,8 +716,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private func round47BatchB3(dark: Bool, large: Bool) {
         func load(_ fixture: String = "v47-savings") throws { try launch(fixture, dark: dark, large: large) }
         func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
-        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
-        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
+        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try destination("savingsTransferPreview"); try keys(amount); try require("savingsTransferPreview") }
+        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try destination("savingsTransferPreview"); try keys(amount); try require("savingsTransferPreview") }
         stop("Spend-Soft-Empty") { try load("v47-spend"); try formula(); try reveal(element("addSoftLine")) }
         stop("Spend-Soft-Edit") { try load("v47r-soft-lines"); try formula(); try tap("softLine_" + galleryID(478201) + ":amount", searching: element("formulaPage")); try require("saveSoftLine") }
         stop("Entry-Recon-Soft-Live") { try load("v47r-soft-lines"); try tap("addEntry"); try type("外卖\n", into: "entryPurpose"); try keys("38"); try require("entrySavingHint") }
@@ -744,8 +753,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private func round47BatchB4(dark: Bool, large: Bool) {
         func load(_ fixture: String = "v47-savings") throws { try launch(fixture, dark: dark, large: large) }
         func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
-        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
-        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
+        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try destination("savingsTransferPreview"); try keys(amount); try require("savingsTransferPreview") }
+        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try destination("savingsTransferPreview"); try keys(amount); try require("savingsTransferPreview") }
         stop("PutBack") { try putBack("500") }
         stop("PutBack-Limit") { try putBack("1864.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Putting back limit") }
         stop("PutBack-Saved") { try putBack("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
@@ -1096,6 +1105,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
         try wait({ self.app.keyboards.firstMatch.exists }, "Expected keyboard is absent")
     }
     private func requireCorrectionKeyboard() throws {
+        guard waitForNativeTransition(in: app, deadline: stopDeadline) else {
+            throw Miss(description: "Correction presentation did not finish before autofocus")
+        }
         try requireKeyboard()
         guard dismissKeyboardIntroduction(in: app),
               waitForKeyboardEditing("butlerAICorrectionText", in: app, deadline: stopDeadline) else {

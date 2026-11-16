@@ -5,7 +5,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app.terminate(); try super.tearDownWithError() }
     private func element(_ id: String) -> XCUIElement { control(id, in: app) }
-    private func launch(_ fixture: String = "v47-savings", large: Bool = false, hidden: Bool = false, keepUndo: Bool = true) {
+    private func launch(_ fixture: String = "v47-savings", large: Bool = false, hidden: Bool = false, keepUndo: Bool = true, dark: Bool = false) {
         app.terminate()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
@@ -16,6 +16,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         // is complete. The production six-second timeout is unchanged.
         app.launchEnvironment["YUBAI_UI_TEST_TOAST_ON_RETURN"] = keepUndo ? "0" : "1"
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
+        app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
@@ -156,6 +157,30 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
             launch(); saved(); tap(button); keys(value)
             XCTAssertFalse(element("confirmSavingsTransfer").isEnabled)
             XCTAssertFalse(app.alerts.firstMatch.exists)
+            tap("amountSheetCancel"); XCTAssertEqual(amount("reserveTotal"), 500_000)
+        }
+    }
+    func testDarkPutBackLimitPresentsSettledPreviewAtDefaultAndLargestText() {
+        for large in [false, true] {
+            launch(large: large, dark: true); saved(); tap("putBackSavings")
+            let deadline = Date().addingTimeInterval(90)
+            let preview = element("savingsTransferPreview")
+            XCTAssertTrue(preview.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline))
+            XCTAssertTrue(waitForStableFrame(preview, deadline: deadline))
+            for key in "1864.01" {
+                let target = element("keypad_" + String(key))
+                // Exercise the same fixed-footer reveal used by the gallery.
+                XCTAssertTrue(revealControl(target, in: app, deadline: deadline))
+                target.tap()
+            }
+            XCTAssertEqual(element("amountSheetAmount").value as? String, "1864.01")
+            XCTAssertFalse(element("confirmSavingsTransfer").isEnabled)
+            XCTAssertTrue(element("transferSavedPreview").label.contains("5,000.00，变为 5,000.00"))
+            XCTAssertTrue(element("transferAvailablePreview").label.contains("1,864.00，变为 1,864.00"))
+            XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline))
+            XCTAssertTrue(waitForStableFrame(preview, deadline: deadline))
+            XCTAssertEqual(app.state, .runningForeground)
             tap("amountSheetCancel"); XCTAssertEqual(amount("reserveTotal"), 500_000)
         }
     }

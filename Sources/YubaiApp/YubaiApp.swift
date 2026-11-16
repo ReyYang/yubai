@@ -1416,7 +1416,7 @@ private struct LedgerPrivacyCover: View {
 }
 
 #if os(iOS)
-/// 三个标签和记账宽钮共用紧凑字号上限，并提供系统大字号预览。
+/// 三个标签和记账宽钮共用紧凑字号上限；标签提供系统大字号预览，宽钮长按打开常用。
 private struct FloatingTabBar: View {
     @Environment(AppStore.self) private var store
     @Environment(\.yubaiReduceMotion) private var reduceMotion

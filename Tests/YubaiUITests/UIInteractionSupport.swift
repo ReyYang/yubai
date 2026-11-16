@@ -81,10 +81,12 @@ class YubaiUITestCase: XCTestCase {
         if ["tab_", "keypad_", "ledgerEntry_", "entriesFilter_", "ledgerJumpMonth_", "savingMode_", "softLine_", "modeSoftLine_"].contains(where: identifier.hasPrefix) ||
             ["fundsFormula", "openSaving", "openSettings", "toggleAmountVisibility", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
              "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear",
-             "coverFromReserve", "deficitKeep", "saveMemory"].contains(identifier) {
+             "coverFromReserve", "deficitKeep", "saveMemory", "addEntry", "manageQuickRepeats", "takeSavings", "putBackSavings",
+             "confirmSavingsTransfer", "amountSheetCancel", "butlerAICorrectionSave"].contains(identifier) {
             query = app.buttons
-        } else if ["butlerAIText", "ledgerStatus"].contains(identifier) { query = app.staticTexts }
-        else if ["mainNavigation", "rootHeaderRegion"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
+        } else if ["butlerAIText", "ledgerStatus", "reserveTotal"].contains(identifier) { query = app.staticTexts }
+        else if ["mainNavigation", "rootHeaderRegion", "quickRepeatMenu", "savingsTransferSheet", "savingsTransferPreview",
+                 "transferSavedPreview", "transferAvailablePreview", "amountSheetAmount", "fixedBottomBar"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
         else if identifier == "entriesSearch" { query = app.textFields }
         else if ["butlerAICorrectionText", "memoryText"].contains(identifier) { query = app.textViews }
         else if identifier == "entriesScroll" { query = app.collectionViews }
@@ -94,6 +96,10 @@ class YubaiUITestCase: XCTestCase {
         let target = query.matching(identifier: identifier).firstMatch
         controlQueries[ObjectIdentifier(target)] = (target, identifier)
         return target
+    }
+
+    func controlIdentifier(_ target: XCUIElement) -> String {
+        controlQueries[ObjectIdentifier(target)]?.1 ?? (target.exists ? target.identifier : "")
     }
 
     override func record(_ issue: XCTIssue) {
@@ -246,12 +252,34 @@ class YubaiUITestCase: XCTestCase {
         })
     }
 
+    /// Save identity before a gesture that can hide its source behind a modal.
+    /// Reading addEntry.identifier after the hold queried an absent button and
+    /// skipped the menu postcondition. Both gallery and flows use this path.
+    func longPressControl(_ target: XCUIElement, in app: XCUIApplication, deadline: Date) -> Bool {
+        let identifier = controlIdentifier(target)
+        guard waitForNativeTransition(in: app, deadline: deadline),
+              revealControl(target, in: app, deadline: deadline),
+              waitForStableFrame(target, deadline: deadline), Date() < deadline,
+              target.isEnabled, target.isHittable else { return false }
+        target.press(forDuration: 0.8)
+        guard identifier == "addEntry" else { return Date() < deadline }
+        let menu = control("quickRepeatMenu", in: app)
+        let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
+        guard UIConditionWait.run(timeout: 5, deadline: end, read: { menu.exists }) else {
+            revealFailure = "Long-press menu did not appear: quickRepeatMenu"; return false
+        }
+        guard waitForNativeTransition(in: app, deadline: deadline), waitForStableFrame(menu, deadline: deadline) else {
+            revealFailure = "Long-press menu did not settle: quickRepeatMenu"; return false
+        }
+        return true
+    }
+
     /// Reveal the full target through all of its native scroll ancestors.
     func revealControl(_ target: XCUIElement, in app: XCUIApplication, deadline: Date,
                        searching scroll: XCUIElement? = nil) -> Bool {
         revealedScrollFrames = nil; revealedKeyboards = []; revealedOcclusions = []
         revealFailure = ""
-        let identifier = controlQueries[ObjectIdentifier(target)]?.1 ?? (target.exists ? target.identifier : "")
+        let identifier = controlIdentifier(target)
         guard !identifier.isEmpty else { revealFailure = "Missing control identifier"; return false }
         rememberTap(target, in: app)
         var progress = UIRevealProgress()
@@ -276,6 +304,22 @@ class YubaiUITestCase: XCTestCase {
                 if header.exists, let tree = try? header.snapshot() {
                     func containsTarget(_ node: XCUIElementSnapshot) -> Bool {
                         node.identifier == identifier || node.children.contains(where: containsTarget)
+                    }
+                    if containsTarget(tree) { return tree }
+                }
+            }
+            // A keypad key lives in the fixed footer, outside the scroll. This
+            // actual owner is small even with a large Form behind its sheet.
+            // Keep full-tree keyboard/scroll checks whenever a keyboard is up
+            // or the requested key is not owned by this footer.
+            if identifier.hasPrefix("keypad_"), !app.keyboards.firstMatch.exists {
+                let footer = app.otherElements["fixedBottomBar"].firstMatch
+                if footer.exists, let tree = try? footer.snapshot() {
+                    func containsTarget(_ node: XCUIElementSnapshot) -> Bool {
+                        if node.identifier == identifier {
+                            return tree.frame.insetBy(dx: -0.5, dy: -0.5).contains(node.frame)
+                        }
+                        return node.children.contains(where: containsTarget)
                     }
                     if containsTarget(tree) { return tree }
                 }

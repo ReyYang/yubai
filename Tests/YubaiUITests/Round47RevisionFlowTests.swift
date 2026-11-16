@@ -28,6 +28,32 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertTrue(UIConditionWait.run(timeout: 8, read: { self.element(id).exists && self.element(id).label.contains(text) }), "\(id): expected \(text), got \(element(id).label)")
     }
     private func gone(_ id: String) { XCTAssertTrue(waitForDisappearance(element(id)), id) }
+
+    func testHiddenHardSettingsRowScrollsClearOfTheCapsuleAndOpensSettings() {
+        launch("v47-ai-topup-hard", hidden: true)
+        tap("tab_yubai")
+        let scroll = element("yubaiScroll"), settings = element("openSettings")
+        let deadline = Date().addingTimeInterval(90)
+        XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline))
+        XCTAssertTrue(waitForStableFrame(scroll, deadline: deadline))
+        let before = settings.frame
+        let needsScroll = before.maxY > scroll.frame.maxY + 0.5
+        if needsScroll {
+            let travel = windowMetrics(in: app)?.scroll(matching: scroll.frame)
+            XCTAssertNotNil(travel)
+            XCTAssertGreaterThanOrEqual(travel?.remainingDown ?? 0, before.maxY - scroll.frame.maxY - 0.5)
+        }
+        XCTAssertTrue(revealControl(settings, in: app, deadline: deadline, searching: scroll))
+        XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(settings.frame))
+        XCTAssertLessThanOrEqual(settings.frame.maxY, element("mainNavigation").frame.minY + 0.5)
+        XCTAssertTrue(settings.isHittable)
+        if needsScroll { XCTAssertLessThan(settings.frame.minY, before.minY - 0.5) }
+        tapControl(settings, in: app, reveals: false)
+        XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
+        tap("openIntelligencePrivacy")
+        XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5))
+        XCTAssertEqual(app.state, .runningForeground)
+    }
     private func formula() { tap("fundsFormula"); XCTAssertTrue(element("formulaResult").waitForExistence(timeout: 5)) }
     private func reconcile(_ actual: String) {
         tap("reconcileField_招行储蓄卡"); keys(actual)

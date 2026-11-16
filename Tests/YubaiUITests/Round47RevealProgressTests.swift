@@ -120,4 +120,25 @@ final class Round47RevealProgressTests: XCTestCase {
         var progress = UIRevealProgress()
         XCTAssertEqual(progress.next(sample(600)), .reached)
     }
+    func testHiddenHardSettingsUsesItsShortRealScrollTravelAfterCachedSamples() {
+        // Run 6: content 779.3pt in a 732pt viewport, setting row under the
+        // capsule by 19.3pt. It is not at the end: 47.3pt of travel remains.
+        let viewport = CGRect(x: 0, y: 130, width: 440, height: 732)
+        let before = UIRevealProgress.Sample(target: CGRect(x: 36, y: 829.3, width: 368, height: 52),
+                                             viewport: viewport, scrollOffset: 0)
+        var progress = UIRevealProgress()
+        guard case let .drag(up, distance) = progress.next(before) else { return XCTFail() }
+        XCTAssertTrue(up)
+        XCTAssertEqual(distance, 27.3, accuracy: 0.01)
+        XCTAssertLessThan(distance, 47.3)
+        let after = UIRevealProgress.Sample(target: before.target?.offsetBy(dx: 0, dy: -distance),
+                                            viewport: viewport, scrollOffset: distance)
+        var now: TimeInterval = 0
+        XCTAssertTrue(UIRevealMotionWait.run(from: before, timeout: 1, read: { now < 0.3 ? before : after },
+                                             clock: { now }, poll: { now += $0 }))
+        XCTAssertEqual(progress.next(after), .reached)
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: after.target!, scrollAncestors: [viewport],
+            occlusions: [CGRect(x: 0, y: 862, width: 440, height: 60)]))
+    }
 }
