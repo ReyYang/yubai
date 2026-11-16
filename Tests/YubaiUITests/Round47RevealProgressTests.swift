@@ -86,4 +86,38 @@ final class Round47RevealProgressTests: XCTestCase {
         guard case .drag(up: true, distance: _) = progress.next(second) else { return XCTFail() }
         XCTAssertEqual(progress.next(second), .stalled)
     }
+    func testPostDragWaitAllowsCachedSamplesBeforeRealNativeMotion() {
+        var now: TimeInterval = 0
+        let before = sample(827, height: 44)
+        XCTAssertTrue(UIRevealMotionWait.run(from: before, timeout: 1, read: {
+            now < 0.3 ? before : self.sample(727, height: 44)
+        }, clock: { now }, poll: { now += $0 }))
+        XCTAssertGreaterThanOrEqual(now, 0.3)
+    }
+    func testPostDragWaitNeverAcceptsStationaryContent() {
+        var now: TimeInterval = 0
+        let before = sample(827, height: 44)
+        XCTAssertFalse(UIRevealMotionWait.run(from: before, timeout: 1, read: { before },
+                                             clock: { now }, poll: { now += $0 }))
+        XCTAssertEqual(now, 1, accuracy: 0.001)
+    }
+    func testPostDragWaitKeepsTheOriginalDeadlineEvenWithASlowSnapshot() {
+        var now: TimeInterval = 0
+        let before = sample(827, height: 44)
+        XCTAssertFalse(UIRevealMotionWait.run(from: before, timeout: 6, deadline: 1, read: {
+            now += 2
+            return self.sample(727, height: 44)
+        }, clock: { now }, poll: { now += $0 }))
+    }
+    func testPostDragWaitObservesNativeMotionWhenTextReflowMovesTheTargetAway() {
+        var before = sample(827, height: 44); before.scrollOffset = 0
+        var after = sample(860, height: 44); after.scrollOffset = 100
+        XCTAssertTrue(UIRevealMotionWait.run(from: before, read: { after }))
+    }
+    func testPostDragWaitReturnsANewlyMaterializedTargetForOrdinaryReachabilityChecks() {
+        let before = UIRevealProgress.Sample(target: nil, viewport: viewport)
+        XCTAssertTrue(UIRevealMotionWait.run(from: before, read: { self.sample(600) }))
+        var progress = UIRevealProgress()
+        XCTAssertEqual(progress.next(sample(600)), .reached)
+    }
 }

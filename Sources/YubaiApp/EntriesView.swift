@@ -69,7 +69,7 @@ struct EntriesView: View {
             .coordinateSpace(name: "ledgerTimeline")
             #if os(iOS)
             .scrollPosition($position)
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in currentOffset = offset }
+            .deferredScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { currentOffset = $0 }
             #endif
             .rootPageHeader { topBar.accessibilityHidden(store.destination != .ledger) }
             .onChange(of: store.rootScrollRequest[.ledger]) { _, _ in
@@ -217,7 +217,7 @@ struct EntriesView: View {
                     ForEach(day.entries) { entry in entryRow(entry, hide: hide, context: filter == .uncategorized ? .uncategorized : .day) }
                 } header: {
                     dayHeader(day, hide: hide)
-                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("ledgerTimeline")).minY } action: { y in
+                        .deferredGeometryChange(for: CGFloat.self, of: { $0.frame(in: .named("ledgerTimeline")).minY }) { y in
                             if !searching && y >= 0 && y < YubaiSize.rowDouble { month = group.date }
                         }
                 }.id(day.date)

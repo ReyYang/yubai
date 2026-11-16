@@ -1295,23 +1295,10 @@ struct AdaptiveValueRow<Label: View, Value: View>: View {
     @ViewBuilder let label: () -> Label
     @ViewBuilder let value: () -> Value
     var body: some View {
-        if textSize.isAccessibilitySize { stacked }
-        else {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                    label().fixedSize()
-                    if spreadsValue { Spacer(minLength: YubaiSpace.space8) }
-                    value().fixedSize()
-                }
-                stacked
-            }
-        }
-    }
-    private var stacked: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            label().frame(maxWidth: .infinity, alignment: .leading)
+        AdaptiveStackLayout(stacked: textSize.isAccessibilitySize, spreads: spreadsValue, baseline: true) {
+            label().fixedSize(horizontal: false, vertical: true)
             value().fixedSize(horizontal: false, vertical: true)
-        }.frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
@@ -1789,20 +1776,6 @@ private struct EmptyGhostDrawing: View {
     }
 }
 
-private struct ToastIntrinsicWidth: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-private struct ToastAvailableWidth: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-private struct ToastNaturalHeight: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
 struct Toast: View {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var phase
@@ -1820,6 +1793,7 @@ struct Toast: View {
     var undoIdentifier = "undoLastChange"
     private var truncated: Bool { !textSize.isAccessibilitySize && availableWidth > 0 && intrinsicWidth > availableWidth + 0.5 }
     private var hasChevron: Bool { truncated || expanded }
+    private var scrollsMessage: Bool { expanded || textSize.isAccessibilitySize }
     private var timerKey: String { text + "-\(expanded)-\(visible)-\(phase)" }
     var body: some View {
         ZStack { if visible { surface } }
@@ -1845,22 +1819,20 @@ struct Toast: View {
             ? AnyLayout(VStackLayout(alignment: .trailing, spacing: YubaiSpace.space8))
             : AnyLayout(HStackLayout(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8))
         return layout {
-            HStack(alignment: expanded ? .top : .center, spacing: YubaiSpace.space8) {
-                    if expanded || textSize.isAccessibilitySize {
-                        ScrollView {
-                            message
-                        }.frame(height: min(max(YubaiFont.body.lineHeight, naturalHeight), YubaiSize.toastExpandedMaximumHeight))
-                            .scrollBounceBehavior(.basedOnSize)
-                    } else { message }
-                    if hasChevron {
-                        Button(action: toggle) {
-                            Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.caption)
-                                .foregroundStyle(YubaiColor.labelSecondary)
-                        }.buttonStyle(TextLinkStyle()).accessibilityIdentifier("expandToast")
-                            .accessibilityLabel(expanded ? "关闭提示" : "展开完整提示")
-                            .accessibilityValue(expanded ? "已展开" : "")
-                            .accessibilityHint("也可以点提示文字或向下划关闭")
-                    }
+            HStack(alignment: expanded ? .top : .center, spacing: YubaiSpace.none) {
+                    ScrollView { message }
+                        .frame(height: min(max(YubaiSize.tapMin, naturalHeight), scrollsMessage ? YubaiSize.toastExpandedMaximumHeight : .greatestFiniteMagnitude))
+                        .scrollBounceBehavior(.basedOnSize).scrollDisabled(!scrollsMessage)
+                        .padding(.trailing, hasChevron ? YubaiSpace.space8 : YubaiSpace.none)
+                    Button(action: toggle) {
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.caption)
+                            .foregroundStyle(YubaiColor.labelSecondary)
+                    }.buttonStyle(TextLinkStyle()).accessibilityIdentifier("expandToast")
+                        .accessibilityLabel(expanded ? "关闭提示" : "展开完整提示")
+                        .accessibilityValue(expanded ? "已展开" : "")
+                        .accessibilityHint("也可以点提示文字或向下划关闭")
+                        .frame(width: hasChevron ? nil : 0, height: hasChevron ? nil : 0).clipped().opacity(hasChevron ? 1 : 0)
+                        .allowsHitTesting(hasChevron).accessibilityHidden(!hasChevron)
             }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
                 .layoutPriority(1)
                 .contentShape(Rectangle())
@@ -1879,9 +1851,6 @@ struct Toast: View {
             .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).yubaiShadow(YubaiShadow.card)
             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapGroup)
             .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
-            .onPreferenceChange(ToastNaturalHeight.self) { naturalHeight = $0 }
-            .onPreferenceChange(ToastIntrinsicWidth.self) { intrinsicWidth = $0 }
-            .onPreferenceChange(ToastAvailableWidth.self) { availableWidth = $0 }
             .simultaneousGesture(DragGesture(minimumDistance: YubaiSpace.gapGroup).onEnded { value in
                 if value.translation.height > YubaiSpace.gapSection { dismiss() }
             })
@@ -1894,15 +1863,12 @@ struct Toast: View {
             .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.body)
             .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
             .accessibilityElement(children: .ignore).accessibilityLabel(text).accessibilityIdentifier(messageIdentifier)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(key: ToastAvailableWidth.self, value: proxy.size.width)
-                        .preference(key: ToastNaturalHeight.self, value: proxy.size.height)
-                }
+            .deferredGeometryChange(for: CGSize.self, of: { $0.size }) { size in
+                availableWidth = size.width; naturalHeight = size.height
             }
             .background(alignment: .leading) {
                 Text(text).yubaiFont(YubaiFont.body).lineLimit(1).fixedSize().hidden().accessibilityHidden(true)
-                    .background { GeometryReader { proxy in Color.clear.preference(key: ToastIntrinsicWidth.self, value: proxy.size.width) } }
+                    .deferredGeometryChange(for: CGFloat.self, of: { $0.size.width }) { intrinsicWidth = $0 }
             }.onTapGesture(perform: toggle).accessibilityAction { toggle() }
     }
     private func toggle() {
@@ -2003,6 +1969,7 @@ struct CategoryChoiceChip: View {
 struct ChipFlow: Layout {
     var spacing: CGFloat = YubaiSpace.space8
     var rowSpacing: CGFloat = YubaiSpace.space8
+    var stacked = false
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         arrangement(width: proposal.width ?? .infinity, subviews: subviews).size
     }
@@ -2020,7 +1987,7 @@ struct ChipFlow: Layout {
         for subview in subviews {
             let ideal = subview.sizeThatFits(.unspecified)
             let size = subview.sizeThatFits(ProposedViewSize(width: min(width, ideal.width), height: nil))
-            if x > 0 && x + size.width > width { x = 0; y += rowHeight + rowSpacing; rowHeight = 0 }
+            if x > 0 && (stacked || x + size.width > width) { x = 0; y += rowHeight + rowSpacing; rowHeight = 0 }
             frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
             usedWidth = max(usedWidth, x + size.width); rowHeight = max(rowHeight, size.height)
             x += size.width + spacing
@@ -2408,14 +2375,8 @@ struct QuestionCard: View {
             }
         }
     }
-    @ViewBuilder private var answers: some View {
-        if textSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) { answerButtons }
-        } else {
-            // Match the board's wrapping chips: move a complete answer to the
-            // next row before either label accepts a compressed proposal.
-            ChipFlow(spacing: YubaiSpace.gapGroup) { answerButtons }
-        }
+    private var answers: some View {
+        ChipFlow(spacing: YubaiSpace.gapGroup, stacked: textSize.isAccessibilitySize) { answerButtons }
     }
     @ViewBuilder private var answerButtons: some View {
         Button(yesTitle, action: yes).buttonStyle(NowCardButtonStyle(primary: true)).disabled(!yesEnabled).accessibilityIdentifier(yesIdentifier)
@@ -2441,28 +2402,27 @@ private struct ButlerHeadline: View {
     @State private var fullHeight: CGFloat = 0
     @State private var visibleHeight: CGFloat = 0
     private var showsFullText: Bool { textSize.isAccessibilitySize || expanded }
+    private var showsDisclosure: Bool { !textSize.isAccessibilitySize && (expanded || fullHeight > visibleHeight + 0.5) }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.none) {
             Text(text).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
                 .lineLimit(showsFullText ? nil : 2).fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel(text).accessibilityIdentifier(identifier)
                 .accessibilityValue(showsFullText ? "已展开" : "已收起")
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
+                .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { visibleHeight = $0 }
                 .background(alignment: .topLeading) {
-                    if !textSize.isAccessibilitySize {
-                        Text(text).yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
-                            .hidden().accessibilityHidden(true)
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
-                    }
+                    Text(text).yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
+                        .hidden().accessibilityHidden(true)
+                        .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { fullHeight = $0 }
                 }
-            if !textSize.isAccessibilitySize && (expanded || fullHeight > visibleHeight + 0.5) {
-                Button { expanded.toggle() } label: {
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.meta)
-                        .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel(expanded ? "收起全文" : "展开全文")
-                    .accessibilityValue(expanded ? "已展开" : "")
-                    .accessibilityIdentifier("expandButlerHeadline")
-            }
+            Button { expanded.toggle() } label: {
+                Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.meta)
+                    .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
+            }.buttonStyle(PressButtonStyle()).accessibilityLabel(expanded ? "收起全文" : "展开全文")
+                .accessibilityValue(expanded ? "已展开" : "")
+                .accessibilityIdentifier("expandButlerHeadline")
+                .frame(height: showsDisclosure ? nil : 0).clipped().opacity(showsDisclosure ? 1 : 0)
+                .allowsHitTesting(showsDisclosure).accessibilityHidden(!showsDisclosure)
         }
     }
 }
@@ -2728,32 +2688,21 @@ struct Segmented<Value: Hashable>: View {
     var identifier: ((Value) -> String)? = nil
     var background = YubaiColor.card
     var body: some View {
-        Group {
-            if textSize.isAccessibilitySize && choices.contains(where: { $0.1.count > 3 }) { segments(stacked: true) }
-            else {
-                ViewThatFits(in: .horizontal) {
-                    segments(stacked: false)
-                    segments(stacked: true)
-                }
+        AdaptiveStackLayout(stacked: textSize.isAccessibilitySize && choices.contains(where: { $0.1.count > 3 }),
+                            equalWidth: true, horizontalSpacing: YubaiSpace.space4, verticalSpacing: YubaiSpace.space4) {
+            ForEach(choices.indices, id: \.self) { index in
+                segment(choices[index].0, title: choices[index].1)
             }
         }.padding(YubaiSpace.space4)
             .background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
     }
-    private func segments(stacked: Bool) -> some View {
-        let layout = stacked ? AnyLayout(VStackLayout(spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space4))
-        return layout {
-            ForEach(choices.indices, id: \.self) { index in
-                segment(choices[index].0, title: choices[index].1, stacked: stacked)
-            }
-        }
-    }
-    private func segment(_ value: Value, title: String, stacked: Bool) -> some View {
+    private func segment(_ value: Value, title: String) -> some View {
         let on = selection == value
         return Button { selection = value } label: {
             Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
                 .lineLimit(nil)
-                .yubaiTextLineBox(YubaiFont.row).fixedSize(horizontal: !stacked, vertical: true)
+                .yubaiTextLineBox(YubaiFont.row).fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
@@ -2824,7 +2773,7 @@ struct ManualSheetHeader: View {
     }
     private var titleText: some View {
         let font = ["记一笔", "改一笔", "改这笔"].contains(title) ? YubaiFont.entrySheetTitle : YubaiFont.navTitle
-        return Text(title).yubaiFont(font).lineLimit(2).minimumScaleFactor(0.75)
+        return Text(title).yubaiFont(font).lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(font)
     }
     private var cancelButton: some View {
@@ -2848,31 +2797,18 @@ struct ManualSheetHeader: View {
         } else { Color.clear.frame(width: 64, height: 36).accessibilityHidden(true) }
     }
     var body: some View {
-        Group {
-            if textSize.isAccessibilitySize { stackedHeader }
-            else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 0) {
-                        cancelButton.frame(width: 96, alignment: .leading)
-                        titleView.frame(maxWidth: .infinity)
-                        actionButton.frame(width: 96, alignment: .trailing)
-                    }
-                    stackedHeader
-                }
-            }
+        SheetHeaderLayout(stacked: textSize.isAccessibilitySize) {
+            cancelButton
+            titleView.multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            actionButton
         }.frame(minHeight: 48).padding(.top, inSheet ? YubaiSpace.sheetHeaderTop : 0).buttonStyle(PressButtonStyle())
             .background(YubaiColor.canvas)
             .overlay(alignment: .bottom) { PageFade(edge: .top).offset(y: 24) }
     }
-    private var stackedHeader: some View {
-        VStack(spacing: 4) {
-            titleView
-            ViewThatFits(in: .horizontal) {
-                HStack { cancelButton; Spacer(); actionButton }
-                VStack(spacing: 8) { cancelButton; actionButton }
-            }
-        }
-    }
+}
+
+extension YubaiSize {
+    static let sheetHeaderActionWidth: CGFloat = 96
 }
 
 /// One field implementation for card rows, search and chat. The native editor
@@ -2974,7 +2910,6 @@ private struct NativeRowInput: UIViewRepresentable {
         let coordinator = context.coordinator
         host.focusChanged = { [weak coordinator] in coordinator?.parent.focus.wrappedValue = $0 }
         host.editingChanged = { [weak coordinator] in coordinator?.parent.editingChanged($0) }
-        let previousHeight = host.height(for: host.bounds.width)
         let font = UIFont.systemFont(ofSize: fontSize)
         host.minimum = minimum; host.maximumLines = maximumLines
         if host.field.font != font { host.field.font = font }
@@ -3011,7 +2946,6 @@ private struct NativeRowInput: UIViewRepresentable {
                 }
             }
         } else { host.desiredFocus = enabled && focus.wrappedValue }
-        if TextInputMetrics.changed(from: previousHeight, to: host.height(for: host.bounds.width)) { host.scheduleSizeUpdate() }
         if host.desiredFocus != input.isFirstResponder { host.scheduleFocusUpdate() }
     }
     static func dismantleUIView(_ host: FieldHost, coordinator: Coordinator) {
@@ -3036,8 +2970,6 @@ private struct NativeRowInput: UIViewRepresentable {
         private var dismantled = false
         private var focusRevision = 0
         private var focusUpdateScheduled = false
-        private var sizeUpdateScheduled = false
-        private var lastHeight: CGFloat = 0
         var minimum = YubaiSize.tapMin
         var maximumLines = 6
         init(multiline: Bool) {
@@ -3075,7 +3007,6 @@ private struct NativeRowInput: UIViewRepresentable {
             return TextInputMetrics.height(textHeight: measured, lineHeight: font.lineHeight,
                 verticalInset: editor.textContainerInset.top, minimum: minimum, maximumLines: maximumLines)
         }
-        override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: height(for: bounds.width)) }
         override func layoutSubviews() {
             super.layoutSubviews()
             if field.frame != bounds { field.frame = bounds }
@@ -3087,17 +3018,6 @@ private struct NativeRowInput: UIViewRepresentable {
             // SwiftUI state, accessibility values or intrinsic size.
         }
         override func didMoveToWindow() { super.didMoveToWindow(); scheduleFocusUpdate() }
-        func scheduleSizeUpdate() {
-            guard !sizeUpdateScheduled else { return }
-            sizeUpdateScheduled = true
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                sizeUpdateScheduled = false
-                let next = height(for: bounds.width)
-                guard TextInputMetrics.changed(from: lastHeight, to: next) else { return }
-                lastHeight = next; invalidateIntrinsicContentSize()
-            }
-        }
         func scheduleFocusUpdate() {
             guard !focusUpdateScheduled else { return }
             focusUpdateScheduled = true
@@ -3154,17 +3074,19 @@ private struct NativeRowInput: UIViewRepresentable {
             input.becomeFirstResponder()
         }
         func editingEnded() {
-            desiredFocus = false; publishFocus(false); editingChanged?(false)
+            guard !dismantled else { return }
+            desiredFocus = false; publishFocus(false)
         }
         func editingBegan() {
             guard !dismantled else { return }
-            desiredFocus = true; publishFocus(true); editingChanged?(true)
+            desiredFocus = true; publishFocus(true)
         }
         private func publishFocus(_ value: Bool) {
             let revision = focusRevision
             DispatchQueue.main.async { [weak self] in
                 guard let self, !dismantled, focusRevision == revision, desiredFocus == value else { return }
                 focusChanged?(value)
+                editingChanged?(value)
             }
         }
         func dismantle() {
@@ -3179,7 +3101,10 @@ private struct NativeRowInput: UIViewRepresentable {
     final class Coordinator: NSObject, UITextFieldDelegate, UITextViewDelegate {
         var parent: NativeRowInput
         init(_ parent: NativeRowInput) { self.parent = parent }
-        @objc func changed(_ field: UITextField) { parent.text = field.text ?? "" }
+        @objc func changed(_ field: UITextField) {
+            let text = field.text ?? ""
+            if parent.text != text { parent.text = text }
+        }
         func textFieldDidBeginEditing(_ textField: UITextField) {
             (textField.superview as? FieldHost)?.editingBegan()
         }
@@ -3189,9 +3114,12 @@ private struct NativeRowInput: UIViewRepresentable {
             parent.submit?(); parent.focus.wrappedValue = false; textField.resignFirstResponder(); return true
         }
         func textViewDidChange(_ textView: UITextView) {
-            parent.text = textView.text
-            (textView.superview as? FieldHost)?.placeholder.isHidden = !textView.text.isEmpty
-            (textView.superview as? FieldHost)?.scheduleSizeUpdate()
+            let text = textView.text ?? ""
+            if parent.text != text { parent.text = text }
+            (textView.superview as? FieldHost)?.placeholder.isHidden = !text.isEmpty
+            // The text binding invalidates SwiftUI's sizeThatFits proposal.
+            // A UIKit intrinsic-size publication would introduce a second
+            // sizing route during the Form's live Dynamic Type relayout.
         }
         func textViewDidBeginEditing(_ textView: UITextView) {
             (textView.superview as? FieldHost)?.editingBegan()
@@ -4074,7 +4002,7 @@ struct NativeCardRows<Item: Identifiable, Row: View>: View where Item.ID: Hashab
             .frame(height: items.reduce(CGFloat(0)) { $0 + max(44, heights[AnyHashable($1.id)] ?? estimatedHeight) })
             .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card))
             .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
-            .onPreferenceChange(NativeRowsHeight.self) { value in if value != heights { heights = value } }
+            .deferredPreferenceChange(NativeRowsHeight.self) { value in if value != heights { heights = value } }
     }
 }
 
@@ -4269,14 +4197,14 @@ private struct MeasuredRootScroll: ViewModifier {
             .scrollEdgeEffectHidden(true, for: .bottom)
             .scrollEdgeEffectHidden(true, for: .top)
             .scrollClipDisabled(false).modifier(ScrollContentViewport())
-            .onScrollGeometryChange(for: Bool.self) { geometry in
+            .deferredScrollGeometryChange(for: Bool.self, of: { geometry in
                 geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height + geometry.contentInsets.bottom - 1
-            } action: { _, end in atEnd = end }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
+            }) { atEnd = $0 }
+            .deferredScrollGeometryChange(for: Bool.self, of: { geometry in
                 geometry.contentOffset.y <= -geometry.contentInsets.top + 1
-            } action: { _, top in atTop = top }
-            .overlay(alignment: .top) { if !atTop { PageFade(edge: .top) } }
-            .overlay(alignment: .bottom) { if !atEnd { PageFade(edge: .bottom) } }
+            }) { atTop = $0 }
+            .overlay(alignment: .top) { PageFade(edge: .top).opacity(atTop ? 0 : 1) }
+            .overlay(alignment: .bottom) { PageFade(edge: .bottom).opacity(atEnd ? 0 : 1) }
             .padding(.bottom, bottom)
     }
 }
@@ -4332,10 +4260,8 @@ struct SavedPill: View {
     let total: Int64
     var hide = false
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.space6) { title; amount; chevron }.fixedSize()
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) { HStack { title; chevron }; amount }
-        }.padding(.horizontal, YubaiSpace.space10).padding(.vertical, YubaiSpace.space6)
+        SavedPillLayout { title; amount; chevron }
+            .padding(.horizontal, YubaiSpace.space10).padding(.vertical, YubaiSpace.space6)
             .frame(minHeight: YubaiSize.savedPillHeight)
             .controlSurface(in: RoundedRectangle(cornerRadius: YubaiSize.savedPillHeight / 2))
     }

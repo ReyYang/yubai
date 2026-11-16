@@ -1050,7 +1050,7 @@ struct RootView: View {
                     if store.unsortedUndo?.id == notice.id { store.unsortedUndo = nil }
                 }, messageIdentifier: "unsortedUndoMessage", undoIdentifier: "quickSortUndo")
                     .id(notice.id)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toastHeight = $0 }
+                    .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { toastHeight = $0 }
                     #if os(iOS)
                     .padding(.bottom, toastBottomPadding)
                     #else
@@ -1059,7 +1059,7 @@ struct RootView: View {
             } else if !store.locked, let toast = store.toast {
                 Toast(text: HomeButler.privacyText(toast, hidden: store.preferences.hideAmounts), onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(store.toastRevision)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toastHeight = $0 }
+                    .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { toastHeight = $0 }
                     #if os(iOS)
                     .padding(.bottom, toastBottomPadding)
                     #else
@@ -1427,6 +1427,7 @@ private struct FloatingTabBar: View {
     let quick: () -> Void
     let measured: (Destination, CGFloat) -> Void
     var body: some View {
+        let destination = store.destination
         VStack(spacing: YubaiSpace.space12) {
             if store.destination == .ledger { addButton }
             HStack(spacing: YubaiSpace.space2) {
@@ -1437,7 +1438,7 @@ private struct FloatingTabBar: View {
                 .dynamicTypeSize(YubaiFont.floatingChromeCeiling)
                 .accessibilityElement(children: .contain).accessibilityLabel("标签导航").accessibilityIdentifier("navigationCapsule")
         }.fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured(store.destination, $0) }
+            .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { measured(destination, $0) }
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
             .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
     }

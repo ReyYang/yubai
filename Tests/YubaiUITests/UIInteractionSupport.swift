@@ -80,12 +80,13 @@ class YubaiUITestCase: XCTestCase {
         let query: XCUIElementQuery
         if ["tab_", "keypad_", "ledgerEntry_", "entriesFilter_", "ledgerJumpMonth_", "savingMode_", "softLine_", "modeSoftLine_"].contains(where: identifier.hasPrefix) ||
             ["fundsFormula", "openSaving", "openSettings", "toggleAmountVisibility", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
-             "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear"].contains(identifier) {
+             "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear",
+             "coverFromReserve", "deficitKeep", "saveMemory"].contains(identifier) {
             query = app.buttons
         } else if ["butlerAIText", "ledgerStatus"].contains(identifier) { query = app.staticTexts }
         else if ["mainNavigation", "rootHeaderRegion"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
         else if identifier == "entriesSearch" { query = app.textFields }
-        else if identifier == "butlerAICorrectionText" { query = app.textViews }
+        else if ["butlerAICorrectionText", "memoryText"].contains(identifier) { query = app.textViews }
         else if identifier == "entriesScroll" { query = app.collectionViews }
         else if ["formulaPage", "savingTabScroll", "whereCategoryPage", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
             query = app.scrollViews
@@ -229,9 +230,9 @@ class YubaiUITestCase: XCTestCase {
         return windowMetrics(in: tree)
     }
 
-    func auditAppText(in app: XCUIApplication, handler: @escaping (XCUIAccessibilityAuditIssue) -> Bool) throws {
+    func auditAppText(in app: XCUIApplication, dynamicType: Bool = false, handler: @escaping (XCUIAccessibilityAuditIssue) -> Bool) throws {
         let scope = UIAppContentAuditScope(try app.snapshot())
-        try app.performAccessibilityAudit(for: [.textClipped]) { issue in
+        try app.performAccessibilityAudit(for: dynamicType ? [.dynamicType, .textClipped] : [.textClipped]) { issue in
             if let element = issue.element, scope.isSystemKeyboard(element) { return true }
             return handler(issue)
         }
@@ -255,6 +256,7 @@ class YubaiUITestCase: XCTestCase {
         rememberTap(target, in: app)
         var progress = UIRevealProgress()
         var trace: [String] = []
+        var pendingTree: XCUIElementSnapshot?
         var waitedForDiscovery = false
         var searchIdentifier = scroll?.identifier
         func ready(staticText: Bool) -> Bool {
@@ -280,8 +282,32 @@ class YubaiUITestCase: XCTestCase {
             }
             return try? app.snapshot()
         }
+        func motionSample(in tree: XCUIElementSnapshot, container: XCUIElementSnapshot, viewport: CGRect) -> UIRevealProgress.Sample? {
+            var found: XCUIElementSnapshot?
+            var targetFrame: CGRect?
+            func find(_ node: XCUIElementSnapshot) {
+                if node.identifier == identifier { targetFrame = node.frame }
+                if node.elementType == container.elementType,
+                   (!container.identifier.isEmpty ? node.identifier == container.identifier : node.frame == container.frame) { found = node }
+                for child in node.children { find(child) }
+            }
+            find(tree)
+            guard let found else { return nil }
+            var landmarks: [String: CGFloat] = [:]
+            func mark(_ node: XCUIElementSnapshot) {
+                if !node.frame.isEmpty, ![.other, .scrollView, .collectionView, .table].contains(node.elementType) {
+                    let key = "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)"
+                    if landmarks[key] == nil { landmarks[key] = node.frame.minY }
+                }
+                for child in node.children { mark(child) }
+            }
+            mark(found)
+            return UIRevealProgress.Sample(target: targetFrame, viewport: viewport, landmarks: landmarks,
+                scrollOffset: windowMetrics(in: tree)?.scroll(matching: found.frame)?.remainingUp)
+        }
         while Date() < deadline {
-            guard let tree = snapshot() else { revealFailure = "Snapshot unavailable: " + identifier; break }
+            guard let tree = pendingTree ?? snapshot() else { revealFailure = "Snapshot unavailable: " + identifier; break }
+            pendingTree = nil
             guard Date() < deadline else {
                 revealFailure = "Stop deadline expired during snapshot: " + identifier
                 break
@@ -364,19 +390,12 @@ class YubaiUITestCase: XCTestCase {
             // Drag only in the observed unobscured region of this scroll.
             let viewport = UIViewportGeometry.visibleParts(clipped, ancestors: [], excluding: keyboards + occlusions)
                 .max(by: { $0.width * $0.height < $1.width * $1.height }) ?? .zero
-            var landmarks: [String: CGFloat] = [:]
-            func mark(_ node: XCUIElementSnapshot) {
-                if !node.frame.isEmpty, ![.other, .scrollView, .collectionView, .table].contains(node.elementType) {
-                    let key = "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)"
-                    if landmarks[key] == nil { landmarks[key] = node.frame.minY }
-                }
-                for child in node.children { mark(child) }
+            guard let sample = motionSample(in: tree, container: container, viewport: viewport) else {
+                revealFailure = "Scroll ancestor disappeared: " + identifier; return false
             }
-            mark(container)
-            let sample = UIRevealProgress.Sample(target: match?.node.frame, viewport: viewport, landmarks: landmarks,
-                scrollOffset: windowMetrics(in: tree)?.scroll(matching: container.frame)?.remainingUp)
             let step = progress.next(sample)
-            trace.append("target=\(String(describing: sample.target)) viewport=\(viewport) offset=\(String(describing: sample.scrollOffset)) \(step)")
+            let travel = windowMetrics(in: tree)?.scroll(matching: container.frame)
+            trace.append("target=\(String(describing: sample.target)) container=\(container.identifier) viewport=\(viewport) offset=\(String(describing: sample.scrollOffset)) remainingDown=\(String(describing: travel?.remainingDown)) \(step)")
             switch step {
             case .reached:
                 // The pure rule above also checks every outer ancestor and
@@ -404,6 +423,16 @@ class YubaiUITestCase: XCTestCase {
                 origin.withOffset(CGVector(dx: start.x - tree.frame.minX, dy: start.y - tree.frame.minY))
                     .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x - tree.frame.minX, dy: end.y - tree.frame.minY)),
                            withVelocity: .slow, thenHoldForDuration: 0.1)
+            }
+            let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
+            guard UIRevealMotionWait.run(from: sample, deadline: end, read: {
+                guard let next = snapshot() else { return nil }
+                pendingTree = next
+                return motionSample(in: next, container: container, viewport: viewport)
+            }) else {
+                revealFailure = "Scroll made no progress after gesture: " + identifier
+                print("Reveal made no progress: \(identifier)\n" + trace.joined(separator: "\n"))
+                return false
             }
         }
         if revealFailure.isEmpty { revealFailure = "Reveal deadline: " + identifier }

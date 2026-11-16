@@ -205,17 +205,14 @@ struct ButlerKicker: View {
     var evidenceTitle: String? = nil
     var onEvidence: (() -> Void)? = nil
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).fixedSize()
-                Spacer(minLength: YubaiSpace.none)
-                evidenceLink
-                if more > 0 { MoreLink(count: more).fixedSize() }
-            }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
-                evidenceLink
-                if more > 0 { MoreLink(count: more) }
+        AdaptiveStackLayout(spreads: true, baseline: true) {
+            Text(title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if (evidenceTitle != nil && onEvidence != nil) || more > 0 {
+                ChipFlow {
+                    evidenceLink
+                    if more > 0 { MoreLink(count: more).fixedSize() }
+                }
             }
         }
     }

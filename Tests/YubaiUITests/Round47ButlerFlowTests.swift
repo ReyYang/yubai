@@ -149,6 +149,56 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             }
         }
     }
+    private func auditFocusedSheet(_ identifier: String) throws {
+        XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app))
+        XCTAssertEqual(app.state, .runningForeground)
+        // This is the same native audit that crashed the correction stop.
+        // Its Dynamic Type pass changes content size while the editor stays up.
+        try auditAppText(in: app, dynamicType: true) { issue in
+            XCTFail("Focused sheet accessibility audit: " + issue.detailedDescription)
+            return true
+        }
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app))
+        XCTAssertEqual(app.textViews.matching(identifier: identifier).count, 1)
+        XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)
+    }
+    func testCorrectionKeyboardSurvivesDynamicTypeAndClippingAudit() throws {
+        for mode in [(false, false, false), (false, true, false), (true, false, false), (true, true, true)] {
+            launch("v47r-weekly-ai", large: mode.0, hidden: mode.2, dark: mode.1)
+            tap("butlerAIIncorrect")
+            try auditFocusedSheet("butlerAICorrectionText")
+            element("butlerAICorrectionText").typeText("周四是和同事拼单")
+            try auditFocusedSheet("butlerAICorrectionText")
+            XCTAssertEqual(element("butlerAICorrectionText").value as? String, "周四是和同事拼单")
+            tap("butlerAICorrectionSave")
+            XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
+            XCTAssertEqual(app.state, .runningForeground)
+            app.terminate()
+        }
+    }
+    func testMemoryAutofocusSheetKeyboardSurvivesDynamicTypeAndClippingAudit() throws {
+        let noteID = String(format: "47000000-0000-0000-0000-%012d", 472090)
+        for mode in [(false, false), (false, true), (true, false), (true, true)] {
+            launch(large: mode.0, dark: mode.1)
+            tap("tab_yubai"); tap("openMemories")
+            let row = element("memory_" + noteID)
+            XCTAssertTrue(revealControl(row, in: app, deadline: Date().addingTimeInterval(60)))
+            row.swipeLeft()
+            tap("swipeEditMemory_" + noteID)
+            try auditFocusedSheet("memoryText")
+            element("memoryText").typeText("周四和同事拼单")
+            try auditFocusedSheet("memoryText")
+            XCTAssertTrue((element("memoryText").value as? String ?? "").contains("周四和同事拼单"))
+            tap("saveMemory")
+            XCTAssertTrue(waitForDisappearance(element("memoryText")))
+            XCTAssertEqual(app.state, .runningForeground)
+            app.terminate()
+        }
+    }
     func testScriptedWrongSumUnknownIDUnknownActionMalformedAndEmptyNeverEnterQueue() {
         for fixture in ["v47-ai-wrong-sum", "v47-ai-unknown-id", "v47-ai-unknown-action", "v47-ai-malformed", "v47-ai-none"] {
             launch(fixture); settings()

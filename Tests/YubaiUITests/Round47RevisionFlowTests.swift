@@ -59,6 +59,34 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         tap("coverFromReserve"); expect("availableFunds", contains: "¥0.00"); gone("deficitRescueCard")
         tap("undoLastChange"); expect("availableFunds", contains: "¥350.00"); XCTAssertTrue(element("deficitRescueCard").exists)
     }
+    func testDeficitRescueScrollsAboveCompactChromeBeforeTapInAllAppearances() {
+        for mode in [(false, false, false), (true, false, false), (true, true, false), (true, false, true), (true, true, true)] {
+            launch("v47r-deficit", large: mode.0, dark: mode.1, hidden: mode.2)
+            let scroll = element("entriesScroll"), rescue = element("coverFromReserve"), keep = element("deficitKeep")
+            XCTAssertTrue(waitForStableFrame(rescue))
+            let before = rescue.frame
+            let initial = windowMetrics(in: app)?.scroll(matching: scroll.frame)
+            let needsScroll = before.maxY > scroll.frame.maxY + 0.5
+            if needsScroll {
+                XCTAssertGreaterThan(initial?.remainingDown ?? 0, before.maxY - scroll.frame.maxY,
+                                     "A rescue below the viewport must have enough native scroll travel")
+            }
+            XCTAssertTrue(revealControlsTogether([rescue, keep], in: app, deadline: Date().addingTimeInterval(60),
+                                                searching: scroll, bottomClearance: 40))
+            for button in [rescue, keep] {
+                XCTAssertTrue(button.isHittable)
+                XCTAssertLessThanOrEqual(button.frame.maxY, scroll.frame.maxY - 40 + 0.5)
+                XCTAssertLessThan(button.frame.maxY, element("addEntry").frame.minY)
+                XCTAssertLessThan(button.frame.maxY, capsuleFrame(in: app).minY)
+            }
+            if needsScroll { XCTAssertLessThan(rescue.frame.minY, before.minY - 0.5) }
+            tap("coverFromReserve")
+            gone("deficitRescueCard"); expect("availableFunds", contains: mode.2 ? "¥••••" : "¥0.00")
+            tap("undoLastChange")
+            XCTAssertTrue(element("deficitRescueCard").waitForExistence(timeout: 5))
+            XCTAssertEqual(app.state, .runningForeground)
+        }
+    }
     func testDeficitKeepLeavesHeadlineAndConsumesCardAcrossRelaunch() {
         launch("v47r-deficit"); tap("deficitKeep"); gone("deficitRescueCard"); expect("availableFunds", contains: "¥350.00")
         app.terminate(); launchApp(app); gone("deficitRescueCard"); expect("availableFunds", contains: "¥350.00")
