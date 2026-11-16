@@ -4,6 +4,13 @@ import XCTest
 final class Round47RevisionTests: XCTestCase {
     func d(_ text: String) -> Date { Dates.parse(text)! }
     var now: Date { d("2026-11-20 12:00") }
+    func testInterfaceMonthDayUsesChineseUnitsAcrossCalendarBoundaries() {
+        for (date, expected) in [("2026-11-20", "11月20日"), ("2026-12-09", "12月9日"),
+                                 ("2027-01-01", "1月1日"), ("2028-02-29", "2月29日")] {
+            XCTAssertEqual(Dates.monthDay(d(date)), expected)
+            XCTAssertEqual(HomeTaskCopy.monthDay(d(date)), expected)
+        }
+    }
     func ledger(spent: Int64 = 83_600) -> Ledger {
         var l = Ledger(); l.updatedAt = now; l.cycleAnchor = .payday
         l.accounts = [Account(name: "银行卡", balance: 300_000, at: d("2026-11-09"))]

@@ -246,7 +246,10 @@ private struct RootTabScroll: ViewModifier {
     }
 }
 extension View {
-    func rootTabScroll(_ tab: Destination) -> some View { modifier(RootTabScroll(tab: tab)) }
+    @ViewBuilder func rootTabScroll(_ tab: Destination?) -> some View {
+        if let tab { modifier(RootTabScroll(tab: tab)) }
+        else { self }
+    }
 }
 
 struct EntryFormFields<Trailing: View>: View {

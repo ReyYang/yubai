@@ -2,7 +2,7 @@ import SwiftUI
 import YubaiCore
 
 enum FixedFlowPresentation {
-    static func monthDay(_ date: Date) -> String { date.formatted(.dateTime.month(.defaultDigits).day().locale(Locale(identifier: "zh_CN"))) }
+    static func monthDay(_ date: Date) -> String { Dates.monthDay(date) }
     static func state(_ state: FixedFlowState, inflow: Bool) -> String {
         switch state { case .paid: inflow ? "已收到" : "已付"; case .due: "已到期"; case .upcoming: "还没到" }
     }

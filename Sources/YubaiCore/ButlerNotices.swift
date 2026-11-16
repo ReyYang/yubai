@@ -27,8 +27,7 @@ public struct HomeTaskCopy: Equatable, Sendable {
     public var kicker: String
     public var title: String
     public static func monthDay(_ date: Date) -> String {
-        let c = Dates.calendar
-        return "\(c.component(.month, from: date))月\(c.component(.day, from: date))日"
+        Dates.monthDay(date)
     }
     public static func make(_ task: HomeTask, now: Date, hidden: Bool) -> Self? {
         func money(_ amount: Int64) -> String { hidden ? "••••" : Money.text(amount, currency: false) }

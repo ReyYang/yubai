@@ -25,7 +25,22 @@ class YubaiUITestCase: XCTestCase {
     private var stallHistory: [String: String] = [:]
 
     func control(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
-        let target = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        // Use the actual control type for high-frequency gallery routes. An
+        // Any-descendant firstMatch asks XCTest to walk every AX node, including
+        // offscreen cells and diagnostics, just to find a button identifier.
+        let query: XCUIElementQuery
+        if ["tab_", "keypad_", "ledgerEntry_", "entriesFilter_", "ledgerJumpMonth_", "savingMode_"].contains(where: identifier.hasPrefix) ||
+            ["fundsFormula", "openSaving", "openSettings", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
+             "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear"].contains(identifier) {
+            query = app.buttons
+        } else if identifier == "butlerAIText" { query = app.staticTexts }
+        else if identifier == "entriesSearch" { query = app.textFields }
+        else if identifier == "butlerAICorrectionText" { query = app.textViews }
+        else if identifier == "entriesScroll" { query = app.collectionViews }
+        else if ["formulaPage", "savingTabScroll", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
+            query = app.scrollViews
+        } else { query = app.descendants(matching: .any) }
+        let target = query.matching(identifier: identifier).firstMatch
         controlQueries[ObjectIdentifier(target)] = (target, identifier)
         return target
     }
@@ -76,36 +91,17 @@ class YubaiUITestCase: XCTestCase {
         guard !collectingStalls else { return }
         collectingStalls = true
         defer { collectingStalls = false }
-        var record = "<app diagnostic unavailable; see YUBAI-STALL stderr/Documents/tmp>"
-        if app.state == .runningForeground, let tree = try? app.snapshot() {
-            // Read both lazy values from one snapshot, including a modal's
-            // probe when its accessibility container hides the root probe.
-            var latest: String?, history: String?
-            var chunks: [Int: String] = [:]
-            func collect(_ node: XCUIElementSnapshot) {
-                if node.identifier == "uiTestMainThreadStall" { latest = node.value as? String }
-                if node.identifier == "uiTestMainThreadStallRecords" { history = node.value as? String }
-                if node.identifier.hasPrefix("uiTestStallChunk_"),
-                   let index = Int(node.identifier.dropFirst("uiTestStallChunk_".count)), let text = node.value as? String {
-                    chunks[index] = text
-                }
-                for child in node.children { collect(child) }
-            }
-            collect(tree)
-            if !chunks.isEmpty { history = chunks.keys.sorted().compactMap { chunks[$0] }.joined() }
-            if let latest {
-                record = latest.isEmpty ? "<no main-thread stalls>" : latest
-            }
-            if let history, !history.isEmpty {
+        var record = "<app diagnostic unavailable; see complete stderr watchdog logs>"
+        let probe = app.otherElements.matching(identifier: "uiTestMainThreadStall").firstMatch
+        if app.state == .runningForeground, probe.exists, let latest = probe.value as? String {
+            record = latest.isEmpty ? "<no main-thread stalls>" : latest
+            if !latest.isEmpty {
                 let args = app.launchArguments
                 let run = args.firstIndex(of: "--test-ledger").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil } ?? context
-                let firstRecord = history.split(separator: "\n").first.map(String.init) ?? ""
-                stallHistory[run + " " + firstRecord] = history
-                // A recovery is the latest record, but the preceding stack
-                // still names the blocked call. Keep both on every failure.
-                if attach { record += "\nHistory:\n" + history }
+                stallHistory[run + " " + latest] = latest
             }
         }
+        record += "\nComplete stacks: stalls/*yubai-stalls-*.log or xcodebuild-stalls.log, plus matching .symbolicated.txt; all sources retained. Only source=app denotes app work."
         if attach {
             print("GALLERY-STALL \(context) " + record)
             let attachment = XCTAttachment(string: record)
@@ -176,7 +172,7 @@ class YubaiUITestCase: XCTestCase {
     func windowMetrics(in app: XCUIApplication) -> UIWindowMetrics? {
         // A modal may hide the root background from AX. Read whichever root
         // or shared-sheet probe exists; its frame/hittability are irrelevant.
-        for probe in app.descendants(matching: .any).matching(identifier: UIWindowMetrics.probeIdentifier).allElementsBoundByIndex.reversed() {
+        for probe in app.otherElements.matching(identifier: UIWindowMetrics.probeIdentifier).allElementsBoundByIndex.reversed() {
             if let metrics = UIWindowMetrics.decode(probe.value) { return metrics }
         }
         return nil

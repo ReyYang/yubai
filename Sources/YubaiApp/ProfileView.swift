@@ -102,7 +102,7 @@ struct ProfileView: View {
                             areaRow(area, stance: stance)
                             EntryFormDivider()
                         }
-                        addRow(label: "添加" + title) { sheet = .area(ProfileArea(title: ""), stance) }
+                        addRow(label: "添加" + title, identifier: "addProfileArea_" + stance.rawValue) { sheet = .area(ProfileArea(title: ""), stance) }
                     }
                 }
             }

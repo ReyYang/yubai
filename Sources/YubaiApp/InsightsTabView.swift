@@ -11,7 +11,7 @@ struct InsightsTabView: View {
     @State private var model: InsightsPageModel?
     private var hide: Bool { store.preferences.hideAmounts }
     var body: some View {
-        Page(topPadding: YubaiSpace.space4, identifier: "insightsScroll") {
+        Page(topPadding: YubaiSpace.space4, identifier: "insightsScroll", rootTab: .insights) {
             if store.sortedEntries.allSatisfy({ $0.deletedAt != nil }) {
                 EmptyState(.ledger, onAction: { store.requestCaptureSheet(.addEntry) }, onSecondary: { store.tabRouteRequest = .imports })
             } else {
@@ -23,7 +23,7 @@ struct InsightsTabView: View {
                     if let cash = model.cash { cashCard(cash) }
                 } else { ProgressView() }
             }
-        }.rootScrollContentMargins(for: .insights).rootTabScroll(.insights)
+        }.rootScrollContentMargins(for: .insights)
             .rootPageHeader { RootHeader(title: "洞察") }
             .navigationTitle("洞察").yubaiNavigation().amountPrivacy(hide)
             #if os(iOS)

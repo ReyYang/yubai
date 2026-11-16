@@ -9,7 +9,7 @@ struct YubaiTabView: View {
     @FocusState private var focused: Bool
     private let suggestions = ["这个能买吗", "这个月钱去哪了"]
     var body: some View {
-        Page(spacing: YubaiSpace.space12, topPadding: YubaiSpace.space8, identifier: "yubaiScroll") {
+        Page(spacing: YubaiSpace.space12, topPadding: YubaiSpace.space8, identifier: "yubaiScroll", rootTab: .yubai) {
             askArea
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
@@ -40,7 +40,7 @@ struct YubaiTabView: View {
                     destination(.settings, "设置", id: "openSettings")
                 }
             }
-        }.rootScrollContentMargins(for: .yubai).rootTabScroll(.yubai)
+        }.rootScrollContentMargins(for: .yubai)
             .rootPageHeader { RootHeader(title: "余白") }
             .amountPrivacy(store.preferences.hideAmounts).navigationTitle("余白").yubaiNavigation()
             #if os(iOS)

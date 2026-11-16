@@ -43,6 +43,11 @@ def inventory(root=ROOT):
 
 def check(root=ROOT):
     walks = inventory(root)
+    revision_b = {name: stops for name, stops in walks.items() if name.startswith('testWalk47BatchB')}
+    if len(revision_b) != 16 or sum(map(len, revision_b.values())) != 77 * 4:
+        raise ValueError('Round-47 B must retain all 77 stops in every mode across 16 short walks')
+    if any(len(stops) > 20 for stops in revision_b.values()):
+        raise ValueError('Round-47 B exceeds the 20-stop walk budget; split it without dropping stops')
     boards = (root / 'scripts/round46-boards.txt').read_text().splitlines()
     boards += (root / 'scripts/round47-boards.txt').read_text().splitlines()
     captures = {stop for names in walks.values() for stop in names}

@@ -10,6 +10,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private var activeStop: String?
     private var stopDeadline = Date.distantFuture
     private var attachedAuditInventory = false
+    private var verifiedHeadlines: Set<String> = []
     private var issues: [String] = []
     private var writeErrors: [String] = []
     private var prefix = ""
@@ -236,8 +237,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
         app.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: target.frame.midX - app.frame.minX, dy: target.frame.midY - app.frame.minY)).tap()
     }
-    private func reveal(_ target: XCUIElement) throws {
-        guard revealControl(target, in: app, deadline: stopDeadline) else {
+    private func reveal(_ target: XCUIElement, searching scroll: XCUIElement? = nil) throws {
+        guard revealControl(target, in: app, deadline: stopDeadline, searching: scroll) else {
             throw Miss(description: "Not reachable: " + describe(target))
         }
     }
@@ -261,7 +262,12 @@ final class ScreenGalleryTests: YubaiUITestCase {
         target.tap()
     }
     private func tap(_ id: String) throws {
-        if id.hasPrefix("tab_"), app.keyboards.firstMatch.exists { try drag(element("entriesScroll")); try wait({ !self.app.keyboards.firstMatch.exists }, "Keyboard did not dismiss before switching tabs") }
+        if id.hasPrefix("tab_"), app.keyboards.firstMatch.exists {
+            // The capsule is hidden while editing, as in the real app. Submit
+            // the search before reselection, matching the Home flow test.
+            if element("entriesSearch").exists { element("entriesSearch").typeText("\n") }
+            try wait({ !self.app.keyboards.firstMatch.exists }, "Keyboard did not dismiss before switching tabs")
+        }
         try tap(element(id))
     }
     private func type(_ value: String, into id: String) throws {
@@ -443,6 +449,18 @@ final class ScreenGalleryTests: YubaiUITestCase {
     func testWalk47BatchBDark() { walk47(.dark, round47BatchB) }
     func testWalk47BatchBLarge() { walk47(.a11y, round47BatchB) }
     func testWalk47BatchBHidden() { walk47(.hidden, round47BatchB) }
+    func testWalk47BatchB2() { walk47(.light, round47BatchB2) }
+    func testWalk47BatchB2Dark() { walk47(.dark, round47BatchB2) }
+    func testWalk47BatchB2Large() { walk47(.a11y, round47BatchB2) }
+    func testWalk47BatchB2Hidden() { walk47(.hidden, round47BatchB2) }
+    func testWalk47BatchB3() { walk47(.light, round47BatchB3) }
+    func testWalk47BatchB3Dark() { walk47(.dark, round47BatchB3) }
+    func testWalk47BatchB3Large() { walk47(.a11y, round47BatchB3) }
+    func testWalk47BatchB3Hidden() { walk47(.hidden, round47BatchB3) }
+    func testWalk47BatchB4() { walk47(.light, round47BatchB4) }
+    func testWalk47BatchB4Dark() { walk47(.dark, round47BatchB4) }
+    func testWalk47BatchB4Large() { walk47(.a11y, round47BatchB4) }
+    func testWalk47BatchB4Hidden() { walk47(.hidden, round47BatchB4) }
     func testWalk47BatchC() { walk47(.light, round47BatchC) }
     func testWalk47BatchCDark() { walk47(.dark, round47BatchC) }
     func testWalk47BatchCLarge() { walk47(.a11y, round47BatchC) }
@@ -529,12 +547,12 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Ledger-Find-End", budget: 180) {
             try load("v47r-ledger-end")
             let row = element("ledgerEntry_" + galleryID(479999))
-            try reveal(row)
+            try reveal(row, searching: element("entriesScroll"))
             for _ in 0..<2 { try drag(element("entriesScroll")) }
             try require(row.identifier)
             guard row.isHittable, row.frame.maxY < element("addEntry").frame.minY else { throw Miss(description: "Last entry is covered by the entry pill") }
         }
-        stop("Ledger-Modes") { try load(dark ? "v47r-carry-fast" : "v47r-ledger-hard"); try require("openSaving"); try require("ledgerWaterBar"); try reveal(element("ledgerEntry_" + galleryID(479101))) }
+        stop("Ledger-Modes") { try load(dark ? "v47r-carry-fast" : "v47r-ledger-hard"); try require("openSaving"); try require("ledgerWaterBar"); try reveal(element("ledgerEntry_" + galleryID(dark ? 478101 : 479101)), searching: element("entriesScroll")) }
         stop("Changes") { try load(); try require("ledgerWaterBar"); try root("insights"); try require("insightsTotals"); try root("yubai"); try require("openSettings") }
         stop("Ledger-Return-To-Top") {
             try load(); try search("咖啡"); try tap("tab_ledger"); try require("availableFunds")
@@ -580,6 +598,13 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Hero-States") { try load("v47-spend"); try require("ledgerWaterBar"); try require("availableFunds") }
         stop("Hero-States-Fast") { try load("v47r-fast"); try require("ledgerWaterBar") }
         stop("Hero-States-Less") { try load("v47r-less"); try require("ledgerStatus") }
+    }
+
+    private func round47BatchB2(dark: Bool, large: Bool) {
+        func load(_ fixture: String = "v47-savings") throws { try launch(fixture, dark: dark, large: large) }
+        func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
+        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
+        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
         stop("Hero-States-Deficit") { try load("v47r-deficit"); try require("ledgerGapBill"); try require("coverFromReserve") }
         stop("Hero-States-No-Income") { try load("v47r-no-income"); try require("availableFunds") }
         stop("Hero-States-Fallback") { try load("v47-after"); try require("firstSalaryCard") }
@@ -596,10 +621,17 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Butler-Cards-Mismatch") { try load("v47r-mismatch"); try require("balanceMismatchCard"); try require("openReconcile") }
         stop("Butler-Cards-Yearly") { try load("v47r-next-bill"); try require("billHeadsUpText"); try require("openBillHeadsUp") }
         stop("Butler-Cards-Quarterly") { try load("v47r-next-quarterly"); try require("billHeadsUpText") }
-        stop("Butler-Cards-Carry-Dark") { try load("v47r-carry-fast"); try require("leftoverKeep"); try require("ledgerWaterBar") }
+        stop("Butler-Cards-Carry-Dark") { try launch("v47r-carry-fast", dark: true, large: large); try require("leftoverKeep"); try require("ledgerWaterBar") }
         stop("Spend-Soft-Lines") { try load("v47r-soft-lines"); try formula(); try reveal(element("addSoftLine")) }
         stop("Spend-Soft-Exceeded") { try load("v47r-soft-exceeded"); try formula(); try reveal(element("softLineWatches")) }
         stop("Spend-Soft-Count") { try load("v47r-soft-count"); try formula(); try reveal(element("softLineWatches")) }
+    }
+
+    private func round47BatchB3(dark: Bool, large: Bool) {
+        func load(_ fixture: String = "v47-savings") throws { try launch(fixture, dark: dark, large: large) }
+        func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
+        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
+        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
         stop("Spend-Soft-Empty") { try load("v47-spend"); try formula(); try reveal(element("addSoftLine")) }
         stop("Spend-Soft-Edit") { try load("v47r-soft-lines"); try formula(); try tap("softLine_" + galleryID(478201) + ":amount"); try require("saveSoftLine") }
         stop("Entry-Recon-Soft-Live") { try load("v47r-soft-lines"); try tap("addEntry"); try type("外卖\n", into: "entryPurpose"); try keys("38"); try require("entrySavingHint") }
@@ -630,6 +662,13 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Take-Limit") { try take("5000.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Taking limit") }
         stop("Take-Saved") { try take("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
         stop("Take-Undo") { try take("500"); try tap("confirmSavingsTransfer"); try toast(); try tap("undoLastChange"); try require("reserveTotal") }
+    }
+
+    private func round47BatchB4(dark: Bool, large: Bool) {
+        func load(_ fixture: String = "v47-savings") throws { try launch(fixture, dark: dark, large: large) }
+        func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
+        func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
+        func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
         stop("PutBack") { try putBack("500") }
         stop("PutBack-Limit") { try putBack("1864.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Putting back limit") }
         stop("PutBack-Saved") { try putBack("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
@@ -1217,6 +1256,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         var nativeNavigationFrames: [CGRect] = []
         var scaledPresentationFrames: [CGRect] = []
         var nativeMetrics: UIWindowMetrics?
+        var presentationSnapshot: XCUIElementSnapshot?
         func ancestryIdentity(_ node: XCUIElementSnapshot) -> String {
             "\(node.elementType.rawValue)|\(node.identifier)|\(node.label)"
         }
@@ -1281,13 +1321,30 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
         do {
             let snapshot = try app.snapshot()
+            presentationSnapshot = snapshot
             sheetGrabbers(snapshot); collectKeyboard(snapshot); indexScrolls(snapshot)
             nativeMetrics = windowMetrics(in: snapshot)
         }
         catch { issues.append("Presentation snapshot unavailable: frame=<unreported> " + String(describing: error)) }
-        var controls = app.buttons.allElementsBoundByIndex + app.textFields.allElementsBoundByIndex + app.secureTextFields.allElementsBoundByIndex + app.textViews.allElementsBoundByIndex + app.switches.allElementsBoundByIndex
-        let toastMessage = element("toastMessage")
-        if toastMessage.exists && toastMessage.elementType == .staticText { controls.append(toastMessage) }
+        // One coherent inventory, then a type-scoped hittability query only for
+        // controls intersecting the window. No per-control snapshot/exists read.
+        var controls: [(target: XCUIElement, snapshot: XCUIElementSnapshot)] = []
+        var ordinals: [String: Int] = [:]
+        func inventoryControls(_ node: XCUIElementSnapshot) {
+            let type = node.elementType
+            let key = "\(type.rawValue)|\(node.identifier)|" + (node.identifier.isEmpty ? node.label : "")
+            let ordinal = ordinals[key, default: 0]
+            ordinals[key] = ordinal + 1
+            let interactive = [.button, .textField, .secureTextField, .textView, .switch].contains(type)
+            if (interactive || node.identifier == "toastMessage" && type == .staticText),
+               !node.frame.isEmpty, window.intersects(node.frame) {
+                let typed = app.descendants(matching: type)
+                let scoped = node.identifier.isEmpty ? typed.matching(NSPredicate(format: "identifier == '' AND label == %@", node.label)) : typed.matching(identifier: node.identifier)
+                controls.append((scoped.element(boundBy: ordinal), node))
+            }
+            for child in node.children { inventoryControls(child) }
+        }
+        if let presentationSnapshot { inventoryControls(presentationSnapshot) }
         typealias Candidate = (id: String, frame: CGRect, parts: [CGRect], ancestors: [ScrollAncestor], systemGrabber: Bool, keyboard: Bool, fixedChrome: Bool, nativeNavigation: Bool)
         var candidates: [Candidate] = []
         let toastIDs: Set<String> = ["undoLastChange", "toastMessage", "expandToast"]
@@ -1300,18 +1357,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
             }
         }
         var occupiedScrolls: [String: ScrollAncestor] = [:]
-        for target in controls {
-            guard target.exists else { continue }
-            let snapshot: XCUIElementSnapshot
-            do { snapshot = try target.snapshot() }
-            catch {
-                issues.append("Control snapshot unavailable: " + target.description + " frame=<unreported> " + String(describing: error))
-                continue
-            }
+        for (target, snapshot) in controls {
             if snapshot.identifier == UIWindowMetrics.probeIdentifier { continue }
             let frame = snapshot.frame
             guard !frame.isEmpty, window.intersects(frame) else { continue }
-            if fullyOccluded(target) { continue } // decision 1: full containment AND not hittable
             guard target.isHittable else { continue } // inactive/modal/off-viewport elements
             if systemRegions.contains(where: { $0.contains(frame) }) { continue }
             let systemGrabber = snapshot.elementType == .button && snapshot.identifier.isEmpty && grabberFrames.contains(frame)
@@ -1387,11 +1436,29 @@ final class ScreenGalleryTests: YubaiUITestCase {
             visible.append(candidate)
         }
         let navigationFrames = app.navigationBars.allElementsBoundByIndex.filter(\.exists).map(\.frame)
-        for attempt in 0..<2 {
-        do { try app.performAccessibilityAudit(for: [.textClipped]) { issue in
+        var collapsedHeadline: String?
+        var verifyingExpanded = false
+        var unresolvedExpanded = false
+        func hasExpandableHeadline(_ root: XCUIElementSnapshot, label: String) -> Bool {
+            if root.identifier == "butlerSuggestionCard" {
+                var texts: [XCUIElementSnapshot] = [], expanders: [XCUIElementSnapshot] = []
+                func visit(_ node: XCUIElementSnapshot) {
+                    if node.identifier == "butlerAIText" && node.elementType == .staticText { texts.append(node) }
+                    if node.identifier == "expandButlerHeadline" && node.elementType == .button { expanders.append(node) }
+                    for child in node.children { visit(child) }
+                }
+                visit(root)
+                if texts.count == 1, expanders.count == 1,
+                   texts[0].label == label, texts[0].value as? String == "已收起",
+                   expanders[0].label == "展开全文", expanders[0].isEnabled { return true }
+            }
+            return root.children.contains { hasExpandableHeadline($0, label: label) }
+        }
+        let handleTextIssue: (XCUIAccessibilityAuditIssue) -> Bool = { issue in
             // Resolve the audit element while the callback still owns it. Its
             // description alone omits labels on identified/combined elements.
             guard let target = issue.element else {
+                if verifyingExpanded { unresolvedExpanded = true }
                 let warning = (self.activeStop ?? self.prefix) + ": Text clipped: unresolved audit element; label=<unavailable> frame=<unavailable> " + String(describing: issue)
                 self.warnings.append(warning); print("GALLERY-WARNING " + warning)
                 if !self.attachedAuditInventory { self.attachedAuditInventory = true; self.attachUnresolvedAudit(issue) }
@@ -1399,32 +1466,45 @@ final class ScreenGalleryTests: YubaiUITestCase {
             }
             if target.identifier == UIWindowMetrics.probeIdentifier { return true }
             if fullyOccluded(target) { return true }
+            // The board permits exactly this collapsed, independently labelled
+            // text with its own expand button. Prove the expanded state below;
+            // an unidentified child, missing expander or expanded clip fails.
+            if !verifyingExpanded, target.identifier == "butlerAIText", target.elementType == .staticText,
+               target.value as? String == "已收起", let snapshot = presentationSnapshot,
+               hasExpandableHeadline(snapshot, label: target.label) {
+                collapsedHeadline = target.label
+                return true
+            }
             if target.identifier.hasPrefix("formulaBill_") {
                 let warning = (self.activeStop ?? self.prefix) + ": Text clipped: designed upcoming bill name; " + self.describe(target) + " " + issue.detailedDescription
                 self.warnings.append(warning); print("GALLERY-WARNING " + warning)
                 return true
             }
-            // fix7b B3: only these PNG-reviewed labels, at these stops, may
-            // become warnings, and only inside an actual scaled presentation.
+            // Run-4 light Saving/Deficit PNGs both show every glyph of this
+            // label. Keep the prior reviewed Saving variants and add only that
+            // reviewed Deficit size, within the same scaled native sheet.
             let stopName = self.activeStop ?? ""
-            let reviewedFormula = ["V47-dark-Spend-Edit-Saving", "V47-hidden-Spend-Edit-Saving"].contains(stopName) &&
-                ((target.identifier == "savingMode_fixed" && target.label == "固定金额") ||
-                 (target.identifier.isEmpty && ["1,564.00 · 日均 83.00", "•••• · 日均 ••••"].contains(target.label)))
-            // fix8 open checker decision: the supplied light PNG also shows
-            // this complete label inside the same 424/440 scaled presentation.
-            let reviewedLightFixed = stopName == "V47-light-Spend-Edit-Saving" &&
-                target.identifier == "savingMode_fixed" && target.label == "固定金额"
+            let reviewedFixed = ["V47-light-Spend-Edit-Saving", "V47-dark-Spend-Edit-Saving",
+                                 "V47-hidden-Spend-Edit-Saving", "V47-a11y-Spend-Edit-Saving",
+                                 "V47-light-Spend-Edit-Deficit"].contains(stopName)
+            if reviewedFixed, target.identifier == "savingMode_fixed", target.label == "固定金额",
+               target.elementType == .button, target.isHittable, let snapshot = try? target.snapshot(),
+               snapshot.frame.height >= 43.5,
+               let context = scrollAncestors[ancestryIdentity(snapshot)]?.first(where: { $0.frame == snapshot.frame }),
+               let presentation = context.presentations.first, presentation.width / window.width < 1,
+               presentation.contains(snapshot.frame) {
+                let warning = stopName + ": Text clipped: PNG-reviewed complete fixed-amount label in scaled sheet; " + self.describe(target) + " " + issue.detailedDescription
+                self.warnings.append(warning); print("GALLERY-WARNING " + warning)
+                return true
+            }
             let reviewedFrequent = ["V47-light-Empty-Frequent", "V47-dark-Empty-Frequent", "V47-hidden-Empty-Frequent"].contains(stopName) &&
                 target.identifier.isEmpty && target.label == "常记的会自己出现"
-            // fix10 A1: reviewed complete in the run-8 PNGs at the largest size.
-            let reviewedLargest = (stopName == "V47-a11y-Spend-Edit-Saving" && target.identifier == "savingMode_fixed" && target.label == "固定金额") ||
-                (stopName == "V47-a11y-Empty-Frequent" && target.identifier.isEmpty && target.label == "常记的会自己出现")
-            if reviewedLargest {
+            if stopName == "V47-a11y-Empty-Frequent", target.identifier.isEmpty, target.label == "常记的会自己出现" {
                 let warning = stopName + ": Text clipped: PNG-reviewed complete text at largest size; " + self.describe(target) + " " + issue.detailedDescription
                 self.warnings.append(warning); print("GALLERY-WARNING " + warning)
                 return true
             }
-            if (reviewedFormula || reviewedFrequent || reviewedLightFixed), let snapshot = try? target.snapshot(),
+            if reviewedFrequent, let snapshot = try? target.snapshot(),
                let context = scrollAncestors[ancestryIdentity(snapshot)]?.first(where: { $0.frame == snapshot.frame }),
                let presentation = context.presentations.first, presentation.width / window.width < 1 {
                 let warning = stopName + ": Text clipped: PNG-reviewed complete text in scaled sheet (scale=" +
@@ -1446,6 +1526,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
             // continues through every issue instead of aborting on the first.
             return true
         }
+        for attempt in 0..<2 {
+        do {
+            try app.performAccessibilityAudit(for: [.textClipped]) { handleTextIssue($0) }
             break
         } catch {
             let failure = error as NSError
@@ -1469,6 +1552,43 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 break
             }
         }
+        }
+        if let label = collapsedHeadline, !verifiedHeadlines.contains(prefix + label) {
+            let deadline = Date().addingTimeInterval(60)
+            let text = app.staticTexts["butlerAIText"], expander = app.buttons["expandButlerHeadline"]
+            let ledger = app.collectionViews["entriesScroll"]
+            let wasAtTop = nativeMetrics?.scroll(matching: ledger.frame).map { $0.remainingUp <= 0.5 } ?? false
+            let before = text.frame.height
+            guard revealControl(expander, in: app, deadline: deadline), waitForStableFrame(expander, deadline: deadline) else {
+                throw Miss(description: "Collapsed AI text has no reachable expand control")
+            }
+            expander.tap()
+            defer {
+                if revealControl(expander, in: app, deadline: deadline) {
+                    expander.tap()
+                    _ = waitForStableFrame(text, deadline: deadline)
+                    // Restore the walk's capture state after the extra proof:
+                    // hero/card at the top, or the action it had revealed.
+                    if wasAtTop {
+                        let tab = app.buttons["tab_ledger"]
+                        if tab.exists && tab.isHittable {
+                            tab.tap()
+                            _ = waitForStableFrame(text, deadline: deadline)
+                        } else { issues.append("AI card could not return to its original root position") }
+                    } else if !revealControl(app.buttons["butlerAIAccept"], in: app, deadline: deadline) {
+                        issues.append("AI card action could not return to its capture position")
+                    }
+                } else { issues.append("Expanded AI text could not be collapsed back for capture") }
+            }
+            guard waitForNativeTransition(in: app, deadline: deadline), waitForStableFrame(text, deadline: deadline),
+                  text.label == label, text.value as? String == "已展开", text.frame.height > before else {
+                throw Miss(description: "Expanded AI text lost its full VoiceOver label or did not grow")
+            }
+            verifyingExpanded = true
+            let beforeIssues = issues.count
+            try app.performAccessibilityAudit(for: [.textClipped]) { handleTextIssue($0) }
+            if unresolvedExpanded { issues.append("Expanded AI text audit was unresolved") }
+            if issues.count == beforeIssues { verifiedHeadlines.insert(prefix + label) }
         }
         for id in ["availableFunds", "ledgerWaterBar", "butlerSavedTotal", "entryKeypadAmount", "amountSheetAmount", "reserveTotal", "fixedFlowRemaining"] {
             let target = element(id)

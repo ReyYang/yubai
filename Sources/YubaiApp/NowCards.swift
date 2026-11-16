@@ -4,8 +4,7 @@ import YubaiCore
 /// Date text shared by the 现在 page: 「11月25日」.
 enum NowFormat {
     static func monthDay(_ date: Date) -> String {
-        let parts = Dates.calendar.dateComponents([.month, .day], from: date)
-        return "\(parts.month ?? 1)月\(parts.day ?? 1)日"
+        Dates.monthDay(date)
     }
     static func range(_ from: Date, _ to: Date) -> String {
         let a = Dates.calendar.dateComponents([.month, .day], from: from), b = Dates.calendar.dateComponents([.month, .day], from: to)

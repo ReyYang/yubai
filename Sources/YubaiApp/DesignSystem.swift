@@ -518,7 +518,7 @@ extension EnvironmentValues {
     /// SwiftUI's system value is read-only; scripted tests opt in at the readers.
     var yubaiReduceMotion: Bool {
         #if DEBUG && targetEnvironment(simulator)
-        if UITestSupport.script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_TEST_REDUCE_MOTION"] == "1" { return true }
+        if UITestSupport.reduceMotion { return true }
         #endif
         return accessibilityReduceMotion
     }
@@ -1042,34 +1042,25 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
                       style: String(describing: shape.style), dark: scheme == .dark, scale: scale, width: width, height: height, increasedContrast: increasedContrast)
         if let cached = images[key] { return cached }
         let extent = CGSize(width: width + padding * 2, height: height + padding * 2)
-        let canvas = Canvas { context, _ in
-            guard let source = context.resolveSymbol(id: 0) else { return }
-            let origin = CGPoint(x: padding, y: padding)
-            // Preserve the original near-then-far composition, including the
-            // source alpha of the live highlight/increased-contrast stroke.
-            var distant = context
-            distant.addFilter(.shadow(color: far.color, radius: far.radius, x: far.x, y: far.y, options: .shadowOnly))
-            distant.drawLayer { layer in
-                layer.addFilter(.shadow(color: near.color, radius: near.radius, x: near.x, y: near.y))
-                layer.draw(source, at: origin, anchor: .topLeading)
-            }
-            var close = context
-            close.addFilter(.shadow(color: near.color, radius: near.radius, x: near.x, y: near.y, options: .shadowOnly))
-            close.draw(source, at: origin, anchor: .topLeading)
-        } symbols: {
-            shape.fill(Color.black).overlay {
-                if increasedContrast { shape.strokeBorder(Color.black, lineWidth: 1) }
-                else {
-                    shape.strokeBorder(Color.black.opacity(scheme == .dark ? 10.0 / 255 : 179.0 / 255), lineWidth: 1)
-                        .mask(alignment: .top) { Rectangle().frame(height: 2) }
-                }
-            }.frame(width: width, height: height).tag(0)
-        }.frame(width: extent.width, height: extent.height).environment(\.colorScheme, scheme)
-        let renderer = ImageRenderer(content: canvas); renderer.scale = scale
-        guard let rendered = renderer.uiImage else { return nil }
+        // Draw the cached nine-slice directly into a CPU bitmap. ImageRenderer
+        // + Canvas produced a lazy RenderBox image whose later draw blocked
+        // UIKit layout waiting for a GPU image phase in the run-4 logs.
+        let traits = UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light)
+        let nearColor = UIColor(near.color).resolvedColor(with: traits).cgColor
+        let farColor = UIColor(far.color).resolvedColor(with: traits).cgColor
+        let path = shape.path(in: CGRect(x: padding, y: padding, width: width, height: height)).cgPath
         let format = UIGraphicsImageRendererFormat(); format.scale = scale; format.opaque = false
         format.preferredRange = .standard
-        let bitmap = UIGraphicsImageRenderer(size: extent, format: format).image { _ in rendered.draw(at: .zero) }
+        let bitmap = UIGraphicsImageRenderer(size: extent, format: format).image { renderer in
+            let context = renderer.cgContext
+            // Near shadow, then the far shadow of that complete layer, using
+            // the same DS tokens. The opaque card covers the source silhouette.
+            context.setShadow(offset: CGSize(width: far.x, height: far.y), blur: far.radius, color: farColor)
+            context.beginTransparencyLayer(auxiliaryInfo: nil)
+            context.setShadow(offset: CGSize(width: near.x, height: near.y), blur: near.radius, color: nearColor)
+            context.addPath(path); context.setFillColor(UIColor.black.cgColor); context.fillPath()
+            context.endTransparencyLayer()
+        }
         let caps = EdgeInsets(top: padding + (height - 1 / scale) / 2, leading: padding + (width - 1 / scale) / 2,
                              bottom: padding + (height - 1 / scale) / 2, trailing: padding + (width - 1 / scale) / 2)
         let raster = Raster(image: bitmap, caps: caps, padding: padding)
@@ -1167,7 +1158,6 @@ extension View {
                 .contentShape(Rectangle())
                 .accessibilityElement(children: .contain).accessibilityIdentifier("rootHeaderRegion")
                 .zIndex(1)
-                .overlay(alignment: .bottom) { PageFade(edge: .top).offset(y: 24) }
             self.frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped().contentShape(Rectangle())
         }.modifier(RootPaperBackground())
@@ -1247,8 +1237,9 @@ struct Page<Content: View>: View {
     var spacing: CGFloat
     var topPadding: CGFloat
     var identifier: String
-    init(spacing: CGFloat = YubaiSpace.gapSection, topPadding: CGFloat = YubaiSpace.insetPage, identifier: String = "", @ViewBuilder content: () -> Content) {
-        self.content = content(); self.spacing = spacing; self.topPadding = topPadding; self.identifier = identifier
+    var rootTab: Destination?
+    init(spacing: CGFloat = YubaiSpace.gapSection, topPadding: CGFloat = YubaiSpace.insetPage, identifier: String = "", rootTab: Destination? = nil, @ViewBuilder content: () -> Content) {
+        self.content = content(); self.spacing = spacing; self.topPadding = topPadding; self.identifier = identifier; self.rootTab = rootTab
     }
     var body: some View {
         ScrollView {
@@ -1256,7 +1247,7 @@ struct Page<Content: View>: View {
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, topPadding)
                 .padding(.bottom, YubaiSpace.gapSection)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
-        }.accessibilityElement(children: .contain).accessibilityIdentifier(identifier)
+        }.rootTabScroll(rootTab).accessibilityElement(children: .contain).accessibilityIdentifier(identifier)
             .modifier(ScrollContentViewport()).scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
     }
 }
@@ -2368,6 +2359,22 @@ struct RootHeader: View {
 // MARK: - Round 45 shared components
 
 /// 现在页的一问两答卡：眉标、标题（名字 + 金额 + 问句）、两个答案；同时有几件事时右上角写「还有 N 件」。
+struct ButlerCardHeader<Content: View>: View {
+    @ScaledMetric(relativeTo: .caption2) private var lineHeight = YubaiFont.meta.lineHeight
+    var dismiss: (() -> Void)?
+    var identifier = "dismissHomeCard"
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        content().padding(.trailing, dismiss == nil ? YubaiSpace.none : YubaiSize.tapMin + YubaiSpace.space8)
+            .overlay(alignment: .topTrailing) {
+                if let dismiss {
+                    CardDismissButton(action: dismiss).accessibilityIdentifier(identifier)
+                        .offset(y: (lineHeight - YubaiSize.tapMin) / 2)
+                }
+            }
+    }
+}
+
 struct QuestionCard: View {
     @Environment(AppStore.self) private var store
     @Environment(\.butlerCardDismiss) private var inheritedDismiss
@@ -2400,7 +2407,7 @@ struct QuestionCard: View {
     }
     var body: some View {
         Card {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 if !eyebrow.isEmpty || more > 0 || evidenceTitle != nil || dismissAction != nil { topLine }
                 ButlerHeadline(text: headline, identifier: titleIdentifier)
                 answers.padding(.top, YubaiSpace.space4)
@@ -2409,11 +2416,8 @@ struct QuestionCard: View {
     }
     @ViewBuilder private var topLine: some View {
         if !eyebrow.isEmpty || dismissAction != nil {
-            HStack(alignment: .top, spacing: YubaiSpace.space8) {
+            ButlerCardHeader(dismiss: dismissAction, identifier: dismissIdentifier.isEmpty ? "dismissHomeCard" : dismissIdentifier) {
                 ButlerKicker(title: eyebrow, more: more, evidenceTitle: evidenceTitle, onEvidence: onEvidence)
-                if let dismissAction {
-                    CardDismissButton(action: dismissAction).accessibilityIdentifier(dismissIdentifier.isEmpty ? "dismissHomeCard" : dismissIdentifier)
-                }
             }
         }
     }
@@ -2446,8 +2450,9 @@ private struct ButlerHeadline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.none) {
             Text(text).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
-                .lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
-                .accessibilityElement(children: .ignore).accessibilityLabel(text).accessibilityIdentifier(identifier)
+                .lineLimit(expanded ? nil : 2).fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(text).accessibilityIdentifier(identifier)
+                .accessibilityValue(expanded ? "已展开" : "已收起")
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
                 .background(alignment: .topLeading) {
                     Text(text).yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
@@ -2738,7 +2743,7 @@ struct Segmented<Value: Hashable>: View {
         return Button { selection = value } label: {
             Text(title).yubaiFont(YubaiFont.row, weight: on ? .semibold : .regular)
                 .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
+                .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.row)
                 .dynamicTypeSize(...(title.count <= 3 ? DynamicTypeSize.xxxLarge : .accessibility5))
                 .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
@@ -4212,17 +4217,22 @@ private struct MeasuredRootScroll: ViewModifier {
     let destination: Destination
     let reservesNavigation: Bool
     @State private var atEnd = false
+    @State private var atTop = true
     private var bottom: CGFloat {
         reservesNavigation ? (navigationHeight > 0 ? navigationHeight : YubaiSize.rootBottomPadding(for: destination)) : 0
     }
     func body(content: Content) -> some View {
         content.modifier(RootScrollMargins())
             .scrollEdgeEffectHidden(true, for: .bottom)
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollEdgeEffectHidden(true, for: .top)
             .scrollClipDisabled(false).modifier(ScrollContentViewport())
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height + geometry.contentInsets.bottom - 1
             } action: { _, end in atEnd = end }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y <= -geometry.contentInsets.top + 1
+            } action: { _, top in atTop = top }
+            .overlay(alignment: .top) { if !atTop { PageFade(edge: .top) } }
             .overlay(alignment: .bottom) { if !atEnd { PageFade(edge: .bottom) } }
             .padding(.bottom, bottom)
     }

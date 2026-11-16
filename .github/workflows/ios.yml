@@ -75,6 +75,8 @@ jobs:
       - name: 编译并运行当前测试分片
         timeout-minutes: 34
         run: |
+          mkdir -p build
+          date +%s > build/test-started-at
           status=0
           python3 scripts/run-simulator-tests.py || status=$?
           grep -E '(error:|Test Case .* (passed|failed)|Executed|\*\* TEST)' build/xcodebuild-test.log || tail -100 build/xcodebuild-test.log
@@ -84,7 +86,9 @@ jobs:
         run: |
           mkdir -p build/screenshots
           stall_status=0
-          python3 scripts/export-stall-records.py --simulator "$SIM_UDID" --output build/stalls --derived-data build/DerivedData || stall_status=$?
+          stall_since=0
+          if [ -f build/test-started-at ]; then stall_since=$(cat build/test-started-at); fi
+          python3 scripts/export-stall-records.py --simulator "$SIM_UDID" --output build/stalls --derived-data build/DerivedData --log build/xcodebuild-test.log --since "$stall_since" || stall_status=$?
           if [ -d build/Yubai.xcresult ]; then
             xcrun xcresulttool export attachments --path build/Yubai.xcresult --output-path build/screenshots || true
             xcrun xcresulttool get test-results summary --path build/Yubai.xcresult > build/test-summary.json || true

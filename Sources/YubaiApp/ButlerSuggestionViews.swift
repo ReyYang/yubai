@@ -206,7 +206,7 @@ private struct ButlerSuggestionCorrection: View {
     var body: some View {
         Form {
             Section {
-                CardTextFieldRow(title: "说一句", text: $sentence, identifier: "butlerAICorrectionText", multiline: true)
+                CardTextFieldRow(title: "说一句", text: $sentence, identifier: "butlerAICorrectionText", multiline: true, autofocus: true)
                 InlineFieldError(message: sentence.count > 200 || sentence.contains(where: { $0.isNewline }) ? "请用一行、不超过 200 字" : nil)
             }.listRowBackground(YubaiColor.card)
         }.editorForm().manualSheetHeader("说得不对", actionTitle: "记下", enabled: sentence.count <= 200 && !sentence.contains(where: { $0.isNewline }), actionIdentifier: "butlerAICorrectionSave", action: {

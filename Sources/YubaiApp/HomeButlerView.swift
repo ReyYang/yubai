@@ -144,10 +144,9 @@ struct HomeTaskCard: View {
         let total = entries.reduce(Int64(0)) { $0 + $1.amount }
         let month = pending.dates.min().map { "\(Dates.calendar.component(.month, from: $0))月导入" } ?? "导入"
         return Card(style: .compact) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                ButlerCardHeader(dismiss: { store.answerHome(item) }) {
                     ButlerKicker(title: "没分类 · " + month, more: more)
-                    CardDismissButton { store.answerHome(item) }.accessibilityIdentifier("dismissHomeCard")
                 }
                 Text("\(entries.count) 笔还没分类，共 " + amount2(total, hide: hide)).yubaiFont(YubaiFont.butlerTitle)
                     .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("unsortedQuestionTitle")
@@ -167,10 +166,9 @@ struct HomeTaskCard: View {
     private func confirmationCard(_ card: ButlerCard) -> some View {
         let amount = HomeButler.confirmationAmount(card, in: store.current)
         return Card(style: .compact) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                ButlerCardHeader(dismiss: { store.answerHome(item) }) {
                     ButlerKicker(title: NowFormat.monthDay(card.createdAt) + " · " + HomeButler.privacyText(card.title, hidden: hide), more: more)
-                    CardDismissButton { store.answerHome(item) }.accessibilityIdentifier("dismissHomeCard")
                 }
                 Text(amount2(amount, hide: hide)).yubaiFont(YubaiFont.butlerTitle)
                 if let question = card.importQuestion, !question.isFallback,

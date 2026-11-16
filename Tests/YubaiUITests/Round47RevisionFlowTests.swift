@@ -176,7 +176,10 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("expandButlerHeadline").waitForExistence(timeout: 5))
         let headline = element("butlerAIText")
         XCTAssertTrue(headline.waitForExistence(timeout: 5))
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "butlerAIText").count, 1)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "butlerAIText").count, 1)
+        let fullLabel = headline.label
+        XCTAssertTrue(fullLabel.contains("周三周四试试带饭？"))
+        XCTAssertEqual(headline.value as? String, "已收起")
         XCTAssertTrue(waitForStableFrame(headline))
         let before = headline.frame.height
         XCTAssertGreaterThan(before, 0)
@@ -184,6 +187,14 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertEqual(element("expandButlerHeadline").value as? String, "已展开")
         XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { headline.frame.height > before }))
         XCTAssertGreaterThan(headline.frame.height, before)
+        XCTAssertEqual(headline.label, fullLabel)
+        XCTAssertEqual(headline.value as? String, "已展开")
+        XCTAssertNoThrow(try app.performAccessibilityAudit(for: [.textClipped]) { issue in
+            if let target = issue.element, ["butlerAIText", "butlerAIAccept"].contains(target.identifier) {
+                XCTFail("Expanded text/action must be fully legible: " + target.identifier + " " + issue.detailedDescription)
+            }
+            return true
+        })
         XCTAssertTrue(element("butlerAIAccept").exists)
     }
     func testSoftLineSuggestionWritesExistingProfileAndCorrectionWritesMemory() {

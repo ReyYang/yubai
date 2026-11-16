@@ -109,9 +109,34 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     func testSelectedYubaiReturnsToTheAskField() {
         launch(large: true); tap("tab_yubai")
         XCTAssertTrue(revealControl(element("openSettings"), in: app, deadline: Date().addingTimeInterval(60)))
+        XCTAssertLessThan(element("openSettings").frame.maxY, capsuleFrame(in: app).minY)
+        tap("openSettings"); XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
+        tap("BackButton")
         tap("tab_yubai")
         wait { self.element("askYubai").isHittable }
         XCTAssertGreaterThanOrEqual(element("askYubai").frame.height, 44)
+    }
+    func testMonthSheetYearHasAnIdentifierAndFullTargetAtBothTextSizes() {
+        for large in [false, true] {
+            launch(large: large); tap("entriesMonth")
+            let year = element("ledgerJumpYear")
+            XCTAssertTrue(year.waitForExistence(timeout: 5)); XCTAssertTrue(year.isHittable)
+            XCTAssertGreaterThanOrEqual(year.frame.height, 43.5)
+            XCTAssertGreaterThanOrEqual(year.frame.width, 43.5)
+            tap("ledgerJumpYear")
+            XCTAssertTrue(element("ledgerJumpYear_2026").waitForExistence(timeout: 5))
+            tap("ledgerJumpYear_2026")
+            XCTAssertTrue(element("ledgerJumpMonth_11").isHittable)
+            app.terminate()
+        }
+    }
+    func testLedgerDateFactsAndHeroClearTheHeader() {
+        launch()
+        XCTAssertTrue(element("ledgerPeriod").label.contains("12月10日发工资"))
+        XCTAssertTrue(app.staticTexts["今天 · 11月20日"].exists)
+        XCTAssertGreaterThanOrEqual(element("ledgerHeroLabel").frame.minY, element("rootHeaderRegion").frame.maxY + 16)
+        launch("v47r-deficit")
+        XCTAssertTrue(element("ledgerGapBill").label.contains("12月5日 房租"))
     }
     func testSelectedInsightsReturnsToItsPeriodControl() {
         launch(large: true); tap("tab_insights")

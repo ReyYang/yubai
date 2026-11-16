@@ -315,9 +315,19 @@ struct YearlyBillsView: View {
         Page(identifier: "yearlyBillsPage") {
             CardRows(store.plans.filter { $0.active && $0.stoppedAt == nil && !$0.inflow && $0.frequency == .yearly }) { plan in
                 TabNavigationLink(.billDetail(plan.id)) { BillDetailView(planID: plan.id) } label: {
-                    VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                        Text(plan.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
-
+                    AdaptiveValueRow {
+                        VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                            Text(plan.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
+                            Text(Dates.monthDay(plan.dueDate)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        }
+                    } value: {
+                        HStack(spacing: YubaiSpace.space8) {
+                            Text(plan.currency == .cny ? amount2(plan.amount, hide: store.preferences.hideAmounts) : plan.currency.amountText(plan.amount, hidden: store.preferences.hideAmounts))
+                                .yubaiFont(YubaiFont.amount).fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("yearlyBillAmount_" + plan.id.uuidString)
+                            Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                                .accessibilityHidden(true)
+                        }
                     }.frame(maxWidth: .infinity, minHeight: YubaiSize.sourceRow, alignment: .leading)
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("yearlyBill_" + plan.id.uuidString)
             }

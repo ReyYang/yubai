@@ -4,6 +4,7 @@
 #endif
 #if DEBUG && ((defined(__APPLE__) && TARGET_OS_IOS && TARGET_OS_SIMULATOR) || defined(YUBAI_WATCHDOG_TEST))
 #include "CUITestWatchdog.h"
+#include "StallSource.h"
 #include <dispatch/dispatch.h>
 #include <errno.h>
 #include <execinfo.h>
@@ -23,7 +24,7 @@
 // Prewarm the unwinder before installing it; symbolication/formatting/allocation
 // and file access belong exclusively to the watchdog pthread.
 _Static_assert(ATOMIC_INT_LOCK_FREE == 2, "Signal state must be lock free");
-static void *main_frames[128];
+static void *main_frames[YUBAI_STALL_MAX_FRAMES];
 static int main_frame_count;
 static _Atomic int capture_state; // 0 idle, 1 requested, 2 captured
 static _Atomic int ping_pending;
@@ -33,6 +34,7 @@ static int log_file = -1;
 static pthread_mutex_t records_lock = PTHREAD_MUTEX_INITIALIZER;
 static char *history, *latest_record;
 static size_t history_length;
+static const char *last_source = "unknown";
 
 static uint64_t monotonic_ns(void) {
     struct timespec value;
@@ -42,7 +44,7 @@ static uint64_t monotonic_ns(void) {
 static void capture_main(int signal_number) {
     int saved_errno = errno;
     if (signal_number == SIGUSR2 && atomic_load_explicit(&capture_state, memory_order_acquire) == 1) {
-        main_frame_count = backtrace(main_frames, 128);
+        main_frame_count = backtrace(main_frames, YUBAI_STALL_MAX_FRAMES);
         atomic_store_explicit(&capture_state, 2, memory_order_release);
     }
     errno = saved_errno;
@@ -71,10 +73,17 @@ static void append_record(double elapsed, const char *status, int with_stack) {
     clock_gettime(CLOCK_REALTIME, &now);
     gmtime_r(&now.tv_sec, &utc);
     strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%S", &utc);
+    char **symbols = NULL;
+    int captured = with_stack && atomic_load_explicit(&capture_state, memory_order_acquire) == 2;
+    const char *source = with_stack ? "unknown" : last_source;
+    if (captured) {
+        symbols = backtrace_symbols(main_frames, main_frame_count);
+        source = yubai_stall_source(symbols, (size_t)main_frame_count);
+        last_source = source;
+    }
     size_t used = (size_t)snprintf(record, capacity,
-        "YUBAI-STALL %s.%03ldZ pid=%d stall=%.3fs %s\n", stamp, now.tv_nsec / 1000000, getpid(), elapsed, status);
-    if (with_stack && atomic_load_explicit(&capture_state, memory_order_acquire) == 2) {
-        char **symbols = backtrace_symbols(main_frames, main_frame_count);
+        "YUBAI-STALL %s.%03ldZ pid=%d stall=%.3fs source=%s %s\n", stamp, now.tv_nsec / 1000000, getpid(), elapsed, source, status);
+    if (captured) {
         for (int i = 0; i < main_frame_count && used < capacity - 512; i++) {
             int count = snprintf(record + used, capacity - used, "  %02d %s [%p]\n", i,
                 symbols ? symbols[i] : "<symbol unavailable>", main_frames[i]);
@@ -90,6 +99,10 @@ static void append_record(double elapsed, const char *status, int with_stack) {
                 if (count > 0) { used += (size_t)count; }
             }
             #endif
+        }
+        if (main_frame_count == YUBAI_STALL_MAX_FRAMES && used < capacity - 128) {
+            used += (size_t)snprintf(record + used, capacity - used,
+                "  STACK capped at %d frames; caller beyond the capture is unknown\n", YUBAI_STALL_MAX_FRAMES);
         }
         free(symbols);
         atomic_store_explicit(&capture_state, 0, memory_order_release);
@@ -135,7 +148,7 @@ static void *watch_main(void *unused) {
         while (nanosleep(&interval, &interval) != 0 && errno == EINTR) {}
         uint64_t now = monotonic_ns(), answer = atomic_load(&answered_at);
         if (now - answer >= 5000000000ULL) {
-            if (!stall_start) { stall_start = answer; }
+            if (!stall_start) { stall_start = answer; last_source = "unknown"; }
             if (!last_report || now - last_report >= 5000000000ULL) {
                 request_stack();
                 append_record((now - stall_start) / 1e9, "MAIN thread unresponsive", 1);
@@ -166,7 +179,7 @@ int yubai_stall_watchdog_start(const char *path) {
     if (previous.sa_handler != SIG_DFL && previous.sa_handler != SIG_IGN) { return EBUSY; }
     main_thread = pthread_self();
     // Force lazy unwind-library setup while no signal handler is active.
-    backtrace(main_frames, 128);
+    backtrace(main_frames, YUBAI_STALL_MAX_FRAMES);
     action.sa_handler = capture_main; action.sa_flags = SA_RESTART;
     sigemptyset(&action.sa_mask);
     if (sigaction(SIGUSR2, &action, NULL) != 0) { return errno; }
@@ -185,7 +198,8 @@ int yubai_stall_watchdog_start(const char *path) {
 }
 char *yubai_stall_watchdog_copy_records(int latest) {
     pthread_mutex_lock(&records_lock);
-    char *copy = strdup((latest ? latest_record : history) ?: "");
+    const char *value = (latest ? latest_record : history) ?: "";
+    char *copy = latest == 2 ? strndup(value, strcspn(value, "\n")) : strdup(value);
     pthread_mutex_unlock(&records_lock);
     return copy;
 }

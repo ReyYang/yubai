@@ -28,6 +28,7 @@ struct LedgerHomeHeader: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
             AdaptiveValueRow(spreadsValue: false) {
                 Text(model.headlineLabel).yubaiFont(YubaiFont.heroLabel)
+                    .accessibilityIdentifier("ledgerHeroLabel")
             } value: {
                 if let fact = model.gapBillText ?? (model.periodLine.isEmpty ? nil : model.periodLine) {
                     Text(HomeButler.privacyText(fact, hidden: hide)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)

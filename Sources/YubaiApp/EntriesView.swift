@@ -120,7 +120,7 @@ struct EntriesView: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel("清掉分类筛选").accessibilityIdentifier("clearLedgerCategory")
             }
             summary(groups, hide: hide)
-        }.padding(.top, YubaiSpace.space4)
+        }.padding(.top, YubaiSpace.space20)
     }
     @ViewBuilder private var topBar: some View {
         if searching { searchField }
@@ -271,7 +271,20 @@ struct EntriesView: View {
                 if let date = Dates.calendar.date(from: DateComponents(year: pickerYear, month: pickerMonth, day: 1)) { jump(to: date) }
                 pickingMonth = false
             })
-            Picker("年", selection: $pickerYear) { ForEach(monthYears, id: \.self) { Text(verbatim: "\($0) 年").tag($0) } }
+            Menu {
+                ForEach(monthYears, id: \.self) { year in
+                    Button { pickerYear = year } label: {
+                        if year == pickerYear { Label("\(year) 年", systemImage: "checkmark") }
+                        else { Text(verbatim: "\(year) 年") }
+                    }.accessibilityIdentifier("ledgerJumpYear_\(year)")
+                }
+            } label: {
+                HStack(spacing: YubaiSpace.space8) {
+                    Text(verbatim: "\(pickerYear) 年")
+                    Image(systemName: "chevron.up.chevron.down").yubaiFont(YubaiFont.meta)
+                }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle()).yubaiHitTarget()
+            }.buttonStyle(PressButtonStyle()).accessibilityLabel("年").accessibilityValue("\(pickerYear) 年")
+                .accessibilityIdentifier("ledgerJumpYear")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: 3), spacing: YubaiSpace.space8) {
                 ForEach(1...12, id: \.self) { number in
                     Button("\(number)月") {
@@ -282,7 +295,8 @@ struct EntriesView: View {
                         .accessibilityIdentifier("ledgerJumpMonth_\(number)")
                 }
             }
-        }.padding(.horizontal, YubaiSpace.space20).yubaiSheetBackground().presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(YubaiSize.sheet480 + YubaiSpace.sheetHeaderTop)])
+        }.padding(.horizontal, YubaiSpace.space20).frame(maxHeight: .infinity, alignment: .top)
+            .yubaiSheetBackground().presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(YubaiSize.sheet480 + YubaiSpace.sheetHeaderTop)])
     }
     private func categorySheet(_ id: UUID) -> some View {
         let entry = store.entriesByID[id]

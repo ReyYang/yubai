@@ -41,6 +41,11 @@ public enum Money {
 
 public enum Dates {
     public static var calendar: Calendar { var c = Calendar(identifier: .gregorian); c.timeZone = .current; return c }
+    /// Date facts in the interface use explicit Chinese month/day units.
+    public static func monthDay(_ date: Date) -> String {
+        let parts = calendar.dateComponents([.month, .day], from: date)
+        return "\(parts.month!)月\(parts.day!)日"
+    }
     public static func day(_ d: Date) -> Date { calendar.startOfDay(for: d) }
     public static func addDays(_ n: Int, to date: Date) -> Date { calendar.date(byAdding: .day, value: n, to: date)! }
     public static func addMonths(_ n: Int, to date: Date) -> Date { calendar.date(byAdding: .month, value: n, to: date)! }

@@ -137,6 +137,10 @@ struct UITestWindowMetrics: UIViewRepresentable {
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
 enum UITestSupport {
+    // Launch configuration is immutable. Copying Foundation's full environment
+    // at every SwiftUI environment read was measured in main-thread stalls.
+    static let launchEnvironment = ProcessInfo.processInfo.environment
+    static let reduceMotion = script != nil && launchEnvironment["YUBAI_UI_TEST_REDUCE_MOTION"] == "1"
     /// Opt in only with a valid, isolated UI script; replies remain offline.
     static var allowsBackground: Bool {
         script != nil && ProcessInfo.processInfo.environment["YUBAI_UI_ALLOW_BACKGROUND"] == "1"
@@ -190,14 +194,14 @@ enum UITestSupport {
         "v45-share", "v45-bill-match", "v45-entry-history", "v45-ask",
         "v45-category", "v45-payback", "v45-split"
     ]
-    static var script: String? {
+    static let script: String? = {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
-              let name = ProcessInfo.processInfo.environment["YUBAI_UI_TEST_SCRIPT"],
+              let name = launchEnvironment["YUBAI_UI_TEST_SCRIPT"],
               (revision47Scripts.contains(name) || butler47Scripts.contains(name) || savings47Scripts.contains(name) || home47Scripts.contains(name) || galleryScripts.contains(name) || billGalleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
         return name
-    }
+    }()
     static var statementURL: URL? {
         guard ["import", "v45-import-merge"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]

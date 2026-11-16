@@ -23,6 +23,7 @@ only=()
 for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalleryTests/$name"); done
 (( ${#only[@]} )) || only=("-only-testing:YubaiUITests/ScreenGalleryTests")
 set +e
+run_started=$(date +%s)
 env TEST_RUNNER_YUBAI_GALLERY_DIR="$shots" xcodebuild test \
     -project "$repo_root/Yubai.xcodeproj" -scheme Yubai -configuration Debug \
     -destination "platform=iOS Simulator,id=$simulator" \
@@ -35,7 +36,7 @@ set -e
 
 stall_status=0
 python3 "$repo_root/scripts/export-stall-records.py" --simulator "$simulator" \
-    --output "$shots/stalls" --derived-data "$run_dir/DerivedData" || stall_status=$?
+    --output "$shots/stalls" --derived-data "$run_dir/DerivedData" --log "$run_dir/xcodebuild.log" --since "$run_started" || stall_status=$?
 if (( stall_status != 0 )); then echo "warning: stall record export failed (does not change the gallery result)" >&2; fi
 
 if ! find "$shots" -type f -name '*.png' -print -quit | grep -q . && [[ -d "$result" ]]; then

@@ -423,7 +423,7 @@ enum AppSheet: Identifiable {
     }
     private func entryTimelineValue(month: Date, search: String, filter: EntryTimeline.Filter, allMonths: Bool = false) -> EntryTimeline.Snapshot {
         let calendar = Dates.calendar
-        if let cached = cachedEntryTimeline, cached.month == month, cached.search == search, cached.filter == filter, cached.allMonths == allMonths, cached.calendar == calendar { return cached.value }
+        if let cached = cachedEntryTimeline, (allMonths || cached.month == month), cached.search == search, cached.filter == filter, cached.allMonths == allMonths, cached.calendar == calendar { return cached.value }
         let value = EntryTimeline.snapshot(sortedEntries: sortedEntriesValue(), ledger: derivedSource, month: month, search: search, filter: filter, calendar: calendar, allMonths: allMonths)
         cachedEntryTimeline = (month, search, filter, allMonths, calendar, value)
         return value
