@@ -9,10 +9,14 @@ enum UIViewportGeometry {
                                 hasScrollAncestors: Bool, window: CGRect) -> [CGRect] {
         guard hasScrollAncestors else { return [] }
         return regions.filter { !owners.contains($0.id) }.map {
-            // A toast owns its internal message scroll, but ledger/page rows
-            // must clear the whole overlay with the existing 12pt gap.
+            // A toast owns its internal message scroll. Page rows must move
+            // above it, including rows initially BELOW its body: AX can expose
+            // a full-screen scroll frame and call a partly clipped button
+            // hittable, then send the tap to its off-viewport center (run 7's
+            // soft-line mode at y=907.8). There is no usable lane below a toast.
             let gap: CGFloat = $0.id == "toastBody" ? 12 : 0
-            return CGRect(x: window.minX, y: $0.frame.minY - gap, width: window.width, height: $0.frame.height + gap)
+            let bottom = $0.id == "toastBody" ? max(window.maxY, $0.frame.maxY) : $0.frame.maxY
+            return CGRect(x: window.minX, y: $0.frame.minY - gap, width: window.width, height: bottom - $0.frame.minY + gap)
         }
     }
     /// Ancestors are the target's actual snapshot scroll ancestors, outermost

@@ -1,6 +1,48 @@
 import XCTest
 
 final class Round47ViewportGeometryTests: XCTestCase {
+    func testRunSevenSoftLineModeBelowTheToastMustScrollBeforeItsCenterCanBeTapped() {
+        let window = CGRect(x: 0, y: 0, width: 440, height: 956)
+        let body = CGRect(x: 36, y: 789, width: 376, height: 62)
+        let button = CGRect(x: 150.7, y: 871.7, width: 144, height: 72.3)
+        // The saved AX tree retains this entire screen although the native
+        // scrollbar's usable track ends at y=894. The event really taps 907.8.
+        let scroll = window
+        XCTAssertGreaterThan(button.midY, 894)
+        XCTAssertTrue(scroll.contains(button))
+        XCTAssertFalse(UIViewportGeometry.overlaps(button, body))
+        let occlusions = UIViewportGeometry.fixedOcclusions([("toastBody", body)], owners: [],
+            hasScrollAncestors: true, window: window)
+        XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: button, scrollAncestors: [scroll], occlusions: occlusions))
+        let parts = UIViewportGeometry.visibleParts(scroll, ancestors: [], excluding: occlusions)
+        XCTAssertEqual(parts, [CGRect(x: 0, y: 0, width: 440, height: 777)])
+        var progress = UIRevealProgress()
+        guard case .drag(up: true, distance: let distance) = progress.next(.init(target: button, viewport: parts[0])) else {
+            return XCTFail("A partially visible soft-line mode must move above the receipt before tapping")
+        }
+        let moved = button.offsetBy(dx: 0, dy: -distance)
+        XCTAssertLessThanOrEqual(moved.maxY, body.minY - 12)
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: moved, scrollAncestors: [scroll], occlusions: occlusions))
+        XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: false,
+            frame: moved, scrollAncestors: [scroll], occlusions: occlusions))
+    }
+    func testReceiptLeavesNoLowerLaneForRowsAcrossAnyOfItsSidesOrUndo() {
+        let window = CGRect(x: 0, y: 0, width: 440, height: 956)
+        let body = CGRect(x: 36, y: 789, width: 376, height: 62)
+        let occlusions = UIViewportGeometry.fixedOcclusions([("toastBody", body)], owners: [],
+            hasScrollAncestors: true, window: window)
+        for frame in [CGRect(x: 20, y: 820, width: 44, height: 44),
+                      CGRect(x: 150, y: 859, width: 144, height: 72),
+                      CGRect(x: 305, y: 859, width: 107, height: 47),
+                      CGRect(x: 20, y: 910, width: 400, height: 44)] {
+            XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+                frame: frame, scrollAncestors: [window], occlusions: occlusions))
+        }
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: CGRect(x: 20, y: 733, width: 400, height: 44), scrollAncestors: [window], occlusions: occlusions))
+    }
     func testRunSevenHittableLedgerRowMustScrollPastTheToastAndItsGap() {
         let window = CGRect(x: 0, y: 0, width: 440, height: 956)
         let scroll = CGRect(x: 0, y: 130, width: 440, height: 668)

@@ -66,9 +66,66 @@ def masks(source):
     return code, comments
 
 
+def hidden_controls(name, code):
+    """Direct control modifiers cannot substitute for conditional creation.
+
+    Inspect only the control's own modifier chain, not decorative label children
+    or an ancestor that retains a whole page/editor across focus or tab changes.
+    Strings/comments are already masked; balanced arguments/closures keep a
+    sibling control's modifiers from being attributed to this one.
+    """
+    def group_end(start):
+        closing = {'(': ')', '{': '}', '[': ']'}
+        stack = [closing[code[start]]]
+        end = start + 1
+        while end < len(code) and stack:
+            char = code[end]
+            if char in closing:
+                stack.append(closing[char])
+            elif char == stack[-1]:
+                stack.pop()
+            end += 1
+        return end
+
+    def space(start):
+        while start < len(code) and code[start].isspace():
+            start += 1
+        return start
+
+    def closures(start):
+        end = space(start)
+        if end < len(code) and code[end] == '{':
+            end = space(group_end(end))
+            while label := re.match(r'\w+\s*:\s*\{', code[end:]):
+                end = space(group_end(end + label.end() - 1))
+        return end
+
+    controls = r'\b(?:Button|Menu|NavigationLink|TabNavigationLink|DisclosureGroup|MoreLink|HeaderIconButton|CategoryChoiceChip|IconGridCell)\s*(?=[({])'
+    zero = r'(?:(?<![\w.])0(?:\.0+)?(?![\w.])|\.zero\b|\bYubaiSpace\.none\b)'
+    found = []
+    for control in re.finditer(controls, code):
+        end = control.end()
+        if code[end] == '(':
+            end = group_end(end)
+        end = closures(end)
+        while modifier := re.match(r'\.(\w+)\s*(?=[({])', code[end:]):
+            opening = end + modifier.end()
+            argument_end = group_end(opening) if code[opening] == '(' else opening
+            arguments = code[opening + 1:argument_end - 1] if code[opening] == '(' else ''
+            method = modifier[1]
+            hidden = method == 'hidden' or (method == 'accessibilityHidden' and arguments.strip() != 'false')
+            hidden |= method == 'opacity' and bool(re.search(zero, arguments))
+            hidden |= method == 'frame' and bool(re.search(r'\b(?:width|height|maxWidth|maxHeight)\s*:[^,]*' + zero, arguments))
+            if hidden:
+                line = code.count('\n', 0, end) + 1
+                found.append(f'{name}:{line}: hidden interactive control: create it conditionally instead of .{method}')
+            end = closures(argument_end)
+    return found
+
+
 def violations(name, source):
     code, comments = masks(source)
-    found = row_presentations(name, code)
+    found = row_presentations(name, code) + hidden_controls(name, code)
     def reject(pattern, reason, text=code):
         for match in re.finditer(pattern, text):
             line = text.count('\n', 0, match.start()) + 1
@@ -141,8 +198,25 @@ def self_test():
     assert not violations('Page.swift', 'List { ForEach(items) { ItemRow(item: $0) } }.sheet(item: $editing) { Editor() }')
     assert not violations('Page.swift', 'struct ItemRow: View { Button("x") { presentations.presentSheet { Editor() } }.contextMenu { Button("x") { edit() } } }')
     assert not violations('Page.swift', '// struct ItemRow { .sheet(isPresented: $show) {} }\nText(".popover(isPresented:)")')
+    for control in ('Button', 'Menu', 'NavigationLink', 'DisclosureGroup', 'MoreLink', 'HeaderIconButton', 'CategoryChoiceChip'):
+        for modifier in ('.hidden()', '.opacity(visible ? 1 : 0)', '.opacity(0.0)',
+                         '.frame(height: visible ? nil : 0)', '.frame(maxWidth: .zero)',
+                         '.frame(width: YubaiSpace.none)', '.accessibilityHidden(!visible)'):
+            assert violations(SHARED, f'{control}("x") {{ act() }}.buttonStyle(.plain){modifier}')
+    assert violations(SHARED, 'Button { expanded.toggle() } label: { Image(systemName: "chevron.down") }.frame(height: visible ? nil : 0).clipped().opacity(visible ? 1 : 0)')
+    assert violations(SHARED, 'Button(role: .none, action: { act() }, label: { Text("more") }).accessibilityHidden(true)')
+    assert violations(SHARED, 'Button("x") {}.contextMenu { Button("child") {} }.opacity(0)')
+    assert violations(SHARED, 'Button("x") {}.onAppear { load() }.accessibilityHidden(true)')
+    assert not violations(SHARED, 'Button("x") {}.accessibilityHidden(false).frame(height: 100.0)')
+    assert not violations(SHARED, 'if visible { Button("more") { act() }.opacity(pressed ? 0.75 : 1) }')
+    assert not violations(SHARED, 'Button { act() } label: { Image(systemName: "chevron.right").accessibilityHidden(true) }.opacity(enabled ? 1 : 0.4).disabled(!enabled)')
+    assert not violations(SHARED, 'Text("measuring").hidden().accessibilityHidden(true).frame(width: 0, height: 0)')
+    assert not violations(SHARED, 'Button("x") {}\nText("measuring").hidden()')
+    assert not violations(SHARED, 'Page { Button("x") {} }.accessibilityHidden(inactive)')
+    assert not violations(SHARED, '// Button("x") {}.hidden()\nText("Button {}.opacity(0)")')
     print('UI lint self-test: raw inputs, back, toast, geometry rejected; tokens accepted')
     print('UI lint self-test: presentations rejected in reusable and anonymous dynamic rows; surface routing accepted')
+    print('UI lint self-test: hidden control modifiers rejected; conditional controls, decorative labels and measurement accepted')
 
 
 def main():

@@ -2507,14 +2507,16 @@ private struct ButlerHeadline: View {
                         .hidden().accessibilityHidden(true)
                         .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { fullHeight = $0 }
                 }
-            Button { expanded.toggle() } label: {
-                Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.meta)
-                    .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
-            }.buttonStyle(PressButtonStyle()).accessibilityLabel(expanded ? "收起全文" : "展开全文")
-                .accessibilityValue(expanded ? "已展开" : "")
-                .accessibilityIdentifier("expandButlerHeadline")
-                .frame(height: showsDisclosure ? nil : 0).clipped().opacity(showsDisclosure ? 1 : 0)
-                .allowsHitTesting(showsDisclosure).accessibilityHidden(!showsDisclosure)
+            // A hidden Button can survive in AX. Keep the headline mounted
+            // across live size changes, and create only a real disclosure.
+            if showsDisclosure {
+                Button { expanded.toggle() } label: {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.meta)
+                        .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel(expanded ? "收起全文" : "展开全文")
+                    .accessibilityValue(expanded ? "已展开" : "")
+                    .accessibilityIdentifier("expandButlerHeadline")
+            }
         }
     }
 }
