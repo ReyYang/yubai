@@ -1,0 +1,4368 @@
+{
+  "version": 1,
+  "count": 301,
+  "categories": [
+    {
+      "id": "ai",
+      "name_zh": "AI 与大模型",
+      "count": 62
+    },
+    {
+      "id": "productivity",
+      "name_zh": "效率、设计与办公软件",
+      "count": 47
+    },
+    {
+      "id": "cloud_dev",
+      "name_zh": "开发者与云服务",
+      "count": 26
+    },
+    {
+      "id": "ecommerce",
+      "name_zh": "电商、独立站与商业工具",
+      "count": 30
+    },
+    {
+      "id": "media",
+      "name_zh": "流媒体影音、音乐与阅读",
+      "count": 30
+    },
+    {
+      "id": "gaming_social",
+      "name_zh": "社交与游戏订阅",
+      "count": 31
+    },
+    {
+      "id": "finance",
+      "name_zh": "银行、支付与金融",
+      "count": 33
+    },
+    {
+      "id": "utilities_mobility",
+      "name_zh": "运营商、出行与生活缴费",
+      "count": 16
+    },
+    {
+      "id": "lifestyle",
+      "name_zh": "餐饮、硬件与消费品牌",
+      "count": 26
+    }
+  ],
+  "icons": [
+    {
+      "slug": "chatgpt",
+      "name": "ChatGPT",
+      "name_zh": "ChatGPT",
+      "category": "ai",
+      "region": "global",
+      "hex": "#10A37F",
+      "svg": "svg/chatgpt.svg",
+      "keywords": [
+        "ChatGPT",
+        "OpenAI",
+        "GPT-4",
+        "ChatGPT Plus",
+        "ChatGPT Pro"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "openai",
+      "name": "OpenAI",
+      "name_zh": "OpenAI",
+      "category": "ai",
+      "region": "global",
+      "hex": "#10A37F",
+      "svg": "svg/openai.svg",
+      "keywords": [
+        "OpenAI",
+        "GPT",
+        "API"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "sora",
+      "name": "Sora",
+      "name_zh": "Sora",
+      "category": "ai",
+      "region": "global",
+      "hex": "#0066FF",
+      "svg": "svg/sora.svg",
+      "keywords": [
+        "Sora",
+        "OpenAI Sora"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "claude",
+      "name": "Claude",
+      "name_zh": "Claude",
+      "category": "ai",
+      "region": "global",
+      "hex": "#D97757",
+      "svg": "svg/claude.svg",
+      "keywords": [
+        "Claude",
+        "Claude Pro",
+        "Claude Max",
+        "Anthropic"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "claudecode",
+      "name": "Claude Code",
+      "name_zh": "Claude Code",
+      "category": "ai",
+      "region": "global",
+      "hex": "#D97757",
+      "svg": "svg/claudecode.svg",
+      "keywords": [
+        "Claude Code",
+        "Anthropic CLI"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "anthropic",
+      "name": "Anthropic",
+      "name_zh": "Anthropic",
+      "category": "ai",
+      "region": "global",
+      "hex": "#191919",
+      "svg": "svg/anthropic.svg",
+      "keywords": [
+        "Anthropic",
+        "Claude API"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "gemini",
+      "name": "Google Gemini",
+      "name_zh": "Gemini",
+      "category": "ai",
+      "region": "global",
+      "hex": "#4E86F6",
+      "svg": "svg/gemini.svg",
+      "keywords": [
+        "Gemini",
+        "Google AI",
+        "Gemini Advanced",
+        "Bard"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "notebooklm",
+      "name": "NotebookLM",
+      "name_zh": "NotebookLM",
+      "category": "ai",
+      "region": "global",
+      "hex": "#1A73E8",
+      "svg": "svg/notebooklm.svg",
+      "keywords": [
+        "NotebookLM",
+        "Google NotebookLM"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "perplexity",
+      "name": "Perplexity",
+      "name_zh": "Perplexity",
+      "category": "ai",
+      "region": "global",
+      "hex": "#20808D",
+      "svg": "svg/perplexity.svg",
+      "keywords": [
+        "Perplexity",
+        "Perplexity Pro"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "midjourney",
+      "name": "Midjourney",
+      "name_zh": "Midjourney",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/midjourney.svg",
+      "keywords": [
+        "Midjourney",
+        "MJ"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "cursor",
+      "name": "Cursor",
+      "name_zh": "Cursor",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/cursor.svg",
+      "keywords": [
+        "Cursor",
+        "Cursor Pro"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "windsurf",
+      "name": "Windsurf",
+      "name_zh": "Windsurf",
+      "category": "ai",
+      "region": "global",
+      "hex": "#09B6A2",
+      "svg": "svg/windsurf.svg",
+      "keywords": [
+        "Windsurf",
+        "Codeium"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "github-copilot",
+      "name": "GitHub Copilot",
+      "name_zh": "GitHub Copilot",
+      "category": "ai",
+      "region": "global",
+      "hex": "#000000",
+      "svg": "svg/github-copilot.svg",
+      "keywords": [
+        "GitHub Copilot",
+        "Copilot"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "grok",
+      "name": "Grok",
+      "name_zh": "Grok",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/grok.svg",
+      "keywords": [
+        "Grok",
+        "SuperGrok",
+        "xAI"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "xai",
+      "name": "xAI",
+      "name_zh": "xAI",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/xai.svg",
+      "keywords": [
+        "xAI",
+        "Grok API"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "poe",
+      "name": "Poe",
+      "name_zh": "Poe",
+      "category": "ai",
+      "region": "global",
+      "hex": "#5B4AE6",
+      "svg": "svg/poe.svg",
+      "keywords": [
+        "Poe",
+        "Quora Poe"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "elevenlabs",
+      "name": "ElevenLabs",
+      "name_zh": "ElevenLabs",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/elevenlabs.svg",
+      "keywords": [
+        "ElevenLabs",
+        "AI配音",
+        "TTS"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "runway",
+      "name": "Runway",
+      "name_zh": "Runway",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/runway.svg",
+      "keywords": [
+        "Runway",
+        "Gen-3"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "suno",
+      "name": "Suno",
+      "name_zh": "Suno",
+      "category": "ai",
+      "region": "global",
+      "hex": "#FF5722",
+      "svg": "svg/suno.svg",
+      "keywords": [
+        "Suno",
+        "AI音乐"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "udio",
+      "name": "Udio",
+      "name_zh": "Udio",
+      "category": "ai",
+      "region": "global",
+      "hex": "#E91E63",
+      "svg": "svg/udio.svg",
+      "keywords": [
+        "Udio"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "flux",
+      "name": "Flux",
+      "name_zh": "Flux",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/flux.svg",
+      "keywords": [
+        "Flux",
+        "Black Forest Labs"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "ideogram",
+      "name": "Ideogram",
+      "name_zh": "Ideogram",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/ideogram.svg",
+      "keywords": [
+        "Ideogram"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "luma",
+      "name": "Luma Dream Machine",
+      "name_zh": "Luma",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/luma.svg",
+      "keywords": [
+        "Luma",
+        "Dream Machine"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "pika",
+      "name": "Pika",
+      "name_zh": "Pika",
+      "category": "ai",
+      "region": "global",
+      "hex": "#F5A623",
+      "svg": "svg/pika.svg",
+      "keywords": [
+        "Pika",
+        "Pika Art"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "huggingface",
+      "name": "Hugging Face",
+      "name_zh": "Hugging Face",
+      "category": "ai",
+      "region": "global",
+      "hex": "#FFD21E",
+      "svg": "svg/huggingface.svg",
+      "keywords": [
+        "Hugging Face",
+        "HF"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "replicate",
+      "name": "Replicate",
+      "name_zh": "Replicate",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/replicate.svg",
+      "keywords": [
+        "Replicate"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "mistral",
+      "name": "Mistral AI",
+      "name_zh": "Mistral AI",
+      "category": "ai",
+      "region": "global",
+      "hex": "#FA520F",
+      "svg": "svg/mistral.svg",
+      "keywords": [
+        "Mistral",
+        "Le Chat"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "cohere",
+      "name": "Cohere",
+      "name_zh": "Cohere",
+      "category": "ai",
+      "region": "global",
+      "hex": "#39594D",
+      "svg": "svg/cohere.svg",
+      "keywords": [
+        "Cohere"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "ollama",
+      "name": "Ollama",
+      "name_zh": "Ollama",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/ollama.svg",
+      "keywords": [
+        "Ollama"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "openrouter",
+      "name": "OpenRouter",
+      "name_zh": "OpenRouter",
+      "category": "ai",
+      "region": "global",
+      "hex": "#6366F1",
+      "svg": "svg/openrouter.svg",
+      "keywords": [
+        "OpenRouter"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "adobe-firefly",
+      "name": "Adobe Firefly",
+      "name_zh": "Adobe Firefly",
+      "category": "ai",
+      "region": "global",
+      "hex": "#EB1000",
+      "svg": "svg/adobe-firefly.svg",
+      "keywords": [
+        "Adobe Firefly",
+        "Firefly"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "v0",
+      "name": "v0",
+      "name_zh": "v0",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/v0.svg",
+      "keywords": [
+        "v0",
+        "v0.dev",
+        "Vercel v0"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "lovable",
+      "name": "Lovable",
+      "name_zh": "Lovable",
+      "category": "ai",
+      "region": "global",
+      "hex": "#FF4F5A",
+      "svg": "svg/lovable.svg",
+      "keywords": [
+        "Lovable",
+        "lovable.dev"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "manus",
+      "name": "Manus",
+      "name_zh": "Manus",
+      "category": "ai",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/manus.svg",
+      "keywords": [
+        "Manus",
+        "Manus AI"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "cherrystudio",
+      "name": "Cherry Studio",
+      "name_zh": "Cherry Studio",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#FF4D4F",
+      "svg": "svg/cherrystudio.svg",
+      "keywords": [
+        "Cherry Studio"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "deepseek",
+      "name": "DeepSeek",
+      "name_zh": "深度求索 (DeepSeek)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#4D6BFE",
+      "svg": "svg/deepseek.svg",
+      "keywords": [
+        "DeepSeek",
+        "深度求索",
+        "DeepSeek API"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "kimi",
+      "name": "Kimi",
+      "name_zh": "Kimi (月之暗面)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#111111",
+      "svg": "svg/kimi.svg",
+      "keywords": [
+        "Kimi",
+        "月之暗面",
+        "Kimi智能助手"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "moonshot",
+      "name": "Moonshot AI",
+      "name_zh": "月之暗面 (Moonshot)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#16191E",
+      "svg": "svg/moonshot.svg",
+      "keywords": [
+        "Moonshot",
+        "月之暗面",
+        "Moonshot API"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "qwen",
+      "name": "Qwen",
+      "name_zh": "通义千问 (Qwen)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#615CED",
+      "svg": "svg/qwen.svg",
+      "keywords": [
+        "通义千问",
+        "千问",
+        "Qwen",
+        "通义"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "doubao",
+      "name": "Doubao",
+      "name_zh": "豆包 (Doubao)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#3B70FC",
+      "svg": "svg/doubao.svg",
+      "keywords": [
+        "豆包",
+        "Doubao",
+        "字节豆包"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "jimeng",
+      "name": "Jimeng AI",
+      "name_zh": "即梦 AI",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#00C8FF",
+      "svg": "svg/jimeng.svg",
+      "keywords": [
+        "即梦",
+        "即梦AI",
+        "Jimeng"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "trae",
+      "name": "Trae",
+      "name_zh": "Trae",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#32F08C",
+      "svg": "svg/trae.svg",
+      "keywords": [
+        "Trae",
+        "字节Trae"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "zhipu",
+      "name": "Zhipu AI",
+      "name_zh": "智谱清言 (GLM)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#3859FF",
+      "svg": "svg/zhipu.svg",
+      "keywords": [
+        "智谱",
+        "智谱清言",
+        "ChatGLM",
+        "GLM",
+        "BigModel"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "wenxin",
+      "name": "ERNIE Bot",
+      "name_zh": "文心一言",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#2932E1",
+      "svg": "svg/wenxin.svg",
+      "keywords": [
+        "文心一言",
+        "百度文心",
+        "ERNIE",
+        "文心"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "hunyuan",
+      "name": "Tencent Hunyuan",
+      "name_zh": "腾讯混元",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#0052D9",
+      "svg": "svg/hunyuan.svg",
+      "keywords": [
+        "腾讯混元",
+        "混元",
+        "Hunyuan"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "yuanbao",
+      "name": "Tencent Yuanbao",
+      "name_zh": "腾讯元宝",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#00C896",
+      "svg": "svg/yuanbao.svg",
+      "keywords": [
+        "腾讯元宝",
+        "元宝",
+        "Yuanbao"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "spark",
+      "name": "iFlytek Spark",
+      "name_zh": "讯飞星火",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#0066FF",
+      "svg": "svg/spark.svg",
+      "keywords": [
+        "讯飞星火",
+        "科大讯飞",
+        "星火大模型"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "baichuan",
+      "name": "Baichuan AI",
+      "name_zh": "百川智能",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#FF6A00",
+      "svg": "svg/baichuan.svg",
+      "keywords": [
+        "百川",
+        "百川智能",
+        "Baichuan"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "minimax",
+      "name": "MiniMax",
+      "name_zh": "MiniMax",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#F23F5D",
+      "svg": "svg/minimax.svg",
+      "keywords": [
+        "MiniMax",
+        "稀宇科技"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "hailuo",
+      "name": "Hailuo AI",
+      "name_zh": "海螺 AI",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#635BFF",
+      "svg": "svg/hailuo.svg",
+      "keywords": [
+        "海螺AI",
+        "海螺",
+        "Hailuo"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "kling",
+      "name": "Kling AI",
+      "name_zh": "可灵 AI",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#00E599",
+      "svg": "svg/kling.svg",
+      "keywords": [
+        "可灵",
+        "可灵AI",
+        "Kling",
+        "快手可灵"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "vidu",
+      "name": "Vidu",
+      "name_zh": "Vidu",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#2563EB",
+      "svg": "svg/vidu.svg",
+      "keywords": [
+        "Vidu",
+        "生数科技"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "stepfun",
+      "name": "StepFun",
+      "name_zh": "阶跃星辰 (跃问)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#0066FF",
+      "svg": "svg/stepfun.svg",
+      "keywords": [
+        "阶跃星辰",
+        "跃问",
+        "StepFun"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "yi",
+      "name": "01.AI (Yi)",
+      "name_zh": "零一万物",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#00474F",
+      "svg": "svg/yi.svg",
+      "keywords": [
+        "零一万物",
+        "万知",
+        "Yi",
+        "01.AI"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "coze",
+      "name": "Coze",
+      "name_zh": "扣子 (Coze)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#4E40E5",
+      "svg": "svg/coze.svg",
+      "keywords": [
+        "扣子",
+        "Coze"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "dify",
+      "name": "Dify",
+      "name_zh": "Dify",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#0033FF",
+      "svg": "svg/dify.svg",
+      "keywords": [
+        "Dify"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "siliconcloud",
+      "name": "SiliconFlow",
+      "name_zh": "硅基流动 (SiliconCloud)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#7C3AED",
+      "svg": "svg/siliconcloud.svg",
+      "keywords": [
+        "硅基流动",
+        "SiliconCloud",
+        "SiliconFlow"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "volcengine",
+      "name": "Volcengine",
+      "name_zh": "火山引擎 (火山方舟)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#1664FF",
+      "svg": "svg/volcengine.svg",
+      "keywords": [
+        "火山引擎",
+        "火山方舟",
+        "Volcengine"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "sensenova",
+      "name": "SenseNova",
+      "name_zh": "商汤日日新",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#5C33F6",
+      "svg": "svg/sensenova.svg",
+      "keywords": [
+        "商汤",
+        "日日新",
+        "SenseNova"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "modelscope",
+      "name": "ModelScope",
+      "name_zh": "魔搭社区 (ModelScope)",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#624AFF",
+      "svg": "svg/modelscope.svg",
+      "keywords": [
+        "魔搭",
+        "ModelScope"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "bailian",
+      "name": "Alibaba Cloud Bailian",
+      "name_zh": "阿里云百炼",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#615CED",
+      "svg": "svg/bailian.svg",
+      "keywords": [
+        "百炼",
+        "阿里云百炼",
+        "DashScope"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "skywork",
+      "name": "Skywork",
+      "name_zh": "天工 AI",
+      "category": "ai",
+      "region": "cn",
+      "hex": "#2B5AED",
+      "svg": "svg/skywork.svg",
+      "keywords": [
+        "天工",
+        "天工AI",
+        "昆仑万维"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "apple",
+      "name": "Apple",
+      "name_zh": "Apple (Apple One)",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/apple.svg",
+      "keywords": [
+        "Apple",
+        "苹果",
+        "Apple One",
+        "AppleCare+"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "icloud",
+      "name": "iCloud+",
+      "name_zh": "iCloud+",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#3693F3",
+      "svg": "svg/icloud.svg",
+      "keywords": [
+        "iCloud",
+        "iCloud+",
+        "云空间"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "app-store",
+      "name": "App Store",
+      "name_zh": "App Store",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#0D96F6",
+      "svg": "svg/app-store.svg",
+      "keywords": [
+        "App Store",
+        "应用商店",
+        "苹果订阅"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "notion",
+      "name": "Notion",
+      "name_zh": "Notion",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/notion.svg",
+      "keywords": [
+        "Notion",
+        "Notion AI"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "figma",
+      "name": "Figma",
+      "name_zh": "Figma",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#F24E1E",
+      "svg": "svg/figma.svg",
+      "keywords": [
+        "Figma",
+        "FigJam"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "adobe",
+      "name": "Adobe Creative Cloud",
+      "name_zh": "Adobe (Creative Cloud)",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#FA0F00",
+      "svg": "svg/adobe.svg",
+      "keywords": [
+        "Adobe",
+        "Creative Cloud",
+        "Photoshop",
+        "Lightroom"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "capcut",
+      "name": "CapCut",
+      "name_zh": "剪映 (CapCut)",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#111111",
+      "svg": "svg/capcut.svg",
+      "keywords": [
+        "剪映",
+        "剪映SVIP",
+        "CapCut"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "slack",
+      "name": "Slack",
+      "name_zh": "Slack",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#4A154B",
+      "svg": "svg/slack.svg",
+      "keywords": [
+        "Slack"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "zoom",
+      "name": "Zoom",
+      "name_zh": "Zoom",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#0B5CFF",
+      "svg": "svg/zoom.svg",
+      "keywords": [
+        "Zoom",
+        "Zoom视频会议"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "microsoft",
+      "name": "Microsoft",
+      "name_zh": "微软 (Microsoft)",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#00A4EF",
+      "svg": "svg/microsoft.svg",
+      "keywords": [
+        "Microsoft",
+        "微软"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "microsoft-365",
+      "name": "Microsoft 365",
+      "name_zh": "Microsoft 365 (Office)",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#D83B01",
+      "svg": "svg/microsoft-365.svg",
+      "keywords": [
+        "Microsoft 365",
+        "Office 365",
+        "Office",
+        "OneDrive"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "google",
+      "name": "Google",
+      "name_zh": "Google",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#4285F4",
+      "svg": "svg/google.svg",
+      "keywords": [
+        "Google",
+        "谷歌"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "google-drive",
+      "name": "Google One / Drive",
+      "name_zh": "Google One (云端硬盘)",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#4285F4",
+      "svg": "svg/google-drive.svg",
+      "keywords": [
+        "Google One",
+        "Google Drive",
+        "谷歌云盘"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "dropbox",
+      "name": "Dropbox",
+      "name_zh": "Dropbox",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#0061FF",
+      "svg": "svg/dropbox.svg",
+      "keywords": [
+        "Dropbox"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "1password",
+      "name": "1Password",
+      "name_zh": "1Password",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#3B66BC",
+      "svg": "svg/1password.svg",
+      "keywords": [
+        "1Password"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "bitwarden",
+      "name": "Bitwarden",
+      "name_zh": "Bitwarden",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#175DDC",
+      "svg": "svg/bitwarden.svg",
+      "keywords": [
+        "Bitwarden"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "setapp",
+      "name": "Setapp",
+      "name_zh": "Setapp",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#E6884B",
+      "svg": "svg/setapp.svg",
+      "keywords": [
+        "Setapp"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "raycast",
+      "name": "Raycast",
+      "name_zh": "Raycast",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#FF6363",
+      "svg": "svg/raycast.svg",
+      "keywords": [
+        "Raycast",
+        "Raycast Pro"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "linear",
+      "name": "Linear",
+      "name_zh": "Linear",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#5E6AD2",
+      "svg": "svg/linear.svg",
+      "keywords": [
+        "Linear"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "obsidian",
+      "name": "Obsidian",
+      "name_zh": "Obsidian",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#7C3AED",
+      "svg": "svg/obsidian.svg",
+      "keywords": [
+        "Obsidian",
+        "Obsidian Sync"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "evernote",
+      "name": "Evernote",
+      "name_zh": "印象笔记 (Evernote)",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#00A82D",
+      "svg": "svg/evernote.svg",
+      "keywords": [
+        "印象笔记",
+        "Evernote"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "todoist",
+      "name": "Todoist",
+      "name_zh": "Todoist",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#E44332",
+      "svg": "svg/todoist.svg",
+      "keywords": [
+        "Todoist"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "ticktick",
+      "name": "TickTick",
+      "name_zh": "滴答清单 (TickTick)",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#4772FA",
+      "svg": "svg/ticktick.svg",
+      "keywords": [
+        "滴答清单",
+        "TickTick"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "canva",
+      "name": "Canva",
+      "name_zh": "可画 (Canva)",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#00C4CC",
+      "svg": "svg/canva.svg",
+      "keywords": [
+        "Canva",
+        "可画",
+        "Canva Pro"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "framer",
+      "name": "Framer",
+      "name_zh": "Framer",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#0055FF",
+      "svg": "svg/framer.svg",
+      "keywords": [
+        "Framer"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "webflow",
+      "name": "Webflow",
+      "name_zh": "Webflow",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#146EF5",
+      "svg": "svg/webflow.svg",
+      "keywords": [
+        "Webflow"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "sketch",
+      "name": "Sketch",
+      "name_zh": "Sketch",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#F7B500",
+      "svg": "svg/sketch.svg",
+      "keywords": [
+        "Sketch"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "miro",
+      "name": "Miro",
+      "name_zh": "Miro",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#050038",
+      "svg": "svg/miro.svg",
+      "keywords": [
+        "Miro"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "airtable",
+      "name": "Airtable",
+      "name_zh": "Airtable",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#18BFFF",
+      "svg": "svg/airtable.svg",
+      "keywords": [
+        "Airtable"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "zapier",
+      "name": "Zapier",
+      "name_zh": "Zapier",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#FF4F00",
+      "svg": "svg/zapier.svg",
+      "keywords": [
+        "Zapier"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "n8n",
+      "name": "n8n",
+      "name_zh": "n8n",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#EA4B71",
+      "svg": "svg/n8n.svg",
+      "keywords": [
+        "n8n"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "make",
+      "name": "Make",
+      "name_zh": "Make",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#6D00CC",
+      "svg": "svg/make.svg",
+      "keywords": [
+        "Make",
+        "Integromat"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "deepl",
+      "name": "DeepL",
+      "name_zh": "DeepL 翻译",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#0F2B46",
+      "svg": "svg/deepl.svg",
+      "keywords": [
+        "DeepL",
+        "DeepL Pro"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "grammarly",
+      "name": "Grammarly",
+      "name_zh": "Grammarly",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#15C39A",
+      "svg": "svg/grammarly.svg",
+      "keywords": [
+        "Grammarly"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "duolingo",
+      "name": "Duolingo",
+      "name_zh": "多邻国 (Duolingo)",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#58CC02",
+      "svg": "svg/duolingo.svg",
+      "keywords": [
+        "多邻国",
+        "Duolingo",
+        "Super Duolingo"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "arc",
+      "name": "Arc Browser",
+      "name_zh": "Arc",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#FC3867",
+      "svg": "svg/arc.svg",
+      "keywords": [
+        "Arc"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "tailscale",
+      "name": "Tailscale",
+      "name_zh": "Tailscale",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#242424",
+      "svg": "svg/tailscale.svg",
+      "keywords": [
+        "Tailscale"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "plex",
+      "name": "Plex",
+      "name_zh": "Plex Pass",
+      "category": "productivity",
+      "region": "global",
+      "hex": "#E5A00D",
+      "svg": "svg/plex.svg",
+      "keywords": [
+        "Plex",
+        "Plex Pass"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "feishu",
+      "name": "Feishu / Lark",
+      "name_zh": "飞书 (Feishu)",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#00D6B9",
+      "svg": "svg/feishu.svg",
+      "keywords": [
+        "飞书",
+        "Lark",
+        "Feishu"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "dingtalk",
+      "name": "DingTalk",
+      "name_zh": "钉钉 (DingTalk)",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#0089FF",
+      "svg": "svg/dingtalk.svg",
+      "keywords": [
+        "钉钉",
+        "DingTalk"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "wecom",
+      "name": "WeCom",
+      "name_zh": "企业微信",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#2B7BF6",
+      "svg": "svg/wecom.svg",
+      "keywords": [
+        "企业微信",
+        "企微",
+        "WeCom"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "wps",
+      "name": "WPS Office",
+      "name_zh": "WPS Office (超级会员)",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#EA3E23",
+      "svg": "svg/wps.svg",
+      "keywords": [
+        "WPS",
+        "WPS会员",
+        "WPS超级会员",
+        "金山文档"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "yuque",
+      "name": "Yuque",
+      "name_zh": "语雀 (Yuque)",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#00B96B",
+      "svg": "svg/yuque.svg",
+      "keywords": [
+        "语雀",
+        "Yuque"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "siyuan",
+      "name": "SiYuan",
+      "name_zh": "思源笔记",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#D23F31",
+      "svg": "svg/siyuan.svg",
+      "keywords": [
+        "思源笔记",
+        "SiYuan"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "baidu-wangpan",
+      "name": "Baidu Wangpan",
+      "name_zh": "百度网盘 (SVIP)",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#06A7FF",
+      "svg": "svg/baidu-wangpan.svg",
+      "keywords": [
+        "百度网盘",
+        "百度云",
+        "网盘SVIP"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "aliyun-drive",
+      "name": "Aliyun Drive",
+      "name_zh": "阿里云盘",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#636BFF",
+      "svg": "svg/aliyun-drive.svg",
+      "keywords": [
+        "阿里云盘",
+        "阿里网盘"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "quark",
+      "name": "Quark",
+      "name_zh": "夸克网盘 (Quark)",
+      "category": "productivity",
+      "region": "cn",
+      "hex": "#4E6EF2",
+      "svg": "svg/quark.svg",
+      "keywords": [
+        "夸克",
+        "夸克网盘",
+        "Quark"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "github",
+      "name": "GitHub",
+      "name_zh": "GitHub",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#181717",
+      "svg": "svg/github.svg",
+      "keywords": [
+        "GitHub",
+        "GitHub Pro"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "gitlab",
+      "name": "GitLab",
+      "name_zh": "GitLab",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#FC6D26",
+      "svg": "svg/gitlab.svg",
+      "keywords": [
+        "GitLab"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "gitee",
+      "name": "Gitee",
+      "name_zh": "Gitee (码云)",
+      "category": "cloud_dev",
+      "region": "cn",
+      "hex": "#C71D23",
+      "svg": "svg/gitee.svg",
+      "keywords": [
+        "Gitee",
+        "码云"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "vercel",
+      "name": "Vercel",
+      "name_zh": "Vercel",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/vercel.svg",
+      "keywords": [
+        "Vercel",
+        "Vercel Pro"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "cloudflare",
+      "name": "Cloudflare",
+      "name_zh": "Cloudflare",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#F38020",
+      "svg": "svg/cloudflare.svg",
+      "keywords": [
+        "Cloudflare",
+        "域名续费",
+        "R2"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "netlify",
+      "name": "Netlify",
+      "name_zh": "Netlify",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#00C7B7",
+      "svg": "svg/netlify.svg",
+      "keywords": [
+        "Netlify"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "digitalocean",
+      "name": "DigitalOcean",
+      "name_zh": "DigitalOcean",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#0080FF",
+      "svg": "svg/digitalocean.svg",
+      "keywords": [
+        "DigitalOcean"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "aws",
+      "name": "Amazon Web Services",
+      "name_zh": "AWS (亚马逊云)",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#FF9900",
+      "svg": "svg/aws.svg",
+      "keywords": [
+        "AWS",
+        "Amazon Web Services",
+        "亚马逊云"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "google-cloud",
+      "name": "Google Cloud",
+      "name_zh": "Google Cloud (GCP)",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#4285F4",
+      "svg": "svg/google-cloud.svg",
+      "keywords": [
+        "Google Cloud",
+        "GCP"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "azure",
+      "name": "Microsoft Azure",
+      "name_zh": "Microsoft Azure",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#0078D4",
+      "svg": "svg/azure.svg",
+      "keywords": [
+        "Azure",
+        "Microsoft Azure"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "supabase",
+      "name": "Supabase",
+      "name_zh": "Supabase",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#3ECF8E",
+      "svg": "svg/supabase.svg",
+      "keywords": [
+        "Supabase"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "firebase",
+      "name": "Firebase",
+      "name_zh": "Firebase",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#DD2C00",
+      "svg": "svg/firebase.svg",
+      "keywords": [
+        "Firebase"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "railway",
+      "name": "Railway",
+      "name_zh": "Railway",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#0B0D0E",
+      "svg": "svg/railway.svg",
+      "keywords": [
+        "Railway"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "render",
+      "name": "Render",
+      "name_zh": "Render",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#46E3B7",
+      "svg": "svg/render.svg",
+      "keywords": [
+        "Render"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "flydotio",
+      "name": "Fly.io",
+      "name_zh": "Fly.io",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#7B3BE2",
+      "svg": "svg/flydotio.svg",
+      "keywords": [
+        "Fly.io"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "zeabur",
+      "name": "Zeabur",
+      "name_zh": "Zeabur",
+      "category": "cloud_dev",
+      "region": "cn",
+      "hex": "#6366F1",
+      "svg": "svg/zeabur.svg",
+      "keywords": [
+        "Zeabur"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "docker",
+      "name": "Docker",
+      "name_zh": "Docker",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#2496ED",
+      "svg": "svg/docker.svg",
+      "keywords": [
+        "Docker",
+        "Docker Hub"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "jetbrains",
+      "name": "JetBrains",
+      "name_zh": "JetBrains (All Products Pack)",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/jetbrains.svg",
+      "keywords": [
+        "JetBrains",
+        "IntelliJ",
+        "PyCharm",
+        "WebStorm"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "replit",
+      "name": "Replit",
+      "name_zh": "Replit",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#F26207",
+      "svg": "svg/replit.svg",
+      "keywords": [
+        "Replit",
+        "Replit Core"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "postman",
+      "name": "Postman",
+      "name_zh": "Postman",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#FF6C37",
+      "svg": "svg/postman.svg",
+      "keywords": [
+        "Postman"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "npm",
+      "name": "npm",
+      "name_zh": "npm",
+      "category": "cloud_dev",
+      "region": "global",
+      "hex": "#CB3837",
+      "svg": "svg/npm.svg",
+      "keywords": [
+        "npm"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "alibaba-cloud",
+      "name": "Alibaba Cloud",
+      "name_zh": "阿里云 (Alibaba Cloud)",
+      "category": "cloud_dev",
+      "region": "cn",
+      "hex": "#FF6A00",
+      "svg": "svg/alibaba-cloud.svg",
+      "keywords": [
+        "阿里云",
+        "ECS",
+        "OSS",
+        "Alibaba Cloud"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "tencent-cloud",
+      "name": "Tencent Cloud",
+      "name_zh": "腾讯云 (Tencent Cloud)",
+      "category": "cloud_dev",
+      "region": "cn",
+      "hex": "#0052D9",
+      "svg": "svg/tencent-cloud.svg",
+      "keywords": [
+        "腾讯云",
+        "轻量应用服务器",
+        "DNSPod",
+        "Tencent Cloud"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "huawei-cloud",
+      "name": "Huawei Cloud",
+      "name_zh": "华为云 (Huawei Cloud)",
+      "category": "cloud_dev",
+      "region": "cn",
+      "hex": "#E60012",
+      "svg": "svg/huawei-cloud.svg",
+      "keywords": [
+        "华为云",
+        "Huawei Cloud"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "baidu-cloud",
+      "name": "Baidu AI Cloud",
+      "name_zh": "百度智能云",
+      "category": "cloud_dev",
+      "region": "cn",
+      "hex": "#1068E9",
+      "svg": "svg/baidu-cloud.svg",
+      "keywords": [
+        "百度智能云",
+        "百度云"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "qiniu",
+      "name": "Qiniu Cloud",
+      "name_zh": "七牛云",
+      "category": "cloud_dev",
+      "region": "cn",
+      "hex": "#07BEFF",
+      "svg": "svg/qiniu.svg",
+      "keywords": [
+        "七牛云",
+        "Qiniu"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "shopify",
+      "name": "Shopify",
+      "name_zh": "Shopify",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#7AB55C",
+      "svg": "svg/shopify.svg",
+      "keywords": [
+        "Shopify",
+        "独立站"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "stripe",
+      "name": "Stripe",
+      "name_zh": "Stripe",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#635BFF",
+      "svg": "svg/stripe.svg",
+      "keywords": [
+        "Stripe"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "paypal",
+      "name": "PayPal",
+      "name_zh": "PayPal",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#00457C",
+      "svg": "svg/paypal.svg",
+      "keywords": [
+        "PayPal",
+        "贝宝"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "wise",
+      "name": "Wise",
+      "name_zh": "Wise",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#9FE870",
+      "svg": "svg/wise.svg",
+      "keywords": [
+        "Wise",
+        "TransferWise"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "revolut",
+      "name": "Revolut",
+      "name_zh": "Revolut",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#191C1F",
+      "svg": "svg/revolut.svg",
+      "keywords": [
+        "Revolut"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "patreon",
+      "name": "Patreon",
+      "name_zh": "Patreon",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#F96854",
+      "svg": "svg/patreon.svg",
+      "keywords": [
+        "Patreon"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "substack",
+      "name": "Substack",
+      "name_zh": "Substack",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#FF6719",
+      "svg": "svg/substack.svg",
+      "keywords": [
+        "Substack"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "gumroad",
+      "name": "Gumroad",
+      "name_zh": "Gumroad",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#FF90E8",
+      "svg": "svg/gumroad.svg",
+      "keywords": [
+        "Gumroad"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "wordpress",
+      "name": "WordPress",
+      "name_zh": "WordPress",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#21759B",
+      "svg": "svg/wordpress.svg",
+      "keywords": [
+        "WordPress"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "squarespace",
+      "name": "Squarespace",
+      "name_zh": "Squarespace",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/squarespace.svg",
+      "keywords": [
+        "Squarespace"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "wix",
+      "name": "Wix",
+      "name_zh": "Wix",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#0C6EFC",
+      "svg": "svg/wix.svg",
+      "keywords": [
+        "Wix"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "godaddy",
+      "name": "GoDaddy",
+      "name_zh": "GoDaddy",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#1BDBDB",
+      "svg": "svg/godaddy.svg",
+      "keywords": [
+        "GoDaddy"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "namecheap",
+      "name": "Namecheap",
+      "name_zh": "Namecheap",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#DE3723",
+      "svg": "svg/namecheap.svg",
+      "keywords": [
+        "Namecheap",
+        "域名"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "amazon",
+      "name": "Amazon",
+      "name_zh": "亚马逊 (Amazon)",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#FF9900",
+      "svg": "svg/amazon.svg",
+      "keywords": [
+        "Amazon",
+        "亚马逊"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "amazon-prime",
+      "name": "Amazon Prime",
+      "name_zh": "Amazon Prime",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#00A8E1",
+      "svg": "svg/amazon-prime.svg",
+      "keywords": [
+        "Amazon Prime",
+        "Prime会员"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "ebay",
+      "name": "eBay",
+      "name_zh": "eBay",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#E53238",
+      "svg": "svg/ebay.svg",
+      "keywords": [
+        "eBay"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "etsy",
+      "name": "Etsy",
+      "name_zh": "Etsy",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#F16521",
+      "svg": "svg/etsy.svg",
+      "keywords": [
+        "Etsy"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "taobao",
+      "name": "Taobao",
+      "name_zh": "淘宝 (88VIP)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#FF5000",
+      "svg": "svg/taobao.svg",
+      "keywords": [
+        "淘宝",
+        "88VIP",
+        "88vip",
+        "淘宝省钱卡",
+        "Taobao"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "tmall",
+      "name": "Tmall",
+      "name_zh": "天猫 (Tmall)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#FF0036",
+      "svg": "svg/tmall.svg",
+      "keywords": [
+        "天猫",
+        "天猫超市",
+        "Tmall"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "jd",
+      "name": "JD.com",
+      "name_zh": "京东 (京东PLUS)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#E1251B",
+      "svg": "svg/jd.svg",
+      "keywords": [
+        "京东",
+        "京东PLUS",
+        "PLUS会员",
+        "JD"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "pinduoduo",
+      "name": "Pinduoduo",
+      "name_zh": "拼多多 (省钱月卡)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#E02E24",
+      "svg": "svg/pinduoduo.svg",
+      "keywords": [
+        "拼多多",
+        "多多买菜",
+        "省钱月卡",
+        "PDD"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "meituan",
+      "name": "Meituan",
+      "name_zh": "美团 (神券节/会员)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#FFD000",
+      "svg": "svg/meituan.svg",
+      "keywords": [
+        "美团",
+        "美团外卖",
+        "美团会员",
+        "美团神会员"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "dianping",
+      "name": "Dianping",
+      "name_zh": "大众点评",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#FF6633",
+      "svg": "svg/dianping.svg",
+      "keywords": [
+        "大众点评",
+        "点评"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "eleme",
+      "name": "Ele.me",
+      "name_zh": "饿了么 (吃货卡)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#0097FF",
+      "svg": "svg/eleme.svg",
+      "keywords": [
+        "饿了么",
+        "超级吃货卡",
+        "淘宝闪购"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "hema",
+      "name": "Freshippo (Hema)",
+      "name_zh": "盒马 (X会员)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#0091FF",
+      "svg": "svg/hema.svg",
+      "keywords": [
+        "盒马",
+        "盒马鲜生",
+        "盒马X会员"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "sams-club",
+      "name": "Sam's Club",
+      "name_zh": "山姆会员商店",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#0062AD",
+      "svg": "svg/sams-club.svg",
+      "keywords": [
+        "山姆",
+        "山姆会员",
+        "Sam's Club"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "costco",
+      "name": "Costco",
+      "name_zh": "开市客 (Costco)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#E31837",
+      "svg": "svg/costco.svg",
+      "keywords": [
+        "开市客",
+        "Costco"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "ikea",
+      "name": "IKEA",
+      "name_zh": "宜家 (IKEA)",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#0058A3",
+      "svg": "svg/ikea.svg",
+      "keywords": [
+        "宜家",
+        "IKEA"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "uniqlo",
+      "name": "Uniqlo",
+      "name_zh": "优衣库 (Uniqlo)",
+      "category": "ecommerce",
+      "region": "global",
+      "hex": "#FF0000",
+      "svg": "svg/uniqlo.svg",
+      "keywords": [
+        "优衣库",
+        "Uniqlo"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "afdian",
+      "name": "Afdian",
+      "name_zh": "爱发电 (Afdian)",
+      "category": "ecommerce",
+      "region": "cn",
+      "hex": "#946CE6",
+      "svg": "svg/afdian.svg",
+      "keywords": [
+        "爱发电",
+        "Afdian"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "netflix",
+      "name": "Netflix",
+      "name_zh": "Netflix (奈飞)",
+      "category": "media",
+      "region": "global",
+      "hex": "#E50914",
+      "svg": "svg/netflix.svg",
+      "keywords": [
+        "Netflix",
+        "奈飞",
+        "网飞"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "youtube",
+      "name": "YouTube",
+      "name_zh": "YouTube Premium",
+      "category": "media",
+      "region": "global",
+      "hex": "#FF0000",
+      "svg": "svg/youtube.svg",
+      "keywords": [
+        "YouTube",
+        "YouTube Premium",
+        "油管"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "youtube-music",
+      "name": "YouTube Music",
+      "name_zh": "YouTube Music",
+      "category": "media",
+      "region": "global",
+      "hex": "#FF0000",
+      "svg": "svg/youtube-music.svg",
+      "keywords": [
+        "YouTube Music"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "spotify",
+      "name": "Spotify",
+      "name_zh": "Spotify",
+      "category": "media",
+      "region": "global",
+      "hex": "#1ED760",
+      "svg": "svg/spotify.svg",
+      "keywords": [
+        "Spotify",
+        "声破天"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "apple-music",
+      "name": "Apple Music",
+      "name_zh": "Apple Music",
+      "category": "media",
+      "region": "global",
+      "hex": "#FA243C",
+      "svg": "svg/apple-music.svg",
+      "keywords": [
+        "Apple Music",
+        "苹果音乐"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "apple-tv",
+      "name": "Apple TV+",
+      "name_zh": "Apple TV+",
+      "category": "media",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/apple-tv.svg",
+      "keywords": [
+        "Apple TV+",
+        "Apple TV"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "apple-podcasts",
+      "name": "Apple Podcasts",
+      "name_zh": "Apple 播客",
+      "category": "media",
+      "region": "global",
+      "hex": "#9933CC",
+      "svg": "svg/apple-podcasts.svg",
+      "keywords": [
+        "Apple Podcasts",
+        "苹果播客"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "disney-plus",
+      "name": "Disney+",
+      "name_zh": "Disney+",
+      "category": "media",
+      "region": "global",
+      "hex": "#113CCF",
+      "svg": "svg/disney-plus.svg",
+      "keywords": [
+        "Disney+",
+        "迪士尼+"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "hbo",
+      "name": "HBO Max",
+      "name_zh": "HBO Max",
+      "category": "media",
+      "region": "global",
+      "hex": "#5822B4",
+      "svg": "svg/hbo.svg",
+      "keywords": [
+        "HBO",
+        "HBO Max",
+        "Max"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "prime-video",
+      "name": "Prime Video",
+      "name_zh": "Prime Video",
+      "category": "media",
+      "region": "global",
+      "hex": "#00A8E1",
+      "svg": "svg/prime-video.svg",
+      "keywords": [
+        "Prime Video"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "audible",
+      "name": "Audible",
+      "name_zh": "Audible",
+      "category": "media",
+      "region": "global",
+      "hex": "#F8991C",
+      "svg": "svg/audible.svg",
+      "keywords": [
+        "Audible"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "twitch",
+      "name": "Twitch",
+      "name_zh": "Twitch",
+      "category": "media",
+      "region": "global",
+      "hex": "#9146FF",
+      "svg": "svg/twitch.svg",
+      "keywords": [
+        "Twitch"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "soundcloud",
+      "name": "SoundCloud",
+      "name_zh": "SoundCloud",
+      "category": "media",
+      "region": "global",
+      "hex": "#FF3300",
+      "svg": "svg/soundcloud.svg",
+      "keywords": [
+        "SoundCloud"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "tidal",
+      "name": "Tidal",
+      "name_zh": "Tidal",
+      "category": "media",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/tidal.svg",
+      "keywords": [
+        "Tidal"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "bilibili",
+      "name": "Bilibili",
+      "name_zh": "哔哩哔哩 (大会员)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#00A1D6",
+      "svg": "svg/bilibili.svg",
+      "keywords": [
+        "哔哩哔哩",
+        "B站",
+        "大会员",
+        "B站大会员",
+        "bilibili"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "iqiyi",
+      "name": "iQIYI",
+      "name_zh": "爱奇艺 (黄金VIP)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#00BE06",
+      "svg": "svg/iqiyi.svg",
+      "keywords": [
+        "爱奇艺",
+        "奇异果",
+        "爱奇艺VIP",
+        "iQIYI"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "tencent-video",
+      "name": "Tencent Video",
+      "name_zh": "腾讯视频 (VIP)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#FF7F00",
+      "svg": "svg/tencent-video.svg",
+      "keywords": [
+        "腾讯视频",
+        "云视听极光",
+        "腾讯VIP"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "youku",
+      "name": "Youku",
+      "name_zh": "优酷视频 (VIP)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#00A0E9",
+      "svg": "svg/youku.svg",
+      "keywords": [
+        "优酷",
+        "优酷VIP",
+        "酷喵"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "mango-tv",
+      "name": "Mango TV",
+      "name_zh": "芒果TV",
+      "category": "media",
+      "region": "cn",
+      "hex": "#FF5F00",
+      "svg": "svg/mango-tv.svg",
+      "keywords": [
+        "芒果TV",
+        "芒果会员"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "xigua",
+      "name": "Xigua Video",
+      "name_zh": "西瓜视频",
+      "category": "media",
+      "region": "cn",
+      "hex": "#FB2244",
+      "svg": "svg/xigua.svg",
+      "keywords": [
+        "西瓜视频"
+      ],
+      "license": "Apache-2.0 (IconPark)"
+    },
+    {
+      "slug": "netease-cloud-music",
+      "name": "NetEase Cloud Music",
+      "name_zh": "网易云音乐 (黑胶VIP)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#E60026",
+      "svg": "svg/netease-cloud-music.svg",
+      "keywords": [
+        "网易云音乐",
+        "网易云",
+        "黑胶VIP",
+        "黑胶会员"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "qq-music",
+      "name": "QQ Music",
+      "name_zh": "QQ音乐 (绿钻)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#FECE00",
+      "svg": "svg/qq-music.svg",
+      "keywords": [
+        "QQ音乐",
+        "豪华绿钻",
+        "绿钻"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "kugou-music",
+      "name": "Kugou Music",
+      "name_zh": "酷狗音乐",
+      "category": "media",
+      "region": "cn",
+      "hex": "#0085FF",
+      "svg": "svg/kugou-music.svg",
+      "keywords": [
+        "酷狗音乐",
+        "酷狗"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "ximalaya",
+      "name": "Ximalaya",
+      "name_zh": "喜马拉雅 (VIP)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#F86442",
+      "svg": "svg/ximalaya.svg",
+      "keywords": [
+        "喜马拉雅",
+        "喜马拉雅VIP"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "xiaoyuzhou",
+      "name": "Xiaoyuzhou",
+      "name_zh": "小宇宙播客",
+      "category": "media",
+      "region": "cn",
+      "hex": "#25B4B0",
+      "svg": "svg/xiaoyuzhou.svg",
+      "keywords": [
+        "小宇宙",
+        "小宇宙播客"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "weread",
+      "name": "WeRead",
+      "name_zh": "微信读书 (付费无限卡)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#1B88EE",
+      "svg": "svg/weread.svg",
+      "keywords": [
+        "微信读书",
+        "无限卡"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "douban",
+      "name": "Douban",
+      "name_zh": "豆瓣",
+      "category": "media",
+      "region": "cn",
+      "hex": "#007722",
+      "svg": "svg/douban.svg",
+      "keywords": [
+        "豆瓣",
+        "Douban"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "zhihu",
+      "name": "Zhihu",
+      "name_zh": "知乎 (盐选会员)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#0084FF",
+      "svg": "svg/zhihu.svg",
+      "keywords": [
+        "知乎",
+        "知乎盐选",
+        "盐选会员"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "fanqie",
+      "name": "Fanqie Novel",
+      "name_zh": "番茄小说",
+      "category": "media",
+      "region": "cn",
+      "hex": "#FF4F00",
+      "svg": "svg/fanqie.svg",
+      "keywords": [
+        "番茄小说",
+        "番茄畅听"
+      ],
+      "license": "Apache-2.0 (IconPark)"
+    },
+    {
+      "slug": "dedao",
+      "name": "Dedao",
+      "name_zh": "得到 (听书VIP)",
+      "category": "media",
+      "region": "cn",
+      "hex": "#FF6B00",
+      "svg": "svg/dedao.svg",
+      "keywords": [
+        "得到",
+        "得到听书"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "steam",
+      "name": "Steam",
+      "name_zh": "Steam",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#00ADEE",
+      "svg": "svg/steam.svg",
+      "keywords": [
+        "Steam"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "playstation",
+      "name": "PlayStation",
+      "name_zh": "PlayStation (PSN)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#003791",
+      "svg": "svg/playstation.svg",
+      "keywords": [
+        "PlayStation",
+        "PSN",
+        "PS5"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "playstation-plus",
+      "name": "PlayStation Plus",
+      "name_zh": "PlayStation Plus (PS+)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#FDC100",
+      "svg": "svg/playstation-plus.svg",
+      "keywords": [
+        "PS Plus",
+        "PS+",
+        "二档会员",
+        "三档会员"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "xbox",
+      "name": "Xbox",
+      "name_zh": "Xbox",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#107C10",
+      "svg": "svg/xbox.svg",
+      "keywords": [
+        "Xbox"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "xbox-game-pass",
+      "name": "Xbox Game Pass",
+      "name_zh": "Xbox Game Pass (XGP)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#107C10",
+      "svg": "svg/xbox-game-pass.svg",
+      "keywords": [
+        "XGP",
+        "PC Game Pass",
+        "Xbox Game Pass"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "nintendo-switch",
+      "name": "Nintendo Switch",
+      "name_zh": "Nintendo Switch Online",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#E60012",
+      "svg": "svg/nintendo-switch.svg",
+      "keywords": [
+        "Nintendo Switch",
+        "NSO",
+        "任天堂会员",
+        "Switch"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "epic-games",
+      "name": "Epic Games",
+      "name_zh": "Epic Games",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#313131",
+      "svg": "svg/epic-games.svg",
+      "keywords": [
+        "Epic Games",
+        "Epic"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "ea",
+      "name": "EA Play",
+      "name_zh": "EA Play",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#FF4747",
+      "svg": "svg/ea.svg",
+      "keywords": [
+        "EA",
+        "EA Play"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "ubisoft",
+      "name": "Ubisoft+",
+      "name_zh": "育碧 (Ubisoft+)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/ubisoft.svg",
+      "keywords": [
+        "育碧",
+        "Ubisoft",
+        "Ubisoft+"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "blizzard",
+      "name": "Blizzard Battle.net",
+      "name_zh": "暴雪战网 (魔兽世界月卡)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#009AE4",
+      "svg": "svg/blizzard.svg",
+      "keywords": [
+        "暴雪",
+        "战网",
+        "魔兽世界",
+        "月卡",
+        "Battle.net"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "riot-games",
+      "name": "Riot Games",
+      "name_zh": "拳头游戏 (Riot Games)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#D32936",
+      "svg": "svg/riot-games.svg",
+      "keywords": [
+        "拳头",
+        "英雄联盟",
+        "无畏契约",
+        "Riot Games"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "discord",
+      "name": "Discord",
+      "name_zh": "Discord (Nitro)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#5865F2",
+      "svg": "svg/discord.svg",
+      "keywords": [
+        "Discord",
+        "Discord Nitro",
+        "Nitro"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "telegram",
+      "name": "Telegram",
+      "name_zh": "Telegram Premium",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#26A5E4",
+      "svg": "svg/telegram.svg",
+      "keywords": [
+        "Telegram",
+        "Telegram Premium",
+        "TG会员"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "x",
+      "name": "X (Twitter)",
+      "name_zh": "X Premium (Twitter)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/x.svg",
+      "keywords": [
+        "X",
+        "Twitter",
+        "X Premium",
+        "推特"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "instagram",
+      "name": "Instagram",
+      "name_zh": "Instagram",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#E4405F",
+      "svg": "svg/instagram.svg",
+      "keywords": [
+        "Instagram",
+        "IG"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "whatsapp",
+      "name": "WhatsApp",
+      "name_zh": "WhatsApp",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#25D366",
+      "svg": "svg/whatsapp.svg",
+      "keywords": [
+        "WhatsApp"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "threads",
+      "name": "Threads",
+      "name_zh": "Threads",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/threads.svg",
+      "keywords": [
+        "Threads"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "meta",
+      "name": "Meta",
+      "name_zh": "Meta",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#0081FB",
+      "svg": "svg/meta.svg",
+      "keywords": [
+        "Meta",
+        "Facebook"
+      ],
+      "license": "MIT (LobeHub Icons)"
+    },
+    {
+      "slug": "linkedin",
+      "name": "LinkedIn",
+      "name_zh": "领英 (LinkedIn Premium)",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#0A66C2",
+      "svg": "svg/linkedin.svg",
+      "keywords": [
+        "LinkedIn",
+        "领英",
+        "LinkedIn Premium"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "reddit",
+      "name": "Reddit",
+      "name_zh": "Reddit",
+      "category": "gaming_social",
+      "region": "global",
+      "hex": "#FF4500",
+      "svg": "svg/reddit.svg",
+      "keywords": [
+        "Reddit"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "wechat",
+      "name": "WeChat",
+      "name_zh": "微信 (WeChat)",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#07C160",
+      "svg": "svg/wechat.svg",
+      "keywords": [
+        "微信",
+        "WeChat"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "wechat-mini-program",
+      "name": "WeChat Mini Program",
+      "name_zh": "微信小程序",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#07C160",
+      "svg": "svg/wechat-mini-program.svg",
+      "keywords": [
+        "小程序",
+        "微信小程序"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "qq",
+      "name": "Tencent QQ",
+      "name_zh": "腾讯 QQ (超级会员)",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#12B7F5",
+      "svg": "svg/qq.svg",
+      "keywords": [
+        "QQ",
+        "QQ会员",
+        "QQ超级会员",
+        "SVIP"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "xiaohongshu",
+      "name": "Xiaohongshu (RED)",
+      "name_zh": "小红书",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#FF2442",
+      "svg": "svg/xiaohongshu.svg",
+      "keywords": [
+        "小红书",
+        "RED",
+        "rednote"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "douyin",
+      "name": "Douyin / TikTok",
+      "name_zh": "抖音 (TikTok)",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#111111",
+      "svg": "svg/douyin.svg",
+      "keywords": [
+        "抖音",
+        "TikTok",
+        "抖音直播"
+      ],
+      "license": "Apache-2.0 (Dashboard Icons)"
+    },
+    {
+      "slug": "kuaishou",
+      "name": "Kuaishou",
+      "name_zh": "快手",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#FF4906",
+      "svg": "svg/kuaishou.svg",
+      "keywords": [
+        "快手",
+        "Kuaishou"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "weibo",
+      "name": "Sina Weibo",
+      "name_zh": "新浪微博 (会员)",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#E6162D",
+      "svg": "svg/weibo.svg",
+      "keywords": [
+        "微博",
+        "新浪微博",
+        "微博会员",
+        "Weibo"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "honor-of-kings",
+      "name": "Honor of Kings",
+      "name_zh": "王者荣耀",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#F5A623",
+      "svg": "svg/honor-of-kings.svg",
+      "keywords": [
+        "王者荣耀",
+        "战令"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "mihoyo",
+      "name": "miHoYo",
+      "name_zh": "米哈游 (miHoYo)",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#0087E0",
+      "svg": "svg/mihoyo.svg",
+      "keywords": [
+        "米哈游",
+        "miHoYo",
+        "崩坏星穹铁道",
+        "绝区零"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "genshin-impact",
+      "name": "Genshin Impact",
+      "name_zh": "原神 (空月祝福)",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#0087E0",
+      "svg": "svg/genshin-impact.svg",
+      "keywords": [
+        "原神",
+        "空月祝福",
+        "小月卡",
+        "珍珠纪行"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "taptap",
+      "name": "TapTap",
+      "name_zh": "TapTap",
+      "category": "gaming_social",
+      "region": "cn",
+      "hex": "#00CCCC",
+      "svg": "svg/taptap.svg",
+      "keywords": [
+        "TapTap"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "alipay",
+      "name": "Alipay",
+      "name_zh": "支付宝 (Alipay)",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#1677FF",
+      "svg": "svg/alipay.svg",
+      "keywords": [
+        "支付宝",
+        "花呗",
+        "借呗",
+        "余额宝",
+        "Alipay"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "wechat-pay",
+      "name": "WeChat Pay",
+      "name_zh": "微信支付",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#07C160",
+      "svg": "svg/wechat-pay.svg",
+      "keywords": [
+        "微信支付",
+        "零钱通",
+        "WeChat Pay"
+      ],
+      "license": "Apache-2.0 (Remix Icon)"
+    },
+    {
+      "slug": "unionpay",
+      "name": "UnionPay",
+      "name_zh": "中国银联 / 云闪付",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#00447C",
+      "svg": "svg/unionpay.svg",
+      "keywords": [
+        "银联",
+        "云闪付",
+        "UnionPay"
+      ],
+      "license": "CC0-1.0 (SVG Logos)"
+    },
+    {
+      "slug": "visa",
+      "name": "Visa",
+      "name_zh": "Visa",
+      "category": "finance",
+      "region": "global",
+      "hex": "#1A1F71",
+      "svg": "svg/visa.svg",
+      "keywords": [
+        "Visa"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "mastercard",
+      "name": "Mastercard",
+      "name_zh": "万事达 (Mastercard)",
+      "category": "finance",
+      "region": "global",
+      "hex": "#EB001B",
+      "svg": "svg/mastercard.svg",
+      "keywords": [
+        "Mastercard",
+        "万事达"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "american-express",
+      "name": "American Express",
+      "name_zh": "美国运通 (Amex)",
+      "category": "finance",
+      "region": "global",
+      "hex": "#006FCF",
+      "svg": "svg/american-express.svg",
+      "keywords": [
+        "American Express",
+        "运通",
+        "Amex"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "apple-pay",
+      "name": "Apple Pay",
+      "name_zh": "Apple Pay",
+      "category": "finance",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/apple-pay.svg",
+      "keywords": [
+        "Apple Pay"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "google-pay",
+      "name": "Google Pay",
+      "name_zh": "Google Pay",
+      "category": "finance",
+      "region": "global",
+      "hex": "#4285F4",
+      "svg": "svg/google-pay.svg",
+      "keywords": [
+        "Google Pay"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "cmbchina",
+      "name": "China Merchants Bank",
+      "name_zh": "招商银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#E50113",
+      "svg": "svg/cmbchina.svg",
+      "keywords": [
+        "招商银行",
+        "招行",
+        "掌上生活",
+        "CMB"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "icbc",
+      "name": "ICBC",
+      "name_zh": "中国工商银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#CF0106",
+      "svg": "svg/icbc.svg",
+      "keywords": [
+        "工商银行",
+        "工行",
+        "ICBC"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "ccb",
+      "name": "China Construction Bank",
+      "name_zh": "中国建设银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#06569F",
+      "svg": "svg/ccb.svg",
+      "keywords": [
+        "建设银行",
+        "建行",
+        "CCB"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "abchina",
+      "name": "Agricultural Bank of China",
+      "name_zh": "中国农业银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#009882",
+      "svg": "svg/abchina.svg",
+      "keywords": [
+        "农业银行",
+        "农行",
+        "ABC"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "boc",
+      "name": "Bank of China",
+      "name_zh": "中国银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#B81C22",
+      "svg": "svg/boc.svg",
+      "keywords": [
+        "中国银行",
+        "中行",
+        "BOC"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "bankcomm",
+      "name": "Bank of Communications",
+      "name_zh": "交通银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#00367A",
+      "svg": "svg/bankcomm.svg",
+      "keywords": [
+        "交通银行",
+        "交行",
+        "买单吧",
+        "BOCOM"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "psbc",
+      "name": "Postal Savings Bank of China",
+      "name_zh": "中国邮政储蓄银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#118A3F",
+      "svg": "svg/psbc.svg",
+      "keywords": [
+        "邮储银行",
+        "邮政银行",
+        "PSBC"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "citicbank",
+      "name": "China CITIC Bank",
+      "name_zh": "中信银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#D7000F",
+      "svg": "svg/citicbank.svg",
+      "keywords": [
+        "中信银行",
+        "动卡空间",
+        "CITIC"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "cebbank",
+      "name": "China Everbright Bank",
+      "name_zh": "中国光大银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#6B1785",
+      "svg": "svg/cebbank.svg",
+      "keywords": [
+        "光大银行",
+        "阳光惠生活",
+        "CEB"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "cmbc",
+      "name": "China Minsheng Bank",
+      "name_zh": "中国民生银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#006CA9",
+      "svg": "svg/cmbc.svg",
+      "keywords": [
+        "民生银行",
+        "CMBC"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "pingan",
+      "name": "Ping An Bank",
+      "name_zh": "平安银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#EC681B",
+      "svg": "svg/pingan.svg",
+      "keywords": [
+        "平安银行",
+        "平安口袋银行",
+        "平安保险",
+        "PingAn"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "spdb",
+      "name": "Shanghai Pudong Development Bank",
+      "name_zh": "浦发银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#012882",
+      "svg": "svg/spdb.svg",
+      "keywords": [
+        "浦发银行",
+        "浦大喜奔",
+        "SPDB"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "cib",
+      "name": "Industrial Bank",
+      "name_zh": "兴业银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#004785",
+      "svg": "svg/cib.svg",
+      "keywords": [
+        "兴业银行",
+        "好兴动",
+        "CIB"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "cgbchina",
+      "name": "China Guangfa Bank",
+      "name_zh": "广发银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#BD0016",
+      "svg": "svg/cgbchina.svg",
+      "keywords": [
+        "广发银行",
+        "发现精彩",
+        "CGB"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "hxb",
+      "name": "Hua Xia Bank",
+      "name_zh": "华夏银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#D80C18",
+      "svg": "svg/hxb.svg",
+      "keywords": [
+        "华夏银行",
+        "HXB"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "bankofbeijing",
+      "name": "Bank of Beijing",
+      "name_zh": "北京银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#E50012",
+      "svg": "svg/bankofbeijing.svg",
+      "keywords": [
+        "北京银行"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "bosc",
+      "name": "Bank of Shanghai",
+      "name_zh": "上海银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#0F469B",
+      "svg": "svg/bosc.svg",
+      "keywords": [
+        "上海银行"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "nbcb",
+      "name": "Bank of Ningbo",
+      "name_zh": "宁波银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#F2933B",
+      "svg": "svg/nbcb.svg",
+      "keywords": [
+        "宁波银行"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "jsbchina",
+      "name": "Bank of Jiangsu",
+      "name_zh": "江苏银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#005BAC",
+      "svg": "svg/jsbchina.svg",
+      "keywords": [
+        "江苏银行"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "czbank",
+      "name": "China Zheshang Bank",
+      "name_zh": "浙商银行",
+      "category": "finance",
+      "region": "cn",
+      "hex": "#E60012",
+      "svg": "svg/czbank.svg",
+      "keywords": [
+        "浙商银行"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "hsbc",
+      "name": "HSBC",
+      "name_zh": "汇丰银行 (HSBC)",
+      "category": "finance",
+      "region": "global",
+      "hex": "#DB0011",
+      "svg": "svg/hsbc.svg",
+      "keywords": [
+        "汇丰",
+        "汇丰银行",
+        "HSBC"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "citibank",
+      "name": "Citibank",
+      "name_zh": "花旗银行 (Citibank)",
+      "category": "finance",
+      "region": "global",
+      "hex": "#022E72",
+      "svg": "svg/citibank.svg",
+      "keywords": [
+        "花旗",
+        "花旗银行",
+        "Citi"
+      ],
+      "license": "MIT (Bank Logos)"
+    },
+    {
+      "slug": "bank-of-america",
+      "name": "Bank of America",
+      "name_zh": "美国银行 (BOA)",
+      "category": "finance",
+      "region": "global",
+      "hex": "#012169",
+      "svg": "svg/bank-of-america.svg",
+      "keywords": [
+        "美国银行",
+        "BOA",
+        "Bank of America"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "tradingview",
+      "name": "TradingView",
+      "name_zh": "TradingView",
+      "category": "finance",
+      "region": "global",
+      "hex": "#131722",
+      "svg": "svg/tradingview.svg",
+      "keywords": [
+        "TradingView"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "interactive-brokers",
+      "name": "Interactive Brokers",
+      "name_zh": "盈透证券 (IBKR)",
+      "category": "finance",
+      "region": "global",
+      "hex": "#D81222",
+      "svg": "svg/interactive-brokers.svg",
+      "keywords": [
+        "盈透",
+        "盈透证券",
+        "IBKR"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "china-mobile",
+      "name": "China Mobile",
+      "name_zh": "中国移动 (话费/宽带)",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#0085D0",
+      "svg": "svg/china-mobile.svg",
+      "keywords": [
+        "中国移动",
+        "移动话费",
+        "移动宽带",
+        "10086"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "china-unicom",
+      "name": "China Unicom",
+      "name_zh": "中国联通 (话费/宽带)",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#E60012",
+      "svg": "svg/china-unicom.svg",
+      "keywords": [
+        "中国联通",
+        "联通话费",
+        "联通宽带",
+        "10010"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "china-telecom",
+      "name": "China Telecom",
+      "name_zh": "中国电信 (话费/宽带)",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#005BAC",
+      "svg": "svg/china-telecom.svg",
+      "keywords": [
+        "中国电信",
+        "电信话费",
+        "电信宽带",
+        "天翼",
+        "10000"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "state-grid",
+      "name": "State Grid",
+      "name_zh": "国家电网 (网上国网/电费)",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#006F6B",
+      "svg": "svg/state-grid.svg",
+      "keywords": [
+        "国家电网",
+        "网上国网",
+        "电费",
+        "充电桩"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "china-railway",
+      "name": "China Railway 12306",
+      "name_zh": "铁路 12306",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#DA251D",
+      "svg": "svg/china-railway.svg",
+      "keywords": [
+        "12306",
+        "中国铁路",
+        "高铁"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "didi",
+      "name": "DiDi",
+      "name_zh": "滴滴出行",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#FF7E00",
+      "svg": "svg/didi.svg",
+      "keywords": [
+        "滴滴",
+        "滴滴出行",
+        "滴滴青桔"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "amap",
+      "name": "Amap (Gaode)",
+      "name_zh": "高德地图 (高德打车)",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#0091FF",
+      "svg": "svg/amap.svg",
+      "keywords": [
+        "高德",
+        "高德地图",
+        "高德打车"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "sf-express",
+      "name": "SF Express",
+      "name_zh": "顺丰速运",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#1E1E1E",
+      "svg": "svg/sf-express.svg",
+      "keywords": [
+        "顺丰",
+        "顺丰速运",
+        "SF"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "cainiao",
+      "name": "Cainiao",
+      "name_zh": "菜鸟裹裹",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#0052D9",
+      "svg": "svg/cainiao.svg",
+      "keywords": [
+        "菜鸟",
+        "菜鸟裹裹"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "uber",
+      "name": "Uber",
+      "name_zh": "Uber (Uber One)",
+      "category": "utilities_mobility",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/uber.svg",
+      "keywords": [
+        "Uber",
+        "Uber One",
+        "Uber Eats"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "airbnb",
+      "name": "Airbnb",
+      "name_zh": "爱彼迎 (Airbnb)",
+      "category": "utilities_mobility",
+      "region": "global",
+      "hex": "#FF5A5F",
+      "svg": "svg/airbnb.svg",
+      "keywords": [
+        "Airbnb",
+        "爱彼迎"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "booking",
+      "name": "Booking.com",
+      "name_zh": "缤客 (Booking.com)",
+      "category": "utilities_mobility",
+      "region": "global",
+      "hex": "#003580",
+      "svg": "svg/booking.svg",
+      "keywords": [
+        "Booking",
+        "Booking.com",
+        "缤客"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "air-china",
+      "name": "Air China",
+      "name_zh": "中国国际航空",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#E60012",
+      "svg": "svg/air-china.svg",
+      "keywords": [
+        "国航",
+        "中国国航",
+        "Air China"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "china-eastern",
+      "name": "China Eastern Airlines",
+      "name_zh": "中国东方航空",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#002B69",
+      "svg": "svg/china-eastern.svg",
+      "keywords": [
+        "东航",
+        "东方航空"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "china-southern",
+      "name": "China Southern Airlines",
+      "name_zh": "中国南方航空",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#008ACB",
+      "svg": "svg/china-southern.svg",
+      "keywords": [
+        "南航",
+        "南方航空"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "dongchedi",
+      "name": "Dongchedi",
+      "name_zh": "懂车帝",
+      "category": "utilities_mobility",
+      "region": "cn",
+      "hex": "#FFE100",
+      "svg": "svg/dongchedi.svg",
+      "keywords": [
+        "懂车帝"
+      ],
+      "license": "Apache-2.0 (IconPark)"
+    },
+    {
+      "slug": "starbucks",
+      "name": "Starbucks",
+      "name_zh": "星巴克 (Starbucks)",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#006241",
+      "svg": "svg/starbucks.svg",
+      "keywords": [
+        "星巴克",
+        "Starbucks",
+        "星享卡"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "luckin-coffee",
+      "name": "Luckin Coffee",
+      "name_zh": "瑞幸咖啡 (Luckin)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#0022AB",
+      "svg": "svg/luckin-coffee.svg",
+      "keywords": [
+        "瑞幸",
+        "瑞幸咖啡",
+        "Luckin"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "heytea",
+      "name": "HEYTEA",
+      "name_zh": "喜茶 (HEYTEA)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#1A1A1A",
+      "svg": "svg/heytea.svg",
+      "keywords": [
+        "喜茶",
+        "HEYTEA"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "mcdonalds",
+      "name": "McDonald's",
+      "name_zh": "麦当劳 (OH麦卡)",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#FFBC0D",
+      "svg": "svg/mcdonalds.svg",
+      "keywords": [
+        "麦当劳",
+        "金拱门",
+        "OH麦卡"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "kfc",
+      "name": "KFC",
+      "name_zh": "肯德基 (大神卡)",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#F40027",
+      "svg": "svg/kfc.svg",
+      "keywords": [
+        "肯德基",
+        "KFC",
+        "大神卡"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "pizza-hut",
+      "name": "Pizza Hut",
+      "name_zh": "必胜客",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#EE3A43",
+      "svg": "svg/pizza-hut.svg",
+      "keywords": [
+        "必胜客",
+        "Pizza Hut"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "burger-king",
+      "name": "Burger King",
+      "name_zh": "汉堡王",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#D62300",
+      "svg": "svg/burger-king.svg",
+      "keywords": [
+        "汉堡王",
+        "Burger King"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "huawei",
+      "name": "Huawei",
+      "name_zh": "华为 (华为云空间)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#CF0A2C",
+      "svg": "svg/huawei.svg",
+      "keywords": [
+        "华为",
+        "Huawei",
+        "华为云空间",
+        "鸿蒙"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "xiaomi",
+      "name": "Xiaomi",
+      "name_zh": "小米 (小米云服务)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#FF6900",
+      "svg": "svg/xiaomi.svg",
+      "keywords": [
+        "小米",
+        "米家",
+        "小米云服务",
+        "Xiaomi"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "oppo",
+      "name": "OPPO",
+      "name_zh": "OPPO (欢太云)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#008A5E",
+      "svg": "svg/oppo.svg",
+      "keywords": [
+        "OPPO",
+        "欢太"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "vivo",
+      "name": "vivo",
+      "name_zh": "vivo",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#415FFF",
+      "svg": "svg/vivo.svg",
+      "keywords": [
+        "vivo"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "oneplus",
+      "name": "OnePlus",
+      "name_zh": "一加 (OnePlus)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#F5010C",
+      "svg": "svg/oneplus.svg",
+      "keywords": [
+        "一加",
+        "OnePlus"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "honor",
+      "name": "HONOR",
+      "name_zh": "荣耀 (HONOR)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#000000",
+      "svg": "svg/honor.svg",
+      "keywords": [
+        "荣耀",
+        "HONOR"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "dji",
+      "name": "DJI",
+      "name_zh": "大疆 (DJI Care)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#111111",
+      "svg": "svg/dji.svg",
+      "keywords": [
+        "大疆",
+        "DJI",
+        "DJI Care"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "lenovo",
+      "name": "Lenovo",
+      "name_zh": "联想 (Lenovo)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#E2231A",
+      "svg": "svg/lenovo.svg",
+      "keywords": [
+        "联想",
+        "Lenovo"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "sony",
+      "name": "Sony",
+      "name_zh": "索尼 (Sony)",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/sony.svg",
+      "keywords": [
+        "索尼",
+        "Sony"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "nikon",
+      "name": "Nikon",
+      "name_zh": "尼康 (Nikon)",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#F6D300",
+      "svg": "svg/nikon.svg",
+      "keywords": [
+        "尼康",
+        "Nikon"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "byd",
+      "name": "BYD",
+      "name_zh": "比亚迪 (BYD)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#C9151E",
+      "svg": "svg/byd.svg",
+      "keywords": [
+        "比亚迪",
+        "BYD"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "nio",
+      "name": "NIO",
+      "name_zh": "蔚来 (BaaS电池租用)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#00B5E2",
+      "svg": "svg/nio.svg",
+      "keywords": [
+        "蔚来",
+        "NIO",
+        "BaaS"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "xpeng",
+      "name": "XPeng",
+      "name_zh": "小鹏汽车",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#00A0E9",
+      "svg": "svg/xpeng.svg",
+      "keywords": [
+        "小鹏",
+        "小鹏汽车",
+        "XPeng"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "li-auto",
+      "name": "Li Auto",
+      "name_zh": "理想汽车",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#00665E",
+      "svg": "svg/li-auto.svg",
+      "keywords": [
+        "理想",
+        "理想汽车",
+        "Li Auto"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "tesla",
+      "name": "Tesla",
+      "name_zh": "特斯拉 (高级车载娱乐)",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#CC0000",
+      "svg": "svg/tesla.svg",
+      "keywords": [
+        "特斯拉",
+        "Tesla",
+        "超充"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "keep",
+      "name": "Keep",
+      "name_zh": "Keep (会员)",
+      "category": "lifestyle",
+      "region": "cn",
+      "hex": "#24C789",
+      "svg": "svg/keep.svg",
+      "keywords": [
+        "Keep",
+        "Keep会员"
+      ],
+      "license": "MIT (Yubai Brand Icon Library)"
+    },
+    {
+      "slug": "strava",
+      "name": "Strava",
+      "name_zh": "Strava",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#FC4C02",
+      "svg": "svg/strava.svg",
+      "keywords": [
+        "Strava"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "nike",
+      "name": "Nike",
+      "name_zh": "耐克 (Nike)",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/nike.svg",
+      "keywords": [
+        "耐克",
+        "Nike"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    {
+      "slug": "adidas",
+      "name": "Adidas",
+      "name_zh": "阿迪达斯 (Adidas)",
+      "category": "lifestyle",
+      "region": "global",
+      "hex": "#111111",
+      "svg": "svg/adidas.svg",
+      "keywords": [
+        "阿迪达斯",
+        "Adidas"
+      ],
+      "license": "CC0-1.0 (Simple Icons)"
+    }
+  ]
+}
