@@ -55,11 +55,14 @@ extension Reserve {
         guard (0...Money.limit).contains(amount) else {
             return TransferPreview(savedBefore: saved, savedAfter: saved, availableBefore: funds.available, availableAfter: funds.available, valid: false)
         }
-        let delta = direction == .take ? -amount : amount
-        return TransferPreview(savedBefore: saved, savedAfter: saved + delta,
-                               availableBefore: funds.available, availableAfter: funds.available - delta,
-                               valid: amount > 0 && amount <= Money.limit && amount <= maximum &&
-                                   (direction == .take || saved + amount <= Money.limit))
+        let valid = amount > 0 && amount <= maximum && (direction == .take || saved + amount <= Money.limit)
+        guard valid else { return TransferPreview(savedBefore: saved, savedAfter: saved, availableBefore: funds.available, availableAfter: funds.available, valid: false) }
+        var projected = ledger
+        projected.savingsTransfers.append(SavingsTransfer(id: UUID(), date: now, cycleStart: funds.cycleStart, direction: direction, amount: amount,
+            fromSetAside: direction == .take ? max(0, amount - max(0, funds.fixedSavingsTotal)) : 0))
+        let after = Finance.funds(projected, now: now)
+        return TransferPreview(savedBefore: saved, savedAfter: after.fixedSavingsTotal + after.savingTarget,
+                               availableBefore: funds.available, availableAfter: after.available, valid: true)
     }
 
     @discardableResult public static func transfer(_ direction: SavingsTransfer.Direction, amount: Int64, in ledger: inout Ledger, now: Date) throws -> SavingsTransfer {

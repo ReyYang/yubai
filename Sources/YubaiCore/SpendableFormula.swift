@@ -1,51 +1,5 @@
 import Foundation
 
-public struct SpendableFormula: Equatable, Sendable {
-    public var cycleStart: Date; public var cycleEnd: Date; public var hand: Int64; public var handAccounts: [String]
-    public var creditDebt: Int64; public var goals: Int64; public var uncertainInflow: Int64; public var fixedSavings: Int64
-    public var saving: Int64; public var savingRuleTarget: Int64; public var billsRest: Int64; public var billCount: Int; public var billsPaid: Int
-    public var yearlySetAside: Int64 = 0
-    public var bills: [FixedFlowOccurrence]; public var available: Int64; public var incoming: [Occurrence]
-}
-extension Finance {
-    public static func formula(_ ledger: Ledger, now: Date) -> SpendableFormula {
-        let funds = funds(ledger, now: now)
-        let interval = DateInterval(start: funds.cycleStart, end: Dates.addDays(1, to: funds.cycleEnd))
-        var bills: [FixedFlowOccurrence] = []
-        var cursor = Dates.calendar.dateInterval(of: .month, for: interval.start)!.start
-        while cursor < interval.end {
-            bills += FixedFlows.month(containing: cursor, in: ledger, asOf: now).occurrences.filter {
-                !$0.inflow && $0.date >= interval.start && $0.date < interval.end
-            }.map { row in
-                var row = row
-                if row.state != .paid { row.state = Dates.day(row.date) <= Dates.day(now) ? .due : .upcoming }
-                return row
-            }
-            cursor = Dates.addMonths(1, to: cursor)
-        }
-        // A stopped arrangement can retain a due obligation. Month presentation
-        // hides it, but the spendable formula must still expose its deduction.
-        let shown = Set(bills.map(\.id))
-        for occurrence in occurrences(in: ledger, now: now, days: max(0, funds.horizonDays + 1)) where !occurrence.inflow && !shown.contains(occurrence.id) && Dates.day(occurrence.date) <= funds.cycleEnd {
-            guard occurrence.planID.flatMap({ id in ledger.plans.first { $0.id == id } })?.nature != .repayment else { continue }
-            bills.append(FixedFlowOccurrence(id: occurrence.id, title: occurrence.title, date: occurrence.date,
-                                             state: Dates.day(occurrence.date) <= Dates.day(now) ? .due : .upcoming,
-                                             amount: occurrence.amount, planID: occurrence.planID, rentID: occurrence.rentID, inflow: false,
-                                             autoPay: false, installment: nil, estimated: false))
-        }
-        bills.sort {
-            if ($0.state == .paid) != ($1.state == .paid) { return $0.state != .paid }
-            return $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date
-        }
-        return SpendableFormula(cycleStart: funds.cycleStart, cycleEnd: funds.cycleEnd, hand: funds.cash,
-                                handAccounts: ledger.accounts.filter { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }.map(\.name),
-                                creditDebt: funds.debt, goals: funds.goals, uncertainInflow: funds.uncertainInflow, fixedSavings: funds.emergency,
-                                saving: funds.savingTarget, savingRuleTarget: funds.savingRuleTarget, billsRest: funds.committed,
-                                billCount: bills.count, billsPaid: bills.filter { $0.state == .paid }.count, yearlySetAside: funds.yearlySetAside, bills: bills, available: funds.available,
-                                incoming: occurrences(in: ledger, now: now, days: max(0, funds.horizonDays + 1)).filter { $0.inflow && Dates.day($0.date) <= funds.cycleEnd })
-    }
-}
-
 public struct CycleComparison: Equatable, Sendable {
     public var spent: Int64; public var previousSameDay: Int64; public var changes: [(category: String, delta: Int64)]
     public static func == (lhs: Self, rhs: Self) -> Bool {

@@ -85,13 +85,13 @@ final class Round46SavingInsightsTests: XCTestCase {
         var ledger = ledger(); ledger.savingRule = .fixed(200_000)
         let wish = WishItem(title: "相机", amount: 860_000)
         let value = SavingInsights.funding(for: wish, ledger: ledger, now: now)
-        XCTAssertEqual(value.shortfall, 360_000); XCTAssertEqual(value.enoughOn, date("2027-01-01"))
-        XCTAssertEqual(value.monthly, 200_000); XCTAssertEqual(value.progress, 500_000.0 / 860_000.0, accuracy: 0.00001)
+        XCTAssertEqual(value.shortfall, 560_000); XCTAssertEqual(value.enoughOn, date("2027-02-01"))
+        XCTAssertEqual(value.monthly, 200_000); XCTAssertEqual(value.progress, 300_000.0 / 860_000.0, accuracy: 0.00001)
     }
     func testAffordableWishReportsRemainderWithoutAnotherSavingDate() {
         var ledger = ledger(); ledger.savingRule = .fixed(200_000)
         let value = SavingInsights.funding(for: WishItem(title: "耳机", amount: 189_900), ledger: ledger, now: now)
-        XCTAssertEqual(value.shortfall, 0); XCTAssertEqual(value.remainingAfterPurchase, 310_100)
+        XCTAssertEqual(value.shortfall, 0); XCTAssertEqual(value.remainingAfterPurchase, 110_100)
         XCTAssertNil(value.enoughOn); XCTAssertEqual(value.progress, 1)
     }
     func testIrregularShareIncomeHasNoInventedFundingDate() {
@@ -113,7 +113,7 @@ final class Round46SavingInsightsTests: XCTestCase {
     func testHugeWishAmountCapsOnlyProgressAndDoesNotOverflowDate() {
         var ledger = ledger(); ledger.savingRule = .fixed(1)
         let value = SavingInsights.funding(for: WishItem(title: "大件", amount: Money.limit), ledger: ledger, now: now)
-        XCTAssertEqual(value.shortfall, Money.limit - 300_001); XCTAssertNil(value.enoughOn)
+        XCTAssertEqual(value.shortfall, Money.limit - 300_000); XCTAssertNil(value.enoughOn)
         XCTAssertGreaterThanOrEqual(value.progress, 0); XCTAssertLessThanOrEqual(value.progress, 1)
     }
     func testWishSavingsOnlyCountsExplicitDatedDroppedWishes() {
@@ -165,7 +165,7 @@ final class Round46SavingInsightsTests: XCTestCase {
         var refund = entry(ledger, 20_000, "2026-11-11", category: "购物", nature: .refund); refund.relatedEntryID = purchase.id
         ledger.entries = [purchase, refund]
         ledger.reserveAdjustments = [ReserveAdjustment(date: date("2026-10-31"), delta: 999_999), ReserveAdjustment(date: date("2026-11-05"), delta: 1000)]
-        XCTAssertEqual(SavingInsights.monthlyIncrease(ledger, now: now), 101_000)
+        XCTAssertEqual(SavingInsights.monthlyIncrease(ledger, now: now), -99_000)
     }
     func testConsideredPurchaseKeepsOneWishAndTheOriginalWaitingDate() throws {
         var ledger = ledger(); ledger.profile.principles = ["超过 2,000 等 48 小时"]

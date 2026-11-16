@@ -71,7 +71,7 @@ public struct ButlerDigest: Codable, Equatable, Sendable {
         let priorMerchants = Set(ledger.activeEntries.filter {
             $0.date < start && ($0.nature == .expense || $0.nature == .refund)
         }.map(merchant))
-        let funds = Finance.funds(ledger, now: now), leftover = Savings.pendingLeftover(in: ledger)
+        let funds = Finance.funds(ledger, now: now), leftover = Savings.carryNotice(in: ledger, now: now)
         let payments = FixedFlowPayments(in: ledger, now: now)
         return Self(start: start, end: now, categories: groups(category), weekdays: groups(allKeys: (1...7).map(String.init), weekday), merchants: groups(merchant),
             candidates: groups(includeIDs: true) { category($0) + "|" + weekday($0) + "|" + merchant($0) }.filter { !$0.entryIDs.isEmpty },
@@ -81,7 +81,7 @@ public struct ButlerDigest: Codable, Equatable, Sendable {
             wishes: ledger.wishlist.filter { $0.status == .thinking }.sorted { $0.id.uuidString < $1.id.uuidString }
                 .map { Wish(id: $0.id, title: $0.title, amountCents: $0.amount) },
             saving: Saving(savedCents: Reserve.overview(ledger, now: now).total, targetCents: funds.savingTarget,
-                leftoverCycle: leftover.map { Dates.text($0.cycleStart) }, leftoverCents: leftover?.unspent ?? 0),
+                leftoverCycle: leftover.map { Dates.text($0.cycleStart) }, leftoverCents: leftover?.leftover ?? 0),
             profile: ledger.profile,
             memories: ledger.memories.sorted { $0.id.uuidString < $1.id.uuidString }, mutedTopics: ledger.mutedTopics.sorted())
     }

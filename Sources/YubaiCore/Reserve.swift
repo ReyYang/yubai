@@ -32,26 +32,24 @@ extension Ledger {
 public enum Overspend {
     public struct Options: Equatable, Sendable {
         public var overBy: Int64; public var daysLeft: Int; public var level: Int64; public var cushion: Int64
-        public var maxSaveLess: Int64; public var maxFromReserve: Int64
+        public var maxSaveLess: Int64; public var maxFromReserve: Int64; public var cycleStart: Date = .distantPast
     }
     public struct Preview: Equatable, Sendable {
-        public var before: Int64; public var after: Int64; public var availableAfter: Int64; public var dailyAfter: Int64?
+        public var before: Int64; public var after: Int64; public var availableAfter: Int64
     }
     public static func options(_ ledger: Ledger, now: Date) -> Options? {
         let funds = Finance.funds(ledger, now: now)
-        guard funds.available < 0 else { return nil }
-        let pace = Finance.pace(ledger, now: now)
-        let days = max(1, funds.horizonDays + 1), over = -funds.available
-        return Options(overBy: over, daysLeft: days, level: over, cushion: over + Int64(days) * (pace?.baseDaily ?? 0),
-                       maxSaveLess: funds.savingTarget, maxFromReserve: max(0, ledger.fixedSavingsTotal(now: now)))
+        guard funds.spendable.offersFormula, funds.spendable.deficit > 0 else { return nil }
+        let days = max(1, funds.horizonDays + 1), over = funds.spendable.deficit
+        return Options(overBy: over, daysLeft: days, level: over, cushion: over,
+                       maxSaveLess: 0, maxFromReserve: max(0, funds.fixedSavingsTotal + funds.savingTarget), cycleStart: funds.cycleStart)
     }
     public static func preview(_ ledger: Ledger, source: CycleCover.Source, amount: Int64, now: Date) -> Preview {
         let funds = Finance.funds(ledger, now: now)
         let before = source == .saveLess ? funds.savingTarget : ledger.fixedSavingsTotal(now: now)
         var projected = ledger
         projected.cycleCovers.append(CycleCover(cycleStart: funds.cycleStart, date: now, source: source, amount: amount))
-        return Preview(before: before, after: before - amount, availableAfter: Finance.funds(projected, now: now).available,
-                       dailyAfter: Finance.pace(projected, now: now)?.daily)
+        return Preview(before: before, after: before - amount, availableAfter: Finance.funds(projected, now: now).available)
     }
     public static func cover(_ ledger: inout Ledger, source: CycleCover.Source, amount: Int64, now: Date) throws {
         let funds = Finance.funds(ledger, now: now)
@@ -65,19 +63,21 @@ public enum Overspend {
     }
 }
 public struct BigPurchase: Equatable, Sendable {
-    public var days: Int; public var availableAfter: Int64; public var dailyAfter: Int64?; public var tight: Bool
+    public var days: Int; public var availableAfter: Int64; public var tight: Bool
     public var reserveBefore: Int64; public var reserveAfter: Int64; public var canUseReserve: Bool
 }
 extension Finance {
     public static func bigPurchase(_ ledger: Ledger, amount: Int64, now: Date) -> BigPurchase? {
-        let pace = pace(ledger, now: now)
-        let ref = (pace?.baseDaily ?? 0) > 0 ? pace!.baseDaily : estimatedDailyLiving(ledger, now: now)
+        let value = spendableBreakdown(ledger, now: now)
+        let periodReference = value.offersFormula ? max(0, value.budget) / Int64(value.daysTotal) : 0
+        let ref = periodReference > 0 ? periodReference : estimatedDailyLiving(ledger, now: now)
         guard ref > 0, amount > 7 * ref else { return nil }
-        let after = funds(ledger, now: now).available - amount, daily = pace?.dailyAfterSpending(amount)
-        let reserve = ledger.fixedSavingsTotal(now: now)
-        return BigPurchase(days: Int((Double(amount) / Double(ref)).rounded()), availableAfter: after, dailyAfter: daily,
-                           tight: after < 0 || (daily ?? 0) < ref / 2, reserveBefore: reserve,
-                           reserveAfter: reserve - amount, canUseReserve: amount <= reserve)
+        let after = value.rawR - amount, reserve = ledger.fixedSavingsTotal(now: now)
+        let fillAfter = value.budget > 0 ? Double(value.spent + amount) / Double(value.budget) : 1
+        return BigPurchase(days: Int((Double(amount) / Double(ref)).rounded()), availableAfter: max(0, after),
+                           tight: after < 0 || fillAfter - (value.waterBar?.tick ?? 0) > 0.15,
+                           reserveBefore: reserve, reserveAfter: reserve - amount, canUseReserve: amount <= reserve)
+
     }
 }
 public struct ReserveLine: Equatable, Sendable, Identifiable {
@@ -151,6 +151,9 @@ public enum Reserve {
         for transfer in ledger.savingsTransfers where transfer.date <= now {
             lines.append(ReserveLine(id: "transfer:" + transfer.id.uuidString, date: transfer.date, title: "",
                                      amount: transfer.direction == .take ? -transfer.amount : transfer.amount, kind: .transfer(transfer.id, transfer.direction)))
+        }
+        for carry in ledger.carryReleases where carry.date <= now {
+            lines.append(ReserveLine(id: "carry:" + carry.id.uuidString, date: carry.date, title: "上期留下", amount: -carry.amount, kind: .leftover))
         }
         for adjustment in ledger.reserveAdjustments where adjustment.date <= now {
             lines.append(ReserveLine(id: "adjust:" + adjustment.id.uuidString, date: adjustment.date, title: "", amount: adjustment.delta, kind: .adjust))

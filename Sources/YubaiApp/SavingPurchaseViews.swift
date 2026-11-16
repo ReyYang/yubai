@@ -91,9 +91,9 @@ struct SavingPurchaseCard: View {
     private var conclusion: PurchaseVerdict { verdict?.verdict ?? assessment.verdict }
     private var reason: String { verdict?.reason ?? assessment.reason }
     private var available: Int64 { store.funds.available }
-    private var availableAfter: Int64 { available - purchase.amount }
+    private var availableAfter: Int64 { max(0, store.formula.rawR - purchase.amount) }
     private var reserve: Int64 { max(0, store.current.fixedSavingsTotal()) }
-    private var monthEnough: Bool { availableAfter >= 0 }
+    private var monthEnough: Bool { store.formula.rawR >= purchase.amount }
     private var reserveEnough: Bool { purchase.amount <= reserve }
     private var headline: String {
         if hidden { return "金额已隐藏" }
@@ -101,8 +101,7 @@ struct SavingPurchaseCard: View {
         return reserveEnough ? "这个月的钱不够，存着的钱够。" : "这个月的钱不够，存着的钱也不够。"
     }
     private var equivalentDays: Int? {
-        let base = store.pace?.baseDaily ?? 0
-        let ref = base > 0 ? base : Finance.estimatedDailyLiving(store.current, now: Dates.now)
+        let ref = Finance.estimatedDailyLiving(store.current, now: Dates.now)
         guard ref > 0 else { return nil }
         return max(1, Int((Double(purchase.amount) / Double(ref)).rounded()))
     }

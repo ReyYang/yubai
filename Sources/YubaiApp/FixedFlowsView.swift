@@ -121,7 +121,7 @@ enum FixedFlowCheck {
     static func reserved(planID: UUID, occurrence: Date, store: AppStore) -> Int64? {
         let day = Dates.day(occurrence)
         if let amount = store.formula.bills.first(where: { $0.planID == planID && Dates.day($0.date) == day && $0.state != .paid })?.amount { return amount }
-        return YearlyBillReserves.rows(in: store.current, now: store.financialNow).first { $0.id == planID && Dates.day($0.due) == day }?.reserved ?? 0
+        return 0
     }
 }
 

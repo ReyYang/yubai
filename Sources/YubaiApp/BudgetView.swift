@@ -20,7 +20,7 @@ struct BudgetView: View {
     @State private var manual = false
     @State private var openedCategory = false
     @State private var addedPart: SpendingPart?
-    private var budget: Int64 { store.pace?.budget ?? store.funds.available }
+    private var budget: Int64 { store.formula.budget }
 
     var body: some View {
         let parts = store.current.spendingParts

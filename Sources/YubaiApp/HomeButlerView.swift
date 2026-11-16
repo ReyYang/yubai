@@ -43,6 +43,8 @@ struct HomeTaskCard: View {
     }
     @ViewBuilder private var content: some View {
         switch item {
+        case .balanceMismatch(let value): mismatchCard(value)
+        case .billHeadsUp(let value): headsUpCard(value)
         case .payday(let due): PaydayCard(due: due, more: more)
         case .bill(let bill): BillDueCard(bill: bill, more: more)
         case .gap(let gap): GapCard(gap: gap, more: more)
@@ -55,10 +57,35 @@ struct HomeTaskCard: View {
         case .restraint(let restraint): restraintCard(restraint)
         case .salary(let candidate): salaryCard(candidate)
         case .imports(let pending): importsCard(pending)
-        case .butler(let card): confirmationCard(card)
+        case .butler(let card):
+            if card.kind == .weeklyLetter { weeklyCard(card) }
+            else { confirmationCard(card) }
         case .suggestion(let suggestion): ButlerSuggestionCard(suggestion: suggestion, more: more)
         case .suggestionReview(let review): ButlerSuggestionReviewCard(review: review, more: more)
         }
+    }
+    private func mismatchCard(_ value: Reconciliation.Mismatch) -> some View {
+        let copy = HomeTaskCopy.make(.balanceMismatch(value), now: store.financialNow, hidden: hide)!
+        return QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more,
+                            yesTitle: "对一下余额", noTitle: "", yesIdentifier: "openReconcile",
+                            yes: { store.sheet = .reconcileAll }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissBalanceMismatch")
+            .accessibilityIdentifier("balanceMismatchCard")
+    }
+    private func headsUpCard(_ value: Occurrence) -> some View {
+        let copy = HomeTaskCopy.make(.billHeadsUp(value), now: store.financialNow, hidden: hide)!
+        return QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more,
+                            yesTitle: "看这张账单", noTitle: "", yesIdentifier: "openBillHeadsUp", yes: {
+            store.answerHome(item)
+            if let id = value.planID { store.tabRouteRequest = .billDetail(id) }
+            else { store.tabRouteRequest = .billDate(value.date) }
+        }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissBillHeadsUp").accessibilityIdentifier("billHeadsUpCard")
+    }
+    private func weeklyCard(_ card: ButlerCard) -> some View {
+        QuestionCard(eyebrow: NowFormat.monthDay(card.createdAt), title: HomeButler.privacyText(card.title, hidden: hide), more: more,
+                     yesTitle: "周回顾", noTitle: "", yesIdentifier: "openWeeklyCard", yes: {
+            store.answerHome(item); store.tabRouteRequest = .weekly(card.id)
+        }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissWeeklyCard")
+            .accessibilityIdentifier("weeklyHomeCard")
     }
     @ViewBuilder private func renewalCard(_ renewal: HomeRenewal) -> some View {
         if let copy = HomeTaskCopy.make(.renewal(renewal), now: store.financialNow, hidden: hide) {

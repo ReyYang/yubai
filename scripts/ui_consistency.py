@@ -38,6 +38,7 @@ def violations(name, source):
             found.append(f'{name}:{line}: {reason}')
     for old in OLD_NAMES:
         reject(re.escape(old), 'obsolete interface name', comments)
+    reject(r'(?:日均|年付每月先留)', 'removed period allowance or annual reserve copy', comments)
     reject(r'CashTimeline|PaceChart|LineMark|AreaMark|AnswerChart|ShowChartTool|show_chart|import\s+Charts', 'deleted line-chart code')
     reject(r'\b(?:ContentViewportTarget|ViewportButtonStyle|yubaiContentViewport)\b|\.contentViewportTarget\s*\(',
            'removed per-control viewport gate: bound the scroll view in layout')

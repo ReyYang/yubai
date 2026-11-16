@@ -108,7 +108,7 @@ final class Round47IntegrationTests: XCTestCase {
             XCTAssertEqual(digest.saving.savedCents, HomeSavingCard.make(ledger, now: now).total)
             XCTAssertEqual(digest.saving.savedCents, Reserve.overview(ledger, now: now).total)
             XCTAssertEqual(digest.saving.targetCents, Finance.funds(ledger, now: now).savingTarget)
-            XCTAssertEqual(Finance.spendingDerivation(ledger, now: now).exerciseResult, Finance.funds(ledger, now: now).available)
+            XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now).available, Finance.funds(ledger, now: now).available)
         }
     }
 
@@ -137,7 +137,7 @@ final class Round47IntegrationTests: XCTestCase {
         XCTAssertEqual(ledger.savingsTopupDecisions, before.savingsTopupDecisions)
         XCTAssertEqual(ledger.salarySetupDeferral, before.salarySetupDeferral)
         XCTAssertEqual(ledger.profile.floorAmount, before.profile.floorAmount)
-        XCTAssertEqual(ledger.spendingParts.first { $0.categories == ["餐饮"] }?.amount, 50_000)
+        XCTAssertEqual(ledger.profile.restrain.first { $0.match.categories == ["餐饮"] }?.softLimit?.perPeriodAmount, 50_000)
         XCTAssertNil(Reserve.topupOffer(ledger, now: now))
         XCTAssertEqual(try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(ledger)), ledger)
     }

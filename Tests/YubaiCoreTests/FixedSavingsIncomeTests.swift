@@ -23,7 +23,7 @@ final class FixedSavingsIncomeTests: XCTestCase {
         return change
     }
     private func assertIdentity(_ funds: Funds, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertEqual(funds.liquidStart + funds.cycleIncome - funds.savingTarget - funds.cycleSpent - funds.dueRest,
+        XCTAssertEqual(funds.spendable.rawR,
                        funds.available, file: file, line: line)
     }
     private func withoutKeys<T: Codable>(_ value: T, _ keys: [String]) throws -> T {
@@ -90,7 +90,7 @@ final class FixedSavingsIncomeTests: XCTestCase {
         XCTAssertEqual(after.available, before.available)
         XCTAssertEqual(after.cycleIncome, before.cycleIncome)
         XCTAssertEqual(after.savingTarget, before.savingTarget)
-        XCTAssertEqual(after.liquidStart, before.liquidStart)
+        XCTAssertEqual(after.spendable.rows, before.spendable.rows)
         XCTAssertEqual(after.fixedSavingsTotal, before.fixedSavingsTotal + 500_000)
         XCTAssertEqual(ledger.fixedSavings, 100_000)
         assertIdentity(after)

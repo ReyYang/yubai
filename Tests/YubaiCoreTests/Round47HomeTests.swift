@@ -23,7 +23,7 @@ final class Round47HomeTests: XCTestCase {
     }
     func testFirstEntryShowsCalendarMonthSpendingEvenWithNegativeAvailable() {
         var value = ledger(); value.accounts[0].anchorBalance = 0; value.entries = [row(value)]
-        XCTAssertLessThan(Finance.funds(value, now: now).available, 0)
+        XCTAssertLessThan(Finance.funds(value, now: now).spendable.rawR, 0)
         let hero = HomeHero.make(value, now: now)
         XCTAssertFalse(hero.isFirstOpen); XCTAssertFalse(hero.hasSalaryPlan)
         XCTAssertEqual(hero.title, "这个月花了"); XCTAssertEqual(hero.amount, 2800)
@@ -42,17 +42,18 @@ final class Round47HomeTests: XCTestCase {
         XCTAssertEqual(HomeHero.make(value, now: now).amount, 0)
     }
     func testKnownSalaryUsesFinanceAndDoesNotChangeDailyMath() {
-        var value = ledger(); salary(&value); value.entries = [row(value)]
-        let before = Finance.pace(value, now: now), hero = HomeHero.make(value, now: now)
+        var value = ledger(); salary(&value); value.entries = [row(value), row(value, 801_000, on: "2026-11-10", nature: .income)]
+        let before = Finance.spendableBreakdown(value, now: now), hero = HomeHero.make(value, now: now)
         XCTAssertTrue(hero.hasSalaryPlan); XCTAssertEqual(hero.title, "还能花")
         XCTAssertEqual(hero.amount, Finance.funds(value, now: now).available)
-        XCTAssertEqual(Finance.pace(value, now: now), before)
+        XCTAssertEqual(Finance.spendableBreakdown(value, now: now), before)
         XCTAssertFalse(FirstUse.salaryPromptDue(value, now: now))
     }
     func testKnownSalaryRetainsRealOverspendState() {
-        var value = ledger(); value.accounts[0].anchorBalance = 0; salary(&value); value.entries = [row(value)]
+        var value = ledger(); value.accounts[0].anchorBalance = 0; salary(&value); value.entries = [row(value), row(value, 801_000, on: "2026-11-10", nature: .income)]
+        value.entries[1].amount = 2799
         let hero = HomeHero.make(value, now: now)
-        XCTAssertEqual(hero.title, "多花了"); XCTAssertEqual(hero.amount, 2800)
+        XCTAssertEqual(hero.title, "缺口"); XCTAssertEqual(hero.amount, 1)
         XCTAssertTrue(HomeButler.queue(value, now: now).contains { if case .overspend = $0 { return true }; return false })
     }
     func testDeletedHistoryDoesNotReopenFirstScene() {

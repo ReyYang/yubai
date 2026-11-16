@@ -74,12 +74,14 @@ struct NewCycleCard: View {
     let saving: CycleSaving
     var more = 0
     var body: some View {
-        QuestionCard(eyebrow: "上个周期结束了", title: "剩下 " + amount2(saving.unspent ?? 0, hide: store.preferences.hideAmounts) + "，存起来吗", more: more,
-                     yesTitle: "存起来", noTitle: "留着花", yesIdentifier: "leftoverSave", noIdentifier: "leftoverKeep",
-                     yes: { resolve(.save) }, no: { resolve(.keep) }).accessibilityIdentifier("newCycleCard")
-    }
-    private func resolve(_ choice: LeftoverChoice) {
-        _ = store.update("剩下的钱", showToast: false) { try Savings.resolveLeftover(cycleStart: saving.cycleStart, choice: choice, in: &$0) }
+        let copy = HomeTaskCopy.make(.leftover(saving), now: store.financialNow, hidden: store.preferences.hideAmounts)!
+        QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more,
+                     yesTitle: "留这月花", noTitle: "", yesIdentifier: "leftoverKeep",
+                     yes: {
+            var undo = store.current
+            HomeButler.answer(HomeTask.leftover(saving).id, in: &undo, now: store.financialNow)
+            _ = store.update("上期留下", undoSnapshot: undo, entryMotion: false) { try Savings.keepLeftover(cycleStart: saving.cycleStart, in: &$0, now: store.financialNow) }
+        }, no: {}, onDismiss: { store.answerHome(.leftover(saving)) }, dismissIdentifier: "leftoverDismiss").accessibilityIdentifier("newCycleCard")
     }
 }
 
@@ -104,31 +106,15 @@ struct OverspendRows: View {
     let options: Overspend.Options
     var more = 0
     var body: some View {
-        let funds = store.funds
-        Card(style: .list) {
-            VStack(spacing: YubaiSpace.none) {
-                if more > 0 { HStack { Spacer(); MoreLink(count: more) } }
-                row("这个月少存一点", before: funds.savingTarget, amount: min(options.overBy, options.maxSaveLess),
-                    enabled: options.maxSaveLess > 0, source: .saveLess, identifier: "coverSaveLess")
-                Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator)
-                row("从存着的钱出", before: funds.fixedSavingsTotal, amount: min(options.overBy, options.maxFromReserve),
-                    enabled: options.maxFromReserve > 0, source: .fromReserve, identifier: "coverFromReserve")
-            }
-        }
-    }
-    private func row(_ title: String, before: Int64, amount: Int64, enabled: Bool, source: CycleCover.Source, identifier: String) -> some View {
-        let hide = store.preferences.hideAmounts
-        let change = ResultBar.change(before, max(0, before - amount), hide: hide)
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
-        return Button { store.sheetSource = nil; store.sheet = .overspend(source) } label: {
-            layout {
-                Text(title).yubaiFont(YubaiFont.rowTitle, weight: .semibold)
-                if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
-                Text(change).yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-            }.frame(maxWidth: .infinity, minHeight: YubaiSize.buttonHeight, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.5)
-            .accessibilityIdentifier(identifier).accessibilityLabel(title + "，" + change)
+        let value = store.formula
+        let bill = value.rows.first { $0.kind == .bills }?.occurrences.first
+        let kicker = bill.map { "还要付 · " + $0.title + " " + NowFormat.monthDay($0.date) } ?? "还要付"
+        let amount = min(options.overBy, max(0, store.reserve.total))
+        QuestionCard(eyebrow: kicker, title: "要付的账单差 " + amount2(options.overBy, hide: store.preferences.hideAmounts), more: more,
+                     yesTitle: "拿出来用 " + (store.preferences.hideAmounts ? "••••" : Money.text(amount)), noTitle: "先不动",
+                     yesIdentifier: "coverFromReserve", noIdentifier: "deficitKeep", yes: {
+            _ = store.update("拿出来用", entryMotion: false) { try HomeButler.rescueDeficit(in: &$0, now: store.financialNow) }
+        }, no: { store.answerHome(.overspend(options)) }).accessibilityIdentifier("deficitRescueCard")
     }
 }
 

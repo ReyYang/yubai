@@ -49,10 +49,10 @@ struct NowView: View {
     private var content: some View {
         // Prepare the worked exercise with the home facts, before a push can
         // begin. FormulaView reads this same revision/time-keyed value.
-        _ = store.spendingDerivation
+        _ = store.formula
         let items = store.inboxItems
         let saving = store.homeSaving
-        let pace = store.pace
+        let pace = store.formula
         return VStack(alignment: .leading, spacing: YubaiSpace.none) {
             hero(pace)
             slot(items)
@@ -66,16 +66,16 @@ struct NowView: View {
 
     // MARK: Hero
 
-    private func horizonText(_ pace: CyclePace?) -> String {
+    private func horizonText(_ pace: SpendableBreakdown?) -> String {
         guard let pace else { return store.sortedEntries.isEmpty ? "还没有账" : "这个月" }
         if store.funds.cycleIsPayday && Dates.day(pace.start) == Dates.day(store.financialNow) { return "今天发工资" }
-        if let late = pace.lateDays { return late == 0 ? "今天发工资" : "工资晚了 \(late) 天" }
-        let days = "还有 \(pace.daysLeft) 天"
+        if let late = store.funds.salaryLateDays { return late == 0 ? "今天发工资" : "工资晚了 \(late) 天" }
+        let days = "还有 \(max(1, store.funds.horizonDays + 1)) 天"
         if textSize.isAccessibilitySize || !store.funds.cycleIsPayday { return days }
         return NowFormat.monthDay(Dates.addDays(1, to: pace.end)) + "发工资 · " + days
     }
 
-    private func hero(_ pace: CyclePace?) -> some View {
+    private func hero(_ pace: SpendableBreakdown?) -> some View {
         let facts = homeHero
         let horizon = facts.hasSalaryPlan ? horizonText(pace) : ""
         let spoken = facts.title + "，" + (hide ? "金额已隐藏" : amount2(facts.amount, hide: false))
@@ -85,7 +85,10 @@ struct NowView: View {
                     heroContents(facts, horizon: horizon, disclosure: true)
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("fundsFormula")
                     .accessibilityLabel(spoken).accessibilityHint("点开看怎么算")
-                if let daily = pace?.daily { dailyRow(daily) }
+                if store.formula.savingLess > 0 {
+                    Text("这个月少攒 " + (hide ? "••••" : Money.text(store.formula.savingLess)))
+                        .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk).accessibilityIdentifier("savingLessStatus")
+                }
             } else { heroContents(facts, horizon: horizon, disclosure: false) }
         }
     }
@@ -93,7 +96,7 @@ struct NowView: View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
             heroTitle(facts.title, horizon)
             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                AmountLabel(cents: facts.amount, hide: hide, role: .hero, ink: facts.title == "多花了" ? YubaiColor.amberInk : YubaiColor.label)
+                AmountLabel(cents: facts.amount, hide: hide, role: .hero, ink: facts.title == "缺口" ? YubaiColor.amberInk : YubaiColor.label)
                     .accessibilityIdentifier("availableFunds")
                 if disclosure { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
             }
@@ -113,21 +116,13 @@ struct NowView: View {
         }
     }
 
-    private func dailyRow(_ daily: Int64) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-            Text("日均").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-            AmountLabel(cents: daily, hide: hide, role: .summary, currency: false)
-        }.accessibilityElement(children: .combine)
-            .accessibilityLabel("日均 " + (hide ? "金额已隐藏" : amount2(daily, hide: false))).accessibilityIdentifier("dailyPace")
-    }
-
     // MARK: Card slot
 
     @ViewBuilder private func slot(_ items: [HomeTask]) -> some View {
         Group {
             if store.salaryPromptDue {
-                QuestionCard(eyebrow: "想知道还能花多少", title: "每月几号发工资，发多少", more: items.count,
-                             yesTitle: "填一下", noTitle: "以后再说", yesIdentifier: "setupFirstSalary", noIdentifier: "deferFirstSalary",
+                QuestionCard(eyebrow: "", title: "每月几号发工资，发多少", more: items.count,
+                             yesTitle: "填发薪日和工资", noTitle: "以后再说", yesIdentifier: "setupFirstSalary", noIdentifier: "deferFirstSalary",
                              yes: { store.sheetSource = nil; store.sheet = .paydaySetup }, no: {
                     _ = store.update("以后再说", recordUndo: false, entryMotion: false, showToast: false) {
                         FirstUse.deferSalarySetup(&$0, now: store.financialNow)

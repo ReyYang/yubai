@@ -6,6 +6,7 @@ final class PurchaseSavingTests: XCTestCase {
     func seed(balance: Int64 = 1_000_000) -> Ledger {
         var ledger = Ledger(); ledger.updatedAt = now
         ledger.accounts = [Account(name: "合成账户", balance: balance, at: now)]
+        ledger.entries = [Entry(date: Dates.day(now), amount: balance, nature: .income, accountID: ledger.accounts[0].id, title: "已到账收入")]
         return ledger
     }
     func entry(_ ledger: Ledger, title: String = "咖啡", amount: Int64 = 1000, day: Date? = nil) -> Entry {
@@ -26,13 +27,13 @@ final class PurchaseSavingTests: XCTestCase {
         XCTAssertEqual(PurchaseBounds.compute(ledger: ledger, amount: 2000, title: "咖啡", category: "餐饮", now: now).allowedVerdicts, Set(PurchaseVerdict.allCases))
     }
     func testPurchaseBoundsCountMonthAndSubcategoryMatching() throws {
-        var ledger = seed(); ledger.entries = [entry(ledger)]
+        var ledger = seed(); ledger.entries = [entry(ledger), Entry(date: Dates.day(now), amount: 1_000_000, nature: .income, accountID: ledger.accounts[0].id, title: "已到账收入")]
         ledger.profile.restrain = [ProfileArea(title: "咖啡", match: .init(subcategories: ["餐饮/咖啡饮品"]), softLimit: .init(perWeekCount: 1, perMonthAmount: 3000))]
         XCTAssertEqual(try judge(ledger).facts["allowed_verdicts"], .strings(["wait", "skip"]))
         ledger.profile.restrain[0].softLimit?.perWeekCount = 3
         XCTAssertEqual(PurchaseBounds.compute(ledger: ledger, amount: 2000, title: "咖啡", category: "餐饮", subcategory: "咖啡饮品", now: now).allowedVerdicts, Set(PurchaseVerdict.allCases))
         let over = PurchaseBounds.compute(ledger: ledger, amount: 2001, title: "咖啡", category: "餐饮", subcategory: "咖啡饮品", now: now)
-        XCTAssertEqual(over.allowedVerdicts, [.wait, .skip]); XCTAssertTrue(over.boundReason.contains("本月已花"))
+        XCTAssertEqual(over.allowedVerdicts, [.wait, .skip]); XCTAssertTrue(over.boundReason.contains("这个周期"))
         XCTAssertEqual(PurchaseBounds.compute(ledger: ledger, amount: 2001, title: "午餐", category: "餐饮", subcategory: "午餐", now: now).allowedVerdicts, Set(PurchaseVerdict.allCases))
     }
     func testPurchaseBoundsFloorTargetCapsAtWaitUntilRealCashRunsOut() {
@@ -58,9 +59,9 @@ final class PurchaseSavingTests: XCTestCase {
         // Both floor and restrain allow wait/skip; the earlier floor rule keeps its reason.
         XCTAssertEqual(bounds(2001).allowedVerdicts, [.wait, .skip]); XCTAssertEqual(bounds(2001).boundReason, "买了以后，这个月少攒 \(Money.text(1))。")
         XCTAssertEqual(bounds(10_001).allowedVerdicts, [.skip]); XCTAssertFalse(bounds(10_001).boundReason.contains("始终留着"))
-        XCTAssertEqual(bounds(2000).allowedVerdicts, [.wait, .skip]); XCTAssertTrue(bounds(2000).boundReason.contains("每周最多 0 次"))
+        XCTAssertEqual(bounds(2000).allowedVerdicts, [.wait, .skip]); XCTAssertTrue(bounds(2000).boundReason.contains("这个周期"))
         ledger.profile.restrain[0].softLimit?.perWeekCount = nil
-        XCTAssertEqual(bounds(2000).allowedVerdicts, [.wait, .skip]); XCTAssertTrue(bounds(2000).boundReason.contains("本月已花"))
+        XCTAssertEqual(bounds(2000).allowedVerdicts, [.wait, .skip]); XCTAssertTrue(bounds(2000).boundReason.contains("这个周期"))
     }
     func testFloorGapReasonCanBeSubmittedButBuyIsRejected() throws {
         var ledger = seed(balance: 10_000); ledger.savingRule = .fixed(8000)
@@ -79,7 +80,7 @@ final class PurchaseSavingTests: XCTestCase {
         XCTAssertEqual(Finance.assessPurchase(ledger, amount: 3000, now: now).verdict, .buy)
         ledger.profile.restrain = [ProfileArea(title: "咖啡", match: .init(keywords: ["咖啡"]), softLimit: .init(perWeekCount: 0))]
         let assessment = Finance.assessPurchase(ledger, amount: 100, title: "咖啡", now: now)
-        XCTAssertEqual(assessment.verdict, .wait); XCTAssertTrue(assessment.reason.contains("每周最多 0 次"))
+        XCTAssertEqual(assessment.verdict, .wait); XCTAssertTrue(assessment.reason.contains("这个周期"))
     }
     func testInvalidAIVerdictReturnsToolErrorAndRequiresReselection() async throws {
         let ledger = seed(balance: 1000); let judgment = try judge(ledger, amount: "20")

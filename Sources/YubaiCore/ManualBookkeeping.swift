@@ -174,54 +174,12 @@ public enum ManualBookkeeping {
         guard projected.fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存下的钱的总额超出范围。") }
     }
     private static func available(removing original: Entry?, adding entry: Entry, in ledger: Ledger, now: Date) -> Int64 {
-        let base = Finance.funds(ledger, now: now)
-        let reserveRefund = [entry, original].compactMap { $0 }.contains { row in row.nature == .refund && ledger.entries.contains { $0.id == row.relatedEntryID && $0.fromReserve } }
-        if entry.fromReserve || original?.fromReserve == true || reserveRefund || !ledger.cycleCovers.isEmpty || !(ledger.reservePaybacks?.isEmpty ?? true) || ledger.paydayConfirmSince != nil {
-            var projected = ledger
-            if let original, let index = projected.entries.firstIndex(where: { $0.id == original.id }) { projected.entries[index] = entry }
-            else { projected.entries.append(entry) }
-            return Finance.funds(projected, now: now).available
-        }
-        let changes: [(Entry, Int64)] = (original.map { [($0, Int64(-1))] } ?? []) + [(entry, Int64(1))]
-        var deltas: [UUID: Int64] = [:], difference: Int64 = 0
-        for (row, sign) in changes where row.deletedAt == nil {
-            for account in ledger.accounts where account.id == row.accountID || (row.nature.paired && account.id == row.otherAccountID) {
-                let posting = row.postingDate(for: account.id)
-                if posting <= now, account.includes(row, posting: posting) { deltas[account.id, default: 0] += sign * row.delta(for: account.id) }
-            }
-            if row.nature == .unknownIn, row.date <= now,
-               ledger.accounts.contains(where: { $0.id == row.accountID && ($0.kind == .cash || $0.kind == .bank) && $0.includes(row, posting: row.date) }) {
-                difference -= sign * row.amount
-            }
-            if row.nature == .income, row.intoFixedSavings,
-               let account = ledger.accounts.first(where: { $0.id == row.accountID && ($0.kind == .cash || $0.kind == .bank) }) {
-                let posting = row.postingDate(for: account.id)
-                if posting <= now, account.includes(row, posting: posting) { difference -= sign * row.amount }
-            }
-        }
-        for account in ledger.accounts {
-            let delta = deltas[account.id, default: 0]
-            if account.kind == .cash || account.kind == .bank { difference += delta }
-            else if account.kind == .credit, delta != 0 {
-                let old = Finance.balance(account, in: ledger, at: now)
-                difference -= max(0, -(old + delta)) - max(0, -old)
-            }
-        }
-        let incomeChange = changes.filter { $0.0.deletedAt == nil && $0.0.nature == .income && !$0.0.intoFixedSavings && $0.0.date >= base.cycleStart && $0.0.date <= now }
-            .reduce(Int64(0)) { $0 + $1.0.amount * $1.1 }
-        difference -= (ledger.savingRule?.target(income: base.cycleIncome + incomeChange) ?? 0) - base.savingTarget
-        let changesPayments = changes.contains { $0.0.planID != nil || $0.0.rentID != nil }
-        if changesPayments {
-            var preview = ledger
-            if let original, let index = preview.entries.firstIndex(where: { $0.id == original.id }) { preview.entries[index] = entry }
-            else { preview.entries.append(entry) }
-            let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
-            let occurrences = Finance.occurrences(in: preview, now: now, days: base.horizonDays + 1)
-            let committed = occurrences.filter { !$0.inflow && Dates.day($0.date) <= base.horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }.reduce(Int64(0)) { $0 + $1.amount }
-            difference -= committed - base.committed
-        }
-        return base.available + difference
+        var projected = ledger
+        if let original, let index = projected.entries.firstIndex(where: { $0.id == original.id }) { projected.entries[index] = entry }
+        else { projected.entries.append(entry) }
+        return Finance.spendableBreakdown(projected, now: now).available
     }
+
     public static func edit(_ edited: Entry, in ledger: inout Ledger) throws {
         // Preserve the original API without reading the clock. New callers can
         // supply their evaluation instant explicitly through the overload below.
@@ -336,7 +294,7 @@ public enum EntryTimeline {
         }
     }
     public static func isUncategorized(_ entry: Entry) -> Bool {
-        Classification.isPending(entry)
+        entry.kind != .adjustment && Classification.isPending(entry)
     }
     /// Deterministic for the supplied ledger, query, month and calendar; cache at the ledger revision boundary.
     public static func snapshot(sortedEntries: [Entry], ledger: Ledger, month: Date, search: String = "", filter: Filter = .all,
@@ -357,7 +315,7 @@ public enum EntryTimeline {
                 Day(date: day.date, spending: day.spending, income: day.income, entries: day.entries.map { entry in
                     let category = ledger.resolveCategory(entry.category, income: entry.nature.categoryIncome)
                     let uncategorized = isUncategorized(entry)
-                    let name = uncategorized ? "没分类" : Classification.displayCategory(category)
+                    let name = entry.kind == .adjustment ? "调整" : uncategorized ? "没分类" : Classification.displayCategory(category)
                     let note = entry.note.isEmpty ? (entry.displayTitle == name ? "" : entry.displayTitle) : entry.note
                     let symbol: String
                     if let known = symbols[CategoryNamespace.key(category, income: entry.nature.categoryIncome)] { symbol = known }

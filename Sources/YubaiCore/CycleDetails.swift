@@ -57,8 +57,12 @@ extension Finance {
         let lookup = Dictionary(uniqueKeysWithValues: snapshot.entries.map { ($0.id, $0) })
         let spent = snapshot.entries.filter { $0.deletedAt == nil && $0.date >= start && $0.date <= close }
             .reduce(Int64(0)) { $0 + SpendingParts.flexibleAmount($1, in: snapshot, entriesByID: lookup) }
-        let saving = record?.saved ?? max(0, min(funds.savingTarget, funds.savingTarget + funds.available))
-        let derivedRemaining = funds.available + funds.savingTarget - saving
+        // The historical presentation preserves the earlier ledger's opening-
+        // cash convention. Newly auto-settled periods use the flow result.
+        let legacyRaw = funds.cash - funds.debt - funds.emergency - funds.goals - funds.uncertainInflow - funds.savingRuleTarget - funds.committed
+        let raw = record?.autoSaved == true ? funds.spendable.rawR : legacyRaw
+        let saving = record?.saved ?? max(0, min(funds.savingRuleTarget, funds.savingRuleTarget + raw))
+        let derivedRemaining = raw + funds.savingRuleTarget - saving
         // unspent is clamped to zero for the first-batch leftover prompt. A
         // deficit beyond all saving still belongs in the closed formula.
         let remaining = record?.unspent.map { $0 > 0 ? $0 : min(0, derivedRemaining) } ?? derivedRemaining

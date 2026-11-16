@@ -2393,6 +2393,8 @@ struct QuestionCard: View {
     var noIdentifier = ""
     let yes: () -> Void
     let no: () -> Void
+    var onDismiss: (() -> Void)? = nil
+    var dismissIdentifier = ""
     private var headline: String {
         var parts = [title]
         if let amount { parts.append(amount2(amount, hide: store.preferences.hideAmounts)) }
@@ -2410,7 +2412,17 @@ struct QuestionCard: View {
             }
         }.accessibilityElement(children: .contain)
     }
-    private var topLine: some View { ButlerKicker(title: eyebrow, more: more, evidenceTitle: evidenceTitle, onEvidence: onEvidence) }
+    @ViewBuilder private var topLine: some View {
+        if !eyebrow.isEmpty || onDismiss != nil {
+            HStack(alignment: .top, spacing: YubaiSpace.space8) {
+                ButlerKicker(title: eyebrow, more: more, evidenceTitle: evidenceTitle, onEvidence: onEvidence)
+                if let onDismiss {
+                    HeaderIconButton(action: onDismiss) { size in Image(systemName: "xmark").font(.system(size: size)) }
+                        .accessibilityLabel("收起").accessibilityIdentifier(dismissIdentifier)
+                }
+            }
+        }
+    }
     private var answers: some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {

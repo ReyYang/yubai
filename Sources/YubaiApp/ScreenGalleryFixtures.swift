@@ -371,8 +371,8 @@ extension UITestSupport {
                 bill.id = galleryID(4682 + index); bill.accountID = bank; ledger.plans.append(bill)
             }
         }
-        if script == "v46-over", let pace = Finance.pace(ledger, now: now), let index = ledger.entries.firstIndex(where: { $0.nature == .expense && $0.date >= pace.start }) {
-            ledger.entries[index].amount += Int64(pace.daysTotal) * 8000 + 32000 - pace.spent
+        if script == "v46-over", let index = ledger.entries.firstIndex(where: { $0.nature == .expense && $0.date >= Finance.cycle(in: ledger, now: now).start }) {
+            ledger.entries[index].amount += Finance.spendableBreakdown(ledger, now: now).rawR + Finance.spendableBreakdown(ledger, now: now).plannedSaving + 32_000
         }
         // Pin the hero while retaining real formulas and stress rows. No mocked
         // view values: reconcile, overspend and undo still run their real mutators.

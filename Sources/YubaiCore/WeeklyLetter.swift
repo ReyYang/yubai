@@ -78,11 +78,9 @@ public enum WeeklyLetter {
             if let largest = review.byCategory.first { comparison = CardFact("最多的分类 · " + largest.category, cents: largest.amount) }
             else { comparison = CardFact("最多的分类", "暂无消费") }
         } else {
-            let limited = ledger.profile.restrain.filter { $0.softLimit?.perWeekCount != nil || $0.softLimit?.perMonthAmount != nil }
-            let count = limited.filter { area in
-                let usage = area.usage(in: ledger, now: close)
-                return area.softLimit?.perWeekCount.map { usage.weekCount >= $0 && usage.weekCount > 0 } == true || area.softLimit?.perMonthAmount.map { usage.monthAmount >= $0 && usage.monthAmount > 0 } == true
-            }.count
+            let lines = SoftLines.usage(ledger, now: close)
+            let limited = Set(lines.map(\.areaID))
+            let count = Set(lines.filter { $0.used >= $0.limit && $0.used > 0 }.map(\.areaID)).count
             comparison = limited.isEmpty ? CardFact("想克制的领域", "\(ledger.profile.restrain.count) 个 · 没写次数或金额") : CardFact("达到你写的次数或金额", "\(count) 个 / \(limited.count) 个")
         }
         let evidence = ledger.activeEntries.filter { $0.date >= start && $0.date < end && ($0.nature == .expense || $0.nature == .refund) }.map(\.id)

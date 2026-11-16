@@ -1,7 +1,7 @@
 import SwiftUI
 import YubaiCore
 
-/// 对一下余额：每个账户写着账上是多少，旁边填现在实际有多少；差的记成一笔「没细记」。
+/// 对一下余额：差额记成调整，预览当前周期的实际资金底线。
 struct ReconcileView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -21,7 +21,8 @@ struct ReconcileView: View {
         }
     }
     /// 正数 = 少了，负数 = 多了。
-    private var missing: Int64 { Reconciliation.preview(store.current, actual: actual, now: store.financialNow).missing }
+    private var preview: Reconciliation.Result { Reconciliation.preview(store.current, actual: actual, now: store.financialNow) }
+    private var missing: Int64 { preview.missing }
     private var range: (from: Date, through: Date) {
         let today = Dates.day(Dates.now)
         return (store.recordGap?.from ?? today, today)
@@ -44,6 +45,10 @@ struct ReconcileView: View {
                     }
                 }
                 if missing != 0 { resultBar }
+                if preview.changesSpendable {
+                    ResultBar(label: "还能花变成", value: amount2(preview.spendableAfter.available, hide: store.preferences.hideAmounts),
+                              amber: true, identifier: "reconcileSpendableAfter")
+                }
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup)
         }.scrollDismissesKeyboard(.interactively).paperBackground()
             .safeAreaInset(edge: .top, spacing: YubaiSpace.none) {
@@ -86,8 +91,8 @@ struct ReconcileView: View {
 
     private var actions: some View {
         let title: String
-        if missing > 0 { title = "记成一笔 " + amount2(-missing, hide: store.preferences.hideAmounts) }
-        else if missing < 0 { title = "记成一笔 " + (store.preferences.hideAmounts ? "••••" : AmountLabel.text(-missing, sign: .inflow)) }
+        if missing > 0 { title = "记成调整 " + amount2(-missing, hide: store.preferences.hideAmounts) }
+        else if missing < 0 { title = "记成调整 " + (store.preferences.hideAmounts ? "••••" : AmountLabel.text(-missing, sign: .inflow)) }
         else { title = "好" }
         return VStack(spacing: YubaiSpace.space8) {
             Button(title, action: apply).buttonStyle(PrimaryButtonStyle()).disabled(hasInvalidInput)
@@ -109,7 +114,7 @@ struct ReconcileView: View {
             _ = added
         }
         if ok {
-            store.toast = "已补 没细记 " + amount2(-difference, hide: store.preferences.hideAmounts)
+            store.toast = difference == 0 ? "余额已对好" : "已记调整 " + amount2(-difference, hide: store.preferences.hideAmounts)
             dismiss()
         }
     }

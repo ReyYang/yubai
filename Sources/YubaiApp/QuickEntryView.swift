@@ -39,6 +39,7 @@ struct QuickEntryView: View {
     @State private var intoFixedSavings = false
     @State private var fromReserve = false
     @State private var previewAvailable: Int64 = 0
+    @State private var previewSoftLine: SoftLineUsage?
     @State private var big: BigPurchase?
     @FocusState private var purposeFocused: Bool
     private var accounts: [Account] { store.accounts.filter { !$0.archived || $0.id == prefill?.accountID || $0.id == prefill?.otherAccountID } }
@@ -202,9 +203,12 @@ struct QuickEntryView: View {
             let after = Dates.day(date) > Dates.day(store.financialNow) ? reserveTotal : reserveTotal - amountCents
             ResultBar(label: "存着的钱", value: compact ? amount2(after, hide: hide) : ResultBar.change(reserveTotal, after, hide: hide),
                       amber: after < 0, identifier: "entrySavingHint")
+        } else if let line = previewSoftLine {
+            let number = line.mode == .count ? "\(line.isExceeded ? line.exceeded : line.remaining) 次" : amount2(line.isExceeded ? line.exceeded : line.remaining, hide: hide)
+            ResultBar(label: line.title + (line.isExceeded ? "超出" : "还剩"), value: number,
+                      amber: line.isExceeded, identifier: "entrySavingHint")
         } else if isBig, let big {
-            let daily = big.dailyAfter.map { " · 日均 " + amount2($0, hide: hide) } ?? ""
-            let value = amount2(big.availableAfter, hide: hide) + (compact ? "" : daily)
+            let value = amount2(big.availableAfter, hide: hide)
             ResultBar(label: "记下后还能花", value: value, amber: big.tight, identifier: "entrySavingHint")
         } else {
             let before = store.funds.available
@@ -384,6 +388,7 @@ struct QuickEntryView: View {
         guard !Task.isCancelled else { return }
         let ledger = store.current; let now = Dates.now; let fallback = store.funds.available
         let amount = amountCents; let nature = self.nature; let purpose = self.purpose; let day = date; let account = accountID
+        let assignment = currentAssignment
         let change = canSave && editingEntry == nil ? (try? draftChange(now: now)) : nil
         let edited = editingEntry.map { makeRecordedEdit($0, now: now) }
         let result = await Task.detached(priority: .userInitiated) {
@@ -391,11 +396,14 @@ struct QuickEntryView: View {
             let available = edited.flatMap { try? ManualBookkeeping.available(after: $0, in: ledger, now: now) }
                 ?? change.flatMap { try? ManualBookkeeping.available(after: $0, in: ledger, now: now) } ?? fallback
             let large = nature == .expense && amount > 0 && Dates.day(day) <= Dates.day(now) ? Finance.bigPurchase(ledger, amount: amount, now: now) : nil
-            return (match, available, large)
+            let cycle = Finance.cycle(in: ledger, now: now)
+            let line = day >= cycle.start && day <= now ? SoftLines.remainingAfterTyping(amount, category: assignment.category,
+                subcategory: assignment.subcategory, purpose: purpose, nature: nature, in: ledger, now: now) : nil
+            return (match, available, large, line)
         }.value
         guard !Task.isCancelled else { return }
         if result.0?.id != suggestion?.id { selectedMatchID = nil }
-        suggestion = result.0; previewAvailable = result.1; big = result.2
+        suggestion = result.0; previewAvailable = result.1; big = result.2; previewSoftLine = result.3
     }
     private var fixedSavingsTotals: (current: Int64, new: Int64)? {
         guard nature == .income, intoFixedSavings else { return nil }

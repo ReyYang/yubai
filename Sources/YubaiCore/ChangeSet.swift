@@ -144,8 +144,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                     if !area.match.categories.isEmpty { line += "，分类：" + area.match.categories.joined(separator: "、") }
                     if !area.match.keywords.isEmpty { line += "，关键词：" + area.match.keywords.joined(separator: "、") }
                     if !area.note.isEmpty { line += "，说明：" + area.note }
-                    if let count = area.softLimit?.perWeekCount { line += "，每周最多 \(count) 次" }
-                    if let amount = area.softLimit?.perMonthAmount { line += "，每月最多 \(Money.text(amount))" }
+                    if let count = area.softLimit?.periodCount { line += "，每期最多 \(count) 次" }
+                    if let amount = area.softLimit?.periodAmount { line += "，每期最多 \(Money.text(amount))" }
                     return line
                 case .removeArea(let id): return "移除消费领域「\((ledger.profile.generous + ledger.profile.restrain).first { $0.id == id }?.title ?? "已移除")」"
                 case .addPrinciple(let text): return "新增消费原则「\(text)」"
@@ -354,6 +354,9 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             case .profile(let change):
                 switch change {
                 case .upsertArea(let area, let stance):
+                    if stance == .restrain && area.softLimit != nil && !next.profile.restrain.contains(where: { $0.id == area.id && $0.softLimit != nil }) {
+                        guard next.profile.restrain.filter({ $0.softLimit != nil }).count < 3 else { throw YubaiError.invalid("已经盯住 3 类。") }
+                    }
                     next.profile.generous.removeAll { $0.id == area.id }; next.profile.restrain.removeAll { $0.id == area.id }
                     if stance == .generous { next.profile.generous.append(area) } else { next.profile.restrain.append(area) }
                 case .removeArea(let id):

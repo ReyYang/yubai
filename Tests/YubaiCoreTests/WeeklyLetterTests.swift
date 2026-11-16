@@ -39,7 +39,8 @@ final class WeeklyLetterTests: XCTestCase {
         ledger.accounts[0].anchorBalance = Finance.balance(ledger.accounts[0], in: ledger, at: end)
         ledger.accounts[0].anchorDate = end
         let earlier = Dates.parse("2026-06-09 23:59")!
-        XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 500_000)
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 0)
+        XCTAssertEqual(Finance.funds(WeeklyLetter.snapshot(ledger, at: earlier), now: earlier).cash, 500_000)
         XCTAssertEqual(WeeklyLetter.available(ledger, at: end), old)
         let plan = Plan(title: "房租", amount: 30_000, dueDate: Dates.parse("2026-06-11")!)
         ledger.plans = [plan]
@@ -47,7 +48,10 @@ final class WeeklyLetterTests: XCTestCase {
         paid.planID = plan.id; paid.occurrence = plan.dueDate
         ledger.entries.append(paid)
         // Rewind the recorded payment as well as reserve it at the earlier date.
-        XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 500_000)
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: earlier), 0)
+        let snapshot = WeeklyLetter.snapshot(ledger, at: earlier)
+        XCTAssertEqual(Finance.funds(snapshot, now: earlier).cash, 530_000)
+        XCTAssertEqual(Finance.funds(snapshot, now: earlier).committed, 30_000)
     }
     func testRewindIncludesManualEntriesInAnchorButNotLaterRecordings() {
         var ledger = seed(); let day = Dates.day(sunday)
@@ -59,12 +63,17 @@ final class WeeklyLetterTests: XCTestCase {
         ledger.entries = [before, after]
         // The reconciled balance includes lunch; dinner was added afterwards.
         ledger.accounts[0].anchorBalance = 496_800; ledger.accounts[0].anchorDate = reconcile
-        XCTAssertEqual(WeeklyLetter.available(ledger, at: day.addingTimeInterval(-0.001)), 500_000)
-        XCTAssertEqual(WeeklyLetter.available(ledger, at: close), 494_800)
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: day.addingTimeInterval(-0.001)), 0)
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: close), 0)
+        let beforeDay = day.addingTimeInterval(-0.001)
+        XCTAssertEqual(Finance.funds(WeeklyLetter.snapshot(ledger, at: beforeDay), now: beforeDay).cash, 500_000)
+        XCTAssertEqual(Finance.funds(WeeklyLetter.snapshot(ledger, at: close), now: close).cash, 494_800)
         XCTAssertEqual(WeeklyLetter.available(ledger, at: close), Finance.funds(ledger, now: close).available)
         // Moving an anchor later within the same day must not count lunch twice.
         ledger.entries = [before]
-        XCTAssertEqual(WeeklyLetter.available(ledger, at: Dates.parse("2026-06-14 18:00")!), 496_800)
+        let afternoon = Dates.parse("2026-06-14 18:00")!
+        XCTAssertEqual(WeeklyLetter.available(ledger, at: afternoon), 0)
+        XCTAssertEqual(Finance.funds(WeeklyLetter.snapshot(ledger, at: afternoon), now: afternoon).cash, 496_800)
     }
     func testRestrainedThirdNumberAndFreshLetterDedupeFallback() async throws {
         var ledger = seed()

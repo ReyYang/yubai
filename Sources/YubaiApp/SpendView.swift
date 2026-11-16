@@ -4,7 +4,7 @@ import YubaiCore
 /// One worked exercise. The numeric column uses the same width on every row.
 struct FormulaView: View {
     @Environment(AppStore.self) private var store
-    private var derivation: SpendingDerivation { store.spendingDerivation }
+    private var derivation: SpendableBreakdown { store.formula }
     private var hide: Bool { store.preferences.hideAmounts }
     var body: some View {
         let value = derivation
@@ -15,71 +15,77 @@ struct FormulaView: View {
                     EntryFormDivider()
                     sources(value)
                     answer(value)
-                    if let daily = value.daily { dailyRow(daily, days: value.daysLeft) }
                 }
             }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaCard")
-        }.navigationTitle("还能花").yubaiNavigation().amountPrivacy(hide)
+        }.navigationTitle("还能花是怎么算的").yubaiNavigation().amountPrivacy(hide)
     }
-    private func question(_ value: SpendingDerivation) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-                Text("这一期还能花多少？").yubaiFont(YubaiFont.heroLabel).fixedSize()
-                Spacer(minLength: YubaiSpace.none)
-                dates(value).fixedSize()
-            }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                Text("这一期还能花多少？").yubaiFont(YubaiFont.heroLabel)
-                dates(value)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }.padding(.vertical, YubaiSpace.space12)
+    private func question(_ value: SpendableBreakdown) -> some View {
+        Text(NowFormat.monthDay(value.cycleStart) + " – " + NowFormat.monthDay(value.cycleEnd))
+            .yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space12)
     }
-    private func dates(_ value: SpendingDerivation) -> some View {
-        Text(NowFormat.monthDay(value.interval.start) + " – " + NowFormat.monthDay(value.cycleEnd))
-            .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-    }
-    private func sources(_ value: SpendingDerivation) -> some View {
+    private func sources(_ value: SpendableBreakdown) -> some View {
         VStack(spacing: YubaiSpace.none) {
-            Button {
-                if let salary = value.salary { store.present(.editEntry(salary.id)) }
-                else { showEntries(value.interval) }
-            } label: {
-                row("工资", detail: value.salary.map { NowFormat.monthDay($0.date) } ?? NowFormat.monthDay(value.interval.start),
-                    amount: value.exerciseIncome, subtracting: false, value: value)
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_income")
-            if value.saving != 0 {
-                EntryFormDivider()
-                Button { store.present(.formulaEdit) } label: { row("先存起来", amount: value.saving, value: value) }
-                    .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_saving")
+            ForEach(value.rows) { item in
+                if item.id != value.rows.first?.id { EntryFormDivider() }
+                source(item, value: value)
             }
-            if value.bills != 0 {
-                EntryFormDivider()
-                TabNavigationLink(.cycleBills) { CycleBillsView() } label: {
-                    row("要付的账单", detail: "\(value.billCount) 样", amount: value.bills, value: value)
-                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_bills")
-            }
-            if value.yearlySetAside != 0 {
-                EntryFormDivider()
-                TabNavigationLink(.yearlyBills) { YearlyBillsView() } label: { row("年付每月先留", amount: value.yearlySetAside, value: value) }
-                    .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_yearlySetAside")
-            }
-            EntryFormDivider()
-            Button { showEntries(value.interval) } label: { row("已经花了", detail: "\(value.entryIDs.count) 笔", amount: value.spent, value: value) }
-                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_spent")
         }
     }
-    private func row(_ title: String, detail: String? = nil, amount: Int64, subtracting: Bool = true, value: SpendingDerivation) -> some View {
+    @ViewBuilder private func source(_ item: SpendableRow, value: SpendableBreakdown) -> some View {
+        switch item.kind {
+        case .bills:
+            TabNavigationLink(.cycleBills) { CycleBillsView() } label: { formulaRow(item, value: value) }
+                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_" + item.id)
+        default:
+            Button { open(item, value: value) } label: { formulaRow(item, value: value) }
+                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaRow_" + item.id)
+        }
+    }
+    private func formulaRow(_ item: SpendableRow, value: SpendableBreakdown) -> some View {
+        row(item.title, detail: detail(item, value: value), amount: abs(item.amount),
+            sign: item.kind == .income ? "" : item.amount > 0 ? "+" : "−", value: value)
+    }
+    private func detail(_ item: SpendableRow, value: SpendableBreakdown) -> String? {
+        switch item.kind {
+        case .saving where value.savingLess > 0:
+            return "原来 " + amount2(value.plannedSaving, hide: hide) + (value.effectiveSaving == 0 ? " · 这个月攒不了" : " · 少攒 " + amount2(value.savingLess, hide: hide))
+        case .income:
+            let entries = store.evidenceEntries(Set(item.entryIDs), activeOnly: true)
+            if entries.count == 1, let entry = entries.first { return HomeButler.privacyText(entry.displayTitle, hidden: hide) + " · " + NowFormat.monthDay(entry.date) }
+            return "\(item.entryIDs.count) 笔"
+        case .spent: return "\(item.entryIDs.count) 笔"
+        case .bills: return "到 " + NowFormat.monthDay(value.cycleEnd) + " · \(item.occurrences.count) 样"
+        case .carry: return item.date.map { NowFormat.monthDay($0) + " 从已存撤回" }
+        case .withdrawal: return item.date.map { NowFormat.monthDay($0) + " 从已存" }
+        case .balanceGap: return item.date.map { NowFormat.monthDay($0) + " 对余额" }
+        default: return nil
+        }
+    }
+    private func open(_ item: SpendableRow, value: SpendableBreakdown) {
+        switch item.kind {
+        case .income:
+            if item.entryIDs.count == 1, let id = item.entryIDs.first { store.present(.editEntry(id)) }
+            else { showEntries(value.interval, entryIDs: Set(item.entryIDs)) }
+        case .spent: showEntries(value.interval, entryIDs: Set(item.entryIDs))
+        case .saving: store.present(.formulaEdit)
+        case .carry, .withdrawal: store.tabRouteRequest = .reserve
+        case .balanceGap: store.sheet = .reconcileAll
+        default: showEntries(value.interval)
+        }
+    }
+    private func row(_ title: String, detail: String? = nil, amount: Int64, sign: String, value: SpendableBreakdown) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: YubaiSpace.space8) {
                 sourceLabel(title, detail: detail).fixedSize()
                 Spacer(minLength: YubaiSpace.space8)
-                numericColumn(amount, subtracting: subtracting, value: value)
+                numericColumn(amount, sign: sign, value: value)
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 sourceLabel(title, detail: detail)
-                numericColumn(amount, subtracting: subtracting, value: value, constrained: true).frame(maxWidth: .infinity, alignment: .trailing)
+                numericColumn(amount, sign: sign, value: value, constrained: true).frame(maxWidth: .infinity, alignment: .trailing)
             }
         }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).padding(.vertical, YubaiSpace.space4).contentShape(Rectangle())
-            .accessibilityElement(children: .ignore).accessibilityLabel(title + (detail.map { "，" + $0 } ?? "") + "，" + (hide ? "金额已隐藏" : AmountLabel.text(subtracting ? -amount : amount)))
+            .accessibilityElement(children: .ignore).accessibilityLabel(title + "，" + (hide ? "金额已隐藏" : AmountLabel.text(sign == "−" ? -amount : amount)) + (detail.map { "，" + $0 } ?? ""))
     }
     private func sourceLabel(_ title: String, detail: String?) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
@@ -90,42 +96,42 @@ struct FormulaView: View {
             if let detail { Text(detail).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
         }
     }
-    private func numericColumn(_ amount: Int64, subtracting: Bool, value: SpendingDerivation, constrained: Bool = false) -> some View {
+    private func numericColumn(_ amount: Int64, sign: String, value: SpendableBreakdown, constrained: Bool = false) -> some View {
         HStack(spacing: YubaiSpace.space4) {
-            Text(subtracting ? (amount < 0 ? "+" : "−") : (amount < 0 ? "−" : ""))
+            Text(sign)
                 .yubaiFont(YubaiFont.amountDonut).frame(width: YubaiSpace.space24)
             ZStack(alignment: .trailing) {
                 // Invisible candidates reserve one shared right-aligned column.
-                ForEach(0..<5, id: \.self) { index in
-                    AmountLabel(cents: [value.exerciseIncome, value.saving, value.bills, value.yearlySetAside, value.spent][index], hide: hide, role: .account, sign: .none).hidden().accessibilityHidden(true)
+                ForEach(value.rows) { candidate in
+                    AmountLabel(cents: abs(candidate.amount), hide: hide, role: .account, sign: .none).hidden().accessibilityHidden(true)
                 }
                 AmountLabel(cents: amount, hide: hide, role: .account, sign: .none)
             }.fixedSize(horizontal: !constrained, vertical: false)
         }.foregroundStyle(YubaiColor.label)
     }
-    private func answer(_ value: SpendingDerivation) -> some View {
-        let ink = value.available < 0 ? YubaiColor.amberInk : YubaiColor.brandInk
+    private func answer(_ value: SpendableBreakdown) -> some View {
+        let ink = value.deficit > 0 ? YubaiColor.amberInk : YubaiColor.brandInk
         return VStack(alignment: .trailing, spacing: YubaiSpace.space8) {
-            numericColumn(value.spent, subtracting: true, value: value, constrained: true).hidden()
+            numericColumn(value.spent, sign: "−", value: value, constrained: true).hidden()
                 .overlay(alignment: .bottom) { Rectangle().fill(YubaiColor.label).frame(height: YubaiSize.separator) }
                 .frame(height: YubaiSize.separator).accessibilityHidden(true)
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: YubaiSpace.space8) { answerLabel(ink); Spacer(minLength: YubaiSpace.space8); answerAmount(value.available, ink: ink) }
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) { answerLabel(ink); answerAmount(value.available, ink: ink).frame(maxWidth: .infinity, alignment: .trailing) }
+                HStack(spacing: YubaiSpace.space8) { answerLabel(ink); Spacer(minLength: YubaiSpace.space8); answerAmount(value.headlineAmount, ink: ink) }
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) { answerLabel(ink); answerAmount(value.headlineAmount, ink: ink).frame(maxWidth: .infinity, alignment: .trailing) }
             }.padding(.vertical, YubaiSpace.space8)
         }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaRow_available")
     }
     private func answerLabel(_ ink: Color) -> some View {
         HStack(spacing: YubaiSpace.space8) {
-            Text("还能花").yubaiFont(YubaiFont.row, weight: .semibold).fixedSize()
+            Text(derivation.headlineTitle).yubaiFont(YubaiFont.row, weight: .semibold).fixedSize()
             Image(systemName: "checkmark").yubaiFont(YubaiFont.caption, weight: .semibold)
                 .foregroundStyle(ink).frame(width: YubaiSpace.space24, height: YubaiSpace.space24)
                 .background(valueIsNegative ? YubaiColor.amberTint : YubaiColor.brandTint, in: Circle()).accessibilityHidden(true)
         }
     }
-    private var valueIsNegative: Bool { derivation.available < 0 }
+    private var valueIsNegative: Bool { derivation.rawR < 0 }
     private func answerAmount(_ amount: Int64, ink: Color) -> some View {
-        AmountLabel(cents: amount, hide: hide, role: .display, ink: ink)
+        AmountLabel(cents: amount, hide: hide, role: .display, currency: true, ink: ink)
             .padding(.bottom, YubaiSpace.space8)
             .overlay(alignment: .bottom) {
                 VStack(spacing: YubaiSpace.space4) {
@@ -136,20 +142,7 @@ struct FormulaView: View {
             .accessibilityLabel(hide ? "金额已隐藏" : AmountLabel.text(amount))
             .accessibilityIdentifier("formulaResult")
     }
-    private func dailyRow(_ daily: Int64, days: Int) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.space8) { Text("分到 \(days) 天，每天").fixedSize(); Spacer(minLength: YubaiSpace.space8); dailyAmount(daily, days: days) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text("分到 \(days) 天，每天"); dailyAmount(daily, days: days).frame(maxWidth: .infinity, alignment: .trailing) }
-        }.yubaiFont(YubaiFont.row).padding(.vertical, YubaiSpace.space12)
-            .accessibilityElement(children: .combine).accessibilityIdentifier("formulaRow_daily")
-    }
-    private func dailyAmount(_ daily: Int64, days: Int) -> some View {
-        HStack(spacing: YubaiSpace.space4) {
-            Text("÷ \(days) =").yubaiFont(YubaiFont.amountSummary).foregroundStyle(YubaiColor.labelSecondary).fixedSize()
-            AmountLabel(cents: daily, hide: hide, role: .summary)
-        }
-    }
-    private func showEntries(_ interval: DateInterval) {
-        store.resetRootNavigation(); store.ledgerPreset = LedgerPreset(mode: .detail, interval: interval); store.destination = .ledger
+    private func showEntries(_ interval: DateInterval, entryIDs: Set<UUID>? = nil) {
+        store.resetRootNavigation(); store.ledgerPreset = LedgerPreset(mode: .detail, interval: interval, entryIDs: entryIDs); store.destination = .ledger
     }
 }

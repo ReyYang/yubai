@@ -7,13 +7,11 @@ public struct HomeHero: Equatable, Sendable {
     public var title: String
     public var amount: Int64
     public static func make(_ ledger: Ledger, now: Date) -> Self {
-        let known = Finance.anchorPlan(in: ledger, now: now) != nil
         let funds = Finance.funds(ledger, now: now)
-        let month = Dates.calendar.dateInterval(of: .month, for: now)!.start
-        let spent = Finance.cashFlow(ledger, during: DateInterval(start: month, end: now.addingTimeInterval(0.001))).spending
-        return Self(isFirstOpen: ledger.entries.isEmpty, hasSalaryPlan: known,
-                    title: known ? (funds.available < 0 ? "多花了" : "还能花") : "这个月花了",
-                    amount: known ? abs(funds.available) : max(0, spent))
+        let value = funds.spendable
+        return Self(isFirstOpen: ledger.entries.isEmpty, hasSalaryPlan: value.offersFormula,
+                    title: value.headlineTitle, amount: value.headlineAmount)
+
     }
 }
 

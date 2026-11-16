@@ -1056,10 +1056,11 @@ final class AppFlowTests: YubaiUITestCase {
     func testYearlyBillPreferenceSurvivesRelaunchAndLinksFromFormula() {
         let app = application("v46-bills"); launchApp(app); openFixedBills(app)
         tap(app.buttons["yearlyBillsStrip"], in: app)
-        let toggle = app.switches["yearlyBillsSetAside"]
-        XCTAssertEqual(toggle.value as? String, "1"); toggleSwitch(toggle, in: app)
+        XCTAssertTrue(anyElement("yearlyBillsPage", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(app.switches["yearlyBillsSetAside"].exists)
         app.terminate(); launchApp(app); openFixedBills(app); tap(app.buttons["yearlyBillsStrip"], in: app)
-        XCTAssertEqual(toggle.value as? String, "0")
+        XCTAssertTrue(anyElement("yearlyBillsPage", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(app.switches["yearlyBillsSetAside"].exists)
     }
     func testForeignBillRateEditsBothBillsOfThatCurrency() {
         let app = application("v46-bills"); launchApp(app); openFixedBills(app); billCalendarDay(28, in: app)
@@ -1349,7 +1350,7 @@ final class AppFlowTests: YubaiUITestCase {
         let app = application("v45-home")
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
         launchApp(app)
-        for identifier in ["fundsFormula", "dailyPace", "openSettings", "addEntry"] {
+        for identifier in ["fundsFormula", "availableFunds", "openSettings", "addEntry"] {
             scrollToVisible(anyElement(identifier, in: app), in: app)
         }
         tap(app.buttons["tab_ledger"], in: app)
@@ -2318,43 +2319,26 @@ final class AppFlowTests: YubaiUITestCase {
 
     func testV45OverspendLevelOnlyBreaksEven() {
         let app = application("v45-over"); launchApp(app)
-        let over = displayedAmount(anyElement("availableFunds", in: app))
-        tap(app.buttons["coverSaveLess"], in: app)
-        tap(app.buttons["coverLevel"], in: app)
-        XCTAssertTrue(app.buttons["coverLevel"].label.contains("只补平"))
-        XCTAssertEqual(anyElement("amountSheetAmount", in: app).value as? String, String(format: "%.2f", Double(over) / 100))
-        XCTAssertTrue(app.buttons["coverCushion"].label.contains("再留够"))
-        tap(app.buttons["amountSheetDone"], in: app)
-        assertGone(app.buttons["amountSheetDone"])
-        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 0)
+        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 32_000)
         XCTAssertFalse(app.buttons["coverSaveLess"].exists)
+        tap(app.buttons["coverFromReserve"], in: app)
+        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 0)
+        XCTAssertFalse(app.buttons["coverFromReserve"].exists)
         tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), -(200_000 - over))
+        XCTAssertEqual(displayedAmount(anyElement("formulaResult", in: app)), 0)
+        XCTAssertTrue(anyElement("formulaRow_withdrawal", in: app).exists)
         snapshot("overspend-level", app)
     }
 
     func testV45OverspendCushionUsesReserveAndRestoresDailyPace() {
         let app = application("v45-over"); launchApp(app)
-        let over = displayedAmount(anyElement("availableFunds", in: app))
         tap(app.buttons["coverFromReserve"], in: app)
-        tap(app.buttons["coverCushion"], in: app)
-        XCTAssertTrue(app.buttons["coverCushion"].label.contains("再留够 5 天"))
-        let amount = anyElement("amountSheetAmount", in: app)
-        guard let text = amount.value as? String, let value = Double(text.replacingOccurrences(of: ",", with: "")) else {
-            XCTFail("Cover sheet must expose its amount"); return
-        }
-        let covered = Int64((value * 100).rounded())
-        XCTAssertGreaterThan(covered, over)
-        tap(app.buttons["amountSheetDone"], in: app); assertGone(app.buttons["amountSheetDone"])
-        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), covered - over)
-        XCTAssertTrue(anyElement("dailyPace", in: app).exists)
-        XCTAssertFalse(app.buttons["coverFromReserve"].exists)
-        tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaResult", in: app)), covered - over)
-        openSaving(app); XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 700_000 - covered)
-        backToRoot(app); tap(app.buttons["fundsFormula"], in: app)
-        XCTAssertEqual(displayedAmount(anyElement("formulaRow_saving", in: app)), -200_000)
-        snapshot("overspend-reserve-cushion", app)
+        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 0)
+        XCTAssertFalse(anyElement("dailyPace", in: app).exists)
+        tap(app.buttons["undoLastChange"], in: app)
+        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 32_000)
+        XCTAssertTrue(app.buttons["coverFromReserve"].exists)
+        snapshot("overspend-reserve-undo", app)
     }
 
     func testV45PaydayAmountConfirmationStartsNewCycle() {
@@ -2368,7 +2352,7 @@ final class AppFlowTests: YubaiUITestCase {
         XCTAssertFalse(app.buttons["paydayExtraToSavings"].isSelected)
         tap(app.buttons["amountSheetDone"], in: app); assertGone(app.buttons["amountSheetDone"])
         assertGone(app.buttons["paydayArrived"])
-        XCTAssertTrue(anyElement("dailyPace", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(anyElement("dailyPace", in: app).exists)
         XCTAssertNotEqual(app.buttons["fundsFormula"].label, oldCycle)
         backToRoot(app); tap(app.buttons["tab_ledger"], in: app)
         let search = app.textFields["entriesSearch"]
@@ -2381,18 +2365,15 @@ final class AppFlowTests: YubaiUITestCase {
     }
 
     func testV45LeftoverKeepAndSaveResolveOnce() {
-        for save in [false, true] {
+        for keep in [false, true] {
             let app = application("v45-newcycle"); launchApp(app)
             let before = displayedAmount(anyElement("availableFunds", in: app))
-            tap(app.buttons[save ? "leftoverSave" : "leftoverKeep"], in: app)
-            assertGone(app.buttons["leftoverSave"]); assertGone(app.buttons["leftoverKeep"])
-            XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before - (save ? 21_200 : 0))
-            openSaving(app)
-            XCTAssertEqual(displayedAmount(anyElement("reserveTotal", in: app)), 700_000 + (save ? 21_200 : 0))
+            tap(app.buttons[keep ? "leftoverKeep" : "leftoverDismiss"], in: app)
+            assertGone(app.buttons["leftoverKeep"])
+            XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before + (keep ? 21_200 : 0))
             app.terminate(); launchApp(app)
-            XCTAssertTrue(app.buttons["fundsFormula"].waitForExistence(timeout: 5))
-            XCTAssertFalse(app.buttons["leftoverSave"].exists); XCTAssertFalse(app.buttons["leftoverKeep"].exists)
-            XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before - (save ? 21_200 : 0))
+            XCTAssertFalse(app.buttons["leftoverKeep"].exists)
+            XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), before + (keep ? 21_200 : 0))
             app.terminate()
         }
     }
@@ -2700,7 +2681,7 @@ final class AppFlowTests: YubaiUITestCase {
 
     func testHomeShowsAvailableDailyAndRecentEntries() {
         let app = application("v45-home"); launchApp(app)
-        assertV45(["fundsFormula", "availableFunds", "dailyPace", "todayEntries"], in: app)
+        assertV45(["fundsFormula", "availableFunds", "todayEntries"], in: app)
         XCTAssertTrue(app.buttons["fundsFormula"].label.contains("1,564.00"))
         snapshot("v45-home", app)
     }
@@ -2708,7 +2689,7 @@ final class AppFlowTests: YubaiUITestCase {
 
     func testV45OverOffersBothCoverRows() {
         let app = application("v45-over"); launchApp(app)
-        assertV45(["fundsFormula", "coverSaveLess", "coverFromReserve"], absent: ["dailyPace"], in: app)
+        assertV45(["fundsFormula", "coverFromReserve"], absent: ["dailyPace", "coverSaveLess"], in: app)
         snapshot("v45-over", app)
     }
 
@@ -2732,7 +2713,7 @@ final class AppFlowTests: YubaiUITestCase {
 
     func testV45NewCycleAsksWhatToDoWithTheLeftover() {
         let app = application("v45-newcycle"); launchApp(app)
-        assertV45(["fundsFormula", "leftoverSave", "leftoverKeep"], in: app)
+        assertV45(["fundsFormula", "leftoverDismiss", "leftoverKeep"], in: app)
         snapshot("v45-newcycle", app)
     }
 

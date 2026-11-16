@@ -126,7 +126,7 @@ final class MemoryTests: XCTestCase {
         XCTAssertEqual(rows(Memory.context(ledger: ledger, now: now)).count, 30)
     }
     func testRecallAndPurchaseReferencesMarkOnlyUsedMemories() async throws {
-        var ledger = seed(); let home = note(); let plan = note("每年想去旅行", kind: .plan)
+        var ledger = seed(); ledger.entries.append(Entry(date: now, amount: 1_000_000, nature: .income, accountID: ledger.accounts[0].id, title: "已到账收入")); let home = note(); let plan = note("每年想去旅行", kind: .plan)
         ledger.memories = [home, plan]
         let script = ScriptedChatTransport([try call("recall", "recall", .object(["keyword": .string("合租")])),
             try call("judge", "judge_purchase", .object(["title": .string("旅行箱"), "amount": .string("100"), "memory_ids": .strings([plan.id.uuidString])])),

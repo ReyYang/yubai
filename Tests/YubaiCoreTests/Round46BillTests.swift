@@ -101,11 +101,11 @@ final class Round46BillTests: XCTestCase {
     }
     func testRateEditUpdatesOnlyThatCurrencyAndInvalidatesFundsCache() throws {
         var ledger = ledger(); ledger.plans = [foreign(ledger)]
-        let before = Finance.funds(ledger, now: day()).available
+        let before = Finance.spendableBreakdown(ledger, now: day()).rawR
         try FixedFlows.setRate(ManualExchangeRate(currency: .eur, cnyPerUnit: 8, updatedAt: day()), in: &ledger)
         try FixedFlows.setRate(ManualExchangeRate(currency: .usd, cnyPerUnit: 8, updatedAt: day()), in: &ledger)
         XCTAssertEqual(ledger.preferences.billExchangeRates?.count, 2)
-        XCTAssertEqual(Finance.funds(ledger, now: day()).available, before - 1_760)
+        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: day()).rawR, before - 1_760)
     }
     func testForeignBillTotalsAndFormulaAlwaysUseCNY() {
         var ledger = ledger(); ledger.plans = [foreign(ledger)]
@@ -166,70 +166,63 @@ final class Round46BillTests: XCTestCase {
         XCTAssertEqual(ledger.entries[0].planID, ledger.plans[0].id)
         XCTAssertEqual(Finance.funds(ledger, now: due).committed, 0)
     }
-    func testFullYearReservesTwelfthsAndAccumulatesAcrossMonths() {
-        var ledger = ledger(); ledger.plans = [annual()]
-        XCTAssertEqual(YearlyBillReserves.rows(in: ledger, now: day()).first?.monthly, 10_000)
-        XCTAssertEqual(YearlyBillReserves.rows(in: ledger, now: day()).first?.reserved, 10_000)
-        XCTAssertEqual(YearlyBillReserves.rows(in: ledger, now: day(2027, 1, 1)).first?.reserved, 30_000)
-        XCTAssertEqual(Finance.funds(ledger, now: day(2027, 1, 1)).yearlySetAside, 30_000)
+    func testFullYearHasNoMonthlyDeductionAcrossMonths() {
+        var value = ledger(); value.plans = [annual()]
+        for date in [day(), day(2027, 1, 1)] { XCTAssertEqual(Finance.spendableBreakdown(value, now: date).billsRest, 0) }
     }
-    func testNearTermYearlyBillCatchesUpByDueMonthPerBill() {
-        var ledger = ledger(); ledger.plans = [annual(amount: 10_001, due: day(2027, 1, 28))]
-        let row = YearlyBillReserves.rows(in: ledger, now: day()).first
-        XCTAssertEqual(row?.monthly, 3_334); XCTAssertEqual(row?.reserved, 3_334)
-        XCTAssertEqual(YearlyBillReserves.rows(in: ledger, now: day(2026, 12, 1)).first?.reserved, 6_668)
+    func testNearTermYearlyBillDoesNotCatchUpBeforeDuePeriod() {
+        var value = ledger(); value.plans = [annual(amount: 10_001, due: day(2027, 1, 28))]
+        XCTAssertEqual(Finance.funds(value, now: day()).committed, 0)
+        XCTAssertEqual(Finance.funds(value, now: day(2026, 12, 1)).committed, 0)
+        XCTAssertEqual(Finance.funds(value, now: day(2027, 1, 1)).committed, 10_001)
     }
-    func testDueMonthDoesNotDoubleCountAnnualEnvelope() {
-        var ledger = ledger(); ledger.plans = [annual(due: day(2026, 12, 28))]
-        let funds = Finance.funds(ledger, now: day(2026, 12, 1))
-        XCTAssertEqual(funds.yearlySetAside, 0); XCTAssertEqual(funds.committed, 120_000)
-        XCTAssertEqual(funds.available, 880_000)
+    func testDueMonthDeductsOnlyTheAnnualBill() {
+        var value = ledger(); value.plans = [annual(due: day(2026, 12, 28))]
+        let f = Finance.funds(value, now: day(2026, 12, 1))
+        XCTAssertEqual(f.committed, 120_000); XCTAssertEqual(f.spendable.deficit, 120_000)
     }
     func testPaydayCycleContainingAnnualDueDeductsOnlyFullBill() {
-        var ledger = ledger(); ledger.cycleAnchor = .payday
-        var salary = Plan(title: "工资", amount: 800_000, dueDate: day(2026, 11, 10), frequency: .monthly, inflow: true, category: "工资", nature: .income)
-        salary.accountID = ledger.accounts[0].id
-        ledger.plans = [salary, annual(due: day(2026, 12, 5))]
-        let funds = Finance.funds(ledger, now: day())
-        XCTAssertEqual(funds.yearlySetAside, 0); XCTAssertEqual(funds.committed, 120_000)
+        var value = ledger(); value.cycleAnchor = .payday
+        let salary = Plan(title: "工资", amount: 800_000, dueDate: day(2026, 11, 10), frequency: .monthly, inflow: true, category: "工资", nature: .income)
+        value.plans = [salary, annual(due: day(2026, 12, 5))]
+        XCTAssertEqual(Finance.funds(value, now: day()).committed, 120_000)
     }
-    func testPaidYearlyBillDoesNotStartSavingForNextYearUntilFollowingMonth() throws {
-        var ledger = ledger(); var plan = annual(due: day(2026, 12, 28)); plan.accountID = ledger.accounts[0].id; ledger.plans = [plan]
-        let change = try FixedFlows.settle(planID: plan.id, occurrence: plan.dueDate, in: ledger, now: plan.dueDate)
-        try change.apply(to: &ledger)
-        XCTAssertEqual(YearlyBillReserves.rows(in: ledger, now: day(2026, 12, 29)).first?.reserved, 0)
-        XCTAssertEqual(YearlyBillReserves.rows(in: ledger, now: day(2027, 1, 1)).first?.reserved, 10_000)
+    func testPaidYearlyBillDoesNotStartReservingForNextYear() throws {
+        var value = ledger(); var plan = annual(due: day(2026, 12, 28)); plan.accountID = value.accounts[0].id; value.plans = [plan]
+        try FixedFlows.settle(planID: plan.id, occurrence: plan.dueDate, in: value, now: plan.dueDate).apply(to: &value)
+        XCTAssertEqual(Finance.funds(value, now: day(2026, 12, 29)).committed, 0)
+        XCTAssertEqual(Finance.funds(value, now: day(2027, 1, 1)).committed, 0)
     }
-    func testSetAsideOffAndOnPersistsAndInvalidatesCache() throws {
-        var ledger = ledger(); ledger.plans = [annual()]
-        let before = Finance.funds(ledger, now: day()).available
-        YearlyBillReserves.setEnabled(false, in: &ledger, now: day())
-        XCTAssertEqual(Finance.funds(ledger, now: day()).available, before + 10_000)
-        let restored = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(ledger))
-        XCTAssertTrue(YearlyBillReserves.rows(in: restored, now: day()).isEmpty)
-        YearlyBillReserves.setEnabled(true, in: &ledger, now: day(2027, 1, 1))
-        XCTAssertEqual(ledger.plans[0].yearlyReserveSince, day(2027, 1, 1))
+    func testLegacySetAsidePreferenceDecodesButNoLongerChangesNumbers() throws {
+        var value = ledger(); value.plans = [annual()]
+        let before = Finance.spendableBreakdown(value, now: day())
+        value.preferences.yearlyBillsSetAside = false
+        let decoded = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(value))
+        XCTAssertEqual(decoded.preferences.yearlyBillsSetAside, false)
+        XCTAssertEqual(Finance.spendableBreakdown(decoded, now: day()), before)
+        value.preferences.yearlyBillsSetAside = true
+        XCTAssertEqual(Finance.spendableBreakdown(value, now: day()), before)
     }
-    func testStoppedSkippedAndIncomeYearlyBillsAreNotReserved() {
-        var ledger = ledger(); var stopped = annual(); stopped.stoppedAt = day(); stopped.endDate = day()
+    func testStoppedSkippedAndIncomeYearlyBillsDoNotCreateHeadups() {
+        var value = ledger(); var stopped = annual(); stopped.stoppedAt = day(); stopped.endDate = day()
         var skipped = annual(); skipped.skippedOccurrences = [skipped.dueDate]
         var income = annual(); income.inflow = true; income.nature = .income
-        ledger.plans = [stopped, skipped, income]
-        XCTAssertEqual(Finance.funds(ledger, now: day()).yearlySetAside, 0)
+        value.plans = [stopped, skipped, income]
+        XCTAssertTrue(HomeButler.billHeadsUps(value, now: day()).isEmpty)
     }
-    func testSpendableDerivationKeepsAnnualRowAsAnIdentity() {
-        var ledger = ledger(); ledger.plans = [annual()]
-        let formula = Finance.formula(ledger, now: day()), value = Finance.spendingDerivation(ledger, now: day())
-        XCTAssertEqual(formula.yearlySetAside, 10_000); XCTAssertEqual(value.yearlySetAside, 10_000)
-        XCTAssertEqual(value.otherFunds + value.income - value.fixedSavings - value.creditDebt - value.goals - value.uncertainInflow - value.saving - value.yearlySetAside - value.bills, value.budget)
-        XCTAssertEqual(value.budget - value.spent, value.available)
+    func testSpendableFormulaHasNoAnnualEnvelopeRow() {
+        var value = ledger(); value.plans = [annual()]
+        let f = Finance.formula(value, now: day())
+        XCTAssertEqual(f.rows.map(\.kind), [.income, .spent]); XCTAssertEqual(f.rawR, 0)
     }
-    func testForeignAnnualEnvelopeUsesManualRateThenActualCNY() throws {
-        var ledger = ledger(); var plan = foreign(ledger, due: day(2027, 10, 28), yearly: true); plan.amount = 3_588; ledger.plans = [plan]
-        XCTAssertEqual(YearlyBillReserves.rows(in: ledger, now: day()).first?.monthly, 2_129)
-        var paid = Entry(date: plan.dueDate, amount: 26_000, accountID: ledger.accounts[0].id, title: "Claude Pro")
-        paid.planID = plan.id; paid.occurrence = plan.dueDate; ledger.entries = [paid]
-        XCTAssertEqual(YearlyBillReserves.rows(in: ledger, now: day(2027, 11, 1)).first?.monthly, 2_167)
+    func testForeignAnnualUsesRateOnlyInDuePeriodAndActualPaymentReplacesIt() throws {
+        var value = ledger(); var plan = foreign(value, due: day(2027, 10, 28), yearly: true); plan.amount = 3_588; value.plans = [plan]
+        XCTAssertEqual(Finance.funds(value, now: day()).committed, 0)
+        XCTAssertEqual(Finance.funds(value, now: day(2027, 10, 1)).committed, 25_547)
+        var paid = Entry(date: plan.dueDate, amount: 26_000, accountID: value.accounts[0].id, title: "Claude Pro")
+        paid.planID = plan.id; paid.occurrence = plan.dueDate; value.entries = [paid]
+        XCTAssertEqual(Finance.funds(value, now: plan.dueDate).committed, 0)
+        XCTAssertEqual(Finance.funds(value, now: plan.dueDate).cycleSpent, 26_000)
     }
     func testYearlyKeepExpiresForNextYearWhileMonthlyKeepPersists() throws {
         var ledger = ledger(); var plan = annual(due: day(2026, 11, 27)); ledger.plans = [plan]
@@ -287,16 +280,17 @@ final class Round46BillTests: XCTestCase {
         var ledger = ledger(); var plan = Plan(title: "话费", amount: 16_000, dueDate: day(), frequency: .monthly)
         plan.accountID = ledger.accounts[0].id; ledger.plans = [plan]
         let entry = Entry(date: day(), amount: 15_800, accountID: ledger.accounts[0].id, title: "话费")
-        ledger.entries = [entry]
+        ledger.entries = [entry, Entry(date: day(), amount: 100_000, nature: .income, accountID: ledger.accounts[0].id, title: "已到账收入")]
         let before = Finance.funds(ledger, now: day()).available
         let preview = FixedFlows.availableAfterPayment(planID: plan.id, occurrence: day(), amount: entry.amount, matchedEntryID: entry.id, in: ledger, now: day())
         XCTAssertEqual(preview, before + 16_000)
         try FixedFlows.markPaid(planID: plan.id, occurrence: day(), with: entry.id, in: &ledger)
         XCTAssertEqual(preview, Finance.funds(ledger, now: day()).available)
-        XCTAssertEqual(ledger.entries.count, 1)
+        XCTAssertEqual(ledger.entries.count, 2)
     }
     func testNewPaymentPreviewMatchesActualAnnualSettlement() throws {
         var ledger = ledger(); var plan = annual(due: day()); plan.accountID = ledger.accounts[0].id; ledger.plans = [plan]
+        ledger.entries = [Entry(date: day(), amount: 1_000_000, nature: .income, accountID: ledger.accounts[0].id, title: "已到账收入")]
         let preview = FixedFlows.availableAfterPayment(planID: plan.id, occurrence: day(), amount: 110_000, in: ledger, now: day())
         let change = try FixedFlows.confirmPayment(planID: plan.id, occurrence: day(), amount: 110_000, in: ledger, now: day())
         try change.apply(to: &ledger)

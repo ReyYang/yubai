@@ -9,19 +9,19 @@ final class Round45BillTests: XCTestCase {
         return l
     }
     func testBillMatchUsesActualAmountWithoutAddingEntryAndUnlinkRestores() throws {
-        var l = fixture(); let baseline = Finance.funds(l, now: now).available, id = l.plans[0].id
+        var l = fixture(); let baseline = Finance.spendableBreakdown(l, now: now).rawR, id = l.plans[0].id
         var entry = Round45Fixture.entry(l, amount: 15_800, date: "2026-11-20 12:00", title: "Mobile charge")
         entry.recordedAt = now; l.entries.append(entry)
         let matches = FixedFlows.matchingEntries(planID: id, occurrence: Dates.day(now), in: l, now: now)
         XCTAssertEqual(matches.map(\.id), [entry.id])
         let count = l.entries.count
         try FixedFlows.markPaid(planID: id, occurrence: Dates.day(now), with: entry.id, in: &l)
-        XCTAssertEqual(l.entries.count, count); XCTAssertEqual(Finance.funds(l, now: now).available, baseline + 200)
+        XCTAssertEqual(l.entries.count, count); XCTAssertEqual(Finance.spendableBreakdown(l, now: now).rawR, baseline + 200)
         XCTAssertEqual(FixedFlows.month(containing: now, in: l).occurrences.first?.state, .paid)
         XCTAssertEqual(Finance.formula(l, now: now).billsPaid, 1)
         try FixedFlows.unlink(entryID: entry.id, in: &l)
         XCTAssertNil(l.entries[0].planID); XCTAssertTrue(l.plans[0].settledOccurrences.isEmpty)
-        XCTAssertEqual(Finance.funds(l, now: now).available, baseline - 15_800)
+        XCTAssertEqual(Finance.spendableBreakdown(l, now: now).rawR, baseline - 15_800)
     }
     func testMatchingRulesLimitAndHistory() throws {
         var l = fixture(); let id = l.plans[0].id

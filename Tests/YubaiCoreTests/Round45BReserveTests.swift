@@ -7,7 +7,11 @@ final class Round45BReserveTests: XCTestCase {
     func withdrawn(_ amount: Int64 = 120_000) -> Ledger {
         var ledger = Round45BFixture.ledger()
         var entry = Round45BFixture.entry(ledger, date: "2026-11-19", amount: amount, title: "大衣", category: "衣着")
-        entry.fromReserve = true; ledger.entries = [entry]; return ledger
+        entry.fromReserve = true; ledger.entries = [entry]
+        for stamp in ["2026-11-01", "2026-12-01", "2027-01-01", "2027-02-01"] {
+            ledger.entries.append(Round45BFixture.entry(ledger, date: stamp, amount: 140_000, nature: .income))
+        }
+        return ledger
     }
     func testAcceptRaisesTargetAndDeclineIsAskedOnce() throws {
         for cycles in [nil, 3] as [Int?] {
@@ -47,6 +51,7 @@ final class Round45BReserveTests: XCTestCase {
     }
     func testCoverOfferAndInvalidCountAreAtomic() throws {
         var ledger = Round45BFixture.ledger()
+        ledger.entries.append(Round45BFixture.entry(ledger, date: "2026-11-01", amount: 100_000, nature: .income))
         try Overspend.cover(&ledger, source: .fromReserve, amount: 60_000, now: now)
         let before = ledger, offer = try XCTUnwrap(Reserve.paybackOffers(ledger, now: now).first)
         XCTAssertEqual(offer.withdrawal, .cover(ledger.cycleCovers[0].id))
@@ -73,6 +78,7 @@ final class Round45BReserveTests: XCTestCase {
     func testUnderfundingExtendsPaybackInsteadOfClaimingCompletion() throws {
         var ledger = withdrawn(12_000); ledger.fixedSavings = 0; ledger.savingRule = nil
         ledger.accounts[0].anchorBalance = 0
+        ledger.entries.removeAll { $0.nature == .income && $0.date < d("2026-12-01") }
         try Reserve.answerPayback(.purchase(ledger.entries[0].id), cycles: 3, in: &ledger, now: now)
         // Reserve withdrawal cancels the balance decrease, leaving no cash for saving.
         Savings.closeCycles(&ledger, now: d("2026-12-01"))

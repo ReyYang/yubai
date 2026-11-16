@@ -17,18 +17,15 @@ public struct Funds: Equatable, Sendable {
     public var cycleStart = Date.distantPast
     public var cycleEnd = Date.distantPast
     public var cycleIsPayday = false
-    public var liquidStart: Int64 = 0
     public var cycleIncome: Int64 = 0
-    public var yearlySetAside: Int64 = 0
     public var savingRuleTarget: Int64 = 0
     public var salaryLateDays: Int? = nil
     public var savingTarget: Int64 = 0
     public var fixedSavingsTotal: Int64 { emergency }
     public var cycleSpent: Int64 = 0
     public var dueRest: Int64 = 0
-    public var dailyAllowance: Int64 = 0
     public var savingShortfall: Int64 = 0
-    public var liquidNow: Int64 { liquidStart + cycleIncome - cycleSpent }
+    public var spendable: SpendableBreakdown = .empty
     /// Retained for source compatibility; fixed savings are deducted directly.
     public var floorRoom: Int64? = nil
     public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Dates.now))
@@ -243,7 +240,7 @@ public enum Finance {
         // Credit principal is reserved once as debt. A credit-repayment plan only changes its payment date.
         let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
         let reserved = self.occurrences(in: ledger, now: now, days: horizonDays + 1)
-        let commitments = reserved.filter { !$0.inflow && Dates.day($0.date) <= horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
+        let commitments = reserved.filter { !$0.inflow && Dates.day($0.date) >= Dates.day(now) && Dates.day($0.date) <= horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
         let committed = commitments.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
         let daily = estimatedDailyLiving(ledger, now: now)
@@ -253,19 +250,10 @@ public enum Finance {
             e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) } == true
         }.reduce(Int64(0)) { $0 + $1.amount }
         let emergency = ledger.fixedSavingsTotal(now: now)
-        let cycleRows = entries.filter { $0.date >= cycle.start && $0.date <= now }
-        let income = cycleRows.filter { $0.nature == .income && !$0.intoFixedSavings }.reduce(Int64(0)) { $0 + $1.amount }
-        let reserveIDs = Set(entries.filter { $0.fromReserve }.map(\.id))
-        let spent = cycleRows.reduce(Int64(0)) { total, row in
-            if row.fromReserve || (row.nature == .refund && row.relatedEntryID.map { reserveIDs.contains($0) } == true) { return total }
-            return total + spendingAmount(row, ledger: ledger)
-        }
-        let savingRuleTarget = (ledger.savingRule?.target(income: income) ?? 0) +
-            Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).reduce(0) { $0 + $1.amount }
-        let savingTarget = ledger.effectiveSavingTarget(savingRuleTarget, cycleStart: cycle.start, now: now)
-        let liquid = cash - debt - emergency - goals - uncertain
-        let yearlySetAside = YearlyBillReserves.rows(in: ledger, now: now, committedThrough: horizonEnd).reduce(Int64(0)) { $0 + $1.reserved }
-        let available = liquid - savingTarget - committed - yearlySetAside
+        let breakdown = makeSpendableBreakdown(ledger, now: now, cycle: cycle, commitments: commitments)
+        let income = breakdown.income, spent = breakdown.spent
+        let savingTarget = breakdown.effectiveSaving
+        let available = breakdown.available
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("还没有账户") }
@@ -295,13 +283,11 @@ public enum Finance {
                      occurrences: occurrences, points: points, warnings: warnings, floorRoom: nil,
                      horizonEnd: horizonEnd, horizonDays: horizonDays, payday: paydayDate, paydayTitle: paydayTitle)
         value.cycleStart = cycle.start; value.cycleEnd = cycle.end; value.cycleIsPayday = cycle.payday
-        value.liquidStart = liquid - income + spent; value.cycleIncome = income; value.savingTarget = savingTarget
+        value.spendable = breakdown; value.cycleIncome = income; value.savingTarget = savingTarget
         value.cycleSpent = spent; value.dueRest = committed
-        value.yearlySetAside = yearlySetAside
-        value.savingRuleTarget = savingRuleTarget
+        value.savingRuleTarget = (ledger.savingRule?.target(income: income) ?? 0) + Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).reduce(0) { $0 + $1.amount }
         value.salaryLateDays = cycle.lateSince.map { Dates.calendar.dateComponents([.day], from: $0, to: Dates.day(now)).day ?? 0 }
-        value.dailyAllowance = max(0, available) / Int64(max(1, horizonDays + 1))
-        value.savingShortfall = min(savingTarget, max(0, -available))
+        value.savingShortfall = breakdown.savingLess
         ledger.calculations.storeFunds(value, in: ledger, now: now, days: horizon)
         return value
     }
@@ -310,6 +296,7 @@ public enum Finance {
     }
     /// Indexed callers can share the same rules without a rent lookup per row.
     public static func spendingAmount(_ entry: Entry, rent: Rent?) -> Int64 {
+        if entry.kind == .adjustment { return 0 }
         if entry.nature == .expense {
             if let personal = entry.personalExpense { return personal }
             if let rent, rent.monthlyTotal > 0 {
@@ -372,11 +359,12 @@ public enum Finance {
             .sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
     }
     public static func assessPurchase(_ ledger: Ledger, amount: Int64, title purchaseTitle: String = "", category: String? = nil, subcategory: String? = nil, now: Date = Dates.now) -> PurchaseAssessment {
-        let f = funds(ledger, now: now); let after = f.available - amount
+        let f = funds(ledger, now: now); let rawAfter = f.spendable.rawR - amount
+        let after = max(0, rawAfter), deficit = max(0, -rawAfter - f.spendable.plannedSaving)
         let incomplete = ledger.accounts.isEmpty || ledger.accounts.contains { !$0.reconciled } || !f.warnings.isEmpty
-        let severity = f.liquidNow - f.dueRest - amount < 0 ? 2 : (incomplete || amount > max(0, f.available) / 3 ? 1 : 0)
-        let title = after < 0 ? "这笔购买会挤占已安排的资金" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
-        let explanation = after < 0 ? "还差 \(Money.text(-after))，可以少花一些或晚点再买。" : "买了以后还能花 \(Money.text(after))。"
+        let severity = deficit > 0 ? 2 : (rawAfter < 0 || incomplete || amount > f.available / 3 ? 1 : 0)
+        let title = deficit > 0 ? "先别买" : rawAfter < 0 ? "等等再说" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
+        let explanation = deficit > 0 ? "买了以后，要付的账单还差 \(Money.text(deficit))。" : rawAfter < 0 ? "买了以后，这个月少攒 \(Money.text(min(f.spendable.plannedSaving, -rawAfter)))。" : "买了以后还能花 \(Money.text(after))。"
         let horizon = f.payday == nil ? "到 \(Dates.calendar.component(.month, from: f.horizonEnd))月\(Dates.calendar.component(.day, from: f.horizonEnd))日已知付款" : "发工资前已知付款"
         let bounds = PurchaseBounds.compute(ledger: ledger, amount: amount, title: purchaseTitle, category: category, subcategory: subcategory, now: now)
         let verdict: PurchaseVerdict = bounds.allowedVerdicts == [.skip] ? .skip : !bounds.allowedVerdicts.contains(.buy) || amount > max(0, f.available) / 3 ? .wait : .buy

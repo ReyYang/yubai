@@ -60,7 +60,7 @@ private struct CaptureWidgetView: View {
             case .accessoryRectangular:
                 VStack(alignment: .leading, spacing: 2) {
                     if let snapshot = entry.snapshot {
-                        Text("还能花 " + Money.text(snapshot.available)).font(.headline).monospacedDigit().privacySensitive()
+                        Text((snapshot.headlineTitle ?? "还能花") + " " + Money.text(snapshot.available)).font(.headline).monospacedDigit().privacySensitive()
                         Text("今天记了 \(snapshot.todayCount) 笔").font(.caption).privacySensitive()
                     } else { Label("记一笔", systemImage: "plus") }
                 }
@@ -74,7 +74,7 @@ private struct CaptureWidgetView: View {
     private var small: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let snapshot = entry.snapshot {
-                Text("还能花").font(.caption).foregroundStyle(.secondary)
+                Text(snapshot.headlineTitle ?? "还能花").font(.caption).foregroundStyle(.secondary)
                 Text(Money.text(snapshot.available)).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit().minimumScaleFactor(0.5).lineLimit(1).privacySensitive()
                 Text("今天记了 \(snapshot.todayCount) 笔 · " + Money.text(snapshot.todayTotal)).font(.system(size: 11)).foregroundStyle(.secondary).privacySensitive()
             } else { Label("余白", systemImage: "square.righthalf.filled").font(.headline) }
@@ -85,7 +85,7 @@ private struct CaptureWidgetView: View {
     private var medium: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(entry.snapshot == nil ? "余白" : "还能花").font(.caption).foregroundStyle(.secondary)
+                Text(entry.snapshot?.headlineTitle ?? "余白").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if let snapshot = entry.snapshot { Text(Money.text(snapshot.available)).font(.system(size: 20, weight: .semibold, design: .rounded)).monospacedDigit().privacySensitive() }
             }

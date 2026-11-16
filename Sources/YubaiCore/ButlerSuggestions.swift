@@ -9,7 +9,7 @@ public enum ButlerSuggestionAction: Codable, Equatable, Sendable {
     public var title: String {
         switch self {
         case .stopSubscription: "停掉"
-        case .setBudget: "定预算"
+        case .setBudget(let category, let cents): "盯住" + category + " " + Money.text(cents)
         case .tryTwoWeeks: "试两周"
         case .saveLeftover: "存起来"
         case .addWish: "加进心愿单"
@@ -64,7 +64,7 @@ public enum ButlerSuggestionVerifier {
     摘要的星期数字采用：1=周日，2=周一，3=周二，4=周三，5=周四，6=周五，7=周六。
     suggestions每项严格为 {"topic":"稳定的主题键","observation":[{"text":"外卖 "},{"count":true},{"text":" 次，共 "},{"sum":true}],"proposal":[{"text":"试试带饭？"}],"entry_ids":["摘要中的ID"],"claimed_count":1,"claimed_sum_cents":2800,"action":{"kind":"try_two_weeks","review":"带饭怎么样？"},"memory_ids":["用到的记忆ID"]}。
     text片段除「周三」「星期三」这类星期名称外不能有数字，笔数和金额只能用count或sum片段，数值由代码填。claimed_sum_cents必须是所引账目的净支出分整数精确和；不估计。每条必须有原账ID，不能引用摘要之外的ID。
-    action只能选一种，且只能带下列指定参数：stop_subscription/plan_id（已有订阅ID）；set_budget/category/amount_cents（已有支出分类和分整数）；try_two_weeks/review（一句两周后问的话）；save_leftover/cycle_start（摘要中可存结余的周期）；add_wish/title/amount_cents；never_mention（无参数）。不建议未知金额，不进行真实付款。
+    action只能选一种，且只能带下列指定参数：stop_subscription/plan_id（已有订阅ID）；set_budget/category/amount_cents（盯住已有支出分类，每期的金额软线，不分配预算）；try_two_weeks/review（一句两周后问的话）；add_wish/title/amount_cents；never_mention（无参数）。上期结余已经自动存好，不再建议save_leftover；这个旧值只供兼容历史建议。不建议未知金额，不进行真实付款。
     不再提mutedTopics中的主题。用户的回答是记忆事实，遵守纠正，不重复劝说。返回纯JSON，不要Markdown或额外字段。
     """
 
@@ -155,7 +155,7 @@ public enum ButlerSuggestionVerifier {
     static func actionIsCurrent(_ action: ButlerSuggestionAction, ledger: Ledger, now: Date) -> Bool {
         switch action {
         case .stopSubscription(let id): return ledger.plans.contains { $0.id == id && $0.active && $0.stoppedAt == nil && !$0.inflow && $0.nature == .expense && $0.frequency != .once && ($0.category.contains("订阅") || $0.title.contains("会员") || BrandIcons.match($0.title) != nil) }
-        case .setBudget(let category, let cents): return cents > 0 && cents <= Money.limit && ledger.categories.contains { $0.name == category && !$0.income && !$0.system } && ledger.partsMode == .amount
+        case .setBudget(let category, let cents): return cents > 0 && cents <= Money.limit && ledger.categories.contains { $0.name == category && !$0.income && !$0.system } && (ledger.profile.restrain.contains { $0.match.categories == [category] } || ledger.profile.restrain.filter { $0.softLimit != nil }.count < 3)
         case .saveLeftover(let start): return Savings.pendingLeftover(in: ledger).map { Dates.text($0.cycleStart) == start } == true
         case .addWish(let title, let cents): return validText(title, limit: 100) && cents > 0 && cents <= Money.limit
         case .tryTwoWeeks(let text): return validText(text)
@@ -185,12 +185,9 @@ public enum ButlerSuggestions {
                 var change = ChangeSet(source: "用户操作", reason: "停掉", items: [.endPlan(id, now)]); change.createdAt = now
                 try change.apply(to: &next); ButlerSavings.synchronize(&next, now: now)
             case .setBudget(let category, let cents):
-                if let i = next.spendingParts.firstIndex(where: { $0.categories == [category] }) { next.spendingParts[i].amount = cents }
-                else {
-                    let part = SpendingPart(name: category, amount: cents, categories: [category])
-                    next.spendingParts.append(part)
-                    SpendingParts.assign(category: category, to: part.id, in: &next)
-                }
+                var area = next.profile.restrain.first { $0.match.categories == [category] } ?? ProfileArea(title: category, match: AreaMatch(categories: [category]))
+                area.softLimit = SoftLimit(perPeriodAmount: cents)
+                try SoftLines.set(area, in: &next, now: now)
             case .tryTwoWeeks:
                 next.butlerAI?.reviews.append(ButlerReview(id: UUID(), suggestion: value, dueAt: Dates.addDays(14, to: now)))
             case .saveLeftover(let start):

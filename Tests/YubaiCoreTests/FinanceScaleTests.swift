@@ -126,7 +126,7 @@ private enum ReferenceFinance {
             (0..<2400).map { plan.frequency.advance(plan.dueDate, by: $0) }.filter { Dates.day($0) > today && $0 < end && (plan.endDate == nil || $0 <= plan.endDate!) }
         }.min().map(Dates.day)
         let horizonEnd = payday.map { Dates.addDays(-1, to: $0) } ?? Dates.addDays(-1, to: Dates.calendar.dateInterval(of: .month, for: now)!.end)
-        let committed = commitments.filter { Dates.day($0.date) <= horizonEnd }.reduce(Int64(0)) { $0 + $1.amount }
+        let committed = commitments.filter { Dates.day($0.date) >= Dates.day(now) && Dates.day($0.date) <= horizonEnd }.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
         let daily = Finance.estimatedDailyLiving(ledger, now: now)
         let living: Int64 = 0
@@ -134,7 +134,11 @@ private enum ReferenceFinance {
         let uncertain = ledger.activeEntries.filter { e in
             e.nature == .unknownIn && e.date <= now && accounts.contains { $0.id == e.accountID && $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) }
         }.reduce(Int64(0)) { $0 + $1.amount }
-        let available = cash - debt - committed - goals - living - uncertain
+        let cycleStart = Finance.cycle(in: ledger, now: now).start
+        let rows = ledger.entries.filter { $0.deletedAt == nil && $0.date >= cycleStart && $0.date <= now }
+        let income = rows.filter { $0.nature == .income && !$0.intoFixedSavings }.reduce(Int64(0)) { $0 + $1.amount }
+        let spent = rows.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ledger) }
+        let available = max(0, income - (ledger.savingRule?.target(income: income) ?? 0) - spent - committed)
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("还没有账户") }

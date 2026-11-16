@@ -553,13 +553,21 @@ final class ScreenGalleryTests: YubaiUITestCase {
         func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
         func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
         func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
-        stop("Spend", budget: 180) { try load("v47-spend"); try formula(); try require("formulaResult"); try reveal(element("formulaRow_daily")) }
+        stop("Spend", budget: 180) { try load("v47-spend"); try formula(); try require("formulaResult"); try reveal(element("formulaResult")) }
         stop("Spend-Over") { try load("v47-spend-over"); try formula(); try reveal(element("formulaResult")) }
         stop("Spend-Zero", budget: 180) { try load("v47-spend-zero"); try formula(); try require("formulaRow_spent") }
         stop("Spend-Hard") { try load("v47-savings-hard"); try formula(); try reveal(element("formulaResult")) }
         stop("Spend-Edit-Saving", budget: 180) { try load(); try formula(); try tap("formulaRow_saving"); try destination("saveSavingsAmount") }
         stop("Spend-Cycle-Bills") { try load(); try formula(); try tap("formulaRow_bills"); try require("cycleBillsPage") }
-        stop("Spend-Yearly", budget: 180) { try load(); try formula(); try tap("formulaRow_yearlySetAside"); try destination("yearlyBillsPage") }
+        stop("Spend-Yearly", budget: 180) { try load(); try settings("openFixedFlows"); try tap("yearlyBillsStrip"); try destination("yearlyBillsPage") }
+        stop("Spend-States") { try load("v47r-less"); try formula(); try reveal(element("formulaResult")) }
+        stop("Spend-States-Deficit") { try load("v47r-deficit"); try formula(); try reveal(element("formulaResult")) }
+        stop("Spend-States-Taken") { try load("v47r-taken"); try formula(); try reveal(element("formulaRow_withdrawal")) }
+        stop("Spend-States-Carry") { try load("v47r-carry"); try tap("leftoverKeep"); try formula(); try require("formulaRow_carry") }
+        stop("Spend-States-Floor") { try load("v47r-floor"); try formula(); try reveal(element("formulaRow_balanceGap")) }
+        stop("Butler-Cards") { try load("v47r-carry"); try require("leftoverKeep"); try require("leftoverDismiss") }
+        stop("Butler-Cards-Deficit") { try load("v47r-deficit"); try require("coverFromReserve") }
+        stop("Entry-Recon") { try load("v47r-reconcile"); try tap("openReconcile"); try require("reconcileSheet") }
         stop("Spend-Entries", budget: 180) { try load(); try formula(); try tap("formulaRow_spent"); try destination("entriesScroll") }
         stop("Save-Page-Flexible") { try saving(); try require("takeSavings"); try require("putBackSavings"); try reveal(element("editSavingsFloor")) }
         stop("Save-Page-No-Floor") { try saving("v47-savings-no-floor"); try require("editSavingsFloor") }
@@ -569,7 +577,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Take-Saved") { try take("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
         stop("Take-Undo") { try take("500"); try tap("confirmSavingsTransfer"); try toast(); try tap("undoLastChange"); try require("reserveTotal") }
         stop("PutBack") { try putBack("500") }
-        stop("PutBack-Limit") { try putBack("1564.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Putting back limit") }
+        stop("PutBack-Limit") { try putBack("1864.01"); try wait({ !self.element("confirmSavingsTransfer").isEnabled }, "Putting back limit") }
         stop("PutBack-Saved") { try putBack("500"); try tap("confirmSavingsTransfer"); try require("reserveTotal"); try toast() }
         stop("Floor-Edit") { try saving(); try tap("editSavingsFloor"); try require("clearSavingsFloor") }
         stop("Floor-Cleared") { try saving(); try tap("editSavingsFloor"); try tap("clearSavingsFloor"); try require("editSavingsFloor") }
@@ -609,7 +617,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Home-A") { try tap("stopRenewal"); try require("butlerReceipt"); try require("undoButlerReceipt") }
         stop("Home-B") { try load("v46-quiet"); try require("todayEntries") }
         stop("Deck") { try load("v46-deck"); try tap("openLetterInbox"); try require("butlerDeckNext"); try require("pendingImportsCard") }
-        stop("Home-Payday") { try load("v46-leftover"); try require("leftoverSave") }
+        stop("Home-Payday") { try load("v46-leftover"); try require("leftoverKeep") }
         stop("Payday-Amount") { try load("v46-payday"); try tap("paydayArrived"); try keys("8510"); try require("paydayExtraToSavings") }
         stop("First") { try load("v46-empty"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
         stop("Home-Bill") { try load("v46-bill"); try require("billDuePaid") }
@@ -624,9 +632,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
             try require("reconcileResult")
         }
         stop("Recon-Done") { try tap("reconcileApply"); try require("toastMessage"); try require("todayEntries") }
-        stop("Home-Over") { try load("v46-over"); try require("coverSaveLess"); try require("coverFromReserve") }
-        stop("Over-Cover") { try tap("coverSaveLess"); try tap("coverCushion"); try require("amountSheetAmount") }
-        stop("Over-Done") { try tap("amountSheetDone"); try require("dailyPace"); try require("toastMessage") }
+        stop("Home-Over") { try load("v46-over"); try require("coverFromReserve") }
+        stop("Over-Cover") { try tap("fundsFormula"); try reveal(element("formulaResult")) }
+        stop("Over-Done") { try tap("BackButton"); try tap("coverFromReserve"); try require("availableFunds"); try toast() }
         stop("Home-Busy") { try load("v46-busy"); try require("importBusyRow"); try require("organizeProgress") }
         stop("Home-Hidden") { try load("v46-home"); try hideAmounts(); try require("stopRenewal") }
         stop("Home-Hard") { try load("v46-hard"); try require("renewalCard") }
@@ -682,7 +690,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     private func formulaAndAccounts() {
         stop("04-formula-01-current") { try launch(); try formula() }
-        stop("04-formula-02-bottom") { try reveal(element("formulaRow_daily")) }
+        stop("04-formula-02-bottom") { try reveal(element("formulaResult")) }
         stop("04-formula-06-edit-reserve") { try launch(); try savingPage(); try tap("openSavings"); try tap("editFixedSavings"); try require("amountSheetAmount") }
         stop("04-formula-07-edit-saving") { try launch(); try formula(); try tap("formulaRow_saving"); try require("amountSheetAmount") }
         stop("04-formula-08-budget") { try launch(); try settings("openSpendingParts"); try require("spendingPartsPage") }
@@ -866,14 +874,14 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("12-states-03-payday-extra-to-savings") { try keys("8210"); try require("paydayExtraToSavings"); try tap("paydayExtraToSavings") }
         stop("12-states-04-payday-toast") { try tap("amountSheetDone"); try toast() }
         stop("12-states-05-late-salary") { try launch("v45-late"); try require("paydayArrived") }
-        stop("12-states-06-new-cycle-leftover") { try launch("v45-newcycle"); try require("leftoverSave") }
-        stop("12-states-07-leftover-saved") { try tap("leftoverSave"); try require("fundsFormula") }
-        stop("12-states-08-overspend") { try launch("v45-over"); try require("coverSaveLess") }
-        stop("12-states-09-cover-save-less") { try tap("coverSaveLess"); try require("coverLevel") }
-        stop("12-states-10-cover-level") { try tap("coverLevel"); try require("amountSheetAmount") }
-        stop("12-states-11-cover-toast") { try tap("amountSheetDone"); try toast() }
-        stop("12-states-12-cover-reserve-cushion") { try launch("v45-over"); try tap("coverFromReserve"); try tap("coverCushion"); try require("amountSheetAmount") }
-        stop("12-states-13-cover-reserve-toast") { try tap("amountSheetDone"); try toast() }
+        stop("12-states-06-new-cycle-leftover") { try launch("v45-newcycle"); try require("leftoverKeep") }
+        stop("12-states-07-leftover-saved") { try tap("leftoverKeep"); try require("fundsFormula") }
+        stop("12-states-08-overspend") { try launch("v45-over"); try require("coverFromReserve") }
+        stop("12-states-09-cover-save-less") { try tap("fundsFormula"); try require("formulaRow_saving") }
+        stop("12-states-10-cover-level") { try reveal(element("formulaResult")) }
+        stop("12-states-11-cover-toast") { try tap("BackButton"); try tap("coverFromReserve"); try toast() }
+        stop("12-states-12-cover-reserve-cushion") { try tap("undoLastChange"); try require("coverFromReserve") }
+        stop("12-states-13-cover-reserve-toast") { try tap("coverFromReserve"); try toast() }
         stop("12-states-15-reconcile-gap") { try launch("v45-gap"); try tap("openReconcile"); try require("reconcileSheet") }
         stop("12-states-16-reconcile-keyboard") { try tap("reconcileField_合成银行卡"); try require("keypad_1") }
         stop("12-states-19-salary-candidate") { try launch("salary"); try tap("openLetterInbox"); try deckAction("confirmSalary") }
@@ -1093,8 +1101,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Bill-Match") { try load("v46-bills-match"); try tap(bill("话费和宽带")); try require("billMatchConfirm") }
         stop("Accounts") { try load(); try settings("openAccounts"); try require("accountsTotal") }
         stop("Bills-Rate") { try load(); try calendar(); try select(28); try tap("billsRate_USD"); try require("billRateValue") }
-        stop("Bills-Yearly-Switch") { try load(); try calendar(); try tap("yearlyBillsStrip"); try require("yearlyBillsSetAside") }
-        stop("Bills-Spend") { try load("v47-spend"); try formula(); try reveal(element("formulaRow_yearlySetAside")) }
+        stop("Bills-Yearly-Switch") { try load(); try calendar(); try tap("yearlyBillsStrip"); try require("yearlyBillsPage") }
+        stop("Bills-Spend") { try load("v47-spend"); try formula(); try reveal(element("formulaRow_bills")) }
         stop("Bills-Hidden") { try load("v46-bills-hidden"); try calendar(); try select(28); try require("billsSelectedDay") }
         stop("Bills-Hard") { try load("v46-bills-hard"); try calendar(); try select(21); try require("billsSelectedDay") }
     }

@@ -37,12 +37,13 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
     public var name: String { rawValue }
     public var description: String {
         switch self {
-        case .getFunds: return "本机计算的还能花看到这个周期末；工资确认到账才开始新周期，晚到时旧周期延续到今天。存着的钱单独留出，每月存是这个周期先留出的钱，固定账单按实际支付结清。日均使用本机给出的数值，日常花销估算不扣，未来收入不提前计入。"
+        case .getFunds: return "本机计算这个周期的还能花：本期已到账可支配收入 + 上期留下 − 要攒 − 还要付 − 已经花了 + 拿出来用 − 余额差额。期初余额、未来收入、直接存入的收入和未明进账不计入收入。主数字使用headline_title和headline_amount；少攒和缺口使用本机事实，主数字不写负数。存下的钱单独保留。工资确认到账才开始新周期，晚到延续旧周期。"
+
         case .forecast: return "从今天预测指定日期的保守/预计余额及此前已知付款；可比较一笔金额。最远365天，预计收入不算保守资金。"
         case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，每页最多50条。offset从0开始，用next_offset继续查询。日期边界均包含当天，金额过滤用原始金额。"
         case .summarize: return "按日/周(周一开始)/月/分类汇总匹配记录；默认全部，不受查询默认条数限制。消费退款抵扣，房租只计个人承担。"
         case .compareToHabit: return "近90个自然日同类实际消费的均值、中位数、每周频次和最近记录；有数据时附last_year去年同期90天均值和次数，以及匹配的想克制领域柔性线soft_limits。不含未来记录或退款，可比较金额位置。"
-        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、存着的钱和每月存安排。附生活背景memories（可能过时，省略时用recall检索）和最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
+        case .getProfile: return "当前结构化消费观：愿意多花、想克制及柔性提醒、原则（text和confirmed_at对象数组）、确认日期、存下的钱和要攒安排。附生活背景memories（可能过时，省略时用recall检索）和最近10条已回答心愿回访recent_followups。你常花的是近90天本机统计，不是用户要求。每次消费判断重新读取。附提案所需的本地账户/安排标识；补记前读取本机已确认金额。"
         }
     }
     private static func field(_ type: String, _ description: String) -> JSONValue {
@@ -93,10 +94,26 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
             var fields: [String: JSONValue] = ["available": .money(f.available), "cash": .money(f.cash), "debt": .money(f.debt),
                 "committed": .money(f.committed), "goals": .money(f.goals), "fixed_savings": .money(f.fixedSavingsTotal),
                 "cycle_start": .string(Dates.text(f.cycleStart)), "cycle_end": .string(Dates.text(f.cycleEnd)), "cycle_is_payday": .bool(f.cycleIsPayday),
-                "liquid_start": .money(f.liquidStart), "cycle_income": .money(f.cycleIncome), "saving_target": .money(f.savingTarget),
-                "cycle_spent": .money(f.cycleSpent), "due_rest": .money(f.dueRest), "daily_allowance": .money(f.dailyAllowance), "saving_shortfall": .money(f.savingShortfall),
+                "cycle_income": .money(f.cycleIncome), "saving_target": .money(f.savingTarget),
+                "cycle_spent": .money(f.cycleSpent), "due_rest": .money(f.dueRest), "saving_shortfall": .money(f.savingShortfall),
+                "headline_title": .string(f.spendable.headlineTitle), "headline_amount": .money(f.spendable.headlineAmount),
+                "raw_remaining": .money(f.spendable.rawR), "deficit": .money(f.spendable.deficit),
+                "planned_saving": .money(f.spendable.plannedSaving),
+                "carry": .money(f.spendable.carry), "withdrawal": .money(f.spendable.withdrawal), "balance_gap": .money(f.spendable.balanceGap),
+                "formula_available": .bool(f.spendable.offersFormula),
                 "living": .money(f.living), "uncertain": .money(f.uncertainInflow), "expected_income": .money(f.expectedIncome),
                 "horizon_days": .number(Double(f.horizonDays)), "warnings": .strings(f.warnings)]
+            fields["formula_rows"] = .array(f.spendable.rows.map { row in
+                .object(["kind": .string(row.id), "title": .string(row.title), "amount": .money(row.amount), "original_amount": .money(row.originalAmount),
+                    "entry_ids": .strings(row.entryIDs.map(\.uuidString)), "occurrence_ids": .strings(row.occurrences.map(\.id)),
+                    "transfer_ids": .strings(row.transferIDs.map(\.uuidString))])
+            })
+            fields["soft_lines"] = .array(SoftLines.usage(ctx.ledger, now: ctx.now).map { line in
+                func value(_ amount: Int64) -> JSONValue { line.mode == .amount ? .money(amount) : .number(Double(amount)) }
+                return .object(["title": .string(line.title), "mode": .string(line.mode == .amount ? "amount" : "count"),
+                    "limit": value(line.limit), "used": value(line.used),
+                    "remaining": value(line.remaining), "exceeded": value(line.exceeded)])
+            })
             switch ctx.ledger.savingRule {
             case .fixed(let amount): fields["saving_rule"] = .object(["type": .string("fixed"), "amount": .money(amount)])
             case .share(let percent): fields["saving_rule"] = .object(["type": .string("share"), "percent": .number(Double(percent))])
@@ -132,12 +149,18 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "confirmed_at": a.confirmedAt.map { .string(Dates.text($0)) } ?? .null,
                 "days_since_confirmed": a.confirmedAt.map { .number(Double(Dates.calendar.dateComponents([.day], from: Dates.day($0), to: Dates.day(ctx.now)).day ?? 0)) } ?? .null,
                 "soft_line": .string(a.softLimit?.text ?? "")]
+            if let count = a.softLimit?.periodCount { row["per_period_count"] = .number(Double(count)) }
+            if let amount = a.softLimit?.periodAmount { row["per_period_amount"] = .money(amount) }
             if let count = a.softLimit?.perWeekCount { row["per_week_count"] = .number(Double(count)) }
             if let amount = a.softLimit?.perMonthAmount { row["per_month_amount"] = .money(amount) }
-            row["soft_limit"] = a.softLimit.map { limit in
-                .object(["per_week_count": limit.perWeekCount.map { .number(Double($0)) } ?? .null,
-                    "per_month_amount": limit.perMonthAmount.map { .money($0) } ?? .null, "text": .string(limit.text)])
-            } ?? .null
+            if let limit = a.softLimit {
+                var fields: [String: JSONValue] = ["text": .string(limit.text)]
+                fields["per_week_count"] = limit.perWeekCount.map { .number(Double($0)) } ?? .null
+                fields["per_month_amount"] = limit.perMonthAmount.map { .money($0) } ?? .null
+                fields["per_period_count"] = limit.periodCount.map { .number(Double($0)) } ?? .null
+                fields["per_period_amount"] = limit.periodAmount.map { .money($0) } ?? .null
+                row["soft_limit"] = .object(fields)
+            } else { row["soft_limit"] = .null }
             return .object(row)
         }
         let followups = ctx.ledger.wishlist.filter { $0.followUpAnswer != nil }.sorted {
@@ -283,6 +306,8 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
         let areas = ctx.ledger.profile.restrain.filter { ButlerCards.matches($0, entry: sample, ledger: ctx.ledger) }
         if !areas.isEmpty {
             result["soft_limits"] = .array(areas.map { area in .object(["id": .string(area.id.uuidString), "title": .string(area.title),
+                "per_period_count": area.softLimit?.periodCount.map { .number(Double($0)) } ?? .null,
+                "per_period_amount": area.softLimit?.periodAmount.map { .money($0) } ?? .null,
                 "per_week_count": area.softLimit?.perWeekCount.map { .number(Double($0)) } ?? .null,
                 "per_month_amount": area.softLimit?.perMonthAmount.map { .money($0) } ?? .null]) })
         }

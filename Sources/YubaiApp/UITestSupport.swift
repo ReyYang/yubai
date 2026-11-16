@@ -478,6 +478,19 @@ enum UITestSupport {
             ledger.entries.append(receipt)
             ledger.accounts[0].anchorBalance -= receipt.amount
         }
+        if script != "v45-newcycle" {
+            let cycle = Finance.cycle(in: ledger, now: now)
+            var posted = Entry(date: cycle.start, amount: script == "v45-over" ? 601_000 : 801_000,
+                               nature: .income, accountID: accountID, title: "工资", category: "工资奖金")
+            posted.recordedAt = cycle.start
+            ledger.entries.insert(posted, at: 0)
+        }
+        if script != "v45-newcycle" {
+            let cycle = Finance.cycle(in: ledger, now: now)
+            var posted = Entry(date: cycle.start, amount: script == "v45-over" ? 601_000 : 801_000,
+                               nature: .income, accountID: accountID, title: "工资", category: "工资奖金")
+            posted.id = galleryID(459999); ledger.entries.append(posted)
+        }
         // The board's 5,000 already includes older savings. Startup maintenance
         // must not merge a synthetic previous cycle into it a second time.
         seedClosedV45Cycle(&ledger, now: now, unspent: script == "v45-newcycle" ? 21_200 : 0)
@@ -515,8 +528,9 @@ enum UITestSupport {
         let cycle = Finance.cycle(in: ledger, now: now)
         let previous = Finance.cycle(in: ledger, now: cycle.start.addingTimeInterval(-1))
         ledger.savingHistory = [CycleSaving(cycleStart: previous.start, cycleEnd: min(previous.end, Dates.addDays(-1, to: cycle.start)),
-                                           income: 801_000, target: 200_000, saved: 200_000,
-                                           unspent: unspent, leftoverChoice: unspent == 0 ? .keep : nil)]
+                                           income: 801_000, target: 200_000, saved: 200_000, leftover: unspent,
+                                           unspent: unspent, leftoverChoice: unspent == 0 ? .keep : .save, autoSaved: unspent > 0 ? true : nil)]
+        ledger.fixedSavings = (ledger.fixedSavings ?? 0) + unspent
     }
 
     static func salaryLedger(now: Date) -> Ledger {

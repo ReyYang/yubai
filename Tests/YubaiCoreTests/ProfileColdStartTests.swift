@@ -53,7 +53,7 @@ final class ProfileColdStartTests: XCTestCase {
         var confirmed = ctx.ledger; try change.apply(to: &confirmed)
         XCTAssertEqual(confirmed.profile.generous.map(\.title), ["学习"])
         XCTAssertEqual(confirmed.profile.restrain.map(\.title), ["外卖"])
-        XCTAssertEqual(confirmed.profile.restrain[0].softLimit, SoftLimit(perWeekCount: 3, perMonthAmount: 50_000))
+        XCTAssertEqual(confirmed.profile.restrain[0].softLimit, SoftLimit(perPeriodCount: 3, perPeriodAmount: 50_000))
         XCTAssertEqual(confirmed.profile.principles, ["大件先等两天"])
         XCTAssertEqual(confirmed.profile.floorAmount, 500_000)
         XCTAssertEqual(confirmed.entries, ctx.ledger.entries)

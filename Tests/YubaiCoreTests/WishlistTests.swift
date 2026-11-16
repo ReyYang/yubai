@@ -62,7 +62,7 @@ final class WishlistTests: XCTestCase {
         let proposal = try XCTUnwrap(ledger.pendingChanges.first { $0.source == "卡片反馈" })
         XCTAssertEqual(ledger.profile.restrain[0].softLimit?.perWeekCount, 4) // proposal, no silent preference edit
         guard case .profile(.upsertArea(let proposed, .restrain)) = proposal.items[0] else { return XCTFail("missing feedback proposal") }
-        XCTAssertEqual(proposed.softLimit?.perWeekCount, 3)
+        XCTAssertEqual(proposed.softLimit?.perPeriodCount, 3)
         XCTAssertEqual(ledger.cards.filter { $0.kind == .followUp && $0.feedback == .regret && $0.dismissedAt != nil }.count, 2)
         XCTAssertThrowsError(try Wishlist.answerFollowUp(ledger.wishlist[0].id, choice: .worth, in: &ledger, now: ctx.now))
         try ledger.validate()

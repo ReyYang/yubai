@@ -40,7 +40,7 @@ final class Round46PaydayCycleTests: XCTestCase {
         var value = ledger()
         let late = Finance.cycleInfo(in: value, now: d("2026-11-16 12:00"))
         XCTAssertEqual(late.start, d("2026-10-15")); XCTAssertEqual(late.end, d("2026-11-16"))
-        XCTAssertEqual(late.lateSince, d("2026-11-15")); XCTAssertNil(Finance.pace(value, now: d("2026-11-16"))?.daily)
+        XCTAssertEqual(late.lateSince, d("2026-11-15")); XCTAssertNil(Finance.spendableBreakdown(value, now: d("2026-11-16")).waterBar)
         try record("2026-11-17", in: &value)
         assertCycle(value, at: "2026-11-17", start: "2026-11-17", end: "2026-12-14")
         XCTAssertEqual(Finance.cycleInfo(in: value, now: d("2026-11-16")).end, d("2026-11-16"))
@@ -87,7 +87,7 @@ final class Round46PaydayCycleTests: XCTestCase {
     func testScheduledDayArrivalIsUnchanged() throws {
         var value = ledger(); try record("2026-11-15", in: &value)
         assertCycle(value, at: "2026-11-15", start: "2026-11-15", end: "2026-12-14")
-        XCTAssertEqual(Finance.pace(value, now: d("2026-11-15 12:00"))?.daysTotal, 30)
+        XCTAssertEqual(Finance.spendableBreakdown(value, now: d("2026-11-15 12:00")).daysTotal, 30)
     }
 
     func testAllCycleReadersUseTheUnpaidNextMonthAndReserveBillsOnce() throws {
@@ -99,17 +99,17 @@ final class Round46PaydayCycleTests: XCTestCase {
         let now = d("2026-11-13 12:00"), funds = Finance.funds(value, now: now)
         XCTAssertEqual(funds.cycleStart, d("2026-11-13")); XCTAssertEqual(funds.horizonEnd, d("2026-12-14"))
         XCTAssertEqual(funds.payday, d("2026-12-15")); XCTAssertEqual(funds.horizonDays, 31)
-        XCTAssertEqual(funds.committed, 140_000); XCTAssertEqual(funds.yearlySetAside, 0)
-        XCTAssertEqual(funds.available, 1_360_000)
-        let pace = try XCTUnwrap(Finance.pace(value, now: now))
-        XCTAssertEqual(pace.daysTotal, 32); XCTAssertEqual(pace.daysLeft, 32); XCTAssertEqual(pace.daily, 42_500)
-        let derivation = Finance.spendingDerivation(value, now: now)
-        XCTAssertEqual(derivation.available, funds.available); XCTAssertEqual(derivation.daily, pace.daily)
+        XCTAssertEqual(funds.committed, 140_000)
+        XCTAssertEqual(funds.available, 560_000)
+        let pace = try XCTUnwrap(Finance.spendableBreakdown(value, now: now))
+        XCTAssertEqual(pace.daysTotal, 32); XCTAssertEqual(pace.daysLeft, 32); XCTAssertEqual(pace.waterBar?.fill, 0)
+        let derivation = Finance.spendableBreakdown(value, now: now)
+        XCTAssertEqual(derivation.available, funds.available); XCTAssertEqual(derivation.waterBar, pace.waterBar)
         XCTAssertEqual(derivation.interval.start, d("2026-11-13"))
-        XCTAssertEqual(derivation.interval.end, now.addingTimeInterval(0.001))
+        XCTAssertEqual(derivation.interval.end, d("2026-12-15"))
         XCTAssertFalse(HomeButler.queue(value, now: d("2026-11-15 12:00")).contains { if case .payday = $0 { return true }; return false })
-        let rows = YearlyBillReserves.rows(in: value, now: now, committedThrough: funds.horizonEnd)
-        XCTAssertEqual(rows.first?.reserved, 0)
+        XCTAssertEqual(derivation.rows.first { $0.kind == .bills }?.occurrences.count, 2)
+
     }
 
     func testSavingsClosesAtActualArrivalsAndNeverAtTheConsumedPayday() throws {
@@ -133,7 +133,7 @@ final class Round46PaydayCycleTests: XCTestCase {
             if next == "2026-12-17" {
                 let late = Finance.cycleInfo(in: value, now: d(previous))
                 XCTAssertEqual(late.start, d("2026-11-13")); XCTAssertEqual(late.lateSince, d("2026-12-15"))
-                XCTAssertNil(Finance.pace(value, now: d(previous))?.daily)
+                XCTAssertEqual(Finance.spendableBreakdown(value, now: d(previous)).waterBar?.tick, 1)
             }
             try record(next, occurrence: "2026-12-15", in: &value)
             assertCycle(value, at: previous, start: "2026-11-13", end: previous)

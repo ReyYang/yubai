@@ -33,6 +33,14 @@ public struct HomeTaskCopy: Equatable, Sendable {
     public static func make(_ task: HomeTask, now: Date, hidden: Bool) -> Self? {
         func money(_ amount: Int64) -> String { hidden ? "••••" : Money.text(amount, currency: false) }
         switch task {
+        case .leftover(let value):
+            return Self(kicker: "上期结束 · " + monthDay(value.cycleEnd), title: "上期省下 " + money(value.leftover) + " 已存好")
+        case .balanceMismatch(let value):
+            return Self(kicker: value.lastReconciledAt.map { "上次对是 " + monthDay($0) } ?? "", title: value.amount > 0 ? "账面比卡里多 " + money(value.amount) : "对一下余额")
+        case .billHeadsUp(let bill):
+            return Self(kicker: "下一期 · " + monthDay(bill.date), title: bill.title + " " + money(bill.amount))
+        case .overspend(let options):
+            return Self(kicker: "还要付", title: "要付的账单差 " + money(options.overBy))
         case .payday(let due):
             return Self(kicker: "固定进账 · " + monthDay(due.occurrence), title: due.title + " " + money(due.usual) + " 到了吗？")
         case .bill(let bill):

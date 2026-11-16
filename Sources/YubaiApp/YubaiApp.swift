@@ -26,6 +26,7 @@ struct LedgerPreset: Equatable {
     var interval: DateInterval? = nil
     var category: String? = nil
     var search = ""
+    var entryIDs: Set<UUID>? = nil
     var token = UUID()
 }
 enum TabRoute: Hashable {
@@ -33,7 +34,7 @@ enum TabRoute: Hashable {
     case triage([UUID])
     case quickCapture, importHistory, intelligencePrivacy, backup, storage
     case unsortedGroups(UUID)
-    case formula, budget, billDetail(UUID), todo, settings, categories, savingRule, reserve, saved
+    case formula, budget, billDetail(UUID), billDate(Date), todo, settings, categories, savingRule, reserve, saved
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
     case entryDetail(UUID)
     case allCategories(DateInterval), categoryBudget(String), savingWish(UUID), askQuestion(String)
@@ -281,16 +282,14 @@ enum AppSheet: Identifiable {
     // MARK: Round 45 derived values
     // Every slot is keyed on the funds cache's timestamp, so a value is recomputed once per ledger
     // change or per day, never while a view body is evaluated twice. Checkpoint
-    // preparation also primes the pace and worked exercise off-main.
-    private let paceSlot = TimedSlot<CyclePace?>()
+    // preparation also primes the worked exercise off-main.
     private let homeTasksSlot = TimedSlot<[HomeTask]>()
     private let butlerSavedSlot = TimedSlot<Int64>()
     private let homeHeroSlot = TimedSlot<HomeHero>()
     private let homeSavingSlot = TimedSlot<HomeSavingCard>()
     private let dailyReceiptSlot = TimedSlot<DailyReceipt>()
     private let salaryPromptSlot = TimedSlot<Bool>()
-    private let formulaSlot = TimedSlot<SpendableFormula>()
-    private let spendingDerivationSlot = TimedSlot<SpendingDerivation>()
+    private let formulaSlot = TimedSlot<SpendableBreakdown>()
     private let reserveSlot = TimedSlot<ReserveOverview>()
     private let paydaySlot = TimedSlot<Payday.Due?>()
     private let gapSlot = TimedSlot<Reconciliation.Gap?>()
@@ -304,8 +303,6 @@ enum AppSheet: Identifiable {
         let source = derivedSource
         return slot.value(at: at) { compute(source, at) }
     }
-    /// 日均；`nil` = 还不知道发薪日。
-    var pace: CyclePace? { derived(paceSlot) { Finance.pace($0, now: $1) } }
     var homeTasks: [HomeTask] {
         _ = visibilityRevision
         let batches = organizingImportBatchIDs
@@ -316,18 +313,8 @@ enum AppSheet: Identifiable {
     var homeSaving: HomeSavingCard { derived(homeSavingSlot) { HomeSavingCard.make($0, now: $1) } }
     var dailyReceipt: DailyReceipt { derived(dailyReceiptSlot) { DailyReceipt.make($0, now: $1) } }
     var salaryPromptDue: Bool { derived(salaryPromptSlot) { FirstUse.salaryPromptDue($0, now: $1) } }
-    /// 算式页四行（`Finance.formula`）。
-    var formula: SpendableFormula { derived(formulaSlot) { Finance.formula($0, now: $1) } }
-    var spendingDerivation: SpendingDerivation {
-        derived(spendingDerivationSlot) { ledger, now in
-            // `derived` has selected this funds timestamp. Read the other slots
-            // at that exact instant, including across a posting/day boundary.
-            let funds = cachedFunds!.value
-            let formula = formulaSlot.value(at: now) { Finance.formula(ledger, now: now) }
-            let pace = paceSlot.value(at: now) { Finance.pace(ledger, now: now) }
-            return Finance.spendingDerivation(ledger, now: now, funds: funds, formula: formula, pace: pace)
-        }
-    }
+    /// 算式页与首页使用同一周期结果（`Finance.formula`）。
+    var formula: SpendableBreakdown { derived(formulaSlot) { Finance.formula($0, now: $1) } }
     /// 存钱页：存下的总额与最近进出。
     var reserve: ReserveOverview { derived(reserveSlot) { Reserve.overview($0, now: $1) } }
     var financialNow: Date { _ = timeRevision; _ = fundsValue(); return cachedFunds?.at ?? Dates.now }
@@ -335,9 +322,9 @@ enum AppSheet: Identifiable {
     var paydayDue: Payday.Due? { derived(paydaySlot) { Payday.due(in: $0, now: $1) } }
     /// 几天没记。
     var recordGap: Reconciliation.Gap? { derived(gapSlot) { Reconciliation.gap(in: $0, now: $1) } }
-    /// 上个周期剩下的钱，还没问怎么处理。
-    var pendingLeftover: CycleSaving? { derived(leftoverSlot) { ledger, _ in Savings.pendingLeftover(in: ledger) } }
-    /// 周期超了的两条补法；没超为 `nil`。
+    /// 上期结余自动存好后的通知。
+    var pendingLeftover: CycleSaving? { derived(leftoverSlot) { ledger, now in Savings.carryNotice(in: ledger, now: now) } }
+    /// 超过要攒缓冲后的缺口；无缺口为 `nil`。
     var overspend: Overspend.Options? { derived(overspendSlot) { Overspend.options($0, now: $1) } }
 
     // MARK: 今天先不问
@@ -472,11 +459,9 @@ enum AppSheet: Identifiable {
         cachedFunds = preparedDerived.map { ($0.funds, $0.at, $0.expires, $0.zone) }
         cachedBalances = [:]; cachedAssessments = [:]; cachedFixedMonth = preparedDerived?.fixedMonth
         cachedRestrainProgress = preparedDerived?.progress; cachedSalary = preparedSalary
-        if let preparedDerived { paceSlot.prime(at: preparedDerived.at, preparedDerived.pace) } else { paceSlot.clear() }
         if let preparedDerived {
             formulaSlot.prime(at: preparedDerived.at, preparedDerived.formula)
-            spendingDerivationSlot.prime(at: preparedDerived.at, preparedDerived.spendingDerivation)
-        } else { formulaSlot.clear(); spendingDerivationSlot.clear() }
+        } else { formulaSlot.clear() }
         reserveSlot.clear(); paydaySlot.clear(); gapSlot.clear()
         leftoverSlot.clear(); overspendSlot.clear(); homeTasksSlot.clear(); butlerSavedSlot.clear()
         homeHeroSlot.clear(); homeSavingSlot.clear(); dailyReceiptSlot.clear(); salaryPromptSlot.clear()
@@ -1206,6 +1191,7 @@ struct RootView: View {
         case .askQuestion(let text): AskYubaiView(initialText: text, autoSend: true)
         case .budget: BudgetView()
         case .billDetail(let id): BillDetailView(planID: id)
+        case .billDate(let date): FixedFlowsView(selectedDate: date)
         case .yearlyBills: YearlyBillsView()
         case .cycleBills: CycleBillsView()
         case .todo: TodoView()
@@ -1396,9 +1382,7 @@ struct LedgerDerivedSnapshot: Sendable {
     let fixedMonth: FixedFlowMonth
     let progress: [RestrainProgress]
     let visibility: SavingCardVisibility.Snapshot
-    let pace: CyclePace?
-    let formula: SpendableFormula
-    let spendingDerivation: SpendingDerivation
+    let formula: SpendableBreakdown
     let organizingBatchIDs: Set<UUID>
     init(_ ledger: Ledger, now: Date = Dates.now, organizingBatchIDs: Set<UUID> = []) {
         self.organizingBatchIDs = organizingBatchIDs
@@ -1418,9 +1402,7 @@ struct LedgerDerivedSnapshot: Sendable {
         entries = ledger.entries.sorted { $0.date > $1.date }
         entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         fixedMonth = FixedFlows.month(containing: now, in: ledger, asOf: now)
-        pace = Finance.pace(ledger, now: now)
         formula = Finance.formula(ledger, now: now)
-        spendingDerivation = Finance.spendingDerivation(ledger, now: now, funds: funds, formula: formula, pace: pace)
         progress = RestrainProgress.current(ledger: ledger, now: now)
         visibility = SavingCardVisibility.snapshot(in: ledger, organizingBatchIDs: organizingBatchIDs, progress: progress,
                                                   fallbackEntryCount: { UnsortedGroups.entries(for: $0, in: ledger).count })

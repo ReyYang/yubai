@@ -74,6 +74,18 @@ extension UITestSupport {
                             inflow: true, category: "工资", nature: .income)
             plan.accountID = value.accounts[0].id; plan.autoPay = false; value.plans.append(plan)
         }
+        let current = Finance.cycle(in: value, now: now)
+        if !value.entries.contains(where: { $0.deletedAt == nil && $0.nature == .income && !$0.intoFixedSavings && $0.date >= current.start && $0.date <= now }) {
+            var income = Entry(date: current.start, amount: 801_000, nature: .income, accountID: value.accounts[0].id, title: "工资", category: "工资奖金")
+            income.id = galleryID(479998); value.entries.append(income)
+        }
+
+        let cycle = Finance.cycle(in: value, now: now)
+        if !value.entries.contains(where: { $0.deletedAt == nil && $0.nature == .income && !$0.intoFixedSavings && $0.date >= cycle.start && $0.date <= now }) {
+            var income = Entry(date: cycle.start, amount: 801_000, nature: .income, accountID: value.accounts[0].id, title: "工资", category: "工资奖金")
+            income.id = galleryID(459998); value.entries.append(income)
+        }
+
     }
 }
 #endif

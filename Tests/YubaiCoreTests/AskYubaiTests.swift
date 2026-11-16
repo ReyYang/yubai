@@ -49,7 +49,7 @@ final class AskYubaiTests: XCTestCase {
         let funds = Finance.funds(ctx.ledger, now: ctx.now)
         XCTAssertFalse(purchase.hasProfile); XCTAssertNil(purchase.facts["values"])
         XCTAssertEqual(purchase.facts["missing"], .string("还不知道你在乎什么，可以在『消费观』里补上"))
-        XCTAssertEqual(purchase.facts["affordability"]?["available_after_purchase"], .money(funds.available - 3200))
+        XCTAssertEqual(purchase.facts["affordability"]?["available_after_purchase"], .money(max(0, funds.spendable.rawR - 3200)))
         XCTAssertEqual(purchase.facts["affordability"]?["forecast"], try ReadOnlyTool.forecast.run(.object(["days": .number(0), "amount": .string("32")]), ctx))
         XCTAssertEqual(purchase.facts["habit"], try ReadOnlyTool.compareToHabit.run(.object(["category": .string("餐饮"), "amount": .string("32")]), ctx))
         var ledger = ctx.ledger
@@ -66,7 +66,7 @@ final class AskYubaiTests: XCTestCase {
         XCTAssertEqual(profiled.facts["affordability"]?["fixed_savings"], .money(5000))
         XCTAssertEqual(profiled.facts["affordability"]?["saving_target"], .money(0))
         XCTAssertNil(profiled.facts["affordability"]?["floor_already_reserved"])
-        XCTAssertEqual(profiled.facts["affordability"]?["available_after_purchase"], .money(Finance.funds(ledger, now: ctx.now).available - 3200))
+        XCTAssertEqual(profiled.facts["affordability"]?["available_after_purchase"], .money(max(0, Finance.funds(ledger, now: ctx.now).spendable.rawR - 3200)))
     }
     func testSavingsFactsAreSharedWithFundsTool() throws {
         let now = AssistantFixtures.context().now
@@ -80,8 +80,8 @@ final class AskYubaiTests: XCTestCase {
             XCTAssertEqual(affordability["fixed_savings"], .money(fixed ?? 0))
             XCTAssertEqual(funds["fixed_savings"], affordability["fixed_savings"])
             XCTAssertEqual(funds["saving_target"], affordability["saving_target"])
-            XCTAssertEqual(affordability["available"], .money(9000 - (fixed ?? 0)))
-            XCTAssertEqual(affordability["available_after_purchase"], .money(7000 - (fixed ?? 0)))
+            XCTAssertEqual(affordability["available"], .money(0))
+            XCTAssertEqual(affordability["available_after_purchase"], .money(0))
         }
     }
     func testSentenceDraftAmountIsLocalAndMustBeConfirmed() async throws {

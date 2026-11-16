@@ -43,15 +43,20 @@ public enum ProfileHabits {
 }
 
 public extension SoftLimit {
+    var periodCount: Int? { perPeriodCount ?? perWeekCount }
+    var periodAmount: Int64? { perPeriodAmount ?? perMonthAmount }
     var text: String {
         var parts: [String] = []
-        if let count = perWeekCount { parts.append("每周最多 \(count) 次") }
-        if let amount = perMonthAmount { parts.append("每月最多 " + Money.text(amount)) }
+        if let count = periodCount { parts.append("每期最多 \(count) 次") }
+        if let amount = periodAmount { parts.append("每期最多 " + Money.text(amount)) }
         return parts.joined(separator: " · ")
     }
 }
 
 public extension ProfileArea {
+    func periodUsage(in ledger: Ledger, now: Date = Dates.now) -> (count: Int, amount: Int64) {
+        usage(in: ledger, from: Finance.cycle(in: ledger, now: now).start, through: now)
+    }
     /// Monday-based current week and current calendar month through now. A category
     /// OR any keyword matches; empty selectors match nothing. Refunds follow the
     /// original expense for matching and reduce amount, never the purchase count.

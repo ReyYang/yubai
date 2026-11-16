@@ -12,6 +12,7 @@ struct EntriesView: View {
     @State private var filter = EntryTimeline.Filter.all
     @State private var search = ""
     @State private var scope: DateInterval?
+    @State private var entryIDsScope: Set<UUID>?
     @State private var categoryScope: String?
     @State private var categoryTimeline: EntryTimeline.Snapshot?
     @State private var pickingMonth = false
@@ -32,7 +33,7 @@ struct EntriesView: View {
     var body: some View {
         // Cached once per ledger revision/query. List creates the display rows
         // lazily, including when thousands of entries span many months.
-        let timeline = categoryScope == nil ? store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
+        let timeline = categoryScope == nil && entryIDsScope == nil ? store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
             : categoryTimeline ?? store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
         let hideAmounts = store.preferences.hideAmounts
         let groups = scoped(displayMonths(timeline))
@@ -273,6 +274,7 @@ struct EntriesView: View {
         search = value.search
         categoryScope = value.category; categoryTimeline = nil
         scope = value.interval
+        entryIDsScope = value.entryIDs
         scrollToTop = true
         request = nil
     }
@@ -281,17 +283,20 @@ struct EntriesView: View {
         // Scroll after List has received the target header (also for an empty month).
         Task { @MainActor in await Task.yield(); scrollMonth = month }
     }
-    private func endSearch() { searchFocused = false; search = ""; scope = nil; categoryScope = nil; categoryTimeline = nil; scrollToTop = true }
-    private var categoryQuery: String { "\(store.ledgerRevision)-\(store.financialNow)-\(categoryScope ?? "")-\(String(describing: scope))-\(search)-\(filter.rawValue)-\(month)" }
+    private func endSearch() { searchFocused = false; search = ""; scope = nil; entryIDsScope = nil; categoryScope = nil; categoryTimeline = nil; scrollToTop = true }
+    private var categoryQuery: String { "\(store.ledgerRevision)-\(store.financialNow)-\(categoryScope ?? "")-\(String(describing: entryIDsScope))-\(String(describing: scope))-\(search)-\(filter.rawValue)-\(month)" }
     @MainActor private func refreshCategoryTimeline() async {
-        guard let categoryScope else { categoryTimeline = nil; return }
+        guard categoryScope != nil || entryIDsScope != nil else { categoryTimeline = nil; return }
+        let categoryScope = categoryScope; let ids = entryIDsScope
         let ledger = store.current; let at = store.financialNow; let interval = scope
         let query = search; let filter = filter; let month = month
         let value = await Task.detached(priority: .userInitiated) {
             let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-            let category = ledger.resolveCategory(categoryScope, income: false)
+            let category = categoryScope.map { ledger.resolveCategory($0, income: false) }
             let rows = ledger.entries.filter { entry in
-                guard entry.deletedAt == nil, entry.date <= at, entry.nature == .expense || entry.nature == .refund else { return false }
+                guard entry.deletedAt == nil, entry.date <= at else { return false }
+                if let ids { return ids.contains(entry.id) }
+                guard entry.nature == .expense || entry.nature == .refund else { return false }
                 if let interval, entry.date < interval.start || entry.date >= interval.end { return false }
                 let source = entry.relatedEntryID.flatMap { lookup[$0] } ?? entry
                 if categoryScope == Reconciliation.unitemizedTitle { return source.isUnitemized && Classification.isPending(source) }

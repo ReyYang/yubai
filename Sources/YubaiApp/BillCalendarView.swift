@@ -29,6 +29,10 @@ struct FixedFlowsView: View {
     @State private var shownMonth: Date?
     @State private var selectedDay: Date?
     @State private var editingRate: BillCurrency?
+    init(selectedDate: Date? = nil) {
+        _shownMonth = State(initialValue: selectedDate)
+        _selectedDay = State(initialValue: selectedDate)
+    }
     private var date: Date { shownMonth ?? store.financialNow }
     private var snapshot: BillCalendarMonth { BillCalendarMonth(containing: date, in: store.current, now: store.financialNow) }
     var body: some View {
@@ -283,8 +287,8 @@ struct YearlyBillsStrip: View {
             Card(style: .compact) {
                 VStack(spacing: YubaiSpace.space8) {
                     ViewThatFits(in: .horizontal) {
-                        HStack { title; Spacer(); monthly }
-                        VStack(alignment: .leading, spacing: YubaiSpace.space4) { title; monthly }
+                        HStack { title; Spacer() }
+                        VStack(alignment: .leading, spacing: YubaiSpace.space4) { title }
                     }
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space4), count: textSize.isAccessibilitySize ? 4 : 12), spacing: YubaiSpace.space8) {
                         ForEach(1...12, id: \.self) { value in
@@ -303,31 +307,17 @@ struct YearlyBillsStrip: View {
         Text("一年付一次的 · \(store.plans.filter { $0.active && $0.stoppedAt == nil && !$0.inflow && $0.frequency == .yearly }.count) 样")
             .yubaiFont(YubaiFont.caption, weight: .semibold)
     }
-    private var monthly: some View {
-        let value = YearlyBillReserves.rows(in: store.current, now: store.financialNow).reduce(Int64(0)) { $0 + $1.monthly }
-        return Text("每月先留 " + amount2(value, hide: store.preferences.hideAmounts)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
 }
 
 struct YearlyBillsView: View {
     @Environment(AppStore.self) private var store
     var body: some View {
-        let rows = YearlyBillReserves.rows(in: store.current, now: store.financialNow)
         Page(identifier: "yearlyBillsPage") {
-            Card(style: .list) {
-                Toggle("每月先留", isOn: Binding(get: { store.preferences.yearlyBillsSetAside != false }, set: { value in
-                    _ = store.update("每月先留", entryMotion: false) { YearlyBillReserves.setEnabled(value, in: &$0, now: store.financialNow) }
-                })).yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.buttonHeight).accessibilityIdentifier("yearlyBillsSetAside")
-            }
             CardRows(store.plans.filter { $0.active && $0.stoppedAt == nil && !$0.inflow && $0.frequency == .yearly }) { plan in
                 TabNavigationLink(.billDetail(plan.id)) { BillDetailView(planID: plan.id) } label: {
                     VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                         Text(plan.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1)
-                        if let row = rows.first(where: { $0.id == plan.id }) {
-                            Text("每月先留 " + amount2(row.monthly, hide: store.preferences.hideAmounts)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+
                     }.frame(maxWidth: .infinity, minHeight: YubaiSize.sourceRow, alignment: .leading)
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("yearlyBill_" + plan.id.uuidString)
             }

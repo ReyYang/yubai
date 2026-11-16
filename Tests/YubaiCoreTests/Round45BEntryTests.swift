@@ -6,19 +6,19 @@ final class Round45BEntryTests: XCTestCase {
     func d(_ text: String) -> Date { Round45BFixture.d(text) }
     func testFutureEntryLeavesAllCurrentNumbersUnchangedAndPostsAtCycleEdge() throws {
         var ledger = Round45BFixture.ledger()
-        let before = Finance.funds(ledger, now: now), pace = Finance.pace(ledger, now: now)
+        let before = Finance.funds(ledger, now: now), pace = Finance.spendableBreakdown(ledger, now: now)
         let change = try ManualBookkeeping.change(amount: 1200, nature: .expense, accountID: ledger.accounts[0].id,
             day: d("2026-12-01"), purpose: "午饭", category: "餐饮", now: now)
         XCTAssertEqual(try ManualBookkeeping.available(after: change, in: ledger, now: now), before.available)
         try change.apply(to: &ledger)
         XCTAssertEqual(Finance.funds(ledger, now: now), before)
-        XCTAssertEqual(Finance.pace(ledger, now: now), pace)
+        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now), pace)
         XCTAssertEqual(Finance.upcomingEntries(in: ledger, now: now, days: 20).count, 1)
         XCTAssertEqual(Finance.upcomingEntries(in: ledger, now: now, days: -1), [])
         let justBefore = d("2026-12-01").addingTimeInterval(-0.001), arrives = d("2026-12-01")
         XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: justBefore), 1_000_000)
         XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: arrives), 998_800)
-        XCTAssertEqual(Finance.pace(ledger, now: arrives)?.spent, 1200)
+        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: arrives).spent, 1200)
         XCTAssertTrue(Finance.upcomingEntries(in: ledger, now: arrives).isEmpty)
     }
     func testFutureReserveAndEarmarkedIncomeDoNotChangePocketOrOverview() throws {
@@ -102,8 +102,12 @@ final class Round45BEntryTests: XCTestCase {
         var ledger = Round45BFixture.ledger()
         ledger.entries = [Round45BFixture.entry(ledger, date: "2026-11-17", amount: 1000)]
         let book = Finance.balance(ledger.accounts[0], in: ledger, at: now)
-        let ids = try Reconciliation.apply(&ledger, actual: [ledger.accounts[0].id: book - 41_200], now: now)
-        return (ledger, ids[0])
+        // A pre-revision unitemized expense remains splittable after upgrading.
+        var legacy = Entry(date: now.addingTimeInterval(-1), amount: 41_200, accountID: ledger.accounts[0].id, title: "没细记")
+        legacy.spreadFrom = d("2026-11-18"); legacy.source = "对余额"
+        ledger.accounts[0].anchorBalance = book - 41_200; ledger.accounts[0].anchorDate = now
+        ledger.entries.append(legacy)
+        return (ledger, legacy.id)
     }
     func testPartialSplitRetainsSpreadAndBalanceAndUndo() throws {
         var (ledger, id) = try reconciled()

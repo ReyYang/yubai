@@ -30,10 +30,12 @@ public struct QuickCaptureSnapshot: Codable, Equatable, Sendable {
     public struct Frequent: Codable, Equatable, Sendable {
         public var purpose: String; public var amount: Int64; public var category: String
     }
+    public var headlineTitle: String?
     public var generatedAt: Date; public var available: Int64; public var todayCount: Int; public var todayTotal: Int64
     public var frequent: [Frequent]
     public init(ledger: Ledger, now: Date = Dates.now) {
-        generatedAt = now; available = QuickCapture.available(in: ledger, now: now)
+        let value = Finance.spendableBreakdown(ledger, now: now)
+        generatedAt = now; available = value.headlineAmount; headlineTitle = value.headlineTitle
         let entries = ledger.activeEntries.filter { $0.date <= now }
         let today = entries.filter { Dates.calendar.isDate($0.date, inSameDayAs: now) }
         todayCount = today.count

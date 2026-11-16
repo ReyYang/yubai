@@ -52,8 +52,8 @@ private struct CaptureSnippetView: View {
             }
             Divider()
             HStack(spacing: YubaiSpace.gapGroup) {
-                Text("还能花").foregroundStyle(YubaiColor.labelSecondary)
-                Spacer(); AmountLabel(cents: QuickCapture.available(in: ledger), hide: ledger.preferences.hideAmounts, currency: true)
+                Text(Finance.spendableBreakdown(ledger).headlineTitle).foregroundStyle(YubaiColor.labelSecondary)
+                Spacer(); AmountLabel(cents: Finance.spendableBreakdown(ledger).headlineAmount, hide: ledger.preferences.hideAmounts, currency: true)
             }.yubaiFont(YubaiFont.caption)
             ForEach(entries) { entry in
                 HStack(spacing: YubaiSpace.gapGroup) {

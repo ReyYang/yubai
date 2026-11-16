@@ -110,7 +110,7 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: YubaiSpace.space2) {
                     Text(area.title).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail)
                     if stance == .restrain, let limit = area.softLimit {
-                        Text(store.preferences.hideAmounts && limit.perMonthAmount != nil ? "••••" : limit.text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                        Text(store.preferences.hideAmounts && (limit.perPeriodAmount != nil || limit.perMonthAmount != nil) ? "••••" : limit.text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     }
                     if showsNote(area, stance: stance) {
                         Text(area.note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).multilineTextAlignment(.leading)
@@ -221,15 +221,15 @@ private struct ProfileAreaEditor: View {
             }
             if stance == .restrain {
                 Section("上限") {
-                    CardTextFieldRow(title: "每周次数", text: $weekly, numeric: true).accessibilityHint("空着表示不限次数")
-                    InlineFieldError(message: !weekly.isEmpty && Int(weekly).map({ (0...10000).contains($0) }) != true ? "每周次数须为 0 至 10,000 的整数" : nil)
+                    CardTextFieldRow(title: "每期次数", text: $weekly, numeric: true).accessibilityHint("空着表示不限次数")
+                    InlineFieldError(message: !weekly.isEmpty && Int(weekly).map({ (0...10000).contains($0) }) != true ? "每期次数须为 0 至 10,000 的整数" : nil)
                     monthlyLimitRow
                 }
             }
         }.editorForm().navigationTitle(stance == .restrain ? "想克制的" : "愿意多花的").yubaiNavigation()
             .manualSheetHeader(stance == .restrain ? "想克制的" : "愿意多花的", actionTitle: "保存", enabled: validationError == nil, action: save)
             .sheet(isPresented: $editingMonthly) {
-                AmountEntrySheet(title: "每月金额", keypad: $monthlyKeypad, primaryTitle: "好", canSave: monthlyKeypad.amount != nil, save: {
+                AmountEntrySheet(title: "每期金额", keypad: $monthlyKeypad, primaryTitle: "好", canSave: monthlyKeypad.amount != nil, save: {
                     guard let value = monthlyKeypad.resolve() else { return }
                     monthly = Money.input(value); editingMonthly = false
                 }).environment(store).yubaiSheetBackground()
@@ -238,11 +238,11 @@ private struct ProfileAreaEditor: View {
                 guard !loaded else { return }; loaded = true
                 title = area.title; categories = Set(area.match.categories.map { store.current.resolveCategory($0, income: false) })
                 keywords = area.match.keywords; note = area.note
-                weekly = area.softLimit?.perWeekCount.map { String($0) } ?? ""; monthly = area.softLimit?.perMonthAmount.map { Money.input($0) } ?? ""
+                weekly = (area.softLimit?.perPeriodCount ?? area.softLimit?.perWeekCount).map { String($0) } ?? ""; monthly = (area.softLimit?.perPeriodAmount ?? area.softLimit?.perMonthAmount).map { Money.input($0) } ?? ""
             }
     }
     private var monthlyLimitRow: some View {
-        EntryFormRow(title: "每月金额") {
+        EntryFormRow(title: "每期金额") {
             HStack(spacing: YubaiSpace.space8) {
                 Button {
                     monthlyKeypad = EntryKeypad(amount: (try? Money.parse(monthly)) ?? 0); editingMonthly = true
@@ -261,7 +261,7 @@ private struct ProfileAreaEditor: View {
     }
     private var validationError: String? {
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "填写名称" }
-        if !weekly.isEmpty && Int(weekly).map({ (0...10000).contains($0) }) != true { return "每周次数须为 0 至 10,000 的整数" }
+        if !weekly.isEmpty && Int(weekly).map({ (0...10000).contains($0) }) != true { return "每期次数须为 0 至 10,000 的整数" }
         if !monthly.isEmpty && (try? Money.parse(monthly)) == nil { return "填写有效金额" }
         return nil
     }
@@ -277,17 +277,22 @@ private struct ProfileAreaEditor: View {
             guard !clean.isEmpty else { throw YubaiError.invalid("给这个领域起个名字吧。") }
             let countText = weekly.trimmingCharacters(in: .whitespacesAndNewlines)
             let count: Int? = countText.isEmpty ? nil : Int(countText)
-            guard countText.isEmpty || count.map({ (0...10000).contains($0) }) == true else { throw YubaiError.invalid("每周次数请填 0 至 10,000 的整数。") }
+            guard countText.isEmpty || count.map({ (0...10000).contains($0) }) == true else { throw YubaiError.invalid("每期次数请填 0 至 10,000 的整数。") }
             let amount: Int64? = monthly.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : try Money.parse(monthly)
             addKeyword()
             let words = keywords
             var updated = area; updated.title = clean; updated.note = note
             updated.match = AreaMatch(categories: categories.sorted(), keywords: words, subcategories: area.match.subcategories)
-            updated.softLimit = stance == .restrain && (count != nil || amount != nil) ? SoftLimit(perWeekCount: count, perMonthAmount: amount) : nil
+            updated.softLimit = stance == .restrain && (count != nil || amount != nil) ? SoftLimit(perPeriodCount: count, perPeriodAmount: amount) : nil
             if store.update("修改消费观", { ledger in
                 let old = ledger.profile
-                ledger.profile.generous.removeAll { $0.id == updated.id }; ledger.profile.restrain.removeAll { $0.id == updated.id }
-                if stance == .generous { ledger.profile.generous.append(updated) } else { ledger.profile.restrain.append(updated) }
+                ledger.profile.generous.removeAll { $0.id == updated.id }
+                if stance == .restrain && updated.softLimit != nil {
+                    try SoftLines.set(updated, in: &ledger, now: Dates.now)
+                } else {
+                    ledger.profile.restrain.removeAll { $0.id == updated.id }
+                    if stance == .generous { ledger.profile.generous.append(updated) } else { ledger.profile.restrain.append(updated) }
+                }
                 ledger.profile.stamp(changedFrom: old, at: Dates.now)
             }) { dismiss() }
         } catch { store.error = error.localizedDescription }

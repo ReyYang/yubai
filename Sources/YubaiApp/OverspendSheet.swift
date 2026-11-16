@@ -40,8 +40,7 @@ private struct OverspendEditor: View {
         guard valid else { return [] }
         let hide = store.preferences.hideAmounts
         let preview = Overspend.preview(store.current, source: source, amount: amount, now: Dates.now)
-        var available = amount2(preview.availableAfter, hide: hide)
-        if let daily = preview.dailyAfter { available += " · 日均 " + amount2(daily, hide: hide) }
+        let available = amount2(preview.availableAfter, hide: hide)
         return [AmountSheetRow(label: source == .saveLess ? "每月存" : "存着的钱", value: ResultBar.change(preview.before, preview.after, hide: hide)),
                 AmountSheetRow(label: "还能花", value: available)]
     }

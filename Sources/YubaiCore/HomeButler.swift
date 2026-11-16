@@ -1,16 +1,19 @@
 import Foundation
 
-/// The home and deck share this queue. Only facts with a monetary consequence
-/// and an available action belong here; weekly reports stay in their own page.
+/// The home and deck share this queue. A fresh weekly letter ranks after the
+/// actionable financial facts and opens its existing review page.
 public enum HomeTask: Identifiable, Equatable, Sendable {
     case payday(Payday.Due), bill(Occurrence), leftover(CycleSaving), gap(Reconciliation.Gap)
     case salary(SalaryCandidate), imports(PendingImportOrganization), butler(ButlerCard)
     case renewal(HomeRenewal), overspend(Overspend.Options), cooldown(WishItem), restraint(HomeRestraint)
     case funding(HomeFunding), savingsTopup(SavingsTopupOffer)
     case suggestion(ButlerSuggestion), suggestionReview(ButlerReview)
+    case balanceMismatch(Reconciliation.Mismatch), billHeadsUp(Occurrence)
 
     public var id: String {
         switch self {
+        case .balanceMismatch(let v): v.id
+        case .billHeadsUp(let v): "billHeadsUp:" + v.id
         case .payday(let v): "payday:" + v.planID.uuidString + ":" + Dates.text(v.occurrence)
         case .bill(let v): "due:" + v.id
         case .leftover(let v): "leftover:" + Dates.text(v.cycleStart)
@@ -19,7 +22,7 @@ public enum HomeTask: Identifiable, Equatable, Sendable {
         case .imports(let v): "imports:" + v.batchIDs.map(\.uuidString).sorted().joined(separator: ":")
         case .butler(let v): "confirmation:" + v.id.uuidString
         case .renewal(let v): v.id
-        case .overspend: "overspend"
+        case .overspend(let v): "overspend:" + Dates.text(v.cycleStart)
         case .cooldown(let v): "cooldown:" + v.id.uuidString
         case .restraint(let v): v.id
         case .funding(let v): v.id
@@ -28,16 +31,23 @@ public enum HomeTask: Identifiable, Equatable, Sendable {
         case .suggestionReview(let v): v.taskID
         }
     }
+    public var isDismissible: Bool {
+        switch self { case .overspend, .payday, .savingsTopup: false; default: true }
+    }
     public var priority: Int {
         switch self {
-        case .overspend: 0
-        case .payday, .butler, .funding, .savingsTopup: 1
-        case .gap, .salary, .imports: 2
-        case .renewal, .leftover: 3
-        case .cooldown: 4
-        case .bill: 5
-        case .restraint: 6
-        case .suggestion, .suggestionReview: 6
+        case .overspend: return 0
+        case .payday, .savingsTopup: return 1
+        case .leftover: return 2
+        case .balanceMismatch: return 3
+        case .billHeadsUp: return 4
+        case .restraint: return 5
+        case .suggestion(let value):
+            if case .setBudget = value.action { return 5 }; return 7
+        case .suggestionReview: return 7
+        case .butler(let value): return value.kind == .weeklyLetter ? 7 : 6
+        case .gap, .salary, .imports, .renewal, .cooldown, .bill, .funding: return 6
+
         }
     }
 }
@@ -83,9 +93,10 @@ public enum HomeButler {
             if bill.inflow && bill.planID == payday?.planID { continue }
             items.append(.bill(bill))
         }
-        if let gap = Reconciliation.gap(in: ledger, now: now) { items.append(.gap(gap)) }
+        if let mismatch = Reconciliation.mismatch(in: ledger, now: now) { items.append(.balanceMismatch(mismatch)) }
+        items += billHeadsUps(ledger, now: now).map(HomeTask.billHeadsUp)
         if let salary = SalaryDetection.candidate(in: ledger) { items.append(.salary(salary)) }
-        if let leftover = Savings.pendingLeftover(in: ledger) { items.append(.leftover(leftover)) }
+        if let leftover = Savings.carryNotice(in: ledger, now: now) { items.append(.leftover(leftover)) }
         items += renewals(ledger, now: now).map(HomeTask.renewal)
         items += ledger.wishlist.filter { $0.status == .thinking && $0.amount > 0 && $0.coolUntil.map { $0 <= now } == true }.map(HomeTask.cooldown)
         let pending = PendingImportOrganization(in: ledger)
@@ -102,16 +113,61 @@ public enum HomeButler {
             guard confirmationAmount(card, in: ledger) > 0 else { continue }
             items.append(.butler(card))
         }
+        if let weekly = ledger.cards.filter({ WeeklyLetter.isFresh($0, now: now) && !ButlerCards.isMuted($0.dedupeKey, in: ledger) })
+            .max(by: { $0.createdAt < $1.createdAt }) { items.append(.butler(weekly)) }
         items += restraints(ledger, now: now).map(HomeTask.restraint)
         items += ButlerSuggestions.queued(ledger, now: now).map(HomeTask.suggestion)
         items += (ledger.butlerAI?.reviews ?? []).filter { $0.answeredAt == nil && $0.dueAt <= now && !ledger.mutedTopics.contains("ai:" + $0.suggestion.topic) }.map(HomeTask.suggestionReview)
         return items.filter { task in
             guard !isAnswered(task.id, in: ledger, now: now) else { return false }
             if (ledger.preferences.butlerNotices ?? ButlerNoticePreferences()).home { return true }
-            switch task { case .cooldown, .restraint, .leftover, .suggestion, .suggestionReview: return false; default: return true }
+            switch task {
+            case .butler(let card) where card.kind == .weeklyLetter: return false
+            case .cooldown, .restraint, .leftover, .billHeadsUp, .balanceMismatch, .suggestion, .suggestionReview: return false
+            default: return true
+            }
         }.sorted {
-            $0.priority == $1.priority ? $0.id < $1.id : $0.priority < $1.priority
+            if $0.priority != $1.priority { return $0.priority < $1.priority }
+            if case .billHeadsUp(let a) = $0, case .billHeadsUp(let b) = $1, a.date != b.date { return a.date < b.date }
+            return $0.id < $1.id
         }
+    }
+
+    /// Once per occurrence: answers use the stable occurrence identity, not the
+    /// month in which the reminder happened to be rendered.
+    public static func billHeadsUps(_ ledger: Ledger, now: Date) -> [Occurrence] {
+        let current = Finance.cycleInfo(in: ledger, now: now)
+        guard current.lateSince == nil else { return [] }
+        let nextStart = Dates.addDays(1, to: current.end)
+        let nextEnd: Date
+        if current.payday, let plan = Finance.anchorPlan(in: ledger, now: now) {
+            let original = ledger.activeEntries.filter { $0.nature == .income && $0.planID == plan.id && Dates.day($0.date) == nextStart }.compactMap(\.occurrence).max() ?? nextStart
+            nextEnd = plan.nextScheduledDate(after: max(nextStart, original)).map { Dates.addDays(-1, to: Dates.day($0)) } ?? Finance.scheduledCycle(in: ledger, now: nextStart).end
+        } else { nextEnd = Dates.addDays(-1, to: Dates.calendar.dateInterval(of: .month, for: nextStart)!.end) }
+        let ids = Set(ledger.plans.filter { $0.active && !$0.inflow && $0.nature == .expense && [.yearly, .quarterly].contains($0.frequency) }.map(\.id))
+        let plans = Dictionary(uniqueKeysWithValues: ledger.plans.map { ($0.id, $0) })
+        let rents = Set(ledger.rents.filter { $0.active && [3, 12].contains($0.monthsPerPayment) }.map(\.id))
+        let days = max(1, (Dates.calendar.dateComponents([.day], from: Dates.day(now), to: nextEnd).day ?? 0) + 1)
+        return Finance.occurrences(in: ledger, now: now, days: days).filter {
+            ($0.planID.map { ids.contains($0) } == true || $0.rentID.map { rents.contains($0) } == true) && !$0.inflow && Dates.day($0.date) >= nextStart && Dates.day($0.date) <= nextEnd
+        }.map { value in
+            var row = value
+            if let plan = row.planID.flatMap({ plans[$0] }) {
+                // Moving the due date does not create another reminder for the
+                // same original annual/quarterly occurrence.
+                row.id = "\(plan.id)-\(plan.originalOccurrenceDate(on: row.date).timeIntervalSince1970)"
+            }
+            return row
+        }.filter {
+            !isAnswered("billHeadsUp:" + $0.id, in: ledger, now: now)
+        }
+    }
+    @discardableResult public static func rescueDeficit(in ledger: inout Ledger, now: Date) throws -> SavingsTransfer {
+        let value = Finance.spendableBreakdown(ledger, now: now)
+        let saved = Reserve.overview(ledger, now: now).total
+        let amount = min(value.deficit, max(0, saved))
+        guard value.offersFormula, amount > 0 else { throw YubaiError.invalid("没有可拿出来用的钱。") }
+        return try Reserve.transfer(.take, amount: amount, in: &ledger, now: now)
     }
 
     public static func confirmationAmount(_ card: ButlerCard, in ledger: Ledger) -> Int64 {

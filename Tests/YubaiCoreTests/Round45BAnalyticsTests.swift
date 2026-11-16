@@ -44,7 +44,7 @@ final class Round45BAnalyticsTests: XCTestCase {
         XCTAssertEqual(formula.bills, 200_000); XCTAssertEqual(formula.spent, 20_000)
         XCTAssertEqual(formula.remaining, ledger.savingHistory[0].unspent)
         let before = formula
-        try Savings.resolveLeftover(cycleStart: formula.cycleStart, choice: .save, in: &ledger)
+        _ = try Savings.keepLeftover(cycleStart: formula.cycleStart, in: &ledger, now: now)
         XCTAssertEqual(Finance.closedFormula(ledger, cycleStart: formula.cycleStart), before)
     }
     func testClosedFormulaAbsorbsTransfersReserveAndNegativeRemainder() {
@@ -56,7 +56,7 @@ final class Round45BAnalyticsTests: XCTestCase {
         XCTAssertEqual(formula.hand - formula.fixedSavings - formula.saving - formula.bills - formula.spent, -1000)
         Savings.closeCycles(&ledger, now: now)
         XCTAssertEqual(ledger.savingHistory.first?.unspent, 0)
-        XCTAssertEqual(Finance.closedFormula(ledger, cycleStart: d("2026-10-01")).remaining, -1000)
+        XCTAssertEqual(Finance.closedFormula(ledger, cycleStart: d("2026-10-01")).remaining, -2000)
     }
     func testCategoryUsesSameOffsetAndFrequentPurposesWithRefunds() {
         var ledger = Round45BFixture.ledger()

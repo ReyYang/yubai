@@ -178,7 +178,7 @@ final class QuickCaptureTests: XCTestCase {
         let snapshot = QuickCaptureSnapshot(ledger: ledger, now: now)
         XCTAssertEqual(snapshot.todayCount, 3); XCTAssertEqual(snapshot.todayTotal, 7400)
         XCTAssertEqual(snapshot.frequent.count, 3); XCTAssertEqual(snapshot.frequent.first?.purpose, "午饭")
-        XCTAssertEqual(snapshot.available, Finance.funds(ledger, now: now).available)
+        XCTAssertEqual(snapshot.available, Finance.spendableBreakdown(ledger, now: now).headlineAmount)
         XCTAssertEqual(try JSONDecoder().decode(QuickCaptureSnapshot.self, from: JSONEncoder().encode(snapshot)), snapshot)
         QuickCapture.undo(entryID: ledger.entries.last!.id, in: &ledger, now: now)
         XCTAssertEqual(QuickCaptureSnapshot(ledger: ledger, now: now).todayCount, 2)

@@ -140,6 +140,6 @@ public enum Payday {
         try? confirm(due, amount: amount, extraToSavings: extraToSavings, accountID: nil, in: &projected, now: now)
         Savings.closeCycles(&projected, now: now)
         let funds = Finance.funds(projected, now: now)
-        return Preview(delta: amount - due.usual, cycleBudget: Finance.pace(projected, now: now)?.budget ?? funds.available)
+        return Preview(delta: amount - due.usual, cycleBudget: funds.spendable.budget)
     }
 }

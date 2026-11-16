@@ -15,3 +15,6 @@ V47-Butler-AI
 V47-Home-AI
 V47-AI-Why
 V47-Changes
+V47-Spend-States
+V47-Butler-Cards
+V47-Entry-Recon

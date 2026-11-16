@@ -4,7 +4,7 @@ import YubaiCore
 
 extension UITestSupport {
     static let savings47Scripts: Set<String> = [
-        "v47-spend", "v47-spend-over", "v47-spend-zero", "v47-spend-no-salary", "v47-savings", "v47-savings-hard", "v47-savings-no-floor",
+        "v47-spend", "v47r-less", "v47r-deficit", "v47r-taken", "v47r-carry", "v47r-floor", "v47r-reconcile", "v47r-soft", "v47-spend-over", "v47-spend-zero", "v47-spend-no-salary", "v47-savings", "v47-savings-hard", "v47-savings-no-floor",
         "v47-records", "v47-topup", "v47-topup-queue", "v47-toast-short", "v47-toast-long"
     ]
     static func savings47Ledger(_ script: String, now: Date) throws -> Ledger {
@@ -42,6 +42,9 @@ extension UITestSupport {
         if script == "v47-spend-no-salary" {
             value.entries[0].title = "收入"; value.entries[0].category = "其他收入"
             value.entries[0].planID = nil; value.entries[0].occurrence = nil
+            value.entries[0].amount -= 1000
+            var other = Entry(date: start, amount: 1000, nature: .income, accountID: bank.id, title: "其他收入")
+            other.id = galleryID(471031); value.entries.append(other)
         }
         if script == "v47-spend-over" {
             var extra = Entry(date: now, amount: 200_000, accountID: bank.id, title: "旅行", category: "旅行"); extra.id = galleryID(471150)
@@ -74,10 +77,32 @@ extension UITestSupport {
                 renewal.id = galleryID(471051); renewal.accountID = bank.id; value.plans.append(renewal)
             }
         }
+        if ["v47r-less", "v47r-deficit", "v47r-taken"].contains(script) {
+            value.entries.removeAll { $0.nature == .expense }
+            var expense = Entry(date: today, amount: script == "v47r-less" ? 290_000 : 505_000, accountID: bank.id, title: "日常", category: "餐饮")
+            expense.id = galleryID(471150); value.entries.append(expense)
+            if script == "v47r-taken" { try Reserve.transfer(.take, amount: 35_000, in: &value, now: now) }
+        }
+        if script == "v47r-floor" {
+            try Reconciliation.apply(&value, actual: [bank.id: 977_400], now: now)
+        }
+        if script == "v47r-reconcile" {
+            value.accounts[0].anchorBalance += 200_000
+            value.lastReconciledAt = Dates.addDays(-30, to: today)
+        }
+        if script == "v47r-soft" {
+            value.profile.restrain = [ProfileArea(title: "外卖", match: .init(keywords: ["外卖"]), softLimit: .init(perPeriodAmount: 80_000))]
+            value.entries[1].title = "外卖"; value.entries[1].amount = 48_000
+        }
         let cycle = Finance.cycle(in: value, now: now)
         let previous = Finance.cycle(in: value, now: cycle.start.addingTimeInterval(-1))
         value.savingHistory = [CycleSaving(cycleStart: previous.start, cycleEnd: previous.end, income: 801_000, target: 200_000,
                                           saved: 200_000, unspent: 0, leftoverChoice: .keep)]
+        if script == "v47r-carry" {
+            value.savingHistory[0].autoSaved = true; value.savingHistory[0].leftover = 62_000
+            value.savingHistory[0].unspent = 62_000; value.savingHistory[0].leftoverChoice = .save
+            value.fixedSavings! += 62_000
+        }
         try value.validate(); return value
     }
 }

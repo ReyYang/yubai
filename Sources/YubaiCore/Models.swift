@@ -95,7 +95,7 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
         case .expense: "支出"; case .income: "收入"; case .transfer: "自有账户转账"; case .repayment: "信用还款"
         case .borrow: "借入本金"; case .lend: "借出本金"; case .loanReturn: "归还借款"; case .loanRecovery: "收回借款"
         case .refund: "消费退款"; case .contribution: "收到分摊"; case .investBuy: "投资申购"; case .investSell: "投资赎回"
-        case .adjustmentIn: "调增余额"; case .adjustmentOut: "调减余额"; case .unknownIn: "没写用途的进账"; case .unknownOut: "没写用途的出账"
+        case .adjustmentIn, .adjustmentOut: "调整"; case .unknownIn: "没写用途的进账"; case .unknownOut: "没写用途的出账"
         }
     }
     public var categoryIncome: Bool { self != .refund && inflow }
@@ -107,8 +107,11 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+public enum EntryKind: String, Sendable { case transaction, adjustment }
+
 public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64
+    public var kind: EntryKind { nature == .adjustmentIn || nature == .adjustmentOut ? .adjustment : .transaction }
     public var recordedAt: Date? // In-app recording time; imports and old ledgers keep nil.
     public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false }; if nature != .expense { fromReserve = false } } }
     public var intoFixedSavings = false { didSet { if nature != .income { intoFixedSavings = false } } }
@@ -627,7 +630,11 @@ public struct AreaMatch: Codable, Equatable, Sendable {
 }
 public struct SoftLimit: Codable, Equatable, Sendable {
     public var perWeekCount: Int?; public var perMonthAmount: Int64?
-    public init(perWeekCount: Int? = nil, perMonthAmount: Int64? = nil) { self.perWeekCount = perWeekCount; self.perMonthAmount = perMonthAmount }
+    public var perPeriodCount: Int?; public var perPeriodAmount: Int64?
+    public init(perWeekCount: Int? = nil, perMonthAmount: Int64? = nil, perPeriodCount: Int? = nil, perPeriodAmount: Int64? = nil) {
+        self.perWeekCount = perWeekCount; self.perMonthAmount = perMonthAmount
+        self.perPeriodCount = perPeriodCount; self.perPeriodAmount = perPeriodAmount
+    }
 }
 public struct ProfileArea: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var match: AreaMatch
@@ -814,6 +821,13 @@ public struct Ledger: Codable, Equatable, Sendable {
     public var salarySetupDeferral: SalarySetupDeferral? { didSet { calculations = LedgerCalculations() } }
     public var cycleCovers: [CycleCover] = [] { didSet { calculations = LedgerCalculations() } }
     public var reserveAdjustments: [ReserveAdjustment] = [] { didSet { calculations = LedgerCalculations() } }
+    public var spendableModelVersion: Int? = 1 { didSet { calculations = LedgerCalculations() } }
+    /// One-time preservation of the old pending saving headline. Kept separate
+    /// from the user-set base so migration never clips that base at Money.limit.
+    public var migratedSavingCredit: Int64 = 0 { didSet { calculations = LedgerCalculations() } }
+    public var carryReleases: [CarryRelease] = [] { didSet { calculations = LedgerCalculations() } }
+    public var periodReconciliations: [PeriodReconciliation] = [] { didSet { calculations = LedgerCalculations() } }
+    public var lastReconciledAt: Date? { didSet { calculations = LedgerCalculations() } }
     public var savingsTransfers: [SavingsTransfer] = [] { didSet { calculations = LedgerCalculations() } }
     public var savingsTopupDecisions: [SavingsTopupDecision] = [] { didSet { calculations = LedgerCalculations() } }
     public var reservePaybacks: [ReservePayback]? { didSet { calculations = LedgerCalculations() } }
@@ -893,6 +907,7 @@ public struct Ledger: Codable, Equatable, Sendable {
     }
     public init() {}
     private enum CodingKeys: String, CodingKey {
+        case spendableModelVersion, migratedSavingCredit, carryReleases, periodReconciliations, lastReconciledAt
         case butlerSavings, butlerAnswers, salarySetupDeferral, butlerAI
         case savingsTransfers, savingsTopupDecisions, reservePaybacks, repeatPreferences, paydayConfirmSince, cycleCovers, reserveAdjustments, cycleAnchor, lastFixedSavingTarget, lastSavingSharePercent, spendingParts, partsMode, partLeftover, partCarry, partCarryCycleStart, fixedSavings, savingRule, savingHistory, schema, id, updatedAt, isSample, accounts, entries, plans, goals, rents, categories, imports, attachments, categoryAliases, defaultCategoriesVersion, manualNotesMerged, categoryMemory, subcategoryMemory, classificationMemory, lastSubcategoryBatchDay, subscriptionChecks, stoppedSubscriptions, dismissedSalaryKeys, memories, lastReflectionWeek, preferences, profile, cards, pendingChanges, wishlist, mutedTopics
     }
@@ -944,6 +959,11 @@ public struct Ledger: Codable, Equatable, Sendable {
         salarySetupDeferral = try c.decodeIfPresent(SalarySetupDeferral.self, forKey: .salarySetupDeferral)
         cycleCovers = try c.decodeIfPresent([CycleCover].self, forKey: .cycleCovers) ?? []
         reserveAdjustments = try c.decodeIfPresent([ReserveAdjustment].self, forKey: .reserveAdjustments) ?? []
+        spendableModelVersion = try c.decodeIfPresent(Int.self, forKey: .spendableModelVersion)
+        migratedSavingCredit = try c.decodeIfPresent(Int64.self, forKey: .migratedSavingCredit) ?? 0
+        carryReleases = try c.decodeIfPresent([CarryRelease].self, forKey: .carryReleases) ?? []
+        periodReconciliations = try c.decodeIfPresent([PeriodReconciliation].self, forKey: .periodReconciliations) ?? []
+        lastReconciledAt = try c.decodeIfPresent(Date.self, forKey: .lastReconciledAt)
         savingsTransfers = try c.decodeIfPresent([SavingsTransfer].self, forKey: .savingsTransfers) ?? []
         savingsTopupDecisions = try c.decodeIfPresent([SavingsTopupDecision].self, forKey: .savingsTopupDecisions) ?? []
         reservePaybacks = try c.decodeIfPresent([ReservePayback].self, forKey: .reservePaybacks)
@@ -1011,6 +1031,11 @@ public struct Ledger: Codable, Equatable, Sendable {
         try c.encodeIfPresent(salarySetupDeferral, forKey: .salarySetupDeferral)
         if !cycleCovers.isEmpty { try c.encode(cycleCovers, forKey: .cycleCovers) }
         if !reserveAdjustments.isEmpty { try c.encode(reserveAdjustments, forKey: .reserveAdjustments) }
+        try c.encodeIfPresent(spendableModelVersion, forKey: .spendableModelVersion)
+        if migratedSavingCredit != 0 { try c.encode(migratedSavingCredit, forKey: .migratedSavingCredit) }
+        if !carryReleases.isEmpty { try c.encode(carryReleases, forKey: .carryReleases) }
+        if !periodReconciliations.isEmpty { try c.encode(periodReconciliations, forKey: .periodReconciliations) }
+        try c.encodeIfPresent(lastReconciledAt, forKey: .lastReconciledAt)
         if !savingsTransfers.isEmpty { try c.encode(savingsTransfers, forKey: .savingsTransfers) }
         if !savingsTopupDecisions.isEmpty { try c.encode(savingsTopupDecisions, forKey: .savingsTopupDecisions) }
         if let reservePaybacks, !reservePaybacks.isEmpty { try c.encode(reservePaybacks, forKey: .reservePaybacks) }
@@ -1063,6 +1088,11 @@ public struct Ledger: Codable, Equatable, Sendable {
         lhs.salarySetupDeferral == rhs.salarySetupDeferral &&
         lhs.cycleCovers == rhs.cycleCovers &&
         lhs.reserveAdjustments == rhs.reserveAdjustments &&
+        lhs.spendableModelVersion == rhs.spendableModelVersion &&
+        lhs.migratedSavingCredit == rhs.migratedSavingCredit &&
+        lhs.carryReleases == rhs.carryReleases &&
+        lhs.periodReconciliations == rhs.periodReconciliations &&
+        lhs.lastReconciledAt == rhs.lastReconciledAt &&
         lhs.savingsTransfers == rhs.savingsTransfers &&
         lhs.savingsTopupDecisions == rhs.savingsTopupDecisions &&
         lhs.reservePaybacks == rhs.reservePaybacks &&
@@ -1215,7 +1245,7 @@ public struct Ledger: Codable, Equatable, Sendable {
             }
         }
         // Include future postings too, so advancing time cannot invalidate a stored total.
-        guard fixedSavingsTotal(now: .distantFuture) <= Money.limit else { throw YubaiError.invalid("存下的钱的总额超出范围。") }
+        guard fixedSavingsTotal(now: .distantFuture) - migratedSavingCredit <= Money.limit else { throw YubaiError.invalid("存下的钱的总额超出范围。") }
         let refunds = Dictionary(grouping: entries.lazy.filter { $0.deletedAt == nil && $0.nature == .refund && $0.relatedEntryID != nil }, by: { $0.relatedEntryID! })
         if !refunds.isEmpty {
             let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
@@ -1224,6 +1254,7 @@ public struct Ledger: Codable, Equatable, Sendable {
                       rows.reduce(Int64(0), { $0 + $1.amount }) <= original.amount else { throw YubaiError.invalid("关联退款超过原支出，或原支出已被移除。请先核对退款关联。") }
             }
         }
+        try validatePeriodState()
         try validateProfileAndCards()
         for change in pendingChanges { try change.validateStructure() }
         for p in plans {
@@ -1269,6 +1300,8 @@ private extension Ledger {
                   a.confirmedAt.map(date) ?? true,
                   a.match.categories.allSatisfy(text), a.match.keywords.allSatisfy(text), a.match.subcategories.allSatisfy(text),
                   (a.softLimit?.perWeekCount).map({ (0...10_000).contains($0) }) ?? true,
+                  (a.softLimit?.perPeriodCount).map({ (0...10_000).contains($0) }) ?? true,
+                  (a.softLimit?.perPeriodAmount).map({ (0...Money.limit).contains($0) }) ?? true,
                   (a.softLimit?.perMonthAmount).map({ (0...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("消费领域、次数或金额无效。") }
         }
         for c in cards {

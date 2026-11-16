@@ -19,87 +19,69 @@ final class Round47SavingsTests: XCTestCase {
         return value
     }
     private func assertIdentity(_ value: Ledger, at date: Date? = nil, file: StaticString = #filePath, line: UInt = #line) {
-        let date = date ?? now, formula = Finance.spendingDerivation(value, now: date)
-        XCTAssertEqual(formula.exerciseIncome - formula.saving - formula.bills - formula.yearlySetAside - formula.spent,
-                       Finance.funds(value, now: date).available, file: file, line: line)
-        XCTAssertEqual(formula.exerciseResult, formula.available, file: file, line: line)
+        let f = Finance.spendableBreakdown(value, now: date ?? now)
+        XCTAssertEqual(f.rows.reduce(0) { $0 + $1.amount }, f.available - f.deficit, file: file, line: line)
+        XCTAssertEqual(f.rawR, f.income + f.carry - f.plannedSaving - f.billsRest - f.spent + f.withdrawal - f.balanceGap, file: file, line: line)
     }
-    func testWorkedExerciseMatchesBoardIncludingAnnualReserve() {
-        let value = ledger(), formula = Finance.spendingDerivation(value, now: now)
-        XCTAssertEqual(formula.exerciseIncome, 801_000); XCTAssertEqual(formula.saving, 200_000)
-        XCTAssertEqual(formula.bills, 331_000); XCTAssertEqual(formula.yearlySetAside, 30_000)
-        XCTAssertEqual(formula.spent, 83_600); XCTAssertEqual(formula.available, 156_400)
-        XCTAssertEqual(formula.daysLeft, 20); XCTAssertEqual(formula.daily, 7_820)
+    func testWorkedExerciseMatchesBoardWithoutAnnualReserve() {
+        let value = ledger(), formula = Finance.spendableBreakdown(value, now: now)
+        XCTAssertEqual(formula.income, 801_000); XCTAssertEqual(formula.effectiveSaving, 200_000)
+        XCTAssertEqual(formula.billsRest, 331_000); XCTAssertEqual(formula.rows.map(\.kind), [.income, .saving, .bills, .spent])
+        XCTAssertEqual(formula.spent, 83_600); XCTAssertEqual(formula.available, 186_400)
         assertIdentity(value)
     }
-    func testWorkedExercisePreservesNegativeAnswer() {
+    func testWorkedExerciseUsesSavingBufferBeforeDeficit() {
         var value = ledger(); value.entries.append(Entry(date: now, amount: 200_000, accountID: value.accounts[0].id, title: "旅行", category: "旅行"))
-        XCTAssertEqual(Finance.spendingDerivation(value, now: now).available, -43_600); assertIdentity(value)
+        let f = Finance.spendableBreakdown(value, now: now)
+        XCTAssertEqual(f.available, 0); XCTAssertEqual(f.state, .savingLess(13_600)); assertIdentity(value)
     }
-    func testSalarySourceResolvesTheActualPostedEntry() {
-        let value = ledger(), formula = Finance.spendingDerivation(value, now: now)
-        XCTAssertEqual(formula.salary?.id, value.entries[0].id)
-        XCTAssertEqual(formula.salary?.amount, 801_000)
+    func testIncomeSourceResolvesTheActualPostedEntry() {
+        let value = ledger(), formula = Finance.spendableBreakdown(value, now: now)
+        XCTAssertEqual(formula.rows.first?.entryIDs, [value.entries[0].id]); XCTAssertEqual(formula.income, 801_000)
     }
-    private func preparedExercise(_ ledger: Ledger, at now: Date) -> SpendingDerivation {
-        Finance.spendingDerivation(ledger, now: now, funds: Finance.funds(ledger, now: now),
-                                  formula: Finance.formula(ledger, now: now), pace: Finance.pace(ledger, now: now))
-    }
+    private func preparedExercise(_ ledger: Ledger, at now: Date) -> SpendableBreakdown { Finance.spendableBreakdown(ledger, now: now) }
     func testPreparedExerciseRefreshesAfterSalaryEditAndSavingsTransfer() throws {
-        var value = ledger()
-        let before = preparedExercise(value, at: now)
+        var value = ledger(); let before = preparedExercise(value, at: now)
         value.entries[0].amount += 50_000
         let edited = preparedExercise(value, at: now)
-        XCTAssertEqual(edited.salary?.id, value.entries[0].id)
-        XCTAssertEqual(edited.salary?.amount, 851_000)
-        XCTAssertEqual(edited.available, before.available + 50_000)
+        XCTAssertEqual(edited.income, 851_000); XCTAssertEqual(edited.available, before.available + 50_000)
         try Reserve.transfer(.take, amount: 25_000, in: &value, now: now)
         let taken = preparedExercise(value, at: now)
-        XCTAssertEqual(taken.available, edited.available + 25_000)
-        XCTAssertEqual(taken.exerciseResult, taken.available)
-        XCTAssertEqual(taken, Finance.spendingDerivation(value, now: now))
+        XCTAssertEqual(taken.available, edited.available + 25_000); assertIdentity(value)
     }
-    func testPreparedExerciseRefreshesAtPostingBoundaryAndHandlesAbsentPace() {
-        var value = ledger()
-        let posting = now.addingTimeInterval(3600)
+    func testPreparedExerciseRefreshesAtPostingBoundaryAndHandlesFallback() {
+        var value = ledger(); let posting = now.addingTimeInterval(3600)
         let future = Entry(date: posting, amount: 1234, accountID: value.accounts[0].id, title: "晚饭", category: "餐饮")
         value.entries.append(future)
         let before = preparedExercise(value, at: now), after = preparedExercise(value, at: posting)
-        XCTAssertFalse(before.entryIDs.contains(future.id))
-        XCTAssertTrue(after.entryIDs.contains(future.id))
+        XCTAssertFalse(before.rows.first { $0.kind == .spent }!.entryIDs.contains(future.id))
+        XCTAssertTrue(after.rows.first { $0.kind == .spent }!.entryIDs.contains(future.id))
         XCTAssertEqual(after.available, before.available - 1234)
-        XCTAssertEqual(after.exerciseResult, after.available)
-        let empty = Ledger(), funds = Finance.funds(empty, now: now)
-        XCTAssertNil(Finance.pace(empty, now: now))
-        let unknown = Finance.spendingDerivation(empty, now: now, funds: funds, formula: Finance.formula(empty, now: now), pace: nil)
-        XCTAssertNil(unknown.salary); XCTAssertNil(unknown.daily)
-        XCTAssertEqual(unknown.daysLeft, max(1, funds.horizonDays + 1))
+        let unknown = Finance.spendableBreakdown(Ledger(), now: now)
+        XCTAssertEqual(unknown.state, .spentFallback); XCTAssertNil(unknown.waterBar); XCTAssertFalse(unknown.offersFormula)
     }
-    func testOtherIncomeHasNoSalaryEditTargetButKeepsItsEntryInterval() {
-        var value = ledger()
-        value.entries[0].title = "收入"; value.entries[0].category = "其他收入"
+    func testOtherIncomeKeepsItsEntryIntervalAndSource() {
+        var value = ledger(); value.entries[0].title = "收入"; value.entries[0].category = "其他收入"
         value.entries[0].planID = nil; value.entries[0].occurrence = nil
-        let formula = Finance.spendingDerivation(value, now: now)
-        XCTAssertNil(formula.salary)
-        XCTAssertTrue(formula.interval.contains(value.entries[0].date))
-        assertIdentity(value)
+        let formula = Finance.spendableBreakdown(value, now: now)
+        XCTAssertEqual(formula.rows.first?.entryIDs, [value.entries[0].id]); XCTAssertTrue(formula.interval.contains(value.entries[0].date)); assertIdentity(value)
     }
-    func testWorkedExerciseAbsorbsAnchorsProtectedBalancesAndTransfers() throws {
-        var value = ledger()
-        value.accounts.append(Account(name: "另一张卡", balance: 80_000, at: d("2026-11-15")))
-        value.accounts.append(Account(name: "信用卡", kind: .credit, balance: -5000, at: d("2026-11-15")))
+    func testWorkedExerciseIgnoresAnchorsProtectedBalancesAndTransfers() throws {
+        var value = ledger(); let before = Finance.spendableBreakdown(value, now: now)
+        value.accounts.append(Account(name: "另一张卡", balance: 80_000, at: now))
+        value.accounts.append(Account(name: "信用卡", kind: .credit, balance: -5000, at: now))
         value.goals = [Goal(title: "旧目标", target: 20_000, reserved: 10_000)]
         value.entries.append(Entry(date: now, amount: 1234, nature: .unknownIn, accountID: value.accounts[0].id, title: "进账"))
-        assertIdentity(value)
+        XCTAssertEqual(Finance.spendableBreakdown(value, now: now), before)
         try Reserve.transfer(.take, amount: 50_000, in: &value, now: now); assertIdentity(value)
         try Reserve.transfer(.putBack, amount: 20_000, in: &value, now: now); assertIdentity(value)
     }
-    func testWorkedExercisePaidBillIsDeductedOnlyOnce() throws {
-        var value = ledger()
+    func testWorkedExercisePaidBillMovesFromDueToSpentOnlyOnce() throws {
+        var value = ledger(); let before = Finance.spendableBreakdown(value, now: now)
         var expense = Entry(date: now, amount: 331_000, accountID: value.accounts[0].id, title: "房租", category: "居住")
         expense.planID = value.plans[1].id; expense.occurrence = value.plans[1].dueDate; value.entries.append(expense)
-        XCTAssertEqual(Finance.spendingDerivation(value, now: now).bills, 331_000)
-        XCTAssertEqual(Finance.spendingDerivation(value, now: now).spent, 83_600); assertIdentity(value)
+        let after = Finance.spendableBreakdown(value, now: now)
+        XCTAssertEqual(after.billsRest, 0); XCTAssertEqual(after.spent, 414_600); XCTAssertEqual(after.available, before.available); assertIdentity(value)
     }
     func testTakingUpdatesSavingsSpendableCardAndRecordsWithoutCashPosting() throws {
         var value = ledger(); let cash = Finance.funds(value, now: now).cash, count = value.entries.count
@@ -107,7 +89,7 @@ final class Round47SavingsTests: XCTestCase {
         XCTAssertTrue(preview.valid); XCTAssertEqual(preview.savedBefore, 500_000); XCTAssertEqual(preview.savedAfter, 450_000)
         let row = try Reserve.transfer(.take, amount: 50_000, in: &value, now: now)
         XCTAssertEqual(value.entries.count, count); XCTAssertEqual(Finance.funds(value, now: now).cash, cash)
-        XCTAssertEqual(Finance.funds(value, now: now).available, 206_400)
+        XCTAssertEqual(Finance.funds(value, now: now).available, 236_400)
         XCTAssertEqual(Reserve.overview(value, now: now).total, 450_000)
         XCTAssertEqual(HomeSavingCard.make(value, now: now).total, 450_000)
         XCTAssertEqual(Reserve.overview(value, now: now).lines.first { $0.id == "transfer:" + row.id.uuidString }?.amount, -50_000)
@@ -118,13 +100,13 @@ final class Round47SavingsTests: XCTestCase {
         let row = try Reserve.transfer(.putBack, amount: 50_000, in: &value, now: now)
         XCTAssertEqual(Reserve.overview(value, now: now).total, 550_000)
         XCTAssertEqual(HomeSavingCard.make(value, now: now).total, 550_000)
-        XCTAssertEqual(Finance.funds(value, now: now).available, 106_400)
+        XCTAssertEqual(Finance.funds(value, now: now).available, 136_400)
         XCTAssertEqual(Reserve.overview(value, now: now).lines.first { $0.id == "transfer:" + row.id.uuidString }?.amount, 50_000)
         XCTAssertEqual(value.savingRule, .fixed(200_000)); assertIdentity(value)
     }
     func testLimitsRejectInvalidTransfersAtomically() throws {
         for direction in [SavingsTransfer.Direction.take, .putBack] {
-            let maximum: Int64 = direction == .take ? 500_000 : 156_400
+            let maximum: Int64 = direction == .take ? 500_000 : 186_400
             for amount in [0, -1, maximum + 1, Money.limit + 1, Int64.min, Int64.max] {
                 var value = ledger(); let before = value
                 XCTAssertFalse(Reserve.transferPreview(value, direction: direction, amount: amount, now: now).valid)
@@ -136,10 +118,10 @@ final class Round47SavingsTests: XCTestCase {
         }
     }
     func testNoDepositIsAllowedWhileOverspentButTakingCanRestoreSpendable() throws {
-        var value = ledger(); value.accounts[0].anchorBalance -= 200_000
+        var value = ledger(); value.entries.append(Entry(date: now, amount: 200_000, accountID: value.accounts[0].id, title: "消费"))
         XCTAssertFalse(Reserve.transferPreview(value, direction: .putBack, amount: 1, now: now).valid)
         try Reserve.transfer(.take, amount: 50_000, in: &value, now: now)
-        XCTAssertEqual(Finance.funds(value, now: now).available, 6400); assertIdentity(value)
+        XCTAssertEqual(Finance.funds(value, now: now).available, 36_400); assertIdentity(value)
     }
     func testTakingCanReleasePendingSavingsAndNeverMakesSavedTotalNegative() throws {
         var value = ledger()
@@ -148,13 +130,13 @@ final class Round47SavingsTests: XCTestCase {
         XCTAssertEqual(value.fixedSavingsTotal(now: now), 0)
         XCTAssertEqual(Finance.funds(value, now: now).savingTarget, 50_000)
         XCTAssertEqual(Reserve.overview(value, now: now).total, 50_000)
-        XCTAssertEqual(Finance.funds(value, now: now).available, 606_400); assertIdentity(value)
+        XCTAssertEqual(Finance.funds(value, now: now).available, 636_400); assertIdentity(value)
     }
     func testClosingCycleDoesNotDeductTakenPendingMoneyAgain() throws {
         var value = ledger(); try Reserve.transfer(.take, amount: 450_000, in: &value, now: now)
         Savings.closeCycles(&value, now: d("2026-12-10 12:00"))
         XCTAssertEqual(value.savingHistory.last?.saved, 50_000)
-        XCTAssertEqual(value.fixedSavingsTotal(now: d("2026-12-10 12:00")), 50_000)
+        XCTAssertEqual(value.fixedSavingsTotal(now: d("2026-12-10 12:00")), 1_017_400)
         let once = value; Savings.closeCycles(&value, now: d("2026-12-11")); XCTAssertEqual(value, once)
         assertIdentity(value, at: d("2026-12-11"))
     }
@@ -193,7 +175,7 @@ final class Round47SavingsTests: XCTestCase {
     func testTransfersRoundTripAndHistoricalQueriesIgnoreFutureTransfers() throws {
         var value = ledger(); try Reserve.transfer(.take, amount: 50_000, in: &value, now: now)
         value = try LedgerCodec.decode(LedgerCodec.encode(value))
-        XCTAssertEqual(Finance.funds(value, now: now).available, 206_400)
+        XCTAssertEqual(Finance.funds(value, now: now).available, 236_400)
         XCTAssertEqual(Reserve.overview(value, now: d("2026-11-20 11:00")).total, 500_000)
     }
     func testQuestionWaitsForFirstPaydayAndAggregatesWithdrawals() throws {
@@ -215,7 +197,7 @@ final class Round47SavingsTests: XCTestCase {
     func testAllThreeAnswersConsumeThoseWithdrawalsPermanently() throws {
         for amount in [Int64(0), 20_000, 50_000] {
             var value = ledger(); try Reserve.transfer(.take, amount: 50_000, in: &value, now: now)
-            let payday = d("2026-12-10 12:00"), offer = try XCTUnwrap(Reserve.topupOffer(value, now: payday))
+            let payday = d("2026-12-10 12:00"); value.entries.append(Entry(date: payday, amount: 801_000, nature: .income, accountID: value.accounts[0].id, title: "工资")); let offer = try XCTUnwrap(Reserve.topupOffer(value, now: payday))
             let before = Finance.funds(value, now: payday).available, saved = Reserve.overview(value, now: payday).total
             try Reserve.answerTopup(offer, amount: amount, in: &value, now: payday)
             value = try LedgerCodec.decode(LedgerCodec.encode(value))
@@ -228,7 +210,7 @@ final class Round47SavingsTests: XCTestCase {
     }
     func testQuestionOnlyIncludesPreviousWithdrawalsAndNewOnesCanAskNextMonth() throws {
         var value = ledger(); try Reserve.transfer(.take, amount: 50_000, in: &value, now: now)
-        let payday = d("2026-12-10 12:00"), offer = try XCTUnwrap(Reserve.topupOffer(value, now: payday))
+        let payday = d("2026-12-10 12:00"); value.entries.append(Entry(date: payday, amount: 801_000, nature: .income, accountID: value.accounts[0].id, title: "工资")); let offer = try XCTUnwrap(Reserve.topupOffer(value, now: payday))
         try Reserve.transfer(.take, amount: 10_000, in: &value, now: payday)
         XCTAssertEqual(Reserve.topupOffer(value, now: payday), offer)
         try Reserve.answerTopup(offer, amount: 0, in: &value, now: payday)
@@ -241,7 +223,7 @@ final class Round47SavingsTests: XCTestCase {
         for amount in [Int64(-1), 50_001] {
             let before = value; XCTAssertThrowsError(try Reserve.answerTopup(offer, amount: amount, in: &value, now: payday)); XCTAssertEqual(value, before)
         }
-        value.accounts[0].anchorBalance = -1_000_000
+        value.entries.append(Entry(date: payday, amount: 2_000_000, accountID: value.accounts[0].id, title: "消费"))
         let before = value
         XCTAssertThrowsError(try Reserve.answerTopup(offer, amount: 50_000, in: &value, now: payday)); XCTAssertEqual(value, before)
         try Reserve.answerTopup(offer, amount: 0, in: &value, now: payday); XCTAssertNil(Reserve.topupOffer(value, now: payday))
@@ -281,7 +263,7 @@ final class Round47SavingsTests: XCTestCase {
     }
     func testSharedSnapshotUndoRestoresTopupDecisionAndTransferTogether() throws {
         var value = ledger(); try Reserve.transfer(.take, amount: 50_000, in: &value, now: now)
-        let payday = d("2026-12-10"), before = value, offer = try XCTUnwrap(Reserve.topupOffer(value, now: payday))
+        let payday = d("2026-12-10"); value.entries.append(Entry(date: payday, amount: 801_000, nature: .income, accountID: value.accounts[0].id, title: "工资")); let before = value, offer = try XCTUnwrap(Reserve.topupOffer(value, now: payday))
         try Reserve.answerTopup(offer, amount: 20_000, in: &value, now: payday)
         XCTAssertNil(Reserve.topupOffer(value, now: payday))
         value = before
@@ -309,7 +291,7 @@ final class Round47SavingsTests: XCTestCase {
         Savings.closeCycles(&value, now: end)
         let oldLines = Reserve.overview(value, now: end).lines.filter { $0.date < d("2026-12-10") }
         XCTAssertEqual(oldLines.reduce(0) { $0 + $1.amount }, -250_000)
-        XCTAssertEqual(value.fixedSavingsTotal(now: end), 50_000)
+        XCTAssertEqual(value.fixedSavingsTotal(now: end), 1_017_400)
     }
     func testNewAnswerAlsoSuppressesLegacyPaybackOffers() throws {
         var value = ledger(); try Reserve.transfer(.take, amount: 50_000, in: &value, now: now)

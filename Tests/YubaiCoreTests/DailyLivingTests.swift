@@ -48,11 +48,11 @@ final class DailyLivingTests: XCTestCase {
             entry.recordedAt = now; changed.entries.append(entry)
             let after = Finance.funds(changed, now: now)
             XCTAssertEqual(Finance.estimatedDailyLiving(changed, now: now), 500); XCTAssertEqual(after.living, before.living)
-            XCTAssertEqual(after.available - before.available, nature.inflow ? 3200 : -3200)
+            XCTAssertEqual(after.spendable.rawR - before.spendable.rawR, nature.inflow ? 3200 : -3200)
             if nature == .refund {
                 changed.entries[changed.entries.count - 1].relatedEntryID = ledger.entries.last!.id
                 XCTAssertEqual(Finance.estimatedDailyLiving(changed, now: now), 500)
-                XCTAssertEqual(Finance.funds(changed, now: now).available, before.available + 3200)
+                XCTAssertEqual(Finance.funds(changed, now: now).spendable.rawR, before.spendable.rawR + 3200)
             }
             XCTAssertEqual(Finance.estimatedDailyLiving(changed, now: Dates.parse("2026-10-20 23:59:59")!), 500)
         }
@@ -92,7 +92,7 @@ final class DailyLivingTests: XCTestCase {
         XCTAssertEqual(chosen.points.first!.conservative - chosen.points.last!.conservative, 3000 * 90)
         ledger.fixedSavings = nil
         let unset = Finance.funds(ledger, now: now)
-        XCTAssertEqual(unset.emergency, 0); XCTAssertNil(unset.floorRoom); XCTAssertEqual(unset.available, estimated.available + 12345)
+        XCTAssertEqual(unset.emergency, 0); XCTAssertNil(unset.floorRoom); XCTAssertEqual(unset.available, estimated.available)
         XCTAssertEqual(unset.points.map(\.conservative), estimated.points.map(\.conservative))
         XCTAssertEqual(unset.points.map(\.expected), estimated.points.map(\.expected))
     }

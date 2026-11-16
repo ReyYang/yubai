@@ -70,7 +70,7 @@ final class Round47ButlerAITests: XCTestCase {
         let digest = ButlerDigest.build(ledger, now: now)
         XCTAssertEqual(digest.recurringCharges.first?.id, ledger.plans.first?.id)
         XCTAssertEqual(digest.wishes.first?.amountCents, 860_000)
-        XCTAssertEqual(digest.saving.savedCents, 52_000); XCTAssertEqual(digest.profile.principles, ["吃上不省"])
+        XCTAssertEqual(digest.saving.savedCents, 50_000); XCTAssertEqual(digest.profile.principles, ["吃上不省"])
         XCTAssertEqual(digest.memories, ledger.memories)
     }
     func testOldMerchantOutsideBaselineIsNotCalledNewOrSentAsRawHistory() throws {
@@ -267,15 +267,15 @@ final class Round47ButlerAITests: XCTestCase {
         let source = seed()
         var ledger = try queued(row(source, action: .object(["kind": .string("set_budget"), "category": .string("餐饮"), "amount_cents": .number(50000)])))
         try ButlerSuggestions.answer(ledger.butlerAI!.suggestions[0].id, .accept, in: &ledger, now: now)
-        XCTAssertEqual(ledger.spendingParts.first?.amount, 50000); XCTAssertEqual(ledger.spendingParts.first?.categories, ["餐饮"])
+        XCTAssertEqual(ledger.profile.restrain.first?.softLimit?.perPeriodAmount, 50000); XCTAssertEqual(ledger.profile.restrain.first?.match.categories, ["餐饮"])
     }
     func testCategoryBudgetDoesNotOverwriteAnExistingCombinedBudget() throws {
         var ledger = seed(); ledger.spendingParts = [SpendingPart(name: "日常", amount: 90000, categories: ["餐饮", "交通"])]
         let value = parsed([row(ledger, action: .object(["kind": .string("set_budget"), "category": .string("餐饮"), "amount_cents": .number(50000)]))], ledger: ledger)[0]
         ButlerIntelligence.enqueue([value], in: &ledger, now: now)
         try ButlerSuggestions.answer(value.id, .accept, in: &ledger, now: now)
-        XCTAssertEqual(ledger.spendingParts.first?.categories, ["交通"]); XCTAssertEqual(ledger.spendingParts.first?.amount, 90000)
-        XCTAssertEqual(ledger.spendingParts.last?.categories, ["餐饮"]); XCTAssertEqual(ledger.spendingParts.last?.amount, 50000)
+        XCTAssertEqual(ledger.spendingParts.first?.categories, ["餐饮", "交通"]); XCTAssertEqual(ledger.spendingParts.first?.amount, 90000)
+        XCTAssertEqual(ledger.profile.restrain.first?.match.categories, ["餐饮"]); XCTAssertEqual(ledger.profile.restrain.first?.softLimit?.perPeriodAmount, 50000)
     }
     func testAddWishAndNeverMentionActionsExecuteInCore() throws {
         for action: JSONValue in [.object(["kind": .string("add_wish"), "title": .string("饭盒"), "amount_cents": .number(12000)]), .object(["kind": .string("never_mention")])] {

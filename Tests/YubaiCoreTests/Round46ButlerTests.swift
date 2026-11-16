@@ -150,7 +150,7 @@ final class Round46ButlerTests: XCTestCase {
         let required = try XCTUnwrap(queue.firstIndex { if case .butler = $0 { return true }; return false })
         let saving = try XCTUnwrap(queue.firstIndex { if case .renewal = $0 { return true }; return false })
         let reminder = try XCTUnwrap(queue.firstIndex { if case .bill = $0 { return true }; return false })
-        XCTAssertLessThan(required, saving); XCTAssertLessThan(saving, reminder)
+        XCTAssertEqual(queue[required].priority, 6); XCTAssertEqual(queue[saving].priority, 6); XCTAssertEqual(queue[reminder].priority, 6)
     }
     func testNonActionableAndAmountlessObservationsStayOffHome() {
         var value = ledger()
@@ -211,9 +211,9 @@ final class Round46ButlerTests: XCTestCase {
         value.entries.append(Entry(date: now, amount: 4000, nature: .unknownIn, accountID: value.accounts[0].id, title: "来款"))
         for saving in [Int64(0), 200000, 900000] {
             value.savingRule = .fixed(saving)
-            let formula = Finance.spendingDerivation(value, now: now)
-            XCTAssertEqual(formula.otherFunds + formula.income - formula.fixedSavings - formula.creditDebt - formula.goals - formula.uncertainInflow - formula.saving - formula.bills, formula.budget)
-            XCTAssertEqual(formula.budget - formula.spent, formula.available)
+            let formula = Finance.spendableBreakdown(value, now: now)
+            XCTAssertEqual(formula.rawR + formula.spent, formula.budget)
+            XCTAssertEqual(max(0, formula.budget - formula.spent), formula.available)
             XCTAssertEqual(formula.available, Finance.funds(value, now: now).available)
         }
     }

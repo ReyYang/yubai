@@ -36,11 +36,11 @@ final class Round45CycleTests: XCTestCase {
         var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
         let at = d("2026-12-12 12:00"), info = Finance.cycleInfo(in: l, now: at)
         XCTAssertEqual(info.start, d("2026-11-10")); XCTAssertEqual(info.end, d("2026-12-12")); XCTAssertEqual(info.lateSince, d("2026-12-10"))
-        XCTAssertEqual(Finance.funds(l, now: at).salaryLateDays, 2); XCTAssertNil(Finance.pace(l, now: at)?.daily)
+        XCTAssertEqual(Finance.funds(l, now: at).salaryLateDays, 2); XCTAssertEqual(Finance.spendableBreakdown(l, now: at).waterBar?.tick, 1)
         XCTAssertEqual(Payday.due(in: l, now: at)?.lateDays, 2)
         Savings.closeCycles(&l, now: at); XCTAssertTrue(l.savingHistory.isEmpty)
         l.plans.append(Plan(title: "Next month", amount: 10_000, dueDate: d("2026-12-13")))
-        XCTAssertEqual(Finance.funds(l, now: at).committed, 361_000)
+        XCTAssertEqual(Finance.funds(l, now: at).committed, 0)
     }
     func testEarlyIncomeAndEarliestOfTwoConfirmationsDefineStartAndDeleteReverts() throws {
         var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
@@ -67,7 +67,7 @@ final class Round45CycleTests: XCTestCase {
             XCTAssertNil(Payday.due(in: l, now: at)); XCTAssertNil(Finance.funds(l, now: at).salaryLateDays)
             XCTAssertEqual(l.entries.filter { $0.intoFixedSavings }.reduce(0) { $0 + $1.amount }, saveExtra ? 50_000 : 0)
             Savings.closeCycles(&l, now: at)
-            XCTAssertEqual(preview.delta, amount - due.usual); XCTAssertEqual(preview.cycleBudget, Finance.pace(l, now: at)?.budget)
+            XCTAssertEqual(preview.delta, amount - due.usual); XCTAssertEqual(preview.cycleBudget, Finance.spendableBreakdown(l, now: at).budget)
             XCTAssertThrowsError(try Payday.confirm(due, amount: amount, extraToSavings: false, accountID: nil, in: &l, now: at))
         }
     }
@@ -87,10 +87,10 @@ final class Round45CycleTests: XCTestCase {
             var l = Round45Fixture.ledger(); l.plans = []; l.entries = []; l.cycleAnchor = .calendarMonth
             l.savingHistory = [CycleSaving(cycleStart: d("2026-10-01"), cycleEnd: d("2026-10-31"), income: 801_000, target: 200_000, saved: 200_000, unspent: 21_200)]
             l.accounts[0].anchorBalance = 961_200
-            XCTAssertEqual(Finance.funds(l, now: now).available, 261_200)
+            XCTAssertEqual(Finance.funds(l, now: now).available, 0)
             let pending = try XCTUnwrap(Savings.pendingLeftover(in: l))
             try Savings.resolveLeftover(cycleStart: pending.cycleStart, choice: choice, in: &l)
-            XCTAssertEqual(Finance.funds(l, now: now).available, choice == .save ? 240_000 : 261_200)
+            XCTAssertEqual(Finance.funds(l, now: now).available, 0)
             XCTAssertEqual(l.savingHistory[0].leftover, choice == .save ? 21_200 : 0)
             XCTAssertNil(Savings.pendingLeftover(in: l))
             XCTAssertThrowsError(try Savings.resolveLeftover(cycleStart: pending.cycleStart, choice: choice, in: &l))
@@ -111,7 +111,7 @@ final class Round45CycleTests: XCTestCase {
         l.plans[0].skippedOccurrences = [d("2026-02-28")]
         XCTAssertNil(Finance.cycleInfo(in: l, now: d("2026-03-01")).lateSince)
         l.plans = []; l.cycleAnchor = nil
-        XCTAssertFalse(Finance.cycleInfo(in: l, now: now).known); XCTAssertNil(Finance.pace(l, now: now))
+        XCTAssertFalse(Finance.cycleInfo(in: l, now: now).known); XCTAssertEqual(Finance.spendableBreakdown(l, now: now).state, .spentFallback)
         l.cycleAnchor = .calendarMonth; XCTAssertTrue(Finance.cycleInfo(in: l, now: now).known)
     }
 }
@@ -133,27 +133,16 @@ extension Round45CycleTests {
 
 extension Round45CycleTests {
     func testFullNewCycleStoryCarries212ThenSavingItReturnsBudgetTo2400() throws {
-        for (amount, extraToSavings, budget) in [(801_000 as Int64, false, 261_200 as Int64), (851_000, false, 311_200), (851_000, true, 261_200), (751_000, false, 211_200)] {
-            var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
-            l.accounts[0].anchorDate = d("2026-12-09 12:00"); l.accounts[0].anchorBalance = 721_200
-            l.plans[1].frequency = .monthly
-            var bill = Round45Fixture.entry(l, amount: 361_000, date: "2026-11-25 12:00", title: "Bill")
-            bill.planID = l.plans[1].id; bill.occurrence = d("2026-11-25")
-            l.entries = [l.entries[0], bill, Round45Fixture.entry(l, amount: 218_800, date: "2026-12-08")]
-            XCTAssertEqual(Finance.funds(l, now: d("2026-12-09 12:00")).available, 21_200)
-            let at = d("2026-12-10 12:00"), due = try XCTUnwrap(Payday.due(in: l, now: at))
-            XCTAssertEqual(Payday.preview(due, amount: amount, extraToSavings: extraToSavings, in: l, now: at).cycleBudget, budget)
-            try Payday.confirm(due, amount: amount, extraToSavings: extraToSavings, accountID: nil, in: &l, now: at)
-            Savings.closeCycles(&l, now: at)
-            XCTAssertEqual(l.savingHistory.last?.saved, 200_000); XCTAssertEqual(l.savingHistory.last?.unspent, 21_200)
-            XCTAssertEqual(Finance.funds(l, now: at).available, budget)
-            try Savings.resolveLeftover(cycleStart: l.savingHistory.last!.cycleStart, choice: .save, in: &l)
-            XCTAssertEqual(Finance.funds(l, now: at).available, budget - 21_200)
-            let overview = Reserve.overview(l, now: at)
-            let monthly = overview.lines.first { if case .monthly(_, pending: false) = $0.kind { return true }; return false }
-            XCTAssertEqual(monthly?.date, d("2026-11-10")); XCTAssertEqual(monthly?.amount, 200_000)
-            let leftover = overview.lines.first { $0.kind == .leftover }
-            XCTAssertEqual(leftover?.date, d("2026-12-10")); XCTAssertEqual(leftover?.amount, 21_200)
-        }
+        var l = Round45Fixture.ledger(); l.plans.removeAll { !$0.inflow }
+        let at = d("2026-12-10 12:00")
+        Savings.closeCycles(&l, now: at)
+        let record = try XCTUnwrap(Savings.carryNotice(in: l, now: at))
+        let before = Finance.funds(l, now: at).spendable.rawR
+        let row = try Savings.keepLeftover(cycleStart: record.cycleStart, in: &l, now: at)
+        XCTAssertEqual(Finance.funds(l, now: at).available, max(0, before + record.leftover))
+        XCTAssertNil(Savings.carryNotice(in: l, now: at))
+        try Savings.undoKeepLeftover(row.id, in: &l, now: at)
+        XCTAssertEqual(Finance.funds(l, now: at).available, max(0, before))
+        XCTAssertNil(Savings.carryNotice(in: l, now: at))
     }
 }

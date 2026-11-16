@@ -11,9 +11,9 @@ final class Round45BScheduleTests: XCTestCase {
     }
     func testMoveAcrossCycleBoundaryChangesOnlyOnePeriodAndClearRestores() throws {
         var ledger = billLedger(); let id = ledger.plans[0].id
-        let base = Finance.funds(ledger, now: now).available
+        let base = Finance.spendableBreakdown(ledger, now: now).rawR
         try FixedFlows.moveOccurrence(planID: id, occurrence: d("2026-11-25"), to: d("2026-12-02"), in: &ledger, now: now)
-        XCTAssertEqual(Finance.funds(ledger, now: now).available, base + 18_000)
+        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now).rawR, base + 18_000)
         XCTAssertEqual(Finance.formula(ledger, now: now).billCount, 0)
         XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).occurrences.isEmpty)
         let december = FixedFlows.month(containing: d("2026-12-10"), in: ledger).occurrences
@@ -21,7 +21,7 @@ final class Round45BScheduleTests: XCTestCase {
         XCTAssertNil(ledger.plans[0].occurrenceIndex(on: d("2026-11-25")))
         try FixedFlows.clearOccurrenceMove(planID: id, occurrence: d("2026-12-02"), in: &ledger, now: now)
         XCTAssertNil(ledger.plans[0].occurrenceDateOverrides)
-        XCTAssertEqual(Finance.funds(ledger, now: now).available, base)
+        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now).rawR, base)
     }
     func testMoveEarlierFromFuturePeriodIsFoundAndUsesSameInstallmentIndex() throws {
         var ledger = billLedger(); ledger.plans[0].installments = 2

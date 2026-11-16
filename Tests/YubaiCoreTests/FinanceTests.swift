@@ -10,7 +10,7 @@ final class FinanceTests: XCTestCase {
         ledger.goals = [Goal(title: "旅行", target: 100_000, reserved: 30_000)]
         ledger.entries = [Entry(date: now, amount: 5000, nature: .unknownIn, accountID: ledger.accounts[0].id, title: "进账")]
         let before = Finance.funds(ledger, now: now)
-        XCTAssertEqual(before.available, 700_000); XCTAssertNil(before.floorRoom)
+        XCTAssertEqual(before.available, 0); XCTAssertNil(before.floorRoom)
         XCTAssertEqual(before.points.first?.conservative, 770_000); XCTAssertEqual(before.points.last?.conservative, 700_000)
         XCTAssertEqual(before.points.last?.expected, 720_000)
         for floor: Int64? in [nil, 0, 100_000, 700_000, 800_000] {
@@ -29,7 +29,7 @@ final class FinanceTests: XCTestCase {
         let facts = Finance.assessPurchase(ledger, amount: 1000, now: now).facts
         XCTAssertTrue(facts.contains("在存钱 \(Money.text(30_000))"))
         XCTAssertTrue(facts.contains("存下的钱 \(Money.text(100_000))"))
-        XCTAssertTrue(facts.contains("要攒 \(Money.text(20_000))"))
+        XCTAssertTrue(facts.contains("要攒 \(Money.text(0))"))
     }
     private func record(_ ledger: inout Ledger, date: Date, at recordedAt: Date, nature: Nature = .expense) throws {
         let draft = EntryDraft(date: date, amount: 3200, amountConfirmed: true, nature: nature, accountID: ledger.accounts[0].id, title: "补记")
@@ -45,7 +45,7 @@ final class FinanceTests: XCTestCase {
             let after = Finance.funds(ledger, now: now)
             XCTAssertEqual(ledger.entries[0].recordedAt, now); XCTAssertEqual(ledger.entries[0].date, Dates.day(now))
             XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: now), 100_000 + delta)
-            XCTAssertEqual(after.cash, before.cash + delta); XCTAssertEqual(after.available, before.available + delta)
+            XCTAssertEqual(after.cash, before.cash + delta); XCTAssertEqual(after.available, max(0, before.spendable.rawR + delta))
             XCTAssertEqual(after.living, before.living)
         }
     }
@@ -67,7 +67,7 @@ final class FinanceTests: XCTestCase {
         try record(&ledger, date: Dates.day(now), at: Dates.parse("2026-10-01 21:00")!)
         let close = Dates.parse("2026-10-01 22:00")!; let funds = Finance.funds(ledger, now: close)
         XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: close), 93_600)
-        XCTAssertEqual(funds.cash, 93_600); XCTAssertEqual(funds.available, 93_600)
+        XCTAssertEqual(funds.cash, 93_600); XCTAssertEqual(funds.available, 0)
     }
     func testImportedEntriesUseExactPostingTimeOnAnchorDay() {
         var ledger = Ledger(); ledger.accounts = [Account(name: "银行", balance: 100_000, at: Dates.parse("2026-10-01 08:30")!)]
@@ -77,7 +77,7 @@ final class FinanceTests: XCTestCase {
         }
         XCTAssertEqual(Finance.balance(ledger.accounts[0], in: ledger, at: now), 96_800)
         let funds = Finance.funds(ledger, now: now)
-        XCTAssertEqual(funds.cash, 96_800); XCTAssertEqual(funds.available, 96_800)
+        XCTAssertEqual(funds.cash, 96_800); XCTAssertEqual(funds.available, 0)
     }
     func testManualTransferUsesEachAccountsAnchorAndKeepsPostingUpperBound() {
         var ledger = Ledger()
@@ -103,13 +103,13 @@ final class FinanceTests: XCTestCase {
         var ledger = Ledger(); ledger.accounts = [Account(name: "银行", balance: 100_000, at: Dates.parse("2026-10-01 08:30")!)]
         try record(&ledger, date: Dates.day(now), at: now, nature: .unknownIn)
         let funds = Finance.funds(ledger, now: now)
-        XCTAssertEqual(funds.cash, 103_200); XCTAssertEqual(funds.uncertainInflow, 3200); XCTAssertEqual(funds.available, 100_000)
+        XCTAssertEqual(funds.cash, 103_200); XCTAssertEqual(funds.uncertainInflow, 3200); XCTAssertEqual(funds.available, 0)
         let reconcile = Dates.parse("2026-10-01 20:00")!
         ledger.accounts[0].anchorBalance = funds.cash; ledger.accounts[0].anchorDate = reconcile
         XCTAssertEqual(Finance.funds(ledger, now: reconcile).uncertainInflow, 0)
         try record(&ledger, date: Dates.day(now), at: Dates.parse("2026-10-01 21:00")!, nature: .unknownIn)
         let after = Finance.funds(ledger, now: Dates.parse("2026-10-01 22:00")!)
-        XCTAssertEqual(after.cash, 106_400); XCTAssertEqual(after.uncertainInflow, 3200); XCTAssertEqual(after.available, 103_200)
+        XCTAssertEqual(after.cash, 106_400); XCTAssertEqual(after.uncertainInflow, 3200); XCTAssertEqual(after.available, 0)
     }
     func testRecordedAtRoundTripsAndOldLedgersDecodeWithoutIt() throws {
         var ledger = basic(); try record(&ledger, date: Dates.day(now), at: now)
@@ -163,7 +163,7 @@ final class FinanceTests: XCTestCase {
         var e = Entry(date: now, amount: 200_000, nature: .repayment, accountID: l.accounts[0].id, title: "还信用卡"); e.otherAccountID = l.accounts[2].id; l.entries.append(e)
         l.plans = [Plan(title: "信用卡还款", amount: 5000, dueDate: Dates.addDays(5, to: now), nature: .repayment)]
         let f = Finance.funds(l, now: now)
-        XCTAssertEqual(f.cash, 800_000); XCTAssertEqual(f.debt, 5000); XCTAssertEqual(f.available, 795000)
+        XCTAssertEqual(f.cash, 800_000); XCTAssertEqual(f.debt, 5000); XCTAssertEqual(f.available, 0)
         XCTAssertEqual(Finance.review(l, from: Dates.day(now), through: Dates.addDays(1, to: now)).spending, 5000)
     }
     func testBorrowingChangesCashAndDebtButNotNetWorthOrIncome() {
@@ -173,17 +173,17 @@ final class FinanceTests: XCTestCase {
     }
     func testInvestmentAndCreditLimitAreNotSpendableCash() {
         var l = basic(); l.accounts[2].creditLimit = 9_000_000; l.accounts.append(Account(name: "基金", kind: .investment, balance: 3_000_000, at: now)); l.accounts.append(Account(name: "借出", kind: .receivable, balance: 200_000, at: now))
-        let f = Finance.funds(l, now: now); XCTAssertEqual(f.available, 800000); XCTAssertEqual(f.netWorth, 4000000)
+        let f = Finance.funds(l, now: now); XCTAssertEqual(f.available, 0); XCTAssertEqual(f.netWorth, 4000000)
     }
     func testExpectedIncomeNeverInflatesConservativeAvailable() {
         var l = basic(); l.plans = [Plan(title: "预计工资", amount: 2_000_000, dueDate: Dates.addDays(3, to: now), inflow: true, nature: .income)]
-        let f = Finance.funds(l, now: now); XCTAssertEqual(f.available, 800000); XCTAssertEqual(f.expectedIncome, 2000000); XCTAssertEqual(f.points.last!.expected - f.points.last!.conservative, 2000000)
+        let f = Finance.funds(l, now: now); XCTAssertEqual(f.available, 0); XCTAssertEqual(f.expectedIncome, 2000000); XCTAssertEqual(f.points.last!.expected - f.points.last!.conservative, 2000000)
     }
     func testLateAndPartialPlanPaymentsKeepRemainingObligation() {
         var l = basic(); let p = Plan(title: "付款", amount: 50000, dueDate: Dates.addDays(-2, to: now)); l.plans = [p]
         var e = Entry(date: now, amount: 20000, accountID: l.accounts[0].id, title: "部分付"); e.planID = p.id; e.occurrence = p.dueDate; l.entries = [e]
         let occurrences = Finance.occurrences(in: l, now: now); XCTAssertEqual(occurrences.count, 1); XCTAssertEqual(occurrences[0].amount, 30000); XCTAssertTrue(occurrences[0].overdue)
-        XCTAssertEqual(Finance.funds(l, now: now).available, 750000)
+        XCTAssertEqual(Finance.funds(l, now: now).available, 0)
     }
     func testMonthEndRecurrenceDoesNotDriftIntoMarch28() {
         var l = basic(); l.plans = [Plan(title: "月末", amount: 1000, dueDate: Dates.parse("2026-01-31")!, frequency: .monthly)]
@@ -192,7 +192,7 @@ final class FinanceTests: XCTestCase {
     }
     func testUnknownIncomingAfterAnchorIsWithheldButHistoricalNotSubtractedTwice() {
         var l = basic(); l.entries = [Entry(date: now, amount: 80000, nature: .unknownIn, accountID: l.accounts[0].id, title: "待明确"), Entry(date: Dates.addDays(-20, to: now), amount: 90000, nature: .unknownIn, accountID: l.accounts[0].id, title: "历史")]
-        let f = Finance.funds(l, now: now); XCTAssertEqual(f.uncertainInflow, 80000); XCTAssertEqual(f.available, 800000); XCTAssertTrue(f.warnings.contains { $0.contains("没写用途") })
+        let f = Finance.funds(l, now: now); XCTAssertEqual(f.uncertainInflow, 80000); XCTAssertEqual(f.available, 0); XCTAssertTrue(f.warnings.contains { $0.contains("没写用途") })
     }
     func testMonthlyRentContributionAndQuarterlyPayment() {
         var l = basic(); let r = Rent(monthlyTotal: 40000, personalShare: 20000, startDate: Dates.day(now), nextDueDate: Dates.addDays(20, to: now)); l.rents = [r]
@@ -256,7 +256,7 @@ final class FinanceTests: XCTestCase {
     }
     func testInsufficientCashIsNotCalledAffordable() {
         let assessment = Finance.assessPurchase(basic(), amount: 900000, now: now)
-        XCTAssertEqual(assessment.severity, 2); XCTAssertEqual(assessment.afterPurchase, -100000)
+        XCTAssertEqual(assessment.severity, 2); XCTAssertEqual(assessment.afterPurchase, 0)
     }
     func testBulkNatureEditIsAtomicAndKeepsDirectionAndAmount() throws {
         var l = basic(); let out = Entry(date: now, amount: 5000, nature: .unknownOut, accountID: l.accounts[0].id, title: "待补充")

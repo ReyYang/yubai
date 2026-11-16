@@ -3,7 +3,7 @@ import YubaiCore
 
 // MARK: - 算式里改一项
 
-/// 从竖式改每月存，一边输一边预览还能花和日均。
+/// 从竖式改每月存，一边输一边预览还能花。
 struct FormulaEditSheet: View {
     @Environment(AppStore.self) private var store
     var body: some View {
@@ -48,16 +48,15 @@ private struct FormulaAmountEditor: View {
             selected = true
         })
     }
-    /// 改完以后的还能花和日均；输入无效时不给结果。
-    private var resultText: (available: String, daily: String?)? {
+    /// 改完以后的还能花；输入无效时不给结果。
+    private var resultText: String? {
         guard valid else { return nil }
         let now = Dates.now
         var projected = store.current
         projected.savingRule = sharing ? .share(percent) : .fixed(value)
         let hide = store.preferences.hideAmounts
         let available = amount2(Finance.funds(projected, now: now).available, hide: hide)
-        let daily = Finance.pace(projected, now: now)?.daily.map { "日均 " + amount2($0, hide: hide) }
-        return (available, daily)
+        return available
     }
 
     var body: some View {
@@ -67,7 +66,7 @@ private struct FormulaAmountEditor: View {
                 modePicker
                 amountDisplay
                 if let resultText {
-                    ResultBar(label: "改完还能花", value: resultText.available, identifier: "formulaEditResult", secondaryValue: resultText.daily)
+                    ResultBar(label: "改完还能花", value: resultText, identifier: "formulaEditResult")
                 }
             }
         } footer: {

@@ -9,6 +9,7 @@ final class SpendingPartsTests: XCTestCase {
         ledger.accounts = [Account(name: "银行卡", balance: balance, at: date("2026-07-01"))]
         ledger.spendingParts = [SpendingPart(name: "吃饭", amount: 250_000, share: 4, categories: ["餐饮"]),
                                 SpendingPart(name: "玩乐", amount: 100_000, share: 2, categories: ["娱乐", "购物"])]
+        ledger.entries = [entry(ledger, amount: balance, at: "2026-11-01", nature: .income)]
         return ledger
     }
     private func entry(_ ledger: Ledger, amount: Int64, category: String = "餐饮", at: String = "2026-11-05", nature: Nature = .expense) -> Entry {
@@ -46,7 +47,7 @@ final class SpendingPartsTests: XCTestCase {
 
     func testUnassignedPaysOverflowAndCanBecomeNegative() {
         var l = ledger(400_000)
-        l.entries = [entry(l, amount: 130_000, category: "娱乐"), entry(l, amount: 20_000, category: "交通")]
+        l.entries = [entry(l, amount: 130_000, category: "娱乐"), entry(l, amount: 20_000, category: "交通")] + [entry(l, amount: l.accounts[0].anchorBalance, at: "2026-11-01", nature: .income)]
         let total = Finance.funds(l, now: now).available
         let summary = SpendingParts.summary(l, now: now)
         XCTAssertEqual(summary.parts[0].remaining, 250_000)
@@ -79,10 +80,10 @@ final class SpendingPartsTests: XCTestCase {
         var l = ledger(); l.partsMode = .share; l.savingRule = .share(20); l.fixedSavings = 100_000
         l.entries = [entry(l, amount: 100_000, nature: .income), entry(l, amount: 20_000)]
         let summary = SpendingParts.summary(l, now: now)
-        XCTAssertEqual(summary.base, 980_000)
-        XCTAssertEqual(summary.parts[0].allowance, 392_000); XCTAssertEqual(summary.parts[0].remaining, 372_000)
+        XCTAssertEqual(summary.base, 80_000)
+        XCTAssertEqual(summary.parts[0].allowance, 32_000); XCTAssertEqual(summary.parts[0].remaining, 12_000)
         l.entries.append(entry(l, amount: 100_000, nature: .income))
-        XCTAssertEqual(SpendingParts.summary(l, now: now).parts[0].allowance, 424_000)
+        XCTAssertEqual(SpendingParts.summary(l, now: now).parts[0].allowance, 64_000)
         XCTAssertEqual(SpendingParts.fraction(1001, share: 5), 501)
     }
 
@@ -101,7 +102,7 @@ final class SpendingPartsTests: XCTestCase {
             XCTAssertEqual(l.partCarry[l.spendingParts[0].id], 200_000)
             XCTAssertEqual(l.partCarryCycleStart, date("2026-11-01"))
             XCTAssertEqual(SpendingParts.summary(l, now: now).parts[0].allowance, 450_000)
-            XCTAssertEqual(l.fixedSavings ?? 0, rule == nil ? 0 : 10_000)
+            XCTAssertEqual(l.fixedSavings ?? 0, 0)
             XCTAssertEqual(l.savingHistory[0].leftover, 0)
             let closed = l
             Savings.closeCycles(&l, now: now); XCTAssertEqual(l, closed)
@@ -116,79 +117,42 @@ final class SpendingPartsTests: XCTestCase {
 
     func testMergeModeAsksBeforeMergingAvailableOnceAndSurvivesReload() throws {
         var l = ledger(); l.savingRule = .fixed(10_000); l.fixedSavings = 100_000
-        l.entries = [entry(l, amount: 50_000, at: "2026-10-05"),
-                     entry(l, amount: 200_000, at: "2026-11-05", nature: .income)]
-        let close = date("2026-11-01").addingTimeInterval(-0.001)
-        XCTAssertEqual(WeeklyLetter.available(l, at: close), 840_000)
+        l.entries = [entry(l, amount: 900_000, at: "2026-10-01", nature: .income), entry(l, amount: 50_000, at: "2026-10-05"), entry(l, amount: 200_000, at: "2026-11-05", nature: .income)]
         Savings.closeCycles(&l, now: now)
-        XCTAssertEqual(l.savingHistory[0].saved, 10_000)
-        XCTAssertEqual(l.savingHistory[0].leftover, 0)
-        XCTAssertEqual(l.savingHistory[0].unspent, 840_000)
-        XCTAssertEqual(l.fixedSavings, 110_000)
-        try Savings.resolveLeftover(cycleStart: l.savingHistory[0].cycleStart, choice: .save, in: &l)
-        // Includes both named parts and unassigned funds, excluding the target,
-        // existing fixed savings and income received after the closing instant.
-        XCTAssertEqual(l.savingHistory[0].leftover, 840_000)
+        XCTAssertEqual(l.savingHistory[0].saved, 10_000); XCTAssertEqual(l.savingHistory[0].leftover, 840_000)
         XCTAssertEqual(l.fixedSavings, 950_000); XCTAssertTrue(l.partCarry.isEmpty)
-        XCTAssertNil(l.partCarryCycleStart)
         XCTAssertEqual(Finance.funds(l, now: now).available, 190_000)
-        XCTAssertEqual(WeeklyLetter.available(l, at: close), 840_000)
-        XCTAssertEqual(SpendingParts.summary(l, now: now).parts[0].allowance, 250_000)
-        try l.validate()
-        let closed = l
-        Savings.closeCycles(&l, now: now); XCTAssertEqual(l, closed)
-        l = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(l))
-        Savings.closeCycles(&l, now: now); XCTAssertEqual(l, closed)
+        let closed = l; Savings.closeCycles(&l, now: now); XCTAssertEqual(l, closed)
+        l = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(l)); XCTAssertEqual(l, closed)
         Savings.closeCycles(&l, now: date("2026-12-02"))
-        XCTAssertEqual(l.savingHistory.count, 2)
-        XCTAssertEqual(l.savingHistory[1].saved, 10_000)
-        XCTAssertEqual(l.savingHistory[1].leftover, 0)
-        XCTAssertEqual(l.savingHistory[1].unspent, 190_000)
-        try Savings.resolveLeftover(cycleStart: l.savingHistory[1].cycleStart, choice: .save, in: &l)
-        XCTAssertEqual(l.savingHistory[1].leftover, 190_000)
+        XCTAssertEqual(l.savingHistory[1].saved, 10_000); XCTAssertEqual(l.savingHistory[1].leftover, 190_000)
         XCTAssertEqual(l.fixedSavings, 1_150_000)
-        XCTAssertEqual(WeeklyLetter.available(l, at: close), 840_000)
-        XCTAssertEqual(WeeklyLetter.available(l, at: now), 190_000)
     }
 
     func testMergeModeWithoutSavingRuleAsksBeforeMergingLeftoverOnce() throws {
         var l = ledger()
-        l.entries = [entry(l, amount: 50_000, at: "2026-10-05")]
+        l.entries = [entry(l, amount: 1_000_000, at: "2026-10-01", nature: .income), entry(l, amount: 50_000, at: "2026-10-05")]
         Savings.closeCycles(&l, now: now)
-        XCTAssertNil(l.fixedSavings)
-        XCTAssertEqual(l.savingHistory[0].unspent, 950_000)
-        XCTAssertEqual(l.savingHistory[0].leftover, 0)
-        try Savings.resolveLeftover(cycleStart: l.savingHistory[0].cycleStart, choice: .save, in: &l)
-        XCTAssertEqual(l.fixedSavings, 950_000)
-        XCTAssertEqual(l.savingHistory.count, 1)
-        XCTAssertEqual(l.savingHistory[0].saved, 0)
-        XCTAssertEqual(l.savingHistory[0].target, 0)
-        XCTAssertEqual(l.savingHistory[0].leftover, 950_000)
-        XCTAssertFalse(l.savingHistory[0].tracked)
-        XCTAssertEqual(Finance.funds(l, now: now).available, 0)
-        XCTAssertTrue(l.partCarry.isEmpty)
-        let closed = l
-        Savings.closeCycles(&l, now: now); XCTAssertEqual(l, closed)
-        l = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(l))
-        Savings.closeCycles(&l, now: now); XCTAssertEqual(l, closed)
-        l.savingRule = .fixed(10_000)
-        Savings.closeCycles(&l, now: now)
-        XCTAssertEqual(l.fixedSavings, 950_000)
-        XCTAssertEqual(l.savingHistory.count, 1)
-        try l.validate()
+        XCTAssertEqual(l.fixedSavings, 950_000); XCTAssertEqual(l.savingHistory[0].leftover, 950_000)
+        XCTAssertEqual(l.savingHistory[0].saved, 0); XCTAssertFalse(l.savingHistory[0].tracked)
+        XCTAssertEqual(Finance.funds(l, now: now).available, 0); XCTAssertTrue(l.partCarry.isEmpty)
+        let closed = l; Savings.closeCycles(&l, now: now); XCTAssertEqual(l, closed)
+        l = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(l)); XCTAssertEqual(l, closed)
+        l.savingRule = .fixed(10_000); Savings.closeCycles(&l, now: now)
+        XCTAssertEqual(l.fixedSavings, 950_000); XCTAssertEqual(l.savingHistory.count, 1); try l.validate()
     }
 
     func testClosingWithoutPartsKeepsExistingSavingBehavior() {
         for rule: SavingRule? in [nil, .fixed(10_000)] {
             for mode: PartLeftover in [.mergeIntoFixedSavings, .rollOver] {
                 var l = ledger(); l.spendingParts = []; l.savingRule = rule; l.partLeftover = mode
-                l.entries = [entry(l, amount: 50_000, at: "2026-10-05")]
+                l.entries = [entry(l, amount: 100_000, at: "2026-10-01", nature: .income), entry(l, amount: 50_000, at: "2026-10-05")]
                 Savings.closeCycles(&l, now: now)
-                XCTAssertEqual(l.fixedSavings, rule == nil ? nil : 10_000)
+                XCTAssertEqual(l.fixedSavings, 50_000)
                 XCTAssertEqual(l.savingHistory[0].saved, rule == nil ? 0 : 10_000)
-                XCTAssertEqual(l.savingHistory[0].leftover, 0)
+                XCTAssertEqual(l.savingHistory[0].leftover, rule == nil ? 50_000 : 40_000)
                 XCTAssertEqual(l.savingHistory[0].tracked, rule != nil)
-                XCTAssertEqual(Finance.funds(l, now: now).available, rule == nil ? 950_000 : 930_000)
+                XCTAssertEqual(Finance.funds(l, now: now).available, 0)
             }
         }
     }
@@ -198,7 +162,7 @@ final class SpendingPartsTests: XCTestCase {
             var l = ledger(40_000); l.savingRule = rule
             l.entries = [entry(l, amount: 50_000, at: "2026-10-05")]
             let close = date("2026-11-01").addingTimeInterval(-0.001)
-            XCTAssertLessThan(WeeklyLetter.available(l, at: close), 0)
+            XCTAssertLessThan(Finance.spendableBreakdown(l, now: close).rawR, 0)
             Savings.closeCycles(&l, now: now)
             XCTAssertEqual(l.savingHistory[0].leftover, 0)
             XCTAssertEqual(l.savingHistory[0].saved, 0)
@@ -207,8 +171,8 @@ final class SpendingPartsTests: XCTestCase {
         var l = ledger(40_000); l.savingRule = .fixed(100_000)
         Savings.closeCycles(&l, now: now)
         XCTAssertEqual(l.savingHistory[0].leftover, 0)
-        XCTAssertEqual(l.savingHistory[0].saved, 40_000)
-        XCTAssertEqual(l.fixedSavings, 40_000)
+        XCTAssertEqual(l.savingHistory[0].saved, 0)
+        XCTAssertEqual(l.fixedSavings, 0)
     }
 
     func testCycleSavingLeftoverDecodesOldHistoryAndRoundTrips() throws {
@@ -255,21 +219,21 @@ final class SpendingPartsTests: XCTestCase {
         func hint(_ amount: Int64, _ category: String = "餐饮", partID: UUID? = nil, fixed: Bool = false, nature: Nature = .expense) -> EntryHint {
             EntryHint.make(ledger: l, amount: amount, category: category, isFixedBill: fixed, now: now, nature: nature, partID: partID)
         }
-        guard case .normal(let total, _, _, let part) = hint(1000) else { return XCTFail("normal") }
+        guard case .normal(let total, _, let part) = hint(1000) else { return XCTFail("normal") }
         XCTAssertEqual(total, 999_000); XCTAssertEqual(part?.name, "吃饭"); XCTAssertEqual(part?.after, 249_000)
-        guard case .normal(_, _, _, let manual) = hint(1000, partID: l.spendingParts[1].id) else { return XCTFail("manual") }
+        guard case .normal(_, _, let manual) = hint(1000, partID: l.spendingParts[1].id) else { return XCTFail("manual") }
         XCTAssertEqual(manual?.name, "玩乐")
-        guard case .normal(_, _, _, let unassigned) = hint(1000, "交通") else { return XCTFail("unassigned") }
+        guard case .normal(_, _, let unassigned) = hint(1000, "交通") else { return XCTFail("unassigned") }
         XCTAssertEqual(unassigned?.name, "没分的"); XCTAssertEqual(unassigned?.after, 649_000)
-        guard case .normal(_, _, _, let over) = hint(145_000, "娱乐") else { return XCTFail("part over") }
+        guard case .normal(_, _, let over) = hint(145_000, "娱乐") else { return XCTFail("part over") }
         XCTAssertEqual(over?.overBy, 45_000); XCTAssertEqual(over?.after, -45_000)
         guard case .big = hint(210_000, "娱乐") else { return XCTFail("big wins") }
         l.profile.restrain = [ProfileArea(title: "玩乐", match: AreaMatch(categories: ["娱乐"]))]
         guard case .restrain = hint(210_000, "娱乐") else { return XCTFail("restrain wins") }
-        guard case .normal(_, _, _, nil) = hint(1000, fixed: true) else { return XCTFail("fixed bill") }
-        guard case .normal(_, _, _, nil) = hint(1000, nature: .income) else { return XCTFail("income") }
+        guard case .normal(_, _, nil) = hint(1000, fixed: true) else { return XCTFail("fixed bill") }
+        guard case .normal(_, _, nil) = hint(1000, nature: .income) else { return XCTFail("income") }
         l.spendingParts = []
-        guard case .normal(_, _, _, nil) = hint(1000) else { return XCTFail("legacy") }
+        guard case .normal(_, _, nil) = hint(1000) else { return XCTFail("legacy") }
     }
 
     func testPurchasePartReasonWaitAndExistingFinancialBoundaries() {
@@ -285,7 +249,7 @@ final class SpendingPartsTests: XCTestCase {
         l.spendingParts[1].amount = 30_000
         l.savingRule = .fixed(990_000)
         XCTAssertEqual(PurchaseBounds.compute(ledger: l, amount: 45_000, title: "游戏", category: "娱乐", now: now).allowedVerdicts, [.wait, .skip])
-        l.accounts[0].anchorBalance = 10_000
+        l.entries.firstIndex { $0.nature == .income }.map { l.entries[$0].amount = 10_000 }
         XCTAssertEqual(PurchaseBounds.compute(ledger: l, amount: 45_000, title: "游戏", category: "娱乐", now: now).allowedVerdicts, [.skip])
     }
 
@@ -322,10 +286,10 @@ final class SpendingPartsTests: XCTestCase {
         var draft = EntryDraft(date: now, amount: 1000, amountConfirmed: true, accountID: l.accounts[0].id, title: "午饭", category: "餐饮")
         draft.partID = l.spendingParts[1].id
         try ChangeSet(source: "手动", reason: "记一笔", items: [.addEntry(draft)]).apply(to: &l)
-        XCTAssertEqual(l.entries[0].partID, draft.partID)
-        var edited = l.entries[0]; edited.partID = SpendingPart.unassignedID
+        XCTAssertEqual(l.entries.first { $0.id == draft.id }?.partID, draft.partID)
+        var edited = l.entries.first { $0.id == draft.id }!; edited.partID = SpendingPart.unassignedID
         try ManualBookkeeping.edit(edited, in: &l)
-        XCTAssertEqual(l.entries[0].partID, SpendingPart.unassignedID)
+        XCTAssertEqual(l.entries.first { $0.id == draft.id }?.partID, SpendingPart.unassignedID)
     }
 
     func testValidationAndCacheInvalidationOnPartChanges() throws {

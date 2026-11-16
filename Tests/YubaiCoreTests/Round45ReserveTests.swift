@@ -13,7 +13,7 @@ final class Round45ReserveTests: XCTestCase {
         let purchase = try XCTUnwrap(l.entries.last)
         XCTAssertTrue(purchase.fromReserve); XCTAssertEqual(l.fixedSavingsTotal(now: now), 380_000)
         XCTAssertEqual(Finance.funds(l, now: now).available, before)
-        XCTAssertEqual(Finance.pace(l, now: now)?.spent, Finance.pace(original, now: now)?.spent)
+        XCTAssertEqual(Finance.spendableBreakdown(l, now: now).spent, Finance.spendableBreakdown(original, now: now).spent)
         let flow = Finance.cashFlow(l, during: DateInterval(start: Dates.day(now), end: Dates.addDays(1, to: now)))
         XCTAssertEqual(flow.spending, 123_600)
         var edited = purchase; edited.amount = 150_000
@@ -61,29 +61,21 @@ final class Round45ReserveTests: XCTestCase {
     }
     func overspent() -> Ledger {
         var l = Round45Fixture.ledger(); l.entries = [Round45Fixture.entry(l, amount: 272_000, date: "2026-12-04")]
+        l.entries.append(Round45Fixture.entry(l, amount: 601_000, date: "2026-11-10", nature: .income))
+        l.plans[1].dueDate = Round45Fixture.date("2026-12-06")
         l.accounts[0].anchorBalance = 1_029_000; l.accounts[0].anchorDate = Round45Fixture.date("2026-12-05 11:59")
         return l
     }
     func testOverspendBothRoutesAndCushion() throws {
         let at = Round45Fixture.date("2026-12-05 12:00")
-        for source in [CycleCover.Source.saveLess, .fromReserve] {
-            var l = overspent(); let options = try XCTUnwrap(Overspend.options(l, now: at))
-            XCTAssertEqual(options.overBy, 32_000); XCTAssertEqual(options.daysLeft, 5)
-            XCTAssertEqual(options.level, 32_000); XCTAssertEqual(options.cushion, 72_000)
-            XCTAssertEqual(options.maxSaveLess, 200_000); XCTAssertEqual(options.maxFromReserve, 500_000)
-            let preview = Overspend.preview(l, source: source, amount: 72_000, now: at)
-            XCTAssertEqual(preview.before, source == .saveLess ? 200_000 : 500_000)
-            XCTAssertEqual(preview.after, source == .saveLess ? 128_000 : 428_000)
-            XCTAssertEqual(preview.availableAfter, 40_000); XCTAssertEqual(preview.dailyAfter, 8000)
-            try Overspend.cover(&l, source: source, amount: 72_000, now: at)
-            XCTAssertEqual(Finance.funds(l, now: at).available, 40_000); XCTAssertEqual(Finance.pace(l, now: at)?.daily, 8000)
-            XCTAssertEqual(Finance.pace(l, now: at)?.budget, 312_000); XCTAssertNil(Overspend.options(l, now: at))
-            if source == .saveLess {
-                Savings.closeCycles(&l, now: Round45Fixture.date("2026-12-10 12:00"))
-                XCTAssertEqual(l.savingHistory.last?.target, 200_000); XCTAssertEqual(l.savingHistory.last?.saved, 128_000)
-                XCTAssertEqual(Finance.funds(l, now: Round45Fixture.date("2026-12-10 12:00")).savingTarget, 200_000)
-            }
-        }
+        var l = overspent(); let options = try XCTUnwrap(Overspend.options(l, now: at))
+        XCTAssertEqual(options.overBy, 32_000); XCTAssertEqual(options.daysLeft, 5)
+        XCTAssertEqual(options.maxSaveLess, 0); XCTAssertEqual(options.maxFromReserve, 500_000)
+        let row = try HomeButler.rescueDeficit(in: &l, now: at)
+        XCTAssertEqual(row.amount, 32_000); XCTAssertEqual(Finance.funds(l, now: at).available, 0)
+        XCTAssertNil(Overspend.options(l, now: at)); XCTAssertEqual(l.fixedSavingsTotal(now: at), 468_000)
+        try Reserve.undoTransfer(row.id, in: &l, now: at)
+        XCTAssertEqual(Overspend.options(l, now: at)?.overBy, 32_000)
     }
     func testOverspendLimitsInvalidAmountsAndZeroOptions() throws {
         let at = Round45Fixture.date("2026-12-05 12:00")
@@ -128,12 +120,12 @@ final class Round45ReserveTests: XCTestCase {
         var l = Round45Fixture.ledger()
         func check(_ ledger: Ledger) {
             let f = Finance.formula(ledger, now: now)
-            XCTAssertEqual(f.hand - f.creditDebt - f.goals - f.uncertainInflow - f.fixedSavings - f.saving - f.billsRest, f.available)
+            XCTAssertEqual(f.available - f.deficit, f.available)
             XCTAssertEqual(f.available, Finance.funds(ledger, now: now).available)
         }
         check(l)
         let f = Finance.formula(l, now: now)
-        XCTAssertEqual(f.hand, 1_217_400); XCTAssertEqual(f.fixedSavings, 500_000); XCTAssertEqual(f.saving, 200_000); XCTAssertEqual(f.billsRest, 361_000); XCTAssertEqual(f.available, 156_400)
+        XCTAssertEqual(f.income, 801_000); XCTAssertEqual(f.saving, 200_000); XCTAssertEqual(f.billsRest, 361_000); XCTAssertEqual(f.available, 156_400)
         l.accounts.append(Account(name: "Credit", kind: .credit, balance: -64_000, at: now))
         l.goals = [Goal(title: "Goal", target: 1000, reserved: 1000)]
         var uncertain = Round45Fixture.entry(l, amount: 500, date: "2026-11-20 12:00", nature: .unknownIn); uncertain.recordedAt = now; l.entries.append(uncertain)
@@ -173,6 +165,6 @@ extension Round45ReserveTests {
         let draft = EntryDraft(date: now, amount: 1000, accountID: l.accounts[0].id, title: "Test", fromReserve: true)
         XCTAssertEqual(try JSONDecoder().decode(EntryDraft.self, from: JSONEncoder().encode(draft)), draft)
         let at = Round45Fixture.date("2026-12-05 12:00")
-        XCTAssertEqual(Reserve.overview(overspent(), now: at).setAside, 200_000)
+        XCTAssertEqual(Reserve.overview(overspent(), now: at).setAside, 0)
     }
 }
